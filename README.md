@@ -1,381 +1,289 @@
-# PiRacer Source Workspace
+# Automa Vehicle Automation Workspace
 
-This directory is the local source of truth for the Raspberry Pi car.
+This repository is the local source of truth for a vehicle-agnostic automation
+engine, a PiRacer/DonkeyCar target, and a Chase simulator adapter. The current
+decision engine is intentionally idle: the framework can capture sensors, run
+perception, produce an inspectable cycle, and select a controller without yet
+implementing autonomous navigation.
 
-## Layout
+## Setup
 
-- `deploy/targets/donkeycar/` contains the physical PiRacer deployment bundle.
-  `deploy/targets/donkeycar/app/` mirrors `/home/piracer/mycar` on the Pi, excluding
-  runtime data and logs.
-- `deploy/targets/donkeycar/donkeycar-vendor.json` and `deploy/targets/donkeycar/patches/`
-  describe the DonkeyCar source checkout generated for the Pi.
-- `autonomy/` contains stable vehicle, perception, decision, and runtime
-  primitives.
-- `implementations/` contains concrete vehicle adapters, perception plugins,
-  decision engines, runtime hosts, and bounded operations.
-- `cli/` contains the `automa` command-line access point for local and
-  vehicle-facing interactions.
-- `lab/` contains unstable generated work: run captures, analysis artifacts,
-  and frozen experiment folders.
-- `runtime/` contains local runtime state for active controllers, services, and
-  generated controller bundles.
-- `scripts/` contains sync and restart helpers.
-
-Script entrypoints are grouped by role:
-
-- `scripts/deploy/donkeycar/` contains remote helpers used by CLI deploy flows.
-- `scripts/perception/` contains reusable local image-analysis tools.
-- `scripts/decision/` contains decision-memory inspection utilities.
-- `scripts/calibration/` contains calibration-specific tools.
-
-Deployment commands should go through `./cli/automa`; scripts under
-`scripts/deploy/donkeycar/` are implementation helpers.
-
-The CLI access point is:
-
-```sh
-./cli/automa
-```
-
-Install the local analysis/runtime dependencies into the active Python
-environment with:
+Install the local runtime and analysis dependencies:
 
 ```sh
 python3 -m pip install -r requirements.txt
 ```
 
-Show the top-level command summary:
+Use the CLI from the repository root:
 
 ```sh
 ./cli/automa help
+./cli/automa vehicles help
+./cli/automa simulators help
 ```
 
-List active vehicles discovered from configured endpoints:
+Run the offline test harness:
 
 ```sh
+PYTHONDONTWRITEBYTECODE=1 python3 cli/run_tests.py
+```
+
+Include the live Chase simulator smoke test:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 cli/run_tests.py --live-sim
+```
+
+## Project Layout
+
+- `autonomy/` contains stable vehicle, perception, decision, and runtime
+  contracts and orchestration.
+- `implementations/` contains concrete vehicle adapters, perception plugins,
+  runtime hosts, and bounded operations.
+- `cli/` contains the `automa` command and its scenario test harness.
+- `deploy/targets/donkeycar/` contains the physical harness, pinned DonkeyCar
+  source manifest, and local vendor patch.
+- `frontend/donkeycar/` contains the optional local DonkeyCar control frontend.
+- `runtime/` contains generated controller bundles and process state. It is
+  ignored by Git.
+- `lab/` contains captures, reports, and experimental artifacts. It is ignored
+  by Git.
+- `scripts/` contains transitional calibration and inspection tools plus the
+  internal DonkeyCar restart helper. User-facing deployment and runtime
+  workflows belong in `automa`.
+
+The canonical directory contract is
+[`docs/directory-structure.contract.json`](docs/directory-structure.contract.json).
+
+## CLI Model
+
+The command groups intentionally distinguish different kinds of state:
+
+| Command | Reads or changes |
+|---|---|
+| `vehicles active` | Probes live PiCar and Chase endpoints. |
+| `vehicles update perception` | Packages code and stages a Chase perception activation locally. |
+| `vehicles update decision` | Packages code and stages a decision activation locally. |
+| `vehicles info ...` | Reads locally staged perception or decision configuration. |
+| `vehicles perception ...` | Edits the locally staged perception plugin chain. |
+| `vehicles automation ...` | Runs or inspects the local Chase controller worker. |
+| `vehicles stream perception` | Displays the worker's rolling latest perception output. |
+| `vehicles update core` | Deploys DonkeyCar framework and physical harness code to the Pi. |
+| `vehicles update autonomy` | Deploys a versioned autonomy release and activation metadata to the Pi. |
+| `vehicles operation ...` | Runs a bounded, explicitly requested vehicle operation. |
+| `simulators ...` | Finds or prepares the SimEval and Metrics UI environment. |
+
+Use `help` at a command-group level and `--help` for final command options:
+
+```sh
+./cli/automa vehicles update help
+./cli/automa vehicles update autonomy --help
+```
+
+## Chase Simulator Workflow
+
+Prepare the simulator and verify that the Play/Chase frontend is connected:
+
+```sh
+./cli/automa simulators ensure
 ./cli/automa vehicles active
 ```
 
-For simulator vehicles, active means the WS server is reachable, the Play/Chase
-frontend is connected, Chase is loaded, and front-view capture responds. The
-default output also shows inactive candidates and partial readiness, such as WS
-server up but frontend not connected. Use `--active-only` for a terse active
-vehicle list, or `--json` for the full machine-readable payload.
-
-Sync the physical PiCar core Donkey/harness bundle using a discovered vehicle
-id:
-
-```sh
-./cli/automa vehicles update core --id piracer
-```
-
-The CLI prepares `deploy/targets/donkeycar/vendor/donkeycar/` automatically from the
-pinned DonkeyCar manifest and local patch file before syncing. Use `--dry-run`
-to inspect the exact vendor, SSH, and rsync plan before writing anything.
-
-Deploy the separately versioned autonomy controller bundle after core setup:
-
-```sh
-./cli/automa vehicles update autonomy --id piracer --restart
-```
-
-This verifies a hashed controller archive on the Pi, installs it under a
-versioned release directory, and activates the selected perception and decision
-manifests. Core updates preserve these autonomy release paths.
-
-Activate the current perception plugin chain for the WS-controlled Chase
-simulator controller:
+Stage the current perception algorithm. A fresh controller bundle also receives
+the explicit idle decision activation:
 
 ```sh
 ./cli/automa vehicles update perception --id chase-sim-chaser
 ```
 
-This stages the local controller bundle under `runtime/vehicles/` and does not
-require the simulator frontend to be online unless `--restart` is requested.
-Inspect the planned files without writing them:
+Use `vehicles update decision` when deliberately changing the selected engine.
 
-```sh
-./cli/automa vehicles update perception --id chase-sim-chaser --dry-run --json
-```
-
-The active algorithm is explicit and defaults to the current mapper:
-
-```sh
-./cli/automa vehicles update perception --id chase-sim-chaser --algorithm current
-```
-
-Activation writes:
-
-```text
-runtime/vehicles/chase-sim-chaser/bundle/runtime/perception/active.json
-```
-
-Inspect the active algorithm and the schema it declares for translating sensor
-inputs into perception output:
+Inspect the machine-readable contracts declared by the staged code:
 
 ```sh
 ./cli/automa vehicles info perception --id chase-sim-chaser
+./cli/automa vehicles info decision --id chase-sim-chaser
 ```
 
-Run the active automation loop for a simulator vehicle:
+Start the controller worker in the background. It takes Chase WS control by
+default, but the current decision engine emits only idle control:
 
 ```sh
 ./cli/automa vehicles automation run --id chase-sim-chaser
-```
-
-`vehicles active` probes live vehicle/controller endpoints. `vehicles automation
-status` is different: it reads the local runtime bundles under `runtime/vehicles`
-and reports which automation deployments exist and whether their recorded worker
-process is currently running:
-
-```sh
-./cli/automa vehicles automation status
 ./cli/automa vehicles automation status --id chase-sim-chaser
-```
-
-For now this loop starts in the background, takes over simulator WS control,
-sends idle actions, captures the front-camera sensor, and runs perception every
-automation tick. By default it only keeps rolling latest output, overwriting the
-latest camera frame and perception files each iteration. It does not persist a
-worker log unless `--log` is passed. Use `--frames` for a bounded smoke test:
-
-```sh
-./cli/automa vehicles automation run --id chase-sim-chaser --frames 5 --interval-s 0
-```
-
-Stream the rolling latest perception view:
-
-```sh
 ./cli/automa vehicles stream perception --id chase-sim-chaser
 ```
 
-This redraws the terminal with the current automation control state, perception
-cadence/timing, latest frame metadata, and full latest perception text instead
-of appending a tail.
-
-Stop or bounce the background automation worker:
+Stop or restart the worker:
 
 ```sh
 ./cli/automa vehicles automation stop --id chase-sim-chaser
 ./cli/automa vehicles automation restart --id chase-sim-chaser
 ```
 
-After editing `implementations/perception/` or shared `autonomy/` primitives, restage
-the perception bundle and restart the worker so the mapper is imported fresh:
+Useful run options:
+
+- `--frames N` makes a bounded smoke run.
+- `--interval-s 0` removes the delay between bounded frames.
+- `--observe-only` leaves movement authority with the simulator.
+- `--record` keeps timestamped frame and perception artifacts.
+- `--log` persists worker output. No worker log is written by default.
+
+After changing perception or shared autonomy code, stage a fresh bundle before
+restarting the worker:
 
 ```sh
 ./cli/automa vehicles update perception --id chase-sim-chaser
 ./cli/automa vehicles automation restart --id chase-sim-chaser
 ```
 
-Use `--observe-only` only when you want perception to watch the simulator
-without becoming the movement authority.
+### Perception Plugins
 
-Use `--record` only when you want a per-frame trace with images and perception
-artifacts:
-
-```sh
-./cli/automa vehicles automation run --id chase-sim-chaser --record
-```
-
-Use `--log` only when you want background worker stdout/stderr appended to
-`automation.log`:
+The staged perception schema reports the available and enabled plugins. Enable
+or disable one plugin at a time, then restart the worker so it imports the new
+chain:
 
 ```sh
-./cli/automa vehicles automation run --id chase-sim-chaser --log
+./cli/automa vehicles info perception --id chase-sim-chaser
+./cli/automa vehicles perception enable --id chase-sim-chaser floor_plane
+./cli/automa vehicles perception disable --id chase-sim-chaser sim_color_targets
+./cli/automa vehicles automation restart --id chase-sim-chaser
 ```
 
-It also stages a local controller bundle so the simulator runtime has the same
-data shape as a deployed vehicle. The vehicle runtime directory should contain
-only that bundle:
+## Physical PiRacer Workflow
 
-```text
-runtime/vehicles/chase-sim-chaser/bundle/
-runtime/vehicles/chase-sim-chaser/bundle/autonomy/
-runtime/vehicles/chase-sim-chaser/bundle/implementations/
-runtime/vehicles/chase-sim-chaser/bundle/runtime/perception/
-```
+The default target is `piracer@piracer.local`, with the Donkey server at
+`http://piracer.local:8887`.
 
-It does not modify the simulator source tree. Add `--restart` when the Metrics
-UI Play/Chase frontend is open; this re-prepares WS control and writes a sample
-`perception.txt` / `perception.json` under the same runtime directory.
-
-Current Pi target defaults to:
+Probe the vehicle first:
 
 ```sh
-piracer@piracer.local
+./cli/automa vehicles active
 ```
 
-Override it with `--ssh-target` or `PI_HOST` if needed:
-
-```sh
-./cli/automa vehicles update core --id piracer --ssh-target piracer@192.168.0.168
-```
-
-For first setup or recovery when the Donkey HTTP endpoint is not discoverable
-yet, deploy over SSH without discovery:
-
-```sh
-./cli/automa vehicles update core --id piracer --skip-discovery --ssh-target piracer@piracer.local
-```
-
-## Workflow
-
-Edit files locally, then sync the physical PiCar core harness and restart the
-drive server:
-
-```sh
-./cli/automa vehicles update core --id piracer --restart
-```
-
-If you only want to sync core files without restarting the controller:
+For a fresh setup, sync the core harness without restarting, then deploy and
+restart the autonomy release:
 
 ```sh
 ./cli/automa vehicles update core --id piracer
+./cli/automa vehicles update autonomy --id piracer --restart
 ```
 
-The drive server now starts in API/web-control mode by default. Enable the
-handheld joystick only when you explicitly want it to be an active command
-source:
+`update autonomy` packages `autonomy/` and `implementations/`, verifies the
+archive hash on the Pi, installs a versioned release, transfers perception and
+decision manifests, and restarts only when requested. Post-restart verification
+requires the selected engine to load while Donkey drive mode remains `user`;
+the deployment check does not command movement.
+
+Use the deploy commands according to what changed:
+
+- DonkeyCar vendor patch or `deploy/targets/donkeycar/app/`: `update core`.
+- `autonomy/`, `implementations/`, or staged activations: `update autonomy`.
+- Run both commands for a fresh Pi or when both layers changed.
+
+Core deployment preserves remote autonomy releases and runtime activation
+state. To inspect planned writes, add `--dry-run`.
+
+If the HTTP server is down but SSH is available, bypass discovery explicitly:
+
+```sh
+./cli/automa vehicles update core --id piracer \
+  --skip-discovery --ssh-target piracer@piracer.local
+./cli/automa vehicles update autonomy --id piracer \
+  --skip-discovery --ssh-target piracer@piracer.local --restart
+```
+
+The handheld controller is not enabled by default. Enable it only when it
+should become an active command source:
 
 ```sh
 ./cli/automa vehicles update core --id piracer --restart --drive-args=--js
 ```
 
-Run the optional static DonkeyCar frontend:
+### Physical Activation State
+
+The first physical autonomy deployment creates the default `current`
+perception activation and `idle` decision activation when none exist. The Pi
+currently loads the decision activation; onboard perception is intentionally a
+no-op stage, so the transferred perception manifest is layout metadata rather
+than active image processing.
+
+Decision changes are local until the next autonomy deployment:
+
+```sh
+./cli/automa vehicles update decision --id piracer --engine idle
+./cli/automa vehicles update autonomy --id piracer --restart
+```
+
+`vehicles info perception --id piracer` can inspect the staged schema, but
+enabling a physical perception plugin should wait until the Donkey runtime has
+an explicit perception stage.
+
+## Bounded Startup Check
+
+The startup check captures a frame before and after each basic action
+combination and scores whether the command produced a visible change. It sends
+movement pulses unless `--dry-run` is provided, so raise the vehicle or clear
+its path first.
+
+```sh
+./cli/automa vehicles operation startup-check --id piracer
+./cli/automa vehicles operation startup-check --id chase-sim-chaser
+```
+
+Results are written under `lab/runs/startup-check/<run-id>/`, including the
+plan, report, summary, before/after frames, diffs, and contact sheet.
+
+## Generated Runtime State
+
+The local controller layout is generated under:
+
+```text
+runtime/vehicles/<vehicle-id>/
+  bundle/
+    autonomy/
+    implementations/
+    releases/
+    runtime/
+      perception/active.json
+      decision/active.json
+      automation/
+  deploy/
+```
+
+The physical target stores versioned releases under
+`/home/piracer/mycar/runtime/controller-releases/` and exposes the active
+packages through `/home/piracer/mycar/autonomy` and
+`/home/piracer/mycar/implementations`.
+
+## Camera and Optional Frontend
+
+The Donkey server exposes:
+
+- `http://piracer.local:8887/drive`
+- `http://piracer.local:8887/frame.jpg`
+- `http://piracer.local:8887/frame-highres.jpg`
+- `http://piracer.local:8887/autonomy/status`
+
+Run the optional local DonkeyCar frontend with:
 
 ```sh
 ./frontend/donkeycar/start.sh
 ```
 
-Open:
+Then open `http://localhost:8088/`. Chase simulator UI is owned by Metrics UI
+and is prepared through `./cli/automa simulators ensure`.
 
-```sh
-http://localhost:8088/
-```
+## Architecture and Planning
 
-This is only for the static DonkeyCar frontend in `frontend/donkeycar/`.
-Simulator UI is handled by Metrics UI through `./cli/automa simulators ensure`.
+- [`docs/onboard-autonomy-flow.html`](docs/onboard-autonomy-flow.html) explains
+  the onboard perception, decision, and action flow.
+- [`docs/donkey-server-functionality.html`](docs/donkey-server-functionality.html)
+  describes the physical Donkey server boundary.
+- [`docs/automation-engine-initial-commit-backlog.html`](docs/automation-engine-initial-commit-backlog.html)
+  records the initial framework backlog, status, directory tree, and scope audit.
 
-The static UI uses the Pi as a backend by default:
-
-```sh
-http://piracer.local:8887
-```
-
-The controller server exposes the latest camera frame:
-
-```sh
-http://piracer.local:8887/frame.jpg
-```
-
-It also exposes an on-demand sensor-resolution still for mapping:
-
-```sh
-http://piracer.local:8887/frame-highres.jpg
-```
-
-Convert one image into the current decision-memory frame representation:
-
-```sh
-python3 scripts/decision/image_to_memory.py path/to/frame.jpg
-```
-
-Capture one Chase simulator front-view frame and inspect it through the same
-memory path:
-
-```sh
-python3 scripts/decision/image_to_memory.py --sim-current
-```
-
-Process one camera still locally:
-
-```sh
-python3 scripts/perception/process_still.py
-```
-
-This writes debug artifacts under `lab/runs/stills/<timestamp>/`:
-
-- `frame.jpg`
-- `floor_mask.png`
-- `overlay.png`
-- `topdown_rgb.jpg`
-- `occupancy.png` as a top-down visibility cone (`dark=unknown`, `green=visible floor`, `red=first blocking non-floor`)
-- `occupancy.npy` with numeric cells (`0=unknown`, `1=visible floor`, `2=blocked/occupied`)
-- `summary.json`
-
-Track stable visual features between two stills:
-
-```sh
-python3 scripts/perception/track_features_between.py image_a.jpg image_b.jpg \
-  --bbox x0,y0,x1,y1
-```
-
-This writes `matches.jpg` and `summary.json` under `lab/runs/tracks/<timestamp>/`.
-
-Track whole-frame features and group motion-consistent regions without assuming a box:
-
-```sh
-python3 scripts/perception/track_scene_motion.py image_a.jpg image_b.jpg
-```
-
-This writes `scene_motion.jpg` and `summary.json` under `lab/runs/scene_motion/<timestamp>/`.
-
-Run the phase-1 visual depth calibration entrypoint locally against a saved burst:
-
-```sh
-python3 scripts/calibration/piracer_visual_depth_calibration.py analyze-images \
-  --image-dir lab/runs/steps/<run>/images-only \
-  --pattern 'step_*.jpg'
-```
-
-This writes:
-
-- `scene_depth_summary.json`
-- `calibration.json`
-- `backtest/backtest.json`
-- `index.html`
-- pairwise `scene_motion.jpg` overlays
-- held-out feature prediction overlays under `backtest/*/backtest_prediction.jpg`
-
-Run the same phase-1 calibration from this workspace against the already-running
-Pi controller server:
-
-```sh
-python3 scripts/calibration/piracer_visual_depth_calibration.py run-full \
-  --base-url http://piracer.local:8887 \
-  --frame-endpoint /frame.jpg
-```
-
-The current phase-1 calibration treats one pulse as the step unit. It estimates visual motion consistency and depth-layer candidates; it does not estimate physical meters, trusted camera intrinsics, or turn radius yet.
-
-The calibration score includes a held-out feature backtest. For each adjacent image pair, the script fits motion hypotheses on most feature matches, predicts held-out feature matches, and scores the pixel residuals. This is a same-run fit check, not an independent validation run.
-
-## Autonomy Layering
-
-Autonomy is organized outside DonkeyCar. Donkey is only the device adapter for
-camera capture and drive pulses.
-
-High-level onboard autonomy diagram:
-
-```text
-docs/onboard-autonomy-flow.html
-```
-
-Layering:
-
-- `autonomy/vehicle/` owns black-box vehicle input/output contracts and
-  capabilities.
-- `autonomy/perception/` owns stable sensor-to-evidence contracts and mapper
-  assembly.
-- `autonomy/decision/` owns the staged controller cycle and observation shapes.
-- `autonomy/runtime/` owns loadable engine contracts and lifecycle management.
-- `implementations/vehicle/` owns concrete PiCar and Chase simulator adapters.
-- `implementations/perception/` owns concrete perception algorithms.
-- `implementations/operations/` owns bounded procedures such as startup action
-  checks.
-
-Dependency direction:
+Dependency direction is intentional:
 
 ```text
 autonomy contracts       -> never import implementations
@@ -383,128 +291,29 @@ implementations          -> satisfy and compose autonomy contracts
 CLI/runtime entrypoints  -> select implementations and execute the cycle
 ```
 
-The car boundary uses:
+Both current vehicle adapters expose only the generic `front_camera` sensor
+through `CarInterface.read_sensors()`.
 
-- `VehicleAction`: chase-style executable shape, `forward`, `reverse`, `steering`
-- `VehiclePulse`: timed real-world envelope around a `VehicleAction`
-- `SensorReadRequest` / `SensorSnapshot`: generic vehicle sensor reads
-- `CarInterface`: `stop`, `execute_action`, `execute_pulse`, `read_sensors`
-- `DonkeyPiCar`: PiCar/PiRacer implementation backed by the Donkey web server
+## Transitional Research Tools
 
-The only current sensor exposed by both the PiCar and Chase simulator adapters
-is `front_camera`. All vehicle sensor access goes through `read_sensors`.
+The scripts below are useful for inspection and calibration but are not part of
+the automation runtime or stable API:
 
-The one reusable controller cycle lives in `autonomy/decision/cycle.py`.
-Vehicle-specific entrypoints adapt their sensor and actuator transports to its
-generic inputs and outputs.
-Use the CLI for the canonical vehicle discovery snapshot:
+- `scripts/perception/`: still processing, feature tracking, scene motion, and
+  relative landmark analysis.
+- `scripts/calibration/`: PiRacer visual depth and step/turn experiments.
 
-```sh
-./cli/automa vehicles active
-./cli/automa vehicles active --json
-```
+Run a script with `--help` for its current inputs. Keep scene-specific
+assumptions in these tools until they have a validated operation contract.
 
-Run the current automation path against the Chase simulator:
+## Current Pi Configuration
 
-```sh
-./cli/automa simulators ensure
-./cli/automa vehicles update perception --id chase-sim-chaser
-./cli/automa vehicles automation run --id chase-sim-chaser --frames 3
-```
+The active physical overrides live in
+`deploy/targets/donkeycar/app/myconfig.py`:
 
-The simulator automation path stages a controller bundle under `runtime/`,
-takes over WS control by default, and uses the active perception mapper.
+- steering left/right/center PWM: `470 / 640 / 555`
+- throttle forward/stopped/reverse PWM: `-1200 / 0 / 1200`
+- camera: `PICAM`, `640x480`, horizontal and vertical flip enabled
 
-Run the modular startup action-registration check against the physical PiRacer:
-
-```sh
-./cli/automa vehicles operation startup-check \
-  --id piracer \
-  --throttle 0.22 \
-  --duration-s 0.3 \
-  --settle-s 0.35
-```
-
-The same startup plan can run against the Chase simulator:
-
-```sh
-./cli/automa vehicles operation startup-check --id chase-sim-chaser
-```
-
-This writes a run under `lab/runs/startup-check/<run-id>/` with:
-
-- `plan.json` containing the vehicle-agnostic calibration instructions
-- `report.json` containing command metadata and image-change scores
-- `summary.md` containing the compact pass/fail table
-- `frames/` containing before/after images for every action check
-
-Run the seeded box-face step verifier against a forward-only burst:
-
-```sh
-python3 scripts/calibration/step_calibration_box_consistency.py \
-  --image-dir lab/runs/calibration/YOUR_RUN_ID \
-  --pattern 'frame_*.jpg' \
-  --seed-provider manual \
-  --seed-quad '[[347,153],[411,153],[413,211],[347,211]]'
-```
-
-This tracks one rectangular box face and fits apparent size against pulse index. A VLM can provide only the initial quadrilateral seed; all tracking and fitting after that are classical CV. The preferred VLM provider is MuleRouter with Qwen VL Max:
-
-```sh
-export MULEROUTER_API_KEY=...
-
-python3 scripts/calibration/step_calibration_box_consistency.py \
-  --image-dir lab/runs/calibration/YOUR_RUN_ID \
-  --pattern 'frame_*.jpg' \
-  --seed-provider mulerouter \
-  --vlm-model qwen-vl-max \
-  --vlm-base-url https://api.mulerouter.ai/vendors/openai/v1 \
-  --target-description 'the most trackable visible planar surface near the center'
-```
-
-For another VLM, use `--seed-provider command`; the command receives `image_path width height target_description` and must print JSON with `quad_uv`, `label`, `confidence`, and `notes`. Use `--seed-json` to rerun the deterministic CV pipeline from an inspected or edited seed without calling a VLM again.
-
-Estimate distance to an automatically selected visual landmark in step units:
-
-```sh
-python3 scripts/perception/estimate_landmark_distance.py lab/runs/steps/<run>/summary.json
-```
-
-This discovers an expanding motion group from the first step, tracks that landmark across later frames, and writes debug tracks under `lab/runs/landmarks/<timestamp>/`.
-
-Analyze an already-captured step or turn run with pairwise feature tracking:
-
-```sh
-python3 scripts/perception/analyze_tracked_sequence.py lab/runs/steps/<run>/summary.json
-```
-
-## Runtime Data
-
-The sync scripts intentionally exclude remote Donkey runtime data and the
-matching local app data paths:
-
-- `/home/piracer/mycar/data/`
-- `/home/piracer/mycar/logs/`
-- `deploy/targets/donkeycar/app/data/`
-- `deploy/targets/donkeycar/app/logs/`
-- `*.pid`
-- `*.bak.*`
-- Python cache files
-
-That keeps driving recordings and runtime process files from being treated as source.
-
-## Current Calibration
-
-The active car config is in `deploy/targets/donkeycar/app/myconfig.py`, which deploys
-to `/home/piracer/mycar/myconfig.py` on the Pi.
-
-- Steering left PWM: `470`
-- Steering right PWM: `640`
-- Steering center: `555`
-- Throttle forward PWM: `-1200`
-- Throttle stopped PWM: `0`
-- Throttle reverse PWM: `1200`
-- Camera type: `PICAM`
-- Camera resolution: `640x480`
-- Camera frame duration limits: `33333-50000us`
-- Camera flip: vertical and horizontal enabled
+Remote recordings, logs, PIDs, generated controller bundles, lab runs, Python
+bytecode, and the generated DonkeyCar vendor checkout are excluded from Git.

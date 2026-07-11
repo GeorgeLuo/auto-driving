@@ -373,13 +373,14 @@
       <p class="lead">
         This diagram explains the PiRacer DonkeyCar server we have been using on
         <code>piracer.local:8887</code>. The server is a Tornado web controller
-        that stores the latest requested steering, throttle, mode, and recording
-        state; the Donkey vehicle loop reads that state at 20 Hz and forwards it
-        to the drivetrain.
+        that stores manual-control state and owns the loadable autonomy manager.
+        The Donkey vehicle loop runs at 20 Hz; its drive mode chooses whether
+        manual controls or autonomy pilot controls reach the drivetrain.
       </p>
       <p class="source-line">
         Source points: <code>deploy/targets/donkeycar/vendor/donkeycar/donkeycar/parts/web_controller/web.py</code>,
-        <code>deploy/targets/donkeycar/app/manage.py</code>, <code>deploy/targets/donkeycar/app/config.py</code>
+        <code>deploy/targets/donkeycar/app/manage.py</code>, and
+        <code>implementations/runtime/donkeycar/donkey_part.py</code>
       </p>
     </header>
 
@@ -389,11 +390,12 @@
         <div class="stack">
           <div class="node client">
             <h3>Clients</h3>
-            <p>Browser UI, scripts, or local automation issue HTTP/WebSocket commands.</p>
+            <p>Browser UI, <code>automa</code>, or other local clients issue HTTP/WebSocket commands.</p>
             <ul>
               <li><code>GET /drive</code> opens the UI.</li>
               <li><code>POST /drive</code> updates command state.</li>
               <li><code>GET /frame.jpg</code> reads the latest frame.</li>
+              <li><code>/autonomy/*</code> inspects or switches autonomy.</li>
             </ul>
           </div>
         </div>
@@ -403,11 +405,12 @@
         <div class="stack">
           <div class="node server">
             <h3>Tornado LocalWebController</h3>
-            <p>Owns the web routes and stores mutable controller state.</p>
+            <p>Owns the web routes, mutable manual state, and <code>AutonomyManager</code>.</p>
             <ul>
               <li><code>angle</code>, <code>throttle</code></li>
               <li><code>mode</code>, <code>recording</code></li>
               <li><code>buttons</code>, <code>img_arr</code></li>
+              <li>selected engine, status, and last control</li>
             </ul>
           </div>
         </div>
@@ -420,8 +423,8 @@
             <p><code>V.start(rate_hz=20)</code> calls each part in order.</p>
             <ul>
               <li><code>run_threaded()</code> publishes user controls.</li>
-              <li><code>Pipe</code> normalizes steering into the loop's angle signal.</li>
-              <li><code>ThrottleFilter</code> handles reverse behavior.</li>
+              <li><code>AutonomyPilotPart</code> runs only when <code>run_pilot</code> is true.</li>
+              <li>The shared cycle receives the current camera and user state.</li>
             </ul>
           </div>
         </div>
@@ -431,11 +434,12 @@
         <div class="stack">
           <div class="node output">
             <h3>Final Motion</h3>
-            <p><code>DriveMode</code> chooses user or pilot controls, then drivetrain parts write PWM.</p>
+            <p><code>DriveMode</code> chooses user or pilot controls before drivetrain parts write PWM.</p>
             <ul>
+              <li><code>user</code> uses browser/API/joystick values.</li>
+              <li><code>local</code> uses autonomy pilot values.</li>
               <li><code>PWMSteering</code> writes steering pulse.</li>
               <li><code>PWMThrottle_WS</code> writes throttle pulse.</li>
-              <li>PCA9685 / Waveshare board moves the car.</li>
             </ul>
           </div>
         </div>
@@ -449,6 +453,10 @@
         <div class="node loop">
           <h3>Recording Path</h3>
           <p>When <code>recording</code> is true, the tub writer records camera frames and control values for training or later analysis.</p>
+        </div>
+        <div class="node output">
+          <h3>Autonomy Activation</h3>
+          <p>At startup, <code>runtime/decision/active.json</code> selects the engine. The current deployed engine is <code>idle</code>; the validated mode remains manual <code>user</code>.</p>
         </div>
         <div class="node warning">
           <h3>Joystick Override</h3>
@@ -512,12 +520,70 @@
             <td>Runs capture work in an executor and includes width/height headers.</td>
           </tr>
           <tr>
+            <td><code>GET /autonomy/status</code></td>
+            <td>Returns Donkey drive mode, mode mapping, selected engine, counters, errors, and last control.</td>
+            <td>This is the post-deploy verification endpoint used by <code>automa</code>.</td>
+          </tr>
+          <tr>
+            <td><code>POST /autonomy/mode</code></td>
+            <td>Switches between <code>manual</code> and <code>autonomy</code>.</td>
+            <td><code>manual</code> maps to Donkey <code>user</code>; <code>autonomy</code> maps to <code>local</code>. Returning to manual stops by default.</td>
+          </tr>
+          <tr>
+            <td><code>POST /autonomy/engine</code></td>
+            <td>Loads an engine class and config into the current process.</td>
+            <td>This is an in-memory administrative change. It does not rewrite the persisted activation manifest.</td>
+          </tr>
+          <tr>
+            <td><code>POST /autonomy/reload</code></td>
+            <td>Reloads the currently selected engine module and config.</td>
+            <td>Errors are returned as JSON while the manager retains inspectable error state.</td>
+          </tr>
+          <tr>
             <td><code>GET /calibrate</code>, <code>WS /wsCalibrate</code></td>
             <td>Servo and throttle calibration UI/channel.</td>
             <td>Can update calibration pulses while the server is running.</td>
           </tr>
         </tbody>
       </table>
+    </section>
+
+    <section class="section two-col" aria-labelledby="autonomy-sequence-title">
+      <div>
+        <h2 id="autonomy-sequence-title">Autonomy Startup</h2>
+        <div class="sequence">
+          <div class="step">
+            <p>The web controller creates an <code>AutonomyManager</code> with the safe idle engine.</p>
+          </div>
+          <div class="step">
+            <p><code>manage.py</code> reads <code>runtime/decision/active.json</code> and applies the selected engine configuration.</p>
+          </div>
+          <div class="step">
+            <p><code>AutonomyPilotPart</code> is added to the Donkey loop under the <code>run_pilot</code> condition.</p>
+          </div>
+          <div class="step">
+            <p>The server starts in manual <code>user</code> mode, so loading an engine alone does not grant movement authority.</p>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <h2>Autonomy Tick</h2>
+        <div class="sequence">
+          <div class="step">
+            <p><code>POST /autonomy/mode</code> with <code>{"mode":"autonomy"}</code> maps Donkey mode to <code>local</code>.</p>
+          </div>
+          <div class="step">
+            <p>The part wraps <code>cam/image_array</code> as a front-camera <code>SensorSnapshot</code> and runs the shared cycle.</p>
+          </div>
+          <div class="step">
+            <p>The engine returns normalized steering/throttle as <code>pilot/angle</code> and <code>pilot/throttle</code>.</p>
+          </div>
+          <div class="step">
+            <p><code>DriveMode</code> applies those pilot values only while the mode remains <code>local</code>.</p>
+          </div>
+        </div>
+      </div>
     </section>
 
     <section class="section two-col" aria-labelledby="control-sequence-title">
@@ -610,7 +676,8 @@ Content-Type: application/json
       <ul>
         <li>API/web control is now the default restart mode.</li>
         <li>Use <code>./cli/automa vehicles update core --id piracer --restart --drive-args=--js</code> when you want the handheld controller to be active.</li>
-        <li>For autonomous experiments, choose one command source at a time and log which one is active.</li>
+        <li>Changing an engine does not change the drive mode; movement authority requires an explicit autonomy-mode request.</li>
+        <li>For autonomous experiments, choose one command source at a time and record which one is active.</li>
       </ul>
     </section>
   </main>

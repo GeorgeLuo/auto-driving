@@ -42,7 +42,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     help_command.set_defaults(handler=_handle_top_level_help)
 
-    vehicles = subcommands.add_parser("vehicles", help="Inspect available vehicles.")
+    vehicles = subcommands.add_parser(
+        "vehicles",
+        help="Discover vehicles and manage their controller runtimes.",
+    )
     vehicles.set_defaults(handler=_handle_vehicles_help)
     vehicle_commands = vehicles.add_subparsers(dest="vehicle_command")
 
@@ -55,6 +58,7 @@ def build_parser() -> argparse.ArgumentParser:
     active = vehicle_commands.add_parser(
         "active",
         help="Show active vehicles and readiness diagnostics from configured endpoints.",
+        description="Show active vehicles and readiness diagnostics from configured endpoints.",
     )
     active.add_argument(
         "--timeout-s",
@@ -106,6 +110,7 @@ def build_parser() -> argparse.ArgumentParser:
     automation_run = automation_commands.add_parser(
         "run",
         help="Run the active automation loop for a vehicle.",
+        description="Run the active automation loop for a vehicle.",
     )
     automation_run.add_argument(
         "--id",
@@ -162,6 +167,7 @@ def build_parser() -> argparse.ArgumentParser:
     automation_stop = automation_commands.add_parser(
         "stop",
         help="Stop the background automation loop for a vehicle.",
+        description="Stop the background automation loop for a vehicle.",
     )
     automation_stop.add_argument(
         "--id",
@@ -179,13 +185,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     automation_status = automation_commands.add_parser(
         "status",
-        help="Show deployed automation runtimes and worker status.",
+        help="Show locally deployed automation runtimes and worker status.",
+        description="Show locally deployed automation runtimes and worker status.",
     )
     automation_status.add_argument(
         "--id",
         dest="vehicle_id",
         default=None,
-        help="Vehicle id from `automa vehicles active`. Omit to list deployed automation runtimes.",
+        help="Vehicle id from `automa vehicles active`. Omit to list locally deployed automation runtimes.",
     )
     automation_status.add_argument(
         "--json",
@@ -197,6 +204,7 @@ def build_parser() -> argparse.ArgumentParser:
     automation_restart = automation_commands.add_parser(
         "restart",
         help="Stop and start the background automation loop for a vehicle.",
+        description="Stop and start the background automation loop for a vehicle.",
     )
     automation_restart.add_argument(
         "--id",
@@ -261,7 +269,8 @@ def build_parser() -> argparse.ArgumentParser:
     operation_help.set_defaults(handler=_handle_vehicles_operation_help)
     startup_check = operation_commands.add_parser(
         "startup-check",
-        help="Capture and compare frames around the basic vehicle action combinations.",
+        help="Send bounded action pulses and verify camera changes around each command.",
+        description="Send bounded action pulses and verify camera changes around each command.",
     )
     startup_check.add_argument(
         "--id",
@@ -305,7 +314,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     startup_check.set_defaults(handler=_handle_vehicles_operation_startup_check)
 
-    stream = vehicle_commands.add_parser("stream", help="Read rolling vehicle runtime output.")
+    stream = vehicle_commands.add_parser("stream", help="Read rolling local automation output.")
     stream_commands = stream.add_subparsers(dest="stream_command", required=True)
     stream_help = stream_commands.add_parser(
         "help",
@@ -315,6 +324,7 @@ def build_parser() -> argparse.ArgumentParser:
     perception_stream = stream_commands.add_parser(
         "perception",
         help="Show the latest perception output, replacing the terminal view as it updates.",
+        description="Show the latest perception output, replacing the terminal view as it updates.",
     )
     perception_stream.add_argument(
         "--id",
@@ -340,7 +350,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     perception_stream.set_defaults(handler=_handle_vehicles_stream_perception)
 
-    info = vehicle_commands.add_parser("info", help="Inspect vehicle runtime state.")
+    info = vehicle_commands.add_parser("info", help="Inspect locally staged controller configuration.")
     info_commands = info.add_subparsers(dest="info_command", required=True)
     info_help = info_commands.add_parser(
         "help",
@@ -349,7 +359,8 @@ def build_parser() -> argparse.ArgumentParser:
     info_help.set_defaults(handler=_handle_vehicles_info_help)
     perception_info = info_commands.add_parser(
         "perception",
-        help="Show the active perception algorithm and input translation schema.",
+        help="Show the locally staged perception algorithm and input translation schema.",
+        description="Show the locally staged perception algorithm and input translation schema.",
     )
     perception_info.add_argument(
         "--id",
@@ -366,7 +377,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     decision_info = info_commands.add_parser(
         "decision",
-        help="Show the active decision engine and stage schema.",
+        help="Show the locally staged decision engine and stage schema.",
+        description="Show the locally staged decision engine and stage schema.",
     )
     decision_info.add_argument(
         "--id",
@@ -381,7 +393,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     decision_info.set_defaults(handler=_handle_vehicles_info_decision)
 
-    perception_control = vehicle_commands.add_parser("perception", help="Enable or disable deployed perception plugins.")
+    perception_control = vehicle_commands.add_parser(
+        "perception",
+        help="Edit plugins in the locally staged perception activation.",
+    )
     perception_control.set_defaults(handler=_handle_vehicles_perception_help)
     perception_commands = perception_control.add_subparsers(dest="perception_command")
     perception_help = perception_commands.add_parser(
@@ -392,7 +407,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     perception_enable = perception_commands.add_parser(
         "enable",
-        help="Enable one plugin in the deployed perception activation.",
+        help="Enable one plugin in the locally staged perception activation.",
+        description="Enable one plugin in the locally staged perception activation.",
     )
     perception_enable.add_argument(
         "--id",
@@ -413,7 +429,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     perception_disable = perception_commands.add_parser(
         "disable",
-        help="Disable one plugin in the deployed perception activation.",
+        help="Disable one plugin in the locally staged perception activation.",
+        description="Disable one plugin in the locally staged perception activation.",
     )
     perception_disable.add_argument(
         "--id",
@@ -423,7 +440,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     perception_disable.add_argument(
         "plugin_id",
-        help="Enabled plugin id to remove from the active perception chain.",
+        help="Enabled plugin id to remove from the locally staged perception chain.",
     )
     perception_disable.add_argument(
         "--json",
@@ -432,7 +449,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     perception_disable.set_defaults(handler=_handle_vehicles_perception_disable)
 
-    update = vehicle_commands.add_parser("update", help="Upsert vehicle operation code.")
+    update = vehicle_commands.add_parser(
+        "update",
+        help="Stage controller selections or deploy code to a vehicle.",
+    )
     update_commands = update.add_subparsers(dest="update_command", required=True)
     update_help = update_commands.add_parser(
         "help",
@@ -442,6 +462,7 @@ def build_parser() -> argparse.ArgumentParser:
     core = update_commands.add_parser(
         "core",
         help="Sync deploy/targets/donkeycar core harness files to a physical PiCar.",
+        description="Sync the DonkeyCar core harness files to a physical PiCar.",
     )
     core.add_argument(
         "--id",
@@ -495,6 +516,7 @@ def build_parser() -> argparse.ArgumentParser:
     autonomy = update_commands.add_parser(
         "autonomy",
         help="Deploy a versioned autonomy controller release to a physical PiCar.",
+        description="Deploy a versioned autonomy controller release to a physical PiCar.",
     )
     autonomy.add_argument(
         "--id",
@@ -552,7 +574,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     perception = update_commands.add_parser(
         "perception",
-        help="Activate the current perception mapper for a vehicle controller.",
+        help="Stage a perception algorithm for the Chase simulator controller.",
+        description="Stage a perception algorithm for the Chase simulator controller.",
     )
     perception.add_argument(
         "--id",
@@ -596,7 +619,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     decision = update_commands.add_parser(
         "decision",
-        help="Activate a decision engine in the vehicle controller bundle.",
+        help="Stage a decision engine in the local controller bundle.",
+        description="Stage a decision engine in the local controller bundle.",
     )
     decision.add_argument(
         "--id",
@@ -640,6 +664,7 @@ def build_parser() -> argparse.ArgumentParser:
     simulators_status = simulator_commands.add_parser(
         "status",
         help="Show whether SimEval has an online simulator deployment.",
+        description="Show whether SimEval has an online simulator deployment.",
     )
     simulators_status.add_argument(
         "--timeout-ms",
@@ -657,6 +682,7 @@ def build_parser() -> argparse.ArgumentParser:
     simulators_ensure = simulator_commands.add_parser(
         "ensure",
         help="Use an online simulator or launch the default SimEval deployment.",
+        description="Use an online simulator or launch the default SimEval deployment.",
     )
     simulators_ensure.add_argument(
         "--timeout-ms",
@@ -678,9 +704,9 @@ def _handle_top_level_help(args: argparse.Namespace) -> int:
         "\n".join(
             [
                 "Automa is the control desk for the vehicles and simulators in this workspace.",
-                "It helps you find what is reachable, stage the code a vehicle should use, and check what is currently deployed.",
+                "It helps you find what is reachable, stage controller choices locally, and deploy code to a physical vehicle.",
                 "It can start and stop automation runs without making you remember where the runtime files live.",
-                "It also gives you a single place to inspect what the vehicle is seeing and which perception behavior is active.",
+                "It also gives you one place to inspect the latest perception output and the controller behavior staged for each vehicle.",
                 "Use it when you want to move from editing local code to running that code against a real or simulated vehicle.",
                 "The sections below only show the next command level; each command has its own help for details.",
                 "",
@@ -722,16 +748,16 @@ def _handle_vehicles_help(args: argparse.Namespace) -> int:
                 "automa vehicles commands",
                 "",
                 "- active       discover reachable vehicle/controller endpoints",
-                "- update       upsert vehicle operation code",
-                "- automation   manage deployed automation runs",
+                "- update       stage controller selections or deploy vehicle code",
+                "- automation   manage locally deployed automation workers",
                 "- operation    run bounded vehicle checks and setup tasks",
-                "- info         inspect deployed vehicle configuration",
-                "- perception   enable or disable deployed perception plugins",
-                "- stream       read rolling runtime outputs",
+                "- info         inspect locally staged controller configuration",
+                "- perception   edit locally staged perception plugins",
+                "- stream       read rolling local automation outputs",
                 "- help         show this summary",
                 "",
                 "Detailed help:",
-                "- ./cli/automa vehicles <command> help",
+                "- ./cli/automa vehicles <group> help",
                 "- ./cli/automa vehicles <command> --help",
             ]
         )
@@ -746,7 +772,7 @@ def _handle_vehicles_automation_help(args: argparse.Namespace) -> int:
                 "automa vehicles automation commands",
                 "",
                 "- run       start the automation worker",
-                "- status    show deployed automation state",
+                "- status    show locally deployed automation state",
                 "- restart   stop and start the automation worker",
                 "- stop      stop the automation worker",
                 "- help      show this summary",
@@ -765,7 +791,7 @@ def _handle_vehicles_operation_help(args: argparse.Namespace) -> int:
             [
                 "automa vehicles operation commands",
                 "",
-                "- startup-check  verify camera and basic action registration",
+                "- startup-check  send bounded pulses and verify camera changes",
                 "- help           show this summary",
                 "",
                 "Detailed help:",
@@ -782,10 +808,10 @@ def _handle_vehicles_update_help(args: argparse.Namespace) -> int:
             [
                 "automa vehicles update commands",
                 "",
-                "- core        upsert physical vehicle harness code",
+                "- core        deploy physical DonkeyCar harness code",
                 "- autonomy    deploy physical autonomy controller release",
-                "- perception  upsert controller perception code",
-                "- decision    upsert controller decision configuration",
+                "- perception  stage Chase simulator perception code",
+                "- decision    stage local decision configuration",
                 "- help        show this summary",
                 "",
                 "Detailed help:",
@@ -802,8 +828,8 @@ def _handle_vehicles_info_help(args: argparse.Namespace) -> int:
             [
                 "automa vehicles info commands",
                 "",
-                "- perception  show deployed perception schema",
-                "- decision    show deployed decision engine schema",
+                "- perception  show locally staged perception schema",
+                "- decision    show locally staged decision engine schema",
                 "- help        show this summary",
                 "",
                 "Detailed help:",
@@ -820,8 +846,8 @@ def _handle_vehicles_perception_help(args: argparse.Namespace) -> int:
             [
                 "automa vehicles perception commands",
                 "",
-                "- enable   enable one deployed perception plugin",
-                "- disable  disable one deployed perception plugin",
+                "- enable   enable one locally staged perception plugin",
+                "- disable  disable one locally staged perception plugin",
                 "- help     show this summary",
                 "",
                 "Detailed help:",
@@ -838,7 +864,7 @@ def _handle_vehicles_stream_help(args: argparse.Namespace) -> int:
             [
                 "automa vehicles stream commands",
                 "",
-                "- perception  show latest perception output",
+                "- perception  show latest local automation perception output",
                 "- help        show this summary",
                 "",
                 "Detailed help:",

@@ -100,6 +100,39 @@ class AutomaCliHarness(unittest.TestCase):
         self.assertIn("- startup-check", result.stdout)
         self.assertNotIn("--throttle", result.stdout)
 
+    def test_update_help_distinguishes_local_staging_from_physical_deploy(self) -> None:
+        result = self.run_automa("vehicles", "update", "help")
+
+        self.assertIn("- core        deploy physical DonkeyCar harness code", result.stdout)
+        self.assertIn("- autonomy    deploy physical autonomy controller release", result.stdout)
+        self.assertIn("- perception  stage Chase simulator perception code", result.stdout)
+        self.assertIn("- decision    stage local decision configuration", result.stdout)
+
+    def test_vehicle_help_labels_local_worker_and_bounded_motion(self) -> None:
+        vehicles = self.run_automa("vehicles", "help")
+        automation = self.run_automa("vehicles", "automation", "help")
+        operation = self.run_automa("vehicles", "operation", "help")
+
+        self.assertIn("manage locally deployed automation workers", vehicles.stdout)
+        self.assertIn("show locally deployed automation state", automation.stdout)
+        self.assertIn("send bounded pulses and verify camera changes", operation.stdout)
+
+    def test_info_and_perception_help_identify_local_staged_state(self) -> None:
+        info = self.run_automa("vehicles", "info", "help")
+        perception = self.run_automa("vehicles", "perception", "help")
+
+        self.assertIn("show locally staged perception schema", info.stdout)
+        self.assertIn("show locally staged decision engine schema", info.stdout)
+        self.assertIn("enable one locally staged perception plugin", perception.stdout)
+        self.assertIn("disable one locally staged perception plugin", perception.stdout)
+
+    def test_final_command_help_describes_actual_perception_and_decision_scope(self) -> None:
+        perception = self.run_automa("vehicles", "update", "perception", "--help")
+        decision = self.run_automa("vehicles", "update", "decision", "--help")
+
+        self.assertIn("Stage a perception algorithm for the Chase simulator controller", perception.stdout)
+        self.assertIn("Stage a decision engine in the local controller bundle", decision.stdout)
+
     def test_simulators_help_shows_only_simulator_level_commands(self) -> None:
         result = self.run_automa("simulators")
 

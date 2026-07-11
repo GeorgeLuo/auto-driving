@@ -339,12 +339,6 @@
             "responsibility": "Calibration and measurement scripts not yet promoted into operation implementations."
           },
           {
-            "path": "scripts/decision/",
-            "category": "tooling",
-            "commit_policy": "source-transitional",
-            "responsibility": "Decision inspection helpers not yet promoted into CLI."
-          },
-          {
             "path": "scripts/perception/",
             "category": "tooling",
             "commit_policy": "source-transitional",

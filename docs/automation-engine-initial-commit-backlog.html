@@ -556,7 +556,7 @@
         <span class="pill">Default action: idle</span>
         <span class="pill">Primary test target: Chase simulator</span>
         <span class="pill">Physical target: PiRacer via DonkeyCar bundle</span>
-        <span class="pill">Verification: 48 tests plus physical idle deployment passing</span>
+        <span class="pill">Verification: 52-test harness (51 offline pass, 1 live opt-in), physical idle deployment passing</span>
         <span class="pill">Directory contract: <a href="directory-structure.contract.json">JSON</a></span>
       </div>
     </header>
@@ -586,11 +586,11 @@
         <div class="arrow" aria-hidden="true"></div>
         <div class="card decision">
           <h3>Remember</h3>
-          <p>Memory stores the useful state between cycles. For the first commit this can be latest-only plus small history.</p>
+          <p>The cycle reserves a memory stage for useful state between ticks, but the initial baseline deliberately leaves it unset.</p>
           <ul>
-            <li>latest observation</li>
-            <li>recent signals</li>
-            <li>optional keyframes</li>
+            <li>optional stage contract</li>
+            <li>current output: <code>null</code></li>
+            <li>no automatic persistence</li>
           </ul>
         </div>
         <div class="arrow" aria-hidden="true"></div>
@@ -598,8 +598,8 @@
           <h3>Act</h3>
           <p>The action stage returns idle by default. Movement requires an explicit engine and runtime motion gate.</p>
           <ul>
-            <li><code>VehicleAction</code></li>
             <li><code>AutonomyControl</code></li>
+            <li>normalized steering and throttle</li>
             <li>debug snapshot</li>
           </ul>
         </div>
@@ -668,11 +668,89 @@
         <div class="card cleanup">
           <h3>Commit State</h3>
           <ul>
-            <li>The source-only inventory is reviewed and staged.</li>
-            <li>The initial commit records the stable framework shape and explicit remaining feature backlog.</li>
+            <li>The source-only inventory was reviewed and committed.</li>
+            <li>The initial <code>main</code> commit is pushed to the GitHub repository.</li>
           </ul>
         </div>
       </div>
+    </section>
+
+    <section class="panel">
+      <h2>Scope Audit</h2>
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Area</th>
+            <th>Assessment</th>
+            <th>Evidence and Boundary</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Controller loop</td>
+            <td><span class="status done">Adhered</span></td>
+            <td>Simulator and DonkeyCar use one shared cycle host. Missing stages remain valid no-ops, and idle is the only decision engine currently available.</td>
+          </tr>
+          <tr>
+            <td>Perception</td>
+            <td><span class="status done">Adhered</span></td>
+            <td>Active visual policies are plugins under <code>implementations/</code>. The stable kernel owns contracts, evidence shapes, and reusable CV primitives without requiring semantic recognition or calibrated world geometry.</td>
+          </tr>
+          <tr>
+            <td>Simulator boundary</td>
+            <td><span class="status done">Adhered</span></td>
+            <td>The external controller uses the WS/CLI vehicle interface and front-camera capture. It does not modify simulator source or read privileged map state through <code>CarInterface</code>.</td>
+          </tr>
+          <tr>
+            <td>Movement safety</td>
+            <td><span class="status done">Adhered</span></td>
+            <td>Automation loads the explicit idle engine, and physical validation requires Donkey drive mode <code>user</code>. Startup motion is isolated in a deliberately invoked bounded operation.</td>
+          </tr>
+          <tr>
+            <td>Physical deployment</td>
+            <td><span class="status partial">Elaborate, justified</span></td>
+            <td>Versioned archives, hashes, activation metadata, and atomic release links are more than a minimal copy script, but directly satisfy the requested reproducibility and rollback shape. Do not add another deployment abstraction until a second physical target needs it.</td>
+          </tr>
+          <tr>
+            <td>CLI internals</td>
+            <td><span class="status partial">Watch</span></td>
+            <td><code>app.py</code>, <code>automation.py</code>, <code>deploy.py</code>, and <code>perception.py</code> are large. Their responsibilities are still distinct; split them only when a second implementation creates a concrete boundary, rather than adding framework layers preemptively.</td>
+          </tr>
+          <tr>
+            <td>Research tooling</td>
+            <td><span class="status done">Adhered</span></td>
+            <td>Calibration and perception-inspection scripts do not participate in the runtime graph. The synthetic image-memory workflow and its speculative memory classes were removed rather than retained as a parallel representation of runtime state.</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="grid three">
+        <div class="card implementation">
+          <h3>Keep</h3>
+          <ul>
+            <li>One vehicle contract and one shared cycle host.</li>
+            <li>Explicit perception and decision activation.</li>
+            <li>Hashed releases for the physical target.</li>
+          </ul>
+        </div>
+        <div class="card runtime">
+          <h3>Do Not Expand Yet</h3>
+          <ul>
+            <li>No behavior for memory, patterns, or projections until a use case requires it.</li>
+            <li>No general plugin package manager.</li>
+            <li>No additional deployment target hierarchy without another target.</li>
+          </ul>
+        </div>
+        <div class="card cleanup">
+          <h3>Simplified</h3>
+          <ul>
+            <li>README is focused on current workflows.</li>
+            <li>CLI help distinguishes local staging from remote deployment.</li>
+            <li>Experiment instructions stay out of the primary quickstart.</li>
+            <li>No synthetic memory model exists beside the real cycle result.</li>
+          </ul>
+        </div>
+      </div>
+      <p class="note"><strong>Net assessment:</strong> the runtime stayed within the agreed automation-engine scope. Complexity is highest where reproducible physical deployment demanded it; the autonomy logic itself was not prematurely filled in, and unused speculative memory code has been removed.</p>
     </section>
 
     <section class="panel">
@@ -843,10 +921,10 @@
           </tr>
           <tr>
             <td><span class="status could">Could</span></td>
-            <td><span class="status todo">Todo</span></td>
+            <td><span class="status todo">Deferred</span></td>
             <td>Add HTML cycle trace artifacts.</td>
             <td>
-              Generate a compact debug page from latest cycle snapshots so perception, observation, memory, and action can be visually inspected.
+              Generate a compact debug page only if the latest cycle JSON and perception stream prove insufficient for repeated debugging. Do not add it as initial-framework work.
             </td>
             <td>One command can produce an inspectable cycle report from simulator or recorded frames.</td>
           </tr>
@@ -855,15 +933,15 @@
     </section>
 
     <section class="panel">
-      <h2>Suggested Work Order</h2>
+      <h2>Completed Initial-Commit Work Order</h2>
       <ol>
-        <li><strong>Fix source inventory boundaries.</strong> Correct <code>.gitignore</code> and the directory contract before creating Git history.</li>
-        <li><strong>Unify runtime-cycle execution.</strong> Route both simulator automation and the Donkey part through one shared <code>DecisionCycle</code> host.</li>
-        <li><strong>Define decision activation.</strong> Add one manifest/schema shape and CLI inspection path for the selected engine without adding navigation behavior.</li>
-        <li><strong>Deploy autonomy separately from device core.</strong> Transfer a hashed controller release and activation metadata to the Pi through <code>automa</code>.</li>
-        <li><strong>Resolve transitional scripts.</strong> Promote startup checking to CLI and move or retire extracted experiments.</li>
-        <li><strong>Run live readiness checks.</strong> Exercise the live simulator harness and an idle-only physical runtime deployment.</li>
-        <li><strong>Create the initial commit.</strong> Complete: the reviewed source inventory, repository metadata, and physical validation establish the stable framework baseline.</li>
+        <li><strong>Source inventory boundaries:</strong> generated state, captures, bytecode, and vendor checkout are excluded from Git.</li>
+        <li><strong>Runtime-cycle execution:</strong> simulator automation and the Donkey part use one shared <code>DecisionCycle</code> host.</li>
+        <li><strong>Decision activation:</strong> one manifest/schema shape selects and describes the current engine.</li>
+        <li><strong>Physical autonomy deployment:</strong> <code>automa</code> transfers and activates a hashed release separately from device core.</li>
+        <li><strong>Transitional scripts:</strong> startup checking is a CLI operation; remaining scripts are explicitly inspection or calibration tools.</li>
+        <li><strong>Live readiness:</strong> simulator and idle-only physical deployment checks passed.</li>
+        <li><strong>Initial commit:</strong> the reviewed baseline is committed and pushed to <code>main</code>.</li>
       </ol>
     </section>
 
@@ -1088,7 +1166,6 @@
                   <div class="dir-annotation">Low-level helpers that are not user workflows. Anything overlapping with <code>./cli/automa</code> should be removed or folded into CLI services.</div>
                   <ul>
                     <li class="dir-leaf"><span class="dir-name">calibration/</span><span class="tree-tag tooling">calibration tools</span><div class="dir-annotation">Calibration and measurement scripts not yet promoted into operation implementations.</div></li>
-                    <li class="dir-leaf"><span class="dir-name">decision/</span><span class="tree-tag tooling">decision tools</span><div class="dir-annotation">Decision inspection helpers not yet promoted into CLI.</div></li>
                     <li class="dir-leaf"><span class="dir-name">perception/</span><span class="tree-tag tooling">perception tools</span><div class="dir-annotation">Perception inspection helpers not yet promoted into CLI.</div></li>
                     <li class="dir-leaf"><span class="dir-name">deploy/</span><span class="tree-tag tooling">remote helpers</span><div class="dir-annotation">Remote helper scripts called by CLI deploy flows.</div></li>
                   </ul>
@@ -1111,7 +1188,7 @@
         <div class="check"><span class="status done">Done</span> <strong>Implementation activation:</strong> perception and decision activation are inspectable, packaged, and transferable as one versioned release.</div>
         <div class="check"><span class="status done">Done</span> <strong>Directory boundary:</strong> environment-specific code is isolated under <code>implementations/</code> or deploy targets.</div>
         <div class="check"><span class="status done">Done</span> <strong>CLI authority:</strong> runtime, deployment, activation, and startup operation workflows use <code>automa</code>.</div>
-        <div class="check"><span class="status done">Done</span> <strong>Test harness:</strong> all 48 offline and live-simulator tests pass, and the Pi passes the idle/manual deployment smoke check.</div>
+        <div class="check"><span class="status done">Done</span> <strong>Test harness:</strong> 51 offline checks pass with one expected live-simulator skip; the opt-in live check and Pi idle/manual deployment smoke check have also passed.</div>
         <div class="check"><span class="status done">Done</span> <strong>Docs and contract:</strong> ownership and generated vendor boundaries are synchronized across the contract and planning tree.</div>
         <div class="check"><span class="status done">Done</span> <strong>Commit hygiene:</strong> runtime, lab, bytecode, and generated vendor paths are excluded while manifests and patches remain source.</div>
         <div class="check"><span class="status done">Done</span> <strong>Commit creation:</strong> the reviewed source inventory and configured author identity form the initial <code>main</code> commit.</div>

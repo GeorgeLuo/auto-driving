@@ -547,17 +547,21 @@
 <body>
   <main>
     <header>
-      <h1>Automation Engine Initial Commit Backlog</h1>
+      <h1>Milestone 001: Automation Engine Foundation</h1>
       <p class="lead">
-        The target initial commit should establish the shape of the automation engine without pretending the driving logic is finished. The loop should be real, the stage interfaces should be stable, movement should remain gated, and concrete behavior should live behind loadable implementations.
+        Closed planning record for the initial automation-engine foundation. The
+        work established a real staged loop without pretending the driving logic
+        was finished: stage interfaces are stable, movement remains gated, and
+        concrete behavior lives behind loadable implementations.
       </p>
       <div class="meta">
+        <span class="pill">Status: closed 2026-07-11</span>
         <span class="pill">Goal: initial repo commit readiness</span>
         <span class="pill">Default action: idle</span>
         <span class="pill">Primary test target: Chase simulator</span>
         <span class="pill">Physical target: PiRacer via DonkeyCar bundle</span>
         <span class="pill">Verification: 52-test harness (51 offline pass, 1 live opt-in), physical idle deployment passing</span>
-        <span class="pill">Directory contract: <a href="directory-structure.contract.json">JSON</a></span>
+        <span class="pill">Directory contract: <a href="../../reference/directory-structure.contract.json">JSON</a></span>
       </div>
     </header>
 
@@ -949,7 +953,7 @@
       <h2>Directory Target</h2>
       <div class="contract-source">
         <strong>Canonical contract:</strong>
-        <a href="directory-structure.contract.json"><code>docs/directory-structure.contract.json</code></a>
+        <a href="../../reference/directory-structure.contract.json"><code>docs/reference/directory-structure.contract.json</code></a>
         <span>This interactive tree is the human-readable view of that directory-only contract.</span>
       </div>
       <div class="directory-controls" aria-label="Directory tree controls">
@@ -1156,7 +1160,11 @@
               <li>
                 <details>
                   <summary><span class="dir-name">docs/</span><span class="tree-tag tooling">architecture notes</span></summary>
-                  <div class="dir-annotation">Human-readable architecture docs, diagrams, backlog summaries, and decision notes.</div>
+                  <div class="dir-annotation">Documentation entrypoint, living reference material, and milestone planning history.</div>
+                  <ul>
+                    <li class="dir-leaf"><span class="dir-name">reference/</span><span class="tree-tag tooling">living references</span><div class="dir-annotation">Current architecture diagrams and stable contracts.</div></li>
+                    <li class="dir-leaf"><span class="dir-name">milestones/</span><span class="tree-tag tooling">planning history</span><div class="dir-annotation">Numbered plans, closeouts, and the append-only completed-milestone ledger.</div></li>
+                  </ul>
                 </details>
               </li>
 

@@ -73,6 +73,7 @@ def get_simulator_status(
 def ensure_simulator(
     *,
     timeout_ms: int = DEFAULT_TIMEOUT_MS,
+    scenario_id: str = DEFAULT_SCENARIO_ID,
     json_output: bool = False,
 ) -> CommandResult:
     executable = _simeval_executable()
@@ -80,7 +81,7 @@ def ensure_simulator(
     payload["desired"] = {
         "deployment": "default simeval local deployment",
         "ui_app": "play",
-        "scenario": DEFAULT_SCENARIO_ID,
+        "scenario": scenario_id,
         "frontend_url": DEFAULT_UI_HTTP_URL,
     }
     if executable is None:
@@ -112,7 +113,7 @@ def ensure_simulator(
         frontend_ready = False
         ui_summary = _skipped_summary("simulator backend launch failed")
         scenario_summary = _skipped_summary("simulator backend launch failed")
-        scenario_summary["scenario"] = DEFAULT_SCENARIO_ID
+        scenario_summary["scenario"] = scenario_id
         play_debug_summary = _skipped_summary("simulator backend launch failed")
     else:
         frontend_before_run = _run_ui_verify(executable, auto_serve=True, observe_ms=500)
@@ -132,7 +133,10 @@ def ensure_simulator(
         frontend_ready = bool(frontend_after["frontend_connected"])
 
         if frontend_ready:
-            ui_summary, scenario_summary, play_debug_summary, setup_runs = _configure_play_frontend(executable)
+            ui_summary, scenario_summary, play_debug_summary, setup_runs = _configure_play_frontend(
+                executable,
+                scenario_id=scenario_id,
+            )
             commands.extend(run.to_dict() for run in setup_runs)
 
             if not _play_frontend_ready(ui_summary, scenario_summary, play_debug_summary):
@@ -146,12 +150,15 @@ def ensure_simulator(
                 commands.extend(run.to_dict() for run in frontend_poll_runs)
                 frontend_ready = bool(frontend_after["frontend_connected"])
                 if frontend_ready:
-                    ui_summary, scenario_summary, play_debug_summary, setup_runs = _configure_play_frontend(executable)
+                    ui_summary, scenario_summary, play_debug_summary, setup_runs = _configure_play_frontend(
+                        executable,
+                        scenario_id=scenario_id,
+                    )
                     commands.extend(run.to_dict() for run in setup_runs)
         else:
             ui_summary = _skipped_summary("frontend tab is not connected")
             scenario_summary = _skipped_summary("frontend tab is not connected")
-            scenario_summary["scenario"] = DEFAULT_SCENARIO_ID
+            scenario_summary["scenario"] = scenario_id
             play_debug_summary = _skipped_summary("frontend tab is not connected")
 
     final_run = _run_simeval(executable, ["status", "--all", "--timeout", str(timeout_ms)])
@@ -181,7 +188,7 @@ def ensure_simulator(
     if not ui_summary["ok"]:
         errors.append("could not select the Play simulator UI")
     if not scenario_summary["ok"]:
-        errors.append(f"could not select the {DEFAULT_SCENARIO_ID!r} simulator scenario")
+        errors.append(f"could not select the {scenario_id!r} simulator scenario")
     if not play_debug_summary["ok"]:
         errors.append("Chase Play debug is not available")
 
@@ -318,6 +325,8 @@ def _wait_for_frontend(
 
 def _configure_play_frontend(
     executable: str,
+    *,
+    scenario_id: str,
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], list[SimevalRun]]:
     runs: list[SimevalRun] = []
 
@@ -333,11 +342,11 @@ def _configure_play_frontend(
             "--action-id",
             "scenario-select",
             "--value",
-            json.dumps(DEFAULT_SCENARIO_ID),
+            json.dumps(scenario_id),
         ],
     )
     scenario_summary = _summarize_ui_action_run(scenario_run)
-    scenario_summary["scenario"] = DEFAULT_SCENARIO_ID
+    scenario_summary["scenario"] = scenario_id
     runs.append(scenario_run)
 
     debug_run = _run_simeval(executable, ["ui", "play-debug", "--summary"])

@@ -324,7 +324,21 @@
         "path": "docs/",
         "category": "documentation",
         "commit_policy": "source",
-        "responsibility": "Human-readable architecture docs, diagrams, backlog summaries, decision notes, and stable contracts."
+        "responsibility": "Documentation entrypoint, living reference material, and milestone planning history.",
+        "children": [
+          {
+            "path": "docs/reference/",
+            "category": "documentation",
+            "commit_policy": "source",
+            "responsibility": "Living source of truth for current architecture diagrams and stable contracts."
+          },
+          {
+            "path": "docs/milestones/",
+            "category": "documentation",
+            "commit_policy": "source",
+            "responsibility": "Numbered planning records, frozen closeouts, and the append-only completed-milestone ledger."
+          }
+        ]
       },
       {
         "path": "scripts/",

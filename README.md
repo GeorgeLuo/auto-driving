@@ -52,8 +52,9 @@ PYTHONDONTWRITEBYTECODE=1 python3 cli/run_tests.py --live-sim
   internal DonkeyCar restart helper. User-facing deployment and runtime
   workflows belong in `automa`.
 
-The canonical directory contract is
-[`docs/directory-structure.contract.json`](docs/directory-structure.contract.json).
+The documentation entrypoint is [`docs/README.md`](docs/README.md). The
+canonical directory contract is
+[`docs/reference/directory-structure.contract.json`](docs/reference/directory-structure.contract.json).
 
 ## CLI Model
 
@@ -86,6 +87,7 @@ Prepare the simulator and verify that the Play/Chase frontend is connected:
 
 ```sh
 ./cli/automa simulators ensure
+./cli/automa simulators ensure --scenario chaser-depth-obstacles
 ./cli/automa vehicles active
 ```
 
@@ -276,12 +278,16 @@ and is prepared through `./cli/automa simulators ensure`.
 
 ## Architecture and Planning
 
-- [`docs/onboard-autonomy-flow.html`](docs/onboard-autonomy-flow.html) explains
+- [`docs/README.md`](docs/README.md) identifies the active milestone and the
+  reading order for current work.
+- [`docs/reference/onboard-autonomy-flow.html`](docs/reference/onboard-autonomy-flow.html) explains
   the onboard perception, decision, and action flow.
-- [`docs/donkey-server-functionality.html`](docs/donkey-server-functionality.html)
+- [`docs/reference/donkey-server-functionality.html`](docs/reference/donkey-server-functionality.html)
   describes the physical Donkey server boundary.
-- [`docs/automation-engine-initial-commit-backlog.html`](docs/automation-engine-initial-commit-backlog.html)
-  records the initial framework backlog, status, directory tree, and scope audit.
+- [`docs/milestones/completed.md`](docs/milestones/completed.md) is the concise
+  append-only history of closed work.
+- [`docs/milestones/002-perception-hardening/plan.html`](docs/milestones/002-perception-hardening/plan.html)
+  is the active perception-hardening milestone.
 
 Dependency direction is intentional:
 

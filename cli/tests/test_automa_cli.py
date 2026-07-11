@@ -169,6 +169,36 @@ class AutomaCliHarness(unittest.TestCase):
             calls,
         )
 
+    def test_simulator_ensure_selects_requested_scenario(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = self.make_fake_simeval(root, "online")
+            result = self.run_automa(
+                "simulators",
+                "ensure",
+                "--scenario",
+                "chaser-depth-obstacles",
+                "--json",
+                extra_env=env,
+            )
+            calls = self.read_fake_simeval_calls(root)
+
+        payload = json.loads(result.stdout)
+        self.assertTrue(payload["result"]["usable"])
+        self.assertEqual(payload["desired"]["scenario"], "chaser-depth-obstacles")
+        self.assertEqual(payload["scenario"]["scenario"], "chaser-depth-obstacles")
+        self.assertIn(
+            [
+                "ui",
+                "play-game-action",
+                "--action-id",
+                "scenario-select",
+                "--value",
+                '"chaser-depth-obstacles"',
+            ],
+            calls,
+        )
+
     def test_simulator_ensure_opens_browser_when_frontend_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

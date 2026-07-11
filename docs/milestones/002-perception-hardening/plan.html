@@ -1,0 +1,528 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Milestone 002: Perception Hardening</title>
+  <style>
+    :root {
+      --ink: #17211f;
+      --muted: #596762;
+      --line: #c9d5ce;
+      --bg: #f5f7f4;
+      --panel: #ffffff;
+      --green: #2f8a62;
+      --green-soft: #e4f2e9;
+      --amber: #a96f1c;
+      --amber-soft: #fff2d6;
+      --red: #a94d3d;
+      --red-soft: #f8e5e1;
+      --teal: #277b8f;
+      --teal-soft: #e0f1f4;
+      --violet: #65548f;
+      --violet-soft: #ece8f6;
+      --neutral: #edf1ee;
+      --shadow: 0 14px 34px rgba(23, 33, 31, 0.07);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.5;
+    }
+
+    main {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 36px 0 60px;
+    }
+
+    h1, h2, h3, p { margin: 0; }
+    h1 { font-size: clamp(34px, 5vw, 56px); line-height: 1.03; letter-spacing: 0; }
+    h2 { margin-bottom: 13px; font-size: 22px; letter-spacing: 0; }
+    h3 { margin-bottom: 7px; font-size: 15px; letter-spacing: 0; }
+    p, li, td { color: var(--muted); }
+
+    code {
+      padding: 2px 5px;
+      border-radius: 4px;
+      background: var(--neutral);
+      color: #1e3932;
+      font-size: .94em;
+    }
+
+    header { margin-bottom: 24px; }
+    .lead { max-width: 900px; margin-top: 12px; font-size: 17px; }
+    .meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+    .pill { border: 1px solid var(--line); border-radius: 999px; padding: 5px 9px; background: var(--panel); color: var(--muted); font-size: 13px; }
+
+    .panel, .card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+
+    .panel { padding: 22px; margin-top: 18px; box-shadow: var(--shadow); }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+    .grid.two { grid-template-columns: repeat(2, 1fr); }
+    .card { padding: 15px; }
+    .card.goal { border-left: 6px solid var(--green); background: var(--green-soft); }
+    .card.interface { border-left: 6px solid var(--teal); background: var(--teal-soft); }
+    .card.constraint { border-left: 6px solid var(--amber); background: var(--amber-soft); }
+    .card.question { border-left: 6px solid var(--violet); background: var(--violet-soft); }
+    .card.risk { border-left: 6px solid var(--red); background: var(--red-soft); }
+
+    ul, ol { margin: 8px 0 0; padding-left: 20px; }
+    li { margin: 6px 0; }
+
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { padding: 11px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { background: var(--neutral); color: var(--ink); }
+    tr:last-child td { border-bottom: 0; }
+
+    .status { display: inline-block; border-radius: 999px; padding: 3px 7px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+    .done { background: var(--green-soft); color: #236548; }
+    .partial { background: var(--amber-soft); color: #775018; }
+    .missing { background: var(--red-soft); color: #843c30; }
+
+    .command {
+      margin-top: 12px;
+      padding: 13px;
+      border-radius: 7px;
+      background: var(--ink);
+      color: #dff4e9;
+      overflow-x: auto;
+      font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    .note { margin-top: 14px; padding: 14px; border-left: 6px solid var(--amber); background: var(--amber-soft); color: var(--muted); }
+
+    @media (max-width: 860px) {
+      .grid, .grid.two { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Milestone 002: Perception Hardening</h1>
+      <p class="lead">
+        Establish a credible perception layer before designing decision memory.
+        The milestone must make simulator and physical-camera experiments feel
+        like the same operation, exercise multiple functional image-to-evidence
+        approaches, and determine which per-frame and temporal representations
+        are reliable enough to carry forward.
+      </p>
+      <div class="meta">
+        <span class="pill">Status: active</span>
+        <span class="pill">Primary action: observe</span>
+        <span class="pill">Movement authority: unchanged and idle</span>
+        <span class="pill">Sources: Chase, PiRacer, recorded sequences</span>
+        <span class="pill">Closeout output: recommendation for memory inputs</span>
+      </div>
+    </header>
+
+    <section class="panel">
+      <h2>High-Level Objective</h2>
+      <div class="grid">
+        <div class="card goal">
+          <h3>Source Parity</h3>
+          <p>Run the same perception experiment from the CLI against Chase or PiRacer by changing the vehicle id, not the perception interface.</p>
+        </div>
+        <div class="card goal">
+          <h3>Functional Representations</h3>
+          <p>Turn images into inspectable evidence such as regions, surfaces, lines, motion groups, and persistent scene tracks without requiring semantic object labels.</p>
+        </div>
+        <div class="card goal">
+          <h3>Evidence For Memory</h3>
+          <p>Close with measured conclusions about which outputs are stable, useful, and affordable enough to become inputs to a later memory milestone.</p>
+        </div>
+      </div>
+      <p class="note">
+        “Useful” must be tested against a small question set: what evidence is
+        visible now, where is it relative to the vehicle, what area appears
+        traversable, what changed, and what persisted across views? This gives
+        perception a consumer without prematurely designing decision memory.
+      </p>
+    </section>
+
+    <section class="panel">
+      <h2>Target Operator Experience</h2>
+      <p>The required local-processing path differs only by vehicle id:</p>
+      <pre class="command">./cli/automa vehicles perception run --id chase-sim-chaser --frames 20 --record
+./cli/automa vehicles perception run --id piracer --frames 20 --record</pre>
+      <p class="note">
+        Processing physical frames locally is the parity gate. Running every
+        experiment on the Pi is not. Before closeout, one lightweight plugin
+        must also run through the onboard Donkey runtime to prove deployment and
+        in-memory camera compatibility.
+      </p>
+    </section>
+
+    <section class="panel">
+      <h2>Current State</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Capability</th><th>Status</th><th>What Exists</th><th>Gap</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Stable output shape</td>
+              <td><span class="status done">Working</span></td>
+              <td><code>PerceptionText</code>, <code>PerceivedThing</code>, normalized boxes, confidence, observations, artifacts, and limits.</td>
+              <td>Temporal identity and confidence semantics are not yet established.</td>
+            </tr>
+            <tr>
+              <td>Plugin chain and activation</td>
+              <td><span class="status partial">Partial</span></td>
+              <td>Ordered plugins can be packaged, enabled, disabled, inspected, and loaded from activation JSON.</td>
+              <td>No explicit plugin lifecycle/reset contract, capability declaration, or plugin-to-plugin data flow.</td>
+            </tr>
+            <tr>
+              <td>Per-frame implementations</td>
+              <td><span class="status partial">Promising prototypes</span></td>
+              <td>Frame statistics, floor/traversability, simulator color targets, and deterministic VLM-prep artifacts.</td>
+              <td>Only simulator color targets are easy to validate; floor evidence is heuristic and VLM prep emits no representation itself.</td>
+            </tr>
+            <tr>
+              <td>Temporal implementation</td>
+              <td><span class="status partial">Pairwise only</span></td>
+              <td><code>MotionGroupsPlugin</code> retains one previous image and emits coherent pairwise motion groups.</td>
+              <td>No reset API, stable track ids, bounded multi-frame window, or accumulated scene interpretation.</td>
+            </tr>
+            <tr>
+              <td>Simulator CLI experiment loop</td>
+              <td><span class="status done">Working baseline</span></td>
+              <td>Stage, run, stream, record, inspect, and enable/disable are available for Chase.</td>
+              <td>Evaluation reports and deterministic replay are missing.</td>
+            </tr>
+            <tr>
+              <td>Physical CLI experiment loop</td>
+              <td><span class="status missing">Missing</span></td>
+              <td>The Pi adapter can capture file-backed front-camera snapshots through <code>CarInterface</code>.</td>
+              <td>Perception update and continuous automation explicitly reject non-Chase providers.</td>
+            </tr>
+            <tr>
+              <td>Onboard perception</td>
+              <td><span class="status missing">Missing</span></td>
+              <td>The autonomy release transfers a perception activation to the Pi.</td>
+              <td>Donkey loads only decision activation; its camera arrives as an in-memory array while all plugins require a file path.</td>
+            </tr>
+            <tr>
+              <td>Long-running environment evidence</td>
+              <td><span class="status missing">Missing</span></td>
+              <td>Pairwise groups and current-frame things can be inspected.</td>
+              <td>No bounded scene tracks, persistence score, disappearance handling, or current scene summary.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Scope Boundaries</h2>
+      <div class="grid">
+        <div class="card constraint">
+          <h3>In Scope</h3>
+          <ul>
+            <li>A provider-neutral perception experiment command.</li>
+            <li>File-backed and in-memory camera normalization.</li>
+            <li>Per-frame structure proposals and temporal scene tracks.</li>
+            <li>Recorded-sequence replay and comparable reports.</li>
+            <li>Latency and memory measurements locally and on Pi.</li>
+          </ul>
+        </div>
+        <div class="card constraint">
+          <h3>Out Of Scope</h3>
+          <ul>
+            <li>Decision memory implementation.</li>
+            <li>Autonomous navigation or non-idle action.</li>
+            <li>Metric SLAM, semantic scene graphs, or required VLM access.</li>
+            <li>Perfect object recognition or a finalized world model.</li>
+          </ul>
+        </div>
+        <div class="card constraint">
+          <h3>Perception Versus Memory</h3>
+          <p>Temporal plugins may keep bounded working state needed to produce the current perception result. Durable history used by decision policy remains the responsibility of a later memory stage.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Implementation Workstreams</h2>
+      <div class="grid two">
+        <div class="card interface">
+          <h3>1. Common Experiment Runner</h3>
+          <ul>
+            <li>Add one perception-run command that constructs the discovered <code>CarInterface</code> for either provider.</li>
+            <li>Default to observation only; never move a physical vehicle.</li>
+            <li>Support bounded frames, cadence, recording, latest output, and machine-readable summaries.</li>
+            <li>Add recorded-sequence replay using the same mapper and plugin chain.</li>
+          </ul>
+        </div>
+        <div class="card interface">
+          <h3>2. Camera Input Normalization</h3>
+          <ul>
+            <li>Give plugins one supported way to read a camera frame whether the sensor supplies <code>path</code> or <code>value</code>.</li>
+            <li>Keep capture and materialization in the vehicle/runtime boundary rather than every plugin.</li>
+            <li>Test identical plugin output shape from Chase files, Pi HTTP captures, and Donkey arrays.</li>
+          </ul>
+        </div>
+        <div class="card interface">
+          <h3>3. Plugin Lifecycle</h3>
+          <ul>
+            <li>Define initialization, reset, error isolation, and optional temporal-state behavior.</li>
+            <li>Declare required sensors, whether artifacts are optional, and whether a plugin is stateless, pairwise, or windowed.</li>
+            <li>Resolve whether ordered plugins can consume prior plugin evidence or only shared normalized sensor inputs.</li>
+          </ul>
+        </div>
+        <div class="card interface">
+          <h3>4. Evaluation Harness</h3>
+          <ul>
+            <li>Run the same recorded sequences through candidate plugin chains.</li>
+            <li>Produce overlays, structured output, timing, failure counts, and stability summaries.</li>
+            <li>Keep human review possible without making hand-tuned scene labels part of runtime logic.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Required Perception Approaches</h2>
+      <div class="grid">
+        <div class="card goal">
+          <h3>Per-Frame Structure</h3>
+          <p>Implement a generic structure-proposal plugin using lines, contours, or coherent regions. It should emit inspectable image-space evidence, not claim semantic objects.</p>
+        </div>
+        <div class="card goal">
+          <h3>Traversability Baseline</h3>
+          <p>Harden the existing floor-plane plugin across simulator and physical frames, including empty/failure behavior and explicit environmental assumptions.</p>
+        </div>
+        <div class="card goal">
+          <h3>Temporal Scene Tracks</h3>
+          <p>Extend pairwise motion evidence into bounded multi-frame tracks with stable ids, age, support, confidence, and expiry. Output the current scene, not an unbounded history.</p>
+        </div>
+      </div>
+      <p class="note">
+        VLM preprocessing and simulator color targets remain useful controls,
+        but neither counts as the milestone's general perception result. A VLM
+        may be evaluated as an optional observer after deterministic baselines
+        are measurable.
+      </p>
+    </section>
+
+    <section class="panel">
+      <h2>Experiment Workbench Contract</h2>
+      <div class="grid two">
+        <div class="card interface">
+          <h3>Candidate Boundary</h3>
+          <p>New perception candidates are developed as runnable plugins under <code>lab/plugins/perception/&lt;candidate&gt;/</code>. A candidate owns its source, tests, configuration, dependency declaration, model provenance, and experiment notes.</p>
+        </div>
+        <div class="card interface">
+          <h3>Generated State</h3>
+          <p>Weights, virtual environments, downloaded datasets, overlays, timing traces, and run artifacts remain ignored. A run records the plugin revision and configuration needed to reproduce it without committing generated data.</p>
+        </div>
+        <div class="card constraint">
+          <h3>Touch Budget</h3>
+          <p>After a one-time generic lab runner exists, an experiment should normally change only its candidate directory. Stable autonomy interfaces, vehicle implementations, and production plugin registration are not edited to accommodate each experiment.</p>
+        </div>
+        <div class="card goal">
+          <h3>Promotion</h3>
+          <p>A candidate moves to <code>implementations/perception/</code> only after its output fits the stable perception contract, its dependencies and license are acceptable, and replay evidence meets declared quality and compute thresholds.</p>
+        </div>
+      </div>
+      <pre class="command">lab/
+  plugins/
+    perception/
+      fastsam/</pre>
+      <p class="note">
+        The repository currently ignores all of <code>lab/</code>. Establishing
+        this workbench therefore requires a narrow ignore exception for plugin
+        source while continuing to ignore candidate-local generated state. The
+        existing unstructured historical runs remain ignored and are not a
+        template for new work.
+      </p>
+    </section>
+
+    <section class="panel">
+      <h2>FastSAM Candidate Experiment</h2>
+      <div class="grid two">
+        <div class="card goal">
+          <h3>Hypothesis</h3>
+          <p>Class-agnostic instance masks can provide more coherent current-frame region proposals than hand-tuned lines or contours, without semantic labels, training, map access, or a VLM.</p>
+        </div>
+        <div class="card interface">
+          <h3>First Implementation</h3>
+          <p>Use pretrained <code>FastSAM-s</code> with the “everything” path at 640-pixel input. Convert every accepted mask into generic region evidence: normalized bounds, centroid, area fraction, contour, confidence, image zone, and whether it reaches the lower image region.</p>
+        </div>
+        <div class="card constraint">
+          <h3>Meaning Boundary</h3>
+          <p>A mask means “coherent region proposal,” not obstacle, traversable area, object identity, distance, or depth. Those interpretations require separate evidence or later aggregation. Missing, empty, and failed inference remain distinct outcomes.</p>
+        </div>
+        <div class="card question">
+          <h3>Temporal Follow-Up</h3>
+          <p>Keep segmentation stateless first. If masks are useful, associate keyframe masks across intermediate frames with mask overlap, sparse flow, and bounded track state rather than coupling model inference to every camera frame.</p>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Constraint</th><th>Decision</th><th>Reason</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Model</td>
+              <td><code>FastSAM-s</code>, not <code>FastSAM-x</code></td>
+              <td>The maintained integration exposes pretrained automatic masks in a roughly 24 MB model; the smaller variant is the appropriate feasibility probe.</td>
+            </tr>
+            <tr>
+              <td>Training</td>
+              <td>None in this milestone</td>
+              <td>The pretrained model is already class-agnostic, and the maintained FastSAM API supports inference and export but not training. Collect evaluation data before considering adaptation.</td>
+            </tr>
+            <tr>
+              <td>Runtime</td>
+              <td>Local CPU baseline, optional Apple MPS comparison</td>
+              <td>Local processing is the primary path. The Pi supplies frames until target-hardware measurements justify moving inference onboard.</td>
+            </tr>
+            <tr>
+              <td>Cadence</td>
+              <td>Bounded stills, then low-rate keyframes</td>
+              <td>First establish mask usefulness and latency. Continuous inference is not a prerequisite for continuous perception if cheaper tracking bridges keyframes.</td>
+            </tr>
+            <tr>
+              <td>Deployment</td>
+              <td>PyTorch reference, then exported runtime benchmark</td>
+              <td>Only attempt ONNX or NCNN after reference outputs are stable; exported output parity and post-processing cost must be measured.</td>
+            </tr>
+            <tr>
+              <td>Dependencies</td>
+              <td>Candidate-local optional environment</td>
+              <td>Do not add PyTorch or Ultralytics to core requirements merely to evaluate one plugin.</td>
+            </tr>
+            <tr>
+              <td>License</td>
+              <td>Promotion gate</td>
+              <td>The maintained Ultralytics implementation and models carry AGPL or commercial-license considerations. Record exact code and weight provenance before production adoption.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="note">
+        Published timing is directional, not a target-machine result. The
+        maintained documentation reports about 58 ms per image for FastSAM-s
+        on a newer Apple M4 test machine, while Raspberry Pi guidance shows
+        even much smaller nano models slowing materially on ARM. The M1 and Pi
+        4 must be benchmarked directly before assigning a cadence.
+      </p>
+
+      <h3>Research Sources</h3>
+      <ul>
+        <li><a href="https://arxiv.org/abs/2306.12156">Fast Segment Anything paper</a>: architecture, training-data fraction, and original performance claims.</li>
+        <li><a href="https://docs.ultralytics.com/models/fast-sam">Maintained FastSAM documentation</a>: current weights, inference/export support, result shape, tracking API, and comparative benchmark.</li>
+        <li><a href="https://docs.ultralytics.com/guides/raspberry-pi">Ultralytics Raspberry Pi guide</a>: ARM deployment formats and Pi 4/Pi 5 constraints; its benchmarks are for smaller YOLO models, not proof of FastSAM performance.</li>
+        <li><a href="https://www.ultralytics.com/license">Ultralytics licensing</a>: current AGPL and commercial deployment terms to review before promotion.</li>
+      </ul>
+    </section>
+
+    <section class="panel">
+      <h2>Evaluation Scenarios</h2>
+      <div class="grid">
+        <div class="card question">
+          <h3>Simulator Control</h3>
+          <p>Known Chase scenes with repeatable camera output, processed without reading map/debug state. Use <code>chaser-depth-obstacles</code> as the first segmentation fixture and validate determinism, empty output, region stability, and temporal continuity.</p>
+        </div>
+        <div class="card question">
+          <h3>Physical Scene Sequences</h3>
+          <p>PiRacer captures with boxes, floor, walls, shadows, texture changes, and bounded observer motion. Compare the same plugin configuration and output schema used in simulation.</p>
+        </div>
+        <div class="card question">
+          <h3>Recorded Replay</h3>
+          <p>Short saved sequences from both sources. Replay must reproduce structured outputs closely enough to debug and compare algorithm changes.</p>
+        </div>
+      </div>
+      <pre class="command">./cli/automa simulators ensure --scenario chaser-depth-obstacles</pre>
+      <p class="note">
+        Scenario geometry and debug state are evaluation truth only. They may
+        score a plugin after inference but must never be supplied to the plugin
+        or included in its perception result.
+      </p>
+    </section>
+
+    <section class="panel">
+      <h2>Logical Omissions Addressed</h2>
+      <div class="grid two">
+        <div class="card risk">
+          <h3>Falsifiability</h3>
+          <p>A representation looking plausible is not enough. Simulator truth may be used only as held-out evaluation, never perception input. Physical runs need controlled scenes or lightweight human annotations so failures can be identified.</p>
+        </div>
+        <div class="card risk">
+          <h3>Observer Motion</h3>
+          <p>Long-running scene understanding cannot be assessed only from a fixed camera. The corpus needs stationary, forward, reverse, and turning sequences, captured through separate bounded operations rather than decision output.</p>
+        </div>
+        <div class="card risk">
+          <h3>Experiment Distribution</h3>
+          <p>Success in one room or simulator scene is not hardening. The milestone needs variation in lighting, texture, lens effects, blur, object layout, and camera-to-subject distance.</p>
+        </div>
+        <div class="card risk">
+          <h3>Selection And Retirement</h3>
+          <p>Candidate plugins need explicit dispositions at closeout: promote, retain as diagnostic, or retire. Fusion should be tested only after each source of evidence is characterized independently.</p>
+        </div>
+        <div class="card risk">
+          <h3>Unknown Versus Absent</h3>
+          <p>No evidence, unavailable input, low confidence, and analysis failure are logically different outcomes. Memory cannot make sound decisions if perception collapses them into one false value.</p>
+        </div>
+        <div class="card risk">
+          <h3>Temporal Boundary</h3>
+          <p>Perception may keep bounded working state to describe the current scene. It must not quietly become durable decision history; the milestone closeout should specify exactly what the later memory layer receives.</p>
+        </div>
+      </div>
+      <p class="note">
+        Viability includes computation cost. An approach that is accurate only
+        with unbounded latency or memory is not a plausible perception input for
+        the vehicle, even if it remains useful as an offline evaluator.
+      </p>
+    </section>
+
+    <section class="panel">
+      <h2>Milestone Exit Gates</h2>
+      <ol>
+        <li>The milestone question set and evaluation corpus are fixed before candidate approaches are compared.</li>
+        <li>The same CLI command runs a bounded, stationary perception experiment against Chase and PiRacer with only the vehicle id changed.</li>
+        <li>Recorded sequences from both sources can be replayed through the same active plugin chain.</li>
+        <li>At least one general per-frame structure plugin and one bounded temporal scene-track plugin emit useful structured evidence and visual artifacts.</li>
+        <li>The existing floor-plane approach has a documented pass/fail assessment across both environments.</li>
+        <li>One lightweight chain runs onboard from Donkey's in-memory camera input, while local processing remains available for heavier experiments.</li>
+        <li>Tests cover input normalization, plugin reset, empty/error results, temporal expiry, provider parity, and no-write-by-default behavior.</li>
+        <li>A comparison report records latency, stability, observed failure modes, and which outputs should or should not become memory inputs.</li>
+        <li>Each candidate approach is explicitly promoted, retained as diagnostic, or retired; inconclusive approaches do not silently become permanent plugins.</li>
+        <li>Experimental model code remains isolated in the lab workbench until promotion, and generated weights or artifacts do not enter source control.</li>
+        <li>The idle engine and physical manual-mode safety gate remain unchanged.</li>
+      </ol>
+    </section>
+
+    <section class="panel">
+      <h2>Proposed Work Order</h2>
+      <ol>
+        <li>Normalize camera input and define plugin lifecycle before adding more algorithms.</li>
+        <li>Generalize the perception experiment runner across Chase, PiRacer, and replay sources.</li>
+        <li>Add deterministic test fixtures and a compact evaluation report format.</li>
+        <li>Establish the lab plugin workbench and run the FastSAM-s candidate against <code>chaser-depth-obstacles</code> without map input.</li>
+        <li>Implement and compare FastSAM regions with classical per-frame structure proposals.</li>
+        <li>Harden floor-plane evidence across both environments.</li>
+        <li>Promote pairwise motion groups into bounded scene tracks.</li>
+        <li>Run one lightweight chain onboard and measure the cost.</li>
+        <li>Close the milestone with an explicit recommendation for the next memory contract.</li>
+      </ol>
+    </section>
+  </main>
+</body>
+</html>

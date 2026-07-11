@@ -24,7 +24,7 @@ from .perception import (
     set_vehicle_perception_plugin,
     update_vehicle_perception,
 )
-from .simulators import ensure_simulator, get_simulator_status
+from .simulators import DEFAULT_SCENARIO_ID, ensure_simulator, get_simulator_status
 from .streaming import stream_vehicle_perception
 from .vehicles import discover_active_vehicles, format_active_vehicles_snapshot
 
@@ -691,6 +691,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Probe timeout passed to `simeval status` in milliseconds.",
     )
     simulators_ensure.add_argument(
+        "--scenario",
+        default=DEFAULT_SCENARIO_ID,
+        help=f"Chase scenario id to select after the simulator is ready (default: {DEFAULT_SCENARIO_ID}).",
+    )
+    simulators_ensure.add_argument(
         "--json",
         action="store_true",
         help="Print the full machine-readable simulator ensure payload.",
@@ -1111,6 +1116,7 @@ def _handle_simulators_status(args: argparse.Namespace) -> int:
 def _handle_simulators_ensure(args: argparse.Namespace) -> int:
     result = ensure_simulator(
         timeout_ms=args.timeout_ms,
+        scenario_id=args.scenario,
         json_output=args.json,
     )
     if result.message:

@@ -1,0 +1,1148 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Automation Engine Initial Commit Backlog</title>
+  <style>
+    :root {
+      --ink: #17201d;
+      --muted: #58645f;
+      --line: #cbd6d1;
+      --bg: #f4f7f5;
+      --panel: #ffffff;
+      --soft: #edf2ef;
+      --runtime: #2d6f78;
+      --decision: #6d5c99;
+      --implementation: #317a56;
+      --vehicle: #9a5a30;
+      --cli: #485f7d;
+      --cleanup: #8a3f4b;
+      --shadow: 0 16px 34px rgba(23, 32, 29, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.45;
+    }
+
+    main {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 34px 0 58px;
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin: 0;
+    }
+
+    h1 {
+      max-width: 900px;
+      font-size: clamp(32px, 5vw, 54px);
+      line-height: 1.04;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      margin-bottom: 13px;
+      font-size: 22px;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      margin-bottom: 7px;
+      font-size: 15px;
+      letter-spacing: 0;
+      text-transform: uppercase;
+    }
+
+    p,
+    li,
+    td {
+      color: var(--muted);
+    }
+
+    code {
+      padding: 2px 5px;
+      border-radius: 5px;
+      background: #e8eee9;
+      color: #1b332d;
+      font-size: 0.94em;
+    }
+
+    a {
+      color: #245c64;
+      text-decoration-thickness: 1px;
+      text-underline-offset: 3px;
+    }
+
+    header {
+      margin-bottom: 22px;
+    }
+
+    .lead {
+      max-width: 860px;
+      margin-top: 10px;
+      font-size: 17px;
+    }
+
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 30px;
+      padding: 5px 10px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fff;
+      color: var(--muted);
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    .panel {
+      margin-top: 18px;
+      padding: 22px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .grid {
+      display: grid;
+      gap: 16px;
+    }
+
+    .grid.two {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .grid.three {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .card {
+      min-height: 100%;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-left: 7px solid var(--runtime);
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .card h3 {
+      color: var(--ink);
+    }
+
+    .card p {
+      font-size: 14px;
+    }
+
+    .card ul,
+    .panel ul,
+    .panel ol {
+      margin: 10px 0 0;
+      padding-left: 18px;
+    }
+
+    .card li,
+    .panel li {
+      margin: 5px 0;
+    }
+
+    .runtime {
+      border-left-color: var(--runtime);
+      background: #e7f1f2;
+    }
+
+    .decision {
+      border-left-color: var(--decision);
+      background: #eeecf7;
+    }
+
+    .implementation {
+      border-left-color: var(--implementation);
+      background: #e8f3ed;
+    }
+
+    .vehicle {
+      border-left-color: var(--vehicle);
+      background: #f5ece5;
+    }
+
+    .cli {
+      border-left-color: var(--cli);
+      background: #e9eef5;
+    }
+
+    .cleanup {
+      border-left-color: var(--cleanup);
+      background: #f5e8ea;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: 1fr 34px 1fr 34px 1fr 34px 1fr;
+      gap: 0;
+      align-items: stretch;
+    }
+
+    .flow .card {
+      min-height: 180px;
+    }
+
+    .arrow {
+      position: relative;
+      min-height: 180px;
+    }
+
+    .arrow::before {
+      content: "";
+      position: absolute;
+      top: 50%;
+      left: 7px;
+      right: 7px;
+      height: 2px;
+      background: #7d8b86;
+      transform: translateY(-50%);
+    }
+
+    .arrow::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      right: 3px;
+      width: 0;
+      height: 0;
+      border-top: 7px solid transparent;
+      border-bottom: 7px solid transparent;
+      border-left: 10px solid #7d8b86;
+      transform: translateY(-50%);
+    }
+
+    .table {
+      width: 100%;
+      border-collapse: collapse;
+      border-radius: 8px;
+      overflow: hidden;
+      font-size: 14px;
+    }
+
+    .table th,
+    .table td {
+      padding: 12px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    .table th {
+      background: #e9efeb;
+      color: var(--ink);
+      font-size: 13px;
+      text-transform: uppercase;
+    }
+
+    .table tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .status {
+      display: inline-flex;
+      padding: 3px 7px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .must {
+      border-color: #a84d56;
+      color: #7c2630;
+    }
+
+    .should {
+      border-color: #8266a6;
+      color: #4f3b72;
+    }
+
+    .could {
+      border-color: #517290;
+      color: #2f4f6b;
+    }
+
+    .done {
+      border-color: #3f7c52;
+      color: #245937;
+    }
+
+    .partial {
+      border-color: #9a6b2f;
+      color: #705027;
+    }
+
+    .next {
+      border-color: #2d6f78;
+      color: #245861;
+    }
+
+    .todo {
+      border-color: #78827d;
+      color: #4e5a55;
+    }
+
+    .note {
+      margin-top: 12px;
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--soft);
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .contract-source {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      margin: 0 0 14px;
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--soft);
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .checklist {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .check {
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfb;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .check strong {
+      color: var(--ink);
+    }
+
+    .directory-controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 12px 0 16px;
+    }
+
+    .directory-controls button {
+      min-height: 34px;
+      padding: 7px 11px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #fff;
+      color: var(--ink);
+      cursor: pointer;
+      font: inherit;
+      font-size: 14px;
+    }
+
+    .directory-controls button:hover {
+      border-color: #899890;
+      background: #f7faf8;
+    }
+
+    .directory-tree,
+    .directory-tree ul {
+      margin: 0;
+      padding-left: 0;
+      list-style: none;
+    }
+
+    .directory-tree ul {
+      margin-left: 18px;
+      padding-left: 18px;
+      border-left: 1px solid #d9e2dd;
+    }
+
+    .directory-tree details {
+      margin: 6px 0;
+    }
+
+    .directory-tree summary {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 34px;
+      padding: 5px 8px;
+      border: 1px solid transparent;
+      border-radius: 7px;
+      cursor: pointer;
+      color: var(--ink);
+      list-style: none;
+    }
+
+    .directory-tree summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .directory-tree summary:hover {
+      border-color: var(--line);
+      background: #f8faf8;
+    }
+
+    .directory-tree summary::before {
+      content: "+";
+      display: inline-grid;
+      place-items: center;
+      width: 22px;
+      height: 22px;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      background: #fff;
+      color: var(--muted);
+      font-weight: 800;
+      line-height: 1;
+      flex: 0 0 auto;
+    }
+
+    .directory-tree details[open] > summary::before {
+      content: "-";
+    }
+
+    .dir-name {
+      font-weight: 760;
+      color: var(--ink);
+    }
+
+    .tree-tag {
+      display: inline-flex;
+      align-items: center;
+      min-height: 22px;
+      padding: 2px 7px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .tree-tag.core {
+      border-color: #8db5bc;
+      color: #245c64;
+    }
+
+    .tree-tag.implementation {
+      border-color: #8dbb9e;
+      color: #27613f;
+    }
+
+    .tree-tag.runtime {
+      border-color: #afa5ce;
+      color: #4e4175;
+    }
+
+    .tree-tag.device {
+      border-color: #c69b7b;
+      color: #7a411d;
+    }
+
+    .tree-tag.tooling {
+      border-color: #9cabc0;
+      color: #3f5167;
+    }
+
+    .tree-tag.lab {
+      border-color: #c7929b;
+      color: #73313d;
+    }
+
+    .dir-annotation {
+      max-width: 850px;
+      margin: 0 0 8px 38px;
+      padding: 8px 10px;
+      border-left: 3px solid #d6e0db;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    body.hide-dir-annotations .dir-annotation {
+      display: none;
+    }
+
+    .dir-leaf {
+      margin: 6px 0;
+      padding: 6px 8px 6px 38px;
+      border-radius: 7px;
+    }
+
+    .dir-leaf .dir-name {
+      margin-right: 8px;
+    }
+
+    @media (max-width: 900px) {
+      .grid.two,
+      .grid.three,
+      .checklist,
+      .flow {
+        grid-template-columns: 1fr;
+      }
+
+      .arrow {
+        min-height: 30px;
+      }
+
+      .arrow::before {
+        top: 5px;
+        bottom: 5px;
+        left: 50%;
+        right: auto;
+        width: 2px;
+        height: auto;
+        transform: translateX(-50%);
+      }
+
+      .arrow::after {
+        top: auto;
+        bottom: 1px;
+        right: auto;
+        left: 50%;
+        border-left: 7px solid transparent;
+        border-right: 7px solid transparent;
+        border-top: 10px solid #7d8b86;
+        border-bottom: 0;
+        transform: translateX(-50%);
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Automation Engine Initial Commit Backlog</h1>
+      <p class="lead">
+        The target initial commit should establish the shape of the automation engine without pretending the driving logic is finished. The loop should be real, the stage interfaces should be stable, movement should remain gated, and concrete behavior should live behind loadable implementations.
+      </p>
+      <div class="meta">
+        <span class="pill">Goal: initial repo commit readiness</span>
+        <span class="pill">Default action: idle</span>
+        <span class="pill">Primary test target: Chase simulator</span>
+        <span class="pill">Physical target: PiRacer via DonkeyCar bundle</span>
+        <span class="pill">Verification: 48 tests plus physical idle deployment passing</span>
+        <span class="pill">Directory contract: <a href="directory-structure.contract.json">JSON</a></span>
+      </div>
+    </header>
+
+    <section class="panel">
+      <h2>North Star</h2>
+      <div class="flow">
+        <div class="card vehicle">
+          <h3>Vehicle Inputs</h3>
+          <p>Read generic sensor snapshots from a vehicle adapter. Today this is front camera only, but the shape should allow more sensors later.</p>
+          <ul>
+            <li><code>SensorSnapshot</code></li>
+            <li>timestamp and vehicle metadata</li>
+            <li>last action status when available</li>
+          </ul>
+        </div>
+        <div class="arrow" aria-hidden="true"></div>
+        <div class="card implementation">
+          <h3>Observe</h3>
+          <p>The observe stage calls perception implementations and returns current-cycle evidence. It does not own memory or movement.</p>
+          <ul>
+            <li><code>PerceptionMapper</code></li>
+            <li><code>Observation</code></li>
+            <li>uncertainty and limits</li>
+          </ul>
+        </div>
+        <div class="arrow" aria-hidden="true"></div>
+        <div class="card decision">
+          <h3>Remember</h3>
+          <p>Memory stores the useful state between cycles. For the first commit this can be latest-only plus small history.</p>
+          <ul>
+            <li>latest observation</li>
+            <li>recent signals</li>
+            <li>optional keyframes</li>
+          </ul>
+        </div>
+        <div class="arrow" aria-hidden="true"></div>
+        <div class="card runtime">
+          <h3>Act</h3>
+          <p>The action stage returns idle by default. Movement requires an explicit engine and runtime motion gate.</p>
+          <ul>
+            <li><code>VehicleAction</code></li>
+            <li><code>AutonomyControl</code></li>
+            <li>debug snapshot</li>
+          </ul>
+        </div>
+      </div>
+      <p class="note">
+        The simulator's staged loop is the architectural reference, but its privileged map access is not portable. The repo should copy the stage ordering and debug-cycle shape, not the simulator's direct world-state reads.
+      </p>
+    </section>
+
+    <section class="panel">
+      <h2>Iteration Boundaries</h2>
+      <div class="grid three">
+        <div class="card runtime">
+          <h3>In Scope</h3>
+          <ul>
+            <li>Generic staged controller cycle.</li>
+            <li>Perception as an implementation-backed observe stage.</li>
+            <li>Idle action as the only default movement behavior.</li>
+            <li>CLI-driven deployment, activation, status, and tests.</li>
+            <li>Directory boundaries that separate core, implementations, deploy, runtime, and lab artifacts.</li>
+          </ul>
+        </div>
+        <div class="card cleanup">
+          <h3>Out of Scope</h3>
+          <ul>
+            <li>Full autonomous navigation.</li>
+            <li>Semantic object recognition as a dependency.</li>
+            <li>Continuous SLAM or calibrated metric world modeling.</li>
+            <li>Simulator-source changes for the external controller.</li>
+            <li>Physical movement by default when automation starts.</li>
+          </ul>
+        </div>
+        <div class="card decision">
+          <h3>Design Principle</h3>
+          <ul>
+            <li>Every stage can no-op.</li>
+            <li>Every implementation can be swapped.</li>
+            <li>Every active runtime is inspectable through CLI.</li>
+            <li>Every generated artifact lives under <code>runtime/</code> or <code>lab/</code>.</li>
+            <li>Every deployment path is reproducible through <code>./cli/automa</code>.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Current Snapshot</h2>
+      <div class="grid three">
+        <div class="card implementation">
+          <h3>Completed</h3>
+          <ul>
+            <li>One strict <code>DecisionCycle</code> contract.</li>
+            <li>One idle engine and one vehicle sensor-read path.</li>
+            <li>No compatibility import paths or deprecated CLI aliases.</li>
+            <li>Hashed controller releases with manifests and activation metadata.</li>
+            <li>One shared runtime-cycle host for simulator and DonkeyCar.</li>
+            <li>Explicit, inspectable perception and decision activation.</li>
+            <li>CLI-owned startup operation and physical autonomy deployment.</li>
+            <li>Physical release verified with idle engine loaded in manual mode.</li>
+          </ul>
+        </div>
+        <div class="card runtime">
+          <h3>Active Gate</h3>
+          <p>All initial-commit gates are complete: framework shape, simulator execution, physical idle deployment, source inventory, and repository metadata are verified.</p>
+        </div>
+        <div class="card cleanup">
+          <h3>Commit State</h3>
+          <ul>
+            <li>The source-only inventory is reviewed and staged.</li>
+            <li>The initial commit records the stable framework shape and explicit remaining feature backlog.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Backlog</h2>
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Priority</th>
+            <th>State</th>
+            <th>Work Item</th>
+            <th>Sub-Tasks</th>
+            <th>Acceptance Signal</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="status must">Must</span></td>
+            <td><span class="status done">Done</span></td>
+            <td>Make the directory contract real.</td>
+            <td>
+              Create the mirrored <code>implementations/</code> tree, move concrete vehicle adapters, perception implementations, runtime hosts, and operation workflows out of <code>autonomy/</code>, and update CLI/runtime loading paths. Remove migrated paths rather than retaining compatibility shims.
+            </td>
+            <td><code>autonomy/</code> no longer owns concrete implementations, the JSON contract reflects the source tree, and CLI tests still pass.</td>
+          </tr>
+          <tr>
+            <td><span class="status must">Must</span></td>
+            <td><span class="status done">Done</span></td>
+            <td>Define the generic decision cycle in Python.</td>
+            <td>
+              Add <code>DecisionCycle</code>, <code>DecisionStages</code>, and <code>DecisionEngine</code> primitives under <code>autonomy/decision</code>. Use slots for frame context, observation, memory, patterns, projections, action, and snapshot. Allow missing stages to return <code>None</code>.
+            </td>
+            <td>Unit tests can run a cycle with only observe configured, only action configured, and no stages configured.</td>
+          </tr>
+          <tr>
+            <td><span class="status must">Must</span></td>
+            <td><span class="status done">Done</span></td>
+            <td>Clarify perception versus observation.</td>
+            <td>
+              Keep <code>PerceptionMapper</code> as raw sensor to evidence. Add an <code>Observation</code> shape consumed by decision memory. Implement the observe stage as an adapter from <code>SensorSnapshot</code> to <code>Observation</code> using the active mapper.
+            </td>
+            <td>Latest simulator perception can be represented as an observation without changing perception implementation code.</td>
+          </tr>
+          <tr>
+            <td><span class="status must">Must</span></td>
+            <td><span class="status done">Done</span></td>
+            <td>Unify sim and Pi runtime around the same engine step.</td>
+            <td>
+              Extract one shared runtime-cycle host around <code>DecisionCycle</code> and <code>AutonomyManager</code>. Make the simulator worker and Donkey part call that host while keeping sensor capture and actuator translation inside their adapters. Pi perception may no-op initially, but the cycle result shape must be the same.
+            </td>
+            <td><code>vehicles automation run</code> and the Donkey runtime both produce comparable cycle snapshots.</td>
+          </tr>
+          <tr>
+            <td><span class="status must">Must</span></td>
+            <td><span class="status done">Done</span></td>
+            <td>Make idle the explicit default engine.</td>
+            <td>
+              Preserve no-movement behavior as an engine, not as an accident of missing logic. Include reason and confidence in the action output.
+            </td>
+            <td>Starting automation takes control only when requested and emits <code>action=idle</code> until a non-idle engine is activated.</td>
+          </tr>
+          <tr>
+            <td><span class="status must">Must</span></td>
+            <td><span class="status done">Done</span></td>
+            <td>Retire the overlapping decision smoke loop.</td>
+            <td>
+              Remove the old smoke controller and its script entrypoint. Keep bounded capture/action checks under operations and continuous autonomy on <code>DecisionCycle</code>.
+            </td>
+            <td>There is one continuous controller-cycle implementation. Startup checks remain bounded operations.</td>
+          </tr>
+          <tr>
+            <td><span class="status must">Must</span></td>
+            <td><span class="status done">Done</span></td>
+            <td>Keep concrete implementations outside core autonomy.</td>
+            <td>
+              Continue moving algorithm-specific code into <code>implementations/</code>. Core autonomy defines interfaces, data structures, stage contracts, and runners, with no compatibility import paths back to migrated locations.
+            </td>
+            <td><code>autonomy/</code> does not import from <code>implementations/</code> directly.</td>
+          </tr>
+          <tr>
+            <td><span class="status must">Must</span></td>
+            <td><span class="status done">Done</span></td>
+            <td>Remove compatibility paths and enforce strict contracts.</td>
+            <td>
+              Remove deprecated CLI aliases, migrated import paths, duplicate idle and decision-loop implementations, discarded mapper options, alternate action-output shapes, duplicate transport fields, and autonomy mode aliases.
+            </td>
+            <td>Strictness tests reject removed flags, undeclared mapper options, engines without <code>reset()</code>, dictionary control outputs, and the old frame-capture API.</td>
+          </tr>
+          <tr>
+            <td><span class="status must">Must</span></td>
+            <td><span class="status done">Done</span></td>
+            <td>Correct generated and source boundaries before Git initialization.</td>
+            <td>
+              Update stale deploy paths in <code>.gitignore</code>, classify the generated DonkeyCar checkout correctly in the directory contract and tree, and ensure runtime, lab, bytecode, and generated vendor files stay outside the initial commit while manifests and patches remain source.
+            </td>
+            <td>An initial source inventory contains no generated runtime, lab, bytecode, or vendor-checkout files.</td>
+          </tr>
+          <tr>
+            <td><span class="status must">Must</span></td>
+            <td><span class="status done">Done</span></td>
+            <td>Remove CLI/script redundancy.</td>
+            <td>
+              Remove scripts that duplicate active vehicles, deploy, perception activation, automation lifecycle, or the continuous controller cycle. Keep internal deploy helpers and distinct inspection or bounded-operation tools until their final disposition is decided.
+            </td>
+            <td>README directs users to CLI for active vehicles, deploy, perception activation, automation run, status, stream, stop, and restart, with no parallel script implementing those flows.</td>
+          </tr>
+          <tr>
+            <td><span class="status must">Must</span></td>
+            <td><span class="status done">Done</span></td>
+            <td>Define decision implementation activation and inspection.</td>
+            <td>
+              Keep the stable idle default in <code>autonomy/runtime</code>. Define the manifest and schema contract for concrete engines under <code>implementations/decision</code>, then make simulator and Pi runtimes load the selected engine without editing runtime source.
+            </td>
+            <td>CLI can report the active decision engine and its stage schema.</td>
+          </tr>
+          <tr>
+            <td><span class="status should">Should</span></td>
+            <td><span class="status done">Done</span></td>
+            <td>Package controller bundles with a manifest and hash.</td>
+            <td>
+              Package core and implementation files into a compressed release with file hashes, tree hash, archive hash, source roots, and release metadata. Ship implementations together and select enabled behavior through activation configuration. Keep generated releases under <code>runtime/vehicles/&lt;id&gt;/bundle</code>.
+            </td>
+            <td><code>vehicles update perception --json</code> and <code>vehicles info perception</code> expose the release hash, manifest, enabled plugin chain, and activation path.</td>
+          </tr>
+          <tr>
+            <td><span class="status must">Must</span></td>
+            <td><span class="status done">Done</span></td>
+            <td>Deploy autonomy bundles to physical targets.</td>
+            <td>
+              Keep <code>vehicles update core</code> scoped to DonkeyCar and app resources. Add a separate CLI deployment path that transfers a generated autonomy controller release and activation metadata to the Pi, then reloads or restarts the autonomy host explicitly.
+            </td>
+            <td>The Pi can load the same release hash and engine/perception activation selected locally without manually copying source files.</td>
+          </tr>
+          <tr>
+            <td><span class="status must">Must</span></td>
+            <td><span class="status done">Done</span></td>
+            <td>Resolve transitional scripts before the initial commit.</td>
+            <td>
+              Promote startup action checking to an <code>automa</code> operation, retain the restart script only as an internal CLI helper, and move or retire experiment scripts whose useful logic already exists in implementations.
+            </td>
+            <td><code>scripts/</code> contains only internal helpers or intentionally retained inspection tools, with no ambiguous user workflow.</td>
+          </tr>
+          <tr>
+            <td><span class="status should">Should</span></td>
+            <td><span class="status done">Done</span></td>
+            <td>Strengthen CLI test harness around common workflows.</td>
+            <td>
+              Cover simulator ensure, vehicle discovery, perception update, implementation enable and disable, automation run, automation status, perception stream availability, and no-log-by-default behavior.
+            </td>
+            <td><code>python3 cli/run_tests.py</code> passes without a live simulator, and live simulator tests provide clear skip or failure reasons.</td>
+          </tr>
+          <tr>
+            <td><span class="status should">Should</span></td>
+            <td><span class="status done">Done</span></td>
+            <td>Document directory ownership.</td>
+            <td>
+              Update README and docs to define <code>autonomy/</code>, <code>implementations/</code>, <code>deploy/</code>, <code>runtime/</code>, <code>lab/</code>, <code>frontend/</code>, <code>scripts/</code>, and <code>cli/</code>.
+            </td>
+            <td>A first-time reader can tell where to add a new perception algorithm, decision engine, vehicle adapter, or deploy helper.</td>
+          </tr>
+          <tr>
+            <td><span class="status must">Must</span></td>
+            <td><span class="status done">Done</span></td>
+            <td>Complete live readiness validation.</td>
+            <td>
+              The opt-in live simulator harness passes with the Chase frontend connected. The physical bundle deploy also passes: the Pi verifies the archive, loads the selected idle engine, remains in manual mode, and exposes the front-camera sensor without a movement command.
+            </td>
+            <td>Offline tests pass, live simulator control is verified, and the Pi reports the expected release and idle engine after deployment.</td>
+          </tr>
+          <tr>
+            <td><span class="status could">Could</span></td>
+            <td><span class="status todo">Todo</span></td>
+            <td>Add HTML cycle trace artifacts.</td>
+            <td>
+              Generate a compact debug page from latest cycle snapshots so perception, observation, memory, and action can be visually inspected.
+            </td>
+            <td>One command can produce an inspectable cycle report from simulator or recorded frames.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="panel">
+      <h2>Suggested Work Order</h2>
+      <ol>
+        <li><strong>Fix source inventory boundaries.</strong> Correct <code>.gitignore</code> and the directory contract before creating Git history.</li>
+        <li><strong>Unify runtime-cycle execution.</strong> Route both simulator automation and the Donkey part through one shared <code>DecisionCycle</code> host.</li>
+        <li><strong>Define decision activation.</strong> Add one manifest/schema shape and CLI inspection path for the selected engine without adding navigation behavior.</li>
+        <li><strong>Deploy autonomy separately from device core.</strong> Transfer a hashed controller release and activation metadata to the Pi through <code>automa</code>.</li>
+        <li><strong>Resolve transitional scripts.</strong> Promote startup checking to CLI and move or retire extracted experiments.</li>
+        <li><strong>Run live readiness checks.</strong> Exercise the live simulator harness and an idle-only physical runtime deployment.</li>
+        <li><strong>Create the initial commit.</strong> Complete: the reviewed source inventory, repository metadata, and physical validation establish the stable framework baseline.</li>
+      </ol>
+    </section>
+
+    <section class="panel">
+      <h2>Directory Target</h2>
+      <div class="contract-source">
+        <strong>Canonical contract:</strong>
+        <a href="directory-structure.contract.json"><code>docs/directory-structure.contract.json</code></a>
+        <span>This interactive tree is the human-readable view of that directory-only contract.</span>
+      </div>
+      <div class="directory-controls" aria-label="Directory tree controls">
+        <button type="button" data-directory-action="expand">Open all directories</button>
+        <button type="button" data-directory-action="collapse">Close all directories</button>
+        <button type="button" data-directory-action="annotations">Hide annotations</button>
+      </div>
+      <ul class="directory-tree">
+        <li>
+          <details open>
+            <summary><span class="dir-name">auto-driving/</span><span class="tree-tag core">workspace root</span></summary>
+            <div class="dir-annotation">Local source of truth for automation engine code, concrete implementations, deployment bundles, generated runs, and CLI access.</div>
+            <ul>
+              <li>
+                <details open>
+                  <summary><span class="dir-name">autonomy/</span><span class="tree-tag core">stable kernel</span></summary>
+                  <div class="dir-annotation">Stable contracts, stage shapes, reusable primitives, and generic runners. Concrete vehicles, algorithms, and operation recipes belong in <code>implementations/</code>.</div>
+                  <ul>
+                    <li>
+                      <details>
+                        <summary><span class="dir-name">vehicle/</span><span class="tree-tag core">black-box car interface</span></summary>
+                        <div class="dir-annotation">Vehicle-agnostic interface for sensor reads, pulses, actions, capabilities, and adapter boundaries.</div>
+                      </details>
+                    </li>
+                    <li>
+                      <details>
+                        <summary><span class="dir-name">perception/</span><span class="tree-tag core">perception contracts</span></summary>
+                        <div class="dir-annotation">Stable perception interface and shared primitives. Active algorithms live in <code>implementations/perception/</code>.</div>
+                        <ul>
+                          <li class="dir-leaf"><span class="dir-name">core/</span><span class="tree-tag core">frame primitives</span><div class="dir-annotation">Frame observations and low-level image comparisons with no scene-specific policy.</div></li>
+                          <li class="dir-leaf"><span class="dir-name">features/</span><span class="tree-tag core">feature primitives</span><div class="dir-annotation">Reusable feature tracking primitives.</div></li>
+                          <li class="dir-leaf"><span class="dir-name">motion/</span><span class="tree-tag core">motion primitives</span><div class="dir-annotation">Reusable relative-motion and motion-group primitives.</div></li>
+                          <li class="dir-leaf"><span class="dir-name">traversability/</span><span class="tree-tag core">floor primitives</span><div class="dir-annotation">Reusable floor and traversability primitives.</div></li>
+                          <li class="dir-leaf"><span class="dir-name">landmarks/</span><span class="tree-tag core">landmark primitives</span><div class="dir-annotation">Reusable landmark and distance primitives.</div></li>
+                          <li class="dir-leaf"><span class="dir-name">mappers/</span><span class="tree-tag core">mapper entrypoints</span><div class="dir-annotation">Mapper loaders and stable mapper entry points that assemble configured implementations.</div></li>
+                        </ul>
+                      </details>
+                    </li>
+                    <li>
+                      <details open>
+                        <summary><span class="dir-name">decision/</span><span class="tree-tag core">staged controller cycle</span></summary>
+                        <div class="dir-annotation">Generic observe, memory, pattern, projection, action, and snapshot cycle. Stages should be optional so the engine can run observe-only or idle-only.</div>
+                      </details>
+                    </li>
+                    <li>
+                      <details>
+                        <summary><span class="dir-name">runtime/</span><span class="tree-tag runtime">engine host</span></summary>
+                        <div class="dir-annotation">Generic runtime contracts for loading engines, stepping them, applying mode gates, reporting status, and hosting controller loops.</div>
+                      </details>
+                    </li>
+                  </ul>
+                </details>
+              </li>
+
+              <li>
+                <details open>
+                  <summary><span class="dir-name">implementations/</span><span class="tree-tag implementation">concrete implementations</span></summary>
+                  <div class="dir-annotation">Concrete code that satisfies <code>autonomy/</code> contracts. This tree mirrors <code>autonomy/</code> so inspection and promotion paths stay obvious.</div>
+                  <ul>
+                    <li>
+                      <details>
+                        <summary><span class="dir-name">vehicle/</span><span class="tree-tag implementation">vehicle adapters</span></summary>
+                        <div class="dir-annotation">Concrete vehicle adapters implementing <code>autonomy/vehicle</code> contracts.</div>
+                        <ul>
+                          <li class="dir-leaf"><span class="dir-name">picar/</span><span class="tree-tag device">physical vehicle</span><div class="dir-annotation">PiRacer-specific HTTP, DonkeyCar, and hardware assumptions.</div></li>
+                          <li class="dir-leaf"><span class="dir-name">chase_sim/</span><span class="tree-tag runtime">sim adapter</span><div class="dir-annotation">Metrics UI / Chase simulator adapter exposing only vehicle-like I/O to autonomy code.</div></li>
+                        </ul>
+                      </details>
+                    </li>
+                    <li>
+                      <details>
+                        <summary><span class="dir-name">perception/</span><span class="tree-tag implementation">sensor-to-evidence</span></summary>
+                        <div class="dir-annotation">Concrete perception mappers and plugin-style sensor-to-evidence algorithms. Current plugins are file-based within this directory.</div>
+                      </details>
+                    </li>
+                    <li>
+                      <details>
+                        <summary><span class="dir-name">decision/</span><span class="tree-tag implementation">stage implementations</span></summary>
+                        <div class="dir-annotation">Concrete non-default decision engines and stage implementations. The stable idle default belongs to <code>autonomy/runtime/</code>.</div>
+                      </details>
+                    </li>
+                    <li>
+                      <details>
+                        <summary><span class="dir-name">runtime/</span><span class="tree-tag implementation">runtime hosts</span></summary>
+                        <div class="dir-annotation">Concrete runtime hosts for environments that need special integration code.</div>
+                        <ul>
+                          <li class="dir-leaf"><span class="dir-name">donkeycar/</span><span class="tree-tag device">Donkey host</span><div class="dir-annotation">DonkeyCar part and drive-loop integration.</div></li>
+                        </ul>
+                      </details>
+                    </li>
+                    <li>
+                      <details>
+                        <summary><span class="dir-name">operations/</span><span class="tree-tag implementation">bounded workflows</span></summary>
+                        <div class="dir-annotation">Concrete operation plans and workflows.</div>
+                        <ul>
+                          <li class="dir-leaf"><span class="dir-name">startup_action_check/</span><span class="tree-tag implementation">command validation</span><div class="dir-annotation">Action-and-capture checks to confirm commands register.</div></li>
+                        </ul>
+                      </details>
+                    </li>
+                  </ul>
+                </details>
+              </li>
+
+              <li>
+                <details open>
+                  <summary><span class="dir-name">deploy/</span><span class="tree-tag device">remote targets</span></summary>
+                  <div class="dir-annotation">Source-controlled deploy bundles for physical or remote runtimes. Target-specific deployment material is nested under <code>targets/</code>, which is different from generated runtime bundles under <code>runtime/</code>.</div>
+                  <ul>
+                    <li>
+                      <details open>
+                        <summary><span class="dir-name">targets/</span><span class="tree-tag device">deployable targets</span></summary>
+                        <div class="dir-annotation">One subdirectory per remote target family. This keeps future physical or remote integrations parallel to the current DonkeyCar target.</div>
+                        <ul>
+                          <li>
+                            <details>
+                              <summary><span class="dir-name">donkeycar/</span><span class="tree-tag device">PiRacer target</span></summary>
+                              <div class="dir-annotation">The physical PiRacer deployment bundle, including app resources, vendor source material, and local patches.</div>
+                              <ul>
+                                <li class="dir-leaf"><span class="dir-name">app/</span><span class="tree-tag device">remote app root</span><div class="dir-annotation">Files synced to the car's app/runtime directory.</div></li>
+                                <li class="dir-leaf"><span class="dir-name">vendor/</span><span class="tree-tag runtime">generated checkout</span><div class="dir-annotation">Generated pinned DonkeyCar checkout recreated from the source-controlled vendor manifest and patches; excluded from commits.</div></li>
+                                <li class="dir-leaf"><span class="dir-name">patches/</span><span class="tree-tag device">target patches</span><div class="dir-annotation">Local changes applied to vendor or target code during deploy preparation.</div></li>
+                              </ul>
+                            </details>
+                          </li>
+                        </ul>
+                      </details>
+                    </li>
+                  </ul>
+                </details>
+              </li>
+
+              <li>
+                <details open>
+                  <summary><span class="dir-name">cli/</span><span class="tree-tag tooling">user access point</span></summary>
+                  <div class="dir-annotation">The primary command surface. Common user workflows should be here instead of duplicated scripts.</div>
+                  <ul>
+                    <li class="dir-leaf"><span class="dir-name">commands/</span><span class="tree-tag tooling">command groups</span><div class="dir-annotation">Vehicle, simulator, deploy, implementation, runtime, and diagnostic commands.</div></li>
+                    <li class="dir-leaf"><span class="dir-name">services/</span><span class="tree-tag tooling">command helpers</span><div class="dir-annotation">Shared command business logic that can be tested without shelling through the CLI entrypoint.</div></li>
+                    <li class="dir-leaf"><span class="dir-name">tests/</span><span class="tree-tag tooling">CLI harness</span><div class="dir-annotation">Common scenario tests, with offline defaults and explicit live-simulator coverage.</div></li>
+                  </ul>
+                </details>
+              </li>
+
+              <li>
+                <details open>
+                  <summary><span class="dir-name">runtime/</span><span class="tree-tag runtime">generated local state</span></summary>
+                  <div class="dir-annotation">Generated and mutable local state. This should be disposable and reproducible from source plus CLI commands.</div>
+                  <ul>
+                    <li>
+                      <details>
+                        <summary><span class="dir-name">vehicles/</span><span class="tree-tag runtime">per-vehicle state</span></summary>
+                        <div class="dir-annotation">Local runtime directories keyed by discovered or configured vehicle id.</div>
+                        <ul>
+                          <li>
+                            <details>
+                              <summary><span class="dir-name">&lt;vehicle-id&gt;/</span><span class="tree-tag runtime">runtime instance</span></summary>
+                              <div class="dir-annotation">One local runtime area for a simulator or physical vehicle.</div>
+                              <ul>
+                                <li>
+                                  <details>
+                                    <summary><span class="dir-name">bundle/</span><span class="tree-tag runtime">staged controller</span></summary>
+                                    <div class="dir-annotation">Generated controller bundle with extracted code, versioned releases, active configuration, and worker state.</div>
+                                    <ul>
+                                      <li class="dir-leaf"><span class="dir-name">autonomy/</span><span class="tree-tag runtime">extracted core</span></li>
+                                      <li class="dir-leaf"><span class="dir-name">implementations/</span><span class="tree-tag runtime">extracted implementations</span></li>
+                                      <li class="dir-leaf"><span class="dir-name">releases/</span><span class="tree-tag runtime">archives and manifests</span></li>
+                                      <li class="dir-leaf"><span class="dir-name">runtime/</span><span class="tree-tag runtime">activations and worker state</span></li>
+                                    </ul>
+                                  </details>
+                                </li>
+                                <li class="dir-leaf"><span class="dir-name">deploy/</span><span class="tree-tag runtime">target staging</span><div class="dir-annotation">Target-specific activation metadata staged for physical deployment.</div></li>
+                              </ul>
+                            </details>
+                          </li>
+                        </ul>
+                      </details>
+                    </li>
+                    <li class="dir-leaf"><span class="dir-name">tmp/</span><span class="tree-tag runtime">scratch</span><div class="dir-annotation">Short-lived temporary output created by CLI or local processing.</div></li>
+                  </ul>
+                </details>
+              </li>
+
+              <li>
+                <details>
+                  <summary><span class="dir-name">lab/</span><span class="tree-tag lab">experiments and runs</span></summary>
+                  <div class="dir-annotation">Unstable self-contained experimentation space. Anything here should be allowed to churn without changing the core architecture.</div>
+                  <ul>
+                    <li class="dir-leaf"><span class="dir-name">experiments/</span><span class="tree-tag lab">frozen experiments</span><div class="dir-annotation">Experiment code, configs, notes, and artifacts kept together for review or later extraction.</div></li>
+                    <li class="dir-leaf"><span class="dir-name">runs/</span><span class="tree-tag lab">generated runs</span><div class="dir-annotation">Captured images, reports, overlays, and one-off generated analysis output.</div></li>
+                  </ul>
+                </details>
+              </li>
+
+              <li>
+                <details>
+                  <summary><span class="dir-name">frontend/</span><span class="tree-tag device">local UI surfaces</span></summary>
+                  <div class="dir-annotation">Local UI source that belongs to this project. Simulator UI stays in Metrics UI, so this should remain specific to local vehicle-facing surfaces.</div>
+                  <ul>
+                    <li class="dir-leaf"><span class="dir-name">donkeycar/</span><span class="tree-tag device">PiCar UI</span><div class="dir-annotation">Frontend files specific to the DonkeyCar/PiRacer control surface.</div></li>
+                  </ul>
+                </details>
+              </li>
+
+              <li>
+                <details>
+                  <summary><span class="dir-name">docs/</span><span class="tree-tag tooling">architecture notes</span></summary>
+                  <div class="dir-annotation">Human-readable architecture docs, diagrams, backlog summaries, and decision notes.</div>
+                </details>
+              </li>
+
+              <li>
+                <details>
+                  <summary><span class="dir-name">scripts/</span><span class="tree-tag tooling">transitional helpers</span></summary>
+                  <div class="dir-annotation">Low-level helpers that are not user workflows. Anything overlapping with <code>./cli/automa</code> should be removed or folded into CLI services.</div>
+                  <ul>
+                    <li class="dir-leaf"><span class="dir-name">calibration/</span><span class="tree-tag tooling">calibration tools</span><div class="dir-annotation">Calibration and measurement scripts not yet promoted into operation implementations.</div></li>
+                    <li class="dir-leaf"><span class="dir-name">decision/</span><span class="tree-tag tooling">decision tools</span><div class="dir-annotation">Decision inspection helpers not yet promoted into CLI.</div></li>
+                    <li class="dir-leaf"><span class="dir-name">perception/</span><span class="tree-tag tooling">perception tools</span><div class="dir-annotation">Perception inspection helpers not yet promoted into CLI.</div></li>
+                    <li class="dir-leaf"><span class="dir-name">deploy/</span><span class="tree-tag tooling">remote helpers</span><div class="dir-annotation">Remote helper scripts called by CLI deploy flows.</div></li>
+                  </ul>
+                </details>
+              </li>
+            </ul>
+          </details>
+        </li>
+      </ul>
+      <p class="note">
+        The main distinction is stable kernel versus concrete implementation versus generated state. Source code belongs in <code>autonomy/</code>, <code>implementations/</code>, <code>deploy/</code>, <code>frontend/</code>, and <code>cli/</code>. Generated captures, bundles, and reports belong in <code>runtime/</code> or <code>lab/</code>.
+      </p>
+    </section>
+
+    <section class="panel">
+      <h2>Initial Commit Readiness Checklist</h2>
+      <div class="checklist">
+        <div class="check"><span class="status done">Done</span> <strong>Controller shape:</strong> simulator and DonkeyCar use the same shared staged-cycle host.</div>
+        <div class="check"><span class="status done">Done</span> <strong>Movement safety:</strong> automation defaults to explicit idle and movement requires a deliberate engine plus mode gate.</div>
+        <div class="check"><span class="status done">Done</span> <strong>Implementation activation:</strong> perception and decision activation are inspectable, packaged, and transferable as one versioned release.</div>
+        <div class="check"><span class="status done">Done</span> <strong>Directory boundary:</strong> environment-specific code is isolated under <code>implementations/</code> or deploy targets.</div>
+        <div class="check"><span class="status done">Done</span> <strong>CLI authority:</strong> runtime, deployment, activation, and startup operation workflows use <code>automa</code>.</div>
+        <div class="check"><span class="status done">Done</span> <strong>Test harness:</strong> all 48 offline and live-simulator tests pass, and the Pi passes the idle/manual deployment smoke check.</div>
+        <div class="check"><span class="status done">Done</span> <strong>Docs and contract:</strong> ownership and generated vendor boundaries are synchronized across the contract and planning tree.</div>
+        <div class="check"><span class="status done">Done</span> <strong>Commit hygiene:</strong> runtime, lab, bytecode, and generated vendor paths are excluded while manifests and patches remain source.</div>
+        <div class="check"><span class="status done">Done</span> <strong>Commit creation:</strong> the reviewed source inventory and configured author identity form the initial <code>main</code> commit.</div>
+      </div>
+    </section>
+  </main>
+  <script>
+    const directoryAnnotationButton = document.querySelector('[data-directory-action="annotations"]');
+
+    function directoryDetails() {
+      return Array.from(document.querySelectorAll(".directory-tree details"));
+    }
+
+    document.querySelector('[data-directory-action="expand"]').addEventListener("click", () => {
+      directoryDetails().forEach((node) => {
+        node.open = true;
+      });
+    });
+
+    document.querySelector('[data-directory-action="collapse"]').addEventListener("click", () => {
+      directoryDetails().forEach((node, index) => {
+        node.open = index === 0;
+      });
+    });
+
+    directoryAnnotationButton.addEventListener("click", () => {
+      document.body.classList.toggle("hide-dir-annotations");
+      directoryAnnotationButton.textContent = document.body.classList.contains("hide-dir-annotations")
+        ? "Show annotations"
+        : "Hide annotations";
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+{
+  "schema": "automa_donkeycar_vendor_v0",
+  "source": {
+    "repo_url": "https://github.com/waveshareteam/donkeycar",
+    "revision": "96e008e939fa8d71213a9f4929279a031a91993f",
+    "branch": "main"
+  },
+  "checkout": {
+    "path": "deploy/targets/donkeycar/vendor/donkeycar"
+  },
+  "patches": [
+    {
+      "path": "deploy/targets/donkeycar/patches/waveshare-donkeycar-local.patch",
+      "description": "Local DonkeyCar web/camera/controller changes for Automa Pi integration."
+    }
+  ]
+}

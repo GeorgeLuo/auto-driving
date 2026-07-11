@@ -1,0 +1,20 @@
+.DS_Store
+__pycache__/
+*.pyc
+*.bak.*
+/lab/
+/runtime/
+frontend/**/.runtime/
+
+# Generated third-party checkout prepared by the CLI from
+# deploy/targets/donkeycar/donkeycar-vendor.json and patches.
+deploy/targets/donkeycar/vendor/donkeycar/
+
+# Runtime artifacts copied from / generated on the Pi.
+deploy/targets/donkeycar/app/data/
+deploy/targets/donkeycar/app/logs/
+deploy/targets/donkeycar/app/*.pid
+
+# Local Python environments.
+.venv/
+env/

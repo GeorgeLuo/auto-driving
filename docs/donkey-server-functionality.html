@@ -1,0 +1,618 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Donkey Server Functionality</title>
+  <style>
+    :root {
+      --ink: #16211f;
+      --muted: #5d6a66;
+      --line: #c8d3cd;
+      --bg: #f6f7f4;
+      --panel: #ffffff;
+      --green: #2f8a62;
+      --green-soft: #e5f2ea;
+      --amber: #b7791f;
+      --amber-soft: #fff2d6;
+      --red: #b64b3a;
+      --red-soft: #fbe4df;
+      --teal: #277b8f;
+      --teal-soft: #e0f1f4;
+      --violet: #65548f;
+      --violet-soft: #ece8f6;
+      --shadow: 0 14px 35px rgba(18, 33, 31, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.45;
+    }
+
+    main {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 34px 0 56px;
+    }
+
+    header {
+      margin-bottom: 24px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: clamp(30px, 5vw, 54px);
+      letter-spacing: 0;
+      line-height: 1.02;
+    }
+
+    h2 {
+      margin: 0 0 14px;
+      font-size: 22px;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      margin: 0 0 8px;
+      font-size: 15px;
+      letter-spacing: 0;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    p {
+      margin: 0;
+      color: var(--muted);
+    }
+
+    code {
+      padding: 2px 5px;
+      border-radius: 5px;
+      background: #edf1ee;
+      color: #1f3933;
+      font-size: 0.94em;
+    }
+
+    .lead {
+      max-width: 850px;
+      font-size: 17px;
+    }
+
+    .source-line {
+      margin-top: 12px;
+      font-size: 14px;
+    }
+
+    .source-line code {
+      background: transparent;
+      padding: 0;
+      color: var(--ink);
+    }
+
+    .diagram-shell,
+    .section,
+    .callout {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    .diagram-shell {
+      padding: 22px;
+      margin: 20px 0;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: 1.1fr 52px 1fr 52px 1.1fr 52px 1fr;
+      align-items: stretch;
+      gap: 0;
+    }
+
+    .stack {
+      display: grid;
+      gap: 12px;
+      align-content: start;
+    }
+
+    .node {
+      min-height: 108px;
+      border: 1px solid var(--line);
+      border-left: 7px solid var(--green);
+      border-radius: 8px;
+      padding: 14px 14px 13px;
+      background: #fff;
+    }
+
+    .node h3 {
+      color: var(--ink);
+    }
+
+    .node ul,
+    .section ul,
+    .callout ul {
+      margin: 8px 0 0;
+      padding-left: 18px;
+      color: var(--muted);
+    }
+
+    .node li,
+    .section li,
+    .callout li {
+      margin: 5px 0;
+    }
+
+    .node.client {
+      border-left-color: var(--teal);
+      background: var(--teal-soft);
+    }
+
+    .node.server {
+      border-left-color: var(--green);
+      background: var(--green-soft);
+    }
+
+    .node.loop {
+      border-left-color: var(--amber);
+      background: var(--amber-soft);
+    }
+
+    .node.output {
+      border-left-color: var(--violet);
+      background: var(--violet-soft);
+    }
+
+    .node.warning {
+      border-left-color: var(--red);
+      background: var(--red-soft);
+    }
+
+    .arrow {
+      position: relative;
+      min-height: 108px;
+    }
+
+    .arrow::before {
+      content: "";
+      position: absolute;
+      top: 50%;
+      left: 8px;
+      right: 8px;
+      height: 2px;
+      background: #7a8982;
+      transform: translateY(-50%);
+    }
+
+    .arrow::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      right: 4px;
+      width: 0;
+      height: 0;
+      border-top: 7px solid transparent;
+      border-bottom: 7px solid transparent;
+      border-left: 10px solid #7a8982;
+      transform: translateY(-50%);
+    }
+
+    .support-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      margin-top: 14px;
+    }
+
+    .support-grid .node {
+      min-height: 0;
+    }
+
+    .section {
+      padding: 22px;
+      margin-top: 18px;
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+    }
+
+    .endpoint-table {
+      width: 100%;
+      border-collapse: collapse;
+      overflow: hidden;
+      border-radius: 8px;
+      font-size: 14px;
+    }
+
+    .endpoint-table th,
+    .endpoint-table td {
+      padding: 12px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+      text-align: left;
+    }
+
+    .endpoint-table th {
+      color: var(--ink);
+      background: #edf1ee;
+      font-weight: 700;
+    }
+
+    .endpoint-table tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .sequence {
+      display: grid;
+      gap: 10px;
+      counter-reset: step;
+    }
+
+    .step {
+      display: grid;
+      grid-template-columns: 44px 1fr;
+      gap: 12px;
+      align-items: start;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      background: #fbfcfa;
+    }
+
+    .step::before {
+      counter-increment: step;
+      content: counter(step);
+      display: grid;
+      place-items: center;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: var(--ink);
+      color: #fff;
+      font-weight: 800;
+      font-size: 14px;
+    }
+
+    .callout {
+      padding: 16px;
+      margin-top: 16px;
+      border-left: 7px solid var(--red);
+      background: var(--red-soft);
+    }
+
+    .callout strong {
+      color: var(--ink);
+    }
+
+    .mini-code {
+      margin-top: 12px;
+      padding: 13px;
+      background: #16211f;
+      color: #dff4e9;
+      border-radius: 8px;
+      overflow-x: auto;
+      font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 14px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .dot {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      background: var(--green);
+    }
+
+    .dot.teal { background: var(--teal); }
+    .dot.amber { background: var(--amber); }
+    .dot.violet { background: var(--violet); }
+    .dot.red { background: var(--red); }
+
+    @media (max-width: 980px) {
+      .flow,
+      .two-col,
+      .support-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .arrow {
+        min-height: 32px;
+      }
+
+      .arrow::before {
+        top: 8px;
+        bottom: 8px;
+        left: 50%;
+        right: auto;
+        width: 2px;
+        height: auto;
+        transform: translateX(-50%);
+      }
+
+      .arrow::after {
+        top: auto;
+        bottom: 2px;
+        left: 50%;
+        right: auto;
+        border-left: 7px solid transparent;
+        border-right: 7px solid transparent;
+        border-top: 10px solid #7a8982;
+        border-bottom: 0;
+        transform: translateX(-50%);
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Donkey Server Functionality</h1>
+      <p class="lead">
+        This diagram explains the PiRacer DonkeyCar server we have been using on
+        <code>piracer.local:8887</code>. The server is a Tornado web controller
+        that stores the latest requested steering, throttle, mode, and recording
+        state; the Donkey vehicle loop reads that state at 20 Hz and forwards it
+        to the drivetrain.
+      </p>
+      <p class="source-line">
+        Source points: <code>deploy/targets/donkeycar/vendor/donkeycar/donkeycar/parts/web_controller/web.py</code>,
+        <code>deploy/targets/donkeycar/app/manage.py</code>, <code>deploy/targets/donkeycar/app/config.py</code>
+      </p>
+    </header>
+
+    <section class="diagram-shell" aria-labelledby="runtime-flow-title">
+      <h2 id="runtime-flow-title">Runtime Flow</h2>
+      <div class="flow" role="img" aria-label="Clients send commands to the Donkey web server, the vehicle loop reads the state, drive mode chooses final controls, and actuators move the PiRacer.">
+        <div class="stack">
+          <div class="node client">
+            <h3>Clients</h3>
+            <p>Browser UI, scripts, or local automation issue HTTP/WebSocket commands.</p>
+            <ul>
+              <li><code>GET /drive</code> opens the UI.</li>
+              <li><code>POST /drive</code> updates command state.</li>
+              <li><code>GET /frame.jpg</code> reads the latest frame.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="arrow" aria-hidden="true"></div>
+
+        <div class="stack">
+          <div class="node server">
+            <h3>Tornado LocalWebController</h3>
+            <p>Owns the web routes and stores mutable controller state.</p>
+            <ul>
+              <li><code>angle</code>, <code>throttle</code></li>
+              <li><code>mode</code>, <code>recording</code></li>
+              <li><code>buttons</code>, <code>img_arr</code></li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="arrow" aria-hidden="true"></div>
+
+        <div class="stack">
+          <div class="node loop">
+            <h3>Vehicle Loop</h3>
+            <p><code>V.start(rate_hz=20)</code> calls each part in order.</p>
+            <ul>
+              <li><code>run_threaded()</code> publishes user controls.</li>
+              <li><code>Pipe</code> normalizes steering into the loop's angle signal.</li>
+              <li><code>ThrottleFilter</code> handles reverse behavior.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="arrow" aria-hidden="true"></div>
+
+        <div class="stack">
+          <div class="node output">
+            <h3>Final Motion</h3>
+            <p><code>DriveMode</code> chooses user or pilot controls, then drivetrain parts write PWM.</p>
+            <ul>
+              <li><code>PWMSteering</code> writes steering pulse.</li>
+              <li><code>PWMThrottle_WS</code> writes throttle pulse.</li>
+              <li>PCA9685 / Waveshare board moves the car.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="support-grid">
+        <div class="node client">
+          <h3>Camera Feed</h3>
+          <p>The active camera publishes <code>cam/image_array</code>. The web controller keeps the latest array and serves it as JPEG or MJPEG.</p>
+        </div>
+        <div class="node loop">
+          <h3>Recording Path</h3>
+          <p>When <code>recording</code> is true, the tub writer records camera frames and control values for training or later analysis.</p>
+        </div>
+        <div class="node warning">
+          <h3>Joystick Override</h3>
+          <p>If started with <code>--js</code>, the joystick controller is added after the web controller and writes the same user control names.</p>
+        </div>
+      </div>
+
+      <div class="legend">
+        <span><i class="dot teal"></i>External client</span>
+        <span><i class="dot"></i>Web server state</span>
+        <span><i class="dot amber"></i>Vehicle loop logic</span>
+        <span><i class="dot violet"></i>Hardware output</span>
+        <span><i class="dot red"></i>Override or safety concern</span>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="endpoints-title">
+      <h2 id="endpoints-title">Endpoint Map</h2>
+      <table class="endpoint-table">
+        <thead>
+          <tr>
+            <th>Endpoint</th>
+            <th>Purpose</th>
+            <th>Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>GET /</code></td>
+            <td>Redirects to <code>/drive</code>.</td>
+            <td>Convenience entry point.</td>
+          </tr>
+          <tr>
+            <td><code>GET /drive</code></td>
+            <td>Serves the Donkey driving UI.</td>
+            <td>The UI talks back to the same controller state.</td>
+          </tr>
+          <tr>
+            <td><code>POST /drive</code></td>
+            <td>Sets <code>angle</code>, <code>throttle</code>, <code>drive_mode</code>, <code>recording</code>, and optional button latches.</td>
+            <td><code>angle</code> is the steering field consumed by this handler. A separate <code>steering</code> field is ignored by this endpoint.</td>
+          </tr>
+          <tr>
+            <td><code>WS /wsDrive</code></td>
+            <td>Live bidirectional driving channel for the browser UI.</td>
+            <td>Updates the same controller state as <code>POST /drive</code>.</td>
+          </tr>
+          <tr>
+            <td><code>GET /frame.jpg</code></td>
+            <td>Returns the latest camera frame as a single JPEG.</td>
+            <td>Returns 503 if the camera has not produced a frame yet.</td>
+          </tr>
+          <tr>
+            <td><code>GET /video</code></td>
+            <td>Returns a multipart JPEG stream.</td>
+            <td>Useful for browser preview, less useful for precise frame-by-frame analysis.</td>
+          </tr>
+          <tr>
+            <td><code>GET /frame-highres.jpg</code></td>
+            <td>Captures and returns the highest-resolution still supported by the camera object.</td>
+            <td>Runs capture work in an executor and includes width/height headers.</td>
+          </tr>
+          <tr>
+            <td><code>GET /calibrate</code>, <code>WS /wsCalibrate</code></td>
+            <td>Servo and throttle calibration UI/channel.</td>
+            <td>Can update calibration pulses while the server is running.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="section two-col" aria-labelledby="control-sequence-title">
+      <div>
+        <h2 id="control-sequence-title">Control Sequence</h2>
+        <div class="sequence">
+          <div class="step">
+            <p>Client posts a JSON command to <code>/drive</code>.</p>
+          </div>
+          <div class="step">
+            <p><code>DriveAPI.post()</code> writes values into <code>LocalWebController</code>.</p>
+          </div>
+          <div class="step">
+            <p>At the next loop tick, <code>run_threaded()</code> returns <code>user/steering</code>, <code>user/throttle</code>, <code>user/mode</code>, <code>recording</code>, and <code>web/buttons</code>.</p>
+          </div>
+          <div class="step">
+            <p><code>DriveMode</code> selects manual or pilot controls. In <code>user</code> mode, the posted command is the final command.</p>
+          </div>
+          <div class="step">
+            <p>Drivetrain parts convert normalized steering/throttle into PWM pulses and send them to the steering servo and motor controller.</p>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <h2>Command Shape</h2>
+        <p>For API-only control, send short pulses and then explicitly stop. The server holds the last command until another command changes it.</p>
+        <pre class="mini-code">POST http://piracer.local:8887/drive
+Content-Type: application/json
+
+{
+  "angle": 0.20,
+  "throttle": 0.45,
+  "drive_mode": "user",
+  "recording": false
+}</pre>
+        <pre class="mini-code">POST http://piracer.local:8887/drive
+Content-Type: application/json
+
+{
+  "angle": 0.0,
+  "throttle": 0.0,
+  "drive_mode": "user",
+  "recording": false
+}</pre>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="capture-title">
+      <h2 id="capture-title">Move And Capture Pattern</h2>
+      <div class="flow">
+        <div class="stack">
+          <div class="node client">
+            <h3>Pulse Command</h3>
+            <p>Post a steering/throttle command for a fixed duration.</p>
+          </div>
+        </div>
+        <div class="arrow" aria-hidden="true"></div>
+        <div class="stack">
+          <div class="node loop">
+            <h3>Immediate Stop</h3>
+            <p>Post zero steering and zero throttle so the held state becomes safe.</p>
+          </div>
+        </div>
+        <div class="arrow" aria-hidden="true"></div>
+        <div class="stack">
+          <div class="node server">
+            <h3>Read Current Frame</h3>
+            <p>Fetch <code>/frame.jpg</code> after motion settles, or use <code>/frame-highres.jpg</code> for still analysis.</p>
+          </div>
+        </div>
+        <div class="arrow" aria-hidden="true"></div>
+        <div class="stack">
+          <div class="node output">
+            <h3>Analyze Offline</h3>
+            <p>Store the frame, command metadata, and timing so local CV/VLM analysis can reconstruct what happened.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="callout" aria-labelledby="override-title">
+      <h2 id="override-title">Important Override Behavior</h2>
+      <p>
+        The web controller is always added as a user controller, but joystick support can also be added. In this setup,
+        the joystick controller writes <code>user/steering</code>, <code>user/throttle</code>, <code>user/mode</code>,
+        and <code>recording</code> after the web controller. That means a connected controller can overwrite commands
+        posted by scripts or the browser UI.
+      </p>
+      <ul>
+        <li>API/web control is now the default restart mode.</li>
+        <li>Use <code>./cli/automa vehicles update core --id piracer --restart --drive-args=--js</code> when you want the handheld controller to be active.</li>
+        <li>For autonomous experiments, choose one command source at a time and log which one is active.</li>
+      </ul>
+    </section>
+  </main>
+</body>
+</html>

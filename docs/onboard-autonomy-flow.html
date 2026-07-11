@@ -1,0 +1,571 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Onboard Autonomy Flow</title>
+  <style>
+    :root {
+      --ink: #17211f;
+      --muted: #596862;
+      --line: #cad7d1;
+      --bg: #f5f7f4;
+      --panel: #ffffff;
+      --vehicle: #2b7c8d;
+      --vehicle-soft: #dff0f3;
+      --perception: #2f8a62;
+      --perception-soft: #e4f2e9;
+      --memory: #7a5a21;
+      --memory-soft: #f7ead3;
+      --decision: #5f5a93;
+      --decision-soft: #eceaf7;
+      --action: #a4523f;
+      --action-soft: #f6e2dd;
+      --neutral: #eef2ef;
+      --shadow: 0 16px 36px rgba(23, 33, 31, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.45;
+    }
+
+    main {
+      width: min(1200px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 34px 0 58px;
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin: 0;
+    }
+
+    h1 {
+      max-width: 920px;
+      font-size: clamp(32px, 5vw, 54px);
+      line-height: 1.02;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      margin-bottom: 14px;
+      font-size: 22px;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      margin-bottom: 8px;
+      font-size: 15px;
+      letter-spacing: 0;
+      text-transform: uppercase;
+    }
+
+    p,
+    li,
+    td {
+      color: var(--muted);
+    }
+
+    code {
+      padding: 2px 5px;
+      border-radius: 5px;
+      background: #e9efeb;
+      color: #1e3932;
+      font-size: 0.94em;
+    }
+
+    header {
+      margin-bottom: 24px;
+    }
+
+    .lead {
+      max-width: 850px;
+      margin-top: 10px;
+      font-size: 17px;
+    }
+
+    .source-line {
+      margin-top: 12px;
+      font-size: 14px;
+    }
+
+    .source-line code {
+      background: transparent;
+      padding: 0;
+      color: var(--ink);
+    }
+
+    .section,
+    .diagram-shell,
+    .callout {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    .diagram-shell,
+    .section {
+      padding: 22px;
+      margin-top: 18px;
+    }
+
+    .runtime-grid {
+      display: grid;
+      grid-template-columns: 1fr 44px 1fr 44px 1fr 44px 1fr 44px 1fr;
+      gap: 0;
+      align-items: stretch;
+    }
+
+    .node {
+      min-height: 190px;
+      padding: 15px;
+      border: 1px solid var(--line);
+      border-left: 7px solid var(--vehicle);
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .node h3 {
+      color: var(--ink);
+    }
+
+    .node p {
+      font-size: 14px;
+    }
+
+    .node ul,
+    .section ul {
+      margin: 10px 0 0;
+      padding-left: 18px;
+    }
+
+    .node li,
+    .section li {
+      margin: 5px 0;
+    }
+
+    .vehicle {
+      border-left-color: var(--vehicle);
+      background: var(--vehicle-soft);
+    }
+
+    .perception {
+      border-left-color: var(--perception);
+      background: var(--perception-soft);
+    }
+
+    .memory {
+      border-left-color: var(--memory);
+      background: var(--memory-soft);
+    }
+
+    .decision {
+      border-left-color: var(--decision);
+      background: var(--decision-soft);
+    }
+
+    .action {
+      border-left-color: var(--action);
+      background: var(--action-soft);
+    }
+
+    .arrow {
+      position: relative;
+      min-height: 190px;
+    }
+
+    .arrow::before {
+      content: "";
+      position: absolute;
+      top: 50%;
+      left: 8px;
+      right: 8px;
+      height: 2px;
+      background: #7c8b85;
+      transform: translateY(-50%);
+    }
+
+    .arrow::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      right: 4px;
+      width: 0;
+      height: 0;
+      border-top: 7px solid transparent;
+      border-bottom: 7px solid transparent;
+      border-left: 10px solid #7c8b85;
+      transform: translateY(-50%);
+    }
+
+    .feedback {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 14px;
+      margin-top: 16px;
+    }
+
+    .feedback .node {
+      min-height: 0;
+      background: #fbfcfb;
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+    }
+
+    .table {
+      width: 100%;
+      border-collapse: collapse;
+      border-radius: 8px;
+      overflow: hidden;
+      font-size: 14px;
+    }
+
+    .table th,
+    .table td {
+      padding: 12px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    .table th {
+      background: var(--neutral);
+      color: var(--ink);
+    }
+
+    .table tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .sequence {
+      display: grid;
+      gap: 10px;
+      counter-reset: step;
+    }
+
+    .step {
+      display: grid;
+      grid-template-columns: 42px 1fr;
+      gap: 12px;
+      align-items: start;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfb;
+    }
+
+    .step::before {
+      counter-increment: step;
+      content: counter(step);
+      display: grid;
+      place-items: center;
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      background: var(--ink);
+      color: #fff;
+      font-weight: 800;
+      font-size: 13px;
+    }
+
+    .callout {
+      padding: 16px;
+      margin-top: 16px;
+      border-left: 7px solid var(--decision);
+      background: var(--decision-soft);
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 14px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .dot {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      background: var(--vehicle);
+    }
+
+    .dot.perception-dot { background: var(--perception); }
+    .dot.memory-dot { background: var(--memory); }
+    .dot.decision-dot { background: var(--decision); }
+    .dot.action-dot { background: var(--action); }
+
+    @media (max-width: 1050px) {
+      .runtime-grid,
+      .feedback,
+      .two-col {
+        grid-template-columns: 1fr;
+      }
+
+      .node,
+      .arrow {
+        min-height: 0;
+      }
+
+      .arrow {
+        height: 34px;
+      }
+
+      .arrow::before {
+        top: 7px;
+        bottom: 7px;
+        left: 50%;
+        right: auto;
+        width: 2px;
+        height: auto;
+        transform: translateX(-50%);
+      }
+
+      .arrow::after {
+        top: auto;
+        bottom: 2px;
+        left: 50%;
+        right: auto;
+        border-left: 7px solid transparent;
+        border-right: 7px solid transparent;
+        border-top: 10px solid #7c8b85;
+        border-bottom: 0;
+        transform: translateX(-50%);
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Onboard Autonomy Flow</h1>
+      <p class="lead">
+        The onboard autonomy stack treats the car as a black box: capture sensor
+        input, convert it into evidence, retain useful memory, decide whether to
+        act, and send a bounded vehicle action. In the current memory-first
+        rewrite, the decision model can emit a null action, so the car remains
+        idle while perception and memory are validated.
+      </p>
+      <p class="source-line">
+        Source points: <code>autonomy/vehicle/</code>,
+        <code>autonomy/perception/</code>, <code>autonomy/decision/</code>,
+        <code>autonomy/runtime/</code>, <code>implementations/operations/</code>
+      </p>
+    </header>
+
+    <section class="diagram-shell" aria-labelledby="main-flow-title">
+      <h2 id="main-flow-title">Main Runtime Loop</h2>
+      <div class="runtime-grid" role="img" aria-label="Vehicle capture flows into perception evidence, then memory, then decision, then vehicle output.">
+        <div class="node vehicle">
+          <h3>Vehicle Boundary</h3>
+          <p>The onboard code talks to the car through <code>CarInterface</code>, not directly to autonomy internals.</p>
+          <ul>
+            <li><code>read_sensors()</code> returns a sensor snapshot.</li>
+            <li>Current sensor: <code>front_camera</code>.</li>
+            <li><code>execute_pulse()</code> sends bounded motion.</li>
+            <li><code>stop()</code> is always available.</li>
+          </ul>
+        </div>
+
+        <div class="arrow" aria-hidden="true"></div>
+
+        <div class="node perception">
+          <h3>Perception Evidence</h3>
+          <p>Perception turns image data into evidence, not final world truth.</p>
+          <ul>
+            <li><code>core</code>: brightness, contrast, image size.</li>
+            <li><code>traversability</code>: floor / occupied evidence.</li>
+            <li><code>motion</code>: relative feature groups when frame pairs exist.</li>
+          </ul>
+        </div>
+
+        <div class="arrow" aria-hidden="true"></div>
+
+        <div class="node memory">
+          <h3>Decision Memory</h3>
+          <p>Memory stores frames, keyframes, events, and perception evidence with limits attached.</p>
+          <ul>
+            <li><code>FrameMemory</code> keeps the current observation.</li>
+            <li><code>KeyframeMemory</code> keeps important frames.</li>
+            <li>Events record commands, failures, and confidence changes.</li>
+          </ul>
+        </div>
+
+        <div class="arrow" aria-hidden="true"></div>
+
+        <div class="node decision">
+          <h3>Decision Model</h3>
+          <p>The next layer reads memory and emits either no action or a vehicle action proposal.</p>
+          <ul>
+            <li>Current rewrite target: <code>null</code> action.</li>
+            <li>Future: motive, proposal, confidence, action path.</li>
+            <li>Simulator truth is not part of this input.</li>
+          </ul>
+        </div>
+
+        <div class="arrow" aria-hidden="true"></div>
+
+        <div class="node action">
+          <h3>Action Commit</h3>
+          <p>The action output is adapted back to the black-box vehicle boundary.</p>
+          <ul>
+            <li><code>null</code>: hold idle / safe stop.</li>
+            <li><code>VehiclePulse</code>: forward, reverse, steering, duration.</li>
+            <li>Command result feeds back into memory.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="feedback">
+        <div class="node vehicle">
+          <h3>On PiRacer</h3>
+          <p><code>DonkeyPiCar</code> uses the Donkey server on <code>127.0.0.1:8887</code> when running onboard, or <code>piracer.local:8887</code> from a local machine.</p>
+        </div>
+        <div class="node perception">
+          <h3>In Simulation</h3>
+          <p><code>ChaseSimCar</code> now exposes the same black-box surface: capture front view, execute action, stop. Extra world state stays out of autonomy input.</p>
+        </div>
+        <div class="node memory">
+          <h3>Artifacts</h3>
+          <p>Runs write inspectable files under <code>lab/runs/</code>: frames, memory JSON, summaries, overlays, and debug images.</p>
+        </div>
+      </div>
+
+      <div class="legend">
+        <span><i class="dot"></i>Vehicle boundary</span>
+        <span><i class="dot perception-dot"></i>Perception evidence</span>
+        <span><i class="dot memory-dot"></i>Memory</span>
+        <span><i class="dot decision-dot"></i>Decision</span>
+        <span><i class="dot action-dot"></i>Action output</span>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="current-state-title">
+      <h2 id="current-state-title">Current Memory-First Behavior</h2>
+      <div class="sequence">
+        <div class="step">
+          <div>
+            <h3>Capture</h3>
+            <p>The car or simulator provides a <code>SensorSnapshot</code>. Right now that snapshot contains one current front-view frame.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div>
+            <h3>Perceive</h3>
+            <p>The image is converted to a <code>single_frame_memory_observation_v0</code> record. With one frame, relative motion remains <code>null</code>.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div>
+            <h3>Store</h3>
+            <p>The observation is written into <code>AutonomyRunMemory</code> as one <code>FrameMemory</code> and one keyframe.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div>
+            <h3>Choose Null Action</h3>
+            <p>The first decision-model rewrite can return no action while memory quality is inspected.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div>
+            <h3>Remain Idle</h3>
+            <p>A null action maps to hold/stop. This keeps onboard tests safe while the memory layer is built out.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="callout">
+        <strong>Important boundary:</strong>
+        perception can say “there is occupied traversability evidence,” but memory
+        should not call that an object until later frames, motion evidence, or a
+        stronger detector supports that interpretation.
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="contracts-title">
+      <h2 id="contracts-title">Layer Contracts</h2>
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Layer</th>
+            <th>Input</th>
+            <th>Output</th>
+            <th>Current Code</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Vehicle</td>
+            <td>Commands from operations or decision output.</td>
+            <td>Captured frame files, command metadata, safe stop.</td>
+            <td><code>autonomy/vehicle/vehicle.py</code></td>
+          </tr>
+          <tr>
+            <td>Perception</td>
+            <td>Images or image pairs.</td>
+            <td>Frame facts, traversability evidence, feature/motion evidence.</td>
+            <td><code>autonomy/perception/core</code>, <code>features</code>, <code>motion</code>, <code>traversability</code></td>
+          </tr>
+          <tr>
+            <td>Memory</td>
+            <td>Perception observations plus command/event history.</td>
+            <td>Frames, keyframes, retained evidence, event trace.</td>
+            <td><code>autonomy/decision/memory.py</code></td>
+          </tr>
+          <tr>
+            <td>Decision</td>
+            <td>Memory snapshot and current observation.</td>
+            <td>Idle control now; later concrete engines can select movement.</td>
+            <td><code>autonomy/decision/cycle.py</code>, <code>autonomy/runtime/engine.py</code></td>
+          </tr>
+          <tr>
+            <td>Operations</td>
+            <td>Vehicle plus plan or procedure.</td>
+            <td>Reusable run artifacts and reports.</td>
+            <td><code>implementations/operations/</code></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="section" aria-labelledby="inspect-title">
+      <h2 id="inspect-title">Inspection Commands</h2>
+      <div class="two-col">
+        <div>
+          <h3>Current Simulator Frame</h3>
+          <p>Capture the simulator car's current front view and write the memory representation.</p>
+          <p><code>python3 scripts/decision/image_to_memory.py --sim-current</code></p>
+        </div>
+        <div>
+          <h3>Provided Image</h3>
+          <p>Convert any saved front-view image into the same memory shape.</p>
+          <p><code>python3 scripts/decision/image_to_memory.py path/to/frame.jpg</code></p>
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

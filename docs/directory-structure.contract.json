@@ -1,0 +1,363 @@
+{
+  "schema": "automa_directory_contract_v2",
+    "status": "active",
+  "purpose": "Directory-only contract for the initial automation-engine repo shape. Specific files are intentionally omitted.",
+  "rules": [
+    "autonomy/ is the stable automation kernel: interfaces, data contracts, reusable primitives, stage contracts, and generic runners.",
+    "implementations/ mirrors the autonomy/ hierarchy and contains concrete code that satisfies stable contracts.",
+    "Plugin is a loading and activation mode, not the top-level source-code category.",
+    "autonomy/ should not import implementations/ directly; CLI, runtime, or deploy code should load implementations by config/spec.",
+    "deploy/targets/ contains source-controlled remote target bundles.",
+    "runtime/ contains generated local state and should be reproducible from source plus CLI commands.",
+    "lab/ contains unstable experiments, captured runs, and analysis artifacts.",
+    "User-facing workflows should be reachable through ./cli/automa rather than duplicated scripts."
+  ],
+  "root": {
+    "path": "auto-driving/",
+    "category": "workspace",
+    "commit_policy": "source",
+    "responsibility": "Local source of truth for automation engine code, concrete implementations, deployment bundles, generated runs, and CLI access.",
+    "children": [
+      {
+        "path": "autonomy/",
+        "category": "stable-kernel",
+        "commit_policy": "source",
+        "responsibility": "Stable core package for contracts, primitives, stage shapes, and orchestration. It should not contain concrete vehicle adapters, perception algorithms, or operation recipes.",
+        "children": [
+          {
+            "path": "autonomy/vehicle/",
+            "category": "core",
+            "commit_policy": "source",
+            "responsibility": "Vehicle-agnostic interface for sensor reads, pulses, actions, capabilities, and adapter boundaries."
+          },
+          {
+            "path": "autonomy/perception/",
+            "category": "core",
+            "commit_policy": "source",
+            "responsibility": "Stable perception contracts and shared primitives. Active algorithms live in implementations/perception/.",
+            "children": [
+              {
+                "path": "autonomy/perception/core/",
+                "category": "core",
+                "commit_policy": "source",
+                "responsibility": "Frame observations and low-level image comparisons with no scene-specific policy."
+              },
+              {
+                "path": "autonomy/perception/features/",
+                "category": "core",
+                "commit_policy": "source",
+                "responsibility": "Reusable feature tracking primitives."
+              },
+              {
+                "path": "autonomy/perception/motion/",
+                "category": "core",
+                "commit_policy": "source",
+                "responsibility": "Reusable relative-motion and motion-group primitives."
+              },
+              {
+                "path": "autonomy/perception/traversability/",
+                "category": "core",
+                "commit_policy": "source",
+                "responsibility": "Reusable floor and traversability primitives."
+              },
+              {
+                "path": "autonomy/perception/landmarks/",
+                "category": "core",
+                "commit_policy": "source",
+                "responsibility": "Reusable landmark and distance primitives."
+              },
+              {
+                "path": "autonomy/perception/mappers/",
+                "category": "core",
+                "commit_policy": "source",
+                "responsibility": "Mapper loaders and stable mapper entry points that assemble configured implementations."
+              }
+            ]
+          },
+          {
+            "path": "autonomy/decision/",
+            "category": "core",
+            "commit_policy": "source",
+            "responsibility": "Generic observe, memory, pattern, projection, action, and snapshot cycle with optional stages."
+          },
+          {
+            "path": "autonomy/runtime/",
+            "category": "runtime-core",
+            "commit_policy": "source",
+            "responsibility": "Generic runtime contracts for loading engines, stepping them, applying mode gates, reporting status, and hosting controller loops."
+          }
+        ]
+      },
+      {
+        "path": "implementations/",
+        "category": "implementation-root",
+        "commit_policy": "source",
+        "responsibility": "Concrete code that satisfies autonomy contracts. This tree intentionally mirrors autonomy/ so inspection and promotion paths stay obvious.",
+        "children": [
+          {
+            "path": "implementations/vehicle/",
+            "category": "implementation",
+            "commit_policy": "source",
+            "responsibility": "Concrete vehicle adapters implementing autonomy/vehicle contracts.",
+            "children": [
+              {
+                "path": "implementations/vehicle/picar/",
+                "category": "device-adapter",
+                "commit_policy": "source",
+                "responsibility": "PiRacer-specific HTTP, DonkeyCar, and hardware assumptions."
+              },
+              {
+                "path": "implementations/vehicle/chase_sim/",
+                "category": "sim-adapter",
+                "commit_policy": "source",
+                "responsibility": "Metrics UI / Chase simulator adapter exposing only vehicle-like I/O to autonomy code."
+              }
+            ]
+          },
+          {
+            "path": "implementations/perception/",
+            "category": "implementation",
+            "commit_policy": "source",
+            "responsibility": "Concrete perception mappers and plugin-style sensor-to-evidence algorithms."
+          },
+          {
+            "path": "implementations/decision/",
+            "category": "implementation",
+            "commit_policy": "source",
+            "responsibility": "Concrete non-default decision engines and stage implementations. The stable idle default belongs to autonomy/runtime/."
+          },
+          {
+            "path": "implementations/runtime/",
+            "category": "implementation",
+            "commit_policy": "source",
+            "responsibility": "Concrete runtime hosts for environments that need special integration code.",
+            "children": [
+              {
+                "path": "implementations/runtime/donkeycar/",
+                "category": "runtime-implementation",
+                "commit_policy": "source",
+                "responsibility": "DonkeyCar part and drive-loop integration."
+              }
+            ]
+          },
+          {
+            "path": "implementations/operations/",
+            "category": "implementation",
+            "commit_policy": "source",
+            "responsibility": "Concrete bounded operation plans and workflows.",
+            "children": [
+              {
+                "path": "implementations/operations/startup_action_check/",
+                "category": "operation-implementation",
+                "commit_policy": "source",
+                "responsibility": "Action-and-capture checks to confirm commands register."
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "path": "deploy/",
+        "category": "deploy-root",
+        "commit_policy": "source",
+        "responsibility": "Source-controlled deploy bundles for physical or remote runtimes.",
+        "children": [
+          {
+            "path": "deploy/targets/",
+            "category": "deploy-targets",
+            "commit_policy": "source",
+            "responsibility": "One subdirectory per remote target family.",
+            "children": [
+              {
+                "path": "deploy/targets/donkeycar/",
+                "category": "device-target",
+                "commit_policy": "source",
+                "responsibility": "Physical PiRacer deployment bundle, including app resources, vendor source material, and local patches.",
+                "children": [
+                  {
+                    "path": "deploy/targets/donkeycar/app/",
+                    "category": "device-target",
+                    "commit_policy": "source",
+                    "responsibility": "Files synced to the car's app/runtime directory."
+                  },
+                  {
+                    "path": "deploy/targets/donkeycar/vendor/",
+                    "category": "generated-runtime",
+                    "commit_policy": "generated",
+                    "responsibility": "Generated pinned DonkeyCar checkout recreated from the source-controlled vendor manifest and patches."
+                  },
+                  {
+                    "path": "deploy/targets/donkeycar/patches/",
+                    "category": "device-target",
+                    "commit_policy": "source",
+                    "responsibility": "Local changes applied to vendor or target code during deploy preparation."
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "path": "cli/",
+        "category": "tooling",
+        "commit_policy": "source",
+        "responsibility": "Primary command surface. Common user workflows should live here instead of duplicated scripts.",
+        "children": [
+          {
+            "path": "cli/automa_cli/",
+            "category": "tooling",
+            "commit_policy": "source",
+            "responsibility": "Vehicle, simulator, deploy, implementation, runtime, and diagnostic command implementation."
+          },
+          {
+            "path": "cli/tests/",
+            "category": "tooling",
+            "commit_policy": "source",
+            "responsibility": "Common scenario tests, with offline defaults and explicit live-simulator coverage."
+          }
+        ]
+      },
+      {
+        "path": "runtime/",
+        "category": "generated-runtime",
+        "commit_policy": "generated",
+        "responsibility": "Generated and mutable local state, reproducible from source plus CLI commands.",
+        "children": [
+          {
+            "path": "runtime/vehicles/",
+            "category": "generated-runtime",
+            "commit_policy": "generated",
+            "responsibility": "Local runtime directories keyed by discovered or configured vehicle id.",
+            "children": [
+              {
+                "path": "runtime/vehicles/<vehicle-id>/",
+                "category": "generated-runtime",
+                "commit_policy": "generated",
+                "responsibility": "One local runtime area for a simulator or physical vehicle.",
+                "children": [
+                  {
+                    "path": "runtime/vehicles/<vehicle-id>/bundle/",
+                    "category": "generated-runtime",
+                    "commit_policy": "generated",
+                    "responsibility": "Generated controller bundle with core code, concrete implementations, releases, active configuration, and worker state.",
+                    "children": [
+                      {
+                        "path": "runtime/vehicles/<vehicle-id>/bundle/autonomy/",
+                        "category": "generated-runtime",
+                        "commit_policy": "generated",
+                        "responsibility": "Extracted stable autonomy package from the active local controller release."
+                      },
+                      {
+                        "path": "runtime/vehicles/<vehicle-id>/bundle/implementations/",
+                        "category": "generated-runtime",
+                        "commit_policy": "generated",
+                        "responsibility": "Extracted concrete implementations from the active local controller release."
+                      },
+                      {
+                        "path": "runtime/vehicles/<vehicle-id>/bundle/releases/",
+                        "category": "generated-runtime",
+                        "commit_policy": "generated",
+                        "responsibility": "Hashed controller archives and manifests available for activation or remote deployment."
+                      },
+                      {
+                        "path": "runtime/vehicles/<vehicle-id>/bundle/runtime/",
+                        "category": "generated-runtime",
+                        "commit_policy": "generated",
+                        "responsibility": "Perception and decision activation manifests plus automation worker state and rolling output."
+                      }
+                    ]
+                  },
+                  {
+                    "path": "runtime/vehicles/<vehicle-id>/deploy/",
+                    "category": "generated-runtime",
+                    "commit_policy": "generated",
+                    "responsibility": "Target-specific activation metadata staged for physical deployment."
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "path": "runtime/tmp/",
+            "category": "generated-runtime",
+            "commit_policy": "generated",
+            "responsibility": "Short-lived temporary output created by CLI or local processing."
+          }
+        ]
+      },
+      {
+        "path": "lab/",
+        "category": "lab",
+        "commit_policy": "generated-or-archived",
+        "responsibility": "Unstable self-contained experimentation space that can churn without changing core architecture.",
+        "children": [
+          {
+            "path": "lab/experiments/",
+            "category": "lab",
+            "commit_policy": "generated-or-archived",
+            "responsibility": "Experiment code, configs, notes, and artifacts kept together for review or later extraction."
+          },
+          {
+            "path": "lab/runs/",
+            "category": "lab",
+            "commit_policy": "generated",
+            "responsibility": "Captured images, reports, overlays, and one-off generated analysis output."
+          }
+        ]
+      },
+      {
+        "path": "frontend/",
+        "category": "source-ui",
+        "commit_policy": "source",
+        "responsibility": "Local UI source that belongs to this project. Simulator UI stays in Metrics UI.",
+        "children": [
+          {
+            "path": "frontend/donkeycar/",
+            "category": "source-ui",
+            "commit_policy": "source",
+            "responsibility": "Frontend files specific to the DonkeyCar/PiRacer control surface."
+          }
+        ]
+      },
+      {
+        "path": "docs/",
+        "category": "documentation",
+        "commit_policy": "source",
+        "responsibility": "Human-readable architecture docs, diagrams, backlog summaries, decision notes, and stable contracts."
+      },
+      {
+        "path": "scripts/",
+        "category": "tooling",
+        "commit_policy": "source-transitional",
+        "responsibility": "Low-level helpers that are not user workflows. Anything overlapping with ./cli/automa should be removed or folded into CLI services.",
+        "children": [
+          {
+            "path": "scripts/calibration/",
+            "category": "tooling",
+            "commit_policy": "source-transitional",
+            "responsibility": "Calibration and measurement scripts not yet promoted into operation implementations."
+          },
+          {
+            "path": "scripts/decision/",
+            "category": "tooling",
+            "commit_policy": "source-transitional",
+            "responsibility": "Decision inspection helpers not yet promoted into CLI."
+          },
+          {
+            "path": "scripts/perception/",
+            "category": "tooling",
+            "commit_policy": "source-transitional",
+            "responsibility": "Perception inspection helpers not yet promoted into CLI."
+          },
+          {
+            "path": "scripts/deploy/",
+            "category": "tooling",
+            "commit_policy": "source-transitional",
+            "responsibility": "Remote helper scripts called by CLI deploy flows."
+          }
+        ]
+      }
+    ]
+  }
+}

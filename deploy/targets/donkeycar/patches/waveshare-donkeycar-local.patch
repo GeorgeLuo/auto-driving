@@ -1,0 +1,457 @@
+diff --git a/donkeycar/parts/camera.py b/donkeycar/parts/camera.py
+index 1377089..785ca26 100644
+--- a/donkeycar/parts/camera.py
++++ b/donkeycar/parts/camera.py
+@@ -1,5 +1,6 @@
+ import logging
+ import os
++import threading
+ import time
+ import numpy as np
+ from PIL import Image
+@@ -25,7 +26,7 @@ class PiCamera(BaseCamera):
+     RPi Camera class based on Bullseye's python class Picamera2.
+     """
+     def __init__(self, image_w=160, image_h=120, image_d=3,
+-                 vflip=False, hflip=False):
++                 vflip=False, hflip=False, controls=None):
+         from picamera2 import Picamera2
+         from libcamera import Transform
+ 
+@@ -36,9 +37,18 @@ class PiCamera(BaseCamera):
+         config = self.camera.create_preview_configuration(
+             config_dict, transform=transform)
+         self.camera.align_configuration(config)
++        self.preview_config = config
+         self.camera.configure(config)
+-        # try min / max frame rate as 0.1 / 1 ms (it will be slower though)
+-        self.camera.set_controls({"FrameDurationLimits": (100, 1000)})
++        camera_controls = {"FrameDurationLimits": (33333, 50000)}
++        if controls:
++            camera_controls.update(controls)
++        self.camera.set_controls(camera_controls)
++        self.highres_size = self._max_sensor_size()
++        self.highres_config = self.camera.create_still_configuration(
++            main={"size": self.highres_size, "format": "BGR888"},
++            transform=transform)
++        self.camera.configure(self.preview_config)
++        self.lock = threading.RLock()
+         self.camera.start()
+ 
+         # initialize the frame and the variable used to indicate
+@@ -62,12 +72,34 @@ class PiCamera(BaseCamera):
+ 
+     def run(self):
+         # grab the next frame from the camera buffer
+-        self.frame = self.camera.capture_array("main")
++        with self.lock:
++            self.frame = self.camera.capture_array("main")
++        self.frame = self._drop_alpha(self.frame)
+         if self.image_d == 1:
+             self.frame = rgb2gray(self.frame)
+ 
+         return self.frame
+ 
++    def _max_sensor_size(self):
++        modes = getattr(self.camera, "sensor_modes", None) or []
++        sizes = [tuple(mode["size"]) for mode in modes if mode.get("size")]
++        if sizes:
++            return max(sizes, key=lambda size: size[0] * size[1])
++        return tuple(self.camera.sensor_resolution)
++
++    def capture_highres_array(self):
++        with self.lock:
++            frame = self.camera.switch_mode_and_capture_array(
++                self.highres_config,
++                "main",
++                delay=1)
++        return self._drop_alpha(frame)
++
++    def _drop_alpha(self, frame):
++        if len(frame.shape) == 3 and frame.shape[2] > 3:
++            return frame[:, :, :3]
++        return frame
++
+     def update(self):
+         # keep looping infinitely until the thread is stopped
+         while self.on:
+diff --git a/donkeycar/parts/controller.py b/donkeycar/parts/controller.py
+index ab8ef16..b853c98 100644
+--- a/donkeycar/parts/controller.py
++++ b/donkeycar/parts/controller.py
+@@ -691,6 +691,28 @@ class XboxOneJoystick(Joystick):
+             0x137: 'right_shoulder',
+         }
+ 
++
++class Xbox360Joystick(XboxOneJoystick):
++    '''
++    Xbox 360 compatible USB receivers report different axis codes than the
++    Xbox One mapping above. The Waveshare PiRacer controller enumerates as
++    "Microsoft X-Box 360 pad" with this layout.
++    '''
++    def __init__(self, *args, **kwargs):
++        super(Xbox360Joystick, self).__init__(*args, **kwargs)
++
++        self.axis_names = {
++            0x00: 'left_stick_horz',
++            0x01: 'left_stick_vert',
++            0x03: 'right_stick_horz',
++            0x04: 'right_stick_vert',
++            0x02: 'left_trigger',
++            0x05: 'right_trigger',
++            0x10: 'dpad_horiz',
++            0x11: 'dpad_vert'
++        }
++
++
+ class LogitechJoystick(Joystick):
+     '''
+     An interface to a physical Logitech joystick available at /dev/input/js0
+@@ -1086,6 +1108,30 @@ class JoystickController(object):
+             self.on_throttle_changes()
+         logger.info(f'constant_throttle: {self.constant_throttle}')
+ 
++    def hold_forward_throttle(self):
++        '''
++        Drive forward while a button is held.
++        '''
++        self.constant_throttle = False
++        self.throttle = self.throttle_scale
++        self.on_throttle_changes()
++
++    def hold_reverse_throttle(self):
++        '''
++        Drive backward while a button is held.
++        '''
++        self.constant_throttle = False
++        self.throttle = -self.throttle_scale
++        self.on_throttle_changes()
++
++    def release_throttle(self):
++        '''
++        Stop throttle when a held throttle button is released.
++        '''
++        self.constant_throttle = False
++        self.throttle = 0.0
++        self.on_throttle_changes()
++
+ 
+     def toggle_mode(self):
+         '''
+@@ -1414,6 +1460,33 @@ class XboxOneJoystickController(JoystickController):
+             'left_trigger': self.magnitude(reversed = True),
+         }
+ 
++
++class Xbox360JoystickController(XboxOneJoystickController):
++    '''
++    Xbox 360 compatible controller mapping for the Waveshare PiRacer gamepad.
++    '''
++    def init_js(self):
++        '''
++        attempt to init joystick
++        '''
++        try:
++            self.js = Xbox360Joystick(self.dev_fn)
++            self.js.init()
++        except FileNotFoundError:
++            logger.error(f"{self.dev_fn} not found.")
++            self.js = None
++        return self.js is not None
++
++    def init_trigger_maps(self):
++        super(Xbox360JoystickController, self).init_trigger_maps()
++        self.set_axis_trigger('right_trigger', self.magnitude(reversed=True))
++        self.set_axis_trigger('left_trigger', self.magnitude())
++        self.set_button_down_trigger('right_shoulder', self.hold_forward_throttle)
++        self.set_button_up_trigger('right_shoulder', self.release_throttle)
++        self.set_button_down_trigger('left_shoulder', self.hold_reverse_throttle)
++        self.set_button_up_trigger('left_shoulder', self.release_throttle)
++
++
+ class XboxOneSwappedJoystickController(XboxOneJoystickController):
+     '''
+     Swap steering and throttle controls from std XBox one controller
+@@ -1715,6 +1788,8 @@ def get_js_controller(cfg):
+         cont_class = NimbusController
+     elif cfg.CONTROLLER_TYPE == "xbox":
+         cont_class = XboxOneJoystickController
++    elif cfg.CONTROLLER_TYPE == "xbox360":
++        cont_class = Xbox360JoystickController
+     elif cfg.CONTROLLER_TYPE == "xboxswapped":
+         cont_class = XboxOneSwappedJoystickController
+     elif cfg.CONTROLLER_TYPE == "wiiu":
+diff --git a/donkeycar/parts/web_controller/templates/base.html b/donkeycar/parts/web_controller/templates/base.html
+index e8ba2d9..b55c4a7 100755
+--- a/donkeycar/parts/web_controller/templates/base.html
++++ b/donkeycar/parts/web_controller/templates/base.html
+@@ -21,7 +21,7 @@
+   <script src="/static/bootstrap/3.3.7/js/bootstrap.min.js" integrity="" crossorigin="anonymous"></script>
+ 
+ 
+-  <script type="text/javascript" src="/static/main.js"></script>
++  <script type="text/javascript" src="/static/main.js?v=reverse-steer-2"></script>
+   <link href="/static/style.css" rel="stylesheet">
+ 
+ </head>
+diff --git a/donkeycar/parts/web_controller/templates/static/main.js b/donkeycar/parts/web_controller/templates/static/main.js
+index 64581bc..bf5f54d 100755
+--- a/donkeycar/parts/web_controller/templates/static/main.js
++++ b/donkeycar/parts/web_controller/templates/static/main.js
+@@ -205,14 +205,14 @@ var driveHandler = new function() {
+ 
+       }).on('move', function(evt, data) {
+         state.brakeOn = false;
+-        radian = data['angle']['radian']
+-        distance = data['distance']
++        var radius = joystick_options.size / 2
++        var x = data['instance']['frontPosition']['x']
++        var y = data['instance']['frontPosition']['y']
+ 
+-        //console.log(data)
+-        state.tele.user.angle = Math.max(Math.min(Math.cos(radian)/70*distance, 1), -1)
+-        state.tele.user.throttle = limitedThrottle(Math.max(Math.min(Math.sin(radian)/70*distance , 1), -1))
++        state.tele.user.angle = Math.max(Math.min(x / radius, 1), -1)
++        state.tele.user.throttle = limitedThrottle(Math.max(Math.min(-y / radius, 1), -1))
+ 
+-        if (state.tele.user.throttle < .001) {
++        if (Math.abs(state.tele.user.throttle) < .001) {
+           state.tele.user.angle = 0
+         }
+ 
+diff --git a/donkeycar/parts/web_controller/web.py b/donkeycar/parts/web_controller/web.py
+index 8af4669..982dc56 100644
+--- a/donkeycar/parts/web_controller/web.py
++++ b/donkeycar/parts/web_controller/web.py
+@@ -28,6 +28,20 @@ from ... import utils
+ logger = logging.getLogger(__name__)
+ 
+ 
++try:
++    from autonomy.runtime.manager import AutonomyManager, EngineLoadError
++except Exception as exc:
++    AutonomyManager = None
++    EngineLoadError = RuntimeError
++    logger.warning("Autonomy runtime is not importable: %s", exc)
++
++
++AUTONOMY_MODE_TO_DRIVE_MODE = {
++    "manual": "user",
++    "autonomy": "local",
++}
++
++
+ class RemoteWebServer():
+     '''
+     A controller that repeatedly polls a remote webserver and expects
+@@ -101,7 +115,7 @@ class RemoteWebServer():
+ 
+ class LocalWebController(tornado.web.Application):
+ 
+-    def __init__(self, port=8887, mode='user'):
++    def __init__(self, port=8887, mode='user', camera=None):
+         """
+         Create and publish variables needed on many of
+         the web handlers.
+@@ -123,15 +137,23 @@ class LocalWebController(tornado.web.Application):
+         self.num_records = 0
+         self.wsclients = []
+         self.loop = None
++        self.camera = camera
++        self.autonomy_manager = AutonomyManager() if AutonomyManager is not None else None
+ 
+ 
+         handlers = [
+             (r"/", RedirectHandler, dict(url="/drive")),
+             (r"/drive", DriveAPI),
++            (r"/autonomy/status", AutonomyStatusAPI),
++            (r"/autonomy/mode", AutonomyModeAPI),
++            (r"/autonomy/engine", AutonomyEngineAPI),
++            (r"/autonomy/reload", AutonomyReloadAPI),
+             (r"/wsDrive", WebSocketDriveAPI),
+             (r"/wsCalibrate", WebSocketCalibrateAPI),
+             (r"/calibrate", CalibrateHandler),
+             (r"/video", VideoAPI),
++            (r"/frame.jpg", FrameAPI),
++            (r"/frame-highres.jpg", HighResFrameAPI),
+             (r"/wsTest", WsTest),
+ 
+             (r"/static/(.*)", StaticFileHandler,
+@@ -245,6 +267,117 @@ class DriveAPI(RequestHandler):
+             latch_buttons(self.application.buttons, data['buttons'])
+ 
+ 
++class AutonomyAPIBase(RequestHandler):
++    def write_json(self, payload: dict, status: int = 200):
++        self.set_status(status)
++        self.set_header("Content-Type", "application/json")
++        self.write(json.dumps(payload, sort_keys=True))
++
++    def read_json_body(self) -> dict:
++        if not self.request.body:
++            return {}
++        return tornado.escape.json_decode(self.request.body)
++
++    def manager(self):
++        manager = getattr(self.application, "autonomy_manager", None)
++        if manager is None:
++            self.write_json(
++                {
++                    "ok": False,
++                    "error": "autonomy runtime is not available",
++                },
++                status=503,
++            )
++            return None
++        return manager
++
++    def status_payload(self) -> dict:
++        manager = getattr(self.application, "autonomy_manager", None)
++        autonomy_status = None if manager is None else manager.status()
++        return {
++            "ok": manager is not None,
++            "drive_mode": getattr(self.application, "mode", None),
++            "autonomy_modes": sorted(AUTONOMY_MODE_TO_DRIVE_MODE.keys()),
++            "drive_mode_map": AUTONOMY_MODE_TO_DRIVE_MODE,
++            "autonomy": autonomy_status,
++        }
++
++
++class AutonomyStatusAPI(AutonomyAPIBase):
++    def get(self):
++        self.write_json(self.status_payload())
++
++
++class AutonomyModeAPI(AutonomyAPIBase):
++    def post(self):
++        data = self.read_json_body()
++        requested = str(data.get("mode", "")).strip()
++        drive_mode = AUTONOMY_MODE_TO_DRIVE_MODE.get(requested)
++        if drive_mode is None:
++            self.write_json(
++                {
++                    "ok": False,
++                    "error": f"unknown autonomy mode {requested!r}",
++                    "valid_modes": sorted(AUTONOMY_MODE_TO_DRIVE_MODE.keys()),
++                },
++                status=400,
++            )
++            return
++
++        self.application.mode = drive_mode
++        self.application.mode_latch = drive_mode
++        if drive_mode == "user" and data.get("stop", True):
++            self.application.angle = 0.0
++            self.application.throttle = 0.0
++
++        payload = self.status_payload()
++        payload["requested_mode"] = requested
++        payload["drive_mode"] = drive_mode
++        self.write_json(payload)
++
++
++class AutonomyEngineAPI(AutonomyAPIBase):
++    def post(self):
++        manager = self.manager()
++        if manager is None:
++            return
++
++        data = self.read_json_body()
++        engine = data.get("engine")
++        if not isinstance(engine, str) or not engine.strip():
++            self.write_json(
++                {
++                    "ok": False,
++                    "error": "engine is required and must be 'module.path:ClassName'",
++                },
++                status=400,
++            )
++            return
++
++        try:
++            status = manager.load_engine(engine.strip(), data.get("config") or {})
++        except EngineLoadError as exc:
++            self.write_json({"ok": False, "error": str(exc), "autonomy": manager.status()}, status=400)
++            return
++
++        self.write_json({"ok": True, "autonomy": status})
++
++
++class AutonomyReloadAPI(AutonomyAPIBase):
++    def post(self):
++        manager = self.manager()
++        if manager is None:
++            return
++
++        try:
++            status = manager.reload_engine()
++        except EngineLoadError as exc:
++            self.write_json({"ok": False, "error": str(exc), "autonomy": manager.status()}, status=400)
++            return
++
++        self.write_json({"ok": True, "autonomy": status})
++
++
+ class WsTest(RequestHandler):
+     def get(self):
+         data = {}
+@@ -391,6 +524,52 @@ class VideoAPI(RequestHandler):
+                 await tornado.gen.sleep(interval)
+ 
+ 
++class FrameAPI(RequestHandler):
++    '''
++    Serves the latest camera image as a single JPEG.
++    '''
++
++    def get(self):
++        if not hasattr(self.application, 'img_arr') or self.application.img_arr is None:
++            self.send_error(503, "camera frame not ready")
++            return
++
++        img = utils.arr_to_binary(self.application.img_arr)
++        self.set_header("Content-Type", "image/jpeg")
++        self.set_header("Content-Length", len(img))
++        self.set_header("Cache-Control", "no-store")
++        self.write(img)
++
++
++class HighResFrameAPI(RequestHandler):
++    '''
++    Serves a highest-resolution still from the active camera.
++    '''
++
++    async def get(self):
++        camera = getattr(self.application, 'camera', None)
++        if camera is None or not hasattr(camera, 'capture_highres_array'):
++            self.send_error(501, reason="high-resolution capture is not available for this camera")
++            return
++
++        try:
++            loop = asyncio.get_running_loop()
++            img_arr = await loop.run_in_executor(None, camera.capture_highres_array)
++        except Exception as e:
++            logger.exception("Unable to capture high-resolution frame")
++            self.send_error(500, reason=str(e))
++            return
++
++        img = utils.arr_to_binary(img_arr)
++        height, width = img_arr.shape[:2]
++        self.set_header("Content-Type", "image/jpeg")
++        self.set_header("Content-Length", len(img))
++        self.set_header("Cache-Control", "no-store")
++        self.set_header("X-Image-Width", width)
++        self.set_header("X-Image-Height", height)
++        self.write(img)
++
++
+ class BaseHandler(RequestHandler):
+     """ Serves the FPV web page"""
+     async def get(self):
+@@ -440,5 +619,3 @@ class WebFpv(Application):
+ 
+     def shutdown(self):
+         pass
+-
+-

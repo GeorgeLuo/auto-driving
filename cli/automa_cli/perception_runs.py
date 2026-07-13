@@ -20,7 +20,7 @@ from .lab_plugins import LabPerceptionMapper, candidate_status, discover_candida
 from .paths import ROOT, display_path, safe_path_part
 from .perception_evaluation import evaluate_perception_frames, write_review_html
 from .perception import (
-    CURRENT_MAPPER_SPEC,
+    PLUGIN_CHAIN_MAPPER_SPEC,
     DEFAULT_PERCEPTION_ALGORITHM,
     PERCEPTION_ALGORITHMS,
     _load_mapper,
@@ -230,7 +230,7 @@ def replay_perception_experiment(
             elif isinstance(recorded_mapper, dict) and not str(
                 recorded_mapper.get("algorithm") or ""
             ).startswith("candidate:"):
-                mapper_spec = str(recorded_mapper.get("spec") or CURRENT_MAPPER_SPEC)
+                mapper_spec = str(recorded_mapper.get("spec") or PLUGIN_CHAIN_MAPPER_SPEC)
                 mapper_config = dict(recorded_mapper.get("config") or {})
                 algorithm = recorded_mapper.get("algorithm") or "recorded"
             else:

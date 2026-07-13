@@ -14,9 +14,18 @@ from autonomy.perception.interface import (
     PerceptionRequest,
     ViewLocation,
 )
-from autonomy.perception.motion.scene_motion import MotionGroup, analyze_scene_motion_images
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID
+from implementations.perception.components import (
+    camera_component_id,
+    camera_frame,
+    camera_frame_error,
+)
 from implementations.perception.text import thing_line
+
+from .scene_motion import MotionGroup, analyze_scene_motion_images
+
+
+FRONT_CAMERA_COMPONENT = camera_component_id(FRONT_CAMERA_SENSOR_ID)
 
 
 @dataclass
@@ -36,7 +45,7 @@ class MotionTracksPlugin:
 
     plugin_id = "motion-tracks-v0"
     contract = PerceptionPluginContract(
-        required_sensors=(FRONT_CAMERA_SENSOR_ID,),
+        required_components=(FRONT_CAMERA_COMPONENT,),
         state_mode="windowed",
         artifact_policy="optional",
     )
@@ -94,7 +103,7 @@ class MotionTracksPlugin:
         }
 
     def perceive(self, request: PerceptionRequest) -> PerceptionPluginResult:
-        front = request.camera_frame(FRONT_CAMERA_SENSOR_ID)
+        front = camera_frame(request, FRONT_CAMERA_SENSOR_ID)
         if front is None:
             self.reset()
             return PerceptionPluginResult(
@@ -103,7 +112,7 @@ class MotionTracksPlugin:
                 observations={
                     self.plugin_id: {
                         "front_camera_available": False,
-                        "input_error": request.input_error(FRONT_CAMERA_SENSOR_ID),
+                        "input_error": camera_frame_error(request, FRONT_CAMERA_SENSOR_ID),
                     }
                 },
                 limits=("front camera image missing; temporal state reset",),

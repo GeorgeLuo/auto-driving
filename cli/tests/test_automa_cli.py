@@ -14,10 +14,10 @@ from cli.automa_cli.bundles import (
     sync_controller_bundle,
 )
 from cli.automa_cli.perception import (
-    CURRENT_MAPPER_SPEC,
     DEFAULT_PERCEPTION_ALGORITHM,
     PERCEPTION_ALGORITHMS,
     PERCEPTION_PLUGIN_SPECS,
+    PLUGIN_CHAIN_MAPPER_SPEC,
 )
 
 
@@ -551,10 +551,10 @@ class AutomaCliHarness(unittest.TestCase):
             )
 
             for relative in (
-                "implementations/perception/floor_plane.py",
-                "implementations/perception/vlm_prep.py",
-                "implementations/perception/motion_tracks.py",
-                "autonomy/perception/mappers/current.py",
+                "implementations/perception/traversability/plugin.py",
+                "implementations/perception/preparation/vlm.py",
+                "implementations/perception/motion/tracks.py",
+                "autonomy/perception/mappers/plugin_chain.py",
                 "bundle-manifest.json",
             ):
                 self.assertTrue((bundle_root / relative).exists(), relative)
@@ -574,7 +574,7 @@ class AutomaCliHarness(unittest.TestCase):
                     },
                     "perception": {
                         "algorithm": "visual_observer",
-                        "mapper_spec": CURRENT_MAPPER_SPEC,
+                        "mapper_spec": PLUGIN_CHAIN_MAPPER_SPEC,
                         "mapper_config": dict(algorithm_config["mapper_config"]),
                         "source_dir": bundle["perception_dir"],
                     },
@@ -606,7 +606,7 @@ class AutomaCliHarness(unittest.TestCase):
             payload["activation"]["mapper_config"]["plugins"],
             ["frame", "floor_plane", "motion_tracks"],
         )
-        chain = payload["algorithm_schema"]["inputs"][0]["plugin_chain"]
+        chain = payload["algorithm_schema"]["plugin_chain"]
         self.assertEqual(
             [plugin["plugin_id"] for plugin in chain],
             [
@@ -616,7 +616,11 @@ class AutomaCliHarness(unittest.TestCase):
             ],
         )
         self.assertIn("Enabled plugins: frame, floor_plane, motion_tracks", text_result.stdout)
-        self.assertIn("plugin chain:", text_result.stdout)
+        self.assertIn("Plugin chain:", text_result.stdout)
+        self.assertIn(
+            "frame-observation-v0 [stateless] components=camera.rgb:front_camera",
+            text_result.stdout,
+        )
 
     def test_perception_update_dry_run_json_does_not_require_live_simulator(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -656,7 +660,7 @@ class AutomaCliHarness(unittest.TestCase):
                     "controller_bundle": bundle,
                     "perception": {
                         "algorithm": "lightweight_observer",
-                        "mapper_spec": CURRENT_MAPPER_SPEC,
+                        "mapper_spec": PLUGIN_CHAIN_MAPPER_SPEC,
                         "mapper_config": dict(
                             PERCEPTION_ALGORITHMS["lightweight_observer"]["mapper_config"]
                         ),
@@ -751,7 +755,7 @@ class AutomaCliHarness(unittest.TestCase):
                     "controller_bundle": bundle,
                     "perception": {
                         "algorithm": "lightweight_observer",
-                        "mapper_spec": CURRENT_MAPPER_SPEC,
+                        "mapper_spec": PLUGIN_CHAIN_MAPPER_SPEC,
                         "mapper_config": {
                             "plugins": ["frame"],
                             "plugin_specs": dict(PERCEPTION_PLUGIN_SPECS),
@@ -850,7 +854,7 @@ class AutomaCliHarness(unittest.TestCase):
                 "schema": "automa_perception_activation_v0",
                 "perception": {
                     "algorithm": "sim_debug",
-                    "mapper_spec": "autonomy.perception.mappers.current:CurrentDirectoryPerceptionMapper",
+                    "mapper_spec": PLUGIN_CHAIN_MAPPER_SPEC,
                     "mapper_config": {
                         "plugins": ["frame", "sim_color_targets"],
                         "plugin_specs": dict(PERCEPTION_PLUGIN_SPECS),

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .floor_plane import (
+from .model import (
     FloorPlaneConfig,
     StillProcessingResult,
     estimate_floor_mask,

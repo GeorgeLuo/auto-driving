@@ -1,17 +1,8 @@
-"""Perception layers for black-box vehicle observations.
-
-The package is organized by dependency direction:
-
-- core: low-level frame observations with no scene interpretation
-- features: reusable image-space feature tracking primitives
-- motion: relative motion and motion-group evidence
-- traversability: floor and traversable-region evidence
-- landmarks: experimental landmark/distance estimators
-"""
+"""Stable contracts and runtime plumbing for component-driven perception."""
 
 from .interface import (
-    CameraFrame,
     PERCEPTION_TEXT_SCHEMA,
+    PerceptionComponentUnavailable,
     PerceivedThing,
     PerceptionMapper,
     PerceptionPlugin,
@@ -33,11 +24,11 @@ from .activation import (
 )
 
 __all__ = [
-    "CameraFrame",
     "ActivatedPerceptionStage",
     "PERCEPTION_ACTIVATION_SCHEMA",
     "PERCEPTION_TEXT_SCHEMA",
     "PerceivedThing",
+    "PerceptionComponentUnavailable",
     "PerceptionMapper",
     "PerceptionActivation",
     "PerceptionPlugin",

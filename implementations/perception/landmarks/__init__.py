@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .landmark_distance import (
+from .distance import (
     LandmarkDistanceResult,
     LandmarkSelection,
     LandmarkStepEstimate,

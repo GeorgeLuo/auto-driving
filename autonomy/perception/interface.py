@@ -2,11 +2,9 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Literal, Protocol, runtime_checkable
+from typing import Any, Callable, Literal, Protocol, TypeVar, runtime_checkable
 
-import numpy as np
-
-from autonomy.vehicle import SensorSnapshot
+from autonomy.vehicle import SensorReading, SensorSnapshot
 
 
 PERCEPTION_TEXT_SCHEMA = "perception_text_v1"
@@ -15,57 +13,26 @@ PLUGIN_STATE_MODES = ("stateless", "pairwise", "windowed")
 
 PluginResultStatus = Literal["ok", "empty", "warming_up", "unavailable", "error"]
 PluginStateMode = Literal["stateless", "pairwise", "windowed"]
+ComponentT = TypeVar("ComponentT")
 
 
-@dataclass(frozen=True)
-class CameraFrame:
-    """Normalized RGB camera input shared by every perception plugin."""
-
-    sensor_id: str
-    captured_at_ms: int
-    rgb: np.ndarray = field(repr=False, compare=False)
-    source_path: Path | None = None
-    metadata: dict[str, Any] = field(default_factory=dict)
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.rgb, np.ndarray):
-            raise TypeError("CameraFrame.rgb must be a numpy array")
-        if self.rgb.dtype != np.uint8:
-            raise TypeError("CameraFrame.rgb must use uint8 pixels")
-        if self.rgb.ndim != 3 or self.rgb.shape[2] != 3:
-            raise ValueError("CameraFrame.rgb must have shape (height, width, 3)")
-        if self.rgb.shape[0] < 1 or self.rgb.shape[1] < 1:
-            raise ValueError("CameraFrame.rgb must not be empty")
-
-    @property
-    def width_px(self) -> int:
-        return int(self.rgb.shape[1])
-
-    @property
-    def height_px(self) -> int:
-        return int(self.rgb.shape[0])
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "sensor_id": self.sensor_id,
-            "captured_at_ms": self.captured_at_ms,
-            "width_px": self.width_px,
-            "height_px": self.height_px,
-            "color_space": "RGB",
-            "source_path": str(self.source_path) if self.source_path is not None else None,
-            "metadata": self.metadata,
-        }
+class PerceptionComponentUnavailable(RuntimeError):
+    """A plugin-requested component cannot be derived from this snapshot."""
 
 
 @dataclass(frozen=True)
 class PerceptionPluginContract:
     """Machine-readable execution requirements for one plugin."""
 
-    required_sensors: tuple[str, ...]
+    required_components: tuple[str, ...] = ()
     state_mode: PluginStateMode = "stateless"
     artifact_policy: Literal["none", "optional", "required"] = "none"
 
     def __post_init__(self) -> None:
+        if any(not isinstance(component, str) or not component for component in self.required_components):
+            raise ValueError("required component ids must be non-empty strings")
+        if len(set(self.required_components)) != len(self.required_components):
+            raise ValueError("required component ids must be unique")
         if self.state_mode not in PLUGIN_STATE_MODES:
             raise ValueError(f"unsupported plugin state mode: {self.state_mode!r}")
         if self.artifact_policy not in {"none", "optional", "required"}:
@@ -214,22 +181,56 @@ class PerceptionText:
         )
 
 
-@dataclass(frozen=True)
+@dataclass
 class PerceptionRequest:
-    """Input envelope for a perception mapper."""
+    """Generic component context shared by configured perception plugins."""
 
     snapshot: SensorSnapshot
-    camera_frames: dict[str, CameraFrame]
-    input_errors: dict[str, str] = field(default_factory=dict)
     output_dir: Path | None = None
     previous_snapshot: SensorSnapshot | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+    _components: dict[str, Any] = field(default_factory=dict, repr=False)
+    _component_errors: dict[str, str] = field(default_factory=dict, repr=False)
 
-    def camera_frame(self, sensor_id: str) -> CameraFrame | None:
-        return self.camera_frames.get(sensor_id)
+    def sensor(self, sensor_id: str) -> SensorReading | None:
+        return self.snapshot.readings.get(sensor_id)
 
-    def input_error(self, sensor_id: str) -> str | None:
-        return self.input_errors.get(sensor_id)
+    def resolve_component(
+        self,
+        component_id: str,
+        provider: Callable[[], ComponentT],
+    ) -> ComponentT | None:
+        """Resolve one derived input once and share it across interested plugins."""
+
+        if component_id in self._components:
+            return self._components[component_id]
+        if component_id in self._component_errors:
+            return None
+        try:
+            component = provider()
+        except PerceptionComponentUnavailable as exc:
+            self._component_errors[component_id] = str(exc)
+            return None
+        if component is None:
+            self._component_errors[component_id] = "component provider returned no value"
+            return None
+        self._components[component_id] = component
+        return component
+
+    def component(self, component_id: str) -> Any | None:
+        return self._components.get(component_id)
+
+    def component_error(self, component_id: str) -> str | None:
+        return self._component_errors.get(component_id)
+
+    def component_summary(self) -> dict[str, Any]:
+        return {
+            "available": {
+                component_id: type(component).__name__
+                for component_id, component in sorted(self._components.items())
+            },
+            "errors": dict(sorted(self._component_errors.items())),
+        }
 
 
 @runtime_checkable

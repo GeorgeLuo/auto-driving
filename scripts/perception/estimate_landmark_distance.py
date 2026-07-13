@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from autonomy.perception.landmarks import estimate_landmark_distance
+from implementations.perception.landmarks import estimate_landmark_distance
 
 
 def load_images_and_steps(inputs: list[str]) -> tuple[list[str], list[float]]:

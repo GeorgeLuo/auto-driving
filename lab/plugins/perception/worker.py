@@ -15,7 +15,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from autonomy.perception import build_perception_request  # noqa: E402
-from autonomy.perception.mappers.current import CurrentDirectoryPerceptionMapper  # noqa: E402
+from autonomy.perception.mappers.plugin_chain import PluginChainPerceptionMapper  # noqa: E402
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot  # noqa: E402
 
 
@@ -31,10 +31,10 @@ def main() -> int:
     config = _resolved_config(dict(plugin.get("config") or {}), manifest_path.parent)
 
     with contextlib.redirect_stdout(sys.stderr):
-        mapper = CurrentDirectoryPerceptionMapper(
+        mapper = PluginChainPerceptionMapper(
             plugins=["frame", candidate_id],
             plugin_specs={
-                "frame": "implementations.perception:FrameObservationPlugin",
+                "frame": "implementations.perception.observation.plugin:FrameObservationPlugin",
                 candidate_id: str(plugin["entrypoint"]),
             },
             plugin_configs={candidate_id: config},
@@ -74,7 +74,7 @@ def main() -> int:
     return 0
 
 
-def _perceive(mapper: CurrentDirectoryPerceptionMapper, command: dict[str, Any]):
+def _perceive(mapper: PluginChainPerceptionMapper, command: dict[str, Any]):
     image_path = Path(str(command["image_path"])).resolve()
     if not image_path.is_file():
         raise FileNotFoundError(image_path)

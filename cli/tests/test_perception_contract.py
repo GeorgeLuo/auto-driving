@@ -14,15 +14,21 @@ from autonomy.perception import (
     ViewLocation,
     build_perception_request,
 )
-from autonomy.perception.mappers.current import CurrentDirectoryPerceptionMapper
+from autonomy.perception.mappers.plugin_chain import PluginChainPerceptionMapper
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
-from implementations.perception import FloorPlanePlugin, FrameObservationPlugin, MotionTracksPlugin
+from implementations.perception.components import camera_component_id, camera_frame, camera_frame_error
+from implementations.perception.motion.tracks import MotionTracksPlugin
+from implementations.perception.observation.plugin import FrameObservationPlugin
+from implementations.perception.traversability.plugin import FloorPlanePlugin
+
+
+FRONT_CAMERA_COMPONENT = camera_component_id(FRONT_CAMERA_SENSOR_ID)
 
 
 class WorkingPlugin:
     plugin_id = "working-test-v0"
     contract = PerceptionPluginContract(
-        required_sensors=(FRONT_CAMERA_SENSOR_ID,),
+        required_components=("test.component",),
         state_mode="stateless",
     )
 
@@ -50,7 +56,7 @@ class WorkingPlugin:
 class ExplodingPlugin:
     plugin_id = "exploding-test-v0"
     contract = PerceptionPluginContract(
-        required_sensors=(FRONT_CAMERA_SENSOR_ID,),
+        required_components=("test.component",),
         state_mode="stateless",
     )
 
@@ -68,7 +74,7 @@ class ExplodingPlugin:
 class UnavailablePlugin:
     plugin_id = "unavailable-test-v0"
     contract = PerceptionPluginContract(
-        required_sensors=(FRONT_CAMERA_SENSOR_ID,),
+        required_components=("test.component",),
         state_mode="stateless",
     )
 
@@ -108,15 +114,17 @@ class PerceptionContractTests(unittest.TestCase):
                     metadata={"color_space": "RGB"},
                 ))
             )
-
-        path_frame = path_request.camera_frame(FRONT_CAMERA_SENSOR_ID)
-        array_frame = array_request.camera_frame(FRONT_CAMERA_SENSOR_ID)
-        self.assertIsNotNone(path_frame)
-        self.assertIsNotNone(array_frame)
-        np.testing.assert_array_equal(path_frame.rgb, array_frame.rgb)
-        self.assertFalse(path_frame.rgb.flags.writeable)
-        self.assertEqual(path_frame.to_dict()["color_space"], "RGB")
-        self.assertEqual(array_frame.metadata["normalized_from"], "value")
+            self.assertEqual(path_request.component_summary()["available"], {})
+            self.assertEqual(array_request.component_summary()["available"], {})
+            path_frame = camera_frame(path_request, FRONT_CAMERA_SENSOR_ID)
+            array_frame = camera_frame(array_request, FRONT_CAMERA_SENSOR_ID)
+            self.assertIsNotNone(path_frame)
+            self.assertIsNotNone(array_frame)
+            np.testing.assert_array_equal(path_frame.rgb, array_frame.rgb)
+            self.assertIs(camera_frame(path_request, FRONT_CAMERA_SENSOR_ID), path_frame)
+            self.assertFalse(path_frame.rgb.flags.writeable)
+            self.assertEqual(path_frame.to_dict()["color_space"], "RGB")
+            self.assertEqual(array_frame.metadata["normalized_from"], "value")
 
     def test_invalid_camera_input_is_unavailable_not_negative_evidence(self) -> None:
         request = build_perception_request(
@@ -131,8 +139,24 @@ class PerceptionContractTests(unittest.TestCase):
         result = FrameObservationPlugin().perceive(request)
 
         self.assertEqual(result.status, "unavailable")
-        self.assertIn("unsupported camera value type", request.input_error(FRONT_CAMERA_SENSOR_ID) or "")
+        self.assertIn(
+            "unsupported camera value type",
+            camera_frame_error(request, FRONT_CAMERA_SENSOR_ID) or "",
+        )
         self.assertEqual(result.things, ())
+
+    def test_mapper_schema_aggregates_plugin_component_queries(self) -> None:
+        mapper = PluginChainPerceptionMapper(
+            plugins=["frame"],
+            plugin_specs={
+                "frame": "implementations.perception.observation.plugin:FrameObservationPlugin"
+            },
+        )
+
+        schema = mapper.describe_schema()
+
+        self.assertEqual(schema["inputs"][0]["component_id"], FRONT_CAMERA_COMPONENT)
+        self.assertEqual(schema["inputs"][0]["required_by"], ["frame-observation-v0"])
 
     def test_mapper_isolates_plugin_errors_and_reports_timing(self) -> None:
         request = build_perception_request(
@@ -143,7 +167,7 @@ class PerceptionContractTests(unittest.TestCase):
                 value=np.zeros((8, 8, 3), dtype=np.uint8),
             ))
         )
-        mapper = CurrentDirectoryPerceptionMapper(
+        mapper = PluginChainPerceptionMapper(
             plugins=["working", "exploding"],
             plugin_specs={
                 "working": f"{__name__}:WorkingPlugin",
@@ -161,7 +185,7 @@ class PerceptionContractTests(unittest.TestCase):
         self.assertEqual([thing.thing_id for thing in perception.things], ["test-region"])
 
     def test_mapper_reset_invokes_each_plugin(self) -> None:
-        mapper = CurrentDirectoryPerceptionMapper(
+        mapper = PluginChainPerceptionMapper(
             plugins=["working"],
             plugin_specs={"working": f"{__name__}:WorkingPlugin"},
         )
@@ -173,7 +197,7 @@ class PerceptionContractTests(unittest.TestCase):
         self.assertEqual(plugin.reset_count, 2)
 
     def test_mapper_reports_partial_when_one_plugin_is_unavailable(self) -> None:
-        mapper = CurrentDirectoryPerceptionMapper(
+        mapper = PluginChainPerceptionMapper(
             plugins=["working", "unavailable"],
             plugin_specs={
                 "working": f"{__name__}:WorkingPlugin",

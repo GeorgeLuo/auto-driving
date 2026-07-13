@@ -16,8 +16,15 @@ from autonomy.perception.interface import (
     PerceptionRequest,
     ViewLocation,
 )
+from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID
+from implementations.perception.components import (
+    camera_component_id,
+    camera_frame,
+    camera_frame_error,
+)
 from implementations.perception.text import thing_line
-from autonomy.perception.traversability.floor_plane import (
+
+from .model import (
     FloorPlaneConfig,
     estimate_floor_mask,
     make_overlay,
@@ -25,7 +32,9 @@ from autonomy.perception.traversability.floor_plane import (
     render_occupancy,
     source_obstacle_hits,
 )
-from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID
+
+
+FRONT_CAMERA_COMPONENT = camera_component_id(FRONT_CAMERA_SENSOR_ID)
 
 
 class FloorPlanePlugin:
@@ -33,7 +42,7 @@ class FloorPlanePlugin:
 
     plugin_id = "floor-plane-v0"
     contract = PerceptionPluginContract(
-        required_sensors=(FRONT_CAMERA_SENSOR_ID,),
+        required_components=(FRONT_CAMERA_COMPONENT,),
         state_mode="stateless",
         artifact_policy="optional",
     )
@@ -69,7 +78,7 @@ class FloorPlanePlugin:
         }
 
     def perceive(self, request: PerceptionRequest) -> PerceptionPluginResult:
-        front = request.camera_frame(FRONT_CAMERA_SENSOR_ID)
+        front = camera_frame(request, FRONT_CAMERA_SENSOR_ID)
         if front is None:
             return PerceptionPluginResult(
                 status="unavailable",
@@ -80,7 +89,7 @@ class FloorPlanePlugin:
                 observations={
                     self.plugin_id: {
                         "front_camera_available": False,
-                        "input_error": request.input_error(FRONT_CAMERA_SENSOR_ID),
+                        "input_error": camera_frame_error(request, FRONT_CAMERA_SENSOR_ID),
                     }
                 },
                 limits=("front camera image missing",),

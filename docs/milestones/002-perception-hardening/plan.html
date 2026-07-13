@@ -237,7 +237,7 @@
           <h3>In Scope</h3>
           <ul>
             <li>A provider-neutral perception experiment command.</li>
-            <li>File-backed and in-memory camera normalization.</li>
+            <li>Plugin-owned component access with shared file-backed and in-memory camera normalization.</li>
             <li>Per-frame structure proposals and temporal scene tracks.</li>
             <li>Recorded-sequence replay and comparable reports.</li>
             <li>Latency and memory measurements locally and on Pi.</li>
@@ -272,10 +272,11 @@
           </ul>
         </div>
         <div class="card interface">
-          <h3>2. Camera Input Normalization <span class="status done">Completed</span></h3>
+          <h3>2. Component Access And Camera Adapter <span class="status done">Completed</span></h3>
           <ul>
-            <li>Give plugins one supported way to read a camera frame whether the sensor supplies <code>path</code> or <code>value</code>.</li>
-            <li>Keep capture and materialization in the vehicle/runtime boundary rather than every plugin.</li>
+            <li>Keep the stable stage agnostic of available sensor and evidence kinds.</li>
+            <li>Let plugins declare component queries and resolve the inputs they need from the generic snapshot.</li>
+            <li>Share concrete camera decoding through a cached implementation component whether the reading supplies <code>path</code> or <code>value</code>.</li>
             <li>Test identical plugin output shape from Chase files, Pi HTTP captures, and Donkey arrays.</li>
           </ul>
         </div>
@@ -283,8 +284,8 @@
           <h3>3. Plugin Lifecycle <span class="status done">Completed</span></h3>
           <ul>
             <li>Define initialization, reset, error isolation, and optional temporal-state behavior.</li>
-            <li>Declare required sensors, whether artifacts are optional, and whether a plugin is stateless, pairwise, or windowed.</li>
-            <li>Keep plugins independent in this milestone: each consumes shared normalized sensor inputs, while cross-plugin fusion remains a later explicit layer.</li>
+            <li>Declare required components, whether artifacts are optional, and whether a plugin is stateless, pairwise, or windowed.</li>
+            <li>Keep plugins independent in this milestone: each queries shared input components, while cross-plugin fusion remains a later explicit layer.</li>
           </ul>
         </div>
         <div class="card interface">
@@ -647,7 +648,7 @@
     <section class="panel">
       <h2>Completed Work Order</h2>
       <ol>
-        <li><s>Normalize camera input and define plugin lifecycle before adding more algorithms.</s> Completed.</li>
+        <li><s>Define generic component access, concrete camera normalization, and plugin lifecycle before adding more algorithms.</s> Completed.</li>
         <li><s>Generalize the perception experiment runner across Chase, PiRacer, and replay sources.</s> Implemented and live-validated against both vehicles.</li>
         <li><s>Add deterministic test fixtures and extend the implemented compact replay report with quality scoring.</s> Completed; ground-truth scoring remains a separate gate.</li>
         <li><s>Establish the lab plugin workbench and run FastSAM-s without map input.</s> Completed on physical replay and recorded Chase replay.</li>

@@ -17,6 +17,7 @@ import requests  # type: ignore[import-untyped]
 
 from autonomy.perception import PERCEPTION_TEXT_SCHEMA, PerceptionRequest, PerceptionText
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID
+from implementations.perception.components import camera_frame, camera_frame_error
 
 from .paths import ROOT, display_path, safe_path_part
 
@@ -301,9 +302,9 @@ class LabPerceptionMapper:
         }
 
     def perceive(self, request: PerceptionRequest) -> PerceptionText:
-        frame = request.camera_frame(FRONT_CAMERA_SENSOR_ID)
+        frame = camera_frame(request, FRONT_CAMERA_SENSOR_ID)
         if frame is None:
-            error = request.input_error(FRONT_CAMERA_SENSOR_ID) or "front camera unavailable"
+            error = camera_frame_error(request, FRONT_CAMERA_SENSOR_ID) or "front camera unavailable"
             raise RuntimeError(error)
         image_path = frame.source_path
         if image_path is None or not image_path.is_file():

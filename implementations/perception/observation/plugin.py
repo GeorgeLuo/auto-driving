@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from autonomy.perception.core import observe_rgb_frame
 from autonomy.perception.interface import (
     PerceivedThing,
     PerceptionPluginContract,
@@ -10,14 +9,24 @@ from autonomy.perception.interface import (
     PerceptionRequest,
     ViewLocation,
 )
-from implementations.perception.text import thing_line
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID
+from implementations.perception.components import (
+    camera_component_id,
+    camera_frame,
+    camera_frame_error,
+)
+from implementations.perception.text import thing_line
+
+from .frame_analysis import observe_rgb_frame
+
+
+FRONT_CAMERA_COMPONENT = camera_component_id(FRONT_CAMERA_SENSOR_ID)
 
 
 class FrameObservationPlugin:
     plugin_id = "frame-observation-v0"
     contract = PerceptionPluginContract(
-        required_sensors=(FRONT_CAMERA_SENSOR_ID,),
+        required_components=(FRONT_CAMERA_COMPONENT,),
         state_mode="stateless",
         artifact_policy="none",
     )
@@ -33,7 +42,7 @@ class FrameObservationPlugin:
         }
 
     def perceive(self, request: PerceptionRequest) -> PerceptionPluginResult:
-        front = request.camera_frame(FRONT_CAMERA_SENSOR_ID)
+        front = camera_frame(request, FRONT_CAMERA_SENSOR_ID)
         if front is None:
             return PerceptionPluginResult(
                 status="unavailable",
@@ -41,7 +50,7 @@ class FrameObservationPlugin:
                 observations={
                     "frame": {
                         "front_camera_available": False,
-                        "input_error": request.input_error(FRONT_CAMERA_SENSOR_ID),
+                        "input_error": camera_frame_error(request, FRONT_CAMERA_SENSOR_ID),
                     }
                 },
                 limits=("front camera image missing",),

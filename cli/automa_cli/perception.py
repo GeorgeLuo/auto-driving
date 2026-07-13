@@ -35,19 +35,19 @@ from .vehicles import discover_active_vehicles, find_vehicle_by_id, format_activ
 ROOT = Path(__file__).resolve().parents[2]
 PERCEPTION_IMPLEMENTATIONS_DIR = IMPLEMENTATIONS_DIR / "perception"
 RUNTIME_ROOT = Path(os.environ.get("AUTOMA_RUNTIME_ROOT", ROOT / "runtime" / "vehicles"))
-CURRENT_MAPPER_SPEC = "autonomy.perception.mappers.current:CurrentDirectoryPerceptionMapper"
+PLUGIN_CHAIN_MAPPER_SPEC = "autonomy.perception.mappers.plugin_chain:PluginChainPerceptionMapper"
 DEFAULT_PERCEPTION_ALGORITHM = "lightweight_observer"
 PERCEPTION_PLUGIN_SPECS: dict[str, str] = {
-    "floor_plane": "implementations.perception:FloorPlanePlugin",
-    "frame": "implementations.perception:FrameObservationPlugin",
-    "motion_tracks": "implementations.perception:MotionTracksPlugin",
-    "sim_color_targets": "implementations.perception:SimColorTargetsPlugin",
-    "vlm_prep": "implementations.perception:VlmPrepPlugin",
+    "floor_plane": "implementations.perception.traversability.plugin:FloorPlanePlugin",
+    "frame": "implementations.perception.observation.plugin:FrameObservationPlugin",
+    "motion_tracks": "implementations.perception.motion.tracks:MotionTracksPlugin",
+    "sim_color_targets": "implementations.perception.simulation.color_targets:SimColorTargetsPlugin",
+    "vlm_prep": "implementations.perception.preparation.vlm:VlmPrepPlugin",
 }
 PERCEPTION_ALGORITHMS: dict[str, dict[str, Any]] = {
     "lightweight_observer": {
         "description": "Lightweight generic observer: frame facts, visible floor, and first-hit floor boundaries.",
-        "mapper_spec": CURRENT_MAPPER_SPEC,
+        "mapper_spec": PLUGIN_CHAIN_MAPPER_SPEC,
         "mapper_config": {
             "plugins": ["frame", "floor_plane"],
             "plugin_specs": dict(PERCEPTION_PLUGIN_SPECS),
@@ -60,7 +60,7 @@ PERCEPTION_ALGORITHMS: dict[str, dict[str, Any]] = {
     },
     "sim_debug": {
         "description": "Simulator-only debug control: frame facts plus known Chase color-target signals.",
-        "mapper_spec": CURRENT_MAPPER_SPEC,
+        "mapper_spec": PLUGIN_CHAIN_MAPPER_SPEC,
         "mapper_config": {
             "plugins": ["frame", "sim_color_targets"],
             "plugin_specs": dict(PERCEPTION_PLUGIN_SPECS),
@@ -75,7 +75,7 @@ PERCEPTION_ALGORITHMS: dict[str, dict[str, Any]] = {
             "Generic visual observer chain: frame facts, floor/traversability, "
             "and bounded scene tracks."
         ),
-        "mapper_spec": CURRENT_MAPPER_SPEC,
+        "mapper_spec": PLUGIN_CHAIN_MAPPER_SPEC,
         "mapper_config": {
             "plugins": ["frame", "floor_plane", "motion_tracks"],
             "plugin_specs": dict(PERCEPTION_PLUGIN_SPECS),
@@ -895,20 +895,16 @@ def _format_perception_info(payload: dict[str, Any]) -> str:
         if not isinstance(item, dict):
             continue
         required = "required" if item.get("required") else "optional"
-        lines.append(f"- {item.get('sensor_id', 'unknown')} ({item.get('sensor_kind', 'sensor')}, {required})")
+        lines.append(f"- {item.get('component_id', 'unknown')} ({required})")
+        required_by = item.get("required_by")
+        if isinstance(required_by, list) and required_by:
+            lines.append(f"  requested by: {', '.join(map(str, required_by))}")
         source = item.get("source")
         if source:
             lines.append(f"  source: {source}")
         missing = item.get("missing_behavior")
         if missing:
             lines.append(f"  missing: {missing}")
-        plugin_chain = item.get("plugin_chain")
-        if isinstance(plugin_chain, list) and plugin_chain:
-            lines.append("  plugin chain:")
-            for plugin in plugin_chain:
-                if not isinstance(plugin, dict):
-                    continue
-                lines.append(f"  - {plugin.get('plugin_id', 'unknown')}")
         translations = item.get("translations")
         if isinstance(translations, list) and translations:
             lines.append("  translations:")
@@ -921,6 +917,24 @@ def _format_perception_info(payload: dict[str, Any]) -> str:
                     f"  - {translation.get('name', 'unnamed')} "
                     f"[{translation.get('implementation', 'unknown')}]{emit_text}"
                 )
+
+    plugin_chain = schema.get("plugin_chain")
+    if isinstance(plugin_chain, list) and plugin_chain:
+        lines.extend(["", "Plugin chain:"])
+        for plugin in plugin_chain:
+            if not isinstance(plugin, dict):
+                continue
+            contract = plugin.get("contract") if isinstance(plugin.get("contract"), dict) else {}
+            components = contract.get("required_components")
+            component_text = (
+                ", ".join(map(str, components))
+                if isinstance(components, (list, tuple)) and components
+                else "none"
+            )
+            lines.append(
+                f"- {plugin.get('plugin_id', 'unknown')} "
+                f"[{contract.get('state_mode', 'unknown')}] components={component_text}"
+            )
 
     output_schema = schema.get("output") if isinstance(schema.get("output"), dict) else {}
     lines.extend(

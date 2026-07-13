@@ -13,7 +13,7 @@ import numpy as np
 from PIL import Image
 
 from autonomy.perception import PERCEPTION_TEXT_SCHEMA, build_perception_request
-from autonomy.perception.mappers.current import CurrentDirectoryPerceptionMapper
+from autonomy.perception.mappers.plugin_chain import PluginChainPerceptionMapper
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
 from cli.automa_cli.perception import PERCEPTION_PLUGIN_SPECS
 from cli.automa_cli import perception as perception_module
@@ -260,7 +260,7 @@ class PerceptionRunTests(unittest.TestCase):
                 "name": "Fixture candidate",
                 "description": "Test-only candidate using an existing lightweight plugin.",
                 "plugin": {
-                    "entrypoint": "implementations.perception:FrameObservationPlugin",
+                    "entrypoint": "implementations.perception.observation.plugin:FrameObservationPlugin",
                     "config": {},
                 },
                 "runtime": {"python": ".venv/bin/python"},
@@ -306,7 +306,7 @@ class PerceptionRunTests(unittest.TestCase):
             "active_count": 2,
             "inactive": [],
         }
-        mapper = CurrentDirectoryPerceptionMapper(
+        mapper = PluginChainPerceptionMapper(
             plugins=["frame"],
             plugin_specs={"frame": PERCEPTION_PLUGIN_SPECS["frame"]},
         )

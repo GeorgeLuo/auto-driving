@@ -13,13 +13,12 @@ from autonomy.perception.interface import (
     PerceptionRequest,
     PerceptionText,
 )
-from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID
 
 
-class CurrentDirectoryPerceptionMapper:
-    """Perception mapper backed by a small ordered plugin chain."""
+class PluginChainPerceptionMapper:
+    """Generic runner for independently configured perception plugins."""
 
-    plugin_id = "autonomy.perception.current-directory-v0"
+    plugin_id = "autonomy.perception.plugin-chain-v0"
 
     def __init__(
         self,
@@ -52,6 +51,15 @@ class CurrentDirectoryPerceptionMapper:
             plugin.reset()
 
     def describe_schema(self) -> dict[str, Any]:
+        component_consumers: dict[str, list[str]] = {}
+        plugin_schemas = []
+        for plugin in self.plugins:
+            for component_id in plugin.contract.required_components:
+                component_consumers.setdefault(component_id, []).append(plugin.plugin_id)
+            plugin_schemas.append({
+                **plugin.describe_schema(),
+                "contract": plugin.contract.to_dict(),
+            })
         return {
             "schema": "perception_algorithm_schema_v0",
             "plugin_id": self.plugin_id,
@@ -64,20 +72,15 @@ class CurrentDirectoryPerceptionMapper:
             },
             "inputs": [
                 {
-                    "sensor_id": FRONT_CAMERA_SENSOR_ID,
-                    "sensor_kind": "camera",
+                    "component_id": component_id,
                     "required": True,
-                    "source": "PerceptionRequest.camera_frames[front_camera].rgb",
-                    "missing_behavior": "plugin run status is unavailable with an input error",
-                    "plugin_chain": [
-                        {
-                            **plugin.describe_schema(),
-                            "contract": plugin.contract.to_dict(),
-                        }
-                        for plugin in self.plugins
-                    ],
+                    "required_by": plugin_ids,
+                    "source": "resolved by the requesting plugin from PerceptionRequest.snapshot",
+                    "missing_behavior": "requesting plugin reports unavailable or reduced confidence",
                 }
+                for component_id, plugin_ids in sorted(component_consumers.items())
             ],
+            "plugin_chain": plugin_schemas,
             "output": {
                 "schema": PERCEPTION_TEXT_SCHEMA,
                 "format": "line-oriented debug signals, structured PerceivedThing records, and plugin run status",
@@ -111,11 +114,6 @@ class CurrentDirectoryPerceptionMapper:
         things: list[PerceivedThing] = []
         observations: dict[str, Any] = {
             "sensor_snapshot": request.snapshot.to_dict(),
-            "camera_frames": {
-                sensor_id: frame.to_dict()
-                for sensor_id, frame in request.camera_frames.items()
-            },
-            "input_errors": dict(request.input_errors),
             "plugin_chain": list(self.plugin_ids),
         }
         artifacts: dict[str, str] = {}
@@ -168,6 +166,8 @@ class CurrentDirectoryPerceptionMapper:
             observations.update(result.observations)
             artifacts.update(result.artifacts)
             limits.extend(result.limits)
+
+        observations["component_access"] = request.component_summary()
 
         return PerceptionText(
             schema=PERCEPTION_TEXT_SCHEMA,

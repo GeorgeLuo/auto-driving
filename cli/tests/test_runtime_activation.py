@@ -16,7 +16,7 @@ from autonomy.runtime import (
 )
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
-from cli.automa_cli.perception import CURRENT_MAPPER_SPEC, PERCEPTION_PLUGIN_SPECS
+from cli.automa_cli.perception import PERCEPTION_PLUGIN_SPECS, PLUGIN_CHAIN_MAPPER_SPEC
 from implementations.runtime.donkeycar import AutonomyPilotPart
 
 
@@ -38,7 +38,7 @@ class RuntimeActivationTests(unittest.TestCase):
                         "schema": "automa_perception_activation_v0",
                         "perception": {
                             "algorithm": "test-observer",
-                            "mapper_spec": CURRENT_MAPPER_SPEC,
+                            "mapper_spec": PLUGIN_CHAIN_MAPPER_SPEC,
                             "mapper_config": {
                                 "plugins": ["frame"],
                                 "plugin_specs": {"frame": PERCEPTION_PLUGIN_SPECS["frame"]},

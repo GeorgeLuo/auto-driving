@@ -15,7 +15,15 @@ from autonomy.perception import (
     ViewLocation,
 )
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID
+from implementations.perception.components import (
+    camera_component_id,
+    camera_frame,
+    camera_frame_error,
+)
 from implementations.perception.text import thing_line
+
+
+FRONT_CAMERA_COMPONENT = camera_component_id(FRONT_CAMERA_SENSOR_ID)
 
 
 class ClassicalRegionPlugin:
@@ -23,7 +31,7 @@ class ClassicalRegionPlugin:
 
     plugin_id = "classical-regions-v0"
     contract = PerceptionPluginContract(
-        required_sensors=(FRONT_CAMERA_SENSOR_ID,),
+        required_components=(FRONT_CAMERA_COMPONENT,),
         state_mode="stateless",
         artifact_policy="optional",
     )
@@ -72,7 +80,7 @@ class ClassicalRegionPlugin:
         }
 
     def perceive(self, request: PerceptionRequest) -> PerceptionPluginResult:
-        frame = request.camera_frame(FRONT_CAMERA_SENSOR_ID)
+        frame = camera_frame(request, FRONT_CAMERA_SENSOR_ID)
         if frame is None:
             return PerceptionPluginResult(
                 status="unavailable",
@@ -80,7 +88,7 @@ class ClassicalRegionPlugin:
                     "signal id=classical_regions_available value=false "
                     "reason=no_front_camera confidence=0.000",
                 ),
-                observations={self.plugin_id: {"input_error": request.input_error(FRONT_CAMERA_SENSOR_ID)}},
+                observations={self.plugin_id: {"input_error": camera_frame_error(request, FRONT_CAMERA_SENSOR_ID)}},
                 limits=("front camera image missing",),
             )
 

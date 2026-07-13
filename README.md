@@ -36,8 +36,9 @@ PYTHONDONTWRITEBYTECODE=1 python3 cli/run_tests.py --live-sim
 
 ## Project Layout
 
-- `autonomy/` contains stable vehicle, perception, decision, and runtime
-  contracts and orchestration.
+- `autonomy/` contains sensor- and environment-agnostic vehicle, perception,
+  decision, and runtime contracts plus generic orchestration. It contains no
+  perception algorithms.
 - `implementations/` contains concrete vehicle adapters, perception plugins,
   runtime hosts, and bounded operations.
 - `cli/` contains the `automa` command and its scenario test harness.
@@ -330,6 +331,14 @@ autonomy contracts       -> never import implementations
 implementations          -> satisfy and compose autonomy contracts
 CLI/runtime entrypoints  -> select implementations and execute the cycle
 ```
+
+Perception follows a component-query model. The stable stage wraps a generic
+`SensorSnapshot` and runs configured plugins without knowing which sensor or
+meaning any plugin uses. Each plugin declares component ids, attempts to
+resolve those components from the snapshot, and emits evidence or an explicit
+unavailable result. Concrete camera decoding and every meaning-making
+algorithm live under `implementations/perception/`; unpromoted candidates live
+under `lab/plugins/perception/`.
 
 Both current vehicle adapters expose only the generic `front_camera` sensor
 through `CarInterface.read_sensors()`.

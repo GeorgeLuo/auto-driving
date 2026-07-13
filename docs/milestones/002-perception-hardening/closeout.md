@@ -4,7 +4,7 @@ Status: closed 2026-07-13
 
 ## Outcome
 
-The repository now has one normalized, provider-neutral perception path for
+The repository now has one component-driven, provider-neutral perception path for
 live Chase frames, live PiRacer frames, and recorded replay. Perception plugins
 share a lifecycle and structured evidence contract, while the CLI provides
 bounded run, replay, candidate comparison, setup, and inspection workflows.
@@ -14,9 +14,11 @@ a hashed autonomy release before the idle decision stage.
 ## Durable Decisions
 
 - Perception outputs evidence, not durable world facts or semantic truth.
-- Camera inputs are normalized at the runtime boundary so plugins do not care
-  whether frames originated as files or in-memory arrays.
-- Plugins consume normalized sensor inputs independently. Cross-plugin fusion
+- The stable stage knows only the generic sensor snapshot and plugin lifecycle;
+  it contains no camera types or perception algorithms.
+- Plugins declare and resolve their own components. A concrete shared camera
+  adapter normalizes file-backed and in-memory readings only when requested.
+- Plugins consume resolved input components independently. Cross-plugin fusion
   must be introduced as an explicit later layer rather than implicit ordering.
 - Temporal perception state is bounded and run-local. Durable identity and
   history belong to the later memory stage.
@@ -28,7 +30,7 @@ a hashed autonomy release before the idle decision stage.
 
 ## Validation
 
-- All 78 repository tests pass; the one opt-in live-simulator test is skipped
+- All 80 repository tests pass; the one opt-in live-simulator test is skipped
   by the default suite.
 - Live Chase runs completed five lightweight and five temporal frames with no
   failures and no movement authority.

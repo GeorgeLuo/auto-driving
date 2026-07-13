@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any, TextIO
 
 from autonomy.decision import DecisionFrameContext, DecisionStages
-from autonomy.perception import PerceptionRequest
+from autonomy.perception import PERCEPTION_TEXT_SCHEMA, build_perception_request
 from autonomy.runtime import AutonomyManager
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReadRequest
@@ -113,8 +113,8 @@ def run_vehicle_automation(
         output_dir_text = context.metadata.get("perception_output_dir")
         output_dir = Path(output_dir_text) if isinstance(output_dir_text, str) else None
         return mapper.perceive(
-            PerceptionRequest(
-                snapshot=context.sensor_snapshot,
+            build_perception_request(
+                context.sensor_snapshot,
                 output_dir=output_dir,
                 metadata={
                     "vehicle_id": vehicle_id,
@@ -248,7 +248,7 @@ def run_vehicle_automation(
             if perception is None:
                 latest_perception_text = "\n".join(
                     [
-                        "schema=perception_text_v0",
+                        f"schema={PERCEPTION_TEXT_SCHEMA}",
                         "plugin=decision-cycle",
                         "signal id=perception_ready value=false confidence=1.000 reason=no_perception",
                     ]
@@ -489,7 +489,7 @@ def start_vehicle_automation_background(
     )
     starting_text = "\n".join(
         [
-            "schema=perception_text_v0",
+            f"schema={PERCEPTION_TEXT_SCHEMA}",
             "plugin=automation-worker",
             f"status=starting vehicle_id={vehicle_id}",
             "signal id=perception_ready value=false confidence=1.000 reason=worker_starting",

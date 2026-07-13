@@ -11,10 +11,8 @@ from implementations.operations import (
     build_basic_startup_action_check_plan,
     run_startup_action_check,
 )
-from implementations.vehicle.chase_sim import ChaseSimCar
-from implementations.vehicle.picar import create_local_car
-
 from .paths import ROOT, display_path
+from .vehicle_access import create_vehicle_access
 from .vehicles import (
     discover_active_vehicles,
     find_vehicle_by_id,
@@ -65,24 +63,18 @@ def run_vehicle_startup_check(
         return CommandResult(2, f"Vehicle {vehicle_id!r} was not found.")
 
     provider = vehicle.get("provider")
-    connection = vehicle.get("connection") if isinstance(vehicle.get("connection"), dict) else {}
     preparation: dict[str, Any] | None = None
+    try:
+        access = create_vehicle_access(vehicle, timeout_s=timeout_s)
+    except ValueError as exc:
+        return CommandResult(2, str(exc))
+    car = access.car
+    image_extension = access.image_extension
     if provider == "chase-sim":
-        ws_url = connection.get("ws_url") if isinstance(connection.get("ws_url"), str) else None
-        car = ChaseSimCar(ws_url=ws_url, timeout_s=timeout_s, vehicle_id=vehicle_id)
-        image_extension = "png"
         try:
             preparation = car.prepare_for_external_control()
         except Exception as exc:
             return CommandResult(2, f"Could not prepare simulator vehicle {vehicle_id!r}: {exc}")
-    elif provider == "picar":
-        base_url = connection.get("base_url") if isinstance(connection.get("base_url"), str) else None
-        if not base_url:
-            return CommandResult(2, f"Vehicle {vehicle_id!r} has no Donkey HTTP base URL.")
-        car = create_local_car(base_url=base_url, timeout_s=timeout_s, vehicle_id=vehicle_id)
-        image_extension = "jpg"
-    else:
-        return CommandResult(2, f"Vehicle {vehicle_id!r} has unsupported provider {provider!r}.")
 
     run_id = f"{vehicle_id}-{time.strftime('%Y%m%d-%H%M%S')}"
     out_dir = OPERATION_OUTPUT_ROOT / run_id

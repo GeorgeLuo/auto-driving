@@ -63,10 +63,10 @@ The command groups intentionally distinguish different kinds of state:
 | Command | Reads or changes |
 |---|---|
 | `vehicles active` | Probes live PiCar and Chase endpoints. |
-| `vehicles update perception` | Packages code and stages a Chase perception activation locally. |
+| `vehicles update perception` | Packages code and stages a vehicle perception activation locally. |
 | `vehicles update decision` | Packages code and stages a decision activation locally. |
 | `vehicles info ...` | Reads locally staged perception or decision configuration. |
-| `vehicles perception ...` | Edits the locally staged perception plugin chain. |
+| `vehicles perception ...` | Runs perception experiments and manages production or lab plugins. |
 | `vehicles automation ...` | Runs or inspects the local Chase controller worker. |
 | `vehicles stream perception` | Displays the worker's rolling latest perception output. |
 | `vehicles update core` | Deploys DonkeyCar framework and physical harness code to the Pi. |
@@ -91,11 +91,14 @@ Prepare the simulator and verify that the Play/Chase frontend is connected:
 ./cli/automa vehicles active
 ```
 
-Stage the current perception algorithm. A fresh controller bundle also receives
-the explicit idle decision activation:
+`simulators ensure` succeeds only after the selected scenario and Chase debug
+state remain reachable through a short post-setup stability probe.
+
+Stage the simulator color-control algorithm. A fresh controller bundle also
+receives the explicit idle decision activation:
 
 ```sh
-./cli/automa vehicles update perception --id chase-sim-chaser
+./cli/automa vehicles update perception --id chase-sim-chaser --algorithm sim_debug
 ```
 
 Use `vehicles update decision` when deliberately changing the selected engine.
@@ -135,9 +138,39 @@ After changing perception or shared autonomy code, stage a fresh bundle before
 restarting the worker:
 
 ```sh
-./cli/automa vehicles update perception --id chase-sim-chaser
+./cli/automa vehicles update perception --id chase-sim-chaser --algorithm sim_debug
 ./cli/automa vehicles automation restart --id chase-sim-chaser
 ```
+
+### Perception Experiments
+
+Observe five frames from a usable vehicle without taking movement control, or
+replay an existing image sequence through a production algorithm:
+
+```sh
+./cli/automa vehicles perception run
+./cli/automa vehicles perception run --id piracer --algorithm lightweight_observer
+./cli/automa vehicles perception replay path/to/images --algorithm visual_observer
+```
+
+Experimental candidates are isolated under `lab/plugins/perception/`. Inspect
+their readiness, provision declared dependencies once, and compare every ready
+candidate on the same frames:
+
+```sh
+./cli/automa vehicles perception candidates
+./cli/automa vehicles perception setup fastsam
+./cli/automa vehicles perception compare path/to/images
+```
+
+No captures or reports are retained by default. Add `--record` when overlays,
+per-frame JSON, and the generated review page are wanted.
+
+`lightweight_observer` is the production-oriented frame and floor-boundary
+chain. `visual_observer` adds feature-motion tracks and is intentionally much
+slower. Artifact-only VLM preprocessing remains an optional diagnostic plugin,
+not part of either observer. Lab candidates remain local until a measured
+promotion decision moves them into `implementations/`.
 
 ### Perception Plugins
 
@@ -174,8 +207,9 @@ restart the autonomy release:
 `update autonomy` packages `autonomy/` and `implementations/`, verifies the
 archive hash on the Pi, installs a versioned release, transfers perception and
 decision manifests, and restarts only when requested. Post-restart verification
-requires the selected engine to load while Donkey drive mode remains `user`;
-the deployment check does not command movement.
+requires both the selected decision engine and perception algorithm to load
+while Donkey drive mode remains `user`; the deployment check does not command
+movement.
 
 Use the deploy commands according to what changed:
 
@@ -204,11 +238,11 @@ should become an active command source:
 
 ### Physical Activation State
 
-The first physical autonomy deployment creates the default `current`
-perception activation and `idle` decision activation when none exist. The Pi
-currently loads the decision activation; onboard perception is intentionally a
-no-op stage, so the transferred perception manifest is layout metadata rather
-than active image processing.
+The first physical autonomy deployment creates the default
+`lightweight_observer` perception activation and `idle` decision activation
+when none exist. The Pi loads both activations: the lightweight frame and floor
+boundary mapper runs before observation, while the idle decision engine keeps
+movement at zero.
 
 Decision changes are local until the next autonomy deployment:
 
@@ -217,9 +251,9 @@ Decision changes are local until the next autonomy deployment:
 ./cli/automa vehicles update autonomy --id piracer --restart
 ```
 
-`vehicles info perception --id piracer` can inspect the staged schema, but
-enabling a physical perception plugin should wait until the Donkey runtime has
-an explicit perception stage.
+`vehicles info perception --id piracer` inspects the staged mapper, enabled
+plugins, machine-readable input contract, and release metadata. Local staging
+does not require the Pi to be online; the subsequent autonomy deploy does.
 
 ## Bounded Startup Check
 

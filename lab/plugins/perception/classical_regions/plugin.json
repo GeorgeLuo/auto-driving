@@ -1,0 +1,27 @@
+{
+  "schema": "automa_lab_perception_plugin_v0",
+  "id": "classical_regions",
+  "name": "Classical color regions",
+  "description": "OpenCV-only coherent color components represented as generic image-space regions.",
+  "plugin": {
+    "entrypoint": "lab.plugins.perception.classical_regions.src.plugin:ClassicalRegionPlugin",
+    "config": {
+      "working_width": 320,
+      "spatial_radius": 8,
+      "color_radius": 18,
+      "min_area_fraction": 0.003,
+      "max_area_fraction": 0.65,
+      "max_regions": 32,
+      "write_artifacts": true
+    }
+  },
+  "runtime": {
+    "python": "core"
+  },
+  "output": {
+    "schema": "perception_text_v1",
+    "kind": "region_proposal",
+    "semantic_labels": false,
+    "depth": false
+  }
+}

@@ -1,0 +1,75 @@
+{
+  "schema": "automa_simulator_perception_validation_v0",
+  "validated_on": "2026-07-13",
+  "scenario": {
+    "id": "chaser-depth-obstacles",
+    "selection_status": "success",
+    "frontend_stable": true,
+    "simulator_usable": true
+  },
+  "capture": {
+    "run_id": "chase-sim-chaser-20260713-145225",
+    "frames": 14,
+    "startup_checks_passed": 7,
+    "startup_checks_total": 7,
+    "views": [
+      "stationary",
+      "forward_center",
+      "reverse_center",
+      "forward_left",
+      "reverse_left",
+      "forward_right",
+      "reverse_right"
+    ],
+    "contact_sheet": "lab/runs/startup-check/chase-sim-chaser-20260713-145225/contact_sheet.jpg",
+    "report": "lab/runs/startup-check/chase-sim-chaser-20260713-145225/report.json"
+  },
+  "candidate_results": {
+    "fastsam": {
+      "run_id": "replay-chase-sim-chaser-20260713-145225-20260713-145245",
+      "frames": 14,
+      "failed_frames": 0,
+      "region_proposals": 144,
+      "representation_health": 0.953,
+      "latency_ms": {
+        "cold": 2561.932,
+        "steady_median": 207.16,
+        "steady_p95": 212.888
+      },
+      "peak_memory_mib": 640.5,
+      "map_input_used": false
+    },
+    "classical_regions": {
+      "run_id": "replay-chase-sim-chaser-20260713-145225-20260713-145305",
+      "frames": 14,
+      "failed_frames": 0,
+      "region_proposals": 32,
+      "representation_health": 0.939,
+      "latency_ms": {
+        "cold": 196.119,
+        "steady_median": 33.224,
+        "steady_p95": 44.614
+      },
+      "peak_memory_mib": 115.391,
+      "map_input_used": false
+    },
+    "visual_observer": {
+      "run_id": "replay-chase-sim-chaser-20260713-145225-20260713-145312",
+      "frames": 14,
+      "failed_frames": 0,
+      "scene_tracks": 72,
+      "representation_health": 0.915,
+      "latency_ms": {
+        "cold": 636.275,
+        "steady_median": 2661.677,
+        "steady_p95": 2885.281
+      },
+      "peak_memory_mib": 268.734,
+      "map_input_used": false
+    }
+  },
+  "limits": [
+    "Representation health is not semantic accuracy or object recall.",
+    "Stable object identity across frames was not scored in this milestone."
+  ]
+}

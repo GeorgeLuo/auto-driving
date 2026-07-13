@@ -8,8 +8,11 @@ from typing import Any
 import cv2
 import numpy as np
 
-from autonomy.perception.interface import PerceptionRequest
-from implementations.perception.chain import PerceptionPluginResult
+from autonomy.perception.interface import (
+    PerceptionPluginContract,
+    PerceptionPluginResult,
+    PerceptionRequest,
+)
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID
 
 
@@ -33,6 +36,11 @@ class VlmPrepPlugin:
     """Emit deterministic image-prep artifacts for downstream VLM/CV observers."""
 
     plugin_id = "vlm-prep-v0"
+    contract = PerceptionPluginContract(
+        required_sensors=(FRONT_CAMERA_SENSOR_ID,),
+        state_mode="stateless",
+        artifact_policy="required",
+    )
 
     def __init__(
         self,
@@ -42,6 +50,9 @@ class VlmPrepPlugin:
     ) -> None:
         self.write_artifacts = bool(write_artifacts)
         self.config = config or VlmPrepConfig()
+
+    def reset(self) -> None:
+        return None
 
     def describe_schema(self) -> dict[str, Any]:
         return {
@@ -60,32 +71,32 @@ class VlmPrepPlugin:
         }
 
     def perceive(self, request: PerceptionRequest) -> PerceptionPluginResult:
-        front = request.snapshot.readings.get(FRONT_CAMERA_SENSOR_ID)
-        if front is None or front.path is None:
+        front = request.camera_frame(FRONT_CAMERA_SENSOR_ID)
+        if front is None:
             return PerceptionPluginResult(
+                status="unavailable",
                 lines=("signal id=vlm_prep_available value=false confidence=0.000 reason=no_front_camera",),
-                observations={self.plugin_id: {"front_camera_available": False}},
+                observations={
+                    self.plugin_id: {
+                        "front_camera_available": False,
+                        "input_error": request.input_error(FRONT_CAMERA_SENSOR_ID),
+                    }
+                },
                 limits=("front camera image missing",),
             )
 
         if request.output_dir is None or not self.write_artifacts:
             return PerceptionPluginResult(
+                status="unavailable",
                 lines=("signal id=vlm_prep_available value=false confidence=0.000 reason=artifact_writes_disabled",),
                 observations={self.plugin_id: {"artifact_writes_enabled": self.write_artifacts}},
                 limits=("VLM prep plugin currently emits artifacts only",),
             )
 
-        image_path = Path(front.path)
         output_dir = request.output_dir / "vlm_prep"
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        image = cv2.imread(str(image_path))
-        if image is None:
-            return PerceptionPluginResult(
-                lines=("signal id=vlm_prep_available value=false confidence=0.000 reason=image_read_failed",),
-                observations={self.plugin_id: {"image_path": str(image_path), "readable": False}},
-                limits=("front camera image could not be read by OpenCV",),
-            )
+        image = np.ascontiguousarray(front.rgb[:, :, ::-1])
 
         artifacts = prepare_vlm_artifacts(
             image,
@@ -95,7 +106,7 @@ class VlmPrepPlugin:
         )
 
         summary = {
-            "image": str(image_path),
+            "image": str(front.source_path) if front.source_path is not None else None,
             "artifact_writes_enabled": self.write_artifacts,
             "config": asdict(self.config),
             "artifacts": artifacts,

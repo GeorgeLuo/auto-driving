@@ -9,8 +9,13 @@ import cv2
 import numpy as np
 from PIL import Image
 
-from autonomy.perception.interface import PerceivedThing, PerceptionRequest, ViewLocation
-from implementations.perception.chain import PerceptionPluginResult
+from autonomy.perception.interface import (
+    PerceivedThing,
+    PerceptionPluginContract,
+    PerceptionPluginResult,
+    PerceptionRequest,
+    ViewLocation,
+)
 from implementations.perception.text import thing_line
 from autonomy.perception.traversability.floor_plane import (
     FloorPlaneConfig,
@@ -18,6 +23,7 @@ from autonomy.perception.traversability.floor_plane import (
     make_overlay,
     project_topdown,
     render_occupancy,
+    source_obstacle_hits,
 )
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID
 
@@ -26,17 +32,23 @@ class FloorPlanePlugin:
     """Estimate floor/traversability from the current front camera frame."""
 
     plugin_id = "floor-plane-v0"
+    contract = PerceptionPluginContract(
+        required_sensors=(FRONT_CAMERA_SENSOR_ID,),
+        state_mode="stateless",
+        artifact_policy="optional",
+    )
 
     def __init__(
         self,
         *,
-        min_obstruction_fraction: float = 0.035,
         write_artifacts: bool = True,
         config: FloorPlaneConfig | None = None,
     ) -> None:
-        self.min_obstruction_fraction = max(0.0, float(min_obstruction_fraction))
         self.write_artifacts = bool(write_artifacts)
         self.config = config or FloorPlaneConfig()
+
+    def reset(self) -> None:
+        return None
 
     def describe_schema(self) -> dict[str, Any]:
         return {
@@ -44,54 +56,60 @@ class FloorPlanePlugin:
             "reads": ["front_camera RGB pixels"],
             "assumptions": [
                 "lower-center image region is a reasonable floor color seed",
-                "non-floor pixels inside the forward floor ROI are obstruction evidence",
+                "a sustained non-floor run encountered after visible floor is boundary evidence",
                 "topdown_fov coordinates are approximate image-space projection, not calibrated metric geometry",
             ],
             "emits": [
                 "signal id=floor_visible",
-                "signal id=possible_obstruction",
+                "signal id=floor_boundary_available",
                 "thing id=traversable_floor",
-                "thing id=possible_obstruction when enough non-floor ROI is present",
+                "thing kind=floor_boundary for grouped first-hit boundary evidence",
             ],
             "artifacts": ["floor_mask", "floor_overlay", "topdown_rgb", "occupancy"],
         }
 
     def perceive(self, request: PerceptionRequest) -> PerceptionPluginResult:
-        front = request.snapshot.readings.get(FRONT_CAMERA_SENSOR_ID)
-        if front is None or front.path is None:
+        front = request.camera_frame(FRONT_CAMERA_SENSOR_ID)
+        if front is None:
             return PerceptionPluginResult(
+                status="unavailable",
                 lines=(
                     "signal id=floor_visible value=false confidence=0.000 reason=no_front_camera",
-                    "signal id=possible_obstruction value=false confidence=0.000 reason=no_front_camera",
+                    "signal id=floor_boundary_available value=false confidence=0.000 reason=no_front_camera",
                 ),
-                observations={self.plugin_id: {"front_camera_available": False}},
+                observations={
+                    self.plugin_id: {
+                        "front_camera_available": False,
+                        "input_error": request.input_error(FRONT_CAMERA_SENSOR_ID),
+                    }
+                },
                 limits=("front camera image missing",),
             )
 
-        image_path = Path(front.path)
         try:
             analysis = _analyze_floor(
-                image_path=image_path,
+                rgb=front.rgb,
+                source_path=front.source_path,
                 output_dir=(request.output_dir / "floor_plane") if request.output_dir else None,
                 config=self.config,
                 write_artifacts=self.write_artifacts,
             )
         except Exception as exc:
             return PerceptionPluginResult(
+                status="error",
                 lines=(
-                    f"signal id=floor_visible value=false confidence=0.000 reason=analysis_failed error={type(exc).__name__}",
-                    f"signal id=possible_obstruction value=false confidence=0.000 reason=analysis_failed error={type(exc).__name__}",
+                    "signal id=floor_visible value=false confidence=0.000 "
+                    f"reason=analysis_failed error={type(exc).__name__}",
+                    "signal id=floor_boundary_available value=false confidence=0.000 "
+                    f"reason=analysis_failed error={type(exc).__name__}",
                 ),
                 observations={self.plugin_id: {"error": str(exc)}},
                 limits=("floor plane analysis failed",),
+                error=f"{type(exc).__name__}: {exc}",
             )
 
         floor_confidence = _floor_confidence(analysis["floor_fraction_roi"])
-        obstruction_present = analysis["occupied_component_fraction_roi"] >= self.min_obstruction_fraction
-        obstruction_confidence = _obstruction_confidence(
-            analysis["occupied_component_fraction_roi"],
-            self.min_obstruction_fraction,
-        )
+        boundaries = analysis["boundaries"]
 
         floor = PerceivedThing(
             thing_id="traversable_floor",
@@ -107,7 +125,7 @@ class FloorPlanePlugin:
                 "evidence": "color_floor_model",
                 "floor_fraction_roi": analysis["floor_fraction_roi"],
                 "occupied_fraction_roi": analysis["occupied_fraction_roi"],
-                "occupied_component_fraction_roi": analysis["occupied_component_fraction_roi"],
+                "boundary_hit_fraction_columns": analysis["boundary_hit_fraction_columns"],
             },
         )
 
@@ -120,36 +138,35 @@ class FloorPlanePlugin:
                 f"floor_fraction_roi={analysis['floor_fraction_roi']:.5f}"
             ),
             (
-                "signal id=possible_obstruction "
-                f"value={'true' if obstruction_present else 'false'} "
-                f"confidence={obstruction_confidence:.3f} "
-                f"occupied_fraction_roi={analysis['occupied_fraction_roi']:.5f} "
-                f"occupied_component_fraction_roi={analysis['occupied_component_fraction_roi']:.5f} "
-                f"bbox_xyxy_norm={_bbox_text(analysis['occupied_bbox_norm'])}"
+                "signal id=floor_boundary_available "
+                f"value={'true' if boundaries else 'false'} "
+                f"confidence={_mean_boundary_confidence(boundaries):.3f} "
+                f"boundary_count={len(boundaries)} "
+                f"hit_fraction_columns={analysis['boundary_hit_fraction_columns']:.5f}"
             ),
             thing_line(floor),
         ]
 
-        if obstruction_present and analysis["occupied_bbox_norm"] is not None:
-            obstruction = PerceivedThing(
-                thing_id="possible_obstruction",
-                kind="obstruction_evidence",
-                label="non-floor region in forward floor ROI",
+        for index, boundary in enumerate(boundaries):
+            thing = PerceivedThing(
+                thing_id=f"floor_boundary_{index:03d}",
+                kind="floor_boundary",
+                label="first sustained non-floor boundary after visible floor",
                 location=ViewLocation(
                     frame="image",
-                    zone=_zone_from_bbox(analysis["occupied_bbox_norm"]),
-                    bbox_xyxy_norm=analysis["occupied_bbox_norm"],
+                    zone=_zone_from_bbox(boundary["bbox_xyxy_norm"]),
+                    bbox_xyxy_norm=boundary["bbox_xyxy_norm"],
                 ),
-                confidence=obstruction_confidence,
+                confidence=boundary["confidence"],
                 properties={
-                    "evidence": "non_floor_in_floor_roi",
-                    "occupied_fraction_roi": analysis["occupied_fraction_roi"],
-                    "occupied_component_fraction_roi": analysis["occupied_component_fraction_roi"],
+                    "evidence": "first_non_floor_after_visible_floor",
+                    "width_fraction": boundary["width_fraction"],
+                    "hit_pixel_count": boundary["hit_pixel_count"],
                     "floor_fraction_roi": analysis["floor_fraction_roi"],
                 },
             )
-            things.append(obstruction)
-            lines.append(thing_line(obstruction))
+            things.append(thing)
+            lines.append(thing_line(thing))
 
         return PerceptionPluginResult(
             lines=tuple(lines),
@@ -160,14 +177,15 @@ class FloorPlanePlugin:
                     "image_height_px": analysis["height"],
                     "floor_fraction_roi": analysis["floor_fraction_roi"],
                     "occupied_fraction_roi": analysis["occupied_fraction_roi"],
-                    "occupied_component_fraction_roi": analysis["occupied_component_fraction_roi"],
-                    "occupied_bbox_xyxy_norm": analysis["occupied_bbox_norm"],
+                    "boundary_hit_fraction_columns": analysis["boundary_hit_fraction_columns"],
+                    "boundaries": boundaries,
                     "artifact_writes_enabled": self.write_artifacts,
                 }
             },
             artifacts=analysis["artifacts"],
             limits=(
                 "floor model is color-seeded from the current frame",
+                "floor boundaries may represent objects, walls, shadows, or floor-color discontinuities",
                 "topdown_fov is approximate and uncalibrated",
             ),
         )
@@ -175,25 +193,32 @@ class FloorPlanePlugin:
 
 def _analyze_floor(
     *,
-    image_path: Path,
+    rgb: np.ndarray,
+    source_path: Path | None,
     output_dir: Path | None,
     config: FloorPlaneConfig,
     write_artifacts: bool,
 ) -> dict[str, Any]:
-    image = Image.open(image_path).convert("RGB")
-    rgb = np.asarray(image).astype(np.float32) / 255.0
-    height, width = rgb.shape[:2]
+    image = Image.fromarray(rgb, mode="RGB")
+    normalized_rgb = rgb.astype(np.float32) / 255.0
+    height, width = normalized_rgb.shape[:2]
 
-    floor_mask, roi_mask, model_info = estimate_floor_mask(rgb, config)
+    floor_mask, roi_mask, model_info = estimate_floor_mask(normalized_rgb, config)
     occupied_mask = roi_mask & ~floor_mask
-    occupied_component_mask, occupied_component_area = _largest_component(occupied_mask)
+    boundary_hits = source_obstacle_hits(floor_mask, config)
+    boundaries = _boundary_components(boundary_hits, config)
     roi_pixels = max(int(roi_mask.sum()), 1)
+    source_columns = int(np.count_nonzero((boundary_hits & roi_mask).any(axis=0)))
+    source_width = max(1, int(np.count_nonzero(roi_mask.any(axis=0))))
 
     artifacts: dict[str, str] = {}
     if write_artifacts and output_dir is not None:
         output_dir.mkdir(parents=True, exist_ok=True)
         overlay = make_overlay(image, floor_mask, occupied_mask, config)
-        topdown_rgb, occupancy = project_topdown(rgb, floor_mask, occupied_mask, config)
+        overlay_array = np.asarray(overlay).copy()
+        overlay_array[boundary_hits] = np.array([255, 225, 30], dtype=np.uint8)
+        overlay = Image.fromarray(overlay_array, mode="RGB")
+        topdown_rgb, occupancy = project_topdown(normalized_rgb, floor_mask, occupied_mask, config)
         occupancy_img = render_occupancy(occupancy)
 
         files = {
@@ -208,13 +233,13 @@ def _analyze_floor(
         Image.fromarray(topdown_rgb).save(files["topdown_rgb"], quality=92)
         occupancy_img.save(files["occupancy"])
         summary = {
-            "image": str(image_path),
+            "image": str(source_path) if source_path is not None else None,
             "width": width,
             "height": height,
             "floor_fraction_roi": float((floor_mask & roi_mask).sum() / roi_pixels),
             "occupied_fraction_roi": float((occupied_mask & roi_mask).sum() / roi_pixels),
-            "occupied_component_fraction_roi": float(occupied_component_area / roi_pixels),
-            "occupied_bbox_xyxy_norm": _mask_bbox_norm(occupied_component_mask),
+            "boundary_hit_fraction_columns": float(source_columns / source_width),
+            "boundaries": boundaries,
             "config": asdict(config) | {"floor_model": model_info},
             "artifacts": {name: str(path) for name, path in files.items()},
         }
@@ -226,56 +251,54 @@ def _analyze_floor(
         "height": height,
         "floor_fraction_roi": round(float((floor_mask & roi_mask).sum() / roi_pixels), 5),
         "occupied_fraction_roi": round(float((occupied_mask & roi_mask).sum() / roi_pixels), 5),
-        "occupied_component_fraction_roi": round(float(occupied_component_area / roi_pixels), 5),
-        "occupied_bbox_norm": _mask_bbox_norm(occupied_component_mask),
+        "boundary_hit_fraction_columns": round(float(source_columns / source_width), 5),
+        "boundaries": boundaries,
         "artifacts": artifacts,
     }
 
 
-def _largest_component(mask: np.ndarray) -> tuple[np.ndarray, int]:
+def _boundary_components(mask: np.ndarray, config: FloorPlaneConfig) -> list[dict[str, Any]]:
     if not mask.any():
-        return np.zeros_like(mask, dtype=bool), 0
-
-    count, labels, stats, _centroids = cv2.connectedComponentsWithStats(
-        mask.astype(np.uint8),
-        connectivity=8,
+        return []
+    height, width = mask.shape
+    count, _labels, stats, _centroids = cv2.connectedComponentsWithStats(
+        mask.astype(np.uint8), connectivity=8
     )
-    if count <= 1:
-        return np.zeros_like(mask, dtype=bool), 0
-
-    areas = stats[1:, cv2.CC_STAT_AREA]
-    best_label = int(np.argmax(areas)) + 1
-    best_area = int(stats[best_label, cv2.CC_STAT_AREA])
-    return labels == best_label, best_area
-
-
-def _mask_bbox_norm(mask: np.ndarray) -> tuple[float, float, float, float] | None:
-    ys, xs = np.nonzero(mask)
-    if len(xs) == 0 or len(ys) == 0:
-        return None
-    height, width = mask.shape[:2]
-    return (
-        round(float(xs.min()) / max(width - 1, 1), 4),
-        round(float(ys.min()) / max(height - 1, 1), 4),
-        round(float(xs.max()) / max(width - 1, 1), 4),
-        round(float(ys.max()) / max(height - 1, 1), 4),
-    )
+    minimum_width = max(2, int(round(width * config.min_boundary_width_ratio)))
+    boundaries: list[dict[str, Any]] = []
+    for label in range(1, count):
+        x = int(stats[label, cv2.CC_STAT_LEFT])
+        y = int(stats[label, cv2.CC_STAT_TOP])
+        component_width = int(stats[label, cv2.CC_STAT_WIDTH])
+        component_height = int(stats[label, cv2.CC_STAT_HEIGHT])
+        area = int(stats[label, cv2.CC_STAT_AREA])
+        if component_width < minimum_width:
+            continue
+        width_fraction = component_width / max(width, 1)
+        confidence = min(1.0, 0.35 + width_fraction / max(config.min_boundary_width_ratio * 8.0, 1e-6))
+        boundaries.append({
+            "bbox_xyxy_norm": (
+                round(x / max(width - 1, 1), 4),
+                round(y / max(height - 1, 1), 4),
+                round((x + component_width - 1) / max(width - 1, 1), 4),
+                round((y + component_height - 1) / max(height - 1, 1), 4),
+            ),
+            "width_fraction": round(width_fraction, 5),
+            "hit_pixel_count": area,
+            "confidence": round(float(confidence), 5),
+        })
+    boundaries.sort(key=lambda item: (item["width_fraction"], item["hit_pixel_count"]), reverse=True)
+    return boundaries[:8]
 
 
 def _floor_confidence(floor_fraction: float) -> float:
     return round(float(min(1.0, max(0.0, floor_fraction / 0.70))), 5)
 
 
-def _obstruction_confidence(occupied_fraction: float, min_fraction: float) -> float:
-    if occupied_fraction <= 0:
+def _mean_boundary_confidence(boundaries: list[dict[str, Any]]) -> float:
+    if not boundaries:
         return 0.0
-    return round(float(min(1.0, occupied_fraction / max(min_fraction * 3.0, 1e-6))), 5)
-
-
-def _bbox_text(bbox: tuple[float, float, float, float] | None) -> str:
-    if bbox is None:
-        return "none"
-    return ",".join(f"{value:.4f}" for value in bbox)
+    return float(sum(item["confidence"] for item in boundaries) / len(boundaries))
 
 
 def _zone_from_bbox(bbox: tuple[float, float, float, float] | None) -> str:

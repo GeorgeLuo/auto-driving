@@ -1,11 +1,15 @@
 from __future__ import annotations
 
-from typing import Any
 import importlib
+import time
+from typing import Any
 
 from autonomy.perception.interface import (
     PERCEPTION_TEXT_SCHEMA,
     PerceivedThing,
+    PerceptionPluginContract,
+    PerceptionPluginResult,
+    PerceptionPluginRun,
     PerceptionRequest,
     PerceptionText,
 )
@@ -22,16 +26,30 @@ class CurrentDirectoryPerceptionMapper:
         *,
         plugins: list[str] | tuple[str, ...] | None = None,
         plugin_specs: dict[str, str] | None = None,
+        plugin_configs: dict[str, dict[str, Any]] | None = None,
     ) -> None:
         specs = dict(plugin_specs or {})
+        configs = {plugin_id: dict(config) for plugin_id, config in (plugin_configs or {}).items()}
         plugin_ids = tuple(() if plugins is None else plugins)
         unknown = [plugin_id for plugin_id in plugin_ids if plugin_id not in specs]
         if unknown:
             available = ", ".join(sorted(specs))
             raise ValueError(f"Unknown perception plugin(s): {unknown}. Available: {available}.")
         self.plugin_specs = specs
+        self.plugin_configs = configs
         self.plugin_ids = plugin_ids
-        self.plugins = tuple(_instantiate_plugin(plugin_id, self.plugin_specs[plugin_id]) for plugin_id in self.plugin_ids)
+        self.plugins = tuple(
+            _instantiate_plugin(
+                plugin_id,
+                self.plugin_specs[plugin_id],
+                self.plugin_configs.get(plugin_id, {}),
+            )
+            for plugin_id in self.plugin_ids
+        )
+
+    def reset(self) -> None:
+        for plugin in self.plugins:
+            plugin.reset()
 
     def describe_schema(self) -> dict[str, Any]:
         return {
@@ -42,24 +60,27 @@ class CurrentDirectoryPerceptionMapper:
                 "plugins": list(self.plugin_ids),
                 "available_plugins": sorted(self.plugin_specs),
                 "plugin_specs": dict(self.plugin_specs),
+                "plugin_configs": dict(self.plugin_configs),
             },
             "inputs": [
                 {
                     "sensor_id": FRONT_CAMERA_SENSOR_ID,
                     "sensor_kind": "camera",
                     "required": True,
-                    "source": "PerceptionRequest.snapshot.readings[front_camera].path",
-                    "missing_behavior": "plugins emit false/missing signals and confidence drops",
+                    "source": "PerceptionRequest.camera_frames[front_camera].rgb",
+                    "missing_behavior": "plugin run status is unavailable with an input error",
                     "plugin_chain": [
-                        plugin.describe_schema()
+                        {
+                            **plugin.describe_schema(),
+                            "contract": plugin.contract.to_dict(),
+                        }
                         for plugin in self.plugins
-                        if callable(getattr(plugin, "describe_schema", None))
                     ],
                 }
             ],
             "output": {
                 "schema": PERCEPTION_TEXT_SCHEMA,
-                "format": "line-oriented debug signals plus structured PerceivedThing records",
+                "format": "line-oriented debug signals, structured PerceivedThing records, and plugin run status",
                 "records": [
                     {
                         "record": "signal id=*",
@@ -90,13 +111,58 @@ class CurrentDirectoryPerceptionMapper:
         things: list[PerceivedThing] = []
         observations: dict[str, Any] = {
             "sensor_snapshot": request.snapshot.to_dict(),
+            "camera_frames": {
+                sensor_id: frame.to_dict()
+                for sensor_id, frame in request.camera_frames.items()
+            },
+            "input_errors": dict(request.input_errors),
             "plugin_chain": list(self.plugin_ids),
         }
         artifacts: dict[str, str] = {}
         limits: list[str] = []
+        plugin_runs: list[PerceptionPluginRun] = []
 
         for plugin in self.plugins:
-            result = plugin.perceive(request)
+            started = time.perf_counter()
+            try:
+                result = plugin.perceive(request)
+                if not isinstance(result, PerceptionPluginResult):
+                    raise TypeError(
+                        f"plugin {plugin.plugin_id!r} must return PerceptionPluginResult"
+                    )
+            except Exception as exc:
+                result = PerceptionPluginResult(
+                    status="error",
+                    lines=(
+                        f"signal id=plugin_error plugin={plugin.plugin_id} "
+                        f"error={type(exc).__name__} confidence=1.000",
+                    ),
+                    observations={
+                        plugin.plugin_id: {
+                            "status": "error",
+                            "error_type": type(exc).__name__,
+                            "error": str(exc),
+                        }
+                    },
+                    limits=(f"plugin {plugin.plugin_id} failed",),
+                    error=f"{type(exc).__name__}: {exc}",
+                )
+            duration_ms = round((time.perf_counter() - started) * 1000.0, 3)
+            plugin_runs.append(
+                PerceptionPluginRun(
+                    plugin_id=plugin.plugin_id,
+                    status=result.status,
+                    duration_ms=duration_ms,
+                    thing_count=len(result.things),
+                    artifact_count=len(result.artifacts),
+                    error=result.error,
+                )
+            )
+            lines.append(
+                f"plugin_run id={plugin.plugin_id} status={result.status} "
+                f"duration_ms={duration_ms:.3f} things={len(result.things)} "
+                f"artifacts={len(result.artifacts)}"
+            )
             lines.extend(result.lines)
             things.extend(result.things)
             observations.update(result.observations)
@@ -106,9 +172,11 @@ class CurrentDirectoryPerceptionMapper:
         return PerceptionText(
             schema=PERCEPTION_TEXT_SCHEMA,
             plugin_id=self.plugin_id,
+            status=_overall_status(plugin_runs),
             lines=tuple(lines),
             things=tuple(things),
             confidence=_overall_confidence(things),
+            plugin_runs=tuple(plugin_runs),
             observations=observations,
             artifacts=artifacts,
             limits=tuple(dict.fromkeys(limits)),
@@ -126,10 +194,39 @@ def _overall_confidence(things: list[PerceivedThing]) -> float:
     return 0.0
 
 
-def _instantiate_plugin(plugin_id: str, spec: str):
+def _overall_status(plugin_runs: list[PerceptionPluginRun]) -> str:
+    if not plugin_runs:
+        return "empty"
+    statuses = {run.status for run in plugin_runs}
+    usable_statuses = {"ok", "empty", "warming_up"}
+    if not statuses.intersection(usable_statuses):
+        return "error" if "error" in statuses else "unavailable"
+    if statuses.intersection({"error", "unavailable"}):
+        return "partial"
+    if "ok" in statuses:
+        return "ok"
+    if "warming_up" in statuses:
+        return "warming_up"
+    return "empty"
+
+
+def _instantiate_plugin(plugin_id: str, spec: str, config: dict[str, Any]):
     module_name, separator, class_name = spec.partition(":")
     if not separator:
         raise ValueError(f"Plugin spec for {plugin_id!r} must be 'module.path:ClassName'")
     module = importlib.import_module(module_name)
     plugin_cls = getattr(module, class_name)
-    return plugin_cls()
+    plugin = plugin_cls(**config)
+    _validate_plugin(plugin_id, plugin)
+    return plugin
+
+
+def _validate_plugin(configured_id: str, plugin: Any) -> None:
+    plugin_id = getattr(plugin, "plugin_id", None)
+    if not isinstance(plugin_id, str) or not plugin_id:
+        raise TypeError(f"configured plugin {configured_id!r} must expose a non-empty plugin_id")
+    if not isinstance(getattr(plugin, "contract", None), PerceptionPluginContract):
+        raise TypeError(f"plugin {plugin_id!r} must expose PerceptionPluginContract as contract")
+    for method_name in ("reset", "describe_schema", "perceive"):
+        if not callable(getattr(plugin, method_name, None)):
+            raise TypeError(f"plugin {plugin_id!r} must implement {method_name}()")

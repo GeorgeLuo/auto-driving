@@ -26,6 +26,9 @@ class FloorPlaneConfig:
     topdown_near_width_ratio: float = 0.10
     topdown_far_width_ratio: float = 0.96
     obstacle_run_length: int = 12
+    min_floor_support: int = 12
+    boundary_dilate_radius: int = 2
+    min_boundary_width_ratio: float = 0.02
     near_width_ratio: float = 1.0
     far_width_ratio: float = 0.34
 
@@ -272,6 +275,49 @@ def raycast_source_occupancy(floor_mask: np.ndarray, occupied_mask: np.ndarray,
         draw.ellipse([x - hit_width, y - hit_width, x + hit_width, y + hit_width], fill=2)
 
     return np.asarray(occupancy_img, dtype=np.uint8)
+
+
+def source_obstacle_hits(floor_mask: np.ndarray, config: FloorPlaneConfig) -> np.ndarray:
+    """Locate the first sustained non-floor boundary after supported visible floor."""
+
+    height, width = floor_mask.shape
+    source_mask = polygon_mask(width, height, source_quad(width, height, config))
+    horizon_y = int(height * config.horizon_ratio)
+    min_obstacle_run = max(1, int(config.obstacle_run_length))
+    min_floor_support = max(1, int(config.min_floor_support))
+    hit_mask = np.zeros_like(floor_mask, dtype=bool)
+
+    for x in range(width):
+        floor_support = 0
+        non_floor_run = 0
+        run_start_y = -1
+        for y in range(height - 1, horizon_y - 1, -1):
+            if not source_mask[y, x]:
+                floor_support = 0
+                non_floor_run = 0
+                continue
+            if floor_mask[y, x]:
+                floor_support += 1
+                non_floor_run = 0
+                continue
+            if floor_support < min_floor_support:
+                non_floor_run = 0
+                continue
+            if non_floor_run == 0:
+                run_start_y = y
+            non_floor_run += 1
+            if non_floor_run >= min_obstacle_run:
+                hit_mask[run_start_y, x] = True
+                break
+
+    radius = max(0, int(config.boundary_dilate_radius))
+    if radius:
+        from PIL import ImageFilter
+
+        image = Image.fromarray(hit_mask.astype(np.uint8) * 255, mode="L")
+        size = radius * 2 + 1
+        hit_mask = np.asarray(image.filter(ImageFilter.MaxFilter(size)), dtype=np.uint8) > 0
+    return hit_mask
 
 
 def project_point(homography: np.ndarray, x: float, y: float) -> tuple[int, int] | None:

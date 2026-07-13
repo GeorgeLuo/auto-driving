@@ -2,7 +2,15 @@
 __pycache__/
 *.pyc
 *.bak.*
-/lab/
+/lab/*
+!/lab/__init__.py
+!/lab/plugins/
+!/lab/plugins/**
+/lab/plugins/**/.venv/
+/lab/plugins/**/models/
+/lab/plugins/**/runs/
+/lab/plugins/**/__pycache__/
+/lab/plugins/**/.candidate-state.json
 /runtime/
 frontend/**/.runtime/
 

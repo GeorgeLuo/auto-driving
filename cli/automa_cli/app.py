@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from pathlib import Path
 from typing import Any
 
 from .automation import (
@@ -17,12 +18,19 @@ from .decision import (
     get_vehicle_decision_info,
     update_vehicle_decision,
 )
+from .lab_plugins import list_perception_candidates, setup_perception_candidate
 from .operations import run_vehicle_startup_check
 from .perception import (
+    DEFAULT_PERCEPTION_ALGORITHM,
     available_perception_algorithm_ids,
     get_vehicle_perception_info,
     set_vehicle_perception_plugin,
     update_vehicle_perception,
+)
+from .perception_runs import (
+    compare_perception_candidates,
+    replay_perception_experiment,
+    run_perception_experiment,
 )
 from .simulators import DEFAULT_SCENARIO_ID, ensure_simulator, get_simulator_status
 from .streaming import stream_vehicle_perception
@@ -395,7 +403,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     perception_control = vehicle_commands.add_parser(
         "perception",
-        help="Edit plugins in the locally staged perception activation.",
+        help="Run perception experiments and manage perception plugins.",
     )
     perception_control.set_defaults(handler=_handle_vehicles_perception_help)
     perception_commands = perception_control.add_subparsers(dest="perception_command")
@@ -404,6 +412,155 @@ def build_parser() -> argparse.ArgumentParser:
         help="Show perception-level commands.",
     )
     perception_help.set_defaults(handler=_handle_vehicles_perception_help)
+
+    perception_run = perception_commands.add_parser(
+        "run",
+        help="Observe a short perception sequence from an active vehicle.",
+        description=(
+            "Observe five frames from an active vehicle without taking movement control. "
+            "When multiple vehicles are active, the simulator is selected by default."
+        ),
+    )
+    perception_run.add_argument(
+        "--candidate",
+        default=None,
+        help="Run an isolated lab candidate from `vehicles perception candidates`.",
+    )
+    perception_run.add_argument(
+        "--algorithm",
+        choices=available_perception_algorithm_ids(),
+        default=None,
+        help="Run one packaged perception algorithm instead of the active selection.",
+    )
+    perception_run.add_argument(
+        "--id",
+        dest="vehicle_id",
+        default=None,
+        help="Specific active vehicle id. Omit to select a safe observation target automatically.",
+    )
+    perception_run.add_argument(
+        "--frames",
+        type=int,
+        default=5,
+        help="Frames to observe (default: 5).",
+    )
+    perception_run.add_argument(
+        "--interval-s",
+        type=float,
+        default=0.25,
+        help="Delay between captures in seconds (default: 0.25).",
+    )
+    perception_run.add_argument(
+        "--timeout-s",
+        type=float,
+        default=3.0,
+        help="Vehicle discovery and capture timeout in seconds (default: 3).",
+    )
+    perception_run.add_argument(
+        "--record",
+        action="store_true",
+        help="Persist source frames, plugin artifacts, and the comparison report.",
+    )
+    perception_run.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the machine-readable experiment report.",
+    )
+    perception_run.set_defaults(handler=_handle_vehicles_perception_run)
+
+    perception_replay = perception_commands.add_parser(
+        "replay",
+        help="Run perception against a recorded image directory.",
+        description=(
+            "Run the recorded mapper configuration, or the default lightweight "
+            "observer, against an image directory."
+        ),
+    )
+    perception_replay.add_argument(
+        "source_dir",
+        type=Path,
+        help="Recorded perception run or directory containing image frames.",
+    )
+    perception_replay.add_argument(
+        "--candidate",
+        default=None,
+        help="Replay with an isolated lab candidate instead of the recorded/default mapper.",
+    )
+    perception_replay.add_argument(
+        "--algorithm",
+        choices=available_perception_algorithm_ids(),
+        default=None,
+        help="Replay with one packaged perception algorithm instead of the recorded/default mapper.",
+    )
+    perception_replay.add_argument(
+        "--record",
+        action="store_true",
+        help="Persist replay outputs and the comparison report.",
+    )
+    perception_replay.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the machine-readable experiment report.",
+    )
+    perception_replay.set_defaults(handler=_handle_vehicles_perception_replay)
+
+    perception_compare = perception_commands.add_parser(
+        "compare",
+        help="Compare all ready lab candidates on one image sequence.",
+        description=(
+            "Replay every ready lab candidate against the same images and compare representation "
+            "health, continuity, latency, and memory."
+        ),
+    )
+    perception_compare.add_argument(
+        "source_dir",
+        type=Path,
+        help="Directory containing the image sequence to compare.",
+    )
+    perception_compare.add_argument(
+        "--record",
+        action="store_true",
+        help="Persist each candidate's overlays, structured output, and review page.",
+    )
+    perception_compare.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the machine-readable comparison report.",
+    )
+    perception_compare.set_defaults(handler=_handle_vehicles_perception_compare)
+
+    perception_candidates = perception_commands.add_parser(
+        "candidates",
+        help="Show experimental perception candidates and readiness.",
+        description="Show locally available lab candidates, dependency readiness, and setup guidance.",
+    )
+    perception_candidates.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the machine-readable candidate inventory.",
+    )
+    perception_candidates.set_defaults(handler=_handle_vehicles_perception_candidates)
+
+    perception_setup = perception_commands.add_parser(
+        "setup",
+        help="Prepare one isolated perception candidate.",
+        description=(
+            "Create the candidate-local Python environment, install declared dependencies, "
+            "and download its declared model. The candidate id may be omitted when only one exists."
+        ),
+    )
+    perception_setup.add_argument(
+        "candidate_id",
+        nargs="?",
+        default=None,
+        help="Candidate id. Omit when the candidate inventory contains exactly one entry.",
+    )
+    perception_setup.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the machine-readable setup result.",
+    )
+    perception_setup.set_defaults(handler=_handle_vehicles_perception_setup)
 
     perception_enable = perception_commands.add_parser(
         "enable",
@@ -574,8 +731,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     perception = update_commands.add_parser(
         "perception",
-        help="Stage a perception algorithm for the Chase simulator controller.",
-        description="Stage a perception algorithm for the Chase simulator controller.",
+        help="Stage a perception algorithm in a vehicle's local controller bundle.",
+        description="Stage a perception algorithm in a vehicle's local controller bundle.",
     )
     perception.add_argument(
         "--id",
@@ -591,7 +748,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     perception.add_argument(
         "--algorithm",
-        default="current",
+        default=DEFAULT_PERCEPTION_ALGORITHM,
         choices=available_perception_algorithm_ids(),
         help="Perception algorithm to activate.",
     )
@@ -757,7 +914,7 @@ def _handle_vehicles_help(args: argparse.Namespace) -> int:
                 "- automation   manage locally deployed automation workers",
                 "- operation    run bounded vehicle checks and setup tasks",
                 "- info         inspect locally staged controller configuration",
-                "- perception   edit locally staged perception plugins",
+                "- perception   run and configure vehicle perception",
                 "- stream       read rolling local automation outputs",
                 "- help         show this summary",
                 "",
@@ -815,7 +972,7 @@ def _handle_vehicles_update_help(args: argparse.Namespace) -> int:
                 "",
                 "- core        deploy physical DonkeyCar harness code",
                 "- autonomy    deploy physical autonomy controller release",
-                "- perception  stage Chase simulator perception code",
+                "- perception  stage local vehicle perception code",
                 "- decision    stage local decision configuration",
                 "- help        show this summary",
                 "",
@@ -851,6 +1008,11 @@ def _handle_vehicles_perception_help(args: argparse.Namespace) -> int:
             [
                 "automa vehicles perception commands",
                 "",
+                "- run      observe a short sequence from an active vehicle",
+                "- replay   process an existing image sequence",
+                "- compare  compare all ready candidates on one sequence",
+                "- candidates  show experimental candidates and readiness",
+                "- setup    prepare one isolated experimental candidate",
                 "- enable   enable one locally staged perception plugin",
                 "- disable  disable one locally staged perception plugin",
                 "- help     show this summary",
@@ -1055,6 +1217,65 @@ def _handle_vehicles_perception_enable(args: argparse.Namespace) -> int:
         plugin_id=args.plugin_id,
         enabled=True,
         json_output=args.json,
+    )
+    if result.message:
+        print(result.message)
+    return result.exit_code
+
+
+def _handle_vehicles_perception_run(args: argparse.Namespace) -> int:
+    result = run_perception_experiment(
+        vehicle_id=args.vehicle_id,
+        frames=args.frames,
+        interval_s=args.interval_s,
+        timeout_s=args.timeout_s,
+        record=args.record,
+        json_output=args.json,
+        candidate_id=args.candidate,
+        algorithm=args.algorithm,
+    )
+    if result.message:
+        print(result.message)
+    return result.exit_code
+
+
+def _handle_vehicles_perception_replay(args: argparse.Namespace) -> int:
+    result = replay_perception_experiment(
+        args.source_dir,
+        record=args.record,
+        json_output=args.json,
+        candidate_id=args.candidate,
+        algorithm=args.algorithm,
+    )
+    if result.message:
+        print(result.message)
+    return result.exit_code
+
+
+def _handle_vehicles_perception_compare(args: argparse.Namespace) -> int:
+    result = compare_perception_candidates(
+        args.source_dir,
+        record=args.record,
+        json_output=args.json,
+        output=None if args.json else sys.stdout,
+    )
+    if result.message:
+        print(result.message)
+    return result.exit_code
+
+
+def _handle_vehicles_perception_candidates(args: argparse.Namespace) -> int:
+    result = list_perception_candidates(json_output=args.json)
+    if result.message:
+        print(result.message)
+    return result.exit_code
+
+
+def _handle_vehicles_perception_setup(args: argparse.Namespace) -> int:
+    result = setup_perception_candidate(
+        args.candidate_id,
+        json_output=args.json,
+        output=None if args.json else sys.stdout,
     )
     if result.message:
         print(result.message)

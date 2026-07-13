@@ -2,14 +2,18 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, Callable
 
 import numpy as np
 from PIL import Image
 
-from autonomy.perception.interface import PerceivedThing, PerceptionRequest, ViewLocation
-from implementations.perception.chain import PerceptionPluginResult
+from autonomy.perception.interface import (
+    PerceivedThing,
+    PerceptionPluginContract,
+    PerceptionPluginResult,
+    PerceptionRequest,
+    ViewLocation,
+)
 from implementations.perception.text import thing_line
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID
 
@@ -26,6 +30,11 @@ class SimColorTargetsPlugin:
     """Debug-only color detector for Chase sim front camera frames."""
 
     plugin_id = "sim-color-targets-v0"
+    contract = PerceptionPluginContract(
+        required_sensors=(FRONT_CAMERA_SENSOR_ID,),
+        state_mode="stateless",
+        artifact_policy="none",
+    )
 
     def __init__(
         self,
@@ -37,6 +46,9 @@ class SimColorTargetsPlugin:
         self.thumbnail_width = max(80, int(thumbnail_width))
         self.min_evader_fraction = max(0.0, float(min_evader_fraction))
         self.min_obstruction_fraction = max(0.0, float(min_obstruction_fraction))
+
+    def reset(self) -> None:
+        return None
 
     def describe_schema(self) -> dict[str, Any]:
         return {
@@ -56,19 +68,24 @@ class SimColorTargetsPlugin:
         }
 
     def perceive(self, request: PerceptionRequest) -> PerceptionPluginResult:
-        front = request.snapshot.readings.get(FRONT_CAMERA_SENSOR_ID)
-        if front is None or front.path is None:
+        front = request.camera_frame(FRONT_CAMERA_SENSOR_ID)
+        if front is None:
             return PerceptionPluginResult(
+                status="unavailable",
                 lines=(
                     "signal id=evader_in_sight value=false confidence=0.000 reason=no_front_camera",
                     "signal id=obstruction_in_sight value=false confidence=0.000 reason=no_front_camera",
                 ),
-                observations={self.plugin_id: {"front_camera_available": False}},
+                observations={
+                    self.plugin_id: {
+                        "front_camera_available": False,
+                        "input_error": request.input_error(FRONT_CAMERA_SENSOR_ID),
+                    }
+                },
                 limits=("front camera image missing",),
             )
 
-        image_path = Path(front.path)
-        rgb = _load_rgb(image_path, self.thumbnail_width)
+        rgb = _resize_rgb(front.rgb, self.thumbnail_width)
         evader = _detect_region(rgb, _evader_mask, self.min_evader_fraction)
         obstruction = _detect_region(rgb, _obstruction_mask, self.min_obstruction_fraction)
 
@@ -101,6 +118,7 @@ class SimColorTargetsPlugin:
             lines.append(thing_line(thing))
 
         return PerceptionPluginResult(
+            status="ok" if things else "empty",
             lines=tuple(lines),
             things=tuple(things),
             observations={
@@ -118,8 +136,8 @@ class SimColorTargetsPlugin:
         )
 
 
-def _load_rgb(path: Path, thumbnail_width: int) -> np.ndarray:
-    image = Image.open(path).convert("RGB")
+def _resize_rgb(rgb: np.ndarray, thumbnail_width: int) -> np.ndarray:
+    image = Image.fromarray(rgb, mode="RGB")
     if image.width != thumbnail_width:
         height = max(1, round(image.height * (thumbnail_width / image.width)))
         image = image.resize((thumbnail_width, height), Image.Resampling.BILINEAR)

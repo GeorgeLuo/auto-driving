@@ -58,11 +58,51 @@ def analyze_scene_motion(
     residual_threshold: float = 7.0,
     roi: list[int] | None = None,
 ) -> SceneMotionResult:
-    out_path = Path(out_dir)
-    out_path.mkdir(parents=True, exist_ok=True)
-
     image_a = Image.open(image_a_path).convert("RGB")
     image_b = Image.open(image_b_path).convert("RGB")
+    return analyze_scene_motion_images(
+        image_a,
+        image_b,
+        out_dir,
+        image_a_label=str(image_a_path),
+        image_b_label=str(image_b_path),
+        max_features=max_features,
+        min_distance=min_distance,
+        patch_radius=patch_radius,
+        search_radius=search_radius,
+        min_score=min_score,
+        max_groups=max_groups,
+        min_group_size=min_group_size,
+        residual_threshold=residual_threshold,
+        roi=roi,
+    )
+
+
+def analyze_scene_motion_images(
+    image_a: Image.Image,
+    image_b: Image.Image,
+    out_dir: str | Path | None,
+    *,
+    image_a_label: str = "previous_frame",
+    image_b_label: str = "current_frame",
+    max_features: int = 240,
+    min_distance: int = 5,
+    patch_radius: int = 4,
+    search_radius: int = 90,
+    min_score: float = 0.70,
+    max_groups: int = 6,
+    min_group_size: int = 8,
+    residual_threshold: float = 7.0,
+    roi: list[int] | None = None,
+) -> SceneMotionResult:
+    """Analyze normalized in-memory frames without requiring source files."""
+
+    out_path = Path(out_dir) if out_dir is not None else None
+    if out_path is not None:
+        out_path.mkdir(parents=True, exist_ok=True)
+
+    image_a = image_a.convert("RGB")
+    image_b = image_b.convert("RGB")
     width, height = image_a.size
     search_roi = clamp_roi(roi or [0, 0, width - 1, height - 1], width, height)
 
@@ -90,29 +130,30 @@ def analyze_scene_motion(
         residual_threshold=residual_threshold,
     )
 
-    debug_path = out_path / "scene_motion.jpg"
-    render_scene_motion(image_a, image_b, search_roi, keypoints, matches, groups, grouped_indices).save(
-        debug_path,
-        quality=92,
-    )
-
-    summary_path = out_path / "summary.json"
     grouped_count = sum(len(indices) for indices in grouped_indices)
     result = SceneMotionResult(
-        image_a=str(image_a_path),
-        image_b=str(image_b_path),
+        image_a=image_a_label,
+        image_b=image_b_label,
         roi=search_roi,
         keypoint_count=len(keypoints),
         match_count=len(matches),
         grouped_match_count=grouped_count,
         ungrouped_match_count=max(0, len(matches) - grouped_count),
         groups=groups,
-        output_files={
+        output_files={},
+    )
+    if out_path is not None:
+        debug_path = out_path / "scene_motion.jpg"
+        summary_path = out_path / "summary.json"
+        render_scene_motion(image_a, image_b, search_roi, keypoints, matches, groups, grouped_indices).save(
+            debug_path,
+            quality=92,
+        )
+        result.output_files = {
             "scene_motion": str(debug_path),
             "summary": str(summary_path),
-        },
-    )
-    summary_path.write_text(json.dumps(asdict(result), indent=2), encoding="utf-8")
+        }
+        summary_path.write_text(json.dumps(asdict(result), indent=2), encoding="utf-8")
     return result
 
 

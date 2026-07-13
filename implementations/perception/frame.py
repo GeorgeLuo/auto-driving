@@ -1,17 +1,29 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
-from autonomy.perception.core import observe_frame
-from autonomy.perception.interface import PerceivedThing, PerceptionRequest, ViewLocation
-from implementations.perception.chain import PerceptionPluginResult
+from autonomy.perception.core import observe_rgb_frame
+from autonomy.perception.interface import (
+    PerceivedThing,
+    PerceptionPluginContract,
+    PerceptionPluginResult,
+    PerceptionRequest,
+    ViewLocation,
+)
 from implementations.perception.text import thing_line
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID
 
 
 class FrameObservationPlugin:
     plugin_id = "frame-observation-v0"
+    contract = PerceptionPluginContract(
+        required_sensors=(FRONT_CAMERA_SENSOR_ID,),
+        state_mode="stateless",
+        artifact_policy="none",
+    )
+
+    def reset(self) -> None:
+        return None
 
     def describe_schema(self) -> dict[str, Any]:
         return {
@@ -21,16 +33,21 @@ class FrameObservationPlugin:
         }
 
     def perceive(self, request: PerceptionRequest) -> PerceptionPluginResult:
-        front = request.snapshot.readings.get(FRONT_CAMERA_SENSOR_ID)
-        if front is None or front.path is None:
+        front = request.camera_frame(FRONT_CAMERA_SENSOR_ID)
+        if front is None:
             return PerceptionPluginResult(
+                status="unavailable",
                 lines=("signal id=front_camera_available value=false confidence=1.000",),
-                observations={"frame": {"front_camera_available": False}},
+                observations={
+                    "frame": {
+                        "front_camera_available": False,
+                        "input_error": request.input_error(FRONT_CAMERA_SENSOR_ID),
+                    }
+                },
                 limits=("front camera image missing",),
             )
 
-        image_path = Path(front.path)
-        core = observe_frame(image_path)
+        core = observe_rgb_frame(front.rgb)
         width = int(core["image_width_px"])
         height = int(core["image_height_px"])
         frame = PerceivedThing(

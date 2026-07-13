@@ -1,0 +1,35 @@
+{
+  "schema": "automa_lab_perception_plugin_v0",
+  "id": "fastsam",
+  "name": "FastSAM region proposals",
+  "description": "Class-agnostic current-frame masks represented as generic image-space regions.",
+  "plugin": {
+    "entrypoint": "lab.plugins.perception.fastsam.src.plugin:FastSamRegionPlugin",
+    "config": {
+      "model_path": "models/FastSAM-s.pt",
+      "device": "cpu",
+      "image_size": 640,
+      "confidence": 0.35,
+      "iou": 0.9,
+      "min_area_fraction": 0.002,
+      "max_regions": 32,
+      "write_artifacts": true
+    }
+  },
+  "runtime": {
+    "requirements": "requirements.txt",
+    "python": ".venv/bin/python"
+  },
+  "model": {
+    "filename": "FastSAM-s.pt",
+    "download_url": "https://github.com/ultralytics/assets/releases/download/v8.4.0/FastSAM-s.pt",
+    "sha256": "c9f78716a81c7aff0d608ccc73e1b82ab3aaad86005049f6a92106a0be6d0844",
+    "license_review": "Ultralytics AGPL-3.0 or commercial terms must be resolved before promotion."
+  },
+  "output": {
+    "schema": "perception_text_v1",
+    "kind": "region_proposal",
+    "semantic_labels": false,
+    "depth": false
+  }
+}

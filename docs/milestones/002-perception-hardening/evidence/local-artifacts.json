@@ -1,0 +1,91 @@
+{
+  "schema": "automa_local_evidence_manifest_v0",
+  "repository_relative": true,
+  "artifacts": [
+    {
+      "id": "fastsam_physical_review",
+      "path": "lab/plugins/perception/fastsam/runs/replay-pi-straight-long-20260611-221650-20260711-145100/review.html",
+      "bytes": 11010,
+      "sha256": "d355019a666bd8afea5e18c33297fb01a5d71e1eb7c631abb30f5c979fcda527"
+    },
+    {
+      "id": "fastsam_physical_summary",
+      "path": "lab/plugins/perception/fastsam/runs/replay-pi-straight-long-20260611-221650-20260711-145100/summary.txt",
+      "bytes": 732,
+      "sha256": "3c7a843b0c9e9a6baca39e454dd66614659f2ea96f8b533872e24fcaa6fcce89"
+    },
+    {
+      "id": "fastsam_chase_review",
+      "path": "lab/plugins/perception/fastsam/runs/replay-chase-sim-chaser-20260713-145225-20260713-145245/review.html",
+      "bytes": 14428,
+      "sha256": "b01c34a361efcf6b6008d4f95b7531460c90b02fb242191d20175310f5786a5a"
+    },
+    {
+      "id": "fastsam_chase_summary",
+      "path": "lab/plugins/perception/fastsam/runs/replay-chase-sim-chaser-20260713-145225-20260713-145245/summary.txt",
+      "bytes": 734,
+      "sha256": "0dc5b2d71cba2acfd44c54f71da04ba126b96bb894f17260de8ac3ffbe1791ef"
+    },
+    {
+      "id": "classical_physical_review",
+      "path": "lab/plugins/perception/classical_regions/runs/replay-pi-straight-long-20260611-221650-20260711-145058/review.html",
+      "bytes": 16563,
+      "sha256": "e3d383c3e27ad866b2d1fb3d3c956fed82b64ccbb0cc5bffeeb8b54d23b42c94"
+    },
+    {
+      "id": "classical_physical_summary",
+      "path": "lab/plugins/perception/classical_regions/runs/replay-pi-straight-long-20260611-221650-20260711-145058/summary.txt",
+      "bytes": 760,
+      "sha256": "5a130c842604aed3092e98c29f3b69bf019a85a88147e6bf1cc6f8f201f361c1"
+    },
+    {
+      "id": "classical_chase_review",
+      "path": "lab/plugins/perception/classical_regions/runs/replay-chase-sim-chaser-20260713-145225-20260713-145305/review.html",
+      "bytes": 21481,
+      "sha256": "04af02bb4eb7c787e75ef486a045152847789801ee74372628ce354515585047"
+    },
+    {
+      "id": "classical_chase_summary",
+      "path": "lab/plugins/perception/classical_regions/runs/replay-chase-sim-chaser-20260713-145225-20260713-145305/summary.txt",
+      "bytes": 761,
+      "sha256": "eae81cf6fed6e537b414ddd32efed4a96417424f855f2c240daa68592df287cb"
+    },
+    {
+      "id": "temporal_physical_review",
+      "path": "runtime/perception-replays/replay-pi-straight-long-20260611-221650-20260711-152954/review.html",
+      "bytes": 41518,
+      "sha256": "1bc5cdb5cd1a5ca3775ae7e58a5184051c9f67e4d10c60e8702e49e5c51dbdb4"
+    },
+    {
+      "id": "temporal_physical_summary",
+      "path": "runtime/perception-replays/replay-pi-straight-long-20260611-221650-20260711-152954/summary.txt",
+      "bytes": 834,
+      "sha256": "85ea94713d93b4fbacb01260c85ebde4d9060c67ab753c14544bfaa4d675bab6"
+    },
+    {
+      "id": "production_chase_review",
+      "path": "runtime/perception-replays/replay-chase-sim-chaser-20260713-145225-20260713-145312/review.html",
+      "bytes": 41676,
+      "sha256": "982f7cc89afff4078fac346c5164b9485f65d63f7a7361365c7a83a1c872bbd8"
+    },
+    {
+      "id": "production_chase_summary",
+      "path": "runtime/perception-replays/replay-chase-sim-chaser-20260713-145225-20260713-145312/summary.txt",
+      "bytes": 778,
+      "sha256": "5c8efd190393838175c88f8f58320b0fa0247f6118c69a305eaa96401cf0206c"
+    },
+    {
+      "id": "chase_depth_obstacles_contact_sheet",
+      "path": "lab/runs/startup-check/chase-sim-chaser-20260713-145225/contact_sheet.jpg",
+      "bytes": 72782,
+      "sha256": "0e646efde3c5179f33f05f396fe5a369c914bdd92c4ba74c77ae22cf108a2f58"
+    },
+    {
+      "id": "chase_depth_obstacles_capture_report",
+      "path": "lab/runs/startup-check/chase-sim-chaser-20260713-145225/report.json",
+      "bytes": 33476,
+      "sha256": "217d5bb97b75fe585ae35bfb885803f2128b95f97a5dc9713611da0282d54199"
+    }
+  ],
+  "retention": "Generated reports and captured imagery remain local and ignored by Git. This tracked manifest identifies and verifies the exact closeout artifacts."
+}

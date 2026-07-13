@@ -460,15 +460,50 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
             else:
                 try:
                     from autonomy.runtime import apply_decision_activation, read_decision_activation
+                    from autonomy.decision import DecisionStages
+                    from autonomy.perception import ActivatedPerceptionStage, read_perception_activation
                     from autonomy.runtime.cycle_host import AutonomyCycleHost
                     from implementations.runtime.donkeycar.donkey_part import AutonomyPilotPart
 
                     activation = read_decision_activation(activation_path)
                     apply_decision_activation(autonomy_manager, activation)
+                    stages = DecisionStages()
+                    perception_activation_path = (
+                        Path(__file__).resolve().parent / "runtime" / "perception" / "active.json"
+                    )
+                    if perception_activation_path.exists():
+                        try:
+                            perception_stage = ActivatedPerceptionStage(
+                                read_perception_activation(perception_activation_path)
+                            )
+                            stages = DecisionStages(perceive=perception_stage)
+                            autonomy_manager.register_status_provider(
+                                "perception", perception_stage.status
+                            )
+                            logger.info(
+                                "Activated onboard perception algorithm %s",
+                                perception_stage.activation.algorithm,
+                            )
+                        except Exception:
+                            logger.exception(
+                                "Unable to activate onboard perception from %s; "
+                                "continuing with a no-op perception stage",
+                                perception_activation_path,
+                            )
+                    else:
+                        logger.warning(
+                            "Onboard perception activation unavailable; expected %s",
+                            perception_activation_path,
+                        )
                     V.add(
-                        AutonomyPilotPart(host=AutonomyCycleHost(manager=autonomy_manager)),
+                        AutonomyPilotPart(
+                            host=AutonomyCycleHost(manager=autonomy_manager, stages=stages)
+                        ),
                         inputs=['cam/image_array', 'user/mode', 'user/angle', 'user/throttle'],
-                        outputs=['pilot/angle', 'pilot/throttle', 'autonomy/control', 'autonomy/engine', 'autonomy/cycle'],
+                        outputs=[
+                            'pilot/angle', 'pilot/throttle', 'autonomy/control',
+                            'autonomy/engine', 'autonomy/cycle'
+                        ],
                         run_condition='run_pilot')
                 except Exception:
                     logger.exception("Unable to activate autonomy bundle from %s", activation_path)

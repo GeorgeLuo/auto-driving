@@ -22,3 +22,25 @@ adding non-idle decision behavior.
 
 Full record: [plan](001-automation-engine-foundation/plan.html) and
 [closeout](001-automation-engine-foundation/closeout.md).
+
+## 002 - Perception Hardening
+
+Closed: 2026-07-13
+
+Established one normalized perception contract and CLI experiment flow across
+live Chase, live PiRacer, and recorded image sequences. The milestone added
+bounded plugin lifecycle, replay and comparison reports, isolated classical
+and FastSAM candidates, temporal scene tracks, and a deployed lightweight
+onboard path without granting movement authority.
+
+Durable decisions: treat perception as evidence rather than world truth, keep
+temporal state bounded, make artifact writes opt-in, use floor boundaries as
+the production lightweight path, and retain heavyweight segmentation and
+motion tracking as local diagnostics until their value justifies their cost.
+
+Remaining work: define decision memory from this evidence, add controlled
+quality truth, decouple or optimize the roughly 293 ms onboard perception
+cadence, and make the Donkey runtime reliably available after power cycles.
+
+Full record: [plan](002-perception-hardening/plan.html) and
+[closeout](002-perception-hardening/closeout.md).

@@ -5,15 +5,15 @@ Read this file first when starting work.
 
 ## Active Work
 
-The active milestone is
-[`002-perception-hardening/plan.html`](milestones/002-perception-hardening/plan.html).
-It hardens image-to-representation approaches and simulator/Pi experiment
-parity before deciding what perception evidence is reliable enough for memory.
+No milestone is currently active. Milestone 002 is closed; its durable outcome
+is recorded in [`milestones/completed.md`](milestones/completed.md). Create and
+formalize the next numbered plan before beginning the next implementation
+stage.
 
 ## Reading Order
 
-1. Read the active milestone plan for the current goal, constraints, and open
-   decisions.
+1. Read the active milestone plan when one is listed above. If none is active,
+   formalize the next goal before implementation.
 2. Read [`milestones/completed.md`](milestones/completed.md) for durable context
    from closed work.
 3. Read only the relevant documents under `reference/` for current system

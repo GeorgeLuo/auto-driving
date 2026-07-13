@@ -10,7 +10,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
 
-from autonomy.perception import PerceptionRequest
+from autonomy.perception import (
+    PERCEPTION_TEXT_SCHEMA,
+    build_perception_request,
+    instantiate_perception_mapper,
+)
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReadRequest
 from implementations.vehicle.chase_sim import ChaseSimCar
 from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWebSocketError
@@ -18,6 +22,7 @@ from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWebSocketError
 from .bundles import (
     AUTONOMY_DIR,
     IMPLEMENTATIONS_DIR,
+    controller_bundle_source_summary,
     controller_bundle_paths,
     release_activation_summary,
     sync_controller_bundle,
@@ -31,36 +36,56 @@ ROOT = Path(__file__).resolve().parents[2]
 PERCEPTION_IMPLEMENTATIONS_DIR = IMPLEMENTATIONS_DIR / "perception"
 RUNTIME_ROOT = Path(os.environ.get("AUTOMA_RUNTIME_ROOT", ROOT / "runtime" / "vehicles"))
 CURRENT_MAPPER_SPEC = "autonomy.perception.mappers.current:CurrentDirectoryPerceptionMapper"
+DEFAULT_PERCEPTION_ALGORITHM = "lightweight_observer"
 PERCEPTION_PLUGIN_SPECS: dict[str, str] = {
     "floor_plane": "implementations.perception:FloorPlanePlugin",
     "frame": "implementations.perception:FrameObservationPlugin",
-    "motion_groups": "implementations.perception:MotionGroupsPlugin",
+    "motion_tracks": "implementations.perception:MotionTracksPlugin",
     "sim_color_targets": "implementations.perception:SimColorTargetsPlugin",
     "vlm_prep": "implementations.perception:VlmPrepPlugin",
 }
 PERCEPTION_ALGORITHMS: dict[str, dict[str, Any]] = {
-    "current": {
-        "description": "Current debug perception chain: frame facts plus simulator color-target signals.",
+    "lightweight_observer": {
+        "description": "Lightweight generic observer: frame facts, visible floor, and first-hit floor boundaries.",
+        "mapper_spec": CURRENT_MAPPER_SPEC,
+        "mapper_config": {
+            "plugins": ["frame", "floor_plane"],
+            "plugin_specs": dict(PERCEPTION_PLUGIN_SPECS),
+            "plugin_configs": {"floor_plane": {"write_artifacts": False}},
+        },
+        "output_contract": {
+            "schema": PERCEPTION_TEXT_SCHEMA,
+            "meaning": "line-oriented frame facts, floor evidence, and non-semantic floor boundaries",
+        },
+    },
+    "sim_debug": {
+        "description": "Simulator-only debug control: frame facts plus known Chase color-target signals.",
         "mapper_spec": CURRENT_MAPPER_SPEC,
         "mapper_config": {
             "plugins": ["frame", "sim_color_targets"],
             "plugin_specs": dict(PERCEPTION_PLUGIN_SPECS),
         },
         "output_contract": {
-            "schema": "perception_text_v0",
-            "meaning": "line-oriented frame facts and evader/obstruction color signals",
+            "schema": PERCEPTION_TEXT_SCHEMA,
+            "meaning": "line-oriented frame facts and simulator evader/obstruction color controls",
         },
     },
     "visual_observer": {
-        "description": "Generic visual observer chain: frame facts, floor/traversability, VLM prep artifacts, and pairwise motion evidence.",
+        "description": (
+            "Generic visual observer chain: frame facts, floor/traversability, "
+            "and bounded scene tracks."
+        ),
         "mapper_spec": CURRENT_MAPPER_SPEC,
         "mapper_config": {
-            "plugins": ["frame", "floor_plane", "vlm_prep", "motion_groups"],
+            "plugins": ["frame", "floor_plane", "motion_tracks"],
             "plugin_specs": dict(PERCEPTION_PLUGIN_SPECS),
         },
         "output_contract": {
-            "schema": "perception_text_v0",
-            "meaning": "line-oriented visual evidence for surfaces, possible obstructions, prepared images, and motion groups",
+            "schema": PERCEPTION_TEXT_SCHEMA,
+            "meaning": (
+                "line-oriented visual evidence for surfaces, floor boundaries, "
+                "and bounded scene tracks"
+            ),
         },
     },
 }
@@ -74,6 +99,75 @@ class CommandResult:
 
 def available_perception_algorithm_ids() -> tuple[str, ...]:
     return tuple(sorted(PERCEPTION_ALGORITHMS))
+
+
+def ensure_local_perception_runtime(
+    *,
+    vehicle: dict[str, Any],
+    algorithm: str | None = None,
+    output: TextIO | None = None,
+) -> dict[str, Any]:
+    """Ensure a vehicle's local bundle reflects current perception source."""
+
+    vehicle_id = str(vehicle.get("vehicle_id") or "vehicle")
+    if algorithm is not None and algorithm not in PERCEPTION_ALGORITHMS:
+        raise ValueError(f"unknown perception algorithm: {algorithm}")
+
+    bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(vehicle_id))
+    manifest_path = Path(bundle["perception_runtime_dir"]) / "active.json"
+    existing: dict[str, Any] | None = None
+    if manifest_path.exists():
+        loaded = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if isinstance(loaded, dict):
+            existing = loaded
+
+    selected_algorithm = algorithm
+    existing_algorithm: str | None = None
+    if existing is not None:
+        existing_perception = existing.get("perception")
+        if isinstance(existing_perception, dict):
+            existing_algorithm = existing_perception.get("algorithm")
+    if selected_algorithm is None:
+        if isinstance(existing_algorithm, str) and existing_algorithm in PERCEPTION_ALGORITHMS:
+            selected_algorithm = existing_algorithm
+    selected_algorithm = selected_algorithm or DEFAULT_PERCEPTION_ALGORITHM
+
+    if existing is not None and algorithm is None and existing_algorithm == "custom":
+        manifest = existing
+    else:
+        manifest = _activation_manifest(vehicle, selected_algorithm, bundle)
+        if existing is not None:
+            existing_bundle = existing.get("controller_bundle")
+            existing_release = (
+                existing_bundle.get("release")
+                if isinstance(existing_bundle, dict)
+                else None
+            )
+            if isinstance(existing_release, dict):
+                manifest["controller_bundle"]["release"] = existing_release
+
+    source = controller_bundle_source_summary()
+    controller_bundle = manifest.get("controller_bundle")
+    release_summary = controller_bundle.get("release") if isinstance(controller_bundle, dict) else None
+    staged_tree = release_summary.get("tree_sha256") if isinstance(release_summary, dict) else None
+    bundle_present = Path(bundle["autonomy_dir"]).is_dir() and Path(bundle["implementations_dir"]).is_dir()
+    refreshed = not bundle_present or staged_tree != source["tree_sha256"]
+
+    if refreshed:
+        release = sync_controller_bundle(bundle, output=output)
+        manifest["controller_bundle"]["release"] = release_activation_summary(release)
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
+
+    return {
+        "vehicle_id": vehicle_id,
+        "algorithm": manifest.get("perception", {}).get("algorithm"),
+        "bundle": bundle,
+        "manifest": manifest,
+        "manifest_path": manifest_path,
+        "refreshed": refreshed,
+        "source": source,
+    }
 
 
 def get_vehicle_perception_info(
@@ -282,7 +376,7 @@ def set_vehicle_perception_plugin(
 def update_vehicle_perception(
     *,
     vehicle_id: str,
-    algorithm: str = "current",
+    algorithm: str = DEFAULT_PERCEPTION_ALGORITHM,
     timeout_s: float = 1.0,
     restart: bool = False,
     dry_run: bool = False,
@@ -297,8 +391,13 @@ def update_vehicle_perception(
     stream = output if verbose else None
 
     vehicle = _offline_sim_vehicle(vehicle_id) if not restart else None
+    if vehicle is None and not restart:
+        vehicle = _offline_staged_vehicle(vehicle_id)
     if vehicle is not None:
-        _emit(stream, "Using offline simulator deployment metadata; WS/frontend liveness is not required for staging.")
+        _emit(
+            stream,
+            "Using local vehicle metadata; network liveness is not required for local perception staging.",
+        )
     else:
         _emit(stream, f"Discovering active vehicles for id {vehicle_id!r}...")
         payload = discover_active_vehicles(
@@ -323,10 +422,11 @@ def update_vehicle_perception(
             return CommandResult(2, f"Vehicle {vehicle_id!r} was not found.")
 
     provider = vehicle.get("provider")
-    if provider != "chase-sim":
+    if restart and provider != "chase-sim":
         return CommandResult(
             2,
-            f"Vehicle {vehicle_id!r} is provider {provider!r}; perception update currently targets the WS-controlled simulator.",
+            f"Vehicle {vehicle_id!r} is provider {provider!r}; --restart is only "
+            "available for the WS-controlled simulator.",
         )
 
     vehicle_runtime_dir = RUNTIME_ROOT / safe_path_part(vehicle_id)
@@ -336,8 +436,8 @@ def update_vehicle_perception(
     manifest = _activation_manifest(vehicle, algorithm, bundle)
 
     _emit(stream, f"Selected {vehicle_id} ({provider}).")
-    _emit(stream, "Scope: simulator controller perception mapping only.")
-    _emit(stream, "Simulator source code will not be modified.")
+    _emit(stream, "Scope: local perception controller bundle.")
+    _emit(stream, "Vehicle and simulator source code will not be modified.")
     _emit(stream, f"Perception algorithm: {algorithm} ({manifest['perception']['mapper_spec']})")
     _emit(stream, f"Perception implementations source: {PERCEPTION_IMPLEMENTATIONS_DIR}")
     _emit(stream, f"Controller bundle: {bundle['root_dir']}")
@@ -396,7 +496,8 @@ def update_vehicle_perception(
                 2,
                 "\n".join(
                     [
-                        f"Perception algorithm {algorithm!r} was activated for {vehicle_id}, but restart/sample failed.",
+                        f"Perception algorithm {algorithm!r} was activated for {vehicle_id}, "
+                        "but restart/sample failed.",
                         f"Reason: {exc}",
                         f"Activation: {display_path(manifest_path)}",
                     ]
@@ -446,6 +547,10 @@ def ensure_vehicle_perception_activation(
     activation_path = Path(bundle["perception_runtime_dir"]) / "active.json"
     if activation_path.exists():
         manifest = json.loads(activation_path.read_text(encoding="utf-8"))
+        perception = manifest.get("perception")
+        existing_algorithm = perception.get("algorithm") if isinstance(perception, dict) else None
+        if existing_algorithm not in PERCEPTION_ALGORITHMS and existing_algorithm != "custom":
+            manifest = _activation_manifest(vehicle, algorithm, bundle)
     else:
         manifest = _activation_manifest(vehicle, algorithm, bundle)
 
@@ -474,6 +579,33 @@ def _offline_sim_vehicle(vehicle_id: str) -> dict[str, Any] | None:
         "status": {
             "ok": None,
             "note": "offline simulator metadata; WS/frontend liveness was not required for staging",
+        },
+    }
+
+
+def _offline_staged_vehicle(vehicle_id: str) -> dict[str, Any] | None:
+    bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(vehicle_id))
+    activation_path = Path(bundle["perception_runtime_dir"]) / "active.json"
+    if not activation_path.is_file():
+        return None
+    try:
+        activation = json.loads(activation_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    provider = activation.get("provider")
+    vehicle_kind = activation.get("vehicle_kind")
+    if not isinstance(provider, str) or not provider:
+        return None
+    runtime = activation.get("runtime")
+    connection = runtime.get("connection") if isinstance(runtime, dict) else None
+    return {
+        "vehicle_id": vehicle_id,
+        "vehicle_kind": vehicle_kind or provider,
+        "provider": provider,
+        "connection": connection if isinstance(connection, dict) else {},
+        "status": {
+            "ok": None,
+            "note": "offline local staging metadata; vehicle liveness was not checked",
         },
     }
 
@@ -557,7 +689,8 @@ def _restart_and_sample_sim_controller(
     verbose: bool,
     output: TextIO | None,
 ) -> dict[str, str]:
-    connection = vehicle.get("connection") if isinstance(vehicle.get("connection"), dict) else {}
+    raw_connection = vehicle.get("connection")
+    connection: dict[str, Any] = raw_connection if isinstance(raw_connection, dict) else {}
     ws_url = connection.get("ws_url") if isinstance(connection.get("ws_url"), str) else None
     sample_dir = perception_runtime_dir / "sample"
     if sample_dir.exists():
@@ -575,7 +708,8 @@ def _restart_and_sample_sim_controller(
         ) from exc
     if debug.get("gameId") != "chase":
         raise MetricsUiWebSocketError(
-            f"Chase Play frontend is connected, but active gameId is {debug.get('gameId')!r}; load the Chase example first."
+            f"Chase Play frontend is connected, but active gameId is {debug.get('gameId')!r}; "
+            "load the Chase example first."
         )
 
     preparation = car.prepare_for_external_control()
@@ -599,8 +733,8 @@ def _restart_and_sample_sim_controller(
         bundle_root=Path(manifest["controller_bundle"]["root_dir"]),
     )
     perception = mapper.perceive(
-        PerceptionRequest(
-            snapshot=snapshot,
+        build_perception_request(
+            snapshot,
             output_dir=sample_dir / "perception",
             metadata={
                 "activation": str(perception_runtime_dir / "active.json"),
@@ -631,15 +765,22 @@ def _load_mapper(
     if not separator:
         raise ValueError("mapper spec must be 'module.path:ClassName'")
     if bundle_root is None:
-        module = importlib.import_module(module_name)
-    else:
-        module = _import_autonomy_module_from_bundle(module_name, bundle_root)
-    mapper_cls = getattr(module, class_name)
-    return mapper_cls(**mapper_config)
+        return instantiate_perception_mapper(mapper_spec, mapper_config)
+    return _instantiate_mapper_from_bundle(
+        module_name,
+        class_name,
+        mapper_config,
+        bundle_root,
+    )
 
 
-def _import_autonomy_module_from_bundle(module_name: str, bundle_root: Path):
-    """Import a staged controller module without permanently replacing workspace imports."""
+def _instantiate_mapper_from_bundle(
+    module_name: str,
+    class_name: str,
+    mapper_config: dict[str, Any],
+    bundle_root: Path,
+):
+    """Construct a staged mapper while all of its imports resolve to one bundle."""
 
     bundle_root_text = str(bundle_root)
     staged_prefixes = ("autonomy", "implementations")
@@ -655,6 +796,15 @@ def _import_autonomy_module_from_bundle(module_name: str, bundle_root: Path):
     sys.path.insert(0, bundle_root_text)
     try:
         module = importlib.import_module(module_name)
+        mapper_cls = getattr(module, class_name)
+        mapper = mapper_cls(**mapper_config)
+        for method_name in ("reset", "describe_schema", "perceive"):
+            if not callable(getattr(mapper, method_name, None)):
+                raise TypeError(
+                    f"staged perception mapper {module_name}:{class_name} "
+                    f"does not implement {method_name}()"
+                )
+        mapper.reset()
     finally:
         sys.dont_write_bytecode = previous_dont_write_bytecode
         try:
@@ -668,7 +818,7 @@ def _import_autonomy_module_from_bundle(module_name: str, bundle_root: Path):
         ]:
             sys.modules.pop(name, None)
         sys.modules.update(cached)
-    return module
+    return mapper
 
 
 def _emit(output: TextIO | None, message: str) -> None:
@@ -798,10 +948,10 @@ def _format_perception_info(payload: dict[str, Any]) -> str:
 
 def _format_output_record(record: dict[str, Any]) -> str:
     if isinstance(record.get("record"), str):
-        parts = [record["record"]]
+        described_parts = [record["record"]]
         if isinstance(record.get("meaning"), str):
-            parts.append(f"- {record['meaning']}")
-        return " ".join(parts)
+            described_parts.append(f"- {record['meaning']}")
+        return " ".join(described_parts)
 
     parts: list[str] = []
     if isinstance(record.get("thing_id"), str):

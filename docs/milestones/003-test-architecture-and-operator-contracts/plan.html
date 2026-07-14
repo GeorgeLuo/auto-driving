@@ -1,0 +1,540 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Milestone 003: Test Architecture and Operator Contracts</title>
+  <style>
+    :root {
+      --ink: #17211f;
+      --muted: #596762;
+      --line: #c9d5ce;
+      --bg: #f5f7f4;
+      --panel: #ffffff;
+      --green: #2f805d;
+      --green-soft: #e4f2e9;
+      --amber: #9a681e;
+      --amber-soft: #fff2d6;
+      --red: #9d493c;
+      --red-soft: #f8e5e1;
+      --teal: #26778a;
+      --teal-soft: #e0f1f4;
+      --blue: #365f91;
+      --blue-soft: #e7eef8;
+      --neutral: #edf1ee;
+      --shadow: 0 12px 30px rgba(23, 33, 31, 0.07);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.5;
+    }
+
+    main {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 36px 0 64px;
+    }
+
+    h1, h2, h3, p { margin: 0; }
+    h1 { font-size: clamp(34px, 5vw, 54px); line-height: 1.04; letter-spacing: 0; }
+    h2 { margin-bottom: 13px; font-size: 22px; letter-spacing: 0; }
+    h3 { margin-bottom: 7px; font-size: 15px; letter-spacing: 0; }
+    p, li, td, summary { color: var(--muted); }
+
+    code {
+      padding: 2px 5px;
+      border-radius: 4px;
+      background: var(--neutral);
+      color: #1e3932;
+      font-size: .94em;
+    }
+
+    header { margin-bottom: 24px; }
+    .lead { max-width: 940px; margin-top: 12px; font-size: 17px; }
+    .meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+    .pill { border: 1px solid var(--line); border-radius: 999px; padding: 5px 9px; background: var(--panel); color: var(--muted); font-size: 13px; }
+
+    .panel, .card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+
+    .panel { padding: 22px; margin-top: 18px; box-shadow: var(--shadow); }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+    .grid.two { grid-template-columns: repeat(2, 1fr); }
+    .card { padding: 15px; }
+    .card.goal { border-left: 6px solid var(--green); background: var(--green-soft); }
+    .card.interface { border-left: 6px solid var(--teal); background: var(--teal-soft); }
+    .card.constraint { border-left: 6px solid var(--amber); background: var(--amber-soft); }
+    .card.risk { border-left: 6px solid var(--red); background: var(--red-soft); }
+    .card.structure { border-left: 6px solid var(--blue); background: var(--blue-soft); }
+
+    ul, ol { margin: 8px 0 0; padding-left: 20px; }
+    li { margin: 6px 0; }
+
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { padding: 11px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { background: var(--neutral); color: var(--ink); }
+    tr:last-child td { border-bottom: 0; }
+
+    .status { display: inline-block; border-radius: 999px; padding: 3px 7px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+    .done { background: var(--green-soft); color: #236548; }
+    .active { background: var(--blue-soft); color: #2c517b; }
+    .pending { background: var(--amber-soft); color: #775018; }
+    .blocked { background: var(--red-soft); color: #843c30; }
+
+    .command {
+      margin-top: 12px;
+      padding: 13px;
+      border-radius: 7px;
+      background: var(--ink);
+      color: #dff4e9;
+      overflow-x: auto;
+      font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    .note { margin-top: 14px; padding: 14px; border-left: 6px solid var(--amber); background: var(--amber-soft); color: var(--muted); }
+    .tree { margin-top: 12px; padding: 16px; border: 1px solid var(--line); border-radius: 7px; background: #18211f; color: #e6f1eb; overflow-x: auto; font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+    .toolbar { display: flex; flex-wrap: wrap; gap: 7px; margin: 12px 0 16px; }
+    button {
+      min-height: 34px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 6px 10px;
+      background: var(--panel);
+      color: var(--ink);
+      cursor: pointer;
+      font: inherit;
+      font-size: 13px;
+    }
+    button:hover, button[aria-pressed="true"] { border-color: var(--teal); background: var(--teal-soft); }
+    button:focus-visible { outline: 3px solid rgba(38, 119, 138, .25); outline-offset: 2px; }
+
+    .work-item { margin-top: 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); }
+    .work-item[hidden] { display: none; }
+    .work-item summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 14px; cursor: pointer; font-weight: 700; color: var(--ink); }
+    .work-item summary::marker { color: var(--teal); }
+    .work-body { padding: 0 14px 14px; border-top: 1px solid var(--line); }
+    .work-body p { margin-top: 12px; }
+
+    .progress-track { height: 10px; margin-top: 12px; border-radius: 5px; overflow: hidden; background: var(--neutral); }
+    .progress-fill { width: 16.6667%; height: 100%; background: var(--green); }
+    .small { font-size: 13px; color: var(--muted); }
+
+    @media (max-width: 860px) {
+      .grid, .grid.two { grid-template-columns: 1fr; }
+      .work-item summary { align-items: flex-start; flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Milestone 003: Test Architecture and Operator Contracts</h1>
+      <p class="lead">
+        Make behavioral change visible before autonomy logic expands. The test
+        suite must mirror code ownership, directly protect settled framework
+        contracts, and verify that Automa gives human operators concise,
+        actionable information without hiding failures or leaking internal noise.
+      </p>
+      <div class="meta">
+        <span class="pill">Status: active - planning</span>
+        <span class="pill">Started: 2026-07-13</span>
+        <span class="pill">Production behavior: preserve by default</span>
+        <span class="pill">Default suite: deterministic and offline</span>
+        <span class="pill">Live validation: explicit opt-in</span>
+      </div>
+    </header>
+
+    <section class="panel">
+      <h2>High-Level Objective</h2>
+      <div class="grid">
+        <div class="card goal">
+          <h3>Tests Follow Ownership</h3>
+          <p>Organize tests by stable autonomy contracts, concrete implementations, CLI behavior, local integration, and live systems so failures point to the responsible layer.</p>
+        </div>
+        <div class="card interface">
+          <h3>Contracts Are Executable</h3>
+          <p>Protect settled decision, perception, runtime, and vehicle interfaces directly rather than relying on broad CLI scenarios to exercise them incidentally.</p>
+        </div>
+        <div class="card structure">
+          <h3>Operator Output Has A Contract</h3>
+          <p>Verify that human output prioritizes state, outcome, and recovery while machine output remains schema-valid, complete, and free of prose.</p>
+        </div>
+      </div>
+      <p class="note">
+        This milestone is not a pursuit of maximum test count or a single line
+        coverage percentage. Success means important behavior has an obvious
+        owning test, regressions fail close to their source, and normal operator
+        workflows provide high-signal output in success, degraded, and failure states.
+      </p>
+    </section>
+
+    <section class="panel">
+      <h2>Baseline</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Area</th><th>Status</th><th>Current Evidence</th><th>Gap</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Regression suite</td>
+              <td><span class="status done">Working baseline</span></td>
+              <td>94 tests are discovered; 93 pass by default and one live simulator smoke test is skipped unless explicitly enabled.</td>
+              <td>The suite is manually invoked and has no CI or coverage baseline.</td>
+            </tr>
+            <tr>
+              <td>Test organization</td>
+              <td><span class="status pending">Needs restructuring</span></td>
+              <td>Tests cover CLI, autonomy, implementations, deployment, and live behavior.</td>
+              <td>All owned tests live under <code>cli/tests</code>. One 1,385-line file contains about 41% of all test code.</td>
+            </tr>
+            <tr>
+              <td>Stable autonomy contracts</td>
+              <td><span class="status pending">Partial direct coverage</span></td>
+              <td>Decision no-op behavior, perception plugin execution, activation, and cycle integration have focused examples.</td>
+              <td>Manager failure recovery, complete stage flow, vehicle value contracts, evidence validity, and activation failure boundaries remain indirect or incomplete.</td>
+            </tr>
+            <tr>
+              <td>Human CLI behavior</td>
+              <td><span class="status done">Useful scenarios exist</span></td>
+              <td>Scoped help, simulator readiness failures, stale workers, startup races, no-log defaults, and perception view readiness are tested.</td>
+              <td>There is no reusable assertion for concise success, actionable failure, suppressed internal noise, or semantic parity with JSON output.</td>
+            </tr>
+            <tr>
+              <td>Live boundaries</td>
+              <td><span class="status done">Explicit simulator opt-in</span></td>
+              <td>The Chase smoke path is disabled by default and enabled through the canonical test runner.</td>
+              <td>Physical Pi validation needs the same named, bounded, opt-in shape and an explicit unavailable result.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Target Test Structure</h2>
+      <p>The test tree mirrors production ownership. Cross-layer behavior belongs in <code>integration</code>, not in whichever unit test first needed the fixture.</p>
+      <pre class="tree">tests/
+  run.py                         canonical test entrypoint
+  support/
+    cli_runner.py                subprocess result and output assertions
+    runtime_fixtures.py          staged activation and worker-state fixtures
+    fake_simeval.py              reusable simulator process double
+
+  autonomy/
+    decision/                    cycle and observation contracts
+    perception/                  evidence, plugin, runner, activation contracts
+    runtime/                     engine, manager, activation, cycle-host contracts
+    vehicle/                     action, pulse, sensor, and capability contracts
+
+  implementations/
+    operations/                  generic operation plans and scoring
+    perception/                  concrete component and plugin behavior
+    runtime/                     Donkey runtime adapter behavior
+    vehicle/                     Chase and PiRacer adapter behavior
+
+  cli/
+    help/                        command discovery and scoped usage
+    automation/                  lifecycle, status, stream, and recording defaults
+    perception/                  staging, selection, info, replay, and view behavior
+    simulators/                  discovery, ensure, scenario selection, and failures
+    deployment/                  local bundles and physical deployment reporting
+
+  integration/
+    controller_bundle/           staged code and activation compatibility
+    automation_pipeline/         capture, perception, cycle, and publication flow
+    physical_deploy/              remote installer contract without live hardware
+
+  live/
+    chase_simulator/             bounded opt-in simulator checks
+    piracer/                     bounded opt-in physical checks</pre>
+      <p class="note">
+        Retire <code>cli/run_tests.py</code> after <code>tests/run.py</code> becomes
+        canonical. Do not keep wrappers or compatibility entrypoints that execute
+        the same business logic through multiple paths.
+      </p>
+    </section>
+
+    <section class="panel">
+      <h2>Test Layers</h2>
+      <div class="grid two">
+        <div class="card goal">
+          <h3>Unit And Contract</h3>
+          <p>Fast, deterministic tests for one owning module or interface. No subprocesses, network, browser, simulator, or physical vehicle.</p>
+        </div>
+        <div class="card interface">
+          <h3>Local Integration</h3>
+          <p>Disposable filesystems, staged bundles, isolated plugin workers, fake vehicles, and fake external processes. Included in the default suite.</p>
+        </div>
+        <div class="card structure">
+          <h3>CLI Scenarios</h3>
+          <p>Black-box command execution against controlled state. Assert exit status and operator-visible meaning rather than internal implementation calls.</p>
+        </div>
+        <div class="card constraint">
+          <h3>Live Systems</h3>
+          <p>Bounded simulator or Pi checks. Never run implicitly, never move physical hardware without a specifically named operation, and report unavailable dependencies clearly.</p>
+        </div>
+      </div>
+      <pre class="command">python3 tests/run.py
+python3 tests/run.py --live-sim
+python3 tests/run.py --live-pi</pre>
+      <p class="small">The flagless command runs all deterministic unit, CLI, and local integration tests. Topic-specific development runs use standard unittest module selection rather than adding many runner flags.</p>
+    </section>
+
+    <section class="panel">
+      <h2>Operator Output Contract</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Output Mode</th><th>Required Signal</th><th>Noise To Reject</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Human success</td>
+              <td>Outcome first, affected vehicle or simulator, resulting state, and a next command only when useful.</td>
+              <td>Raw JSON, tracebacks, duplicate summaries, implementation-only paths, hashes, or PIDs without operational relevance.</td>
+            </tr>
+            <tr>
+              <td>Human degraded state</td>
+              <td>What is available, what is unavailable, whether the operation can continue, and the most relevant recovery action.</td>
+              <td>Silent omission, generic “none found,” raw socket errors, or a success exit code when the requested outcome was not achieved.</td>
+            </tr>
+            <tr>
+              <td>Human failure</td>
+              <td>Nonzero exit, concise cause, relevant state, and recovery guidance when the user can act.</td>
+              <td>Tracebacks and internal exception text unless an explicit diagnostic mode requests them.</td>
+            </tr>
+            <tr>
+              <td>JSON</td>
+              <td>One parseable document with a schema, explicit status, and enough structured context for automation.</td>
+              <td>Human headings, progress prose, warnings before the JSON document, or fields that disagree with human rendering.</td>
+            </tr>
+            <tr>
+              <td>Long operation</td>
+              <td>Bounded progress at meaningful state transitions and one final result.</td>
+              <td>Silent waiting, per-frame chatter by default, or repeated unchanged status.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="note">
+        Human and JSON output should render the same structured operation result.
+        Tests should expose drift between the two forms; production refactoring is
+        permitted when needed to remove duplicated state calculation.
+      </p>
+    </section>
+
+    <section class="panel" id="work-plan">
+      <h2>Work Plan</h2>
+      <p>Expand each work package for its boundaries and acceptance evidence.</p>
+      <div class="toolbar" role="group" aria-label="Filter work packages">
+        <button type="button" data-filter="all" aria-pressed="true">All</button>
+        <button type="button" data-filter="done" aria-pressed="false">Completed</button>
+        <button type="button" data-filter="active" aria-pressed="false">Active</button>
+        <button type="button" data-filter="pending" aria-pressed="false">Pending</button>
+        <button type="button" id="expand-all">Expand all</button>
+        <button type="button" id="collapse-all">Collapse all</button>
+      </div>
+
+      <details class="work-item" data-status="done" open>
+        <summary><span>1. Establish And Record The Baseline</span><span class="status done">Completed</span></summary>
+        <div class="work-body">
+          <p>Inventory test ownership, file size, execution time, existing operator scenarios, and direct stable-contract coverage.</p>
+          <ul>
+            <li>Record 94 discovered tests, 93 default passes, and one opt-in skip.</li>
+            <li>Record the 3,388-line suite and 1,385-line CLI monolith.</li>
+            <li>Identify CI, coverage, ownership, and output-contract gaps.</li>
+          </ul>
+        </div>
+      </details>
+
+      <details class="work-item" data-status="pending">
+        <summary><span>2. Reorganize Tests Without Behavior Changes</span><span class="status pending">Pending</span></summary>
+        <div class="work-body">
+          <p>Create the mirrored test tree, move tests to their owning topics, and extract reusable support code.</p>
+          <ul>
+            <li>Split <code>test_automa_cli.py</code> by command family.</li>
+            <li>Separate stable perception contracts from concrete plugin tests.</li>
+            <li>Separate activation parsing, runtime integration, and Donkey adapter checks.</li>
+            <li>Keep the full deterministic suite green before adding assertions.</li>
+          </ul>
+        </div>
+      </details>
+
+      <details class="work-item" data-status="pending">
+        <summary><span>3. Protect Settled Autonomy Contracts</span><span class="status pending">Pending</span></summary>
+        <div class="work-body">
+          <p>Add direct tests where framework behavior is intended to remain stable while implementations evolve.</p>
+          <ul>
+            <li>Decision stage order, no-op semantics, default observation, action typing, and result serialization.</li>
+            <li>Runtime engine loading, failed reload preservation, safe step failure, recovery, and status isolation.</li>
+            <li>Vehicle action bounds, pulse normalization, sensor requests, snapshots, and serialization privacy.</li>
+            <li>Perception evidence validity, round trips, source attribution, shared component resolution, activation, and diagnostic boundaries.</li>
+          </ul>
+        </div>
+      </details>
+
+      <details class="work-item" data-status="pending">
+        <summary><span>4. Formalize Operator-Facing CLI Tests</span><span class="status pending">Pending</span></summary>
+        <div class="work-body">
+          <p>Turn the output rules above into reusable assertions and a small state matrix.</p>
+          <ul>
+            <li>First-use help and command-level discovery.</li>
+            <li>No vehicle, unknown vehicle, unsupported operation, and offline dependencies.</li>
+            <li>Worker starting, running, completed, stopped, stale, and crashed.</li>
+            <li>Simulator server online with frontend absent, stale, connected, or dropped.</li>
+            <li>Successful and failed staging/deployment with meaningful progress.</li>
+            <li>Human and JSON semantic parity plus no-write defaults.</li>
+          </ul>
+        </div>
+      </details>
+
+      <details class="work-item" data-status="pending">
+        <summary><span>5. Add Deterministic CI And Coverage Visibility</span><span class="status pending">Pending</span></summary>
+        <div class="work-body">
+          <p>Run the canonical offline suite automatically on pull requests and report coverage for owned code.</p>
+          <ul>
+            <li>Use one supported Python version first; add a matrix only when compatibility is a real requirement.</li>
+            <li>Make coverage informational at baseline, then prevent unexplained regression in stable <code>autonomy</code> code.</li>
+            <li>Do not include vendored DonkeyCar tests or FastSAM virtual environments in owned coverage.</li>
+          </ul>
+        </div>
+      </details>
+
+      <details class="work-item" data-status="pending">
+        <summary><span>6. Bound And Document Live Validation</span><span class="status pending">Pending</span></summary>
+        <div class="work-body">
+          <p>Keep live checks useful without making normal development dependent on mutable external state.</p>
+          <ul>
+            <li>Retain one bounded Chase simulator smoke flow.</li>
+            <li>Add a non-moving Pi connectivity and activation smoke flow before any motion-capable live check.</li>
+            <li>Report unavailable hardware or UI as an explicit skipped/unavailable outcome, never a hidden pass.</li>
+            <li>Document setup, side effects, timeout, and cleanup for every live test.</li>
+          </ul>
+        </div>
+      </details>
+
+      <div class="progress-track" aria-label="Milestone work packages completed: 1 of 6">
+        <div class="progress-fill"></div>
+      </div>
+      <p class="small">Progress: 1 of 6 work packages complete. Baseline audit is complete; implementation has not started.</p>
+    </section>
+
+    <section class="panel">
+      <h2>Scope Boundaries</h2>
+      <div class="grid two">
+        <div class="card constraint">
+          <h3>In Scope</h3>
+          <ul>
+            <li>Test organization and reusable test support.</li>
+            <li>Direct stable-contract coverage.</li>
+            <li>Human and JSON output behavior.</li>
+            <li>Deterministic CI and coverage visibility.</li>
+            <li>Explicit simulator and Pi live-test boundaries.</li>
+          </ul>
+        </div>
+        <div class="card risk">
+          <h3>Out Of Scope</h3>
+          <ul>
+            <li>New autonomy behavior or movement policy.</li>
+            <li>Perception algorithm accuracy claims without labeled truth.</li>
+            <li>Exact FastSAM masks or fragile pixel-perfect CV outputs.</li>
+            <li>Mandatory live simulator or hardware tests.</li>
+            <li>Changing test frameworks solely for style.</li>
+            <li>Keeping duplicate runners for compatibility.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Risks And Controls</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Risk</th><th>Control</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>A test-only refactor changes behavior accidentally.</td><td>Move and split first, run the complete baseline after each topic, then add new assertions in a separate phase.</td></tr>
+            <tr><td>Broad fixtures drift away from runtime schemas.</td><td>Use small builders owned by the contract they represent and assert their serialized shape directly.</td></tr>
+            <tr><td>Exact text assertions make harmless wording changes expensive.</td><td>Snapshot stable help surfaces; use semantic assertions for dynamic status and failure output.</td></tr>
+            <tr><td>Coverage targets reward incidental execution.</td><td>Prioritize named invariants and mutation-sensitive failure cases; use coverage to find omissions, not as the sole quality score.</td></tr>
+            <tr><td>Live tests become flaky or move hardware unexpectedly.</td><td>Keep them bounded, opt-in, explicit about side effects, and separate from default CI.</td></tr>
+            <tr><td>Test support becomes another application framework.</td><td>Keep helpers limited to process execution, fixtures, fakes, and reusable assertions; business behavior remains in production code.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Exit Criteria</h2>
+      <ol>
+        <li>The owned test tree mirrors <code>autonomy</code>, <code>implementations</code>, and <code>cli</code>, with cross-layer and live tests clearly separated.</li>
+        <li>No test file combines unrelated command families, framework contracts, and concrete implementation behavior.</li>
+        <li>Decision cycle, runtime manager, vehicle contracts, perception evidence, plugin execution, and activation have direct invariant tests.</li>
+        <li>Common human success, degraded, and failure states are tested for useful signal and absence of internal noise.</li>
+        <li>Human and JSON forms are verified against the same semantic operation state.</li>
+        <li>The canonical flagless runner executes all deterministic tests without live dependencies or default artifact recording.</li>
+        <li>Pull requests run the deterministic suite automatically and expose owned-code coverage.</li>
+        <li>Simulator and Pi checks are bounded, named, opt-in, and document side effects and cleanup.</li>
+        <li>The old runner and redundant fixtures are removed rather than retained as compatibility paths.</li>
+        <li>A concise closeout records defects found, contract decisions made, test timing, coverage baseline, and remaining live-system risk.</li>
+      </ol>
+    </section>
+
+    <section class="panel">
+      <h2>Decision Log</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Date</th><th>Decision</th><th>Reason</th></tr></thead>
+          <tbody>
+            <tr><td>2026-07-13</td><td>Open a new milestone rather than extend milestone 002.</td><td>Perception hardening is already closed and recorded; testing spans the entire repository.</td></tr>
+            <tr><td>2026-07-13</td><td>Retain <code>unittest</code> initially.</td><td>The primary debt is ownership, fixtures, and missing invariants, not framework capability.</td></tr>
+            <tr><td>2026-07-13</td><td>Keep deterministic local integration in the default suite and live systems opt-in.</td><td>The default command should be trustworthy on any development machine without silently weakening external-state validation.</td></tr>
+            <tr><td>2026-07-13</td><td>Make coverage informational before setting a gate.</td><td>A measured baseline and explicit behavioral invariants are more useful than choosing an arbitrary percentage.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const workItems = [...document.querySelectorAll('.work-item')];
+    const filterButtons = [...document.querySelectorAll('[data-filter]')];
+
+    function applyFilter(status) {
+      for (const item of workItems) {
+        item.hidden = status !== 'all' && item.dataset.status !== status;
+      }
+      for (const button of filterButtons) {
+        button.setAttribute('aria-pressed', String(button.dataset.filter === status));
+      }
+    }
+
+    for (const button of filterButtons) {
+      button.addEventListener('click', () => applyFilter(button.dataset.filter));
+    }
+
+    document.getElementById('expand-all').addEventListener('click', () => {
+      for (const item of workItems) {
+        if (!item.hidden) item.open = true;
+      }
+    });
+
+    document.getElementById('collapse-all').addEventListener('click', () => {
+      for (const item of workItems) item.open = false;
+    });
+  </script>
+</body>
+</html>

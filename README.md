@@ -66,7 +66,7 @@ The command groups intentionally distinguish different kinds of state:
 | `vehicles active` | Probes live PiCar and Chase endpoints. |
 | `vehicles update perception` | Packages code and stages a vehicle perception activation locally. |
 | `vehicles update decision` | Packages code and stages a decision activation locally. |
-| `vehicles info ...` | Reads locally staged perception or decision configuration. |
+| `vehicles info ...` | Reads staged perception or decision configuration; perception info also reports the live view URL. |
 | `vehicles perception ...` | Runs perception experiments and manages production or lab plugins. |
 | `vehicles automation ...` | Runs or inspects the local Chase controller worker. |
 | `vehicles stream perception` | Displays the worker's rolling latest perception output. |
@@ -117,8 +117,24 @@ default, but the current decision engine emits only idle control:
 ```sh
 ./cli/automa vehicles automation run --id chase-sim-chaser
 ./cli/automa vehicles automation status --id chase-sim-chaser
+./cli/automa vehicles info perception --id chase-sim-chaser
 ./cli/automa vehicles stream perception --id chase-sim-chaser
 ```
+
+`automation run` and `automation restart` wait until the worker has captured
+its first camera frame and published the view. They return a nonzero result and
+persist the startup reason in `state.json` when discovery, model loading, or
+camera startup fails; a spawned PID alone is not reported as success.
+
+While the automation worker is running, `vehicles info perception` reports a
+loopback URL for a live frame-and-data view. The page polls the worker's
+in-memory publication. Camera capture runs independently from perception, so a
+slow plugin consumes the newest available frame instead of accumulating a
+backlog. The page displays the latest camera frame with the newest available
+overlay and reports its source frame, frame lag, and elapsed result age. It can
+independently hide regions, labels, or finding kinds. Only image-coordinate
+findings are drawn over the camera frame; findings in other coordinate systems
+remain available in the data panel.
 
 Stop or restart the worker:
 
@@ -129,8 +145,9 @@ Stop or restart the worker:
 
 Useful run options:
 
-- `--frames N` makes a bounded smoke run.
-- `--interval-s 0` removes the delay between bounded frames.
+- `--frames N` makes a bounded capture run.
+- `--interval-s` sets the camera capture cadence; it defaults to `0.25` seconds.
+- `--interval-s 0` captures as quickly as the vehicle interface allows.
 - `--observe-only` leaves movement authority with the simulator.
 - `--record` keeps timestamped frame and perception artifacts.
 - `--log` persists worker output. No worker log is written by default.
@@ -163,6 +180,20 @@ candidate on the same frames:
 ./cli/automa vehicles perception setup fastsam
 ./cli/automa vehicles perception compare path/to/images
 ```
+
+A ready candidate can also drive the local simulator worker without being
+copied into the controller bundle or imported into the core process:
+
+```sh
+./cli/automa vehicles update perception --id chase-sim-chaser --candidate fastsam
+./cli/automa vehicles automation restart --id chase-sim-chaser
+./cli/automa vehicles info perception --id chase-sim-chaser
+```
+
+This candidate activation path is simulator-only. The isolated worker returns
+the stable perception contract, including normalized polygons when available;
+the live view draws those polygons and falls back to normalized boxes for
+plugins that do not emit outlines.
 
 No captures or reports are retained by default. Add `--record` when overlays,
 per-frame JSON, and the generated review page are wanted.
@@ -321,8 +352,8 @@ and is prepared through `./cli/automa simulators ensure`.
   describes the physical Donkey server boundary.
 - [`docs/milestones/completed.md`](docs/milestones/completed.md) is the concise
   append-only history of closed work.
-- [`docs/milestones/002-perception-hardening/plan.html`](docs/milestones/002-perception-hardening/plan.html)
-  is the active perception-hardening milestone.
+- [`docs/milestones/003-test-architecture-and-operator-contracts/plan.html`](docs/milestones/003-test-architecture-and-operator-contracts/plan.html)
+  is the active test-architecture and operator-contract milestone.
 
 Dependency direction is intentional:
 
@@ -332,13 +363,16 @@ implementations          -> satisfy and compose autonomy contracts
 CLI/runtime entrypoints  -> select implementations and execute the cycle
 ```
 
-Perception follows a component-query model. The stable stage wraps a generic
-`SensorSnapshot` and runs configured plugins without knowing which sensor or
-meaning any plugin uses. Each plugin declares component ids, attempts to
-resolve those components from the snapshot, and emits evidence or an explicit
-unavailable result. Concrete camera decoding and every meaning-making
-algorithm live under `implementations/perception/`; unpromoted candidates live
-under `lab/plugins/perception/`.
+Perception follows a component-injection model. The stable stage wraps a
+generic `SensorSnapshot` and runs configured plugins without knowing which
+sensor or meaning any plugin uses. Each plugin declares named component inputs
+and returns only structured signals, spatial evidence, and measurements. The
+generic runner resolves and caches those inputs, then owns missing-input and
+warm-up status, error isolation, timing, source attribution, text rendering,
+and optional diagnostic persistence. The surrounding cycle owns the sensor
+snapshot, so perception output does not duplicate it. Concrete camera decoding
+and every meaning-making algorithm live under `implementations/perception/`;
+unpromoted candidates live under `lab/plugins/perception/`.
 
 Both current vehicle adapters expose only the generic `front_camera` sensor
 through `CarInterface.read_sensors()`.

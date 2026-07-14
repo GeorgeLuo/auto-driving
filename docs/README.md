@@ -5,10 +5,10 @@ Read this file first when starting work.
 
 ## Active Work
 
-No milestone is currently active. Milestone 002 is closed; its durable outcome
-is recorded in [`milestones/completed.md`](milestones/completed.md). Create and
-formalize the next numbered plan before beginning the next implementation
-stage.
+Milestone 003, [Test Architecture and Operator Contracts](milestones/003-test-architecture-and-operator-contracts/plan.html),
+is active. It reorganizes tests by ownership, adds direct coverage for settled
+autonomy contracts, formalizes human and machine CLI output expectations, and
+establishes deterministic CI with explicit live-system boundaries.
 
 ## Reading Order
 

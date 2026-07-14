@@ -191,20 +191,20 @@
             <tr>
               <td>Regression suite</td>
               <td><span class="status done">Working baseline</span></td>
-              <td>94 tests are discovered; 93 pass by default and one live simulator smoke test is skipped unless explicitly enabled.</td>
+              <td>97 tests are discovered; 96 pass by default and one live simulator smoke test is skipped unless explicitly enabled.</td>
               <td>The suite is manually invoked and has no CI or coverage baseline.</td>
             </tr>
             <tr>
               <td>Test organization</td>
               <td><span class="status done">Ownership migration complete</span></td>
-              <td>Thirty topical test modules now live under <code>tests/</code> by autonomy, implementation, CLI, integration, lab, and live-system ownership. The old <code>cli/tests</code> location and duplicate runner are removed.</td>
+              <td>Thirty-one topical test modules now live under <code>tests/</code> by autonomy, implementation, CLI, integration, lab, and live-system ownership. The old <code>cli/tests</code> location and duplicate runner are removed.</td>
               <td>Organization is settled; direct contract coverage can now grow within the owning layer.</td>
             </tr>
             <tr>
               <td>Stable autonomy contracts</td>
-              <td><span class="status pending">Partial direct coverage</span></td>
-              <td>Decision no-op behavior, perception plugin execution, activation, and cycle integration have focused examples.</td>
-              <td>Manager failure recovery, complete stage flow, vehicle value contracts, evidence validity, and activation failure boundaries remain indirect or incomplete.</td>
+              <td><span class="status active">Contract hardening active</span></td>
+              <td>Decision no-op behavior, perception plugin execution, activation, cycle integration, and runtime-manager failure recovery have focused examples.</td>
+              <td>Complete stage flow, vehicle value contracts, evidence validity, and activation failure boundaries remain indirect or incomplete.</td>
             </tr>
             <tr>
               <td>Human CLI behavior</td>
@@ -273,19 +273,19 @@
       </p>
       <div class="grid two" style="margin-top: 14px;">
         <div class="card goal">
-          <h3>Current PR: Ownership Migration</h3>
-          <p><span class="status active">Implemented - ready for review</span> <strong>Review shape:</strong> broad and mechanical.</p>
-          <p style="margin-top: 9px;"><strong>Deliverable:</strong> existing tests moved and topically split under the mirrored <code>tests/</code> tree, with <code>tests/run.py</code> as the sole canonical runner.</p>
-          <p style="margin-top: 9px;"><strong>Review question:</strong> Does each test path identify its owning production layer without changing behavior or discovery?</p>
-          <p style="margin-top: 9px;"><strong>Non-goals:</strong> new assertions, production changes, output-policy changes, coverage gates, or compatibility runners.</p>
-          <p style="margin-top: 9px;"><strong>Evidence:</strong> 94 tests still run in 28.812 seconds, with 93 passes and one explicit live skip; no production file changed.</p>
+          <h3>Current PR: Runtime Manager Failures</h3>
+          <p><span class="status active">Implemented - ready for review</span> <strong>Review shape:</strong> deep and narrow.</p>
+          <p style="margin-top: 9px;"><strong>Deliverable:</strong> direct contracts for failed reload preservation, safe transient step failure and recovery, and component-status isolation.</p>
+          <p style="margin-top: 9px;"><strong>Review question:</strong> Does the runtime manager preserve a known-good engine and return safe, inspectable state across load, step, and status-provider failures?</p>
+          <p style="margin-top: 9px;"><strong>Non-goals:</strong> production refactoring, concurrent engine replacement, broad autonomy coverage, or CLI output changes.</p>
+          <p style="margin-top: 9px;"><strong>Evidence:</strong> all three new contracts pass against the existing manager; full deterministic discovery reports 97 tests in 27.562 seconds, with 96 passes and one explicit live skip.</p>
         </div>
         <div class="card interface">
-          <h3>Next After Review: Runtime Manager Failures</h3>
+          <h3>Next After Review: Vehicle Value Contracts</h3>
           <p><span class="status pending">Queued, not started</span> <strong>Expected shape:</strong> deep and narrow.</p>
-          <p style="margin-top: 9px;"><strong>Review question:</strong> Does the runtime manager preserve a known-good engine and return safe, inspectable state across load, step, and status-provider failures?</p>
-          <p style="margin-top: 9px;"><strong>Expected deliverable:</strong> direct tests for failed reload preservation, step failure and recovery, and status-provider isolation.</p>
-          <p style="margin-top: 9px;"><strong>Non-goals:</strong> broad autonomy coverage, CLI output changes, or production refactoring unless a direct test exposes a defect.</p>
+          <p style="margin-top: 9px;"><strong>Review question:</strong> Do vehicle value objects normalize executable inputs and serialize sensor state without leaking mutable or opaque in-memory values?</p>
+          <p style="margin-top: 9px;"><strong>Expected deliverable:</strong> direct bounds, pulse, sensor-request, snapshot, and serialization-privacy tests, with narrowly scoped fixes only where an invariant fails.</p>
+          <p style="margin-top: 9px;"><strong>Non-goals:</strong> concrete Chase or PiRacer adapters, vehicle movement, new sensors, or capability redesign.</p>
         </div>
       </div>
       <div class="table-wrap" style="margin-top: 16px;">
@@ -297,7 +297,7 @@
             <tr>
               <td>Stable autonomy contracts</td>
               <td>Direct decision, vehicle, runtime, perception, activation, and failure-boundary tests.</td>
-              <td>Whether the runtime manager's current failure behavior matches its intended preservation and recovery contract.</td>
+              <td>Whether vehicle value normalization and serialization boundaries match their intended black-box contract.</td>
             </tr>
             <tr>
               <td>Operator output contract</td>
@@ -324,7 +324,7 @@
         <li>Record what changed, what was learned, and which assumptions failed.</li>
         <li>Promote the next horizon item into a concrete PR only with that evidence.</li>
       </ol>
-      <p class="small">Current delivery state: the support contract is merged. The ownership migration is implemented and ready for review; the runtime-manager failure cluster is defined but has not started.</p>
+      <p class="small">Current delivery state: test support and ownership migration are merged. Runtime-manager failure contracts are implemented and ready for review; vehicle value contracts are defined but have not started.</p>
     </section>
 
     <section class="panel">
@@ -481,13 +481,13 @@ python3 tests/run.py --live-sim</pre>
         </div>
       </details>
 
-      <details class="work-item" data-status="pending">
-        <summary><span>3. Protect Settled Autonomy Contracts</span><span class="status pending">Pending</span></summary>
+      <details class="work-item" data-status="active" open>
+        <summary><span>3. Protect Settled Autonomy Contracts</span><span class="status active">Active</span></summary>
         <div class="work-body">
-          <p>After ownership is settled, divide direct autonomy contract tests into reviewable deliverables based on the dependencies exposed by the new tree.</p>
+          <p>Direct autonomy contracts are proceeding as narrow review units. Runtime-manager failure semantics are implemented; vehicle value contracts are next.</p>
           <ul>
             <li>Decision stage order, no-op semantics, default observation, action typing, and result serialization.</li>
-            <li>Runtime engine loading, failed reload preservation, safe step failure, recovery, and status isolation.</li>
+            <li><strong>Implemented:</strong> runtime failed reload preservation, safe step failure and recovery, and status-provider isolation.</li>
             <li>Vehicle action bounds, pulse normalization, sensor requests, snapshots, and serialization privacy.</li>
             <li>Perception evidence validity, round trips, source attribution, shared component resolution, activation, and diagnostic boundaries.</li>
           </ul>
@@ -615,6 +615,7 @@ python3 tests/run.py --live-sim</pre>
             <tr><td>2026-07-13</td><td>Use a rolling PR horizon rather than a fixed milestone schedule.</td><td>The end state and immediate foundation should be clear, while later PR boundaries should be chosen from evidence gathered as each deliverable approaches the milestone goal.</td></tr>
             <tr><td>2026-07-14</td><td>Keep shared test support limited to process execution, explicit fixture documents, and external executable doubles.</td><td>The support layer should remove test mechanics from behavioral scenarios without becoming a second route to application behavior.</td></tr>
             <tr><td>2026-07-14</td><td>Mirror tests by production ownership and keep lab, integration, and live behavior explicit.</td><td>A failing path should identify the responsible layer, while experimental and external-state checks must not appear to be stable framework contracts.</td></tr>
+            <tr><td>2026-07-14</td><td>Treat engine replacement as transactional, step failures as idle and recoverable, and status-provider failures as component-local.</td><td>The runtime must retain a known-good controller, prevent an engine exception from producing movement, and keep optional diagnostics from degrading control state.</td></tr>
           </tbody>
         </table>
       </div>

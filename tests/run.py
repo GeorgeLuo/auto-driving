@@ -9,7 +9,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-TESTS_DIR = ROOT / "cli" / "tests"
+TESTS_DIR = ROOT / "tests"
 for path in (ROOT / "cli", ROOT):
     path_text = str(path)
     if path_text not in sys.path:
@@ -20,8 +20,8 @@ from automa_cli.simulators import ensure_simulator
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="run_tests.py",
-        description="Run the Automa CLI scenario harness.",
+        prog="tests/run.py",
+        description="Run the repository-owned deterministic test suite.",
     )
     parser.add_argument(
         "--live-sim",
@@ -48,7 +48,11 @@ def main(argv: list[str] | None = None) -> int:
             return ensure_result.exit_code
         os.environ["AUTOMA_TEST_LIVE_SIM"] = "1"
 
-    suite = unittest.defaultTestLoader.discover(str(TESTS_DIR), pattern="test_*.py")
+    suite = unittest.defaultTestLoader.discover(
+        str(TESTS_DIR),
+        pattern="test_*.py",
+        top_level_dir=str(ROOT),
+    )
     result = unittest.TextTestRunner(verbosity=2).run(suite)
     return 0 if result.wasSuccessful() else 1
 

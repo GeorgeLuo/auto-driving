@@ -9,26 +9,14 @@ import numpy as np
 
 from autonomy.decision import DecisionFrameContext, DecisionStages
 from autonomy.perception import ActivatedPerceptionStage, read_perception_activation
-from autonomy.runtime import (
-    AutonomyManager,
-    apply_decision_activation,
-    read_decision_activation,
-)
+from autonomy.runtime import AutonomyManager
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
 from implementations.perception.catalog import PERCEPTION_MAPPER_SPEC, PERCEPTION_PLUGIN_SPECS
 from implementations.runtime.donkeycar import AutonomyPilotPart
 
 
-class RuntimeActivationTests(unittest.TestCase):
-    def test_perception_activation_requires_an_object(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            activation_path = Path(tmp) / "active.json"
-            activation_path.write_text("[]", encoding="utf-8")
-
-            with self.assertRaisesRegex(ValueError, "must be a JSON object"):
-                read_perception_activation(activation_path)
-
+class PerceptionActivationIntegrationTests(unittest.TestCase):
     def test_perception_activation_runs_on_in_memory_camera_without_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             activation_path = Path(tmp) / "active.json"
@@ -102,46 +90,6 @@ class RuntimeActivationTests(unittest.TestCase):
         )
         self.assertEqual(cycle["perception"]["status"], "ok")
         self.assertEqual(cycle["observation"]["perception_schema"], "perception_text_v2")
-
-    def test_activation_loads_and_applies_the_declared_engine(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            activation_path = Path(tmp) / "active.json"
-            activation_path.write_text(
-                json.dumps(
-                    {
-                        "schema": "automa_decision_activation_v0",
-                        "decision": {
-                            "engine_id": "idle",
-                            "engine_spec": "autonomy.runtime.engine:IdleAutonomyEngine",
-                            "engine_config": {},
-                        },
-                    }
-                ),
-                encoding="utf-8",
-            )
-
-            activation = read_decision_activation(activation_path)
-            manager = AutonomyManager()
-            status = apply_decision_activation(manager, activation)
-
-        self.assertEqual(activation.engine_id, "idle")
-        self.assertEqual(status["engine"], "autonomy.runtime.engine:IdleAutonomyEngine")
-
-    def test_activation_rejects_an_unknown_schema(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            activation_path = Path(tmp) / "active.json"
-            activation_path.write_text(
-                json.dumps({"schema": "old_schema", "decision": {}}),
-                encoding="utf-8",
-            )
-
-            with self.assertRaisesRegex(ValueError, "unsupported schema"):
-                read_decision_activation(activation_path)
-
-    def test_activation_file_is_required(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            with self.assertRaises(FileNotFoundError):
-                read_decision_activation(Path(tmp) / "active.json")
 
 
 if __name__ == "__main__":

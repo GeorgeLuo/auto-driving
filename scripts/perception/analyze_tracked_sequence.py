@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from autonomy.perception.features import analyze_tracked_sequence
+from implementations.perception.features import analyze_tracked_sequence
 
 
 def main() -> int:

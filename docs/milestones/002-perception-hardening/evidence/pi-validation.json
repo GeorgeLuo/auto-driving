@@ -1,0 +1,75 @@
+{
+  "schema": "automa_perception_validation_v0",
+  "validated_on": "2026-07-13",
+  "vehicle_id": "piracer",
+  "release": {
+    "release_id": "autonomy-58f8be2b78fa-1783966822779",
+    "tree_sha256": "58f8be2b78fad2618a9d709f78fa0b4037ff36e927aa4b1fd2d622184c1747c8"
+  },
+  "activation": {
+    "perception_algorithm": "lightweight_observer",
+    "decision_engine": "autonomy.runtime.engine:IdleAutonomyEngine"
+  },
+  "live_local_stream": {
+    "frames": 10,
+    "failed_frames": 0,
+    "statuses": {
+      "ok": 10
+    },
+    "recording": false,
+    "latency_ms": {
+      "cold": 295.91,
+      "steady_median": 105.716,
+      "steady_p95": 115.912
+    },
+    "peak_memory_mib": 172.297,
+    "representation_health": 0.942,
+    "plugin_median_ms": {
+      "floor-plane-v0": 59.731,
+      "frame-observation-v0": 1.623
+    }
+  },
+  "onboard_idle_window": {
+    "sampling_window_s": 5.0,
+    "unique_cycles_sampled": 15,
+    "first_frame_index": 0,
+    "last_frame_index": 14,
+    "total_duration_ms": {
+      "median": 292.769,
+      "p95": 318.114,
+      "min": 285.494,
+      "max": 336.976
+    },
+    "plugins": {
+      "floor-plane-v0": {
+        "samples": 15,
+        "median_ms": 285.154,
+        "p95_ms": 308.581
+      },
+      "frame-observation-v0": {
+        "samples": 15,
+        "median_ms": 6.492,
+        "p95_ms": 8.864
+      }
+    },
+    "safety": {
+      "drive_mode_before": "user",
+      "drive_mode_after": "user",
+      "all_controls_zero": true,
+      "max_error_count": 0,
+      "last_errors": [],
+      "zero_drive_cleanup_sent": true,
+      "recording": false
+    },
+    "system_snapshot": {
+      "throttled": "0x0",
+      "process_cpu_percent": 51.4,
+      "process_memory_percent": 3.2
+    }
+  },
+  "limitations": [
+    "No camera frames were retained during live validation because recording was disabled.",
+    "Representation health measures contract and continuity, not semantic accuracy.",
+    "The process resource values are one post-run snapshot, not window averages."
+  ]
+}

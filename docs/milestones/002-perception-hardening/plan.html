@@ -119,7 +119,7 @@
         are reliable enough to carry forward.
       </p>
       <div class="meta">
-        <span class="pill">Status: active</span>
+        <span class="pill">Status: complete</span>
         <span class="pill">Primary action: observe</span>
         <span class="pill">Movement authority: unchanged and idle</span>
         <span class="pill">Sources: Chase, PiRacer, recorded sequences</span>
@@ -154,13 +154,18 @@
     <section class="panel">
       <h2>Target Operator Experience</h2>
       <p>The required local-processing path differs only by vehicle id:</p>
-      <pre class="command">./cli/automa vehicles perception run --id chase-sim-chaser --frames 20 --record
-./cli/automa vehicles perception run --id piracer --frames 20 --record</pre>
+      <pre class="command">./cli/automa vehicles perception run
+./cli/automa vehicles perception run --id piracer
+./cli/automa vehicles perception replay path/to/recorded-run
+./cli/automa vehicles perception candidates
+./cli/automa vehicles perception setup fastsam
+./cli/automa vehicles perception compare path/to/recorded-run</pre>
       <p class="note">
-        Processing physical frames locally is the parity gate. Running every
-        experiment on the Pi is not. Before closeout, one lightweight plugin
-        must also run through the onboard Donkey runtime to prove deployment and
-        in-memory camera compatibility.
+        The flagless command observes five frames, prefers a usable simulator
+        when multiple vehicles are active, takes no movement control, and does
+        not retain captures unless <code>--record</code> is supplied. Processing
+        physical frames locally is the parity gate. Before closeout, one
+        lightweight plugin must also run through the onboard Donkey runtime.
       </p>
     </section>
 
@@ -175,50 +180,50 @@
             <tr>
               <td>Stable output shape</td>
               <td><span class="status done">Working</span></td>
-              <td><code>PerceptionText</code>, <code>PerceivedThing</code>, normalized boxes, confidence, observations, artifacts, and limits.</td>
-              <td>Temporal identity and confidence semantics are not yet established.</td>
+              <td><code>perception_text_v2</code> carries structured signals and spatial evidence with source-plugin attribution. Text, overall status, and per-plugin timing, errors, counts, and diagnostic paths are derived by the framework.</td>
+              <td>Temporal identity and cross-plugin fusion semantics are not yet established.</td>
             </tr>
             <tr>
-              <td>Plugin chain and activation</td>
-              <td><span class="status partial">Partial</span></td>
-              <td>Ordered plugins can be packaged, enabled, disabled, inspected, and loaded from activation JSON.</td>
-              <td>No explicit plugin lifecycle/reset contract, capability declaration, or plugin-to-plugin data flow.</td>
+              <td>Plugin runner and activation</td>
+              <td><span class="status done">Lifecycle working</span></td>
+              <td>Ordered plugins declare named component inputs, state mode, emitted evidence, limitations, and optional diagnostics. The runner injects cached components and owns reset, missing-input handling, warm-up, isolated errors, timing, attribution, and machine-readable run results.</td>
+              <td>Plugins do not yet consume prior plugin evidence; this remains a deliberate unresolved design choice.</td>
             </tr>
             <tr>
               <td>Per-frame implementations</td>
-              <td><span class="status partial">Promising prototypes</span></td>
-              <td>Frame statistics, floor/traversability, simulator color targets, and deterministic VLM-prep artifacts.</td>
-              <td>Only simulator color targets are easy to validate; floor evidence is heuristic and VLM prep emits no representation itself.</td>
+              <td><span class="status done">Measured candidates</span></td>
+              <td>FastSAM and OpenCV color components emit the same class-agnostic <code>region_proposal</code> shape through isolated lab workers; frame facts and simulator color targets remain controls.</td>
+              <td>Representation health is not semantic accuracy. Ground-truth recall and corridor usefulness still require controlled simulator/physical annotations.</td>
             </tr>
             <tr>
               <td>Temporal implementation</td>
-              <td><span class="status partial">Pairwise only</span></td>
-              <td><code>MotionGroupsPlugin</code> retains one previous image and emits coherent pairwise motion groups.</td>
-              <td>No reset API, stable track ids, bounded multi-frame window, or accumulated scene interpretation.</td>
+              <td><span class="status done">Bounded tracks working</span></td>
+              <td><code>MotionTracksPlugin</code> turns pairwise feature-motion groups into reset-bounded tracks with stable ids, age, support, misses, visibility, and expiry.</td>
+              <td>The present groups are often broad scene-depth layers rather than object instances, and the custom matcher is too slow for onboard use.</td>
             </tr>
             <tr>
               <td>Simulator CLI experiment loop</td>
-              <td><span class="status done">Working baseline</span></td>
-              <td>Stage, run, stream, record, inspect, and enable/disable are available for Chase.</td>
-              <td>Evaluation reports and deterministic replay are missing.</td>
+              <td><span class="status done">Live validated</span></td>
+              <td>Flagless bounded observation, explicit selection, optional recording, replay, comparison, and resource reports are available without taking control. In <code>chaser-depth-obstacles</code>, live five-frame runs of both <code>lightweight_observer</code> and <code>visual_observer</code> completed with zero failed frames and recording disabled. A fourteen-frame recorded action sequence supplies repeatable candidate comparison.</td>
+              <td>The frontend disconnected before a later optional live candidate run. Simulator setup reports this state instead of treating a transient frontend as usable; candidate parity remains covered by recorded replay.</td>
             </tr>
             <tr>
               <td>Physical CLI experiment loop</td>
-              <td><span class="status missing">Missing</span></td>
-              <td>The Pi adapter can capture file-backed front-camera snapshots through <code>CarInterface</code>.</td>
-              <td>Perception update and continuous automation explicitly reject non-Chase providers.</td>
+              <td><span class="status done">Live validated</span></td>
+              <td>The same bounded observation runner constructs either Chase or PiRacer through <code>CarInterface</code>. A live ten-frame PiRacer run completed with zero failed frames, recording disabled, and about 106 ms local steady median latency; the preserved eleven-frame sequence also replays through production and candidate mappers.</td>
+              <td>Local processing performance does not predict Pi throughput, so onboard cost is reported separately.</td>
             </tr>
             <tr>
               <td>Onboard perception</td>
-              <td><span class="status missing">Missing</span></td>
-              <td>The autonomy release transfers a perception activation to the Pi.</td>
-              <td>Donkey loads only decision activation; its camera arrives as an in-memory array while all plugins require a file path.</td>
+              <td><span class="status done">Deployed and measured</span></td>
+              <td>Donkey loads <code>lightweight_observer</code> from the versioned release and processes its in-memory camera array without artifact writes. Fifteen measured Pi cycles completed with zero errors: 293 ms total median and 318 ms p95, with floor processing at 285 ms median and frame observation at 6.5 ms.</td>
+              <td>The chain is valid onboard but cannot sustain Donkey's configured 20 Hz loop. Future active control should optimize or decouple perception cadence rather than assume every control tick receives a new perception result.</td>
             </tr>
             <tr>
               <td>Long-running environment evidence</td>
-              <td><span class="status missing">Missing</span></td>
-              <td>Pairwise groups and current-frame things can be inspected.</td>
-              <td>No bounded scene tracks, persistence score, disappearance handling, or current scene summary.</td>
+              <td><span class="status partial">Working baseline</span></td>
+              <td>Current perception includes bounded scene tracks with persistence and disappearance state; no history is written unless recording is explicitly enabled.</td>
+              <td>Tracks are run-local image-space evidence and do not yet establish durable world identity or a memory contract.</td>
             </tr>
           </tbody>
         </table>
@@ -232,7 +237,7 @@
           <h3>In Scope</h3>
           <ul>
             <li>A provider-neutral perception experiment command.</li>
-            <li>File-backed and in-memory camera normalization.</li>
+            <li>Framework-injected components with shared file-backed and in-memory camera normalization.</li>
             <li>Per-frame structure proposals and temporal scene tracks.</li>
             <li>Recorded-sequence replay and comparable reports.</li>
             <li>Latency and memory measurements locally and on Pi.</li>
@@ -258,37 +263,39 @@
       <h2>Implementation Workstreams</h2>
       <div class="grid two">
         <div class="card interface">
-          <h3>1. Common Experiment Runner</h3>
+          <h3>1. Common Experiment Runner <span class="status done">Completed</span></h3>
           <ul>
             <li>Add one perception-run command that constructs the discovered <code>CarInterface</code> for either provider.</li>
             <li>Default to observation only; never move a physical vehicle.</li>
             <li>Support bounded frames, cadence, recording, latest output, and machine-readable summaries.</li>
-            <li>Add recorded-sequence replay using the same mapper and plugin chain.</li>
+            <li>Add recorded-sequence replay using the same mapper and plugin configuration.</li>
           </ul>
         </div>
         <div class="card interface">
-          <h3>2. Camera Input Normalization</h3>
+          <h3>2. Component Access And Camera Adapter <span class="status done">Completed</span></h3>
           <ul>
-            <li>Give plugins one supported way to read a camera frame whether the sensor supplies <code>path</code> or <code>value</code>.</li>
-            <li>Keep capture and materialization in the vehicle/runtime boundary rather than every plugin.</li>
+            <li>Keep the stable stage agnostic of available sensor and evidence kinds.</li>
+            <li>Let plugins declare named component inputs and have generic orchestration resolve and inject them from the snapshot.</li>
+            <li>Share concrete camera decoding through a cached implementation component whether the reading supplies <code>path</code> or <code>value</code>.</li>
             <li>Test identical plugin output shape from Chase files, Pi HTTP captures, and Donkey arrays.</li>
           </ul>
         </div>
         <div class="card interface">
-          <h3>3. Plugin Lifecycle</h3>
+          <h3>3. Plugin Lifecycle <span class="status done">Completed</span></h3>
           <ul>
-            <li>Define initialization, reset, error isolation, and optional temporal-state behavior.</li>
-            <li>Declare required sensors, whether artifacts are optional, and whether a plugin is stateless, pairwise, or windowed.</li>
-            <li>Resolve whether ordered plugins can consume prior plugin evidence or only shared normalized sensor inputs.</li>
+            <li>Keep plugin authoring to a declarative contract plus one evidence-producing method; orchestration owns initialization, optional reset, error isolation, timing, and status.</li>
+            <li>Declare named inputs, diagnostic outputs, and whether a plugin is stateless, pairwise, or windowed.</li>
+            <li>Keep plugins independent in this milestone: each consumes injected components, while cross-plugin fusion remains a later explicit layer.</li>
           </ul>
         </div>
         <div class="card interface">
-          <h3>4. Evaluation Harness</h3>
+          <h3>4. Evaluation Harness <span class="status done">Working baseline</span></h3>
           <ul>
-            <li>Run the same recorded sequences through candidate plugin chains.</li>
+            <li>Run the same recorded sequences through candidate plugin configurations.</li>
             <li>Produce overlays, structured output, timing, failure counts, and stability summaries.</li>
             <li>Keep human review possible without making hand-tuned scene labels part of runtime logic.</li>
           </ul>
+          <p>Implemented outputs include cold/steady latency, peak RSS, status and evidence counts, geometry validity, adjacent-frame continuity, count stability, per-frame JSON, overlays, and a local review page. The aggregate health score is explicitly labeled as representation health rather than accuracy.</p>
         </div>
       </div>
     </section>
@@ -297,16 +304,16 @@
       <h2>Required Perception Approaches</h2>
       <div class="grid">
         <div class="card goal">
-          <h3>Per-Frame Structure</h3>
-          <p>Implement a generic structure-proposal plugin using lines, contours, or coherent regions. It should emit inspectable image-space evidence, not claim semantic objects.</p>
+          <h3>Per-Frame Structure <span class="status done">Implemented</span></h3>
+          <p>FastSAM masks and OpenCV coherent-color components now emit inspectable image-space <code>region_proposal</code> evidence without claiming semantic objects.</p>
         </div>
         <div class="card goal">
-          <h3>Traversability Baseline</h3>
-          <p>Harden the existing floor-plane plugin across simulator and physical frames, including empty/failure behavior and explicit environmental assumptions.</p>
+          <h3>Traversability Baseline <span class="status done">Recorded parity assessed</span></h3>
+          <p>The floor plugin now reports visible floor and first sustained non-floor boundaries instead of treating one full non-floor component as an object. It was assessed on preserved PiRacer and Chase depth-obstacle sequences and exercised through the live Chase camera path.</p>
         </div>
         <div class="card goal">
-          <h3>Temporal Scene Tracks</h3>
-          <p>Extend pairwise motion evidence into bounded multi-frame tracks with stable ids, age, support, confidence, and expiry. Output the current scene, not an unbounded history.</p>
+          <h3>Temporal Scene Tracks <span class="status done">Implemented</span></h3>
+          <p>Pairwise motion evidence now produces bounded multi-frame tracks with stable ids, age, support, confidence, visibility, misses, reset, and expiry. Output remains the current scene, not an unbounded history.</p>
         </div>
       </div>
       <p class="note">
@@ -322,7 +329,7 @@
       <div class="grid two">
         <div class="card interface">
           <h3>Candidate Boundary</h3>
-          <p>New perception candidates are developed as runnable plugins under <code>lab/plugins/perception/&lt;candidate&gt;/</code>. A candidate owns its source, tests, configuration, dependency declaration, model provenance, and experiment notes.</p>
+          <p>New perception candidates are developed as runnable plugins under <code>lab/plugins/perception/&lt;candidate&gt;/</code>. A candidate owns its source, configuration, dependency declaration, model provenance, experiment notes, and any candidate-specific tests; shared worker and contract tests remain in the CLI harness.</p>
         </div>
         <div class="card interface">
           <h3>Generated State</h3>
@@ -340,13 +347,13 @@
       <pre class="command">lab/
   plugins/
     perception/
+      classical_regions/
       fastsam/</pre>
       <p class="note">
-        The repository currently ignores all of <code>lab/</code>. Establishing
-        this workbench therefore requires a narrow ignore exception for plugin
-        source while continuing to ignore candidate-local generated state. The
-        existing unstructured historical runs remain ignored and are not a
-        template for new work.
+        The narrow workbench exception is now in place. Candidate source and
+        manifests are tracked while virtual environments, model weights,
+        setup state, and run artifacts remain ignored. Historical unstructured
+        runs remain ignored and are not a template for new work.
       </p>
     </section>
 
@@ -359,7 +366,7 @@
         </div>
         <div class="card interface">
           <h3>First Implementation</h3>
-          <p>Use pretrained <code>FastSAM-s</code> with the “everything” path at 640-pixel input. Convert every accepted mask into generic region evidence: normalized bounds, centroid, area fraction, contour, confidence, image zone, and whether it reaches the lower image region.</p>
+          <p>Use pretrained <code>FastSAM-s</code> with the “everything” path at 640-pixel input. Convert every accepted mask into generic region evidence: normalized bounds, a simplified normalized polygon, centroid, area fraction, confidence, image zone, and whether it reaches the lower image region.</p>
         </div>
         <div class="card constraint">
           <h3>Meaning Boundary</h3>
@@ -424,6 +431,19 @@
         4 must be benchmarked directly before assigning a cadence.
       </p>
 
+      <h3>Observed M1 Replay</h3>
+      <p>Eleven 640×480 PiRacer frames were replayed with no artifact writes. Both candidates produced valid non-empty output on every frame.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Candidate</th><th>Health</th><th>Match fraction</th><th>Matched IoU</th><th>Cold</th><th>Steady median</th><th>Steady p95</th><th>Peak RSS</th></tr></thead>
+          <tbody>
+            <tr><td>OpenCV color regions</td><td>0.924</td><td>0.735</td><td>0.690</td><td>195 ms</td><td>37 ms</td><td>44 ms</td><td>92 MiB</td></tr>
+            <tr><td>FastSAM-s CPU</td><td>0.917</td><td>0.728</td><td>0.630</td><td>1,412 ms</td><td>141 ms</td><td>152 ms</td><td>673 MiB</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="note">The health score measures schema validity, availability, count stability, and bounding-box continuity. It does not measure whether a region is a real object. Visual review found FastSAM masks more coherent, while the classical candidate was substantially cheaper and sometimes split surfaces under texture or illumination.</p>
+
       <h3>Research Sources</h3>
       <ul>
         <li><a href="https://arxiv.org/abs/2306.12156">Fast Segment Anything paper</a>: architecture, training-data fraction, and original performance claims.</li>
@@ -453,7 +473,128 @@
       <p class="note">
         Scenario geometry and debug state are evaluation truth only. They may
         score a plugin after inference but must never be supplied to the plugin
-        or included in its perception result.
+        or included in its perception result. The CLI explicitly selected
+        <code>chaser-depth-obstacles</code>, verified a stable frontend, then
+        captured fourteen stationary, forward, reverse, left, and right camera
+        views in which the three depth obstacles are visible. FastSAM, classical
+        regions, and the production temporal chain were replayed against that
+        exact corpus with zero failed frames. These runs replace an older,
+        scenario-unlabelled default-scene capture that had previously been
+        linked here incorrectly.
+      </p>
+    </section>
+
+    <section class="panel">
+      <h2>Evidence Artifacts</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Evidence</th><th>What It Supports</th><th>Artifacts</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Live Pi stream and onboard idle window</td>
+              <td>Physical provider parity, target latency, zero-error execution, zero control output, and restoration of manual mode.</td>
+              <td><a href="evidence/pi-validation.json">tracked validation record</a></td>
+            </tr>
+            <tr>
+              <td>Verified Chase depth-obstacles capture</td>
+              <td>Explicit scenario selection and fourteen stationary/action views showing the intended three-obstacle scene.</td>
+              <td><a href="../../../lab/runs/startup-check/chase-sim-chaser-20260713-145225/contact_sheet.jpg">contact sheet</a> · <a href="../../../lab/runs/startup-check/chase-sim-chaser-20260713-145225/report.json">capture report</a> · <a href="evidence/chase-depth-obstacles-validation.json">tracked validation record</a></td>
+            </tr>
+            <tr>
+              <td>FastSAM on physical PiRacer images</td>
+              <td>Class-agnostic mask behavior across eleven successive real camera views.</td>
+              <td><a href="../../../lab/plugins/perception/fastsam/runs/replay-pi-straight-long-20260611-221650-20260711-145100/review.html">visual review</a> · <a href="../../../lab/plugins/perception/fastsam/runs/replay-pi-straight-long-20260611-221650-20260711-145100/summary.txt">metrics</a></td>
+            </tr>
+            <tr>
+              <td>FastSAM on Chase images</td>
+              <td>The same candidate contract operating on fourteen verified <code>chaser-depth-obstacles</code> camera views without map input.</td>
+              <td><a href="../../../lab/plugins/perception/fastsam/runs/replay-chase-sim-chaser-20260713-145225-20260713-145245/review.html">visual review</a> · <a href="../../../lab/plugins/perception/fastsam/runs/replay-chase-sim-chaser-20260713-145225-20260713-145245/summary.txt">metrics</a></td>
+            </tr>
+            <tr>
+              <td>Live FastSAM simulator activation</td>
+              <td>An isolated lab worker supplied normalized polygons to the generic live publication and viewer without recording artifacts or importing model dependencies into core.</td>
+              <td><a href="evidence/live-fastsam-view-validation.json">tracked validation record</a></td>
+            </tr>
+            <tr>
+              <td>Classical regions on physical images</td>
+              <td>Visual and resource comparison against FastSAM on the same eleven-frame corpus.</td>
+              <td><a href="../../../lab/plugins/perception/classical_regions/runs/replay-pi-straight-long-20260611-221650-20260711-145058/review.html">visual review</a> · <a href="../../../lab/plugins/perception/classical_regions/runs/replay-pi-straight-long-20260611-221650-20260711-145058/summary.txt">metrics</a></td>
+            </tr>
+            <tr>
+              <td>Classical regions on Chase images</td>
+              <td>Direct cost and proposal comparison with FastSAM on the same verified depth-obstacles corpus.</td>
+              <td><a href="../../../lab/plugins/perception/classical_regions/runs/replay-chase-sim-chaser-20260713-145225-20260713-145305/review.html">visual review</a> · <a href="../../../lab/plugins/perception/classical_regions/runs/replay-chase-sim-chaser-20260713-145225-20260713-145305/summary.txt">metrics</a></td>
+            </tr>
+            <tr>
+              <td>Production and temporal chain on physical images</td>
+              <td>Floor-boundary and bounded motion-track behavior across the physical sequence.</td>
+              <td><a href="../../../runtime/perception-replays/replay-pi-straight-long-20260611-221650-20260711-152954/review.html">visual review</a> · <a href="../../../runtime/perception-replays/replay-pi-straight-long-20260611-221650-20260711-152954/summary.txt">metrics</a></td>
+            </tr>
+            <tr>
+              <td>Production and temporal chain on Chase images</td>
+              <td>Floor-boundary and motion-track behavior on the same verified depth-obstacles views.</td>
+              <td><a href="../../../runtime/perception-replays/replay-chase-sim-chaser-20260713-145225-20260713-145312/review.html">visual review</a> · <a href="../../../runtime/perception-replays/replay-chase-sim-chaser-20260713-145225-20260713-145312/summary.txt">metrics</a></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="note">
+        The visual reports and captured room images are generated local
+        artifacts and remain ignored by Git. Their links resolve in the source
+        workspace used for this milestone. A tracked <a href="evidence/local-artifacts.json">artifact manifest</a>
+        records their repository-relative paths and hashes. Compact
+        <a href="evidence/chase-depth-obstacles-validation.json">Chase scenario</a>
+        and <a href="evidence/pi-validation.json">Pi validation</a> records are
+        also tracked so completion evidence remains available without publishing
+        captured imagery.
+      </p>
+    </section>
+
+    <section class="panel">
+      <h2>Final Findings</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Approach</th><th>Observed Value</th><th>Current Disposition</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>Floor boundaries</td>
+              <td>On physical replay, boundaries follow the wall/floor frontier and split around approaching boxes. On recorded Chase, center boundaries move nearer after forward motion, shift with left/right views, and return after reverse.</td>
+              <td><strong>Production lightweight path.</strong> Carry as non-semantic boundary evidence; never relabel it as an object without another source.</td>
+            </tr>
+            <tr>
+              <td>OpenCV color regions</td>
+              <td>Cheapest coherent-region candidate, strong adjacent-frame continuity, no model or license dependency, but texture and lighting can split one surface.</td>
+              <td><strong>Promotion candidate.</strong> Await Pi timing and controlled recall review before moving out of the lab.</td>
+            </tr>
+            <tr>
+              <td>FastSAM-s</td>
+              <td>Visually cleaner whole-surface masks in physical and depth-obstacle frames. Live activation proved that its simplified polygons can use the generic viewer, but the candidate still costs roughly 640-673 MiB peak RSS and 141-207 ms warm median on replay, with an Ultralytics license gate.</td>
+              <td><strong>Retain as local diagnostic.</strong> Do not deploy onboard or promote into core requirements in this milestone.</td>
+            </tr>
+            <tr>
+              <td>Feature-motion tracks</td>
+              <td>Stable run-local tracks capture broad expanding/contracting scene layers, which is useful depth-change evidence. They are not object identities and cost about 1.95 seconds per physical frame locally.</td>
+              <td><strong>Retain as offline diagnostic.</strong> Do not include in the lightweight onboard chain.</td>
+            </tr>
+            <tr>
+              <td>VLM prep</td>
+              <td>Produces deterministic review inputs but no perception meaning on its own.</td>
+              <td><strong>Diagnostic only.</strong> It is unavailable when artifact recording is disabled and should not enter memory.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="note">
+        The likely memory boundary is structured current evidence: source
+        plugin/run status, thing kind, image-relative location, confidence,
+        and bounded properties such as track support or floor-boundary width.
+        Raw prep artifacts, representation-health scores, and run-local track
+        ids should not become durable world facts. Pi measurements confirm that
+        lightweight current evidence is viable at a slower cadence, while
+        heavier temporal and segmentation diagnostics should remain local or
+        asynchronous.
       </p>
     </section>
 
@@ -495,32 +636,35 @@
     <section class="panel">
       <h2>Milestone Exit Gates</h2>
       <ol>
-        <li>The milestone question set and evaluation corpus are fixed before candidate approaches are compared.</li>
-        <li>The same CLI command runs a bounded, stationary perception experiment against Chase and PiRacer with only the vehicle id changed.</li>
-        <li>Recorded sequences from both sources can be replayed through the same active plugin chain.</li>
-        <li>At least one general per-frame structure plugin and one bounded temporal scene-track plugin emit useful structured evidence and visual artifacts.</li>
-        <li>The existing floor-plane approach has a documented pass/fail assessment across both environments.</li>
-        <li>One lightweight chain runs onboard from Donkey's in-memory camera input, while local processing remains available for heavier experiments.</li>
-        <li>Tests cover input normalization, plugin reset, empty/error results, temporal expiry, provider parity, and no-write-by-default behavior.</li>
-        <li>A comparison report records latency, stability, observed failure modes, and which outputs should or should not become memory inputs.</li>
-        <li>Each candidate approach is explicitly promoted, retained as diagnostic, or retired; inconclusive approaches do not silently become permanent plugins.</li>
-        <li>Experimental model code remains isolated in the lab workbench until promotion, and generated weights or artifacts do not enter source control.</li>
-        <li>The idle engine and physical manual-mode safety gate remain unchanged.</li>
+        <li><span class="status done">Done</span> The milestone question set and evaluation corpus were fixed before candidate comparison.</li>
+        <li><span class="status done">Done</span> One CLI command and vehicle interface cover live Chase and PiRacer capture with only the vehicle id changed.</li>
+        <li><span class="status done">Done</span> Recorded sequences from both sources replay through the same mapper contract.</li>
+        <li><span class="status done">Done</span> General per-frame regions and bounded temporal tracks emit structured evidence and optional artifacts.</li>
+        <li><span class="status done">Done</span> Floor-boundary behavior has a documented assessment across both recorded environments.</li>
+        <li><span class="status done">Done</span> The Donkey in-memory chain is deployed and measured on the Pi, with its sub-20 Hz limitation recorded explicitly.</li>
+        <li><span class="status done">Done</span> Tests cover normalization, reset, empty/error outcomes, expiry, provider selection, candidate adapters, malformed geometry, and no-write defaults.</li>
+        <li><span class="status done">Done</span> Reports capture latency, memory, stability, visual artifacts, and observed failure modes.</li>
+        <li><span class="status done">Done</span> Every evaluated approach has an explicit production, promotion-candidate, diagnostic, or deferred disposition.</li>
+        <li><span class="status done">Done</span> Model code remains isolated and generated environments, weights, setup state, and runs remain ignored.</li>
+        <li><span class="status done">Done</span> A live idle-engine window produced only zero steering and throttle, recorded no errors, and returned the Pi to manual mode.</li>
+        <li><span class="status done">Done</span> An isolated FastSAM candidate was activated through the CLI and published polygon overlays in the live simulator view without enabling artifact recording.</li>
+        <li><span class="status done">Done</span> Live camera publication is decoupled from perception inference through a bounded latest-frame queue; the viewer reports overlay source, frame lag, and result age instead of building an inference backlog.</li>
+        <li><span class="status done">Done</span> Background automation startup waits for the first camera frame and view, persists failures that occur before normal runtime state exists, and never treats a spawned PID as readiness.</li>
       </ol>
     </section>
 
     <section class="panel">
-      <h2>Proposed Work Order</h2>
+      <h2>Completed Work Order</h2>
       <ol>
-        <li>Normalize camera input and define plugin lifecycle before adding more algorithms.</li>
-        <li>Generalize the perception experiment runner across Chase, PiRacer, and replay sources.</li>
-        <li>Add deterministic test fixtures and a compact evaluation report format.</li>
-        <li>Establish the lab plugin workbench and run the FastSAM-s candidate against <code>chaser-depth-obstacles</code> without map input.</li>
-        <li>Implement and compare FastSAM regions with classical per-frame structure proposals.</li>
-        <li>Harden floor-plane evidence across both environments.</li>
-        <li>Promote pairwise motion groups into bounded scene tracks.</li>
-        <li>Run one lightweight chain onboard and measure the cost.</li>
-        <li>Close the milestone with an explicit recommendation for the next memory contract.</li>
+        <li><s>Define generic component access, concrete camera normalization, and plugin lifecycle before adding more algorithms.</s> Completed.</li>
+        <li><s>Generalize the perception experiment runner across Chase, PiRacer, and replay sources.</s> Implemented and live-validated against both vehicles.</li>
+        <li><s>Add deterministic test fixtures and extend the implemented compact replay report with quality scoring.</s> Completed; ground-truth scoring remains a separate gate.</li>
+        <li><s>Establish the lab plugin workbench and run FastSAM-s without map input.</s> Completed on physical replay and recorded Chase replay.</li>
+        <li><s>Implement and compare FastSAM regions with classical per-frame structure proposals.</s> Completed on the eleven-frame Pi sequence.</li>
+        <li><s>Complete floor-boundary assessment across recorded physical and simulator environments.</s> Completed, including the live Chase camera path.</li>
+        <li><s>Promote pairwise motion groups into bounded scene tracks.</s> Completed and retained as an offline diagnostic because measured cost is unsuitable for onboard use.</li>
+        <li><s>Deploy <code>lightweight_observer</code> onboard and measure target cost.</s> Completed at 293 ms median and 318 ms p95 across fifteen live Pi cycles.</li>
+        <li><s>Draft the memory input recommendation from measured evidence.</s> Completed.</li>
       </ol>
     </section>
   </main>

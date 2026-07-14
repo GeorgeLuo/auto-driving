@@ -13,6 +13,8 @@ from urllib import error as urllib_error
 from urllib import request as urllib_request
 from urllib.parse import urlparse
 
+from implementations.perception.catalog import DEFAULT_PERCEPTION_ALGORITHM
+
 from .bundles import (
     controller_bundle_paths,
     controller_bundle_source_summary,
@@ -296,7 +298,7 @@ def update_vehicle_autonomy(
             release_id=release_id,
             commands=commands,
             restart=restart,
-            perception_algorithm="current",
+            perception_algorithm=DEFAULT_PERCEPTION_ALGORITHM,
             decision_engine="idle",
             runtime_verification=None,
         )
@@ -307,7 +309,7 @@ def update_vehicle_autonomy(
     release = sync_controller_bundle(bundle, output=output)
     perception_activation_path = ensure_vehicle_perception_activation(
         vehicle=dict(target.vehicle),
-        algorithm="current",
+        algorithm=DEFAULT_PERCEPTION_ALGORITHM,
         bundle=bundle,
         release=release,
     )
@@ -357,6 +359,7 @@ def update_vehicle_autonomy(
             runtime_verification = _verify_physical_autonomy_runtime(
                 target=target,
                 expected_engine_spec=str(decision_manifest["decision"]["engine_spec"]),
+                expected_perception_algorithm=str(perception_manifest["perception"]["algorithm"]),
                 timeout_s=max(3.0, timeout_s),
             )
         except RuntimeError as exc:
@@ -635,7 +638,7 @@ def _format_autonomy_dry_run(payload: dict[str, Any]) -> str:
             f"Autonomy update dry run for {payload['vehicle_id']} -> {payload['target']['ssh_target']}",
             f"source tree SHA-256: {payload['source']['tree_sha256']}",
             f"source files: {payload['source']['file_count']}",
-            "would activate perception=current decision=idle when no prior activation exists",
+            f"would activate perception={DEFAULT_PERCEPTION_ALGORITHM} decision=idle when no prior activation exists",
             *[f"$ {entry['command']}" for entry in payload["commands"]],
             f"would restart drive runtime: {'yes' if payload['restart_requested'] else 'no'}",
         ]
@@ -680,6 +683,7 @@ def _verify_physical_autonomy_runtime(
     *,
     target: PhysicalTarget,
     expected_engine_spec: str,
+    expected_perception_algorithm: str,
     timeout_s: float,
 ) -> dict[str, Any]:
     connection = target.vehicle.get("connection")
@@ -696,12 +700,20 @@ def _verify_physical_autonomy_runtime(
 
     autonomy = payload.get("autonomy")
     actual_engine = autonomy.get("engine") if isinstance(autonomy, dict) else None
+    components = autonomy.get("components") if isinstance(autonomy, dict) else None
+    perception = components.get("perception") if isinstance(components, dict) else None
+    actual_perception = perception.get("algorithm") if isinstance(perception, dict) else None
     drive_mode = payload.get("drive_mode")
     if payload.get("ok") is not True:
         raise RuntimeError(f"{status_url} did not report an available autonomy manager")
     if actual_engine != expected_engine_spec:
         raise RuntimeError(
             f"{status_url} reported engine {actual_engine!r}, expected {expected_engine_spec!r}"
+        )
+    if actual_perception != expected_perception_algorithm:
+        raise RuntimeError(
+            f"{status_url} reported perception {actual_perception!r}, "
+            f"expected {expected_perception_algorithm!r}"
         )
     if drive_mode != "user":
         raise RuntimeError(
@@ -710,6 +722,7 @@ def _verify_physical_autonomy_runtime(
     return {
         "status_url": status_url,
         "engine": actual_engine,
+        "perception_algorithm": actual_perception,
         "drive_mode": drive_mode,
         "ok": True,
     }

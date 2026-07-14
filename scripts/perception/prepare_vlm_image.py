@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from implementations.perception import VlmPrepConfig, prepare_vlm_artifacts
+from implementations.perception.preparation import VlmPrepConfig, prepare_vlm_artifacts
 
 
 def parse_args() -> argparse.Namespace:

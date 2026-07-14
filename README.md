@@ -36,8 +36,9 @@ PYTHONDONTWRITEBYTECODE=1 python3 cli/run_tests.py --live-sim
 
 ## Project Layout
 
-- `autonomy/` contains stable vehicle, perception, decision, and runtime
-  contracts and orchestration.
+- `autonomy/` contains sensor- and environment-agnostic vehicle, perception,
+  decision, and runtime contracts plus generic orchestration. It contains no
+  perception algorithms.
 - `implementations/` contains concrete vehicle adapters, perception plugins,
   runtime hosts, and bounded operations.
 - `cli/` contains the `automa` command and its scenario test harness.
@@ -63,10 +64,10 @@ The command groups intentionally distinguish different kinds of state:
 | Command | Reads or changes |
 |---|---|
 | `vehicles active` | Probes live PiCar and Chase endpoints. |
-| `vehicles update perception` | Packages code and stages a Chase perception activation locally. |
+| `vehicles update perception` | Packages code and stages a vehicle perception activation locally. |
 | `vehicles update decision` | Packages code and stages a decision activation locally. |
-| `vehicles info ...` | Reads locally staged perception or decision configuration. |
-| `vehicles perception ...` | Edits the locally staged perception plugin chain. |
+| `vehicles info ...` | Reads staged perception or decision configuration; perception info also reports the live view URL. |
+| `vehicles perception ...` | Runs perception experiments and manages production or lab plugins. |
 | `vehicles automation ...` | Runs or inspects the local Chase controller worker. |
 | `vehicles stream perception` | Displays the worker's rolling latest perception output. |
 | `vehicles update core` | Deploys DonkeyCar framework and physical harness code to the Pi. |
@@ -91,11 +92,14 @@ Prepare the simulator and verify that the Play/Chase frontend is connected:
 ./cli/automa vehicles active
 ```
 
-Stage the current perception algorithm. A fresh controller bundle also receives
-the explicit idle decision activation:
+`simulators ensure` succeeds only after the selected scenario and Chase debug
+state remain reachable through a short post-setup stability probe.
+
+Stage the simulator color-control algorithm. A fresh controller bundle also
+receives the explicit idle decision activation:
 
 ```sh
-./cli/automa vehicles update perception --id chase-sim-chaser
+./cli/automa vehicles update perception --id chase-sim-chaser --algorithm sim_debug
 ```
 
 Use `vehicles update decision` when deliberately changing the selected engine.
@@ -113,8 +117,24 @@ default, but the current decision engine emits only idle control:
 ```sh
 ./cli/automa vehicles automation run --id chase-sim-chaser
 ./cli/automa vehicles automation status --id chase-sim-chaser
+./cli/automa vehicles info perception --id chase-sim-chaser
 ./cli/automa vehicles stream perception --id chase-sim-chaser
 ```
+
+`automation run` and `automation restart` wait until the worker has captured
+its first camera frame and published the view. They return a nonzero result and
+persist the startup reason in `state.json` when discovery, model loading, or
+camera startup fails; a spawned PID alone is not reported as success.
+
+While the automation worker is running, `vehicles info perception` reports a
+loopback URL for a live frame-and-data view. The page polls the worker's
+in-memory publication. Camera capture runs independently from perception, so a
+slow plugin consumes the newest available frame instead of accumulating a
+backlog. The page displays the latest camera frame with the newest available
+overlay and reports its source frame, frame lag, and elapsed result age. It can
+independently hide regions, labels, or finding kinds. Only image-coordinate
+findings are drawn over the camera frame; findings in other coordinate systems
+remain available in the data panel.
 
 Stop or restart the worker:
 
@@ -125,8 +145,9 @@ Stop or restart the worker:
 
 Useful run options:
 
-- `--frames N` makes a bounded smoke run.
-- `--interval-s 0` removes the delay between bounded frames.
+- `--frames N` makes a bounded capture run.
+- `--interval-s` sets the camera capture cadence; it defaults to `0.25` seconds.
+- `--interval-s 0` captures as quickly as the vehicle interface allows.
 - `--observe-only` leaves movement authority with the simulator.
 - `--record` keeps timestamped frame and perception artifacts.
 - `--log` persists worker output. No worker log is written by default.
@@ -135,9 +156,53 @@ After changing perception or shared autonomy code, stage a fresh bundle before
 restarting the worker:
 
 ```sh
-./cli/automa vehicles update perception --id chase-sim-chaser
+./cli/automa vehicles update perception --id chase-sim-chaser --algorithm sim_debug
 ./cli/automa vehicles automation restart --id chase-sim-chaser
 ```
+
+### Perception Experiments
+
+Observe five frames from a usable vehicle without taking movement control, or
+replay an existing image sequence through a production algorithm:
+
+```sh
+./cli/automa vehicles perception run
+./cli/automa vehicles perception run --id piracer --algorithm lightweight_observer
+./cli/automa vehicles perception replay path/to/images --algorithm visual_observer
+```
+
+Experimental candidates are isolated under `lab/plugins/perception/`. Inspect
+their readiness, provision declared dependencies once, and compare every ready
+candidate on the same frames:
+
+```sh
+./cli/automa vehicles perception candidates
+./cli/automa vehicles perception setup fastsam
+./cli/automa vehicles perception compare path/to/images
+```
+
+A ready candidate can also drive the local simulator worker without being
+copied into the controller bundle or imported into the core process:
+
+```sh
+./cli/automa vehicles update perception --id chase-sim-chaser --candidate fastsam
+./cli/automa vehicles automation restart --id chase-sim-chaser
+./cli/automa vehicles info perception --id chase-sim-chaser
+```
+
+This candidate activation path is simulator-only. The isolated worker returns
+the stable perception contract, including normalized polygons when available;
+the live view draws those polygons and falls back to normalized boxes for
+plugins that do not emit outlines.
+
+No captures or reports are retained by default. Add `--record` when overlays,
+per-frame JSON, and the generated review page are wanted.
+
+`lightweight_observer` is the production-oriented frame and floor-boundary
+chain. `visual_observer` adds feature-motion tracks and is intentionally much
+slower. Artifact-only VLM preprocessing remains an optional diagnostic plugin,
+not part of either observer. Lab candidates remain local until a measured
+promotion decision moves them into `implementations/`.
 
 ### Perception Plugins
 
@@ -174,8 +239,9 @@ restart the autonomy release:
 `update autonomy` packages `autonomy/` and `implementations/`, verifies the
 archive hash on the Pi, installs a versioned release, transfers perception and
 decision manifests, and restarts only when requested. Post-restart verification
-requires the selected engine to load while Donkey drive mode remains `user`;
-the deployment check does not command movement.
+requires both the selected decision engine and perception algorithm to load
+while Donkey drive mode remains `user`; the deployment check does not command
+movement.
 
 Use the deploy commands according to what changed:
 
@@ -204,11 +270,11 @@ should become an active command source:
 
 ### Physical Activation State
 
-The first physical autonomy deployment creates the default `current`
-perception activation and `idle` decision activation when none exist. The Pi
-currently loads the decision activation; onboard perception is intentionally a
-no-op stage, so the transferred perception manifest is layout metadata rather
-than active image processing.
+The first physical autonomy deployment creates the default
+`lightweight_observer` perception activation and `idle` decision activation
+when none exist. The Pi loads both activations: the lightweight frame and floor
+boundary mapper runs before observation, while the idle decision engine keeps
+movement at zero.
 
 Decision changes are local until the next autonomy deployment:
 
@@ -217,9 +283,9 @@ Decision changes are local until the next autonomy deployment:
 ./cli/automa vehicles update autonomy --id piracer --restart
 ```
 
-`vehicles info perception --id piracer` can inspect the staged schema, but
-enabling a physical perception plugin should wait until the Donkey runtime has
-an explicit perception stage.
+`vehicles info perception --id piracer` inspects the staged mapper, enabled
+plugins, machine-readable input contract, and release metadata. Local staging
+does not require the Pi to be online; the subsequent autonomy deploy does.
 
 ## Bounded Startup Check
 
@@ -286,8 +352,8 @@ and is prepared through `./cli/automa simulators ensure`.
   describes the physical Donkey server boundary.
 - [`docs/milestones/completed.md`](docs/milestones/completed.md) is the concise
   append-only history of closed work.
-- [`docs/milestones/002-perception-hardening/plan.html`](docs/milestones/002-perception-hardening/plan.html)
-  is the active perception-hardening milestone.
+- [`docs/milestones/003-test-architecture-and-operator-contracts/plan.html`](docs/milestones/003-test-architecture-and-operator-contracts/plan.html)
+  is the active test-architecture and operator-contract milestone.
 
 Dependency direction is intentional:
 
@@ -296,6 +362,17 @@ autonomy contracts       -> never import implementations
 implementations          -> satisfy and compose autonomy contracts
 CLI/runtime entrypoints  -> select implementations and execute the cycle
 ```
+
+Perception follows a component-injection model. The stable stage wraps a
+generic `SensorSnapshot` and runs configured plugins without knowing which
+sensor or meaning any plugin uses. Each plugin declares named component inputs
+and returns only structured signals, spatial evidence, and measurements. The
+generic runner resolves and caches those inputs, then owns missing-input and
+warm-up status, error isolation, timing, source attribution, text rendering,
+and optional diagnostic persistence. The surrounding cycle owns the sensor
+snapshot, so perception output does not duplicate it. Concrete camera decoding
+and every meaning-making algorithm live under `implementations/perception/`;
+unpromoted candidates live under `lab/plugins/perception/`.
 
 Both current vehicle adapters expose only the generic `front_camera` sensor
 through `CarInterface.read_sensors()`.

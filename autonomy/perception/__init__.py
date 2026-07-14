@@ -1,28 +1,59 @@
-"""Perception layers for black-box vehicle observations.
+"""Stable contracts and runtime plumbing for component-driven perception."""
 
-The package is organized by dependency direction:
-
-- core: low-level frame observations with no scene interpretation
-- features: reusable image-space feature tracking primitives
-- motion: relative motion and motion-group evidence
-- traversability: floor and traversable-region evidence
-- landmarks: experimental landmark/distance estimators
-"""
-
+from .evidence import (
+    PerceivedThing,
+    PerceptionEvidenceBatch,
+    PerceptionSignal,
+    ViewLocation,
+)
 from .interface import (
     PERCEPTION_TEXT_SCHEMA,
-    PerceivedThing,
     PerceptionMapper,
+    PerceptionPluginRun,
     PerceptionRequest,
     PerceptionText,
-    ViewLocation,
+)
+from .plugin import (
+    PerceptionComponentUnavailable,
+    PerceptionDiagnosticSink,
+    PerceptionPlugin,
+    PerceptionPluginContract,
+    PerceptionPluginInput,
+    PerceptionPluginInputs,
+    PerceptionPluginWarmingUp,
+)
+from .inputs import build_perception_request
+from .activation import (
+    PERCEPTION_ACTIVATION_SCHEMA,
+    ActivatedPerceptionStage,
+    PerceptionActivation,
+    instantiate_perception_mapper,
+    load_perception_mapper,
+    read_perception_activation,
 )
 
 __all__ = [
+    "ActivatedPerceptionStage",
+    "PERCEPTION_ACTIVATION_SCHEMA",
     "PERCEPTION_TEXT_SCHEMA",
     "PerceivedThing",
+    "PerceptionComponentUnavailable",
+    "PerceptionDiagnosticSink",
+    "PerceptionEvidenceBatch",
     "PerceptionMapper",
+    "PerceptionActivation",
+    "PerceptionPlugin",
+    "PerceptionPluginContract",
+    "PerceptionPluginInput",
+    "PerceptionPluginInputs",
+    "PerceptionPluginRun",
+    "PerceptionPluginWarmingUp",
     "PerceptionRequest",
+    "PerceptionSignal",
     "PerceptionText",
     "ViewLocation",
+    "build_perception_request",
+    "instantiate_perception_mapper",
+    "load_perception_mapper",
+    "read_perception_activation",
 ]

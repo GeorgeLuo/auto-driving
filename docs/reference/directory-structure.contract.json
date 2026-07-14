@@ -3,7 +3,7 @@
     "status": "active",
   "purpose": "Directory-only contract for the initial automation-engine repo shape. Specific files are intentionally omitted.",
   "rules": [
-    "autonomy/ is the stable automation kernel: interfaces, data contracts, reusable primitives, stage contracts, and generic runners.",
+    "autonomy/ is the stable automation kernel: interfaces, data contracts, stage contracts, generic component contexts, and generic runners; it contains no environment or perception algorithms.",
     "implementations/ mirrors the autonomy/ hierarchy and contains concrete code that satisfies stable contracts.",
     "Plugin is a loading and activation mode, not the top-level source-code category.",
     "autonomy/ should not import implementations/ directly; CLI, runtime, or deploy code should load implementations by config/spec.",
@@ -34,43 +34,13 @@
             "path": "autonomy/perception/",
             "category": "core",
             "commit_policy": "source",
-            "responsibility": "Stable perception contracts and shared primitives. Active algorithms live in implementations/perception/.",
+            "responsibility": "Sensor-agnostic perception contracts, component context, evidence shapes, activation, and generic plugin execution. All component adapters and perception algorithms live outside autonomy/.",
             "children": [
-              {
-                "path": "autonomy/perception/core/",
-                "category": "core",
-                "commit_policy": "source",
-                "responsibility": "Frame observations and low-level image comparisons with no scene-specific policy."
-              },
-              {
-                "path": "autonomy/perception/features/",
-                "category": "core",
-                "commit_policy": "source",
-                "responsibility": "Reusable feature tracking primitives."
-              },
-              {
-                "path": "autonomy/perception/motion/",
-                "category": "core",
-                "commit_policy": "source",
-                "responsibility": "Reusable relative-motion and motion-group primitives."
-              },
-              {
-                "path": "autonomy/perception/traversability/",
-                "category": "core",
-                "commit_policy": "source",
-                "responsibility": "Reusable floor and traversability primitives."
-              },
-              {
-                "path": "autonomy/perception/landmarks/",
-                "category": "core",
-                "commit_policy": "source",
-                "responsibility": "Reusable landmark and distance primitives."
-              },
               {
                 "path": "autonomy/perception/mappers/",
                 "category": "core",
                 "commit_policy": "source",
-                "responsibility": "Mapper loaders and stable mapper entry points that assemble configured implementations."
+                "responsibility": "Generic plugin-chain execution that aggregates plugin-declared component queries without knowing component types or perception meanings."
               }
             ]
           },
@@ -118,7 +88,57 @@
             "path": "implementations/perception/",
             "category": "implementation",
             "commit_policy": "source",
-            "responsibility": "Concrete perception mappers and plugin-style sensor-to-evidence algorithms."
+            "responsibility": "Concrete component adapters and plugin-style sensor-to-evidence algorithms.",
+            "children": [
+              {
+                "path": "implementations/perception/components/",
+                "category": "implementation",
+                "commit_policy": "source",
+                "responsibility": "Concrete adapters that derive reusable plugin input components from generic sensor readings."
+              },
+              {
+                "path": "implementations/perception/observation/",
+                "category": "implementation",
+                "commit_policy": "source",
+                "responsibility": "Current-frame statistics and change measurements."
+              },
+              {
+                "path": "implementations/perception/features/",
+                "category": "implementation",
+                "commit_policy": "source",
+                "responsibility": "Feature detection, matching, and sequence fitting algorithms."
+              },
+              {
+                "path": "implementations/perception/motion/",
+                "category": "implementation",
+                "commit_policy": "source",
+                "responsibility": "Scene-motion estimation and bounded temporal track plugins."
+              },
+              {
+                "path": "implementations/perception/traversability/",
+                "category": "implementation",
+                "commit_policy": "source",
+                "responsibility": "Floor modeling, projection, and traversability evidence plugins."
+              },
+              {
+                "path": "implementations/perception/landmarks/",
+                "category": "implementation",
+                "commit_policy": "source",
+                "responsibility": "Landmark selection and relative-distance estimation algorithms."
+              },
+              {
+                "path": "implementations/perception/simulation/",
+                "category": "environment-implementation",
+                "commit_policy": "source",
+                "responsibility": "Simulation-only perception controls and validation plugins."
+              },
+              {
+                "path": "implementations/perception/preparation/",
+                "category": "implementation",
+                "commit_policy": "source",
+                "responsibility": "Deterministic preprocessing implementations for optional downstream observers."
+              }
+            ]
           },
           {
             "path": "implementations/decision/",

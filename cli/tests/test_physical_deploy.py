@@ -38,7 +38,10 @@ class PhysicalDeployTests(unittest.TestCase):
             {
                 "ok": True,
                 "drive_mode": "user",
-                "autonomy": {"engine": "autonomy.runtime.engine:IdleAutonomyEngine"},
+                "autonomy": {
+                    "engine": "autonomy.runtime.engine:IdleAutonomyEngine",
+                    "components": {"perception": {"algorithm": "lightweight_observer"}},
+                },
             }
         ).encode("utf-8")
 
@@ -46,6 +49,7 @@ class PhysicalDeployTests(unittest.TestCase):
             verification = _verify_physical_autonomy_runtime(
                 target=target,
                 expected_engine_spec="autonomy.runtime.engine:IdleAutonomyEngine",
+                expected_perception_algorithm="lightweight_observer",
                 timeout_s=3.0,
             )
 
@@ -56,7 +60,10 @@ class PhysicalDeployTests(unittest.TestCase):
             {
                 "ok": True,
                 "drive_mode": "local",
-                "autonomy": {"engine": "autonomy.runtime.engine:IdleAutonomyEngine"},
+                "autonomy": {
+                    "engine": "autonomy.runtime.engine:IdleAutonomyEngine",
+                    "components": {"perception": {"algorithm": "lightweight_observer"}},
+                },
             }
         ).encode("utf-8")
         with patch("cli.automa_cli.deploy.urllib_request.urlopen", return_value=response):
@@ -64,6 +71,7 @@ class PhysicalDeployTests(unittest.TestCase):
                 _verify_physical_autonomy_runtime(
                     target=target,
                     expected_engine_spec="autonomy.runtime.engine:IdleAutonomyEngine",
+                    expected_perception_algorithm="lightweight_observer",
                     timeout_s=3.0,
                 )
 
@@ -87,7 +95,7 @@ class PhysicalDeployTests(unittest.TestCase):
             )
             perception_activation = ensure_vehicle_perception_activation(
                 vehicle=dict(target.vehicle),
-                algorithm="current",
+                algorithm="lightweight_observer",
                 bundle=bundle,
                 release=release,
             )

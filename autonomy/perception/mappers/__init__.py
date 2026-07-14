@@ -1,5 +1,5 @@
 """Built-in perception mappers."""
 
-from .current import CurrentDirectoryPerceptionMapper
+from .plugin_runner import PluginPerceptionMapper
 
-__all__ = ["CurrentDirectoryPerceptionMapper"]
+__all__ = ["PluginPerceptionMapper"]

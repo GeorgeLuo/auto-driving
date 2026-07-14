@@ -13,7 +13,13 @@ from cli.automa_cli.bundles import (
     release_activation_summary,
     sync_controller_bundle,
 )
-from cli.automa_cli.perception import CURRENT_MAPPER_SPEC, PERCEPTION_ALGORITHMS, PERCEPTION_PLUGIN_SPECS
+from implementations.perception.catalog import (
+    DEFAULT_PERCEPTION_ALGORITHM,
+    PERCEPTION_ALGORITHMS,
+    PERCEPTION_MAPPER_SPEC,
+    PERCEPTION_PLUGIN_SPECS,
+)
+from cli.automa_cli.perception_view import PerceptionViewServer
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -89,9 +95,37 @@ class AutomaCliHarness(unittest.TestCase):
         result = self.run_automa("vehicles", "perception", "help")
 
         self.assertIn("automa vehicles perception commands", result.stdout)
+        self.assertIn("- run", result.stdout)
+        self.assertIn("- replay", result.stdout)
         self.assertIn("- enable", result.stdout)
         self.assertIn("- disable", result.stdout)
         self.assertNotIn("--id", result.stdout)
+
+    def test_perception_replay_is_offline_and_does_not_record_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            frames = root / "frames"
+            frames.mkdir()
+            from PIL import Image
+
+            Image.new("RGB", (32, 24), (30, 40, 50)).save(frames / "000.png")
+            Image.new("RGB", (32, 24), (50, 40, 30)).save(frames / "001.png")
+            replay_root = root / "replays"
+            result = self.run_automa(
+                "vehicles",
+                "perception",
+                "replay",
+                str(frames),
+                "--json",
+                extra_env={"AUTOMA_PERCEPTION_REPLAY_ROOT": str(replay_root)},
+            )
+
+            payload = json.loads(result.stdout)
+            self.assertEqual(payload["schema"], "perception_experiment_v0")
+            self.assertEqual(payload["source"]["kind"], "replay")
+            self.assertEqual(payload["summary"]["frames"], 2)
+            self.assertFalse(payload["recording"])
+            self.assertFalse(replay_root.exists())
 
     def test_operation_help_shows_only_bounded_operations(self) -> None:
         result = self.run_automa("vehicles", "operation", "help")
@@ -105,7 +139,7 @@ class AutomaCliHarness(unittest.TestCase):
 
         self.assertIn("- core        deploy physical DonkeyCar harness code", result.stdout)
         self.assertIn("- autonomy    deploy physical autonomy controller release", result.stdout)
-        self.assertIn("- perception  stage Chase simulator perception code", result.stdout)
+        self.assertIn("- perception  stage local vehicle perception code", result.stdout)
         self.assertIn("- decision    stage local decision configuration", result.stdout)
 
     def test_vehicle_help_labels_local_worker_and_bounded_motion(self) -> None:
@@ -121,7 +155,7 @@ class AutomaCliHarness(unittest.TestCase):
         info = self.run_automa("vehicles", "info", "help")
         perception = self.run_automa("vehicles", "perception", "help")
 
-        self.assertIn("show locally staged perception schema", info.stdout)
+        self.assertIn("show staged perception schema and live view", info.stdout)
         self.assertIn("show locally staged decision engine schema", info.stdout)
         self.assertIn("enable one locally staged perception plugin", perception.stdout)
         self.assertIn("disable one locally staged perception plugin", perception.stdout)
@@ -130,7 +164,9 @@ class AutomaCliHarness(unittest.TestCase):
         perception = self.run_automa("vehicles", "update", "perception", "--help")
         decision = self.run_automa("vehicles", "update", "decision", "--help")
 
-        self.assertIn("Stage a perception algorithm for the Chase simulator controller", perception.stdout)
+        self.assertIn("Stage a perception algorithm in a vehicle's local controller bundle", perception.stdout)
+        self.assertIn("--candidate", perception.stdout)
+        self.assertIn("local simulator only", perception.stdout)
         self.assertIn("Stage a decision engine in the local controller bundle", decision.stdout)
 
     def test_simulators_help_shows_only_simulator_level_commands(self) -> None:
@@ -183,21 +219,30 @@ class AutomaCliHarness(unittest.TestCase):
             )
             calls = self.read_fake_simeval_calls(root)
 
-        payload = json.loads(result.stdout)
-        self.assertTrue(payload["result"]["usable"])
-        self.assertEqual(payload["desired"]["scenario"], "chaser-depth-obstacles")
-        self.assertEqual(payload["scenario"]["scenario"], "chaser-depth-obstacles")
-        self.assertIn(
-            [
-                "ui",
-                "play-game-action",
-                "--action-id",
-                "scenario-select",
-                "--value",
-                '"chaser-depth-obstacles"',
-            ],
-            calls,
-        )
+            payload = json.loads(result.stdout)
+            self.assertTrue(payload["result"]["usable"])
+            self.assertEqual(payload["desired"]["scenario"], "chaser-depth-obstacles")
+            self.assertEqual(payload["scenario"]["scenario"], "chaser-depth-obstacles")
+            self.assertIn(
+                [
+                    "ui",
+                    "play-game-action",
+                    "--action-id",
+                    "scenario-select",
+                    "--value",
+                    '"chaser-depth-obstacles"',
+                ],
+                calls,
+            )
+
+            text_result = self.run_automa(
+                "simulators",
+                "ensure",
+                "--scenario",
+                "chaser-depth-obstacles",
+                extra_env=env,
+            )
+            self.assertIn("scenario selected: chaser-depth-obstacles (yes)", text_result.stdout)
 
     def test_simulator_ensure_opens_browser_when_frontend_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -231,6 +276,17 @@ class AutomaCliHarness(unittest.TestCase):
         self.assertTrue(payload["frontend"]["browser_open"]["attempted"])
         self.assertEqual(browser_calls, ["http://127.0.0.1:5050"])
         self.assertGreaterEqual(calls.count(["ui", "play-debug", "--summary"]), 2)
+
+    def test_simulator_ensure_rejects_frontend_that_drops_after_setup(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            env = self.make_fake_simeval(Path(tmp), "online_frontend_drops")
+            result = self.run_automa("simulators", "ensure", "--json", extra_env=env, check=False)
+
+        payload = json.loads(result.stdout)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(payload["result"]["usable"])
+        self.assertFalse(payload["stability"]["ok"])
+        self.assertIn("did not remain usable", payload["result"]["error"])
 
     def test_simulator_ensure_launches_when_offline(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -316,7 +372,7 @@ class AutomaCliHarness(unittest.TestCase):
 
         self.assertIn("deployed automations: 1", result.stdout)
         self.assertIn("chase-sim-chaser", result.stdout)
-        self.assertIn("perception: current", result.stdout)
+        self.assertIn("perception: sim_debug", result.stdout)
         self.assertIn("worker: running", result.stdout)
         self.assertIn("log: disabled", result.stdout)
 
@@ -389,7 +445,7 @@ class AutomaCliHarness(unittest.TestCase):
         vehicle = payload["vehicles"][0]
         self.assertEqual(vehicle["vehicle_id"], "chase-sim-chaser")
         self.assertTrue(vehicle["deployed"])
-        self.assertEqual(vehicle["perception"]["algorithm"], "current")
+        self.assertEqual(vehicle["perception"]["algorithm"], "sim_debug")
         self.assertEqual(vehicle["decision"]["engine_id"], "idle")
         self.assertTrue(vehicle["process"]["running"])
 
@@ -469,9 +525,124 @@ class AutomaCliHarness(unittest.TestCase):
 
         payload = json.loads(result.stdout)
         self.assertEqual(payload["schema"], "vehicle_perception_info_v0")
-        self.assertEqual(payload["activation"]["algorithm"], "current")
-        self.assertEqual(payload["algorithm_schema"]["schema"], "perception_algorithm_schema_v0")
-        self.assertEqual(payload["algorithm_schema"]["output"]["schema"], "perception_text_v0")
+        self.assertEqual(payload["activation"]["algorithm"], "sim_debug")
+        self.assertEqual(payload["algorithm_schema"]["schema"], "perception_algorithm_schema_v2")
+        self.assertEqual(payload["algorithm_schema"]["output"]["schema"], "perception_text_v2")
+        self.assertFalse(payload["published_view"]["available"])
+
+    def test_perception_info_reports_running_view_url(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime_root = Path(tmp) / "vehicles"
+            vehicle_id = "chase-sim-chaser"
+            self.write_fake_deployment(
+                runtime_root,
+                vehicle_id,
+                pid=os.getpid(),
+                bundle_root=ROOT,
+            )
+            automation_dir = runtime_root / vehicle_id / "bundle" / "runtime" / "automation"
+            server = PerceptionViewServer(
+                vehicle_id=vehicle_id,
+                automation_dir=automation_dir,
+                port=0,
+            ).start()
+            expected_url = server.url
+            try:
+                text_result = self.run_automa(
+                    "vehicles",
+                    "info",
+                    "perception",
+                    "--id",
+                    vehicle_id,
+                    runtime_root=runtime_root,
+                )
+                json_result = self.run_automa(
+                    "vehicles",
+                    "info",
+                    "perception",
+                    "--id",
+                    vehicle_id,
+                    "--json",
+                    runtime_root=runtime_root,
+                )
+            finally:
+                server.stop()
+
+        payload = json.loads(json_result.stdout)
+        self.assertTrue(payload["published_view"]["available"])
+        self.assertEqual(payload["published_view"]["url"], expected_url)
+        self.assertIn("Perception view: http://127.0.0.1:", text_result.stdout)
+
+    def test_perception_info_reports_worker_that_exited_during_startup(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime_root = Path(tmp) / "vehicles"
+            vehicle_id = "chase-sim-chaser"
+            dead_pid = 987654321
+            self.write_fake_deployment(
+                runtime_root,
+                vehicle_id,
+                pid=dead_pid,
+                bundle_root=ROOT,
+            )
+            state_path = (
+                runtime_root
+                / vehicle_id
+                / "bundle"
+                / "runtime"
+                / "automation"
+                / "state.json"
+            )
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            state.update({"status": "starting", "pid": dead_pid})
+            self.write_json(state_path, state)
+
+            result = self.run_automa(
+                "vehicles",
+                "info",
+                "perception",
+                "--id",
+                vehicle_id,
+                runtime_root=runtime_root,
+            )
+
+        self.assertIn("Perception view: unavailable", result.stdout)
+        self.assertIn("exited during startup", result.stdout)
+        self.assertNotIn("Connection refused", result.stdout)
+
+    def test_perception_info_reports_live_worker_that_is_still_starting(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime_root = Path(tmp) / "vehicles"
+            vehicle_id = "chase-sim-chaser"
+            self.write_fake_deployment(
+                runtime_root,
+                vehicle_id,
+                pid=os.getpid(),
+                bundle_root=ROOT,
+            )
+            state_path = (
+                runtime_root
+                / vehicle_id
+                / "bundle"
+                / "runtime"
+                / "automation"
+                / "state.json"
+            )
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            state.update({"status": "starting", "pid": os.getpid()})
+            self.write_json(state_path, state)
+
+            result = self.run_automa(
+                "vehicles",
+                "info",
+                "perception",
+                "--id",
+                vehicle_id,
+                runtime_root=runtime_root,
+            )
+
+        self.assertIn("Perception view: starting", result.stdout)
+        self.assertIn("still initializing", result.stdout)
+        self.assertNotIn("start or restart the automation worker", result.stdout)
 
     def test_perception_bundle_syncs_configured_visual_observer_plugins(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -498,10 +669,10 @@ class AutomaCliHarness(unittest.TestCase):
             )
 
             for relative in (
-                "implementations/perception/floor_plane.py",
-                "implementations/perception/vlm_prep.py",
-                "implementations/perception/motion_groups.py",
-                "autonomy/perception/mappers/current.py",
+                "implementations/perception/traversability/plugin.py",
+                "implementations/perception/preparation/vlm.py",
+                "implementations/perception/motion/tracks.py",
+                "autonomy/perception/mappers/plugin_runner.py",
                 "bundle-manifest.json",
             ):
                 self.assertTrue((bundle_root / relative).exists(), relative)
@@ -521,7 +692,7 @@ class AutomaCliHarness(unittest.TestCase):
                     },
                     "perception": {
                         "algorithm": "visual_observer",
-                        "mapper_spec": CURRENT_MAPPER_SPEC,
+                        "mapper_spec": PERCEPTION_MAPPER_SPEC,
                         "mapper_config": dict(algorithm_config["mapper_config"]),
                         "source_dir": bundle["perception_dir"],
                     },
@@ -551,20 +722,23 @@ class AutomaCliHarness(unittest.TestCase):
         self.assertEqual(payload["controller_bundle"]["release"]["tree_sha256"], release_manifest["tree_sha256"])
         self.assertEqual(
             payload["activation"]["mapper_config"]["plugins"],
-            ["frame", "floor_plane", "vlm_prep", "motion_groups"],
+            ["frame", "floor_plane", "motion_tracks"],
         )
-        chain = payload["algorithm_schema"]["inputs"][0]["plugin_chain"]
+        chain = payload["algorithm_schema"]["plugins"]
         self.assertEqual(
             [plugin["plugin_id"] for plugin in chain],
             [
                 "frame-observation-v0",
                 "floor-plane-v0",
-                "vlm-prep-v0",
-                "motion-groups-v0",
+                "motion-tracks-v0",
             ],
         )
-        self.assertIn("Enabled plugins: frame, floor_plane, vlm_prep, motion_groups", text_result.stdout)
-        self.assertIn("plugin chain:", text_result.stdout)
+        self.assertIn("Enabled plugins: frame, floor_plane, motion_tracks", text_result.stdout)
+        self.assertIn("Plugins:", text_result.stdout)
+        self.assertIn(
+            "frame-observation-v0 [stateless] components=camera.rgb:front_camera",
+            text_result.stdout,
+        )
 
     def test_perception_update_dry_run_json_does_not_require_live_simulator(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -584,9 +758,187 @@ class AutomaCliHarness(unittest.TestCase):
         self.assertEqual(payload["schema"], "vehicle_perception_update_v0")
         self.assertTrue(payload["dry_run"])
         self.assertEqual(payload["vehicle_id"], "chase-sim-chaser")
-        self.assertEqual(payload["algorithm"], "current")
+        self.assertEqual(payload["algorithm"], DEFAULT_PERCEPTION_ALGORITHM)
         self.assertEqual(payload["manifest"]["provider"], "chase-sim")
         self.assertTrue(payload["would_write"]["bundle_root"].endswith("vehicles/chase-sim-chaser/bundle"))
+
+    def test_ready_lab_candidate_can_be_staged_and_inspected_locally(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            runtime_root = root / "vehicles"
+            candidate_root = root / "candidates"
+            candidate_dir = candidate_root / "fixture"
+            self.write_json(
+                candidate_dir / "plugin.json",
+                {
+                    "schema": "automa_lab_perception_plugin_v0",
+                    "id": "fixture",
+                    "name": "Fixture regions",
+                    "description": "Test-only isolated candidate.",
+                    "plugin": {
+                        "entrypoint": (
+                            "implementations.perception.observation.plugin:"
+                            "FrameObservationPlugin"
+                        ),
+                        "config": {},
+                    },
+                    "runtime": {"python": "core"},
+                    "output": {
+                        "schema": "perception_text_v2",
+                        "kind": "sensor_frame",
+                        "semantic_labels": False,
+                        "depth": False,
+                    },
+                },
+            )
+            env = {"AUTOMA_LAB_PERCEPTION_ROOT": str(candidate_root)}
+
+            update = self.run_automa(
+                "vehicles",
+                "update",
+                "perception",
+                "--id",
+                "chase-sim-chaser",
+                "--candidate",
+                "fixture",
+                "--json",
+                runtime_root=runtime_root,
+                extra_env=env,
+            )
+            info = self.run_automa(
+                "vehicles",
+                "info",
+                "perception",
+                "--id",
+                "chase-sim-chaser",
+                "--json",
+                runtime_root=runtime_root,
+                extra_env=env,
+            )
+            text_info = self.run_automa(
+                "vehicles",
+                "info",
+                "perception",
+                "--id",
+                "chase-sim-chaser",
+                runtime_root=runtime_root,
+                extra_env=env,
+            )
+
+        update_payload = json.loads(update.stdout)
+        info_payload = json.loads(info.stdout)
+        self.assertEqual(update_payload["algorithm"], "candidate:fixture")
+        self.assertEqual(
+            update_payload["manifest"]["perception"]["mapper_spec"],
+            "cli.automa_cli.lab_plugins:LabPerceptionMapper",
+        )
+        self.assertEqual(
+            update_payload["manifest"]["perception"]["mapper_config"]["candidate_id"],
+            "fixture",
+        )
+        self.assertTrue(
+            update_payload["manifest"]["perception"]["candidate"]["source_tree_sha256"]
+        )
+        self.assertEqual(info_payload["activation"]["algorithm"], "candidate:fixture")
+        self.assertEqual(info_payload["algorithm_schema"]["candidate"]["id"], "fixture")
+        self.assertIn("Candidate: fixture (isolated local runtime)", text_info.stdout)
+        self.assertNotIn("Enabled plugins: none", text_info.stdout)
+
+    def test_lab_candidate_cannot_be_staged_for_physical_vehicle(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            runtime_root = root / "vehicles"
+            bundle = controller_bundle_paths(runtime_root / "piracer")
+            self.write_json(
+                Path(bundle["perception_runtime_dir"]) / "active.json",
+                {
+                    "schema": "automa_perception_activation_v0",
+                    "vehicle_id": "piracer",
+                    "vehicle_kind": "picar",
+                    "provider": "picar",
+                    "runtime": {"kind": "onboard_controller", "connection": {}},
+                    "controller_bundle": bundle,
+                    "perception": {
+                        "algorithm": "lightweight_observer",
+                        "mapper_spec": PERCEPTION_MAPPER_SPEC,
+                        "mapper_config": {},
+                    },
+                },
+            )
+            candidate_root = root / "candidates"
+            self.write_json(
+                candidate_root / "fixture" / "plugin.json",
+                {
+                    "schema": "automa_lab_perception_plugin_v0",
+                    "id": "fixture",
+                    "plugin": {
+                        "entrypoint": (
+                            "implementations.perception.observation.plugin:"
+                            "FrameObservationPlugin"
+                        ),
+                        "config": {},
+                    },
+                    "runtime": {"python": "core"},
+                    "output": {"schema": "perception_text_v2"},
+                },
+            )
+
+            result = self.run_automa(
+                "vehicles",
+                "update",
+                "perception",
+                "--id",
+                "piracer",
+                "--candidate",
+                "fixture",
+                runtime_root=runtime_root,
+                extra_env={"AUTOMA_LAB_PERCEPTION_ROOT": str(candidate_root)},
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("can only be activated for a Chase simulator vehicle", result.stdout)
+
+    def test_physical_perception_staging_reuses_local_metadata_while_offline(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime_root = Path(tmp) / "vehicles"
+            bundle = controller_bundle_paths(runtime_root / "piracer")
+            sync_controller_bundle(bundle, output=None)
+            self.write_json(
+                Path(bundle["perception_runtime_dir"]) / "active.json",
+                {
+                    "schema": "automa_perception_activation_v0",
+                    "vehicle_id": "piracer",
+                    "vehicle_kind": "picar",
+                    "provider": "picar",
+                    "runtime": {"kind": "onboard_controller", "connection": {}},
+                    "controller_bundle": bundle,
+                    "perception": {
+                        "algorithm": "lightweight_observer",
+                        "mapper_spec": PERCEPTION_MAPPER_SPEC,
+                        "mapper_config": dict(
+                            PERCEPTION_ALGORITHMS["lightweight_observer"]["mapper_config"]
+                        ),
+                    },
+                },
+            )
+
+            result = self.run_automa(
+                "vehicles",
+                "update",
+                "perception",
+                "--id",
+                "piracer",
+                "--algorithm",
+                "visual_observer",
+                "--json",
+                runtime_root=runtime_root,
+            )
+
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["vehicle_id"], "piracer")
+        self.assertEqual(payload["algorithm"], "visual_observer")
+        self.assertEqual(payload["manifest"]["provider"], "picar")
 
     def test_core_update_dry_run_can_skip_live_discovery(self) -> None:
         result = self.run_automa(
@@ -633,7 +985,7 @@ class AutomaCliHarness(unittest.TestCase):
             self.assertEqual(payload["schema"], "vehicle_autonomy_update_v0")
             self.assertTrue(payload["dry_run"])
             self.assertEqual(payload["target"]["provider"], "picar")
-            self.assertEqual(payload["activation"]["perception_algorithm"], "current")
+            self.assertEqual(payload["activation"]["perception_algorithm"], DEFAULT_PERCEPTION_ALGORITHM)
             self.assertEqual(payload["activation"]["decision_engine"], "idle")
             self.assertTrue(payload["source"]["tree_sha256"])
             self.assertIn("controller-releases", payload["commands"][0]["command"])
@@ -657,8 +1009,8 @@ class AutomaCliHarness(unittest.TestCase):
                     "provider": "chase-sim",
                     "controller_bundle": bundle,
                     "perception": {
-                        "algorithm": "current",
-                        "mapper_spec": CURRENT_MAPPER_SPEC,
+                        "algorithm": "lightweight_observer",
+                        "mapper_spec": PERCEPTION_MAPPER_SPEC,
                         "mapper_config": {
                             "plugins": ["frame"],
                             "plugin_specs": dict(PERCEPTION_PLUGIN_SPECS),
@@ -756,8 +1108,8 @@ class AutomaCliHarness(unittest.TestCase):
             {
                 "schema": "automa_perception_activation_v0",
                 "perception": {
-                    "algorithm": "current",
-                    "mapper_spec": "autonomy.perception.mappers.current:CurrentDirectoryPerceptionMapper",
+                    "algorithm": "sim_debug",
+                    "mapper_spec": PERCEPTION_MAPPER_SPEC,
                     "mapper_config": {
                         "plugins": ["frame", "sim_color_targets"],
                         "plugin_specs": dict(PERCEPTION_PLUGIN_SPECS),
@@ -889,7 +1241,7 @@ if args[:1] == ["status"]:
 
 if args[:2] == ["ui", "verify"]:
     state = read_state()
-    frontend_connected = mode in ("online", "offline_then_launch")
+    frontend_connected = mode in ("online", "offline_then_launch", "online_frontend_drops")
     frontend_connected = frontend_connected or bool(state.get("frontend_connected"))
     frontend_connected = frontend_connected or mode == "online_frontend_stale_until_open"
     print(json.dumps({
@@ -948,7 +1300,7 @@ if args[:2] == ["ui", "play-game-action"]:
 
 if args[:2] == ["ui", "play-debug"]:
     state = read_state()
-    frontend_connected = mode in ("online", "offline_then_launch")
+    frontend_connected = mode in ("online", "offline_then_launch", "online_frontend_drops")
     frontend_connected = frontend_connected or bool(state.get("frontend_connected"))
     if mode == "online_frontend_stale_until_open" and not state.get("play_ready"):
         print("Timed out waiting for Play debug.", file=sys.stderr)
@@ -956,6 +1308,13 @@ if args[:2] == ["ui", "play-debug"]:
     if not frontend_connected:
         print("Frontend not connected", file=sys.stderr)
         raise SystemExit(1)
+    if mode == "online_frontend_drops":
+        debug_calls = int(state.get("debug_calls", 0))
+        state["debug_calls"] = debug_calls + 1
+        write_state(state)
+        if debug_calls > 0:
+            print("Frontend disconnected after setup", file=sys.stderr)
+            raise SystemExit(1)
     print(json.dumps({"gameId": "chase", "frameIndex": 7}))
     raise SystemExit(0)
 

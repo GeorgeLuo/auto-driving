@@ -15,6 +15,7 @@ DEFAULT_SERVER = "http://127.0.0.1:3000/api"
 DEFAULT_UI_HTTP_URL = "http://127.0.0.1:5050"
 DEFAULT_TIMEOUT_MS = 2000
 DEFAULT_FRONTEND_CONNECT_TIMEOUT_MS = 8000
+DEFAULT_FRONTEND_STABILITY_OBSERVE_MS = 1500
 DEFAULT_SCENARIO_ID = "default"
 MAX_COMMAND_OUTPUT_CHARS = 4000
 MAX_DEPLOYMENT_ERROR_CHARS = 240
@@ -161,6 +162,26 @@ def ensure_simulator(
             scenario_summary["scenario"] = scenario_id
             play_debug_summary = _skipped_summary("frontend tab is not connected")
 
+    if frontend_ready and _play_frontend_ready(ui_summary, scenario_summary, play_debug_summary):
+        stability_frontend_run = _run_ui_verify(
+            executable,
+            auto_serve=False,
+            observe_ms=DEFAULT_FRONTEND_STABILITY_OBSERVE_MS,
+        )
+        stability_frontend = _summarize_frontend_run(stability_frontend_run)
+        commands.append(stability_frontend_run.to_dict())
+        stability_debug_run = _run_simeval(executable, ["ui", "play-debug", "--summary"])
+        stability_debug = _summarize_play_debug_run(stability_debug_run)
+        commands.append(stability_debug_run.to_dict())
+        stability_summary = {
+            "ok": bool(stability_frontend["frontend_connected"] and stability_debug["ok"]),
+            "observe_ms": DEFAULT_FRONTEND_STABILITY_OBSERVE_MS,
+            "frontend": stability_frontend,
+            "play_debug": stability_debug,
+        }
+    else:
+        stability_summary = _skipped_summary("initial Play frontend setup did not complete")
+
     final_run = _run_simeval(executable, ["status", "--all", "--timeout", str(timeout_ms)])
     final_status = _summarize_status_run(final_run)
     commands.append(final_run.to_dict())
@@ -172,6 +193,7 @@ def ensure_simulator(
         and ui_summary["ok"]
         and scenario_summary["ok"]
         and play_debug_summary["ok"]
+        and stability_summary["ok"]
         and not launch_failed
     )
     errors = []
@@ -191,6 +213,8 @@ def ensure_simulator(
         errors.append(f"could not select the {scenario_id!r} simulator scenario")
     if not play_debug_summary["ok"]:
         errors.append("Chase Play debug is not available")
+    if not stability_summary["ok"] and not stability_summary.get("skipped"):
+        errors.append("Chase frontend did not remain usable after setup")
 
     payload["initial_status"] = initial_status
     payload["launch"] = {
@@ -209,6 +233,7 @@ def ensure_simulator(
     payload["ui"] = ui_summary
     payload["scenario"] = scenario_summary
     payload["play_debug"] = play_debug_summary
+    payload["stability"] = stability_summary
     payload["final_status"] = final_status
     payload["result"] = {
         "usable": usable,
@@ -267,11 +292,13 @@ def _run_process(command: list[str], *, timeout_s: float = 20) -> SimevalRun:
             duration_ms=int((time.perf_counter() - started) * 1000),
         )
     except subprocess.TimeoutExpired as exc:
+        stdout = _subprocess_text(exc.stdout)
+        stderr = _subprocess_text(exc.stderr)
         return SimevalRun(
             args=tuple(command),
             exit_code=124,
-            stdout=exc.stdout or "",
-            stderr=(exc.stderr or "") + f"\nCommand timed out after {timeout_s:g}s.",
+            stdout=stdout,
+            stderr=stderr + f"\nCommand timed out after {timeout_s:g}s.",
             duration_ms=int((time.perf_counter() - started) * 1000),
         )
     except OSError as exc:
@@ -428,8 +455,8 @@ def _status_deployments(parsed: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _deployment_summary(item: dict[str, Any], *, source: str) -> dict[str, Any]:
-    health = item.get("health") if isinstance(item.get("health"), dict) else {}
-    status = item.get("status") if isinstance(item.get("status"), dict) else {}
+    health = _dict_field(item, "health")
+    status = _dict_field(item, "status")
     overall = str(item.get("overall", "unknown"))
     online = (
         overall in {"running", "healthy", "online", "ready"}
@@ -518,7 +545,7 @@ def _summarize_frontend_run(run: SimevalRun) -> dict[str, Any]:
         }
 
     latest_sample = _latest_sample(parsed)
-    server = parsed.get("server") if isinstance(parsed.get("server"), dict) else {}
+    server = _dict_field(parsed, "server")
     return {
         "ok": True,
         "ui_server": True,
@@ -607,8 +634,8 @@ def _result(payload: dict[str, Any], *, json_output: bool, exit_code: int) -> Co
 
 
 def _format_status(payload: dict[str, Any]) -> str:
-    status = payload.get("status") if isinstance(payload.get("status"), dict) else {}
-    frontend = payload.get("frontend") if isinstance(payload.get("frontend"), dict) else {}
+    status = _dict_field(payload, "status")
+    frontend = _dict_field(payload, "frontend")
     lines = [
         "Simulator status",
         "----------------",
@@ -632,16 +659,17 @@ def _format_status(payload: dict[str, Any]) -> str:
 
 
 def _format_ensure(payload: dict[str, Any]) -> str:
-    result = payload.get("result") if isinstance(payload.get("result"), dict) else {}
-    initial = payload.get("initial_status") if isinstance(payload.get("initial_status"), dict) else {}
-    final = payload.get("final_status") if isinstance(payload.get("final_status"), dict) else {}
-    launch = payload.get("launch") if isinstance(payload.get("launch"), dict) else {}
-    frontend = payload.get("frontend") if isinstance(payload.get("frontend"), dict) else {}
-    frontend_after = frontend.get("after") if isinstance(frontend.get("after"), dict) else {}
-    browser_open = frontend.get("browser_open") if isinstance(frontend.get("browser_open"), dict) else {}
-    ui = payload.get("ui") if isinstance(payload.get("ui"), dict) else {}
-    scenario = payload.get("scenario") if isinstance(payload.get("scenario"), dict) else {}
-    play_debug = payload.get("play_debug") if isinstance(payload.get("play_debug"), dict) else {}
+    result = _dict_field(payload, "result")
+    initial = _dict_field(payload, "initial_status")
+    final = _dict_field(payload, "final_status")
+    launch = _dict_field(payload, "launch")
+    frontend = _dict_field(payload, "frontend")
+    frontend_after = _dict_field(frontend, "after")
+    browser_open = _dict_field(frontend, "browser_open")
+    ui = _dict_field(payload, "ui")
+    scenario = _dict_field(payload, "scenario")
+    play_debug = _dict_field(payload, "play_debug")
+    stability = _dict_field(payload, "stability")
 
     lines = [
         "Simulator ensure",
@@ -661,8 +689,15 @@ def _format_ensure(payload: dict[str, Any]) -> str:
             f"browser open attempted: {_yes_no(bool(browser_open.get('attempted')))}",
             f"frontend tab connected: {_yes_no(bool(frontend_after.get('frontend_connected')))}",
             f"play UI selected: {_yes_no(bool(ui.get('ok')))}",
-            f"default scenario selected: {_yes_no(bool(scenario.get('ok')))}",
+            f"scenario selected: {scenario.get('scenario', DEFAULT_SCENARIO_ID)} "
+            f"({_yes_no(bool(scenario.get('ok')))})",
             f"chase debug ready: {_yes_no(bool(play_debug.get('ok')))}",
+            "frontend stable: "
+            + (
+                "not checked"
+                if stability.get("skipped")
+                else _yes_no(bool(stability.get("ok")))
+            ),
             f"final online: {_yes_no(bool(final.get('online')))}",
             f"usable: {_yes_no(bool(result.get('usable')))}",
         ]
@@ -709,7 +744,7 @@ def _format_deployments(deployments: Any) -> list[str]:
 
 
 def _simeval_label(payload: dict[str, Any]) -> str:
-    simeval = payload.get("simeval") if isinstance(payload.get("simeval"), dict) else {}
+    simeval = _dict_field(payload, "simeval")
     if not simeval.get("available"):
         return "not found"
     return str(simeval.get("executable"))
@@ -721,6 +756,17 @@ def _first_nonempty(*values: Any) -> str:
         if text:
             return text.splitlines()[0]
     return ""
+
+
+def _dict_field(mapping: dict[str, Any], key: str) -> dict[str, Any]:
+    value = mapping.get(key)
+    return value if isinstance(value, dict) else {}
+
+
+def _subprocess_text(value: str | bytes | None) -> str:
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return value or ""
 
 
 def _yes_no(value: bool) -> str:

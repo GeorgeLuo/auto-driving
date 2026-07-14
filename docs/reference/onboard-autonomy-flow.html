@@ -395,9 +395,9 @@
           <h3>Optional Perception</h3>
           <p>A configured mapper turns sensor readings into <code>PerceptionText</code> evidence.</p>
           <ul>
-            <li>Chase loads an ordered, staged plugin chain.</li>
+            <li>The stable stage is agnostic of sensor and evidence kinds.</li>
+            <li>Plugins declare and resolve their own input components.</li>
             <li>Plugins emit signals, things, artifacts, and limits.</li>
-            <li>The Pi runtime currently leaves this stage unset.</li>
           </ul>
         </div>
 
@@ -441,7 +441,7 @@
       <div class="feedback">
         <div class="node vehicle">
           <h3>On PiRacer</h3>
-          <p><code>AutonomyPilotPart</code> adapts Donkey vehicle-memory values to the shared cycle. The deployed activation selects the engine; the validated drive mode is still <code>user</code>.</p>
+          <p><code>AutonomyPilotPart</code> adapts Donkey vehicle-memory values to the shared cycle. Perception and decision activations select the plugins and engine; the validated drive mode remains <code>user</code>.</p>
         </div>
         <div class="node perception">
           <h3>In Simulation</h3>
@@ -474,7 +474,7 @@
         <div class="step">
           <div>
             <h3>Perceive</h3>
-            <p>The Chase worker runs the locally staged perception chain. The current Donkey host has no perception stage, so this value is <code>null</code> on the Pi.</p>
+            <p>The activated generic plugin-chain stage passes a component context over the sensor snapshot. Each configured implementation resolves only the components it needs. The same stage shape runs locally for Chase and on the Donkey host.</p>
           </div>
         </div>
         <div class="step">
@@ -533,7 +533,7 @@
           </tr>
           <tr>
             <td>Perception</td>
-            <td><code>PerceptionRequest</code> over a sensor snapshot.</td>
+            <td>Sensor-agnostic <code>PerceptionRequest</code>; plugins query components from its snapshot.</td>
             <td><code>PerceptionText</code> containing evidence and limits.</td>
             <td><code>autonomy/perception/</code>, <code>implementations/perception/</code></td>
           </tr>

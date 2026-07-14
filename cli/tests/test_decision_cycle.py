@@ -36,14 +36,12 @@ class DecisionCycleTests(unittest.TestCase):
                 created_at_ms=456,
                 sensor_snapshot={},
                 summary=("custom observation",),
-                confidence=0.4,
             )
 
         result = DecisionCycle(DecisionStages(observe=observe)).run(self.context())
 
         self.assertIsNotNone(result.observation)
         self.assertEqual(result.observation.observation_id, "frame_000")
-        self.assertEqual(result.observation.confidence, 0.4)
         self.assertEqual(result.control.reason, "decision-cycle-idle")
 
     def test_action_only_cycle_uses_action_output(self) -> None:

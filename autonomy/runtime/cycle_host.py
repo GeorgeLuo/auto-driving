@@ -9,8 +9,6 @@ from autonomy.decision.cycle import (
     DecisionFrameContext,
     DecisionStages,
 )
-from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID
-
 from .engine import AutonomySnapshot
 from .manager import AutonomyManager
 
@@ -57,7 +55,6 @@ class AutonomyCycleHost:
         del memory, patterns, projections
         return self.manager.step(
             AutonomySnapshot(
-                image_array=_front_camera_value(context),
                 sensor_snapshot=context.sensor_snapshot,
                 perception=perception,
                 observation=observation,
@@ -72,11 +69,3 @@ class AutonomyCycleHost:
                 metadata=dict(context.metadata),
             )
         )
-
-
-def _front_camera_value(context: DecisionFrameContext) -> Any:
-    snapshot = context.sensor_snapshot
-    if snapshot is None:
-        return None
-    reading = snapshot.readings.get(FRONT_CAMERA_SENSOR_ID)
-    return None if reading is None else reading.value

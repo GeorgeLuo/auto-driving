@@ -1,0 +1,47 @@
+{
+  "schema": "automa_live_perception_view_validation_v0",
+  "validated_at": "2026-07-13",
+  "vehicle_id": "chase-sim-chaser",
+  "scenario": "chaser-depth-obstacles",
+  "activation": {
+    "algorithm": "candidate:fastsam",
+    "mapper": "cli.automa_cli.lab_plugins:LabPerceptionMapper",
+    "decision_engine": "idle",
+    "runtime_boundary": "isolated local candidate worker"
+  },
+  "publication": {
+    "schema": "automa_perception_publication_v0",
+    "image_resolution_px": [
+      640,
+      480
+    ],
+    "thing_count": 12,
+    "region_proposal_count": 11,
+    "polygon_count": 11,
+    "artifact_count": 0
+  },
+  "viewer": {
+    "desktop_live": true,
+    "mobile_live": true,
+    "desktop_horizontal_overflow": false,
+    "mobile_horizontal_overflow": false,
+    "browser_console_errors": 0,
+    "polygon_render_probe": {
+      "thing_id": "fastsam_region_002",
+      "vertices": 6,
+      "polygon_to_box_area_ratio": 0.464,
+      "rendered_paint_to_box_area_ratio": 0.562
+    },
+    "label_layout": "short stable ids with collision-aware placement"
+  },
+  "recording": {
+    "enabled": false,
+    "candidate_artifact_files_written": 0,
+    "latest_frame_overwrite_only": true
+  },
+  "lifecycle": {
+    "candidate_workers_remaining_after_parent_exit": 0,
+    "simulator_frontend_required": true,
+    "observed_external_failure": "automation stops and reports an error when the controlling simulator frontend disconnects"
+  }
+}

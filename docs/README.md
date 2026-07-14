@@ -5,15 +5,15 @@ Read this file first when starting work.
 
 ## Active Work
 
-The active milestone is
-[`002-perception-hardening/plan.html`](milestones/002-perception-hardening/plan.html).
-It hardens image-to-representation approaches and simulator/Pi experiment
-parity before deciding what perception evidence is reliable enough for memory.
+Milestone 003, [Test Architecture and Operator Contracts](milestones/003-test-architecture-and-operator-contracts/plan.html),
+is active. It reorganizes tests by ownership, adds direct coverage for settled
+autonomy contracts, formalizes human and machine CLI output expectations, and
+establishes deterministic CI with explicit live-system boundaries.
 
 ## Reading Order
 
-1. Read the active milestone plan for the current goal, constraints, and open
-   decisions.
+1. Read the active milestone plan when one is listed above. If none is active,
+   formalize the next goal before implementation.
 2. Read [`milestones/completed.md`](milestones/completed.md) for durable context
    from closed work.
 3. Read only the relevant documents under `reference/` for current system

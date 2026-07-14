@@ -12,7 +12,6 @@ def clamp_unit(value: float) -> float:
 class AutonomySnapshot:
     """Inputs made available to one onboard autonomy engine step."""
 
-    image_array: Any = None
     sensor_snapshot: Any = None
     perception: Any = None
     observation: Any = None
@@ -59,7 +58,6 @@ class IdleAutonomyEngine:
             "engine_spec": f"{self.__class__.__module__}:{self.__class__.__name__}",
             "purpose": "Safe default that always holds position.",
             "inputs": [
-                "image_array",
                 "sensor_snapshot",
                 "perception",
                 "observation",
@@ -88,7 +86,6 @@ class IdleAutonomyEngine:
             reason=self.reason,
             metadata={
                 "mode": snapshot.mode,
-                "has_image": snapshot.image_array is not None,
                 "has_sensor_snapshot": snapshot.sensor_snapshot is not None,
                 "has_perception": snapshot.perception is not None,
                 "has_observation": snapshot.observation is not None,

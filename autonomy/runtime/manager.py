@@ -4,7 +4,7 @@ import importlib
 import threading
 import time
 import traceback
-from typing import Any
+from typing import Any, Callable
 
 from .engine import AutonomyControl, AutonomySnapshot
 
@@ -41,7 +41,18 @@ class AutonomyManager:
         self.error_count = 0
         self.last_error: str | None = None
         self.last_control = AutonomyControl(reason="engine-not-loaded")
+        self._status_providers: dict[str, Callable[[], dict[str, Any]]] = {}
         self.load_engine(default_engine_spec, self.engine_config)
+
+    def register_status_provider(
+        self,
+        component_id: str,
+        provider: Callable[[], dict[str, Any]],
+    ) -> None:
+        if not component_id or not callable(provider):
+            raise ValueError("runtime status providers require an id and callable")
+        with self._lock:
+            self._status_providers[component_id] = provider
 
     def load_engine(
         self,
@@ -117,7 +128,7 @@ class AutonomyManager:
 
     def status(self) -> dict[str, Any]:
         with self._lock:
-            return {
+            payload = {
                 "engine": self.engine_spec,
                 "engine_config": self.engine_config,
                 "engine_schema": self.engine_schema,
@@ -128,6 +139,18 @@ class AutonomyManager:
                 "last_error": self.last_error,
                 "last_control": self.last_control.to_dict(),
             }
+            providers = dict(self._status_providers)
+        components: dict[str, Any] = {}
+        for component_id, provider in providers.items():
+            try:
+                components[component_id] = provider()
+            except Exception as exc:
+                components[component_id] = {
+                    "status": "error",
+                    "error": f"{type(exc).__name__}: {exc}",
+                }
+        payload["components"] = components
+        return payload
 
     def _instantiate_engine(
         self,

@@ -127,7 +127,7 @@
     .work-body p { margin-top: 12px; }
 
     .progress-track { height: 10px; margin-top: 12px; border-radius: 5px; overflow: hidden; background: var(--neutral); }
-    .progress-fill { width: 16.6667%; height: 100%; background: var(--green); }
+    .progress-fill { width: 33.3333%; height: 100%; background: var(--green); }
     .small { font-size: 13px; color: var(--muted); }
 
     @media (max-width: 860px) {
@@ -196,9 +196,9 @@
             </tr>
             <tr>
               <td>Test organization</td>
-              <td><span class="status active">Support boundary established</span></td>
-              <td>Shared command execution, runtime fixtures, and external-process fakes now live under <code>tests/support</code>; the CLI scenario monolith fell from 1,385 to 1,055 lines.</td>
-              <td>Behavioral tests still live under <code>cli/tests</code> and need a mechanical ownership migration.</td>
+              <td><span class="status done">Ownership migration complete</span></td>
+              <td>Thirty topical test modules now live under <code>tests/</code> by autonomy, implementation, CLI, integration, lab, and live-system ownership. The old <code>cli/tests</code> location and duplicate runner are removed.</td>
+              <td>Organization is settled; direct contract coverage can now grow within the owning layer.</td>
             </tr>
             <tr>
               <td>Stable autonomy contracts</td>
@@ -273,19 +273,19 @@
       </p>
       <div class="grid two" style="margin-top: 14px;">
         <div class="card goal">
-          <h3>Current PR: Test Support Contract</h3>
-          <p><span class="status active">Implemented - ready for review</span> <strong>Review shape:</strong> deep and narrow.</p>
-          <p style="margin-top: 9px;"><strong>Deliverable:</strong> shared CLI execution, runtime-state builders, and external-process fakes extracted from broad test files, with ownership rules documented.</p>
-          <p style="margin-top: 9px;"><strong>Review question:</strong> Are these helpers limited to test mechanics rather than becoming a second application framework?</p>
-          <p style="margin-top: 9px;"><strong>Non-goals:</strong> moving the whole suite, adding behavioral coverage, changing production behavior, or adding CI.</p>
-          <p style="margin-top: 9px;"><strong>Evidence:</strong> all 41 affected CLI scenarios pass; the canonical runner still reports 94 tests in 28.6 seconds, with 93 passes and one explicit live skip.</p>
+          <h3>Current PR: Ownership Migration</h3>
+          <p><span class="status active">Implemented - ready for review</span> <strong>Review shape:</strong> broad and mechanical.</p>
+          <p style="margin-top: 9px;"><strong>Deliverable:</strong> existing tests moved and topically split under the mirrored <code>tests/</code> tree, with <code>tests/run.py</code> as the sole canonical runner.</p>
+          <p style="margin-top: 9px;"><strong>Review question:</strong> Does each test path identify its owning production layer without changing behavior or discovery?</p>
+          <p style="margin-top: 9px;"><strong>Non-goals:</strong> new assertions, production changes, output-policy changes, coverage gates, or compatibility runners.</p>
+          <p style="margin-top: 9px;"><strong>Evidence:</strong> 94 tests still run in 28.812 seconds, with 93 passes and one explicit live skip; no production file changed.</p>
         </div>
         <div class="card interface">
-          <h3>Next After Review: Ownership Migration</h3>
-          <p><span class="status pending">Queued, not started</span> <strong>Expected shape:</strong> broad and mechanical.</p>
-          <p style="margin-top: 9px;"><strong>Review question:</strong> Does each test path identify its owning production layer without changing behavior or discovery?</p>
-          <p style="margin-top: 9px;"><strong>Expected deliverable:</strong> move and topically split existing tests under the mirrored root <code>tests/</code> tree, make <code>tests/run.py</code> canonical, and remove <code>cli/run_tests.py</code> and the old test location.</p>
-          <p style="margin-top: 9px;"><strong>Non-goals:</strong> new assertions, production changes, output-policy changes, coverage gates, or compatibility runners.</p>
+          <h3>Next After Review: Runtime Manager Failures</h3>
+          <p><span class="status pending">Queued, not started</span> <strong>Expected shape:</strong> deep and narrow.</p>
+          <p style="margin-top: 9px;"><strong>Review question:</strong> Does the runtime manager preserve a known-good engine and return safe, inspectable state across load, step, and status-provider failures?</p>
+          <p style="margin-top: 9px;"><strong>Expected deliverable:</strong> direct tests for failed reload preservation, step failure and recovery, and status-provider isolation.</p>
+          <p style="margin-top: 9px;"><strong>Non-goals:</strong> broad autonomy coverage, CLI output changes, or production refactoring unless a direct test exposes a defect.</p>
         </div>
       </div>
       <div class="table-wrap" style="margin-top: 16px;">
@@ -297,7 +297,7 @@
             <tr>
               <td>Stable autonomy contracts</td>
               <td>Direct decision, vehicle, runtime, perception, activation, and failure-boundary tests.</td>
-              <td>How the reorganized test ownership and fixtures divide these contracts into coherent review units.</td>
+              <td>Whether the runtime manager's current failure behavior matches its intended preservation and recovery contract.</td>
             </tr>
             <tr>
               <td>Operator output contract</td>
@@ -324,7 +324,7 @@
         <li>Record what changed, what was learned, and which assumptions failed.</li>
         <li>Promote the next horizon item into a concrete PR only with that evidence.</li>
       </ol>
-      <p class="small">Current delivery state: the support contract is implemented and awaiting review. The mechanical ownership migration is queued but must not begin until this boundary is accepted.</p>
+      <p class="small">Current delivery state: the support contract is merged. The ownership migration is implemented and ready for review; the runtime-manager failure cluster is defined but has not started.</p>
     </section>
 
     <section class="panel">
@@ -348,11 +348,12 @@
     operations/                  generic operation plans and scoring
     perception/                  concrete component and plugin behavior
     runtime/                     Donkey runtime adapter behavior
-    vehicle/                     Chase and PiRacer adapter behavior
 
   cli/
     help/                        command discovery and scoped usage
+    vehicles/                    discovery and vehicle selection
     automation/                  lifecycle, status, stream, and recording defaults
+    decision/                    decision activation and inspection
     perception/                  staging, selection, info, replay, and view behavior
     simulators/                  discovery, ensure, scenario selection, and failures
     deployment/                  local bundles and physical deployment reporting
@@ -360,15 +361,16 @@
   integration/
     controller_bundle/           staged code and activation compatibility
     automation_pipeline/         capture, perception, cycle, and publication flow
-    physical_deploy/              remote installer contract without live hardware
+    physical_deploy/             remote installer contract without live hardware
+
+  lab/
+    perception/                  candidate plugin behavior kept outside production
 
   live/
-    chase_simulator/             bounded opt-in simulator checks
-    piracer/                     bounded opt-in physical checks</pre>
+    chase_simulator/             bounded opt-in simulator checks</pre>
       <p class="note">
-        Retire <code>cli/run_tests.py</code> after <code>tests/run.py</code> becomes
-        canonical. Do not keep wrappers or compatibility entrypoints that execute
-        the same business logic through multiple paths.
+        <code>tests/run.py</code> is canonical. The former runner and test location
+        were removed; no wrapper or compatibility entrypoint remains.
       </p>
     </section>
 
@@ -393,8 +395,7 @@
         </div>
       </div>
       <pre class="command">python3 tests/run.py
-python3 tests/run.py --live-sim
-python3 tests/run.py --live-pi</pre>
+python3 tests/run.py --live-sim</pre>
       <p class="small">The flagless command runs all deterministic unit, CLI, and local integration tests. Topic-specific development runs use standard unittest module selection rather than adding many runner flags.</p>
     </section>
 
@@ -465,17 +466,17 @@ python3 tests/run.py --live-pi</pre>
         </div>
       </details>
 
-      <details class="work-item" data-status="active" open>
-        <summary><span>2. Reorganize Tests Without Behavior Changes</span><span class="status active">Active</span></summary>
+      <details class="work-item" data-status="done" open>
+        <summary><span>2. Reorganize Tests Without Behavior Changes</span><span class="status done">Completed</span></summary>
         <div class="work-body">
-          <p>The test-support contract is implemented and green. Review it before applying the pattern through the mechanical ownership migration.</p>
+          <p>The support contract is merged and the mechanical ownership migration is implemented without changing production behavior or test discovery.</p>
           <ul>
             <li>Extracted public-command execution, explicit runtime documents, and external executable fakes under <code>tests/support</code>.</li>
             <li>Documented that shared support cannot call internal handlers, derive expected outcomes, render operator output, or reproduce production logic.</li>
-            <li>Split <code>test_automa_cli.py</code> by command family.</li>
-            <li>Separate stable perception contracts from concrete plugin tests.</li>
-            <li>Separate activation parsing, runtime integration, and Donkey adapter checks.</li>
-            <li>Keep the full deterministic suite green before adding assertions.</li>
+            <li>Split the 1,055-line CLI scenario file by command family and distributed all test modules by owning layer.</li>
+            <li>Separated stable perception contracts, concrete plugin tests, activation parsing, runtime integration, and Donkey adapter checks.</li>
+            <li>Promoted <code>tests/run.py</code> as the sole runner and removed <code>cli/tests</code> without compatibility paths.</li>
+            <li>Preserved the complete 94-test baseline before adding new behavioral assertions.</li>
           </ul>
         </div>
       </details>
@@ -533,10 +534,10 @@ python3 tests/run.py --live-pi</pre>
         </div>
       </details>
 
-      <div class="progress-track" aria-label="Milestone work packages completed: 1 of 6">
+      <div class="progress-track" aria-label="Milestone work packages completed: 2 of 6">
         <div class="progress-fill"></div>
       </div>
-      <p class="small">Progress: 1 of 6 work packages complete. Test reorganization is active; its first deep-review deliverable is ready.</p>
+      <p class="small">Progress: 2 of 6 work packages complete. Test ownership is settled; runtime-manager failure contracts are the next review unit.</p>
     </section>
 
     <section class="panel">
@@ -613,6 +614,7 @@ python3 tests/run.py --live-pi</pre>
             <tr><td>2026-07-13</td><td>Make coverage informational before setting a gate.</td><td>A measured baseline and explicit behavioral invariants are more useful than choosing an arbitrary percentage.</td></tr>
             <tr><td>2026-07-13</td><td>Use a rolling PR horizon rather than a fixed milestone schedule.</td><td>The end state and immediate foundation should be clear, while later PR boundaries should be chosen from evidence gathered as each deliverable approaches the milestone goal.</td></tr>
             <tr><td>2026-07-14</td><td>Keep shared test support limited to process execution, explicit fixture documents, and external executable doubles.</td><td>The support layer should remove test mechanics from behavioral scenarios without becoming a second route to application behavior.</td></tr>
+            <tr><td>2026-07-14</td><td>Mirror tests by production ownership and keep lab, integration, and live behavior explicit.</td><td>A failing path should identify the responsible layer, while experimental and external-state checks must not appear to be stable framework contracts.</td></tr>
           </tbody>
         </table>
       </div>

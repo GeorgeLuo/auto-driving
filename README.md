@@ -25,13 +25,13 @@ Use the CLI from the repository root:
 Run the offline test harness:
 
 ```sh
-PYTHONDONTWRITEBYTECODE=1 python3 cli/run_tests.py
+PYTHONDONTWRITEBYTECODE=1 python3 tests/run.py
 ```
 
 Include the live Chase simulator smoke test:
 
 ```sh
-PYTHONDONTWRITEBYTECODE=1 python3 cli/run_tests.py --live-sim
+PYTHONDONTWRITEBYTECODE=1 python3 tests/run.py --live-sim
 ```
 
 ## Project Layout
@@ -41,7 +41,9 @@ PYTHONDONTWRITEBYTECODE=1 python3 cli/run_tests.py --live-sim
   perception algorithms.
 - `implementations/` contains concrete vehicle adapters, perception plugins,
   runtime hosts, and bounded operations.
-- `cli/` contains the `automa` command and its scenario test harness.
+- `cli/` contains the `automa` command and its implementation.
+- `tests/` mirrors production ownership and contains deterministic, integration,
+  CLI, and explicitly opt-in live validation.
 - `deploy/targets/donkeycar/` contains the physical harness, pinned DonkeyCar
   source manifest, and local vendor patch.
 - `frontend/donkeycar/` contains the optional local DonkeyCar control frontend.

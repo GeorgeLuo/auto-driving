@@ -229,12 +229,56 @@
             "category": "tooling",
             "commit_policy": "source",
             "responsibility": "Vehicle, simulator, deploy, implementation, runtime, and diagnostic command implementation."
+          }
+        ]
+      },
+      {
+        "path": "tests/",
+        "category": "verification",
+        "commit_policy": "source",
+        "responsibility": "Repository-owned tests organized by production ownership, cross-layer integration, and explicit live-system boundaries.",
+        "children": [
+          {
+            "path": "tests/autonomy/",
+            "category": "verification",
+            "commit_policy": "source",
+            "responsibility": "Direct stable-kernel contract and invariant tests."
           },
           {
-            "path": "cli/tests/",
-            "category": "tooling",
+            "path": "tests/implementations/",
+            "category": "verification",
             "commit_policy": "source",
-            "responsibility": "Common scenario tests, with offline defaults and explicit live-simulator coverage."
+            "responsibility": "Concrete adapter, plugin, operation, and runtime-host behavior tests."
+          },
+          {
+            "path": "tests/cli/",
+            "category": "verification",
+            "commit_policy": "source",
+            "responsibility": "Black-box Automa command behavior grouped by operator command family."
+          },
+          {
+            "path": "tests/integration/",
+            "category": "verification",
+            "commit_policy": "source",
+            "responsibility": "Deterministic compatibility checks spanning multiple production ownership boundaries."
+          },
+          {
+            "path": "tests/lab/",
+            "category": "verification",
+            "commit_policy": "source",
+            "responsibility": "Tests for experimental candidates that have not been promoted into concrete implementations."
+          },
+          {
+            "path": "tests/live/",
+            "category": "verification",
+            "commit_policy": "source",
+            "responsibility": "Bounded live-system checks that are never enabled by the flagless runner."
+          },
+          {
+            "path": "tests/support/",
+            "category": "verification-support",
+            "commit_policy": "source",
+            "responsibility": "Test-only public command runners, explicit fixture documents, and external executable doubles."
           }
         ]
       },

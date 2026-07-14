@@ -1,6 +1,7 @@
 # Documentation Guide
 
-This directory separates current reference material from milestone history.
+This directory separates current reference material, future-facing synthesis,
+and milestone history.
 Read this file first when starting work.
 
 ## Active Work
@@ -18,6 +19,8 @@ establishes deterministic CI with explicit live-system boundaries.
    from closed work.
 3. Read only the relevant documents under `reference/` for current system
    behavior.
+4. Consult `synthesis/` when evaluating future work or looking for previously
+   researched approaches. Synthesis notes are evidence, not backlog commitments.
 
 Do not treat closed milestone plans as current architecture. They are frozen
 records that explain why prior work was shaped the way it was.
@@ -26,6 +29,8 @@ records that explain why prior work was shaped the way it was.
 
 - `reference/` is the living source of truth for architecture diagrams and
   contracts.
+- `synthesis/` relates external research and repository evidence to bounded
+  candidate work without making it part of the active milestone.
 - `milestones/<number>-<slug>/plan.html` is the detailed plan and status record
   for one milestone.
 - `milestones/<number>-<slug>/closeout.md` is the compressed durable summary

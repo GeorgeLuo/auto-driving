@@ -15,7 +15,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from autonomy.perception import build_perception_request  # noqa: E402
-from autonomy.perception.mappers.plugin_chain import PluginChainPerceptionMapper  # noqa: E402
+from autonomy.perception.mappers import PluginPerceptionMapper  # noqa: E402
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot  # noqa: E402
 
 
@@ -29,14 +29,19 @@ def main() -> int:
     candidate_id = str(manifest["id"])
     plugin = manifest["plugin"]
     config = _resolved_config(dict(plugin.get("config") or {}), manifest_path.parent)
+    frame_spec = "implementations.perception.observation.plugin:FrameObservationPlugin"
+    candidate_spec = str(plugin["entrypoint"])
+    if candidate_spec == frame_spec:
+        plugin_ids = [candidate_id]
+        plugin_specs = {candidate_id: candidate_spec}
+    else:
+        plugin_ids = ["frame", candidate_id]
+        plugin_specs = {"frame": frame_spec, candidate_id: candidate_spec}
 
     with contextlib.redirect_stdout(sys.stderr):
-        mapper = PluginChainPerceptionMapper(
-            plugins=["frame", candidate_id],
-            plugin_specs={
-                "frame": "implementations.perception.observation.plugin:FrameObservationPlugin",
-                candidate_id: str(plugin["entrypoint"]),
-            },
+        mapper = PluginPerceptionMapper(
+            plugins=plugin_ids,
+            plugin_specs=plugin_specs,
             plugin_configs={candidate_id: config},
         )
 
@@ -56,6 +61,11 @@ def main() -> int:
                 mapper.reset()
                 _write({"request_id": request_id, "ok": True, "reset": True})
                 continue
+            if action == "describe_schema":
+                with contextlib.redirect_stdout(sys.stderr):
+                    schema = mapper.describe_schema()
+                _write({"request_id": request_id, "ok": True, "schema": schema})
+                continue
             if action != "perceive":
                 raise ValueError(f"unsupported worker command {action!r}")
             result = _perceive(mapper, command)
@@ -74,7 +84,7 @@ def main() -> int:
     return 0
 
 
-def _perceive(mapper: PluginChainPerceptionMapper, command: dict[str, Any]):
+def _perceive(mapper: PluginPerceptionMapper, command: dict[str, Any]):
     image_path = Path(str(command["image_path"])).resolve()
     if not image_path.is_file():
         raise FileNotFoundError(image_path)

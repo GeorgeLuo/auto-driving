@@ -7,6 +7,7 @@ from typing import Any
 
 from .automation import (
     get_vehicle_automation_status,
+    record_vehicle_automation_terminal_result,
     restart_vehicle_automation,
     run_vehicle_automation,
     start_vehicle_automation_background,
@@ -20,9 +21,12 @@ from .decision import (
 )
 from .lab_plugins import list_perception_candidates, setup_perception_candidate
 from .operations import run_vehicle_startup_check
-from .perception import (
+from implementations.perception.catalog import (
     DEFAULT_PERCEPTION_ALGORITHM,
     available_perception_algorithm_ids,
+)
+
+from .perception import (
     get_vehicle_perception_info,
     set_vehicle_perception_plugin,
     update_vehicle_perception,
@@ -117,8 +121,8 @@ def build_parser() -> argparse.ArgumentParser:
     automation_help.set_defaults(handler=_handle_vehicles_automation_help)
     automation_run = automation_commands.add_parser(
         "run",
-        help="Run the active automation loop for a vehicle.",
-        description="Run the active automation loop for a vehicle.",
+        help="Start the automation worker and verify its first camera frame.",
+        description="Start the automation worker and verify its first camera frame.",
     )
     automation_run.add_argument(
         "--id",
@@ -135,14 +139,14 @@ def build_parser() -> argparse.ArgumentParser:
     automation_run.add_argument(
         "--interval-s",
         type=float,
-        default=1.0,
-        help="Delay between perception frames. Use 0 for a bounded fast run.",
+        default=0.25,
+        help="Target delay between camera captures. Slow perception skips superseded frames.",
     )
     automation_run.add_argument(
         "--frames",
         type=int,
         default=0,
-        help="Number of frames to process. 0 means run until Ctrl-C.",
+        help="Number of camera frames to capture. 0 means run until Ctrl-C.",
     )
     automation_run.add_argument(
         "--observe-only",
@@ -211,8 +215,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     automation_restart = automation_commands.add_parser(
         "restart",
-        help="Stop and start the background automation loop for a vehicle.",
-        description="Stop and start the background automation loop for a vehicle.",
+        help="Restart the automation worker and verify its first camera frame.",
+        description="Restart the automation worker and verify its first camera frame.",
     )
     automation_restart.add_argument(
         "--id",
@@ -229,14 +233,14 @@ def build_parser() -> argparse.ArgumentParser:
     automation_restart.add_argument(
         "--interval-s",
         type=float,
-        default=1.0,
-        help="Delay between perception frames.",
+        default=0.25,
+        help="Target delay between camera captures. Slow perception skips superseded frames.",
     )
     automation_restart.add_argument(
         "--frames",
         type=int,
         default=0,
-        help="Number of frames to process. 0 means unbounded.",
+        help="Number of camera frames to capture. 0 means unbounded.",
     )
     automation_restart.add_argument(
         "--observe-only",
@@ -367,8 +371,8 @@ def build_parser() -> argparse.ArgumentParser:
     info_help.set_defaults(handler=_handle_vehicles_info_help)
     perception_info = info_commands.add_parser(
         "perception",
-        help="Show the locally staged perception algorithm and input translation schema.",
-        description="Show the locally staged perception algorithm and input translation schema.",
+        help="Show the staged perception schema and current published view URL.",
+        description="Show the staged perception schema and current published view URL.",
     )
     perception_info.add_argument(
         "--id",
@@ -746,11 +750,17 @@ def build_parser() -> argparse.ArgumentParser:
         default=1.0,
         help="Vehicle discovery/controller timeout in seconds.",
     )
-    perception.add_argument(
+    perception_selection = perception.add_mutually_exclusive_group()
+    perception_selection.add_argument(
         "--algorithm",
-        default=DEFAULT_PERCEPTION_ALGORITHM,
+        default=None,
         choices=available_perception_algorithm_ids(),
-        help="Perception algorithm to activate.",
+        help=f"Packaged perception algorithm to activate (default: {DEFAULT_PERCEPTION_ALGORITHM}).",
+    )
+    perception_selection.add_argument(
+        "--candidate",
+        default=None,
+        help="Ready isolated lab candidate from `vehicles perception candidates` (local simulator only).",
     )
     perception.add_argument(
         "--dry-run",
@@ -990,7 +1000,7 @@ def _handle_vehicles_info_help(args: argparse.Namespace) -> int:
             [
                 "automa vehicles info commands",
                 "",
-                "- perception  show locally staged perception schema",
+                "- perception  show staged perception schema and live view",
                 "- decision    show locally staged decision engine schema",
                 "- help        show this summary",
                 "",
@@ -1086,6 +1096,11 @@ def _handle_vehicles_automation_run(args: argparse.Namespace) -> int:
         )
     if result.message:
         print(result.message)
+    if args.foreground:
+        record_vehicle_automation_terminal_result(
+            vehicle_id=args.vehicle_id,
+            result=result,
+        )
     return result.exit_code
 
 
@@ -1298,6 +1313,7 @@ def _handle_vehicles_update_perception(args: argparse.Namespace) -> int:
     result = update_vehicle_perception(
         vehicle_id=args.vehicle_id,
         algorithm=args.algorithm,
+        candidate_id=args.candidate,
         timeout_s=args.timeout_s,
         restart=args.restart,
         dry_run=args.dry_run,

@@ -19,13 +19,13 @@ from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReadRequest, SensorRe
 from .lab_plugins import LabPerceptionMapper, candidate_status, discover_candidates
 from .paths import ROOT, display_path, safe_path_part
 from .perception_evaluation import evaluate_perception_frames, write_review_html
-from .perception import (
-    PLUGIN_CHAIN_MAPPER_SPEC,
+from implementations.perception.catalog import (
     DEFAULT_PERCEPTION_ALGORITHM,
     PERCEPTION_ALGORITHMS,
-    _load_mapper,
-    ensure_local_perception_runtime,
+    PERCEPTION_MAPPER_SPEC,
 )
+
+from .perception import _load_mapper, ensure_local_perception_runtime
 from .vehicle_access import create_vehicle_access
 from .vehicles import discover_active_vehicles, find_vehicle_by_id, format_active_vehicles_snapshot
 
@@ -230,7 +230,7 @@ def replay_perception_experiment(
             elif isinstance(recorded_mapper, dict) and not str(
                 recorded_mapper.get("algorithm") or ""
             ).startswith("candidate:"):
-                mapper_spec = str(recorded_mapper.get("spec") or PLUGIN_CHAIN_MAPPER_SPEC)
+                mapper_spec = str(recorded_mapper.get("spec") or PERCEPTION_MAPPER_SPEC)
                 mapper_config = dict(recorded_mapper.get("config") or {})
                 algorithm = recorded_mapper.get("algorithm") or "recorded"
             else:
@@ -441,7 +441,7 @@ def _frame_record(
         "captured_at_ms": snapshot.completed_at_ms,
         "duration_ms": duration_ms,
         "status": perception.status,
-        "confidence": perception.confidence,
+        "signal_count": len(perception.signals),
         "thing_count": len(perception.things),
         "thing_kinds": dict(Counter(thing.kind for thing in perception.things)),
         "plugin_runs": [run.to_dict() for run in perception.plugin_runs],

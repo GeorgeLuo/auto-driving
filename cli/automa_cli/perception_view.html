@@ -1,0 +1,619 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Automa Perception</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px;
+      letter-spacing: 0;
+      --ink: #17191c;
+      --muted: #62676f;
+      --line: #d9dde2;
+      --panel: #f6f7f8;
+      --paper: #ffffff;
+      --stage: #111315;
+      --green: #177245;
+      --amber: #a35b00;
+      --red: #a52a2a;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-width: 320px;
+      background: var(--paper);
+      color: var(--ink);
+    }
+
+    header {
+      min-height: 52px;
+      padding: 8px 14px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+    }
+
+    .identity, .runtime-status {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .product { font-weight: 700; white-space: nowrap; }
+    .vehicle { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    .status-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--amber);
+      flex: 0 0 auto;
+    }
+
+    .status-dot.live { background: var(--green); }
+    .status-dot.stale { background: var(--amber); }
+    .status-dot.error { background: var(--red); }
+
+    button {
+      min-height: 32px;
+      border: 1px solid #aeb4bb;
+      border-radius: 4px;
+      padding: 5px 10px;
+      background: var(--paper);
+      color: var(--ink);
+      cursor: pointer;
+      font: inherit;
+    }
+
+    button:hover { background: #eceff1; }
+
+    main {
+      height: calc(100vh - 53px);
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(300px, 370px);
+      overflow: hidden;
+    }
+
+    .visual {
+      min-width: 0;
+      min-height: 0;
+      padding: 16px;
+      background: var(--stage);
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+    }
+
+    .stage {
+      position: relative;
+      display: inline-block;
+      max-width: 100%;
+      max-height: 100%;
+      line-height: 0;
+    }
+
+    .stage img {
+      display: block;
+      max-width: 100%;
+      max-height: calc(100vh - 85px);
+      width: auto;
+      height: auto;
+    }
+
+    .stage canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    .empty {
+      color: #c6c9cd;
+      line-height: 1.5;
+      text-align: center;
+    }
+
+    aside {
+      min-width: 0;
+      min-height: 0;
+      overflow: auto;
+      border-left: 1px solid var(--line);
+      background: var(--paper);
+    }
+
+    .panel {
+      padding: 14px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    h2 {
+      margin: 0 0 10px;
+      font-size: 13px;
+      line-height: 1.2;
+      text-transform: uppercase;
+      font-weight: 700;
+      color: #454a50;
+      letter-spacing: 0;
+    }
+
+    .toggle-grid { display: grid; gap: 8px; }
+
+    label.toggle, .kind-toggle {
+      min-height: 28px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+    }
+
+    input[type="checkbox"] { width: 16px; height: 16px; margin: 0; }
+
+    .swatch {
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+      flex: 0 0 auto;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: minmax(88px, auto) minmax(0, 1fr);
+      gap: 6px 10px;
+      margin: 0;
+    }
+
+    .metrics dt { color: var(--muted); }
+    .metrics dd { margin: 0; overflow-wrap: anywhere; }
+
+    .run-list, .thing-list {
+      display: grid;
+      gap: 6px;
+    }
+
+    .run, .thing {
+      border-left: 3px solid #9aa1a8;
+      padding: 6px 8px;
+      background: var(--panel);
+      overflow-wrap: anywhere;
+    }
+
+    .run.ok { border-color: var(--green); }
+    .run.error, .run.unavailable { border-color: var(--red); }
+    .secondary { color: var(--muted); font-size: 12px; margin-top: 3px; }
+
+    details summary { cursor: pointer; font-weight: 600; }
+
+    pre {
+      margin: 10px 0 0;
+      padding: 10px;
+      max-height: 320px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      background: #f2f3f4;
+      color: #24272b;
+      font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    @media (max-width: 820px) {
+      header { align-items: flex-start; }
+      .runtime-status { flex-wrap: wrap; justify-content: flex-end; }
+      main { height: auto; min-height: calc(100vh - 53px); grid-template-columns: 1fr; overflow: visible; }
+      .visual { min-height: 52vh; }
+      .stage img { max-height: 65vh; }
+      aside { border-left: 0; border-top: 1px solid var(--line); overflow: visible; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="identity">
+      <span class="product">Automa Perception</span>
+      <span class="vehicle" id="vehicle">waiting</span>
+    </div>
+    <div class="runtime-status">
+      <span class="status-dot" id="statusDot"></span>
+      <span id="statusText">Connecting</span>
+      <button type="button" id="pauseButton">Pause updates</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="visual" aria-label="Current perception frame">
+      <div class="empty" id="emptyState">Waiting for the first published frame</div>
+      <div class="stage" id="stage" hidden>
+        <img id="frame" alt="Current front camera frame">
+        <canvas id="overlay" aria-hidden="true"></canvas>
+      </div>
+    </section>
+
+    <aside>
+      <section class="panel">
+        <h2>Overlays</h2>
+        <div class="toggle-grid">
+          <label class="toggle"><input type="checkbox" id="regionsToggle" checked> Regions</label>
+          <label class="toggle"><input type="checkbox" id="labelsToggle" checked> Labels</label>
+          <div id="kindToggles"></div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Frame</h2>
+        <dl class="metrics" id="frameMetrics"></dl>
+      </section>
+
+      <section class="panel">
+        <h2>Plugin Runs</h2>
+        <div class="run-list" id="pluginRuns"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Findings</h2>
+        <div class="thing-list" id="things"></div>
+      </section>
+
+      <section class="panel">
+        <details>
+          <summary>Published data</summary>
+          <pre id="rawData"></pre>
+        </details>
+      </section>
+    </aside>
+  </main>
+
+  <script>
+    const frameImage = document.getElementById("frame");
+    const canvas = document.getElementById("overlay");
+    const context = canvas.getContext("2d");
+    const stage = document.getElementById("stage");
+    const emptyState = document.getElementById("emptyState");
+    const statusDot = document.getElementById("statusDot");
+    const statusText = document.getElementById("statusText");
+    const pauseButton = document.getElementById("pauseButton");
+    const regionsToggle = document.getElementById("regionsToggle");
+    const labelsToggle = document.getElementById("labelsToggle");
+    const kindToggles = document.getElementById("kindToggles");
+    const kindState = new Map();
+    let latest = null;
+    let paused = false;
+    let refreshing = false;
+    let loadedFrameId = null;
+
+    const palette = ["#00d084", "#ffb000", "#ff5a5f", "#4ea5ff", "#d678ff", "#f46f36", "#12b8b0"];
+
+    function colorFor(value) {
+      let hash = 0;
+      for (const char of value) hash = ((hash << 5) - hash + char.charCodeAt(0)) | 0;
+      return palette[Math.abs(hash) % palette.length];
+    }
+
+    function setStatus(text, mode) {
+      statusText.textContent = text;
+      statusDot.className = `status-dot ${mode || ""}`;
+    }
+
+    function drawableThings() {
+      const things = latest?.perception?.things;
+      if (!Array.isArray(things)) return [];
+      return things.filter((thing) => {
+        const location = thing?.location;
+        return thing?.kind !== "sensor_frame" && location?.frame === "image" &&
+          (normalizedPolygon(location) || normalizedBox(location));
+      });
+    }
+
+    function clampNorm(value) {
+      return Math.max(0, Math.min(1, Number(value)));
+    }
+
+    function normalizedPolygon(location) {
+      const raw = location?.polygon_xy_norm;
+      if (!Array.isArray(raw) || raw.length < 3) return null;
+      const points = [];
+      for (const point of raw) {
+        if (!Array.isArray(point) || point.length !== 2) return null;
+        const x = Number(point[0]);
+        const y = Number(point[1]);
+        if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+        points.push([clampNorm(x), clampNorm(y)]);
+      }
+      return points;
+    }
+
+    function normalizedBox(location) {
+      const raw = location?.bbox_xyxy_norm;
+      if (!Array.isArray(raw) || raw.length !== 4) return null;
+      const values = raw.map(Number);
+      if (!values.every(Number.isFinite)) return null;
+      const [x1, y1, x2, y2] = values.map(clampNorm);
+      return x2 > x1 && y2 > y1 ? [x1, y1, x2, y2] : null;
+    }
+
+    function geometryBounds(polygon, box) {
+      if (box) return box;
+      const xs = polygon.map((point) => point[0]);
+      const ys = polygon.map((point) => point[1]);
+      return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+    }
+
+    function overlayLabel(thing, kind) {
+      const rawId = String(thing.thing_id || kind);
+      const shortId = rawId.length > 22 ? `${rawId.slice(0, 19)}...` : rawId;
+      return `${shortId}  ${Number(thing.confidence || 0).toFixed(2)}`;
+    }
+
+    function rectanglesOverlap(first, second) {
+      const padding = 3;
+      return !(
+        first.x + first.width + padding <= second.x ||
+        second.x + second.width + padding <= first.x ||
+        first.y + first.height + padding <= second.y ||
+        second.y + second.height + padding <= first.y
+      );
+    }
+
+    function placeLabel(x, y, width, height, labelWidth, labelHeight, occupied) {
+      const clampX = (value) => Math.max(0, Math.min(canvas.width - labelWidth, value));
+      const left = clampX(x);
+      const right = clampX(x + width - labelWidth);
+      const center = clampX(x + (width - labelWidth) / 2);
+      const candidates = [
+        [left, y - labelHeight - 3],
+        [right, y - labelHeight - 3],
+        [left, y + 3],
+        [right, y + 3],
+        [left, y + height + 3],
+        [right, y + height + 3],
+        [center, y + (height - labelHeight) / 2],
+      ];
+      for (const [candidateX, candidateY] of candidates) {
+        const rect = {
+          x: candidateX,
+          y: candidateY,
+          width: labelWidth,
+          height: labelHeight,
+        };
+        if (rect.y < 0 || rect.y + rect.height > canvas.height) continue;
+        if (occupied.some((other) => rectanglesOverlap(rect, other))) continue;
+        occupied.push(rect);
+        return rect;
+      }
+      return null;
+    }
+
+    function syncKindToggles() {
+      const kinds = [...new Set(drawableThings().map((thing) => String(thing.kind || "unknown")))].sort();
+      for (const kind of kinds) if (!kindState.has(kind)) kindState.set(kind, true);
+      kindToggles.replaceChildren();
+      for (const kind of kinds) {
+        const label = document.createElement("label");
+        label.className = "kind-toggle";
+        const input = document.createElement("input");
+        input.type = "checkbox";
+        input.checked = kindState.get(kind) !== false;
+        input.addEventListener("change", () => { kindState.set(kind, input.checked); drawOverlays(); });
+        const swatch = document.createElement("span");
+        swatch.className = "swatch";
+        swatch.style.background = colorFor(kind);
+        const text = document.createElement("span");
+        text.textContent = kind;
+        label.append(input, swatch, text);
+        kindToggles.append(label);
+      }
+    }
+
+    function drawOverlays() {
+      if (!frameImage.naturalWidth || !latest) return;
+      canvas.width = frameImage.naturalWidth;
+      canvas.height = frameImage.naturalHeight;
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      const drawRegions = regionsToggle.checked;
+      const drawLabels = labelsToggle.checked;
+      const occupiedLabels = [];
+      for (const thing of drawableThings()) {
+        const kind = String(thing.kind || "unknown");
+        if (kindState.get(kind) === false) continue;
+        const polygon = normalizedPolygon(thing.location);
+        const box = normalizedBox(thing.location);
+        const [x1, y1, x2, y2] = geometryBounds(polygon, box);
+        const x = x1 * canvas.width;
+        const y = y1 * canvas.height;
+        const width = (x2 - x1) * canvas.width;
+        const height = (y2 - y1) * canvas.height;
+        if (width <= 0 || height <= 0) continue;
+        const color = colorFor(kind);
+        if (drawRegions) {
+          context.fillStyle = `${color}22`;
+          context.strokeStyle = color;
+          context.lineWidth = Math.max(2, canvas.width / 320);
+          if (polygon) {
+            context.beginPath();
+            context.moveTo(polygon[0][0] * canvas.width, polygon[0][1] * canvas.height);
+            for (const point of polygon.slice(1)) {
+              context.lineTo(point[0] * canvas.width, point[1] * canvas.height);
+            }
+            context.closePath();
+            context.fill();
+            context.stroke();
+          } else {
+            context.fillRect(x, y, width, height);
+            context.strokeRect(x, y, width, height);
+          }
+        }
+        if (drawLabels) {
+          const label = overlayLabel(thing, kind);
+          context.font = "14px ui-sans-serif, system-ui, sans-serif";
+          const metrics = context.measureText(label);
+          const labelHeight = 20;
+          const labelRect = placeLabel(
+            x,
+            y,
+            width,
+            height,
+            metrics.width + 10,
+            labelHeight,
+            occupiedLabels,
+          );
+          if (labelRect) {
+            context.fillStyle = color;
+            context.fillRect(labelRect.x, labelRect.y, labelRect.width, labelRect.height);
+            context.fillStyle = "#101214";
+            context.fillText(label, labelRect.x + 5, labelRect.y + 15);
+          }
+        }
+      }
+    }
+
+    function appendMetric(container, name, value) {
+      const term = document.createElement("dt");
+      term.textContent = name;
+      const detail = document.createElement("dd");
+      detail.textContent = value ?? "unknown";
+      container.append(term, detail);
+    }
+
+    function formatAge(value) {
+      const milliseconds = Number(value);
+      if (!Number.isFinite(milliseconds)) return "pending";
+      if (milliseconds < 1000) return `${Math.round(milliseconds)} ms`;
+      return `${(milliseconds / 1000).toFixed(1)} s`;
+    }
+
+    function overlayLagText(overlay) {
+      if (!overlay || overlay.status === "pending") return "pending";
+      const frames = Number(overlay.frame_lag);
+      const frameText = Number.isFinite(frames) ? `${frames} frame${frames === 1 ? "" : "s"}` : "unknown frames";
+      return `${frameText} / ${formatAge(overlay.frame_lag_ms)}`;
+    }
+
+    function liveStatus(payload) {
+      const overlay = payload?.overlay;
+      if (!overlay || overlay.status === "pending") {
+        return { text: "Live | perception pending", mode: "stale" };
+      }
+      if (overlay.status === "current") {
+        return { text: "Live | overlay current", mode: "live" };
+      }
+      return {
+        text: `Live | overlay ${overlayLagText(overlay)} behind`,
+        mode: "stale",
+      };
+    }
+
+    function renderData() {
+      document.getElementById("vehicle").textContent = latest.vehicle_id || "unknown vehicle";
+      const metrics = document.getElementById("frameMetrics");
+      metrics.replaceChildren();
+      appendMetric(metrics, "Frame", latest.frame?.frame_id);
+      appendMetric(metrics, "Captured", latest.frame?.captured_at_ms);
+      appendMetric(metrics, "Resolution", `${latest.frame?.width_px || "?"} x ${latest.frame?.height_px || "?"}`);
+      appendMetric(metrics, "Overlay source", latest.overlay?.source_frame_id || "pending");
+      appendMetric(metrics, "Overlay lag", overlayLagText(latest.overlay));
+      appendMetric(metrics, "Result age", formatAge(latest.overlay?.result_age_ms));
+      appendMetric(metrics, "Perception", `${latest.cycle?.perception_duration_ms ?? "?"} ms`);
+      appendMetric(metrics, "Confidence", Number(latest.perception?.confidence || 0).toFixed(3));
+      appendMetric(metrics, "Status", latest.perception?.status || "unknown");
+
+      const runs = document.getElementById("pluginRuns");
+      runs.replaceChildren();
+      for (const run of latest.perception?.plugin_runs || []) {
+        const row = document.createElement("div");
+        row.className = `run ${run.status || ""}`;
+        const name = document.createElement("div");
+        name.textContent = run.plugin_id || "unknown plugin";
+        const detail = document.createElement("div");
+        detail.className = "secondary";
+        detail.textContent = `${run.status || "unknown"} | ${run.duration_ms ?? "?"} ms | ${run.thing_count ?? 0} findings`;
+        row.append(name, detail);
+        runs.append(row);
+      }
+      if (!runs.children.length) runs.textContent = "No plugin run data";
+
+      const things = document.getElementById("things");
+      things.replaceChildren();
+      for (const thing of latest.perception?.things || []) {
+        const row = document.createElement("div");
+        row.className = "thing";
+        row.style.borderColor = colorFor(String(thing.kind || "unknown"));
+        const name = document.createElement("div");
+        name.textContent = thing.label || thing.thing_id || "unnamed finding";
+        const detail = document.createElement("div");
+        detail.className = "secondary";
+        detail.textContent = `${thing.kind || "unknown"} | ${thing.location?.frame || "unknown"}:${thing.location?.zone || "unknown"} | ${Number(thing.confidence || 0).toFixed(3)}`;
+        row.append(name, detail);
+        things.append(row);
+      }
+      if (!things.children.length) things.textContent = "No findings";
+
+      document.getElementById("rawData").textContent = JSON.stringify(latest, null, 2);
+      syncKindToggles();
+      drawOverlays();
+    }
+
+    function loadPublishedFrame(frameUrl) {
+      return new Promise((resolve, reject) => {
+        const loaded = () => { cleanup(); resolve(); };
+        const failed = () => { cleanup(); reject(new Error("frame unavailable")); };
+        const cleanup = () => {
+          frameImage.removeEventListener("load", loaded);
+          frameImage.removeEventListener("error", failed);
+        };
+        frameImage.addEventListener("load", loaded);
+        frameImage.addEventListener("error", failed);
+        frameImage.src = frameUrl;
+      });
+    }
+
+    async function refresh() {
+      if (paused || refreshing) return;
+      refreshing = true;
+      try {
+        const response = await fetch("/api/latest", { cache: "no-store" });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const next = await response.json();
+        const frameId = next.frame?.frame_id || String(next.published_at_ms);
+        if (frameId !== loadedFrameId) {
+          await loadPublishedFrame(next.frame?.url || `/frame?v=${encodeURIComponent(frameId)}`);
+          loadedFrameId = frameId;
+        }
+        latest = next;
+        renderData();
+        const status = liveStatus(next);
+        setStatus(status.text, status.mode);
+      } catch (error) {
+        setStatus(`Waiting: ${error.message}`, "error");
+      } finally {
+        refreshing = false;
+      }
+    }
+
+    frameImage.addEventListener("load", () => {
+      emptyState.hidden = true;
+      stage.hidden = false;
+    });
+    pauseButton.addEventListener("click", () => {
+      paused = !paused;
+      pauseButton.textContent = paused ? "Resume updates" : "Pause updates";
+      setStatus(paused ? "Paused" : "Live", paused ? "" : "live");
+      if (!paused) refresh();
+    });
+    regionsToggle.addEventListener("change", drawOverlays);
+    labelsToggle.addEventListener("change", drawOverlays);
+    window.addEventListener("resize", drawOverlays);
+
+    refresh();
+    setInterval(refresh, 100);
+  </script>
+</body>
+</html>

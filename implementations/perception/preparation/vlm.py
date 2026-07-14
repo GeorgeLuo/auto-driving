@@ -1,27 +1,18 @@
 from __future__ import annotations
 
-import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any
 
 import cv2
 import numpy as np
 
-from autonomy.perception.interface import (
+from autonomy.perception import (
+    PerceptionEvidenceBatch,
     PerceptionPluginContract,
-    PerceptionPluginResult,
-    PerceptionRequest,
+    PerceptionPluginInputs,
+    PerceptionSignal,
 )
-from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID
-from implementations.perception.components import (
-    camera_component_id,
-    camera_frame,
-    camera_frame_error,
-)
-
-
-FRONT_CAMERA_COMPONENT = camera_component_id(FRONT_CAMERA_SENSOR_ID)
+from implementations.perception.components import CameraFrame, FRONT_CAMERA_RGB_INPUT
 
 
 @dataclass(frozen=True)
@@ -45,66 +36,35 @@ class VlmPrepPlugin:
 
     plugin_id = "vlm-prep-v0"
     contract = PerceptionPluginContract(
-        required_components=(FRONT_CAMERA_COMPONENT,),
-        state_mode="stateless",
-        artifact_policy="required",
+        inputs=(FRONT_CAMERA_RGB_INPUT,),
+        description="Produce deterministic diagnostic image variants for later observers.",
+        emits=("signal vlm_prep_available",),
+        limitations=(
+            "does not call a VLM",
+            "does not identify objects by itself",
+        ),
+        diagnostic_artifacts=(
+            "vlm_preprocessed_gray",
+            "vlm_shadow_lifted",
+            "vlm_stylized_lifted",
+            "vlm_prep_summary",
+        ),
+        diagnostics_required=True,
     )
 
     def __init__(
         self,
         *,
-        write_artifacts: bool = True,
         config: VlmPrepConfig | None = None,
     ) -> None:
-        self.write_artifacts = bool(write_artifacts)
         self.config = config or VlmPrepConfig()
 
-    def reset(self) -> None:
-        return None
-
-    def describe_schema(self) -> dict[str, Any]:
-        return {
-            "plugin_id": self.plugin_id,
-            "reads": ["front_camera RGB pixels"],
-            "emits": [
-                "artifact id=vlm_preprocessed_gray",
-                "artifact id=vlm_shadow_lifted",
-                "artifact id=vlm_stylized_lifted when enabled",
-            ],
-            "artifacts": ["preprocessed_gray", "shadow_lifted", "stylized_lifted"],
-            "limits": [
-                "does not call a VLM",
-                "does not identify objects by itself",
-            ],
-        }
-
-    def perceive(self, request: PerceptionRequest) -> PerceptionPluginResult:
-        front = camera_frame(request, FRONT_CAMERA_SENSOR_ID)
-        if front is None:
-            return PerceptionPluginResult(
-                status="unavailable",
-                lines=("signal id=vlm_prep_available value=false confidence=0.000 reason=no_front_camera",),
-                observations={
-                    self.plugin_id: {
-                        "front_camera_available": False,
-                        "input_error": camera_frame_error(request, FRONT_CAMERA_SENSOR_ID),
-                    }
-                },
-                limits=("front camera image missing",),
-            )
-
-        if request.output_dir is None or not self.write_artifacts:
-            return PerceptionPluginResult(
-                status="unavailable",
-                lines=("signal id=vlm_prep_available value=false confidence=0.000 reason=artifact_writes_disabled",),
-                observations={self.plugin_id: {"artifact_writes_enabled": self.write_artifacts}},
-                limits=("VLM prep plugin currently emits artifacts only",),
-            )
-
-        output_dir = request.output_dir / "vlm_prep"
-        output_dir.mkdir(parents=True, exist_ok=True)
-
-        image = np.ascontiguousarray(front.rgb[:, :, ::-1])
+    def perceive(self, inputs: PerceptionPluginInputs) -> PerceptionEvidenceBatch:
+        frame = inputs.require("frame", CameraFrame)
+        output_dir = inputs.diagnostics.directory
+        if output_dir is None:
+            raise RuntimeError("required diagnostic sink is unavailable")
+        image = np.ascontiguousarray(frame.rgb[:, :, ::-1])
 
         artifacts = prepare_vlm_artifacts(
             image,
@@ -112,37 +72,22 @@ class VlmPrepPlugin:
             config=self.config,
             artifact_id_prefix="vlm_",
         )
+        inputs.diagnostics.register(artifacts)
 
         summary = {
-            "image": str(front.source_path) if front.source_path is not None else None,
-            "artifact_writes_enabled": self.write_artifacts,
+            "image": str(frame.source_path) if frame.source_path is not None else None,
             "config": asdict(self.config),
-            "artifacts": artifacts,
+            "artifacts": inputs.diagnostics.artifacts,
         }
-        summary_path = output_dir / "summary.json"
-        summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
-        artifacts["vlm_prep_summary"] = str(summary_path)
+        inputs.diagnostics.emit_json("vlm_prep_summary", "summary.json", summary)
 
-        lines = [
-            "signal id=vlm_prep_available value=true confidence=1.000",
-            f"artifact id=vlm_preprocessed_gray path={artifacts['vlm_preprocessed_gray']}",
-            f"artifact id=vlm_shadow_lifted path={artifacts['vlm_shadow_lifted']}",
-        ]
-        if "vlm_stylized_lifted" in artifacts:
-            lines.append(f"artifact id=vlm_stylized_lifted path={artifacts['vlm_stylized_lifted']}")
-
-        return PerceptionPluginResult(
-            lines=tuple(lines),
-            observations={
-                self.plugin_id: {
-                    "image_width_px": int(image.shape[1]),
-                    "image_height_px": int(image.shape[0]),
-                    "artifacts": artifacts,
-                    "config": asdict(self.config),
-                }
+        return PerceptionEvidenceBatch(
+            signals=(PerceptionSignal("vlm_prep_available", True),),
+            measurements={
+                "image_width_px": int(image.shape[1]),
+                "image_height_px": int(image.shape[0]),
+                "config": asdict(self.config),
             },
-            artifacts=artifacts,
-            limits=("VLM prep artifacts are inputs for later observers, not object detections",),
         )
 
 

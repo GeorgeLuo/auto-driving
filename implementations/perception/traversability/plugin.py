@@ -1,28 +1,22 @@
 from __future__ import annotations
 
-import json
 from dataclasses import asdict
-from pathlib import Path
 from typing import Any
 
 import cv2
 import numpy as np
 from PIL import Image
 
-from autonomy.perception.interface import (
+from autonomy.perception import (
     PerceivedThing,
+    PerceptionDiagnosticSink,
+    PerceptionEvidenceBatch,
     PerceptionPluginContract,
-    PerceptionPluginResult,
-    PerceptionRequest,
+    PerceptionPluginInputs,
+    PerceptionSignal,
     ViewLocation,
 )
-from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID
-from implementations.perception.components import (
-    camera_component_id,
-    camera_frame,
-    camera_frame_error,
-)
-from implementations.perception.text import thing_line
+from implementations.perception.components import CameraFrame, FRONT_CAMERA_RGB_INPUT
 
 from .model import (
     FloorPlaneConfig,
@@ -34,88 +28,52 @@ from .model import (
 )
 
 
-FRONT_CAMERA_COMPONENT = camera_component_id(FRONT_CAMERA_SENSOR_ID)
-
-
 class FloorPlanePlugin:
     """Estimate floor/traversability from the current front camera frame."""
 
     plugin_id = "floor-plane-v0"
     contract = PerceptionPluginContract(
-        required_components=(FRONT_CAMERA_COMPONENT,),
-        state_mode="stateless",
-        artifact_policy="optional",
+        inputs=(FRONT_CAMERA_RGB_INPUT,),
+        description="Estimate visible floor and first-hit non-floor boundaries.",
+        assumptions=(
+            "the lower-center image region is a reasonable floor color seed",
+            "a sustained non-floor run after visible floor is boundary evidence",
+            "topdown_fov is image-space projection, not calibrated geometry",
+        ),
+        emits=(
+            "signals floor_visible and floor_boundary_available",
+            "surface evidence for visible floor",
+            "spatial evidence for grouped first-hit floor boundaries",
+        ),
+        limitations=(
+            "floor color is seeded independently from each current frame",
+            "boundaries may be objects, walls, shadows, or floor-color discontinuities",
+            "topdown_fov is approximate and uncalibrated",
+        ),
+        diagnostic_artifacts=(
+            "floor_mask",
+            "floor_overlay",
+            "topdown_rgb",
+            "occupancy",
+            "summary",
+        ),
     )
 
     def __init__(
         self,
         *,
-        write_artifacts: bool = True,
         config: FloorPlaneConfig | None = None,
     ) -> None:
-        self.write_artifacts = bool(write_artifacts)
         self.config = config or FloorPlaneConfig()
 
-    def reset(self) -> None:
-        return None
-
-    def describe_schema(self) -> dict[str, Any]:
-        return {
-            "plugin_id": self.plugin_id,
-            "reads": ["front_camera RGB pixels"],
-            "assumptions": [
-                "lower-center image region is a reasonable floor color seed",
-                "a sustained non-floor run encountered after visible floor is boundary evidence",
-                "topdown_fov coordinates are approximate image-space projection, not calibrated metric geometry",
-            ],
-            "emits": [
-                "signal id=floor_visible",
-                "signal id=floor_boundary_available",
-                "thing id=traversable_floor",
-                "thing kind=floor_boundary for grouped first-hit boundary evidence",
-            ],
-            "artifacts": ["floor_mask", "floor_overlay", "topdown_rgb", "occupancy"],
-        }
-
-    def perceive(self, request: PerceptionRequest) -> PerceptionPluginResult:
-        front = camera_frame(request, FRONT_CAMERA_SENSOR_ID)
-        if front is None:
-            return PerceptionPluginResult(
-                status="unavailable",
-                lines=(
-                    "signal id=floor_visible value=false confidence=0.000 reason=no_front_camera",
-                    "signal id=floor_boundary_available value=false confidence=0.000 reason=no_front_camera",
-                ),
-                observations={
-                    self.plugin_id: {
-                        "front_camera_available": False,
-                        "input_error": camera_frame_error(request, FRONT_CAMERA_SENSOR_ID),
-                    }
-                },
-                limits=("front camera image missing",),
-            )
-
-        try:
-            analysis = _analyze_floor(
-                rgb=front.rgb,
-                source_path=front.source_path,
-                output_dir=(request.output_dir / "floor_plane") if request.output_dir else None,
-                config=self.config,
-                write_artifacts=self.write_artifacts,
-            )
-        except Exception as exc:
-            return PerceptionPluginResult(
-                status="error",
-                lines=(
-                    "signal id=floor_visible value=false confidence=0.000 "
-                    f"reason=analysis_failed error={type(exc).__name__}",
-                    "signal id=floor_boundary_available value=false confidence=0.000 "
-                    f"reason=analysis_failed error={type(exc).__name__}",
-                ),
-                observations={self.plugin_id: {"error": str(exc)}},
-                limits=("floor plane analysis failed",),
-                error=f"{type(exc).__name__}: {exc}",
-            )
+    def perceive(self, inputs: PerceptionPluginInputs) -> PerceptionEvidenceBatch:
+        frame = inputs.require("frame", CameraFrame)
+        analysis = _analyze_floor(
+            rgb=frame.rgb,
+            source_path=frame.source_path,
+            config=self.config,
+            diagnostics=inputs.diagnostics,
+        )
 
         floor_confidence = _floor_confidence(analysis["floor_fraction_roi"])
         boundaries = analysis["boundaries"]
@@ -139,23 +97,6 @@ class FloorPlanePlugin:
         )
 
         things = [floor]
-        lines = [
-            (
-                "signal id=floor_visible "
-                f"value={'true' if analysis['floor_fraction_roi'] > 0.25 else 'false'} "
-                f"confidence={floor_confidence:.3f} "
-                f"floor_fraction_roi={analysis['floor_fraction_roi']:.5f}"
-            ),
-            (
-                "signal id=floor_boundary_available "
-                f"value={'true' if boundaries else 'false'} "
-                f"confidence={_mean_boundary_confidence(boundaries):.3f} "
-                f"boundary_count={len(boundaries)} "
-                f"hit_fraction_columns={analysis['boundary_hit_fraction_columns']:.5f}"
-            ),
-            thing_line(floor),
-        ]
-
         for index, boundary in enumerate(boundaries):
             thing = PerceivedThing(
                 thing_id=f"floor_boundary_{index:03d}",
@@ -175,38 +116,43 @@ class FloorPlanePlugin:
                 },
             )
             things.append(thing)
-            lines.append(thing_line(thing))
 
-        return PerceptionPluginResult(
-            lines=tuple(lines),
-            things=tuple(things),
-            observations={
-                self.plugin_id: {
-                    "image_width_px": analysis["width"],
-                    "image_height_px": analysis["height"],
-                    "floor_fraction_roi": analysis["floor_fraction_roi"],
-                    "occupied_fraction_roi": analysis["occupied_fraction_roi"],
-                    "boundary_hit_fraction_columns": analysis["boundary_hit_fraction_columns"],
-                    "boundaries": boundaries,
-                    "artifact_writes_enabled": self.write_artifacts,
-                }
-            },
-            artifacts=analysis["artifacts"],
-            limits=(
-                "floor model is color-seeded from the current frame",
-                "floor boundaries may represent objects, walls, shadows, or floor-color discontinuities",
-                "topdown_fov is approximate and uncalibrated",
+        return PerceptionEvidenceBatch(
+            signals=(
+                PerceptionSignal(
+                    "floor_visible",
+                    analysis["floor_fraction_roi"] > 0.25,
+                    floor_confidence,
+                    {"floor_fraction_roi": analysis["floor_fraction_roi"]},
+                ),
+                PerceptionSignal(
+                    "floor_boundary_available",
+                    bool(boundaries),
+                    _mean_boundary_confidence(boundaries),
+                    {
+                        "boundary_count": len(boundaries),
+                        "hit_fraction_columns": analysis["boundary_hit_fraction_columns"],
+                    },
+                ),
             ),
+            things=tuple(things),
+            measurements={
+                "image_width_px": analysis["width"],
+                "image_height_px": analysis["height"],
+                "floor_fraction_roi": analysis["floor_fraction_roi"],
+                "occupied_fraction_roi": analysis["occupied_fraction_roi"],
+                "boundary_hit_fraction_columns": analysis["boundary_hit_fraction_columns"],
+                "boundaries": boundaries,
+            },
         )
 
 
 def _analyze_floor(
     *,
     rgb: np.ndarray,
-    source_path: Path | None,
-    output_dir: Path | None,
+    source_path,
     config: FloorPlaneConfig,
-    write_artifacts: bool,
+    diagnostics: PerceptionDiagnosticSink,
 ) -> dict[str, Any]:
     image = Image.fromarray(rgb, mode="RGB")
     normalized_rgb = rgb.astype(np.float32) / 255.0
@@ -220,9 +166,7 @@ def _analyze_floor(
     source_columns = int(np.count_nonzero((boundary_hits & roi_mask).any(axis=0)))
     source_width = max(1, int(np.count_nonzero(roi_mask.any(axis=0))))
 
-    artifacts: dict[str, str] = {}
-    if write_artifacts and output_dir is not None:
-        output_dir.mkdir(parents=True, exist_ok=True)
+    if diagnostics.enabled:
         overlay = make_overlay(image, floor_mask, occupied_mask, config)
         overlay_array = np.asarray(overlay).copy()
         overlay_array[boundary_hits] = np.array([255, 225, 30], dtype=np.uint8)
@@ -230,17 +174,21 @@ def _analyze_floor(
         topdown_rgb, occupancy = project_topdown(normalized_rgb, floor_mask, occupied_mask, config)
         occupancy_img = render_occupancy(occupancy)
 
-        files = {
-            "floor_mask": output_dir / "floor_mask.png",
-            "floor_overlay": output_dir / "overlay.png",
-            "topdown_rgb": output_dir / "topdown_rgb.jpg",
-            "occupancy": output_dir / "occupancy.png",
-            "summary": output_dir / "summary.json",
-        }
-        Image.fromarray((floor_mask.astype(np.uint8) * 255), mode="L").save(files["floor_mask"])
-        overlay.save(files["floor_overlay"])
-        Image.fromarray(topdown_rgb).save(files["topdown_rgb"], quality=92)
-        occupancy_img.save(files["occupancy"])
+        diagnostics.emit(
+            "floor_mask",
+            "floor_mask.png",
+            lambda path: Image.fromarray(
+                floor_mask.astype(np.uint8) * 255,
+                mode="L",
+            ).save(path),
+        )
+        diagnostics.emit("floor_overlay", "overlay.png", overlay.save)
+        diagnostics.emit(
+            "topdown_rgb",
+            "topdown_rgb.jpg",
+            lambda path: Image.fromarray(topdown_rgb).save(path, quality=92),
+        )
+        diagnostics.emit("occupancy", "occupancy.png", occupancy_img.save)
         summary = {
             "image": str(source_path) if source_path is not None else None,
             "width": width,
@@ -250,10 +198,9 @@ def _analyze_floor(
             "boundary_hit_fraction_columns": float(source_columns / source_width),
             "boundaries": boundaries,
             "config": asdict(config) | {"floor_model": model_info},
-            "artifacts": {name: str(path) for name, path in files.items()},
+            "artifacts": diagnostics.artifacts,
         }
-        files["summary"].write_text(json.dumps(summary, indent=2), encoding="utf-8")
-        artifacts = {name: str(path) for name, path in files.items()}
+        diagnostics.emit_json("summary", "summary.json", summary)
 
     return {
         "width": width,
@@ -262,7 +209,6 @@ def _analyze_floor(
         "occupied_fraction_roi": round(float((occupied_mask & roi_mask).sum() / roi_pixels), 5),
         "boundary_hit_fraction_columns": round(float(source_columns / source_width), 5),
         "boundaries": boundaries,
-        "artifacts": artifacts,
     }
 
 

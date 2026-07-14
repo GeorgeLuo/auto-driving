@@ -2,7 +2,7 @@
 
 This candidate runs pretrained `FastSAM-s` locally with no VLM and no training.
 It emits class-agnostic `region_proposal` records with normalized bounds,
-centroids, area, contour samples, confidence, and lower-image contact.
+outer polygons, centroids, area, confidence, and lower-image contact.
 
 The candidate intentionally does not claim that a region is an obstacle,
 traversable, persistent, or at a known depth. Those meanings require separate

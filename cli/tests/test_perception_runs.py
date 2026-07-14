@@ -13,11 +13,12 @@ import numpy as np
 from PIL import Image
 
 from autonomy.perception import PERCEPTION_TEXT_SCHEMA, build_perception_request
-from autonomy.perception.mappers.plugin_chain import PluginChainPerceptionMapper
+from autonomy.perception.mappers import PluginPerceptionMapper
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
-from cli.automa_cli.perception import PERCEPTION_PLUGIN_SPECS
+from implementations.perception.catalog import PERCEPTION_MAPPER_SPEC, PERCEPTION_PLUGIN_SPECS
 from cli.automa_cli import perception as perception_module
 from cli.automa_cli import lab_plugins
+from cli.automa_cli.bundles import controller_bundle_paths, sync_controller_bundle
 from cli.automa_cli.lab_plugins import LabPerceptionMapper, candidate_status, discover_candidates
 from cli.automa_cli.perception_runs import (
     CommandResult,
@@ -27,7 +28,6 @@ from cli.automa_cli.perception_runs import (
 )
 from cli.automa_cli.perception_evaluation import evaluate_perception_frames
 from cli.automa_cli.vehicle_access import VehicleAccess
-from lab.plugins.perception.classical_regions.src.plugin import ClassicalRegionPlugin
 from lab.plugins.perception.fastsam.src.plugin import _proposal_thing, _region_proposals
 
 
@@ -56,6 +56,38 @@ class FakeFrameCar:
 
 
 class PerceptionRunTests(unittest.TestCase):
+    def test_staged_bundle_keeps_component_and_plugin_types_consistent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            bundle = controller_bundle_paths(Path(tmp) / "vehicle")
+            sync_controller_bundle(bundle, output=None)
+            mapper = perception_module._load_mapper(
+                PERCEPTION_MAPPER_SPEC,
+                {
+                    "plugins": ["frame"],
+                    "plugin_specs": {"frame": PERCEPTION_PLUGIN_SPECS["frame"]},
+                },
+                bundle_root=Path(bundle["root_dir"]),
+            )
+            snapshot = SensorSnapshot(
+                read_id="staged-frame",
+                readings={
+                    FRONT_CAMERA_SENSOR_ID: SensorReading(
+                        sensor_id=FRONT_CAMERA_SENSOR_ID,
+                        sensor_kind="camera",
+                        captured_at_ms=1,
+                        value=np.zeros((24, 32, 3), dtype=np.uint8),
+                    )
+                },
+                started_at_ms=1,
+                completed_at_ms=1,
+            )
+
+            result = mapper.perceive(build_perception_request(snapshot))
+
+        self.assertEqual(result.status, "ok")
+        self.assertEqual(result.plugin_runs[0].status, "ok")
+        self.assertEqual(result.signals[0].signal_id, "front_camera_available")
+
     def test_named_runtime_refreshes_plugin_definition_but_custom_runtime_is_preserved(self) -> None:
         vehicle = {
             "vehicle_id": "chase-sim-test",
@@ -125,14 +157,24 @@ class PerceptionRunTests(unittest.TestCase):
             started_at_ms=1,
             completed_at_ms=1,
         )
-        plugin = ClassicalRegionPlugin(
-            spatial_radius=2,
-            color_radius=4,
-            min_area_fraction=0.05,
-            write_artifacts=True,
+        mapper = PluginPerceptionMapper(
+            plugins=["classical"],
+            plugin_specs={
+                "classical": (
+                    "lab.plugins.perception.classical_regions.src.plugin:"
+                    "ClassicalRegionPlugin"
+                )
+            },
+            plugin_configs={
+                "classical": {
+                    "spatial_radius": 2,
+                    "color_radius": 4,
+                    "min_area_fraction": 0.05,
+                }
+            },
         )
 
-        result = plugin.perceive(build_perception_request(snapshot))
+        result = mapper.perceive(build_perception_request(snapshot))
 
         self.assertEqual(result.status, "ok")
         self.assertGreaterEqual(len(result.things), 2)
@@ -156,6 +198,9 @@ class PerceptionRunTests(unittest.TestCase):
         self.assertEqual(thing.kind, "region_proposal")
         self.assertEqual(thing.properties["evidence"], "fastsam_mask")
         self.assertEqual(thing.location.bbox_xyxy_norm, (0.17241, 0.21053, 0.65517, 0.68421))
+        self.assertIsNotNone(thing.location.polygon_xy_norm)
+        self.assertGreaterEqual(len(thing.location.polygon_xy_norm or ()), 4)
+        self.assertNotIn("contour_xy_norm", thing.properties)
 
     def test_representation_health_rejects_malformed_boxes_without_crashing(self) -> None:
         malformed = {
@@ -293,7 +338,7 @@ class PerceptionRunTests(unittest.TestCase):
 
         self.assertEqual(result.schema, PERCEPTION_TEXT_SCHEMA)
         self.assertEqual(result.status, "ok")
-        self.assertEqual(len(result.plugin_runs), 2)
+        self.assertEqual(len(result.plugin_runs), 1)
         self.assertTrue(any(thing.kind == "sensor_frame" for thing in result.things))
 
     def test_flagless_run_prefers_simulator_and_uses_vehicle_sensor_contract(self) -> None:
@@ -306,7 +351,7 @@ class PerceptionRunTests(unittest.TestCase):
             "active_count": 2,
             "inactive": [],
         }
-        mapper = PluginChainPerceptionMapper(
+        mapper = PluginPerceptionMapper(
             plugins=["frame"],
             plugin_specs={"frame": PERCEPTION_PLUGIN_SPECS["frame"]},
         )

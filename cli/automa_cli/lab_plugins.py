@@ -15,9 +15,13 @@ from typing import Any, TextIO
 import cv2
 import requests  # type: ignore[import-untyped]
 
-from autonomy.perception import PERCEPTION_TEXT_SCHEMA, PerceptionRequest, PerceptionText
-from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID
-from implementations.perception.components import camera_frame, camera_frame_error
+from autonomy.perception import (
+    PERCEPTION_TEXT_SCHEMA,
+    PerceptionComponentUnavailable,
+    PerceptionRequest,
+    PerceptionText,
+)
+from implementations.perception.components import FRONT_CAMERA_RGB_INPUT, provide_camera_frame
 
 from .paths import ROOT, display_path, safe_path_part
 
@@ -283,10 +287,15 @@ class LabPerceptionMapper:
         self._request({"command": "reset"})
 
     def describe_schema(self) -> dict[str, Any]:
+        response = self._request({"command": "describe_schema"})
+        schema = response.get("schema")
+        if not isinstance(schema, dict):
+            raise RuntimeError("candidate worker did not return its perception schema")
         return {
+            **schema,
             "plugin_id": self.plugin_id,
+            "runtime_mapper": f"{self.__class__.__module__}:{self.__class__.__name__}",
             "candidate": self.status,
-            "output_schema": PERCEPTION_TEXT_SCHEMA,
         }
 
     def report_descriptor(self) -> dict[str, Any]:
@@ -302,10 +311,10 @@ class LabPerceptionMapper:
         }
 
     def perceive(self, request: PerceptionRequest) -> PerceptionText:
-        frame = camera_frame(request, FRONT_CAMERA_SENSOR_ID)
-        if frame is None:
-            error = camera_frame_error(request, FRONT_CAMERA_SENSOR_ID) or "front camera unavailable"
-            raise RuntimeError(error)
+        try:
+            frame = provide_camera_frame(request, FRONT_CAMERA_RGB_INPUT)
+        except PerceptionComponentUnavailable as exc:
+            raise RuntimeError(f"front camera unavailable: {exc}") from exc
         image_path = frame.source_path
         if image_path is None or not image_path.is_file():
             image_path = Path(self._scratch.name) / f"{safe_path_part(request.snapshot.read_id)}.png"

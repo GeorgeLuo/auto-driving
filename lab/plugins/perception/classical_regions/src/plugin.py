@@ -9,21 +9,13 @@ import numpy as np
 
 from autonomy.perception import (
     PerceivedThing,
+    PerceptionEvidenceBatch,
     PerceptionPluginContract,
-    PerceptionPluginResult,
-    PerceptionRequest,
+    PerceptionPluginInputs,
+    PerceptionSignal,
     ViewLocation,
 )
-from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID
-from implementations.perception.components import (
-    camera_component_id,
-    camera_frame,
-    camera_frame_error,
-)
-from implementations.perception.text import thing_line
-
-
-FRONT_CAMERA_COMPONENT = camera_component_id(FRONT_CAMERA_SENSOR_ID)
+from implementations.perception.components import CameraFrame, FRONT_CAMERA_RGB_INPUT
 
 
 class ClassicalRegionPlugin:
@@ -31,9 +23,25 @@ class ClassicalRegionPlugin:
 
     plugin_id = "classical-regions-v0"
     contract = PerceptionPluginContract(
-        required_components=(FRONT_CAMERA_COMPONENT,),
-        state_mode="stateless",
-        artifact_policy="optional",
+        inputs=(FRONT_CAMERA_RGB_INPUT,),
+        description="Generate coherent-color region proposals with OpenCV.",
+        assumptions=(
+            "locally coherent color is useful current-frame structure evidence",
+        ),
+        emits=(
+            "signal classical_regions_available",
+            "spatial region_proposal evidence for accepted color components",
+        ),
+        limitations=(
+            "regions are color components, not semantic objects",
+            "lighting can split one surface or merge adjacent surfaces",
+            "single-frame regions do not estimate depth or persistence",
+        ),
+        diagnostic_artifacts=(
+            "classical_regions",
+            "classical_smoothed",
+            "classical_summary",
+        ),
     )
 
     def __init__(
@@ -45,7 +53,6 @@ class ClassicalRegionPlugin:
         min_area_fraction: float = 0.003,
         max_area_fraction: float = 0.65,
         max_regions: int = 32,
-        write_artifacts: bool = True,
     ) -> None:
         self.working_width = max(160, int(working_width))
         self.spatial_radius = max(1, int(spatial_radius))
@@ -53,45 +60,9 @@ class ClassicalRegionPlugin:
         self.min_area_fraction = max(0.0, min(1.0, float(min_area_fraction)))
         self.max_area_fraction = max(self.min_area_fraction, min(1.0, float(max_area_fraction)))
         self.max_regions = max(1, int(max_regions))
-        self.write_artifacts = bool(write_artifacts)
 
-    def reset(self) -> None:
-        return None
-
-    def describe_schema(self) -> dict[str, Any]:
-        return {
-            "plugin_id": self.plugin_id,
-            "reads": ["normalized front_camera RGB pixels"],
-            "emits": ["thing kind=region_proposal for accepted coherent color components"],
-            "properties": [
-                "area_fraction",
-                "centroid_xy_norm",
-                "contour_xy_norm",
-                "touches_lower_image",
-                "color_coherence",
-                "solidity",
-            ],
-            "limits": [
-                "regions are color components, not semantic objects",
-                "one physical surface may split when color or lighting changes",
-                "similarly colored adjacent surfaces may merge",
-                "single-frame regions do not estimate depth or persistence",
-            ],
-        }
-
-    def perceive(self, request: PerceptionRequest) -> PerceptionPluginResult:
-        frame = camera_frame(request, FRONT_CAMERA_SENSOR_ID)
-        if frame is None:
-            return PerceptionPluginResult(
-                status="unavailable",
-                lines=(
-                    "signal id=classical_regions_available value=false "
-                    "reason=no_front_camera confidence=0.000",
-                ),
-                observations={self.plugin_id: {"input_error": camera_frame_error(request, FRONT_CAMERA_SENSOR_ID)}},
-                limits=("front camera image missing",),
-            )
-
+    def perceive(self, inputs: PerceptionPluginInputs) -> PerceptionEvidenceBatch:
+        frame = inputs.require("frame", CameraFrame)
         proposals, diagnostic = _detect_regions(
             frame.rgb,
             working_width=self.working_width,
@@ -102,39 +73,36 @@ class ClassicalRegionPlugin:
             max_regions=self.max_regions,
         )
         things = tuple(_proposal_thing(index, proposal) for index, proposal in enumerate(proposals))
-        lines = [
-            "signal id=classical_regions_available "
-            f"value={'true' if things else 'false'} confidence={_mean_confidence(things):.3f} "
-            f"components={diagnostic['component_count']} regions={len(things)}"
-        ]
-        lines.extend(thing_line(thing) for thing in things)
-
-        artifacts: dict[str, str] = {}
-        if request.output_dir is not None and self.write_artifacts:
+        if inputs.diagnostics.enabled:
+            output_dir = inputs.diagnostics.directory
+            assert output_dir is not None
             artifacts = _write_artifacts(
                 frame.rgb,
                 diagnostic["smoothed_rgb"],
                 proposals,
-                request.output_dir / "classical_regions",
+                output_dir,
             )
+            inputs.diagnostics.register(artifacts)
 
-        return PerceptionPluginResult(
-            status="ok" if things else "empty",
-            lines=tuple(lines),
-            things=things,
-            observations={
-                self.plugin_id: {
-                    "working_width": diagnostic["working_width"],
-                    "working_height": diagnostic["working_height"],
-                    "component_count": diagnostic["component_count"],
-                    "region_count": len(things),
-                }
-            },
-            artifacts=artifacts,
-            limits=(
-                "classical regions are current-frame coherent-color proposals",
-                "no semantic identity, depth, traversability, or persistence is inferred",
+        return PerceptionEvidenceBatch(
+            signals=(
+                PerceptionSignal(
+                    "classical_regions_available",
+                    bool(things),
+                    _mean_confidence(things),
+                    {
+                        "components": diagnostic["component_count"],
+                        "regions": len(things),
+                    },
+                ),
             ),
+            things=things,
+            measurements={
+                "working_width": diagnostic["working_width"],
+                "working_height": diagnostic["working_height"],
+                "component_count": diagnostic["component_count"],
+                "region_count": len(things),
+            },
         )
 
 

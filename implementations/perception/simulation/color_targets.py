@@ -7,23 +7,15 @@ from typing import Any, Callable
 import numpy as np
 from PIL import Image
 
-from autonomy.perception.interface import (
+from autonomy.perception import (
     PerceivedThing,
+    PerceptionEvidenceBatch,
     PerceptionPluginContract,
-    PerceptionPluginResult,
-    PerceptionRequest,
+    PerceptionPluginInputs,
+    PerceptionSignal,
     ViewLocation,
 )
-from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID
-from implementations.perception.components import (
-    camera_component_id,
-    camera_frame,
-    camera_frame_error,
-)
-from implementations.perception.text import thing_line
-
-
-FRONT_CAMERA_COMPONENT = camera_component_id(FRONT_CAMERA_SENSOR_ID)
+from implementations.perception.components import CameraFrame, FRONT_CAMERA_RGB_INPUT
 
 
 @dataclass(frozen=True)
@@ -39,9 +31,21 @@ class SimColorTargetsPlugin:
 
     plugin_id = "sim-color-targets-v0"
     contract = PerceptionPluginContract(
-        required_components=(FRONT_CAMERA_COMPONENT,),
-        state_mode="stateless",
-        artifact_policy="none",
+        inputs=(FRONT_CAMERA_RGB_INPUT,),
+        description="Detect simulator control targets with known debug colors.",
+        assumptions=(
+            "Chase evaders are red or pink in the front camera",
+            "Chase obstruction controls are low-saturation gray or white regions",
+            "left, center, and right use image-space bounding-box centers",
+        ),
+        emits=(
+            "signals evader_in_sight and obstruction_in_sight",
+            "spatial evidence for present color targets",
+        ),
+        limitations=(
+            "color thresholds are simulator debug heuristics",
+            "no semantic recognition or depth estimate",
+        ),
     )
 
     def __init__(
@@ -55,53 +59,13 @@ class SimColorTargetsPlugin:
         self.min_evader_fraction = max(0.0, float(min_evader_fraction))
         self.min_obstruction_fraction = max(0.0, float(min_obstruction_fraction))
 
-    def reset(self) -> None:
-        return None
-
-    def describe_schema(self) -> dict[str, Any]:
-        return {
-            "plugin_id": self.plugin_id,
-            "reads": ["front_camera RGB pixels"],
-            "assumptions": [
-                "Chase sim evader is red/pink in the front camera",
-                "Chase sim obstruction surfaces are low-saturation gray/white regions",
-                "left/right/center is based on bbox center in image coordinates",
-            ],
-            "emits": [
-                "signal id=evader_in_sight",
-                "signal id=obstruction_in_sight",
-                "thing id=evader when red target pixels are present",
-                "thing id=obstruction when gray/white obstruction pixels are present",
-            ],
-        }
-
-    def perceive(self, request: PerceptionRequest) -> PerceptionPluginResult:
-        front = camera_frame(request, FRONT_CAMERA_SENSOR_ID)
-        if front is None:
-            return PerceptionPluginResult(
-                status="unavailable",
-                lines=(
-                    "signal id=evader_in_sight value=false confidence=0.000 reason=no_front_camera",
-                    "signal id=obstruction_in_sight value=false confidence=0.000 reason=no_front_camera",
-                ),
-                observations={
-                    self.plugin_id: {
-                        "front_camera_available": False,
-                        "input_error": camera_frame_error(request, FRONT_CAMERA_SENSOR_ID),
-                    }
-                },
-                limits=("front camera image missing",),
-            )
-
-        rgb = _resize_rgb(front.rgb, self.thumbnail_width)
+    def perceive(self, inputs: PerceptionPluginInputs) -> PerceptionEvidenceBatch:
+        frame = inputs.require("frame", CameraFrame)
+        rgb = _resize_rgb(frame.rgb, self.thumbnail_width)
         evader = _detect_region(rgb, _evader_mask, self.min_evader_fraction)
         obstruction = _detect_region(rgb, _obstruction_mask, self.min_obstruction_fraction)
 
         things: list[PerceivedThing] = []
-        lines = [
-            _signal_line("evader_in_sight", evader),
-            _signal_line("obstruction_in_sight", obstruction),
-        ]
 
         if evader.present and evader.bbox_xyxy_norm is not None:
             thing = _target_thing(
@@ -112,7 +76,6 @@ class SimColorTargetsPlugin:
                 evidence="red_color_threshold",
             )
             things.append(thing)
-            lines.append(thing_line(thing))
 
         if obstruction.present and obstruction.bbox_xyxy_norm is not None:
             thing = _target_thing(
@@ -123,24 +86,19 @@ class SimColorTargetsPlugin:
                 evidence="neutral_gray_threshold",
             )
             things.append(thing)
-            lines.append(thing_line(thing))
 
-        return PerceptionPluginResult(
-            status="ok" if things else "empty",
-            lines=tuple(lines),
-            things=tuple(things),
-            observations={
-                self.plugin_id: {
-                    "thumbnail_width": int(rgb.shape[1]),
-                    "thumbnail_height": int(rgb.shape[0]),
-                    "evader": _region_dict(evader),
-                    "obstruction": _region_dict(obstruction),
-                }
-            },
-            limits=(
-                "color thresholds are simulator/debug heuristics",
-                "no semantic recognition or depth estimate",
+        return PerceptionEvidenceBatch(
+            signals=(
+                _region_signal("evader_in_sight", evader),
+                _region_signal("obstruction_in_sight", obstruction),
             ),
+            things=tuple(things),
+            measurements={
+                "thumbnail_width": int(rgb.shape[1]),
+                "thumbnail_height": int(rgb.shape[0]),
+                "evader": _region_dict(evader),
+                "obstruction": _region_dict(obstruction),
+            },
         )
 
 
@@ -246,15 +204,16 @@ def _largest_component(mask: np.ndarray) -> tuple[int, int, int, int, int] | Non
     return best
 
 
-def _signal_line(signal_id: str, region: ColorRegion) -> str:
-    direction = _horizontal_direction(region.bbox_xyxy_norm)
-    bbox = "none" if region.bbox_xyxy_norm is None else ",".join(
-        f"{value:.4f}" for value in region.bbox_xyxy_norm
-    )
-    return (
-        f"signal id={signal_id} value={'true' if region.present else 'false'} "
-        f"direction={direction} bbox_xyxy_norm={bbox} "
-        f"confidence={region.confidence:.3f} pixel_fraction={region.pixel_fraction:.5f}"
+def _region_signal(signal_id: str, region: ColorRegion) -> PerceptionSignal:
+    return PerceptionSignal(
+        signal_id=signal_id,
+        value=region.present,
+        confidence=region.confidence,
+        properties={
+            "direction": _horizontal_direction(region.bbox_xyxy_norm),
+            "bbox_xyxy_norm": region.bbox_xyxy_norm,
+            "pixel_fraction": region.pixel_fraction,
+        },
     )
 
 

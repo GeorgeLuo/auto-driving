@@ -8,7 +8,7 @@ from autonomy.perception import PerceptionText
 from autonomy.vehicle import SensorSnapshot
 
 
-OBSERVATION_SCHEMA = "decision_observation_v0"
+OBSERVATION_SCHEMA = "decision_observation_v1"
 
 
 def timestamp_ms() -> int:
@@ -26,9 +26,8 @@ class Observation:
     perception_plugin_id: str | None = None
     summary: tuple[str, ...] = ()
     things: tuple[dict[str, Any], ...] = ()
-    signals: tuple[str, ...] = ()
+    signals: tuple[dict[str, Any], ...] = ()
     artifacts: dict[str, str] = field(default_factory=dict)
-    confidence: float = 0.0
     metadata: dict[str, Any] = field(default_factory=dict)
     schema: str = OBSERVATION_SCHEMA
 
@@ -56,7 +55,6 @@ def observation_from_perception(
             metadata=metadata or {},
         )
 
-    signals = tuple(line for line in perception.lines if line.startswith("signal "))
     summary = tuple(perception.lines[:12])
     return Observation(
         observation_id=observation_id,
@@ -66,9 +64,8 @@ def observation_from_perception(
         perception_plugin_id=perception.plugin_id,
         summary=summary,
         things=tuple(thing.to_dict() for thing in perception.things),
-        signals=signals,
+        signals=tuple(signal.to_dict() for signal in perception.signals),
         artifacts=dict(perception.artifacts),
-        confidence=perception.confidence,
         metadata={
             "limits": list(perception.limits),
             **(metadata or {}),

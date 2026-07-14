@@ -8,8 +8,12 @@ from typing import Any
 import numpy as np
 from PIL import Image
 
-from autonomy.perception import PerceptionComponentUnavailable, PerceptionRequest
-from autonomy.vehicle import SensorReading
+from autonomy.perception import (
+    PerceptionComponentUnavailable,
+    PerceptionPluginInput,
+    PerceptionRequest,
+)
+from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading
 
 
 CAMERA_COMPONENT_KIND = "camera.rgb"
@@ -59,23 +63,32 @@ def camera_component_id(sensor_id: str) -> str:
     return f"{CAMERA_COMPONENT_KIND}:{sensor_id}"
 
 
-def camera_frame(request: PerceptionRequest, sensor_id: str) -> CameraFrame | None:
-    """Resolve and cache one RGB camera component for interested plugins."""
-
-    component_id = camera_component_id(sensor_id)
-    component = request.resolve_component(
-        component_id,
-        lambda: _camera_frame_from_reading(request.sensor(sensor_id), sensor_id),
+def camera_rgb_input(
+    sensor_id: str,
+    *,
+    name: str = "frame",
+) -> PerceptionPluginInput:
+    return PerceptionPluginInput(
+        name=name,
+        component_id=camera_component_id(sensor_id),
+        provider_spec="implementations.perception.components.camera:provide_camera_frame",
     )
-    if component is None:
-        return None
-    if not isinstance(component, CameraFrame):
-        raise TypeError(f"component {component_id!r} is not a CameraFrame")
-    return component
 
 
-def camera_frame_error(request: PerceptionRequest, sensor_id: str) -> str | None:
-    return request.component_error(camera_component_id(sensor_id))
+FRONT_CAMERA_RGB_INPUT = camera_rgb_input(FRONT_CAMERA_SENSOR_ID)
+
+
+def provide_camera_frame(
+    request: PerceptionRequest,
+    plugin_input: PerceptionPluginInput,
+) -> CameraFrame:
+    """Normalize one declared camera reading for framework injection."""
+
+    prefix = f"{CAMERA_COMPONENT_KIND}:"
+    if not plugin_input.component_id.startswith(prefix):
+        raise ValueError(f"camera provider cannot resolve {plugin_input.component_id!r}")
+    sensor_id = plugin_input.component_id.removeprefix(prefix)
+    return _camera_frame_from_reading(request.sensor(sensor_id), sensor_id)
 
 
 def _camera_frame_from_reading(

@@ -9,21 +9,13 @@ import numpy as np
 
 from autonomy.perception import (
     PerceivedThing,
+    PerceptionEvidenceBatch,
     PerceptionPluginContract,
-    PerceptionPluginResult,
-    PerceptionRequest,
+    PerceptionPluginInputs,
+    PerceptionSignal,
     ViewLocation,
 )
-from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID
-from implementations.perception.components import (
-    camera_component_id,
-    camera_frame,
-    camera_frame_error,
-)
-from implementations.perception.text import thing_line
-
-
-FRONT_CAMERA_COMPONENT = camera_component_id(FRONT_CAMERA_SENSOR_ID)
+from implementations.perception.components import CameraFrame, FRONT_CAMERA_RGB_INPUT
 
 
 class FastSamRegionPlugin:
@@ -31,9 +23,17 @@ class FastSamRegionPlugin:
 
     plugin_id = "fastsam-regions-v0"
     contract = PerceptionPluginContract(
-        required_components=(FRONT_CAMERA_COMPONENT,),
-        state_mode="stateless",
-        artifact_policy="optional",
+        inputs=(FRONT_CAMERA_RGB_INPUT,),
+        description="Generate class-agnostic region proposals from FastSAM masks.",
+        emits=(
+            "signal fastsam_regions_available",
+            "spatial region_proposal evidence for accepted masks",
+        ),
+        limitations=(
+            "regions have no semantic class or durable identity",
+            "regions do not imply obstacle, depth, or traversability",
+        ),
+        diagnostic_artifacts=("fastsam_regions", "fastsam_summary"),
     )
 
     def __init__(
@@ -46,7 +46,6 @@ class FastSamRegionPlugin:
         iou: float = 0.9,
         min_area_fraction: float = 0.002,
         max_regions: int = 32,
-        write_artifacts: bool = True,
     ) -> None:
         self.model_path = Path(model_path)
         self.device = str(device)
@@ -55,41 +54,10 @@ class FastSamRegionPlugin:
         self.iou = max(0.0, min(1.0, float(iou)))
         self.min_area_fraction = max(0.0, min(1.0, float(min_area_fraction)))
         self.max_regions = max(1, int(max_regions))
-        self.write_artifacts = bool(write_artifacts)
         self._model = None
 
-    def reset(self) -> None:
-        return None
-
-    def describe_schema(self) -> dict[str, Any]:
-        return {
-            "plugin_id": self.plugin_id,
-            "reads": ["normalized front_camera RGB pixels"],
-            "emits": ["thing kind=region_proposal for each accepted class-agnostic mask"],
-            "properties": [
-                "area_fraction",
-                "centroid_xy_norm",
-                "contour_xy_norm",
-                "touches_lower_image",
-                "model_confidence",
-            ],
-            "limits": [
-                "regions have no semantic class",
-                "regions do not imply obstacle or traversability",
-                "single-frame masks do not estimate depth or persistence",
-            ],
-        }
-
-    def perceive(self, request: PerceptionRequest) -> PerceptionPluginResult:
-        frame = camera_frame(request, FRONT_CAMERA_SENSOR_ID)
-        if frame is None:
-            return PerceptionPluginResult(
-                status="unavailable",
-                lines=("signal id=fastsam_regions_available value=false reason=no_front_camera confidence=0.000",),
-                observations={self.plugin_id: {"input_error": camera_frame_error(request, FRONT_CAMERA_SENSOR_ID)}},
-                limits=("front camera image missing",),
-            )
-
+    def perceive(self, inputs: PerceptionPluginInputs) -> PerceptionEvidenceBatch:
+        frame = inputs.require("frame", CameraFrame)
         model = self._load_model()
         results = model.predict(
             source=cv2.cvtColor(frame.rgb, cv2.COLOR_RGB2BGR),
@@ -111,42 +79,36 @@ class FastSamRegionPlugin:
         )
 
         things = tuple(_proposal_thing(index, proposal) for index, proposal in enumerate(proposals))
-        lines = [
-            "signal id=fastsam_regions_available "
-            f"value={'true' if things else 'false'} confidence={_mean_confidence(things):.3f} "
-            f"raw_masks={len(masks)} regions={len(things)}"
-        ]
-        lines.extend(thing_line(thing) for thing in things)
-
-        artifacts: dict[str, str] = {}
-        if request.output_dir is not None and self.write_artifacts:
+        if inputs.diagnostics.enabled:
+            output_dir = inputs.diagnostics.directory
+            assert output_dir is not None
             artifacts = _write_artifacts(
                 frame.rgb,
                 proposals,
-                request.output_dir / "fastsam",
+                output_dir,
                 model_path=self.model_path,
             )
+            inputs.diagnostics.register(artifacts)
 
         speed = dict(getattr(result, "speed", {}) or {})
-        return PerceptionPluginResult(
-            status="ok" if things else "empty",
-            lines=tuple(lines),
-            things=things,
-            observations={
-                self.plugin_id: {
-                    "model": self.model_path.name,
-                    "device": self.device,
-                    "image_size": self.image_size,
-                    "raw_mask_count": len(masks),
-                    "region_count": len(things),
-                    "speed_ms": speed,
-                }
-            },
-            artifacts=artifacts,
-            limits=(
-                "FastSAM regions are class-agnostic current-frame proposals",
-                "no semantic identity, depth, traversability, or persistence is inferred",
+        return PerceptionEvidenceBatch(
+            signals=(
+                PerceptionSignal(
+                    "fastsam_regions_available",
+                    bool(things),
+                    _mean_confidence(things),
+                    {"raw_masks": len(masks), "regions": len(things)},
+                ),
             ),
+            things=things,
+            measurements={
+                "model": self.model_path.name,
+                "device": self.device,
+                "image_size": self.image_size,
+                "raw_mask_count": len(masks),
+                "region_count": len(things),
+                "speed_ms": speed,
+            },
         )
 
     def _load_model(self):
@@ -212,7 +174,7 @@ def _region_proposals(
         ys, xs = np.nonzero(mask)
         if len(xs) == 0:
             continue
-        contour = _normalized_contour(mask)
+        polygon = _normalized_polygon(mask)
         proposals.append({
             "mask": mask,
             "area_fraction": round(float(area_fraction), 6),
@@ -226,7 +188,7 @@ def _region_proposals(
                 round(float(xs.mean()) / max(width - 1, 1), 5),
                 round(float(ys.mean()) / max(height - 1, 1), 5),
             ),
-            "contour": contour,
+            "polygon": polygon,
             "confidence": round(float(confidences[index]), 5),
             "touches_lower_image": bool(ys.max() >= height * 0.85),
         })
@@ -234,7 +196,7 @@ def _region_proposals(
     return proposals[:max_regions]
 
 
-def _normalized_contour(mask: np.ndarray) -> list[list[float]]:
+def _normalized_polygon(mask: np.ndarray) -> list[list[float]]:
     height, width = mask.shape[:2]
     contours, _ = cv2.findContours(mask.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not contours:
@@ -263,13 +225,16 @@ def _proposal_thing(index: int, proposal: dict[str, Any]) -> PerceivedThing:
             frame="image",
             zone=_zone(proposal["centroid"]),
             bbox_xyxy_norm=proposal["bbox"],
+            polygon_xy_norm=tuple(
+                (float(point[0]), float(point[1]))
+                for point in proposal["polygon"]
+            ),
         ),
         confidence=proposal["confidence"],
         properties={
             "evidence": "fastsam_mask",
             "area_fraction": proposal["area_fraction"],
             "centroid_xy_norm": proposal["centroid"],
-            "contour_xy_norm": proposal["contour"],
             "touches_lower_image": proposal["touches_lower_image"],
             "model_confidence": proposal["confidence"],
         },

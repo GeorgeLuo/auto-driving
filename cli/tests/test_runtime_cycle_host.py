@@ -36,7 +36,7 @@ class RuntimeCycleHostTests(unittest.TestCase):
         )
 
         self.assertEqual(result.control.reason, "stable-idle-engine")
-        self.assertTrue(result.control.metadata["has_image"])
+        self.assertTrue(result.control.metadata["has_sensor_snapshot"])
         self.assertEqual(host.manager.status()["step_count"], 1)
         self.assertTrue(result.to_dict()["context"]["sensor_snapshot"]["readings"][FRONT_CAMERA_SENSOR_ID]["has_value"])
 

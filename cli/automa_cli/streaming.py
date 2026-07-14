@@ -98,6 +98,8 @@ def _render_perception_screen(
     perception = latest.get("perception") if isinstance(latest.get("perception"), dict) else {}
     things = perception.get("things")
     thing_count = len(things) if isinstance(things, list) else last_frame.get("things")
+    signals = perception.get("signals")
+    signal_count = len(signals) if isinstance(signals, list) else last_frame.get("signals")
     completed_at = _int_or_none(last_frame.get("perception_completed_at_ms"))
     age_ms = None if completed_at is None else max(0, now_ms - completed_at)
 
@@ -109,7 +111,7 @@ def _render_perception_screen(
         f"control: {state.get('control_source', 'unknown')}  action: {state.get('action_policy', 'unknown')}",
         f"recording: {state.get('recording', 'unknown')}  frames_processed: {state.get('frames_processed', 0)}",
         _cadence_line(state, last_frame, age_ms),
-        _latest_line(last_frame, thing_count, perception.get("confidence")),
+        _latest_line(last_frame, signal_count, thing_count),
         f"state: {display_path(state_path)}",
         _log_line(process, default_log_path),
         "",
@@ -141,14 +143,14 @@ def _cadence_line(
 
 def _latest_line(
     last_frame: dict[str, Any],
+    signal_count: Any,
     thing_count: Any,
-    confidence: Any,
 ) -> str:
     return (
         f"latest: frame={last_frame.get('frame_id', 'none')}  "
         f"captured_at_ms={last_frame.get('captured_at_ms', 'unknown')}  "
-        f"things={thing_count if thing_count is not None else 'unknown'}  "
-        f"confidence={confidence if confidence is not None else last_frame.get('confidence', 'unknown')}"
+        f"signals={signal_count if signal_count is not None else 'unknown'}  "
+        f"things={thing_count if thing_count is not None else 'unknown'}"
     )
 
 

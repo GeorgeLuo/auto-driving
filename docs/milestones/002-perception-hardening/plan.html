@@ -180,13 +180,13 @@
             <tr>
               <td>Stable output shape</td>
               <td><span class="status done">Working</span></td>
-              <td><code>perception_text_v1</code> adds explicit overall status, structured things, and per-plugin status, timing, error, thing count, and artifact count to the mapper result.</td>
-              <td>Temporal identity and cross-plugin confidence semantics are not yet established.</td>
+              <td><code>perception_text_v2</code> carries structured signals and spatial evidence with source-plugin attribution. Text, overall status, and per-plugin timing, errors, counts, and diagnostic paths are derived by the framework.</td>
+              <td>Temporal identity and cross-plugin fusion semantics are not yet established.</td>
             </tr>
             <tr>
-              <td>Plugin chain and activation</td>
+              <td>Plugin runner and activation</td>
               <td><span class="status done">Lifecycle working</span></td>
-              <td>Ordered plugins are packaged and activated with required sensors, state mode, artifact policy, reset, isolated errors, configuration, and machine-readable run results.</td>
+              <td>Ordered plugins declare named component inputs, state mode, emitted evidence, limitations, and optional diagnostics. The runner injects cached components and owns reset, missing-input handling, warm-up, isolated errors, timing, attribution, and machine-readable run results.</td>
               <td>Plugins do not yet consume prior plugin evidence; this remains a deliberate unresolved design choice.</td>
             </tr>
             <tr>
@@ -237,7 +237,7 @@
           <h3>In Scope</h3>
           <ul>
             <li>A provider-neutral perception experiment command.</li>
-            <li>Plugin-owned component access with shared file-backed and in-memory camera normalization.</li>
+            <li>Framework-injected components with shared file-backed and in-memory camera normalization.</li>
             <li>Per-frame structure proposals and temporal scene tracks.</li>
             <li>Recorded-sequence replay and comparable reports.</li>
             <li>Latency and memory measurements locally and on Pi.</li>
@@ -268,14 +268,14 @@
             <li>Add one perception-run command that constructs the discovered <code>CarInterface</code> for either provider.</li>
             <li>Default to observation only; never move a physical vehicle.</li>
             <li>Support bounded frames, cadence, recording, latest output, and machine-readable summaries.</li>
-            <li>Add recorded-sequence replay using the same mapper and plugin chain.</li>
+            <li>Add recorded-sequence replay using the same mapper and plugin configuration.</li>
           </ul>
         </div>
         <div class="card interface">
           <h3>2. Component Access And Camera Adapter <span class="status done">Completed</span></h3>
           <ul>
             <li>Keep the stable stage agnostic of available sensor and evidence kinds.</li>
-            <li>Let plugins declare component queries and resolve the inputs they need from the generic snapshot.</li>
+            <li>Let plugins declare named component inputs and have generic orchestration resolve and inject them from the snapshot.</li>
             <li>Share concrete camera decoding through a cached implementation component whether the reading supplies <code>path</code> or <code>value</code>.</li>
             <li>Test identical plugin output shape from Chase files, Pi HTTP captures, and Donkey arrays.</li>
           </ul>
@@ -283,15 +283,15 @@
         <div class="card interface">
           <h3>3. Plugin Lifecycle <span class="status done">Completed</span></h3>
           <ul>
-            <li>Define initialization, reset, error isolation, and optional temporal-state behavior.</li>
-            <li>Declare required components, whether artifacts are optional, and whether a plugin is stateless, pairwise, or windowed.</li>
-            <li>Keep plugins independent in this milestone: each queries shared input components, while cross-plugin fusion remains a later explicit layer.</li>
+            <li>Keep plugin authoring to a declarative contract plus one evidence-producing method; orchestration owns initialization, optional reset, error isolation, timing, and status.</li>
+            <li>Declare named inputs, diagnostic outputs, and whether a plugin is stateless, pairwise, or windowed.</li>
+            <li>Keep plugins independent in this milestone: each consumes injected components, while cross-plugin fusion remains a later explicit layer.</li>
           </ul>
         </div>
         <div class="card interface">
           <h3>4. Evaluation Harness <span class="status done">Working baseline</span></h3>
           <ul>
-            <li>Run the same recorded sequences through candidate plugin chains.</li>
+            <li>Run the same recorded sequences through candidate plugin configurations.</li>
             <li>Produce overlays, structured output, timing, failure counts, and stability summaries.</li>
             <li>Keep human review possible without making hand-tuned scene labels part of runtime logic.</li>
           </ul>
@@ -366,7 +366,7 @@
         </div>
         <div class="card interface">
           <h3>First Implementation</h3>
-          <p>Use pretrained <code>FastSAM-s</code> with the “everything” path at 640-pixel input. Convert every accepted mask into generic region evidence: normalized bounds, centroid, area fraction, contour, confidence, image zone, and whether it reaches the lower image region.</p>
+          <p>Use pretrained <code>FastSAM-s</code> with the “everything” path at 640-pixel input. Convert every accepted mask into generic region evidence: normalized bounds, a simplified normalized polygon, centroid, area fraction, confidence, image zone, and whether it reaches the lower image region.</p>
         </div>
         <div class="card constraint">
           <h3>Meaning Boundary</h3>
@@ -513,6 +513,11 @@
               <td><a href="../../../lab/plugins/perception/fastsam/runs/replay-chase-sim-chaser-20260713-145225-20260713-145245/review.html">visual review</a> · <a href="../../../lab/plugins/perception/fastsam/runs/replay-chase-sim-chaser-20260713-145225-20260713-145245/summary.txt">metrics</a></td>
             </tr>
             <tr>
+              <td>Live FastSAM simulator activation</td>
+              <td>An isolated lab worker supplied normalized polygons to the generic live publication and viewer without recording artifacts or importing model dependencies into core.</td>
+              <td><a href="evidence/live-fastsam-view-validation.json">tracked validation record</a></td>
+            </tr>
+            <tr>
               <td>Classical regions on physical images</td>
               <td>Visual and resource comparison against FastSAM on the same eleven-frame corpus.</td>
               <td><a href="../../../lab/plugins/perception/classical_regions/runs/replay-pi-straight-long-20260611-221650-20260711-145058/review.html">visual review</a> · <a href="../../../lab/plugins/perception/classical_regions/runs/replay-pi-straight-long-20260611-221650-20260711-145058/summary.txt">metrics</a></td>
@@ -565,7 +570,7 @@
             </tr>
             <tr>
               <td>FastSAM-s</td>
-              <td>Visually cleaner whole-surface masks in physical and depth-obstacle frames, but roughly 640-673 MiB peak RSS and 141-207 ms warm median on M1, with an Ultralytics license gate.</td>
+              <td>Visually cleaner whole-surface masks in physical and depth-obstacle frames. Live activation proved that its simplified polygons can use the generic viewer, but the candidate still costs roughly 640-673 MiB peak RSS and 141-207 ms warm median on replay, with an Ultralytics license gate.</td>
               <td><strong>Retain as local diagnostic.</strong> Do not deploy onboard or promote into core requirements in this milestone.</td>
             </tr>
             <tr>
@@ -642,6 +647,9 @@
         <li><span class="status done">Done</span> Every evaluated approach has an explicit production, promotion-candidate, diagnostic, or deferred disposition.</li>
         <li><span class="status done">Done</span> Model code remains isolated and generated environments, weights, setup state, and runs remain ignored.</li>
         <li><span class="status done">Done</span> A live idle-engine window produced only zero steering and throttle, recorded no errors, and returned the Pi to manual mode.</li>
+        <li><span class="status done">Done</span> An isolated FastSAM candidate was activated through the CLI and published polygon overlays in the live simulator view without enabling artifact recording.</li>
+        <li><span class="status done">Done</span> Live camera publication is decoupled from perception inference through a bounded latest-frame queue; the viewer reports overlay source, frame lag, and result age instead of building an inference backlog.</li>
+        <li><span class="status done">Done</span> Background automation startup waits for the first camera frame and view, persists failures that occur before normal runtime state exists, and never treats a spawned PID as readiness.</li>
       </ol>
     </section>
 

@@ -13,12 +13,13 @@ from cli.automa_cli.bundles import (
     release_activation_summary,
     sync_controller_bundle,
 )
-from cli.automa_cli.perception import (
+from implementations.perception.catalog import (
     DEFAULT_PERCEPTION_ALGORITHM,
     PERCEPTION_ALGORITHMS,
+    PERCEPTION_MAPPER_SPEC,
     PERCEPTION_PLUGIN_SPECS,
-    PLUGIN_CHAIN_MAPPER_SPEC,
 )
+from cli.automa_cli.perception_view import PerceptionViewServer
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -154,7 +155,7 @@ class AutomaCliHarness(unittest.TestCase):
         info = self.run_automa("vehicles", "info", "help")
         perception = self.run_automa("vehicles", "perception", "help")
 
-        self.assertIn("show locally staged perception schema", info.stdout)
+        self.assertIn("show staged perception schema and live view", info.stdout)
         self.assertIn("show locally staged decision engine schema", info.stdout)
         self.assertIn("enable one locally staged perception plugin", perception.stdout)
         self.assertIn("disable one locally staged perception plugin", perception.stdout)
@@ -164,6 +165,8 @@ class AutomaCliHarness(unittest.TestCase):
         decision = self.run_automa("vehicles", "update", "decision", "--help")
 
         self.assertIn("Stage a perception algorithm in a vehicle's local controller bundle", perception.stdout)
+        self.assertIn("--candidate", perception.stdout)
+        self.assertIn("local simulator only", perception.stdout)
         self.assertIn("Stage a decision engine in the local controller bundle", decision.stdout)
 
     def test_simulators_help_shows_only_simulator_level_commands(self) -> None:
@@ -523,8 +526,123 @@ class AutomaCliHarness(unittest.TestCase):
         payload = json.loads(result.stdout)
         self.assertEqual(payload["schema"], "vehicle_perception_info_v0")
         self.assertEqual(payload["activation"]["algorithm"], "sim_debug")
-        self.assertEqual(payload["algorithm_schema"]["schema"], "perception_algorithm_schema_v0")
-        self.assertEqual(payload["algorithm_schema"]["output"]["schema"], "perception_text_v1")
+        self.assertEqual(payload["algorithm_schema"]["schema"], "perception_algorithm_schema_v2")
+        self.assertEqual(payload["algorithm_schema"]["output"]["schema"], "perception_text_v2")
+        self.assertFalse(payload["published_view"]["available"])
+
+    def test_perception_info_reports_running_view_url(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime_root = Path(tmp) / "vehicles"
+            vehicle_id = "chase-sim-chaser"
+            self.write_fake_deployment(
+                runtime_root,
+                vehicle_id,
+                pid=os.getpid(),
+                bundle_root=ROOT,
+            )
+            automation_dir = runtime_root / vehicle_id / "bundle" / "runtime" / "automation"
+            server = PerceptionViewServer(
+                vehicle_id=vehicle_id,
+                automation_dir=automation_dir,
+                port=0,
+            ).start()
+            expected_url = server.url
+            try:
+                text_result = self.run_automa(
+                    "vehicles",
+                    "info",
+                    "perception",
+                    "--id",
+                    vehicle_id,
+                    runtime_root=runtime_root,
+                )
+                json_result = self.run_automa(
+                    "vehicles",
+                    "info",
+                    "perception",
+                    "--id",
+                    vehicle_id,
+                    "--json",
+                    runtime_root=runtime_root,
+                )
+            finally:
+                server.stop()
+
+        payload = json.loads(json_result.stdout)
+        self.assertTrue(payload["published_view"]["available"])
+        self.assertEqual(payload["published_view"]["url"], expected_url)
+        self.assertIn("Perception view: http://127.0.0.1:", text_result.stdout)
+
+    def test_perception_info_reports_worker_that_exited_during_startup(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime_root = Path(tmp) / "vehicles"
+            vehicle_id = "chase-sim-chaser"
+            dead_pid = 987654321
+            self.write_fake_deployment(
+                runtime_root,
+                vehicle_id,
+                pid=dead_pid,
+                bundle_root=ROOT,
+            )
+            state_path = (
+                runtime_root
+                / vehicle_id
+                / "bundle"
+                / "runtime"
+                / "automation"
+                / "state.json"
+            )
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            state.update({"status": "starting", "pid": dead_pid})
+            self.write_json(state_path, state)
+
+            result = self.run_automa(
+                "vehicles",
+                "info",
+                "perception",
+                "--id",
+                vehicle_id,
+                runtime_root=runtime_root,
+            )
+
+        self.assertIn("Perception view: unavailable", result.stdout)
+        self.assertIn("exited during startup", result.stdout)
+        self.assertNotIn("Connection refused", result.stdout)
+
+    def test_perception_info_reports_live_worker_that_is_still_starting(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime_root = Path(tmp) / "vehicles"
+            vehicle_id = "chase-sim-chaser"
+            self.write_fake_deployment(
+                runtime_root,
+                vehicle_id,
+                pid=os.getpid(),
+                bundle_root=ROOT,
+            )
+            state_path = (
+                runtime_root
+                / vehicle_id
+                / "bundle"
+                / "runtime"
+                / "automation"
+                / "state.json"
+            )
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            state.update({"status": "starting", "pid": os.getpid()})
+            self.write_json(state_path, state)
+
+            result = self.run_automa(
+                "vehicles",
+                "info",
+                "perception",
+                "--id",
+                vehicle_id,
+                runtime_root=runtime_root,
+            )
+
+        self.assertIn("Perception view: starting", result.stdout)
+        self.assertIn("still initializing", result.stdout)
+        self.assertNotIn("start or restart the automation worker", result.stdout)
 
     def test_perception_bundle_syncs_configured_visual_observer_plugins(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -554,7 +672,7 @@ class AutomaCliHarness(unittest.TestCase):
                 "implementations/perception/traversability/plugin.py",
                 "implementations/perception/preparation/vlm.py",
                 "implementations/perception/motion/tracks.py",
-                "autonomy/perception/mappers/plugin_chain.py",
+                "autonomy/perception/mappers/plugin_runner.py",
                 "bundle-manifest.json",
             ):
                 self.assertTrue((bundle_root / relative).exists(), relative)
@@ -574,7 +692,7 @@ class AutomaCliHarness(unittest.TestCase):
                     },
                     "perception": {
                         "algorithm": "visual_observer",
-                        "mapper_spec": PLUGIN_CHAIN_MAPPER_SPEC,
+                        "mapper_spec": PERCEPTION_MAPPER_SPEC,
                         "mapper_config": dict(algorithm_config["mapper_config"]),
                         "source_dir": bundle["perception_dir"],
                     },
@@ -606,7 +724,7 @@ class AutomaCliHarness(unittest.TestCase):
             payload["activation"]["mapper_config"]["plugins"],
             ["frame", "floor_plane", "motion_tracks"],
         )
-        chain = payload["algorithm_schema"]["plugin_chain"]
+        chain = payload["algorithm_schema"]["plugins"]
         self.assertEqual(
             [plugin["plugin_id"] for plugin in chain],
             [
@@ -616,7 +734,7 @@ class AutomaCliHarness(unittest.TestCase):
             ],
         )
         self.assertIn("Enabled plugins: frame, floor_plane, motion_tracks", text_result.stdout)
-        self.assertIn("Plugin chain:", text_result.stdout)
+        self.assertIn("Plugins:", text_result.stdout)
         self.assertIn(
             "frame-observation-v0 [stateless] components=camera.rgb:front_camera",
             text_result.stdout,
@@ -644,6 +762,143 @@ class AutomaCliHarness(unittest.TestCase):
         self.assertEqual(payload["manifest"]["provider"], "chase-sim")
         self.assertTrue(payload["would_write"]["bundle_root"].endswith("vehicles/chase-sim-chaser/bundle"))
 
+    def test_ready_lab_candidate_can_be_staged_and_inspected_locally(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            runtime_root = root / "vehicles"
+            candidate_root = root / "candidates"
+            candidate_dir = candidate_root / "fixture"
+            self.write_json(
+                candidate_dir / "plugin.json",
+                {
+                    "schema": "automa_lab_perception_plugin_v0",
+                    "id": "fixture",
+                    "name": "Fixture regions",
+                    "description": "Test-only isolated candidate.",
+                    "plugin": {
+                        "entrypoint": (
+                            "implementations.perception.observation.plugin:"
+                            "FrameObservationPlugin"
+                        ),
+                        "config": {},
+                    },
+                    "runtime": {"python": "core"},
+                    "output": {
+                        "schema": "perception_text_v2",
+                        "kind": "sensor_frame",
+                        "semantic_labels": False,
+                        "depth": False,
+                    },
+                },
+            )
+            env = {"AUTOMA_LAB_PERCEPTION_ROOT": str(candidate_root)}
+
+            update = self.run_automa(
+                "vehicles",
+                "update",
+                "perception",
+                "--id",
+                "chase-sim-chaser",
+                "--candidate",
+                "fixture",
+                "--json",
+                runtime_root=runtime_root,
+                extra_env=env,
+            )
+            info = self.run_automa(
+                "vehicles",
+                "info",
+                "perception",
+                "--id",
+                "chase-sim-chaser",
+                "--json",
+                runtime_root=runtime_root,
+                extra_env=env,
+            )
+            text_info = self.run_automa(
+                "vehicles",
+                "info",
+                "perception",
+                "--id",
+                "chase-sim-chaser",
+                runtime_root=runtime_root,
+                extra_env=env,
+            )
+
+        update_payload = json.loads(update.stdout)
+        info_payload = json.loads(info.stdout)
+        self.assertEqual(update_payload["algorithm"], "candidate:fixture")
+        self.assertEqual(
+            update_payload["manifest"]["perception"]["mapper_spec"],
+            "cli.automa_cli.lab_plugins:LabPerceptionMapper",
+        )
+        self.assertEqual(
+            update_payload["manifest"]["perception"]["mapper_config"]["candidate_id"],
+            "fixture",
+        )
+        self.assertTrue(
+            update_payload["manifest"]["perception"]["candidate"]["source_tree_sha256"]
+        )
+        self.assertEqual(info_payload["activation"]["algorithm"], "candidate:fixture")
+        self.assertEqual(info_payload["algorithm_schema"]["candidate"]["id"], "fixture")
+        self.assertIn("Candidate: fixture (isolated local runtime)", text_info.stdout)
+        self.assertNotIn("Enabled plugins: none", text_info.stdout)
+
+    def test_lab_candidate_cannot_be_staged_for_physical_vehicle(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            runtime_root = root / "vehicles"
+            bundle = controller_bundle_paths(runtime_root / "piracer")
+            self.write_json(
+                Path(bundle["perception_runtime_dir"]) / "active.json",
+                {
+                    "schema": "automa_perception_activation_v0",
+                    "vehicle_id": "piracer",
+                    "vehicle_kind": "picar",
+                    "provider": "picar",
+                    "runtime": {"kind": "onboard_controller", "connection": {}},
+                    "controller_bundle": bundle,
+                    "perception": {
+                        "algorithm": "lightweight_observer",
+                        "mapper_spec": PERCEPTION_MAPPER_SPEC,
+                        "mapper_config": {},
+                    },
+                },
+            )
+            candidate_root = root / "candidates"
+            self.write_json(
+                candidate_root / "fixture" / "plugin.json",
+                {
+                    "schema": "automa_lab_perception_plugin_v0",
+                    "id": "fixture",
+                    "plugin": {
+                        "entrypoint": (
+                            "implementations.perception.observation.plugin:"
+                            "FrameObservationPlugin"
+                        ),
+                        "config": {},
+                    },
+                    "runtime": {"python": "core"},
+                    "output": {"schema": "perception_text_v2"},
+                },
+            )
+
+            result = self.run_automa(
+                "vehicles",
+                "update",
+                "perception",
+                "--id",
+                "piracer",
+                "--candidate",
+                "fixture",
+                runtime_root=runtime_root,
+                extra_env={"AUTOMA_LAB_PERCEPTION_ROOT": str(candidate_root)},
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("can only be activated for a Chase simulator vehicle", result.stdout)
+
     def test_physical_perception_staging_reuses_local_metadata_while_offline(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
@@ -660,7 +915,7 @@ class AutomaCliHarness(unittest.TestCase):
                     "controller_bundle": bundle,
                     "perception": {
                         "algorithm": "lightweight_observer",
-                        "mapper_spec": PLUGIN_CHAIN_MAPPER_SPEC,
+                        "mapper_spec": PERCEPTION_MAPPER_SPEC,
                         "mapper_config": dict(
                             PERCEPTION_ALGORITHMS["lightweight_observer"]["mapper_config"]
                         ),
@@ -755,7 +1010,7 @@ class AutomaCliHarness(unittest.TestCase):
                     "controller_bundle": bundle,
                     "perception": {
                         "algorithm": "lightweight_observer",
-                        "mapper_spec": PLUGIN_CHAIN_MAPPER_SPEC,
+                        "mapper_spec": PERCEPTION_MAPPER_SPEC,
                         "mapper_config": {
                             "plugins": ["frame"],
                             "plugin_specs": dict(PERCEPTION_PLUGIN_SPECS),
@@ -854,7 +1109,7 @@ class AutomaCliHarness(unittest.TestCase):
                 "schema": "automa_perception_activation_v0",
                 "perception": {
                     "algorithm": "sim_debug",
-                    "mapper_spec": PLUGIN_CHAIN_MAPPER_SPEC,
+                    "mapper_spec": PERCEPTION_MAPPER_SPEC,
                     "mapper_config": {
                         "plugins": ["frame", "sim_color_targets"],
                         "plugin_specs": dict(PERCEPTION_PLUGIN_SPECS),

@@ -13,6 +13,8 @@ from urllib import error as urllib_error
 from urllib import request as urllib_request
 from urllib.parse import urlparse
 
+from implementations.perception.catalog import DEFAULT_PERCEPTION_ALGORITHM
+
 from .bundles import (
     controller_bundle_paths,
     controller_bundle_source_summary,
@@ -26,7 +28,7 @@ from .donkeycar_vendor import (
     load_donkeycar_vendor_manifest,
 )
 from .paths import display_path, safe_path_part
-from .perception import DEFAULT_PERCEPTION_ALGORITHM, ensure_vehicle_perception_activation
+from .perception import ensure_vehicle_perception_activation
 from .vehicles import discover_active_vehicles, find_vehicle_by_id
 
 

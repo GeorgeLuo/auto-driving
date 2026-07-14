@@ -1,65 +1,35 @@
 from __future__ import annotations
 
-from typing import Any
-
-from autonomy.perception.interface import (
+from autonomy.perception import (
     PerceivedThing,
+    PerceptionEvidenceBatch,
     PerceptionPluginContract,
-    PerceptionPluginResult,
-    PerceptionRequest,
+    PerceptionPluginInputs,
+    PerceptionSignal,
     ViewLocation,
 )
-from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID
-from implementations.perception.components import (
-    camera_component_id,
-    camera_frame,
-    camera_frame_error,
-)
-from implementations.perception.text import thing_line
+from implementations.perception.components import CameraFrame, FRONT_CAMERA_RGB_INPUT
 
 from .frame_analysis import observe_rgb_frame
-
-
-FRONT_CAMERA_COMPONENT = camera_component_id(FRONT_CAMERA_SENSOR_ID)
 
 
 class FrameObservationPlugin:
     plugin_id = "frame-observation-v0"
     contract = PerceptionPluginContract(
-        required_components=(FRONT_CAMERA_COMPONENT,),
-        state_mode="stateless",
-        artifact_policy="none",
+        inputs=(FRONT_CAMERA_RGB_INPUT,),
+        description="Report normalized frame dimensions and basic light statistics.",
+        emits=(
+            "signal front_camera_available",
+            "thing front_camera_frame",
+        ),
     )
 
-    def reset(self) -> None:
-        return None
-
-    def describe_schema(self) -> dict[str, Any]:
-        return {
-            "plugin_id": self.plugin_id,
-            "reads": ["front_camera image dimensions", "brightness_mean", "contrast_std"],
-            "emits": ["frame line", "front_camera_frame thing"],
-        }
-
-    def perceive(self, request: PerceptionRequest) -> PerceptionPluginResult:
-        front = camera_frame(request, FRONT_CAMERA_SENSOR_ID)
-        if front is None:
-            return PerceptionPluginResult(
-                status="unavailable",
-                lines=("signal id=front_camera_available value=false confidence=1.000",),
-                observations={
-                    "frame": {
-                        "front_camera_available": False,
-                        "input_error": camera_frame_error(request, FRONT_CAMERA_SENSOR_ID),
-                    }
-                },
-                limits=("front camera image missing",),
-            )
-
-        core = observe_rgb_frame(front.rgb)
-        width = int(core["image_width_px"])
-        height = int(core["image_height_px"])
-        frame = PerceivedThing(
+    def perceive(self, inputs: PerceptionPluginInputs) -> PerceptionEvidenceBatch:
+        frame = inputs.require("frame", CameraFrame)
+        measurements = observe_rgb_frame(frame.rgb)
+        width = int(measurements["image_width_px"])
+        height = int(measurements["image_height_px"])
+        evidence = PerceivedThing(
             thing_id="front_camera_frame",
             kind="sensor_frame",
             label="front camera frame",
@@ -72,17 +42,12 @@ class FrameObservationPlugin:
             properties={
                 "width_px": width,
                 "height_px": height,
-                "brightness_mean": core["brightness_mean"],
-                "contrast_std": core["contrast_std"],
+                "brightness_mean": measurements["brightness_mean"],
+                "contrast_std": measurements["contrast_std"],
             },
         )
-        return PerceptionPluginResult(
-            lines=(
-                "frame "
-                f"width_px={width} height_px={height} "
-                f"brightness_mean={core['brightness_mean']} contrast_std={core['contrast_std']}",
-                thing_line(frame),
-            ),
-            things=(frame,),
-            observations={"frame": core},
+        return PerceptionEvidenceBatch(
+            signals=(PerceptionSignal("front_camera_available", True),),
+            things=(evidence,),
+            measurements=measurements,
         )

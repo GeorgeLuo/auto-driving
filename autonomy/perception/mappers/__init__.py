@@ -1,5 +1,5 @@
 """Built-in perception mappers."""
 
-from .plugin_chain import PluginChainPerceptionMapper
+from .plugin_runner import PluginPerceptionMapper
 
-__all__ = ["PluginChainPerceptionMapper"]
+__all__ = ["PluginPerceptionMapper"]

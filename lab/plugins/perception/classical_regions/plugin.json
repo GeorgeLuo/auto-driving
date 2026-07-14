@@ -11,15 +11,14 @@
       "color_radius": 18,
       "min_area_fraction": 0.003,
       "max_area_fraction": 0.65,
-      "max_regions": 32,
-      "write_artifacts": true
+      "max_regions": 32
     }
   },
   "runtime": {
     "python": "core"
   },
   "output": {
-    "schema": "perception_text_v1",
+    "schema": "perception_text_v2",
     "kind": "region_proposal",
     "semantic_labels": false,
     "depth": false

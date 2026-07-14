@@ -12,7 +12,6 @@ def build_perception_request(
     snapshot: SensorSnapshot,
     *,
     output_dir: Path | None = None,
-    previous_snapshot: SensorSnapshot | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> PerceptionRequest:
     """Wrap a sensor snapshot without assuming which components plugins need."""
@@ -20,6 +19,5 @@ def build_perception_request(
     return PerceptionRequest(
         snapshot=snapshot,
         output_dir=output_dir,
-        previous_snapshot=previous_snapshot,
         metadata=dict(metadata or {}),
     )

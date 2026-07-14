@@ -6,114 +6,24 @@ from typing import Any, Callable, Literal, Protocol, TypeVar, runtime_checkable
 
 from autonomy.vehicle import SensorReading, SensorSnapshot
 
+from .evidence import PerceivedThing, PerceptionSignal
+from .plugin import PerceptionComponentUnavailable
 
-PERCEPTION_TEXT_SCHEMA = "perception_text_v1"
+
+PERCEPTION_TEXT_SCHEMA = "perception_text_v2"
 PLUGIN_RESULT_STATUSES = ("ok", "empty", "warming_up", "unavailable", "error")
-PLUGIN_STATE_MODES = ("stateless", "pairwise", "windowed")
-
 PluginResultStatus = Literal["ok", "empty", "warming_up", "unavailable", "error"]
-PluginStateMode = Literal["stateless", "pairwise", "windowed"]
 ComponentT = TypeVar("ComponentT")
-
-
-class PerceptionComponentUnavailable(RuntimeError):
-    """A plugin-requested component cannot be derived from this snapshot."""
-
-
-@dataclass(frozen=True)
-class PerceptionPluginContract:
-    """Machine-readable execution requirements for one plugin."""
-
-    required_components: tuple[str, ...] = ()
-    state_mode: PluginStateMode = "stateless"
-    artifact_policy: Literal["none", "optional", "required"] = "none"
-
-    def __post_init__(self) -> None:
-        if any(not isinstance(component, str) or not component for component in self.required_components):
-            raise ValueError("required component ids must be non-empty strings")
-        if len(set(self.required_components)) != len(self.required_components):
-            raise ValueError("required component ids must be unique")
-        if self.state_mode not in PLUGIN_STATE_MODES:
-            raise ValueError(f"unsupported plugin state mode: {self.state_mode!r}")
-        if self.artifact_policy not in {"none", "optional", "required"}:
-            raise ValueError(f"unsupported artifact policy: {self.artifact_policy!r}")
-
-    def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
-
-
-@dataclass(frozen=True)
-class ViewLocation:
-    """Computational location for a perceived item."""
-
-    frame: str
-    zone: str
-    bbox_xyxy_norm: tuple[float, float, float, float] | None = None
-
-    def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "ViewLocation":
-        bbox = data.get("bbox_xyxy_norm")
-        return cls(
-            frame=str(data.get("frame") or "unknown"),
-            zone=str(data.get("zone") or "unknown"),
-            bbox_xyxy_norm=tuple(float(value) for value in bbox) if isinstance(bbox, (list, tuple)) else None,
-        )
-
-
-@dataclass(frozen=True)
-class PerceivedThing:
-    """One thing-like observation produced by a perception mapper."""
-
-    thing_id: str
-    kind: str
-    label: str
-    location: ViewLocation
-    confidence: float
-    properties: dict[str, Any] = field(default_factory=dict)
-
-    def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "PerceivedThing":
-        location = data.get("location") if isinstance(data.get("location"), dict) else {}
-        return cls(
-            thing_id=str(data.get("thing_id") or "unknown"),
-            kind=str(data.get("kind") or "unknown"),
-            label=str(data.get("label") or "unknown"),
-            location=ViewLocation.from_dict(location),
-            confidence=float(data.get("confidence") or 0.0),
-            properties=dict(data.get("properties") or {}),
-        )
-
-
-@dataclass(frozen=True)
-class PerceptionPluginResult:
-    """One plugin's evidence before mapper-level aggregation."""
-
-    status: PluginResultStatus = "ok"
-    lines: tuple[str, ...] = ()
-    things: tuple[PerceivedThing, ...] = ()
-    observations: dict[str, Any] = field(default_factory=dict)
-    artifacts: dict[str, str] = field(default_factory=dict)
-    limits: tuple[str, ...] = ()
-    error: str | None = None
-
-    def __post_init__(self) -> None:
-        if self.status not in PLUGIN_RESULT_STATUSES:
-            raise ValueError(f"unsupported plugin result status: {self.status!r}")
-        if self.status == "error" and not self.error:
-            raise ValueError("error plugin results must include an error message")
 
 
 @dataclass(frozen=True)
 class PerceptionPluginRun:
+    """Framework-derived execution record for one plugin invocation."""
+
     plugin_id: str
     status: PluginResultStatus
     duration_ms: float
+    signal_count: int
     thing_count: int
     artifact_count: int
     error: str | None = None
@@ -127,6 +37,7 @@ class PerceptionPluginRun:
             plugin_id=str(data.get("plugin_id") or "unknown"),
             status=str(data.get("status") or "error"),
             duration_ms=float(data.get("duration_ms") or 0.0),
+            signal_count=int(data.get("signal_count") or 0),
             thing_count=int(data.get("thing_count") or 0),
             artifact_count=int(data.get("artifact_count") or 0),
             error=str(data["error"]) if data.get("error") is not None else None,
@@ -135,16 +46,16 @@ class PerceptionPluginRun:
 
 @dataclass(frozen=True)
 class PerceptionText:
-    """Line-oriented perception output for decision code and logs."""
+    """Structured perception evidence with a framework-rendered text view."""
 
     schema: str
     plugin_id: str
     status: str
     lines: tuple[str, ...]
+    signals: tuple[PerceptionSignal, ...]
     things: tuple[PerceivedThing, ...]
-    confidence: float
     plugin_runs: tuple[PerceptionPluginRun, ...] = ()
-    observations: dict[str, Any] = field(default_factory=dict)
+    measurements: dict[str, dict[str, Any]] = field(default_factory=dict)
     artifacts: dict[str, str] = field(default_factory=dict)
     limits: tuple[str, ...] = ()
 
@@ -164,30 +75,40 @@ class PerceptionText:
             plugin_id=str(data.get("plugin_id") or "unknown"),
             status=str(data.get("status") or "error"),
             lines=tuple(str(line) for line in data.get("lines") or ()),
+            signals=tuple(
+                PerceptionSignal.from_dict(item)
+                for item in data.get("signals") or ()
+                if isinstance(item, dict)
+            ),
             things=tuple(
                 PerceivedThing.from_dict(item)
                 for item in data.get("things") or ()
                 if isinstance(item, dict)
             ),
-            confidence=float(data.get("confidence") or 0.0),
             plugin_runs=tuple(
                 PerceptionPluginRun.from_dict(item)
                 for item in data.get("plugin_runs") or ()
                 if isinstance(item, dict)
             ),
-            observations=dict(data.get("observations") or {}),
-            artifacts={str(key): str(value) for key, value in dict(data.get("artifacts") or {}).items()},
+            measurements={
+                str(plugin_id): dict(values)
+                for plugin_id, values in dict(data.get("measurements") or {}).items()
+                if isinstance(values, dict)
+            },
+            artifacts={
+                str(key): str(value)
+                for key, value in dict(data.get("artifacts") or {}).items()
+            },
             limits=tuple(str(item) for item in data.get("limits") or ()),
         )
 
 
 @dataclass
 class PerceptionRequest:
-    """Generic component context shared by configured perception plugins."""
+    """Framework request used to resolve shared components for plugins."""
 
     snapshot: SensorSnapshot
     output_dir: Path | None = None
-    previous_snapshot: SensorSnapshot | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
     _components: dict[str, Any] = field(default_factory=dict, repr=False)
     _component_errors: dict[str, str] = field(default_factory=dict, repr=False)
@@ -234,23 +155,8 @@ class PerceptionRequest:
 
 
 @runtime_checkable
-class PerceptionPlugin(Protocol):
-    plugin_id: str
-    contract: PerceptionPluginContract
-
-    def reset(self) -> None:
-        ...
-
-    def describe_schema(self) -> dict[str, Any]:
-        ...
-
-    def perceive(self, request: PerceptionRequest) -> PerceptionPluginResult:
-        ...
-
-
-@runtime_checkable
 class PerceptionMapper(Protocol):
-    """Self-contained mapper from vehicle sensors to perception text."""
+    """Self-contained mapper from vehicle sensors to perception evidence."""
 
     plugin_id: str
 

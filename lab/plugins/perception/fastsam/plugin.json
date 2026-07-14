@@ -12,8 +12,7 @@
       "confidence": 0.35,
       "iou": 0.9,
       "min_area_fraction": 0.002,
-      "max_regions": 32,
-      "write_artifacts": true
+      "max_regions": 32
     }
   },
   "runtime": {
@@ -27,7 +26,7 @@
     "license_review": "Ultralytics AGPL-3.0 or commercial terms must be resolved before promotion."
   },
   "output": {
-    "schema": "perception_text_v1",
+    "schema": "perception_text_v2",
     "kind": "region_proposal",
     "semantic_labels": false,
     "depth": false

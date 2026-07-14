@@ -7,25 +7,18 @@ from typing import Any
 import numpy as np
 from PIL import Image, ImageDraw
 
-from autonomy.perception.interface import (
+from autonomy.perception import (
     PerceivedThing,
+    PerceptionEvidenceBatch,
     PerceptionPluginContract,
-    PerceptionPluginResult,
-    PerceptionRequest,
+    PerceptionPluginInputs,
+    PerceptionPluginWarmingUp,
+    PerceptionSignal,
     ViewLocation,
 )
-from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID
-from implementations.perception.components import (
-    camera_component_id,
-    camera_frame,
-    camera_frame_error,
-)
-from implementations.perception.text import thing_line
+from implementations.perception.components import CameraFrame, FRONT_CAMERA_RGB_INPUT
 
 from .scene_motion import MotionGroup, analyze_scene_motion_images
-
-
-FRONT_CAMERA_COMPONENT = camera_component_id(FRONT_CAMERA_SENSOR_ID)
 
 
 @dataclass
@@ -45,9 +38,23 @@ class MotionTracksPlugin:
 
     plugin_id = "motion-tracks-v0"
     contract = PerceptionPluginContract(
-        required_components=(FRONT_CAMERA_COMPONENT,),
+        inputs=(FRONT_CAMERA_RGB_INPUT,),
         state_mode="windowed",
-        artifact_policy="optional",
+        description="Track bounded coherent feature-motion regions across frames.",
+        assumptions=(
+            "neighboring processed frames overlap enough for patch matching",
+            "coherent feature motion is structure evidence, not semantic identity",
+            "track ids are local to one reset-bounded run",
+        ),
+        emits=(
+            "signal scene_tracks_available",
+            "run-local spatial evidence for scene tracks",
+        ),
+        limitations=(
+            "scene tracks are image-space motion evidence, not persistent object identities",
+            "camera motion, occlusion, frame drops, and weak texture can merge or split tracks",
+        ),
+        diagnostic_artifacts=("scene_motion", "summary", "scene_tracks"),
     )
 
     def __init__(
@@ -64,7 +71,6 @@ class MotionTracksPlugin:
         max_track_misses: int = 2,
         min_association_iou: float = 0.05,
         max_association_distance: float = 0.25,
-        write_artifacts: bool = True,
     ) -> None:
         self.max_features = int(max_features)
         self.min_distance = int(min_distance)
@@ -77,7 +83,6 @@ class MotionTracksPlugin:
         self.max_track_misses = max(0, int(max_track_misses))
         self.min_association_iou = max(0.0, min(1.0, float(min_association_iou)))
         self.max_association_distance = max(0.0, float(max_association_distance))
-        self.write_artifacts = bool(write_artifacts)
         self.reset()
 
     def reset(self) -> None:
@@ -85,113 +90,69 @@ class MotionTracksPlugin:
         self._tracks: dict[int, _SceneTrack] = {}
         self._next_track_id = 1
 
-    def describe_schema(self) -> dict[str, Any]:
-        return {
-            "plugin_id": self.plugin_id,
-            "reads": ["front_camera RGB pixels", "bounded track state retained by this plugin instance"],
-            "assumptions": [
-                "neighboring frames overlap enough for patch matching",
-                "a coherent feature-motion group is image-space structure evidence, not a semantic object",
-                "track ids are local to one reset-bounded run",
-            ],
-            "emits": [
-                "signal id=scene_tracks_available",
-                "thing kind=scene_track with stable run-local id, age, support, misses, and visibility",
-            ],
-            "expiry": {"max_missed_frames": self.max_track_misses},
-            "artifacts": ["scene_motion", "scene_tracks"],
-        }
-
-    def perceive(self, request: PerceptionRequest) -> PerceptionPluginResult:
-        front = camera_frame(request, FRONT_CAMERA_SENSOR_ID)
-        if front is None:
-            self.reset()
-            return PerceptionPluginResult(
-                status="unavailable",
-                lines=("signal id=scene_tracks_available value=false confidence=0.000 reason=no_front_camera",),
-                observations={
-                    self.plugin_id: {
-                        "front_camera_available": False,
-                        "input_error": camera_frame_error(request, FRONT_CAMERA_SENSOR_ID),
-                    }
-                },
-                limits=("front camera image missing; temporal state reset",),
-            )
-
-        current_rgb = front.rgb
+    def perceive(self, inputs: PerceptionPluginInputs) -> PerceptionEvidenceBatch:
+        frame = inputs.require("frame", CameraFrame)
+        current_rgb = frame.rgb
         previous_rgb = self._previous_rgb
         if previous_rgb is None:
             self._cache_current_frame(current_rgb)
-            return PerceptionPluginResult(
-                status="warming_up",
-                lines=("signal id=scene_tracks_available value=false confidence=0.000 reason=no_previous_frame",),
-                observations={self.plugin_id: {"has_previous_frame": False, "active_tracks": 0}},
-                limits=("scene tracks require at least two frames from the same plugin instance",),
+            raise PerceptionPluginWarmingUp(
+                "no_previous_frame",
+                measurements={"has_previous_frame": False, "active_tracks": 0},
             )
 
         try:
-            artifact_dir = (
-                request.output_dir / "motion_tracks"
-                if request.output_dir is not None and self.write_artifacts
-                else None
+            result = self._analyze(
+                previous_rgb,
+                current_rgb,
+                inputs.diagnostics.directory,
+                frame,
             )
-            result = self._analyze(previous_rgb, current_rgb, artifact_dir, front)
-        except Exception as exc:
+        finally:
             self._cache_current_frame(current_rgb)
-            return PerceptionPluginResult(
-                status="error",
-                lines=(
-                    "signal id=scene_tracks_available value=false confidence=0.000 "
-                    f"reason=analysis_failed error={type(exc).__name__}",
-                ),
-                observations={self.plugin_id: {"error": str(exc)}},
-                limits=("scene-track analysis failed; prior tracks retained",),
-                error=f"{type(exc).__name__}: {exc}",
-            )
-
-        self._cache_current_frame(current_rgb)
+        if result.output_files:
+            inputs.diagnostics.register(result.output_files)
         candidates = [
-            _group_candidate(group, front.width_px, front.height_px, self.min_group_size)
+            _group_candidate(group, frame.width_px, frame.height_px, self.min_group_size)
             for group in result.groups
         ]
         expired_ids = self._update_tracks(candidates)
-        if artifact_dir is not None:
-            track_overlay = artifact_dir / "scene_tracks.png"
-            _write_track_overlay(current_rgb, self._tracks, track_overlay)
-            result.output_files["scene_tracks"] = str(track_overlay)
+        inputs.diagnostics.emit(
+            "scene_tracks",
+            "scene_tracks.png",
+            lambda path: _write_track_overlay(current_rgb, self._tracks, path),
+        )
         things = tuple(_track_thing(track) for track in sorted(self._tracks.values(), key=lambda item: item.track_id))
         visible_count = sum(1 for track in self._tracks.values() if track.missed_frames == 0)
         confidence = _overall_track_confidence(things)
-        lines = [
-            "signal id=scene_tracks_available "
-            f"value={'true' if things else 'false'} confidence={confidence:.3f} "
-            f"keypoints={result.keypoint_count} matches={result.match_count} "
-            f"groups={len(candidates)} visible_tracks={visible_count} "
-            f"active_tracks={len(things)} expired_tracks={len(expired_ids)}"
-        ]
-        lines.extend(thing_line(thing) for thing in things)
 
-        return PerceptionPluginResult(
-            status="ok" if things else "empty",
-            lines=tuple(lines),
-            things=things,
-            observations={
-                self.plugin_id: {
-                    "keypoint_count": result.keypoint_count,
-                    "match_count": result.match_count,
-                    "grouped_match_count": result.grouped_match_count,
-                    "ungrouped_match_count": result.ungrouped_match_count,
-                    "groups": [group.__dict__ for group in result.groups],
-                    "active_tracks": [_track_record(track) for track in self._tracks.values()],
-                    "expired_track_ids": expired_ids,
-                    "max_track_misses": self.max_track_misses,
-                }
-            },
-            artifacts=result.output_files,
-            limits=(
-                "scene tracks are run-local image-space motion evidence, not persistent object identities",
-                "camera motion, occlusion, and weak texture can merge, split, or expire tracks",
+        return PerceptionEvidenceBatch(
+            signals=(
+                PerceptionSignal(
+                    "scene_tracks_available",
+                    bool(things),
+                    confidence,
+                    {
+                        "keypoints": result.keypoint_count,
+                        "matches": result.match_count,
+                        "groups": len(candidates),
+                        "visible_tracks": visible_count,
+                        "active_tracks": len(things),
+                        "expired_tracks": len(expired_ids),
+                    },
+                ),
             ),
+            things=things,
+            measurements={
+                "keypoint_count": result.keypoint_count,
+                "match_count": result.match_count,
+                "grouped_match_count": result.grouped_match_count,
+                "ungrouped_match_count": result.ungrouped_match_count,
+                "groups": [group.__dict__ for group in result.groups],
+                "active_tracks": [_track_record(track) for track in self._tracks.values()],
+                "expired_track_ids": expired_ids,
+                "max_track_misses": self.max_track_misses,
+            },
         )
 
     def _update_tracks(self, candidates: list[dict[str, Any]]) -> list[int]:

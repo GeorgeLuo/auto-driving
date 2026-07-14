@@ -1,17 +1,26 @@
 """Stable contracts and runtime plumbing for component-driven perception."""
 
+from .evidence import (
+    PerceivedThing,
+    PerceptionEvidenceBatch,
+    PerceptionSignal,
+    ViewLocation,
+)
 from .interface import (
     PERCEPTION_TEXT_SCHEMA,
-    PerceptionComponentUnavailable,
-    PerceivedThing,
     PerceptionMapper,
-    PerceptionPlugin,
-    PerceptionPluginContract,
-    PerceptionPluginResult,
     PerceptionPluginRun,
     PerceptionRequest,
     PerceptionText,
-    ViewLocation,
+)
+from .plugin import (
+    PerceptionComponentUnavailable,
+    PerceptionDiagnosticSink,
+    PerceptionPlugin,
+    PerceptionPluginContract,
+    PerceptionPluginInput,
+    PerceptionPluginInputs,
+    PerceptionPluginWarmingUp,
 )
 from .inputs import build_perception_request
 from .activation import (
@@ -29,13 +38,18 @@ __all__ = [
     "PERCEPTION_TEXT_SCHEMA",
     "PerceivedThing",
     "PerceptionComponentUnavailable",
+    "PerceptionDiagnosticSink",
+    "PerceptionEvidenceBatch",
     "PerceptionMapper",
     "PerceptionActivation",
     "PerceptionPlugin",
     "PerceptionPluginContract",
-    "PerceptionPluginResult",
+    "PerceptionPluginInput",
+    "PerceptionPluginInputs",
     "PerceptionPluginRun",
+    "PerceptionPluginWarmingUp",
     "PerceptionRequest",
+    "PerceptionSignal",
     "PerceptionText",
     "ViewLocation",
     "build_perception_request",

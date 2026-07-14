@@ -5,7 +5,7 @@ import subprocess
 import unittest
 from pathlib import Path
 
-from autonomy.perception.mappers.plugin_chain import PluginChainPerceptionMapper
+from autonomy.perception.mappers import PluginPerceptionMapper
 from autonomy.runtime import AutonomyControl, AutonomyManager, AutonomySnapshot
 from autonomy.runtime.manager import EngineLoadError
 from autonomy.vehicle import CarInterface
@@ -107,7 +107,7 @@ class ContractStrictnessTests(unittest.TestCase):
 
     def test_mapper_rejects_removed_configuration_option(self) -> None:
         with self.assertRaises(TypeError):
-            PluginChainPerceptionMapper(include_traversability=True)
+            PluginPerceptionMapper(include_traversability=True)
 
     def test_engine_requires_reset_method(self) -> None:
         manager = AutonomyManager()

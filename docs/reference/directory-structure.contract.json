@@ -275,6 +275,12 @@
             "responsibility": "Bounded live-system checks that are never enabled by the flagless runner."
           },
           {
+            "path": "tests/docs/",
+            "category": "verification",
+            "commit_policy": "source",
+            "responsibility": "Documentation source, generated-render synchronization, and active-plan contract tests."
+          },
+          {
             "path": "tests/support/",
             "category": "verification-support",
             "commit_policy": "source",
@@ -400,7 +406,7 @@
             "path": "docs/milestones/",
             "category": "documentation",
             "commit_policy": "source",
-            "responsibility": "Numbered planning records, frozen closeouts, and the append-only completed-milestone ledger."
+            "responsibility": "Shared milestone planning contract, numbered planning records, frozen closeouts, and the append-only completed-milestone ledger."
           }
         ]
       },

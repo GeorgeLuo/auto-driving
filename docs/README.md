@@ -40,13 +40,35 @@ records that explain why prior work was shaped the way it was.
 
 ## Milestone Lifecycle
 
-1. Create one numbered milestone directory and one `plan.html`.
-2. Update that plan while work is in progress.
-3. At closeout, freeze the plan and write a concise `closeout.md` covering the
+1. Create one numbered milestone directory and one `plan.html` with fixed exit
+   criteria, a concrete first PR, and a preparation horizon for later work.
+2. Define only the next PR's review question, review shape, dependencies,
+   non-goals, and validation in detail before implementation begins.
+3. Merge one deliverable at a time by default, record what was learned, and
+   then promote the next horizon item into a concrete PR.
+4. At closeout, freeze the plan and write a concise `closeout.md` covering the
    outcome, decisions, validation, and remaining debt.
-4. Append a short entry to `milestones/completed.md` that links to the frozen
+5. Append a short entry to `milestones/completed.md` that links to the frozen
    plan and closeout.
-5. Create the next milestone plan and point this file at it.
+6. Create the next milestone plan and point this file at it.
+
+## Pull Request Review Shapes
+
+- **Deep and narrow:** one new policy, abstraction, or behavioral contract in
+  a small set of owning files. Reviewers should have one primary question to
+  reason about deeply.
+- **Broad and mechanical:** an already-reviewed pattern applied across many
+  files. These PRs may be large by file count, but must not introduce new
+  behavior or another abstraction.
+
+Do not define a pattern and roll it out broadly in the same PR. PR size is a
+logical-complexity budget rather than a line-count target. Every PR should leave
+the repository in a complete state and should identify deep-review files,
+mechanical files, explicit non-goals, and validation in its description.
+
+Milestones do not require a fixed PR schedule. Keep the end state stable, the
+next PR concrete, and later work provisional enough to respond to evidence from
+the preceding merge.
 
 Keep the closeout concise. It should preserve decisions and unresolved work,
 not duplicate implementation details that belong in reference documents or

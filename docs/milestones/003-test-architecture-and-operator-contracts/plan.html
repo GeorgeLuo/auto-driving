@@ -147,11 +147,12 @@
         actionable information without hiding failures or leaking internal noise.
       </p>
       <div class="meta">
-        <span class="pill">Status: active - planning</span>
+        <span class="pill">Status: active - implementation</span>
         <span class="pill">Started: 2026-07-13</span>
         <span class="pill">Production behavior: preserve by default</span>
         <span class="pill">Default suite: deterministic and offline</span>
         <span class="pill">Live validation: explicit opt-in</span>
+        <span class="pill">Delivery: rolling PR horizon</span>
       </div>
     </header>
 
@@ -195,9 +196,9 @@
             </tr>
             <tr>
               <td>Test organization</td>
-              <td><span class="status pending">Needs restructuring</span></td>
-              <td>Tests cover CLI, autonomy, implementations, deployment, and live behavior.</td>
-              <td>All owned tests live under <code>cli/tests</code>. One 1,385-line file contains about 41% of all test code.</td>
+              <td><span class="status active">Support boundary established</span></td>
+              <td>Shared command execution, runtime fixtures, and external-process fakes now live under <code>tests/support</code>; the CLI scenario monolith fell from 1,385 to 1,055 lines.</td>
+              <td>Behavioral tests still live under <code>cli/tests</code> and need a mechanical ownership migration.</td>
             </tr>
             <tr>
               <td>Stable autonomy contracts</td>
@@ -223,14 +224,119 @@
     </section>
 
     <section class="panel">
+      <h2>Pull Request Delivery Contract</h2>
+      <div class="grid two">
+        <div class="card interface">
+          <h3>Deep And Narrow</h3>
+          <p>Introduce or settle one policy, abstraction, or behavioral contract in a small number of owning files. The reviewer should be able to reason deeply about one question without also auditing a repository-wide rollout.</p>
+        </div>
+        <div class="card structure">
+          <h3>Broad And Mechanical</h3>
+          <p>Apply an already-reviewed pattern across many files. These PRs may be large by file count but must avoid new behavior, new abstractions, and unrelated cleanup.</p>
+        </div>
+      </div>
+      <div class="grid two" style="margin-top: 14px;">
+        <div class="card goal">
+          <h3>Every PR Is A Deliverable</h3>
+          <ul>
+            <li>One explicit review question.</li>
+            <li>Declared deep-review files and mechanical files.</li>
+            <li>Dependencies, non-goals, and validation in the PR body.</li>
+            <li>A complete repository state that does not rely on an unmerged follow-up to be correct.</li>
+          </ul>
+        </div>
+        <div class="card constraint">
+          <h3>Sequence Before Scale</h3>
+          <ul>
+            <li>Land the pattern before its broad application.</li>
+            <li>Merge each PR before branching the next by default.</li>
+            <li>Do not mix a new pattern with repository-wide adoption.</li>
+            <li>Split a PR before implementation when its review question stops being singular.</li>
+          </ul>
+        </div>
+      </div>
+      <p class="note">
+        Review size is measured by logical complexity, not line count. A few
+        dense files can consume the same review budget as many shallow renames
+        or repeated edits. The plan must identify which kind of review each PR
+        requires before code is written.
+      </p>
+    </section>
+
+    <section class="panel">
+      <h2>Rolling Delivery Horizon</h2>
+      <p>
+        The milestone exit criteria are fixed, but only the next PR is committed
+        in detail. Later work remains an ordered preparation horizon. After each
+        merge, evidence from that PR is added to this plan and the next reviewable
+        deliverable is defined from the remaining gap.
+      </p>
+      <div class="grid two" style="margin-top: 14px;">
+        <div class="card goal">
+          <h3>Current PR: Test Support Contract</h3>
+          <p><span class="status active">Implemented - ready for review</span> <strong>Review shape:</strong> deep and narrow.</p>
+          <p style="margin-top: 9px;"><strong>Deliverable:</strong> shared CLI execution, runtime-state builders, and external-process fakes extracted from broad test files, with ownership rules documented.</p>
+          <p style="margin-top: 9px;"><strong>Review question:</strong> Are these helpers limited to test mechanics rather than becoming a second application framework?</p>
+          <p style="margin-top: 9px;"><strong>Non-goals:</strong> moving the whole suite, adding behavioral coverage, changing production behavior, or adding CI.</p>
+          <p style="margin-top: 9px;"><strong>Evidence:</strong> all 41 affected CLI scenarios pass; the canonical runner still reports 94 tests in 28.6 seconds, with 93 passes and one explicit live skip.</p>
+        </div>
+        <div class="card interface">
+          <h3>Next After Review: Ownership Migration</h3>
+          <p><span class="status pending">Queued, not started</span> <strong>Expected shape:</strong> broad and mechanical.</p>
+          <p style="margin-top: 9px;"><strong>Review question:</strong> Does each test path identify its owning production layer without changing behavior or discovery?</p>
+          <p style="margin-top: 9px;"><strong>Expected deliverable:</strong> move and topically split existing tests under the mirrored root <code>tests/</code> tree, make <code>tests/run.py</code> canonical, and remove <code>cli/run_tests.py</code> and the old test location.</p>
+          <p style="margin-top: 9px;"><strong>Non-goals:</strong> new assertions, production changes, output-policy changes, coverage gates, or compatibility runners.</p>
+        </div>
+      </div>
+      <div class="table-wrap" style="margin-top: 16px;">
+        <table>
+          <thead>
+            <tr><th>Preparation Horizon</th><th>Known End-State Need</th><th>What Must Be Learned First</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Stable autonomy contracts</td>
+              <td>Direct decision, vehicle, runtime, perception, activation, and failure-boundary tests.</td>
+              <td>How the reorganized test ownership and fixtures divide these contracts into coherent review units.</td>
+            </tr>
+            <tr>
+              <td>Operator output contract</td>
+              <td>Reusable success, degraded, failure, and JSON-parity assertions, followed by consistent CLI adoption.</td>
+              <td>Which current operator scenarios provide the smallest representative pattern without freezing incidental wording.</td>
+            </tr>
+            <tr>
+              <td>Automated validation</td>
+              <td>Deterministic PR CI, an owned-code coverage baseline, and bounded opt-in Chase and Pi checks.</td>
+              <td>The final deterministic suite layout, cost, dependencies, and which live checks remain credible after contract hardening.</td>
+            </tr>
+            <tr>
+              <td>Milestone closeout</td>
+              <td>A measured account of defects found, contracts settled, test cost, coverage, operator behavior, and residual live risk.</td>
+              <td>Evidence accumulated from the preceding deliverables.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <ol>
+        <li>Re-read the milestone end state and current evidence.</li>
+        <li>Define one next PR with a singular review question and explicit non-goals.</li>
+        <li>Merge that complete deliverable before branching the next by default.</li>
+        <li>Record what changed, what was learned, and which assumptions failed.</li>
+        <li>Promote the next horizon item into a concrete PR only with that evidence.</li>
+      </ol>
+      <p class="small">Current delivery state: the support contract is implemented and awaiting review. The mechanical ownership migration is queued but must not begin until this boundary is accepted.</p>
+    </section>
+
+    <section class="panel">
       <h2>Target Test Structure</h2>
       <p>The test tree mirrors production ownership. Cross-layer behavior belongs in <code>integration</code>, not in whichever unit test first needed the fixture.</p>
       <pre class="tree">tests/
   run.py                         canonical test entrypoint
   support/
-    cli_runner.py                subprocess result and output assertions
+    cli_runner.py                public CLI subprocess execution
     runtime_fixtures.py          staged activation and worker-state fixtures
     fake_simeval.py              reusable simulator process double
+    fake_browser.py              browser-launch process double
 
   autonomy/
     decision/                    cycle and observation contracts
@@ -359,11 +465,13 @@ python3 tests/run.py --live-pi</pre>
         </div>
       </details>
 
-      <details class="work-item" data-status="pending">
-        <summary><span>2. Reorganize Tests Without Behavior Changes</span><span class="status pending">Pending</span></summary>
+      <details class="work-item" data-status="active" open>
+        <summary><span>2. Reorganize Tests Without Behavior Changes</span><span class="status active">Active</span></summary>
         <div class="work-body">
-          <p>Create the mirrored test tree, move tests to their owning topics, and extract reusable support code.</p>
+          <p>The test-support contract is implemented and green. Review it before applying the pattern through the mechanical ownership migration.</p>
           <ul>
+            <li>Extracted public-command execution, explicit runtime documents, and external executable fakes under <code>tests/support</code>.</li>
+            <li>Documented that shared support cannot call internal handlers, derive expected outcomes, render operator output, or reproduce production logic.</li>
             <li>Split <code>test_automa_cli.py</code> by command family.</li>
             <li>Separate stable perception contracts from concrete plugin tests.</li>
             <li>Separate activation parsing, runtime integration, and Donkey adapter checks.</li>
@@ -375,7 +483,7 @@ python3 tests/run.py --live-pi</pre>
       <details class="work-item" data-status="pending">
         <summary><span>3. Protect Settled Autonomy Contracts</span><span class="status pending">Pending</span></summary>
         <div class="work-body">
-          <p>Add direct tests where framework behavior is intended to remain stable while implementations evolve.</p>
+          <p>After ownership is settled, divide direct autonomy contract tests into reviewable deliverables based on the dependencies exposed by the new tree.</p>
           <ul>
             <li>Decision stage order, no-op semantics, default observation, action typing, and result serialization.</li>
             <li>Runtime engine loading, failed reload preservation, safe step failure, recovery, and status isolation.</li>
@@ -388,7 +496,7 @@ python3 tests/run.py --live-pi</pre>
       <details class="work-item" data-status="pending">
         <summary><span>4. Formalize Operator-Facing CLI Tests</span><span class="status pending">Pending</span></summary>
         <div class="work-body">
-          <p>Turn the output rules above into reusable assertions and a small state matrix.</p>
+          <p>Prove the output assertion pattern on representative states, then decide how broadly it can be applied without mixing new policy and mechanical rollout.</p>
           <ul>
             <li>First-use help and command-level discovery.</li>
             <li>No vehicle, unknown vehicle, unsupported operation, and offline dependencies.</li>
@@ -403,7 +511,7 @@ python3 tests/run.py --live-pi</pre>
       <details class="work-item" data-status="pending">
         <summary><span>5. Add Deterministic CI And Coverage Visibility</span><span class="status pending">Pending</span></summary>
         <div class="work-body">
-          <p>Run the canonical offline suite automatically on pull requests and report coverage for owned code.</p>
+          <p>Once the deterministic suite shape and cost are known, run it automatically on pull requests and report coverage for owned code.</p>
           <ul>
             <li>Use one supported Python version first; add a matrix only when compatibility is a real requirement.</li>
             <li>Make coverage informational at baseline, then prevent unexplained regression in stable <code>autonomy</code> code.</li>
@@ -415,7 +523,7 @@ python3 tests/run.py --live-pi</pre>
       <details class="work-item" data-status="pending">
         <summary><span>6. Bound And Document Live Validation</span><span class="status pending">Pending</span></summary>
         <div class="work-body">
-          <p>Keep live checks useful without making normal development dependent on mutable external state.</p>
+          <p>Near closeout, keep live checks useful without making normal development dependent on mutable external state.</p>
           <ul>
             <li>Retain one bounded Chase simulator smoke flow.</li>
             <li>Add a non-moving Pi connectivity and activation smoke flow before any motion-capable live check.</li>
@@ -428,7 +536,7 @@ python3 tests/run.py --live-pi</pre>
       <div class="progress-track" aria-label="Milestone work packages completed: 1 of 6">
         <div class="progress-fill"></div>
       </div>
-      <p class="small">Progress: 1 of 6 work packages complete. Baseline audit is complete; implementation has not started.</p>
+      <p class="small">Progress: 1 of 6 work packages complete. Test reorganization is active; its first deep-review deliverable is ready.</p>
     </section>
 
     <section class="panel">
@@ -503,6 +611,8 @@ python3 tests/run.py --live-pi</pre>
             <tr><td>2026-07-13</td><td>Retain <code>unittest</code> initially.</td><td>The primary debt is ownership, fixtures, and missing invariants, not framework capability.</td></tr>
             <tr><td>2026-07-13</td><td>Keep deterministic local integration in the default suite and live systems opt-in.</td><td>The default command should be trustworthy on any development machine without silently weakening external-state validation.</td></tr>
             <tr><td>2026-07-13</td><td>Make coverage informational before setting a gate.</td><td>A measured baseline and explicit behavioral invariants are more useful than choosing an arbitrary percentage.</td></tr>
+            <tr><td>2026-07-13</td><td>Use a rolling PR horizon rather than a fixed milestone schedule.</td><td>The end state and immediate foundation should be clear, while later PR boundaries should be chosen from evidence gathered as each deliverable approaches the milestone goal.</td></tr>
+            <tr><td>2026-07-14</td><td>Keep shared test support limited to process execution, explicit fixture documents, and external executable doubles.</td><td>The support layer should remove test mechanics from behavioral scenarios without becoming a second route to application behavior.</td></tr>
           </tbody>
         </table>
       </div>

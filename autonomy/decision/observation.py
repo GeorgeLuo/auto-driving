@@ -46,10 +46,13 @@ def observation_from_perception(
     """Adapt perception evidence into the stable decision observation shape."""
 
     snapshot_dict = sensor_snapshot.to_dict() if sensor_snapshot is not None else {}
+    observation_created_at_ms = (
+        timestamp_ms() if created_at_ms is None else created_at_ms
+    )
     if perception is None:
         return Observation(
             observation_id=observation_id,
-            created_at_ms=created_at_ms or timestamp_ms(),
+            created_at_ms=observation_created_at_ms,
             sensor_snapshot=snapshot_dict,
             summary=("observation_available=false reason=no_perception",),
             metadata=metadata or {},
@@ -58,7 +61,7 @@ def observation_from_perception(
     summary = tuple(perception.lines[:12])
     return Observation(
         observation_id=observation_id,
-        created_at_ms=created_at_ms or timestamp_ms(),
+        created_at_ms=observation_created_at_ms,
         sensor_snapshot=snapshot_dict,
         perception_schema=perception.schema,
         perception_plugin_id=perception.plugin_id,

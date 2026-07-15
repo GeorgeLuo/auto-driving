@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from copy import deepcopy
 from dataclasses import asdict, dataclass, field, is_dataclass
 from typing import Any, Callable
 
@@ -40,7 +41,7 @@ class DecisionFrameContext:
             "mode": self.mode,
             "user_steering": self.user_steering,
             "user_throttle": self.user_throttle,
-            "metadata": self.metadata,
+            "metadata": deepcopy(self.metadata),
         }
 
 

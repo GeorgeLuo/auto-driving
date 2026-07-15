@@ -30,10 +30,19 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-          cache-dependency-path: requirements.txt
+          cache-dependency-path: |
+            requirements.txt
+            requirements-test.txt
 
-      - name: Install dependencies
-        run: python3 -m pip install -r requirements.txt
+      - name: Install test dependencies
+        run: python3 -m pip install -r requirements-test.txt
 
-      - name: Run deterministic tests
-        run: python3 tests/run.py
+      - name: Run deterministic tests with coverage
+        run: |
+          python3 -m coverage run tests/run.py
+          python3 -m coverage combine
+
+      - name: Publish informational coverage
+        run: |
+          python3 -m coverage report
+          python3 -m coverage report --format=markdown --skip-covered >> "$GITHUB_STEP_SUMMARY"

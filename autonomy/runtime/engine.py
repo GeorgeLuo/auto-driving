@@ -3,9 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
-
-def clamp_unit(value: float) -> float:
-    return max(-1.0, min(1.0, float(value)))
+from autonomy.vehicle import clamp_unit
 
 
 @dataclass(frozen=True)
@@ -36,7 +34,7 @@ class AutonomyControl:
     def __post_init__(self) -> None:
         object.__setattr__(self, "steering", clamp_unit(self.steering))
         object.__setattr__(self, "throttle", clamp_unit(self.throttle))
-        object.__setattr__(self, "confidence", max(0.0, min(1.0, float(self.confidence))))
+        object.__setattr__(self, "confidence", max(0.0, clamp_unit(self.confidence)))
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

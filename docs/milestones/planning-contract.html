@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="388699a5683aefdc13ef8f2749b6342a2a7e0136bad62ff5452f03e4122c51e7">
+  <meta name="source-sha256" content="4592d771e81b04db7ac9bb43b7ac934c5d0066a4be0f49862220755375159a37">
   <base target="_blank">
   <title>Milestone Planning Contract</title>
   <style>
@@ -81,14 +81,27 @@ conditions explicit.</p>
 <h3>Completion Usage Contract</h3>
 <p>Every active milestone enumerates the straightforward usage that should be
 possible after closeout. Describe each workflow from the user's perspective:
-the starting context, the operation they can perform, and the observable result
-that tells them it worked. Keep this free of internal implementation steps.</p>
+the starting context, a proposed command, API, or UI execution path, and the
+observable result that tells them it worked. The proposal must be concrete
+enough for a reviewer to understand how the completed behavior will be run,
+while remaining free of internal implementation steps. Clearly label commands
+or interfaces that do not exist yet as proposed rather than observed behavior.</p>
 <p>The workflow set is part of milestone scope and should not drift casually.
 Adding or removing a workflow requires an explicit scope decision in the plan's
 decision log. Exact command spelling, flags, schemas, limits, and presentation
 may evolve during implementation as long as the original usage remains apparent
-and executable. Every completion workflow must be supported by exit criteria
-and closeout evidence; otherwise it is aspiration rather than delivered usage.</p>
+and executable. Update the proposal when those details settle. Every completion
+workflow must be supported by exit criteria and closeout evidence; otherwise it
+is aspiration rather than delivered usage.</p>
+<p>Each completion workflow records:</p>
+<ul>
+<li><strong>Starting state:</strong> what must already be available or selected.</li>
+<li><strong>Proposed execution:</strong> the shortest expected human path through the public
+  interface.</li>
+<li><strong>Success signal:</strong> the concise output or state change that proves it worked.</li>
+<li><strong>Automation path, when needed:</strong> structured output suitable for tests without
+  making machine-oriented flags the default human experience.</li>
+</ul>
 <h2>Common Plan Format</h2>
 <p>Each active milestone uses a standalone <code>plan.html</code> with the same high-level
 shape as the <a href="003-test-architecture-and-operator-contracts/plan.html">milestone 003 plan</a>.
@@ -101,7 +114,8 @@ free of external assets.</p>
 <li><strong>High-Level Objective:</strong> a small set of outcome cards and a concise statement
    of what success means.</li>
 <li><strong>Completion Usage:</strong> an implementation-agnostic enumeration of the new
-   workflows a human can run after closeout and the result each workflow exposes.</li>
+   workflows a human can run after closeout, proposed public execution paths,
+   and the result each workflow exposes.</li>
 <li><strong>Baseline:</strong> observed status, evidence, and remaining gap for each major area.</li>
 <li><strong>Current Delivery Horizon:</strong> current PR, next-after-review candidate,
    preparation horizon, and current delivery state.</li>

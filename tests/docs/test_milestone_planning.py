@@ -52,6 +52,9 @@ class MilestonePlanningTests(unittest.TestCase):
         plan_html = active_plan.read_text(encoding="utf-8")
         self.assertIn("data-completion-usage", plan_html)
         self.assertIn("<h2>Completion Usage</h2>", plan_html)
+        self.assertIn("<strong>Starting state:</strong>", plan_html)
+        self.assertIn("<strong>Proposed execution:</strong>", plan_html)
+        self.assertIn("<strong>Success signal:</strong>", plan_html)
 
 
 if __name__ == "__main__":

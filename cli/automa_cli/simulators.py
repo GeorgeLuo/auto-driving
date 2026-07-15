@@ -55,10 +55,23 @@ def get_simulator_status(
     executable = _simeval_executable()
     payload = _base_payload("automa_simulator_status_v0", executable=executable)
     if executable is None:
+        error = "simeval was not found on PATH. Set AUTOMA_SIMEVAL_BIN or install simeval."
         payload["status"] = {
             "online": False,
-            "error": "simeval was not found on PATH. Set AUTOMA_SIMEVAL_BIN or install simeval.",
+            "error": error,
         }
+        payload["frontend"] = _skipped_summary("simeval is unavailable")
+        payload["result"] = {
+            "status": "unavailable",
+            "reason_code": "simeval_missing",
+            "usable": False,
+            "error": error,
+            "recovery": (
+                "Install simeval or set AUTOMA_SIMEVAL_BIN, then rerun "
+                "./cli/automa simulators status."
+            ),
+        }
+        payload["commands"] = []
         return _result(payload, json_output=json_output, exit_code=2)
 
     status_run = _run_simeval(executable, ["status", "--all", "--timeout", str(timeout_ms)])
@@ -66,6 +79,10 @@ def get_simulator_status(
     frontend_run = _run_ui_verify(executable, auto_serve=False, observe_ms=500)
     payload["status"] = summary
     payload["frontend"] = _summarize_frontend_run(frontend_run)
+    payload["result"] = _simulator_status_result(
+        status=summary,
+        frontend=payload["frontend"],
+    )
     payload["commands"] = [status_run.to_dict(), frontend_run.to_dict()]
 
     return _result(payload, json_output=json_output, exit_code=0)
@@ -86,10 +103,19 @@ def ensure_simulator(
         "frontend_url": DEFAULT_UI_HTTP_URL,
     }
     if executable is None:
+        error = "simeval was not found on PATH. Set AUTOMA_SIMEVAL_BIN or install simeval."
         payload["result"] = {
+            "status": "unavailable",
+            "reason_code": "simeval_missing",
             "usable": False,
+            "launch_attempted": False,
             "launched": False,
-            "error": "simeval was not found on PATH. Set AUTOMA_SIMEVAL_BIN or install simeval.",
+            "error": error,
+            "errors": [error],
+            "recovery": (
+                "Install simeval or set AUTOMA_SIMEVAL_BIN, then rerun "
+                "./cli/automa simulators ensure."
+            ),
         }
         payload["commands"] = []
         return _result(payload, json_output=json_output, exit_code=2)
@@ -201,7 +227,7 @@ def ensure_simulator(
         errors.append("simeval deploy start failed")
     if not final_status["online"]:
         errors.append("no online simulator deployment after ensure")
-    if browser_open_failed:
+    if browser_open_failed and not frontend_ready:
         errors.append("could not open the Metrics UI browser tab")
     if not frontend_ready:
         errors.append(
@@ -235,11 +261,28 @@ def ensure_simulator(
     payload["play_debug"] = play_debug_summary
     payload["stability"] = stability_summary
     payload["final_status"] = final_status
+    result_status, reason_code = _simulator_ensure_result_status(
+        usable=usable,
+        launch_failed=launch_failed,
+        final_online=bool(final_status["online"]),
+        frontend_ready=frontend_ready,
+        ui_ready=bool(ui_summary["ok"]),
+        scenario_ready=bool(scenario_summary["ok"]),
+        play_debug_ready=bool(play_debug_summary["ok"]),
+        stability_summary=stability_summary,
+    )
     payload["result"] = {
+        "status": result_status,
+        "reason_code": reason_code,
         "usable": usable,
         "launch_attempted": launched,
         "launched": launched and not launch_failed,
-        "error": "; ".join(errors) if errors else None,
+        "error": errors[0] if errors else None,
+        "errors": errors,
+        "recovery": _simulator_ensure_recovery(
+            reason_code=reason_code,
+            scenario_id=scenario_id,
+        ),
     }
     payload["commands"] = commands
 
@@ -256,6 +299,91 @@ def _base_payload(schema: str, *, executable: str | None) -> dict[str, Any]:
         },
         "server": os.environ.get("SIMEVAL_SERVER", DEFAULT_SERVER),
     }
+
+
+def _simulator_status_result(
+    *,
+    status: dict[str, Any],
+    frontend: dict[str, Any],
+) -> dict[str, Any]:
+    online = bool(status.get("online"))
+    frontend_connected = bool(frontend.get("frontend_connected"))
+    if online and frontend_connected:
+        return {
+            "status": "ready",
+            "reason_code": "ready",
+            "usable": True,
+            "error": None,
+            "recovery": None,
+        }
+    if not online:
+        return {
+            "status": "degraded",
+            "reason_code": "backend_offline",
+            "usable": False,
+            "error": "No online simulator deployment is available.",
+            "recovery": "./cli/automa simulators ensure",
+        }
+    return {
+        "status": "degraded",
+        "reason_code": "frontend_missing",
+        "usable": False,
+        "error": "The Metrics UI frontend tab is not connected.",
+        "recovery": (
+            f"Open {DEFAULT_UI_HTTP_URL}, then run ./cli/automa simulators ensure."
+        ),
+    }
+
+
+def _simulator_ensure_result_status(
+    *,
+    usable: bool,
+    launch_failed: bool,
+    final_online: bool,
+    frontend_ready: bool,
+    ui_ready: bool,
+    scenario_ready: bool,
+    play_debug_ready: bool,
+    stability_summary: dict[str, Any],
+) -> tuple[str, str]:
+    if usable:
+        return "ready", "ready"
+    if launch_failed:
+        return "failed", "launch_failed"
+    if not final_online:
+        return "failed", "backend_offline"
+    if not frontend_ready:
+        return "failed", "frontend_missing"
+    if not stability_summary.get("skipped") and not stability_summary.get("ok"):
+        return "failed", "frontend_unstable"
+    if not (ui_ready and scenario_ready and play_debug_ready):
+        return "failed", "play_setup_failed"
+    return "failed", "unknown"
+
+
+def _simulator_ensure_recovery(*, reason_code: str, scenario_id: str) -> str | None:
+    if reason_code == "ready":
+        return None
+    if reason_code == "launch_failed":
+        return (
+            "Run simeval deploy start directly to inspect the backend failure, then rerun "
+            "./cli/automa simulators ensure."
+        )
+    if reason_code == "backend_offline":
+        return "Restore the simulator backend, then rerun ./cli/automa simulators ensure."
+    if reason_code == "frontend_missing":
+        return f"Open {DEFAULT_UI_HTTP_URL}, then rerun ./cli/automa simulators ensure."
+    if reason_code == "frontend_unstable":
+        return (
+            f"Reload the Metrics UI Play tab at {DEFAULT_UI_HTTP_URL}, then rerun "
+            "./cli/automa simulators ensure."
+        )
+    if reason_code == "play_setup_failed":
+        return (
+            f"Open the Metrics UI Play tab, select scenario {scenario_id!r}, then rerun "
+            "./cli/automa simulators ensure."
+        )
+    return "Inspect ./cli/automa simulators ensure --json, then retry."
 
 
 def _simeval_executable() -> str | None:
@@ -636,13 +764,15 @@ def _result(payload: dict[str, Any], *, json_output: bool, exit_code: int) -> Co
 def _format_status(payload: dict[str, Any]) -> str:
     status = _dict_field(payload, "status")
     frontend = _dict_field(payload, "frontend")
+    result = _dict_field(payload, "result")
     lines = [
         "Simulator status",
         "----------------",
         f"simeval: {_simeval_label(payload)}",
+        f"result: {result.get('status', 'unknown')}",
     ]
-    if status.get("error"):
-        lines.append(f"error: {status['error']}")
+    if not _dict_field(payload, "simeval").get("available"):
+        _append_result_details(lines, result)
         return "\n".join(lines)
 
     lines.extend(
@@ -655,6 +785,7 @@ def _format_status(payload: dict[str, Any]) -> str:
         ]
     )
     lines.extend(_format_deployments(status.get("deployments")))
+    _append_result_details(lines, result)
     return "\n".join(lines)
 
 
@@ -675,9 +806,10 @@ def _format_ensure(payload: dict[str, Any]) -> str:
         "Simulator ensure",
         "----------------",
         f"simeval: {_simeval_label(payload)}",
+        f"result: {result.get('status', 'unknown')}",
     ]
     if result.get("error") and not payload.get("commands"):
-        lines.append(f"error: {result['error']}")
+        _append_result_details(lines, result)
         return "\n".join(lines)
 
     lines.extend(
@@ -702,24 +834,17 @@ def _format_ensure(payload: dict[str, Any]) -> str:
             f"usable: {_yes_no(bool(result.get('usable')))}",
         ]
     )
-    if result.get("error"):
-        lines.append(f"error: {result['error']}")
-
-    commands = payload.get("commands")
-    if isinstance(commands, list) and commands:
-        lines.append("")
-        lines.append("Commands:")
-        for command in commands:
-            if not isinstance(command, dict):
-                continue
-            args = command.get("args")
-            label = shlex.join([str(part) for part in args]) if isinstance(args, list) else "unknown"
-            lines.append(f"- {label} -> exit {command.get('exit_code')}")
-            if command.get("exit_code") not in (0, None):
-                detail = _first_nonempty(command.get("stderr"), command.get("stdout"))
-                if detail:
-                    lines.append(f"  {detail}")
+    _append_result_details(lines, result)
     return "\n".join(lines)
+
+
+def _append_result_details(lines: list[str], result: dict[str, Any]) -> None:
+    error = result.get("error")
+    if isinstance(error, str) and error:
+        lines.append(f"problem: {error}")
+    recovery = result.get("recovery")
+    if isinstance(recovery, str) and recovery:
+        lines.append(f"next: {recovery}")
 
 
 def _format_deployments(deployments: Any) -> list[str]:

@@ -199,7 +199,7 @@
             <tr>
               <td>Regression suite</td>
               <td><span class="status done">Working baseline</span></td>
-              <td>134 tests are discovered; 133 pass by default and one live simulator smoke test is skipped unless explicitly enabled.</td>
+              <td>138 tests are discovered; 137 pass by default and one live simulator smoke test is skipped unless explicitly enabled. The deterministic suite completes in 38.705 seconds on the current development machine.</td>
               <td>The suite is manually invoked and has no CI or coverage baseline.</td>
             </tr>
             <tr>
@@ -217,8 +217,8 @@
             <tr>
               <td>Human CLI behavior</td>
               <td><span class="status active">Output contract active</span></td>
-              <td>Scoped help, simulator readiness failures, startup races, no-log defaults, and perception view readiness are tested. Automation status now proves explicit outcomes and semantic human/JSON parity for empty, missing, running, stale, stopped, and error states.</td>
-              <td>The pattern must be tested against simulator readiness and staging/deployment before deciding whether any shared assertion support is warranted.</td>
+              <td>Scoped help, startup races, no-log defaults, and perception view readiness are tested. Automation status and simulator readiness now prove explicit outcomes, recovery guidance, and semantic human/JSON parity across local worker and external-process state.</td>
+              <td>The pattern must be tested against staging/deployment before deciding whether any shared assertion support is warranted.</td>
             </tr>
             <tr>
               <td>Live boundaries</td>
@@ -255,21 +255,21 @@
       </details>
       <div class="grid two" style="margin-top: 14px;">
         <div class="card goal">
-          <h3>Current PR: Automation Status Output Contract</h3>
+          <h3>Current PR: Simulator Readiness Output Contract</h3>
           <p><span class="status active">Implemented - ready for review</span> <strong>Review shape:</strong> deep and narrow.</p>
-          <p style="margin-top: 9px;"><strong>Deliverable:</strong> one representative operator-output contract covering explicit command outcome, exit status, concise human state, schema-valid machine state, stale/error recovery, complete machine diagnostics, and suppressed human traceback noise.</p>
-          <p style="margin-top: 9px;"><strong>Review question:</strong> Does <code>vehicles automation status</code> communicate the same deployment and worker state in human and JSON forms, including empty, missing, running, stale, stopped, and error cases, with actionable failures and no internal human-output noise?</p>
-          <p style="margin-top: 9px;"><strong>Create:</strong> none. <strong>Modify:</strong> <code>cli/automa_cli/automation.py</code>, <code>tests/cli/automation/test_status.py</code>, and this plan. <strong>Remove:</strong> none.</p>
-          <p style="margin-top: 9px;"><strong>Non-goals:</strong> mechanical rollout across every command family, a general CLI-result framework, worker lifecycle redesign, runtime document schema changes, simulator or Pi execution, or exact spacing and timestamp snapshots.</p>
-          <p style="margin-top: 9px;"><strong>Evidence:</strong> tests exposed a requested missing runtime being synthesized as a successful phantom vehicle, a dead active PID being labeled <code>running</code>, and recorded worker errors losing their useful reason. Human and JSON forms now derive from one normalized outcome and worker status: machine output retains complete error state while human output emits a bounded one-line problem and restart command. Six public status scenarios and six adjacent worker-integration tests pass. Full discovery reports 134 tests in 30.952 seconds, with 133 passes and one explicit live skip.</p>
+          <p style="margin-top: 9px;"><strong>Deliverable:</strong> normalized readiness results for simulator status and ensure operations, concise human state and recovery, schema-valid machine diagnostics, and raw subprocess transcripts retained only in JSON.</p>
+          <p style="margin-top: 9px;"><strong>Review question:</strong> Do <code>simulators status</code> and <code>simulators ensure</code> report backend, frontend, launch, scenario, stability, and recovery outcomes consistently in human and JSON forms without exposing raw subprocess noise by default?</p>
+          <p style="margin-top: 9px;"><strong>Create:</strong> none. <strong>Modify:</strong> <code>cli/automa_cli/simulators.py</code>, <code>tests/cli/simulators/test_commands.py</code>, <code>tests/support/fake_simeval.py</code>, and this plan. <strong>Remove:</strong> none.</p>
+          <p style="margin-top: 9px;"><strong>Non-goals:</strong> changing simeval or browser behavior, live simulator execution, scenario semantics, deployment orchestration, a general CLI-result framework, or exact command-transcript snapshots.</p>
+          <p style="margin-top: 9px;"><strong>Evidence:</strong> tests exposed flagless ensure output appending every subprocess command and raw stderr, missing-tool and readiness paths with uneven result shapes and no recovery field, launch errors cascading into secondary failure prose, and a frontend-drop fake that also reported the backend offline. Human and JSON forms now share semantic status, reason, usability, and recovery while JSON preserves complete commands and errors. Twelve focused simulator scenarios pass. Full discovery reports 138 tests in 38.705 seconds, with 137 passes and one explicit live skip.</p>
         </div>
         <div class="card interface">
-          <h3>Next After Review: Simulator Readiness Output Contract</h3>
+          <h3>Next After Review: Deployment Dry-Run Output Contract</h3>
           <p><span class="status pending">Queued, not started</span> <strong>Expected shape:</strong> deep and narrow.</p>
-          <p style="margin-top: 9px;"><strong>Review question:</strong> Do <code>simulators status</code> and <code>simulators ensure</code> report backend, frontend, launch, scenario, stability, and recovery outcomes consistently in human and JSON forms without exposing raw subprocess noise by default?</p>
-          <p style="margin-top: 9px;"><strong>Expected deliverable:</strong> semantic parity across online reuse, offline launch, absent/stale/dropped frontend, and launch failure using the existing bounded simeval and browser fakes.</p>
-          <p style="margin-top: 9px;"><strong>Proposed files:</strong> expand <code>tests/cli/simulators/test_commands.py</code>; modify <code>cli/automa_cli/simulators.py</code> only where its public result or formatter fails; update this plan. Extract shared output assertions only if this second command family demonstrates stable non-trivial reuse.</p>
-          <p style="margin-top: 9px;"><strong>Non-goals:</strong> changing simeval, browser automation, live simulator execution, scenario semantics, deployment orchestration, or applying the pattern mechanically to unrelated CLI commands.</p>
+          <p style="margin-top: 9px;"><strong>Review question:</strong> Do <code>vehicles update core --dry-run</code> and <code>vehicles update autonomy --dry-run</code> expose the same target, scope, planned commands, restart intent, and no-write outcome in human and JSON forms without requiring discovery or hardware?</p>
+          <p style="margin-top: 9px;"><strong>Expected deliverable:</strong> a deterministic deployment-planning contract that is useful to a human by default and complete for automation, while proving that dry runs do not mutate staged or remote state.</p>
+          <p style="margin-top: 9px;"><strong>Proposed files:</strong> expand <code>tests/cli/deployment/test_updates.py</code>; modify <code>cli/automa_cli/deploy.py</code> and <code>cli/automa_cli/app.py</code> only where core-update JSON or public result parity is missing; update this plan.</p>
+          <p style="margin-top: 9px;"><strong>Non-goals:</strong> actual SSH or hardware deployment, changing bundle contents, physical restart validation, discovery redesign, or introducing a repository-wide result abstraction.</p>
         </div>
       </div>
       <div class="table-wrap" style="margin-top: 16px;">
@@ -286,7 +286,7 @@
             <tr>
               <td>Operator output contract</td>
               <td>Reusable success, degraded, failure, and JSON-parity assertions, followed by consistent CLI adoption.</td>
-              <td>Automation status established semantic parity without a second renderer or shared helper; simulator readiness is the next materially different external-state case.</td>
+              <td>Automation status and simulator readiness established semantic parity without a second renderer or shared helper; deployment dry runs are the next materially different planned-side-effect case.</td>
             </tr>
             <tr>
               <td>Automated validation</td>
@@ -301,7 +301,7 @@
           </tbody>
         </table>
       </div>
-      <p class="small">Current delivery state: test support, ownership migration, and stable autonomy contract protection are merged. Automation-status output parity is implemented and ready for review; simulator-readiness output parity is the next queued review unit.</p>
+      <p class="small">Current delivery state: test support, ownership migration, stable autonomy contracts, and automation-status parity are merged. Simulator-readiness output parity is implemented and ready for review; deployment dry-run parity is the next queued review unit.</p>
     </section>
 
     <section class="panel">
@@ -517,7 +517,7 @@ python3 tests/run.py --live-sim</pre>
       <div class="progress-track" aria-label="Milestone work packages completed: 3 of 6">
         <div class="progress-fill"></div>
       </div>
-      <p class="small">Progress: 3 of 6 work packages complete. Automation status establishes the first operator-output contract; simulator readiness is queued as the next distinct public-state surface.</p>
+      <p class="small">Progress: 3 of 6 work packages complete. Automation status and simulator readiness establish the operator-output pattern; deployment dry runs remain before work package 4 can be closed.</p>
     </section>
 
     <section class="panel">
@@ -603,6 +603,7 @@ python3 tests/run.py --live-sim</pre>
             <tr><td>2026-07-14</td><td>Validate confidence, local identity, and normalized geometry in generic perception evidence values.</td><td>Plugins should emit the narrow evidence shape directly; the stable kernel should reject unsafe structure centrally without asking each algorithm to duplicate defensive checks or assigning semantic truth to its output.</td></tr>
             <tr><td>2026-07-14</td><td>Give decision and perception activation readers equivalent document validation and detached selected configuration.</td><td>Malformed staged state should fail at the owning reader with the same observable policy, while engines and mappers must not mutate the raw activation payload retained for operator inspection.</td></tr>
             <tr><td>2026-07-14</td><td>Derive automation-status human and JSON output from one normalized outcome and worker state without introducing shared rendering test support.</td><td>Operators need concise state and recovery while automation needs complete diagnostics; a representative command should prove the pattern before any abstraction or mechanical rollout.</td></tr>
+            <tr><td>2026-07-14</td><td>Keep simulator subprocess transcripts in JSON diagnostics and omit them from flagless human readiness output.</td><td>Humans need one semantic result, one primary problem, and one recovery action; machine consumers still need every bounded simeval and browser command for diagnosis.</td></tr>
           </tbody>
         </table>
       </div>

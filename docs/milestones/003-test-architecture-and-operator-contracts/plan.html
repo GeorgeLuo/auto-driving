@@ -199,8 +199,8 @@
             <tr>
               <td>Regression suite</td>
               <td><span class="status done">Working baseline</span></td>
-              <td>139 tests are discovered; 138 pass by default and one live simulator smoke test is skipped unless explicitly enabled. The deterministic suite completes in 37.256 seconds on the current development machine.</td>
-              <td>The suite is manually invoked and has no CI or coverage baseline.</td>
+              <td>139 tests are discovered; 138 pass by default and one live simulator smoke test is skipped unless explicitly enabled. The deterministic suite completes in 42.787 seconds on the current development machine.</td>
+              <td>A deterministic pull-request workflow is implemented for review. An owned-code coverage baseline is still missing.</td>
             </tr>
             <tr>
               <td>Test organization</td>
@@ -255,21 +255,21 @@
       </details>
       <div class="grid two" style="margin-top: 14px;">
         <div class="card goal">
-          <h3>Current PR: Deployment Dry-Run Output Contract</h3>
+          <h3>Current PR: Deterministic Pull-Request CI</h3>
           <p><span class="status active">Implemented - ready for review</span> <strong>Review shape:</strong> deep and narrow.</p>
-          <p style="margin-top: 9px;"><strong>Deliverable:</strong> matching core and autonomy deployment plans containing target, scope, source, planned commands, restart intent, and explicit local-write, remote-connection, and remote-write outcomes.</p>
-          <p style="margin-top: 9px;"><strong>Review question:</strong> Do <code>vehicles update core --dry-run</code> and <code>vehicles update autonomy --dry-run</code> expose the same target, scope, planned commands, restart intent, and no-write outcome in human and JSON forms without requiring discovery or hardware?</p>
-          <p style="margin-top: 9px;"><strong>Create:</strong> none. <strong>Modify:</strong> <code>cli/automa_cli/deploy.py</code>, <code>cli/automa_cli/app.py</code>, <code>tests/cli/deployment/test_updates.py</code>, and this plan. <strong>Remove:</strong> none.</p>
-          <p style="margin-top: 9px;"><strong>Non-goals:</strong> actual SSH or hardware deployment, changing bundle contents, physical restart validation, discovery redesign, failure-schema rollout for live deployment, or a repository-wide result abstraction.</p>
-          <p style="margin-top: 9px;"><strong>Evidence:</strong> core dry runs had no JSON form; autonomy JSON omitted explicit scope and no-write state; both human forms only implied safety; and the core restart preview omitted <code>PI_HOME</code> even though execution supplies it. Both commands now render from structured plans, include restart as a labeled command only when requested, and suppress duplicate dry-run progress chatter. Three focused tests execute eight public CLI dry runs with an empty <code>PATH</code> and a nonexistent runtime root, proving no SSH/rsync execution or staged writes. Full discovery reports 139 tests in 37.256 seconds, with 138 passes and one explicit live skip.</p>
+          <p style="margin-top: 9px;"><strong>Deliverable:</strong> one bounded GitHub Actions job that installs declared core dependencies and invokes the canonical deterministic suite for every pull request and push to <code>main</code>.</p>
+          <p style="margin-top: 9px;"><strong>Review question:</strong> Does every pull request run the repository's canonical deterministic suite on one supported Python version without simulator, browser, network-service, or physical-vehicle requirements?</p>
+          <p style="margin-top: 9px;"><strong>Create:</strong> <code>.github/workflows/tests.yml</code>. <strong>Modify:</strong> this plan. <strong>Remove:</strong> none.</p>
+          <p style="margin-top: 9px;"><strong>Non-goals:</strong> a Python-version matrix, live simulator or Pi jobs, deployment automation, coverage collection or thresholds, release packaging, dependency pinning, or unrelated lint and formatting gates.</p>
+          <p style="margin-top: 9px;"><strong>Evidence:</strong> the repository had one canonical runner and one core requirements file but no automation invoking either. The workflow uses Python 3.11, read-only repository permissions, pip caching keyed by <code>requirements.txt</code>, a ten-minute bound, cancellation of superseded runs, and an explicit live-simulator opt-out. A fresh Python 3.11 environment containing only declared requirements runs all 139 tests in 32.412 seconds, with 138 passes and one explicit live skip. The pull request's Ubuntu job is the authoritative clean-Linux validation.</p>
         </div>
         <div class="card interface">
-          <h3>Next After Review: Deterministic Pull-Request CI</h3>
+          <h3>Next After Review: Owned-Code Coverage Baseline</h3>
           <p><span class="status pending">Queued, not started</span> <strong>Expected shape:</strong> deep and narrow.</p>
-          <p style="margin-top: 9px;"><strong>Review question:</strong> Does every pull request run the repository's canonical deterministic suite on one supported Python version without simulator, browser, network, or physical-vehicle requirements?</p>
-          <p style="margin-top: 9px;"><strong>Expected deliverable:</strong> one minimal GitHub Actions workflow that installs declared core dependencies, invokes <code>python3 tests/run.py</code>, and preserves the existing explicit opt-in boundary for live checks.</p>
-          <p style="margin-top: 9px;"><strong>Proposed files:</strong> create one workflow under <code>.github/workflows/</code>; modify dependency or test-documentation files only if a clean runner exposes a real omission; add a narrow repository-contract test only if it protects non-obvious workflow semantics; update this plan.</p>
-          <p style="margin-top: 9px;"><strong>Non-goals:</strong> a Python-version matrix, live simulator or Pi jobs, deployment automation, coverage thresholds, release packaging, or unrelated lint and formatting gates.</p>
+          <p style="margin-top: 9px;"><strong>Review question:</strong> What coverage does the deterministic suite provide for repository-owned <code>autonomy</code>, <code>implementations</code>, and <code>cli/automa_cli</code> code, and can CI publish that measurement without treating it as a quality gate?</p>
+          <p style="margin-top: 9px;"><strong>Expected deliverable:</strong> a reproducible coverage command and configuration, an informational CI summary/artifact, and a recorded baseline that excludes vendored DonkeyCar code, generated runtime state, and isolated lab environments.</p>
+          <p style="margin-top: 9px;"><strong>Proposed files:</strong> add a small development/test dependency declaration and coverage configuration; extend the deterministic workflow with reporting; add documentation or a narrow configuration contract only where needed; update this plan with measured package-level results.</p>
+          <p style="margin-top: 9px;"><strong>Non-goals:</strong> a minimum threshold, coverage badges or external services, test generation solely to raise a percentage, vendored code measurement, branch protection policy, or live-system coverage.</p>
         </div>
       </div>
       <div class="table-wrap" style="margin-top: 16px;">
@@ -291,7 +291,7 @@
             <tr>
               <td>Automated validation</td>
               <td>Deterministic PR CI, an owned-code coverage baseline, and bounded opt-in Chase and Pi checks.</td>
-              <td>The suite now has 139 tests, one canonical runner, one declared core requirements file, and no CI workflow. A single-version offline PR job is the next foundation before measuring owned-code coverage.</td>
+              <td>A single-version offline PR job is implemented and the declared-dependency suite passes in a clean virtual environment. Its Ubuntu result must be observed before the owned-code coverage baseline is added.</td>
             </tr>
             <tr>
               <td>Milestone closeout</td>
@@ -301,7 +301,7 @@
           </tbody>
         </table>
       </div>
-      <p class="small">Current delivery state: test support, ownership migration, stable autonomy contracts, automation status, and simulator readiness are merged. Deployment dry-run parity is implemented and ready for review; deterministic pull-request CI is the next queued review unit.</p>
+      <p class="small">Current delivery state: test architecture, stable autonomy contracts, operator-output contracts, and deployment dry-run parity are merged. Deterministic pull-request CI is implemented and ready for review; owned-code coverage is the next queued review unit.</p>
     </section>
 
     <section class="panel">
@@ -492,14 +492,16 @@ python3 tests/run.py --live-sim</pre>
         </div>
       </details>
 
-      <details class="work-item" data-status="pending">
-        <summary><span>5. Add Deterministic CI And Coverage Visibility</span><span class="status pending">Pending</span></summary>
+      <details class="work-item" data-status="active" open>
+        <summary><span>5. Add Deterministic CI And Coverage Visibility</span><span class="status active">Active</span></summary>
         <div class="work-body">
           <p>Once the deterministic suite shape and cost are known, run it automatically on pull requests and report coverage for owned code.</p>
           <ul>
             <li>Use one supported Python version first; add a matrix only when compatibility is a real requirement.</li>
             <li>Make coverage informational at baseline, then prevent unexplained regression in stable <code>autonomy</code> code.</li>
             <li>Do not include vendored DonkeyCar tests or FastSAM virtual environments in owned coverage.</li>
+            <li><strong>Implemented for review:</strong> one Python 3.11 Ubuntu job runs the canonical deterministic suite for pull requests and <code>main</code> without enabling live checks.</li>
+            <li><strong>Next:</strong> measure and publish informational coverage for repository-owned code without setting a threshold.</li>
           </ul>
         </div>
       </details>
@@ -608,6 +610,7 @@ python3 tests/run.py --live-sim</pre>
             <tr><td>2026-07-14</td><td>Derive automation-status human and JSON output from one normalized outcome and worker state without introducing shared rendering test support.</td><td>Operators need concise state and recovery while automation needs complete diagnostics; a representative command should prove the pattern before any abstraction or mechanical rollout.</td></tr>
             <tr><td>2026-07-14</td><td>Keep simulator subprocess transcripts in JSON diagnostics and omit them from flagless human readiness output.</td><td>Humans need one semantic result, one primary problem, and one recovery action; machine consumers still need every bounded simeval and browser command for diagnosis.</td></tr>
             <tr><td>2026-07-14</td><td>Represent physical deployment dry runs as structured plans with explicit no-side-effect results.</td><td>Operators and automation should inspect the same target, scope, commands, and restart intent, while an empty tool path and untouched runtime root provide executable evidence that planning neither connects nor writes.</td></tr>
+            <tr><td>2026-07-14</td><td>Run one Python 3.11 deterministic job on pull requests and <code>main</code> before introducing coverage or a version matrix.</td><td>The repository needs an enforced canonical baseline first; read-only permissions, bounded runtime, superseded-run cancellation, and an explicit live-test opt-out keep that foundation narrow and predictable.</td></tr>
           </tbody>
         </table>
       </div>

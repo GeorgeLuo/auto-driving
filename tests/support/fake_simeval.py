@@ -84,7 +84,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args[:1] == ["status"]:
         state = _read_state(state_path)
-        online = mode == "online" or (
+        online = mode in ("online", "online_frontend_drops") or (
             mode == "offline_then_launch" and state.get("launched") is True
         )
         online = online or mode in (

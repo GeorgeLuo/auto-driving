@@ -830,21 +830,15 @@ def _verify_physical_autonomy_runtime(
     if not isinstance(base_url, str) or not base_url:
         host = target.ssh_target.rsplit("@", 1)[-1]
         base_url = f"http://{host}:8887"
-    status_url = f"{base_url.rstrip('/')}/autonomy/status"
-    try:
-        with urllib_request.urlopen(status_url, timeout=timeout_s) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-    except (OSError, urllib_error.URLError, json.JSONDecodeError) as exc:
-        raise RuntimeError(f"GET {status_url} failed: {exc}") from exc
 
-    autonomy = payload.get("autonomy")
-    actual_engine = autonomy.get("engine") if isinstance(autonomy, dict) else None
-    components = autonomy.get("components") if isinstance(autonomy, dict) else None
-    perception = components.get("perception") if isinstance(components, dict) else None
-    actual_perception = perception.get("algorithm") if isinstance(perception, dict) else None
-    drive_mode = payload.get("drive_mode")
-    if payload.get("ok") is not True:
-        raise RuntimeError(f"{status_url} did not report an available autonomy manager")
+    verification = inspect_physical_autonomy_runtime(
+        base_url=base_url,
+        timeout_s=timeout_s,
+    )
+    status_url = str(verification["status_url"])
+    actual_engine = verification["engine"]
+    actual_perception = verification["perception_algorithm"]
+    drive_mode = verification["drive_mode"]
     if actual_engine != expected_engine_spec:
         raise RuntimeError(
             f"{status_url} reported engine {actual_engine!r}, expected {expected_engine_spec!r}"
@@ -858,10 +852,55 @@ def _verify_physical_autonomy_runtime(
         raise RuntimeError(
             f"{status_url} reported drive mode {drive_mode!r}; expected 'user' for idle smoke verification"
         )
+    return verification
+
+
+def inspect_physical_autonomy_runtime(
+    *,
+    base_url: str,
+    timeout_s: float,
+) -> dict[str, Any]:
+    """Read the deployed autonomy status without changing vehicle state."""
+    normalized_url = str(base_url).strip().rstrip("/")
+    if not normalized_url:
+        raise RuntimeError("Pi base URL is required for runtime inspection")
+    status_url = f"{normalized_url}/autonomy/status"
+    try:
+        with urllib_request.urlopen(status_url, timeout=max(0.1, float(timeout_s))) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (
+        OSError,
+        urllib_error.URLError,
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+        ValueError,
+    ) as exc:
+        raise RuntimeError(f"GET {status_url} failed: {exc}") from exc
+
+    if not isinstance(payload, dict):
+        raise RuntimeError(f"{status_url} did not return a JSON object")
+    if payload.get("ok") is not True:
+        raise RuntimeError(f"{status_url} did not report an available autonomy manager")
+
+    autonomy = payload.get("autonomy")
+    if not isinstance(autonomy, dict):
+        raise RuntimeError(f"{status_url} did not report autonomy runtime status")
+
+    actual_engine = autonomy.get("engine")
+    if not isinstance(actual_engine, str) or not actual_engine.strip():
+        raise RuntimeError(f"{status_url} did not report a loaded decision engine")
+
+    components = autonomy.get("components")
+    perception = components.get("perception") if isinstance(components, dict) else None
+    actual_perception = perception.get("algorithm") if isinstance(perception, dict) else None
+    if not isinstance(actual_perception, str) or not actual_perception.strip():
+        raise RuntimeError(f"{status_url} did not report an active perception algorithm")
+
+    drive_mode = payload.get("drive_mode")
     return {
         "status_url": status_url,
-        "engine": actual_engine,
-        "perception_algorithm": actual_perception,
+        "engine": actual_engine.strip(),
+        "perception_algorithm": actual_perception.strip(),
         "drive_mode": drive_mode,
         "ok": True,
     }

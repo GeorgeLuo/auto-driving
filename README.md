@@ -34,6 +34,16 @@ Include the live Chase simulator smoke test:
 PYTHONDONTWRITEBYTECODE=1 python3 tests/run.py --live-sim
 ```
 
+Check a powered-on Pi without moving it:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 tests/run.py --live-pi
+```
+
+The Pi check reads autonomy status only. It does not send drive or mode changes,
+restart the runtime, or connect over SSH. See [`tests/README.md`](tests/README.md)
+for prerequisites and endpoint overrides.
+
 ## Project Layout
 
 - `autonomy/` contains sensor- and environment-agnostic vehicle, perception,

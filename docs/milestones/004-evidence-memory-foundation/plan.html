@@ -205,6 +205,69 @@
       </p>
     </section>
 
+    <section class="panel" data-completion-usage>
+      <h2>Completion Usage</h2>
+      <p>
+        These proposed commands define how milestone 004 should become runnable;
+        none are implemented yet. Names, options, schemas, and presentation may
+        sharpen during delivery, but removing or adding a workflow requires an
+        explicit scope decision.
+      </p>
+      <div class="grid two">
+        <div class="card interface">
+          <h3>Select And Verify Memory</h3>
+          <p><strong>Starting state:</strong> a vehicle appears in <code>vehicles active</code> and a packaged memory implementation is available.</p>
+          <p><strong>Proposed execution:</strong></p>
+          <pre>./cli/automa vehicles active
+./cli/automa vehicles update memory \
+  --id &lt;vehicle-id&gt; \
+  --implementation bounded_evidence
+./cli/automa vehicles info memory --id &lt;vehicle-id&gt;</pre>
+          <p><strong>Success signal:</strong> concise output names the selected implementation, release, capacity, expiry policy, and activation health. <code>--json</code> exposes the same selection for automation.</p>
+        </div>
+        <div class="card goal">
+          <h3>Run And Inspect Retained Evidence</h3>
+          <p><strong>Starting state:</strong> memory and the idle decision engine are selected for the vehicle.</p>
+          <p><strong>Proposed execution:</strong></p>
+          <pre>./cli/automa vehicles automation run --id &lt;vehicle-id&gt;
+./cli/automa vehicles stream memory --id &lt;vehicle-id&gt;</pre>
+          <p><strong>Success signal:</strong> a replacing live view reports lifecycle health, retained record count, age, capacity, provenance summaries, and explicit unavailable or failure state without writing logs by default.</p>
+        </div>
+        <div class="card constraint">
+          <h3>Replay, Compare, And Reset</h3>
+          <p><strong>Starting state:</strong> a recorded observation sequence and selected memory configuration are available.</p>
+          <p><strong>Proposed execution:</strong></p>
+          <pre>./cli/automa vehicles memory replay \
+  &lt;observation-run&gt; --id &lt;vehicle-id&gt;
+./cli/automa vehicles memory reset --id &lt;vehicle-id&gt;
+./cli/automa vehicles info memory --id &lt;vehicle-id&gt;</pre>
+          <p><strong>Success signal:</strong> replay reports a deterministic result digest and concise final state; reset reports an empty new lifecycle epoch. <code>--json</code> provides records and digests for automated comparison.</p>
+        </div>
+        <div class="card goal">
+          <h3>Move Between Simulator And Pi</h3>
+          <p><strong>Starting state:</strong> Chase is ready and a PiRacer is reachable; both appear in <code>vehicles active</code>.</p>
+          <p><strong>Proposed execution:</strong></p>
+          <pre>./cli/automa simulators ensure
+./cli/automa vehicles active
+./cli/automa vehicles update memory \
+  --id chase-sim-chaser \
+  --implementation bounded_evidence
+./cli/automa vehicles update memory \
+  --id &lt;picar-id&gt; \
+  --implementation bounded_evidence
+./cli/automa vehicles update autonomy \
+  --id &lt;picar-id&gt; --restart
+./cli/automa vehicles info memory --id chase-sim-chaser
+./cli/automa vehicles info memory --id &lt;picar-id&gt;</pre>
+          <p><strong>Success signal:</strong> both hosts report the same memory implementation and lifecycle schema, bounded state, and idle steering/throttle; physical deployment additionally reports its activated autonomy release.</p>
+        </div>
+      </div>
+      <p class="note">
+        Default runs remain ephemeral and concise. A user must opt in before a
+        replay input, frame, log, or memory history is written to disk.
+      </p>
+    </section>
+
     <section class="panel">
       <h2>Baseline</h2>
       <div class="table-wrap">
@@ -270,11 +333,11 @@
         <div class="card goal">
           <h3>Current PR: Milestone Transition</h3>
           <p><span class="status active">Implemented - ready for review</span> <strong>Review shape:</strong> broad documentation, shallow behavior.</p>
-          <p><strong>Deliverable:</strong> close milestone 003 with measured evidence and establish this observed baseline, fixed objective, scope, and rolling delivery horizon.</p>
-          <p><strong>Review question:</strong> Does the memory milestone begin at the real decision-cycle seam, preserve the distinction between evidence and world truth, and avoid committing to an unproven world-model implementation?</p>
-          <p><strong>Create:</strong> milestone 003 closeout and this milestone plan. <strong>Modify:</strong> milestone 003 frozen plan, completed ledger, root newcomer guide, and documentation guide. <strong>Remove:</strong> none.</p>
+          <p><strong>Deliverable:</strong> close milestone 003 with measured evidence and establish this observed baseline, fixed objective, completion usage, scope, and rolling delivery horizon.</p>
+          <p><strong>Review question:</strong> Does the memory milestone begin at the real decision-cycle seam, preserve the distinction between evidence and world truth, and define runnable completion workflows without prematurely fixing their implementation?</p>
+          <p><strong>Create:</strong> milestone 003 closeout and this milestone plan. <strong>Modify:</strong> milestone 003 frozen plan, completed ledger, root newcomer guide, documentation guide, shared planning contract, and focused planning test. <strong>Remove:</strong> none.</p>
           <p><strong>Non-goals:</strong> source changes, memory values, plugin APIs, persistence, simulator control, or physical deployment changes.</p>
-          <p><strong>Validation:</strong> the canonical suite passes 143 tests with two named live skips; documentation contract tests, generated Markdown checks, local-link checks, HTML parsing, and diff hygiene pass.</p>
+          <p><strong>Validation:</strong> the canonical suite passes 144 tests with two named live skips; documentation contract tests, generated Markdown checks, local-link checks, HTML parsing, and diff hygiene pass.</p>
         </div>
         <div class="card interface">
           <h3>Next After Review: Stable Memory Contract</h3>
@@ -523,6 +586,7 @@
             <tr><td>2026-07-15</td><td>Keep memory bounded and process-local by default.</td><td>Persistence has cost, cleanup, migration, and stale-state consequences that are not justified before a useful in-memory representation exists.</td></tr>
             <tr><td>2026-07-15</td><td>Do not promote perception track IDs into durable identity.</td><td>Current temporal groups are run-local motion evidence and have not demonstrated semantic continuity through occlusion, viewpoint change, or restart.</td></tr>
             <tr><td>2026-07-15</td><td>Require the same memory interface in simulator and physical hosts.</td><td>Environment-specific truth would undermine the purpose of testing autonomy logic against a simulator before deploying it to the Pi.</td></tr>
+            <tr><td>2026-07-15</td><td>Make completion usage a stable part of milestone scope.</td><td>Concrete user-visible workflows constrain architecture toward runnable outcomes while allowing command details and implementation choices to evolve from evidence.</td></tr>
           </tbody>
         </table>
       </div>

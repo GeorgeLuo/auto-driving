@@ -40,6 +40,22 @@ class MilestonePlanningTests(unittest.TestCase):
         self.assertIn("data-shared-planning-contract", plan_html)
         self.assertIn('src="../planning-contract.html"', plan_html)
 
+    def test_active_milestone_defines_completion_usage(self) -> None:
+        guide = (DOCS / "README.md").read_text(encoding="utf-8")
+        match = re.search(
+            r"Milestone \d+,\s*\[[^]]+\]\((milestones/[^)]+/plan\.html)\),\s*is active",
+            guide,
+        )
+        self.assertIsNotNone(match, "docs/README.md must identify one active milestone plan")
+
+        active_plan = DOCS / match.group(1)
+        plan_html = active_plan.read_text(encoding="utf-8")
+        self.assertIn("data-completion-usage", plan_html)
+        self.assertIn("<h2>Completion Usage</h2>", plan_html)
+        self.assertIn("<strong>Starting state:</strong>", plan_html)
+        self.assertIn("<strong>Proposed execution:</strong>", plan_html)
+        self.assertIn("<strong>Success signal:</strong>", plan_html)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

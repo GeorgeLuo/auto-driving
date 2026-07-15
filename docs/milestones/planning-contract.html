@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="159d6fe7f73b06b93fcde47705547d4e2c7578e3a94e96d6eb496a9cf0a0b496">
+  <meta name="source-sha256" content="4592d771e81b04db7ac9bb43b7ac934c5d0066a4be0f49862220755375159a37">
   <base target="_blank">
   <title>Milestone Planning Contract</title>
   <style>
@@ -73,8 +73,34 @@ conditions explicit.</p>
   question.</li>
 <li><strong>Queued delivery:</strong> the one likely next review unit, defined but not started.</li>
 <li><strong>Preparation horizon:</strong> ordered needs that remain provisional until promoted.</li>
+<li><strong>Completion usage:</strong> the small, stable set of new human workflows the
+  completed milestone must make possible.</li>
 <li><strong>Exit criteria:</strong> fixed milestone outcomes that do not depend on a particular
   implementation path.</li>
+</ul>
+<h3>Completion Usage Contract</h3>
+<p>Every active milestone enumerates the straightforward usage that should be
+possible after closeout. Describe each workflow from the user's perspective:
+the starting context, a proposed command, API, or UI execution path, and the
+observable result that tells them it worked. The proposal must be concrete
+enough for a reviewer to understand how the completed behavior will be run,
+while remaining free of internal implementation steps. Clearly label commands
+or interfaces that do not exist yet as proposed rather than observed behavior.</p>
+<p>The workflow set is part of milestone scope and should not drift casually.
+Adding or removing a workflow requires an explicit scope decision in the plan's
+decision log. Exact command spelling, flags, schemas, limits, and presentation
+may evolve during implementation as long as the original usage remains apparent
+and executable. Update the proposal when those details settle. Every completion
+workflow must be supported by exit criteria and closeout evidence; otherwise it
+is aspiration rather than delivered usage.</p>
+<p>Each completion workflow records:</p>
+<ul>
+<li><strong>Starting state:</strong> what must already be available or selected.</li>
+<li><strong>Proposed execution:</strong> the shortest expected human path through the public
+  interface.</li>
+<li><strong>Success signal:</strong> the concise output or state change that proves it worked.</li>
+<li><strong>Automation path, when needed:</strong> structured output suitable for tests without
+  making machine-oriented flags the default human experience.</li>
 </ul>
 <h2>Common Plan Format</h2>
 <p>Each active milestone uses a standalone <code>plan.html</code> with the same high-level
@@ -87,6 +113,9 @@ free of external assets.</p>
    start date, important operating constraints, and delivery model.</li>
 <li><strong>High-Level Objective:</strong> a small set of outcome cards and a concise statement
    of what success means.</li>
+<li><strong>Completion Usage:</strong> an implementation-agnostic enumeration of the new
+   workflows a human can run after closeout, proposed public execution paths,
+   and the result each workflow exposes.</li>
 <li><strong>Baseline:</strong> observed status, evidence, and remaining gap for each major area.</li>
 <li><strong>Current Delivery Horizon:</strong> current PR, next-after-review candidate,
    preparation horizon, and current delivery state.</li>
@@ -184,7 +213,8 @@ or an unlabeled visual result as an accuracy claim.</p>
 <h2>Milestone Lifecycle</h2>
 <ol>
 <li>Create one numbered directory and a <code>plan.html</code> following this contract.</li>
-<li>Define fixed exit criteria, a concrete first PR, and a preparation horizon.</li>
+<li>Define completion usage, fixed exit criteria, a concrete first PR, and a
+   preparation horizon.</li>
 <li>Merge one deliverable at a time by default and update the plan after each
    accepted review unit.</li>
 <li>At closeout, freeze the plan and write <code>closeout.md</code> with outcomes, decisions,

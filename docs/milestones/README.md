@@ -21,8 +21,37 @@ The plan must distinguish:
   question.
 - **Queued delivery:** the one likely next review unit, defined but not started.
 - **Preparation horizon:** ordered needs that remain provisional until promoted.
+- **Completion usage:** the small, stable set of new human workflows the
+  completed milestone must make possible.
 - **Exit criteria:** fixed milestone outcomes that do not depend on a particular
   implementation path.
+
+### Completion Usage Contract
+
+Every active milestone enumerates the straightforward usage that should be
+possible after closeout. Describe each workflow from the user's perspective:
+the starting context, a proposed command, API, or UI execution path, and the
+observable result that tells them it worked. The proposal must be concrete
+enough for a reviewer to understand how the completed behavior will be run,
+while remaining free of internal implementation steps. Clearly label commands
+or interfaces that do not exist yet as proposed rather than observed behavior.
+
+The workflow set is part of milestone scope and should not drift casually.
+Adding or removing a workflow requires an explicit scope decision in the plan's
+decision log. Exact command spelling, flags, schemas, limits, and presentation
+may evolve during implementation as long as the original usage remains apparent
+and executable. Update the proposal when those details settle. Every completion
+workflow must be supported by exit criteria and closeout evidence; otherwise it
+is aspiration rather than delivered usage.
+
+Each completion workflow records:
+
+- **Starting state:** what must already be available or selected.
+- **Proposed execution:** the shortest expected human path through the public
+  interface.
+- **Success signal:** the concise output or state change that proves it worked.
+- **Automation path, when needed:** structured output suitable for tests without
+  making machine-oriented flags the default human experience.
 
 ## Common Plan Format
 
@@ -37,17 +66,20 @@ Use these sections in this order unless a section is genuinely irrelevant:
    start date, important operating constraints, and delivery model.
 2. **High-Level Objective:** a small set of outcome cards and a concise statement
    of what success means.
-3. **Baseline:** observed status, evidence, and remaining gap for each major area.
-4. **Current Delivery Horizon:** current PR, next-after-review candidate,
+3. **Completion Usage:** an implementation-agnostic enumeration of the new
+   workflows a human can run after closeout, proposed public execution paths,
+   and the result each workflow exposes.
+4. **Baseline:** observed status, evidence, and remaining gap for each major area.
+5. **Current Delivery Horizon:** current PR, next-after-review candidate,
    preparation horizon, and current delivery state.
-5. **Milestone-Specific Contracts:** architecture, interfaces, output policies,
+6. **Milestone-Specific Contracts:** architecture, interfaces, output policies,
    target structures, or other rules needed to evaluate this milestone.
-6. **Work Plan:** expandable work packages with `pending`, `active`, `blocked`,
+7. **Work Plan:** expandable work packages with `pending`, `active`, `blocked`,
    or `done` status and an accurate aggregate progress indicator.
-7. **Scope Boundaries:** explicit in-scope and out-of-scope work.
-8. **Risks And Controls:** likely failure modes paired with concrete controls.
-9. **Exit Criteria:** observable conditions required before closeout.
-10. **Decision Log:** dated decisions and reasons, including assumptions that
+8. **Scope Boundaries:** explicit in-scope and out-of-scope work.
+9. **Risks And Controls:** likely failure modes paired with concrete controls.
+10. **Exit Criteria:** observable conditions required before closeout.
+11. **Decision Log:** dated decisions and reasons, including assumptions that
     changed during implementation.
 
 Plans should support quick scanning. Use status pills, compact tables, cards for
@@ -154,7 +186,8 @@ or an unlabeled visual result as an accuracy claim.
 ## Milestone Lifecycle
 
 1. Create one numbered directory and a `plan.html` following this contract.
-2. Define fixed exit criteria, a concrete first PR, and a preparation horizon.
+2. Define completion usage, fixed exit criteria, a concrete first PR, and a
+   preparation horizon.
 3. Merge one deliverable at a time by default and update the plan after each
    accepted review unit.
 4. At closeout, freeze the plan and write `closeout.md` with outcomes, decisions,

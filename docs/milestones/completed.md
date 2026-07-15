@@ -50,3 +50,28 @@ cadence, and make the Donkey runtime reliably available after power cycles.
 
 Full record: [plan](002-perception-hardening/plan.html) and
 [closeout](002-perception-hardening/closeout.md).
+
+## 003 - Test Architecture and Operator Contracts
+
+Closed: 2026-07-15
+
+Established one canonical, ownership-aligned test tree and runner; direct
+contracts for stable autonomy behavior; semantic human/JSON CLI checks;
+deterministic pull-request CI; informational owned-code coverage; and bounded,
+opt-in Chase and Pi validation. The final suite discovers 145 tests, passes 143
+by default with two named live skips, and reports a 63.1% owned-code coverage
+baseline.
+
+Durable decisions: keep default validation offline and deterministic; place
+unit, implementation, integration, lab, and live evidence under explicit
+owners; keep shared test support mechanical; reject non-finite control values;
+preserve known-good idle behavior across runtime failures; derive operator and
+machine output from one semantic result; refresh named built-in activations from
+the current catalog; and require manual mode for the first non-moving Pi check.
+
+Remaining work: define bounded decision memory from per-frame observations,
+evaluate semantic quality only against explicit task truth, and retain live
+simulator, hardware, and motion checks as separately bounded operations.
+
+Full record: [plan](003-test-architecture-and-operator-contracts/plan.html) and
+[closeout](003-test-architecture-and-operator-contracts/closeout.md).

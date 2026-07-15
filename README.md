@@ -44,6 +44,25 @@ The Pi check reads autonomy status only. It does not send drive or mode changes,
 restart the runtime, or connect over SSH. See [`tests/README.md`](tests/README.md)
 for prerequisites and endpoint overrides.
 
+## First-Time Navigation
+
+After setup, use this path instead of reading the repository directory by
+directory:
+
+1. Run `./cli/automa help` to see what the tool can do, then descend one command
+   level at a time with commands such as `./cli/automa vehicles help`. Use
+   `--help` only when you reach the final command you intend to run.
+2. Choose the [Chase simulator workflow](#chase-simulator-workflow) for local
+   development or the [physical PiRacer workflow](#physical-piracer-workflow)
+   when deploying to hardware.
+3. Read [`tests/README.md`](tests/README.md) before changing behavior. It explains
+   test ownership, focused module runs, and the explicit simulator and Pi
+   boundaries.
+4. Use [`docs/README.md`](docs/README.md) for the active milestone, current
+   architecture references, completed milestone context, and research notes.
+5. Treat `runtime/` and `lab/` as generated state. Start from tracked source and
+   the CLI rather than using files in those directories as an API.
+
 ## Project Layout
 
 - `autonomy/` contains sensor- and environment-agnostic vehicle, perception,
@@ -364,8 +383,8 @@ and is prepared through `./cli/automa simulators ensure`.
   describes the physical Donkey server boundary.
 - [`docs/milestones/completed.md`](docs/milestones/completed.md) is the concise
   append-only history of closed work.
-- [`docs/milestones/003-test-architecture-and-operator-contracts/plan.html`](docs/milestones/003-test-architecture-and-operator-contracts/plan.html)
-  is the active test-architecture and operator-contract milestone.
+- [`docs/milestones/004-evidence-memory-foundation/plan.html`](docs/milestones/004-evidence-memory-foundation/plan.html)
+  is the active evidence-memory milestone.
 
 Dependency direction is intentional:
 

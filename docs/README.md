@@ -6,10 +6,10 @@ Read this file first when starting work.
 
 ## Active Work
 
-Milestone 003, [Test Architecture and Operator Contracts](milestones/003-test-architecture-and-operator-contracts/plan.html),
-is active. It reorganizes tests by ownership, adds direct coverage for settled
-autonomy contracts, formalizes human and machine CLI output expectations, and
-establishes deterministic CI with explicit live-system boundaries.
+Milestone 004, [Evidence Memory Foundation](milestones/004-evidence-memory-foundation/plan.html),
+is active. It defines bounded, inspectable memory from decision observations,
+wires the same lifecycle through simulator and physical hosts, and keeps action
+idle while memory semantics and operator workflows are validated.
 
 ## Reading Order
 

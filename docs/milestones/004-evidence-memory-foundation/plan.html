@@ -1,0 +1,550 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Milestone 004: Evidence Memory Foundation</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f5f7f8;
+      --surface: #ffffff;
+      --surface-alt: #eef3f5;
+      --text: #182126;
+      --muted: #58666d;
+      --line: #cbd5d9;
+      --blue: #176b87;
+      --blue-soft: #dceff5;
+      --green: #2d7650;
+      --green-soft: #dff1e7;
+      --amber: #9b6615;
+      --amber-soft: #f7e9ca;
+      --red: #a44343;
+      --red-soft: #f7dfdf;
+      --violet: #68539a;
+      --violet-soft: #ebe5f7;
+      --neutral: #dce3e6;
+      --shadow: 0 8px 24px rgba(20, 35, 42, 0.08);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #111619;
+        --surface: #192126;
+        --surface-alt: #202b31;
+        --text: #edf3f5;
+        --muted: #afbdc3;
+        --line: #35444b;
+        --blue: #69b7d0;
+        --blue-soft: #173b47;
+        --green: #77c699;
+        --green-soft: #173a29;
+        --amber: #e5b55f;
+        --amber-soft: #463515;
+        --red: #ed9090;
+        --red-soft: #482323;
+        --violet: #b9a5e8;
+        --violet-soft: #33294c;
+        --neutral: #2b373d;
+        --shadow: none;
+      }
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.55;
+    }
+    main { width: min(1180px, calc(100% - 32px)); margin: 0 auto; padding: 32px 0 64px; }
+    header { padding: 28px 0 18px; }
+    h1, h2, h3 { margin: 0; line-height: 1.2; letter-spacing: 0; }
+    h1 { max-width: 900px; font-size: clamp(32px, 5vw, 52px); }
+    h2 { margin-bottom: 14px; font-size: 24px; }
+    h3 { font-size: 17px; }
+    p { margin: 0; }
+    a { color: var(--blue); }
+    code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    code { overflow-wrap: anywhere; }
+    .lead { max-width: 900px; margin-top: 14px; color: var(--muted); font-size: 18px; }
+    .meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+    .pill, .status {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 4px 9px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .pill { background: var(--surface-alt); }
+    .status.done { color: var(--green); background: var(--green-soft); border-color: var(--green); }
+    .status.active { color: var(--blue); background: var(--blue-soft); border-color: var(--blue); }
+    .status.pending { color: var(--amber); background: var(--amber-soft); border-color: var(--amber); }
+    .status.blocked { color: var(--red); background: var(--red-soft); border-color: var(--red); }
+    .status.global { color: var(--violet); background: var(--violet-soft); border-color: var(--violet); }
+
+    .panel {
+      margin-top: 20px;
+      padding: 22px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+    .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+    .grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .card { min-width: 0; padding: 16px; border-left: 4px solid var(--line); background: var(--surface-alt); }
+    .card p, .card ul { margin-top: 9px; }
+    .card.goal { border-color: var(--blue); }
+    .card.interface { border-color: var(--violet); }
+    .card.constraint { border-color: var(--green); }
+    .card.risk { border-color: var(--red); }
+    .note { margin-top: 14px; padding: 14px 16px; border-left: 4px solid var(--amber); background: var(--amber-soft); }
+    .small { color: var(--muted); font-size: 13px; }
+
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 11px 12px; border: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { background: var(--surface-alt); }
+    ul, ol { margin: 10px 0 0; padding-left: 22px; }
+    li + li { margin-top: 6px; }
+    pre {
+      margin: 12px 0 0;
+      padding: 15px;
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--surface-alt);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    details { border: 1px solid var(--line); background: var(--surface); }
+    details + details { margin-top: 10px; }
+    summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 13px 15px;
+      cursor: pointer;
+      font-weight: 700;
+    }
+    .work-body, .reference-body { padding: 0 15px 15px; }
+    .reference-item { margin-top: 14px; }
+    .reference-frame { width: 100%; min-height: 720px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); }
+    .filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+    .filters button {
+      min-height: 36px;
+      padding: 7px 11px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--surface-alt);
+      color: var(--text);
+      cursor: pointer;
+      font: inherit;
+    }
+    .filters button[aria-pressed="true"] { border-color: var(--blue); color: var(--blue); font-weight: 700; }
+    .progress-track { height: 10px; margin-top: 14px; overflow: hidden; border-radius: 5px; background: var(--neutral); }
+    .progress-fill { width: 0; height: 100%; background: var(--green); }
+
+    @media (max-width: 860px) {
+      main { width: min(100% - 20px, 1180px); padding-top: 18px; }
+      .panel { padding: 16px; }
+      .grid, .grid.two { grid-template-columns: 1fr; }
+      th, td { min-width: 180px; }
+      summary { align-items: flex-start; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Milestone 004: Evidence Memory Foundation</h1>
+      <p class="lead">
+        Give the decision cycle bounded, inspectable continuity across frames.
+        Memory should retain attributed observation evidence without claiming a
+        complete world model, changing perception semantics, or granting movement
+        authority before its lifecycle and value are understood.
+      </p>
+      <div class="meta">
+        <span class="pill">Status: active - planning</span>
+        <span class="pill">Started: 2026-07-15</span>
+        <span class="pill">Action policy: idle</span>
+        <span class="pill">Persistence: memory only by default</span>
+        <span class="pill">Hosts: Chase and DonkeyCar</span>
+        <span class="pill">Delivery: rolling PR horizon</span>
+      </div>
+    </header>
+
+    <section class="panel">
+      <h2>High-Level Objective</h2>
+      <div class="grid">
+        <div class="card goal">
+          <h3>Retain Evidence, Not Truth</h3>
+          <p>Carry selected observations across frames with source, time, confidence, and uncertainty intact. Memory records what was observed and retained, not what definitively exists.</p>
+        </div>
+        <div class="card interface">
+          <h3>One Lifecycle Across Hosts</h3>
+          <p>Run the same memory contract and implementation selection in the local Chase controller and onboard Pi host without simulator map input or vehicle-specific memory types.</p>
+        </div>
+        <div class="card constraint">
+          <h3>Bounded And Inspectable</h3>
+          <p>Make capacity, expiry, reset, provenance, and current state visible to operators. Default execution remains in memory and writes no frame or history artifacts.</p>
+        </div>
+      </div>
+      <p class="note">
+        Success is not a detailed floor plan. Success is a stable, economical
+        answer to "what recent evidence is the controller retaining, why, and for
+        how long?" that behaves the same in replay, simulation, and the physical
+        runtime while the car remains idle.
+      </p>
+    </section>
+
+    <section class="panel">
+      <h2>Baseline</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Area</th><th>Observed State</th><th>Gap</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>Current observation</td>
+              <td><code>Observation</code> contains detached sensor metadata, perception identity, summaries, structured things, signals, artifacts, and limits for one cycle.</td>
+              <td>No policy says which evidence survives, how retained records cite observations, or how conflicting and missing evidence affect prior state.</td>
+            </tr>
+            <tr>
+              <td>Decision seam</td>
+              <td><code>DecisionCycle</code> already calls an optional <code>remember</code> stage after observation and before patterns, projections, and action.</td>
+              <td><code>MemoryStage</code> and <code>DecisionCycleResult.memory</code> are <code>Any</code>; ownership, reset, boundedness, serialization, and failure behavior are undefined.</td>
+            </tr>
+            <tr>
+              <td>Runtime hosts</td>
+              <td>Local Chase and DonkeyCar both run <code>AutonomyCycleHost</code> and currently configure only perception before the idle engine.</td>
+              <td>The host discards memory, patterns, and projections when constructing <code>AutonomySnapshot</code>, so an engine cannot inspect the staged results through the shared runtime input.</td>
+            </tr>
+            <tr>
+              <td>Temporal perception</td>
+              <td>Windowed motion plugins maintain bounded run-local tracks and explicitly avoid semantic identity claims.</td>
+              <td>Plugin-local tracks are not decision memory and must not silently become durable object IDs or world facts.</td>
+            </tr>
+            <tr>
+              <td>Operator access</td>
+              <td>Automa can stage code, inspect activations, run automation, stream perception, replay captures, and publish a loopback perception view.</td>
+              <td>There is no memory activation, status, stream, replay summary, or clear distinction between latest observation and retained state.</td>
+            </tr>
+            <tr>
+              <td>Persistence</td>
+              <td>Normal automation avoids disk logs and artifacts; explicit recording creates bounded run directories.</td>
+              <td>Memory lifetime across worker restart, activation change, scenario reset, and physical reboot is not specified. Durable storage is not yet justified.</td>
+            </tr>
+            <tr>
+              <td>Validation</td>
+              <td>The ownership-aligned suite directly protects stage order, detached serialization, plugin state, host symmetry, CLI output, and bounded live checks.</td>
+              <td>No fixtures exercise evidence recurrence, dropout, conflict, expiry, reset, deterministic replay, or growth over long sequences.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Current Delivery Horizon</h2>
+      <p>
+        This milestone follows the shared
+        <a href="../README.md">planning and pull-request delivery contract</a>.
+        Later implementation choices remain provisional until the preceding
+        contract is reviewed.
+      </p>
+      <details class="reference-item" data-shared-planning-contract>
+        <summary><span>Shared Planning And Delivery Contract</span><span class="status global">Global</span></summary>
+        <div class="reference-body">
+          <p>Rendered from the canonical <a href="../README.md">Markdown source</a>. Edit the source and regenerate the shared view rather than copying rules into this plan.</p>
+          <iframe class="reference-frame" src="../planning-contract.html" title="Shared milestone planning and pull-request delivery contract" loading="lazy"></iframe>
+        </div>
+      </details>
+      <div class="grid two" style="margin-top: 14px;">
+        <div class="card goal">
+          <h3>Current PR: Milestone Transition</h3>
+          <p><span class="status active">Implemented - ready for review</span> <strong>Review shape:</strong> broad documentation, shallow behavior.</p>
+          <p><strong>Deliverable:</strong> close milestone 003 with measured evidence and establish this observed baseline, fixed objective, scope, and rolling delivery horizon.</p>
+          <p><strong>Review question:</strong> Does the memory milestone begin at the real decision-cycle seam, preserve the distinction between evidence and world truth, and avoid committing to an unproven world-model implementation?</p>
+          <p><strong>Create:</strong> milestone 003 closeout and this milestone plan. <strong>Modify:</strong> milestone 003 frozen plan, completed ledger, root newcomer guide, and documentation guide. <strong>Remove:</strong> none.</p>
+          <p><strong>Non-goals:</strong> source changes, memory values, plugin APIs, persistence, simulator control, or physical deployment changes.</p>
+          <p><strong>Validation:</strong> the canonical suite passes 143 tests with two named live skips; documentation contract tests, generated Markdown checks, local-link checks, HTML parsing, and diff hygiene pass.</p>
+        </div>
+        <div class="card interface">
+          <h3>Next After Review: Stable Memory Contract</h3>
+          <p><span class="status pending">Queued, not started</span> <strong>Expected shape:</strong> deep and narrow.</p>
+          <p><strong>Expected deliverable:</strong> stable memory value and lifecycle interfaces with explicit provenance, bounds, reset, serialization, and failure behavior; adapt the decision seam only as required to remove public <code>Any</code>.</p>
+          <p><strong>Review question:</strong> Can implementations retain evidence through a small typed contract without encoding one mapping strategy or hiding state inside closures?</p>
+          <p><strong>Proposed files:</strong> create the stable memory package and focused autonomy tests; modify decision cycle exports and types only where the contract requires it.</p>
+          <p><strong>Non-goals:</strong> concrete memory algorithm, CLI rollout, host deployment, persistence, semantic identity, or action behavior.</p>
+        </div>
+      </div>
+      <div class="table-wrap" style="margin-top: 16px;">
+        <table>
+          <thead><tr><th>Preparation Horizon</th><th>Known End-State Need</th><th>Must Be Learned First</th></tr></thead>
+          <tbody>
+            <tr><td>Stable values and lifecycle</td><td>Typed snapshot/update records, provenance, bounds, reset, and deterministic serialization.</td><td>Which minimum fields let multiple implementations work without promoting evidence into truth.</td></tr>
+            <tr><td>Plugin execution</td><td>A small loadable memory implementation shape with framework-owned status and failure isolation.</td><td>Whether one reducer interface is sufficient or update/query responsibilities need distinct boundaries.</td></tr>
+            <tr><td>Host integration</td><td>Equivalent activation and lifecycle in local Chase and onboard Donkey hosts.</td><td>How memory reaches runtime inspection and engines while action remains idle and stage failures remain contained.</td></tr>
+            <tr><td>Operator workflow</td><td>Stage, inspect, run, stream, replay, reset, and opt-in record behavior through Automa.</td><td>Which state is useful to a human without flooding output with every retained evidence record.</td></tr>
+            <tr><td>Evaluation</td><td>Controlled recurrence, dropout, conflict, expiry, length, reset, and replay scenarios.</td><td>What one simple implementation claims to preserve and which truth labels are needed to score that claim.</td></tr>
+            <tr><td>Closeout</td><td>Evidence that memory is bounded, portable, inspectable, and useful enough to inform later patterns or action.</td><td>Results from simulator, replay, and one non-moving physical runtime check.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Stage Meaning</h2>
+      <pre>SensorSnapshot
+  -> PerceptionText       current plugin evidence
+  -> Observation          decision-facing representation of one moment
+  -> MemorySnapshot       bounded evidence retained across moments
+  -> Patterns             recurring relationships inferred from memory
+  -> Projections          hypotheses about possible future state
+  -> Action               immediate control output (idle throughout this milestone)</pre>
+      <div class="grid two" style="margin-top: 14px;">
+        <div class="card interface">
+          <h3>Observation</h3>
+          <p>Answers what the current cycle made available. It is frame-scoped, detached for inspection, and may explicitly report missing or degraded perception.</p>
+        </div>
+        <div class="card goal">
+          <h3>Memory</h3>
+          <p>Answers what attributed evidence remains relevant after one cycle. It owns retention and expiry, not semantic classification or future inference.</p>
+        </div>
+        <div class="card constraint">
+          <h3>Patterns</h3>
+          <p>Answer what relationships recur across retained evidence. They are later derived claims and are not required to make memory useful.</p>
+        </div>
+        <div class="card risk">
+          <h3>Projections And Action</h3>
+          <p>Answer what may happen and what should be done now. They remain no-op so memory can be evaluated without movement masking its failures.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Memory Contract Constraints</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Concern</th><th>Required Direction</th><th>Not Yet Assumed</th></tr></thead>
+          <tbody>
+            <tr><td>Provenance</td><td>Every retained claim cites source observation, plugin/evidence identity, coordinate frame, observed time, and update time.</td><td>That two similar records are the same physical object.</td></tr>
+            <tr><td>Confidence</td><td>Retain source confidence and make any aggregate confidence rule attributable.</td><td>That repetition alone turns uncertain evidence into truth.</td></tr>
+            <tr><td>Bounds</td><td>Capacity, age, and eviction behavior are finite, configured, visible, and testable.</td><td>Unbounded history, raw frame archives, or an implicit database.</td></tr>
+            <tr><td>Lifecycle</td><td>Construction, update, read, reset, activation replacement, and failure states have one owner.</td><td>Persistence across process or device restart.</td></tr>
+            <tr><td>Coordinates</td><td>Preserve declared image or relative frames and reject incompatible fusion unless an implementation explicitly transforms them.</td><td>Calibrated metric geometry or a shared global map.</td></tr>
+            <tr><td>Inspection</td><td>Return stable summaries and structured records detached from live mutable state.</td><td>Dumping every internal index or implementation cache to operators.</td></tr>
+            <tr><td>Failure</td><td>A memory failure is explicit, produces no new retained claim, and cannot produce movement.</td><td>Silently falling back to stale state as if it were current.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="note">Complexity belongs in the stable lifecycle and safety boundary when it makes implementations smaller. A memory plugin should primarily express what to retain, update, merge, or expire; it should not duplicate activation parsing, status rendering, persistence policy, or host wiring.</p>
+    </section>
+
+    <section class="panel">
+      <h2>Evaluation Contract</h2>
+      <div class="grid">
+        <div class="card goal">
+          <h3>Deterministic Sequences</h3>
+          <p>Use synthetic observations to prove recurrence, dropout, conflict, expiry, capacity, reset, failure isolation, and repeatable replay without CV variability.</p>
+        </div>
+        <div class="card interface">
+          <h3>Simulator Evidence</h3>
+          <p>Run camera-derived observations in controlled scenarios. Hidden scene state may score an implementation but never becomes its memory input.</p>
+        </div>
+        <div class="card constraint">
+          <h3>Physical Evidence</h3>
+          <p>Confirm the same activation, bounded state, inspection, and reset behavior on the Pi while the idle engine retains zero steering and throttle.</p>
+        </div>
+      </div>
+      <div class="table-wrap" style="margin-top: 14px;">
+        <table>
+          <thead><tr><th>Measure</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td>Provenance completeness</td><td>Every retained record can be traced back to the observation and evidence that produced it.</td></tr>
+            <tr><td>Retention and expiry accuracy</td><td>Records survive and disappear according to declared policy under recurrence and dropout.</td></tr>
+            <tr><td>False persistence</td><td>Unsupported evidence does not remain indefinitely or silently become current.</td></tr>
+            <tr><td>Identity continuity</td><td>Only implementations that claim association are scored for unnecessary splits and unsupported merges.</td></tr>
+            <tr><td>Bounded cost</td><td>Record count, memory use, and update latency remain bounded as sequence length grows.</td></tr>
+            <tr><td>Replay determinism</td><td>The same ordered observations and configuration produce the same serialized memory result.</td></tr>
+            <tr><td>Operator signal</td><td>Human output explains state, age, health, and recovery without flooding; JSON remains complete.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Work Plan</h2>
+      <div class="filters" aria-label="Filter work packages">
+        <button type="button" data-filter="all" aria-pressed="true">All</button>
+        <button type="button" data-filter="active" aria-pressed="false">Active</button>
+        <button type="button" data-filter="pending" aria-pressed="false">Pending</button>
+        <button type="button" data-filter="done" aria-pressed="false">Done</button>
+      </div>
+
+      <details class="work-item" data-status="pending" open>
+        <summary><span>1. Settle Stable Memory Values And Lifecycle</span><span class="status pending">Pending</span></summary>
+        <div class="work-body"><ul>
+          <li>Replace public <code>Any</code> memory output with the smallest implementation-neutral value contract.</li>
+          <li>Define provenance, timestamps, bounds, reset, detached serialization, and explicit unavailable/error state.</li>
+          <li>Protect the distinction between current observation, retained evidence, inferred pattern, and projection.</li>
+          <li>Use focused autonomy tests before creating concrete reducers or broad CLI behavior.</li>
+        </ul></div>
+      </details>
+
+      <details class="work-item" data-status="pending">
+        <summary><span>2. Define Plugin Execution And Activation</span><span class="status pending">Pending</span></summary>
+        <div class="work-body"><ul>
+          <li>Give implementations a narrow update/reset/query shape while the framework owns lifecycle, status, timing, and failure isolation.</li>
+          <li>Use one current activation document and remove superseded paths rather than supporting compatibility aliases.</li>
+          <li>Keep source observations read-only and prevent hidden unbounded state.</li>
+        </ul></div>
+      </details>
+
+      <details class="work-item" data-status="pending">
+        <summary><span>3. Wire Equivalent Runtime Hosts</span><span class="status pending">Pending</span></summary>
+        <div class="work-body"><ul>
+          <li>Install the selected memory stage in both the local automation worker and Donkey cycle host.</li>
+          <li>Expose memory to runtime inspection and future engines through one shared snapshot shape.</li>
+          <li>Retain the idle engine and prove memory failure cannot alter control output.</li>
+        </ul></div>
+      </details>
+
+      <details class="work-item" data-status="pending">
+        <summary><span>4. Add One Functional Memory Implementation</span><span class="status pending">Pending</span></summary>
+        <div class="work-body"><ul>
+          <li>Begin with a simple bounded evidence ledger or recency reducer whose claims can be tested directly.</li>
+          <li>Keep implementation files under the matching <code>implementations/memory</code> hierarchy and make deployment selection explicit.</li>
+          <li>Do not introduce semantic object identity, a floor-plan schema, or generalized fusion until evidence demands it.</li>
+        </ul></div>
+      </details>
+
+      <details class="work-item" data-status="pending">
+        <summary><span>5. Build Operator And Evaluation Workflows</span><span class="status pending">Pending</span></summary>
+        <div class="work-body"><ul>
+          <li>Support concise info, status, latest-state streaming, reset, deterministic replay, and opt-in recording through Automa.</li>
+          <li>Exercise controlled observation sequences and at least one camera-derived simulator scenario without map input.</li>
+          <li>Verify the same activation and bounded state on the Pi without commanding movement.</li>
+        </ul></div>
+      </details>
+
+      <details class="work-item" data-status="pending">
+        <summary><span>6. Consolidate Findings And Close</span><span class="status pending">Pending</span></summary>
+        <div class="work-body"><ul>
+          <li>Record which retained representation proved useful, its cost, and where it failed.</li>
+          <li>Decide whether patterns, projections, or information-gathering action have enough evidence for the next milestone.</li>
+          <li>Preserve unresolved algorithm experiments as bounded synthesis or lab work rather than stable memory contracts.</li>
+        </ul></div>
+      </details>
+
+      <div class="progress-track" aria-label="Milestone work packages completed: 0 of 6"><div class="progress-fill"></div></div>
+      <p class="small">Progress: 0 of 6 implementation packages complete. The transition plan is ready; the stable memory contract is the first implementation review unit.</p>
+    </section>
+
+    <section class="panel">
+      <h2>Scope Boundaries</h2>
+      <div class="grid two">
+        <div class="card constraint">
+          <h3>In Scope</h3>
+          <ul>
+            <li>Stable memory values, lifecycle, activation, reset, and failure behavior.</li>
+            <li>Simple loadable memory implementations with bounded state.</li>
+            <li>Equivalent local simulator and onboard Pi host integration.</li>
+            <li>Operator inspection, streaming, replay, and opt-in recording.</li>
+            <li>Deterministic sequence tests and controlled simulator evaluation.</li>
+            <li>Non-moving physical activation and state inspection.</li>
+          </ul>
+        </div>
+        <div class="card risk">
+          <h3>Out Of Scope</h3>
+          <ul>
+            <li>Non-idle decision or action policy.</li>
+            <li>Path planning, navigation, collision avoidance, or map-based control.</li>
+            <li>Metric SLAM, calibrated global coordinates, or a complete floor plan.</li>
+            <li>Semantic object recognition or universal object identity.</li>
+            <li>Durable database, cloud memory, or default frame archives.</li>
+            <li>Model training, VLM integration, or privileged simulator state as input.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Risks And Controls</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Risk</th><th>Control</th></tr></thead>
+          <tbody>
+            <tr><td>Memory silently becomes asserted world truth.</td><td>Require provenance, source confidence, coordinate frame, recency, and explicit implementation claim boundaries on every retained record.</td></tr>
+            <tr><td>Plugin implementations inherit framework complexity.</td><td>Put activation, bounds enforcement, lifecycle, timing, status, and failure isolation in stable infrastructure; keep plugins focused on update policy.</td></tr>
+            <tr><td>A generic memory framework is designed before one useful reducer exists.</td><td>Land the smallest stable contract first, then one bounded implementation; add abstractions only from demonstrated duplication.</td></tr>
+            <tr><td>Hidden state grows with run length or survives reset.</td><td>Test capacity, expiry, long sequences, activation replacement, reset, and serialized size directly.</td></tr>
+            <tr><td>Raw images become accidental memory or disk history.</td><td>Store evidence references and compact attributes by default; require explicit recording for artifacts and define cleanup.</td></tr>
+            <tr><td>Simulator convenience leaks map truth into runtime input.</td><td>Use only vehicle sensor-derived observations for memory. Hidden scene state is evaluator-only.</td></tr>
+            <tr><td>Memory failures influence movement.</td><td>Keep action idle, isolate stage failure, and assert zero control in local and physical validation.</td></tr>
+            <tr><td>Operator output becomes an unbounded record dump.</td><td>Default to health, counts, age, capacity, and concise summaries; provide complete structured detail only through machine output or explicit inspection.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Exit Criteria</h2>
+      <ol>
+        <li>Stable memory input and output types replace public <code>Any</code> at the decision-cycle boundary without encoding a concrete mapping algorithm.</li>
+        <li>Observation, memory, patterns, projections, and action have distinct documented meanings and stage ownership.</li>
+        <li>Memory state has finite capacity and age, deterministic serialization, explicit reset, attributable provenance, and isolated failure behavior.</li>
+        <li>At least one simple implementation retains and expires structured evidence without claiming semantic or metric world truth.</li>
+        <li>The same activation and lifecycle run through local Chase and onboard Donkey hosts; neither receives privileged simulator map state.</li>
+        <li>Automa can stage, inspect, run, stream latest memory, replay a sequence, and reset state with concise human output and complete machine output.</li>
+        <li>Default execution writes no logs, frames, or memory history; recording is explicit and bounded.</li>
+        <li>Deterministic tests cover recurrence, dropout, conflict, expiry, capacity, reset, failure, and replay, including long-sequence boundedness.</li>
+        <li>Controlled simulator evidence and one non-moving Pi check verify equivalent stage behavior while the idle engine emits zero movement.</li>
+        <li>A closeout states what memory representation proved useful, what remains unverified, and whether later pattern or action work is justified.</li>
+      </ol>
+    </section>
+
+    <section class="panel">
+      <h2>Decision Log</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Date</th><th>Decision</th><th>Reason</th></tr></thead>
+          <tbody>
+            <tr><td>2026-07-15</td><td>Make bounded evidence memory the next milestone after perception and test hardening.</td><td>The cycle and observation boundaries are now protected, while two prior closeouts identify memory as the next missing prerequisite for non-idle decisions.</td></tr>
+            <tr><td>2026-07-15</td><td>Define memory as retained attributed evidence rather than a world model.</td><td>Current perception emits uncertain, coordinate-scoped claims. A stronger semantic or geometric model must be earned by implementation evidence rather than embedded in the stable interface.</td></tr>
+            <tr><td>2026-07-15</td><td>Keep action idle for the entire milestone.</td><td>Memory lifecycle and representation should be evaluated independently; movement would add safety risk and make failures harder to attribute.</td></tr>
+            <tr><td>2026-07-15</td><td>Keep memory bounded and process-local by default.</td><td>Persistence has cost, cleanup, migration, and stale-state consequences that are not justified before a useful in-memory representation exists.</td></tr>
+            <tr><td>2026-07-15</td><td>Do not promote perception track IDs into durable identity.</td><td>Current temporal groups are run-local motion evidence and have not demonstrated semantic continuity through occlusion, viewpoint change, or restart.</td></tr>
+            <tr><td>2026-07-15</td><td>Require the same memory interface in simulator and physical hosts.</td><td>Environment-specific truth would undermine the purpose of testing autonomy logic against a simulator before deploying it to the Pi.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const workItems = [...document.querySelectorAll('.work-item')];
+    const filterButtons = [...document.querySelectorAll('[data-filter]')];
+
+    function applyFilter(status) {
+      workItems.forEach((item) => {
+        item.hidden = status !== 'all' && item.dataset.status !== status;
+      });
+      filterButtons.forEach((button) => {
+        button.setAttribute('aria-pressed', String(button.dataset.filter === status));
+      });
+    }
+
+    filterButtons.forEach((button) => {
+      button.addEventListener('click', () => applyFilter(button.dataset.filter));
+    });
+  </script>
+</body>
+</html>

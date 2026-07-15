@@ -155,8 +155,9 @@
         actionable information without hiding failures or leaking internal noise.
       </p>
       <div class="meta">
-        <span class="pill">Status: active - implementation</span>
+        <span class="pill">Status: closed 2026-07-15</span>
         <span class="pill">Started: 2026-07-13</span>
+        <span class="pill">Record: frozen at closeout</span>
         <span class="pill">Production behavior: preserve by default</span>
         <span class="pill">Default suite: deterministic and offline</span>
         <span class="pill">Live validation: explicit opt-in</span>
@@ -200,7 +201,7 @@
               <td>Regression suite</td>
               <td><span class="status done">Working baseline</span></td>
               <td>145 tests are discovered; 143 pass by default and the named Chase and Pi smoke tests are skipped unless explicitly enabled. The deterministic suite completes in roughly 40 seconds on the current development machine.</td>
-              <td>The deterministic pull-request workflow is merged. Branch-aware owned-code coverage now reports 63.0% overall without imposing a quality gate.</td>
+              <td>The deterministic pull-request workflow is merged. Branch-aware owned-code coverage reports 63.1% across 7,481 statements and 2,000 branches without imposing a quality gate.</td>
             </tr>
             <tr>
               <td>Test organization</td>
@@ -232,7 +233,7 @@
     </section>
 
     <section class="panel">
-      <h2>Current Delivery Horizon</h2>
+      <h2>Final Delivery Record</h2>
       <p>
         This milestone follows the shared
         <a href="../README.md">planning and pull-request delivery contract</a>.
@@ -255,8 +256,8 @@
       </details>
       <div class="grid two" style="margin-top: 14px;">
         <div class="card goal">
-          <h3>Current PR: Bounded Physical Pi Validation</h3>
-          <p><span class="status active">Implemented - ready for review</span> <strong>Review shape:</strong> deep and narrow.</p>
+          <h3>Final Implementation: Bounded Physical Pi Validation</h3>
+          <p><span class="status done">Merged in PR #19</span> <strong>Review shape:</strong> deep and narrow.</p>
           <p style="margin-top: 9px;"><strong>Deliverable:</strong> one named <code>--live-pi</code> path that performs bounded read-only runtime inspection, requires loaded decision and perception activation with manual drive mode, and treats unreachable hardware as unavailable rather than passed.</p>
           <p style="margin-top: 9px;"><strong>Review question:</strong> Does the canonical test interface enforce a non-moving Pi safety boundary while making both ready and unavailable outcomes concise and unambiguous?</p>
           <p style="margin-top: 9px;"><strong>Create:</strong> focused Pi live and runner-boundary tests. <strong>Modify:</strong> <code>tests/run.py</code>, physical runtime inspection, built-in perception activation refresh, test documentation, the root README, and this plan. <strong>Remove:</strong> none.</p>
@@ -264,11 +265,11 @@
           <p style="margin-top: 9px;"><strong>Evidence:</strong> deterministic tests require an active manager, decision engine, perception algorithm, and <code>user</code> drive mode; missing perception, non-manual mode, and unreachable endpoints remain explicit nonzero unavailable outcomes. The first physical redeploy exposed a stale built-in mapper path, so deployment now preserves the selected named algorithm while rebuilding its manifest from the current catalog. After redeploy, <code>--live-pi</code> passed against <code>piracer.local</code> with the idle engine, <code>lightweight_observer</code>, and manual drive mode. The live suite completed 145 tests with only the unrequested Chase check skipped.</p>
         </div>
         <div class="card interface">
-          <h3>Next After Review: Milestone Closeout</h3>
-          <p><span class="status pending">Queued, not started</span> <strong>Expected shape:</strong> broad evidence, shallow code.</p>
+          <h3>Milestone Closeout</h3>
+          <p><span class="status done">Completed 2026-07-15</span> <strong>Shape:</strong> broad evidence, shallow code.</p>
           <p style="margin-top: 9px;"><strong>Review question:</strong> Does accumulated evidence satisfy every milestone exit criterion without hiding residual simulator, hardware, or coverage risk?</p>
-          <p style="margin-top: 9px;"><strong>Expected deliverable:</strong> a concise milestone closeout, final timing and coverage evidence, and an honest record of remaining live-system risk.</p>
-          <p style="margin-top: 9px;"><strong>Proposed files:</strong> create the milestone closeout record; update this plan and milestone index; avoid runtime changes unless closeout discovers contradictory evidence.</p>
+          <p style="margin-top: 9px;"><strong>Delivered:</strong> a concise <a href="closeout.md">milestone closeout</a>, final timing and coverage evidence, and an honest record of remaining live-system risk.</p>
+          <p style="margin-top: 9px;"><strong>Files:</strong> created the closeout record, froze this plan, appended the milestone ledger, and advanced the documentation guide to milestone 004.</p>
           <p style="margin-top: 9px;"><strong>Non-goals:</strong> new autonomy behavior, motion-capable hardware checks, expanding coverage for its own sake, or beginning milestone 004 implementation.</p>
         </div>
       </div>
@@ -296,12 +297,12 @@
             <tr>
               <td>Milestone closeout</td>
               <td>A measured account of defects found, contracts settled, test cost, coverage, operator behavior, and residual live risk.</td>
-              <td>Evidence accumulated from the preceding deliverables.</td>
+              <td>Complete: the compressed closeout records outcomes, defects, decisions, validation cost, coverage, and residual risk.</td>
             </tr>
           </tbody>
         </table>
       </div>
-      <p class="small">Current delivery state: test architecture, stable autonomy contracts, operator-output contracts, deterministic CI, owned-code coverage, and bounded physical Pi validation are complete. Formal milestone closeout is next.</p>
+      <p class="small">Final state: all six work packages and the closeout record are complete. This plan is frozen; active work continues in milestone 004.</p>
     </section>
 
     <section class="panel">

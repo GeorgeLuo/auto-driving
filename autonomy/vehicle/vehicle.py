@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
@@ -8,8 +10,18 @@ from typing import Any, Protocol, runtime_checkable
 FRONT_CAMERA_SENSOR_ID = "front_camera"
 
 
+def _finite_float(value: float, *, field_name: str) -> float:
+    try:
+        normalized = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{field_name} must be numeric") from exc
+    if not math.isfinite(normalized):
+        raise ValueError(f"{field_name} must be finite")
+    return normalized
+
+
 def clamp_unit(value: float) -> float:
-    return max(-1.0, min(1.0, float(value)))
+    return max(-1.0, min(1.0, _finite_float(value, field_name="unit value")))
 
 
 @dataclass(frozen=True)
@@ -41,9 +53,12 @@ class VehiclePulse:
     label: str = "vehicle_pulse"
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "throttle", max(0.0, min(1.0, float(self.throttle))))
-        object.__setattr__(self, "duration_s", max(0.0, float(self.duration_s)))
-        object.__setattr__(self, "settle_s", max(0.0, float(self.settle_s)))
+        throttle = _finite_float(self.throttle, field_name="VehiclePulse.throttle")
+        duration_s = _finite_float(self.duration_s, field_name="VehiclePulse.duration_s")
+        settle_s = _finite_float(self.settle_s, field_name="VehiclePulse.settle_s")
+        object.__setattr__(self, "throttle", max(0.0, min(1.0, throttle)))
+        object.__setattr__(self, "duration_s", max(0.0, duration_s))
+        object.__setattr__(self, "settle_s", max(0.0, settle_s))
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -101,7 +116,7 @@ class SensorReading:
             "captured_at_ms": self.captured_at_ms,
             "path": self.path,
             "has_value": self.value is not None,
-            "metadata": self.metadata,
+            "metadata": deepcopy(self.metadata),
         }
 
 
@@ -121,8 +136,8 @@ class SensorSnapshot:
             "read_id": self.read_id,
             "started_at_ms": self.started_at_ms,
             "completed_at_ms": self.completed_at_ms,
-            "request": self.request,
-            "metadata": self.metadata,
+            "request": deepcopy(self.request),
+            "metadata": deepcopy(self.metadata),
             "readings": {
                 sensor_id: reading.to_dict()
                 for sensor_id, reading in self.readings.items()

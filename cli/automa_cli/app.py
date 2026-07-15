@@ -668,6 +668,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Arguments passed to `manage.py drive` when --restart is used, for example --js.",
     )
     core.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the machine-readable core update result.",
+    )
+    core.add_argument(
         "--verbose",
         action="store_true",
         help="Print each sync command before it runs.",
@@ -1179,8 +1184,9 @@ def _handle_vehicles_update_core(args: argparse.Namespace) -> int:
         dry_run=args.dry_run,
         restart=args.restart,
         drive_args=args.drive_args,
+        json_output=args.json,
         verbose=args.verbose,
-        output=sys.stdout,
+        output=None if args.dry_run else (sys.stderr if args.json else sys.stdout),
     )
     if result.message:
         print(result.message)
@@ -1199,7 +1205,7 @@ def _handle_vehicles_update_autonomy(args: argparse.Namespace) -> int:
         drive_args=args.drive_args,
         json_output=args.json,
         verbose=args.verbose,
-        output=sys.stderr if args.json else sys.stdout,
+        output=None if args.dry_run else (sys.stderr if args.json else sys.stdout),
     )
     if result.message:
         print(result.message)

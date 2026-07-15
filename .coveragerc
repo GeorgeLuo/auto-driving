@@ -1,0 +1,16 @@
+[run]
+branch = True
+relative_files = True
+source =
+    autonomy
+    implementations
+    cli/automa_cli
+omit =
+    */__init__.py
+patch =
+    subprocess
+
+[report]
+precision = 1
+show_missing = True
+skip_empty = True

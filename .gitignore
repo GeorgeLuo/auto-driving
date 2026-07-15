@@ -26,3 +26,9 @@ deploy/targets/donkeycar/app/*.pid
 # Local Python environments.
 .venv/
 env/
+
+# Local coverage output.
+.coverage
+.coverage.*
+coverage.json
+htmlcov/

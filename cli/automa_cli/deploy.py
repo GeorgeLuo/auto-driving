@@ -161,6 +161,7 @@ def update_vehicle_core(
     dry_run: bool = False,
     restart: bool = False,
     drive_args: str | None = None,
+    json_output: bool = False,
     verbose: bool = False,
     output: TextIO | None = None,
 ) -> CommandResult:
@@ -188,28 +189,20 @@ def update_vehicle_core(
         pi_home=target.pi_home,
         donkeycar_source_dir=vendor_source_dir,
     )
+    vendor_manifest = load_donkeycar_vendor_manifest()
     if dry_run:
-        vendor_manifest = load_donkeycar_vendor_manifest()
-        restart_prefix = f"DRIVE_ARGS={shlex.quote(drive_args)} " if restart and drive_args is not None else ""
-        return CommandResult(
-            0,
-            "\n".join(
-                [
-                    f"Core update dry run for {vehicle_id} -> {target.ssh_target}",
-                    f"would ensure DonkeyCar vendor source: {vendor_manifest['source']['repo_url']} @ {vendor_manifest['source']['revision']}",
-                    f"vendor checkout: {vendor_source_dir}",
-                    *[f"$ {shlex.join(command)}" for command in commands],
-                    *(
-                        [
-                            f"$ PI_HOST={shlex.quote(target.ssh_target)} "
-                            f"{restart_prefix}scripts/deploy/donkeycar/restart_drive.sh"
-                        ]
-                        if restart
-                        else []
-                    ),
-                ],
-            ),
+        payload = _core_update_payload(
+            target=target,
+            dry_run=True,
+            vendor_manifest=vendor_manifest,
+            vendor_source_dir=vendor_source_dir,
+            commands=commands,
+            restart=restart,
+            drive_args=drive_args,
         )
+        if json_output:
+            return CommandResult(0, json.dumps(payload, indent=2, sort_keys=True))
+        return CommandResult(0, _format_core_dry_run(payload))
 
     try:
         _emit(stream, "==> Ensure DonkeyCar vendor source")
@@ -240,6 +233,17 @@ def update_vehicle_core(
             return CommandResult(code, f"Restart failed with exit code {code}.")
         _emit(stream, "Drive server restarted.")
 
+    if json_output:
+        payload = _core_update_payload(
+            target=target,
+            dry_run=False,
+            vendor_manifest=vendor_manifest,
+            vendor_source_dir=vendor_source_dir,
+            commands=commands,
+            restart=restart,
+            drive_args=drive_args,
+        )
+        return CommandResult(0, json.dumps(payload, indent=2, sort_keys=True))
     return CommandResult(0, "")
 
 
@@ -298,6 +302,7 @@ def update_vehicle_autonomy(
             release_id=release_id,
             commands=commands,
             restart=restart,
+            drive_args=drive_args,
             perception_algorithm=DEFAULT_PERCEPTION_ALGORITHM,
             decision_engine="idle",
             runtime_verification=None,
@@ -380,6 +385,7 @@ def update_vehicle_autonomy(
         release_id=release_id,
         commands=commands,
         restart=restart,
+        drive_args=drive_args,
         perception_algorithm=str(perception_manifest["perception"]["algorithm"]),
         decision_engine=str(decision_manifest["decision"]["engine_id"]),
         runtime_verification=runtime_verification,
@@ -603,14 +609,36 @@ def _autonomy_update_payload(
     release_id: str,
     commands: list[tuple[str, list[str]]],
     restart: bool,
+    drive_args: str | None,
     perception_algorithm: str,
     decision_engine: str,
     runtime_verification: dict[str, Any] | None,
 ) -> dict[str, Any]:
+    command_status = "planned" if dry_run else "completed"
+    command_entries = [
+        {
+            "step": label,
+            "command": _display_deploy_command(label, command),
+            "status": command_status,
+        }
+        for label, command in commands
+    ]
+    if restart:
+        command_entries.append(
+            {
+                "step": "Restart Donkey drive server",
+                "command": _display_restart_command(target, drive_args),
+                "status": command_status,
+            }
+        )
     return {
         "schema": "vehicle_autonomy_update_v0",
         "vehicle_id": target.vehicle_id,
         "dry_run": dry_run,
+        "scope": {
+            "id": "autonomy",
+            "description": "versioned autonomy controller bundle and activation metadata",
+        },
         "target": {
             "provider": target.provider,
             "ssh_target": target.ssh_target,
@@ -625,22 +653,123 @@ def _autonomy_update_payload(
         },
         "restart_requested": restart,
         "runtime_verification": runtime_verification,
-        "commands": [
-            {"step": label, "command": _display_deploy_command(label, command)}
-            for label, command in commands
-        ],
+        "result": _deployment_result(dry_run=dry_run),
+        "commands": command_entries,
     }
+
+
+def _core_update_payload(
+    *,
+    target: PhysicalTarget,
+    dry_run: bool,
+    vendor_manifest: dict[str, Any],
+    vendor_source_dir: Path,
+    commands: list[list[str]],
+    restart: bool,
+    drive_args: str | None,
+) -> dict[str, Any]:
+    labels = (
+        "Prepare remote directories",
+        "Sync DonkeyCar vendor source",
+        "Sync mycar app harness",
+    )
+    command_status = "planned" if dry_run else "completed"
+    command_entries = [
+        {
+            "step": label,
+            "command": shlex.join(command),
+            "status": command_status,
+        }
+        for label, command in zip(labels, commands, strict=True)
+    ]
+    if restart:
+        command_entries.append(
+            {
+                "step": "Restart Donkey drive server",
+                "command": _display_restart_command(target, drive_args),
+                "status": command_status,
+            }
+        )
+    return {
+        "schema": "vehicle_core_update_v0",
+        "vehicle_id": target.vehicle_id,
+        "dry_run": dry_run,
+        "scope": {
+            "id": "core",
+            "description": "DonkeyCar vendor source and mycar core harness",
+            "excluded": ["autonomy", "implementations", "runtime"],
+        },
+        "target": {
+            "provider": target.provider,
+            "ssh_target": target.ssh_target,
+            "pi_home": target.pi_home,
+        },
+        "source": {
+            "vendor": {
+                "repo_url": vendor_manifest["source"]["repo_url"],
+                "revision": vendor_manifest["source"]["revision"],
+                "checkout": display_path(vendor_source_dir),
+            },
+            "harness": display_path(DEPLOY_DIR / "app"),
+        },
+        "restart_requested": restart,
+        "result": _deployment_result(dry_run=dry_run),
+        "commands": command_entries,
+    }
+
+
+def _deployment_result(*, dry_run: bool) -> dict[str, Any]:
+    if not dry_run:
+        return {"status": "completed"}
+    return {
+        "status": "planned",
+        "local_writes_performed": False,
+        "remote_connection_attempted": False,
+        "remote_writes_performed": False,
+    }
+
+
+def _format_core_dry_run(payload: dict[str, Any]) -> str:
+    source = payload["source"]
+    vendor = source["vendor"]
+    return "\n".join(
+        [
+            f"Core update dry run for {payload['vehicle_id']}",
+            (
+                f"target: {payload['target']['provider']} at "
+                f"{payload['target']['ssh_target']}; home={payload['target']['pi_home']}"
+            ),
+            f"scope: {payload['scope']['description']}",
+            "outcome: plan only; no files written and no remote connection attempted",
+            f"vendor: {vendor['repo_url']} @ {vendor['revision']}",
+            f"vendor checkout: {vendor['checkout']}",
+            f"harness: {source['harness']}",
+            "planned commands:",
+            *[f"- {entry['step']}: {entry['command']}" for entry in payload["commands"]],
+            f"restart requested: {'yes' if payload['restart_requested'] else 'no'}",
+        ]
+    )
 
 
 def _format_autonomy_dry_run(payload: dict[str, Any]) -> str:
     return "\n".join(
         [
-            f"Autonomy update dry run for {payload['vehicle_id']} -> {payload['target']['ssh_target']}",
+            f"Autonomy update dry run for {payload['vehicle_id']}",
+            (
+                f"target: {payload['target']['provider']} at "
+                f"{payload['target']['ssh_target']}; home={payload['target']['pi_home']}"
+            ),
+            f"scope: {payload['scope']['description']}",
+            "outcome: plan only; no files written and no remote connection attempted",
             f"source tree SHA-256: {payload['source']['tree_sha256']}",
             f"source files: {payload['source']['file_count']}",
-            f"would activate perception={DEFAULT_PERCEPTION_ALGORITHM} decision=idle when no prior activation exists",
-            *[f"$ {entry['command']}" for entry in payload["commands"]],
-            f"would restart drive runtime: {'yes' if payload['restart_requested'] else 'no'}",
+            (
+                f"activation defaults: perception={payload['activation']['perception_algorithm']} "
+                f"decision={payload['activation']['decision_engine']}"
+            ),
+            "planned commands:",
+            *[f"- {entry['step']}: {entry['command']}" for entry in payload["commands"]],
+            f"restart requested: {'yes' if payload['restart_requested'] else 'no'}",
         ]
     )
 
@@ -649,6 +778,16 @@ def _display_deploy_command(label: str, command: list[str]) -> str:
     if label == "Verify and activate autonomy release":
         return f"ssh {shlex.quote(command[1])} <verify-and-activate-controller-release>"
     return shlex.join(command)
+
+
+def _display_restart_command(target: PhysicalTarget, drive_args: str | None) -> str:
+    assignments = [
+        f"PI_HOST={shlex.quote(target.ssh_target)}",
+        f"PI_HOME={shlex.quote(target.pi_home)}",
+    ]
+    if drive_args is not None:
+        assignments.append(f"DRIVE_ARGS={shlex.quote(drive_args)}")
+    return " ".join([*assignments, "scripts/deploy/donkeycar/restart_drive.sh"])
 
 
 def _restart_drive_server(

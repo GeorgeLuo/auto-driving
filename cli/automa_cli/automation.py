@@ -36,6 +36,7 @@ from .vehicles import discover_active_vehicles, find_vehicle_by_id, format_activ
 ROOT = Path(__file__).resolve().parents[2]
 RUNTIME_ROOT = Path(os.environ.get("AUTOMA_RUNTIME_ROOT", ROOT / "runtime" / "vehicles"))
 AUTOMA_EXECUTABLE = ROOT / "cli" / "automa"
+MAX_STATUS_REASON_CHARS = 240
 
 
 @dataclass(frozen=True)
@@ -994,26 +995,53 @@ def get_vehicle_automation_status(
     vehicle_id: str | None = None,
     json_output: bool = False,
 ) -> CommandResult:
+    vehicles = _collect_automation_status(vehicle_id=vehicle_id)
     payload = {
         "schema": "automa_automation_status_v0",
         "generated_at_ms": _timestamp_ms(),
         "runtime_root": display_path(RUNTIME_ROOT),
-        "vehicles": _collect_automation_status(vehicle_id=vehicle_id),
+        "requested_vehicle_id": vehicle_id,
+        "vehicles": vehicles,
     }
-    if vehicle_id is not None and not payload["vehicles"]:
-        return CommandResult(
-            2,
-            "\n".join(
-                [
-                    f"No deployed automation runtime found for {vehicle_id!r}.",
-                    f"Expected: {display_path(RUNTIME_ROOT / safe_path_part(vehicle_id) / 'bundle')}",
-                    "Deploy perception first: ./cli/automa vehicles update perception --id <vehicle_id>",
-                ]
+    exit_code = 0
+    if vehicle_id is not None and not vehicles:
+        exit_code = 2
+        payload["outcome"] = {
+            "status": "not_found",
+            "message": f"No deployed automation runtime found for {vehicle_id!r}.",
+            "expected_bundle": display_path(
+                RUNTIME_ROOT / safe_path_part(vehicle_id) / "bundle"
             ),
-        )
+            "recovery": (
+                f"./cli/automa vehicles update perception --id {vehicle_id}"
+            ),
+        }
+    elif not vehicles:
+        payload["outcome"] = {
+            "status": "empty",
+            "message": "No deployed automation runtimes found.",
+            "expected_bundle": None,
+            "recovery": (
+                "./cli/automa vehicles update perception --id <vehicle_id>"
+            ),
+        }
+    elif any(_automation_status_needs_attention(vehicle) for vehicle in vehicles):
+        payload["outcome"] = {
+            "status": "degraded",
+            "message": "One or more automation runtimes require attention.",
+            "expected_bundle": None,
+            "recovery": None,
+        }
+    else:
+        payload["outcome"] = {
+            "status": "ok",
+            "message": f"Found {len(vehicles)} locally deployed automation runtime(s).",
+            "expected_bundle": None,
+            "recovery": None,
+        }
     if json_output:
-        return CommandResult(0, json.dumps(payload, indent=2, sort_keys=True))
-    return CommandResult(0, _format_automation_status(payload))
+        return CommandResult(exit_code, json.dumps(payload, indent=2, sort_keys=True))
+    return CommandResult(exit_code, _format_automation_status(payload))
 
 
 def stop_vehicle_automation(
@@ -1145,7 +1173,8 @@ def restart_vehicle_automation(
 
 def _collect_automation_status(*, vehicle_id: str | None) -> list[dict[str, Any]]:
     if vehicle_id is not None:
-        candidates = [RUNTIME_ROOT / safe_path_part(vehicle_id)]
+        candidate = RUNTIME_ROOT / safe_path_part(vehicle_id)
+        candidates = [candidate] if candidate.is_dir() else []
     elif RUNTIME_ROOT.exists():
         candidates = sorted(path for path in RUNTIME_ROOT.iterdir() if path.is_dir())
     else:
@@ -1173,6 +1202,21 @@ def _collect_automation_status(*, vehicle_id: str | None) -> list[dict[str, Any]
 
         pid = process.get("pid") if isinstance(process.get("pid"), int) else state.get("pid")
         pid_alive = _pid_alive(pid) if isinstance(pid, int) else False
+        worker_status = _worker_status(
+            pid=pid,
+            pid_alive=pid_alive,
+            run_status=state.get("status"),
+        )
+        worker_reason = _worker_reason(
+            worker_status=worker_status,
+            pid=pid,
+            state=state,
+        )
+        worker_recovery = (
+            f"./cli/automa vehicles automation restart --id {vehicle_name}"
+            if worker_status in {"error", "stale"}
+            else None
+        )
         last_frame = state.get("last_frame") if isinstance(state.get("last_frame"), dict) else {}
         completed_at_ms = _int_or_none(last_frame.get("perception_completed_at_ms"))
         generated_at_ms = _timestamp_ms()
@@ -1222,6 +1266,9 @@ def _collect_automation_status(*, vehicle_id: str | None) -> list[dict[str, Any]
                     "pid": pid,
                     "running": pid_alive,
                     "pid_state": "alive" if pid_alive else ("not_running" if isinstance(pid, int) else "none"),
+                    "status": worker_status,
+                    "reason": worker_reason,
+                    "recovery": worker_recovery,
                     "log_to_disk": bool(process.get("log_to_disk")),
                     "log_path": process.get("log_path") if isinstance(process.get("log_path"), str) else None,
                     "command": process.get("command") if isinstance(process.get("command"), list) else None,
@@ -1239,6 +1286,11 @@ def _collect_automation_status(*, vehicle_id: str | None) -> list[dict[str, Any]
                     "recording": state.get("recording"),
                     "control_source": state.get("control_source"),
                     "action_policy": state.get("action_policy"),
+                    "error": state.get("error") if isinstance(state.get("error"), str) else None,
+                    "exit_code": _int_or_none(state.get("exit_code")),
+                    "stop_reason": state.get("stop_reason")
+                    if isinstance(state.get("stop_reason"), str)
+                    else None,
                     "updated_at_ms": state.get("updated_at_ms"),
                     "last_capture": state.get("last_capture")
                     if isinstance(state.get("last_capture"), dict)
@@ -1254,8 +1306,16 @@ def _collect_automation_status(*, vehicle_id: str | None) -> list[dict[str, Any]
     return statuses
 
 
+def _automation_status_needs_attention(vehicle: dict[str, Any]) -> bool:
+    if not vehicle.get("deployed"):
+        return True
+    process = vehicle.get("process")
+    return isinstance(process, dict) and process.get("status") in {"error", "stale"}
+
+
 def _format_automation_status(payload: dict[str, Any]) -> str:
     vehicles = payload.get("vehicles") if isinstance(payload.get("vehicles"), list) else []
+    outcome = payload.get("outcome") if isinstance(payload.get("outcome"), dict) else {}
     lines = [
         "automa automation status",
         "",
@@ -1263,13 +1323,13 @@ def _format_automation_status(payload: dict[str, Any]) -> str:
         f"deployed automations: {sum(1 for item in vehicles if isinstance(item, dict) and item.get('deployed'))}",
     ]
     if not vehicles:
-        lines.extend(
-            [
-                "",
-                "No deployed automation runtimes found.",
-                "Deploy perception first: ./cli/automa vehicles update perception --id <vehicle_id>",
-            ]
-        )
+        lines.extend(["", str(outcome.get("message") or "No deployed automation runtimes found.")])
+        expected_bundle = outcome.get("expected_bundle")
+        if isinstance(expected_bundle, str) and expected_bundle:
+            lines.append(f"Expected bundle: {expected_bundle}")
+        recovery = outcome.get("recovery")
+        if isinstance(recovery, str) and recovery:
+            lines.append(f"Next: {recovery}")
         return "\n".join(lines)
 
     for item in vehicles:
@@ -1296,6 +1356,12 @@ def _format_automation_status(payload: dict[str, Any]) -> str:
                 f"  log: {_status_log_label(process)}",
             ]
         )
+        reason = process.get("reason")
+        if isinstance(reason, str) and reason:
+            lines.append(f"  problem: {reason}")
+        recovery = process.get("recovery")
+        if isinstance(recovery, str) and recovery:
+            lines.append(f"  next: {recovery}")
     return "\n".join(lines)
 
 
@@ -1320,7 +1386,50 @@ def _worker_label(process: dict[str, Any], state: dict[str, Any]) -> str:
     if pid is None:
         pid = state.get("pid")
     pid_text = str(pid) if isinstance(pid, int) else "none"
-    return f"{state.get('status', 'none')}  pid={pid_text} ({process.get('pid_state', 'unknown')})"
+    return f"{process.get('status', 'unknown')}  pid={pid_text} ({process.get('pid_state', 'unknown')})"
+
+
+def _worker_status(*, pid: Any, pid_alive: bool, run_status: Any) -> str:
+    if run_status == "error":
+        return "error"
+    if pid_alive:
+        return "starting" if run_status in {"launching", "starting"} else "running"
+    if run_status in {"launching", "starting", "running"}:
+        return "stale"
+    if run_status in {"completed", "stopped"}:
+        return str(run_status)
+    if isinstance(pid, int):
+        return "not_running"
+    return "not_started"
+
+
+def _worker_reason(
+    *,
+    worker_status: str,
+    pid: Any,
+    state: dict[str, Any],
+) -> str | None:
+    if worker_status == "stale":
+        pid_text = str(pid) if isinstance(pid, int) else "none"
+        return f"recorded worker PID {pid_text} is not running"
+    if worker_status == "error":
+        return _status_reason(
+            state.get("error"),
+            fallback="automation worker reported an error",
+        )
+    return None
+
+
+def _status_reason(value: Any, *, fallback: str) -> str:
+    lines = (
+        [line.strip() for line in value.splitlines() if line.strip()]
+        if isinstance(value, str)
+        else []
+    )
+    reason = lines[0] if lines else fallback
+    if len(reason) <= MAX_STATUS_REASON_CHARS:
+        return reason
+    return f"{reason[:MAX_STATUS_REASON_CHARS]}..."
 
 
 def _run_label(state: dict[str, Any]) -> str:

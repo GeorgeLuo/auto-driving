@@ -30,15 +30,28 @@ The plan must distinguish:
 
 Every active milestone enumerates the straightforward usage that should be
 possible after closeout. Describe each workflow from the user's perspective:
-the starting context, the operation they can perform, and the observable result
-that tells them it worked. Keep this free of internal implementation steps.
+the starting context, a proposed command, API, or UI execution path, and the
+observable result that tells them it worked. The proposal must be concrete
+enough for a reviewer to understand how the completed behavior will be run,
+while remaining free of internal implementation steps. Clearly label commands
+or interfaces that do not exist yet as proposed rather than observed behavior.
 
 The workflow set is part of milestone scope and should not drift casually.
 Adding or removing a workflow requires an explicit scope decision in the plan's
 decision log. Exact command spelling, flags, schemas, limits, and presentation
 may evolve during implementation as long as the original usage remains apparent
-and executable. Every completion workflow must be supported by exit criteria
-and closeout evidence; otherwise it is aspiration rather than delivered usage.
+and executable. Update the proposal when those details settle. Every completion
+workflow must be supported by exit criteria and closeout evidence; otherwise it
+is aspiration rather than delivered usage.
+
+Each completion workflow records:
+
+- **Starting state:** what must already be available or selected.
+- **Proposed execution:** the shortest expected human path through the public
+  interface.
+- **Success signal:** the concise output or state change that proves it worked.
+- **Automation path, when needed:** structured output suitable for tests without
+  making machine-oriented flags the default human experience.
 
 ## Common Plan Format
 
@@ -54,7 +67,8 @@ Use these sections in this order unless a section is genuinely irrelevant:
 2. **High-Level Objective:** a small set of outcome cards and a concise statement
    of what success means.
 3. **Completion Usage:** an implementation-agnostic enumeration of the new
-   workflows a human can run after closeout and the result each workflow exposes.
+   workflows a human can run after closeout, proposed public execution paths,
+   and the result each workflow exposes.
 4. **Baseline:** observed status, evidence, and remaining gap for each major area.
 5. **Current Delivery Horizon:** current PR, next-after-review candidate,
    preparation horizon, and current delivery state.

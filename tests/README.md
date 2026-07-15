@@ -47,3 +47,26 @@ PYTHONDONTWRITEBYTECODE=1 python3 tests/run.py --live-sim
 This command may launch local simulator and UI processes. It first requires a
 usable Chase frontend, then enables one bounded automation smoke test. The same
 test remains an explicit skip in the default suite.
+
+## Live Pi Boundary
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 tests/run.py --live-pi
+```
+
+The Pi must be powered on, reachable at `http://piracer.local:8887`, and running
+the deployed Donkey server. Override the endpoint or request timeout when needed:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 tests/run.py --live-pi \
+  --picar-url http://192.168.8.120:8887 \
+  --pi-timeout-s 3
+```
+
+This path sends read-only requests to `/autonomy/status`. It requires an
+available autonomy manager, a loaded decision engine and perception algorithm,
+and Donkey drive mode `user`. It does not send drive or mode-change requests,
+restart the runtime, use SSH, capture frames, or move the vehicle. An unreachable
+or unsafe endpoint is reported as `unavailable` with exit code 2 before the test
+suite starts; it is not converted into a passing skip. The live Pi test remains
+an explicit skip in the flagless suite.

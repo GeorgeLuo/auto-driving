@@ -135,7 +135,7 @@
     .reference-frame { width: 100%; min-height: 720px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); }
 
     .progress-track { height: 10px; margin-top: 12px; border-radius: 5px; overflow: hidden; background: var(--neutral); }
-    .progress-fill { width: 83.3333%; height: 100%; background: var(--green); }
+    .progress-fill { width: 100%; height: 100%; background: var(--green); }
     .small { font-size: 13px; color: var(--muted); }
 
     @media (max-width: 860px) {
@@ -199,13 +199,13 @@
             <tr>
               <td>Regression suite</td>
               <td><span class="status done">Working baseline</span></td>
-              <td>139 tests are discovered; 138 pass by default and one live simulator smoke test is skipped unless explicitly enabled. The deterministic suite completes in 42.787 seconds on the current development machine.</td>
+              <td>145 tests are discovered; 143 pass by default and the named Chase and Pi smoke tests are skipped unless explicitly enabled. The deterministic suite completes in roughly 40 seconds on the current development machine.</td>
               <td>The deterministic pull-request workflow is merged. Branch-aware owned-code coverage now reports 63.0% overall without imposing a quality gate.</td>
             </tr>
             <tr>
               <td>Test organization</td>
               <td><span class="status done">Ownership migration complete</span></td>
-              <td>Thirty-six topical test modules now live under <code>tests/</code> by autonomy, implementation, CLI, integration, documentation, lab, and live-system ownership. The old <code>cli/tests</code> location and duplicate runner are removed.</td>
+              <td>Thirty-eight topical test modules now live under <code>tests/</code> by autonomy, implementation, CLI, integration, documentation, lab, and live-system ownership. The old <code>cli/tests</code> location and duplicate runner are removed.</td>
               <td>Organization is settled; direct contract coverage can now grow within the owning layer.</td>
             </tr>
             <tr>
@@ -222,9 +222,9 @@
             </tr>
             <tr>
               <td>Live boundaries</td>
-              <td><span class="status done">Explicit simulator opt-in</span></td>
-              <td>The Chase smoke path is disabled by default and enabled through the canonical test runner.</td>
-              <td>Physical Pi validation needs the same named, bounded, opt-in shape and an explicit unavailable result.</td>
+              <td><span class="status done">Pi boundary validated</span></td>
+              <td>Chase and Pi checks are named opt-ins. On 2026-07-15, the Pi path passed against the powered vehicle using read-only status requests after confirming the idle decision engine, <code>lightweight_observer</code>, and <code>user</code> drive mode.</td>
+              <td>Live checks remain opt-in and mutable external-state evidence; the physical run deliberately did not exercise movement, capture, mode changes, or failure recovery on hardware.</td>
             </tr>
           </tbody>
         </table>
@@ -255,21 +255,21 @@
       </details>
       <div class="grid two" style="margin-top: 14px;">
         <div class="card goal">
-          <h3>Current PR: Owned-Code Coverage Baseline</h3>
+          <h3>Current PR: Bounded Physical Pi Validation</h3>
           <p><span class="status active">Implemented - ready for review</span> <strong>Review shape:</strong> deep and narrow.</p>
-          <p style="margin-top: 9px;"><strong>Deliverable:</strong> reproducible branch-aware measurement for repository-owned <code>autonomy</code>, <code>implementations</code>, and <code>cli/automa_cli</code> code, including Python subprocesses, with informational reporting in pull-request CI.</p>
-          <p style="margin-top: 9px;"><strong>Review question:</strong> What coverage does the deterministic suite provide for owned code, and can CI publish that measurement without treating it as a quality gate?</p>
-          <p style="margin-top: 9px;"><strong>Create:</strong> <code>.coveragerc</code> and <code>requirements-test.txt</code>. <strong>Modify:</strong> <code>.github/workflows/tests.yml</code>, <code>.gitignore</code>, and this plan. <strong>Remove:</strong> none.</p>
-          <p style="margin-top: 9px;"><strong>Non-goals:</strong> a minimum threshold, coverage badges or external services, tests written only to raise a percentage, vendored or generated runtime measurement, branch protection policy, or live-system coverage.</p>
-          <p style="margin-top: 9px;"><strong>Evidence:</strong> all 139 tests complete with 138 passes and one explicit live skip under Coverage.py 7.15.1. The branch-aware baseline is 63.0% overall: <code>autonomy</code> 91.5%, <code>implementations</code> 50.3%, and <code>cli/automa_cli</code> 63.2%. An initial parent-process-only result of 46.0% was rejected because CLI tests execute Automa in child Python processes; subprocess instrumentation raises <code>cli/automa_cli/app.py</code> from an invalid 0% observation to 81.6%. CI combines parallel process data, prints file-level diagnostics in its log, and publishes the informational Markdown report in the job summary.</p>
+          <p style="margin-top: 9px;"><strong>Deliverable:</strong> one named <code>--live-pi</code> path that performs bounded read-only runtime inspection, requires loaded decision and perception activation with manual drive mode, and treats unreachable hardware as unavailable rather than passed.</p>
+          <p style="margin-top: 9px;"><strong>Review question:</strong> Does the canonical test interface enforce a non-moving Pi safety boundary while making both ready and unavailable outcomes concise and unambiguous?</p>
+          <p style="margin-top: 9px;"><strong>Create:</strong> focused Pi live and runner-boundary tests. <strong>Modify:</strong> <code>tests/run.py</code>, physical runtime inspection, built-in perception activation refresh, test documentation, the root README, and this plan. <strong>Remove:</strong> none.</p>
+          <p style="margin-top: 9px;"><strong>Non-goals:</strong> motion calibration, camera capture, autonomous driving, mandatory CI hardware, broad remote diagnostics, mode changes initiated by the test, or compatibility entrypoints.</p>
+          <p style="margin-top: 9px;"><strong>Evidence:</strong> deterministic tests require an active manager, decision engine, perception algorithm, and <code>user</code> drive mode; missing perception, non-manual mode, and unreachable endpoints remain explicit nonzero unavailable outcomes. The first physical redeploy exposed a stale built-in mapper path, so deployment now preserves the selected named algorithm while rebuilding its manifest from the current catalog. After redeploy, <code>--live-pi</code> passed against <code>piracer.local</code> with the idle engine, <code>lightweight_observer</code>, and manual drive mode. The live suite completed 145 tests with only the unrequested Chase check skipped.</p>
         </div>
         <div class="card interface">
-          <h3>Next After Review: Bounded Physical Pi Validation</h3>
-          <p><span class="status pending">Queued, not started</span> <strong>Expected shape:</strong> deep and narrow.</p>
-          <p style="margin-top: 9px;"><strong>Review question:</strong> Can the canonical test interface report an unreachable Pi as explicitly unavailable and run one non-moving connectivity and activation smoke when a Pi is available, without making the default suite depend on hardware?</p>
-          <p style="margin-top: 9px;"><strong>Expected deliverable:</strong> one named opt-in Pi path with bounded probes, explicit prerequisites and side effects, a structured unavailable outcome, and no vehicle movement.</p>
-          <p style="margin-top: 9px;"><strong>Proposed files:</strong> extend <code>tests/run.py</code>; add a focused <code>tests/live/picar</code> smoke module and only the narrow support needed to isolate unavailable-state behavior; update this plan with observed physical evidence.</p>
-          <p style="margin-top: 9px;"><strong>Non-goals:</strong> motion calibration, autonomous driving, mandatory CI hardware, deployment redesign, broad remote diagnostics, or compatibility entrypoints.</p>
+          <h3>Next After Review: Milestone Closeout</h3>
+          <p><span class="status pending">Queued, not started</span> <strong>Expected shape:</strong> broad evidence, shallow code.</p>
+          <p style="margin-top: 9px;"><strong>Review question:</strong> Does accumulated evidence satisfy every milestone exit criterion without hiding residual simulator, hardware, or coverage risk?</p>
+          <p style="margin-top: 9px;"><strong>Expected deliverable:</strong> a concise milestone closeout, final timing and coverage evidence, and an honest record of remaining live-system risk.</p>
+          <p style="margin-top: 9px;"><strong>Proposed files:</strong> create the milestone closeout record; update this plan and milestone index; avoid runtime changes unless closeout discovers contradictory evidence.</p>
+          <p style="margin-top: 9px;"><strong>Non-goals:</strong> new autonomy behavior, motion-capable hardware checks, expanding coverage for its own sake, or beginning milestone 004 implementation.</p>
         </div>
       </div>
       <div class="table-wrap" style="margin-top: 16px;">
@@ -291,7 +291,7 @@
             <tr>
               <td>Automated validation</td>
               <td>Deterministic PR CI, an owned-code coverage baseline, and bounded opt-in Chase and Pi checks.</td>
-              <td>Deterministic CI and branch-aware owned-code coverage are implemented. The remaining uncertainty is the smallest useful non-moving Pi smoke contract and how unavailable hardware should be reported.</td>
+              <td>Complete: the non-moving Pi contract covers ready and unavailable outcomes and passed against the powered, deployed vehicle. Consolidated closeout evidence remains.</td>
             </tr>
             <tr>
               <td>Milestone closeout</td>
@@ -301,7 +301,7 @@
           </tbody>
         </table>
       </div>
-      <p class="small">Current delivery state: test architecture, stable autonomy contracts, operator-output contracts, deployment dry-run parity, and deterministic pull-request CI are merged. Owned-code coverage is implemented and ready for review; bounded physical Pi validation is the next queued review unit.</p>
+      <p class="small">Current delivery state: test architecture, stable autonomy contracts, operator-output contracts, deterministic CI, owned-code coverage, and bounded physical Pi validation are complete. Formal milestone closeout is next.</p>
     </section>
 
     <section class="panel">
@@ -338,13 +338,14 @@
   integration/
     controller_bundle/           staged code and activation compatibility
     automation_pipeline/         capture, perception, cycle, and publication flow
-    physical_deploy/             remote installer contract without live hardware
+    physical_deploy/             installer and live-boundary contracts without hardware
 
   lab/
     perception/                  candidate plugin behavior kept outside production
 
   live/
-    chase_simulator/             bounded opt-in simulator checks</pre>
+    chase_simulator/             bounded opt-in simulator checks
+    picar/                       bounded read-only Pi runtime checks</pre>
       <p class="note">
         <code>tests/run.py</code> is canonical. The former runner and test location
         were removed; no wrapper or compatibility entrypoint remains.
@@ -372,7 +373,8 @@
         </div>
       </div>
       <pre class="command">python3 tests/run.py
-python3 tests/run.py --live-sim</pre>
+python3 tests/run.py --live-sim
+python3 tests/run.py --live-pi</pre>
       <p class="small">The flagless command runs all deterministic unit, CLI, and local integration tests. Topic-specific development runs use standard unittest module selection rather than adding many runner flags.</p>
     </section>
 
@@ -506,8 +508,8 @@ python3 tests/run.py --live-sim</pre>
         </div>
       </details>
 
-      <details class="work-item" data-status="pending">
-        <summary><span>6. Bound And Document Live Validation</span><span class="status pending">Pending</span></summary>
+      <details class="work-item" data-status="done" open>
+        <summary><span>6. Bound And Document Live Validation</span><span class="status done">Completed</span></summary>
         <div class="work-body">
           <p>Near closeout, keep live checks useful without making normal development dependent on mutable external state.</p>
           <ul>
@@ -515,14 +517,16 @@ python3 tests/run.py --live-sim</pre>
             <li>Add a non-moving Pi connectivity and activation smoke flow before any motion-capable live check.</li>
             <li>Report unavailable hardware or UI as an explicit skipped/unavailable outcome, never a hidden pass.</li>
             <li>Document setup, side effects, timeout, and cleanup for every live test.</li>
+            <li><strong>Implemented:</strong> <code>--live-pi</code> performs only read-only status inspection, requires manual mode and loaded activation, and exits 2 with a concise unavailable result before discovery when prerequisites fail.</li>
+            <li><strong>Validated:</strong> the powered Pi passed the same contract with the idle engine and <code>lightweight_observer</code>; no vehicle movement or mode change was requested.</li>
           </ul>
         </div>
       </details>
 
-      <div class="progress-track" aria-label="Milestone work packages completed: 5 of 6">
+      <div class="progress-track" aria-label="Milestone work packages completed: 6 of 6">
         <div class="progress-fill"></div>
       </div>
-      <p class="small">Progress: 5 of 6 work packages complete. Deterministic CI and owned-code coverage visibility are settled; bounded live validation and closeout evidence remain.</p>
+      <p class="small">Progress: 6 of 6 work packages complete. The implementation backlog is done; formal milestone closeout remains.</p>
     </section>
 
     <section class="panel">
@@ -612,6 +616,9 @@ python3 tests/run.py --live-sim</pre>
             <tr><td>2026-07-14</td><td>Represent physical deployment dry runs as structured plans with explicit no-side-effect results.</td><td>Operators and automation should inspect the same target, scope, commands, and restart intent, while an empty tool path and untouched runtime root provide executable evidence that planning neither connects nor writes.</td></tr>
             <tr><td>2026-07-14</td><td>Run one Python 3.11 deterministic job on pull requests and <code>main</code> before introducing coverage or a version matrix.</td><td>The repository needs an enforced canonical baseline first; read-only permissions, bounded runtime, superseded-run cancellation, and an explicit live-test opt-out keep that foundation narrow and predictable.</td></tr>
             <tr><td>2026-07-14</td><td>Measure branch-aware owned-code coverage across Python subprocesses and publish it without a threshold.</td><td>Most CLI scenarios execute Automa in child processes, so parent-only instrumentation materially understates coverage. The baseline should expose untested ownership areas without turning one aggregate percentage into a quality claim.</td></tr>
+            <tr><td>2026-07-14</td><td>Define Pi live readiness as read-only status inspection with manual-mode and activation requirements.</td><td>The first hardware contract should prove connectivity and deployment state without creating any path to movement. Unreachable or unsafe state must stop before test discovery with a concise nonzero unavailable result.</td></tr>
+            <tr><td>2026-07-15</td><td>Regenerate named built-in perception activations from the current catalog during physical deployment.</td><td>A powered-device run exposed a preserved mapper import that no longer existed. Deployment should preserve the operator's named algorithm selection, not stale implementation details; custom activations remain explicitly owned by their author.</td></tr>
+            <tr><td>2026-07-15</td><td>Accept the non-moving Pi status check as the physical boundary for milestone 003.</td><td>The deployed Pi reported the idle engine, <code>lightweight_observer</code>, and <code>user</code> drive mode through the same read-only endpoint used by deterministic tests, satisfying the milestone without introducing hardware movement.</td></tr>
           </tbody>
         </table>
       </div>

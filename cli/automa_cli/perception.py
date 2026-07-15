@@ -575,7 +575,9 @@ def ensure_vehicle_perception_activation(
         manifest = json.loads(activation_path.read_text(encoding="utf-8"))
         perception = manifest.get("perception")
         existing_algorithm = perception.get("algorithm") if isinstance(perception, dict) else None
-        if existing_algorithm not in PERCEPTION_ALGORITHMS and existing_algorithm != "custom":
+        if existing_algorithm in PERCEPTION_ALGORITHMS:
+            manifest = _activation_manifest(vehicle, existing_algorithm, bundle)
+        elif existing_algorithm != "custom":
             manifest = _activation_manifest(vehicle, algorithm, bundle)
     else:
         manifest = _activation_manifest(vehicle, algorithm, bundle)

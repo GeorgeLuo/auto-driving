@@ -18,9 +18,52 @@ from cli.automa_cli.deploy import (
     _write_remote_activation_files,
 )
 from cli.automa_cli.perception import ensure_vehicle_perception_activation
+from implementations.perception.catalog import PERCEPTION_ALGORITHMS
 
 
 class PhysicalDeployTests(unittest.TestCase):
+    def test_named_perception_activation_is_refreshed_from_current_catalog(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            vehicle_runtime = Path(tmp) / "runtime" / "vehicles" / "piracer"
+            bundle = controller_bundle_paths(vehicle_runtime)
+            release = sync_controller_bundle(bundle, output=None)
+            vehicle = {
+                "vehicle_id": "piracer",
+                "vehicle_kind": "picar",
+                "provider": "picar",
+                "connection": {"base_url": "http://piracer.local:8887"},
+            }
+            activation_path = ensure_vehicle_perception_activation(
+                vehicle=vehicle,
+                algorithm="visual_observer",
+                bundle=bundle,
+                release=release,
+            )
+            stale = json.loads(activation_path.read_text(encoding="utf-8"))
+            stale["perception"]["mapper_spec"] = (
+                "autonomy.perception.mappers.current:CurrentDirectoryPerceptionMapper"
+            )
+            stale["perception"]["mapper_config"] = {"plugins": ["stale"]}
+            activation_path.write_text(json.dumps(stale), encoding="utf-8")
+
+            refreshed_path = ensure_vehicle_perception_activation(
+                vehicle=vehicle,
+                algorithm="lightweight_observer",
+                bundle=bundle,
+                release=release,
+            )
+            refreshed = json.loads(refreshed_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(refreshed["perception"]["algorithm"], "visual_observer")
+        self.assertEqual(
+            refreshed["perception"]["mapper_spec"],
+            PERCEPTION_ALGORITHMS["visual_observer"]["mapper_spec"],
+        )
+        self.assertEqual(
+            refreshed["perception"]["mapper_config"],
+            PERCEPTION_ALGORITHMS["visual_observer"]["mapper_config"],
+        )
+
     def test_runtime_verification_requires_selected_engine_and_manual_mode(self) -> None:
         target = PhysicalTarget(
             vehicle_id="piracer",

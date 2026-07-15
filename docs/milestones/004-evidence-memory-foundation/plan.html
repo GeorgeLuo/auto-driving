@@ -205,6 +205,37 @@
       </p>
     </section>
 
+    <section class="panel" data-completion-usage>
+      <h2>Completion Usage</h2>
+      <p>
+        These workflows define what milestone 004 must make runnable. Command
+        names, options, schemas, and presentation may sharpen during delivery,
+        but removing or adding a workflow requires an explicit scope decision.
+      </p>
+      <div class="grid two">
+        <div class="card interface">
+          <h3>Select And Verify Memory</h3>
+          <p>An operator selects a memory implementation for a simulator or physical vehicle, stages it through Automa, and can immediately verify which implementation and lifecycle configuration the vehicle will use.</p>
+        </div>
+        <div class="card goal">
+          <h3>Run And Inspect Retained Evidence</h3>
+          <p>An operator starts idle automation and can inspect or follow the latest memory state, including health, record count, age, capacity, provenance, and explicit unavailable or failure status.</p>
+        </div>
+        <div class="card constraint">
+          <h3>Replay, Compare, And Reset</h3>
+          <p>A developer replays a known observation sequence, receives the same detached memory result for the same inputs and configuration, resets memory explicitly, and can verify that prior evidence is gone.</p>
+        </div>
+        <div class="card goal">
+          <h3>Move Between Simulator And Pi</h3>
+          <p>A developer applies the same memory selection and inspection flow to Chase and the PiRacer, then confirms equivalent bounded behavior while both hosts continue to emit idle movement.</p>
+        </div>
+      </div>
+      <p class="note">
+        Default runs remain ephemeral and concise. A user must opt in before a
+        replay input, frame, log, or memory history is written to disk.
+      </p>
+    </section>
+
     <section class="panel">
       <h2>Baseline</h2>
       <div class="table-wrap">
@@ -270,7 +301,7 @@
         <div class="card goal">
           <h3>Current PR: Milestone Transition</h3>
           <p><span class="status active">Implemented - ready for review</span> <strong>Review shape:</strong> broad documentation, shallow behavior.</p>
-          <p><strong>Deliverable:</strong> close milestone 003 with measured evidence and establish this observed baseline, fixed objective, scope, and rolling delivery horizon.</p>
+          <p><strong>Deliverable:</strong> close milestone 003 with measured evidence and establish this observed baseline, fixed objective, completion usage, scope, and rolling delivery horizon.</p>
           <p><strong>Review question:</strong> Does the memory milestone begin at the real decision-cycle seam, preserve the distinction between evidence and world truth, and avoid committing to an unproven world-model implementation?</p>
           <p><strong>Create:</strong> milestone 003 closeout and this milestone plan. <strong>Modify:</strong> milestone 003 frozen plan, completed ledger, root newcomer guide, and documentation guide. <strong>Remove:</strong> none.</p>
           <p><strong>Non-goals:</strong> source changes, memory values, plugin APIs, persistence, simulator control, or physical deployment changes.</p>
@@ -523,6 +554,7 @@
             <tr><td>2026-07-15</td><td>Keep memory bounded and process-local by default.</td><td>Persistence has cost, cleanup, migration, and stale-state consequences that are not justified before a useful in-memory representation exists.</td></tr>
             <tr><td>2026-07-15</td><td>Do not promote perception track IDs into durable identity.</td><td>Current temporal groups are run-local motion evidence and have not demonstrated semantic continuity through occlusion, viewpoint change, or restart.</td></tr>
             <tr><td>2026-07-15</td><td>Require the same memory interface in simulator and physical hosts.</td><td>Environment-specific truth would undermine the purpose of testing autonomy logic against a simulator before deploying it to the Pi.</td></tr>
+            <tr><td>2026-07-15</td><td>Make completion usage a stable part of milestone scope.</td><td>Concrete user-visible workflows constrain architecture toward runnable outcomes while allowing command details and implementation choices to evolve from evidence.</td></tr>
           </tbody>
         </table>
       </div>

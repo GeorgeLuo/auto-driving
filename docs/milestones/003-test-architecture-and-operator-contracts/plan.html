@@ -199,7 +199,7 @@
             <tr>
               <td>Regression suite</td>
               <td><span class="status done">Working baseline</span></td>
-              <td>121 tests are discovered; 120 pass by default and one live simulator smoke test is skipped unless explicitly enabled.</td>
+              <td>133 tests are discovered; 132 pass by default and one live simulator smoke test is skipped unless explicitly enabled.</td>
               <td>The suite is manually invoked and has no CI or coverage baseline.</td>
             </tr>
             <tr>
@@ -211,8 +211,8 @@
             <tr>
               <td>Stable autonomy contracts</td>
               <td><span class="status active">Contract hardening active</span></td>
-              <td>Complete decision-stage flow, observation adaptation, finite and structurally valid perception evidence, plugin execution, activation, cycle integration, runtime-manager failure recovery, vehicle value safety, and finite autonomy control output have focused examples.</td>
-              <td>Activation document failure boundaries remain uneven between decision and perception.</td>
+              <td>Complete decision-stage flow, observation adaptation, finite and structurally valid perception evidence, plugin execution, activation-document validation and ownership, cycle integration, runtime-manager failure recovery, vehicle value safety, and finite autonomy control output have focused examples.</td>
+              <td>The activation contract review is pending; no remaining stable-autonomy contract gap is currently identified for this milestone.</td>
             </tr>
             <tr>
               <td>Human CLI behavior</td>
@@ -255,21 +255,21 @@
       </details>
       <div class="grid two" style="margin-top: 14px;">
         <div class="card goal">
-          <h3>Current PR: Perception Evidence Values</h3>
+          <h3>Current PR: Activation Document Contracts</h3>
           <p><span class="status active">Implemented - ready for review</span> <strong>Review shape:</strong> deep and narrow.</p>
-          <p style="margin-top: 9px;"><strong>Deliverable:</strong> direct non-empty identifier, finite-confidence, normalized bounding-box and polygon, batch uniqueness, and detached evidence round-trip contracts.</p>
-          <p style="margin-top: 9px;"><strong>Review question:</strong> Do generic perception signals, things, and image-relative locations reject non-finite confidence and malformed normalized geometry while preserving valid serialization round trips?</p>
-          <p style="margin-top: 9px;"><strong>Create:</strong> none. <strong>Modify:</strong> <code>tests/autonomy/perception/test_evidence.py</code>, <code>autonomy/perception/evidence.py</code>, and this plan. <strong>Remove:</strong> none.</p>
-          <p style="margin-top: 9px;"><strong>Non-goals:</strong> semantic object truth, mandatory geometry, polygon topology, plugin execution policy, perception-text status, algorithm accuracy, or concrete CV behavior.</p>
-          <p style="margin-top: 9px;"><strong>Evidence:</strong> tests exposed non-finite confidence becoming maximum confidence, unbounded thing confidence, malformed geometry being accepted or silently discarded during replay, duplicate thing IDs, and restored nested properties aliasing input documents. All current production plugins, both lab candidates, and replay integrations satisfy the centralized contract unchanged. Full discovery reports 121 tests in 30.501 seconds, with 120 passes and one explicit live skip.</p>
+          <p style="margin-top: 9px;"><strong>Deliverable:</strong> equivalent missing-file, top-level JSON-object, schema, section, identifier/spec, configuration-object, and nested configuration ownership contracts for decision and perception activation readers.</p>
+          <p style="margin-top: 9px;"><strong>Review question:</strong> Do decision and perception activation readers reject malformed documents consistently and return selected configuration detached from the raw payload they preserve for inspection?</p>
+          <p style="margin-top: 9px;"><strong>Create:</strong> none. <strong>Modify:</strong> <code>autonomy/runtime/activation.py</code>, <code>autonomy/perception/activation.py</code>, <code>tests/autonomy/runtime/test_activation.py</code>, <code>tests/autonomy/perception/test_activation.py</code>, and this plan. <strong>Remove:</strong> none.</p>
+          <p style="margin-top: 9px;"><strong>Non-goals:</strong> CLI staging, remote deployment, compatibility schemas, dynamic engine or mapper lifecycle, concrete plugin behavior, or a generalized parser framework for two small documents.</p>
+          <p style="margin-top: 9px;"><strong>Evidence:</strong> tests exposed a non-object decision document escaping as <code>AttributeError</code>, whitespace-only activation identity being accepted, and both selected configurations retaining nested aliases into their inspection payloads. Sixteen direct activation tests and 20 CLI, pipeline, and physical-installer consumer tests pass. Full discovery reports 133 tests in 26.628 seconds, with 132 passes and one explicit live skip.</p>
         </div>
         <div class="card interface">
-          <h3>Next After Review: Activation Document Contracts</h3>
+          <h3>Next After Review: Automation Status Output Contract</h3>
           <p><span class="status pending">Queued, not started</span> <strong>Expected shape:</strong> deep and narrow.</p>
-          <p style="margin-top: 9px;"><strong>Review question:</strong> Do decision and perception activation readers reject malformed documents consistently and return selected configuration detached from the raw payload they preserve for inspection?</p>
-          <p style="margin-top: 9px;"><strong>Expected deliverable:</strong> equivalent missing-file, JSON-object, schema, section, spec/id, configuration, and detached serialization contracts for both activation types.</p>
-          <p style="margin-top: 9px;"><strong>Proposed files:</strong> expand <code>tests/autonomy/runtime/test_activation.py</code> and <code>tests/autonomy/perception/test_activation.py</code>; modify their owning activation modules only where contracts fail; update this plan.</p>
-          <p style="margin-top: 9px;"><strong>Non-goals:</strong> CLI staging, remote deployment, compatibility schemas, dynamic engine or mapper lifecycle, or concrete plugin behavior.</p>
+          <p style="margin-top: 9px;"><strong>Review question:</strong> Does <code>vehicles automation status</code> communicate the same deployment and worker state in human and JSON forms, including absent, running, and stale/error cases, with actionable failure output and no internal noise?</p>
+          <p style="margin-top: 9px;"><strong>Expected deliverable:</strong> one representative operator-output assertion pattern covering exit status, concise human state and recovery, schema-valid machine output, semantic parity, and suppressed traceback/internal diagnostics.</p>
+          <p style="margin-top: 9px;"><strong>Proposed files:</strong> expand <code>tests/cli/automation/test_status.py</code>; modify <code>cli/automa_cli/automation.py</code> only where the public contract fails; update this plan. Add shared assertion support only if the representative cases demonstrate non-trivial reuse.</p>
+          <p style="margin-top: 9px;"><strong>Non-goals:</strong> mechanical rollout across every command family, redesigning worker lifecycle, changing runtime document schemas, simulator or Pi execution, or freezing incidental spacing and timestamps.</p>
         </div>
       </div>
       <div class="table-wrap" style="margin-top: 16px;">
@@ -281,12 +281,12 @@
             <tr>
               <td>Stable autonomy contracts</td>
               <td>Direct decision, vehicle, runtime, perception, activation, and failure-boundary tests.</td>
-              <td>Whether decision and perception activation documents share one observable validation and ownership policy without introducing a second deployment path.</td>
+              <td>Activation readers now share one observable validation and ownership policy without a second deployment path; review is pending.</td>
             </tr>
             <tr>
               <td>Operator output contract</td>
               <td>Reusable success, degraded, failure, and JSON-parity assertions, followed by consistent CLI adoption.</td>
-              <td>Which current operator scenarios provide the smallest representative pattern without freezing incidental wording.</td>
+              <td>Whether automation status can establish semantic human/JSON assertions across absent, running, and stale/error states without freezing incidental wording or creating a second renderer in test support.</td>
             </tr>
             <tr>
               <td>Automated validation</td>
@@ -301,7 +301,7 @@
           </tbody>
         </table>
       </div>
-      <p class="small">Current delivery state: test support, ownership migration, runtime-manager, vehicle, control, and complete decision-cycle contracts are merged. Perception evidence values are implemented and ready for review; activation document contracts are defined but unstarted.</p>
+      <p class="small">Current delivery state: test support, ownership migration, runtime-manager, vehicle, control, complete decision-cycle, and perception-evidence contracts are merged. Activation document parity is implemented and ready for review; automation-status output parity is the next queued review unit.</p>
     </section>
 
     <section class="panel">
@@ -461,7 +461,7 @@ python3 tests/run.py --live-sim</pre>
       <details class="work-item" data-status="active" open>
         <summary><span>3. Protect Settled Autonomy Contracts</span><span class="status active">Active</span></summary>
         <div class="work-body">
-          <p>Direct autonomy contracts are proceeding as narrow review units. Runtime-manager, vehicle-value, autonomy-control, complete decision-cycle, and perception-evidence semantics are implemented; activation document parity is next.</p>
+          <p>Direct autonomy contracts are proceeding as narrow review units. Runtime-manager, vehicle-value, autonomy-control, complete decision-cycle, perception-evidence, and activation-document semantics are implemented; activation review is the remaining gate for this work package.</p>
           <ul>
             <li>Decision stage order, no-op semantics, default observation, action typing, and result serialization.</li>
             <li><strong>Implemented:</strong> runtime failed reload preservation, safe step failure and recovery, and status-provider isolation.</li>
@@ -469,7 +469,7 @@ python3 tests/run.py --live-sim</pre>
             <li><strong>Implemented:</strong> finite autonomy steering, throttle, and confidence normalization plus detached control serialization.</li>
             <li><strong>Implemented:</strong> decision-stage order and propagation, default observation and idle behavior, action typing, observation adaptation, deterministic timing injection, and detached context serialization.</li>
             <li><strong>Implemented:</strong> perception evidence identifiers, finite confidence, normalized geometry, local batch uniqueness, detached round trips, source attribution, shared component resolution, and diagnostic boundaries.</li>
-            <li>Equivalent decision and perception activation document failure boundaries.</li>
+            <li><strong>Implemented:</strong> equivalent decision and perception activation document shape, identity/spec, configuration, and nested ownership boundaries.</li>
           </ul>
         </div>
       </details>
@@ -517,7 +517,7 @@ python3 tests/run.py --live-sim</pre>
       <div class="progress-track" aria-label="Milestone work packages completed: 2 of 6">
         <div class="progress-fill"></div>
       </div>
-      <p class="small">Progress: 2 of 6 work packages complete. Test ownership is settled; runtime-manager failure contracts are the next review unit.</p>
+      <p class="small">Progress: 2 of 6 work packages complete. Stable autonomy contract implementation is complete pending activation review; automation-status output parity is queued next.</p>
     </section>
 
     <section class="panel">
@@ -601,6 +601,7 @@ python3 tests/run.py --live-sim</pre>
             <tr><td>2026-07-14</td><td>Use the hardened generic vehicle clamp for runtime control output and reject non-finite confidence.</td><td>The onboard adapter returns <code>AutonomyControl</code> movement values directly, so invalid numeric output must fail at construction instead of becoming maximum actuation.</td></tr>
             <tr><td>2026-07-14</td><td>Keep decision stages synchronous, optional, ordered, identity-preserving in memory, and detached only at the inspection boundary.</td><td>Stage implementations need direct access to preceding results during one tick, while serialized status must not mutate live controller context and explicit timestamps must remain deterministic.</td></tr>
             <tr><td>2026-07-14</td><td>Validate confidence, local identity, and normalized geometry in generic perception evidence values.</td><td>Plugins should emit the narrow evidence shape directly; the stable kernel should reject unsafe structure centrally without asking each algorithm to duplicate defensive checks or assigning semantic truth to its output.</td></tr>
+            <tr><td>2026-07-14</td><td>Give decision and perception activation readers equivalent document validation and detached selected configuration.</td><td>Malformed staged state should fail at the owning reader with the same observable policy, while engines and mappers must not mutate the raw activation payload retained for operator inspection.</td></tr>
           </tbody>
         </table>
       </div>

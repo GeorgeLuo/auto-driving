@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -25,6 +26,8 @@ def read_decision_activation(path: Path) -> DecisionActivation:
         raise FileNotFoundError(f"decision activation is missing: {path}")
 
     payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"decision activation must be a JSON object: {path}")
     if payload.get("schema") != DECISION_ACTIVATION_SCHEMA:
         raise ValueError(
             f"decision activation has unsupported schema {payload.get('schema')!r}: {path}"
@@ -37,9 +40,9 @@ def read_decision_activation(path: Path) -> DecisionActivation:
     engine_id = decision.get("engine_id")
     engine_spec = decision.get("engine_spec")
     engine_config = decision.get("engine_config")
-    if not isinstance(engine_id, str) or not engine_id:
+    if not isinstance(engine_id, str) or not engine_id.strip():
         raise ValueError(f"decision activation has no engine_id: {path}")
-    if not isinstance(engine_spec, str) or not engine_spec:
+    if not isinstance(engine_spec, str) or not engine_spec.strip():
         raise ValueError(f"decision activation has no engine_spec: {path}")
     if not isinstance(engine_config, dict):
         raise ValueError(f"decision activation has invalid engine_config: {path}")
@@ -47,7 +50,7 @@ def read_decision_activation(path: Path) -> DecisionActivation:
     return DecisionActivation(
         engine_id=engine_id,
         engine_spec=engine_spec,
-        engine_config=dict(engine_config),
+        engine_config=deepcopy(engine_config),
         source_path=path,
         payload=payload,
     )

@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import json
 import time
+from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -39,16 +40,16 @@ def read_perception_activation(path: Path) -> PerceptionActivation:
     algorithm = perception.get("algorithm")
     mapper_spec = perception.get("mapper_spec")
     mapper_config = perception.get("mapper_config")
-    if not isinstance(algorithm, str) or not algorithm:
+    if not isinstance(algorithm, str) or not algorithm.strip():
         raise ValueError(f"perception activation has no algorithm: {path}")
-    if not isinstance(mapper_spec, str) or not mapper_spec:
+    if not isinstance(mapper_spec, str) or not mapper_spec.strip():
         raise ValueError(f"perception activation has no mapper_spec: {path}")
     if not isinstance(mapper_config, dict):
         raise ValueError(f"perception activation has invalid mapper_config: {path}")
     return PerceptionActivation(
         algorithm=algorithm,
         mapper_spec=mapper_spec,
-        mapper_config=dict(mapper_config),
+        mapper_config=deepcopy(mapper_config),
         source_path=path,
         payload=payload,
     )

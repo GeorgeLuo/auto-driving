@@ -4,11 +4,25 @@ import json
 import unittest
 from unittest.mock import patch
 
-from cli.automa_cli.vehicles import Candidate, _probe_picar, format_active_vehicles_snapshot
+from cli.automa_cli.vehicles import (
+    Candidate,
+    _picar_candidates,
+    _probe_picar,
+    format_active_vehicles_snapshot,
+)
 from tests.support.cli_runner import run_automa
 
 
 class VehicleDiscoveryTests(unittest.TestCase):
+    def test_default_picar_candidates_do_not_probe_the_cli_hosts_localhost(self) -> None:
+        with patch.dict("cli.automa_cli.vehicles.os.environ", {}, clear=True):
+            candidates = _picar_candidates(())
+
+        self.assertEqual(
+            [(candidate.url, candidate.source) for candidate in candidates],
+            [("http://piracer.local:8887", "default")],
+        )
+
     def test_scenario_first_time_discovery_can_return_machine_readable_empty_snapshot(self) -> None:
         result = run_automa("vehicles", "active", "--no-picar", "--no-sim", "--json")
 

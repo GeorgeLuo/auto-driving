@@ -285,7 +285,6 @@ def _picar_candidates(extra_urls: tuple[str, ...]) -> list[Candidate]:
         candidates.append(Candidate("picar", _normalize_http_url(env_url), f"env:{LOCAL_CAR_BASE_URL_ENV}"))
 
     candidates.append(Candidate("picar", _normalize_http_url(DEFAULT_LOCAL_CAR_BASE_URL), "default"))
-    candidates.append(Candidate("picar", "http://127.0.0.1:8887", "local-pi"))
 
     for url in extra_urls:
         if url.strip():

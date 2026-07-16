@@ -257,26 +257,34 @@ chain:
 The default target is `piracer@piracer.local`, with the Donkey server at
 `http://piracer.local:8887`.
 
-Probe the vehicle first:
+For a previously prepared Pi, power it on and probe the supervised runtime:
 
 ```sh
 ./cli/automa vehicles active
 ```
 
-For a fresh setup, sync the core harness without restarting, then deploy and
+For a fresh setup, install the core harness and boot service, then deploy and
 restart the autonomy release:
 
 ```sh
 ./cli/automa vehicles update core --id piracer
+./cli/automa vehicles active
 ./cli/automa vehicles update autonomy --id piracer --restart
 ```
 
+`update core` installs and enables `automa-donkey.service`. The first install
+starts it automatically and waits for `/autonomy/status` to report manual
+`user` mode. Later Pi boots start the same service without another CLI command,
+and systemd restarts the runtime if its process exits. If HTTP discovery is
+down, core update falls back to the configured `piracer` SSH target and reports
+that fallback before connecting.
+
 `update autonomy` packages `autonomy/` and `implementations/`, verifies the
 archive hash on the Pi, installs a versioned release, transfers perception and
-decision manifests, and restarts only when requested. Post-restart verification
-requires both the selected decision engine and perception algorithm to load
-while Donkey drive mode remains `user`; the deployment check does not command
-movement.
+decision manifests, and restarts the supervised service only when requested.
+Post-restart verification requires both the selected decision engine and
+perception algorithm to load while Donkey drive mode remains `user`; the
+deployment check does not command movement.
 
 Use the deploy commands according to what changed:
 
@@ -285,9 +293,12 @@ Use the deploy commands according to what changed:
 - Run both commands for a fresh Pi or when both layers changed.
 
 Core deployment preserves remote autonomy releases and runtime activation
-state. To inspect planned writes, add `--dry-run`.
+state. It installs the boot service on every update but does not restart an
+already-running service unless `--restart` is present. To inspect planned
+writes, add `--dry-run`.
 
-If the HTTP server is down but SSH is available, bypass discovery explicitly:
+For a non-default physical id or SSH target, bypass discovery explicitly when
+the HTTP server is down:
 
 ```sh
 ./cli/automa vehicles update core --id piracer \
@@ -297,11 +308,15 @@ If the HTTP server is down but SSH is available, bypass discovery explicitly:
 ```
 
 The handheld controller is not enabled by default. Enable it only when it
-should become an active command source:
+should become an active command source. Drive arguments persist across service
+restarts and Pi boots:
 
 ```sh
 ./cli/automa vehicles update core --id piracer --restart --drive-args=--js
 ```
+
+Pass `--drive-args=` with `--restart` to return to the default controller-free
+startup.
 
 ### Physical Activation State
 

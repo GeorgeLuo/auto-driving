@@ -55,7 +55,9 @@ PYTHONDONTWRITEBYTECODE=1 python3 tests/run.py --live-pi
 ```
 
 The Pi must be powered on, reachable at `http://piracer.local:8887`, and running
-the deployed Donkey server. Override the endpoint or request timeout when needed:
+the boot-enabled `automa-donkey.service`. A prepared Pi reaches this state
+automatically after boot. The smoke path is read-only. Override the endpoint or
+request timeout when needed:
 
 ```sh
 PYTHONDONTWRITEBYTECODE=1 python3 tests/run.py --live-pi \

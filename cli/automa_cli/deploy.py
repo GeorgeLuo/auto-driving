@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import copy
 import json
 import os
@@ -14,6 +15,10 @@ from urllib import request as urllib_request
 from urllib.parse import urlparse
 
 from implementations.perception.catalog import DEFAULT_PERCEPTION_ALGORITHM
+from implementations.vehicle.picar.defaults import (
+    get_default_local_car_base_url,
+    get_default_local_car_id,
+)
 
 from .bundles import (
     controller_bundle_paths,
@@ -34,6 +39,9 @@ from .vehicles import discover_active_vehicles, find_vehicle_by_id
 
 ROOT = Path(__file__).resolve().parents[2]
 DEPLOY_DIR = ROOT / "deploy" / "targets" / "donkeycar"
+DONKEY_SERVICE_NAME = "automa-donkey.service"
+DONKEY_SERVICE_DIR = DEPLOY_DIR / "systemd"
+DONKEY_READY_TIMEOUT_S = 30.0
 DEFAULT_PI_HOME = "/home/piracer"
 DEFAULT_PI_USER = "piracer"
 RUNTIME_ROOT = Path(os.environ.get("AUTOMA_RUNTIME_ROOT", ROOT / "runtime" / "vehicles"))
@@ -166,6 +174,8 @@ def update_vehicle_core(
     output: TextIO | None = None,
 ) -> CommandResult:
     stream = output
+    if drive_args is not None and not restart:
+        return CommandResult(2, "--drive-args requires --restart so the new arguments take effect.")
     target, error = _resolve_physical_target(
         vehicle_id=vehicle_id,
         timeout_s=timeout_s,
@@ -174,6 +184,7 @@ def update_vehicle_core(
         skip_discovery=skip_discovery,
         output=stream,
         operation="core deploy",
+        allow_offline_default=True,
     )
     if error is not None:
         return error
@@ -187,6 +198,7 @@ def update_vehicle_core(
     commands = _core_sync_commands(
         ssh_target=target.ssh_target,
         pi_home=target.pi_home,
+        pi_user=_ssh_user_from_target(target.ssh_target),
         donkeycar_source_dir=vendor_source_dir,
     )
     vendor_manifest = load_donkeycar_vendor_manifest()
@@ -199,6 +211,7 @@ def update_vehicle_core(
             commands=commands,
             restart=restart,
             drive_args=drive_args,
+            runtime_readiness=None,
         )
         if json_output:
             return CommandResult(0, json.dumps(payload, indent=2, sort_keys=True))
@@ -214,6 +227,8 @@ def update_vehicle_core(
         ("Prepare remote directories", commands[0], None),
         ("Sync DonkeyCar vendor source", commands[1], None),
         ("Sync mycar app harness", commands[2], None),
+        ("Sync Donkey runtime service", commands[3], None),
+        ("Install and enable Donkey runtime service", commands[4], None),
     ]
     for label, command, env in steps:
         code = _run_step(label, command, env=env, verbose=verbose, output=stream)
@@ -223,7 +238,7 @@ def update_vehicle_core(
     _emit(stream, "Core deploy bundle synced.")
 
     if restart:
-        code = _restart_drive_server(
+        code = _restart_drive_service(
             target=target,
             drive_args=drive_args,
             verbose=verbose,
@@ -231,7 +246,32 @@ def update_vehicle_core(
         )
         if code != 0:
             return CommandResult(code, f"Restart failed with exit code {code}.")
-        _emit(stream, "Drive server restarted.")
+        _emit(stream, "Donkey runtime service restarted.")
+        readiness = {
+            "ok": True,
+            "status_url": f"{_physical_base_url(target)}/autonomy/status",
+            "drive_mode": "user",
+        }
+    else:
+        try:
+            readiness = _wait_for_donkey_readiness(
+                target=target,
+                timeout_s=DONKEY_READY_TIMEOUT_S,
+            )
+        except RuntimeError as exc:
+            return CommandResult(
+                2,
+                "\n".join(
+                    [
+                        f"{DONKEY_SERVICE_NAME} was installed and enabled, but HTTP readiness failed: {exc}",
+                        (
+                            f"Inspect it with: ssh {target.ssh_target} "
+                            f"sudo systemctl status {DONKEY_SERVICE_NAME}"
+                        ),
+                    ]
+                ),
+            )
+    _emit(stream, f"Donkey runtime ready: {readiness['status_url']}")
 
     if json_output:
         payload = _core_update_payload(
@@ -242,9 +282,20 @@ def update_vehicle_core(
             commands=commands,
             restart=restart,
             drive_args=drive_args,
+            runtime_readiness=readiness,
         )
         return CommandResult(0, json.dumps(payload, indent=2, sort_keys=True))
-    return CommandResult(0, "")
+    return CommandResult(
+        0,
+        "\n".join(
+            [
+                f"Core updated: {vehicle_id} -> {target.ssh_target}",
+                f"Service: {DONKEY_SERVICE_NAME} (enabled and active)",
+                f"Readiness: {readiness['status_url']}",
+                f"Runtime restarted: {'yes' if restart else 'only if it was not already active'}",
+            ]
+        ),
+    )
 
 
 def update_vehicle_autonomy(
@@ -261,6 +312,8 @@ def update_vehicle_autonomy(
     verbose: bool = False,
     output: TextIO | None = None,
 ) -> CommandResult:
+    if drive_args is not None and not restart:
+        return CommandResult(2, "--drive-args requires --restart so the new arguments take effect.")
     target, error = _resolve_physical_target(
         vehicle_id=vehicle_id,
         timeout_s=timeout_s,
@@ -348,7 +401,7 @@ def update_vehicle_autonomy(
 
     runtime_verification: dict[str, Any] | None = None
     if restart:
-        code = _restart_drive_server(
+        code = _restart_drive_service(
             target=target,
             drive_args=drive_args,
             verbose=verbose,
@@ -421,6 +474,7 @@ def _resolve_physical_target(
     skip_discovery: bool,
     output: TextIO | None,
     operation: str,
+    allow_offline_default: bool = False,
 ) -> tuple[PhysicalTarget | None, CommandResult | None]:
     vehicle: dict[str, object] = {
         "vehicle_id": vehicle_id,
@@ -436,14 +490,34 @@ def _resolve_physical_target(
         payload = discover_active_vehicles(
             timeout_s=timeout_s,
             include_picar=True,
-            include_chase_sim=True,
+            include_chase_sim=False,
         )
         found_vehicle, error = find_vehicle_by_id(payload, vehicle_id)
         if error:
-            return None, CommandResult(2, error)
-        if found_vehicle is None:
+            if allow_offline_default and vehicle_id == get_default_local_car_id():
+                default_base_url = get_default_local_car_base_url()
+                vehicle = {
+                    "vehicle_id": vehicle_id,
+                    "vehicle_kind": "picar",
+                    "provider": "picar",
+                    "connection": {
+                        "base_url": default_base_url,
+                        "source": "configured-default",
+                    },
+                }
+                _emit(
+                    output,
+                    (
+                        "Donkey HTTP readiness is unavailable; using the configured physical "
+                        f"target {default_base_url}. SSH will determine deploy reachability."
+                    ),
+                )
+            else:
+                return None, CommandResult(2, error)
+        elif found_vehicle is None:
             return None, CommandResult(2, f"Vehicle {vehicle_id!r} was not found.")
-        vehicle = found_vehicle
+        else:
+            vehicle = found_vehicle
 
     provider = str(vehicle.get("provider"))
     if provider != "picar":
@@ -626,7 +700,7 @@ def _autonomy_update_payload(
     if restart:
         command_entries.append(
             {
-                "step": "Restart Donkey drive server",
+                "step": "Restart Donkey runtime service",
                 "command": _display_restart_command(target, drive_args),
                 "status": command_status,
             }
@@ -667,11 +741,14 @@ def _core_update_payload(
     commands: list[list[str]],
     restart: bool,
     drive_args: str | None,
+    runtime_readiness: dict[str, Any] | None,
 ) -> dict[str, Any]:
     labels = (
         "Prepare remote directories",
         "Sync DonkeyCar vendor source",
         "Sync mycar app harness",
+        "Sync Donkey runtime service",
+        "Install and enable Donkey runtime service",
     )
     command_status = "planned" if dry_run else "completed"
     command_entries = [
@@ -685,7 +762,7 @@ def _core_update_payload(
     if restart:
         command_entries.append(
             {
-                "step": "Restart Donkey drive server",
+                "step": "Restart Donkey runtime service",
                 "command": _display_restart_command(target, drive_args),
                 "status": command_status,
             }
@@ -711,8 +788,14 @@ def _core_update_payload(
                 "checkout": display_path(vendor_source_dir),
             },
             "harness": display_path(DEPLOY_DIR / "app"),
+            "service": {
+                "name": DONKEY_SERVICE_NAME,
+                "source": display_path(DONKEY_SERVICE_DIR),
+                "boot_enabled": True,
+            },
         },
         "restart_requested": restart,
+        "runtime_readiness": runtime_readiness,
         "result": _deployment_result(dry_run=dry_run),
         "commands": command_entries,
     }
@@ -744,6 +827,10 @@ def _format_core_dry_run(payload: dict[str, Any]) -> str:
             f"vendor: {vendor['repo_url']} @ {vendor['revision']}",
             f"vendor checkout: {vendor['checkout']}",
             f"harness: {source['harness']}",
+            (
+                f"service: {source['service']['name']} "
+                f"from {source['service']['source']} (enabled at boot)"
+            ),
             "planned commands:",
             *[f"- {entry['step']}: {entry['command']}" for entry in payload["commands"]],
             f"restart requested: {'yes' if payload['restart_requested'] else 'no'}",
@@ -781,41 +868,45 @@ def _display_deploy_command(label: str, command: list[str]) -> str:
 
 
 def _display_restart_command(target: PhysicalTarget, drive_args: str | None) -> str:
-    assignments = [
-        f"PI_HOST={shlex.quote(target.ssh_target)}",
-        f"PI_HOME={shlex.quote(target.pi_home)}",
-    ]
-    if drive_args is not None:
-        assignments.append(f"DRIVE_ARGS={shlex.quote(drive_args)}")
-    return " ".join([*assignments, "scripts/deploy/donkeycar/restart_drive.sh"])
+    remote_command = _donkey_service_control_command(
+        pi_home=target.pi_home,
+        action="restart",
+        drive_args=drive_args,
+    )
+    return shlex.join(["ssh", target.ssh_target, remote_command])
 
 
-def _restart_drive_server(
+def _restart_drive_service(
     *,
     target: PhysicalTarget,
     drive_args: str | None,
     verbose: bool,
     output: TextIO | None,
 ) -> int:
-    restart_env = {
-        **os.environ,
-        "PI_HOST": target.ssh_target,
-        "PI_HOME": target.pi_home,
-    }
-    if drive_args is not None:
-        restart_env["DRIVE_ARGS"] = drive_args
-    restart_command = [str(ROOT / "scripts" / "deploy" / "donkeycar" / "restart_drive.sh")]
-    command_prefix = f"PI_HOST={shlex.quote(target.ssh_target)} PI_HOME={shlex.quote(target.pi_home)}"
-    if drive_args is not None:
-        command_prefix += f" DRIVE_ARGS={shlex.quote(drive_args)}"
-    return _run_step(
-        "Restart Donkey drive server",
-        restart_command,
-        env=restart_env,
-        command_prefix=command_prefix,
+    remote_command = _donkey_service_control_command(
+        pi_home=target.pi_home,
+        action="restart",
+        drive_args=drive_args,
+    )
+    code = _run_step(
+        "Restart Donkey runtime service",
+        ["ssh", target.ssh_target, remote_command],
+        env=None,
         verbose=verbose,
         output=output,
     )
+    if code != 0:
+        return code
+    try:
+        readiness = _wait_for_donkey_readiness(
+            target=target,
+            timeout_s=DONKEY_READY_TIMEOUT_S,
+        )
+    except RuntimeError as exc:
+        _emit(output, f"HTTP readiness failed: {exc}")
+        return 2
+    _emit(output, f"Donkey runtime ready: {readiness['status_url']}")
+    return 0
 
 
 def _verify_physical_autonomy_runtime(
@@ -825,14 +916,8 @@ def _verify_physical_autonomy_runtime(
     expected_perception_algorithm: str,
     timeout_s: float,
 ) -> dict[str, Any]:
-    connection = target.vehicle.get("connection")
-    base_url = connection.get("base_url") if isinstance(connection, dict) else None
-    if not isinstance(base_url, str) or not base_url:
-        host = target.ssh_target.rsplit("@", 1)[-1]
-        base_url = f"http://{host}:8887"
-
     verification = inspect_physical_autonomy_runtime(
-        base_url=base_url,
+        base_url=_physical_base_url(target),
         timeout_s=timeout_s,
     )
     status_url = str(verification["status_url"])
@@ -906,6 +991,51 @@ def inspect_physical_autonomy_runtime(
     }
 
 
+def _wait_for_donkey_readiness(
+    *,
+    target: PhysicalTarget,
+    timeout_s: float,
+) -> dict[str, Any]:
+    base_url = _physical_base_url(target)
+    status_url = f"{base_url.rstrip('/')}/autonomy/status"
+    deadline = time.monotonic() + max(0.1, float(timeout_s))
+    last_error = "no response"
+    while time.monotonic() < deadline:
+        try:
+            with urllib_request.urlopen(status_url, timeout=1.0) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+            if not isinstance(payload, dict):
+                last_error = "endpoint did not return a JSON object"
+            elif payload.get("drive_mode") != "user":
+                last_error = f"drive mode is {payload.get('drive_mode')!r}, expected 'user'"
+            else:
+                return {
+                    "ok": True,
+                    "status_url": status_url,
+                    "drive_mode": "user",
+                    "autonomy_available": payload.get("ok") is True,
+                }
+        except (
+            OSError,
+            urllib_error.URLError,
+            UnicodeDecodeError,
+            json.JSONDecodeError,
+            ValueError,
+        ) as exc:
+            last_error = str(exc)
+        time.sleep(0.5)
+    raise RuntimeError(f"GET {status_url} was not ready within {timeout_s:g}s ({last_error})")
+
+
+def _physical_base_url(target: PhysicalTarget) -> str:
+    connection = target.vehicle.get("connection")
+    base_url = connection.get("base_url") if isinstance(connection, dict) else None
+    if isinstance(base_url, str) and base_url.strip():
+        return base_url.strip().rstrip("/")
+    host = target.ssh_target.rsplit("@", 1)[-1]
+    return f"http://{host}:8887"
+
+
 def _emit(output: TextIO | None, message: str) -> None:
     if output is None:
         return
@@ -954,7 +1084,43 @@ def _ssh_target_from_vehicle(vehicle: dict[str, object]) -> str | None:
     return f"{DEFAULT_PI_USER}@{hostname}"
 
 
-def _core_sync_commands(*, ssh_target: str, pi_home: str, donkeycar_source_dir: Path) -> list[list[str]]:
+def _ssh_user_from_target(ssh_target: str) -> str:
+    if "@" not in ssh_target:
+        return DEFAULT_PI_USER
+    user = ssh_target.split("@", 1)[0].strip()
+    return user or DEFAULT_PI_USER
+
+
+def _drive_args_token(drive_args: str | None) -> str:
+    if drive_args is None:
+        return "-"
+    encoded = base64.b64encode(drive_args.encode("utf-8")).decode("ascii")
+    return f"b64:{encoded}"
+
+
+def _donkey_service_control_command(
+    *,
+    pi_home: str,
+    action: str,
+    drive_args: str | None,
+) -> str:
+    return shlex.join(
+        [
+            f"{pi_home}/.config/automa/systemd/control.sh",
+            pi_home,
+            action,
+            _drive_args_token(drive_args),
+        ]
+    )
+
+
+def _core_sync_commands(
+    *,
+    ssh_target: str,
+    pi_home: str,
+    pi_user: str,
+    donkeycar_source_dir: Path,
+) -> list[list[str]]:
     common_excludes = [
         "--exclude=*.bak.*",
         "--exclude=__pycache__/",
@@ -969,6 +1135,7 @@ def _core_sync_commands(*, ssh_target: str, pi_home: str, donkeycar_source_dir: 
             "-p",
             f"{pi_home}/projects/donkeycar",
             f"{pi_home}/mycar",
+            f"{pi_home}/.config/automa/systemd",
         ],
         [
             "rsync",
@@ -991,5 +1158,25 @@ def _core_sync_commands(*, ssh_target: str, pi_home: str, donkeycar_source_dir: 
             "--exclude=runtime",
             f"{DEPLOY_DIR / 'app'}/",
             f"{ssh_target}:{pi_home}/mycar/",
+        ],
+        [
+            "rsync",
+            "-az",
+            "--delete",
+            *common_excludes,
+            f"{DONKEY_SERVICE_DIR}/",
+            f"{ssh_target}:{pi_home}/.config/automa/systemd/",
+        ],
+        [
+            "ssh",
+            ssh_target,
+            shlex.join(
+                [
+                    f"{pi_home}/.config/automa/systemd/install.sh",
+                    pi_home,
+                    pi_user,
+                    _drive_args_token(None),
+                ]
+            ),
         ],
     ]

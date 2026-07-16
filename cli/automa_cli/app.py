@@ -622,8 +622,11 @@ def build_parser() -> argparse.ArgumentParser:
     update_help.set_defaults(handler=_handle_vehicles_update_help)
     core = update_commands.add_parser(
         "core",
-        help="Sync deploy/targets/donkeycar core harness files to a physical PiCar.",
-        description="Sync the DonkeyCar core harness files to a physical PiCar.",
+        help="Sync the Donkey harness and install its boot-enabled runtime service.",
+        description=(
+            "Sync the DonkeyCar core harness and install its supervised, boot-enabled "
+            "runtime service on a physical PiCar."
+        ),
     )
     core.add_argument(
         "--id",
@@ -660,12 +663,12 @@ def build_parser() -> argparse.ArgumentParser:
     core.add_argument(
         "--restart",
         action="store_true",
-        help="Restart the Donkey drive server after syncing core files.",
+        help="Restart an already-running Donkey runtime after syncing; inactive service starts automatically.",
     )
     core.add_argument(
         "--drive-args",
         default=None,
-        help="Arguments passed to `manage.py drive` when --restart is used, for example --js.",
+        help="Persist arguments for `manage.py drive` when --restart is used, for example --js.",
     )
     core.add_argument(
         "--json",
@@ -719,12 +722,12 @@ def build_parser() -> argparse.ArgumentParser:
     autonomy.add_argument(
         "--restart",
         action="store_true",
-        help="Restart the Donkey drive server after activating the release.",
+        help="Restart the supervised Donkey runtime after activating the release.",
     )
     autonomy.add_argument(
         "--drive-args",
         default=None,
-        help="Arguments passed to `manage.py drive` when --restart is used, for example --js.",
+        help="Persist arguments for `manage.py drive` when --restart is used, for example --js.",
     )
     autonomy.add_argument(
         "--json",

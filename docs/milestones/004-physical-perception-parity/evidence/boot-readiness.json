@@ -1,0 +1,52 @@
+{
+  "schema": "automa_physical_boot_readiness_evidence_v0",
+  "captured_at": "2026-07-16T17:35:16Z",
+  "vehicle": {
+    "id": "piracer",
+    "host": "piracer.local",
+    "service": "automa-donkey.service",
+    "status_url": "http://piracer.local:8887/autonomy/status"
+  },
+  "starting_state": {
+    "host_reachable": true,
+    "http_ready": false,
+    "tcp_listener": false,
+    "discovery_state": "server_not_listening",
+    "boot_id": "0cd4e33e-9fb1-4400-abfb-ce83f2a943f9"
+  },
+  "deployment": {
+    "command": "./cli/automa vehicles update core --id piracer",
+    "http_fallback_reported": true,
+    "ssh_bootstrap_used": true,
+    "service_installed": true,
+    "service_enabled": true,
+    "readiness_confirmed": true,
+    "legacy_pid_removed": true,
+    "legacy_project_log_removed": true
+  },
+  "reboot_validation": {
+    "start_command_after_boot": null,
+    "boot_id": "e207eaa3-6c3f-4cc4-a755-f63c0c79f321",
+    "service_enabled": true,
+    "service_active": true,
+    "service_main_pid": 804,
+    "service_active_at": "Thu 2026-07-16 10:34:35 PDT",
+    "service_restart_count": 0,
+    "http_ready": true,
+    "drive_mode": "user",
+    "decision_engine": "autonomy.runtime.engine:IdleAutonomyEngine"
+  },
+  "tests": {
+    "canonical_discovered": 153,
+    "canonical_passed": 151,
+    "canonical_expected_live_skips": 2,
+    "focused_live_pi_smoke": "pass"
+  },
+  "safety": {
+    "movement_commands_sent": false,
+    "mode_change_commands_sent": false,
+    "expected_drive_mode": "user",
+    "observed_drive_mode": "user"
+  },
+  "verdict": "pass"
+}

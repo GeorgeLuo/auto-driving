@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 import time
 import urllib.error
 import urllib.request
 from dataclasses import asdict, dataclass, field
 from typing import Any
+from urllib.parse import urlparse
 
 from implementations.vehicle.chase_sim import ChaseSimCar
 from implementations.vehicle.chase_sim.defaults import (
@@ -188,6 +190,9 @@ def _format_vehicle(index: int, vehicle: dict[str, Any]) -> list[str]:
     ]
 
     mode = status.get("drive_mode")
+    runtime = status.get("runtime")
+    if isinstance(runtime, dict) and runtime.get("state"):
+        lines.append(f"   runtime: {runtime['state']}")
     if mode is not None:
         lines.append(f"   mode: {mode}")
 
@@ -280,7 +285,6 @@ def _picar_candidates(extra_urls: tuple[str, ...]) -> list[Candidate]:
         candidates.append(Candidate("picar", _normalize_http_url(env_url), f"env:{LOCAL_CAR_BASE_URL_ENV}"))
 
     candidates.append(Candidate("picar", _normalize_http_url(DEFAULT_LOCAL_CAR_BASE_URL), "default"))
-    candidates.append(Candidate("picar", "http://127.0.0.1:8887", "local-pi"))
 
     for url in extra_urls:
         if url.strip():
@@ -342,37 +346,34 @@ def _probe_picar(candidate: Candidate, *, timeout_s: float) -> ProbeResult:
                     "source": candidate.source,
                 },
                 "capabilities": capabilities,
-                "status": status,
-            },
-        )
-
-    drive_ok, drive_error = _get_ok(base_url, "/drive", timeout_s=timeout_s)
-    if drive_ok:
-        return ProbeResult(
-            active=True,
-            candidate=candidate,
-            vehicle={
-                "vehicle_id": capabilities["vehicle_id"],
-                "vehicle_kind": capabilities["vehicle_kind"],
-                "provider": "picar",
-                "connection": {
-                    "base_url": base_url,
-                    "status_endpoint": "/drive",
-                    "source": candidate.source,
-                },
-                "capabilities": capabilities,
                 "status": {
-                    "ok": True,
-                    "note": "Donkey web server responded, but /autonomy/status was unavailable.",
-                    "autonomy_status_error": error,
+                    **status,
+                    "runtime": {
+                        "state": "ready",
+                        "tcp_listener": True,
+                        "http_ready": True,
+                    },
                 },
             },
+            diagnostics={"runtime_state": "ready", "tcp_listener": True, "http_ready": True},
         )
 
+    diagnostics = _probe_tcp_endpoint(base_url, timeout_s=timeout_s)
+    runtime_state = diagnostics.get("runtime_state")
+    if runtime_state == "server_not_listening":
+        probe_error = (
+            f"PiCar host resolved, but its server is not listening: "
+            f"{diagnostics.get('tcp_error', 'connection refused')}"
+        )
+    elif runtime_state == "http_unhealthy":
+        probe_error = f"PiCar TCP listener is reachable, but HTTP readiness failed: {error}"
+    else:
+        probe_error = error or "no PiCar endpoint responded"
     return ProbeResult(
         active=False,
         candidate=candidate,
-        error=drive_error or error or "no PiCar endpoint responded",
+        error=probe_error,
+        diagnostics=diagnostics,
     )
 
 
@@ -482,6 +483,13 @@ def _summarize_front_view_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
 
 def _inactive_detail(diagnostics: dict[str, Any]) -> str:
     parts: list[str] = []
+    runtime_state = diagnostics.get("runtime_state")
+    if runtime_state is not None:
+        parts.append(f"runtime={runtime_state}")
+    if "tcp_listener" in diagnostics:
+        parts.append(f"tcp={'ok' if diagnostics.get('tcp_listener') else 'no'}")
+    if "http_ready" in diagnostics:
+        parts.append(f"http={'ok' if diagnostics.get('http_ready') else 'no'}")
     for key, label in (
         ("ws_server", "ws"),
         ("frontend_connected", "frontend"),
@@ -494,6 +502,61 @@ def _inactive_detail(diagnostics: dict[str, Any]) -> str:
     if game_id is not None:
         parts.append(f"game={game_id!r}")
     return ", ".join(parts)
+
+
+def _probe_tcp_endpoint(base_url: str, *, timeout_s: float) -> dict[str, Any]:
+    parsed = urlparse(base_url)
+    host = parsed.hostname
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    diagnostics: dict[str, Any] = {
+        "runtime_state": "endpoint_unreachable",
+        "tcp_listener": False,
+        "http_ready": False,
+    }
+    if not host:
+        diagnostics["tcp_error"] = "endpoint has no hostname"
+        return diagnostics
+
+    try:
+        addresses = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    except OSError as exc:
+        diagnostics["tcp_error"] = str(exc)
+        return diagnostics
+
+    addresses = sorted(addresses, key=lambda item: 0 if item[0] == socket.AF_INET else 1)
+    seen: set[tuple[int, tuple[Any, ...]]] = set()
+    last_error = "no address available"
+    for family, socktype, protocol, _, sockaddr in addresses:
+        key = (family, sockaddr)
+        if key in seen:
+            continue
+        seen.add(key)
+        try:
+            with socket.socket(family, socktype, protocol) as connection:
+                connection.settimeout(max(0.1, float(timeout_s)))
+                connection.connect(sockaddr)
+            diagnostics.update(
+                {
+                    "runtime_state": "http_unhealthy",
+                    "tcp_listener": True,
+                    "tcp_address": str(sockaddr[0]),
+                }
+            )
+            return diagnostics
+        except ConnectionRefusedError as exc:
+            diagnostics.update(
+                {
+                    "runtime_state": "server_not_listening",
+                    "tcp_address": str(sockaddr[0]),
+                    "tcp_error": str(exc),
+                }
+            )
+            return diagnostics
+        except OSError as exc:
+            last_error = str(exc)
+
+    diagnostics["tcp_error"] = last_error
+    return diagnostics
 
 
 def _find_play_sidebar_values(state: dict[str, Any]) -> dict[str, Any]:
@@ -527,13 +590,6 @@ def _get_json(base_url: str, endpoint: str, *, timeout_s: float) -> tuple[dict[s
     if not isinstance(data, dict):
         return None, f"expected JSON object from {endpoint}"
     return data, None
-
-
-def _get_ok(base_url: str, endpoint: str, *, timeout_s: float) -> tuple[bool, str | None]:
-    ok, body_or_error = _get(base_url, endpoint, timeout_s=timeout_s)
-    if ok:
-        return True, None
-    return False, body_or_error
 
 
 def _get(base_url: str, endpoint: str, *, timeout_s: float) -> tuple[bool, str]:

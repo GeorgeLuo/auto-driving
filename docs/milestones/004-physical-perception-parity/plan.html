@@ -1,0 +1,538 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Milestone 004: Physical Perception Parity</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f5f7f8;
+      --surface: #ffffff;
+      --surface-alt: #eef3f5;
+      --text: #182126;
+      --muted: #58666d;
+      --line: #cbd5d9;
+      --blue: #176b87;
+      --blue-soft: #dceff5;
+      --green: #2d7650;
+      --green-soft: #dff1e7;
+      --amber: #9b6615;
+      --amber-soft: #f7e9ca;
+      --red: #a44343;
+      --red-soft: #f7dfdf;
+      --violet: #68539a;
+      --violet-soft: #ebe5f7;
+      --neutral: #dce3e6;
+      --shadow: 0 8px 24px rgba(20, 35, 42, 0.08);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #111619;
+        --surface: #192126;
+        --surface-alt: #202b31;
+        --text: #edf3f5;
+        --muted: #afbdc3;
+        --line: #35444b;
+        --blue: #69b7d0;
+        --blue-soft: #173b47;
+        --green: #77c699;
+        --green-soft: #173a29;
+        --amber: #e5b55f;
+        --amber-soft: #463515;
+        --red: #ed9090;
+        --red-soft: #482323;
+        --violet: #b9a5e8;
+        --violet-soft: #33294c;
+        --neutral: #2b373d;
+        --shadow: none;
+      }
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.55;
+    }
+    main { width: min(1180px, calc(100% - 32px)); margin: 0 auto; padding: 32px 0 64px; }
+    header { padding: 28px 0 18px; }
+    h1, h2, h3 { margin: 0; line-height: 1.2; letter-spacing: 0; }
+    h1 { max-width: 920px; font-size: clamp(32px, 5vw, 52px); }
+    h2 { margin-bottom: 14px; font-size: 24px; }
+    h3 { font-size: 17px; }
+    p { margin: 0; }
+    a { color: var(--blue); }
+    code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    code { overflow-wrap: anywhere; }
+    .lead { max-width: 920px; margin-top: 14px; color: var(--muted); font-size: 18px; }
+    .meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+    .pill, .status {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 4px 9px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .pill { background: var(--surface-alt); }
+    .status.done { color: var(--green); background: var(--green-soft); border-color: var(--green); }
+    .status.active { color: var(--blue); background: var(--blue-soft); border-color: var(--blue); }
+    .status.pending { color: var(--amber); background: var(--amber-soft); border-color: var(--amber); }
+    .status.blocked { color: var(--red); background: var(--red-soft); border-color: var(--red); }
+    .status.global { color: var(--violet); background: var(--violet-soft); border-color: var(--violet); }
+    .panel {
+      margin-top: 20px;
+      padding: 22px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+    .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+    .grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .card { min-width: 0; padding: 16px; border-left: 4px solid var(--line); background: var(--surface-alt); }
+    .card p, .card ul, .card pre { margin-top: 9px; }
+    .card.goal { border-color: var(--blue); }
+    .card.interface { border-color: var(--violet); }
+    .card.constraint { border-color: var(--green); }
+    .card.risk { border-color: var(--red); }
+    .note { margin-top: 14px; padding: 14px 16px; border-left: 4px solid var(--amber); background: var(--amber-soft); }
+    .small { color: var(--muted); font-size: 13px; }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 11px 12px; border: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { background: var(--surface-alt); }
+    ul, ol { margin: 10px 0 0; padding-left: 22px; }
+    li + li { margin-top: 6px; }
+    pre {
+      margin: 12px 0 0;
+      padding: 15px;
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--surface-alt);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    details { border: 1px solid var(--line); background: var(--surface); }
+    details + details { margin-top: 10px; }
+    summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 13px 15px;
+      cursor: pointer;
+      font-weight: 700;
+    }
+    .work-body, .reference-body { padding: 0 15px 15px; }
+    .reference-item { margin-top: 14px; }
+    .reference-frame { width: 100%; min-height: 720px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); }
+    .filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+    .filters button {
+      min-height: 36px;
+      padding: 7px 11px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--surface-alt);
+      color: var(--text);
+      cursor: pointer;
+      font: inherit;
+    }
+    .filters button[aria-pressed="true"] { border-color: var(--blue); color: var(--blue); font-weight: 700; }
+    .progress-track { height: 10px; margin-top: 14px; overflow: hidden; border-radius: 5px; background: var(--neutral); }
+    .progress-fill { width: 0; height: 100%; background: var(--green); }
+
+    @media (max-width: 860px) {
+      main { width: min(100% - 20px, 1180px); padding-top: 18px; }
+      .panel { padding: 16px; }
+      .grid, .grid.two { grid-template-columns: 1fr; }
+      th, td { min-width: 180px; }
+      summary { align-items: flex-start; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Milestone 004: Physical Perception Parity</h1>
+      <p class="lead">
+        Prove that the PiRacer continuously interprets its own camera while
+        movement authority remains manual, and make each latest structured
+        result visually inspectable against the exact frame that produced it.
+        Simulator compatibility is the reference shape, not a substitute for
+        physical evidence.
+      </p>
+      <div class="meta">
+        <span class="pill">Status: active - planning</span>
+        <span class="pill">Started: 2026-07-16</span>
+        <span class="pill">Drive mode: manual</span>
+        <span class="pill">Action output: zero</span>
+        <span class="pill">Persistence: opt-in only</span>
+        <span class="pill">Delivery: rolling PR horizon</span>
+      </div>
+    </header>
+
+    <section class="panel">
+      <h2>High-Level Objective</h2>
+      <div class="grid">
+        <div class="card goal">
+          <h3>Observe Without Driving</h3>
+          <p>Run physical perception independently from Donkey pilot mode. Manual control remains authoritative and the autonomy engine continues to emit zero steering and throttle.</p>
+        </div>
+        <div class="card interface">
+          <h3>Pair Evidence With Its Frame</h3>
+          <p>Publish one bounded latest snapshot containing the exact processed frame identity, structured <code>PerceptionText</code>, timing, health, and explicit stale or unavailable state.</p>
+        </div>
+        <div class="card constraint">
+          <h3>Inspect Through Automa</h3>
+          <p>Give the physical vehicle the same concise terminal stream and local frame-overlay view used to understand Chase perception, without putting frontend ownership on the Pi.</p>
+        </div>
+      </div>
+      <p class="note">
+        Success is a stationary PiRacer pointed at a floor-standing object. An
+        operator can see the current camera frame, a corresponding generic floor
+        boundary at the correct left/center/right location, and zero movement.
+        Success is not semantic recognition or navigation.
+      </p>
+    </section>
+
+    <section class="panel" data-completion-usage>
+      <h2>Completion Usage</h2>
+      <p>
+        These commands are the proposed public interface and are not all
+        implemented yet. Exact options may sharpen, but these four workflows and
+        their success signals are stable milestone scope.
+      </p>
+      <div class="grid two">
+        <div class="card interface">
+          <h3>Deploy And Verify Physical Perception</h3>
+          <p><strong>Starting state:</strong> the PiRacer is powered, reachable, and running the Donkey server.</p>
+          <p><strong>Proposed execution:</strong></p>
+          <pre>./cli/automa vehicles active
+./cli/automa vehicles update perception \
+  --id piracer --algorithm lightweight_observer
+./cli/automa vehicles update autonomy \
+  --id piracer --restart
+./cli/automa vehicles info perception --id piracer</pre>
+          <p><strong>Success signal:</strong> output names the deployed release and mapper, reports live frame progress rather than only activation, and confirms manual drive mode.</p>
+        </div>
+        <div class="card goal">
+          <h3>Stream Current Physical Findings</h3>
+          <p><strong>Starting state:</strong> physical perception is deployed and the Donkey server is producing camera frames.</p>
+          <p><strong>Proposed execution:</strong></p>
+          <pre>./cli/automa vehicles stream perception --id piracer</pre>
+          <p><strong>Success signal:</strong> one replacing terminal view reports frame ID, result age, algorithm health, signals, and structured things. It visibly advances while drive mode remains manual. <code>--json</code> returns the same latest snapshot for automation.</p>
+        </div>
+        <div class="card constraint">
+          <h3>Inspect Frame-Matched Overlays</h3>
+          <p><strong>Starting state:</strong> the physical stream has published at least one healthy result.</p>
+          <p><strong>Proposed execution:</strong></p>
+          <pre>./cli/automa vehicles info perception --id piracer
+# Open the reported local Perception view URL.</pre>
+          <p><strong>Success signal:</strong> the browser shows the exact processed frame, overlay regions and labels from that frame, source/result IDs, lag, age, and independent layer toggles.</p>
+        </div>
+        <div class="card goal">
+          <h3>Run The Physical Object Check</h3>
+          <p><strong>Starting state:</strong> the car is stationary with clear floor ahead and a contrasting floor-standing object available.</p>
+          <p><strong>Proposed execution:</strong></p>
+          <pre>./cli/automa vehicles perception check \
+  --id piracer --record</pre>
+          <p><strong>Success signal:</strong> the command prompts for clear, left, center, right, and removed placements, waits for fresh onboard results, and builds a review pairing each finding with its frame. Boundary location follows placement, removal clears current evidence, and every captured control remains zero.</p>
+        </div>
+      </div>
+      <p class="note">Normal streaming remains in memory and writes nothing. Only the explicit <code>--record</code> check retains frames and findings.</p>
+    </section>
+
+    <section class="panel">
+      <h2>Baseline</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Area</th><th>Observed State</th><th>Gap</th></tr></thead>
+          <tbody>
+            <tr><td>Camera</td><td>The Donkey server provides current JPEG, MJPEG, and high-resolution still endpoints from the physical camera.</td><td>Raw camera visibility does not prove that onboard perception interpreted the frame.</td></tr>
+            <tr><td>Shared mapper</td><td>Physical deployment packages the same stable perception contracts and implementations used by the local Chase controller.</td><td>Compatible code and activation metadata establish interface parity, not live behavioral parity.</td></tr>
+            <tr><td>Onboard execution</td><td><code>AutonomyPilotPart</code> receives <code>cam/image_array</code> and runs the shared decision cycle.</td><td>The part is gated by Donkey <code>run_pilot</code>; manual <code>user</code> mode therefore prevents onboard perception from running.</td></tr>
+            <tr><td>Publication</td><td><code>/autonomy/status</code> can report mapper identity, last status, duration, frame index, thing count, and plugin run summaries.</td><td>It does not publish the complete latest findings or the exact frame needed to inspect their geometry.</td></tr>
+            <tr><td>CLI streaming</td><td>Chase automation publishes a latest frame-and-data view and replacing terminal stream.</td><td>The local automation worker explicitly excludes physical providers, so <code>stream perception --id piracer</code> has no live physical source.</td></tr>
+            <tr><td>Physical experiments</td><td><code>vehicles perception run --id piracer</code> can fetch physical frames and process them through a local mapper.</td><td>This proves the algorithm can consume Pi images, but not that the Pi itself executed or published the result.</td></tr>
+            <tr><td>Current meaning</td><td><code>lightweight_observer</code> emits visible-floor estimates and generic first-hit non-floor boundary regions with normalized location and confidence.</td><td>No live physical artifact currently demonstrates that these findings follow an object in the camera view.</td></tr>
+            <tr><td>Safety</td><td>Manual Donkey mode owns final control and the selected idle engine emits zero movement.</td><td>Always-on perception must preserve that authority boundary and must not require an autonomy mode switch merely to observe.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Current Delivery Horizon</h2>
+      <p>
+        This milestone follows the shared
+        <a href="../README.md">planning and pull-request delivery contract</a>.
+        Physical evidence controls promotion; simulator-only success cannot
+        close a work package that owns onboard behavior.
+      </p>
+      <details class="reference-item" data-shared-planning-contract>
+        <summary><span>Shared Planning And Delivery Contract</span><span class="status global">Global</span></summary>
+        <div class="reference-body">
+          <p>Rendered from the canonical <a href="../README.md">Markdown source</a>. Edit the source and regenerate the shared view rather than copying rules into this plan.</p>
+          <iframe class="reference-frame" src="../planning-contract.html" title="Shared milestone planning and pull-request delivery contract" loading="lazy"></iframe>
+        </div>
+      </details>
+      <div class="grid two" style="margin-top: 14px;">
+        <div class="card goal">
+          <h3>Current PR: Reorder The Milestone Gate</h3>
+          <p><span class="status active">Implemented - ready for review</span> <strong>Review shape:</strong> broad documentation, shallow behavior.</p>
+          <p><strong>Deliverable:</strong> make physical perception parity milestone 004, defer Evidence Memory Foundation to milestone 005, and define executable usage, evidence, scope, and stopping conditions.</p>
+          <p><strong>Review question:</strong> Does this plan require end-to-end physical interpretation without turning into semantic perception research or movement work?</p>
+          <p><strong>Create:</strong> this milestone plan. <strong>Move:</strong> Evidence Memory Foundation to milestone 005. <strong>Modify:</strong> root and documentation entrypoints plus current-behavior wording. <strong>Remove:</strong> none.</p>
+          <p><strong>Non-goals:</strong> runtime code, endpoints, CLI behavior, deployment, movement, or physical claims.</p>
+          <p><strong>Validation:</strong> the canonical suite passes 144 tests with two named live skips; focused planning tests, generated Markdown checks, local-link and HTML parsing, and diff hygiene pass.</p>
+        </div>
+        <div class="card interface">
+          <h3>Next After Review: Always-On Observation Boundary</h3>
+          <p><span class="status pending">Queued, not started</span> <strong>Expected shape:</strong> deep and narrow.</p>
+          <p><strong>Expected deliverable:</strong> separate physical perception execution from movement authority, run it at a bounded cadence in manual mode, and retain one detached latest frame/result snapshot in memory.</p>
+          <p><strong>Review question:</strong> Can the Pi continuously observe while manual mode remains authoritative, without slowing the Donkey control loop or creating a second perception pipeline?</p>
+          <p><strong>Proposed files:</strong> modify the Donkey assembly and runtime adapter; add focused runtime and deploy tests around cadence, frame identity, manual-mode execution, and zero controls.</p>
+          <p><strong>Non-goals:</strong> HTTP publication, CLI streaming, browser view, recording, semantic accuracy, or memory-stage work.</p>
+        </div>
+      </div>
+      <div class="table-wrap" style="margin-top: 16px;">
+        <table>
+          <thead><tr><th>Preparation Horizon</th><th>Known End-State Need</th><th>Must Be Learned First</th></tr></thead>
+          <tbody>
+            <tr><td>Observation boundary</td><td>Manual-mode perception at a bounded cadence, independent of action application.</td><td>Whether one always-running cycle part or separated perception/action parts best preserves Donkey loop behavior.</td></tr>
+            <tr><td>Latest publication</td><td>One complete, bounded frame/result snapshot with health and stale state.</td><td>How to retain the processed image without copying unbounded arrays or racing the next camera frame.</td></tr>
+            <tr><td>Physical CLI adapter</td><td><code>info</code>, terminal stream, JSON, and local visual view use the same operator concepts as Chase.</td><td>Which transport keeps frontend code local while exposing only bounded data from the Pi.</td></tr>
+            <tr><td>Acceptance operation</td><td>A repeatable absent/left/center/right object check with inspectable artifacts and zero movement.</td><td>Which existing floor-boundary outputs are stable enough to score without implying semantic accuracy.</td></tr>
+            <tr><td>Resource evidence</td><td>Measured cadence, latency, result age, CPU, and memory on Pi 4 over a sustained run.</td><td>The practical cadence the lightweight observer can maintain without starving camera or control work.</td></tr>
+            <tr><td>Closeout</td><td>Physical interpretation is visibly proven and milestone 005 can trust the observation input path.</td><td>Live Pi evidence from the deployed release, not local replay or mocks.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Runtime Boundary</h2>
+      <pre>Pi camera
+  -> bounded perception cadence       always available in manual mode
+  -> PerceptionText                   current evidence only
+  -> latest frame/result publisher    one detached in-memory snapshot
+  -> Automa stream and local view     human and machine inspection
+
+Decision and action remain separate:
+  PerceptionText -> Observation -> idle decision -> zero control
+  Donkey DriveMode keeps manual input authoritative</pre>
+      <div class="table-wrap" style="margin-top: 14px;">
+        <table>
+          <thead><tr><th>Concern</th><th>Required Contract</th><th>Rejected Shortcut</th></tr></thead>
+          <tbody>
+            <tr><td>Movement authority</td><td>Perception runs while Donkey mode remains <code>user</code>; action output remains zero and is not applied.</td><td>Switching to autonomy mode just to make perception execute.</td></tr>
+            <tr><td>Frame identity</td><td>Each result names one monotonic frame ID, capture time, completion time, and corresponding retained image.</td><td>Overlaying findings on whatever camera frame happens to be newest.</td></tr>
+            <tr><td>Boundedness</td><td>Retain only the latest inspectable snapshot and bounded health counters in memory.</td><td>Hidden frame queues, default recordings, or accumulating result history.</td></tr>
+            <tr><td>Freshness</td><td>Terminal and browser output expose result age, frame lag, cadence, and stale/unavailable state.</td><td>Presenting old findings as current after processing or network failure.</td></tr>
+            <tr><td>Meaning</td><td>Render plugin-declared generic evidence, coordinate frame, confidence, assumptions, and limitations.</td><td>Relabeling a floor boundary as a known object.</td></tr>
+            <tr><td>Frontend ownership</td><td>The Pi publishes bounded data; Automa owns local terminal and browser presentation.</td><td>Adding a second application frontend to the physical deployment.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Physical Acceptance Matrix</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Placement</th><th>Expected Current Evidence</th><th>Visual Check</th><th>Not Claimed</th></tr></thead>
+          <tbody>
+            <tr><td>Clear floor</td><td><code>floor_visible=true</code>; no strong central floor boundary.</td><td>Floor mask broadly follows the visible carpet or floor region.</td><td>That all visible floor is safely traversable.</td></tr>
+            <tr><td>Object left</td><td>At least one generic <code>floor_boundary</code> has an image-space left zone and overlaps the visible object-floor transition.</td><td>Overlay lies on the same processed frame and left side.</td><td>Object class, metric distance, or persistent identity.</td></tr>
+            <tr><td>Object center</td><td>A generic boundary occupies the center zone with nonzero confidence.</td><td>Overlay follows the central obstruction rather than an unrelated stale frame.</td><td>Collision geometry or a guaranteed blocked path.</td></tr>
+            <tr><td>Object right</td><td>At least one generic boundary moves to an image-space right zone.</td><td>Finding and overlay move with the physical placement.</td><td>That left, center, and right detections are one semantic object.</td></tr>
+            <tr><td>Object removed</td><td>Current object-associated boundary evidence clears or becomes explicitly unsupported within two published results.</td><td>View does not preserve the old region as if it were current.</td><td>Temporal memory or occlusion reasoning.</td></tr>
+            <tr><td>Camera unavailable</td><td>Perception reports unavailable or stale with age; no fresh thing is emitted.</td><td>Last image is marked stale or withheld rather than silently reused.</td><td>Automatic recovery beyond current runtime lifecycle.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Work Plan</h2>
+      <div class="filters" aria-label="Filter work packages">
+        <button type="button" data-filter="all" aria-pressed="true">All</button>
+        <button type="button" data-filter="active" aria-pressed="false">Active</button>
+        <button type="button" data-filter="pending" aria-pressed="false">Pending</button>
+        <button type="button" data-filter="done" aria-pressed="false">Done</button>
+      </div>
+
+      <details class="work-item" data-status="pending" open>
+        <summary><span>1. Separate Observation From Movement Authority</span><span class="status pending">Pending</span></summary>
+        <div class="work-body"><ul>
+          <li>Run the selected perception mapper while Donkey drive mode remains manual.</li>
+          <li>Use a bounded configurable cadence and newest-frame policy so perception cannot backlog or starve the control loop.</li>
+          <li>Keep one shared mapper and decision-cycle input shape rather than adding a physical-only algorithm path.</li>
+          <li>Assert zero autonomy control and unchanged manual authority under success, delay, and failure.</li>
+        </ul></div>
+      </details>
+
+      <details class="work-item" data-status="pending">
+        <summary><span>2. Publish One Exact Latest Snapshot</span><span class="status pending">Pending</span></summary>
+        <div class="work-body"><ul>
+          <li>Detach and retain the exact processed frame with its <code>PerceptionText</code>, frame ID, timestamps, durations, and algorithm identity.</li>
+          <li>Expose bounded read-only physical status/data endpoints with explicit absent, warming, stale, and error states.</li>
+          <li>Keep frame/result history and disk output disabled by default.</li>
+          <li>Test concurrent reads and updates so frame/result mismatches cannot pass silently.</li>
+        </ul></div>
+      </details>
+
+      <details class="work-item" data-status="pending">
+        <summary><span>3. Add Physical Automa Inspection</span><span class="status pending">Pending</span></summary>
+        <div class="work-body"><ul>
+          <li>Teach perception info and stream commands to resolve a physical latest-snapshot provider.</li>
+          <li>Keep default terminal output replacing, concise, and explicit about freshness; provide complete structured JSON on request.</li>
+          <li>Reuse the local perception page for frame-matched physical overlays, labels, and layer toggles.</li>
+          <li>Report connection and startup failures rather than returning an empty or simulator-only view.</li>
+        </ul></div>
+      </details>
+
+      <details class="work-item" data-status="pending">
+        <summary><span>4. Make The Physical Check Repeatable</span><span class="status pending">Pending</span></summary>
+        <div class="work-body"><ul>
+          <li>Add a guided bounded perception check that collects onboard results for clear, left, center, right, removed, and unavailable states.</li>
+          <li>Generate a review page with raw frames, overlays, structured findings, control state, timing, and configuration.</li>
+          <li>Keep human placement instructions simple and never command movement during the check.</li>
+          <li>Score only declared generic boundary behavior and frame consistency, not semantic object accuracy.</li>
+        </ul></div>
+      </details>
+
+      <details class="work-item" data-status="pending">
+        <summary><span>5. Measure Physical Viability</span><span class="status pending">Pending</span></summary>
+        <div class="work-body"><ul>
+          <li>Run the deployed lightweight observer for at least 60 seconds at its declared default physical cadence.</li>
+          <li>Record processed cadence, p50/p95 latency, result age, dropped-frame policy, process RSS, and relevant CPU load.</li>
+          <li>Require at least two fresh published results per second and p95 result age at or below one second for the default operator view.</li>
+          <li>Verify bounded memory, no default artifacts, and continued camera/control responsiveness.</li>
+        </ul></div>
+      </details>
+
+      <details class="work-item" data-status="pending">
+        <summary><span>6. Consolidate Evidence And Activate Memory Work</span><span class="status pending">Pending</span></summary>
+        <div class="work-body"><ul>
+          <li>Record what physical perception meaning was demonstrated, where it failed, and its measured cost.</li>
+          <li>Update durable runtime references to the proven manual-observation and publication flow.</li>
+          <li>Close this milestone only with a live Pi artifact and read-only safety evidence from the deployed release.</li>
+          <li>Promote milestone 005 only after its physical observation prerequisite is satisfied.</li>
+        </ul></div>
+      </details>
+
+      <div class="progress-track" aria-label="Milestone work packages completed: 0 of 6"><div class="progress-fill"></div></div>
+      <p class="small">Progress: 0 of 6 implementation packages complete. The planning transition is current; the always-on observation boundary is the first implementation review unit.</p>
+    </section>
+
+    <section class="panel">
+      <h2>Scope Boundaries</h2>
+      <div class="grid two">
+        <div class="card constraint">
+          <h3>In Scope</h3>
+          <ul>
+            <li>Always-on bounded perception while physical drive mode remains manual.</li>
+            <li>Exact latest frame/result publication from the Pi.</li>
+            <li>Physical terminal stream, JSON inspection, and local visual overlay through Automa.</li>
+            <li>Generic floor and boundary evidence from packaged stable plugins.</li>
+            <li>Repeatable stationary physical acceptance and Pi resource measurements.</li>
+            <li>Explicit unavailable, stale, and processing failure behavior.</li>
+          </ul>
+        </div>
+        <div class="card risk">
+          <h3>Out Of Scope</h3>
+          <ul>
+            <li>Semantic object names, identity, classification, or VLM use.</li>
+            <li>FastSAM or other lab candidate deployment to the Pi.</li>
+            <li>Decision memory, pattern inference, projections, or world models.</li>
+            <li>Autonomous mode, steering, throttle, navigation, or collision avoidance.</li>
+            <li>Metric distance, calibration, SLAM, or floor-plan construction.</li>
+            <li>Default recording, remote frontend hosting, or historical perception storage.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Risks And Controls</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Risk</th><th>Control</th></tr></thead>
+          <tbody>
+            <tr><td>Always-on CV starves the Donkey loop.</td><td>Use an independent bounded cadence, newest-frame consumption, timing metrics, and a no-backlog rule.</td></tr>
+            <tr><td>Observation accidentally gains movement authority.</td><td>Keep Donkey mode manual, engine idle, final control zero, and assert all three in physical acceptance.</td></tr>
+            <tr><td>Overlay and findings come from different frames.</td><td>Publish them as one immutable latest snapshot and expose source/result IDs and capture times.</td></tr>
+            <tr><td>A frozen result looks live after failure.</td><td>Compute age at read time and display stale or unavailable state prominently in terminal and browser output.</td></tr>
+            <tr><td>The milestone becomes another algorithm comparison.</td><td>Use the packaged lightweight observer and score only its declared generic outputs; keep candidates and semantic quality out of scope.</td></tr>
+            <tr><td>Pi status payload becomes large or unbounded.</td><td>Separate concise health from bounded latest data and retain no history by default.</td></tr>
+            <tr><td>Physical-only code duplicates Chase presentation.</td><td>Adapt transport at the vehicle boundary and reuse stable snapshot/rendering contracts and local view code.</td></tr>
+            <tr><td>Transient network success is mistaken for proof.</td><td>Require sustained cadence, explicit freshness, a recorded acceptance artifact, and deployed release identity.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Exit Criteria</h2>
+      <ol>
+        <li>The deployed Pi runs the selected perception mapper at a bounded cadence while Donkey drive mode remains <code>user</code>.</li>
+        <li>Perception execution and failure cannot change movement authority; physical validation reports zero autonomy steering and throttle throughout.</li>
+        <li>The Pi publishes one bounded latest snapshot containing the exact processed frame, complete detached <code>PerceptionText</code>, frame ID, timestamps, algorithm, timing, and health.</li>
+        <li>Publication distinguishes absent, warming, healthy, stale, unavailable, and error state without silently reusing old evidence.</li>
+        <li><code>vehicles info perception --id piracer</code> reports live physical state and a usable local view URL.</li>
+        <li><code>vehicles stream perception --id piracer</code> presents replacing human output and complete machine JSON from the onboard result.</li>
+        <li>The browser view overlays only frame-matched image-space findings and exposes frame lag, result age, labels, regions, and layer toggles.</li>
+        <li>The bounded physical check demonstrates clear, left, center, right, removed, and unavailable states with findings that match the declared floor-boundary contract.</li>
+        <li>A 60-second Pi run publishes at least two fresh results per second with p95 result age no greater than one second, bounded RSS, and measured latency/CPU evidence.</li>
+        <li>Default operation writes no frames, findings, or logs; explicit recording produces one bounded inspectable run.</li>
+        <li>Chase retains the same stable perception output and presentation concepts without receiving physical-only assumptions.</li>
+        <li>Closeout records residual physical limitations and activates milestone 005 only after the live Pi evidence is accepted.</li>
+      </ol>
+    </section>
+
+    <section class="panel">
+      <h2>Decision Log</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Date</th><th>Decision</th><th>Reason</th></tr></thead>
+          <tbody>
+            <tr><td>2026-07-16</td><td>Insert Physical Perception Parity as milestone 004 and defer Evidence Memory Foundation to milestone 005.</td><td>Physical deployment proves compatible code and activation, but not manual-mode execution or frame-matched operator-visible findings. Memory must not retain an input path that has not been demonstrated end to end.</td></tr>
+            <tr><td>2026-07-16</td><td>Run physical perception independently from movement authority.</td><td>Observation is useful in manual and autonomous modes; requiring pilot mode to perceive creates unnecessary safety risk and hides physical behavior during development.</td></tr>
+            <tr><td>2026-07-16</td><td>Use packaged lightweight floor-boundary evidence for acceptance.</td><td>The milestone tests integration and visibility, not which perception algorithm is best. Generic declared output is sufficient to prove the path.</td></tr>
+            <tr><td>2026-07-16</td><td>Keep presentation local and publish only bounded data from the Pi.</td><td>Automa already owns operator workflows and the local perception view; adding another deployed frontend would create redundant ownership.</td></tr>
+            <tr><td>2026-07-16</td><td>Require exact frame/result pairing.</td><td>A plausible overlay on a newer frame is not evidence that the physical interpretation was correct and would contaminate later memory validation.</td></tr>
+            <tr><td>2026-07-16</td><td>Keep physical validation stationary.</td><td>Perception parity can be proven without movement, reducing safety risk and keeping failures attributable to camera, processing, publication, or presentation.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const workItems = [...document.querySelectorAll('.work-item')];
+    const filterButtons = [...document.querySelectorAll('[data-filter]')];
+
+    function applyFilter(status) {
+      workItems.forEach((item) => {
+        item.hidden = status !== 'all' && item.dataset.status !== status;
+      });
+      filterButtons.forEach((button) => {
+        button.setAttribute('aria-pressed', String(button.dataset.filter === status));
+      });
+    }
+
+    filterButtons.forEach((button) => {
+      button.addEventListener('click', () => applyFilter(button.dataset.filter));
+    });
+  </script>
+</body>
+</html>

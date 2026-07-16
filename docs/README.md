@@ -6,10 +6,14 @@ Read this file first when starting work.
 
 ## Active Work
 
-Milestone 004, [Evidence Memory Foundation](milestones/004-evidence-memory-foundation/plan.html),
-is active. It defines bounded, inspectable memory from decision observations,
-wires the same lifecycle through simulator and physical hosts, and keeps action
-idle while memory semantics and operator workflows are validated.
+Milestone 004, [Physical Perception Parity](milestones/004-physical-perception-parity/plan.html),
+is active. It must prove that the PiRacer runs perception while movement remains
+manual and publishes frame-matched findings through the same operator concepts
+used for Chase.
+
+Milestone 005, [Evidence Memory Foundation](milestones/005-evidence-memory-foundation/plan.html),
+is queued behind that physical proof. Memory implementation must not begin until
+the onboard observation path is visibly demonstrated and measured.
 
 ## Reading Order
 

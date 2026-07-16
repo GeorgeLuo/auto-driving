@@ -100,7 +100,7 @@ The command groups intentionally distinguish different kinds of state:
 | `vehicles info ...` | Reads staged perception or decision configuration; perception info also reports the live view URL. |
 | `vehicles perception ...` | Runs perception experiments and manages production or lab plugins. |
 | `vehicles automation ...` | Runs or inspects the local Chase controller worker. |
-| `vehicles stream perception` | Displays the worker's rolling latest perception output. |
+| `vehicles stream perception` | Displays the local Chase worker's rolling latest perception output. Physical streaming is milestone 004 work. |
 | `vehicles update core` | Deploys DonkeyCar framework and physical harness code to the Pi. |
 | `vehicles update autonomy` | Deploys a versioned autonomy release and activation metadata to the Pi. |
 | `vehicles operation ...` | Runs a bounded, explicitly requested vehicle operation. |
@@ -229,6 +229,10 @@ plugins that do not emit outlines.
 No captures or reports are retained by default. Add `--record` when overlays,
 per-frame JSON, and the generated review page are wanted.
 
+For a physical vehicle, `vehicles perception run --id piracer` currently fetches
+Pi camera frames and processes them through a mapper on the development machine.
+It does not prove that the Pi executed or published the perception result.
+
 `lightweight_observer` is the production-oriented frame and floor-boundary
 chain. `visual_observer` adds feature-motion tracks and is intentionally much
 slower. Artifact-only VLM preprocessing remains an optional diagnostic plugin,
@@ -303,9 +307,11 @@ should become an active command source:
 
 The first physical autonomy deployment creates the default
 `lightweight_observer` perception activation and `idle` decision activation
-when none exist. The Pi loads both activations: the lightweight frame and floor
-boundary mapper runs before observation, while the idle decision engine keeps
-movement at zero.
+when none exist. The Pi loads both activations. The current Donkey assembly runs
+the mapper only under its `run_pilot` condition, so manual `user` mode proves
+activation but does not execute onboard perception. The idle decision engine
+keeps movement at zero when the pilot path runs. Milestone 004 tracks always-on
+manual observation and physical streaming explicitly.
 
 Decision changes are local until the next autonomy deployment:
 
@@ -383,8 +389,10 @@ and is prepared through `./cli/automa simulators ensure`.
   describes the physical Donkey server boundary.
 - [`docs/milestones/completed.md`](docs/milestones/completed.md) is the concise
   append-only history of closed work.
-- [`docs/milestones/004-evidence-memory-foundation/plan.html`](docs/milestones/004-evidence-memory-foundation/plan.html)
-  is the active evidence-memory milestone.
+- [`docs/milestones/004-physical-perception-parity/plan.html`](docs/milestones/004-physical-perception-parity/plan.html)
+  is the active physical-perception milestone.
+- [`docs/milestones/005-evidence-memory-foundation/plan.html`](docs/milestones/005-evidence-memory-foundation/plan.html)
+  is the queued evidence-memory milestone.
 
 Dependency direction is intentional:
 

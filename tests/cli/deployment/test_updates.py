@@ -4,8 +4,11 @@ import json
 import subprocess
 import tempfile
 import unittest
+from io import StringIO
 from pathlib import Path
+from unittest.mock import patch
 
+from cli.automa_cli.deploy import _resolve_physical_target
 from implementations.perception.catalog import DEFAULT_PERCEPTION_ALGORITHM
 from tests.support.cli_runner import run_automa
 
@@ -119,11 +122,24 @@ class DeploymentUpdateTests(unittest.TestCase):
             "deploy/targets/donkeycar/vendor/donkeycar",
         )
         self.assertEqual(payload["source"]["harness"], "deploy/targets/donkeycar/app")
+        self.assertEqual(payload["source"]["service"]["name"], "automa-donkey.service")
+        self.assertEqual(
+            payload["source"]["service"]["source"],
+            "deploy/targets/donkeycar/systemd",
+        )
+        self.assertTrue(payload["source"]["service"]["boot_enabled"])
+        self.assertIsNone(payload["runtime_readiness"])
         self.assertTrue(payload["restart_requested"])
-        self.assertEqual(payload["commands"][-1]["step"], "Restart Donkey drive server")
-        self.assertIn("PI_HOME=/home/piracer", payload["commands"][-1]["command"])
-        self.assertIn("DRIVE_ARGS=--js", payload["commands"][-1]["command"])
+        self.assertEqual(payload["commands"][-1]["step"], "Restart Donkey runtime service")
+        self.assertIn("systemd/control.sh", payload["commands"][-1]["command"])
+        self.assertIn("b64:LS1qcw==", payload["commands"][-1]["command"])
+        self.assertIn(
+            "Install and enable Donkey runtime service",
+            [entry["step"] for entry in payload["commands"]],
+        )
         self.assertIn("--exclude=autonomy", payload["commands"][2]["command"])
+        self.assertIn("automa-donkey.service", human.stdout)
+        self.assertIn("enabled at boot", human.stdout)
         self.assertIn("restart requested: yes", human.stdout)
 
     def test_autonomy_dry_run_has_matching_human_and_json_plan_without_side_effects(self) -> None:
@@ -147,7 +163,8 @@ class DeploymentUpdateTests(unittest.TestCase):
         )
         self.assertEqual(payload["activation"]["decision_engine"], "idle")
         self.assertTrue(payload["restart_requested"])
-        self.assertEqual(payload["commands"][-1]["step"], "Restart Donkey drive server")
+        self.assertEqual(payload["commands"][-1]["step"], "Restart Donkey runtime service")
+        self.assertIn("systemd/control.sh", payload["commands"][-1]["command"])
         self.assertIn("restart requested: yes", human.stdout)
 
     def test_restart_is_absent_from_both_plans_when_not_requested(self) -> None:
@@ -169,10 +186,62 @@ class DeploymentUpdateTests(unittest.TestCase):
 
                 self.assertFalse(payload["restart_requested"])
                 self.assertNotIn(
-                    "Restart Donkey drive server",
+                    "Restart Donkey runtime service",
                     [entry["step"] for entry in payload["commands"]],
                 )
                 self.assertIn("restart requested: no", human.stdout)
+
+    def test_drive_arguments_require_an_explicit_restart(self) -> None:
+        for component in ("core", "autonomy"):
+            with self.subTest(component=component), tempfile.TemporaryDirectory() as tmp:
+                result = run_automa(
+                    "vehicles",
+                    "update",
+                    component,
+                    "--id",
+                    "piracer",
+                    "--skip-discovery",
+                    "--ssh-target",
+                    "piracer@example.local",
+                    "--dry-run",
+                    "--drive-args=--js",
+                    runtime_root=Path(tmp) / "runtime",
+                    extra_env={"PATH": ""},
+                    check=False,
+                )
+
+                self.assertEqual(result.returncode, 2)
+                self.assertIn("--drive-args requires --restart", result.stdout)
+                self.assertEqual(result.stderr, "")
+
+    def test_core_can_bootstrap_the_configured_picar_when_http_is_down(self) -> None:
+        output = StringIO()
+        with patch(
+            "cli.automa_cli.deploy.discover_active_vehicles",
+            return_value={"vehicles": []},
+        ) as discover:
+            target, error = _resolve_physical_target(
+                vehicle_id="piracer",
+                timeout_s=0.1,
+                ssh_target=None,
+                pi_home=None,
+                skip_discovery=False,
+                output=output,
+                operation="core deploy",
+                allow_offline_default=True,
+            )
+
+        self.assertIsNone(error)
+        self.assertIsNotNone(target)
+        assert target is not None
+        self.assertEqual(target.ssh_target, "piracer@piracer.local")
+        discover.assert_called_once_with(
+            timeout_s=0.1,
+            include_picar=True,
+            include_chase_sim=False,
+        )
+        self.assertIn("HTTP readiness is unavailable", output.getvalue())
+        self.assertIn("SSH will determine deploy reachability", output.getvalue())
 
 
 if __name__ == "__main__":

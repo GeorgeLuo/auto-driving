@@ -170,7 +170,7 @@
         physical evidence.
       </p>
       <div class="meta">
-        <span class="pill">Status: active - planning</span>
+        <span class="pill">Status: active - implementation</span>
         <span class="pill">Started: 2026-07-16</span>
         <span class="pill">Drive mode: manual</span>
         <span class="pill">Action output: zero</span>
@@ -213,15 +213,16 @@
       <div class="grid two">
         <div class="card interface">
           <h3>Deploy And Verify Physical Perception</h3>
-          <p><strong>Starting state:</strong> the PiRacer is powered, reachable, and running the Donkey server.</p>
+          <p><strong>Starting state:</strong> the prepared PiRacer is powered and joining the local network; no separate server-start command is required.</p>
           <p><strong>Proposed execution:</strong></p>
-          <pre>./cli/automa vehicles active
+          <pre>./cli/automa vehicles update core --id piracer
+./cli/automa vehicles active
 ./cli/automa vehicles update perception \
   --id piracer --algorithm lightweight_observer
 ./cli/automa vehicles update autonomy \
   --id piracer --restart
 ./cli/automa vehicles info perception --id piracer</pre>
-          <p><strong>Success signal:</strong> output names the deployed release and mapper, reports live frame progress rather than only activation, and confirms manual drive mode.</p>
+          <p><strong>Success signal:</strong> core update confirms the boot-enabled service and HTTP readiness, then output names the deployed release and mapper, reports live frame progress rather than only activation, and confirms manual drive mode.</p>
         </div>
         <div class="card goal">
           <h3>Stream Current Physical Findings</h3>
@@ -257,6 +258,7 @@
           <thead><tr><th>Area</th><th>Observed State</th><th>Gap</th></tr></thead>
           <tbody>
             <tr><td>Camera</td><td>The Donkey server provides current JPEG, MJPEG, and high-resolution still endpoints from the physical camera.</td><td>Raw camera visibility does not prove that onboard perception interpreted the frame.</td></tr>
+            <tr><td>Runtime lifecycle</td><td>Core deployment previously started the Donkey process only through an optional <code>nohup</code> launcher.</td><td>Pi power and network availability did not imply that the HTTP runtime was supervised, listening, or ready after reboot.</td></tr>
             <tr><td>Shared mapper</td><td>Physical deployment packages the same stable perception contracts and implementations used by the local Chase controller.</td><td>Compatible code and activation metadata establish interface parity, not live behavioral parity.</td></tr>
             <tr><td>Onboard execution</td><td><code>AutonomyPilotPart</code> receives <code>cam/image_array</code> and runs the shared decision cycle.</td><td>The part is gated by Donkey <code>run_pilot</code>; manual <code>user</code> mode therefore prevents onboard perception from running.</td></tr>
             <tr><td>Publication</td><td><code>/autonomy/status</code> can report mapper identity, last status, duration, frame index, thing count, and plugin run summaries.</td><td>It does not publish the complete latest findings or the exact frame needed to inspect their geometry.</td></tr>
@@ -286,16 +288,16 @@
       </details>
       <div class="grid two" style="margin-top: 14px;">
         <div class="card goal">
-          <h3>Current PR: Reorder The Milestone Gate</h3>
-          <p><span class="status active">Implemented - ready for review</span> <strong>Review shape:</strong> broad documentation, shallow behavior.</p>
-          <p><strong>Deliverable:</strong> make physical perception parity milestone 004, defer Evidence Memory Foundation to milestone 005, and define executable usage, evidence, scope, and stopping conditions.</p>
-          <p><strong>Review question:</strong> Does this plan require end-to-end physical interpretation without turning into semantic perception research or movement work?</p>
-          <p><strong>Create:</strong> this milestone plan. <strong>Move:</strong> Evidence Memory Foundation to milestone 005. <strong>Modify:</strong> root and documentation entrypoints plus current-behavior wording. <strong>Remove:</strong> none.</p>
-          <p><strong>Non-goals:</strong> runtime code, endpoints, CLI behavior, deployment, movement, or physical claims.</p>
-          <p><strong>Validation:</strong> the canonical suite passes 144 tests with two named live skips; focused planning tests, generated Markdown checks, local-link and HTML parsing, and diff hygiene pass.</p>
+          <h3>Current PR: Power-On Runtime Readiness</h3>
+          <p><span class="status active">Implemented - ready for review</span> <strong>Review shape:</strong> deep and narrow physical infrastructure.</p>
+          <p><strong>Deliverable:</strong> install one supervised boot-enabled Donkey runtime, persist explicit drive arguments, wait for manual-mode HTTP readiness, and distinguish listener failures in vehicle discovery.</p>
+          <p><strong>Review question:</strong> After one core deploy, does powering the Pi reliably converge to a healthy manual-mode server without retaining a second launcher?</p>
+          <p><strong>Create:</strong> target-owned service, installer, control, launcher, and focused service tests. <strong>Modify:</strong> core/autonomy deploy orchestration, discovery diagnostics, CLI help, and physical deployment docs. <strong>Remove:</strong> the <code>nohup</code>/PID-file restart script.</p>
+          <p><strong>Non-goals:</strong> perception cadence, latest-snapshot publication, movement, plugin changes, or remote frontend work.</p>
+          <p><strong>Validation:</strong> 153 canonical tests were discovered; 151 passed and two expected live tests skipped. The focused read-only Pi smoke also passed. Live core deployment recovered from a closed port, removed legacy runtime artifacts, and passed a no-extra-command reboot-to-readiness check. <a href="evidence/boot-readiness.json">Physical boot-readiness evidence</a>.</p>
         </div>
         <div class="card interface">
-          <h3>Next After Review: Always-On Observation Boundary</h3>
+          <h3>Next: Always-On Observation Boundary</h3>
           <p><span class="status pending">Queued, not started</span> <strong>Expected shape:</strong> deep and narrow.</p>
           <p><strong>Expected deliverable:</strong> separate physical perception execution from movement authority, run it at a bounded cadence in manual mode, and retain one detached latest frame/result snapshot in memory.</p>
           <p><strong>Review question:</strong> Can the Pi continuously observe while manual mode remains authoritative, without slowing the Donkey control loop or creating a second perception pipeline?</p>
@@ -308,6 +310,7 @@
           <thead><tr><th>Preparation Horizon</th><th>Known End-State Need</th><th>Must Be Learned First</th></tr></thead>
           <tbody>
             <tr><td>Observation boundary</td><td>Manual-mode perception at a bounded cadence, independent of action application.</td><td>Whether one always-running cycle part or separated perception/action parts best preserves Donkey loop behavior.</td></tr>
+            <tr><td>Boot readiness</td><td>Pi power converges to an enabled, supervised, manual-mode Donkey HTTP runtime.</td><td>Whether the deployed unit survives a real reboot and reports failures without relying on a stale PID.</td></tr>
             <tr><td>Latest publication</td><td>One complete, bounded frame/result snapshot with health and stale state.</td><td>How to retain the processed image without copying unbounded arrays or racing the next camera frame.</td></tr>
             <tr><td>Physical CLI adapter</td><td><code>info</code>, terminal stream, JSON, and local visual view use the same operator concepts as Chase.</td><td>Which transport keeps frontend code local while exposing only bounded data from the Pi.</td></tr>
             <tr><td>Acceptance operation</td><td>A repeatable absent/left/center/right object check with inspectable artifacts and zero movement.</td><td>Which existing floor-boundary outputs are stable enough to score without implying semantic accuracy.</td></tr>
@@ -370,6 +373,17 @@ Decision and action remain separate:
         <button type="button" data-filter="done" aria-pressed="false">Done</button>
       </div>
 
+      <details class="work-item" data-status="done" open>
+        <summary><span>0. Make Power-On Mean Runtime Ready</span><span class="status done">Done</span></summary>
+        <div class="work-body"><ul>
+          <li>Install one systemd-owned Donkey runtime during core deployment and enable it at Pi boot.</li>
+          <li>Keep manual <code>user</code> mode as the readiness requirement and issue no movement command during install or health checks.</li>
+          <li>Persist only explicitly selected drive arguments, supervise unexpected exits, and use bounded system journal output instead of project PID/log files.</li>
+          <li>Make core deployment recover from an unavailable HTTP runtime through the configured SSH target and report listener versus HTTP failures clearly.</li>
+          <li>Prove enabled, active, read-only HTTP readiness before and after a physical reboot.</li>
+        </ul></div>
+      </details>
+
       <details class="work-item" data-status="pending" open>
         <summary><span>1. Separate Observation From Movement Authority</span><span class="status pending">Pending</span></summary>
         <div class="work-body"><ul>
@@ -430,8 +444,8 @@ Decision and action remain separate:
         </ul></div>
       </details>
 
-      <div class="progress-track" aria-label="Milestone work packages completed: 0 of 6"><div class="progress-fill"></div></div>
-      <p class="small">Progress: 0 of 6 implementation packages complete. The planning transition is current; the always-on observation boundary is the first implementation review unit.</p>
+      <div class="progress-track" aria-label="Milestone work packages completed: 1 of 7"><div class="progress-fill" style="width: 14.29%;"></div></div>
+      <p class="small">Progress: 1 of 7 implementation packages complete. Boot readiness is physically proven; the always-on observation boundary is next.</p>
     </section>
 
     <section class="panel">
@@ -441,6 +455,7 @@ Decision and action remain separate:
           <h3>In Scope</h3>
           <ul>
             <li>Always-on bounded perception while physical drive mode remains manual.</li>
+            <li>Supervised boot-to-readiness behavior for the physical Donkey runtime.</li>
             <li>Exact latest frame/result publication from the Pi.</li>
             <li>Physical terminal stream, JSON inspection, and local visual overlay through Automa.</li>
             <li>Generic floor and boundary evidence from packaged stable plugins.</li>
@@ -476,6 +491,7 @@ Decision and action remain separate:
             <tr><td>Pi status payload becomes large or unbounded.</td><td>Separate concise health from bounded latest data and retain no history by default.</td></tr>
             <tr><td>Physical-only code duplicates Chase presentation.</td><td>Adapt transport at the vehicle boundary and reuse stable snapshot/rendering contracts and local view code.</td></tr>
             <tr><td>Transient network success is mistaken for proof.</td><td>Require sustained cadence, explicit freshness, a recorded acceptance artifact, and deployed release identity.</td></tr>
+            <tr><td>Pi power is mistaken for application readiness.</td><td>Enable one supervised boot service, wait for the read-only manual-mode endpoint, and report TCP-listener and HTTP readiness separately.</td></tr>
           </tbody>
         </table>
       </div>
@@ -484,6 +500,7 @@ Decision and action remain separate:
     <section class="panel">
       <h2>Exit Criteria</h2>
       <ol>
+        <li>After one core deployment, Pi boot automatically starts <code>automa-donkey.service</code>, supervises process exit, and reaches read-only <code>/autonomy/status</code> readiness in manual <code>user</code> mode without another command.</li>
         <li>The deployed Pi runs the selected perception mapper at a bounded cadence while Donkey drive mode remains <code>user</code>.</li>
         <li>Perception execution and failure cannot change movement authority; physical validation reports zero autonomy steering and throttle throughout.</li>
         <li>The Pi publishes one bounded latest snapshot containing the exact processed frame, complete detached <code>PerceptionText</code>, frame ID, timestamps, algorithm, timing, and health.</li>
@@ -493,7 +510,7 @@ Decision and action remain separate:
         <li>The browser view overlays only frame-matched image-space findings and exposes frame lag, result age, labels, regions, and layer toggles.</li>
         <li>The bounded physical check demonstrates clear, left, center, right, removed, and unavailable states with findings that match the declared floor-boundary contract.</li>
         <li>A 60-second Pi run publishes at least two fresh results per second with p95 result age no greater than one second, bounded RSS, and measured latency/CPU evidence.</li>
-        <li>Default operation writes no frames, findings, or logs; explicit recording produces one bounded inspectable run.</li>
+        <li>Default perception operation writes no frames, findings, or project-local logs; explicit recording produces one bounded inspectable run, while service diagnostics remain in the system-managed journal.</li>
         <li>Chase retains the same stable perception output and presentation concepts without receiving physical-only assumptions.</li>
         <li>Closeout records residual physical limitations and activates milestone 005 only after the live Pi evidence is accepted.</li>
       </ol>
@@ -505,6 +522,7 @@ Decision and action remain separate:
         <table>
           <thead><tr><th>Date</th><th>Decision</th><th>Reason</th></tr></thead>
           <tbody>
+            <tr><td>2026-07-16</td><td>Make core deployment own a single boot-enabled Donkey runtime service.</td><td>Physical development cannot treat “Pi powered” as a useful starting state while HTTP startup is optional, unsupervised, and represented by stale PID/log files.</td></tr>
             <tr><td>2026-07-16</td><td>Insert Physical Perception Parity as milestone 004 and defer Evidence Memory Foundation to milestone 005.</td><td>Physical deployment proves compatible code and activation, but not manual-mode execution or frame-matched operator-visible findings. Memory must not retain an input path that has not been demonstrated end to end.</td></tr>
             <tr><td>2026-07-16</td><td>Run physical perception independently from movement authority.</td><td>Observation is useful in manual and autonomous modes; requiring pilot mode to perceive creates unnecessary safety risk and hides physical behavior during development.</td></tr>
             <tr><td>2026-07-16</td><td>Use packaged lightweight floor-boundary evidence for acceptance.</td><td>The milestone tests integration and visibility, not which perception algorithm is best. Generic declared output is sufficient to prove the path.</td></tr>

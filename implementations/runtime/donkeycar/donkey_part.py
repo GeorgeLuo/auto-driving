@@ -96,28 +96,43 @@ class AutonomyPilotPart:
         self._skips_since_previous = 0
         self._last_run_monotonic: float | None = None
         self.latest_snapshot: LatestObservationSnapshot | None = None
-        self.last_status: dict[str, Any] = self.status()
         self._last_pilot_steering = 0.0
         self._last_pilot_throttle = 0.0
         self._last_control = AutonomyControl(reason="observation-warming").to_dict()
-        self._last_engine = self.host.status().get("engine", {}).get("engine")
+        manager = getattr(self.host, "manager", None)
+        self._last_engine = getattr(manager, "engine_spec", None)
+
         self._last_cycle: dict[str, Any] | None = None
+        self.last_status: dict[str, Any] = self.status()
+
+    def observation_status(self) -> dict[str, Any]:
+        """Bounded observation counters for AutonomyManager status providers.
+
+        Must not call back into ``AutonomyManager.status`` or
+        ``AutonomyCycleHost.status``; those re-enter registered providers and
+        hang the Donkey HTTP status path.
+        """
+        return {
+            "min_interval_s": self.min_interval_s,
+            "processed_count": self.processed_count,
+            "skipped_count": self.skipped_count,
+            "latest": (
+                None
+                if self.latest_snapshot is None
+                else self.latest_snapshot.to_status_dict()
+            ),
+        }
 
     def status(self) -> dict[str, Any]:
-        host_status = self.host.status()
+        manager = getattr(self.host, "manager", None)
         return {
-            "engine": host_status.get("engine"),
-            "last_cycle": host_status.get("last_cycle"),
-            "observation": {
-                "min_interval_s": self.min_interval_s,
-                "processed_count": self.processed_count,
-                "skipped_count": self.skipped_count,
-                "latest": (
-                    None
-                    if self.latest_snapshot is None
-                    else self.latest_snapshot.to_status_dict()
-                ),
-            },
+            "engine": getattr(manager, "engine_spec", self._last_engine),
+            "observation": self.observation_status(),
+            "latest_cycle_schema": (
+                None
+                if self._last_cycle is None
+                else self._last_cycle.get("schema")
+            ),
         }
 
     def run(
@@ -193,7 +208,16 @@ class AutonomyPilotPart:
         self._last_pilot_steering = pilot_steering
         self._last_pilot_throttle = pilot_throttle
         self._last_control = control.to_dict()
-        self._last_engine = self.host.status().get("engine", {}).get("engine")
+        manager = getattr(self.host, "manager", None)
+        self._last_engine = getattr(manager, "engine_spec", self._last_engine)
+        if self._last_engine is None:
+            host_status = getattr(self.host, "status", None)
+            if callable(host_status):
+                engine_info = host_status().get("engine")
+                if isinstance(engine_info, dict):
+                    self._last_engine = engine_info.get("engine")
+                elif isinstance(engine_info, str):
+                    self._last_engine = engine_info
         self._last_cycle = cycle_dict
         self.latest_snapshot = LatestObservationSnapshot(
             frame_id=frame_id,

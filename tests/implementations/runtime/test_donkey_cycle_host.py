@@ -211,19 +211,34 @@ class RuntimeCycleHostTests(unittest.TestCase):
         self.assertEqual(engine, "exploding-host")
         self.assertEqual(part.latest_snapshot.status, "error")
         self.assertIn("RuntimeError", part.latest_snapshot.error or "")
-        status = part.status()
-        self.assertEqual(status["observation"]["processed_count"], 1)
+        status = part.observation_status()
+        self.assertEqual(status["processed_count"], 1)
         self.assertEqual(
-            status["observation"]["latest"]["schema"],
+            status["latest"]["schema"],
             ONBOARD_OBSERVATION_SNAPSHOT_SCHEMA,
         )
 
     def test_status_omits_raw_image_payload(self) -> None:
         part = AutonomyPilotPart(host=AutonomyCycleHost(), min_interval_s=0.0)
         part.run(image_array=np.ones((2, 2, 3), dtype=np.uint8), mode="user")
-        latest = part.status()["observation"]["latest"]
+        latest = part.observation_status()["latest"]
         self.assertTrue(latest["has_image"])
         self.assertNotIn("image", latest)
+
+    def test_observation_status_provider_does_not_reenter_manager_status(self) -> None:
+        manager = AutonomyManager()
+        part = AutonomyPilotPart(
+            host=AutonomyCycleHost(manager=manager),
+            min_interval_s=0.0,
+        )
+        manager.register_status_provider("observation", part.observation_status)
+        part.run(image_array=np.zeros((2, 2, 3), dtype=np.uint8), mode="user")
+
+        status = manager.status()
+        observation = status["components"]["observation"]
+        self.assertEqual(observation["processed_count"], 1)
+        self.assertEqual(observation["latest"]["frame_id"], "donkey_frame_000000")
+        self.assertEqual(status["step_count"], 1)
 
     def test_manage_assembly_wires_always_on_observation(self) -> None:
         source = (

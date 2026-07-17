@@ -423,8 +423,8 @@
             <p><code>V.start(rate_hz=20)</code> calls each part in order.</p>
             <ul>
               <li><code>run_threaded()</code> publishes user controls.</li>
-              <li><code>AutonomyPilotPart</code> runs only when <code>run_pilot</code> is true.</li>
-              <li>The shared cycle receives the current camera and user state.</li>
+              <li><code>AutonomyPilotPart</code> is always present and rate-limits full cycles.</li>
+              <li>The shared cycle receives the newest camera frame and user state.</li>
             </ul>
           </div>
         </div>
@@ -559,7 +559,7 @@
             <p><code>manage.py</code> reads <code>runtime/decision/active.json</code> and applies the selected engine configuration.</p>
           </div>
           <div class="step">
-            <p><code>AutonomyPilotPart</code> is added to the Donkey loop under the <code>run_pilot</code> condition.</p>
+            <p><code>AutonomyPilotPart</code> is added to the Donkey loop without a <code>run_pilot</code> gate and observes at a bounded cadence.</p>
           </div>
           <div class="step">
             <p>The server starts in manual <code>user</code> mode, so loading an engine alone does not grant movement authority.</p>

@@ -463,7 +463,10 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
                     from autonomy.decision import DecisionStages
                     from autonomy.perception import ActivatedPerceptionStage, read_perception_activation
                     from autonomy.runtime.cycle_host import AutonomyCycleHost
-                    from implementations.runtime.donkeycar.donkey_part import AutonomyPilotPart
+                    from implementations.runtime.donkeycar.donkey_part import (
+                        DEFAULT_OBSERVATION_INTERVAL_S,
+                        AutonomyPilotPart,
+                    )
 
                     activation = read_decision_activation(activation_path)
                     apply_decision_activation(autonomy_manager, activation)
@@ -495,16 +498,31 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
                             "Onboard perception activation unavailable; expected %s",
                             perception_activation_path,
                         )
+                    # Always-on observation: run independently of run_pilot so
+                    # manual user mode still executes the shared cycle at a
+                    # bounded cadence. DriveMode remains movement authority.
+                    observation_interval_s = float(
+                        getattr(
+                            cfg,
+                            "AUTONOMY_OBSERVATION_INTERVAL_S",
+                            DEFAULT_OBSERVATION_INTERVAL_S,
+                        )
+                    )
+                    autonomy_part = AutonomyPilotPart(
+                        host=AutonomyCycleHost(manager=autonomy_manager, stages=stages),
+                        min_interval_s=observation_interval_s,
+                    )
+                    autonomy_manager.register_status_provider(
+                        "observation",
+                        lambda: autonomy_part.status().get("observation", {}),
+                    )
                     V.add(
-                        AutonomyPilotPart(
-                            host=AutonomyCycleHost(manager=autonomy_manager, stages=stages)
-                        ),
+                        autonomy_part,
                         inputs=['cam/image_array', 'user/mode', 'user/angle', 'user/throttle'],
                         outputs=[
                             'pilot/angle', 'pilot/throttle', 'autonomy/control',
                             'autonomy/engine', 'autonomy/cycle'
-                        ],
-                        run_condition='run_pilot')
+                        ])
                 except Exception:
                     logger.exception("Unable to activate autonomy bundle from %s", activation_path)
 

@@ -194,13 +194,28 @@ restarting the worker:
 ### Perception Experiments
 
 Observe five frames from a usable vehicle without taking movement control, or
-replay an existing image sequence through a production algorithm:
+apply an algorithm to one existing image or an image directory:
 
 ```sh
 ./cli/automa vehicles perception run
 ./cli/automa vehicles perception run --id piracer --algorithm lightweight_observer
-./cli/automa vehicles perception replay path/to/images --algorithm visual_observer
+./cli/automa vehicles perception apply path/to/frame.jpg --candidate floor_continuity
+./cli/automa vehicles perception apply path/to/images --algorithm visual_observer
 ```
+
+Candidate parameters come from the candidate manifest. Override one or more for
+a bounded experiment without editing that manifest; the effective configuration
+is retained in a recorded report:
+
+```sh
+./cli/automa vehicles perception apply path/to/images \
+  --candidate floor_continuity \
+  --set minimum_boundary_confidence=0.7 \
+  --record
+```
+
+`--set` is candidate-only, repeatable, and accepts JSON values. Invalid or
+unknown parameter names fail explicitly rather than being ignored.
 
 Experimental candidates are isolated under `lab/plugins/perception/`. Inspect
 their readiness, provision declared dependencies once, and compare every ready

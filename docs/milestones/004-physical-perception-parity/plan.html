@@ -207,7 +207,7 @@
       <h2>Completion Usage</h2>
       <p>
         These commands are the proposed public interface and are not all
-        implemented yet. Exact options may sharpen, but these four workflows and
+        implemented yet. Exact options may sharpen, but these five workflows and
         their success signals are stable milestone scope.
       </p>
       <div class="grid two">
@@ -247,6 +247,15 @@
   --id piracer --record</pre>
           <p><strong>Success signal:</strong> the command prompts for clear, left, center, right, and removed placements, waits for fresh onboard results, and builds a review pairing each finding with its frame. Boundary location follows placement, removal clears current evidence, and every captured control remains zero.</p>
         </div>
+        <div class="card interface">
+          <h3>Apply Perception To Saved Frames</h3>
+          <p><strong>Starting state:</strong> one image or capture directory is available locally; no vehicle or simulator needs to be online.</p>
+          <p><strong>Available execution:</strong></p>
+          <pre>./cli/automa vehicles perception apply path/to/images \
+  --candidate floor_continuity --record</pre>
+          <p><strong>Success signal:</strong> every source image passes through the same perception contract, the report identifies <code>source.kind=apply</code> and the effective candidate configuration, and <code>--record</code> produces a frame-matched review without commanding a vehicle.</p>
+          <p><a href="../../../README.md#perception-experiments">CLI usage</a> · <a href="../../../lab/plugins/perception/floor_continuity/README.md">candidate guide</a> · <a href="evidence/floor-continuity-archive-apply.json">50-frame physical evidence</a></p>
+        </div>
       </div>
       <p class="note">Normal streaming remains in memory and writes nothing. Only the explicit <code>--record</code> check retains frames and findings.</p>
     </section>
@@ -263,8 +272,9 @@
             <tr><td>Onboard execution</td><td><code>AutonomyPilotPart</code> receives <code>cam/image_array</code> and runs the shared decision cycle.</td><td>The part is gated by Donkey <code>run_pilot</code>; manual <code>user</code> mode therefore prevents onboard perception from running.</td></tr>
             <tr><td>Publication</td><td><code>/autonomy/status</code> can report mapper identity, last status, duration, frame index, thing count, and plugin run summaries.</td><td>It does not publish the complete latest findings or the exact frame needed to inspect their geometry.</td></tr>
             <tr><td>CLI streaming</td><td>Chase automation publishes a latest frame-and-data view and replacing terminal stream.</td><td>The local automation worker explicitly excludes physical providers, so <code>stream perception --id piracer</code> has no live physical source.</td></tr>
-            <tr><td>Physical experiments</td><td><code>vehicles perception run --id piracer</code> can fetch physical frames and process them through a local mapper.</td><td>This proves the algorithm can consume Pi images, but not that the Pi itself executed or published the result.</td></tr>
+            <tr><td>Physical experiments</td><td><code>vehicles perception run --id piracer</code> can fetch physical frames, while <code>vehicles perception apply IMAGE_OR_DIRECTORY</code> now handles a single archived image, a frame directory, or a recorded run. Candidate-only <code>--set NAME=VALUE</code> overrides are captured in recorded reports.</td><td>Local capture/application proves that an algorithm consumes Pi images, but not that the Pi executed or published the result.</td></tr>
             <tr><td>Current meaning</td><td><code>lightweight_observer</code> emits visible-floor estimates and generic first-hit non-floor boundary regions with normalized location and confidence.</td><td>No live physical artifact currently demonstrates that these findings follow an object in the camera view.</td></tr>
+            <tr><td>Strategy research</td><td>An <a href="../../synthesis/piracer-physical-perception-strategies.md">evaluating synthesis report</a> led to one stateless multi-cue <a href="../../../lab/plugins/perception/floor_continuity/README.md">floor-continuity candidate</a>. It has passed simulator application and <a href="evidence/floor-continuity-archive-apply.json">offline application over 50 archived Pi frames</a> through the existing contract.</td><td>The archive is unlabeled and processing was local. Promotion still requires common-frame labeled behavior and measured onboard Pi viability.</td></tr>
             <tr><td>Safety</td><td>Manual Donkey mode owns final control and the selected idle engine emits zero movement.</td><td>Always-on perception must preserve that authority boundary and must not require an autonomy mode switch merely to observe.</td></tr>
           </tbody>
         </table>
@@ -288,8 +298,8 @@
       </details>
       <div class="grid two" style="margin-top: 14px;">
         <div class="card goal">
-          <h3>Current PR: Power-On Runtime Readiness</h3>
-          <p><span class="status active">Implemented - ready for review</span> <strong>Review shape:</strong> deep and narrow physical infrastructure.</p>
+          <h3>Completed: Power-On Runtime Readiness</h3>
+          <p><span class="status done">Merged and physically verified</span> <strong>Review shape:</strong> deep and narrow physical infrastructure.</p>
           <p><strong>Deliverable:</strong> install one supervised boot-enabled Donkey runtime, persist explicit drive arguments, wait for manual-mode HTTP readiness, and distinguish listener failures in vehicle discovery.</p>
           <p><strong>Review question:</strong> After one core deploy, does powering the Pi reliably converge to a healthy manual-mode server without retaining a second launcher?</p>
           <p><strong>Create:</strong> target-owned service, installer, control, launcher, and focused service tests. <strong>Modify:</strong> core/autonomy deploy orchestration, discovery diagnostics, CLI help, and physical deployment docs. <strong>Remove:</strong> the <code>nohup</code>/PID-file restart script.</p>
@@ -304,6 +314,15 @@
           <p><strong>Proposed files:</strong> modify the Donkey assembly and runtime adapter; add focused runtime and deploy tests around cadence, frame identity, manual-mode execution, and zero controls.</p>
           <p><strong>Non-goals:</strong> HTTP publication, CLI streaming, browser view, recording, semantic accuracy, or memory-stage work.</p>
         </div>
+        <div class="card constraint">
+          <h3>Later: Qualify One Physical Strategy</h3>
+          <p><span class="status active">Archive prequalification complete; live qualification gated</span> <strong>Expected shape:</strong> one bounded lab candidate and a common-frame comparison.</p>
+          <p><strong>Expected deliverable:</strong> measure <code>floor-plane-v0</code> as the control, evaluate the stateless <code>floor-continuity-v1</code> hypothesis on the same frames, and either promote it through explicit gates or retain the baseline with rejection evidence.</p>
+          <p><strong>Review question:</strong> Does the candidate improve at least two material behavioral measures without scene-specific tuning, interface changes, stale state, or unacceptable Pi cost?</p>
+          <p><strong>Boundary:</strong> no changes under <code>autonomy/</code>; broad model comparison, learned-runtime packaging, temporal stabilization, and camera calibration remain deferred.</p>
+          <p><strong>Preliminary evidence:</strong> the current default completed five simulator frames and 50 archived Pi frames without failure. The six physical sets produced 190 regions with unrecorded desktop plugin medians of 37.263-65.531 ms. On one 11-frame run it emitted 41 regions versus the control's 67 and was materially faster locally, but unlabeled application cannot establish correctness or onboard cost. <a href="evidence/floor-continuity-archive-apply.json">Evidence summary</a> · <a href="evidence/floor-continuity/physical-11-frame-contact-sheet.jpg">physical overlay contact sheet</a> · <a href="evidence/floor-continuity/simulator-8-frame-contact-sheet.jpg">simulator overlay contact sheet</a>.</p>
+          <p class="note">The compact contact sheets are tracked review extracts from explicit <code>--record</code> runs. Complete generated run directories remain intentionally ignored.</p>
+        </div>
       </div>
       <div class="table-wrap" style="margin-top: 16px;">
         <table>
@@ -314,8 +333,9 @@
             <tr><td>Latest publication</td><td>One complete, bounded frame/result snapshot with health and stale state.</td><td>How to retain the processed image without copying unbounded arrays or racing the next camera frame.</td></tr>
             <tr><td>Physical CLI adapter</td><td><code>info</code>, terminal stream, JSON, and local visual view use the same operator concepts as Chase.</td><td>Which transport keeps frontend code local while exposing only bounded data from the Pi.</td></tr>
             <tr><td>Acceptance operation</td><td>A repeatable absent/left/center/right object check with inspectable artifacts and zero movement.</td><td>Which existing floor-boundary outputs are stable enough to score without implying semantic accuracy.</td></tr>
+            <tr><td>Strategy qualification</td><td>One stateless candidate is compared with the packaged control on identical labeled frames and either promoted or rejected explicitly.</td><td>Whether multi-cue bottom-connected floor continuity produces a material physical gain without per-scene tuning or new framework machinery.</td></tr>
             <tr><td>Resource evidence</td><td>Measured cadence, latency, result age, CPU, and memory on Pi 4 over a sustained run.</td><td>The practical cadence the lightweight observer can maintain without starving camera or control work.</td></tr>
-            <tr><td>Closeout</td><td>Physical interpretation is visibly proven and milestone 005 can trust the observation input path.</td><td>Live Pi evidence from the deployed release, not local replay or mocks.</td></tr>
+            <tr><td>Closeout</td><td>Physical interpretation is visibly proven and milestone 005 can trust the observation input path.</td><td>Live Pi evidence from the deployed release, not local application or mocks.</td></tr>
           </tbody>
         </table>
       </div>
@@ -424,10 +444,25 @@ Decision and action remain separate:
         </ul></div>
       </details>
 
-      <details class="work-item" data-status="pending">
-        <summary><span>5. Measure Physical Viability</span><span class="status pending">Pending</span></summary>
+      <details class="work-item" data-status="active">
+        <summary><span>5. Qualify One Realistic Physical Strategy</span><span class="status active">Archive application complete; labeled/live comparison pending</span></summary>
         <div class="work-body"><ul>
-          <li>Run the deployed lightweight observer for at least 60 seconds at its declared default physical cadence.</li>
+          <li>Use the repeatable physical check to establish <code>floor-plane-v0</code> as a measured integration control and shared-frame application baseline.</li>
+          <li><strong>Implemented:</strong> the stateless <code>floor-continuity-v1</code> hypothesis lives under <code>lab/plugins/perception/</code>, runs at bounded internal resolution, and required no stable autonomy or CLI contract change.</li>
+          <li><strong>Simulator checked:</strong> same-frame application and a fresh live capture run completed with exact-frame opt-in diagnostics; narrow edge fragments remain a known rejection case. <a href="evidence/floor-continuity/simulator-8-frame-contact-sheet.jpg">Inspect the eight-frame application</a>.</li>
+          <li><strong>Archive checked:</strong> six physical capture sets supplied 50 Pi frames with no processing failures. A confidence floor and stronger absolute edge barrier reduced proposal saturation without requiring a physical-only plugin; carpet fragments remain visible. <a href="evidence/floor-continuity/physical-11-frame-contact-sheet.jpg">Inspect the representative 11-frame physical application</a>.</li>
+          <li><strong>CLI usable offline:</strong> <a href="../../../README.md#perception-experiments"><code>perception apply</code></a> accepts one image or an image directory, and candidate-only parameter overrides are explicit, repeatable, and recorded with the effective configuration.</li>
+          <li>Run a staged comparison: first clear/left/center/right/removed smoke cases, then add a second floor, an irregular object, and bounded shadow, glare, blur, and distorted-edge cases only after the candidate survives the first stage.</li>
+          <li>Use identical source frames and coarse labels for both strategies; compare boundary presence, horizontal zone, clear-floor false positives, removal clearing, spatial stability, and confidence behavior.</li>
+          <li>Promote only if the candidate improves at least two material behavioral measures without scene-specific tuning, meets the Pi freshness/resource contract, keeps diagnostics exact-frame and opt-in, and records its assumptions and limitations.</li>
+          <li>Treat documented rejection as a valid result; retain <code>floor-plane-v0</code> as the operational fallback and do not force an algorithm promotion to close the milestone.</li>
+        </ul></div>
+      </details>
+
+      <details class="work-item" data-status="pending">
+        <summary><span>6. Measure Physical Viability</span><span class="status pending">Pending</span></summary>
+        <div class="work-body"><ul>
+          <li>Run the selected deployed lightweight observer for at least 60 seconds at its declared default physical cadence.</li>
           <li>Record processed cadence, p50/p95 latency, result age, dropped-frame policy, process RSS, and relevant CPU load.</li>
           <li>Require at least two fresh published results per second and p95 result age at or below one second for the default operator view.</li>
           <li>Verify bounded memory, no default artifacts, and continued camera/control responsiveness.</li>
@@ -435,7 +470,7 @@ Decision and action remain separate:
       </details>
 
       <details class="work-item" data-status="pending">
-        <summary><span>6. Consolidate Evidence And Activate Memory Work</span><span class="status pending">Pending</span></summary>
+        <summary><span>7. Consolidate Evidence And Activate Memory Work</span><span class="status pending">Pending</span></summary>
         <div class="work-body"><ul>
           <li>Record what physical perception meaning was demonstrated, where it failed, and its measured cost.</li>
           <li>Update durable runtime references to the proven manual-observation and publication flow.</li>
@@ -444,8 +479,8 @@ Decision and action remain separate:
         </ul></div>
       </details>
 
-      <div class="progress-track" aria-label="Milestone work packages completed: 1 of 7"><div class="progress-fill" style="width: 14.29%;"></div></div>
-      <p class="small">Progress: 1 of 7 implementation packages complete. Boot readiness is physically proven; the always-on observation boundary is next.</p>
+      <div class="progress-track" aria-label="Milestone work packages completed: 1 of 8"><div class="progress-fill" style="width: 12.5%;"></div></div>
+      <p class="small">Progress: 1 of 8 implementation packages complete. Boot readiness is physically proven; the always-on observation boundary is next. Strategy research is retained but cannot bypass frame-matched physical qualification.</p>
     </section>
 
     <section class="panel">
@@ -459,6 +494,7 @@ Decision and action remain separate:
             <li>Exact latest frame/result publication from the Pi.</li>
             <li>Physical terminal stream, JSON inspection, and local visual overlay through Automa.</li>
             <li>Generic floor and boundary evidence from packaged stable plugins.</li>
+            <li>One bounded stateless lab candidate, compared with the packaged baseline on identical physical frames and promoted only through explicit gates.</li>
             <li>Repeatable stationary physical acceptance and Pi resource measurements.</li>
             <li>Explicit unavailable, stale, and processing failure behavior.</li>
           </ul>
@@ -467,7 +503,8 @@ Decision and action remain separate:
           <h3>Out Of Scope</h3>
           <ul>
             <li>Semantic object names, identity, classification, or VLM use.</li>
-            <li>FastSAM or other lab candidate deployment to the Pi.</li>
+            <li>Broad model comparison, FastSAM, unresolved learned-model deployment, or more than one new milestone candidate.</li>
+            <li>Temporal stabilization, persistent tracking, or camera calibration as prerequisites for candidate qualification.</li>
             <li>Decision memory, pattern inference, projections, or world models.</li>
             <li>Autonomous mode, steering, throttle, navigation, or collision avoidance.</li>
             <li>Metric distance, calibration, SLAM, or floor-plan construction.</li>
@@ -487,7 +524,8 @@ Decision and action remain separate:
             <tr><td>Observation accidentally gains movement authority.</td><td>Keep Donkey mode manual, engine idle, final control zero, and assert all three in physical acceptance.</td></tr>
             <tr><td>Overlay and findings come from different frames.</td><td>Publish them as one immutable latest snapshot and expose source/result IDs and capture times.</td></tr>
             <tr><td>A frozen result looks live after failure.</td><td>Compute age at read time and display stale or unavailable state prominently in terminal and browser output.</td></tr>
-            <tr><td>The milestone becomes another algorithm comparison.</td><td>Use the packaged lightweight observer and score only its declared generic outputs; keep candidates and semantic quality out of scope.</td></tr>
+            <tr><td>The milestone becomes another algorithm comparison.</td><td>Measure the packaged observer as the control, qualify only one stateless candidate on identical frames, and accept explicit rejection rather than widening the search.</td></tr>
+            <tr><td>Unmeasured research thresholds become architecture requirements.</td><td>Keep algorithm constants and provisional accuracy targets in the evaluating synthesis/candidate specification; milestone promotion uses measured relative gain plus the established physical freshness and safety gates.</td></tr>
             <tr><td>Pi status payload becomes large or unbounded.</td><td>Separate concise health from bounded latest data and retain no history by default.</td></tr>
             <tr><td>Physical-only code duplicates Chase presentation.</td><td>Adapt transport at the vehicle boundary and reuse stable snapshot/rendering contracts and local view code.</td></tr>
             <tr><td>Transient network success is mistaken for proof.</td><td>Require sustained cadence, explicit freshness, a recorded acceptance artifact, and deployed release identity.</td></tr>
@@ -509,6 +547,7 @@ Decision and action remain separate:
         <li><code>vehicles stream perception --id piracer</code> presents replacing human output and complete machine JSON from the onboard result.</li>
         <li>The browser view overlays only frame-matched image-space findings and exposes frame lag, result age, labels, regions, and layer toggles.</li>
         <li>The bounded physical check demonstrates clear, left, center, right, removed, and unavailable states with findings that match the declared floor-boundary contract.</li>
+        <li><code>floor-plane-v0</code> is measured as the common-frame control, and <code>floor-continuity-v1</code> is either promoted after material measured improvement or retained/rejected in <code>lab/</code> with inspectable evidence; no candidate requires a stable contract change.</li>
         <li>A 60-second Pi run publishes at least two fresh results per second with p95 result age no greater than one second, bounded RSS, and measured latency/CPU evidence.</li>
         <li>Default perception operation writes no frames, findings, or project-local logs; explicit recording produces one bounded inspectable run, while service diagnostics remain in the system-managed journal.</li>
         <li>Chase retains the same stable perception output and presentation concepts without receiving physical-only assumptions.</li>
@@ -525,7 +564,11 @@ Decision and action remain separate:
             <tr><td>2026-07-16</td><td>Make core deployment own a single boot-enabled Donkey runtime service.</td><td>Physical development cannot treat “Pi powered” as a useful starting state while HTTP startup is optional, unsupervised, and represented by stale PID/log files.</td></tr>
             <tr><td>2026-07-16</td><td>Insert Physical Perception Parity as milestone 004 and defer Evidence Memory Foundation to milestone 005.</td><td>Physical deployment proves compatible code and activation, but not manual-mode execution or frame-matched operator-visible findings. Memory must not retain an input path that has not been demonstrated end to end.</td></tr>
             <tr><td>2026-07-16</td><td>Run physical perception independently from movement authority.</td><td>Observation is useful in manual and autonomous modes; requiring pilot mode to perceive creates unnecessary safety risk and hides physical behavior during development.</td></tr>
-            <tr><td>2026-07-16</td><td>Use packaged lightweight floor-boundary evidence for acceptance.</td><td>The milestone tests integration and visibility, not which perception algorithm is best. Generic declared output is sufficient to prove the path.</td></tr>
+            <tr><td>2026-07-16</td><td>Use packaged lightweight floor-boundary evidence as the acceptance control.</td><td>The baseline proves integration and gives one stable common output against which a bounded candidate can demonstrate material gain.</td></tr>
+            <tr><td>2026-07-16</td><td>Qualify one stateless floor-continuity candidate without changing the perception contract.</td><td>Independent research identified a low-dependency, inspectable hypothesis that directly answers the current evidence question. It remains in <code>lab/</code> until common-frame application and physical Pi measurements justify promotion.</td></tr>
+            <tr><td>2026-07-16</td><td>Implement and exercise the candidate in Chase before physical qualification.</td><td>Simulator application validates the plugin boundary, diagnostics, current-frame clearing, and operator workflow without pretending that an unlabeled synthetic scene proves physical accuracy.</td></tr>
+            <tr><td>2026-07-16</td><td>Add archived-image prequalification before the live Pi gate.</td><td>Offline application can expose physical texture failures and reject parameter changes while the car is unavailable, but unlabeled local processing cannot replace the guided physical check or onboard resource evidence.</td></tr>
+            <tr><td>2026-07-16</td><td>Defer temporal stabilization, calibration, and learned-model packaging.</td><td>They add stale-evidence, geometry, dependency, and licensing uncertainty before a stateless classical candidate has established whether more complexity is necessary.</td></tr>
             <tr><td>2026-07-16</td><td>Keep presentation local and publish only bounded data from the Pi.</td><td>Automa already owns operator workflows and the local perception view; adding another deployed frontend would create redundant ownership.</td></tr>
             <tr><td>2026-07-16</td><td>Require exact frame/result pairing.</td><td>A plausible overlay on a newer frame is not evidence that the physical interpretation was correct and would contaminate later memory validation.</td></tr>
             <tr><td>2026-07-16</td><td>Keep physical validation stationary.</td><td>Perception parity can be proven without movement, reducing safety risk and keeping failures attributable to camera, processing, publication, or presentation.</td></tr>

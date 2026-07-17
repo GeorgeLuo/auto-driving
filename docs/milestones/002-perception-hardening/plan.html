@@ -156,7 +156,7 @@
       <p>The required local-processing path differs only by vehicle id:</p>
       <pre class="command">./cli/automa vehicles perception run
 ./cli/automa vehicles perception run --id piracer
-./cli/automa vehicles perception replay path/to/recorded-run
+./cli/automa vehicles perception apply path/to/recorded-run
 ./cli/automa vehicles perception candidates
 ./cli/automa vehicles perception setup fastsam
 ./cli/automa vehicles perception compare path/to/recorded-run</pre>
@@ -204,13 +204,13 @@
             <tr>
               <td>Simulator CLI experiment loop</td>
               <td><span class="status done">Live validated</span></td>
-              <td>Flagless bounded observation, explicit selection, optional recording, replay, comparison, and resource reports are available without taking control. In <code>chaser-depth-obstacles</code>, live five-frame runs of both <code>lightweight_observer</code> and <code>visual_observer</code> completed with zero failed frames and recording disabled. A fourteen-frame recorded action sequence supplies repeatable candidate comparison.</td>
-              <td>The frontend disconnected before a later optional live candidate run. Simulator setup reports this state instead of treating a transient frontend as usable; candidate parity remains covered by recorded replay.</td>
+              <td>Flagless bounded observation, explicit selection, optional recording, offline application, comparison, and resource reports are available without taking control. In <code>chaser-depth-obstacles</code>, live five-frame runs of both <code>lightweight_observer</code> and <code>visual_observer</code> completed with zero failed frames and recording disabled. A fourteen-frame recorded action sequence supplies repeatable candidate comparison.</td>
+              <td>The frontend disconnected before a later optional live candidate run. Simulator setup reports this state instead of treating a transient frontend as usable; candidate parity remains covered by applying candidates to the recording.</td>
             </tr>
             <tr>
               <td>Physical CLI experiment loop</td>
               <td><span class="status done">Live validated</span></td>
-              <td>The same bounded observation runner constructs either Chase or PiRacer through <code>CarInterface</code>. A live ten-frame PiRacer run completed with zero failed frames, recording disabled, and about 106 ms local steady median latency; the preserved eleven-frame sequence also replays through production and candidate mappers.</td>
+              <td>The same bounded observation runner constructs either Chase or PiRacer through <code>CarInterface</code>. A live ten-frame PiRacer run completed with zero failed frames, recording disabled, and about 106 ms local steady median latency; the preserved eleven-frame sequence also applies cleanly to production and candidate mappers.</td>
               <td>Local processing performance does not predict Pi throughput, so onboard cost is reported separately.</td>
             </tr>
             <tr>
@@ -239,7 +239,7 @@
             <li>A provider-neutral perception experiment command.</li>
             <li>Framework-injected components with shared file-backed and in-memory camera normalization.</li>
             <li>Per-frame structure proposals and temporal scene tracks.</li>
-            <li>Recorded-sequence replay and comparable reports.</li>
+            <li>Recorded-sequence application and comparable reports.</li>
             <li>Latency and memory measurements locally and on Pi.</li>
           </ul>
         </div>
@@ -268,7 +268,7 @@
             <li>Add one perception-run command that constructs the discovered <code>CarInterface</code> for either provider.</li>
             <li>Default to observation only; never move a physical vehicle.</li>
             <li>Support bounded frames, cadence, recording, latest output, and machine-readable summaries.</li>
-            <li>Add recorded-sequence replay using the same mapper and plugin configuration.</li>
+            <li>Add recorded-sequence application using the same mapper and plugin configuration.</li>
           </ul>
         </div>
         <div class="card interface">
@@ -341,7 +341,7 @@
         </div>
         <div class="card goal">
           <h3>Promotion</h3>
-          <p>A candidate moves to <code>implementations/perception/</code> only after its output fits the stable perception contract, its dependencies and license are acceptable, and replay evidence meets declared quality and compute thresholds.</p>
+          <p>A candidate moves to <code>implementations/perception/</code> only after its output fits the stable perception contract, its dependencies and license are acceptable, and offline application evidence meets declared quality and compute thresholds.</p>
         </div>
       </div>
       <pre class="command">lab/
@@ -431,8 +431,8 @@
         4 must be benchmarked directly before assigning a cadence.
       </p>
 
-      <h3>Observed M1 Replay</h3>
-      <p>Eleven 640×480 PiRacer frames were replayed with no artifact writes. Both candidates produced valid non-empty output on every frame.</p>
+      <h3>Observed M1 Application</h3>
+      <p>Both candidates were applied to eleven 640×480 PiRacer frames with no artifact writes. Both produced valid non-empty output on every frame.</p>
       <div class="table-wrap">
         <table>
           <thead><tr><th>Candidate</th><th>Health</th><th>Match fraction</th><th>Matched IoU</th><th>Cold</th><th>Steady median</th><th>Steady p95</th><th>Peak RSS</th></tr></thead>
@@ -465,8 +465,8 @@
           <p>PiRacer captures with boxes, floor, walls, shadows, texture changes, and bounded observer motion. Compare the same plugin configuration and output schema used in simulation.</p>
         </div>
         <div class="card question">
-          <h3>Recorded Replay</h3>
-          <p>Short saved sequences from both sources. Replay must reproduce structured outputs closely enough to debug and compare algorithm changes.</p>
+          <h3>Recorded Application</h3>
+          <p>Short saved sequences from both sources. Applying an algorithm must reproduce structured outputs closely enough to debug and compare algorithm changes.</p>
         </div>
       </div>
       <pre class="command">./cli/automa simulators ensure --scenario chaser-depth-obstacles</pre>
@@ -477,7 +477,7 @@
         <code>chaser-depth-obstacles</code>, verified a stable frontend, then
         captured fourteen stationary, forward, reverse, left, and right camera
         views in which the three depth obstacles are visible. FastSAM, classical
-        regions, and the production temporal chain were replayed against that
+        regions, and the production temporal chain were applied to that
         exact corpus with zero failed frames. These runs replace an older,
         scenario-unlabelled default-scene capture that had previously been
         linked here incorrectly.
@@ -560,7 +560,7 @@
           <tbody>
             <tr>
               <td>Floor boundaries</td>
-              <td>On physical replay, boundaries follow the wall/floor frontier and split around approaching boxes. On recorded Chase, center boundaries move nearer after forward motion, shift with left/right views, and return after reverse.</td>
+              <td>On physical-frame application, boundaries follow the wall/floor frontier and split around approaching boxes. On recorded Chase, center boundaries move nearer after forward motion, shift with left/right views, and return after reverse.</td>
               <td><strong>Production lightweight path.</strong> Carry as non-semantic boundary evidence; never relabel it as an object without another source.</td>
             </tr>
             <tr>
@@ -570,7 +570,7 @@
             </tr>
             <tr>
               <td>FastSAM-s</td>
-              <td>Visually cleaner whole-surface masks in physical and depth-obstacle frames. Live activation proved that its simplified polygons can use the generic viewer, but the candidate still costs roughly 640-673 MiB peak RSS and 141-207 ms warm median on replay, with an Ultralytics license gate.</td>
+              <td>Visually cleaner whole-surface masks in physical and depth-obstacle frames. Live activation proved that its simplified polygons can use the generic viewer, but the candidate still costs roughly 640-673 MiB peak RSS and 141-207 ms warm median during offline application, with an Ultralytics license gate.</td>
               <td><strong>Retain as local diagnostic.</strong> Do not deploy onboard or promote into core requirements in this milestone.</td>
             </tr>
             <tr>
@@ -638,7 +638,7 @@
       <ol>
         <li><span class="status done">Done</span> The milestone question set and evaluation corpus were fixed before candidate comparison.</li>
         <li><span class="status done">Done</span> One CLI command and vehicle interface cover live Chase and PiRacer capture with only the vehicle id changed.</li>
-        <li><span class="status done">Done</span> Recorded sequences from both sources replay through the same mapper contract.</li>
+        <li><span class="status done">Done</span> Recorded sequences from both sources apply through the same mapper contract.</li>
         <li><span class="status done">Done</span> General per-frame regions and bounded temporal tracks emit structured evidence and optional artifacts.</li>
         <li><span class="status done">Done</span> Floor-boundary behavior has a documented assessment across both recorded environments.</li>
         <li><span class="status done">Done</span> The Donkey in-memory chain is deployed and measured on the Pi, with its sub-20 Hz limitation recorded explicitly.</li>
@@ -657,9 +657,9 @@
       <h2>Completed Work Order</h2>
       <ol>
         <li><s>Define generic component access, concrete camera normalization, and plugin lifecycle before adding more algorithms.</s> Completed.</li>
-        <li><s>Generalize the perception experiment runner across Chase, PiRacer, and replay sources.</s> Implemented and live-validated against both vehicles.</li>
-        <li><s>Add deterministic test fixtures and extend the implemented compact replay report with quality scoring.</s> Completed; ground-truth scoring remains a separate gate.</li>
-        <li><s>Establish the lab plugin workbench and run FastSAM-s without map input.</s> Completed on physical replay and recorded Chase replay.</li>
+        <li><s>Generalize the perception experiment runner across Chase, PiRacer, and archived-image sources.</s> Implemented and live-validated against both vehicles.</li>
+        <li><s>Add deterministic test fixtures and extend the implemented compact application report with quality scoring.</s> Completed; ground-truth scoring remains a separate gate.</li>
+        <li><s>Establish the lab plugin workbench and run FastSAM-s without map input.</s> Completed on physical and recorded Chase frames.</li>
         <li><s>Implement and compare FastSAM regions with classical per-frame structure proposals.</s> Completed on the eleven-frame Pi sequence.</li>
         <li><s>Complete floor-boundary assessment across recorded physical and simulator environments.</s> Completed, including the live Chase camera path.</li>
         <li><s>Promote pairwise motion groups into bounded scene tracks.</s> Completed and retained as an offline diagnostic because measured cost is unsuitable for onboard use.</li>

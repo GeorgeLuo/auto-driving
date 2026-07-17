@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 from typing import Any
@@ -32,8 +33,8 @@ from .perception import (
     update_vehicle_perception,
 )
 from .perception_runs import (
+    apply_perception_experiment,
     compare_perception_candidates,
-    replay_perception_experiment,
     run_perception_experiment,
 )
 from .simulators import DEFAULT_SCENARIO_ID, ensure_simulator, get_simulator_status
@@ -431,6 +432,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Run an isolated lab candidate from `vehicles perception candidates`.",
     )
     perception_run.add_argument(
+        "--set",
+        action="append",
+        default=[],
+        metavar="NAME=VALUE",
+        help="Override one candidate parameter for this run. Repeatable; VALUE accepts JSON.",
+    )
+    perception_run.add_argument(
         "--algorithm",
         choices=available_perception_algorithm_ids(),
         default=None,
@@ -472,47 +480,54 @@ def build_parser() -> argparse.ArgumentParser:
     )
     perception_run.set_defaults(handler=_handle_vehicles_perception_run)
 
-    perception_replay = perception_commands.add_parser(
-        "replay",
-        help="Run perception against a recorded image directory.",
+    perception_apply = perception_commands.add_parser(
+        "apply",
+        help="Apply perception to an existing image or image directory.",
         description=(
-            "Run the recorded mapper configuration, or the default lightweight "
-            "observer, against an image directory."
+            "Apply the recorded mapper configuration, or the default lightweight "
+            "observer, to one image or an image directory."
         ),
     )
-    perception_replay.add_argument(
-        "source_dir",
+    perception_apply.add_argument(
+        "source",
         type=Path,
-        help="Recorded perception run or directory containing image frames.",
+        help="Image file, recorded perception run, or directory containing image frames.",
     )
-    perception_replay.add_argument(
+    perception_apply.add_argument(
         "--candidate",
         default=None,
-        help="Replay with an isolated lab candidate instead of the recorded/default mapper.",
+        help="Apply an isolated lab candidate instead of the recorded/default mapper.",
     )
-    perception_replay.add_argument(
+    perception_apply.add_argument(
+        "--set",
+        action="append",
+        default=[],
+        metavar="NAME=VALUE",
+        help="Override one candidate parameter for this application. Repeatable; VALUE accepts JSON.",
+    )
+    perception_apply.add_argument(
         "--algorithm",
         choices=available_perception_algorithm_ids(),
         default=None,
-        help="Replay with one packaged perception algorithm instead of the recorded/default mapper.",
+        help="Apply one packaged perception algorithm instead of the recorded/default mapper.",
     )
-    perception_replay.add_argument(
+    perception_apply.add_argument(
         "--record",
         action="store_true",
-        help="Persist replay outputs and the comparison report.",
+        help="Persist applied outputs and the comparison report.",
     )
-    perception_replay.add_argument(
+    perception_apply.add_argument(
         "--json",
         action="store_true",
         help="Print the machine-readable experiment report.",
     )
-    perception_replay.set_defaults(handler=_handle_vehicles_perception_replay)
+    perception_apply.set_defaults(handler=_handle_vehicles_perception_apply)
 
     perception_compare = perception_commands.add_parser(
         "compare",
         help="Compare all ready lab candidates on one image sequence.",
         description=(
-            "Replay every ready lab candidate against the same images and compare representation "
+            "Apply every ready lab candidate to the same images and compare representation "
             "health, continuity, latency, and memory."
         ),
     )
@@ -1027,7 +1042,7 @@ def _handle_vehicles_perception_help(args: argparse.Namespace) -> int:
                 "automa vehicles perception commands",
                 "",
                 "- run      observe a short sequence from an active vehicle",
-                "- replay   process an existing image sequence",
+                "- apply    process one existing image or image sequence",
                 "- compare  compare all ready candidates on one sequence",
                 "- candidates  show experimental candidates and readiness",
                 "- setup    prepare one isolated experimental candidate",
@@ -1248,6 +1263,10 @@ def _handle_vehicles_perception_enable(args: argparse.Namespace) -> int:
 
 
 def _handle_vehicles_perception_run(args: argparse.Namespace) -> int:
+    candidate_config, error = _candidate_config(args.set)
+    if error is not None:
+        print(error)
+        return 2
     result = run_perception_experiment(
         vehicle_id=args.vehicle_id,
         frames=args.frames,
@@ -1256,6 +1275,7 @@ def _handle_vehicles_perception_run(args: argparse.Namespace) -> int:
         record=args.record,
         json_output=args.json,
         candidate_id=args.candidate,
+        candidate_config=candidate_config,
         algorithm=args.algorithm,
     )
     if result.message:
@@ -1263,12 +1283,17 @@ def _handle_vehicles_perception_run(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-def _handle_vehicles_perception_replay(args: argparse.Namespace) -> int:
-    result = replay_perception_experiment(
-        args.source_dir,
+def _handle_vehicles_perception_apply(args: argparse.Namespace) -> int:
+    candidate_config, error = _candidate_config(args.set)
+    if error is not None:
+        print(error)
+        return 2
+    result = apply_perception_experiment(
+        args.source,
         record=args.record,
         json_output=args.json,
         candidate_id=args.candidate,
+        candidate_config=candidate_config,
         algorithm=args.algorithm,
     )
     if result.message:
@@ -1286,6 +1311,21 @@ def _handle_vehicles_perception_compare(args: argparse.Namespace) -> int:
     if result.message:
         print(result.message)
     return result.exit_code
+
+
+def _candidate_config(values: list[str]) -> tuple[dict[str, Any], str | None]:
+    config: dict[str, Any] = {}
+    for value in values:
+        name, separator, raw = value.partition("=")
+        name = name.strip()
+        if not separator or not name or not raw.strip():
+            return {}, f"Invalid candidate parameter {value!r}; expected NAME=VALUE."
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            parsed = raw
+        config[name] = parsed
+    return config, None
 
 
 def _handle_vehicles_perception_candidates(args: argparse.Namespace) -> int:

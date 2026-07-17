@@ -23,6 +23,7 @@ met and the work has become a concrete priority.
 | Note | Status | Area | Candidate application |
 | --- | --- | --- | --- |
 | [Locality and length generalization in visual reasoning](locality-and-length-generalization.md) | candidate | Perception | Coarse global context, selective local inspection, and bounded sequential state |
+| [PiRacer physical perception strategies](piracer-physical-perception-strategies.md) | evaluating | Physical perception | Qualify one stateless floor-continuity candidate against the packaged baseline on identical frames |
 
 ## Note Shape
 

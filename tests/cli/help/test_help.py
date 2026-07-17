@@ -38,7 +38,8 @@ class HelpCommandTests(unittest.TestCase):
 
         self.assertIn("automa vehicles perception commands", result.stdout)
         self.assertIn("- run", result.stdout)
-        self.assertIn("- replay", result.stdout)
+        self.assertIn("- apply", result.stdout)
+        self.assertNotIn("- replay", result.stdout)
         self.assertIn("- enable", result.stdout)
         self.assertIn("- disable", result.stdout)
         self.assertNotIn("--id", result.stdout)

@@ -14,7 +14,7 @@ this candidate can be promoted or embedded.
 
 ```sh
 ./cli/automa vehicles perception setup fastsam
-./cli/automa vehicles perception replay path/to/images --candidate fastsam
+./cli/automa vehicles perception apply path/to/images --candidate fastsam
 ```
 
 The manifest pins `ultralytics==8.4.31` and the official v8.4.0

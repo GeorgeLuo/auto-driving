@@ -9,7 +9,9 @@ Read this file first when starting work.
 Milestone 004, [Physical Perception Parity](milestones/004-physical-perception-parity/plan.html),
 is active. It must prove that the PiRacer runs perception while movement remains
 manual and publishes frame-matched findings through the same operator concepts
-used for Chase.
+used for Chase. It also measures the packaged floor-boundary observer as a
+control and qualifies one stateless physical candidate on identical frames;
+promotion is conditional on measured behavioral gain and Pi viability.
 
 Milestone 005, [Evidence Memory Foundation](milestones/005-evidence-memory-foundation/plan.html),
 is queued behind that physical proof. Memory implementation must not begin until

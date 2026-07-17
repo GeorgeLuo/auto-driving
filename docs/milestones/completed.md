@@ -29,7 +29,7 @@ Closed: 2026-07-13
 
 Established one component-driven perception contract and CLI experiment flow across
 live Chase, live PiRacer, and recorded image sequences. The milestone added
-bounded plugin lifecycle, replay and comparison reports, isolated classical
+bounded plugin lifecycle, offline application and comparison reports, isolated classical
 and FastSAM candidates, temporal scene tracks, and a deployed lightweight
 onboard path without granting movement authority. A loopback-only live view
 publishes the exact current frame and matching perception record for operator

@@ -9,13 +9,15 @@ from unittest.mock import patch
 
 from PIL import Image
 
+from autonomy.perception import PERCEPTION_TEXT_SCHEMA, PerceptionText
 from autonomy.perception.mappers import PluginPerceptionMapper
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
 from cli.automa_cli import perception as perception_module
 from cli.automa_cli.perception_evaluation import evaluate_perception_frames
 from cli.automa_cli.perception_runs import (
     CommandResult,
-    _replay_image_paths,
+    _source_image_paths,
+    apply_perception_experiment,
     compare_perception_candidates,
     run_perception_experiment,
 )
@@ -48,6 +50,62 @@ class FakeFrameCar:
 
 
 class PerceptionRunTests(unittest.TestCase):
+    def test_apply_accepts_one_image_and_reports_candidate_overrides(self) -> None:
+        class FakeCandidateMapper:
+            init_args: tuple[str, dict[str, object] | None] | None = None
+
+            def __init__(self, candidate_id, *, config_overrides=None):
+                type(self).init_args = (candidate_id, config_overrides)
+                self.candidate = types.SimpleNamespace(runs_dir=Path("unused"))
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return None
+
+            def reset(self):
+                return None
+
+            def report_descriptor(self):
+                return {
+                    "algorithm": "candidate:fixture",
+                    "config": {"threshold": 0.7},
+                }
+
+            def perceive(self, _request):
+                return PerceptionText(
+                    schema=PERCEPTION_TEXT_SCHEMA,
+                    plugin_id="fixture",
+                    status="empty",
+                    lines=(f"schema={PERCEPTION_TEXT_SCHEMA}",),
+                    signals=(),
+                    things=(),
+                )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            image = Path(tmp) / "single.jpg"
+            Image.new("RGB", (48, 32), (25, 35, 45)).save(image)
+            with patch(
+                "cli.automa_cli.perception_runs.LabPerceptionMapper",
+                FakeCandidateMapper,
+            ):
+                result = apply_perception_experiment(
+                    image,
+                    candidate_id="fixture",
+                    candidate_config={"threshold": 0.7},
+                    json_output=True,
+                )
+
+        self.assertEqual(result.exit_code, 0)
+        report = json.loads(result.message)
+        self.assertEqual(report["source"]["path"], str(image.resolve()))
+        self.assertEqual(len(report["frames"]), 1)
+        self.assertEqual(
+            FakeCandidateMapper.init_args,
+            ("fixture", {"threshold": 0.7}),
+        )
+
     def test_named_runtime_refreshes_plugin_definition_but_custom_runtime_is_preserved(self) -> None:
         vehicle = {
             "vehicle_id": "chase-sim-test",
@@ -80,7 +138,7 @@ class PerceptionRunTests(unittest.TestCase):
         self.assertEqual(preserved["manifest"]["perception"]["algorithm"], "custom")
         self.assertEqual(preserved["manifest"]["perception"]["mapper_config"]["plugins"], ["frame"])
 
-    def test_replay_manifest_falls_back_to_archived_frame_copy(self) -> None:
+    def test_apply_manifest_falls_back_to_archived_frame_copy(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             frames = root / "frames"
@@ -95,7 +153,7 @@ class PerceptionRunTests(unittest.TestCase):
                 ]
             }
 
-            paths = _replay_image_paths(root, manifest)
+            paths = _source_image_paths(root, manifest)
 
         self.assertEqual(paths, [archived.resolve()])
 
@@ -117,7 +175,7 @@ class PerceptionRunTests(unittest.TestCase):
         self.assertEqual(health["geometry"]["valid_records"], 0)
         self.assertEqual(health["continuity"]["mean_match_fraction"], 0.0)
 
-    def test_startup_report_replay_preserves_before_after_order(self) -> None:
+    def test_startup_report_apply_preserves_before_after_order(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             frames = root / "frames"
@@ -135,7 +193,7 @@ class PerceptionRunTests(unittest.TestCase):
                 ]
             }
 
-            paths = _replay_image_paths(root, manifest)
+            paths = _source_image_paths(root, manifest)
 
         self.assertEqual([path.name for path in paths], ["00_before.png", "00_after.png"])
 
@@ -160,16 +218,16 @@ class PerceptionRunTests(unittest.TestCase):
                 patch("cli.automa_cli.perception_runs.discover_candidates", return_value=candidates),
                 patch("cli.automa_cli.perception_runs.candidate_status", return_value={"ready": True}),
                 patch(
-                    "cli.automa_cli.perception_runs.replay_perception_experiment",
+                    "cli.automa_cli.perception_runs.apply_perception_experiment",
                     return_value=CommandResult(0, json.dumps(report)),
-                ) as replay,
+                ) as apply_mock,
             ):
                 result = compare_perception_candidates(Path(tmp), json_output=True)
 
         payload = json.loads(result.message)
         self.assertEqual(result.exit_code, 0)
         self.assertEqual([item["candidate"] for item in payload["results"]], ["one", "two"])
-        self.assertEqual(replay.call_count, 2)
+        self.assertEqual(apply_mock.call_count, 2)
 
     def test_representation_health_accepts_in_memory_tuple_things(self) -> None:
         thing = {

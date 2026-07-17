@@ -32,7 +32,8 @@ from .vehicles import discover_active_vehicles, find_vehicle_by_id, format_activ
 
 DEFAULT_FRAME_COUNT = 5
 DEFAULT_INTERVAL_S = 0.25
-REPLAY_ROOT = Path(os.environ.get("AUTOMA_PERCEPTION_REPLAY_ROOT", ROOT / "runtime" / "perception-replays"))
+_PERCEPTION_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
+APPLY_ROOT = Path(os.environ.get("AUTOMA_PERCEPTION_APPLY_ROOT", ROOT / "runtime" / "perception-applies"))
 
 
 @dataclass(frozen=True)
@@ -50,12 +51,15 @@ def run_perception_experiment(
     record: bool = False,
     json_output: bool = False,
     candidate_id: str | None = None,
+    candidate_config: dict[str, Any] | None = None,
     algorithm: str | None = None,
 ) -> CommandResult:
     if candidate_id is not None and algorithm is not None:
         return CommandResult(2, "Choose either --candidate or --algorithm, not both.")
     if algorithm is not None and algorithm not in PERCEPTION_ALGORITHMS:
         return CommandResult(2, f"Unknown perception algorithm {algorithm!r}.")
+    if candidate_config and candidate_id is None:
+        return CommandResult(2, "Candidate parameter overrides require --candidate.")
     discovery = discover_active_vehicles(
         timeout_s=timeout_s,
         include_picar=True,
@@ -78,7 +82,7 @@ def run_perception_experiment(
     try:
         access = create_vehicle_access(vehicle, timeout_s=timeout_s)
         if candidate_id is not None:
-            mapper = LabPerceptionMapper(candidate_id)
+            mapper = LabPerceptionMapper(candidate_id, config_overrides=candidate_config)
             mapper_record = mapper.report_descriptor()
             record_root = mapper.candidate.runs_dir
         else:
@@ -193,32 +197,46 @@ def run_perception_experiment(
     return CommandResult(exit_code, _format_report(report))
 
 
-def replay_perception_experiment(
-    source_dir: Path,
+def apply_perception_experiment(
+    source: Path,
     *,
     record: bool = False,
     json_output: bool = False,
     candidate_id: str | None = None,
+    candidate_config: dict[str, Any] | None = None,
     algorithm: str | None = None,
 ) -> CommandResult:
     if candidate_id is not None and algorithm is not None:
         return CommandResult(2, "Choose either --candidate or --algorithm, not both.")
     if algorithm is not None and algorithm not in PERCEPTION_ALGORITHMS:
         return CommandResult(2, f"Unknown perception algorithm {algorithm!r}.")
-    source_dir = source_dir.expanduser().resolve()
-    if not source_dir.is_dir():
-        return CommandResult(2, f"Replay source is not a directory: {source_dir}")
-
-    source_manifest = _read_json(source_dir / "run.json")
-    if not source_manifest:
-        source_manifest = _read_json(source_dir / "report.json")
-    image_paths = _replay_image_paths(source_dir, source_manifest)
+    if candidate_config and candidate_id is None:
+        return CommandResult(2, "Candidate parameter overrides require --candidate.")
+    source = source.expanduser().resolve()
+    if not source.exists():
+        return CommandResult(2, f"Apply source does not exist: {source}")
+    if source.is_file():
+        if source.suffix.lower() not in _PERCEPTION_IMAGE_EXTENSIONS:
+            return CommandResult(2, f"Apply source is not a supported image: {source}")
+        source_dir = source.parent
+        source_manifest: dict[str, Any] = {}
+        image_paths = [source]
+        source_name = source.stem
+    elif source.is_dir():
+        source_dir = source
+        source_manifest = _read_json(source_dir / "run.json")
+        if not source_manifest:
+            source_manifest = _read_json(source_dir / "report.json")
+        image_paths = _source_image_paths(source_dir, source_manifest)
+        source_name = source_dir.name
+    else:
+        return CommandResult(2, f"Apply source is not a file or directory: {source}")
     if not image_paths:
-        return CommandResult(2, f"No replayable images found under {source_dir}")
+        return CommandResult(2, f"No applicable images found under {source}")
 
     try:
         if candidate_id is not None:
-            mapper = LabPerceptionMapper(candidate_id)
+            mapper = LabPerceptionMapper(candidate_id, config_overrides=candidate_config)
             report_mapper = mapper.report_descriptor()
             record_root = mapper.candidate.runs_dir
         else:
@@ -240,13 +258,13 @@ def replay_perception_experiment(
                 algorithm = DEFAULT_PERCEPTION_ALGORITHM
             mapper = _load_mapper(mapper_spec, mapper_config)
             report_mapper = {"algorithm": algorithm, "spec": mapper_spec, "config": mapper_config}
-            record_root = REPLAY_ROOT
+            record_root = APPLY_ROOT
     except Exception as exc:
-        return CommandResult(2, f"Could not load replay mapper: {type(exc).__name__}: {exc}")
+        return CommandResult(2, f"Could not load perception mapper for apply: {type(exc).__name__}: {exc}")
 
-    run_id = _run_id("replay", source_dir.name)
+    run_id = _run_id("apply", source_name)
     record_dir = record_root / run_id if record else None
-    workspace = _workspace_context(record_dir, prefix="automa_replay_")
+    workspace = _workspace_context(record_dir, prefix="automa_apply_")
     mapper_context: AbstractContextManager[Any] = (
         mapper if isinstance(mapper, LabPerceptionMapper) else nullcontext(mapper)
     )
@@ -270,19 +288,19 @@ def replay_perception_experiment(
                             sensor_kind="camera",
                             captured_at_ms=captured_at_ms,
                             path=str(image_path),
-                            metadata={"source": "replay"},
+                            metadata={"source": "apply"},
                         )
                     },
                     started_at_ms=captured_at_ms,
                     completed_at_ms=captured_at_ms,
-                    metadata={"source": "replay", "source_dir": str(source_dir)},
+                    metadata={"source": "apply", "source_path": str(source)},
                 )
                 started = time.perf_counter()
                 perception = active_mapper.perceive(
                     build_perception_request(
                         snapshot,
                         output_dir=(results_dir / frame_id) if record else None,
-                        metadata={"run_id": run_id, "frame_index": index, "replay": True},
+                        metadata={"run_id": run_id, "frame_index": index, "apply": True},
                     )
                 )
                 duration_ms = round((time.perf_counter() - started) * 1000.0, 3)
@@ -307,7 +325,7 @@ def replay_perception_experiment(
 
             report = _experiment_report(
                 run_id=run_id,
-                source={"kind": "replay", "path": str(source_dir)},
+                source={"kind": "apply", "path": str(source)},
                 mapper=report_mapper,
                 frames=frame_records,
                 recording=record,
@@ -316,7 +334,7 @@ def replay_perception_experiment(
             if record and record_dir is not None:
                 _write_report(record_dir, report)
     except Exception as exc:
-        return CommandResult(2, f"Perception replay failed: {type(exc).__name__}: {exc}")
+        return CommandResult(2, f"Applying perception failed: {type(exc).__name__}: {exc}")
 
     exit_code = 0 if report["summary"]["failed_frames"] == 0 else 1
     if json_output:
@@ -354,7 +372,7 @@ def compare_perception_candidates(
                 file=output,
                 flush=True,
             )
-        result = replay_perception_experiment(
+        result = apply_perception_experiment(
             source_dir,
             record=record,
             json_output=True,
@@ -602,7 +620,7 @@ def _format_comparison(payload: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _replay_image_paths(source_dir: Path, manifest: dict[str, Any]) -> list[Path]:
+def _source_image_paths(source_dir: Path, manifest: dict[str, Any]) -> list[Path]:
     frames = manifest.get("frames") if isinstance(manifest, dict) else None
     if isinstance(frames, list):
         paths = []
@@ -634,8 +652,11 @@ def _replay_image_paths(source_dir: Path, manifest: dict[str, Any]) -> list[Path
             return startup_paths
 
     search_dir = source_dir / "frames" if (source_dir / "frames").is_dir() else source_dir
-    extensions = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
-    return sorted(path for path in search_dir.iterdir() if path.is_file() and path.suffix.lower() in extensions)
+    return sorted(
+        path
+        for path in search_dir.iterdir()
+        if path.is_file() and path.suffix.lower() in _PERCEPTION_IMAGE_EXTENSIONS
+    )
 
 
 def _workspace_context(record_dir: Path | None, *, prefix: str) -> AbstractContextManager[str | Path]:

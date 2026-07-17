@@ -1,0 +1,103 @@
+{
+  "schema": "automa_milestone_evidence_v0",
+  "created_at": "2026-07-16",
+  "claim": "floor-continuity-v1 processes archived Pi imagery through the existing perception contract and no longer saturates its proposal budget under the tested default",
+  "classification": "offline_physical_archive_prequalification",
+  "operation": "apply",
+  "candidate": {
+    "id": "floor_continuity",
+    "plugin_id": "floor-continuity-v1",
+    "working_width_px": 320,
+    "minimum_boundary_confidence": 0.65,
+    "minimum_edge_strength": 0.24,
+    "state_mode": "stateless"
+  },
+  "aggregate": {
+    "capture_sets": 6,
+    "frames": 50,
+    "failed_frames": 0,
+    "floor_boundaries": 190,
+    "unrecorded_plugin_median_ms_range": [37.263, 65.531],
+    "unrecorded_steady_end_to_end_median_ms_range": [70.746, 96.072]
+  },
+  "capture_sets": [
+    {
+      "source": "lab/runs/calibration/pi-straight-long-20260611-221650",
+      "frames": 11,
+      "floor_boundaries": 41,
+      "plugin_median_ms": 37.263
+    },
+    {
+      "source": "lab/runs/calibration/pi-full-20260611-201523/capture",
+      "frames": 6,
+      "floor_boundaries": 16,
+      "plugin_median_ms": 46.871
+    },
+    {
+      "source": "lab/runs/calibration/pi-full-20260611-215703/capture",
+      "frames": 5,
+      "floor_boundaries": 16,
+      "plugin_median_ms": 65.506
+    },
+    {
+      "source": "lab/runs/calibration/pi-full-20260611-220033/capture",
+      "frames": 5,
+      "floor_boundaries": 16,
+      "plugin_median_ms": 46.851
+    },
+    {
+      "source": "lab/runs/calibration/pi-reciprocal-20260611-222832",
+      "frames": 9,
+      "floor_boundaries": 40,
+      "plugin_median_ms": 65.531
+    },
+    {
+      "source": "lab/runs/startup-check/picar-20260624-110541",
+      "frames": 14,
+      "floor_boundaries": 61,
+      "plugin_median_ms": 41.951
+    }
+  ],
+  "same_source_control": {
+    "source": "lab/runs/calibration/pi-straight-long-20260611-221650",
+    "frames": 11,
+    "candidate_floor_boundaries": 41,
+    "candidate_plugin_median_ms": 37.263,
+    "floor_plane_floor_boundaries": 67,
+    "floor_plane_plugin_median_ms": 211.783,
+    "interpretation": "The candidate was less prolific and faster on the development Mac. The unlabeled sequence cannot establish that either set of boundaries is more correct."
+  },
+  "visual_review_extracts": {
+    "retention": "compact tracked contact sheets extracted from explicit --record runs; complete generated runs remain ignored",
+    "physical": {
+      "path": "docs/milestones/004-physical-perception-parity/evidence/floor-continuity/physical-11-frame-contact-sheet.jpg",
+      "frames": 11,
+      "failed_frames": 0,
+      "floor_boundaries": 41
+    },
+    "simulator": {
+      "path": "docs/milestones/004-physical-perception-parity/evidence/floor-continuity/simulator-8-frame-contact-sheet.jpg",
+      "frames": 8,
+      "failed_frames": 0,
+      "floor_boundaries": 32
+    }
+  },
+  "visual_review": {
+    "supported": [
+      "bottom-connected floor support remains visible",
+      "strong box, furniture, wall-floor, and surface-transition contacts are represented",
+      "the current default no longer reaches max_boundaries on every physical frame"
+    ],
+    "open_failures": [
+      "high-contrast carpet texture still creates near-field fragments",
+      "the archive lacks clear/left/center/right/removed labels",
+      "recorded diagnostic encoding materially increases measured plugin duration"
+    ]
+  },
+  "non_claims": [
+    "not an onboard Raspberry Pi benchmark",
+    "not semantic object detection accuracy",
+    "not proof of obstacle recall or traversability",
+    "not sufficient for candidate promotion"
+  ]
+}

@@ -22,6 +22,7 @@ from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapsh
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run one isolated lab perception plugin.")
     parser.add_argument("--manifest", type=Path, required=True)
+    parser.add_argument("--config-json", default=None)
     args = parser.parse_args()
 
     manifest_path = args.manifest.resolve()
@@ -29,6 +30,11 @@ def main() -> int:
     candidate_id = str(manifest["id"])
     plugin = manifest["plugin"]
     config = _resolved_config(dict(plugin.get("config") or {}), manifest_path.parent)
+    if args.config_json is not None:
+        override = json.loads(args.config_json)
+        if not isinstance(override, dict):
+            raise ValueError("--config-json must decode to an object")
+        config.update(override)
     frame_spec = "implementations.perception.observation.plugin:FrameObservationPlugin"
     candidate_spec = str(plugin["entrypoint"])
     if candidate_spec == frame_spec:

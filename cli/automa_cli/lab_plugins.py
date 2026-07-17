@@ -242,7 +242,13 @@ def setup_perception_candidate(
 class LabPerceptionMapper:
     """Mapper-shaped proxy to a candidate's isolated Python worker."""
 
-    def __init__(self, candidate_id: str, *, timeout_s: float = 180.0) -> None:
+    def __init__(
+        self,
+        candidate_id: str,
+        *,
+        timeout_s: float = 180.0,
+        config_overrides: dict[str, Any] | None = None,
+    ) -> None:
         self.candidate = get_candidate(candidate_id)
         self.status = candidate_status(self.candidate)
         if not self.status["ready"]:
@@ -252,6 +258,18 @@ class LabPerceptionMapper:
             )
         self.plugin_id = f"lab-candidate:{candidate_id}"
         self.timeout_s = max(1.0, float(timeout_s))
+        plugin = self.candidate.manifest.get("plugin") or {}
+        base_config = dict(plugin.get("config") or {})
+        overrides = dict(config_overrides or {})
+        unknown = sorted(set(overrides) - set(base_config))
+        if unknown:
+            configurable = ", ".join(sorted(base_config)) or "none"
+            raise ValueError(
+                "unknown candidate parameter(s): "
+                + ", ".join(unknown)
+                + f"; configurable parameters: {configurable}"
+            )
+        self.config = {**base_config, **overrides}
         self._request_index = 0
         self.last_runtime_metrics: dict[str, Any] = {}
         self._scratch = tempfile.TemporaryDirectory(prefix=f"automa_{safe_path_part(candidate_id)}_")
@@ -267,6 +285,8 @@ class LabPerceptionMapper:
                 WORKER_MODULE,
                 "--manifest",
                 str(self.candidate.manifest_path),
+                "--config-json",
+                json.dumps(self.config, separators=(",", ":"), sort_keys=True),
             ],
             cwd=ROOT,
             env=env,
@@ -304,7 +324,7 @@ class LabPerceptionMapper:
             "algorithm": f"candidate:{self.candidate.candidate_id}",
             "candidate": self.candidate.candidate_id,
             "spec": str(plugin.get("entrypoint") or "unknown"),
-            "config": dict(plugin.get("config") or {}),
+            "config": dict(self.config),
             "source_tree_sha256": self.status["source_tree_sha256"],
             "runtime": self.status["runtime"],
             "model": self.status["model"],

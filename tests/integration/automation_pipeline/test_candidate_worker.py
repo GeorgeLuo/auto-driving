@@ -57,6 +57,14 @@ class CandidateWorkerIntegrationTests(unittest.TestCase):
                 candidates = discover_candidates()
                 self.assertEqual([item.candidate_id for item in candidates], ["fixture"])
                 self.assertTrue(candidate_status(candidates[0])["ready"])
+                with self.assertRaisesRegex(
+                    ValueError,
+                    "unknown candidate parameter.*configurable parameters: none",
+                ):
+                    LabPerceptionMapper(
+                        "fixture",
+                        config_overrides={"unknown": 1},
+                    )
                 with LabPerceptionMapper("fixture", timeout_s=10) as mapper:
                     mapper.reset()
                     result = mapper.perceive(build_perception_request(snapshot))

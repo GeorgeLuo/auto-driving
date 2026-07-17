@@ -28,7 +28,18 @@ ROOT = Path(__file__).resolve().parents[3]
 
 
 class PerceptionCommandTests(unittest.TestCase):
-    def test_perception_replay_is_offline_and_does_not_record_by_default(self) -> None:
+    def test_perception_replay_is_not_retained_as_an_alias(self) -> None:
+        result = run_automa(
+            "vehicles",
+            "perception",
+            "replay",
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("invalid choice: 'replay'", result.stderr)
+
+    def test_perception_apply_is_offline_and_does_not_record_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             frames = root / "frames"
@@ -37,22 +48,22 @@ class PerceptionCommandTests(unittest.TestCase):
 
             Image.new("RGB", (32, 24), (30, 40, 50)).save(frames / "000.png")
             Image.new("RGB", (32, 24), (50, 40, 30)).save(frames / "001.png")
-            replay_root = root / "replays"
+            apply_root = root / "applies"
             result = run_automa(
                 "vehicles",
                 "perception",
-                "replay",
+                "apply",
                 str(frames),
                 "--json",
-                extra_env={"AUTOMA_PERCEPTION_REPLAY_ROOT": str(replay_root)},
+                extra_env={"AUTOMA_PERCEPTION_APPLY_ROOT": str(apply_root)},
             )
 
             payload = json.loads(result.stdout)
             self.assertEqual(payload["schema"], "perception_experiment_v0")
-            self.assertEqual(payload["source"]["kind"], "replay")
+            self.assertEqual(payload["source"]["kind"], "apply")
             self.assertEqual(payload["summary"]["frames"], 2)
             self.assertFalse(payload["recording"])
-            self.assertFalse(replay_root.exists())
+            self.assertFalse(apply_root.exists())
 
     def test_scenario_deployed_perception_schema_is_machine_readable(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

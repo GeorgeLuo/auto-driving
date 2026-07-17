@@ -5,11 +5,11 @@ Status: closed 2026-07-13
 ## Outcome
 
 The repository now has one component-driven, provider-neutral perception path for
-live Chase frames, live PiRacer frames, and recorded replay. Perception plugins
+live Chase frames, live PiRacer frames, and recorded-frame application. Perception plugins
 share a narrow structured-evidence contract, while the generic runner owns
 input injection, lifecycle, status, timing, text rendering, and diagnostics.
 The CLI provides
-bounded run, replay, candidate comparison, setup, and inspection workflows.
+bounded run, apply, candidate comparison, setup, and inspection workflows.
 The automation worker publishes current camera frames independently from its
 latest perception result to a loopback-only live view without enabling
 recording. A bounded latest-frame queue prevents slow inference from building a
@@ -69,7 +69,7 @@ a hashed autonomy release before the idle decision stage.
   failures and no movement authority.
 - The CLI explicitly selected `chaser-depth-obstacles` and captured fourteen
   stationary/action views. FastSAM, classical regions, and the temporal chain
-  replayed that same corpus with zero failed frames and no map input.
+  were applied to that same corpus with zero failed frames and no map input.
 - A live ten-frame PiRacer run completed with no failures or recording, using
   the same CLI and mapper contract as Chase.
 - Fifteen onboard Pi cycles completed with zero perception or control errors.

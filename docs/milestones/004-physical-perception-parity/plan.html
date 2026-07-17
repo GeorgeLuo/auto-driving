@@ -271,7 +271,7 @@
             <tr><td>Shared mapper</td><td>Physical deployment packages the same stable perception contracts and implementations used by the local Chase controller.</td><td>Compatible code and activation metadata establish interface parity, not live behavioral parity.</td></tr>
             <tr><td>Onboard execution</td><td><code>AutonomyPilotPart</code> is always present in the Donkey loop, runs the shared decision cycle at <code>AUTONOMY_OBSERVATION_INTERVAL_S</code> (default 0.5 s) with newest-frame consumption, and keeps one detached latest snapshot in memory. Manual <code>user</code> mode forces zero pilot outputs. Live Pi smoke observed advancing processed frames under <code>user</code> mode with zero control and HTTP readiness after a status-provider re-entry fix. <a href="evidence/always-on-observation-smoke.json">Evidence</a>.</td><td>Exact frame/result HTTP publication and operator stream/view remain open; the 60-second viability measurement is still pending.</td></tr>
             <tr><td>Publication</td><td><code>/autonomy/status</code> keeps bounded observation counters. <code>GET /autonomy/observation/latest</code> publishes complete detached findings with read-time health, and <code>GET /autonomy/observation/latest/frame.jpg</code> returns the exact processed JPEG with matching <code>X-Frame-Id</code>.</td><td>CLI stream, local browser view, and guided physical check still need adapters over these endpoints (package 3+).</td></tr>
-            <tr><td>CLI streaming</td><td>Chase automation publishes a latest frame-and-data view and replacing terminal stream.</td><td>The local automation worker explicitly excludes physical providers, so <code>stream perception --id piracer</code> has no live physical source.</td></tr>
+            <tr><td>CLI streaming</td><td><code>vehicles stream perception --id piracer</code> polls onboard <code>/autonomy/observation/latest</code>, renders a replacing terminal view with health/age/control, and opens a local loopback frame-matched perception view. Chase continues to use the automation worker.</td><td>Guided physical check and sustained viability measurement remain open.</td></tr>
             <tr><td>Physical experiments</td><td><code>vehicles perception run --id piracer</code> can fetch physical frames, while <code>vehicles perception apply IMAGE_OR_DIRECTORY</code> now handles a single archived image, a frame directory, or a recorded run. Candidate-only <code>--set NAME=VALUE</code> overrides are captured in recorded reports.</td><td>Local capture/application proves that an algorithm consumes Pi images, but not that the Pi executed or published the result.</td></tr>
             <tr><td>Current meaning</td><td><code>lightweight_observer</code> emits visible-floor estimates and generic first-hit non-floor boundary regions with normalized location and confidence.</td><td>No live physical artifact currently demonstrates that these findings follow an object in the camera view.</td></tr>
             <tr><td>Strategy research</td><td>An <a href="../../synthesis/piracer-physical-perception-strategies.md">evaluating synthesis report</a> led to one stateless multi-cue <a href="../../../lab/plugins/perception/floor_continuity/README.md">floor-continuity candidate</a>. It has passed simulator application and <a href="evidence/floor-continuity-archive-apply.json">offline application over 50 archived Pi frames</a> through the existing contract.</td><td>The archive is unlabeled and processing was local. Promotion still requires common-frame labeled behavior and measured onboard Pi viability.</td></tr>
@@ -315,20 +315,25 @@
           <p><strong>Non-goals:</strong> full latest-snapshot HTTP payload, CLI streaming, browser view, recording, semantic accuracy, or memory-stage work.</p>
           <p><strong>Validation:</strong> offline unit tests plus live deploy on <code>piracer</code>: observation counters and frame IDs advanced in <code>user</code> mode, control stayed zero, HTTP readiness recovered after the status re-entry fix, and <code>tests/run.py --live-pi</code> passed 168 tests with one live-sim skip. <a href="evidence/always-on-observation-smoke.json">Physical smoke evidence</a>.</p>
         </div>
-        <div class="card interface">
-          <h3>Current: Publish One Exact Latest Snapshot</h3>
-          <p><span class="status active">In progress</span> <strong>Review shape:</strong> deep and narrow.</p>
+        <div class="card goal">
+          <h3>Completed: Publish One Exact Latest Snapshot</h3>
+          <p><span class="status done">Merged</span> <strong>Review shape:</strong> deep and narrow.</p>
           <p><strong>Deliverable:</strong> expose the retained latest frame/result through bounded read-only physical endpoints with explicit absent, warming, healthy, stale, unavailable, and error states.</p>
           <p><strong>Review question:</strong> Can an operator or Automa fetch one immutable latest snapshot whose findings and image share the same frame identity without default history or disk writes?</p>
-          <p><strong>Create/Modify:</strong> thread-safe publication on <code>AutonomyPilotPart</code>; <code>GET /autonomy/observation/latest</code> and <code>.../frame.jpg</code>; wire <code>observation_publisher</code> from manage assembly; focused publication/concurrency tests; plan and endpoint docs.</p>
-          <p><strong>Non-goals:</strong> CLI streaming, browser view, guided physical check, algorithm changes, or memory-stage work.</p>
+        </div>
+        <div class="card interface">
+          <h3>Current: Add Physical Automa Inspection</h3>
+          <p><span class="status active">In progress</span> <strong>Review shape:</strong> deep and narrow.</p>
+          <p><strong>Deliverable:</strong> teach perception info and stream commands to resolve the physical latest-snapshot endpoints with the same operator concepts as Chase.</p>
+          <p><strong>Review question:</strong> Can an operator inspect live physical findings through Automa terminal stream and local view without hosting a second frontend on the Pi?</p>
+          <p><strong>Create/Modify:</strong> physical observation client; stream/info provider branching for picar; local loopback view reuse during stream; focused CLI tests; plan and README.</p>
+          <p><strong>Non-goals:</strong> guided physical check, algorithm promotion, memory-stage work.</p>
         </div>
         <div class="card goal">
-          <h3>Next: Add Physical Automa Inspection</h3>
-          <p><span class="status pending">Queued after latest-snapshot publication lands</span> <strong>Expected shape:</strong> deep and narrow.</p>
-          <p><strong>Expected deliverable:</strong> teach perception info and stream commands to resolve the physical latest-snapshot endpoints with the same operator concepts as Chase.</p>
-          <p><strong>Review question:</strong> Can an operator inspect live physical findings through Automa terminal stream and local view without hosting a second frontend on the Pi?</p>
-          <p><strong>Non-goals:</strong> guided physical check, algorithm promotion, memory-stage work.</p>
+          <h3>Next: Make The Physical Check Repeatable</h3>
+          <p><span class="status pending">Queued after physical Automa inspection lands</span> <strong>Expected shape:</strong> deep and narrow.</p>
+          <p><strong>Expected deliverable:</strong> guided clear/left/center/right/removed/unavailable check with frame-matched review artifacts and zero movement.</p>
+          <p><strong>Non-goals:</strong> algorithm promotion, memory-stage work, autonomous mode.</p>
         </div>
         <div class="card constraint">
           <h3>Later: Qualify One Physical Strategy</h3>
@@ -432,23 +437,22 @@ Decision and action remain separate:
         </ul></div>
       </details>
 
-      <details class="work-item" data-status="active" open>
-        <summary><span>2. Publish One Exact Latest Snapshot</span><span class="status active">In progress</span></summary>
+      <details class="work-item" data-status="done" open>
+        <summary><span>2. Publish One Exact Latest Snapshot</span><span class="status done">Done</span></summary>
         <div class="work-body"><ul>
           <li><strong>Implemented:</strong> thread-safe publish of the exact processed frame with detached findings, frame ID, timestamps, duration, algorithm, and control.</li>
-          <li><strong>Implemented:</strong> <code>GET /autonomy/observation/latest</code> and <code>GET /autonomy/observation/latest/frame.jpg</code> with read-time health (<code>warming</code>/<code>healthy</code>/<code>stale</code>/<code>error</code>/<code>unavailable</code>/<code>absent</code>).</li>
+          <li><strong>Implemented:</strong> <code>GET /autonomy/observation/latest</code> and <code>GET /autonomy/observation/latest/frame.jpg</code> with read-time health.</li>
           <li><strong>Implemented:</strong> no default history or disk writes; only the latest in-memory snapshot is retained.</li>
-          <li><strong>Implemented offline:</strong> concurrent reader/writer tests and assembly/route wiring checks; live Pi deploy validation remains for merge smoke.</li>
         </ul></div>
       </details>
 
-      <details class="work-item" data-status="pending">
-        <summary><span>3. Add Physical Automa Inspection</span><span class="status pending">Pending</span></summary>
+      <details class="work-item" data-status="active" open>
+        <summary><span>3. Add Physical Automa Inspection</span><span class="status active">In progress</span></summary>
         <div class="work-body"><ul>
-          <li>Teach perception info and stream commands to resolve a physical latest-snapshot provider.</li>
-          <li>Keep default terminal output replacing, concise, and explicit about freshness; provide complete structured JSON on request.</li>
-          <li>Reuse the local perception page for frame-matched physical overlays, labels, and layer toggles.</li>
-          <li>Report connection and startup failures rather than returning an empty or simulator-only view.</li>
+          <li><strong>Implemented:</strong> <code>stream perception --id piracer</code> polls onboard latest snapshot, renders health/age/control, and fails clearly on connection errors.</li>
+          <li><strong>Implemented:</strong> stream starts a local loopback perception view that overlays the exact onboard frame and findings.</li>
+          <li><strong>Implemented:</strong> <code>info perception</code> reports live onboard observation health and the stream-owned local view when available.</li>
+          <li><strong>Implemented offline:</strong> focused CLI tests with mocked onboard publication; live Pi stream smoke remains operator validation after deploy.</li>
         </ul></div>
       </details>
 
@@ -497,8 +501,8 @@ Decision and action remain separate:
         </ul></div>
       </details>
 
-      <div class="progress-track" aria-label="Milestone work packages completed: 2 of 8"><div class="progress-fill" style="width: 25%;"></div></div>
-      <p class="small">Progress: 2 of 8 implementation packages complete. Boot readiness and always-on observation are physically proven. Latest-snapshot publication is the current review unit. Strategy archive prequalification remains; live qualification stays gated. Sustained 60-second viability is still package 6.</p>
+      <div class="progress-track" aria-label="Milestone work packages completed: 3 of 8"><div class="progress-fill" style="width: 37.5%;"></div></div>
+      <p class="small">Progress: packages 0-2 are done; package 3 (physical Automa inspection) is the current review unit. Next after merge: repeatable physical check. Strategy archive prequalification remains; live qualification stays gated.</p>
     </section>
 
     <section class="panel">
@@ -595,6 +599,7 @@ Decision and action remain separate:
             <tr><td>2026-07-17</td><td>Keep AutonomyManager status providers free of manager/host status re-entry.</td><td>The first always-on deploy hung <code>/autonomy/status</code> because the observation provider called <code>host.status()</code>, which re-entered <code>manager.status()</code> and its providers. Pure <code>observation_status</code> restores HTTP readiness while observation continues.</td></tr>
             <tr><td>2026-07-17</td><td>Mark package 1 done after short live smoke; leave 60-second viability in package 6.</td><td>Live evidence showed advancing manual-mode frames, zero control, and recovered readiness. A multi-minute resource study is a separate deliverable and must not block latest-snapshot publication.</td></tr>
             <tr><td>2026-07-17</td><td>Publish latest observation through dedicated read-only endpoints rather than expanding <code>/autonomy/status</code>.</td><td>Status stays bounded for readiness probes. Exact-frame findings and JPEG bytes are opt-in GETs that compute health at read time and keep only one in-memory snapshot.</td></tr>
+            <tr><td>2026-07-17</td><td>Resolve physical stream/info through onboard publication rather than a local automation worker on the Pi.</td><td>Automa owns terminal and local loopback presentation; the Pi only publishes the latest snapshot. This avoids a second onboard frontend while reusing Chase view contracts.</td></tr>
           </tbody>
         </table>
       </div>

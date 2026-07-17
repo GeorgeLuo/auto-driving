@@ -35,6 +35,14 @@ from .decision import ensure_vehicle_decision_activation
 from .lab_plugins import PerceptionCandidate, candidate_status, get_candidate
 from .paths import display_path, safe_path_part
 from .perception_view import get_perception_view_status
+from .physical_observation import (
+    LATEST_FRAME_PATH,
+    LATEST_JSON_PATH,
+    fetch_observation_publication,
+    physical_observation_dir,
+    physical_view_status,
+    picar_base_url,
+)
 from .vehicles import discover_active_vehicles, find_vehicle_by_id, format_active_vehicles_snapshot
 
 
@@ -126,11 +134,18 @@ def get_vehicle_perception_info(
     *,
     vehicle_id: str,
     json_output: bool = False,
+    timeout_s: float = 3.0,
 ) -> CommandResult:
+    live = _resolve_live_vehicle(vehicle_id, timeout_s=timeout_s)
+    live_vehicle = live.get("vehicle") if isinstance(live.get("vehicle"), dict) else None
+    live_provider = live_vehicle.get("provider") if live_vehicle is not None else None
+
     vehicle_runtime_dir = RUNTIME_ROOT / safe_path_part(vehicle_id)
     bundle = controller_bundle_paths(vehicle_runtime_dir)
     manifest_path = Path(bundle["perception_runtime_dir"]) / "active.json"
-    if not manifest_path.exists():
+    has_local_activation = manifest_path.exists()
+
+    if not has_local_activation and live_provider != "picar":
         return CommandResult(
             2,
             "\n".join(
@@ -142,96 +157,145 @@ def get_vehicle_perception_info(
             ),
         )
 
-    try:
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        return CommandResult(2, f"Could not parse perception activation {display_path(manifest_path)}: {exc}")
+    payload: dict[str, Any] = {
+        "schema": "vehicle_perception_info_v0",
+        "vehicle_id": vehicle_id,
+    }
 
-    mapper_spec = _manifest_get_str(manifest, "perception", "mapper_spec")
-    if mapper_spec is None:
-        return CommandResult(2, f"Activation {display_path(manifest_path)} does not define perception.mapper_spec.")
-    mapper_config = _manifest_get_dict(manifest, "perception", "mapper_config")
-    bundle_root_text = _manifest_get_str(manifest, "controller_bundle", "root_dir")
-    if bundle_root_text is None:
-        return CommandResult(2, f"Activation {display_path(manifest_path)} does not define controller_bundle.root_dir.")
-    bundle_root = Path(bundle_root_text)
-    if not bundle_root.exists():
-        return CommandResult(
-            2,
-            "\n".join(
-                [
-                    f"Controller bundle is missing for {vehicle_id!r}: {display_path(bundle_root)}",
-                    "Run: ./cli/automa vehicles update perception --id <vehicle_id>",
-                ]
-            ),
-        )
+    if has_local_activation:
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            return CommandResult(
+                2,
+                f"Could not parse perception activation {display_path(manifest_path)}: {exc}",
+            )
 
-    try:
-        mapper = _load_mapper(mapper_spec, mapper_config, bundle_root=bundle_root)
-    except Exception as exc:
-        return CommandResult(
-            2,
-            "\n".join(
-                [
-                    f"Could not load active perception for {vehicle_id!r}.",
-                    f"Mapper: {mapper_spec}",
-                    f"Reason: {type(exc).__name__}: {exc}",
-                ]
-            ),
-        )
-    try:
-        describe = getattr(mapper, "describe_schema", None)
-        if not callable(describe):
+        mapper_spec = _manifest_get_str(manifest, "perception", "mapper_spec")
+        if mapper_spec is None:
+            return CommandResult(
+                2,
+                f"Activation {display_path(manifest_path)} does not define perception.mapper_spec.",
+            )
+        mapper_config = _manifest_get_dict(manifest, "perception", "mapper_config")
+        bundle_root_text = _manifest_get_str(manifest, "controller_bundle", "root_dir")
+        if bundle_root_text is None:
+            return CommandResult(
+                2,
+                f"Activation {display_path(manifest_path)} does not define controller_bundle.root_dir.",
+            )
+        bundle_root = Path(bundle_root_text)
+        if not bundle_root.exists():
             return CommandResult(
                 2,
                 "\n".join(
                     [
-                        f"Active mapper {mapper_spec} does not expose describe_schema().",
-                        f"Activation: {display_path(manifest_path)}",
+                        f"Controller bundle is missing for {vehicle_id!r}: {display_path(bundle_root)}",
+                        "Run: ./cli/automa vehicles update perception --id <vehicle_id>",
                     ]
                 ),
             )
-        schema = describe()
-    except Exception as exc:
-        return CommandResult(
-            2,
-            "\n".join(
-                [
-                    f"Could not inspect active perception for {vehicle_id!r}.",
-                    f"Mapper: {mapper_spec}",
-                    f"Reason: {type(exc).__name__}: {exc}",
-                ]
-            ),
+
+        try:
+            mapper = _load_mapper(mapper_spec, mapper_config, bundle_root=bundle_root)
+        except Exception as exc:
+            return CommandResult(
+                2,
+                "\n".join(
+                    [
+                        f"Could not load active perception for {vehicle_id!r}.",
+                        f"Mapper: {mapper_spec}",
+                        f"Reason: {type(exc).__name__}: {exc}",
+                    ]
+                ),
+            )
+        try:
+            describe = getattr(mapper, "describe_schema", None)
+            if not callable(describe):
+                return CommandResult(
+                    2,
+                    "\n".join(
+                        [
+                            f"Active mapper {mapper_spec} does not expose describe_schema().",
+                            f"Activation: {display_path(manifest_path)}",
+                        ]
+                    ),
+                )
+            schema = describe()
+        except Exception as exc:
+            return CommandResult(
+                2,
+                "\n".join(
+                    [
+                        f"Could not inspect active perception for {vehicle_id!r}.",
+                        f"Mapper: {mapper_spec}",
+                        f"Reason: {type(exc).__name__}: {exc}",
+                    ]
+                ),
+            )
+        finally:
+            _close_mapper(mapper)
+
+        automation_dir = Path(bundle["runtime_dir"]) / "automation"
+        published_view, automation_status = _perception_view_with_automation_status(
+            automation_dir
         )
-    finally:
-        _close_mapper(mapper)
-    automation_dir = Path(bundle["runtime_dir"]) / "automation"
-    published_view, automation_status = _perception_view_with_automation_status(
-        automation_dir
-    )
-    payload = {
-        "schema": "vehicle_perception_info_v0",
-        "vehicle_id": vehicle_id,
-        "activation": {
-            "path": display_path(manifest_path),
-            "algorithm": _manifest_get_str(manifest, "perception", "algorithm"),
-            "mapper_spec": mapper_spec,
-            "mapper_config": mapper_config,
-        },
-        "controller_bundle": {
-            "root_dir": display_path(bundle_root),
-            "perception_source_dir": display_path(Path(_manifest_get_str(manifest, "perception", "source_dir") or "")),
-            "release": _manifest_get_dict(manifest, "controller_bundle", "release"),
-        },
-        "algorithm_schema_source": {
-            "kind": "mapper_method",
-            "method": "describe_schema",
-            "mapper_spec": mapper_spec,
-        },
-        "algorithm_schema": schema,
-        "published_view": published_view,
-        "automation": automation_status,
-    }
+        payload.update(
+            {
+                "activation": {
+                    "path": display_path(manifest_path),
+                    "algorithm": _manifest_get_str(manifest, "perception", "algorithm"),
+                    "mapper_spec": mapper_spec,
+                    "mapper_config": mapper_config,
+                },
+                "controller_bundle": {
+                    "root_dir": display_path(bundle_root),
+                    "perception_source_dir": display_path(
+                        Path(_manifest_get_str(manifest, "perception", "source_dir") or "")
+                    ),
+                    "release": _manifest_get_dict(manifest, "controller_bundle", "release"),
+                },
+                "algorithm_schema_source": {
+                    "kind": "mapper_method",
+                    "method": "describe_schema",
+                    "mapper_spec": mapper_spec,
+                },
+                "algorithm_schema": schema,
+                "published_view": published_view,
+                "automation": automation_status,
+            }
+        )
+    else:
+        payload.update(
+            {
+                "activation": None,
+                "controller_bundle": None,
+                "algorithm_schema_source": None,
+                "algorithm_schema": None,
+                "published_view": {
+                    "available": False,
+                    "status": "unavailable",
+                    "reason": "no local staged activation; physical live view uses stream",
+                },
+                "automation": {"status": "not_started", "running": False},
+            }
+        )
+
+    if live_provider == "picar" and live_vehicle is not None:
+        payload["live_observation"] = _live_physical_observation_info(
+            vehicle_id=vehicle_id,
+            vehicle=live_vehicle,
+            timeout_s=timeout_s,
+        )
+        # Prefer the physical stream view when it is running.
+        live_view = payload["live_observation"].get("published_view")
+        if isinstance(live_view, dict) and live_view.get("available"):
+            payload["published_view"] = live_view
+    elif live.get("error"):
+        payload["live_observation"] = {
+            "available": False,
+            "error": live.get("error"),
+        }
 
     if json_output:
         return CommandResult(0, json.dumps(payload, indent=2, sort_keys=True))
@@ -938,39 +1002,75 @@ def _manifest_get_dict(manifest: dict[str, Any], section: str, key: str) -> dict
 
 
 def _format_perception_info(payload: dict[str, Any]) -> str:
-    activation = payload["activation"]
-    bundle = payload["controller_bundle"]
-    schema = payload["algorithm_schema"]
-    release = bundle.get("release") if isinstance(bundle.get("release"), dict) else {}
-    algorithm = activation.get("algorithm") or "unknown"
-    lines = [
-        f"Perception: {payload['vehicle_id']} -> {algorithm}",
-        f"Mapper: {activation['mapper_spec']}",
-    ]
-    if isinstance(algorithm, str) and algorithm.startswith("candidate:"):
-        lines.append(f"Candidate: {algorithm.removeprefix('candidate:')} (isolated local runtime)")
-    else:
-        lines.append(f"Enabled plugins: {', '.join(_configured_plugins(activation)) or 'none'}")
-    lines.extend(
-        [
-            _format_published_view(payload.get("published_view")),
-            f"Bundle: {bundle['root_dir']}",
-            f"Activation: {activation['path']}",
-        ]
+    activation = payload.get("activation") if isinstance(payload.get("activation"), dict) else None
+    bundle = (
+        payload.get("controller_bundle")
+        if isinstance(payload.get("controller_bundle"), dict)
+        else None
     )
-    if release:
-        archive = release.get("archive")
-        manifest = release.get("manifest")
-        lines.append(f"Release: {release.get('tree_sha256', 'unknown')}")
-        if archive:
-            lines.append(f"Archive: {archive}")
-        if manifest:
-            lines.append(f"Release manifest: {manifest}")
+    schema = (
+        payload.get("algorithm_schema")
+        if isinstance(payload.get("algorithm_schema"), dict)
+        else None
+    )
+    live = (
+        payload.get("live_observation")
+        if isinstance(payload.get("live_observation"), dict)
+        else None
+    )
+
+    if activation is not None:
+        release = bundle.get("release") if isinstance((bundle or {}).get("release"), dict) else {}
+        algorithm = activation.get("algorithm") or "unknown"
+        lines = [
+            f"Perception: {payload['vehicle_id']} -> {algorithm}",
+            f"Mapper: {activation['mapper_spec']}",
+        ]
+        if isinstance(algorithm, str) and algorithm.startswith("candidate:"):
+            lines.append(
+                f"Candidate: {algorithm.removeprefix('candidate:')} (isolated local runtime)"
+            )
+        else:
+            lines.append(
+                f"Enabled plugins: {', '.join(_configured_plugins(activation)) or 'none'}"
+            )
+        lines.extend(
+            [
+                _format_published_view(payload.get("published_view")),
+                f"Bundle: {(bundle or {}).get('root_dir', 'unknown')}",
+                f"Activation: {activation['path']}",
+            ]
+        )
+        if release:
+            archive = release.get("archive")
+            manifest = release.get("manifest")
+            lines.append(f"Release: {release.get('tree_sha256', 'unknown')}")
+            if archive:
+                lines.append(f"Archive: {archive}")
+            if manifest:
+                lines.append(f"Release manifest: {manifest}")
+        else:
+            lines.append(
+                "Release: not recorded; run `vehicles update perception` to package and attach release metadata"
+            )
+        if schema is not None:
+            lines.append(
+                f"Schema source: {payload['algorithm_schema_source']['mapper_spec']}.describe_schema()"
+            )
     else:
-        lines.append("Release: not recorded; run `vehicles update perception` to package and attach release metadata")
+        lines = [
+            f"Perception: {payload['vehicle_id']} (no local staged activation)",
+            _format_published_view(payload.get("published_view")),
+        ]
+
+    if live is not None:
+        lines.extend(["", _format_live_observation(live)])
+
+    if schema is None:
+        return "\n".join(lines)
+
     lines.extend(
         [
-            f"Schema source: {payload['algorithm_schema_source']['mapper_spec']}.describe_schema()",
             "",
             "Inputs:",
         ]
@@ -1058,7 +1158,102 @@ def _format_published_view(value: Any) -> str:
         return f"Perception view: starting ({reason})"
     if view.get("status") == "error":
         return f"Perception view: unavailable ({reason})"
-    return f"Perception view: unavailable ({reason}); start or restart the automation worker"
+    return (
+        f"Perception view: unavailable ({reason}); "
+        "for Chase run automation, for PiCar run "
+        "`./cli/automa vehicles stream perception --id <vehicle_id>`"
+    )
+
+
+def _format_live_observation(live: dict[str, Any]) -> str:
+    if not live.get("available"):
+        error = live.get("error") or "physical observation is unavailable"
+        return f"Live onboard observation: unavailable ({error})"
+    frame = live.get("frame") if isinstance(live.get("frame"), dict) else {}
+    control = live.get("control") if isinstance(live.get("control"), dict) else {}
+    lines = [
+        "Live onboard observation:",
+        f"- health: {live.get('health', 'unknown')}  age_ms={live.get('result_age_ms', 'unknown')}",
+        f"- algorithm: {live.get('algorithm', 'unknown')}  mode: {live.get('mode', 'unknown')}",
+        f"- frame: {frame.get('frame_id', 'none')}  duration_ms={live.get('duration_ms', 'unknown')}",
+        (
+            f"- control: steering={control.get('steering', 'unknown')} "
+            f"throttle={control.get('throttle', 'unknown')} "
+            f"reason={control.get('reason', 'unknown')}"
+        ),
+        f"- endpoint: {live.get('base_url', 'unknown')}{LATEST_JSON_PATH}",
+        f"- frame endpoint: {live.get('base_url', 'unknown')}{LATEST_FRAME_PATH}",
+    ]
+    view = live.get("published_view") if isinstance(live.get("published_view"), dict) else {}
+    if view.get("available") and view.get("url"):
+        lines.append(f"- local view: {view['url']}")
+    else:
+        lines.append(
+            "- local view: not running; "
+            "`./cli/automa vehicles stream perception --id <vehicle_id>` starts it"
+        )
+    return "\n".join(lines)
+
+
+def _resolve_live_vehicle(vehicle_id: str, *, timeout_s: float) -> dict[str, Any]:
+    try:
+        snapshot = discover_active_vehicles(
+            timeout_s=timeout_s,
+            include_picar=True,
+            include_chase_sim=True,
+            include_inactive=True,
+        )
+    except Exception as exc:
+        return {"vehicle": None, "error": f"{type(exc).__name__}: {exc}"}
+    vehicle, error = find_vehicle_by_id(snapshot, vehicle_id)
+    if error:
+        return {"vehicle": None, "error": error}
+    return {"vehicle": vehicle, "error": None}
+
+
+def _live_physical_observation_info(
+    *,
+    vehicle_id: str,
+    vehicle: dict[str, Any],
+    timeout_s: float,
+) -> dict[str, Any]:
+    base_url = picar_base_url(vehicle)
+    if not base_url:
+        return {
+            "available": False,
+            "error": f"Vehicle {vehicle_id!r} has no picar base_url connection.",
+        }
+    view = physical_view_status(vehicle_id)
+    try:
+        publication = fetch_observation_publication(base_url, timeout_s=timeout_s)
+    except ConnectionError as exc:
+        return {
+            "available": False,
+            "base_url": base_url,
+            "error": str(exc),
+            "published_view": view,
+            "runtime_dir": display_path(physical_observation_dir(vehicle_id)),
+        }
+    frame = publication.get("frame") if isinstance(publication.get("frame"), dict) else None
+    return {
+        "available": True,
+        "base_url": base_url,
+        "health": publication.get("health"),
+        "ok": publication.get("ok"),
+        "result_age_ms": publication.get("result_age_ms"),
+        "duration_ms": publication.get("duration_ms"),
+        "algorithm": publication.get("algorithm"),
+        "mode": publication.get("mode") or publication.get("drive_mode"),
+        "processed_count": publication.get("processed_count"),
+        "skipped_count": publication.get("skipped_count"),
+        "min_interval_s": publication.get("min_interval_s"),
+        "control": publication.get("control"),
+        "frame": frame,
+        "latest_json_path": LATEST_JSON_PATH,
+        "latest_frame_path": LATEST_FRAME_PATH,
+        "published_view": view,
+        "runtime_dir": display_path(physical_observation_dir(vehicle_id)),
+    }
 
 
 def _perception_view_with_automation_status(

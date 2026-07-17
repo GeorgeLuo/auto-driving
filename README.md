@@ -100,7 +100,7 @@ The command groups intentionally distinguish different kinds of state:
 | `vehicles info ...` | Reads staged perception or decision configuration; perception info also reports the live view URL. |
 | `vehicles perception ...` | Runs perception experiments and manages production or lab plugins. |
 | `vehicles automation ...` | Runs or inspects the local Chase controller worker. |
-| `vehicles stream perception` | Displays the local Chase worker's rolling latest perception output. Physical streaming is milestone 004 work. |
+| `vehicles stream perception` | Displays rolling latest perception. Chase uses the local automation worker; PiCar polls onboard `/autonomy/observation/latest` and opens a local frame-matched view. |
 | `vehicles update core` | Deploys DonkeyCar framework and physical harness code to the Pi. |
 | `vehicles update autonomy` | Deploys a versioned autonomy release and activation metadata to the Pi. |
 | `vehicles operation ...` | Runs a bounded, explicitly requested vehicle operation. |
@@ -150,6 +150,7 @@ default, but the current decision engine emits only idle control:
 ./cli/automa vehicles automation status --id chase-sim-chaser
 ./cli/automa vehicles info perception --id chase-sim-chaser
 ./cli/automa vehicles stream perception --id chase-sim-chaser
+./cli/automa vehicles stream perception --id piracer
 ```
 
 `automation run` and `automation restart` wait until the worker has captured

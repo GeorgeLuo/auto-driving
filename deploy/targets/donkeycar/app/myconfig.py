@@ -826,5 +826,7 @@ CONTROLLER_TYPE = "xbox360"
 JOYSTICK_MAX_THROTTLE = 1.0
 
 # Generic autonomy runtime. Starts idle and only controls the car when
-# Donkey mode is switched to local_angle or local.
+# Donkey mode is switched to local_angle or local. Observation runs in
+# manual user mode at AUTONOMY_OBSERVATION_INTERVAL_S from config.py.
 AUTONOMY_ENABLED = True
+# AUTONOMY_OBSERVATION_INTERVAL_S = 0.5

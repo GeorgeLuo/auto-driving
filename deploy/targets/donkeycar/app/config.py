@@ -760,6 +760,11 @@ AI_THROTTLE_MULT = 1.0              # this multiplier will scale every throttle 
 # pilot/angle and pilot/throttle; Donkey's user/local_angle/local mode still
 # decides whether those outputs control the car.
 AUTONOMY_ENABLED = True
+# Bounded onboard observation cadence. The autonomy part is always present in
+# the vehicle loop, but full perception/decision cycles run at most this often
+# and always consume the newest camera frame. Manual user mode still owns
+# movement; the part emits zero pilot outputs while mode is user.
+AUTONOMY_OBSERVATION_INTERVAL_S = 0.5
 
 #Path following
 PATH_FILENAME = "donkey_path.pkl"   # the path will be saved to this filename

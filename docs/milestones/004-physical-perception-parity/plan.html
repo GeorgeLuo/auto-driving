@@ -269,13 +269,13 @@
             <tr><td>Camera</td><td>The Donkey server provides current JPEG, MJPEG, and high-resolution still endpoints from the physical camera.</td><td>Raw camera visibility does not prove that onboard perception interpreted the frame.</td></tr>
             <tr><td>Runtime lifecycle</td><td>Core deployment previously started the Donkey process only through an optional <code>nohup</code> launcher.</td><td>Pi power and network availability did not imply that the HTTP runtime was supervised, listening, or ready after reboot.</td></tr>
             <tr><td>Shared mapper</td><td>Physical deployment packages the same stable perception contracts and implementations used by the local Chase controller.</td><td>Compatible code and activation metadata establish interface parity, not live behavioral parity.</td></tr>
-            <tr><td>Onboard execution</td><td><code>AutonomyPilotPart</code> receives <code>cam/image_array</code> and runs the shared decision cycle.</td><td>The part is gated by Donkey <code>run_pilot</code>; manual <code>user</code> mode therefore prevents onboard perception from running.</td></tr>
+            <tr><td>Onboard execution</td><td><code>AutonomyPilotPart</code> is always present in the Donkey loop, runs the shared decision cycle at <code>AUTONOMY_OBSERVATION_INTERVAL_S</code> (default 0.5 s) with newest-frame consumption, and keeps one detached latest snapshot in memory. Manual <code>user</code> mode forces zero pilot outputs.</td><td>Offline unit tests prove the boundary; live Pi smoke has not yet confirmed sustained onboard cadence or loop health under the packaged observer.</td></tr>
             <tr><td>Publication</td><td><code>/autonomy/status</code> can report mapper identity, last status, duration, frame index, thing count, and plugin run summaries.</td><td>It does not publish the complete latest findings or the exact frame needed to inspect their geometry.</td></tr>
             <tr><td>CLI streaming</td><td>Chase automation publishes a latest frame-and-data view and replacing terminal stream.</td><td>The local automation worker explicitly excludes physical providers, so <code>stream perception --id piracer</code> has no live physical source.</td></tr>
             <tr><td>Physical experiments</td><td><code>vehicles perception run --id piracer</code> can fetch physical frames, while <code>vehicles perception apply IMAGE_OR_DIRECTORY</code> now handles a single archived image, a frame directory, or a recorded run. Candidate-only <code>--set NAME=VALUE</code> overrides are captured in recorded reports.</td><td>Local capture/application proves that an algorithm consumes Pi images, but not that the Pi executed or published the result.</td></tr>
             <tr><td>Current meaning</td><td><code>lightweight_observer</code> emits visible-floor estimates and generic first-hit non-floor boundary regions with normalized location and confidence.</td><td>No live physical artifact currently demonstrates that these findings follow an object in the camera view.</td></tr>
             <tr><td>Strategy research</td><td>An <a href="../../synthesis/piracer-physical-perception-strategies.md">evaluating synthesis report</a> led to one stateless multi-cue <a href="../../../lab/plugins/perception/floor_continuity/README.md">floor-continuity candidate</a>. It has passed simulator application and <a href="evidence/floor-continuity-archive-apply.json">offline application over 50 archived Pi frames</a> through the existing contract.</td><td>The archive is unlabeled and processing was local. Promotion still requires common-frame labeled behavior and measured onboard Pi viability.</td></tr>
-            <tr><td>Safety</td><td>Manual Donkey mode owns final control and the selected idle engine emits zero movement.</td><td>Always-on perception must preserve that authority boundary and must not require an autonomy mode switch merely to observe.</td></tr>
+            <tr><td>Safety</td><td>Manual Donkey mode owns final control. The always-on part emits zero pilot outputs in <code>user</code> mode even if an engine returns non-zero, and DriveMode still selects manual inputs.</td><td>Physical acceptance must still assert zero autonomy control across success, delay, and failure once publication and the guided check exist.</td></tr>
           </tbody>
         </table>
       </div>
@@ -307,12 +307,21 @@
           <p><strong>Validation:</strong> 153 canonical tests were discovered; 151 passed and two expected live tests skipped. The focused read-only Pi smoke also passed. Live core deployment recovered from a closed port, removed legacy runtime artifacts, and passed a no-extra-command reboot-to-readiness check. <a href="evidence/boot-readiness.json">Physical boot-readiness evidence</a>.</p>
         </div>
         <div class="card interface">
-          <h3>Next: Always-On Observation Boundary</h3>
-          <p><span class="status pending">Queued, not started</span> <strong>Expected shape:</strong> deep and narrow.</p>
-          <p><strong>Expected deliverable:</strong> separate physical perception execution from movement authority, run it at a bounded cadence in manual mode, and retain one detached latest frame/result snapshot in memory.</p>
+          <h3>Current: Always-On Observation Boundary</h3>
+          <p><span class="status active">Implemented offline; physical smoke deferred</span> <strong>Review shape:</strong> deep and narrow.</p>
+          <p><strong>Deliverable:</strong> separate physical perception execution from movement authority, run the shared cycle at a bounded cadence in manual mode, and retain one detached latest frame/result snapshot in memory.</p>
           <p><strong>Review question:</strong> Can the Pi continuously observe while manual mode remains authoritative, without slowing the Donkey control loop or creating a second perception pipeline?</p>
-          <p><strong>Proposed files:</strong> modify the Donkey assembly and runtime adapter; add focused runtime and deploy tests around cadence, frame identity, manual-mode execution, and zero controls.</p>
+          <p><strong>Create/Modify:</strong> <code>AutonomyPilotPart</code> cadence and snapshot retention; Donkey assembly wiring without <code>run_pilot</code> gate; config interval; focused runtime tests; operator README note.</p>
           <p><strong>Non-goals:</strong> HTTP publication, CLI streaming, browser view, recording, semantic accuracy, or memory-stage work.</p>
+          <p><strong>Validation:</strong> focused offline tests cover manual-mode execution, zero pilot outputs under non-zero engine and cycle failure, newest-frame cadence skips, image detachment, and assembly wiring. Live Pi cadence under the packaged observer remains deferred.</p>
+        </div>
+        <div class="card goal">
+          <h3>Next: Publish One Exact Latest Snapshot</h3>
+          <p><span class="status pending">Queued after observation boundary lands</span> <strong>Expected shape:</strong> deep and narrow.</p>
+          <p><strong>Expected deliverable:</strong> expose the retained latest frame/result through bounded read-only physical status/data endpoints with explicit absent, warming, stale, and error states.</p>
+          <p><strong>Review question:</strong> Can an operator or Automa fetch one immutable latest snapshot whose findings and image share the same frame identity without default history or disk writes?</p>
+          <p><strong>Proposed files:</strong> Donkey autonomy HTTP surface and focused publish/concurrency tests; reuse the in-memory snapshot already retained by the always-on part.</p>
+          <p><strong>Non-goals:</strong> CLI streaming, browser view, guided physical check, algorithm changes, or memory-stage work.</p>
         </div>
         <div class="card constraint">
           <h3>Later: Qualify One Physical Strategy</h3>
@@ -328,7 +337,7 @@
         <table>
           <thead><tr><th>Preparation Horizon</th><th>Known End-State Need</th><th>Must Be Learned First</th></tr></thead>
           <tbody>
-            <tr><td>Observation boundary</td><td>Manual-mode perception at a bounded cadence, independent of action application.</td><td>Whether one always-running cycle part or separated perception/action parts best preserves Donkey loop behavior.</td></tr>
+            <tr><td>Observation boundary</td><td>Manual-mode perception at a bounded cadence, independent of action application.</td><td>Resolved offline: one always-running cycle part with cadence gating preserves a single pipeline; live Pi loop cost remains to measure.</td></tr>
             <tr><td>Boot readiness</td><td>Pi power converges to an enabled, supervised, manual-mode Donkey HTTP runtime.</td><td>Whether the deployed unit survives a real reboot and reports failures without relying on a stale PID.</td></tr>
             <tr><td>Latest publication</td><td>One complete, bounded frame/result snapshot with health and stale state.</td><td>How to retain the processed image without copying unbounded arrays or racing the next camera frame.</td></tr>
             <tr><td>Physical CLI adapter</td><td><code>info</code>, terminal stream, JSON, and local visual view use the same operator concepts as Chase.</td><td>Which transport keeps frontend code local while exposing only bounded data from the Pi.</td></tr>
@@ -404,13 +413,14 @@ Decision and action remain separate:
         </ul></div>
       </details>
 
-      <details class="work-item" data-status="pending" open>
-        <summary><span>1. Separate Observation From Movement Authority</span><span class="status pending">Pending</span></summary>
+      <details class="work-item" data-status="active" open>
+        <summary><span>1. Separate Observation From Movement Authority</span><span class="status active">Offline complete; physical smoke deferred</span></summary>
         <div class="work-body"><ul>
-          <li>Run the selected perception mapper while Donkey drive mode remains manual.</li>
-          <li>Use a bounded configurable cadence and newest-frame policy so perception cannot backlog or starve the control loop.</li>
-          <li>Keep one shared mapper and decision-cycle input shape rather than adding a physical-only algorithm path.</li>
-          <li>Assert zero autonomy control and unchanged manual authority under success, delay, and failure.</li>
+          <li><strong>Implemented:</strong> remove the <code>run_pilot</code> gate so the shared <code>AutonomyPilotPart</code> cycle runs in manual <code>user</code> mode.</li>
+          <li><strong>Implemented:</strong> bounded configurable cadence via <code>AUTONOMY_OBSERVATION_INTERVAL_S</code> with newest-frame consumption and intermediate-tick skips.</li>
+          <li><strong>Implemented:</strong> one detached latest frame/result snapshot retained in memory; status view omits the raw image payload.</li>
+          <li><strong>Implemented offline:</strong> zero pilot outputs in manual mode under non-zero engine output and cycle failure; local mode still surfaces engine pilot values for DriveMode.</li>
+          <li><strong>Deferred:</strong> live Pi smoke that the packaged observer sustains cadence without starving the Donkey loop.</li>
         </ul></div>
       </details>
 
@@ -480,7 +490,7 @@ Decision and action remain separate:
       </details>
 
       <div class="progress-track" aria-label="Milestone work packages completed: 1 of 8"><div class="progress-fill" style="width: 12.5%;"></div></div>
-      <p class="small">Progress: 1 of 8 implementation packages complete. Boot readiness is physically proven; the always-on observation boundary is next. Strategy research is retained but cannot bypass frame-matched physical qualification.</p>
+      <p class="small">Progress: 1 of 8 implementation packages complete. Boot readiness is physically proven. The always-on observation boundary is implemented offline and still needs live Pi smoke before counting as fully done. Next review unit after merge: latest-snapshot publication. Strategy archive prequalification remains; live qualification stays gated.</p>
     </section>
 
     <section class="panel">
@@ -572,6 +582,8 @@ Decision and action remain separate:
             <tr><td>2026-07-16</td><td>Keep presentation local and publish only bounded data from the Pi.</td><td>Automa already owns operator workflows and the local perception view; adding another deployed frontend would create redundant ownership.</td></tr>
             <tr><td>2026-07-16</td><td>Require exact frame/result pairing.</td><td>A plausible overlay on a newer frame is not evidence that the physical interpretation was correct and would contaminate later memory validation.</td></tr>
             <tr><td>2026-07-16</td><td>Keep physical validation stationary.</td><td>Perception parity can be proven without movement, reducing safety risk and keeping failures attributable to camera, processing, publication, or presentation.</td></tr>
+            <tr><td>2026-07-17</td><td>Use one always-running cycle part with cadence gating instead of a second perception pipeline.</td><td>Removing the <code>run_pilot</code> gate while rate-limiting full cycles preserves a single shared mapper/decision path, keeps manual mode as movement authority, and retains one detached latest snapshot for the later publication package without inventing physical-only algorithm code.</td></tr>
+            <tr><td>2026-07-17</td><td>Land the observation boundary with offline tests before live Pi smoke.</td><td>The car is unavailable for this review unit; unit tests can prove mode separation, zero controls, cadence, and frame detachment, while sustained onboard cadence remains an explicit deferred smoke rather than a silent claim.</td></tr>
           </tbody>
         </table>
       </div>

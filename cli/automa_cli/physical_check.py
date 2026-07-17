@@ -24,14 +24,16 @@ CHECK_OUTPUT_ROOT = Path(
     )
 )
 
-PLACEMENTS: tuple[str, ...] = (
+# Default path excludes unavailable: forcing a camera fault is optional and risky.
+DEFAULT_PLACEMENTS: tuple[str, ...] = (
     "clear",
     "left",
     "center",
     "right",
     "removed",
-    "unavailable",
 )
+OPTIONAL_PLACEMENTS: tuple[str, ...] = ("unavailable",)
+PLACEMENTS: tuple[str, ...] = DEFAULT_PLACEMENTS + OPTIONAL_PLACEMENTS
 
 PLACEMENT_PROMPTS: dict[str, str] = {
     "clear": "Clear floor: remove objects from the camera view. Leave open floor ahead.",
@@ -40,8 +42,8 @@ PLACEMENT_PROMPTS: dict[str, str] = {
     "right": "Object right: place the object on the RIGHT side of the view.",
     "removed": "Object removed: remove the object so the floor is clear again.",
     "unavailable": (
-        "Camera unavailable: cover the lens, unplug the camera cable, or otherwise "
-        "make the camera fail. Keep the car stationary."
+        "Camera unavailable (optional): cover the lens only if you accept that risk. "
+        "This step is not in the default sequence."
     ),
 }
 
@@ -60,6 +62,7 @@ def run_physical_perception_check(
     record: bool = False,
     auto: bool = False,
     steps: tuple[str, ...] | None = None,
+    from_run: Path | None = None,
     json_output: bool = False,
     output: TextIO | None = None,
     input_fn: Callable[[str], str] | None = None,
@@ -67,6 +70,13 @@ def run_physical_perception_check(
     fetch_frame: Callable[[str], tuple[bytes, dict[str, str]]] | None = None,
 ) -> CommandResult:
     """Guided stationary physical check against onboard latest observation."""
+    if from_run is not None:
+        return rescore_physical_perception_check_run(
+            from_run,
+            steps=steps,
+            json_output=json_output,
+            output=output,
+        )
     selected_steps = _normalize_steps(steps)
     discovery = discover_active_vehicles(
         timeout_s=timeout_s,
@@ -124,6 +134,7 @@ def run_physical_perception_check(
     step_results: list[dict[str, Any]] = []
     previous_publication: dict[str, Any] | None = None
     last_frame_id: str | None = None
+    object_boundary_counts: list[int] = []
 
     for index, placement in enumerate(selected_steps, start=1):
         _emit(output, f"[{index}/{len(selected_steps)}] {placement}")
@@ -161,10 +172,12 @@ def run_physical_perception_check(
             except ConnectionError as exc:
                 frame_error = str(exc)
 
+        baseline = max(object_boundary_counts) if object_boundary_counts else None
         score = score_placement(
             placement=placement,
             publication=publication,
             previous_publication=previous_publication,
+            object_boundary_baseline=baseline,
         )
         step = {
             "placement": placement,
@@ -202,6 +215,8 @@ def run_physical_perception_check(
 
         step_results.append(step)
         previous_publication = publication
+        if placement in {"left", "center", "right"}:
+            object_boundary_counts.append(int(score.get("boundary_count") or 0))
         _emit(
             output,
             (
@@ -247,11 +262,147 @@ def run_physical_perception_check(
     return CommandResult(exit_code, _format_report(report))
 
 
+def rescore_physical_perception_check_run(
+    run_dir: Path,
+    *,
+    steps: tuple[str, ...] | None = None,
+    json_output: bool = False,
+    output: TextIO | None = None,
+) -> CommandResult:
+    """Re-score an existing recorded check from saved publications/frames."""
+    root = Path(run_dir)
+    if not root.is_dir():
+        return CommandResult(2, f"Check run directory not found: {display_path(root)}")
+
+    report_path = root / "report.json"
+    prior_report: dict[str, Any] = {}
+    if report_path.exists():
+        try:
+            loaded = json.loads(report_path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                prior_report = loaded
+        except json.JSONDecodeError as exc:
+            return CommandResult(2, f"Could not parse {display_path(report_path)}: {exc}")
+
+    step_dirs = sorted(
+        path
+        for path in root.iterdir()
+        if path.is_dir() and path.name[:2].isdigit() and "-" in path.name
+    )
+    if not step_dirs:
+        return CommandResult(2, f"No step directories found under {display_path(root)}")
+
+    allow = set(_normalize_steps(steps)) if steps is not None else None
+    step_results: list[dict[str, Any]] = []
+    previous_publication: dict[str, Any] | None = None
+    object_boundary_counts: list[int] = []
+
+    for step_dir in step_dirs:
+        _, _, placement = step_dir.name.partition("-")
+        placement = placement.strip().lower()
+        if placement not in PLACEMENTS:
+            continue
+        if allow is not None and placement not in allow:
+            continue
+        publication_path = step_dir / "publication.json"
+        if not publication_path.exists():
+            return CommandResult(2, f"Missing publication for step {step_dir.name}")
+        try:
+            publication = json.loads(publication_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            return CommandResult(2, f"Could not parse {display_path(publication_path)}: {exc}")
+        if not isinstance(publication, dict):
+            return CommandResult(2, f"Publication is not an object: {display_path(publication_path)}")
+
+        baseline = max(object_boundary_counts) if object_boundary_counts else None
+        score = score_placement(
+            placement=placement,
+            publication=publication,
+            previous_publication=previous_publication,
+            object_boundary_baseline=baseline,
+        )
+        frame_meta = publication.get("frame") if isinstance(publication.get("frame"), dict) else {}
+        frame_path = step_dir / "frame.jpg"
+        captured_at_ms = None
+        for prior in prior_report.get("step_results") or []:
+            if isinstance(prior, dict) and prior.get("placement") == placement:
+                captured_at_ms = prior.get("captured_at_ms")
+                break
+        step = {
+            "placement": placement,
+            "prompt": PLACEMENT_PROMPTS.get(placement, ""),
+            "captured_at_ms": captured_at_ms,
+            "publication": _bounded_publication(publication),
+            "frame_id": frame_meta.get("frame_id"),
+            "frame_headers": {},
+            "frame_error": None if frame_path.exists() else "frame.jpg missing in recorded run",
+            "score": score,
+            "artifacts": {
+                "publication": display_path(publication_path),
+                "frame": display_path(frame_path) if frame_path.exists() else None,
+                "score": display_path(step_dir / "score.json"),
+            },
+        }
+
+        (step_dir / "score.json").write_text(
+            json.dumps(score, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        step_results.append(step)
+        previous_publication = publication
+        if placement in {"left", "center", "right"}:
+            object_boundary_counts.append(int(score.get("boundary_count") or 0))
+        _emit(
+            output,
+            (
+                f"{placement}: {'PASS' if score['passed'] else 'FAIL'}  "
+                f"zones={score.get('zones')}  failed={score.get('failed_checks') or []}"
+            ),
+        )
+
+    if not step_results:
+        return CommandResult(2, f"No matching steps to rescore under {display_path(root)}")
+
+    passed = all(bool(step["score"]["passed"]) for step in step_results)
+    report = {
+        "schema": "automa_physical_perception_check_v0",
+        "run_id": prior_report.get("run_id") or root.name,
+        "vehicle_id": prior_report.get("vehicle_id") or "unknown",
+        "base_url": prior_report.get("base_url"),
+        "recorded": True,
+        "rescored": True,
+        "out_dir": display_path(root),
+        "steps": [step["placement"] for step in step_results],
+        "passed": passed,
+        "step_results": step_results,
+        "safety": prior_report.get("safety")
+        or {
+            "movement_commands_sent": False,
+            "mode_change_commands_sent": False,
+            "expected_drive_mode": "user",
+        },
+    }
+    report_path.write_text(
+        json.dumps(report, indent=2, sort_keys=True, default=str),
+        encoding="utf-8",
+    )
+    review_path = root / "review.html"
+    review_path.write_text(_render_review_html(report), encoding="utf-8")
+    report["review_html"] = display_path(review_path)
+    report["report_json"] = display_path(report_path)
+
+    exit_code = 0 if passed else 1
+    if json_output:
+        return CommandResult(exit_code, json.dumps(report, indent=2, sort_keys=True, default=str))
+    return CommandResult(exit_code, _format_report(report))
+
+
 def score_placement(
     *,
     placement: str,
     publication: dict[str, Any],
     previous_publication: dict[str, Any] | None = None,
+    object_boundary_baseline: int | None = None,
 ) -> dict[str, Any]:
     """Score one placement using generic floor-boundary evidence only."""
     health = str(publication.get("health") or "unknown")
@@ -269,7 +420,7 @@ def score_placement(
         for thing in things
         if isinstance(thing, dict) and str(thing.get("kind") or "") == "floor_boundary"
     ]
-    zones = [_zone_bucket(str(thing.get("zone") or "")) for thing in boundaries]
+    zones = [_boundary_zone(thing) for thing in boundaries]
     checks: list[dict[str, Any]] = []
 
     checks.append(
@@ -327,9 +478,7 @@ def score_placement(
                     "detail": f"floor_visible={floor_visible}",
                 }
             )
-            strong_center = [
-                zone for zone in zones if zone == "center"
-            ]
+            strong_center = [zone for zone in zones if zone == "center"]
             checks.append(
                 {
                     "id": "no_strong_central_boundary",
@@ -339,11 +488,20 @@ def score_placement(
             )
         elif placement in {"left", "center", "right"}:
             target = placement
+            if target == "center":
+                target_hit = (
+                    "center" in zones
+                    or ("left" in zones and "right" in zones)
+                )
+                detail = f"zones={zones} (center, or left+right span)"
+            else:
+                target_hit = target in zones
+                detail = f"zones={zones}"
             checks.append(
                 {
                     "id": f"boundary_{target}",
-                    "passed": target in zones,
-                    "detail": f"zones={zones}",
+                    "passed": target_hit,
+                    "detail": detail,
                 }
             )
             checks.append(
@@ -356,29 +514,23 @@ def score_placement(
         elif placement == "removed":
             previous_boundaries = 0
             if previous_publication is not None:
-                prev_perception = (
-                    previous_publication.get("perception")
-                    if isinstance(previous_publication.get("perception"), dict)
-                    else {}
-                )
-                prev_things = (
-                    prev_perception.get("things")
-                    if isinstance(prev_perception.get("things"), list)
-                    else []
-                )
-                previous_boundaries = sum(
-                    1
-                    for thing in prev_things
-                    if isinstance(thing, dict) and str(thing.get("kind") or "") == "floor_boundary"
-                )
-            cleared = len(boundaries) == 0 or len(boundaries) < previous_boundaries
+                previous_boundaries = _boundary_count(previous_publication)
+            baseline = (
+                int(object_boundary_baseline)
+                if object_boundary_baseline is not None
+                else previous_boundaries
+            )
+            cleared = len(boundaries) == 0 or (
+                baseline > 0 and len(boundaries) < baseline
+            )
             checks.append(
                 {
                     "id": "boundary_cleared_or_reduced",
                     "passed": cleared,
                     "detail": (
                         f"boundaries_now={len(boundaries)} "
-                        f"boundaries_previous={previous_boundaries}"
+                        f"baseline_object_boundaries={baseline} "
+                        f"previous_step_boundaries={previous_boundaries}"
                     ),
                 }
             )
@@ -447,17 +599,51 @@ def _wait_for_fresh_publication(
 
 def _normalize_steps(steps: tuple[str, ...] | None) -> tuple[str, ...]:
     if not steps:
-        return PLACEMENTS
+        return DEFAULT_PLACEMENTS
     normalized: list[str] = []
     for step in steps:
         name = str(step).strip().lower()
         if name not in PLACEMENTS:
-            raise ValueError(f"unknown placement step {step!r}; expected one of {', '.join(PLACEMENTS)}")
+            raise ValueError(
+                f"unknown placement step {step!r}; expected one of {', '.join(PLACEMENTS)}"
+            )
         if name not in normalized:
             normalized.append(name)
     if not normalized:
         raise ValueError("at least one placement step is required")
     return tuple(normalized)
+
+
+def _boundary_count(publication: dict[str, Any]) -> int:
+    perception = publication.get("perception") if isinstance(publication.get("perception"), dict) else {}
+    things = perception.get("things") if isinstance(perception.get("things"), list) else []
+    return sum(
+        1
+        for thing in things
+        if isinstance(thing, dict) and str(thing.get("kind") or "") == "floor_boundary"
+    )
+
+
+def _boundary_zone(thing: dict[str, Any]) -> str:
+    """Resolve horizontal zone from thing.zone, location.zone, or bbox center."""
+    location = thing.get("location") if isinstance(thing.get("location"), dict) else {}
+    raw = thing.get("zone") or location.get("zone") or ""
+    bucket = _zone_bucket(str(raw))
+    if bucket in {"left", "center", "right"}:
+        return bucket
+
+    box = location.get("bbox_xyxy_norm")
+    if isinstance(box, (list, tuple)) and len(box) >= 4:
+        try:
+            center_x = (float(box[0]) + float(box[2])) / 2.0
+        except (TypeError, ValueError):
+            return bucket or "unknown"
+        if center_x < 1.0 / 3.0:
+            return "left"
+        if center_x > 2.0 / 3.0:
+            return "right"
+        return "center"
+    return bucket or "unknown"
 
 
 def _bounded_publication(publication: dict[str, Any]) -> dict[str, Any]:

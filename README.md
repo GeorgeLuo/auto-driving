@@ -101,7 +101,8 @@ The command groups intentionally distinguish different kinds of state:
 | `vehicles perception ...` | Runs perception experiments and manages production or lab plugins. |
 | `vehicles automation ...` | Runs or inspects the local Chase controller worker. |
 | `vehicles stream perception` | Displays rolling latest perception. Chase uses the local automation worker; PiCar polls onboard `/autonomy/observation/latest` and opens a local frame-matched view. |
-| `vehicles perception check` | Guided stationary PiCar placement check (clear/left/center/right/removed/unavailable); never moves the car. Use `--record` for review artifacts. |
+| `vehicles perception check` | Guided stationary PiCar placement check (clear/left/center/right/removed by default); never moves the car. Use `--record` for review artifacts. |
+| `vehicles perception qualify` | Offline common-frame compare of packaged control vs one lab candidate on labeled physical-check frames; emits promote/reject. |
 | `vehicles update core` | Deploys DonkeyCar framework and physical harness code to the Pi. |
 | `vehicles update autonomy` | Deploys a versioned autonomy release and activation metadata to the Pi. |
 | `vehicles operation ...` | Runs a bounded, explicitly requested vehicle operation. |
@@ -223,6 +224,17 @@ Guided stationary physical placement check (PiCar only; never commands movement)
 ```
 
 Results land under `lab/runs/perception-check/<run-id>/` with `review.html` when `--record` is set.
+
+Offline strategy qualification on a recorded check run:
+
+```sh
+./cli/automa vehicles perception qualify \
+  --from-check-run lab/runs/perception-check/<run-id> \
+  --candidate floor_continuity \
+  --extra-frame right=path/to/extra-right.jpg
+```
+
+Reports land under `lab/runs/perception-qualify/`. Promotion is explicit and offline-only; packaged floor-plane remains the operational fallback unless Pi viability is also proven.
 
 
 `--set` is candidate-only, repeatable, and accepts JSON values. Invalid or

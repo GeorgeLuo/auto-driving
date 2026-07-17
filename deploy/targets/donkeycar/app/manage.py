@@ -471,6 +471,7 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
                     activation = read_decision_activation(activation_path)
                     apply_decision_activation(autonomy_manager, activation)
                     stages = DecisionStages()
+                    perception_algorithm = None
                     perception_activation_path = (
                         Path(__file__).resolve().parent / "runtime" / "perception" / "active.json"
                     )
@@ -480,6 +481,7 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
                                 read_perception_activation(perception_activation_path)
                             )
                             stages = DecisionStages(perceive=perception_stage)
+                            perception_algorithm = perception_stage.activation.algorithm
                             autonomy_manager.register_status_provider(
                                 "perception", perception_stage.status
                             )
@@ -511,11 +513,16 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
                     autonomy_part = AutonomyPilotPart(
                         host=AutonomyCycleHost(manager=autonomy_manager, stages=stages),
                         min_interval_s=observation_interval_s,
+                        algorithm=perception_algorithm,
                     )
                     autonomy_manager.register_status_provider(
                         "observation",
                         autonomy_part.observation_status,
                     )
+                    # HTTP publication handlers read this publisher without
+                    # re-entering AutonomyManager.status.
+                    if autonomy_controller is not None:
+                        autonomy_controller.observation_publisher = autonomy_part
                     V.add(
                         autonomy_part,
                         inputs=['cam/image_array', 'user/mode', 'user/angle', 'user/throttle'],

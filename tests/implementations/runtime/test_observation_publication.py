@@ -155,22 +155,19 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertIn("observation_publisher = autonomy_part", manage)
         self.assertIn("algorithm=perception_algorithm", manage)
 
-        web = (
+        # Vendor checkout is generated; the tracked patch is the durable source.
+        patch = (
             Path(__file__).resolve().parents[3]
             / "deploy"
             / "targets"
             / "donkeycar"
-            / "vendor"
-            / "donkeycar"
-            / "donkeycar"
-            / "parts"
-            / "web_controller"
-            / "web.py"
+            / "patches"
+            / "waveshare-donkeycar-local.patch"
         ).read_text(encoding="utf-8")
-        self.assertIn('/autonomy/observation/latest', web)
-        self.assertIn('/autonomy/observation/latest/frame.jpg', web)
-        self.assertIn("class AutonomyObservationLatestAPI", web)
-        self.assertIn("class AutonomyObservationLatestFrameAPI", web)
+        self.assertIn('/autonomy/observation/latest', patch)
+        self.assertIn('/autonomy/observation/latest/frame.jpg', patch)
+        self.assertIn("class AutonomyObservationLatestAPI", patch)
+        self.assertIn("class AutonomyObservationLatestFrameAPI", patch)
 
 
 if __name__ == "__main__":

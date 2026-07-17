@@ -221,7 +221,7 @@ index 64581bc..bf5f54d 100755
          }
  
 diff --git a/donkeycar/parts/web_controller/web.py b/donkeycar/parts/web_controller/web.py
-index 8af4669..982dc56 100644
+index 8af4669..5dcb312 100644
 --- a/donkeycar/parts/web_controller/web.py
 +++ b/donkeycar/parts/web_controller/web.py
 @@ -28,6 +28,20 @@ from ... import utils
@@ -254,12 +254,14 @@ index 8af4669..982dc56 100644
          """
          Create and publish variables needed on many of
          the web handlers.
-@@ -123,15 +137,23 @@ class LocalWebController(tornado.web.Application):
+@@ -123,15 +137,27 @@ class LocalWebController(tornado.web.Application):
          self.num_records = 0
          self.wsclients = []
          self.loop = None
 +        self.camera = camera
 +        self.autonomy_manager = AutonomyManager() if AutonomyManager is not None else None
++        # Set by manage.py after AutonomyPilotPart is constructed.
++        self.observation_publisher = None
  
  
          handlers = [
@@ -269,6 +271,8 @@ index 8af4669..982dc56 100644
 +            (r"/autonomy/mode", AutonomyModeAPI),
 +            (r"/autonomy/engine", AutonomyEngineAPI),
 +            (r"/autonomy/reload", AutonomyReloadAPI),
++            (r"/autonomy/observation/latest", AutonomyObservationLatestAPI),
++            (r"/autonomy/observation/latest/frame.jpg", AutonomyObservationLatestFrameAPI),
              (r"/wsDrive", WebSocketDriveAPI),
              (r"/wsCalibrate", WebSocketCalibrateAPI),
              (r"/calibrate", CalibrateHandler),
@@ -278,7 +282,7 @@ index 8af4669..982dc56 100644
              (r"/wsTest", WsTest),
  
              (r"/static/(.*)", StaticFileHandler,
-@@ -245,6 +267,117 @@ class DriveAPI(RequestHandler):
+@@ -245,6 +271,206 @@ class DriveAPI(RequestHandler):
              latch_buttons(self.application.buttons, data['buttons'])
  
  
@@ -321,6 +325,95 @@ index 8af4669..982dc56 100644
 +class AutonomyStatusAPI(AutonomyAPIBase):
 +    def get(self):
 +        self.write_json(self.status_payload())
++
++
++class AutonomyObservationLatestAPI(AutonomyAPIBase):
++    """Publish one exact latest observation snapshot without history or disk writes."""
++
++    def get(self):
++        publisher = getattr(self.application, "observation_publisher", None)
++        if publisher is None or not hasattr(publisher, "publish_latest"):
++            self.write_json(
++                {
++                    "schema": "automa_physical_observation_publication_v0",
++                    "ok": False,
++                    "health": "absent",
++                    "error": "observation publisher is not available",
++                    "drive_mode": getattr(self.application, "mode", None),
++                },
++                status=503,
++            )
++            return
++
++        payload = publisher.publish_latest()
++        payload["drive_mode"] = getattr(self.application, "mode", None)
++        status_code = 200
++        if payload.get("health") == "absent":
++            status_code = 503
++        elif payload.get("health") == "warming":
++            status_code = 200
++        self.write_json(payload, status=status_code)
++
++
++class AutonomyObservationLatestFrameAPI(AutonomyAPIBase):
++    """Serve the exact processed JPEG that matches the latest observation snapshot."""
++
++    def get(self):
++        publisher = getattr(self.application, "observation_publisher", None)
++        if publisher is None or not hasattr(publisher, "publish_latest_frame_jpeg"):
++            self.set_status(503)
++            self.set_header("Content-Type", "application/json")
++            self.write(
++                json.dumps(
++                    {
++                        "ok": False,
++                        "health": "absent",
++                        "error": "observation publisher is not available",
++                    },
++                    sort_keys=True,
++                )
++            )
++            return
++
++        jpeg, meta = publisher.publish_latest_frame_jpeg()
++        frame = meta.get("frame") if isinstance(meta, dict) else None
++        frame_id = None if not isinstance(frame, dict) else frame.get("frame_id")
++        if frame_id is None and isinstance(meta, dict):
++            frame_id = meta.get("frame_id")
++        if jpeg is None:
++            self.set_status(503)
++            self.set_header("Content-Type", "application/json")
++            self.set_header("Cache-Control", "no-store")
++            if frame_id is not None:
++                self.set_header("X-Frame-Id", str(frame_id))
++            if isinstance(meta, dict) and meta.get("health") is not None:
++                self.set_header("X-Observation-Health", str(meta.get("health")))
++            self.write(json.dumps(meta, sort_keys=True, default=str))
++            return
++
++        self.set_header("Content-Type", "image/jpeg")
++        self.set_header("Content-Length", str(len(jpeg)))
++        self.set_header("Cache-Control", "no-store")
++        if frame_id is not None:
++            self.set_header("X-Frame-Id", str(frame_id))
++        if isinstance(meta, dict):
++            if meta.get("frame_index") is not None:
++                self.set_header("X-Frame-Index", str(meta.get("frame_index")))
++            elif isinstance(frame, dict) and frame.get("frame_index") is not None:
++                self.set_header("X-Frame-Index", str(frame.get("frame_index")))
++            if meta.get("health") is not None:
++                self.set_header("X-Observation-Health", str(meta.get("health")))
++            captured = meta.get("captured_at_ms")
++            if captured is None and isinstance(frame, dict):
++                captured = frame.get("captured_at_ms")
++            if captured is not None:
++                self.set_header("X-Captured-At-Ms", str(captured))
++            completed = meta.get("completed_at_ms")
++            if completed is None and isinstance(frame, dict):
++                completed = frame.get("completed_at_ms")
++            if completed is not None:
++                self.set_header("X-Completed-At-Ms", str(completed))
++        self.write(jpeg)
 +
 +
 +class AutonomyModeAPI(AutonomyAPIBase):
@@ -396,7 +489,7 @@ index 8af4669..982dc56 100644
  class WsTest(RequestHandler):
      def get(self):
          data = {}
-@@ -391,6 +524,52 @@ class VideoAPI(RequestHandler):
+@@ -391,6 +617,52 @@ class VideoAPI(RequestHandler):
                  await tornado.gen.sleep(interval)
  
  
@@ -449,7 +542,7 @@ index 8af4669..982dc56 100644
  class BaseHandler(RequestHandler):
      """ Serves the FPV web page"""
      async def get(self):
-@@ -440,5 +619,3 @@ class WebFpv(Application):
+@@ -440,5 +712,3 @@ class WebFpv(Application):
  
      def shutdown(self):
          pass

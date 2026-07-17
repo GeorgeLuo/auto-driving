@@ -522,7 +522,17 @@
           <tr>
             <td><code>GET /autonomy/status</code></td>
             <td>Returns Donkey drive mode, mode mapping, selected engine, counters, errors, and last control.</td>
-            <td>This is the post-deploy verification endpoint used by <code>automa</code>.</td>
+            <td>This is the post-deploy verification endpoint used by <code>automa</code>. Observation counters stay bounded and omit raw images.</td>
+          </tr>
+          <tr>
+            <td><code>GET /autonomy/observation/latest</code></td>
+            <td>Returns one bounded latest onboard snapshot: health, frame identity, age, control, and detached <code>PerceptionText</code>/<code>observation</code>.</td>
+            <td>Health is computed at read time (<code>warming</code>, <code>healthy</code>, <code>stale</code>, <code>error</code>, <code>unavailable</code>, <code>absent</code>). No history or disk writes.</td>
+          </tr>
+          <tr>
+            <td><code>GET /autonomy/observation/latest/frame.jpg</code></td>
+            <td>Returns the exact processed JPEG retained with the latest snapshot.</td>
+            <td>Headers include <code>X-Frame-Id</code> and <code>X-Observation-Health</code> so clients pair image and JSON without using the live camera feed.</td>
           </tr>
           <tr>
             <td><code>POST /autonomy/mode</code></td>

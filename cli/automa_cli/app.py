@@ -337,7 +337,11 @@ def build_parser() -> argparse.ArgumentParser:
     perception_stream = stream_commands.add_parser(
         "perception",
         help="Show the latest perception output, replacing the terminal view as it updates.",
-        description="Show the latest perception output, replacing the terminal view as it updates.",
+        description=(
+            "Show the latest perception output, replacing the terminal view as it updates. "
+            "Chase uses the local automation worker; PiCar polls onboard "
+            "/autonomy/observation/latest and opens a local frame-matched view."
+        ),
     )
     perception_stream.add_argument(
         "--id",

@@ -1,0 +1,62 @@
+{
+  "schema": "automa_physical_always_on_observation_smoke_v0",
+  "captured_at": "2026-07-17T18:26:31Z",
+  "vehicle": {
+    "id": "piracer",
+    "host": "piracer.local",
+    "service": "automa-donkey.service",
+    "status_url": "http://piracer.local:8887/autonomy/status"
+  },
+  "release": {
+    "id": "autonomy-f6ece7000c2b-1784312779171",
+    "tree_sha256": "f6ece7000c2b12909e27e21a3f046f708ac4b3f74a27c43397fbf78129c32b51",
+    "includes_status_reentry_fix": true,
+    "perception_algorithm": "lightweight_observer",
+    "decision_engine": "idle"
+  },
+  "hot_fix": {
+    "symptom": "After always-on observation deploy, /autonomy/status accepted TCP but never returned HTTP, blocking readiness.",
+    "cause": "Observation status provider called AutonomyCycleHost.status -> AutonomyManager.status, re-entering registered providers.",
+    "fix": "Register pure AutonomyPilotPart.observation_status that never calls host or manager status."
+  },
+  "live_smoke": {
+    "drive_mode": "user",
+    "window_s": 3,
+    "step_count": {"before": 13, "after": 19},
+    "processed_count": {"before": 13, "after": 19},
+    "skipped_count": {"before": 57, "after": 85},
+    "frame_id": {
+      "before": "donkey_frame_000012",
+      "after": "donkey_frame_000018"
+    },
+    "min_interval_s": 0.5,
+    "sample_cycle_duration_ms": 288,
+    "last_control": {
+      "steering": 0.0,
+      "throttle": 0.0,
+      "reason": "stable-idle-engine"
+    },
+    "perception_status": "ok",
+    "http_ready": true
+  },
+  "tests": {
+    "command": "PYTHONDONTWRITEBYTECODE=1 python3 tests/run.py --live-pi",
+    "canonical_ran": 168,
+    "canonical_passed": 168,
+    "canonical_skipped": 1,
+    "skipped_reason": "live simulator not requested",
+    "live_pi_smoke": "pass"
+  },
+  "safety": {
+    "movement_commands_sent": false,
+    "mode_change_commands_sent": false,
+    "expected_drive_mode": "user",
+    "observed_drive_mode": "user"
+  },
+  "limits": [
+    "Smoke window is short (seconds), not the 60-second viability package.",
+    "Does not publish exact frame/image over HTTP (package 2).",
+    "Does not claim semantic accuracy of floor boundaries."
+  ],
+  "verdict": "pass"
+}

@@ -101,6 +101,7 @@ The command groups intentionally distinguish different kinds of state:
 | `vehicles perception ...` | Runs perception experiments and manages production or lab plugins. |
 | `vehicles automation ...` | Runs or inspects the local Chase controller worker. |
 | `vehicles stream perception` | Displays rolling latest perception. Chase uses the local automation worker; PiCar polls onboard `/autonomy/observation/latest` and opens a local frame-matched view. |
+| `vehicles perception check` | Guided stationary PiCar placement check (clear/left/center/right/removed/unavailable); never moves the car. Use `--record` for review artifacts. |
 | `vehicles update core` | Deploys DonkeyCar framework and physical harness code to the Pi. |
 | `vehicles update autonomy` | Deploys a versioned autonomy release and activation metadata to the Pi. |
 | `vehicles operation ...` | Runs a bounded, explicitly requested vehicle operation. |
@@ -214,6 +215,15 @@ is retained in a recorded report:
   --set minimum_boundary_confidence=0.7 \
   --record
 ```
+
+Guided stationary physical placement check (PiCar only; never commands movement):
+
+```sh
+./cli/automa vehicles perception check --id piracer --record
+```
+
+Results land under `lab/runs/perception-check/<run-id>/` with `review.html` when `--record` is set.
+
 
 `--set` is candidate-only, repeatable, and accepts JSON values. Invalid or
 unknown parameter names fail explicitly rather than being ignored.

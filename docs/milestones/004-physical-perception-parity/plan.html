@@ -270,7 +270,7 @@
             <tr><td>Runtime lifecycle</td><td>Core deployment previously started the Donkey process only through an optional <code>nohup</code> launcher.</td><td>Pi power and network availability did not imply that the HTTP runtime was supervised, listening, or ready after reboot.</td></tr>
             <tr><td>Shared mapper</td><td>Physical deployment packages the same stable perception contracts and implementations used by the local Chase controller.</td><td>Compatible code and activation metadata establish interface parity, not live behavioral parity.</td></tr>
             <tr><td>Onboard execution</td><td><code>AutonomyPilotPart</code> is always present in the Donkey loop, runs the shared decision cycle at <code>AUTONOMY_OBSERVATION_INTERVAL_S</code> (default 0.5 s) with newest-frame consumption, and keeps one detached latest snapshot in memory. Manual <code>user</code> mode forces zero pilot outputs. Live Pi smoke observed advancing processed frames under <code>user</code> mode with zero control and HTTP readiness after a status-provider re-entry fix. <a href="evidence/always-on-observation-smoke.json">Evidence</a>.</td><td>Exact frame/result HTTP publication and operator stream/view remain open; the 60-second viability measurement is still pending.</td></tr>
-            <tr><td>Publication</td><td><code>/autonomy/status</code> keeps bounded observation counters. <code>GET /autonomy/observation/latest</code> publishes complete detached findings with read-time health, and <code>GET /autonomy/observation/latest/frame.jpg</code> returns the exact processed JPEG with matching <code>X-Frame-Id</code>.</td><td>CLI stream, local browser view, and guided physical check still need adapters over these endpoints (package 3+).</td></tr>
+            <tr><td>Publication</td><td><code>/autonomy/status</code> keeps bounded observation counters. <code>GET /autonomy/observation/latest</code> publishes complete detached findings with read-time health, and <code>GET /autonomy/observation/latest/frame.jpg</code> returns the exact processed JPEG with matching <code>X-Frame-Id</code>.</td><td>Guided physical check recording and live strategy qualification remain the next physical proof steps.</td></tr>
             <tr><td>CLI streaming</td><td><code>vehicles stream perception --id piracer</code> polls onboard <code>/autonomy/observation/latest</code>, renders a replacing terminal view with health/age/control, and opens a local loopback frame-matched perception view. Chase continues to use the automation worker.</td><td>Guided physical check and sustained viability measurement remain open.</td></tr>
             <tr><td>Physical experiments</td><td><code>vehicles perception run --id piracer</code> can fetch physical frames, while <code>vehicles perception apply IMAGE_OR_DIRECTORY</code> now handles a single archived image, a frame directory, or a recorded run. Candidate-only <code>--set NAME=VALUE</code> overrides are captured in recorded reports.</td><td>Local capture/application proves that an algorithm consumes Pi images, but not that the Pi executed or published the result.</td></tr>
             <tr><td>Current meaning</td><td><code>lightweight_observer</code> emits visible-floor estimates and generic first-hit non-floor boundary regions with normalized location and confidence.</td><td>No live physical artifact currently demonstrates that these findings follow an object in the camera view.</td></tr>
@@ -321,19 +321,25 @@
           <p><strong>Deliverable:</strong> expose the retained latest frame/result through bounded read-only physical endpoints with explicit absent, warming, healthy, stale, unavailable, and error states.</p>
           <p><strong>Review question:</strong> Can an operator or Automa fetch one immutable latest snapshot whose findings and image share the same frame identity without default history or disk writes?</p>
         </div>
-        <div class="card interface">
-          <h3>Current: Add Physical Automa Inspection</h3>
-          <p><span class="status active">In progress</span> <strong>Review shape:</strong> deep and narrow.</p>
+        <div class="card goal">
+          <h3>Completed: Add Physical Automa Inspection</h3>
+          <p><span class="status done">Merged</span> <strong>Review shape:</strong> deep and narrow.</p>
           <p><strong>Deliverable:</strong> teach perception info and stream commands to resolve the physical latest-snapshot endpoints with the same operator concepts as Chase.</p>
           <p><strong>Review question:</strong> Can an operator inspect live physical findings through Automa terminal stream and local view without hosting a second frontend on the Pi?</p>
-          <p><strong>Create/Modify:</strong> physical observation client; stream/info provider branching for picar; local loopback view reuse during stream; focused CLI tests; plan and README.</p>
-          <p><strong>Non-goals:</strong> guided physical check, algorithm promotion, memory-stage work.</p>
+        </div>
+        <div class="card interface">
+          <h3>Current: Make The Physical Check Repeatable</h3>
+          <p><span class="status active">In progress</span> <strong>Review shape:</strong> deep and narrow.</p>
+          <p><strong>Deliverable:</strong> guided clear/left/center/right/removed/unavailable check with frame-matched review artifacts and zero movement.</p>
+          <p><strong>Review question:</strong> Can a stationary guided placement sequence prove generic floor-boundary behavior against onboard results without commanding movement?</p>
+          <p><strong>Create/Modify:</strong> <code>vehicles perception check</code>; placement scoring; review.html/report.json recording; focused CLI tests; plan and README.</p>
+          <p><strong>Non-goals:</strong> algorithm promotion, memory-stage work, autonomous mode, semantic object labels.</p>
         </div>
         <div class="card goal">
-          <h3>Next: Make The Physical Check Repeatable</h3>
-          <p><span class="status pending">Queued after physical Automa inspection lands</span> <strong>Expected shape:</strong> deep and narrow.</p>
-          <p><strong>Expected deliverable:</strong> guided clear/left/center/right/removed/unavailable check with frame-matched review artifacts and zero movement.</p>
-          <p><strong>Non-goals:</strong> algorithm promotion, memory-stage work, autonomous mode.</p>
+          <h3>Next: Qualify One Physical Strategy</h3>
+          <p><span class="status pending">Queued after physical check lands</span> <strong>Expected shape:</strong> common-frame comparison.</p>
+          <p><strong>Expected deliverable:</strong> measure floor-plane-v0 as control and floor-continuity-v1 on labeled physical placements; promote or reject explicitly.</p>
+          <p><strong>Non-goals:</strong> broad model search, memory-stage work.</p>
         </div>
         <div class="card constraint">
           <h3>Later: Qualify One Physical Strategy</h3>
@@ -446,23 +452,22 @@ Decision and action remain separate:
         </ul></div>
       </details>
 
-      <details class="work-item" data-status="active" open>
-        <summary><span>3. Add Physical Automa Inspection</span><span class="status active">In progress</span></summary>
+      <details class="work-item" data-status="done" open>
+        <summary><span>3. Add Physical Automa Inspection</span><span class="status done">Done</span></summary>
         <div class="work-body"><ul>
           <li><strong>Implemented:</strong> <code>stream perception --id piracer</code> polls onboard latest snapshot, renders health/age/control, and fails clearly on connection errors.</li>
           <li><strong>Implemented:</strong> stream starts a local loopback perception view that overlays the exact onboard frame and findings.</li>
           <li><strong>Implemented:</strong> <code>info perception</code> reports live onboard observation health and the stream-owned local view when available.</li>
-          <li><strong>Implemented offline:</strong> focused CLI tests with mocked onboard publication; live Pi stream smoke remains operator validation after deploy.</li>
         </ul></div>
       </details>
 
-      <details class="work-item" data-status="pending">
-        <summary><span>4. Make The Physical Check Repeatable</span><span class="status pending">Pending</span></summary>
+      <details class="work-item" data-status="active" open>
+        <summary><span>4. Make The Physical Check Repeatable</span><span class="status active">In progress</span></summary>
         <div class="work-body"><ul>
-          <li>Add a guided bounded perception check that collects onboard results for clear, left, center, right, removed, and unavailable states.</li>
-          <li>Generate a review page with raw frames, overlays, structured findings, control state, timing, and configuration.</li>
-          <li>Keep human placement instructions simple and never command movement during the check.</li>
-          <li>Score only declared generic boundary behavior and frame consistency, not semantic object accuracy.</li>
+          <li><strong>Implemented:</strong> <code>vehicles perception check --id piracer</code> guides clear/left/center/right/removed/unavailable placements and captures onboard latest snapshots.</li>
+          <li><strong>Implemented:</strong> scores generic floor-boundary zones, floor visibility, frame identity, and zero control; never commands movement or mode changes.</li>
+          <li><strong>Implemented:</strong> <code>--record</code> writes per-step frames/publications/scores plus <code>report.json</code> and <code>review.html</code>.</li>
+          <li><strong>Implemented offline:</strong> focused scoring and command tests; live operator run remains the acceptance artifact.</li>
         </ul></div>
       </details>
 
@@ -501,8 +506,8 @@ Decision and action remain separate:
         </ul></div>
       </details>
 
-      <div class="progress-track" aria-label="Milestone work packages completed: 3 of 8"><div class="progress-fill" style="width: 37.5%;"></div></div>
-      <p class="small">Progress: packages 0-2 are done; package 3 (physical Automa inspection) is the current review unit. Next after merge: repeatable physical check. Strategy archive prequalification remains; live qualification stays gated.</p>
+      <div class="progress-track" aria-label="Milestone work packages completed: 4 of 8"><div class="progress-fill" style="width: 50%;"></div></div>
+      <p class="small">Progress: packages 0-3 are done; package 4 (repeatable physical check) is the current review unit. Next after merge: strategy live qualification. Sustained 60-second viability remains package 6.</p>
     </section>
 
     <section class="panel">
@@ -600,6 +605,7 @@ Decision and action remain separate:
             <tr><td>2026-07-17</td><td>Mark package 1 done after short live smoke; leave 60-second viability in package 6.</td><td>Live evidence showed advancing manual-mode frames, zero control, and recovered readiness. A multi-minute resource study is a separate deliverable and must not block latest-snapshot publication.</td></tr>
             <tr><td>2026-07-17</td><td>Publish latest observation through dedicated read-only endpoints rather than expanding <code>/autonomy/status</code>.</td><td>Status stays bounded for readiness probes. Exact-frame findings and JPEG bytes are opt-in GETs that compute health at read time and keep only one in-memory snapshot.</td></tr>
             <tr><td>2026-07-17</td><td>Resolve physical stream/info through onboard publication rather than a local automation worker on the Pi.</td><td>Automa owns terminal and local loopback presentation; the Pi only publishes the latest snapshot. This avoids a second onboard frontend while reusing Chase view contracts.</td></tr>
+            <tr><td>2026-07-17</td><td>Implement the physical placement check as a stationary guided CLI that never commands movement.</td><td>Acceptance needs human placement and onboard evidence pairing; keeping motion out of the check preserves the authority boundary and keeps failures attributable to perception/publication.</td></tr>
           </tbody>
         </table>
       </div>

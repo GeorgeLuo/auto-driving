@@ -514,7 +514,7 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
                     )
                     autonomy_manager.register_status_provider(
                         "observation",
-                        lambda: autonomy_part.status().get("observation", {}),
+                        autonomy_part.observation_status,
                     )
                     V.add(
                         autonomy_part,

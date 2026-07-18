@@ -188,6 +188,14 @@ class PhysicalCheckScoringTests(unittest.TestCase):
         self.assertFalse(score["passed"])
         self.assertIn("boundary_left", score["failed_checks"])
 
+    def test_scores_tuple_serialized_perception_things(self) -> None:
+        publication = _publication_with_location_zones(frame_id="ft", zones=["mid_left"])
+        publication["perception"]["things"] = tuple(publication["perception"]["things"])
+        publication["perception"]["signals"] = tuple(publication["perception"]["signals"])
+        score = score_placement(placement="left", publication=publication)
+        self.assertTrue(score["passed"])
+        self.assertEqual(score["boundary_count"], 1)
+
 
 class PhysicalCheckCommandTests(unittest.TestCase):
     def test_auto_recorded_check_writes_review(self) -> None:

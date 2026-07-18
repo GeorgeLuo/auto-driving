@@ -94,9 +94,11 @@ in Automa; treat documented candidate rejection as a valid close; gate viability
 on ≥90% of configured cadence, p95 age ≤1 s, zero control, and user mode.
 
 Remaining work: define bounded decision memory over the proven observation path
-(milestone 005), visibly trace retained physical evidence to its exact source
-frame, and treat residual right-side miss and clear-floor false positives as
-later candidate work rather than blockers for memory.
+(milestone 005), including visual provenance of retained physical evidence.
+Residual right-side miss and clear-floor false positives are immediate deferred
+work captured only in the
+[006 pre-plan](006-decision-facing-perception-readiness/plan.html), not an
+expanding candidate backlog.
 
 Full record: [plan](004-physical-perception-parity/plan.html) and
 [closeout](004-physical-perception-parity/closeout.md).

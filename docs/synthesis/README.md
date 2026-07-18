@@ -6,8 +6,10 @@ identifies what is already supported, and defines the smallest experiment that
 could validate its relevance.
 
 Synthesis notes are not architecture contracts, accepted designs, or milestone
-backlog items. Promote an idea into a milestone only after its adoption gate is
-met and the work has become a concrete priority.
+backlog items. Promote an idea into a milestone or pre-plan only after its
+adoption gate is met and the work has become the single most immediate next
+problem—not a growing research queue. See
+[immediate deferred work and pre-plans](../milestones/README.md#immediate-deferred-work-and-pre-plans).
 
 ## Status
 

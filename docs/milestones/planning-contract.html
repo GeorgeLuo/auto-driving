@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="4592d771e81b04db7ac9bb43b7ac934c5d0066a4be0f49862220755375159a37">
+  <meta name="source-sha256" content="b357a1b44992b36aafa3f372c8ad01b923178337ae24e2c1eef082bec2a497d8">
   <base target="_blank">
   <title>Milestone Planning Contract</title>
   <style>
@@ -220,12 +220,49 @@ or an unlabeled visual result as an accuracy claim.</p>
 <li>At closeout, freeze the plan and write <code>closeout.md</code> with outcomes, decisions,
    validation, unresolved work, and links to durable reference material.</li>
 <li>Append a concise entry to <a href="completed.md">completed.md</a>.</li>
-<li>Create the next milestone and update the active-work link in
-   <a href="../README.md">the documentation guide</a>.</li>
+<li>Make the next milestone active (or promote a pre-plan) and update the
+   active-work link in <a href="../README.md">the documentation guide</a>.</li>
 </ol>
 <p>Closeouts preserve durable context; they do not duplicate source-level details.
 New architecture facts belong in <code>docs/reference/</code>, and future-facing research
 belongs in <code>docs/synthesis/</code>.</p>
+<h2>Immediate Deferred Work And Pre-Plans</h2>
+<p>Closeouts may leave residual work. That residual is not a free-form backlog.
+Route it into exactly one of these places:</p>
+<ol>
+<li><strong>Durable reference</strong> (<code>docs/reference/</code>): settled current behavior.</li>
+<li><strong>Synthesis</strong> (<code>docs/synthesis/</code>): research evidence without commitment.</li>
+<li><strong>At most one pre-plan</strong> after the active milestone: the single most immediate
+   next problem that is already known and would block a named later capability.</li>
+</ol>
+<h3>What Counts As Immediate Deferred Work</h3>
+<p>Immediate deferred work is the smallest next milestone-shaped question that is
+already forced by evidence—for example, “packaged perception is fit for memory
+but not for non-idle decision.” It is not a wishlist of ideas, a multi-year
+roadmap, or a growing list of “nice to haves.”</p>
+<h3>Pre-Plan Rules</h3>
+<ul>
+<li>A pre-plan lives at <code>milestones/&lt;number&gt;-&lt;slug&gt;/plan.html</code> with status such as
+  <code>pre-plan - queued after NNN</code>.</li>
+<li>It has a fixed objective, explicit non-goals, a stop condition, and provisional
+  packages—same honesty as an active plan, without competing for implementation
+  attention.</li>
+<li>Pre-plans are <strong>not active work</strong>. Do not implement them while another
+  milestone is active unless the active plan’s decision log explicitly allows a
+  narrow parallel exception.</li>
+<li>Prefer <strong>one</strong> written pre-plan for “next after active.” Do not stack many
+  future milestone drafts. When a newer pre-plan supersedes an older one, mark
+  the old status superseded and link forward.</li>
+<li>Revise a pre-plan only when prerequisite closeout evidence changes the bounded
+  question—not to absorb every new idea discovered during the active milestone.</li>
+<li>On activation, promote the pre-plan to active status, name the first review
+  unit, and update the documentation guide. On abandon, record why and leave no
+  dangling “maybe later” list.</li>
+</ul>
+<h3>Stop Expanding</h3>
+<p>If a residual cannot be stated as a single milestone objective with a stop
+condition, it is not ready for a pre-plan. Leave it in synthesis or omit it
+until evidence forces a sharper question.</p>
   </main>
 </body>
 </html>

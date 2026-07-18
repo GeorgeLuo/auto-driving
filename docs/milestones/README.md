@@ -193,9 +193,51 @@ or an unlabeled visual result as an accuracy claim.
 4. At closeout, freeze the plan and write `closeout.md` with outcomes, decisions,
    validation, unresolved work, and links to durable reference material.
 5. Append a concise entry to [completed.md](completed.md).
-6. Create the next milestone and update the active-work link in
-   [the documentation guide](../README.md).
+6. Make the next milestone active (or promote a pre-plan) and update the
+   active-work link in [the documentation guide](../README.md).
 
 Closeouts preserve durable context; they do not duplicate source-level details.
 New architecture facts belong in `docs/reference/`, and future-facing research
 belongs in `docs/synthesis/`.
+
+## Immediate Deferred Work And Pre-Plans
+
+Closeouts may leave residual work. That residual is not a free-form backlog.
+Route it into exactly one of these places:
+
+1. **Durable reference** (`docs/reference/`): settled current behavior.
+2. **Synthesis** (`docs/synthesis/`): research evidence without commitment.
+3. **At most one pre-plan** after the active milestone: the single most immediate
+   next problem that is already known and would block a named later capability.
+
+### What Counts As Immediate Deferred Work
+
+Immediate deferred work is the smallest next milestone-shaped question that is
+already forced by evidence—for example, “packaged perception is fit for memory
+but not for non-idle decision.” It is not a wishlist of ideas, a multi-year
+roadmap, or a growing list of “nice to haves.”
+
+### Pre-Plan Rules
+
+- A pre-plan lives at `milestones/<number>-<slug>/plan.html` with status such as
+  `pre-plan - queued after NNN`.
+- It has a fixed objective, explicit non-goals, a stop condition, and provisional
+  packages—same honesty as an active plan, without competing for implementation
+  attention.
+- Pre-plans are **not active work**. Do not implement them while another
+  milestone is active unless the active plan’s decision log explicitly allows a
+  narrow parallel exception.
+- Prefer **one** written pre-plan for “next after active.” Do not stack many
+  future milestone drafts. When a newer pre-plan supersedes an older one, mark
+  the old status superseded and link forward.
+- Revise a pre-plan only when prerequisite closeout evidence changes the bounded
+  question—not to absorb every new idea discovered during the active milestone.
+- On activation, promote the pre-plan to active status, name the first review
+  unit, and update the documentation guide. On abandon, record why and leave no
+  dangling “maybe later” list.
+
+### Stop Expanding
+
+If a residual cannot be stated as a single milestone objective with a stop
+condition, it is not ready for a pre-plan. Leave it in synthesis or omit it
+until evidence forces a sharper question.

@@ -488,17 +488,18 @@
         </ul></div>
       </details>
 
-      <details class="work-item" data-status="active" open>
-        <summary><span>2. Define Plugin Execution And Activation</span><span class="status active">Next</span></summary>
+      <details class="work-item" data-status="done" open>
+        <summary><span>2. Define Plugin Execution And Activation</span><span class="status done">Done</span></summary>
         <div class="work-body"><ul>
-          <li>Give implementations a narrow update/reset/query shape while the framework owns lifecycle, status, timing, and failure isolation.</li>
-          <li>Use one current activation document and remove superseded paths rather than supporting compatibility aliases.</li>
-          <li>Keep source observations read-only and prevent hidden unbounded state.</li>
+          <li><strong>Implemented:</strong> <code>MemoryImplementation</code> protocol with <code>update</code>/<code>reset</code>/<code>snapshot</code> only.</li>
+          <li><strong>Implemented:</strong> one activation schema <code>automa_memory_activation_v0</code> via <code>read_memory_activation</code>; no compatibility aliases.</li>
+          <li><strong>Implemented:</strong> <code>ActivatedMemoryStage</code> owns load, timing, status, failure isolation (errors → error snapshot, no raise), and activation-bound capacity checks.</li>
+          <li><strong>Tested:</strong> activation validation, cycle wiring, reset epoch, isolated update failures, over-capacity rejection. No concrete production reducer yet.</li>
         </ul></div>
       </details>
 
-      <details class="work-item" data-status="pending">
-        <summary><span>3. Wire Equivalent Runtime Hosts</span><span class="status pending">Pending</span></summary>
+      <details class="work-item" data-status="active" open>
+        <summary><span>3. Wire Equivalent Runtime Hosts</span><span class="status active">Next</span></summary>
         <div class="work-body"><ul>
           <li>Install the selected memory stage in both the local automation worker and Donkey cycle host.</li>
           <li>Expose memory to runtime inspection and future engines through one shared snapshot shape.</li>
@@ -536,8 +537,8 @@
         </ul></div>
       </details>
 
-      <div class="progress-track" aria-label="Milestone work packages completed: 1 of 6"><div class="progress-fill" style="width: 16.7%;"></div></div>
-      <p class="small">Progress: package 1 done (typed memory snapshot contract). Next review unit: plugin execution and activation shape over the stable values.</p>
+      <div class="progress-track" aria-label="Milestone work packages completed: 2 of 6"><div class="progress-fill" style="width: 33.3%;"></div></div>
+      <p class="small">Progress: packages 1–2 done (typed values + activation/stage runner). Next review unit: wire equivalent Chase and Donkey hosts.</p>
     </section>
 
     <section class="panel">
@@ -625,6 +626,7 @@
             <tr><td>2026-07-18</td><td>Require the same visual provenance demonstration in Chase.</td><td>Simulator compatibility alone does not prove that live camera-derived observations become plausible memory. The depth-obstacles scenario must produce a tracked source-frame-to-memory review, with hidden scene state reserved for scoring.</td></tr>
             <tr><td>2026-07-18</td><td>Use Chase's built-in decision model as a shadow-validation reference.</td><td>The built-in model can drive a changing scene and provide frame-aligned evaluator state while the rewrite remains observe-only. Its privileged state must never become candidate input or an interface contract, and comparison should test declared plausibility rather than exact imitation.</td></tr>
             <tr><td>2026-07-18</td><td>Land typed MemorySnapshot values before any reducer or host wiring.</td><td>Removing public Any at the decision seam forces provenance, bounds, and failure health into the stable contract without encoding retention policy in the cycle.</td></tr>
+            <tr><td>2026-07-18</td><td>Give memory a single activation document and framework-owned stage runner before any host wiring.</td><td>Implementations stay limited to update/reset/snapshot. Load, timing, status, capacity enforcement, and failure isolation belong in stable infrastructure so hosts share one behavior.</td></tr>
           </tbody>
         </table>
       </div>

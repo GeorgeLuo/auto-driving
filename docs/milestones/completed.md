@@ -75,3 +75,27 @@ simulator, hardware, and motion checks as separately bounded operations.
 
 Full record: [plan](003-test-architecture-and-operator-contracts/plan.html) and
 [closeout](003-test-architecture-and-operator-contracts/closeout.md).
+
+## 004 - Physical Perception Parity
+
+Closed: 2026-07-18
+
+Proved that the PiRacer runs always-on perception while Donkey drive mode remains
+manual `user`, publishes one exact latest frame/result snapshot over read-only
+HTTP, and exposes that path through Automa stream, local overlay, guided
+placement check, offline strategy qualification, and a 60-second viability
+measurement. The packaged `lightweight_observer` remains the operational
+control; lab `floor_continuity` was rejected with `reject_keep_control`.
+
+Durable decisions: separate observation from movement authority with cadence
+gating and newest-frame skips; keep status providers free of manager re-entry;
+publish only the latest in-memory snapshot; keep physical operator presentation
+in Automa; treat documented candidate rejection as a valid close; gate viability
+on ≥90% of configured cadence, p95 age ≤1 s, zero control, and user mode.
+
+Remaining work: define bounded decision memory over the proven observation path
+(milestone 005), and treat residual right-side miss and clear-floor false
+positives as later candidate work rather than blockers for memory.
+
+Full record: [plan](004-physical-perception-parity/plan.html) and
+[closeout](004-physical-perception-parity/closeout.md).

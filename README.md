@@ -365,9 +365,9 @@ when none exist. The Pi loads both activations. The Donkey assembly runs the
 shared autonomy cycle independently of `run_pilot`, so manual `user` mode
 executes onboard perception at `AUTONOMY_OBSERVATION_INTERVAL_S` (default
 0.5 s) using the newest camera frame. While mode remains `user`, pilot outputs
-stay zero and Donkey DriveMode keeps manual input authoritative. Milestone 004
-still tracks physical streaming, latest-snapshot publication, and measured
-onboard viability.
+stay zero and Donkey DriveMode keeps manual input authoritative. The Pi publishes
+the exact latest frame/result on `/autonomy/observation/latest` for Automa
+stream, guided check, and viability measurement.
 
 Decision changes are local until the next autonomy deployment:
 

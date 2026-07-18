@@ -177,7 +177,7 @@
         <span class="pill">Action policy: idle</span>
         <span class="pill">Persistence: memory only by default</span>
         <span class="pill">Hosts: Chase and DonkeyCar</span>
-        <span class="pill">Physical gate: visual provenance</span>
+        <span class="pill">Visual gates: Chase and Pi</span>
         <span class="pill">Delivery: rolling PR horizon</span>
       </div>
     </header>
@@ -202,10 +202,10 @@
         Success is not a detailed floor plan. Success is a stable, economical
         answer to "what recent evidence is the controller retaining, why, and for
         how long?" that behaves the same in replay, simulation, and the physical
-        runtime while the car remains idle. On the Pi, that answer must be
-        visually reviewable against the exact source frames that produced the
-        retained evidence; schema compatibility and record counts alone are not
-        enough to close the milestone.
+        runtime while the car remains idle. In both Chase and on the Pi, that
+        answer must be visually reviewable against the exact source frames that
+        produced the retained evidence; schema compatibility and record counts
+        alone are not enough to close the milestone.
       </p>
     </section>
 
@@ -264,6 +264,19 @@
 ./cli/automa vehicles info memory --id chase-sim-chaser
 ./cli/automa vehicles info memory --id &lt;picar-id&gt;</pre>
           <p><strong>Success signal:</strong> both hosts report the same memory implementation and lifecycle schema, bounded state, and idle steering/throttle; physical deployment additionally reports its activated autonomy release.</p>
+        </div>
+        <div class="card interface">
+          <h3>Verify Simulator Evidence Retention</h3>
+          <p><strong>Starting state:</strong> the Chase frontend is available and the bounded memory implementation is packaged for the local controller.</p>
+          <p><strong>Proposed execution:</strong></p>
+          <pre>./cli/automa simulators ensure \
+  --scenario chaser-depth-obstacles
+./cli/automa vehicles update memory \
+  --id chase-sim-chaser \
+  --implementation bounded_evidence
+./cli/automa vehicles memory check \
+  --id chase-sim-chaser --record</pre>
+          <p><strong>Success signal:</strong> a live camera-derived run visibly links current perception to retained, expired, and reset memory records through exact source frames. Hidden scenario state may score the report but never enters the controller or memory input. Closeout promotes a compact visual extract into tracked milestone evidence.</p>
         </div>
         <div class="card interface">
           <h3>Verify Physical Evidence Retention</h3>
@@ -432,7 +445,7 @@
         </div>
         <div class="card interface">
           <h3>Simulator Evidence</h3>
-          <p>Run camera-derived observations in controlled scenarios. Hidden scene state may score an implementation but never becomes its memory input.</p>
+          <p>Run live camera-derived observations in <code>chaser-depth-obstacles</code> and record a source-frame-to-memory visual review. Hidden scene state may score an implementation but never becomes its memory input.</p>
         </div>
         <div class="card constraint">
           <h3>Physical Evidence</h3>
@@ -506,7 +519,7 @@
         <summary><span>5. Build Operator And Evaluation Workflows</span><span class="status pending">Pending</span></summary>
         <div class="work-body"><ul>
           <li>Support concise info, status, latest-state streaming, reset, deterministic replay, and opt-in recording through Automa.</li>
-          <li>Exercise controlled observation sequences and at least one camera-derived simulator scenario without map input.</li>
+          <li>Exercise controlled observation sequences and a live <code>chaser-depth-obstacles</code> run without map input; record a visual source-frame-to-memory review.</li>
           <li>Add a stationary guided Pi check covering visible evidence, bounded dropout retention, expiry, and reset without commanding movement.</li>
           <li>Record a compact visual report pairing retained records with their exact perception source frames, regions, age, and lifecycle transition; promote a bounded review extract into tracked milestone evidence.</li>
         </ul></div>
@@ -535,7 +548,7 @@
             <li>Simple loadable memory implementations with bounded state.</li>
             <li>Equivalent local simulator and onboard Pi host integration.</li>
             <li>Operator inspection, streaming, replay, and opt-in recording.</li>
-            <li>Deterministic sequence tests and controlled simulator evaluation.</li>
+            <li>Deterministic sequence tests and live, visually reviewable simulator evaluation.</li>
             <li>Non-moving physical activation, state inspection, and recorded visual-provenance validation.</li>
           </ul>
         </div>
@@ -583,8 +596,8 @@
         <li>Automa can stage, inspect, run, stream latest memory, replay a sequence, and reset state with concise human output and complete machine output.</li>
         <li>Default execution writes no logs, frames, or memory history; recording is explicit and bounded.</li>
         <li>Deterministic tests cover recurrence, dropout, conflict, expiry, capacity, reset, failure, and replay, including long-sequence boundedness.</li>
-        <li>Controlled simulator evidence and one recorded non-moving Pi present/dropout/expiry/reset check verify equivalent stage behavior while the idle engine emits zero movement.</li>
-        <li>A tracked physical review visibly traces retained image-space evidence to its exact perception source frame and region, distinguishes current from retained/expired evidence, and never treats stale coordinates as current geometry.</li>
+        <li>One live <code>chaser-depth-obstacles</code> check and one recorded non-moving Pi present/dropout/expiry/reset check verify equivalent stage behavior while the idle engine emits zero movement.</li>
+        <li>Tracked simulator and physical reviews visibly trace retained image-space evidence to exact perception source frames and regions, distinguish current from retained/expired evidence, and never treat stale coordinates as current geometry.</li>
         <li>A closeout states what memory representation proved useful, what remains unverified, and whether later pattern or action work is justified.</li>
       </ol>
     </section>
@@ -605,6 +618,7 @@
             <tr><td>2026-07-16</td><td>Defer evidence memory to milestone 005 and make physical perception parity milestone 004.</td><td>The Pi loads compatible perception code, but manual mode does not execute the onboard stage and operators cannot stream frame-matched findings. Memory must not begin on an unverified physical input path.</td></tr>
             <tr><td>2026-07-18</td><td>Activate milestone 005 after physical perception parity closed.</td><td>Live always-on observation, exact latest publication, guided check artifacts, strategy rejection, and 60s viability are recorded. Memory can retain attributed observations from the proven path.</td></tr>
             <tr><td>2026-07-18</td><td>Require visual provenance in the physical memory closeout gate.</td><td>Compatible schemas and bounded record counts do not show that memory plausibly derives from real perception. A stationary recorded check must trace retained regions to exact source frames and visibly demonstrate retention, expiry, and reset before later decision stages begin.</td></tr>
+            <tr><td>2026-07-18</td><td>Require the same visual provenance demonstration in Chase.</td><td>Simulator compatibility alone does not prove that live camera-derived observations become plausible memory. The depth-obstacles scenario must produce a tracked source-frame-to-memory review, with hidden scene state reserved for scoring.</td></tr>
           </tbody>
         </table>
       </div>

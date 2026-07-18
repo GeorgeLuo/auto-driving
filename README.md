@@ -103,6 +103,7 @@ The command groups intentionally distinguish different kinds of state:
 | `vehicles stream perception` | Displays rolling latest perception. Chase uses the local automation worker; PiCar polls onboard `/autonomy/observation/latest` and opens a local frame-matched view. |
 | `vehicles perception check` | Guided stationary PiCar placement check (clear/left/center/right/removed by default); never moves the car. Use `--record` for review artifacts. |
 | `vehicles perception qualify` | Offline common-frame compare of packaged control vs one lab candidate on labeled physical-check frames; emits promote/reject. |
+| `vehicles perception viability` | 60s onboard cadence/freshness/RSS measurement for a physical PiCar. |
 | `vehicles update core` | Deploys DonkeyCar framework and physical harness code to the Pi. |
 | `vehicles update autonomy` | Deploys a versioned autonomy release and activation metadata to the Pi. |
 | `vehicles operation ...` | Runs a bounded, explicitly requested vehicle operation. |

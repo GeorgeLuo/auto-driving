@@ -30,6 +30,7 @@ def controller_bundle_paths(vehicle_runtime_dir: Path) -> dict[str, str]:
         "runtime_dir": str(runtime_dir),
         "perception_runtime_dir": str(runtime_dir / "perception"),
         "decision_runtime_dir": str(runtime_dir / "decision"),
+        "memory_runtime_dir": str(runtime_dir / "memory"),
     }
 
 

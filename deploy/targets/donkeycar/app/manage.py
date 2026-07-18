@@ -460,7 +460,7 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
             else:
                 try:
                     from autonomy.runtime import apply_decision_activation, read_decision_activation
-                    from autonomy.decision import DecisionStages
+                    from autonomy.decision import DecisionStages, load_memory_stage_if_present
                     from autonomy.perception import ActivatedPerceptionStage, read_perception_activation
                     from autonomy.runtime.cycle_host import AutonomyCycleHost
                     from implementations.runtime.donkeycar.donkey_part import (
@@ -470,7 +470,8 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
 
                     activation = read_decision_activation(activation_path)
                     apply_decision_activation(autonomy_manager, activation)
-                    stages = DecisionStages()
+                    perception_stage = None
+                    memory_stage = None
                     perception_algorithm = None
                     perception_activation_path = (
                         Path(__file__).resolve().parent / "runtime" / "perception" / "active.json"
@@ -480,7 +481,6 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
                             perception_stage = ActivatedPerceptionStage(
                                 read_perception_activation(perception_activation_path)
                             )
-                            stages = DecisionStages(perceive=perception_stage)
                             perception_algorithm = perception_stage.activation.algorithm
                             autonomy_manager.register_status_provider(
                                 "perception", perception_stage.status
@@ -495,11 +495,37 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
                                 "continuing with a no-op perception stage",
                                 perception_activation_path,
                             )
+                            perception_stage = None
                     else:
                         logger.warning(
                             "Onboard perception activation unavailable; expected %s",
                             perception_activation_path,
                         )
+                    memory_activation_path = (
+                        Path(__file__).resolve().parent / "runtime" / "memory" / "active.json"
+                    )
+                    if memory_activation_path.exists():
+                        try:
+                            memory_stage = load_memory_stage_if_present(memory_activation_path)
+                            if memory_stage is not None:
+                                autonomy_manager.register_status_provider(
+                                    "memory", memory_stage.status
+                                )
+                                logger.info(
+                                    "Activated onboard memory implementation %s",
+                                    memory_stage.activation.implementation_id,
+                                )
+                        except Exception:
+                            logger.exception(
+                                "Unable to activate onboard memory from %s; "
+                                "continuing without a memory stage",
+                                memory_activation_path,
+                            )
+                            memory_stage = None
+                    stages = DecisionStages(
+                        perceive=perception_stage,
+                        remember=memory_stage,
+                    )
                     # Always-on observation: run independently of run_pilot so
                     # manual user mode still executes the shared cycle at a
                     # bounded cadence. DriveMode remains movement authority.

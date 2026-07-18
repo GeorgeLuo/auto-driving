@@ -14,7 +14,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, TextIO
 
-from autonomy.decision import DecisionFrameContext, DecisionStages
+from autonomy.decision import (
+    DecisionFrameContext,
+    DecisionStages,
+    load_memory_stage_if_present,
+)
 from autonomy.perception import PERCEPTION_TEXT_SCHEMA, build_perception_request
 from autonomy.runtime import AutonomyManager
 from autonomy.runtime.cycle_host import AutonomyCycleHost
@@ -157,10 +161,27 @@ def run_vehicle_automation(
         default_engine_spec=decision_config["engine_spec"],
         default_engine_config=dict(decision_config["engine_config"]),
     )
+    memory_activation_path = Path(bundle["memory_runtime_dir"]) / "active.json"
+    memory_stage = None
+    if memory_activation_path.exists():
+        try:
+            memory_stage = load_memory_stage_if_present(memory_activation_path)
+        except (FileNotFoundError, ValueError, TypeError, ImportError, AttributeError) as exc:
+            return CommandResult(
+                2,
+                "\n".join(
+                    [
+                        f"Could not load memory activation for {vehicle_id}.",
+                        f"Activation: {display_path(memory_activation_path)}",
+                        f"Reason: {type(exc).__name__}: {exc}",
+                    ]
+                ),
+            )
     cycle_host = AutonomyCycleHost(
         manager=engine_manager,
         stages=DecisionStages(
             perceive=perceive_stage,
+            remember=memory_stage,
         ),
     )
 
@@ -226,6 +247,19 @@ def run_vehicle_automation(
             "engine_spec": decision_config["engine_spec"],
             "engine_config": decision_config["engine_config"],
         },
+        "memory": (
+            {
+                "activation": display_path(memory_activation_path),
+                "implementation_id": memory_stage.activation.implementation_id,
+                "implementation_spec": memory_stage.activation.implementation_spec,
+                "status": memory_stage.status(),
+            }
+            if memory_stage is not None
+            else {
+                "activation": display_path(memory_activation_path),
+                "status": "absent",
+            }
+        ),
         "run_dir": display_path(run_dir) if run_dir is not None else None,
         "latest": {
             "front_camera": display_path(latest_front_camera_path) if not record else None,

@@ -573,6 +573,7 @@ def _write_remote_activation_files(
         "runtime_dir": f"{remote_app_root}/runtime",
         "perception_runtime_dir": f"{remote_app_root}/runtime/perception",
         "decision_runtime_dir": f"{remote_app_root}/runtime/decision",
+        "memory_runtime_dir": f"{remote_app_root}/runtime/memory",
         "release": remote_release,
     }
 

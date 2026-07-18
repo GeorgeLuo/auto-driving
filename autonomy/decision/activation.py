@@ -95,6 +95,18 @@ def load_memory_implementation(
     )
 
 
+def load_memory_stage_if_present(path: Path) -> ActivatedMemoryStage | None:
+    """Load an activated memory stage when the activation document exists.
+
+    Missing paths return None so Chase and Donkey hosts can share optional
+    wiring without requiring memory before package activation exists.
+    """
+
+    if not path.exists():
+        return None
+    return ActivatedMemoryStage(read_memory_activation(path))
+
+
 def instantiate_memory_implementation(
     implementation_spec: str,
     implementation_config: dict[str, Any],

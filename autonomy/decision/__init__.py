@@ -6,6 +6,7 @@ from .activation import (
     MemoryActivation,
     instantiate_memory_implementation,
     load_memory_implementation,
+    load_memory_stage_if_present,
     read_memory_activation,
 )
 from .cycle import (
@@ -51,6 +52,7 @@ __all__ = [
     "error_memory_snapshot",
     "instantiate_memory_implementation",
     "load_memory_implementation",
+    "load_memory_stage_if_present",
     "observation_from_perception",
     "read_memory_activation",
     "unavailable_memory_snapshot",

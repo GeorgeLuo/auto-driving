@@ -95,10 +95,8 @@ Measured operational cost on `lightweight_observer` (60 s live):
 - Milestone 005: bounded evidence memory over the proven observation path,
   including an opt-in physical review that traces retained image-space evidence
   to its exact source frame before later decision stages begin.
-- Immediate next after memory (pre-plan only):
-  [006 Decision-Facing Perception Readiness](../006-decision-facing-perception-readiness/plan.html)
-  measures whether packaged floor-boundary evidence is fit for a constrained
-  decision experiment, with at most one upgrade attempt—not an open CV backlog.
+- Improve or re-qualify physical right-side and clear-floor false-positive
+  behavior only when a new candidate states an explicit adoption gate.
 - Motion-capable physical validation remains a separately named future
   operation with stronger safety requirements.
 - Optional unavailable-camera step remains available for explicit failure-path

@@ -11,11 +11,26 @@ is active. It should give the decision cycle bounded, inspectable continuity
 across frames by retaining attributed observation evidence without claiming a
 complete world model or granting movement authority.
 
+## Immediate Pre-Plan (Not Active)
+
+Milestone 006, [Decision-Facing Perception Readiness](milestones/006-decision-facing-perception-readiness/plan.html),
+is a **pre-plan** queued after 005. It records the immediate deferred question
+from physical parity: whether packaged floor-boundary evidence is fit for a
+first constrained non-idle decision path, or whether exactly one bounded
+upgrade should be attempted under the same contract. It is not a multi-candidate
+backlog and must not absorb open-ended CV research.
+
+See the [immediate deferred work and pre-plan rules](milestones/README.md#immediate-deferred-work-and-pre-plans)
+in the planning contract.
+
+## Recently Closed
+
 Milestone 004, [Physical Perception Parity](milestones/004-physical-perception-parity/plan.html),
-is closed. The Pi now runs always-on manual-mode observation, publishes an exact
+is closed. The Pi runs always-on manual-mode observation, publishes an exact
 latest snapshot, and retains the packaged floor-plane observer after rejecting
-the floor-continuity candidate. Use its [closeout](milestones/004-physical-perception-parity/closeout.md)
-for residual physical limits before memory work.
+floor-continuity. Residual quality limits are deferred to the 006 pre-plan, not
+an expanding list. Closeout:
+[004 closeout](milestones/004-physical-perception-parity/closeout.md).
 
 ## Reading Order
 
@@ -23,7 +38,8 @@ for residual physical limits before memory work.
    pull-request delivery contract, or use its
    [rendered view](milestones/planning-contract.html).
 2. Read the active milestone plan when one is listed above. If none is active,
-   formalize the next goal before implementation.
+   formalize the next goal before implementation. Read a listed pre-plan only
+   as the bounded next question—not as current work.
 3. Read [`milestones/completed.md`](milestones/completed.md) for durable context
    from closed work.
 4. Read only the relevant documents under `reference/` for current system

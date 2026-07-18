@@ -39,6 +39,7 @@ from .perception_runs import (
 )
 from .simulators import DEFAULT_SCENARIO_ID, ensure_simulator, get_simulator_status
 from .physical_check import run_physical_perception_check
+from .physical_qualify import run_physical_strategy_qualification
 from .physical_viability import run_physical_viability_measurement
 from .streaming import stream_vehicle_perception
 from .vehicles import discover_active_vehicles, format_active_vehicles_snapshot
@@ -584,6 +585,57 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print the machine-readable check report.",
     )
     perception_check.set_defaults(handler=_handle_vehicles_perception_check)
+
+    perception_qualify = perception_commands.add_parser(
+        "qualify",
+        help="Compare packaged control vs one lab candidate on labeled physical-check frames.",
+        description=(
+            "Offline common-frame qualification: apply lightweight_observer (floor-plane control) "
+            "and a lab candidate (default floor_continuity) to the same labeled physical-check "
+            "frames, score placement behavior, and emit an explicit promote/reject decision. "
+            "Does not measure onboard Pi viability."
+        ),
+    )
+    perception_qualify.add_argument(
+        "--from-check-run",
+        required=True,
+        type=Path,
+        help="Recorded physical-check directory containing labeled */frame.jpg steps.",
+    )
+    perception_qualify.add_argument(
+        "--control-algorithm",
+        default="lightweight_observer",
+        choices=available_perception_algorithm_ids(),
+        help="Packaged control algorithm (default: lightweight_observer).",
+    )
+    perception_qualify.add_argument(
+        "--candidate",
+        default="floor_continuity",
+        help="Lab candidate id to evaluate (default: floor_continuity).",
+    )
+    perception_qualify.add_argument(
+        "--steps",
+        default=None,
+        help="Comma-separated placements to include (default: clear,left,center,right,removed).",
+    )
+    perception_qualify.add_argument(
+        "--extra-frame",
+        action="append",
+        default=[],
+        metavar="PLACEMENT=PATH",
+        help="Optional extra labeled frame, e.g. right=lab/runs/.../frame.jpg. Repeatable.",
+    )
+    perception_qualify.add_argument(
+        "--no-record",
+        action="store_true",
+        help="Do not write a qualification report directory.",
+    )
+    perception_qualify.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the machine-readable qualification report.",
+    )
+    perception_qualify.set_defaults(handler=_handle_vehicles_perception_qualify)
 
     perception_viability = perception_commands.add_parser(
         "viability",
@@ -1151,6 +1203,7 @@ def _handle_vehicles_perception_help(args: argparse.Namespace) -> int:
                 "- run      observe a short sequence from an active vehicle",
                 "- apply    process one existing image or image sequence",
                 "- check    guided stationary physical placement check (picar)",
+                "- qualify  compare control vs one lab candidate on labeled check frames",
                 "- viability  measure onboard cadence/freshness on a physical PiCar",
                 "- compare  compare all ready candidates on one sequence",
                 "- candidates  show experimental candidates and readiness",
@@ -1432,6 +1485,32 @@ def _handle_vehicles_perception_check(args: argparse.Namespace) -> int:
     except ValueError as exc:
         print(str(exc))
         return 2
+    if result.message:
+        print(result.message)
+    return result.exit_code
+
+
+def _handle_vehicles_perception_qualify(args: argparse.Namespace) -> int:
+    steps = None
+    if args.steps:
+        steps = tuple(part.strip() for part in str(args.steps).split(",") if part.strip())
+    extra_frames: list[tuple[str, Path]] = []
+    for item in args.extra_frame or []:
+        placement, separator, raw_path = str(item).partition("=")
+        if not separator or not placement.strip() or not raw_path.strip():
+            print(f"invalid --extra-frame {item!r}; expected PLACEMENT=PATH")
+            return 2
+        extra_frames.append((placement.strip().lower(), Path(raw_path.strip())))
+    result = run_physical_strategy_qualification(
+        check_run=args.from_check_run,
+        control_algorithm=args.control_algorithm,
+        candidate_id=args.candidate,
+        steps=steps,
+        extra_frames=tuple(extra_frames),
+        record=not args.no_record,
+        json_output=args.json,
+        output=None if args.json else sys.stdout,
+    )
     if result.message:
         print(result.message)
     return result.exit_code

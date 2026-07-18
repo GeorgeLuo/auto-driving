@@ -1,0 +1,321 @@
+{
+  "candidate": {
+    "frames": [
+      {
+        "boundary_count": 3,
+        "duration_ms": 173.569,
+        "failed_checks": [],
+        "frame_path": "lab/runs/perception-check/piracer-20260717-145716/01-clear/frame.jpg",
+        "label": "01-clear",
+        "passed": true,
+        "placement": "clear",
+        "source": "physical_check",
+        "zones": [
+          "left",
+          "right",
+          "right"
+        ]
+      },
+      {
+        "boundary_count": 4,
+        "duration_ms": 19.627,
+        "failed_checks": [],
+        "frame_path": "lab/runs/perception-check/piracer-20260717-145716/02-left/frame.jpg",
+        "label": "02-left",
+        "passed": true,
+        "placement": "left",
+        "source": "physical_check",
+        "zones": [
+          "left",
+          "right",
+          "left",
+          "right"
+        ]
+      },
+      {
+        "boundary_count": 4,
+        "duration_ms": 18.846,
+        "failed_checks": [],
+        "frame_path": "lab/runs/perception-check/piracer-20260717-145716/03-center/frame.jpg",
+        "label": "03-center",
+        "passed": true,
+        "placement": "center",
+        "source": "physical_check",
+        "zones": [
+          "left",
+          "right",
+          "right",
+          "left"
+        ]
+      },
+      {
+        "boundary_count": 1,
+        "duration_ms": 18.309,
+        "failed_checks": [
+          "boundary_right"
+        ],
+        "frame_path": "lab/runs/perception-check/piracer-20260717-145716/04-right/frame.jpg",
+        "label": "04-right",
+        "passed": false,
+        "placement": "right",
+        "source": "physical_check",
+        "zones": [
+          "left"
+        ]
+      },
+      {
+        "boundary_count": 1,
+        "duration_ms": 18.04,
+        "failed_checks": [],
+        "frame_path": "lab/runs/perception-check/piracer-20260717-145716/05-removed/frame.jpg",
+        "label": "05-removed",
+        "passed": true,
+        "placement": "removed",
+        "source": "physical_check",
+        "zones": [
+          "left"
+        ]
+      },
+      {
+        "boundary_count": 3,
+        "duration_ms": 18.873,
+        "failed_checks": [],
+        "frame_path": "lab/runs/perception-check/right-sanity-live/frame.jpg",
+        "label": "extra-right-frame",
+        "passed": true,
+        "placement": "right",
+        "source": "extra",
+        "zones": [
+          "left",
+          "right",
+          "left"
+        ]
+      }
+    ],
+    "id": "floor_continuity",
+    "kind": "lab",
+    "metrics": {
+      "clear_false_positive_boundaries_mean": 3.0,
+      "directional_zone_hit_rate": 0.75,
+      "frame_count": 6,
+      "mean_boundary_count": 2.6666666666666665,
+      "mean_object_boundary_count": 3.0,
+      "median_duration_ms": 18.8595,
+      "overall_pass_rate": 0.8333333333333334,
+      "p95_duration_ms": 173.569,
+      "placement_pass_rate": {
+        "center": 1.0,
+        "clear": 1.0,
+        "left": 1.0,
+        "removed": 1.0,
+        "right": 0.5
+      },
+      "removal_pass_rate": 1.0
+    },
+    "role": "floor-continuity-v1"
+  },
+  "comparison": {
+    "material_improvement_count": 1,
+    "material_improvements": [
+      "median_duration_ms_desktop"
+    ],
+    "material_regressions": [
+      "clear_false_positive_boundaries_mean",
+      "mean_boundary_count"
+    ],
+    "measures": [
+      {
+        "candidate": 0.8333333333333334,
+        "control": 0.8333333333333334,
+        "delta": 0.0,
+        "higher_is_better": true,
+        "improved": false,
+        "material": false,
+        "name": "overall_pass_rate",
+        "regressed": false
+      },
+      {
+        "candidate": 0.75,
+        "control": 0.75,
+        "delta": 0.0,
+        "higher_is_better": true,
+        "improved": false,
+        "material": false,
+        "name": "directional_zone_hit_rate",
+        "regressed": false
+      },
+      {
+        "candidate": 3.0,
+        "control": 1.0,
+        "delta": 2.0,
+        "higher_is_better": false,
+        "improved": false,
+        "material": false,
+        "name": "clear_false_positive_boundaries_mean",
+        "regressed": true
+      },
+      {
+        "candidate": 1.0,
+        "control": 1.0,
+        "delta": 0.0,
+        "higher_is_better": true,
+        "improved": false,
+        "material": false,
+        "name": "removal_pass_rate",
+        "regressed": false
+      },
+      {
+        "candidate": 2.6666666666666665,
+        "control": 1.5,
+        "delta": 1.166667,
+        "higher_is_better": false,
+        "improved": false,
+        "material": false,
+        "name": "mean_boundary_count",
+        "regressed": true
+      },
+      {
+        "candidate": 18.8595,
+        "control": 58.8825,
+        "delta": -40.023,
+        "higher_is_better": false,
+        "improved": true,
+        "material": true,
+        "name": "median_duration_ms_desktop",
+        "regressed": false
+      }
+    ]
+  },
+  "control": {
+    "frames": [
+      {
+        "boundary_count": 1,
+        "duration_ms": 68.224,
+        "failed_checks": [],
+        "frame_path": "lab/runs/perception-check/piracer-20260717-145716/01-clear/frame.jpg",
+        "label": "01-clear",
+        "passed": true,
+        "placement": "clear",
+        "source": "physical_check",
+        "zones": [
+          "left"
+        ]
+      },
+      {
+        "boundary_count": 3,
+        "duration_ms": 58.653,
+        "failed_checks": [],
+        "frame_path": "lab/runs/perception-check/piracer-20260717-145716/02-left/frame.jpg",
+        "label": "02-left",
+        "passed": true,
+        "placement": "left",
+        "source": "physical_check",
+        "zones": [
+          "left",
+          "left",
+          "left"
+        ]
+      },
+      {
+        "boundary_count": 2,
+        "duration_ms": 58.127,
+        "failed_checks": [],
+        "frame_path": "lab/runs/perception-check/piracer-20260717-145716/03-center/frame.jpg",
+        "label": "03-center",
+        "passed": true,
+        "placement": "center",
+        "source": "physical_check",
+        "zones": [
+          "left",
+          "right"
+        ]
+      },
+      {
+        "boundary_count": 0,
+        "duration_ms": 58.989,
+        "failed_checks": [
+          "boundary_right",
+          "has_boundary"
+        ],
+        "frame_path": "lab/runs/perception-check/piracer-20260717-145716/04-right/frame.jpg",
+        "label": "04-right",
+        "passed": false,
+        "placement": "right",
+        "source": "physical_check",
+        "zones": []
+      },
+      {
+        "boundary_count": 1,
+        "duration_ms": 58.776,
+        "failed_checks": [],
+        "frame_path": "lab/runs/perception-check/piracer-20260717-145716/05-removed/frame.jpg",
+        "label": "05-removed",
+        "passed": true,
+        "placement": "removed",
+        "source": "physical_check",
+        "zones": [
+          "right"
+        ]
+      },
+      {
+        "boundary_count": 2,
+        "duration_ms": 63.726,
+        "failed_checks": [],
+        "frame_path": "lab/runs/perception-check/right-sanity-live/frame.jpg",
+        "label": "extra-right-frame",
+        "passed": true,
+        "placement": "right",
+        "source": "extra",
+        "zones": [
+          "right",
+          "left"
+        ]
+      }
+    ],
+    "id": "lightweight_observer",
+    "kind": "packaged",
+    "metrics": {
+      "clear_false_positive_boundaries_mean": 1.0,
+      "directional_zone_hit_rate": 0.75,
+      "frame_count": 6,
+      "mean_boundary_count": 1.5,
+      "mean_object_boundary_count": 1.75,
+      "median_duration_ms": 58.8825,
+      "overall_pass_rate": 0.8333333333333334,
+      "p95_duration_ms": 68.224,
+      "placement_pass_rate": {
+        "center": 1.0,
+        "clear": 1.0,
+        "left": 1.0,
+        "removed": 1.0,
+        "right": 0.5
+      },
+      "removal_pass_rate": 1.0
+    },
+    "role": "floor-plane-v0 control via lightweight_observer"
+  },
+  "decision": {
+    "behavioral_improvements": [],
+    "behavioral_regressions": [
+      "clear_false_positive_boundaries_mean",
+      "mean_boundary_count"
+    ],
+    "candidate_overall_pass_rate": 0.8333333333333334,
+    "control_overall_pass_rate": 0.8333333333333334,
+    "control_remains_operational_fallback": true,
+    "onboard_pi_viability_measured": false,
+    "promote": false,
+    "rationale": "Candidate did not improve at least two material behavioral measures on the labeled physical-check frames; keep packaged floor-plane control.",
+    "status": "reject_keep_control"
+  },
+  "limits": [
+    "Offline desktop apply only; not an onboard Raspberry Pi latency/RSS measurement.",
+    "Placement labels come from the human-guided physical-check folder names.",
+    "Scores use generic floor_boundary zone/presence checks, not semantic object identity.",
+    "Promotion to stable deploy still requires explicit package activation and Pi viability evidence."
+  ],
+  "out_dir": "lab/runs/perception-qualify/piracer-20260717-145716-20260717-151921",
+  "recorded": true,
+  "schema": "automa_physical_strategy_qualification_v0",
+  "source_check_run": "lab/runs/perception-check/piracer-20260717-145716"
+}

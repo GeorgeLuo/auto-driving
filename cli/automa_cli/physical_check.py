@@ -412,8 +412,16 @@ def score_placement(
     control_zero = steering == 0.0 and throttle == 0.0
     mode = publication.get("mode") or publication.get("drive_mode")
     perception = publication.get("perception") if isinstance(publication.get("perception"), dict) else {}
-    signals = perception.get("signals") if isinstance(perception.get("signals"), list) else []
-    things = perception.get("things") if isinstance(perception.get("things"), list) else []
+    signals = (
+        list(perception.get("signals") or [])
+        if isinstance(perception.get("signals"), (list, tuple))
+        else []
+    )
+    things = (
+        list(perception.get("things") or [])
+        if isinstance(perception.get("things"), (list, tuple))
+        else []
+    )
     floor_visible = _signal_bool(signals, "floor_visible")
     boundaries = [
         thing
@@ -616,7 +624,11 @@ def _normalize_steps(steps: tuple[str, ...] | None) -> tuple[str, ...]:
 
 def _boundary_count(publication: dict[str, Any]) -> int:
     perception = publication.get("perception") if isinstance(publication.get("perception"), dict) else {}
-    things = perception.get("things") if isinstance(perception.get("things"), list) else []
+    things = (
+        list(perception.get("things") or [])
+        if isinstance(perception.get("things"), (list, tuple))
+        else []
+    )
     return sum(
         1
         for thing in things

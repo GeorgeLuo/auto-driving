@@ -327,19 +327,25 @@
           <p><strong>Deliverable:</strong> teach perception info and stream commands to resolve the physical latest-snapshot endpoints with the same operator concepts as Chase.</p>
           <p><strong>Review question:</strong> Can an operator inspect live physical findings through Automa terminal stream and local view without hosting a second frontend on the Pi?</p>
         </div>
+        <div class="card goal">
+          <h3>Completed: Make The Physical Check Repeatable</h3>
+          <p><span class="status done">Merged</span> <strong>Review shape:</strong> deep and narrow.</p>
+          <p><strong>Deliverable:</strong> guided clear/left/center/right/removed check with frame-matched review artifacts and zero movement.</p>
+        </div>
         <div class="card interface">
-          <h3>Current: Make The Physical Check Repeatable</h3>
-          <p><span class="status active">In progress</span> <strong>Review shape:</strong> deep and narrow.</p>
-          <p><strong>Deliverable:</strong> guided clear/left/center/right/removed/unavailable check with frame-matched review artifacts and zero movement.</p>
-          <p><strong>Review question:</strong> Can a stationary guided placement sequence prove generic floor-boundary behavior against onboard results without commanding movement?</p>
-          <p><strong>Create/Modify:</strong> <code>vehicles perception check</code>; placement scoring; review.html/report.json recording; focused CLI tests; plan and README.</p>
-          <p><strong>Non-goals:</strong> algorithm promotion, memory-stage work, autonomous mode, semantic object labels.</p>
+          <h3>Current: Qualify One Physical Strategy</h3>
+          <p><span class="status active">In progress</span> <strong>Review shape:</strong> common-frame comparison.</p>
+          <p><strong>Deliverable:</strong> measure packaged floor-plane control and lab floor-continuity on the same labeled physical-check frames; emit an explicit promote/reject decision.</p>
+          <p><strong>Review question:</strong> Does the candidate improve at least two material behavioral measures without scene-specific tuning, interface changes, stale state, or unacceptable Pi cost?</p>
+          <p><strong>Create/Modify:</strong> <code>vehicles perception qualify</code>; common-frame apply of control vs candidate; material-measure comparison; milestone evidence; plan/README.</p>
+          <p><strong>Non-goals:</strong> broad model search, memory-stage work, automatic onboard promotion without Pi viability.</p>
+          <p><strong>Validation:</strong> offline qualification on the recorded physical-check set rejected promotion and retained floor-plane as operational fallback. <a href="evidence/floor-continuity-physical-check-qualification.json">Evidence</a> · <a href="evidence/floor-continuity-physical-check-qualification.md">summary</a>.</p>
         </div>
         <div class="card goal">
-          <h3>Next: Qualify One Physical Strategy</h3>
-          <p><span class="status pending">Queued after physical check lands</span> <strong>Expected shape:</strong> common-frame comparison.</p>
-          <p><strong>Expected deliverable:</strong> measure floor-plane-v0 as control and floor-continuity-v1 on labeled physical placements; promote or reject explicitly.</p>
-          <p><strong>Non-goals:</strong> broad model search, memory-stage work.</p>
+          <h3>Next: Measure Physical Viability</h3>
+          <p><span class="status pending">Queued after strategy qualification decision lands</span> <strong>Expected shape:</strong> deep and narrow measurement.</p>
+          <p><strong>Expected deliverable:</strong> 60-second onboard cadence/latency/RSS evidence for the selected operational observer.</p>
+          <p><strong>Non-goals:</strong> algorithm expansion, memory-stage work.</p>
         </div>
         <div class="card constraint">
           <h3>Later: Qualify One Physical Strategy</h3>
@@ -461,8 +467,8 @@ Decision and action remain separate:
         </ul></div>
       </details>
 
-      <details class="work-item" data-status="active" open>
-        <summary><span>4. Make The Physical Check Repeatable</span><span class="status active">In progress</span></summary>
+      <details class="work-item" data-status="done" open>
+        <summary><span>4. Make The Physical Check Repeatable</span><span class="status done">Done</span></summary>
         <div class="work-body"><ul>
           <li><strong>Implemented:</strong> <code>vehicles perception check --id piracer</code> guides clear/left/center/right/removed/unavailable placements and captures onboard latest snapshots.</li>
           <li><strong>Implemented:</strong> scores generic floor-boundary zones, floor visibility, frame identity, and zero control; never commands movement or mode changes.</li>
@@ -471,9 +477,14 @@ Decision and action remain separate:
         </ul></div>
       </details>
 
-      <details class="work-item" data-status="active">
-        <summary><span>5. Qualify One Realistic Physical Strategy</span><span class="status active">Archive application complete; labeled/live comparison pending</span></summary>
+      <details class="work-item" data-status="done" open>
+        <summary><span>5. Qualify One Realistic Physical Strategy</span><span class="status done">Done — reject_keep_control</span></summary>
         <div class="work-body"><ul>
+          <li><strong>Implemented:</strong> <code>vehicles perception qualify --from-check-run</code> applies packaged control and one lab candidate to identical labeled physical-check frames.</li>
+          <li><strong>Implemented:</strong> material measures include overall pass rate, directional zone hit rate, clear-floor false-positive boundaries, removal pass rate, and boundary saturation; desktop latency is informational only.</li>
+          <li><strong>Result:</strong> on the recorded placement set (plus a closer right sanity frame), <code>floor_continuity</code> did not improve at least two behavioral measures and increased clear-floor boundary count; decision is <code>reject_keep_control</code>.</li>
+          <li><strong>Evidence:</strong> <a href="evidence/floor-continuity-physical-check-qualification.json">qualification report</a> · <a href="evidence/floor-continuity-physical-check-qualification.md">summary</a>.</li>
+
           <li>Use the repeatable physical check to establish <code>floor-plane-v0</code> as a measured integration control and shared-frame application baseline.</li>
           <li><strong>Implemented:</strong> the stateless <code>floor-continuity-v1</code> hypothesis lives under <code>lab/plugins/perception/</code>, runs at bounded internal resolution, and required no stable autonomy or CLI contract change.</li>
           <li><strong>Simulator checked:</strong> same-frame application and a fresh live capture run completed with exact-frame opt-in diagnostics; narrow edge fragments remain a known rejection case. <a href="evidence/floor-continuity/simulator-8-frame-contact-sheet.jpg">Inspect the eight-frame application</a>.</li>
@@ -506,8 +517,8 @@ Decision and action remain separate:
         </ul></div>
       </details>
 
-      <div class="progress-track" aria-label="Milestone work packages completed: 5 of 8"><div class="progress-fill" style="width: 62.5%;"></div></div>
-      <p class="small">Progress: packages 0-4 done; package 5 may still be open on a parallel PR. Package 6 live 60s viability for the operational observer is measured and recorded. Next: consolidate evidence / closeout once strategy decision and viability are both on main.</p>
+      <div class="progress-track" aria-label="Milestone work packages completed: 6 of 8"><div class="progress-fill" style="width: 75%;"></div></div>
+      <p class="small">Progress: packages 0-5 done (package 5 reject_keep_control; floor-continuity remains lab-only). Package 6 live 60s viability for the operational observer is measured and recorded. Next: consolidate evidence / closeout.</p>
     </section>
 
     <section class="panel">
@@ -606,8 +617,9 @@ Decision and action remain separate:
             <tr><td>2026-07-17</td><td>Publish latest observation through dedicated read-only endpoints rather than expanding <code>/autonomy/status</code>.</td><td>Status stays bounded for readiness probes. Exact-frame findings and JPEG bytes are opt-in GETs that compute health at read time and keep only one in-memory snapshot.</td></tr>
             <tr><td>2026-07-17</td><td>Resolve physical stream/info through onboard publication rather than a local automation worker on the Pi.</td><td>Automa owns terminal and local loopback presentation; the Pi only publishes the latest snapshot. This avoids a second onboard frontend while reusing Chase view contracts.</td></tr>
             <tr><td>2026-07-17</td><td>Implement the physical placement check as a stationary guided CLI that never commands movement.</td><td>Acceptance needs human placement and onboard evidence pairing; keeping motion out of the check preserves the authority boundary and keeps failures attributable to perception/publication.</td></tr>
-                      <tr><td>2026-07-17</td><td>Measure viability against the configured observation cadence (0.5 s) with a 90% attainment gate rather than a hard wall-clock 2.00 Hz.</td><td>With min_interval_s=0.5 the theoretical maximum is 2.0 Hz; a 60s live run at ~1.90 Hz with p95 age well under 1s demonstrates the operational path while avoiding false fails from endpoint polling overhead.</td></tr>
-</tbody>
+            <tr><td>2026-07-17</td><td>Reject floor-continuity promotion after labeled common-frame comparison; keep packaged floor-plane as operational control.</td><td>On the physical-check frames the candidate matched pass rate but increased clear-floor boundary saturation and did not improve two material behavioral measures. Documented rejection is a valid milestone outcome.</td></tr>
+            <tr><td>2026-07-17</td><td>Measure viability against the configured observation cadence (0.5 s) with a 90% attainment gate rather than a hard wall-clock 2.00 Hz.</td><td>With min_interval_s=0.5 the theoretical maximum is 2.0 Hz; a 60s live run at ~1.90 Hz with p95 age well under 1s demonstrates the operational path while avoiding false fails from endpoint polling overhead.</td></tr>
+          </tbody>
         </table>
       </div>
     </section>

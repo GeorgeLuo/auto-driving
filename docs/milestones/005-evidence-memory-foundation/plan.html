@@ -172,11 +172,12 @@
         authority before its lifecycle and value are understood.
       </p>
       <div class="meta">
-        <span class="pill">Status: queued - milestone 004 prerequisite</span>
+        <span class="pill">Status: active - implementation</span>
         <span class="pill">Proposed: 2026-07-15</span>
         <span class="pill">Action policy: idle</span>
         <span class="pill">Persistence: memory only by default</span>
         <span class="pill">Hosts: Chase and DonkeyCar</span>
+        <span class="pill">Visual gates: Chase and Pi</span>
         <span class="pill">Delivery: rolling PR horizon</span>
       </div>
     </header>
@@ -201,7 +202,10 @@
         Success is not a detailed floor plan. Success is a stable, economical
         answer to "what recent evidence is the controller retaining, why, and for
         how long?" that behaves the same in replay, simulation, and the physical
-        runtime while the car remains idle.
+        runtime while the car remains idle. In both Chase and on the Pi, that
+        answer must be visually reviewable against the exact source frames that
+        produced the retained evidence; schema compatibility and record counts
+        alone are not enough to close the milestone.
       </p>
     </section>
 
@@ -260,6 +264,28 @@
 ./cli/automa vehicles info memory --id chase-sim-chaser
 ./cli/automa vehicles info memory --id &lt;picar-id&gt;</pre>
           <p><strong>Success signal:</strong> both hosts report the same memory implementation and lifecycle schema, bounded state, and idle steering/throttle; physical deployment additionally reports its activated autonomy release.</p>
+        </div>
+        <div class="card interface">
+          <h3>Verify Simulator Evidence Retention</h3>
+          <p><strong>Starting state:</strong> the Chase frontend is available and the bounded memory implementation is packaged for the local controller.</p>
+          <p><strong>Proposed execution:</strong></p>
+          <pre>./cli/automa simulators ensure \
+  --scenario chaser-depth-obstacles
+./cli/automa vehicles update memory \
+  --id chase-sim-chaser \
+  --implementation bounded_evidence
+./cli/automa vehicles memory check \
+  --id chase-sim-chaser --record</pre>
+          <p><strong>Success signal:</strong> Chase's built-in decision model remains the movement authority while the rewritten cycle runs in shadow/observe-only mode. A live camera-derived run visibly links current perception to retained, expired, and reset memory records through exact source frames. A frame-aligned evaluator may compare the rewritten cycle with Chase debug/reference state, but that state never enters the controller or memory input. Closeout promotes a compact visual extract into tracked milestone evidence.</p>
+        </div>
+        <div class="card interface">
+          <h3>Verify Physical Evidence Retention</h3>
+          <p><strong>Starting state:</strong> the Pi publishes healthy frame-matched perception, the bounded memory implementation is active, and the idle engine owns action.</p>
+          <p><strong>Proposed execution:</strong></p>
+          <pre>./cli/automa vehicles memory check \
+  --id &lt;picar-id&gt; --record
+./cli/automa vehicles info memory --id &lt;picar-id&gt;</pre>
+          <p><strong>Success signal:</strong> a stationary guided sequence records an exact perception source frame, its retained record, bounded survival through declared dropout, and visible expiry/reset. The report renders source-frame regions beside memory age and provenance; it never draws stale image coordinates on a newer frame as if they were current. Closeout promotes a compact visual extract into tracked milestone evidence.</p>
         </div>
       </div>
       <p class="note">
@@ -332,15 +358,15 @@
       <div class="grid two" style="margin-top: 14px;">
         <div class="card goal">
           <h3>Prerequisite: Physical Perception Parity</h3>
-          <p><span class="status pending">Milestone 004 active</span> <strong>Review shape:</strong> separate milestone.</p>
+          <p><span class="status done">Milestone 004 closed</span> <strong>Review shape:</strong> separate milestone (complete).</p>
           <p><strong>Required outcome:</strong> the Pi runs perception independently of movement authority and publishes frame-matched structured findings through the same operator workflow used for Chase.</p>
           <p><strong>Reason:</strong> memory should retain demonstrated physical evidence, not rely only on compatible types and simulator behavior.</p>
-          <p><strong>Plan:</strong> <a href="../004-physical-perception-parity/plan.html">Milestone 004: Physical Perception Parity</a>.</p>
-          <p><strong>Non-goals here:</strong> beginning memory interfaces, reducers, activation, or persistence before the prerequisite closes.</p>
+          <p><strong>Plan:</strong> <a href="../004-physical-perception-parity/plan.html">Milestone 004: Physical Perception Parity</a> · <a href="../004-physical-perception-parity/closeout.md">closeout</a>.</p>
+          <p><strong>Prerequisite met:</strong> always-on manual observation, exact latest publication, and measured viability on the packaged observer. Memory may begin without algorithm promotion.</p>
         </div>
         <div class="card interface">
           <h3>First Delivery After Activation: Stable Memory Contract</h3>
-          <p><span class="status pending">Queued behind milestone 004</span> <strong>Expected shape:</strong> deep and narrow.</p>
+          <p><span class="status active">Current</span> <strong>Expected shape:</strong> deep and narrow.</p>
           <p><strong>Expected deliverable:</strong> stable memory value and lifecycle interfaces with explicit provenance, bounds, reset, serialization, and failure behavior; adapt the decision seam only as required to remove public <code>Any</code>.</p>
           <p><strong>Review question:</strong> Can implementations retain evidence through a small typed contract without encoding one mapping strategy or hiding state inside closures?</p>
           <p><strong>Proposed files:</strong> create the stable memory package and focused autonomy tests; modify decision cycle exports and types only where the contract requires it.</p>
@@ -356,7 +382,7 @@
             <tr><td>Host integration</td><td>Equivalent activation and lifecycle in local Chase and onboard Donkey hosts.</td><td>How memory reaches runtime inspection and engines while action remains idle and stage failures remain contained.</td></tr>
             <tr><td>Operator workflow</td><td>Stage, inspect, run, stream, replay, reset, and opt-in record behavior through Automa.</td><td>Which state is useful to a human without flooding output with every retained evidence record.</td></tr>
             <tr><td>Evaluation</td><td>Controlled recurrence, dropout, conflict, expiry, length, reset, and replay scenarios.</td><td>What one simple implementation claims to preserve and which truth labels are needed to score that claim.</td></tr>
-            <tr><td>Closeout</td><td>Evidence that memory is bounded, portable, inspectable, and useful enough to inform later patterns or action.</td><td>Results from simulator, replay, and one non-moving physical runtime check.</td></tr>
+            <tr><td>Closeout</td><td>Evidence that memory is bounded, portable, inspectable, and useful enough to inform later patterns or action.</td><td>Results from simulator, replay, and one recorded non-moving physical visual-provenance check.</td></tr>
           </tbody>
         </table>
       </div>
@@ -402,7 +428,7 @@
             <tr><td>Bounds</td><td>Capacity, age, and eviction behavior are finite, configured, visible, and testable.</td><td>Unbounded history, raw frame archives, or an implicit database.</td></tr>
             <tr><td>Lifecycle</td><td>Construction, update, read, reset, activation replacement, and failure states have one owner.</td><td>Persistence across process or device restart.</td></tr>
             <tr><td>Coordinates</td><td>Preserve declared image or relative frames and reject incompatible fusion unless an implementation explicitly transforms them.</td><td>Calibrated metric geometry or a shared global map.</td></tr>
-            <tr><td>Inspection</td><td>Return stable summaries and structured records detached from live mutable state.</td><td>Dumping every internal index or implementation cache to operators.</td></tr>
+            <tr><td>Inspection</td><td>Return stable summaries and structured records detached from live mutable state. Retained image-space evidence preserves the exact source frame/observation identity needed for opt-in visual review.</td><td>Dumping every internal index or implementation cache to operators, retaining raw frames by default, or projecting stale coordinates onto a newer frame without an explicit transform.</td></tr>
             <tr><td>Failure</td><td>A memory failure is explicit, produces no new retained claim, and cannot produce movement.</td><td>Silently falling back to stale state as if it were current.</td></tr>
           </tbody>
         </table>
@@ -419,11 +445,11 @@
         </div>
         <div class="card interface">
           <h3>Simulator Evidence</h3>
-          <p>Run camera-derived observations in controlled scenarios. Hidden scene state may score an implementation but never becomes its memory input.</p>
+          <p>Let Chase's built-in model drive <code>chaser-depth-obstacles</code> while the rewritten cycle runs observe-only in shadow. Record a source-frame-to-memory visual review and a frame-aligned reference snapshot. Hidden scene state may score an implementation but never becomes its memory input.</p>
         </div>
         <div class="card constraint">
           <h3>Physical Evidence</h3>
-          <p>Confirm the same activation, bounded state, inspection, and reset behavior on the Pi while the idle engine retains zero steering and throttle.</p>
+          <p>Run a stationary present/dropout/expiry/reset sequence on the Pi. Record an opt-in review that pairs each retained item with the exact perception source frame and region while the idle engine retains zero steering and throttle.</p>
         </div>
       </div>
       <div class="table-wrap" style="margin-top: 14px;">
@@ -436,6 +462,8 @@
             <tr><td>Identity continuity</td><td>Only implementations that claim association are scored for unnecessary splits and unsupported merges.</td></tr>
             <tr><td>Bounded cost</td><td>Record count, memory use, and update latency remain bounded as sequence length grows.</td></tr>
             <tr><td>Replay determinism</td><td>The same ordered observations and configuration produce the same serialized memory result.</td></tr>
+            <tr><td>Shadow reference isolation</td><td>Chase reference/debug state is aligned by simulator frame identity and used only after the rewritten cycle as evaluator data; controller input and retained provenance remain camera-derived.</td></tr>
+            <tr><td>Visual provenance alignment</td><td>Recorded simulator and Pi reviews show that retained image-space evidence cites and marks the source region that actually produced it, without implying stale geometry is current.</td></tr>
             <tr><td>Operator signal</td><td>Human output explains state, age, health, and recovery without flooding; JSON remains complete.</td></tr>
           </tbody>
         </table>
@@ -492,8 +520,11 @@
         <summary><span>5. Build Operator And Evaluation Workflows</span><span class="status pending">Pending</span></summary>
         <div class="work-body"><ul>
           <li>Support concise info, status, latest-state streaming, reset, deterministic replay, and opt-in recording through Automa.</li>
-          <li>Exercise controlled observation sequences and at least one camera-derived simulator scenario without map input.</li>
-          <li>Verify the same activation and bounded state on the Pi without commanding movement.</li>
+          <li>Exercise controlled observation sequences and a live <code>chaser-depth-obstacles</code> shadow run: Chase drives, the rewrite runs observe-only, and no map/debug state enters the decision cycle.</li>
+          <li>Preserve simulator frame identity so an out-of-band evaluator can align the built-in decision snapshot with the rewritten cycle without coupling their interfaces.</li>
+          <li>Record a visual source-frame-to-memory review and concise reference comparison; score declared memory behavior rather than exact imitation of the privileged Chase model.</li>
+          <li>Add a stationary guided Pi check covering visible evidence, bounded dropout retention, expiry, and reset without commanding movement.</li>
+          <li>Record a compact visual report pairing retained records with their exact perception source frames, regions, age, and lifecycle transition; promote a bounded review extract into tracked milestone evidence.</li>
         </ul></div>
       </details>
 
@@ -507,7 +538,7 @@
       </details>
 
       <div class="progress-track" aria-label="Milestone work packages completed: 0 of 6"><div class="progress-fill"></div></div>
-      <p class="small">Progress: 0 of 6 implementation packages complete. This milestone is queued; the stable memory contract becomes the first review unit only after milestone 004 closes.</p>
+      <p class="small">Progress: 0 of 6 implementation packages complete. Milestone 004 is closed; the stable memory contract is the first review unit.</p>
     </section>
 
     <section class="panel">
@@ -520,8 +551,8 @@
             <li>Simple loadable memory implementations with bounded state.</li>
             <li>Equivalent local simulator and onboard Pi host integration.</li>
             <li>Operator inspection, streaming, replay, and opt-in recording.</li>
-            <li>Deterministic sequence tests and controlled simulator evaluation.</li>
-            <li>Non-moving physical activation and state inspection.</li>
+            <li>Deterministic sequence tests and live, visually reviewable simulator evaluation.</li>
+            <li>Non-moving physical activation, state inspection, and recorded visual-provenance validation.</li>
           </ul>
         </div>
         <div class="card risk">
@@ -568,7 +599,10 @@
         <li>Automa can stage, inspect, run, stream latest memory, replay a sequence, and reset state with concise human output and complete machine output.</li>
         <li>Default execution writes no logs, frames, or memory history; recording is explicit and bounded.</li>
         <li>Deterministic tests cover recurrence, dropout, conflict, expiry, capacity, reset, failure, and replay, including long-sequence boundedness.</li>
-        <li>Controlled simulator evidence and one non-moving Pi check verify equivalent stage behavior while the idle engine emits zero movement.</li>
+        <li>One live <code>chaser-depth-obstacles</code> shadow check and one recorded non-moving Pi present/dropout/expiry/reset check verify equivalent stage behavior while the rewritten engine emits zero movement.</li>
+        <li>During the simulator check, Chase's built-in decision model retains movement authority, the rewrite runs observe-only, and candidate/reference results are aligned by simulator frame identity.</li>
+        <li>Simulator debug, map, and reference-decision state are evaluator-only and are absent from rewritten controller inputs and retained memory provenance.</li>
+        <li>Tracked simulator and physical reviews visibly trace retained image-space evidence to exact perception source frames and regions, distinguish current from retained/expired evidence, and never treat stale coordinates as current geometry.</li>
         <li>A closeout states what memory representation proved useful, what remains unverified, and whether later pattern or action work is justified.</li>
       </ol>
     </section>
@@ -587,6 +621,10 @@
             <tr><td>2026-07-15</td><td>Require the same memory interface in simulator and physical hosts.</td><td>Environment-specific truth would undermine the purpose of testing autonomy logic against a simulator before deploying it to the Pi.</td></tr>
             <tr><td>2026-07-15</td><td>Make completion usage a stable part of milestone scope.</td><td>Concrete user-visible workflows constrain architecture toward runnable outcomes while allowing command details and implementation choices to evolve from evidence.</td></tr>
             <tr><td>2026-07-16</td><td>Defer evidence memory to milestone 005 and make physical perception parity milestone 004.</td><td>The Pi loads compatible perception code, but manual mode does not execute the onboard stage and operators cannot stream frame-matched findings. Memory must not begin on an unverified physical input path.</td></tr>
+            <tr><td>2026-07-18</td><td>Activate milestone 005 after physical perception parity closed.</td><td>Live always-on observation, exact latest publication, guided check artifacts, strategy rejection, and 60s viability are recorded. Memory can retain attributed observations from the proven path.</td></tr>
+            <tr><td>2026-07-18</td><td>Require visual provenance in the physical memory closeout gate.</td><td>Compatible schemas and bounded record counts do not show that memory plausibly derives from real perception. A stationary recorded check must trace retained regions to exact source frames and visibly demonstrate retention, expiry, and reset before later decision stages begin.</td></tr>
+            <tr><td>2026-07-18</td><td>Require the same visual provenance demonstration in Chase.</td><td>Simulator compatibility alone does not prove that live camera-derived observations become plausible memory. The depth-obstacles scenario must produce a tracked source-frame-to-memory review, with hidden scene state reserved for scoring.</td></tr>
+            <tr><td>2026-07-18</td><td>Use Chase's built-in decision model as a shadow-validation reference.</td><td>The built-in model can drive a changing scene and provide frame-aligned evaluator state while the rewrite remains observe-only. Its privileged state must never become candidate input or an interface contract, and comparison should test declared plausibility rather than exact imitation.</td></tr>
           </tbody>
         </table>
       </div>

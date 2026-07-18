@@ -4,13 +4,14 @@
 - **Repository:** `GeorgeLuo/auto-driving`
 - **Milestone:** 004 — Physical Perception Parity
 - **Scope:** Raspberry Pi 4 CPU-only, fixed 640×480 monocular front camera, manual movement authority
-- **Status:** `evaluating`
+- **Status:** `rejected`
 - **Source:** Independent research against the repository's physical-perception black-box brief
+- **Disposition:** Common-frame qualification returned `reject_keep_control`; keep packaged floor-plane / `lightweight_observer`. See milestone [004 closeout](../milestones/004-physical-perception-parity/closeout.md) and [qualification evidence](../milestones/004-physical-perception-parity/evidence/floor-continuity-physical-check-qualification.md).
 
-> `floor-continuity-v1` is a candidate hypothesis, not an accepted implementation.
-> Milestone adoption requires common-frame comparison with `floor-plane-v0`,
-> measured Pi viability, and the promotion gate defined below. The active plan is
-> [`../milestones/004-physical-perception-parity/plan.html`](../milestones/004-physical-perception-parity/plan.html).
+> `floor-continuity-v1` remains a lab hypothesis, not an accepted implementation.
+> Labeled physical-check comparison matched overall pass rate but increased
+> clear-floor false-positive boundaries and did not improve two material
+> behavioral measures. Desktop speed alone was not a promotion gate.
 
 ## Implementation checkpoint: simulator and archived Pi frames
 

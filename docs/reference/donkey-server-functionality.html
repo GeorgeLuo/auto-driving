@@ -581,16 +581,16 @@
         <h2>Autonomy Tick</h2>
         <div class="sequence">
           <div class="step">
-            <p><code>POST /autonomy/mode</code> with <code>{"mode":"autonomy"}</code> maps Donkey mode to <code>local</code>.</p>
+            <p>Each vehicle-loop tick may feed the latest <code>cam/image_array</code> into <code>AutonomyPilotPart</code>. Full cycles run at the configured observation cadence; intermediate ticks are skipped without backlog.</p>
           </div>
           <div class="step">
-            <p>The part wraps <code>cam/image_array</code> as a front-camera <code>SensorSnapshot</code> and runs the shared cycle.</p>
+            <p>The part wraps the camera array as a front-camera <code>SensorSnapshot</code>, runs the shared perception/decision cycle, and retains one detached latest snapshot for publication.</p>
           </div>
           <div class="step">
-            <p>The engine returns normalized steering/throttle as <code>pilot/angle</code> and <code>pilot/throttle</code>.</p>
+            <p>In manual <code>user</code> mode the part forces zero pilot outputs. In autonomy mode the engine returns normalized steering/throttle as <code>pilot/angle</code> and <code>pilot/throttle</code>.</p>
           </div>
           <div class="step">
-            <p><code>DriveMode</code> applies those pilot values only while the mode remains <code>local</code>.</p>
+            <p><code>DriveMode</code> applies pilot values only while the mode remains <code>local</code>. Operators inspect findings through Automa against <code>/autonomy/observation/latest</code>, not by enabling pilot mode.</p>
           </div>
         </div>
       </div>

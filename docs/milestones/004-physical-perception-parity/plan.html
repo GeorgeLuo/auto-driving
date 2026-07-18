@@ -170,8 +170,9 @@
         physical evidence.
       </p>
       <div class="meta">
-        <span class="pill">Status: active - implementation</span>
+        <span class="pill">Status: closed 2026-07-18</span>
         <span class="pill">Started: 2026-07-16</span>
+        <span class="pill">Record: frozen at closeout</span>
         <span class="pill">Drive mode: manual</span>
         <span class="pill">Action output: zero</span>
         <span class="pill">Persistence: opt-in only</span>
@@ -333,8 +334,8 @@
           <p><strong>Deliverable:</strong> guided clear/left/center/right/removed check with frame-matched review artifacts and zero movement.</p>
         </div>
         <div class="card interface">
-          <h3>Current: Qualify One Physical Strategy</h3>
-          <p><span class="status active">In progress</span> <strong>Review shape:</strong> common-frame comparison.</p>
+          <h3>Completed: Qualify One Physical Strategy</h3>
+          <p><span class="status done">Rejected candidate; retained control</span> <strong>Review shape:</strong> common-frame comparison.</p>
           <p><strong>Deliverable:</strong> measure packaged floor-plane control and lab floor-continuity on the same labeled physical-check frames; emit an explicit promote/reject decision.</p>
           <p><strong>Review question:</strong> Does the candidate improve at least two material behavioral measures without scene-specific tuning, interface changes, stale state, or unacceptable Pi cost?</p>
           <p><strong>Create/Modify:</strong> <code>vehicles perception qualify</code>; common-frame apply of control vs candidate; material-measure comparison; milestone evidence; plan/README.</p>
@@ -342,19 +343,11 @@
           <p><strong>Validation:</strong> offline qualification on the recorded physical-check set rejected promotion and retained floor-plane as operational fallback. <a href="evidence/floor-continuity-physical-check-qualification.json">Evidence</a> · <a href="evidence/floor-continuity-physical-check-qualification.md">summary</a>.</p>
         </div>
         <div class="card goal">
-          <h3>Next: Measure Physical Viability</h3>
-          <p><span class="status pending">Queued after strategy qualification decision lands</span> <strong>Expected shape:</strong> deep and narrow measurement.</p>
-          <p><strong>Expected deliverable:</strong> 60-second onboard cadence/latency/RSS evidence for the selected operational observer.</p>
+          <h3>Completed: Measure Physical Viability</h3>
+          <p><span class="status done">Measured on packaged control</span> <strong>Review shape:</strong> deep and narrow measurement.</p>
+          <p><strong>Deliverable:</strong> 60-second onboard cadence/latency/RSS evidence for the selected operational observer.</p>
           <p><strong>Non-goals:</strong> algorithm expansion, memory-stage work.</p>
-        </div>
-        <div class="card constraint">
-          <h3>Later: Qualify One Physical Strategy</h3>
-          <p><span class="status active">Archive prequalification complete; live qualification gated</span> <strong>Expected shape:</strong> one bounded lab candidate and a common-frame comparison.</p>
-          <p><strong>Expected deliverable:</strong> measure <code>floor-plane-v0</code> as the control, evaluate the stateless <code>floor-continuity-v1</code> hypothesis on the same frames, and either promote it through explicit gates or retain the baseline with rejection evidence.</p>
-          <p><strong>Review question:</strong> Does the candidate improve at least two material behavioral measures without scene-specific tuning, interface changes, stale state, or unacceptable Pi cost?</p>
-          <p><strong>Boundary:</strong> no changes under <code>autonomy/</code>; broad model comparison, learned-runtime packaging, temporal stabilization, and camera calibration remain deferred.</p>
-          <p><strong>Preliminary evidence:</strong> the current default completed five simulator frames and 50 archived Pi frames without failure. The six physical sets produced 190 regions with unrecorded desktop plugin medians of 37.263-65.531 ms. On one 11-frame run it emitted 41 regions versus the control's 67 and was materially faster locally, but unlabeled application cannot establish correctness or onboard cost. <a href="evidence/floor-continuity-archive-apply.json">Evidence summary</a> · <a href="evidence/floor-continuity/physical-11-frame-contact-sheet.jpg">physical overlay contact sheet</a> · <a href="evidence/floor-continuity/simulator-8-frame-contact-sheet.jpg">simulator overlay contact sheet</a>.</p>
-          <p class="note">The compact contact sheets are tracked review extracts from explicit <code>--record</code> runs. Complete generated run directories remain intentionally ignored.</p>
+          <p><strong>Validation:</strong> the packaged observer sustained ~1.90 fresh results/s at the configured 0.5-second interval, p95 result age 513 ms, zero control, and manual <code>user</code> mode. <a href="evidence/physical-viability-60s.md">Evidence summary</a>.</p>
         </div>
       </div>
       <div class="table-wrap" style="margin-top: 16px;">
@@ -497,8 +490,8 @@ Decision and action remain separate:
         </ul></div>
       </details>
 
-      <details class="work-item" data-status="active" open>
-        <summary><span>6. Measure Physical Viability</span><span class="status active">Live 60s measured</span></summary>
+      <details class="work-item" data-status="done" open>
+        <summary><span>6. Measure Physical Viability</span><span class="status done">Done</span></summary>
         <div class="work-body"><ul>
           <li><strong>Implemented:</strong> <code>vehicles perception viability --id piracer</code> polls onboard publication for a bounded window and records cadence, age, duration, skips, and remote RSS/CPU.</li>
           <li><strong>Live result:</strong> 60s on <code>lightweight_observer</code> measured ~1.90 fresh results/s (0.5s configured interval → theoretical 2.0 Hz; gate requires ≥90% of configured cadence), p95 result age 513 ms, control always zero, mode always user, RSS ~196–212 MB.</li>
@@ -507,18 +500,18 @@ Decision and action remain separate:
         </ul></div>
       </details>
 
-      <details class="work-item" data-status="pending">
-        <summary><span>7. Consolidate Evidence And Activate Memory Work</span><span class="status pending">Pending</span></summary>
+      <details class="work-item" data-status="done" open>
+        <summary><span>7. Consolidate Evidence And Activate Memory Work</span><span class="status done">Done</span></summary>
         <div class="work-body"><ul>
-          <li>Record what physical perception meaning was demonstrated, where it failed, and its measured cost.</li>
-          <li>Update durable runtime references to the proven manual-observation and publication flow.</li>
-          <li>Close this milestone only with a live Pi artifact and read-only safety evidence from the deployed release.</li>
-          <li>Promote milestone 005 only after its physical observation prerequisite is satisfied.</li>
+          <li><strong>Delivered:</strong> concise <a href="closeout.md">milestone closeout</a> recording demonstrated meaning, failures, measured cost, and residual limits.</li>
+          <li><strong>Delivered:</strong> durable runtime references updated for always-on manual observation and exact latest publication; ledger and documentation guide advanced to milestone 005.</li>
+          <li><strong>Delivered:</strong> live Pi evidence from the deployed release accepted; floor-continuity remains lab-only under <code>reject_keep_control</code>.</li>
+          <li><strong>Delivered:</strong> milestone 005 prerequisite satisfied; memory work may begin on the proven observation path.</li>
         </ul></div>
       </details>
 
-      <div class="progress-track" aria-label="Milestone work packages completed: 6 of 8"><div class="progress-fill" style="width: 75%;"></div></div>
-      <p class="small">Progress: packages 0-5 done (package 5 reject_keep_control; floor-continuity remains lab-only). Package 6 live 60s viability for the operational observer is measured and recorded. Next: consolidate evidence / closeout.</p>
+      <div class="progress-track" aria-label="Milestone work packages completed: 8 of 8"><div class="progress-fill" style="width: 100%;"></div></div>
+      <p class="small">Final state: packages 0-7 complete. This plan is frozen; active work continues in milestone 005.</p>
     </section>
 
     <section class="panel">
@@ -619,6 +612,7 @@ Decision and action remain separate:
             <tr><td>2026-07-17</td><td>Implement the physical placement check as a stationary guided CLI that never commands movement.</td><td>Acceptance needs human placement and onboard evidence pairing; keeping motion out of the check preserves the authority boundary and keeps failures attributable to perception/publication.</td></tr>
             <tr><td>2026-07-17</td><td>Reject floor-continuity promotion after labeled common-frame comparison; keep packaged floor-plane as operational control.</td><td>On the physical-check frames the candidate matched pass rate but increased clear-floor boundary saturation and did not improve two material behavioral measures. Documented rejection is a valid milestone outcome.</td></tr>
             <tr><td>2026-07-17</td><td>Measure viability against the configured observation cadence (0.5 s) with a 90% attainment gate rather than a hard wall-clock 2.00 Hz.</td><td>With min_interval_s=0.5 the theoretical maximum is 2.0 Hz; a 60s live run at ~1.90 Hz with p95 age well under 1s demonstrates the operational path while avoiding false fails from endpoint polling overhead.</td></tr>
+            <tr><td>2026-07-18</td><td>Close milestone 004 and activate milestone 005 after live viability and explicit strategy rejection.</td><td>The physical observation path is measured under manual mode with zero control. Memory may retain attributed observations without waiting for algorithm promotion or perfect placement scores.</td></tr>
           </tbody>
         </table>
       </div>

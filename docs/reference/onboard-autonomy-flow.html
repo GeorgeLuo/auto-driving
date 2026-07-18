@@ -441,7 +441,7 @@
       <div class="feedback">
         <div class="node vehicle">
           <h3>On PiRacer</h3>
-          <p><code>AutonomyPilotPart</code> adapts Donkey vehicle-memory values to the shared cycle at a bounded cadence in manual mode. Perception and decision activations select the plugins and engine; pilot outputs stay zero while drive mode remains <code>user</code>.</p>
+          <p><code>AutonomyPilotPart</code> adapts Donkey vehicle-memory values to the shared cycle at a bounded cadence in manual mode. It retains one detached latest frame/result snapshot and publishes it on <code>/autonomy/observation/latest</code> (plus matching <code>frame.jpg</code>). Perception and decision activations select the plugins and engine; pilot outputs stay zero while drive mode remains <code>user</code>. Automa inspects the path through stream, local overlay, guided check, and viability measurement without hosting a second Pi frontend.</p>
         </div>
         <div class="node perception">
           <h3>In Simulation</h3>
@@ -497,8 +497,14 @@
         </div>
         <div class="step">
           <div>
+            <h3>Publish Latest Snapshot</h3>
+            <p>On DonkeyCar, the part detaches the exact processed frame and findings into one in-memory latest snapshot. Read-only HTTP endpoints expose JSON and JPEG with matching frame identity and read-time health. Default operation writes no perception history.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div>
             <h3>Apply Environment Gate</h3>
-            <p>Chase remains stopped. On DonkeyCar, pilot values affect the drivetrain only after an explicit switch from manual to autonomy mode.</p>
+            <p>Chase remains stopped. On DonkeyCar, pilot values affect the drivetrain only after an explicit switch from manual to autonomy mode. Observation itself does not require pilot mode.</p>
           </div>
         </div>
       </div>
@@ -506,9 +512,10 @@
       <div class="callout">
         <strong>Memory remains a contract, not an implementation:</strong>
         the shared cycle carries explicit memory, pattern, and projection slots,
-        but all three remain <code>null</code>. A future memory implementation
-        should consume real <code>Observation</code> values and appear directly
-        in <code>DecisionCycleResult</code> rather than manufacturing a parallel
+        but all three remain <code>null</code>. Physical observation is proven
+        under manual mode; a memory implementation should consume real
+        <code>Observation</code> values and appear directly in
+        <code>DecisionCycleResult</code> rather than manufacturing a parallel
         inspection-only representation.
       </div>
     </section>

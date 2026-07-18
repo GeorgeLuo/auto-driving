@@ -23,7 +23,7 @@ met and the work has become a concrete priority.
 | Note | Status | Area | Candidate application |
 | --- | --- | --- | --- |
 | [Locality and length generalization in visual reasoning](locality-and-length-generalization.md) | candidate | Perception | Coarse global context, selective local inspection, and bounded sequential state |
-| [PiRacer physical perception strategies](piracer-physical-perception-strategies.md) | evaluating | Physical perception | Qualify one stateless floor-continuity candidate against the packaged baseline on identical frames |
+| [PiRacer physical perception strategies](piracer-physical-perception-strategies.md) | rejected | Physical perception | Floor-continuity did not improve two material behavioral measures on labeled physical frames; keep packaged floor-plane control ([004 closeout](../milestones/004-physical-perception-parity/closeout.md)) |
 
 ## Note Shape
 

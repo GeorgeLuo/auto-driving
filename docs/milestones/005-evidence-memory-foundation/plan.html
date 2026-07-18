@@ -276,7 +276,7 @@
   --implementation bounded_evidence
 ./cli/automa vehicles memory check \
   --id chase-sim-chaser --record</pre>
-          <p><strong>Success signal:</strong> a live camera-derived run visibly links current perception to retained, expired, and reset memory records through exact source frames. Hidden scenario state may score the report but never enters the controller or memory input. Closeout promotes a compact visual extract into tracked milestone evidence.</p>
+          <p><strong>Success signal:</strong> Chase's built-in decision model remains the movement authority while the rewritten cycle runs in shadow/observe-only mode. A live camera-derived run visibly links current perception to retained, expired, and reset memory records through exact source frames. A frame-aligned evaluator may compare the rewritten cycle with Chase debug/reference state, but that state never enters the controller or memory input. Closeout promotes a compact visual extract into tracked milestone evidence.</p>
         </div>
         <div class="card interface">
           <h3>Verify Physical Evidence Retention</h3>
@@ -445,7 +445,7 @@
         </div>
         <div class="card interface">
           <h3>Simulator Evidence</h3>
-          <p>Run live camera-derived observations in <code>chaser-depth-obstacles</code> and record a source-frame-to-memory visual review. Hidden scene state may score an implementation but never becomes its memory input.</p>
+          <p>Let Chase's built-in model drive <code>chaser-depth-obstacles</code> while the rewritten cycle runs observe-only in shadow. Record a source-frame-to-memory visual review and a frame-aligned reference snapshot. Hidden scene state may score an implementation but never becomes its memory input.</p>
         </div>
         <div class="card constraint">
           <h3>Physical Evidence</h3>
@@ -462,6 +462,7 @@
             <tr><td>Identity continuity</td><td>Only implementations that claim association are scored for unnecessary splits and unsupported merges.</td></tr>
             <tr><td>Bounded cost</td><td>Record count, memory use, and update latency remain bounded as sequence length grows.</td></tr>
             <tr><td>Replay determinism</td><td>The same ordered observations and configuration produce the same serialized memory result.</td></tr>
+            <tr><td>Shadow reference isolation</td><td>Chase reference/debug state is aligned by simulator frame identity and used only after the rewritten cycle as evaluator data; controller input and retained provenance remain camera-derived.</td></tr>
             <tr><td>Visual provenance alignment</td><td>Recorded simulator and Pi reviews show that retained image-space evidence cites and marks the source region that actually produced it, without implying stale geometry is current.</td></tr>
             <tr><td>Operator signal</td><td>Human output explains state, age, health, and recovery without flooding; JSON remains complete.</td></tr>
           </tbody>
@@ -519,7 +520,9 @@
         <summary><span>5. Build Operator And Evaluation Workflows</span><span class="status pending">Pending</span></summary>
         <div class="work-body"><ul>
           <li>Support concise info, status, latest-state streaming, reset, deterministic replay, and opt-in recording through Automa.</li>
-          <li>Exercise controlled observation sequences and a live <code>chaser-depth-obstacles</code> run without map input; record a visual source-frame-to-memory review.</li>
+          <li>Exercise controlled observation sequences and a live <code>chaser-depth-obstacles</code> shadow run: Chase drives, the rewrite runs observe-only, and no map/debug state enters the decision cycle.</li>
+          <li>Preserve simulator frame identity so an out-of-band evaluator can align the built-in decision snapshot with the rewritten cycle without coupling their interfaces.</li>
+          <li>Record a visual source-frame-to-memory review and concise reference comparison; score declared memory behavior rather than exact imitation of the privileged Chase model.</li>
           <li>Add a stationary guided Pi check covering visible evidence, bounded dropout retention, expiry, and reset without commanding movement.</li>
           <li>Record a compact visual report pairing retained records with their exact perception source frames, regions, age, and lifecycle transition; promote a bounded review extract into tracked milestone evidence.</li>
         </ul></div>
@@ -596,7 +599,9 @@
         <li>Automa can stage, inspect, run, stream latest memory, replay a sequence, and reset state with concise human output and complete machine output.</li>
         <li>Default execution writes no logs, frames, or memory history; recording is explicit and bounded.</li>
         <li>Deterministic tests cover recurrence, dropout, conflict, expiry, capacity, reset, failure, and replay, including long-sequence boundedness.</li>
-        <li>One live <code>chaser-depth-obstacles</code> check and one recorded non-moving Pi present/dropout/expiry/reset check verify equivalent stage behavior while the idle engine emits zero movement.</li>
+        <li>One live <code>chaser-depth-obstacles</code> shadow check and one recorded non-moving Pi present/dropout/expiry/reset check verify equivalent stage behavior while the rewritten engine emits zero movement.</li>
+        <li>During the simulator check, Chase's built-in decision model retains movement authority, the rewrite runs observe-only, and candidate/reference results are aligned by simulator frame identity.</li>
+        <li>Simulator debug, map, and reference-decision state are evaluator-only and are absent from rewritten controller inputs and retained memory provenance.</li>
         <li>Tracked simulator and physical reviews visibly trace retained image-space evidence to exact perception source frames and regions, distinguish current from retained/expired evidence, and never treat stale coordinates as current geometry.</li>
         <li>A closeout states what memory representation proved useful, what remains unverified, and whether later pattern or action work is justified.</li>
       </ol>
@@ -619,6 +624,7 @@
             <tr><td>2026-07-18</td><td>Activate milestone 005 after physical perception parity closed.</td><td>Live always-on observation, exact latest publication, guided check artifacts, strategy rejection, and 60s viability are recorded. Memory can retain attributed observations from the proven path.</td></tr>
             <tr><td>2026-07-18</td><td>Require visual provenance in the physical memory closeout gate.</td><td>Compatible schemas and bounded record counts do not show that memory plausibly derives from real perception. A stationary recorded check must trace retained regions to exact source frames and visibly demonstrate retention, expiry, and reset before later decision stages begin.</td></tr>
             <tr><td>2026-07-18</td><td>Require the same visual provenance demonstration in Chase.</td><td>Simulator compatibility alone does not prove that live camera-derived observations become plausible memory. The depth-obstacles scenario must produce a tracked source-frame-to-memory review, with hidden scene state reserved for scoring.</td></tr>
+            <tr><td>2026-07-18</td><td>Use Chase's built-in decision model as a shadow-validation reference.</td><td>The built-in model can drive a changing scene and provide frame-aligned evaluator state while the rewrite remains observe-only. Its privileged state must never become candidate input or an interface contract, and comparison should test declared plausibility rather than exact imitation.</td></tr>
           </tbody>
         </table>
       </div>

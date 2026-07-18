@@ -366,11 +366,10 @@
         </div>
         <div class="card interface">
           <h3>First Delivery After Activation: Stable Memory Contract</h3>
-          <p><span class="status active">Current</span> <strong>Expected shape:</strong> deep and narrow.</p>
-          <p><strong>Expected deliverable:</strong> stable memory value and lifecycle interfaces with explicit provenance, bounds, reset, serialization, and failure behavior; adapt the decision seam only as required to remove public <code>Any</code>.</p>
-          <p><strong>Review question:</strong> Can implementations retain evidence through a small typed contract without encoding one mapping strategy or hiding state inside closures?</p>
-          <p><strong>Proposed files:</strong> create the stable memory package and focused autonomy tests; modify decision cycle exports and types only where the contract requires it.</p>
-          <p><strong>Non-goals:</strong> concrete memory algorithm, CLI rollout, host deployment, persistence, semantic identity, or action behavior.</p>
+          <p><span class="status done">Done</span> <strong>Review shape:</strong> deep and narrow.</p>
+          <p><strong>Delivered:</strong> stable <code>MemorySnapshot</code> values with provenance, bounds, epoch reset identity, detached serialization, and explicit empty/unavailable/error health; decision cycle memory output is no longer public <code>Any</code>.</p>
+          <p><strong>Next review unit:</strong> plugin execution and activation over these values.</p>
+          <p><strong>Non-goals remaining for later packages:</strong> concrete memory algorithm, CLI rollout, host deployment, persistence, semantic identity, or action behavior.</p>
         </div>
       </div>
       <div class="table-wrap" style="margin-top: 16px;">
@@ -479,18 +478,18 @@
         <button type="button" data-filter="done" aria-pressed="false">Done</button>
       </div>
 
-      <details class="work-item" data-status="pending" open>
-        <summary><span>1. Settle Stable Memory Values And Lifecycle</span><span class="status pending">Pending</span></summary>
+      <details class="work-item" data-status="done" open>
+        <summary><span>1. Settle Stable Memory Values And Lifecycle</span><span class="status done">Done</span></summary>
         <div class="work-body"><ul>
-          <li>Replace public <code>Any</code> memory output with the smallest implementation-neutral value contract.</li>
-          <li>Define provenance, timestamps, bounds, reset, detached serialization, and explicit unavailable/error state.</li>
-          <li>Protect the distinction between current observation, retained evidence, inferred pattern, and projection.</li>
-          <li>Use focused autonomy tests before creating concrete reducers or broad CLI behavior.</li>
+          <li><strong>Implemented:</strong> <code>MemorySnapshot</code>, <code>RetainedEvidence</code>, <code>MemoryProvenance</code>, and <code>MemoryBounds</code> under <code>autonomy/decision/memory.py</code>.</li>
+          <li><strong>Implemented:</strong> health states <code>empty</code>/<code>healthy</code>/<code>unavailable</code>/<code>error</code>, epoch ids for reset generations, detached <code>to_dict</code>/<code>from_dict</code>, and capacity enforcement on the snapshot value.</li>
+          <li><strong>Implemented:</strong> decision cycle <code>remember</code> stage and result field are typed as <code>MemorySnapshot | None</code>; non-snapshot returns raise <code>TypeError</code>.</li>
+          <li><strong>Tested:</strong> focused value and cycle tests; patterns/projections remain untyped <code>Any</code> until later stages earn contracts.</li>
         </ul></div>
       </details>
 
-      <details class="work-item" data-status="pending">
-        <summary><span>2. Define Plugin Execution And Activation</span><span class="status pending">Pending</span></summary>
+      <details class="work-item" data-status="active" open>
+        <summary><span>2. Define Plugin Execution And Activation</span><span class="status active">Next</span></summary>
         <div class="work-body"><ul>
           <li>Give implementations a narrow update/reset/query shape while the framework owns lifecycle, status, timing, and failure isolation.</li>
           <li>Use one current activation document and remove superseded paths rather than supporting compatibility aliases.</li>
@@ -537,8 +536,8 @@
         </ul></div>
       </details>
 
-      <div class="progress-track" aria-label="Milestone work packages completed: 0 of 6"><div class="progress-fill"></div></div>
-      <p class="small">Progress: 0 of 6 implementation packages complete. Milestone 004 is closed; the stable memory contract is the first review unit.</p>
+      <div class="progress-track" aria-label="Milestone work packages completed: 1 of 6"><div class="progress-fill" style="width: 16.7%;"></div></div>
+      <p class="small">Progress: package 1 done (typed memory snapshot contract). Next review unit: plugin execution and activation shape over the stable values.</p>
     </section>
 
     <section class="panel">
@@ -625,6 +624,7 @@
             <tr><td>2026-07-18</td><td>Require visual provenance in the physical memory closeout gate.</td><td>Compatible schemas and bounded record counts do not show that memory plausibly derives from real perception. A stationary recorded check must trace retained regions to exact source frames and visibly demonstrate retention, expiry, and reset before later decision stages begin.</td></tr>
             <tr><td>2026-07-18</td><td>Require the same visual provenance demonstration in Chase.</td><td>Simulator compatibility alone does not prove that live camera-derived observations become plausible memory. The depth-obstacles scenario must produce a tracked source-frame-to-memory review, with hidden scene state reserved for scoring.</td></tr>
             <tr><td>2026-07-18</td><td>Use Chase's built-in decision model as a shadow-validation reference.</td><td>The built-in model can drive a changing scene and provide frame-aligned evaluator state while the rewrite remains observe-only. Its privileged state must never become candidate input or an interface contract, and comparison should test declared plausibility rather than exact imitation.</td></tr>
+            <tr><td>2026-07-18</td><td>Land typed MemorySnapshot values before any reducer or host wiring.</td><td>Removing public Any at the decision seam forces provenance, bounds, and failure health into the stable contract without encoding retention policy in the cycle.</td></tr>
           </tbody>
         </table>
       </div>

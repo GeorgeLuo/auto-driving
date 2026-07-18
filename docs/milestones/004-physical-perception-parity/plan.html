@@ -334,8 +334,8 @@
           <p><strong>Deliverable:</strong> guided clear/left/center/right/removed check with frame-matched review artifacts and zero movement.</p>
         </div>
         <div class="card interface">
-          <h3>Current: Qualify One Physical Strategy</h3>
-          <p><span class="status active">In progress</span> <strong>Review shape:</strong> common-frame comparison.</p>
+          <h3>Completed: Qualify One Physical Strategy</h3>
+          <p><span class="status done">Rejected candidate; retained control</span> <strong>Review shape:</strong> common-frame comparison.</p>
           <p><strong>Deliverable:</strong> measure packaged floor-plane control and lab floor-continuity on the same labeled physical-check frames; emit an explicit promote/reject decision.</p>
           <p><strong>Review question:</strong> Does the candidate improve at least two material behavioral measures without scene-specific tuning, interface changes, stale state, or unacceptable Pi cost?</p>
           <p><strong>Create/Modify:</strong> <code>vehicles perception qualify</code>; common-frame apply of control vs candidate; material-measure comparison; milestone evidence; plan/README.</p>
@@ -343,19 +343,11 @@
           <p><strong>Validation:</strong> offline qualification on the recorded physical-check set rejected promotion and retained floor-plane as operational fallback. <a href="evidence/floor-continuity-physical-check-qualification.json">Evidence</a> · <a href="evidence/floor-continuity-physical-check-qualification.md">summary</a>.</p>
         </div>
         <div class="card goal">
-          <h3>Next: Measure Physical Viability</h3>
-          <p><span class="status pending">Queued after strategy qualification decision lands</span> <strong>Expected shape:</strong> deep and narrow measurement.</p>
-          <p><strong>Expected deliverable:</strong> 60-second onboard cadence/latency/RSS evidence for the selected operational observer.</p>
+          <h3>Completed: Measure Physical Viability</h3>
+          <p><span class="status done">Measured on packaged control</span> <strong>Review shape:</strong> deep and narrow measurement.</p>
+          <p><strong>Deliverable:</strong> 60-second onboard cadence/latency/RSS evidence for the selected operational observer.</p>
           <p><strong>Non-goals:</strong> algorithm expansion, memory-stage work.</p>
-        </div>
-        <div class="card constraint">
-          <h3>Later: Qualify One Physical Strategy</h3>
-          <p><span class="status active">Archive prequalification complete; live qualification gated</span> <strong>Expected shape:</strong> one bounded lab candidate and a common-frame comparison.</p>
-          <p><strong>Expected deliverable:</strong> measure <code>floor-plane-v0</code> as the control, evaluate the stateless <code>floor-continuity-v1</code> hypothesis on the same frames, and either promote it through explicit gates or retain the baseline with rejection evidence.</p>
-          <p><strong>Review question:</strong> Does the candidate improve at least two material behavioral measures without scene-specific tuning, interface changes, stale state, or unacceptable Pi cost?</p>
-          <p><strong>Boundary:</strong> no changes under <code>autonomy/</code>; broad model comparison, learned-runtime packaging, temporal stabilization, and camera calibration remain deferred.</p>
-          <p><strong>Preliminary evidence:</strong> the current default completed five simulator frames and 50 archived Pi frames without failure. The six physical sets produced 190 regions with unrecorded desktop plugin medians of 37.263-65.531 ms. On one 11-frame run it emitted 41 regions versus the control's 67 and was materially faster locally, but unlabeled application cannot establish correctness or onboard cost. <a href="evidence/floor-continuity-archive-apply.json">Evidence summary</a> · <a href="evidence/floor-continuity/physical-11-frame-contact-sheet.jpg">physical overlay contact sheet</a> · <a href="evidence/floor-continuity/simulator-8-frame-contact-sheet.jpg">simulator overlay contact sheet</a>.</p>
-          <p class="note">The compact contact sheets are tracked review extracts from explicit <code>--record</code> runs. Complete generated run directories remain intentionally ignored.</p>
+          <p><strong>Validation:</strong> the packaged observer sustained ~1.90 fresh results/s at the configured 0.5-second interval, p95 result age 513 ms, zero control, and manual <code>user</code> mode. <a href="evidence/physical-viability-60s.md">Evidence summary</a>.</p>
         </div>
       </div>
       <div class="table-wrap" style="margin-top: 16px;">

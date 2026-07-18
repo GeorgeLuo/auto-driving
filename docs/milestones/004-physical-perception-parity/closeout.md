@@ -92,7 +92,9 @@ Measured operational cost on `lightweight_observer` (60 s live):
 
 ## Deferred Work
 
-- Milestone 005: bounded evidence memory over the proven observation path.
+- Milestone 005: bounded evidence memory over the proven observation path,
+  including an opt-in physical review that traces retained image-space evidence
+  to its exact source frame before later decision stages begin.
 - Improve or re-qualify physical right-side and clear-floor false-positive
   behavior only when a new candidate states an explicit adoption gate.
 - Motion-capable physical validation remains a separately named future

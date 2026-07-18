@@ -177,6 +177,7 @@
         <span class="pill">Action policy: idle</span>
         <span class="pill">Persistence: memory only by default</span>
         <span class="pill">Hosts: Chase and DonkeyCar</span>
+        <span class="pill">Physical gate: visual provenance</span>
         <span class="pill">Delivery: rolling PR horizon</span>
       </div>
     </header>
@@ -201,7 +202,10 @@
         Success is not a detailed floor plan. Success is a stable, economical
         answer to "what recent evidence is the controller retaining, why, and for
         how long?" that behaves the same in replay, simulation, and the physical
-        runtime while the car remains idle.
+        runtime while the car remains idle. On the Pi, that answer must be
+        visually reviewable against the exact source frames that produced the
+        retained evidence; schema compatibility and record counts alone are not
+        enough to close the milestone.
       </p>
     </section>
 
@@ -260,6 +264,15 @@
 ./cli/automa vehicles info memory --id chase-sim-chaser
 ./cli/automa vehicles info memory --id &lt;picar-id&gt;</pre>
           <p><strong>Success signal:</strong> both hosts report the same memory implementation and lifecycle schema, bounded state, and idle steering/throttle; physical deployment additionally reports its activated autonomy release.</p>
+        </div>
+        <div class="card interface">
+          <h3>Verify Physical Evidence Retention</h3>
+          <p><strong>Starting state:</strong> the Pi publishes healthy frame-matched perception, the bounded memory implementation is active, and the idle engine owns action.</p>
+          <p><strong>Proposed execution:</strong></p>
+          <pre>./cli/automa vehicles memory check \
+  --id &lt;picar-id&gt; --record
+./cli/automa vehicles info memory --id &lt;picar-id&gt;</pre>
+          <p><strong>Success signal:</strong> a stationary guided sequence records an exact perception source frame, its retained record, bounded survival through declared dropout, and visible expiry/reset. The report renders source-frame regions beside memory age and provenance; it never draws stale image coordinates on a newer frame as if they were current.</p>
         </div>
       </div>
       <p class="note">
@@ -356,7 +369,7 @@
             <tr><td>Host integration</td><td>Equivalent activation and lifecycle in local Chase and onboard Donkey hosts.</td><td>How memory reaches runtime inspection and engines while action remains idle and stage failures remain contained.</td></tr>
             <tr><td>Operator workflow</td><td>Stage, inspect, run, stream, replay, reset, and opt-in record behavior through Automa.</td><td>Which state is useful to a human without flooding output with every retained evidence record.</td></tr>
             <tr><td>Evaluation</td><td>Controlled recurrence, dropout, conflict, expiry, length, reset, and replay scenarios.</td><td>What one simple implementation claims to preserve and which truth labels are needed to score that claim.</td></tr>
-            <tr><td>Closeout</td><td>Evidence that memory is bounded, portable, inspectable, and useful enough to inform later patterns or action.</td><td>Results from simulator, replay, and one non-moving physical runtime check.</td></tr>
+            <tr><td>Closeout</td><td>Evidence that memory is bounded, portable, inspectable, and useful enough to inform later patterns or action.</td><td>Results from simulator, replay, and one recorded non-moving physical visual-provenance check.</td></tr>
           </tbody>
         </table>
       </div>
@@ -402,7 +415,7 @@
             <tr><td>Bounds</td><td>Capacity, age, and eviction behavior are finite, configured, visible, and testable.</td><td>Unbounded history, raw frame archives, or an implicit database.</td></tr>
             <tr><td>Lifecycle</td><td>Construction, update, read, reset, activation replacement, and failure states have one owner.</td><td>Persistence across process or device restart.</td></tr>
             <tr><td>Coordinates</td><td>Preserve declared image or relative frames and reject incompatible fusion unless an implementation explicitly transforms them.</td><td>Calibrated metric geometry or a shared global map.</td></tr>
-            <tr><td>Inspection</td><td>Return stable summaries and structured records detached from live mutable state.</td><td>Dumping every internal index or implementation cache to operators.</td></tr>
+            <tr><td>Inspection</td><td>Return stable summaries and structured records detached from live mutable state. Retained image-space evidence preserves the exact source frame/observation identity needed for opt-in visual review.</td><td>Dumping every internal index or implementation cache to operators, retaining raw frames by default, or projecting stale coordinates onto a newer frame without an explicit transform.</td></tr>
             <tr><td>Failure</td><td>A memory failure is explicit, produces no new retained claim, and cannot produce movement.</td><td>Silently falling back to stale state as if it were current.</td></tr>
           </tbody>
         </table>
@@ -423,7 +436,7 @@
         </div>
         <div class="card constraint">
           <h3>Physical Evidence</h3>
-          <p>Confirm the same activation, bounded state, inspection, and reset behavior on the Pi while the idle engine retains zero steering and throttle.</p>
+          <p>Run a stationary present/dropout/expiry/reset sequence on the Pi. Record an opt-in review that pairs each retained item with the exact perception source frame and region while the idle engine retains zero steering and throttle.</p>
         </div>
       </div>
       <div class="table-wrap" style="margin-top: 14px;">
@@ -436,6 +449,7 @@
             <tr><td>Identity continuity</td><td>Only implementations that claim association are scored for unnecessary splits and unsupported merges.</td></tr>
             <tr><td>Bounded cost</td><td>Record count, memory use, and update latency remain bounded as sequence length grows.</td></tr>
             <tr><td>Replay determinism</td><td>The same ordered observations and configuration produce the same serialized memory result.</td></tr>
+            <tr><td>Visual provenance alignment</td><td>Recorded simulator and Pi reviews show that retained image-space evidence cites and marks the source region that actually produced it, without implying stale geometry is current.</td></tr>
             <tr><td>Operator signal</td><td>Human output explains state, age, health, and recovery without flooding; JSON remains complete.</td></tr>
           </tbody>
         </table>
@@ -493,7 +507,8 @@
         <div class="work-body"><ul>
           <li>Support concise info, status, latest-state streaming, reset, deterministic replay, and opt-in recording through Automa.</li>
           <li>Exercise controlled observation sequences and at least one camera-derived simulator scenario without map input.</li>
-          <li>Verify the same activation and bounded state on the Pi without commanding movement.</li>
+          <li>Add a stationary guided Pi check covering visible evidence, bounded dropout retention, expiry, and reset without commanding movement.</li>
+          <li>Record a compact visual report pairing retained records with their exact perception source frames, regions, age, and lifecycle transition.</li>
         </ul></div>
       </details>
 
@@ -521,7 +536,7 @@
             <li>Equivalent local simulator and onboard Pi host integration.</li>
             <li>Operator inspection, streaming, replay, and opt-in recording.</li>
             <li>Deterministic sequence tests and controlled simulator evaluation.</li>
-            <li>Non-moving physical activation and state inspection.</li>
+            <li>Non-moving physical activation, state inspection, and recorded visual-provenance validation.</li>
           </ul>
         </div>
         <div class="card risk">
@@ -568,7 +583,8 @@
         <li>Automa can stage, inspect, run, stream latest memory, replay a sequence, and reset state with concise human output and complete machine output.</li>
         <li>Default execution writes no logs, frames, or memory history; recording is explicit and bounded.</li>
         <li>Deterministic tests cover recurrence, dropout, conflict, expiry, capacity, reset, failure, and replay, including long-sequence boundedness.</li>
-        <li>Controlled simulator evidence and one non-moving Pi check verify equivalent stage behavior while the idle engine emits zero movement.</li>
+        <li>Controlled simulator evidence and one recorded non-moving Pi present/dropout/expiry/reset check verify equivalent stage behavior while the idle engine emits zero movement.</li>
+        <li>The physical review visibly traces retained image-space evidence to its exact perception source frame and region, distinguishes current from retained/expired evidence, and never treats stale coordinates as current geometry.</li>
         <li>A closeout states what memory representation proved useful, what remains unverified, and whether later pattern or action work is justified.</li>
       </ol>
     </section>
@@ -588,6 +604,7 @@
             <tr><td>2026-07-15</td><td>Make completion usage a stable part of milestone scope.</td><td>Concrete user-visible workflows constrain architecture toward runnable outcomes while allowing command details and implementation choices to evolve from evidence.</td></tr>
             <tr><td>2026-07-16</td><td>Defer evidence memory to milestone 005 and make physical perception parity milestone 004.</td><td>The Pi loads compatible perception code, but manual mode does not execute the onboard stage and operators cannot stream frame-matched findings. Memory must not begin on an unverified physical input path.</td></tr>
             <tr><td>2026-07-18</td><td>Activate milestone 005 after physical perception parity closed.</td><td>Live always-on observation, exact latest publication, guided check artifacts, strategy rejection, and 60s viability are recorded. Memory can retain attributed observations from the proven path.</td></tr>
+            <tr><td>2026-07-18</td><td>Require visual provenance in the physical memory closeout gate.</td><td>Compatible schemas and bounded record counts do not show that memory plausibly derives from real perception. A stationary recorded check must trace retained regions to exact source frames and visibly demonstrate retention, expiry, and reset before later decision stages begin.</td></tr>
           </tbody>
         </table>
       </div>

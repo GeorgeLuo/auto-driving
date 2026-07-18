@@ -6,6 +6,8 @@ from autonomy.decision import (
     DecisionCycle,
     DecisionFrameContext,
     DecisionStages,
+    MemoryBounds,
+    empty_memory_snapshot,
     Observation,
 )
 from autonomy.perception import PERCEPTION_TEXT_SCHEMA, PerceptionText
@@ -112,6 +114,33 @@ class DecisionCycleTests(unittest.TestCase):
 
         with self.assertRaisesRegex(TypeError, "must return AutonomyControl or None"):
             cycle.run(self.context())
+
+    def test_memory_stage_accepts_typed_snapshot_and_keeps_idle(self) -> None:
+        snapshot = empty_memory_snapshot(
+            memory_id="mem_frame_000",
+            epoch_id="epoch_1",
+            bounds=MemoryBounds(max_records=4),
+            created_at_ms=10,
+            implementation_id="test",
+        )
+
+        result = DecisionCycle(
+            DecisionStages(remember=lambda context, observation: snapshot)
+        ).run(self.context())
+
+        self.assertIs(result.memory, snapshot)
+        self.assertEqual(result.memory.health, "empty")
+        self.assertEqual(result.control.reason, "decision-cycle-idle")
+        self.assertEqual(result.to_dict()["memory"]["health"], "empty")
+
+    def test_memory_stage_rejects_undeclared_dictionary_output(self) -> None:
+        cycle = DecisionCycle(
+            DecisionStages(remember=lambda context, observation: {"records": []})
+        )
+
+        with self.assertRaisesRegex(TypeError, "must return MemorySnapshot or None"):
+            cycle.run(self.context())
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

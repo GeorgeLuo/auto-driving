@@ -9,6 +9,7 @@ from autonomy.perception import PerceptionText
 from autonomy.runtime.engine import AutonomyControl
 from autonomy.vehicle import SensorSnapshot
 
+from .memory import MemorySnapshot
 from .observation import Observation, observation_from_perception
 
 
@@ -47,11 +48,27 @@ class DecisionFrameContext:
 
 PerceiveStage = Callable[[DecisionFrameContext], PerceptionText | None]
 ObserveStage = Callable[[DecisionFrameContext, PerceptionText | None], Observation | None]
-MemoryStage = Callable[[DecisionFrameContext, Observation | None], Any]
-PatternStage = Callable[[DecisionFrameContext, Observation | None, Any], Any]
-ProjectionStage = Callable[[DecisionFrameContext, Observation | None, Any, Any], Any]
+MemoryStage = Callable[
+    [DecisionFrameContext, Observation | None],
+    MemorySnapshot | None,
+]
+PatternStage = Callable[
+    [DecisionFrameContext, Observation | None, MemorySnapshot | None],
+    Any,
+]
+ProjectionStage = Callable[
+    [DecisionFrameContext, Observation | None, MemorySnapshot | None, Any],
+    Any,
+]
 ActionStage = Callable[
-    [DecisionFrameContext, PerceptionText | None, Observation | None, Any, Any, Any],
+    [
+        DecisionFrameContext,
+        PerceptionText | None,
+        Observation | None,
+        MemorySnapshot | None,
+        Any,
+        Any,
+    ],
     AutonomyControl | None,
 ]
 
@@ -75,7 +92,7 @@ class DecisionCycleResult:
     context: DecisionFrameContext
     perception: PerceptionText | None
     observation: Observation | None
-    memory: Any
+    memory: MemorySnapshot | None
     patterns: Any
     projections: Any
     control: AutonomyControl
@@ -130,6 +147,10 @@ class DecisionCycle:
         else:
             observation = None
         memory = self.stages.remember(context, observation) if self.stages.remember else None
+        if memory is not None and not isinstance(memory, MemorySnapshot):
+            raise TypeError(
+                "decision memory stage must return MemorySnapshot or None"
+            )
         patterns = (
             self.stages.update_patterns(context, observation, memory)
             if self.stages.update_patterns

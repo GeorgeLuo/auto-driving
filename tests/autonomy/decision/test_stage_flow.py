@@ -9,9 +9,13 @@ from autonomy.decision import (
     DecisionCycle,
     DecisionFrameContext,
     DecisionStages,
+    MemoryBounds,
+    MemoryProvenance,
+    MemorySnapshot,
     Observation,
+    RetainedEvidence,
 )
-from autonomy.perception import PERCEPTION_TEXT_SCHEMA, PerceptionText
+from autonomy.perception import PERCEPTION_TEXT_SCHEMA, PerceptionText, ViewLocation
 from autonomy.runtime import AutonomyControl
 
 
@@ -40,7 +44,33 @@ class DecisionStageFlowTests(unittest.TestCase):
             perception_plugin_id=perception.plugin_id,
             summary=perception.lines,
         )
-        memory = {"observations": [observation.observation_id]}
+        memory = MemorySnapshot(
+            memory_id="memory_007",
+            epoch_id="epoch_1",
+            health="healthy",
+            bounds=MemoryBounds(max_records=8, max_age_ms=5_000),
+            created_at_ms=702,
+            records=(
+                RetainedEvidence(
+                    record_id="retained_path_clear",
+                    kind="signal",
+                    label="path clear evidence",
+                    confidence=0.9,
+                    provenance=MemoryProvenance(
+                        observation_id=observation.observation_id,
+                        evidence_id="path_clear",
+                        coordinate_frame="image",
+                        observed_at_ms=701,
+                        updated_at_ms=702,
+                        source_plugin_id=perception.plugin_id,
+                        frame_id=context.frame_id,
+                    ),
+                    location=ViewLocation(frame="image", zone="center"),
+                ),
+            ),
+            summary=("retained_count=1",),
+            implementation_id="test_memory",
+        )
         patterns = {"path": "clear"}
         projections = ("continue_forward",)
         control = AutonomyControl(
@@ -162,16 +192,16 @@ class DecisionStageFlowTests(unittest.TestCase):
         serialized = result.to_dict()
         self.assertEqual(serialized["schema"], DECISION_CYCLE_RESULT_SCHEMA)
         self.assertEqual(serialized["context"]["frame_id"], "frame_007")
-        self.assertEqual(serialized["memory"], memory)
+        self.assertEqual(serialized["memory"], memory.to_dict())
         self.assertEqual(serialized["patterns"], patterns)
         self.assertEqual(serialized["projections"], ["continue_forward"])
         self.assertEqual(serialized["control"], control.to_dict())
         json.dumps(serialized)
 
         serialized["context"]["metadata"]["route"]["candidate"] = "left"
-        serialized["memory"]["observations"].append("frame_008")
+        serialized["memory"]["records"][0]["properties"]["mutated"] = True
         self.assertEqual(context.metadata["route"]["candidate"], "center")
-        self.assertEqual(memory["observations"], ["frame_007"])
+        self.assertNotIn("mutated", memory.records[0].properties)
 
 
 if __name__ == "__main__":

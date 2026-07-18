@@ -101,6 +101,7 @@ The command groups intentionally distinguish different kinds of state:
 | `vehicles perception ...` | Runs perception experiments and manages production or lab plugins. |
 | `vehicles automation ...` | Runs or inspects the local Chase controller worker. |
 | `vehicles stream perception` | Displays rolling latest perception. Chase uses the local automation worker; PiCar polls onboard `/autonomy/observation/latest` and opens a local frame-matched view. |
+| `vehicles perception viability` | 60s onboard cadence/freshness/RSS measurement for a physical PiCar. |
 | `vehicles perception check` | Guided stationary PiCar placement check (clear/left/center/right/removed/unavailable); never moves the car. Use `--record` for review artifacts. |
 | `vehicles update core` | Deploys DonkeyCar framework and physical harness code to the Pi. |
 | `vehicles update autonomy` | Deploys a versioned autonomy release and activation metadata to the Pi. |

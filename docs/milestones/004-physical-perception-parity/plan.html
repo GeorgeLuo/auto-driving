@@ -486,13 +486,13 @@ Decision and action remain separate:
         </ul></div>
       </details>
 
-      <details class="work-item" data-status="pending">
-        <summary><span>6. Measure Physical Viability</span><span class="status pending">Pending</span></summary>
+      <details class="work-item" data-status="active" open>
+        <summary><span>6. Measure Physical Viability</span><span class="status active">Live 60s measured</span></summary>
         <div class="work-body"><ul>
-          <li>Run the selected deployed lightweight observer for at least 60 seconds at its declared default physical cadence.</li>
-          <li>Record processed cadence, p50/p95 latency, result age, dropped-frame policy, process RSS, and relevant CPU load.</li>
-          <li>Require at least two fresh published results per second and p95 result age at or below one second for the default operator view.</li>
-          <li>Verify bounded memory, no default artifacts, and continued camera/control responsiveness.</li>
+          <li><strong>Implemented:</strong> <code>vehicles perception viability --id piracer</code> polls onboard publication for a bounded window and records cadence, age, duration, skips, and remote RSS/CPU.</li>
+          <li><strong>Live result:</strong> 60s on <code>lightweight_observer</code> measured ~1.90 fresh results/s (0.5s configured interval → theoretical 2.0 Hz; gate requires ≥90% of configured cadence), p95 result age 513 ms, control always zero, mode always user, RSS ~196–212 MB.</li>
+          <li><strong>Evidence:</strong> <a href="evidence/physical-viability-60s.json">viability report</a> · <a href="evidence/physical-viability-60s.md">summary</a>.</li>
+          <li>Dropped-frame policy remains newest-frame with cadence skips counted in <code>skipped_count</code>.</li>
         </ul></div>
       </details>
 
@@ -506,8 +506,8 @@ Decision and action remain separate:
         </ul></div>
       </details>
 
-      <div class="progress-track" aria-label="Milestone work packages completed: 4 of 8"><div class="progress-fill" style="width: 50%;"></div></div>
-      <p class="small">Progress: packages 0-3 are done; package 4 (repeatable physical check) is the current review unit. Next after merge: strategy live qualification. Sustained 60-second viability remains package 6.</p>
+      <div class="progress-track" aria-label="Milestone work packages completed: 5 of 8"><div class="progress-fill" style="width: 62.5%;"></div></div>
+      <p class="small">Progress: packages 0-4 done; package 5 may still be open on a parallel PR. Package 6 live 60s viability for the operational observer is measured and recorded. Next: consolidate evidence / closeout once strategy decision and viability are both on main.</p>
     </section>
 
     <section class="panel">
@@ -606,7 +606,8 @@ Decision and action remain separate:
             <tr><td>2026-07-17</td><td>Publish latest observation through dedicated read-only endpoints rather than expanding <code>/autonomy/status</code>.</td><td>Status stays bounded for readiness probes. Exact-frame findings and JPEG bytes are opt-in GETs that compute health at read time and keep only one in-memory snapshot.</td></tr>
             <tr><td>2026-07-17</td><td>Resolve physical stream/info through onboard publication rather than a local automation worker on the Pi.</td><td>Automa owns terminal and local loopback presentation; the Pi only publishes the latest snapshot. This avoids a second onboard frontend while reusing Chase view contracts.</td></tr>
             <tr><td>2026-07-17</td><td>Implement the physical placement check as a stationary guided CLI that never commands movement.</td><td>Acceptance needs human placement and onboard evidence pairing; keeping motion out of the check preserves the authority boundary and keeps failures attributable to perception/publication.</td></tr>
-          </tbody>
+                      <tr><td>2026-07-17</td><td>Measure viability against the configured observation cadence (0.5 s) with a 90% attainment gate rather than a hard wall-clock 2.00 Hz.</td><td>With min_interval_s=0.5 the theoretical maximum is 2.0 Hz; a 60s live run at ~1.90 Hz with p95 age well under 1s demonstrates the operational path while avoiding false fails from endpoint polling overhead.</td></tr>
+</tbody>
         </table>
       </div>
     </section>

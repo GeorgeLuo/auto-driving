@@ -39,6 +39,7 @@ from .perception_runs import (
 )
 from .simulators import DEFAULT_SCENARIO_ID, ensure_simulator, get_simulator_status
 from .physical_check import run_physical_perception_check
+from .physical_viability import run_physical_viability_measurement
 from .streaming import stream_vehicle_perception
 from .vehicles import discover_active_vehicles, format_active_vehicles_snapshot
 
@@ -584,6 +585,51 @@ def build_parser() -> argparse.ArgumentParser:
     )
     perception_check.set_defaults(handler=_handle_vehicles_perception_check)
 
+    perception_viability = perception_commands.add_parser(
+        "viability",
+        help="Measure onboard physical observation cadence and freshness for a PiCar.",
+        description=(
+            "Poll the deployed onboard observation publication for a bounded interval "
+            "(default 60s), record cadence, result age, processing duration, skip policy, "
+            "and remote process RSS/CPU. Requires physical PiCar publication endpoints."
+        ),
+    )
+    perception_viability.add_argument(
+        "--id",
+        required=True,
+        dest="vehicle_id",
+        help="Physical vehicle id from `automa vehicles active` (picar only).",
+    )
+    perception_viability.add_argument(
+        "--duration-s",
+        type=float,
+        default=60.0,
+        help="Measurement window in seconds (default: 60).",
+    )
+    perception_viability.add_argument(
+        "--sample-period-s",
+        type=float,
+        default=0.25,
+        help="Publication poll period in seconds (default: 0.25).",
+    )
+    perception_viability.add_argument(
+        "--timeout-s",
+        type=float,
+        default=3.0,
+        help="Per-request timeout in seconds (default: 3).",
+    )
+    perception_viability.add_argument(
+        "--no-record",
+        action="store_true",
+        help="Do not write a viability report directory.",
+    )
+    perception_viability.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the machine-readable viability report.",
+    )
+    perception_viability.set_defaults(handler=_handle_vehicles_perception_viability)
+
     perception_compare = perception_commands.add_parser(
         "compare",
         help="Compare all ready lab candidates on one image sequence.",
@@ -1105,6 +1151,7 @@ def _handle_vehicles_perception_help(args: argparse.Namespace) -> int:
                 "- run      observe a short sequence from an active vehicle",
                 "- apply    process one existing image or image sequence",
                 "- check    guided stationary physical placement check (picar)",
+                "- viability  measure onboard cadence/freshness on a physical PiCar",
                 "- compare  compare all ready candidates on one sequence",
                 "- candidates  show experimental candidates and readiness",
                 "- setup    prepare one isolated experimental candidate",
@@ -1385,6 +1432,21 @@ def _handle_vehicles_perception_check(args: argparse.Namespace) -> int:
     except ValueError as exc:
         print(str(exc))
         return 2
+    if result.message:
+        print(result.message)
+    return result.exit_code
+
+
+def _handle_vehicles_perception_viability(args: argparse.Namespace) -> int:
+    result = run_physical_viability_measurement(
+        vehicle_id=args.vehicle_id,
+        duration_s=args.duration_s,
+        sample_period_s=args.sample_period_s,
+        timeout_s=args.timeout_s,
+        record=not args.no_record,
+        json_output=args.json,
+        output=None if args.json else sys.stdout,
+    )
     if result.message:
         print(result.message)
     return result.exit_code

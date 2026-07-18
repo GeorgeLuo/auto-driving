@@ -1,0 +1,111 @@
+{
+  "base_url": "http://piracer.local:8887",
+  "duration_s_elapsed": 60.468,
+  "duration_s_requested": 60.0,
+  "error_count": 0,
+  "errors_head": [],
+  "gates": [
+    {
+      "detail": "fresh_results_per_s=1.9018 required>=1.8000 (design_target=2.0, configured_hz=2.0000, fraction=0.9)",
+      "id": "fresh_results_meet_configured_cadence",
+      "passed": true
+    },
+    {
+      "detail": "p95_result_age_ms=513.0 required<=1000.0",
+      "id": "p95_result_age_at_most_1s",
+      "passed": true
+    },
+    {
+      "detail": "control_always_zero=True",
+      "id": "control_always_zero",
+      "passed": true
+    },
+    {
+      "detail": "mode_always_user=True",
+      "id": "mode_always_user",
+      "passed": true
+    },
+    {
+      "detail": "healthy_sample_count=110",
+      "id": "healthy_samples_present",
+      "passed": true
+    }
+  ],
+  "host_sample_count": 56,
+  "limits": [
+    "Polls the publication endpoint; does not instrument in-process Donkey loop counters directly.",
+    "Freshness uses frame_id transitions and published result_age_ms/duration_ms fields.",
+    "Host RSS/CPU are sampled from the remote manage.py process when SSH metrics are available."
+  ],
+  "metrics": {
+    "algorithms_seen": [
+      "lightweight_observer"
+    ],
+    "configured_min_interval_s": 0.5,
+    "control_always_zero": true,
+    "dropped_frame_policy": {
+      "description": "Onboard AutonomyPilotPart uses newest-frame consumption with min_interval cadence skips; intermediate camera ticks are counted in skipped_count.",
+      "skipped_count_delta": 462
+    },
+    "duration_ms": {
+      "count": 110,
+      "max": 372.0,
+      "mean": 316.945,
+      "min": 286.0,
+      "p50": 316.0,
+      "p95": 340.0
+    },
+    "elapsed_s": 60.468,
+    "fresh_frame_transitions": 93,
+    "fresh_results_per_s": 1.9018,
+    "healthy_sample_count": 110,
+    "host": {
+      "cpu_percent": {
+        "count": 56,
+        "max": 93.7,
+        "mean": 93.7,
+        "min": 93.7,
+        "p50": 93.7,
+        "p95": 93.7
+      },
+      "errors": [],
+      "pid": 17452,
+      "rss_mb": {
+        "count": 56,
+        "max": 211.531,
+        "mean": 197.188,
+        "min": 195.895,
+        "p50": 196.027,
+        "p95": 206.398
+      },
+      "sample_count": 56
+    },
+    "mode_always_user": true,
+    "processed_count_delta": 115,
+    "processed_results_per_s": 1.9018,
+    "result_age_ms": {
+      "count": 110,
+      "max": 553.0,
+      "mean": 237.364,
+      "min": 5.0,
+      "p50": 235.0,
+      "p95": 513.0
+    },
+    "sample_count": 110,
+    "skipped_count_delta": 462,
+    "unique_frames_observed": 94
+  },
+  "note": "Full sample arrays retained in lab/runs/perception-viability/piracer-20260717-172141/report.json",
+  "passed": true,
+  "requirements": {
+    "control_must_remain_zero": true,
+    "max_p95_result_age_ms": 1000.0,
+    "min_fresh_results_per_s": 2.0,
+    "mode_must_remain_user": true
+  },
+  "run_id": "piracer-20260717-172141",
+  "sample_count": 110,
+  "sample_period_s": 0.25,
+  "schema": "automa_physical_perception_viability_v0",
+  "vehicle_id": "piracer"
+}

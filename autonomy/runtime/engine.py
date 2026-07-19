@@ -13,6 +13,7 @@ class AutonomySnapshot:
     sensor_snapshot: Any = None
     perception: Any = None
     observation: Any = None
+    memory: Any = None
     cycle: dict[str, Any] = field(default_factory=dict)
     mode: str = "user"
     user_steering: float = 0.0
@@ -59,6 +60,7 @@ class IdleAutonomyEngine:
                 "sensor_snapshot",
                 "perception",
                 "observation",
+                "memory",
                 "cycle",
                 "mode",
                 "user_steering",
@@ -70,7 +72,7 @@ class IdleAutonomyEngine:
             },
             "stages": {
                 "action": "hold_position",
-                "memory": None,
+                "memory": "inspectable_snapshot",
                 "patterns": None,
                 "projections": None,
             },
@@ -87,6 +89,7 @@ class IdleAutonomyEngine:
                 "has_sensor_snapshot": snapshot.sensor_snapshot is not None,
                 "has_perception": snapshot.perception is not None,
                 "has_observation": snapshot.observation is not None,
+                "has_memory": snapshot.memory is not None,
             },
         )
 

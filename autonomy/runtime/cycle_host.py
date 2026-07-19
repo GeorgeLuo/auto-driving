@@ -38,10 +38,14 @@ class AutonomyCycleHost:
         return result
 
     def status(self) -> dict[str, Any]:
-        return {
+        payload: dict[str, Any] = {
             "engine": self.manager.status(),
             "last_cycle": self.last_result.to_dict() if self.last_result is not None else None,
         }
+        remember = self.cycle.stages.remember
+        if remember is not None and callable(getattr(remember, "status", None)):
+            payload["memory"] = remember.status()
+        return payload
 
     def _choose_action(
         self,
@@ -52,12 +56,13 @@ class AutonomyCycleHost:
         patterns,
         projections,
     ):
-        del memory, patterns, projections
+        del patterns, projections
         return self.manager.step(
             AutonomySnapshot(
                 sensor_snapshot=context.sensor_snapshot,
                 perception=perception,
                 observation=observation,
+                memory=memory,
                 cycle={
                     "frame_id": context.frame_id,
                     "frame_index": context.frame_index,

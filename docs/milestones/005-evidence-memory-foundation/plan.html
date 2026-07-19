@@ -498,17 +498,18 @@
         </ul></div>
       </details>
 
-      <details class="work-item" data-status="active" open>
-        <summary><span>3. Wire Equivalent Runtime Hosts</span><span class="status active">Next</span></summary>
+      <details class="work-item" data-status="done" open>
+        <summary><span>3. Wire Equivalent Runtime Hosts</span><span class="status done">Done</span></summary>
         <div class="work-body"><ul>
-          <li>Install the selected memory stage in both the local automation worker and Donkey cycle host.</li>
-          <li>Expose memory to runtime inspection and future engines through one shared snapshot shape.</li>
-          <li>Retain the idle engine and prove memory failure cannot alter control output.</li>
+          <li><strong>Implemented:</strong> Chase automation and Donkey <code>manage.py</code> optionally load <code>runtime/memory/active.json</code> into <code>DecisionStages.remember</code>.</li>
+          <li><strong>Implemented:</strong> <code>AutonomySnapshot.memory</code> carries the cycle memory result to engines; host status exposes memory stage status when present.</li>
+          <li><strong>Implemented:</strong> idle engine reports <code>has_memory</code>; memory update failures remain isolated error snapshots and do not change control.</li>
+          <li><strong>Note:</strong> no production reducer is packaged yet—hosts stay no-op when the activation file is absent.</li>
         </ul></div>
       </details>
 
-      <details class="work-item" data-status="pending">
-        <summary><span>4. Add One Functional Memory Implementation</span><span class="status pending">Pending</span></summary>
+      <details class="work-item" data-status="active" open>
+        <summary><span>4. Add One Functional Memory Implementation</span><span class="status active">Next</span></summary>
         <div class="work-body"><ul>
           <li>Begin with a simple bounded evidence ledger or recency reducer whose claims can be tested directly.</li>
           <li>Keep implementation files under the matching <code>implementations/memory</code> hierarchy and make deployment selection explicit.</li>
@@ -537,8 +538,8 @@
         </ul></div>
       </details>
 
-      <div class="progress-track" aria-label="Milestone work packages completed: 2 of 6"><div class="progress-fill" style="width: 33.3%;"></div></div>
-      <p class="small">Progress: packages 1–2 done (typed values + activation/stage runner). Next review unit: wire equivalent Chase and Donkey hosts.</p>
+      <div class="progress-track" aria-label="Milestone work packages completed: 3 of 6"><div class="progress-fill" style="width: 50%;"></div></div>
+      <p class="small">Progress: packages 1–3 done (values, activation, host wiring). Next review unit: one bounded functional memory implementation under <code>implementations/memory</code>.</p>
     </section>
 
     <section class="panel">
@@ -627,6 +628,7 @@
             <tr><td>2026-07-18</td><td>Use Chase's built-in decision model as a shadow-validation reference.</td><td>The built-in model can drive a changing scene and provide frame-aligned evaluator state while the rewrite remains observe-only. Its privileged state must never become candidate input or an interface contract, and comparison should test declared plausibility rather than exact imitation.</td></tr>
             <tr><td>2026-07-18</td><td>Land typed MemorySnapshot values before any reducer or host wiring.</td><td>Removing public Any at the decision seam forces provenance, bounds, and failure health into the stable contract without encoding retention policy in the cycle.</td></tr>
             <tr><td>2026-07-18</td><td>Give memory a single activation document and framework-owned stage runner before any host wiring.</td><td>Implementations stay limited to update/reset/snapshot. Load, timing, status, capacity enforcement, and failure isolation belong in stable infrastructure so hosts share one behavior.</td></tr>
+            <tr><td>2026-07-18</td><td>Pass MemorySnapshot through AutonomySnapshot on both hosts before packaging a production reducer.</td><td>Engines and runtime status must see the same inspectable memory field whether or not a concrete implementation is activated; optional activation keeps idle deployments safe.</td></tr>
           </tbody>
         </table>
       </div>

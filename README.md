@@ -97,7 +97,8 @@ The command groups intentionally distinguish different kinds of state:
 | `vehicles active` | Probes live PiCar and Chase endpoints. |
 | `vehicles update perception` | Packages code and stages a vehicle perception activation locally. |
 | `vehicles update decision` | Packages code and stages a decision activation locally. |
-| `vehicles info ...` | Reads staged perception or decision configuration; perception info also reports the live view URL. |
+| `vehicles update memory` | Packages code and stages a vehicle memory activation locally (default `bounded_evidence`). |
+| `vehicles info ...` | Reads staged perception, decision, or memory configuration; perception info also reports the live view URL. |
 | `vehicles perception ...` | Runs perception experiments and manages production or lab plugins. |
 | `vehicles automation ...` | Runs or inspects the local Chase controller worker. |
 | `vehicles stream perception` | Displays rolling latest perception. Chase uses the local automation worker; PiCar polls onboard `/autonomy/observation/latest` and opens a local frame-matched view. |

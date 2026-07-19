@@ -8,6 +8,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from autonomy.decision import read_memory_activation
 from autonomy.runtime import read_decision_activation
 from cli.automa_cli.bundles import controller_bundle_paths, sync_controller_bundle
 from cli.automa_cli.decision import ensure_vehicle_decision_activation
@@ -17,6 +18,7 @@ from cli.automa_cli.deploy import (
     _verify_physical_autonomy_runtime,
     _write_remote_activation_files,
 )
+from cli.automa_cli.memory import ensure_vehicle_memory_activation
 from cli.automa_cli.perception import ensure_vehicle_perception_activation
 from implementations.perception.catalog import PERCEPTION_ALGORITHMS
 
@@ -147,6 +149,11 @@ class PhysicalDeployTests(unittest.TestCase):
                 bundle=bundle,
                 release=release,
             )
+            memory_activation = ensure_vehicle_memory_activation(
+                vehicle_id="piracer",
+                bundle=bundle,
+                release=release,
+            )
             release_id = Path(release["archive"]["path"]).name.removesuffix(".tar.gz")
             deploy_files = _write_remote_activation_files(
                 target=target,
@@ -155,6 +162,7 @@ class PhysicalDeployTests(unittest.TestCase):
                 release_id=release_id,
                 perception_activation_path=perception_activation,
                 decision_activation_path=decision_activation,
+                memory_activation_path=memory_activation,
             )
 
             app_root = root / "remote" / "mycar"
@@ -171,6 +179,7 @@ class PhysicalDeployTests(unittest.TestCase):
                     str(release["archive"]["sha256"]),
                     str(deploy_files["perception"]),
                     str(deploy_files["decision"]),
+                    str(deploy_files["memory"]),
                     release_id,
                 ],
                 check=False,
@@ -183,6 +192,8 @@ class PhysicalDeployTests(unittest.TestCase):
             self.assertEqual((app_root / "autonomy").resolve(), (release_root / "autonomy").resolve())
             activation = read_decision_activation(app_root / "runtime" / "decision" / "active.json")
             self.assertEqual(activation.engine_id, "idle")
+            memory = read_memory_activation(app_root / "runtime" / "memory" / "active.json")
+            self.assertEqual(memory.implementation_id, "bounded_evidence")
             installed = json.loads(
                 (app_root / "runtime" / "controller-release.json").read_text(encoding="utf-8")
             )

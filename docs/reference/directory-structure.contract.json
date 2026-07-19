@@ -147,6 +147,12 @@
             "responsibility": "Concrete non-default decision engines and stage implementations. The stable idle default belongs to autonomy/runtime/."
           },
           {
+            "path": "implementations/memory/",
+            "category": "implementation",
+            "commit_policy": "source",
+            "responsibility": "Concrete memory reducers selected by runtime/memory activation. Stable values and activation loading remain under autonomy/decision/."
+          },
+          {
             "path": "implementations/runtime/",
             "category": "implementation",
             "commit_policy": "source",

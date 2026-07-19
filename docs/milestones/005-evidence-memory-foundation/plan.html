@@ -508,17 +508,18 @@
         </ul></div>
       </details>
 
-      <details class="work-item" data-status="active" open>
-        <summary><span>4. Add One Functional Memory Implementation</span><span class="status active">Next</span></summary>
+      <details class="work-item" data-status="done" open>
+        <summary><span>4. Add One Functional Memory Implementation</span><span class="status done">Done</span></summary>
         <div class="work-body"><ul>
-          <li>Begin with a simple bounded evidence ledger or recency reducer whose claims can be tested directly.</li>
-          <li>Keep implementation files under the matching <code>implementations/memory</code> hierarchy and make deployment selection explicit.</li>
-          <li>Do not introduce semantic object identity, a floor-plan schema, or generalized fusion until evidence demands it.</li>
+          <li><strong>Implemented:</strong> <code>BoundedEvidenceLedger</code> under <code>implementations/memory/</code> retains observation things/signals with provenance, max-age expiry, and oldest-first eviction.</li>
+          <li><strong>Implemented:</strong> explicit catalog selection via <code>bounded_evidence</code> and <code>build_memory_activation_payload</code> for <code>automa_memory_activation_v0</code>.</li>
+          <li><strong>Claims boundary:</strong> recency slots reuse evidence ids within an epoch only; metadata sets <code>claims_identity=false</code>. No floor-plan or fusion schema.</li>
+          <li><strong>Tested:</strong> retention, dropout survival/expiry, capacity eviction, reset, and framework activation load.</li>
         </ul></div>
       </details>
 
-      <details class="work-item" data-status="pending">
-        <summary><span>5. Build Operator And Evaluation Workflows</span><span class="status pending">Pending</span></summary>
+      <details class="work-item" data-status="active" open>
+        <summary><span>5. Build Operator And Evaluation Workflows</span><span class="status active">Next</span></summary>
         <div class="work-body"><ul>
           <li>Support concise info, status, latest-state streaming, reset, deterministic replay, and opt-in recording through Automa.</li>
           <li>Exercise controlled observation sequences and a live <code>chaser-depth-obstacles</code> shadow run: Chase drives, the rewrite runs observe-only, and no map/debug state enters the decision cycle.</li>
@@ -538,8 +539,8 @@
         </ul></div>
       </details>
 
-      <div class="progress-track" aria-label="Milestone work packages completed: 3 of 6"><div class="progress-fill" style="width: 50%;"></div></div>
-      <p class="small">Progress: packages 1–3 done (values, activation, host wiring). Next review unit: one bounded functional memory implementation under <code>implementations/memory</code>.</p>
+      <div class="progress-track" aria-label="Milestone work packages completed: 4 of 6"><div class="progress-fill" style="width: 66.7%;"></div></div>
+      <p class="small">Progress: packages 1–4 done (values, activation, hosts, bounded_evidence ledger). Next review unit: operator and evaluation workflows.</p>
     </section>
 
     <section class="panel">
@@ -629,6 +630,7 @@
             <tr><td>2026-07-18</td><td>Land typed MemorySnapshot values before any reducer or host wiring.</td><td>Removing public Any at the decision seam forces provenance, bounds, and failure health into the stable contract without encoding retention policy in the cycle.</td></tr>
             <tr><td>2026-07-18</td><td>Give memory a single activation document and framework-owned stage runner before any host wiring.</td><td>Implementations stay limited to update/reset/snapshot. Load, timing, status, capacity enforcement, and failure isolation belong in stable infrastructure so hosts share one behavior.</td></tr>
             <tr><td>2026-07-18</td><td>Pass MemorySnapshot through AutonomySnapshot on both hosts before packaging a production reducer.</td><td>Engines and runtime status must see the same inspectable memory field whether or not a concrete implementation is activated; optional activation keeps idle deployments safe.</td></tr>
+            <tr><td>2026-07-18</td><td>Ship BoundedEvidenceLedger as the first packaged memory implementation without identity claims.</td><td>A recency ledger of things/signals is enough to exercise retention, dropout, expiry, and capacity while remaining evidence-not-truth and loadable through the existing activation document.</td></tr>
           </tbody>
         </table>
       </div>

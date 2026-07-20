@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -168,6 +169,109 @@ def fetch_observation_frame(
     if status_code >= 400 or not body:
         raise ConnectionError(f"GET {url} returned HTTP {status_code} with no image body")
     return body, headers
+
+
+def frame_id_from_publication(publication: dict[str, Any]) -> str | None:
+    """Return the publication's frame identity when present."""
+
+    frame = publication.get("frame") if isinstance(publication.get("frame"), dict) else {}
+    frame_id = frame.get("frame_id")
+    if isinstance(frame_id, str) and frame_id.strip():
+        return frame_id.strip()
+    return None
+
+
+def frame_id_from_headers(headers: dict[str, str]) -> str | None:
+    """Return X-Frame-Id (case-insensitive) from an observation frame response."""
+
+    raw = headers.get("x-frame-id") or headers.get("X-Frame-Id")
+    if isinstance(raw, str) and raw.strip():
+        return raw.strip()
+    return None
+
+
+def fetch_matched_observation_pair(
+    base_url: str,
+    *,
+    timeout_s: float = 3.0,
+    match_timeout_s: float = 3.0,
+    require_image: bool = True,
+) -> dict[str, Any]:
+    """Fetch latest publication + JPEG and require matching frame identities.
+
+    Separate GETs can race. Retry until ``X-Frame-Id`` equals the publication
+    ``frame.frame_id`` (or until timeout). Raises ``ConnectionError`` / ``TimeoutError``
+    when a verified pair cannot be obtained.
+    """
+
+    deadline = time.monotonic() + max(0.2, float(match_timeout_s))
+    last_error: str | None = None
+    attempts = 0
+    while time.monotonic() < deadline:
+        attempts += 1
+        try:
+            publication = fetch_observation_publication(base_url, timeout_s=timeout_s)
+        except ConnectionError as exc:
+            last_error = str(exc)
+            time.sleep(0.05)
+            continue
+
+        pub_frame_id = frame_id_from_publication(publication)
+        has_image = True
+        frame = publication.get("frame") if isinstance(publication.get("frame"), dict) else {}
+        if "has_image" in frame:
+            has_image = bool(frame.get("has_image"))
+
+        if not require_image or not has_image:
+            return {
+                "publication": publication,
+                "frame_bytes": None,
+                "frame_headers": {},
+                "frame_id": pub_frame_id,
+                "matched": True,
+                "attempts": attempts,
+                "image_required": False,
+            }
+
+        if not pub_frame_id:
+            last_error = "publication has no frame.frame_id"
+            time.sleep(0.05)
+            continue
+
+        try:
+            frame_bytes, headers = fetch_observation_frame(base_url, timeout_s=timeout_s)
+        except ConnectionError as exc:
+            last_error = str(exc)
+            time.sleep(0.05)
+            continue
+
+        jpeg_frame_id = frame_id_from_headers(headers)
+        if jpeg_frame_id is None:
+            last_error = "frame response missing X-Frame-Id"
+            time.sleep(0.05)
+            continue
+        if jpeg_frame_id != pub_frame_id:
+            last_error = (
+                f"frame pair mismatch publication={pub_frame_id!r} jpeg={jpeg_frame_id!r}"
+            )
+            time.sleep(0.05)
+            continue
+
+        return {
+            "publication": publication,
+            "frame_bytes": frame_bytes,
+            "frame_headers": headers,
+            "frame_id": pub_frame_id,
+            "matched": True,
+            "attempts": attempts,
+            "image_required": True,
+        }
+
+    raise TimeoutError(
+        f"Timed out after {match_timeout_s}s waiting for a matched publication/JPEG pair"
+        + (f": {last_error}" if last_error else "")
+        + f" (attempts={attempts})"
+    )
 
 
 def publication_to_frame_record(publication: dict[str, Any]) -> dict[str, Any]:

@@ -102,6 +102,7 @@ The command groups intentionally distinguish different kinds of state:
 | `vehicles perception ...` | Runs perception experiments and manages production or lab plugins. |
 | `vehicles automation ...` | Runs or inspects the local Chase controller worker. |
 | `vehicles stream perception` | Displays rolling latest perception. Chase uses the local automation worker; PiCar polls onboard `/autonomy/observation/latest` and opens a local frame-matched view. |
+| `vehicles stream memory` | Displays live memory lifecycle health (count, epoch, failures). PiCar polls `/autonomy/status`; Chase reads automation worker state. |
 | `vehicles perception check` | Guided stationary PiCar placement check (clear/left/center/right/removed by default); never moves the car. Use `--record` for review artifacts. |
 | `vehicles perception qualify` | Offline common-frame compare of packaged control vs one lab candidate on labeled physical-check frames; emits promote/reject. |
 | `vehicles perception viability` | 60s onboard cadence/freshness/RSS measurement for a physical PiCar. |

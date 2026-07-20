@@ -523,8 +523,7 @@ def run_physical_memory_check(
         present_keys=set(),
         prior_epoch=None,
     )
-    if present_score.get("passed"):
-        present_keys = record_ids_from_memory(present_mem)
+    present_observed = observation_evidence_keys(present_cap["publication"])
     prior_epoch = str(present_mem.get("epoch_id") or "") or None
     phase_results.append(
         _phase_result(
@@ -534,6 +533,7 @@ def run_physical_memory_check(
             live_control=present_cap["control"],
             live_frame_ids=[present_cap["frame_id"]],
             source="live_onboard_publication.memory",
+            extra={"observed_evidence_keys": sorted(present_observed)},
         )
     )
     _emit_phase(output, phase_results[-1])
@@ -548,12 +548,36 @@ def run_physical_memory_check(
         return dropout_cap
     all_frames.append(dropout_cap["frame"])
     dropout_mem = dropout_cap["live_memory"]
+    dropout_observed = observation_evidence_keys(dropout_cap["publication"])
+    # Lifecycle keys = evidence seen in present observation but not in dropout observation.
+    # Always-refreshed camera/floor keys stay in dropout observation and are excluded.
+    lifecycle_keys = present_observed - dropout_observed
+    if not lifecycle_keys:
+        return CommandResult(
+            2,
+            "\n".join(
+                [
+                    "dropout: no evidence disappeared between present and dropout observations.",
+                    f"present_observed={sorted(present_observed)}",
+                    f"dropout_observed={sorted(dropout_observed)}",
+                    "Place then remove a scene object so perception drops at least one key.",
+                ]
+            ),
+        )
+    present_keys = lifecycle_keys
     dropout_score = score_memory_check_phase(
         phase_name="dropout",
         final=dropout_mem,
         present_keys=present_keys,
         prior_epoch=prior_epoch,
     )
+    # Annotate which keys are under lifecycle tracking.
+    dropout_score = {
+        **dropout_score,
+        "lifecycle_keys": sorted(lifecycle_keys),
+        "present_observed_keys": sorted(present_observed),
+        "dropout_observed_keys": sorted(dropout_observed),
+    }
     phase_results.append(
         _phase_result(
             "dropout",
@@ -566,16 +590,20 @@ def run_physical_memory_check(
     )
     _emit_phase(output, phase_results[-1])
 
-    # Expiry: wait for the live stage to drop present keys (no local time jump).
+    # Expiry: wait only for lifecycle keys (not always-on camera/floor evidence).
     if max_age_ms is None:
         max_age_ms = 10_000
     wait_s = float(expiry_timeout_s) if expiry_timeout_s is not None else float(max_age_ms) / 1000.0 + 8.0
-    _emit(output, f"phase: expiry (waiting up to {wait_s:.1f}s for live onboard keys to age out)")
+    _emit(
+        output,
+        f"phase: expiry (waiting up to {wait_s:.1f}s for lifecycle keys to age out: "
+        f"{sorted(lifecycle_keys)})",
+    )
     try:
         expiry_pub, expiry_mem = wait_for_live_key_expiry(
             base_url=base_url,
             get_publication=get_publication,
-            present_keys=present_keys,
+            present_keys=lifecycle_keys,
             previous_frame_id=last_frame_id,
             timeout_s=wait_s,
             poll_timeout_s=fresh_timeout_s,
@@ -590,9 +618,10 @@ def run_physical_memory_check(
     expiry_score = score_memory_check_phase(
         phase_name="expiry",
         final=expiry_mem,
-        present_keys=present_keys,
+        present_keys=lifecycle_keys,
         prior_epoch=prior_epoch,
     )
+    expiry_score = {**expiry_score, "lifecycle_keys": sorted(lifecycle_keys)}
     phase_results.append(
         _phase_result(
             "expiry",
@@ -769,6 +798,47 @@ def record_ids_from_memory(memory: dict[str, Any]) -> set[str]:
         for record in records
         if isinstance(record, dict) and record.get("record_id")
     }
+
+
+def observation_evidence_keys(publication: dict[str, Any]) -> set[str]:
+    """Ledger-style keys implied by the *current* observation/perception payload.
+
+    Used to separate scene evidence that disappeared between present and dropout
+    from always-refreshed camera/floor signals that never leave the current view.
+    """
+
+    observation = (
+        publication.get("observation") if isinstance(publication.get("observation"), dict) else None
+    )
+    perception = (
+        publication.get("perception") if isinstance(publication.get("perception"), dict) else {}
+    )
+    things: list[Any]
+    signals: list[Any]
+    if observation is not None:
+        things = list(observation.get("things") or []) if isinstance(observation.get("things"), list) else []
+        signals = (
+            list(observation.get("signals") or []) if isinstance(observation.get("signals"), list) else []
+        )
+    else:
+        things = list(perception.get("things") or []) if isinstance(perception.get("things"), list) else []
+        signals = (
+            list(perception.get("signals") or []) if isinstance(perception.get("signals"), list) else []
+        )
+    keys: set[str] = set()
+    for thing in things:
+        if not isinstance(thing, dict):
+            continue
+        thing_id = str(thing.get("thing_id") or "").strip()
+        if thing_id:
+            keys.add(f"thing:{thing_id}")
+    for signal in signals:
+        if not isinstance(signal, dict):
+            continue
+        signal_id = str(signal.get("signal_id") or "").strip()
+        if signal_id:
+            keys.add(f"signal:{signal_id}")
+    return keys
 
 
 def score_live_reset(
@@ -1036,9 +1106,16 @@ def _wait_for_fresh_publication(
     previous_frame_id: str | None,
     timeout_s: float,
 ) -> dict[str, Any]:
+    """Wait for a publication whose frame_id advances past ``previous_frame_id``.
+
+    Fails closed when no new frame arrives. Never returns a stale same-id payload
+    after the deadline (that path allowed present/dropout to reuse one frame).
+    """
+
     deadline = time.monotonic() + max(0.5, float(timeout_s))
     last_error: str | None = None
-    last_payload: dict[str, Any] | None = None
+    last_frame_id: str | None = None
+    previous = (previous_frame_id or "").strip() or None
     while time.monotonic() < deadline:
         try:
             payload = get_publication(base_url)
@@ -1046,21 +1123,29 @@ def _wait_for_fresh_publication(
             last_error = str(exc)
             time.sleep(0.25)
             continue
-        last_payload = payload
         frame = payload.get("frame") if isinstance(payload.get("frame"), dict) else {}
         frame_id = frame.get("frame_id")
+        if isinstance(frame_id, str) and frame_id.strip():
+            last_frame_id = frame_id.strip()
         health = payload.get("health")
-        if previous_frame_id is None:
-            if frame_id or health in {"unavailable", "stale", "error", "absent", "warming", "healthy"}:
+        if previous is None:
+            if last_frame_id or health in {
+                "unavailable",
+                "stale",
+                "error",
+                "absent",
+                "warming",
+                "healthy",
+            }:
                 return payload
         else:
-            if frame_id and frame_id != previous_frame_id:
+            if last_frame_id and last_frame_id != previous:
                 return payload
         time.sleep(0.25)
-    if last_payload is not None:
-        return last_payload
     raise TimeoutError(
         f"Timed out after {timeout_s}s waiting for a fresh onboard observation"
+        + (f" after frame_id={previous!r}" if previous else "")
+        + (f" (last_frame_id={last_frame_id!r})" if last_frame_id else "")
         + (f": {last_error}" if last_error else "")
     )
 
@@ -1187,17 +1272,26 @@ def score_memory_check_phase(
         }
 
     if phase_name == "expiry":
-        # After time jump beyond max_age, prior keys must not remain.
-        leaked = bool(present_keys.intersection(record_ids))
-        passed = not leaked and count == 0 and health in {"empty", "unavailable"}
-        return {
-            "passed": passed,
-            "reason": (
-                "prior keys expired after max_age time jump"
+        # Tracked keys must leave memory. Always-on evidence may remain healthy.
+        leaked = present_keys.intersection(record_ids)
+        if present_keys:
+            passed = not leaked
+            reason = (
+                "tracked lifecycle keys expired from live/offline memory"
+                if passed
+                else "tracked lifecycle keys still present after expiry wait"
+            )
+        else:
+            passed = count == 0 and health in {"empty", "unavailable"}
+            reason = (
+                "ledger empty after age expiry"
                 if passed
                 else "expected empty ledger after age expiry"
-            ),
-            "leaked_keys": sorted(present_keys.intersection(record_ids)),
+            )
+        return {
+            "passed": passed,
+            "reason": reason,
+            "leaked_keys": sorted(leaked),
             "record_ids": sorted(record_ids),
         }
 

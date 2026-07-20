@@ -16,19 +16,26 @@ from cli.automa_cli.memory_check import (
 from tests.support.cli_runner import run_automa
 
 
-def _live_publication(
-    *,
-    frame_id: str,
-    frame_index: int,
-    with_boundary: bool,
-    steering: float = 0.0,
-    throttle: float = 0.0,
-    memory_records: list[dict] | None = None,
-    memory_health: str | None = None,
-    epoch_id: str = "epoch-1",
-    max_age_ms: int = 1_000,
-) -> dict:
-    things = []
+def _always_on_things_signals(*, with_boundary: bool) -> tuple[list[dict], list[dict]]:
+    """Camera/floor evidence that remains present even after object removal."""
+    things = [
+        {
+            "thing_id": "front_camera_frame",
+            "kind": "camera_frame",
+            "label": "camera",
+            "confidence": 1.0,
+            "location": {"frame": "image", "zone": "full"},
+            "source_plugin_id": "lightweight_observer",
+        },
+        {
+            "thing_id": "traversable_floor",
+            "kind": "floor",
+            "label": "floor",
+            "confidence": 0.95,
+            "location": {"frame": "image", "zone": "center"},
+            "source_plugin_id": "lightweight_observer",
+        },
+    ]
     if with_boundary:
         things.append(
             {
@@ -44,38 +51,58 @@ def _live_publication(
                 "source_plugin_id": "floor-plane-v0",
             }
         )
+    signals = [
+        {"signal_id": "floor_visible", "value": True, "confidence": 0.95},
+        {"signal_id": "front_camera_available", "value": True, "confidence": 1.0},
+    ]
+    return things, signals
+
+
+def _memory_record(record_id: str, *, frame_id: str, kind: str = "floor_boundary") -> dict:
+    return {
+        "record_id": record_id,
+        "kind": kind,
+        "label": kind,
+        "confidence": 0.9,
+        "provenance": {
+            "frame_id": frame_id,
+            "observation_id": f"obs_{frame_id}",
+            "evidence_id": record_id.split(":", 1)[-1],
+        },
+        "location": {"frame": "image", "zone": "center"},
+    }
+
+
+def _live_publication(
+    *,
+    frame_id: str,
+    frame_index: int,
+    with_boundary: bool,
+    steering: float = 0.0,
+    throttle: float = 0.0,
+    memory_records: list[dict] | None = None,
+    memory_health: str | None = None,
+    epoch_id: str = "epoch-1",
+    max_age_ms: int = 1_000,
+) -> dict:
+    things, signals = _always_on_things_signals(with_boundary=with_boundary)
     if memory_records is None:
+        # Always-on keys stay in memory; boundary is the lifecycle target.
+        memory_records = [
+            _memory_record("thing:front_camera_frame", frame_id=frame_id, kind="camera_frame"),
+            _memory_record("thing:traversable_floor", frame_id=frame_id, kind="floor"),
+            _memory_record("signal:floor_visible", frame_id=frame_id, kind="signal"),
+            _memory_record("signal:front_camera_available", frame_id=frame_id, kind="signal"),
+        ]
         if with_boundary:
-            memory_records = [
-                {
-                    "record_id": "thing:floor_boundary_000",
-                    "kind": "floor_boundary",
-                    "label": "boundary",
-                    "confidence": 0.9,
-                    "provenance": {
-                        "frame_id": frame_id,
-                        "observation_id": f"obs_{frame_id}",
-                        "evidence_id": "floor_boundary_000",
-                    },
-                    "location": {"frame": "image", "zone": "center"},
-                }
-            ]
+            memory_records.append(
+                _memory_record("thing:floor_boundary_000", frame_id=frame_id)
+            )
         else:
-            # Dropout survival: empty perception things, but memory still holds keys.
-            memory_records = [
-                {
-                    "record_id": "thing:floor_boundary_000",
-                    "kind": "floor_boundary",
-                    "label": "boundary",
-                    "confidence": 0.9,
-                    "provenance": {
-                        "frame_id": "present_frame",
-                        "observation_id": "obs_present_frame",
-                        "evidence_id": "floor_boundary_000",
-                    },
-                    "location": {"frame": "image", "zone": "center"},
-                }
-            ]
+            # Dropout survival: boundary gone from observation but still retained in memory.
+            memory_records.append(
+                _memory_record("thing:floor_boundary_000", frame_id="present_frame")
+            )
     if memory_health is None:
         memory_health = "healthy" if memory_records else "empty"
     return {
@@ -93,7 +120,7 @@ def _live_publication(
             "plugin_id": "lightweight_observer",
             "status": "ok",
             "things": things,
-            "signals": [{"signal_id": "floor_visible", "value": True, "confidence": 0.95}],
+            "signals": signals,
             "lines": ["live test"],
         },
         "observation": {
@@ -102,7 +129,7 @@ def _live_publication(
             "sensor_snapshot": {},
             "perception_plugin_id": "lightweight_observer",
             "things": things,
-            "signals": [{"signal_id": "floor_visible", "value": True, "confidence": 0.95}],
+            "signals": signals,
         },
         "memory": {
             "health": memory_health,
@@ -271,12 +298,20 @@ class MemoryCheckTests(unittest.TestCase):
         dropout_pub = _live_publication(
             frame_id="dropout_frame", frame_index=1, with_boundary=False
         )
+        # Expiry: always-on keys remain; only dropped boundary evidence expires.
         expired_pub = _live_publication(
             frame_id="expired_frame",
             frame_index=2,
             with_boundary=False,
-            memory_records=[],
-            memory_health="empty",
+            memory_records=[
+                _memory_record("thing:front_camera_frame", frame_id="expired_frame", kind="camera_frame"),
+                _memory_record("thing:traversable_floor", frame_id="expired_frame", kind="floor"),
+                _memory_record("signal:floor_visible", frame_id="expired_frame", kind="signal"),
+                _memory_record(
+                    "signal:front_camera_available", frame_id="expired_frame", kind="signal"
+                ),
+            ],
+            memory_health="healthy",
         )
         pair_calls = {"n": 0}
         pair_pubs = [present_pub, dropout_pub]
@@ -369,11 +404,33 @@ class MemoryCheckTests(unittest.TestCase):
             present = next(item for item in payload["phase_results"] if item["phase"] == "present")
             self.assertTrue(present["live_control_zero"])
             self.assertIn("present_frame", present["live_frame_ids"])
+            dropout = next(item for item in payload["phase_results"] if item["phase"] == "dropout")
+            self.assertEqual(
+                dropout["score"]["lifecycle_keys"],
+                ["thing:floor_boundary_000"],
+            )
+            expiry = next(item for item in payload["phase_results"] if item["phase"] == "expiry")
+            self.assertEqual(expiry["score"]["lifecycle_keys"], ["thing:floor_boundary_000"])
+            self.assertNotIn("thing:floor_boundary_000", expiry["record_ids"])
+            self.assertIn("thing:front_camera_frame", expiry["record_ids"])
             self.assertTrue(payload["recorded"])
             run_dir = next(output_root.iterdir())
             self.assertTrue((run_dir / "frames").is_dir())
             extract = (run_dir / "provenance_extract.html").read_text(encoding="utf-8")
             self.assertIn("present_frame", extract)
+
+    def test_wait_for_fresh_publication_fails_closed_on_stale_frame(self) -> None:
+        from cli.automa_cli.memory_check import _wait_for_fresh_publication
+
+        stale = _live_publication(frame_id="same", frame_index=0, with_boundary=True)
+        with self.assertRaises(TimeoutError) as ctx:
+            _wait_for_fresh_publication(
+                base_url="http://piracer.test:8887",
+                get_publication=lambda _url: stale,
+                previous_frame_id="same",
+                timeout_s=0.4,
+            )
+        self.assertIn("same", str(ctx.exception))
 
     def test_physical_pi_record_fails_when_pair_unavailable(self) -> None:
         vehicle = {

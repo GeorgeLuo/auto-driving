@@ -279,10 +279,10 @@
           <thead><tr><th>Severity</th><th>Finding</th><th>Implementation evidence</th><th>Required correction</th></tr></thead>
           <tbody>
             <tr>
-              <td><span class="status done">Addressed</span></td>
+              <td><span class="status active">In progress</span></td>
               <td>Physical dropout is forced and expiry/reset run through an ephemeral local reducer rather than proving the onboard lifecycle.</td>
-              <td>Was <code>force_empty</code> + local stage; Pi path now uses live <code>publication.memory</code>, live expiry wait, and onboard reset.</td>
-              <td>Done in remediation block 2 (this PR).</td>
+              <td>Pi path uses live <code>publication.memory</code> and onboard reset; lifecycle keys must be present∖dropout observed evidence (not always-on camera/floor). Awaiting successful guided Pi present/removal evidence before marking done.</td>
+              <td>Remediation block 2 in review; keep active until physical validation succeeds.</td>
             </tr>
             <tr>
               <td><span class="status done">Addressed</span></td>
@@ -341,7 +341,7 @@
       <h3 style="margin-top: 18px;">Required Remediation Order</h3>
       <ol>
         <li><strong>Done:</strong> Make Pi publication/frame pairing atomic or explicitly verified.</li>
-        <li><strong>This PR:</strong> Replace synthetic physical lifecycle phases with checks of the active onboard stage.</li>
+        <li><strong>In progress:</strong> Replace synthetic physical lifecycle phases with checks of the active onboard stage (lifecycle keys = present∖dropout observed evidence; fail-closed frame freshness).</li>
         <li>Preserve Chase frame identity and implement the live shadow/reference evaluator.</li>
         <li>Deeply detach snapshots; enforce byte limits and plugin-safe record identity.</li>
         <li>Add missing conflict, long-sequence, size-bound, stale-state, reset, and frame-pairing tests.</li>
@@ -355,11 +355,11 @@
       </p>
       <p class="note" style="margin-top: 12px;">
         <strong>2026-07-20 remediation block 2:</strong> Pi <code>memory check</code> scores
-        <code>publication.memory</code> from the activated onboard stage for present/dropout,
-        waits for live key expiry (no local time jump), and confirms reset via
-        <code>POST /autonomy/memory/reset</code> plus epoch/reset-count transition. Forced
-        dropout and ephemeral local reducers are removed from the Pi path. Chase synthetic
-        offline script remains for non-Pi hosts until remediation 3.
+        <code>publication.memory</code> from the activated onboard stage; lifecycle keys are
+        <code>present_observed − dropout_observed</code> (excluding always-refreshed camera/floor
+        evidence); non-record capture fails closed without a new frame id; expiry waits only for
+        lifecycle keys; reset uses onboard POST + epoch/reset_count. Still requires a successful
+        guided Pi present/removal run before the blocker is marked addressed.
       </p>
     </section>
 

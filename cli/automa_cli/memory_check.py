@@ -830,8 +830,7 @@ def currently_refreshed_memory_keys(publication: dict[str, Any]) -> set[str]:
             record_id = str(record.get("record_id") or "").strip()
             if record_id:
                 keys.add(record_id)
-        if keys:
-            return keys
+        return keys
     return observation_evidence_keys(publication)
 
 
@@ -1418,17 +1417,6 @@ def write_memory_check_record(
             for item in phase_results
         ],
     }
-    extract_html = render_memory_provenance_extract_html(
-        vehicle_id=vehicle_id,
-        payload=extract_payload,
-        frames=all_frames,
-        provenance_rows=provenance_rows if isinstance(provenance_rows, list) else [],
-    )
-
-    (record_dir / "report.json").write_text(
-        json.dumps(report, indent=2, sort_keys=True, default=str),
-        encoding="utf-8",
-    )
     (record_dir / "sequence.json").write_text(
         json.dumps(
             {
@@ -1450,10 +1438,8 @@ def write_memory_check_record(
         json.dumps(present_snapshot, indent=2, sort_keys=True, default=str),
         encoding="utf-8",
     )
-    extract_path = record_dir / "provenance_extract.html"
-    extract_path.write_text(extract_html, encoding="utf-8")
-
     image_paths: dict[str, str] = {}
+    frame_image_paths: dict[str, str] = {}
     if captured_images:
         frames_dir = record_dir / "frames"
         frames_dir.mkdir(parents=True, exist_ok=True)
@@ -1462,6 +1448,17 @@ def write_memory_check_record(
             path = frames_dir / safe_name
             path.write_bytes(blob)
             image_paths[str(frame_id)] = display_path(path)
+            frame_image_paths[str(frame_id)] = f"frames/{safe_name}"
+
+    extract_html = render_memory_provenance_extract_html(
+        vehicle_id=vehicle_id,
+        payload=extract_payload,
+        frames=all_frames,
+        provenance_rows=provenance_rows if isinstance(provenance_rows, list) else [],
+        frame_image_paths=frame_image_paths,
+    )
+    extract_path = record_dir / "provenance_extract.html"
+    extract_path.write_text(extract_html, encoding="utf-8")
 
     artifacts = [
         "manifest.json",
@@ -1502,6 +1499,17 @@ def write_memory_check_record(
     }
     (record_dir / "manifest.json").write_text(
         json.dumps(manifest, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+    persisted_report = {
+        **report,
+        "recorded": True,
+        "record_dir": display_path(record_dir),
+        "provenance_extract": display_path(extract_path),
+        "record_manifest": manifest,
+    }
+    (record_dir / "report.json").write_text(
+        json.dumps(persisted_report, indent=2, sort_keys=True, default=str),
         encoding="utf-8",
     )
     return {

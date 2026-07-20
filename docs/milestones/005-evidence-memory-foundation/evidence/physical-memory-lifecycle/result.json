@@ -1,0 +1,48 @@
+{
+  "schema": "milestone_physical_memory_lifecycle_evidence_v0",
+  "vehicle_id": "piracer",
+  "implementation_id": "bounded_evidence",
+  "physical_run_id": "piracer-20260720-153802",
+  "artifact_run_id": "piracer-20260720-154113",
+  "passed": true,
+  "lifecycle_key": "thing:floor_boundary_002",
+  "max_age_ms": 10000,
+  "phases": {
+    "present": {
+      "passed": true,
+      "frame_id": "donkey_frame_000626",
+      "record_count": 8
+    },
+    "dropout": {
+      "passed": true,
+      "frame_id": "donkey_frame_000723",
+      "record_count": 8,
+      "retained_not_current": true
+    },
+    "expiry": {
+      "passed": true,
+      "frame_id": "donkey_frame_000737",
+      "record_count": 7,
+      "lifecycle_key_absent": true
+    },
+    "reset": {
+      "passed": true,
+      "prior_epoch": "epoch-4",
+      "epoch_id": "epoch-5",
+      "prior_reset_count": 3,
+      "reset_count": 4,
+      "record_count": 0
+    }
+  },
+  "safety": {
+    "movement_commands_sent": false,
+    "forced_dropout": false,
+    "ephemeral_local_reducer": false,
+    "lifecycle_source": "live_onboard_stage"
+  },
+  "sha256": {
+    "provenance_extract.html": "cb06cee82ab129aeeed5d58c5664d79de87a9f3c3993025766ca95e291962a81",
+    "frames/donkey_frame_000626.jpg": "c701b4dd0690f77205c54e65397134f53fdf862c943b6dcc2676e7c9ed2e4a71",
+    "frames/donkey_frame_000723.jpg": "9ecf1459ae95c1ab9361315055d44bb4d2568f85f81cfb4d2f3cefeff72c43ce"
+  }
+}

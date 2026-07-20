@@ -239,6 +239,16 @@ class MemoryCheckTests(unittest.TestCase):
                 "provenance_extract.html",
             ):
                 self.assertTrue((record_dir / name).is_file(), name)
+            persisted_report = json.loads(
+                (record_dir / "report.json").read_text(encoding="utf-8")
+            )
+            self.assertTrue(persisted_report["recorded"])
+            self.assertTrue(str(persisted_report["record_dir"]).endswith(record_dir.name))
+            self.assertTrue(
+                str(persisted_report["provenance_extract"]).endswith(
+                    f"{record_dir.name}/provenance_extract.html"
+                )
+            )
 
     def test_cli_memory_check_json(self) -> None:
         result = run_automa(
@@ -422,6 +432,8 @@ class MemoryCheckTests(unittest.TestCase):
             self.assertTrue((run_dir / "frames").is_dir())
             extract = (run_dir / "provenance_extract.html").read_text(encoding="utf-8")
             self.assertIn("present_frame", extract)
+            self.assertIn('<img src="frames/present_frame.jpg"', extract)
+            self.assertIn('<img src="frames/dropout_frame.jpg"', extract)
 
     def test_wait_for_fresh_publication_fails_closed_on_stale_frame(self) -> None:
         from cli.automa_cli.memory_check import _wait_for_fresh_publication
@@ -589,6 +601,23 @@ class MemoryCheckTests(unittest.TestCase):
             - observation_evidence_keys(dropout_obs_only)
         )
         self.assertIn("signal:floor_boundary_available", obs_lifecycle)
+
+    def test_current_memory_records_preserve_an_authoritative_empty_key_set(self) -> None:
+        publication = {
+            "frame": {"frame_id": "current"},
+            "observation": {
+                "things": [{"thing_id": "candidate", "confidence": 0.1}],
+                "signals": [],
+            },
+            "memory": {
+                "health": "healthy",
+                "records": [
+                    _memory_record("thing:candidate", frame_id="older")
+                ],
+            },
+        }
+
+        self.assertEqual(currently_refreshed_memory_keys(publication), set())
 
     def test_physical_pi_record_fails_when_pair_unavailable(self) -> None:
         vehicle = {

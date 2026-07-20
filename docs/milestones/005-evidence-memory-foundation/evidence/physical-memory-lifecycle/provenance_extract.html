@@ -1,0 +1,1963 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Memory provenance extract — piracer</title>
+  <style>
+    :root { font-family: ui-sans-serif, system-ui, sans-serif; color: #17191c; }
+    body { margin: 24px; max-width: 960px; }
+    h1 { font-size: 1.25rem; }
+    .meta, .badge, .warn { color: #62676f; }
+    .badge {
+      display: inline-block; border: 1px solid #d9dde2; border-radius: 999px;
+      padding: 2px 8px; font-size: 12px; background: #f6f7f8;
+    }
+    .warn { color: #a35b00; }
+    .record {
+      border: 1px solid #d9dde2; border-radius: 8px; padding: 12px 14px; margin: 14px 0;
+      background: #fafbfc;
+    }
+    dl { display: grid; grid-template-columns: 12rem 1fr; gap: 4px 10px; }
+    dt { color: #62676f; }
+    dd { margin: 0; word-break: break-word; }
+    pre {
+      background: #0f1418; color: #e7eef5; padding: 10px; border-radius: 6px;
+      overflow: auto; font-size: 12px; line-height: 1.4;
+    }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .note {
+      border-left: 3px solid #176b87; padding: 8px 12px; background: #e7f3f8; margin: 16px 0;
+    }
+    .frame-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+    figure { margin: 0; }
+    figure img { display: block; width: 100%; height: auto; border: 1px solid #d9dde2; }
+    figcaption { margin-top: 5px; color: #62676f; }
+  </style>
+</head>
+<body>
+  <h1>Memory provenance extract</h1>
+  <p class="meta">
+    vehicle=<strong>piracer</strong>
+    · implementation=<code>bounded_evidence</code>
+    · digest=<code>b985b6405c697d30bd17a48e1fc2ba9bd91a05c67a4e68a086cbf268c6a30511</code>
+    · frames=3
+    · final keys=8
+    · health=healthy
+  </p>
+  <div class="note">
+    Retained evidence is attributed to <code>provenance.frame_id</code> / observation identity.
+    Image-space locations below are <strong>not</strong> current camera geometry; they are
+    frozen claims from the source observation that produced each key.
+  </div>
+  <h2>Replay timeline</h2>
+  <ol>
+    <li><code>present</code> keys=8 health=healthy</li><li><code>dropout</code> keys=8 health=healthy</li><li><code>expiry</code> keys=7 health=healthy</li><li><code>reset</code> keys=0 health=empty</li>
+  </ol>
+  <h2>Captured source frames</h2>
+  <div class="frame-grid">
+    <figure><img src="frames/donkey_frame_000626.jpg" alt="Captured source frame donkey_frame_000626"><figcaption><code>donkey_frame_000626</code></figcaption></figure><figure><img src="frames/donkey_frame_000723.jpg" alt="Captured source frame donkey_frame_000723"><figcaption><code>donkey_frame_000723</code></figcaption></figure>
+  </div>
+  <h2>Retained keys → mapped values → source observations</h2>
+  <section class='record'>
+<h3>key <code>signal:floor_boundary_available</code></h3>
+<p class='badge'>retained evidence — not current camera geometry</p>
+<dl>
+<dt>kind</dt><dd>signal</dd>
+<dt>label</dt><dd>floor_boundary_available</dd>
+<dt>confidence</dt><dd>0.6968733333333333</dd>
+<dt>location.zone</dt><dd>—</dd>
+<dt>location.frame</dt><dd>—</dd>
+<dt>provenance.frame_id</dt><dd><code>donkey_frame_000626</code></dd>
+<dt>provenance.observation_id</dt><dd><code>donkey_frame_000626</code></dd>
+<dt>source in sequence</dt><dd>yes</dd>
+</dl>
+<h4>Mapped value (retained)</h4>
+<pre>{
+  &quot;confidence&quot;: 0.6968733333333333,
+  &quot;key&quot;: &quot;signal:floor_boundary_available&quot;,
+  &quot;kind&quot;: &quot;signal&quot;,
+  &quot;label&quot;: &quot;floor_boundary_available&quot;,
+  &quot;location&quot;: {},
+  &quot;provenance&quot;: {
+    &quot;coordinate_frame&quot;: &quot;observation&quot;,
+    &quot;evidence_id&quot;: &quot;floor_boundary_available&quot;,
+    &quot;frame_id&quot;: &quot;donkey_frame_000626&quot;,
+    &quot;observation_id&quot;: &quot;donkey_frame_000626&quot;,
+    &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+    &quot;updated_at_ms&quot;: 1784587023740
+  }
+}</pre>
+<h4>Source observation at provenance.frame_id</h4>
+<pre>{
+  &quot;artifacts&quot;: {},
+  &quot;created_at_ms&quot;: 1784587024050,
+  &quot;metadata&quot;: {
+    &quot;limits&quot;: [
+      &quot;floor color is seeded independently from each current frame&quot;,
+      &quot;boundaries may be objects, walls, shadows, or floor-color discontinuities&quot;,
+      &quot;topdown_fov is approximate and uncalibrated&quot;
+    ],
+    &quot;source&quot;: &quot;default_observe_stage&quot;
+  },
+  &quot;observation_id&quot;: &quot;donkey_frame_000626&quot;,
+  &quot;perception_plugin_id&quot;: &quot;autonomy.perception.plugin-runner-v0&quot;,
+  &quot;perception_schema&quot;: &quot;perception_text_v2&quot;,
+  &quot;schema&quot;: &quot;decision_observation_v1&quot;,
+  &quot;sensor_snapshot&quot;: {
+    &quot;completed_at_ms&quot;: 1784587023740,
+    &quot;metadata&quot;: {
+      &quot;runtime&quot;: &quot;donkeycar&quot;
+    },
+    &quot;read_id&quot;: &quot;donkey_frame_000626&quot;,
+    &quot;readings&quot;: {
+      &quot;front_camera&quot;: {
+        &quot;captured_at_ms&quot;: 1784587023740,
+        &quot;has_value&quot;: true,
+        &quot;metadata&quot;: {
+          &quot;source&quot;: &quot;donkeycar_vehicle_memory&quot;
+        },
+        &quot;path&quot;: null,
+        &quot;sensor_id&quot;: &quot;front_camera&quot;,
+        &quot;sensor_kind&quot;: &quot;camera&quot;
+      }
+    },
+    &quot;request&quot;: {},
+    &quot;started_at_ms&quot;: 1784587023740
+  },
+  &quot;signals&quot;: [
+    {
+      &quot;confidence&quot;: 1.0,
+      &quot;properties&quot;: {},
+      &quot;signal_id&quot;: &quot;front_camera_available&quot;,
+      &quot;source_plugin_id&quot;: &quot;frame-observation-v0&quot;,
+      &quot;value&quot;: true
+    },
+    {
+      &quot;confidence&quot;: 1.0,
+      &quot;properties&quot;: {
+        &quot;floor_fraction_roi&quot;: 0.90796
+      },
+      &quot;signal_id&quot;: &quot;floor_visible&quot;,
+      &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+      &quot;value&quot;: true
+    },
+    {
+      &quot;confidence&quot;: 0.6968733333333333,
+      &quot;properties&quot;: {
+        &quot;boundary_count&quot;: 3,
+        &quot;hit_fraction_columns&quot;: 0.20469
+      },
+      &quot;signal_id&quot;: &quot;floor_boundary_available&quot;,
+      &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+      &quot;value&quot;: true
+    }
+  ],
+  &quot;summary&quot;: [
+    &quot;schema=perception_text_v2&quot;,
+    &quot;plugin=autonomy.perception.plugin-runner-v0&quot;,
+    &quot;plugins=frame,floor_plane&quot;,
+    &quot;plugin_run id=frame-observation-v0 status=ok duration_ms=8.470 signals=1 things=1 artifacts=0&quot;,
+    &quot;signal id=front_camera_available plugin=frame-observation-v0 value=true confidence=1.000&quot;,
+    &quot;thing id=front_camera_frame plugin=frame-observation-v0 kind=sensor_frame zone=full_frame frame=image bbox_xyxy_norm=0.0000,0.0000,1.0000,1.0000 confidence=1.000 brightness_mean=136.671 contrast_std=59.294 height_px=480 width_px=640&quot;,
+    &quot;plugin_run id=floor-plane-v0 status=ok duration_ms=299.908 signals=2 things=4 artifacts=0&quot;,
+    &quot;signal id=floor_visible plugin=floor-plane-v0 value=true confidence=1.000 floor_fraction_roi=0.90796&quot;,
+    &quot;signal id=floor_boundary_available plugin=floor-plane-v0 value=true confidence=0.697 boundary_count=3 hit_fraction_columns=0.20469&quot;,
+    &quot;thing id=traversable_floor plugin=floor-plane-v0 kind=surface zone=visible_floor frame=topdown_fov bbox_xyxy_norm=0.0000,0.0000,1.0000,1.0000 confidence=1.000 boundary_hit_fraction_columns=0.20469 evidence=color_floor_model floor_fraction_roi=0.90796 occupied_fraction_roi=0.09204&quot;,
+    &quot;thing id=floor_boundary_000 plugin=floor-plane-v0 kind=floor_boundary zone=mid_left frame=image bbox_xyxy_norm=0.3099,0.4489,0.4397,0.4843 confidence=1.000 evidence=first_non_floor_after_visible_floor floor_fraction_roi=0.90796 hit_pixel_count=534 width_fraction=0.13125&quot;,
+    &quot;thing id=floor_boundary_001 plugin=floor-plane-v0 kind=floor_boundary zone=mid_center frame=image bbox_xyxy_norm=0.4444,0.4530,0.4773,0.4718 confidence=0.565 evidence=first_non_floor_after_visible_floor floor_fraction_roi=0.90796 hit_pixel_count=130 width_fraction=0.03438&quot;
+  ],
+  &quot;things&quot;: [
+    {
+      &quot;confidence&quot;: 1.0,
+      &quot;kind&quot;: &quot;sensor_frame&quot;,
+      &quot;label&quot;: &quot;front camera frame&quot;,
+      &quot;location&quot;: {
+        &quot;bbox_xyxy_norm&quot;: [
+          0.0,
+          0.0,
+          1.0,
+          1.0
+        ],
+        &quot;frame&quot;: &quot;image&quot;,
+        &quot;polygon_xy_norm&quot;: null,
+        &quot;zone&quot;: &quot;full_frame&quot;
+      },
+      &quot;properties&quot;: {
+        &quot;brightness_mean&quot;: 136.671,
+        &quot;contrast_std&quot;: 59.294,
+        &quot;height_px&quot;: 480,
+        &quot;width_px&quot;: 640
+      },
+      &quot;source_plugin_id&quot;: &quot;frame-observation-v0&quot;,
+      &quot;thing_id&quot;: &quot;front_camera_frame&quot;
+    },
+    {
+      &quot;confidence&quot;: 1.0,
+      &quot;kind&quot;: &quot;surface&quot;,
+      &quot;label&quot;: &quot;traversable floor estimate&quot;,
+      &quot;location&quot;: {
+        &quot;bbox_xyxy_norm&quot;: [
+          0.0,
+          0.0,
+          1.0,
+          1.0
+        ],
+        &quot;frame&quot;: &quot;topdown_fov&quot;,
+        &quot;polygon_xy_norm&quot;: null,
+        &quot;zone&quot;: &quot;visible_floor&quot;
+      },
+      &quot;properties&quot;: {
+        &quot;boundary_hit_fraction_columns&quot;: 0.20469,
+        &quot;evidence&quot;: &quot;color_floor_model&quot;,
+        &quot;floor_fraction_roi&quot;: 0.90796,
+        &quot;occupied_fraction_roi&quot;: 0.09204
+      },
+      &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+      &quot;thing_id&quot;: &quot;traversable_floor&quot;
+    },
+    {
+      &quot;confidence&quot;: 1.0,
+      &quot;kind&quot;: &quot;floor_boundary&quot;,
+      &quot;label&quot;: &quot;first sustained non-floor boundary after visible floor&quot;,
+      &quot;location&quot;: {
+        &quot;bbox_xyxy_norm&quot;: [
+          0.3099,
+          0.4489,
+          0.4397,
+          0.4843
+        ],
+        &quot;frame&quot;: &quot;image&quot;,
+        &quot;polygon_xy_norm&quot;: null,
+        &quot;zone&quot;: &quot;mid_left&quot;
+      },
+      &quot;properties&quot;: {
+        &quot;evidence&quot;: &quot;first_non_floor_after_visible_floor&quot;,
+        &quot;floor_fraction_roi&quot;: 0.90796,
+        &quot;hit_pixel_count&quot;: 534,
+        &quot;width_fraction&quot;: 0.13125
+      },
+      &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+      &quot;thing_id&quot;: &quot;floor_boundary_000&quot;
+    },
+    {
+      &quot;confidence&quot;: 0.56484,
+      &quot;kind&quot;: &quot;floor_boundary&quot;,
+      &quot;label&quot;: &quot;first sustained non-floor boundary after visible floor&quot;,
+      &quot;location&quot;: {
+        &quot;bbox_xyxy_norm&quot;: [
+          0.4444,
+          0.453,
+          0.4773,
+          0.4718
+        ],
+        &quot;frame&quot;: &quot;image&quot;,
+        &quot;polygon_xy_norm&quot;: null,
+        &quot;zone&quot;: &quot;mid_center&quot;
+      },
+      &quot;properties&quot;: {
+        &quot;evidence&quot;: &quot;first_non_floor_after_visible_floor&quot;,
+        &quot;floor_fraction_roi&quot;: 0.90796,
+        &quot;hit_pixel_count&quot;: 130,
+        &quot;width_fraction&quot;: 0.03438
+      },
+      &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+      &quot;thing_id&quot;: &quot;floor_boundary_001&quot;
+    },
+    {
+      &quot;confidence&quot;: 0.52578,
+      &quot;kind&quot;: &quot;floor_boundary&quot;,
+      &quot;label&quot;: &quot;first sustained non-floor boundary after visible floor&quot;,
+      &quot;location&quot;: {
+        &quot;bbox_xyxy_norm&quot;: [
+          0.6072,
+          0.4196,
+          0.6338,
+          0.428
+        ],
+        &quot;frame&quot;: &quot;image&quot;,
+        &quot;polygon_xy_norm&quot;: null,
+        &quot;zone&quot;: &quot;mid_right&quot;
+      },
+      &quot;properties&quot;: {
+        &quot;evidence&quot;: &quot;first_non_floor_after_visible_floor&quot;,
+        &quot;floor_fraction_roi&quot;: 0.90796,
+        &quot;hit_pixel_count&quot;: 90,
+        &quot;width_fraction&quot;: 0.02813
+      },
+      &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+      &quot;thing_id&quot;: &quot;floor_boundary_002&quot;
+    }
+  ]
+}</pre>
+</section><section class='record'>
+<h3>key <code>signal:floor_visible</code></h3>
+<p class='badge'>retained evidence — not current camera geometry</p>
+<dl>
+<dt>kind</dt><dd>signal</dd>
+<dt>label</dt><dd>floor_visible</dd>
+<dt>confidence</dt><dd>1.0</dd>
+<dt>location.zone</dt><dd>—</dd>
+<dt>location.frame</dt><dd>—</dd>
+<dt>provenance.frame_id</dt><dd><code>donkey_frame_000626</code></dd>
+<dt>provenance.observation_id</dt><dd><code>donkey_frame_000626</code></dd>
+<dt>source in sequence</dt><dd>yes</dd>
+</dl>
+<h4>Mapped value (retained)</h4>
+<pre>{
+  &quot;confidence&quot;: 1.0,
+  &quot;key&quot;: &quot;signal:floor_visible&quot;,
+  &quot;kind&quot;: &quot;signal&quot;,
+  &quot;label&quot;: &quot;floor_visible&quot;,
+  &quot;location&quot;: {},
+  &quot;provenance&quot;: {
+    &quot;coordinate_frame&quot;: &quot;observation&quot;,
+    &quot;evidence_id&quot;: &quot;floor_visible&quot;,
+    &quot;frame_id&quot;: &quot;donkey_frame_000626&quot;,
+    &quot;observation_id&quot;: &quot;donkey_frame_000626&quot;,
+    &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+    &quot;updated_at_ms&quot;: 1784587023740
+  }
+}</pre>
+<h4>Source observation at provenance.frame_id</h4>
+<pre>{
+  &quot;artifacts&quot;: {},
+  &quot;created_at_ms&quot;: 1784587024050,
+  &quot;metadata&quot;: {
+    &quot;limits&quot;: [
+      &quot;floor color is seeded independently from each current frame&quot;,
+      &quot;boundaries may be objects, walls, shadows, or floor-color discontinuities&quot;,
+      &quot;topdown_fov is approximate and uncalibrated&quot;
+    ],
+    &quot;source&quot;: &quot;default_observe_stage&quot;
+  },
+  &quot;observation_id&quot;: &quot;donkey_frame_000626&quot;,
+  &quot;perception_plugin_id&quot;: &quot;autonomy.perception.plugin-runner-v0&quot;,
+  &quot;perception_schema&quot;: &quot;perception_text_v2&quot;,
+  &quot;schema&quot;: &quot;decision_observation_v1&quot;,
+  &quot;sensor_snapshot&quot;: {
+    &quot;completed_at_ms&quot;: 1784587023740,
+    &quot;metadata&quot;: {
+      &quot;runtime&quot;: &quot;donkeycar&quot;
+    },
+    &quot;read_id&quot;: &quot;donkey_frame_000626&quot;,
+    &quot;readings&quot;: {
+      &quot;front_camera&quot;: {
+        &quot;captured_at_ms&quot;: 1784587023740,
+        &quot;has_value&quot;: true,
+        &quot;metadata&quot;: {
+          &quot;source&quot;: &quot;donkeycar_vehicle_memory&quot;
+        },
+        &quot;path&quot;: null,
+        &quot;sensor_id&quot;: &quot;front_camera&quot;,
+        &quot;sensor_kind&quot;: &quot;camera&quot;
+      }
+    },
+    &quot;request&quot;: {},
+    &quot;started_at_ms&quot;: 1784587023740
+  },
+  &quot;signals&quot;: [
+    {
+      &quot;confidence&quot;: 1.0,
+      &quot;properties&quot;: {},
+      &quot;signal_id&quot;: &quot;front_camera_available&quot;,
+      &quot;source_plugin_id&quot;: &quot;frame-observation-v0&quot;,
+      &quot;value&quot;: true
+    },
+    {
+      &quot;confidence&quot;: 1.0,
+      &quot;properties&quot;: {
+        &quot;floor_fraction_roi&quot;: 0.90796
+      },
+      &quot;signal_id&quot;: &quot;floor_visible&quot;,
+      &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+      &quot;value&quot;: true
+    },
+    {
+      &quot;confidence&quot;: 0.6968733333333333,
+      &quot;properties&quot;: {
+        &quot;boundary_count&quot;: 3,
+        &quot;hit_fraction_columns&quot;: 0.20469
+      },
+      &quot;signal_id&quot;: &quot;floor_boundary_available&quot;,
+      &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+      &quot;value&quot;: true
+    }
+  ],
+  &quot;summary&quot;: [
+    &quot;schema=perception_text_v2&quot;,
+    &quot;plugin=autonomy.perception.plugin-runner-v0&quot;,
+    &quot;plugins=frame,floor_plane&quot;,
+    &quot;plugin_run id=frame-observation-v0 status=ok duration_ms=8.470 signals=1 things=1 artifacts=0&quot;,
+    &quot;signal id=front_camera_available plugin=frame-observation-v0 value=true confidence=1.000&quot;,
+    &quot;thing id=front_camera_frame plugin=frame-observation-v0 kind=sensor_frame zone=full_frame frame=image bbox_xyxy_norm=0.0000,0.0000,1.0000,1.0000 confidence=1.000 brightness_mean=136.671 contrast_std=59.294 height_px=480 width_px=640&quot;,
+    &quot;plugin_run id=floor-plane-v0 status=ok duration_ms=299.908 signals=2 things=4 artifacts=0&quot;,
+    &quot;signal id=floor_visible plugin=floor-plane-v0 value=true confidence=1.000 floor_fraction_roi=0.90796&quot;,
+    &quot;signal id=floor_boundary_available plugin=floor-plane-v0 value=true confidence=0.697 boundary_count=3 hit_fraction_columns=0.20469&quot;,
+    &quot;thing id=traversable_floor plugin=floor-plane-v0 kind=surface zone=visible_floor frame=topdown_fov bbox_xyxy_norm=0.0000,0.0000,1.0000,1.0000 confidence=1.000 boundary_hit_fraction_columns=0.20469 evidence=color_floor_model floor_fraction_roi=0.90796 occupied_fraction_roi=0.09204&quot;,
+    &quot;thing id=floor_boundary_000 plugin=floor-plane-v0 kind=floor_boundary zone=mid_left frame=image bbox_xyxy_norm=0.3099,0.4489,0.4397,0.4843 confidence=1.000 evidence=first_non_floor_after_visible_floor floor_fraction_roi=0.90796 hit_pixel_count=534 width_fraction=0.13125&quot;,
+    &quot;thing id=floor_boundary_001 plugin=floor-plane-v0 kind=floor_boundary zone=mid_center frame=image bbox_xyxy_norm=0.4444,0.4530,0.4773,0.4718 confidence=0.565 evidence=first_non_floor_after_visible_floor floor_fraction_roi=0.90796 hit_pixel_count=130 width_fraction=0.03438&quot;
+  ],
+  &quot;things&quot;: [
+    {
+      &quot;confidence&quot;: 1.0,
+      &quot;kind&quot;: &quot;sensor_frame&quot;,
+      &quot;label&quot;: &quot;front camera frame&quot;,
+      &quot;location&quot;: {
+        &quot;bbox_xyxy_norm&quot;: [
+          0.0,
+          0.0,
+          1.0,
+          1.0
+        ],
+        &quot;frame&quot;: &quot;image&quot;,
+        &quot;polygon_xy_norm&quot;: null,
+        &quot;zone&quot;: &quot;full_frame&quot;
+      },
+      &quot;properties&quot;: {
+        &quot;brightness_mean&quot;: 136.671,
+        &quot;contrast_std&quot;: 59.294,
+        &quot;height_px&quot;: 480,
+        &quot;width_px&quot;: 640
+      },
+      &quot;source_plugin_id&quot;: &quot;frame-observation-v0&quot;,
+      &quot;thing_id&quot;: &quot;front_camera_frame&quot;
+    },
+    {
+      &quot;confidence&quot;: 1.0,
+      &quot;kind&quot;: &quot;surface&quot;,
+      &quot;label&quot;: &quot;traversable floor estimate&quot;,
+      &quot;location&quot;: {
+        &quot;bbox_xyxy_norm&quot;: [
+          0.0,
+          0.0,
+          1.0,
+          1.0
+        ],
+        &quot;frame&quot;: &quot;topdown_fov&quot;,
+        &quot;polygon_xy_norm&quot;: null,
+        &quot;zone&quot;: &quot;visible_floor&quot;
+      },
+      &quot;properties&quot;: {
+        &quot;boundary_hit_fraction_columns&quot;: 0.20469,
+        &quot;evidence&quot;: &quot;color_floor_model&quot;,
+        &quot;floor_fraction_roi&quot;: 0.90796,
+        &quot;occupied_fraction_roi&quot;: 0.09204
+      },
+      &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+      &quot;thing_id&quot;: &quot;traversable_floor&quot;
+    },
+    {
+      &quot;confidence&quot;: 1.0,
+      &quot;kind&quot;: &quot;floor_boundary&quot;,
+      &quot;label&quot;: &quot;first sustained non-floor boundary after visible floor&quot;,
+      &quot;location&quot;: {
+        &quot;bbox_xyxy_norm&quot;: [
+          0.3099,
+          0.4489,
+          0.4397,
+          0.4843
+        ],
+        &quot;frame&quot;: &quot;image&quot;,
+        &quot;polygon_xy_norm&quot;: null,
+        &quot;zone&quot;: &quot;mid_left&quot;
+      },
+      &quot;properties&quot;: {
+        &quot;evidence&quot;: &quot;first_non_floor_after_visible_floor&quot;,
+        &quot;floor_fraction_roi&quot;: 0.90796,
+        &quot;hit_pixel_count&quot;: 534,
+        &quot;width_fraction&quot;: 0.13125
+      },
+      &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+      &quot;thing_id&quot;: &quot;floor_boundary_000&quot;
+    },
+    {
+      &quot;confidence&quot;: 0.56484,
+      &quot;kind&quot;: &quot;floor_boundary&quot;,
+      &quot;label&quot;: &quot;first sustained non-floor boundary after visible floor&quot;,
+      &quot;location&quot;: {
+        &quot;bbox_xyxy_norm&quot;: [
+          0.4444,
+          0.453,
+          0.4773,
+          0.4718
+        ],
+        &quot;frame&quot;: &quot;image&quot;,
+        &quot;polygon_xy_norm&quot;: null,
+        &quot;zone&quot;: &quot;mid_center&quot;
+      },
+      &quot;properties&quot;: {
+        &quot;evidence&quot;: &quot;first_non_floor_after_visible_floor&quot;,
+        &quot;floor_fraction_roi&quot;: 0.90796,
+        &quot;hit_pixel_count&quot;: 130,
+        &quot;width_fraction&quot;: 0.03438
+      },
+      &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+      &quot;thing_id&quot;: &quot;floor_boundary_001&quot;
+    },
+    {
+      &quot;confidence&quot;: 0.52578,
+      &quot;kind&quot;: &quot;floor_boundary&quot;,
+      &quot;label&quot;: &quot;first sustained non-floor boundary after visible floor&quot;,
+      &quot;location&quot;: {
+        &quot;bbox_xyxy_norm&quot;: [
+          0.6072,
+          0.4196,
+          0.6338,
+          0.428
+        ],
+        &quot;frame&quot;: &quot;image&quot;,
+        &quot;polygon_xy_norm&quot;: null,
+        &quot;zone&quot;: &quot;mid_right&quot;
+      },
+      &quot;properties&quot;: {
+        &quot;evidence&quot;: &quot;first_non_floor_after_visible_floor&quot;,
+        &quot;floor_fraction_roi&quot;: 0.90796,
+        &quot;hit_pixel_count&quot;: 90,
+        &quot;width_fraction&quot;: 0.02813
+      },
+      &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+      &quot;thing_id&quot;: &quot;floor_boundary_002&quot;
+    }
+  ]
+}</pre>
+</section><section class='record'>
+<h3>key <code>signal:front_camera_available</code></h3>
+<p class='badge'>retained evidence — not current camera geometry</p>
+<dl>
+<dt>kind</dt><dd>signal</dd>
+<dt>label</dt><dd>front_camera_available</dd>
+<dt>confidence</dt><dd>1.0</dd>
+<dt>location.zone</dt><dd>—</dd>
+<dt>location.frame</dt><dd>—</dd>
+<dt>provenance.frame_id</dt><dd><code>donkey_frame_000626</code></dd>
+<dt>provenance.observation_id</dt><dd><code>donkey_frame_000626</code></dd>
+<dt>source in sequence</dt><dd>yes</dd>
+</dl>
+<h4>Mapped value (retained)</h4>
+<pre>{
+  &quot;confidence&quot;: 1.0,
+  &quot;key&quot;: &quot;signal:front_camera_available&quot;,
+  &quot;kind&quot;: &quot;signal&quot;,
+  &quot;label&quot;: &quot;front_camera_available&quot;,
+  &quot;location&quot;: {},
+  &quot;provenance&quot;: {
+    &quot;coordinate_frame&quot;: &quot;observation&quot;,
+    &quot;evidence_id&quot;: &quot;front_camera_available&quot;,
+    &quot;frame_id&quot;: &quot;donkey_frame_000626&quot;,
+    &quot;observation_id&quot;: &quot;donkey_frame_000626&quot;,
+    &quot;source_plugin_id&quot;: &quot;frame-observation-v0&quot;,
+    &quot;updated_at_ms&quot;: 1784587023740
+  }
+}</pre>
+<h4>Source observation at provenance.frame_id</h4>
+<pre>{
+  &quot;artifacts&quot;: {},
+  &quot;created_at_ms&quot;: 1784587024050,
+  &quot;metadata&quot;: {
+    &quot;limits&quot;: [
+      &quot;floor color is seeded independently from each current frame&quot;,
+      &quot;boundaries may be objects, walls, shadows, or floor-color discontinuities&quot;,
+      &quot;topdown_fov is approximate and uncalibrated&quot;
+    ],
+    &quot;source&quot;: &quot;default_observe_stage&quot;
+  },
+  &quot;observation_id&quot;: &quot;donkey_frame_000626&quot;,
+  &quot;perception_plugin_id&quot;: &quot;autonomy.perception.plugin-runner-v0&quot;,
+  &quot;perception_schema&quot;: &quot;perception_text_v2&quot;,
+  &quot;schema&quot;: &quot;decision_observation_v1&quot;,
+  &quot;sensor_snapshot&quot;: {
+    &quot;completed_at_ms&quot;: 1784587023740,
+    &quot;metadata&quot;: {
+      &quot;runtime&quot;: &quot;donkeycar&quot;
+    },
+    &quot;read_id&quot;: &quot;donkey_frame_000626&quot;,
+    &quot;readings&quot;: {
+      &quot;front_camera&quot;: {
+        &quot;captured_at_ms&quot;: 1784587023740,
+        &quot;has_value&quot;: true,
+        &quot;metadata&quot;: {
+          &quot;source&quot;: &quot;donkeycar_vehicle_memory&quot;
+        },
+        &quot;path&quot;: null,
+        &quot;sensor_id&quot;: &quot;front_camera&quot;,
+        &quot;sensor_kind&quot;: &quot;camera&quot;
+      }
+    },
+    &quot;request&quot;: {},
+    &quot;started_at_ms&quot;: 1784587023740
+  },
+  &quot;signals&quot;: [
+    {
+      &quot;confidence&quot;: 1.0,
+      &quot;properties&quot;: {},
+      &quot;signal_id&quot;: &quot;front_camera_available&quot;,
+      &quot;source_plugin_id&quot;: &quot;frame-observation-v0&quot;,
+      &quot;value&quot;: true
+    },
+    {
+      &quot;confidence&quot;: 1.0,
+      &quot;properties&quot;: {
+        &quot;floor_fraction_roi&quot;: 0.90796
+      },
+      &quot;signal_id&quot;: &quot;floor_visible&quot;,
+      &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+      &quot;value&quot;: true
+    },
+    {
+      &quot;confidence&quot;: 0.6968733333333333,
+      &quot;properties&quot;: {
+        &quot;boundary_count&quot;: 3,
+        &quot;hit_fraction_columns&quot;: 0.20469
+      },
+      &quot;signal_id&quot;: &quot;floor_boundary_available&quot;,
+      &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+      &quot;value&quot;: true
+    }
+  ],
+  &quot;summary&quot;: [
+    &quot;schema=perception_text_v2&quot;,
+    &quot;plugin=autonomy.perception.plugin-runner-v0&quot;,
+    &quot;plugins=frame,floor_plane&quot;,
+    &quot;plugin_run id=frame-observation-v0 status=ok duration_ms=8.470 signals=1 things=1 artifacts=0&quot;,
+    &quot;signal id=front_camera_available plugin=frame-observation-v0 value=true confidence=1.000&quot;,
+    &quot;thing id=front_camera_frame plugin=frame-observation-v0 kind=sensor_frame zone=full_frame frame=image bbox_xyxy_norm=0.0000,0.0000,1.0000,1.0000 confidence=1.000 brightness_mean=136.671 contrast_std=59.294 height_px=480 width_px=640&quot;,
+    &quot;plugin_run id=floor-plane-v0 status=ok duration_ms=299.908 signals=2 things=4 artifacts=0&quot;,
+    &quot;signal id=floor_visible plugin=floor-plane-v0 value=true confidence=1.000 floor_fraction_roi=0.90796&quot;,
+    &quot;signal id=floor_boundary_available plugin=floor-plane-v0 value=true confidence=0.697 boundary_count=3 hit_fraction_columns=0.20469&quot;,
+    &quot;thing id=traversable_floor plugin=floor-plane-v0 kind=surface zone=visible_floor frame=topdown_fov bbox_xyxy_norm=0.0000,0.0000,1.0000,1.0000 confidence=1.000 boundary_hit_fraction_columns=0.20469 evidence=color_floor_model floor_fraction_roi=0.90796 occupied_fraction_roi=0.09204&quot;,
+    &quot;thing id=floor_boundary_000 plugin=floor-plane-v0 kind=floor_boundary zone=mid_left frame=image bbox_xyxy_norm=0.3099,0.4489,0.4397,0.4843 confidence=1.000 evidence=first_non_floor_after_visible_floor floor_fraction_roi=0.90796 hit_pixel_count=534 width_fraction=0.13125&quot;,
+    &quot;thing id=floor_boundary_001 plugin=floor-plane-v0 kind=floor_boundary zone=mid_center frame=image bbox_xyxy_norm=0.4444,0.4530,0.4773,0.4718 confidence=0.565 evidence=first_non_floor_after_visible_floor floor_fraction_roi=0.90796 hit_pixel_count=130 width_fraction=0.03438&quot;
+  ],
+  &quot;things&quot;: [
+    {
+      &quot;confidence&quot;: 1.0,
+      &quot;kind&quot;: &quot;sensor_frame&quot;,
+      &quot;label&quot;: &quot;front camera frame&quot;,
+      &quot;location&quot;: {
+        &quot;bbox_xyxy_norm&quot;: [
+          0.0,
+          0.0,
+          1.0,
+          1.0
+        ],
+        &quot;frame&quot;: &quot;image&quot;,
+        &quot;polygon_xy_norm&quot;: null,
+        &quot;zone&quot;: &quot;full_frame&quot;
+      },
+      &quot;properties&quot;: {
+        &quot;brightness_mean&quot;: 136.671,
+        &quot;contrast_std&quot;: 59.294,
+        &quot;height_px&quot;: 480,
+        &quot;width_px&quot;: 640
+      },
+      &quot;source_plugin_id&quot;: &quot;frame-observation-v0&quot;,
+      &quot;thing_id&quot;: &quot;front_camera_frame&quot;
+    },
+    {
+      &quot;confidence&quot;: 1.0,
+      &quot;kind&quot;: &quot;surface&quot;,
+      &quot;label&quot;: &quot;traversable floor estimate&quot;,
+      &quot;location&quot;: {
+        &quot;bbox_xyxy_norm&quot;: [
+          0.0,
+          0.0,
+          1.0,
+          1.0
+        ],
+        &quot;frame&quot;: &quot;topdown_fov&quot;,
+        &quot;polygon_xy_norm&quot;: null,
+        &quot;zone&quot;: &quot;visible_floor&quot;
+      },
+      &quot;properties&quot;: {
+        &quot;boundary_hit_fraction_columns&quot;: 0.20469,
+        &quot;evidence&quot;: &quot;color_floor_model&quot;,
+        &quot;floor_fraction_roi&quot;: 0.90796,
+        &quot;occupied_fraction_roi&quot;: 0.09204
+      },
+      &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+      &quot;thing_id&quot;: &quot;traversable_floor&quot;
+    },
+    {
+      &quot;confidence&quot;: 1.0,
+      &quot;kind&quot;: &quot;floor_boundary&quot;,
+      &quot;label&quot;: &quot;first sustained non-floor boundary after visible floor&quot;,
+      &quot;location&quot;: {
+        &quot;bbox_xyxy_norm&quot;: [
+          0.3099,
+          0.4489,
+          0.4397,
+          0.4843
+        ],
+        &quot;frame&quot;: &quot;image&quot;,
+        &quot;polygon_xy_norm&quot;: null,
+        &quot;zone&quot;: &quot;mid_left&quot;
+      },
+      &quot;properties&quot;: {
+        &quot;evidence&quot;: &quot;first_non_floor_after_visible_floor&quot;,
+        &quot;floor_fraction_roi&quot;: 0.90796,
+        &quot;hit_pixel_count&quot;: 534,
+        &quot;width_fraction&quot;: 0.13125
+      },
+      &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+      &quot;thing_id&quot;: &quot;floor_boundary_000&quot;
+    },
+    {
+      &quot;confidence&quot;: 0.56484,
+      &quot;kind&quot;: &quot;floor_boundary&quot;,
+      &quot;label&quot;: &quot;first sustained non-floor boundary after visible floor&quot;,
+      &quot;location&quot;: {
+        &quot;bbox_xyxy_norm&quot;: [
+          0.4444,
+          0.453,
+          0.4773,
+          0.4718
+        ],
+        &quot;frame&quot;: &quot;image&quot;,
+        &quot;polygon_xy_norm&quot;: null,
+        &quot;zone&quot;: &quot;mid_center&quot;
+      },
+      &quot;properties&quot;: {
+        &quot;evidence&quot;: &quot;first_non_floor_after_visible_floor&quot;,
+        &quot;floor_fraction_roi&quot;: 0.90796,
+        &quot;hit_pixel_count&quot;: 130,
+        &quot;width_fraction&quot;: 0.03438
+      },
+      &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+      &quot;thing_id&quot;: &quot;floor_boundary_001&quot;
+    },
+    {
+      &quot;confidence&quot;: 0.52578,
+      &quot;kind&quot;: &quot;floor_boundary&quot;,
+      &quot;label&quot;: &quot;first sustained non-floor boundary after visible floor&quot;,
+      &quot;location&quot;: {
+        &quot;bbox_xyxy_norm&quot;: [
+          0.6072,
+          0.4196,
+          0.6338,
+          0.428
+        ],
+        &quot;frame&quot;: &quot;image&quot;,
+        &quot;polygon_xy_norm&quot;: null,
+        &quot;zone&quot;: &quot;mid_right&quot;
+      },
+      &quot;properties&quot;: {
+        &quot;evidence&quot;: &quot;first_non_floor_after_visible_floor&quot;,
+        &quot;floor_fraction_roi&quot;: 0.90796,
+        &quot;hit_pixel_count&quot;: 90,
+        &quot;width_fraction&quot;: 0.02813
+      },
+      &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+      &quot;thing_id&quot;: &quot;floor_boundary_002&quot;
+    }
+  ]
+}</pre>
+</section><section class='record'>
+<h3>key <code>thing:floor_boundary_000</code></h3>
+<p class='badge'>retained evidence — not current camera geometry</p>
+<dl>
+<dt>kind</dt><dd>floor_boundary</dd>
+<dt>label</dt><dd>first sustained non-floor boundary after visible floor</dd>
+<dt>confidence</dt><dd>1.0</dd>
+<dt>location.zone</dt><dd>mid_left</dd>
+<dt>location.frame</dt><dd>image</dd>
+<dt>provenance.frame_id</dt><dd><code>donkey_frame_000626</code></dd>
+<dt>provenance.observation_id</dt><dd><code>donkey_frame_000626</code></dd>
+<dt>source in sequence</dt><dd>yes</dd>
+</dl>
+<h4>Mapped value (retained)</h4>
+<pre>{
+  &quot;confidence&quot;: 1.0,
+  &quot;key&quot;: &quot;thing:floor_boundary_000&quot;,
+  &quot;kind&quot;: &quot;floor_boundary&quot;,
+  &quot;label&quot;: &quot;first sustained non-floor boundary after visible floor&quot;,
+  &quot;location&quot;: {
+    &quot;bbox_xyxy_norm&quot;: [
+      0.3099,
+      0.4489,
+      0.4397,
+      0.4843
+    ],
+    &quot;frame&quot;: &quot;image&quot;,
+    &quot;polygon_xy_norm&quot;: null,
+    &quot;zone&quot;: &quot;mid_left&quot;
+  },
+  &quot;provenance&quot;: {
+    &quot;coordinate_frame&quot;: &quot;image&quot;,
+    &quot;evidence_id&quot;: &quot;floor_boundary_000&quot;,
+    &quot;frame_id&quot;: &quot;donkey_frame_000626&quot;,
+    &quot;observation_id&quot;: &quot;donkey_frame_000626&quot;,
+    &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+    &quot;updated_at_ms&quot;: 1784587023740
+  }
+}</pre>
+<h4>Source observation at provenance.frame_id</h4>
+<pre>{
+  &quot;artifacts&quot;: {},
+  &quot;created_at_ms&quot;: 1784587024050,
+  &quot;metadata&quot;: {
+    &quot;limits&quot;: [
+      &quot;floor color is seeded independently from each current frame&quot;,
+      &quot;boundaries may be objects, walls, shadows, or floor-color discontinuities&quot;,
+      &quot;topdown_fov is approximate and uncalibrated&quot;
+    ],
+    &quot;source&quot;: &quot;default_observe_stage&quot;
+  },
+  &quot;observation_id&quot;: &quot;donkey_frame_000626&quot;,
+  &quot;perception_plugin_id&quot;: &quot;autonomy.perception.plugin-runner-v0&quot;,
+  &quot;perception_schema&quot;: &quot;perception_text_v2&quot;,
+  &quot;schema&quot;: &quot;decision_observation_v1&quot;,
+  &quot;sensor_snapshot&quot;: {
+    &quot;completed_at_ms&quot;: 1784587023740,
+    &quot;metadata&quot;: {
+      &quot;runtime&quot;: &quot;donkeycar&quot;
+    },
+    &quot;read_id&quot;: &quot;donkey_frame_000626&quot;,
+    &quot;readings&quot;: {
+      &quot;front_camera&quot;: {
+        &quot;captured_at_ms&quot;: 1784587023740,
+        &quot;has_value&quot;: true,
+        &quot;metadata&quot;: {
+          &quot;source&quot;: &quot;donkeycar_vehicle_memory&quot;
+        },
+        &quot;path&quot;: null,
+        &quot;sensor_id&quot;: &quot;front_camera&quot;,
+        &quot;sensor_kind&quot;: &quot;camera&quot;
+      }
+    },
+    &quot;request&quot;: {},
+    &quot;started_at_ms&quot;: 1784587023740
+  },
+  &quot;signals&quot;: [
+    {
+      &quot;confidence&quot;: 1.0,
+      &quot;properties&quot;: {},
+      &quot;signal_id&quot;: &quot;front_camera_available&quot;,
+      &quot;source_plugin_id&quot;: &quot;frame-observation-v0&quot;,
+      &quot;value&quot;: true
+    },
+    {
+      &quot;confidence&quot;: 1.0,
+      &quot;properties&quot;: {
+        &quot;floor_fraction_roi&quot;: 0.90796
+      },
+      &quot;signal_id&quot;: &quot;floor_visible&quot;,
+      &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+      &quot;value&quot;: true
+    },
+    {
+      &quot;confidence&quot;: 0.6968733333333333,
+      &quot;properties&quot;: {
+        &quot;boundary_count&quot;: 3,
+        &quot;hit_fraction_columns&quot;: 0.20469
+      },
+      &quot;signal_id&quot;: &quot;floor_boundary_available&quot;,
+      &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+      &quot;value&quot;: true
+    }
+  ],
+  &quot;summary&quot;: [
+    &quot;schema=perception_text_v2&quot;,
+    &quot;plugin=autonomy.perception.plugin-runner-v0&quot;,
+    &quot;plugins=frame,floor_plane&quot;,
+    &quot;plugin_run id=frame-observation-v0 status=ok duration_ms=8.470 signals=1 things=1 artifacts=0&quot;,
+    &quot;signal id=front_camera_available plugin=frame-observation-v0 value=true confidence=1.000&quot;,
+    &quot;thing id=front_camera_frame plugin=frame-observation-v0 kind=sensor_frame zone=full_frame frame=image bbox_xyxy_norm=0.0000,0.0000,1.0000,1.0000 confidence=1.000 brightness_mean=136.671 contrast_std=59.294 height_px=480 width_px=640&quot;,
+    &quot;plugin_run id=floor-plane-v0 status=ok duration_ms=299.908 signals=2 things=4 artifacts=0&quot;,
+    &quot;signal id=floor_visible plugin=floor-plane-v0 value=true confidence=1.000 floor_fraction_roi=0.90796&quot;,
+    &quot;signal id=floor_boundary_available plugin=floor-plane-v0 value=true confidence=0.697 boundary_count=3 hit_fraction_columns=0.20469&quot;,
+    &quot;thing id=traversable_floor plugin=floor-plane-v0 kind=surface zone=visible_floor frame=topdown_fov bbox_xyxy_norm=0.0000,0.0000,1.0000,1.0000 confidence=1.000 boundary_hit_fraction_columns=0.20469 evidence=color_floor_model floor_fraction_roi=0.90796 occupied_fraction_roi=0.09204&quot;,
+    &quot;thing id=floor_boundary_000 plugin=floor-plane-v0 kind=floor_boundary zone=mid_left frame=image bbox_xyxy_norm=0.3099,0.4489,0.4397,0.4843 confidence=1.000 evidence=first_non_floor_after_visible_floor floor_fraction_roi=0.90796 hit_pixel_count=534 width_fraction=0.13125&quot;,
+    &quot;thing id=floor_boundary_001 plugin=floor-plane-v0 kind=floor_boundary zone=mid_center frame=image bbox_xyxy_norm=0.4444,0.4530,0.4773,0.4718 confidence=0.565 evidence=first_non_floor_after_visible_floor floor_fraction_roi=0.90796 hit_pixel_count=130 width_fraction=0.03438&quot;
+  ],
+  &quot;things&quot;: [
+    {
+      &quot;confidence&quot;: 1.0,
+      &quot;kind&quot;: &quot;sensor_frame&quot;,
+      &quot;label&quot;: &quot;front camera frame&quot;,
+      &quot;location&quot;: {
+        &quot;bbox_xyxy_norm&quot;: [
+          0.0,
+          0.0,
+          1.0,
+          1.0
+        ],
+        &quot;frame&quot;: &quot;image&quot;,
+        &quot;polygon_xy_norm&quot;: null,
+        &quot;zone&quot;: &quot;full_frame&quot;
+      },
+      &quot;properties&quot;: {
+        &quot;brightness_mean&quot;: 136.671,
+        &quot;contrast_std&quot;: 59.294,
+        &quot;height_px&quot;: 480,
+        &quot;width_px&quot;: 640
+      },
+      &quot;source_plugin_id&quot;: &quot;frame-observation-v0&quot;,
+      &quot;thing_id&quot;: &quot;front_camera_frame&quot;
+    },
+    {
+      &quot;confidence&quot;: 1.0,
+      &quot;kind&quot;: &quot;surface&quot;,
+      &quot;label&quot;: &quot;traversable floor estimate&quot;,
+      &quot;location&quot;: {
+        &quot;bbox_xyxy_norm&quot;: [
+          0.0,
+          0.0,
+          1.0,
+          1.0
+        ],
+        &quot;frame&quot;: &quot;topdown_fov&quot;,
+        &quot;polygon_xy_norm&quot;: null,
+        &quot;zone&quot;: &quot;visible_floor&quot;
+      },
+      &quot;properties&quot;: {
+        &quot;boundary_hit_fraction_columns&quot;: 0.20469,
+        &quot;evidence&quot;: &quot;color_floor_model&quot;,
+        &quot;floor_fraction_roi&quot;: 0.90796,
+        &quot;occupied_fraction_roi&quot;: 0.09204
+      },
+      &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+      &quot;thing_id&quot;: &quot;traversable_floor&quot;
+    },
+    {
+      &quot;confidence&quot;: 1.0,
+      &quot;kind&quot;: &quot;floor_boundary&quot;,
+      &quot;label&quot;: &quot;first sustained non-floor boundary after visible floor&quot;,
+      &quot;location&quot;: {
+        &quot;bbox_xyxy_norm&quot;: [
+          0.3099,
+          0.4489,
+          0.4397,
+          0.4843
+        ],
+        &quot;frame&quot;: &quot;image&quot;,
+        &quot;polygon_xy_norm&quot;: null,
+        &quot;zone&quot;: &quot;mid_left&quot;
+      },
+      &quot;properties&quot;: {
+        &quot;evidence&quot;: &quot;first_non_floor_after_visible_floor&quot;,
+        &quot;floor_fraction_roi&quot;: 0.90796,
+        &quot;hit_pixel_count&quot;: 534,
+        &quot;width_fraction&quot;: 0.13125
+      },
+      &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+      &quot;thing_id&quot;: &quot;floor_boundary_000&quot;
+    },
+    {
+      &quot;confidence&quot;: 0.56484,
+      &quot;kind&quot;: &quot;floor_boundary&quot;,
+      &quot;label&quot;: &quot;first sustained non-floor boundary after visible floor&quot;,
+      &quot;location&quot;: {
+        &quot;bbox_xyxy_norm&quot;: [
+          0.4444,
+          0.453,
+          0.4773,
+          0.4718
+        ],
+        &quot;frame&quot;: &quot;image&quot;,
+        &quot;polygon_xy_norm&quot;: null,
+        &quot;zone&quot;: &quot;mid_center&quot;
+      },
+      &quot;properties&quot;: {
+        &quot;evidence&quot;: &quot;first_non_floor_after_visible_floor&quot;,
+        &quot;floor_fraction_roi&quot;: 0.90796,
+        &quot;hit_pixel_count&quot;: 130,
+        &quot;width_fraction&quot;: 0.03438
+      },
+      &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+      &quot;thing_id&quot;: &quot;floor_boundary_001&quot;
+    },
+    {
+      &quot;confidence&quot;: 0.52578,
+      &quot;kind&quot;: &quot;floor_boundary&quot;,
+      &quot;label&quot;: &quot;first sustained non-floor boundary after visible floor&quot;,
+      &quot;location&quot;: {
+        &quot;bbox_xyxy_norm&quot;: [
+          0.6072,
+          0.4196,
+          0.6338,
+          0.428
+        ],
+        &quot;frame&quot;: &quot;image&quot;,
+        &quot;polygon_xy_norm&quot;: null,
+        &quot;zone&quot;: &quot;mid_right&quot;
+      },
+      &quot;properties&quot;: {
+        &quot;evidence&quot;: &quot;first_non_floor_after_visible_floor&quot;,
+        &quot;floor_fraction_roi&quot;: 0.90796,
+        &quot;hit_pixel_count&quot;: 90,
+        &quot;width_fraction&quot;: 0.02813
+      },
+      &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+      &quot;thing_id&quot;: &quot;floor_boundary_002&quot;
+    }
+  ]
+}</pre>
+</section><section class='record'>
+<h3>key <code>thing:floor_boundary_001</code></h3>
+<p class='badge'>retained evidence — not current camera geometry</p>
+<dl>
+<dt>kind</dt><dd>floor_boundary</dd>
+<dt>label</dt><dd>first sustained non-floor boundary after visible floor</dd>
+<dt>confidence</dt><dd>0.56484</dd>
+<dt>location.zone</dt><dd>mid_center</dd>
+<dt>location.frame</dt><dd>image</dd>
+<dt>provenance.frame_id</dt><dd><code>donkey_frame_000626</code></dd>
+<dt>provenance.observation_id</dt><dd><code>donkey_frame_000626</code></dd>
+<dt>source in sequence</dt><dd>yes</dd>
+</dl>
+<h4>Mapped value (retained)</h4>
+<pre>{
+  &quot;confidence&quot;: 0.56484,
+  &quot;key&quot;: &quot;thing:floor_boundary_001&quot;,
+  &quot;kind&quot;: &quot;floor_boundary&quot;,
+  &quot;label&quot;: &quot;first sustained non-floor boundary after visible floor&quot;,
+  &quot;location&quot;: {
+    &quot;bbox_xyxy_norm&quot;: [
+      0.4444,
+      0.453,
+      0.4773,
+      0.4718
+    ],
+    &quot;frame&quot;: &quot;image&quot;,
+    &quot;polygon_xy_norm&quot;: null,
+    &quot;zone&quot;: &quot;mid_center&quot;
+  },
+  &quot;provenance&quot;: {
+    &quot;coordinate_frame&quot;: &quot;image&quot;,
+    &quot;evidence_id&quot;: &quot;floor_boundary_001&quot;,
+    &quot;frame_id&quot;: &quot;donkey_frame_000626&quot;,
+    &quot;observation_id&quot;: &quot;donkey_frame_000626&quot;,
+    &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+    &quot;updated_at_ms&quot;: 1784587023740
+  }
+}</pre>
+<h4>Source observation at provenance.frame_id</h4>
+<pre>{
+  &quot;artifacts&quot;: {},
+  &quot;created_at_ms&quot;: 1784587024050,
+  &quot;metadata&quot;: {
+    &quot;limits&quot;: [
+      &quot;floor color is seeded independently from each current frame&quot;,
+      &quot;boundaries may be objects, walls, shadows, or floor-color discontinuities&quot;,
+      &quot;topdown_fov is approximate and uncalibrated&quot;
+    ],
+    &quot;source&quot;: &quot;default_observe_stage&quot;
+  },
+  &quot;observation_id&quot;: &quot;donkey_frame_000626&quot;,
+  &quot;perception_plugin_id&quot;: &quot;autonomy.perception.plugin-runner-v0&quot;,
+  &quot;perception_schema&quot;: &quot;perception_text_v2&quot;,
+  &quot;schema&quot;: &quot;decision_observation_v1&quot;,
+  &quot;sensor_snapshot&quot;: {
+    &quot;completed_at_ms&quot;: 1784587023740,
+    &quot;metadata&quot;: {
+      &quot;runtime&quot;: &quot;donkeycar&quot;
+    },
+    &quot;read_id&quot;: &quot;donkey_frame_000626&quot;,
+    &quot;readings&quot;: {
+      &quot;front_camera&quot;: {
+        &quot;captured_at_ms&quot;: 1784587023740,
+        &quot;has_value&quot;: true,
+        &quot;metadata&quot;: {
+          &quot;source&quot;: &quot;donkeycar_vehicle_memory&quot;
+        },
+        &quot;path&quot;: null,
+        &quot;sensor_id&quot;: &quot;front_camera&quot;,
+        &quot;sensor_kind&quot;: &quot;camera&quot;
+      }
+    },
+    &quot;request&quot;: {},
+    &quot;started_at_ms&quot;: 1784587023740
+  },
+  &quot;signals&quot;: [
+    {
+      &quot;confidence&quot;: 1.0,
+      &quot;properties&quot;: {},
+      &quot;signal_id&quot;: &quot;front_camera_available&quot;,
+      &quot;source_plugin_id&quot;: &quot;frame-observation-v0&quot;,
+      &quot;value&quot;: true
+    },
+    {
+      &quot;confidence&quot;: 1.0,
+      &quot;properties&quot;: {
+        &quot;floor_fraction_roi&quot;: 0.90796
+      },
+      &quot;signal_id&quot;: &quot;floor_visible&quot;,
+      &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+      &quot;value&quot;: true
+    },
+    {
+      &quot;confidence&quot;: 0.6968733333333333,
+      &quot;properties&quot;: {
+        &quot;boundary_count&quot;: 3,
+        &quot;hit_fraction_columns&quot;: 0.20469
+      },
+      &quot;signal_id&quot;: &quot;floor_boundary_available&quot;,
+      &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+      &quot;value&quot;: true
+    }
+  ],
+  &quot;summary&quot;: [
+    &quot;schema=perception_text_v2&quot;,
+    &quot;plugin=autonomy.perception.plugin-runner-v0&quot;,
+    &quot;plugins=frame,floor_plane&quot;,
+    &quot;plugin_run id=frame-observation-v0 status=ok duration_ms=8.470 signals=1 things=1 artifacts=0&quot;,
+    &quot;signal id=front_camera_available plugin=frame-observation-v0 value=true confidence=1.000&quot;,
+    &quot;thing id=front_camera_frame plugin=frame-observation-v0 kind=sensor_frame zone=full_frame frame=image bbox_xyxy_norm=0.0000,0.0000,1.0000,1.0000 confidence=1.000 brightness_mean=136.671 contrast_std=59.294 height_px=480 width_px=640&quot;,
+    &quot;plugin_run id=floor-plane-v0 status=ok duration_ms=299.908 signals=2 things=4 artifacts=0&quot;,
+    &quot;signal id=floor_visible plugin=floor-plane-v0 value=true confidence=1.000 floor_fraction_roi=0.90796&quot;,
+    &quot;signal id=floor_boundary_available plugin=floor-plane-v0 value=true confidence=0.697 boundary_count=3 hit_fraction_columns=0.20469&quot;,
+    &quot;thing id=traversable_floor plugin=floor-plane-v0 kind=surface zone=visible_floor frame=topdown_fov bbox_xyxy_norm=0.0000,0.0000,1.0000,1.0000 confidence=1.000 boundary_hit_fraction_columns=0.20469 evidence=color_floor_model floor_fraction_roi=0.90796 occupied_fraction_roi=0.09204&quot;,
+    &quot;thing id=floor_boundary_000 plugin=floor-plane-v0 kind=floor_boundary zone=mid_left frame=image bbox_xyxy_norm=0.3099,0.4489,0.4397,0.4843 confidence=1.000 evidence=first_non_floor_after_visible_floor floor_fraction_roi=0.90796 hit_pixel_count=534 width_fraction=0.13125&quot;,
+    &quot;thing id=floor_boundary_001 plugin=floor-plane-v0 kind=floor_boundary zone=mid_center frame=image bbox_xyxy_norm=0.4444,0.4530,0.4773,0.4718 confidence=0.565 evidence=first_non_floor_after_visible_floor floor_fraction_roi=0.90796 hit_pixel_count=130 width_fraction=0.03438&quot;
+  ],
+  &quot;things&quot;: [
+    {
+      &quot;confidence&quot;: 1.0,
+      &quot;kind&quot;: &quot;sensor_frame&quot;,
+      &quot;label&quot;: &quot;front camera frame&quot;,
+      &quot;location&quot;: {
+        &quot;bbox_xyxy_norm&quot;: [
+          0.0,
+          0.0,
+          1.0,
+          1.0
+        ],
+        &quot;frame&quot;: &quot;image&quot;,
+        &quot;polygon_xy_norm&quot;: null,
+        &quot;zone&quot;: &quot;full_frame&quot;
+      },
+      &quot;properties&quot;: {
+        &quot;brightness_mean&quot;: 136.671,
+        &quot;contrast_std&quot;: 59.294,
+        &quot;height_px&quot;: 480,
+        &quot;width_px&quot;: 640
+      },
+      &quot;source_plugin_id&quot;: &quot;frame-observation-v0&quot;,
+      &quot;thing_id&quot;: &quot;front_camera_frame&quot;
+    },
+    {
+      &quot;confidence&quot;: 1.0,
+      &quot;kind&quot;: &quot;surface&quot;,
+      &quot;label&quot;: &quot;traversable floor estimate&quot;,
+      &quot;location&quot;: {
+        &quot;bbox_xyxy_norm&quot;: [
+          0.0,
+          0.0,
+          1.0,
+          1.0
+        ],
+        &quot;frame&quot;: &quot;topdown_fov&quot;,
+        &quot;polygon_xy_norm&quot;: null,
+        &quot;zone&quot;: &quot;visible_floor&quot;
+      },
+      &quot;properties&quot;: {
+        &quot;boundary_hit_fraction_columns&quot;: 0.20469,
+        &quot;evidence&quot;: &quot;color_floor_model&quot;,
+        &quot;floor_fraction_roi&quot;: 0.90796,
+        &quot;occupied_fraction_roi&quot;: 0.09204
+      },
+      &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+      &quot;thing_id&quot;: &quot;traversable_floor&quot;
+    },
+    {
+      &quot;confidence&quot;: 1.0,
+      &quot;kind&quot;: &quot;floor_boundary&quot;,
+      &quot;label&quot;: &quot;first sustained non-floor boundary after visible floor&quot;,
+      &quot;location&quot;: {
+        &quot;bbox_xyxy_norm&quot;: [
+          0.3099,
+          0.4489,
+          0.4397,
+          0.4843
+        ],
+        &quot;frame&quot;: &quot;image&quot;,
+        &quot;polygon_xy_norm&quot;: null,
+        &quot;zone&quot;: &quot;mid_left&quot;
+      },
+      &quot;properties&quot;: {
+        &quot;evidence&quot;: &quot;first_non_floor_after_visible_floor&quot;,
+        &quot;floor_fraction_roi&quot;: 0.90796,
+        &quot;hit_pixel_count&quot;: 534,
+        &quot;width_fraction&quot;: 0.13125
+      },
+      &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+      &quot;thing_id&quot;: &quot;floor_boundary_000&quot;
+    },
+    {
+      &quot;confidence&quot;: 0.56484,
+      &quot;kind&quot;: &quot;floor_boundary&quot;,
+      &quot;label&quot;: &quot;first sustained non-floor boundary after visible floor&quot;,
+      &quot;location&quot;: {
+        &quot;bbox_xyxy_norm&quot;: [
+          0.4444,
+          0.453,
+          0.4773,
+          0.4718
+        ],
+        &quot;frame&quot;: &quot;image&quot;,
+        &quot;polygon_xy_norm&quot;: null,
+        &quot;zone&quot;: &quot;mid_center&quot;
+      },
+      &quot;properties&quot;: {
+        &quot;evidence&quot;: &quot;first_non_floor_after_visible_floor&quot;,
+        &quot;floor_fraction_roi&quot;: 0.90796,
+        &quot;hit_pixel_count&quot;: 130,
+        &quot;width_fraction&quot;: 0.03438
+      },
+      &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+      &quot;thing_id&quot;: &quot;floor_boundary_001&quot;
+    },
+    {
+      &quot;confidence&quot;: 0.52578,
+      &quot;kind&quot;: &quot;floor_boundary&quot;,
+      &quot;label&quot;: &quot;first sustained non-floor boundary after visible floor&quot;,
+      &quot;location&quot;: {
+        &quot;bbox_xyxy_norm&quot;: [
+          0.6072,
+          0.4196,
+          0.6338,
+          0.428
+        ],
+        &quot;frame&quot;: &quot;image&quot;,
+        &quot;polygon_xy_norm&quot;: null,
+        &quot;zone&quot;: &quot;mid_right&quot;
+      },
+      &quot;properties&quot;: {
+        &quot;evidence&quot;: &quot;first_non_floor_after_visible_floor&quot;,
+        &quot;floor_fraction_roi&quot;: 0.90796,
+        &quot;hit_pixel_count&quot;: 90,
+        &quot;width_fraction&quot;: 0.02813
+      },
+      &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+      &quot;thing_id&quot;: &quot;floor_boundary_002&quot;
+    }
+  ]
+}</pre>
+</section><section class='record'>
+<h3>key <code>thing:floor_boundary_002</code></h3>
+<p class='badge'>retained evidence — not current camera geometry</p>
+<dl>
+<dt>kind</dt><dd>floor_boundary</dd>
+<dt>label</dt><dd>first sustained non-floor boundary after visible floor</dd>
+<dt>confidence</dt><dd>0.52578</dd>
+<dt>location.zone</dt><dd>mid_right</dd>
+<dt>location.frame</dt><dd>image</dd>
+<dt>provenance.frame_id</dt><dd><code>donkey_frame_000626</code></dd>
+<dt>provenance.observation_id</dt><dd><code>donkey_frame_000626</code></dd>
+<dt>source in sequence</dt><dd>yes</dd>
+</dl>
+<h4>Mapped value (retained)</h4>
+<pre>{
+  &quot;confidence&quot;: 0.52578,
+  &quot;key&quot;: &quot;thing:floor_boundary_002&quot;,
+  &quot;kind&quot;: &quot;floor_boundary&quot;,
+  &quot;label&quot;: &quot;first sustained non-floor boundary after visible floor&quot;,
+  &quot;location&quot;: {
+    &quot;bbox_xyxy_norm&quot;: [
+      0.6072,
+      0.4196,
+      0.6338,
+      0.428
+    ],
+    &quot;frame&quot;: &quot;image&quot;,
+    &quot;polygon_xy_norm&quot;: null,
+    &quot;zone&quot;: &quot;mid_right&quot;
+  },
+  &quot;provenance&quot;: {
+    &quot;coordinate_frame&quot;: &quot;image&quot;,
+    &quot;evidence_id&quot;: &quot;floor_boundary_002&quot;,
+    &quot;frame_id&quot;: &quot;donkey_frame_000626&quot;,
+    &quot;observation_id&quot;: &quot;donkey_frame_000626&quot;,
+    &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+    &quot;updated_at_ms&quot;: 1784587023740
+  }
+}</pre>
+<h4>Source observation at provenance.frame_id</h4>
+<pre>{
+  &quot;artifacts&quot;: {},
+  &quot;created_at_ms&quot;: 1784587024050,
+  &quot;metadata&quot;: {
+    &quot;limits&quot;: [
+      &quot;floor color is seeded independently from each current frame&quot;,
+      &quot;boundaries may be objects, walls, shadows, or floor-color discontinuities&quot;,
+      &quot;topdown_fov is approximate and uncalibrated&quot;
+    ],
+    &quot;source&quot;: &quot;default_observe_stage&quot;
+  },
+  &quot;observation_id&quot;: &quot;donkey_frame_000626&quot;,
+  &quot;perception_plugin_id&quot;: &quot;autonomy.perception.plugin-runner-v0&quot;,
+  &quot;perception_schema&quot;: &quot;perception_text_v2&quot;,
+  &quot;schema&quot;: &quot;decision_observation_v1&quot;,
+  &quot;sensor_snapshot&quot;: {
+    &quot;completed_at_ms&quot;: 1784587023740,
+    &quot;metadata&quot;: {
+      &quot;runtime&quot;: &quot;donkeycar&quot;
+    },
+    &quot;read_id&quot;: &quot;donkey_frame_000626&quot;,
+    &quot;readings&quot;: {
+      &quot;front_camera&quot;: {
+        &quot;captured_at_ms&quot;: 1784587023740,
+        &quot;has_value&quot;: true,
+        &quot;metadata&quot;: {
+          &quot;source&quot;: &quot;donkeycar_vehicle_memory&quot;
+        },
+        &quot;path&quot;: null,
+        &quot;sensor_id&quot;: &quot;front_camera&quot;,
+        &quot;sensor_kind&quot;: &quot;camera&quot;
+      }
+    },
+    &quot;request&quot;: {},
+    &quot;started_at_ms&quot;: 1784587023740
+  },
+  &quot;signals&quot;: [
+    {
+      &quot;confidence&quot;: 1.0,
+      &quot;properties&quot;: {},
+      &quot;signal_id&quot;: &quot;front_camera_available&quot;,
+      &quot;source_plugin_id&quot;: &quot;frame-observation-v0&quot;,
+      &quot;value&quot;: true
+    },
+    {
+      &quot;confidence&quot;: 1.0,
+      &quot;properties&quot;: {
+        &quot;floor_fraction_roi&quot;: 0.90796
+      },
+      &quot;signal_id&quot;: &quot;floor_visible&quot;,
+      &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+      &quot;value&quot;: true
+    },
+    {
+      &quot;confidence&quot;: 0.6968733333333333,
+      &quot;properties&quot;: {
+        &quot;boundary_count&quot;: 3,
+        &quot;hit_fraction_columns&quot;: 0.20469
+      },
+      &quot;signal_id&quot;: &quot;floor_boundary_available&quot;,
+      &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+      &quot;value&quot;: true
+    }
+  ],
+  &quot;summary&quot;: [
+    &quot;schema=perception_text_v2&quot;,
+    &quot;plugin=autonomy.perception.plugin-runner-v0&quot;,
+    &quot;plugins=frame,floor_plane&quot;,
+    &quot;plugin_run id=frame-observation-v0 status=ok duration_ms=8.470 signals=1 things=1 artifacts=0&quot;,
+    &quot;signal id=front_camera_available plugin=frame-observation-v0 value=true confidence=1.000&quot;,
+    &quot;thing id=front_camera_frame plugin=frame-observation-v0 kind=sensor_frame zone=full_frame frame=image bbox_xyxy_norm=0.0000,0.0000,1.0000,1.0000 confidence=1.000 brightness_mean=136.671 contrast_std=59.294 height_px=480 width_px=640&quot;,
+    &quot;plugin_run id=floor-plane-v0 status=ok duration_ms=299.908 signals=2 things=4 artifacts=0&quot;,
+    &quot;signal id=floor_visible plugin=floor-plane-v0 value=true confidence=1.000 floor_fraction_roi=0.90796&quot;,
+    &quot;signal id=floor_boundary_available plugin=floor-plane-v0 value=true confidence=0.697 boundary_count=3 hit_fraction_columns=0.20469&quot;,
+    &quot;thing id=traversable_floor plugin=floor-plane-v0 kind=surface zone=visible_floor frame=topdown_fov bbox_xyxy_norm=0.0000,0.0000,1.0000,1.0000 confidence=1.000 boundary_hit_fraction_columns=0.20469 evidence=color_floor_model floor_fraction_roi=0.90796 occupied_fraction_roi=0.09204&quot;,
+    &quot;thing id=floor_boundary_000 plugin=floor-plane-v0 kind=floor_boundary zone=mid_left frame=image bbox_xyxy_norm=0.3099,0.4489,0.4397,0.4843 confidence=1.000 evidence=first_non_floor_after_visible_floor floor_fraction_roi=0.90796 hit_pixel_count=534 width_fraction=0.13125&quot;,
+    &quot;thing id=floor_boundary_001 plugin=floor-plane-v0 kind=floor_boundary zone=mid_center frame=image bbox_xyxy_norm=0.4444,0.4530,0.4773,0.4718 confidence=0.565 evidence=first_non_floor_after_visible_floor floor_fraction_roi=0.90796 hit_pixel_count=130 width_fraction=0.03438&quot;
+  ],
+  &quot;things&quot;: [
+    {
+      &quot;confidence&quot;: 1.0,
+      &quot;kind&quot;: &quot;sensor_frame&quot;,
+      &quot;label&quot;: &quot;front camera frame&quot;,
+      &quot;location&quot;: {
+        &quot;bbox_xyxy_norm&quot;: [
+          0.0,
+          0.0,
+          1.0,
+          1.0
+        ],
+        &quot;frame&quot;: &quot;image&quot;,
+        &quot;polygon_xy_norm&quot;: null,
+        &quot;zone&quot;: &quot;full_frame&quot;
+      },
+      &quot;properties&quot;: {
+        &quot;brightness_mean&quot;: 136.671,
+        &quot;contrast_std&quot;: 59.294,
+        &quot;height_px&quot;: 480,
+        &quot;width_px&quot;: 640
+      },
+      &quot;source_plugin_id&quot;: &quot;frame-observation-v0&quot;,
+      &quot;thing_id&quot;: &quot;front_camera_frame&quot;
+    },
+    {
+      &quot;confidence&quot;: 1.0,
+      &quot;kind&quot;: &quot;surface&quot;,
+      &quot;label&quot;: &quot;traversable floor estimate&quot;,
+      &quot;location&quot;: {
+        &quot;bbox_xyxy_norm&quot;: [
+          0.0,
+          0.0,
+          1.0,
+          1.0
+        ],
+        &quot;frame&quot;: &quot;topdown_fov&quot;,
+        &quot;polygon_xy_norm&quot;: null,
+        &quot;zone&quot;: &quot;visible_floor&quot;
+      },
+      &quot;properties&quot;: {
+        &quot;boundary_hit_fraction_columns&quot;: 0.20469,
+        &quot;evidence&quot;: &quot;color_floor_model&quot;,
+        &quot;floor_fraction_roi&quot;: 0.90796,
+        &quot;occupied_fraction_roi&quot;: 0.09204
+      },
+      &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+      &quot;thing_id&quot;: &quot;traversable_floor&quot;
+    },
+    {
+      &quot;confidence&quot;: 1.0,
+      &quot;kind&quot;: &quot;floor_boundary&quot;,
+      &quot;label&quot;: &quot;first sustained non-floor boundary after visible floor&quot;,
+      &quot;location&quot;: {
+        &quot;bbox_xyxy_norm&quot;: [
+          0.3099,
+          0.4489,
+          0.4397,
+          0.4843
+        ],
+        &quot;frame&quot;: &quot;image&quot;,
+        &quot;polygon_xy_norm&quot;: null,
+        &quot;zone&quot;: &quot;mid_left&quot;
+      },
+      &quot;properties&quot;: {
+        &quot;evidence&quot;: &quot;first_non_floor_after_visible_floor&quot;,
+        &quot;floor_fraction_roi&quot;: 0.90796,
+        &quot;hit_pixel_count&quot;: 534,
+        &quot;width_fraction&quot;: 0.13125
+      },
+      &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+      &quot;thing_id&quot;: &quot;floor_boundary_000&quot;
+    },
+    {
+      &quot;confidence&quot;: 0.56484,
+      &quot;kind&quot;: &quot;floor_boundary&quot;,
+      &quot;label&quot;: &quot;first sustained non-floor boundary after visible floor&quot;,
+      &quot;location&quot;: {
+        &quot;bbox_xyxy_norm&quot;: [
+          0.4444,
+          0.453,
+          0.4773,
+          0.4718
+        ],
+        &quot;frame&quot;: &quot;image&quot;,
+        &quot;polygon_xy_norm&quot;: null,
+        &quot;zone&quot;: &quot;mid_center&quot;
+      },
+      &quot;properties&quot;: {
+        &quot;evidence&quot;: &quot;first_non_floor_after_visible_floor&quot;,
+        &quot;floor_fraction_roi&quot;: 0.90796,
+        &quot;hit_pixel_count&quot;: 130,
+        &quot;width_fraction&quot;: 0.03438
+      },
+      &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+      &quot;thing_id&quot;: &quot;floor_boundary_001&quot;
+    },
+    {
+      &quot;confidence&quot;: 0.52578,
+      &quot;kind&quot;: &quot;floor_boundary&quot;,
+      &quot;label&quot;: &quot;first sustained non-floor boundary after visible floor&quot;,
+      &quot;location&quot;: {
+        &quot;bbox_xyxy_norm&quot;: [
+          0.6072,
+          0.4196,
+          0.6338,
+          0.428
+        ],
+        &quot;frame&quot;: &quot;image&quot;,
+        &quot;polygon_xy_norm&quot;: null,
+        &quot;zone&quot;: &quot;mid_right&quot;
+      },
+      &quot;properties&quot;: {
+        &quot;evidence&quot;: &quot;first_non_floor_after_visible_floor&quot;,
+        &quot;floor_fraction_roi&quot;: 0.90796,
+        &quot;hit_pixel_count&quot;: 90,
+        &quot;width_fraction&quot;: 0.02813
+      },
+      &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+      &quot;thing_id&quot;: &quot;floor_boundary_002&quot;
+    }
+  ]
+}</pre>
+</section><section class='record'>
+<h3>key <code>thing:front_camera_frame</code></h3>
+<p class='badge'>retained evidence — not current camera geometry</p>
+<dl>
+<dt>kind</dt><dd>sensor_frame</dd>
+<dt>label</dt><dd>front camera frame</dd>
+<dt>confidence</dt><dd>1.0</dd>
+<dt>location.zone</dt><dd>full_frame</dd>
+<dt>location.frame</dt><dd>image</dd>
+<dt>provenance.frame_id</dt><dd><code>donkey_frame_000626</code></dd>
+<dt>provenance.observation_id</dt><dd><code>donkey_frame_000626</code></dd>
+<dt>source in sequence</dt><dd>yes</dd>
+</dl>
+<h4>Mapped value (retained)</h4>
+<pre>{
+  &quot;confidence&quot;: 1.0,
+  &quot;key&quot;: &quot;thing:front_camera_frame&quot;,
+  &quot;kind&quot;: &quot;sensor_frame&quot;,
+  &quot;label&quot;: &quot;front camera frame&quot;,
+  &quot;location&quot;: {
+    &quot;bbox_xyxy_norm&quot;: [
+      0.0,
+      0.0,
+      1.0,
+      1.0
+    ],
+    &quot;frame&quot;: &quot;image&quot;,
+    &quot;polygon_xy_norm&quot;: null,
+    &quot;zone&quot;: &quot;full_frame&quot;
+  },
+  &quot;provenance&quot;: {
+    &quot;coordinate_frame&quot;: &quot;image&quot;,
+    &quot;evidence_id&quot;: &quot;front_camera_frame&quot;,
+    &quot;frame_id&quot;: &quot;donkey_frame_000626&quot;,
+    &quot;observation_id&quot;: &quot;donkey_frame_000626&quot;,
+    &quot;source_plugin_id&quot;: &quot;frame-observation-v0&quot;,
+    &quot;updated_at_ms&quot;: 1784587023740
+  }
+}</pre>
+<h4>Source observation at provenance.frame_id</h4>
+<pre>{
+  &quot;artifacts&quot;: {},
+  &quot;created_at_ms&quot;: 1784587024050,
+  &quot;metadata&quot;: {
+    &quot;limits&quot;: [
+      &quot;floor color is seeded independently from each current frame&quot;,
+      &quot;boundaries may be objects, walls, shadows, or floor-color discontinuities&quot;,
+      &quot;topdown_fov is approximate and uncalibrated&quot;
+    ],
+    &quot;source&quot;: &quot;default_observe_stage&quot;
+  },
+  &quot;observation_id&quot;: &quot;donkey_frame_000626&quot;,
+  &quot;perception_plugin_id&quot;: &quot;autonomy.perception.plugin-runner-v0&quot;,
+  &quot;perception_schema&quot;: &quot;perception_text_v2&quot;,
+  &quot;schema&quot;: &quot;decision_observation_v1&quot;,
+  &quot;sensor_snapshot&quot;: {
+    &quot;completed_at_ms&quot;: 1784587023740,
+    &quot;metadata&quot;: {
+      &quot;runtime&quot;: &quot;donkeycar&quot;
+    },
+    &quot;read_id&quot;: &quot;donkey_frame_000626&quot;,
+    &quot;readings&quot;: {
+      &quot;front_camera&quot;: {
+        &quot;captured_at_ms&quot;: 1784587023740,
+        &quot;has_value&quot;: true,
+        &quot;metadata&quot;: {
+          &quot;source&quot;: &quot;donkeycar_vehicle_memory&quot;
+        },
+        &quot;path&quot;: null,
+        &quot;sensor_id&quot;: &quot;front_camera&quot;,
+        &quot;sensor_kind&quot;: &quot;camera&quot;
+      }
+    },
+    &quot;request&quot;: {},
+    &quot;started_at_ms&quot;: 1784587023740
+  },
+  &quot;signals&quot;: [
+    {
+      &quot;confidence&quot;: 1.0,
+      &quot;properties&quot;: {},
+      &quot;signal_id&quot;: &quot;front_camera_available&quot;,
+      &quot;source_plugin_id&quot;: &quot;frame-observation-v0&quot;,
+      &quot;value&quot;: true
+    },
+    {
+      &quot;confidence&quot;: 1.0,
+      &quot;properties&quot;: {
+        &quot;floor_fraction_roi&quot;: 0.90796
+      },
+      &quot;signal_id&quot;: &quot;floor_visible&quot;,
+      &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+      &quot;value&quot;: true
+    },
+    {
+      &quot;confidence&quot;: 0.6968733333333333,
+      &quot;properties&quot;: {
+        &quot;boundary_count&quot;: 3,
+        &quot;hit_fraction_columns&quot;: 0.20469
+      },
+      &quot;signal_id&quot;: &quot;floor_boundary_available&quot;,
+      &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+      &quot;value&quot;: true
+    }
+  ],
+  &quot;summary&quot;: [
+    &quot;schema=perception_text_v2&quot;,
+    &quot;plugin=autonomy.perception.plugin-runner-v0&quot;,
+    &quot;plugins=frame,floor_plane&quot;,
+    &quot;plugin_run id=frame-observation-v0 status=ok duration_ms=8.470 signals=1 things=1 artifacts=0&quot;,
+    &quot;signal id=front_camera_available plugin=frame-observation-v0 value=true confidence=1.000&quot;,
+    &quot;thing id=front_camera_frame plugin=frame-observation-v0 kind=sensor_frame zone=full_frame frame=image bbox_xyxy_norm=0.0000,0.0000,1.0000,1.0000 confidence=1.000 brightness_mean=136.671 contrast_std=59.294 height_px=480 width_px=640&quot;,
+    &quot;plugin_run id=floor-plane-v0 status=ok duration_ms=299.908 signals=2 things=4 artifacts=0&quot;,
+    &quot;signal id=floor_visible plugin=floor-plane-v0 value=true confidence=1.000 floor_fraction_roi=0.90796&quot;,
+    &quot;signal id=floor_boundary_available plugin=floor-plane-v0 value=true confidence=0.697 boundary_count=3 hit_fraction_columns=0.20469&quot;,
+    &quot;thing id=traversable_floor plugin=floor-plane-v0 kind=surface zone=visible_floor frame=topdown_fov bbox_xyxy_norm=0.0000,0.0000,1.0000,1.0000 confidence=1.000 boundary_hit_fraction_columns=0.20469 evidence=color_floor_model floor_fraction_roi=0.90796 occupied_fraction_roi=0.09204&quot;,
+    &quot;thing id=floor_boundary_000 plugin=floor-plane-v0 kind=floor_boundary zone=mid_left frame=image bbox_xyxy_norm=0.3099,0.4489,0.4397,0.4843 confidence=1.000 evidence=first_non_floor_after_visible_floor floor_fraction_roi=0.90796 hit_pixel_count=534 width_fraction=0.13125&quot;,
+    &quot;thing id=floor_boundary_001 plugin=floor-plane-v0 kind=floor_boundary zone=mid_center frame=image bbox_xyxy_norm=0.4444,0.4530,0.4773,0.4718 confidence=0.565 evidence=first_non_floor_after_visible_floor floor_fraction_roi=0.90796 hit_pixel_count=130 width_fraction=0.03438&quot;
+  ],
+  &quot;things&quot;: [
+    {
+      &quot;confidence&quot;: 1.0,
+      &quot;kind&quot;: &quot;sensor_frame&quot;,
+      &quot;label&quot;: &quot;front camera frame&quot;,
+      &quot;location&quot;: {
+        &quot;bbox_xyxy_norm&quot;: [
+          0.0,
+          0.0,
+          1.0,
+          1.0
+        ],
+        &quot;frame&quot;: &quot;image&quot;,
+        &quot;polygon_xy_norm&quot;: null,
+        &quot;zone&quot;: &quot;full_frame&quot;
+      },
+      &quot;properties&quot;: {
+        &quot;brightness_mean&quot;: 136.671,
+        &quot;contrast_std&quot;: 59.294,
+        &quot;height_px&quot;: 480,
+        &quot;width_px&quot;: 640
+      },
+      &quot;source_plugin_id&quot;: &quot;frame-observation-v0&quot;,
+      &quot;thing_id&quot;: &quot;front_camera_frame&quot;
+    },
+    {
+      &quot;confidence&quot;: 1.0,
+      &quot;kind&quot;: &quot;surface&quot;,
+      &quot;label&quot;: &quot;traversable floor estimate&quot;,
+      &quot;location&quot;: {
+        &quot;bbox_xyxy_norm&quot;: [
+          0.0,
+          0.0,
+          1.0,
+          1.0
+        ],
+        &quot;frame&quot;: &quot;topdown_fov&quot;,
+        &quot;polygon_xy_norm&quot;: null,
+        &quot;zone&quot;: &quot;visible_floor&quot;
+      },
+      &quot;properties&quot;: {
+        &quot;boundary_hit_fraction_columns&quot;: 0.20469,
+        &quot;evidence&quot;: &quot;color_floor_model&quot;,
+        &quot;floor_fraction_roi&quot;: 0.90796,
+        &quot;occupied_fraction_roi&quot;: 0.09204
+      },
+      &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+      &quot;thing_id&quot;: &quot;traversable_floor&quot;
+    },
+    {
+      &quot;confidence&quot;: 1.0,
+      &quot;kind&quot;: &quot;floor_boundary&quot;,
+      &quot;label&quot;: &quot;first sustained non-floor boundary after visible floor&quot;,
+      &quot;location&quot;: {
+        &quot;bbox_xyxy_norm&quot;: [
+          0.3099,
+          0.4489,
+          0.4397,
+          0.4843
+        ],
+        &quot;frame&quot;: &quot;image&quot;,
+        &quot;polygon_xy_norm&quot;: null,
+        &quot;zone&quot;: &quot;mid_left&quot;
+      },
+      &quot;properties&quot;: {
+        &quot;evidence&quot;: &quot;first_non_floor_after_visible_floor&quot;,
+        &quot;floor_fraction_roi&quot;: 0.90796,
+        &quot;hit_pixel_count&quot;: 534,
+        &quot;width_fraction&quot;: 0.13125
+      },
+      &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+      &quot;thing_id&quot;: &quot;floor_boundary_000&quot;
+    },
+    {
+      &quot;confidence&quot;: 0.56484,
+      &quot;kind&quot;: &quot;floor_boundary&quot;,
+      &quot;label&quot;: &quot;first sustained non-floor boundary after visible floor&quot;,
+      &quot;location&quot;: {
+        &quot;bbox_xyxy_norm&quot;: [
+          0.4444,
+          0.453,
+          0.4773,
+          0.4718
+        ],
+        &quot;frame&quot;: &quot;image&quot;,
+        &quot;polygon_xy_norm&quot;: null,
+        &quot;zone&quot;: &quot;mid_center&quot;
+      },
+      &quot;properties&quot;: {
+        &quot;evidence&quot;: &quot;first_non_floor_after_visible_floor&quot;,
+        &quot;floor_fraction_roi&quot;: 0.90796,
+        &quot;hit_pixel_count&quot;: 130,
+        &quot;width_fraction&quot;: 0.03438
+      },
+      &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+      &quot;thing_id&quot;: &quot;floor_boundary_001&quot;
+    },
+    {
+      &quot;confidence&quot;: 0.52578,
+      &quot;kind&quot;: &quot;floor_boundary&quot;,
+      &quot;label&quot;: &quot;first sustained non-floor boundary after visible floor&quot;,
+      &quot;location&quot;: {
+        &quot;bbox_xyxy_norm&quot;: [
+          0.6072,
+          0.4196,
+          0.6338,
+          0.428
+        ],
+        &quot;frame&quot;: &quot;image&quot;,
+        &quot;polygon_xy_norm&quot;: null,
+        &quot;zone&quot;: &quot;mid_right&quot;
+      },
+      &quot;properties&quot;: {
+        &quot;evidence&quot;: &quot;first_non_floor_after_visible_floor&quot;,
+        &quot;floor_fraction_roi&quot;: 0.90796,
+        &quot;hit_pixel_count&quot;: 90,
+        &quot;width_fraction&quot;: 0.02813
+      },
+      &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+      &quot;thing_id&quot;: &quot;floor_boundary_002&quot;
+    }
+  ]
+}</pre>
+</section><section class='record'>
+<h3>key <code>thing:traversable_floor</code></h3>
+<p class='badge'>retained evidence — not current camera geometry</p>
+<dl>
+<dt>kind</dt><dd>surface</dd>
+<dt>label</dt><dd>traversable floor estimate</dd>
+<dt>confidence</dt><dd>1.0</dd>
+<dt>location.zone</dt><dd>visible_floor</dd>
+<dt>location.frame</dt><dd>topdown_fov</dd>
+<dt>provenance.frame_id</dt><dd><code>donkey_frame_000626</code></dd>
+<dt>provenance.observation_id</dt><dd><code>donkey_frame_000626</code></dd>
+<dt>source in sequence</dt><dd>yes</dd>
+</dl>
+<h4>Mapped value (retained)</h4>
+<pre>{
+  &quot;confidence&quot;: 1.0,
+  &quot;key&quot;: &quot;thing:traversable_floor&quot;,
+  &quot;kind&quot;: &quot;surface&quot;,
+  &quot;label&quot;: &quot;traversable floor estimate&quot;,
+  &quot;location&quot;: {
+    &quot;bbox_xyxy_norm&quot;: [
+      0.0,
+      0.0,
+      1.0,
+      1.0
+    ],
+    &quot;frame&quot;: &quot;topdown_fov&quot;,
+    &quot;polygon_xy_norm&quot;: null,
+    &quot;zone&quot;: &quot;visible_floor&quot;
+  },
+  &quot;provenance&quot;: {
+    &quot;coordinate_frame&quot;: &quot;topdown_fov&quot;,
+    &quot;evidence_id&quot;: &quot;traversable_floor&quot;,
+    &quot;frame_id&quot;: &quot;donkey_frame_000626&quot;,
+    &quot;observation_id&quot;: &quot;donkey_frame_000626&quot;,
+    &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+    &quot;updated_at_ms&quot;: 1784587023740
+  }
+}</pre>
+<h4>Source observation at provenance.frame_id</h4>
+<pre>{
+  &quot;artifacts&quot;: {},
+  &quot;created_at_ms&quot;: 1784587024050,
+  &quot;metadata&quot;: {
+    &quot;limits&quot;: [
+      &quot;floor color is seeded independently from each current frame&quot;,
+      &quot;boundaries may be objects, walls, shadows, or floor-color discontinuities&quot;,
+      &quot;topdown_fov is approximate and uncalibrated&quot;
+    ],
+    &quot;source&quot;: &quot;default_observe_stage&quot;
+  },
+  &quot;observation_id&quot;: &quot;donkey_frame_000626&quot;,
+  &quot;perception_plugin_id&quot;: &quot;autonomy.perception.plugin-runner-v0&quot;,
+  &quot;perception_schema&quot;: &quot;perception_text_v2&quot;,
+  &quot;schema&quot;: &quot;decision_observation_v1&quot;,
+  &quot;sensor_snapshot&quot;: {
+    &quot;completed_at_ms&quot;: 1784587023740,
+    &quot;metadata&quot;: {
+      &quot;runtime&quot;: &quot;donkeycar&quot;
+    },
+    &quot;read_id&quot;: &quot;donkey_frame_000626&quot;,
+    &quot;readings&quot;: {
+      &quot;front_camera&quot;: {
+        &quot;captured_at_ms&quot;: 1784587023740,
+        &quot;has_value&quot;: true,
+        &quot;metadata&quot;: {
+          &quot;source&quot;: &quot;donkeycar_vehicle_memory&quot;
+        },
+        &quot;path&quot;: null,
+        &quot;sensor_id&quot;: &quot;front_camera&quot;,
+        &quot;sensor_kind&quot;: &quot;camera&quot;
+      }
+    },
+    &quot;request&quot;: {},
+    &quot;started_at_ms&quot;: 1784587023740
+  },
+  &quot;signals&quot;: [
+    {
+      &quot;confidence&quot;: 1.0,
+      &quot;properties&quot;: {},
+      &quot;signal_id&quot;: &quot;front_camera_available&quot;,
+      &quot;source_plugin_id&quot;: &quot;frame-observation-v0&quot;,
+      &quot;value&quot;: true
+    },
+    {
+      &quot;confidence&quot;: 1.0,
+      &quot;properties&quot;: {
+        &quot;floor_fraction_roi&quot;: 0.90796
+      },
+      &quot;signal_id&quot;: &quot;floor_visible&quot;,
+      &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+      &quot;value&quot;: true
+    },
+    {
+      &quot;confidence&quot;: 0.6968733333333333,
+      &quot;properties&quot;: {
+        &quot;boundary_count&quot;: 3,
+        &quot;hit_fraction_columns&quot;: 0.20469
+      },
+      &quot;signal_id&quot;: &quot;floor_boundary_available&quot;,
+      &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+      &quot;value&quot;: true
+    }
+  ],
+  &quot;summary&quot;: [
+    &quot;schema=perception_text_v2&quot;,
+    &quot;plugin=autonomy.perception.plugin-runner-v0&quot;,
+    &quot;plugins=frame,floor_plane&quot;,
+    &quot;plugin_run id=frame-observation-v0 status=ok duration_ms=8.470 signals=1 things=1 artifacts=0&quot;,
+    &quot;signal id=front_camera_available plugin=frame-observation-v0 value=true confidence=1.000&quot;,
+    &quot;thing id=front_camera_frame plugin=frame-observation-v0 kind=sensor_frame zone=full_frame frame=image bbox_xyxy_norm=0.0000,0.0000,1.0000,1.0000 confidence=1.000 brightness_mean=136.671 contrast_std=59.294 height_px=480 width_px=640&quot;,
+    &quot;plugin_run id=floor-plane-v0 status=ok duration_ms=299.908 signals=2 things=4 artifacts=0&quot;,
+    &quot;signal id=floor_visible plugin=floor-plane-v0 value=true confidence=1.000 floor_fraction_roi=0.90796&quot;,
+    &quot;signal id=floor_boundary_available plugin=floor-plane-v0 value=true confidence=0.697 boundary_count=3 hit_fraction_columns=0.20469&quot;,
+    &quot;thing id=traversable_floor plugin=floor-plane-v0 kind=surface zone=visible_floor frame=topdown_fov bbox_xyxy_norm=0.0000,0.0000,1.0000,1.0000 confidence=1.000 boundary_hit_fraction_columns=0.20469 evidence=color_floor_model floor_fraction_roi=0.90796 occupied_fraction_roi=0.09204&quot;,
+    &quot;thing id=floor_boundary_000 plugin=floor-plane-v0 kind=floor_boundary zone=mid_left frame=image bbox_xyxy_norm=0.3099,0.4489,0.4397,0.4843 confidence=1.000 evidence=first_non_floor_after_visible_floor floor_fraction_roi=0.90796 hit_pixel_count=534 width_fraction=0.13125&quot;,
+    &quot;thing id=floor_boundary_001 plugin=floor-plane-v0 kind=floor_boundary zone=mid_center frame=image bbox_xyxy_norm=0.4444,0.4530,0.4773,0.4718 confidence=0.565 evidence=first_non_floor_after_visible_floor floor_fraction_roi=0.90796 hit_pixel_count=130 width_fraction=0.03438&quot;
+  ],
+  &quot;things&quot;: [
+    {
+      &quot;confidence&quot;: 1.0,
+      &quot;kind&quot;: &quot;sensor_frame&quot;,
+      &quot;label&quot;: &quot;front camera frame&quot;,
+      &quot;location&quot;: {
+        &quot;bbox_xyxy_norm&quot;: [
+          0.0,
+          0.0,
+          1.0,
+          1.0
+        ],
+        &quot;frame&quot;: &quot;image&quot;,
+        &quot;polygon_xy_norm&quot;: null,
+        &quot;zone&quot;: &quot;full_frame&quot;
+      },
+      &quot;properties&quot;: {
+        &quot;brightness_mean&quot;: 136.671,
+        &quot;contrast_std&quot;: 59.294,
+        &quot;height_px&quot;: 480,
+        &quot;width_px&quot;: 640
+      },
+      &quot;source_plugin_id&quot;: &quot;frame-observation-v0&quot;,
+      &quot;thing_id&quot;: &quot;front_camera_frame&quot;
+    },
+    {
+      &quot;confidence&quot;: 1.0,
+      &quot;kind&quot;: &quot;surface&quot;,
+      &quot;label&quot;: &quot;traversable floor estimate&quot;,
+      &quot;location&quot;: {
+        &quot;bbox_xyxy_norm&quot;: [
+          0.0,
+          0.0,
+          1.0,
+          1.0
+        ],
+        &quot;frame&quot;: &quot;topdown_fov&quot;,
+        &quot;polygon_xy_norm&quot;: null,
+        &quot;zone&quot;: &quot;visible_floor&quot;
+      },
+      &quot;properties&quot;: {
+        &quot;boundary_hit_fraction_columns&quot;: 0.20469,
+        &quot;evidence&quot;: &quot;color_floor_model&quot;,
+        &quot;floor_fraction_roi&quot;: 0.90796,
+        &quot;occupied_fraction_roi&quot;: 0.09204
+      },
+      &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+      &quot;thing_id&quot;: &quot;traversable_floor&quot;
+    },
+    {
+      &quot;confidence&quot;: 1.0,
+      &quot;kind&quot;: &quot;floor_boundary&quot;,
+      &quot;label&quot;: &quot;first sustained non-floor boundary after visible floor&quot;,
+      &quot;location&quot;: {
+        &quot;bbox_xyxy_norm&quot;: [
+          0.3099,
+          0.4489,
+          0.4397,
+          0.4843
+        ],
+        &quot;frame&quot;: &quot;image&quot;,
+        &quot;polygon_xy_norm&quot;: null,
+        &quot;zone&quot;: &quot;mid_left&quot;
+      },
+      &quot;properties&quot;: {
+        &quot;evidence&quot;: &quot;first_non_floor_after_visible_floor&quot;,
+        &quot;floor_fraction_roi&quot;: 0.90796,
+        &quot;hit_pixel_count&quot;: 534,
+        &quot;width_fraction&quot;: 0.13125
+      },
+      &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+      &quot;thing_id&quot;: &quot;floor_boundary_000&quot;
+    },
+    {
+      &quot;confidence&quot;: 0.56484,
+      &quot;kind&quot;: &quot;floor_boundary&quot;,
+      &quot;label&quot;: &quot;first sustained non-floor boundary after visible floor&quot;,
+      &quot;location&quot;: {
+        &quot;bbox_xyxy_norm&quot;: [
+          0.4444,
+          0.453,
+          0.4773,
+          0.4718
+        ],
+        &quot;frame&quot;: &quot;image&quot;,
+        &quot;polygon_xy_norm&quot;: null,
+        &quot;zone&quot;: &quot;mid_center&quot;
+      },
+      &quot;properties&quot;: {
+        &quot;evidence&quot;: &quot;first_non_floor_after_visible_floor&quot;,
+        &quot;floor_fraction_roi&quot;: 0.90796,
+        &quot;hit_pixel_count&quot;: 130,
+        &quot;width_fraction&quot;: 0.03438
+      },
+      &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+      &quot;thing_id&quot;: &quot;floor_boundary_001&quot;
+    },
+    {
+      &quot;confidence&quot;: 0.52578,
+      &quot;kind&quot;: &quot;floor_boundary&quot;,
+      &quot;label&quot;: &quot;first sustained non-floor boundary after visible floor&quot;,
+      &quot;location&quot;: {
+        &quot;bbox_xyxy_norm&quot;: [
+          0.6072,
+          0.4196,
+          0.6338,
+          0.428
+        ],
+        &quot;frame&quot;: &quot;image&quot;,
+        &quot;polygon_xy_norm&quot;: null,
+        &quot;zone&quot;: &quot;mid_right&quot;
+      },
+      &quot;properties&quot;: {
+        &quot;evidence&quot;: &quot;first_non_floor_after_visible_floor&quot;,
+        &quot;floor_fraction_roi&quot;: 0.90796,
+        &quot;hit_pixel_count&quot;: 90,
+        &quot;width_fraction&quot;: 0.02813
+      },
+      &quot;source_plugin_id&quot;: &quot;floor-plane-v0&quot;,
+      &quot;thing_id&quot;: &quot;floor_boundary_002&quot;
+    }
+  ]
+}</pre>
+</section>
+  <h2>Sequence frames present</h2>
+  <p class="meta">donkey_frame_000626, donkey_frame_000723, donkey_frame_000737</p>
+</body>
+</html>

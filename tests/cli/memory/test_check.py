@@ -230,13 +230,25 @@ class MemoryCheckTests(unittest.TestCase):
         ]
         calls = {"n": 0}
 
-        def fake_pub(_url: str) -> dict:
-            idx = min(calls["n"], len(pubs) - 1)
-            calls["n"] += 1
-            return pubs[idx]
-
-        def fake_frame(_url: str) -> tuple[bytes, dict[str, str]]:
-            return b"jpeg-bytes", {"content-type": "image/jpeg", "x-frame-id": "present_frame"}
+        def fake_matched_pair(_url: str, **kwargs) -> dict:
+            after = kwargs.get("after_frame_id")
+            # Skip publications that are not after the previous frame when requested.
+            while calls["n"] < len(pubs):
+                pub = pubs[calls["n"]]
+                calls["n"] += 1
+                frame_id = pub["frame"]["frame_id"]
+                if after is not None and frame_id == after:
+                    continue
+                return {
+                    "publication": pub,
+                    "frame_bytes": b"jpeg-bytes",
+                    "frame_headers": {"x-frame-id": frame_id},
+                    "frame_id": frame_id,
+                    "matched": True,
+                    "attempts": 1,
+                    "image_required": True,
+                }
+            raise TimeoutError("no newer matched pair")
 
         with tempfile.TemporaryDirectory() as tmp:
             output_root = Path(tmp) / "memory-check"
@@ -253,8 +265,7 @@ class MemoryCheckTests(unittest.TestCase):
                     record=True,
                     json_output=True,
                     auto=True,
-                    fetch_publication=fake_pub,
-                    fetch_frame=fake_frame,
+                    fetch_matched_pair=fake_matched_pair,
                     output_root=output_root,
                 )
             self.assertEqual(result.exit_code, 0, result.message)
@@ -263,6 +274,7 @@ class MemoryCheckTests(unittest.TestCase):
             self.assertEqual(payload["provider"], "picar")
             self.assertEqual(payload["safety"]["action_policy"], "physical_observe_only")
             self.assertFalse(payload["safety"]["movement_commands_sent"])
+            self.assertIn("pair", payload["safety"]["scenario_note"])
             present = next(item for item in payload["phase_results"] if item["phase"] == "present")
             self.assertTrue(present["live_control_zero"])
             self.assertIn("present_frame", present["live_frame_ids"])
@@ -273,6 +285,33 @@ class MemoryCheckTests(unittest.TestCase):
             extract = (run_dir / "provenance_extract.html").read_text(encoding="utf-8")
             self.assertIn("retained evidence", extract.lower())
             self.assertIn("present_frame", extract)
+
+    def test_physical_pi_record_fails_when_pair_unavailable(self) -> None:
+        vehicle = {
+            "vehicle_id": "piracer",
+            "provider": "picar",
+            "connection": {"base_url": "http://piracer.test:8887"},
+        }
+
+        def fail_pair(_url: str, **_kwargs) -> dict:
+            raise TimeoutError("Timed out waiting for a matched publication/JPEG pair")
+
+        with mock.patch(
+            "cli.automa_cli.memory_check.discover_active_vehicles",
+            return_value={"vehicles": [vehicle]},
+        ), mock.patch(
+            "cli.automa_cli.memory_check.find_vehicle_by_id",
+            return_value=(vehicle, None),
+        ):
+            result = run_vehicle_memory_check(
+                vehicle_id="piracer",
+                record=True,
+                auto=True,
+                json_output=True,
+                fetch_matched_pair=fail_pair,
+            )
+        self.assertEqual(result.exit_code, 2)
+        self.assertIn("matched", result.message.lower())
 
     def test_physical_pi_rejects_non_zero_control(self) -> None:
         vehicle = {

@@ -28,6 +28,7 @@ from .memory import (
 )
 from .paths import ROOT, display_path, safe_path_part
 from .physical_observation import (
+    fetch_matched_observation_pair,
     fetch_observation_frame,
     fetch_observation_publication,
     picar_base_url,
@@ -73,13 +74,15 @@ def run_vehicle_memory_check(
     input_fn: Callable[[str], str] | None = None,
     fetch_publication: Callable[[str], dict[str, Any]] | None = None,
     fetch_frame: Callable[[str], tuple[bytes, dict[str, str]]] | None = None,
+    fetch_matched_pair: Callable[..., dict[str, Any]] | None = None,
 ) -> CommandResult:
     """Run present/dropout/expiry/reset gates through activated memory.
 
     - Chase / offline staging ids: process-local phase script.
     - PiCar: guided stationary captures from live ``/autonomy/observation/latest``,
       then the same lifecycle gates on those live-sourced observations (plus a
-      deterministic max-age jump for expiry). Never commands movement.
+      deterministic max-age jump for expiry). Never commands movement. Recorded
+      captures require publication/JPEG frame-id pairing.
     """
 
     provider: str | None = None
@@ -112,6 +115,7 @@ def run_vehicle_memory_check(
             input_fn=input_fn,
             fetch_publication=fetch_publication,
             fetch_frame=fetch_frame,
+            fetch_matched_pair=fetch_matched_pair,
         )
 
     return run_offline_memory_check(
@@ -334,12 +338,15 @@ def run_physical_memory_check(
     input_fn: Callable[[str], str] | None = None,
     fetch_publication: Callable[[str], dict[str, Any]] | None = None,
     fetch_frame: Callable[[str], tuple[bytes, dict[str, str]]] | None = None,
+    fetch_matched_pair: Callable[..., dict[str, Any]] | None = None,
 ) -> CommandResult:
     """Stationary Pi memory check against live observation publications.
 
     Captures present and dropout publications (never moves the car), asserts
     control stays zero, then evaluates the same present/dropout/expiry/reset
     gates on a short-max-age stage fed by those live-sourced observations.
+    When recording images, publication metadata and JPEG must share the same
+    frame id (verified via X-Frame-Id).
     """
 
     base_url = picar_base_url(vehicle)
@@ -350,17 +357,22 @@ def run_physical_memory_check(
         lambda url: fetch_observation_publication(url, timeout_s=timeout_s)
     )
     get_frame = fetch_frame or (lambda url: fetch_observation_frame(url, timeout_s=timeout_s))
+    get_matched_pair = fetch_matched_pair or (
+        lambda url, **kwargs: fetch_matched_observation_pair(url, **kwargs)
+    )
     prompt = input_fn or input
 
     _emit(output, "Physical memory check (stationary Pi)")
     _emit(output, f"vehicle: {vehicle_id}")
     _emit(output, f"endpoint: {base_url}")
     _emit(output, "movement: never commanded (manual placement only)")
+    _emit(output, "frame pairing: publication frame_id must match JPEG X-Frame-Id when recording")
     _emit(output, "")
 
     captured_images: dict[str, bytes] = {}
     live_samples: list[dict[str, Any]] = []
     last_frame_id: str | None = None
+    pair_attempts_total = 0
 
     placements = (
         (
@@ -387,17 +399,51 @@ def run_physical_memory_check(
             _emit(output, "(auto mode: capturing without prompt)")
 
         try:
-            publication = _wait_for_fresh_publication(
-                base_url=base_url,
-                get_publication=get_publication,
-                previous_frame_id=last_frame_id,
-                timeout_s=fresh_timeout_s,
-            )
+            if record:
+                # Prefer matched pair so recorded JPEGs cannot drift from JSON.
+                # Poll until frame advances past the previous placement capture.
+                pair = get_matched_pair(
+                    base_url,
+                    timeout_s=timeout_s,
+                    match_timeout_s=max(float(fresh_timeout_s), float(timeout_s)),
+                    require_image=True,
+                    after_frame_id=last_frame_id,
+                )
+                if not pair.get("matched"):
+                    return CommandResult(2, f"{placement}: matched pair reported matched=false")
+                publication = pair["publication"]
+                pair_attempts_total += int(pair.get("attempts") or 1)
+                frame_bytes = pair.get("frame_bytes")
+                frame_id = str(pair.get("frame_id") or "")
+                if not frame_id:
+                    return CommandResult(2, f"{placement}: matched pair missing frame_id")
+                if last_frame_id is not None and frame_id == last_frame_id:
+                    return CommandResult(
+                        2,
+                        f"{placement}: matched pair did not advance past frame_id={last_frame_id}",
+                    )
+                if not isinstance(frame_bytes, (bytes, bytearray)) or not frame_bytes:
+                    return CommandResult(
+                        2,
+                        f"{placement}: matched pair missing nonempty JPEG for frame_id={frame_id}",
+                    )
+                captured_images[frame_id] = bytes(frame_bytes)
+                pair_matched = True
+            else:
+                publication = _wait_for_fresh_publication(
+                    base_url=base_url,
+                    get_publication=get_publication,
+                    previous_frame_id=last_frame_id,
+                    timeout_s=fresh_timeout_s,
+                )
+                frame_meta = (
+                    publication.get("frame") if isinstance(publication.get("frame"), dict) else {}
+                )
+                frame_id = str(frame_meta.get("frame_id") or f"live_{placement}_{index}")
+                pair_matched = False
         except (ConnectionError, TimeoutError) as exc:
-            return CommandResult(2, f"Could not fetch onboard observation: {exc}")
+            return CommandResult(2, f"Could not fetch verified onboard observation: {exc}")
 
-        frame_meta = publication.get("frame") if isinstance(publication.get("frame"), dict) else {}
-        frame_id = str(frame_meta.get("frame_id") or f"live_{placement}_{index}")
         last_frame_id = frame_id or last_frame_id
         control = _publication_control(publication)
         if not control["control_zero"]:
@@ -411,15 +457,6 @@ def run_physical_memory_check(
                     ]
                 ),
             )
-
-        frame_bytes: bytes | None = None
-        if record:
-            try:
-                frame_bytes, _headers = get_frame(base_url)
-            except ConnectionError as exc:
-                _emit(output, f"  warning: could not fetch frame image: {exc}")
-            if frame_bytes:
-                captured_images[frame_id] = frame_bytes
 
         force_empty = placement == "dropout"
         check_frame = publication_to_check_frame(
@@ -438,12 +475,14 @@ def run_physical_memory_check(
                     "drive_mode": publication.get("drive_mode") or publication.get("mode"),
                 },
                 "control": control,
+                "frame_pair_matched": pair_matched,
             }
         )
         _emit(
             output,
             f"  captured frame_id={frame_id} health={publication.get('health')} "
-            f"control_zero={control['control_zero']}",
+            f"control_zero={control['control_zero']}"
+            + (f" pair_matched={pair_matched}" if record else ""),
         )
 
     present_frames = [
@@ -505,8 +544,10 @@ def run_physical_memory_check(
         safety_note=(
             "Stationary Pi path captures live /autonomy/observation/latest publications "
             "with control-zero assertions, then evaluates memory lifecycle gates on those "
-            "live-sourced observations. Expiry uses a deterministic max-age time jump; "
-            "reset is evaluated on the check stage. No movement commands are sent."
+            "live-sourced observations. When --record is set, publication JSON and JPEG "
+            f"must share the same frame id (pair attempts total={pair_attempts_total}). "
+            "Expiry uses a deterministic max-age time jump; reset is evaluated on the "
+            "check stage. No movement commands are sent."
         ),
     )
 

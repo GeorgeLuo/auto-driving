@@ -11,12 +11,12 @@ is active. It should give the decision cycle bounded, inspectable continuity
 across frames by retaining attributed observation evidence without claiming a
 complete world model or granting movement authority.
 
-**Where it stands:** **not ready to close.** Packages 1–4, Memory map,
-reset, offline **replay**, opt-in **record**, and Chase-first **`memory check`**
-are landed. Still required: stationary Pi **visual-provenance check**, then
-package 6 **closeout**. Next: Pi guided memory check. See the plan’s
-[Remaining For Closeout](milestones/005-evidence-memory-foundation/plan.html)
-and exit-criteria status table. Do not start 006 while those remain open.
+**Where it stands:** **not ready to close** (package 6 only). Packages 1–5 are
+landed, including Memory map, reset, replay, opt-in record, Chase lifecycle
+check, and stationary Pi live-publication **memory check**. Next: package 6
+**closeout** (`closeout.md`, completed ledger, then promote 006 pre-plan). See
+[Remaining For Closeout](milestones/005-evidence-memory-foundation/plan.html).
+Do not start 006 implementation until closeout lands.
 
 ## Immediate Pre-Plan (Not Active)
 

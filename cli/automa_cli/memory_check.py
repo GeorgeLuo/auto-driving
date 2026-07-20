@@ -7,7 +7,7 @@ import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, TextIO
+from typing import Any, Callable, TextIO
 
 from autonomy.decision import (
     ActivatedMemoryStage,
@@ -27,6 +27,11 @@ from .memory import (
     render_memory_provenance_extract_html,
 )
 from .paths import ROOT, display_path, safe_path_part
+from .physical_observation import (
+    fetch_observation_frame,
+    fetch_observation_publication,
+    picar_base_url,
+)
 from .vehicles import discover_active_vehicles, find_vehicle_by_id, format_active_vehicles_snapshot
 
 
@@ -62,40 +67,78 @@ def run_vehicle_memory_check(
     output: TextIO | None = None,
     output_root: Path | None = None,
     skip_discovery: bool = False,
+    auto: bool = False,
+    timeout_s: float = 3.0,
+    fresh_timeout_s: float = 12.0,
+    input_fn: Callable[[str], str] | None = None,
+    fetch_publication: Callable[[str], dict[str, Any]] | None = None,
+    fetch_frame: Callable[[str], tuple[bytes, dict[str, str]]] | None = None,
 ) -> CommandResult:
     """Run present/dropout/expiry/reset gates through activated memory.
 
-    Chase-first evaluation unit: process-local scripted observations that match
-    the live observation shape. The rewritten path remains idle (no control is
-    commanded). Pass ``record=True`` for a bounded check report and provenance
-    extract. Live Pi guided placement is intentionally out of this unit.
+    - Chase / offline staging ids: process-local phase script.
+    - PiCar: guided stationary captures from live ``/autonomy/observation/latest``,
+      then the same lifecycle gates on those live-sourced observations (plus a
+      deterministic max-age jump for expiry). Never commands movement.
     """
 
     provider: str | None = None
+    vehicle: dict[str, Any] | None = None
     if not skip_discovery:
         discovery = discover_active_vehicles(
-            timeout_s=1.0,
+            timeout_s=max(0.5, float(timeout_s)),
             include_picar=True,
             include_chase_sim=True,
             include_inactive=True,
         )
         vehicle, error = find_vehicle_by_id(discovery, vehicle_id)
         if error and vehicle is None:
-            # Offline evaluation still allowed when the vehicle is only a staging id.
             _emit(output, f"discovery: {error} (continuing offline phase script)")
         elif vehicle is not None:
             provider = str(vehicle.get("provider") or "")
-            if provider == "picar":
-                return CommandResult(
-                    2,
-                    "\n".join(
-                        [
-                            f"Vehicle {vehicle_id!r} is a physical PiCar.",
-                            "This unit lands the Chase/offline phase-script memory check.",
-                            "Stationary Pi present/dropout/expiry/reset check remains a later PR.",
-                        ]
-                    ),
-                )
+
+    if provider == "picar":
+        return run_physical_memory_check(
+            vehicle_id=vehicle_id,
+            vehicle=vehicle or {},
+            implementation_id=implementation_id,
+            record=record,
+            json_output=json_output,
+            output=output,
+            output_root=output_root,
+            auto=auto,
+            timeout_s=timeout_s,
+            fresh_timeout_s=fresh_timeout_s,
+            input_fn=input_fn,
+            fetch_publication=fetch_publication,
+            fetch_frame=fetch_frame,
+        )
+
+    return run_offline_memory_check(
+        vehicle_id=vehicle_id,
+        provider=provider or "offline",
+        implementation_id=implementation_id,
+        record=record,
+        json_output=json_output,
+        output=output,
+        output_root=output_root,
+    )
+
+
+def run_offline_memory_check(
+    *,
+    vehicle_id: str,
+    provider: str = "offline",
+    implementation_id: str | None = None,
+    record: bool = False,
+    json_output: bool = False,
+    output: TextIO | None = None,
+    output_root: Path | None = None,
+    phases: list[dict[str, Any]] | None = None,
+    safety_note: str | None = None,
+    captured_images: dict[str, bytes] | None = None,
+) -> CommandResult:
+    """Run lifecycle gates from a phase script (Chase / offline / Pi post-capture)."""
 
     selected = implementation_id or DEFAULT_MEMORY_IMPLEMENTATION
     known = available_memory_implementation_ids()
@@ -115,7 +158,7 @@ def run_vehicle_memory_check(
     except (FileNotFoundError, ValueError, TypeError, ImportError, AttributeError, OSError) as exc:
         return CommandResult(2, f"Could not load memory for check: {exc}")
 
-    phases = build_default_memory_check_phases()
+    active_phases = phases if phases is not None else build_default_memory_check_phases()
     phase_results: list[dict[str, Any]] = []
     all_frames: list[dict[str, Any]] = []
     prior_epoch: str | None = None
@@ -125,11 +168,11 @@ def run_vehicle_memory_check(
     _emit(output, f"vehicle: {vehicle_id}")
     _emit(output, f"implementation: {selected}")
     _emit(output, f"activation: {activation_source}")
-    _emit(output, f"provider: {provider or 'offline'}")
-    _emit(output, "movement: never commanded (phase-script evaluation)")
+    _emit(output, f"provider: {provider}")
+    _emit(output, "movement: never commanded")
     _emit(output, "")
 
-    for phase in phases:
+    for phase in active_phases:
         name = str(phase["name"])
         _emit(output, f"phase: {name}")
         if name == "reset":
@@ -158,6 +201,7 @@ def run_vehicle_memory_check(
         elif prior_epoch is None:
             prior_epoch = str(final.get("epoch_id") or "")
 
+        live_control = phase.get("live_control")
         phase_result = {
             "phase": name,
             "passed": bool(score.get("passed")),
@@ -172,19 +216,30 @@ def run_vehicle_memory_check(
                 if isinstance(record, dict) and record.get("record_id")
             ),
             "frame_count": len(frames_for_phase),
+            "live_control_zero": (
+                None if live_control is None else bool(live_control.get("control_zero"))
+            ),
+            "live_frame_ids": list(phase.get("live_frame_ids") or []),
             "snapshot": final,
         }
+        if live_control is not None and not live_control.get("control_zero"):
+            phase_result["passed"] = False
+            phase_result["score"] = {
+                **score,
+                "passed": False,
+                "reason": "live publication control was non-zero (movement not allowed)",
+                "live_control": live_control,
+            }
         phase_results.append(phase_result)
         status = "PASS" if phase_result["passed"] else "FAIL"
         _emit(
             output,
             f"  {status}  keys={phase_result['record_count']}  "
             f"health={phase_result['health']}  "
-            f"reason={score.get('reason')}",
+            f"reason={phase_result['score'].get('reason')}",
         )
 
     passed = all(bool(item.get("passed")) for item in phase_results)
-    # Provenance rows from the present-phase snapshot (keys still attributed).
     present_phase = next((item for item in phase_results if item["phase"] == "present"), None)
     present_snapshot = (
         present_phase.get("snapshot")
@@ -196,7 +251,7 @@ def run_vehicle_memory_check(
     report: dict[str, Any] = {
         "schema": MEMORY_CHECK_RESULT_SCHEMA,
         "vehicle_id": vehicle_id,
-        "provider": provider or "offline",
+        "provider": provider,
         "implementation_id": selected,
         "activation": activation_source,
         "passed": passed,
@@ -210,12 +265,14 @@ def run_vehicle_memory_check(
         "provenance_rows": provenance_rows,
         "safety": {
             "movement_commands_sent": False,
-            "action_policy": "offline_phase_script",
+            "action_policy": (
+                "physical_observe_only" if provider == "picar" else "offline_phase_script"
+            ),
             "rewritten_engine_idle": True,
-            "scenario_note": (
-                "Chase-first unit uses camera-equivalent structured observations "
-                "and the same memory stage as live hosts; live chaser-depth-obstacles "
-                "sampling remains optional enrichment, not required for these gates."
+            "scenario_note": safety_note
+            or (
+                "Offline/Chase phase script uses camera-equivalent structured observations "
+                "and the same memory stage as live hosts."
             ),
         },
         "recorded": False,
@@ -230,6 +287,7 @@ def run_vehicle_memory_check(
                 all_frames=all_frames,
                 phase_results=phase_results,
                 output_root=output_root or memory_check_output_root(),
+                captured_images=captured_images,
             )
         except OSError as exc:
             return CommandResult(2, f"Could not write memory check record: {exc}")
@@ -259,6 +317,317 @@ def run_vehicle_memory_check(
         lines.append(f"Record: {report['record_dir']}")
         lines.append(f"Provenance extract: {report['provenance_extract']}")
     return CommandResult(exit_code, "\n".join(lines))
+
+
+def run_physical_memory_check(
+    *,
+    vehicle_id: str,
+    vehicle: dict[str, Any],
+    implementation_id: str | None = None,
+    record: bool = False,
+    json_output: bool = False,
+    output: TextIO | None = None,
+    output_root: Path | None = None,
+    auto: bool = False,
+    timeout_s: float = 3.0,
+    fresh_timeout_s: float = 12.0,
+    input_fn: Callable[[str], str] | None = None,
+    fetch_publication: Callable[[str], dict[str, Any]] | None = None,
+    fetch_frame: Callable[[str], tuple[bytes, dict[str, str]]] | None = None,
+) -> CommandResult:
+    """Stationary Pi memory check against live observation publications.
+
+    Captures present and dropout publications (never moves the car), asserts
+    control stays zero, then evaluates the same present/dropout/expiry/reset
+    gates on a short-max-age stage fed by those live-sourced observations.
+    """
+
+    base_url = picar_base_url(vehicle)
+    if not base_url:
+        return CommandResult(2, f"Vehicle {vehicle_id!r} has no picar base_url connection.")
+
+    get_publication = fetch_publication or (
+        lambda url: fetch_observation_publication(url, timeout_s=timeout_s)
+    )
+    get_frame = fetch_frame or (lambda url: fetch_observation_frame(url, timeout_s=timeout_s))
+    prompt = input_fn or input
+
+    _emit(output, "Physical memory check (stationary Pi)")
+    _emit(output, f"vehicle: {vehicle_id}")
+    _emit(output, f"endpoint: {base_url}")
+    _emit(output, "movement: never commanded (manual placement only)")
+    _emit(output, "")
+
+    captured_images: dict[str, bytes] = {}
+    live_samples: list[dict[str, Any]] = []
+    last_frame_id: str | None = None
+
+    placements = (
+        (
+            "present",
+            "Object present: place a contrasting floor-standing object in view "
+            "(left/center/right). Memory should retain boundary evidence.",
+        ),
+        (
+            "dropout",
+            "Object removed / clear floor: remove the object so perception can drop "
+            "boundary evidence. Retained keys should still survive briefly.",
+        ),
+    )
+
+    for index, (placement, message) in enumerate(placements):
+        _emit(output, f"[{index + 1}/{len(placements)}] {placement}")
+        _emit(output, message)
+        if not auto:
+            try:
+                prompt("Press Enter when the placement is ready (Ctrl-C to abort)... ")
+            except KeyboardInterrupt:
+                return CommandResult(130, "Physical memory check aborted.")
+        else:
+            _emit(output, "(auto mode: capturing without prompt)")
+
+        try:
+            publication = _wait_for_fresh_publication(
+                base_url=base_url,
+                get_publication=get_publication,
+                previous_frame_id=last_frame_id,
+                timeout_s=fresh_timeout_s,
+            )
+        except (ConnectionError, TimeoutError) as exc:
+            return CommandResult(2, f"Could not fetch onboard observation: {exc}")
+
+        frame_meta = publication.get("frame") if isinstance(publication.get("frame"), dict) else {}
+        frame_id = str(frame_meta.get("frame_id") or f"live_{placement}_{index}")
+        last_frame_id = frame_id or last_frame_id
+        control = _publication_control(publication)
+        if not control["control_zero"]:
+            return CommandResult(
+                2,
+                "\n".join(
+                    [
+                        f"Live publication control is non-zero during {placement} capture.",
+                        f"steering={control['steering']} throttle={control['throttle']}",
+                        "Memory check never commands movement; keep drive mode manual/user.",
+                    ]
+                ),
+            )
+
+        frame_bytes: bytes | None = None
+        if record:
+            try:
+                frame_bytes, _headers = get_frame(base_url)
+            except ConnectionError as exc:
+                _emit(output, f"  warning: could not fetch frame image: {exc}")
+            if frame_bytes:
+                captured_images[frame_id] = frame_bytes
+
+        force_empty = placement == "dropout"
+        check_frame = publication_to_check_frame(
+            publication,
+            index=index,
+            force_empty=force_empty,
+        )
+        live_samples.append(
+            {
+                "placement": placement,
+                "frame": check_frame,
+                "publication": {
+                    "health": publication.get("health"),
+                    "frame_id": frame_id,
+                    "control": publication.get("control"),
+                    "drive_mode": publication.get("drive_mode") or publication.get("mode"),
+                },
+                "control": control,
+            }
+        )
+        _emit(
+            output,
+            f"  captured frame_id={frame_id} health={publication.get('health')} "
+            f"control_zero={control['control_zero']}",
+        )
+
+    present_frames = [
+        sample["frame"] for sample in live_samples if sample["placement"] == "present"
+    ]
+    dropout_frames = [
+        sample["frame"] for sample in live_samples if sample["placement"] == "dropout"
+    ]
+    if not present_frames:
+        return CommandResult(2, "No present-phase live frames were captured.")
+    if not dropout_frames:
+        return CommandResult(2, "No dropout-phase live frames were captured.")
+
+    # Expiry uses a synthetic time jump after the last live timestamp.
+    last_ts = max(int(frame.get("timestamp_ms") or 0) for frame in present_frames + dropout_frames)
+    expiry_frame = {
+        "frame_id": "expiry_time_jump",
+        "frame_index": 99,
+        "timestamp_ms": last_ts + CHECK_MAX_AGE_MS + 5_000,
+        "observation": {
+            "observation_id": "obs_expiry_jump",
+            "created_at_ms": last_ts + CHECK_MAX_AGE_MS + 5_000,
+            "sensor_snapshot": {},
+            "perception_plugin_id": "lightweight_observer",
+            "summary": ["synthetic max-age jump after live captures"],
+            "things": [],
+            "signals": [],
+        },
+    }
+    present_control = live_samples[0]["control"]
+    dropout_control = live_samples[-1]["control"]
+    phases = [
+        {
+            "name": "present",
+            "frames": present_frames,
+            "live_control": present_control,
+            "live_frame_ids": [str(frame.get("frame_id")) for frame in present_frames],
+        },
+        {
+            "name": "dropout",
+            "frames": dropout_frames,
+            "live_control": dropout_control,
+            "live_frame_ids": [str(frame.get("frame_id")) for frame in dropout_frames],
+        },
+        {"name": "expiry", "frames": [expiry_frame]},
+        {"name": "reset", "frames": []},
+    ]
+
+    return run_offline_memory_check(
+        vehicle_id=vehicle_id,
+        provider="picar",
+        implementation_id=implementation_id,
+        record=record,
+        json_output=json_output,
+        output=output,
+        output_root=output_root,
+        phases=phases,
+        captured_images=captured_images or None,
+        safety_note=(
+            "Stationary Pi path captures live /autonomy/observation/latest publications "
+            "with control-zero assertions, then evaluates memory lifecycle gates on those "
+            "live-sourced observations. Expiry uses a deterministic max-age time jump; "
+            "reset is evaluated on the check stage. No movement commands are sent."
+        ),
+    )
+
+
+def publication_to_check_frame(
+    publication: dict[str, Any],
+    *,
+    index: int,
+    force_empty: bool = False,
+) -> dict[str, Any]:
+    """Adapt a live onboard publication into a memory-check sequence frame."""
+
+    frame = publication.get("frame") if isinstance(publication.get("frame"), dict) else {}
+    perception = (
+        publication.get("perception") if isinstance(publication.get("perception"), dict) else {}
+    )
+    observation = (
+        publication.get("observation") if isinstance(publication.get("observation"), dict) else None
+    )
+    timestamp_ms = (
+        frame.get("captured_at_ms")
+        or frame.get("completed_at_ms")
+        or publication.get("timestamp_ms")
+        or (index + 1) * 100
+    )
+    frame_id = str(frame.get("frame_id") or f"live_frame_{index:03d}")
+    frame_index = int(frame.get("frame_index") or index)
+
+    if observation is None:
+        things = perception.get("things") if isinstance(perception.get("things"), list) else []
+        signals = perception.get("signals") if isinstance(perception.get("signals"), list) else []
+        observation = {
+            "observation_id": f"obs_live_{index:03d}",
+            "created_at_ms": int(timestamp_ms),
+            "sensor_snapshot": {},
+            "perception_plugin_id": perception.get("plugin_id")
+            or publication.get("algorithm")
+            or "onboard_perception",
+            "summary": list(perception.get("lines") or [])[:8]
+            if isinstance(perception.get("lines"), list)
+            else [f"live publication {frame_id}"],
+            "things": [item for item in things if isinstance(item, dict)],
+            "signals": [item for item in signals if isinstance(item, dict)],
+        }
+    else:
+        observation = dict(observation)
+        if observation.get("created_at_ms") is None:
+            observation["created_at_ms"] = int(timestamp_ms)
+        if not observation.get("observation_id"):
+            observation["observation_id"] = f"obs_live_{index:03d}"
+
+    if force_empty:
+        observation = {
+            **observation,
+            "things": [],
+            "signals": [],
+            "summary": list(observation.get("summary") or []) + ["forced_empty_for_dropout_phase"],
+        }
+
+    return {
+        "frame_id": frame_id,
+        "frame_index": frame_index,
+        "timestamp_ms": int(observation.get("created_at_ms") or timestamp_ms),
+        "observation": observation,
+        "source": "live_publication",
+    }
+
+
+def _publication_control(publication: dict[str, Any]) -> dict[str, Any]:
+    control = publication.get("control") if isinstance(publication.get("control"), dict) else {}
+    steering = _as_float(control.get("steering"))
+    throttle = _as_float(control.get("throttle"))
+    return {
+        "steering": steering,
+        "throttle": throttle,
+        "control_zero": steering == 0.0 and throttle == 0.0,
+        "mode": publication.get("drive_mode") or publication.get("mode"),
+    }
+
+
+def _as_float(value: Any) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _wait_for_fresh_publication(
+    *,
+    base_url: str,
+    get_publication: Callable[[str], dict[str, Any]],
+    previous_frame_id: str | None,
+    timeout_s: float,
+) -> dict[str, Any]:
+    deadline = time.monotonic() + max(0.5, float(timeout_s))
+    last_error: str | None = None
+    last_payload: dict[str, Any] | None = None
+    while time.monotonic() < deadline:
+        try:
+            payload = get_publication(base_url)
+        except ConnectionError as exc:
+            last_error = str(exc)
+            time.sleep(0.25)
+            continue
+        last_payload = payload
+        frame = payload.get("frame") if isinstance(payload.get("frame"), dict) else {}
+        frame_id = frame.get("frame_id")
+        health = payload.get("health")
+        if previous_frame_id is None:
+            if frame_id or health in {"unavailable", "stale", "error", "absent", "warming", "healthy"}:
+                return payload
+        else:
+            if frame_id and frame_id != previous_frame_id:
+                return payload
+        time.sleep(0.25)
+    if last_payload is not None:
+        return last_payload
+    raise TimeoutError(
+        f"Timed out after {timeout_s}s waiting for a fresh onboard observation"
+        + (f": {last_error}" if last_error else "")
+    )
 
 
 def build_default_memory_check_phases() -> list[dict[str, Any]]:
@@ -421,6 +790,7 @@ def write_memory_check_record(
     all_frames: list[dict[str, Any]],
     phase_results: list[dict[str, Any]],
     output_root: Path,
+    captured_images: dict[str, bytes] | None = None,
 ) -> dict[str, Any]:
     """Write bounded check artifacts and a provenance extract from present keys."""
 
@@ -468,7 +838,11 @@ def write_memory_check_record(
         json.dumps(
             {
                 "schema": "automa_memory_observation_sequence_v0",
-                "source": "memory_check_default_phases",
+                "source": (
+                    "live_pi_publications"
+                    if report.get("provider") == "picar"
+                    else "memory_check_default_phases"
+                ),
                 "frames": all_frames,
             },
             indent=2,
@@ -484,6 +858,16 @@ def write_memory_check_record(
     extract_path = record_dir / "provenance_extract.html"
     extract_path.write_text(extract_html, encoding="utf-8")
 
+    image_paths: dict[str, str] = {}
+    if captured_images:
+        frames_dir = record_dir / "frames"
+        frames_dir.mkdir(parents=True, exist_ok=True)
+        for frame_id, blob in captured_images.items():
+            safe_name = safe_path_part(str(frame_id)) + ".jpg"
+            path = frames_dir / safe_name
+            path.write_bytes(blob)
+            image_paths[str(frame_id)] = display_path(path)
+
     artifacts = [
         "manifest.json",
         "report.json",
@@ -491,6 +875,8 @@ def write_memory_check_record(
         "present_memory.json",
         "provenance_extract.html",
     ]
+    if image_paths:
+        artifacts.append("frames/")
     manifest = {
         "schema": MEMORY_CHECK_RECORD_SCHEMA,
         "run_id": run_id,
@@ -502,16 +888,21 @@ def write_memory_check_record(
         "implementation_id": report.get("implementation_id"),
         "bounds": {
             "artifacts": artifacts,
-            "includes_raw_camera_images": False,
-            "includes_live_host_state": False,
+            "includes_raw_camera_images": bool(image_paths),
+            "includes_live_host_state": report.get("provider") == "picar",
             "retained_evidence_labeled_as": "retained_not_current",
             "phases": report.get("phases"),
+            "captured_frame_images": image_paths,
         },
-        "artifacts": {name: display_path(record_dir / name) for name in artifacts},
+        "artifacts": {
+            name: display_path(record_dir / name.rstrip("/"))
+            for name in artifacts
+        },
         "notes": [
             "Recording is disabled unless --record is passed.",
             "Phase script exercises present, dropout survival, max-age expiry, and reset.",
             "Retained geometry is attributed to provenance.frame_id only.",
+            "Pi path may include exact JPEG frames captured with each live publication.",
         ],
     }
     (record_dir / "manifest.json").write_text(

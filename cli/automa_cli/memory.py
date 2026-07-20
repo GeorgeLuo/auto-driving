@@ -565,6 +565,7 @@ def render_memory_provenance_extract_html(
     payload: dict[str, Any],
     frames: list[dict[str, Any]],
     provenance_rows: list[dict[str, Any]],
+    frame_image_paths: dict[str, str] | None = None,
 ) -> str:
     """Render a compact HTML extract: retained key → value → source observation."""
 
@@ -617,6 +618,21 @@ def render_memory_provenance_extract_html(
             "</li>"
         )
 
+    frame_images = frame_image_paths or {}
+    frame_figures: list[str] = []
+    for frame in frames:
+        frame_id = str(frame.get("frame_id") or "").strip()
+        image_path = frame_images.get(frame_id)
+        if not frame_id or not image_path:
+            continue
+        frame_figures.append(
+            "<figure>"
+            f"<img src=\"{html.escape(image_path, quote=True)}\" "
+            f"alt=\"Captured source frame {html.escape(frame_id, quote=True)}\">"
+            f"<figcaption><code>{html.escape(frame_id)}</code></figcaption>"
+            "</figure>"
+        )
+
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -647,6 +663,10 @@ def render_memory_provenance_extract_html(
     .note {{
       border-left: 3px solid #176b87; padding: 8px 12px; background: #e7f3f8; margin: 16px 0;
     }}
+    .frame-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }}
+    figure {{ margin: 0; }}
+    figure img {{ display: block; width: 100%; height: auto; border: 1px solid #d9dde2; }}
+    figcaption {{ margin-top: 5px; color: #62676f; }}
   </style>
 </head>
 <body>
@@ -668,6 +688,10 @@ def render_memory_provenance_extract_html(
   <ol>
     {''.join(timeline) or '<li>no per-frame rows</li>'}
   </ol>
+  <h2>Captured source frames</h2>
+  <div class="frame-grid">
+    {''.join(frame_figures) if frame_figures else '<p class="meta">No captured frame images in this extract.</p>'}
+  </div>
   <h2>Retained keys → mapped values → source observations</h2>
   {''.join(rows_html) if rows_html else '<p class="meta">No retained records in final snapshot.</p>'}
   <h2>Sequence frames present</h2>

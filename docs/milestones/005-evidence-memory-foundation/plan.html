@@ -174,7 +174,7 @@
       <div class="meta">
         <span class="pill">Status: active — not ready to close</span>
         <span class="pill">Packages open: 5 (validation repair) and 6</span>
-        <span class="pill">Next after pairing: live onboard lifecycle proof</span>
+        <span class="pill">Next: Chase frameIndex + shadow</span>
         <span class="pill">Proposed: 2026-07-15</span>
         <span class="pill">Action policy: idle</span>
         <span class="pill">Hosts: Chase and DonkeyCar</span>
@@ -218,8 +218,8 @@
             <tr>
               <td><strong>Stationary Pi visual-provenance check</strong> (present / dropout / expiry / reset, recorded)</td>
               <td>5</td>
-              <td><span class="status blocked">Rework</span></td>
-              <td>Publication/JPEG pairing is verified on <code>--record</code> (remediation 1). Still open: dropout is forced in the checker and expiry/reset use a local ephemeral reducer rather than the live onboard stage.</td>
+              <td><span class="status done">Validated</span></td>
+              <td>Verified exact frame pairs and live onboard present/dropout/expiry/reset under the configured 10-second maximum age. <a href="evidence/physical-memory-lifecycle/provenance_extract.html">Review the tracked visual-provenance extract</a>. Remediations 3–6 still block full milestone closeout.</td>
             </tr>
             <tr>
               <td><strong>Memory contract and bounds hardening</strong></td>
@@ -279,16 +279,16 @@
           <thead><tr><th>Severity</th><th>Finding</th><th>Implementation evidence</th><th>Required correction</th></tr></thead>
           <tbody>
             <tr>
-              <td><span class="status blocked">Blocker</span></td>
-              <td>Physical dropout is forced and expiry/reset run through an ephemeral local reducer rather than proving the onboard lifecycle.</td>
-              <td><code>cli/automa_cli/memory_check.py</code>: <code>force_empty</code>, <code>CHECK_MAX_AGE_MS</code>, <code>_load_check_stage</code>.</td>
-              <td>Drive every phase from observed live publications and validate reset/expiry against the activated onboard stage.</td>
+              <td><span class="status done">Addressed</span></td>
+              <td>The previous physical check forced dropout and ran expiry/reset through an ephemeral local reducer rather than proving the onboard lifecycle.</td>
+              <td>Code path scores live <code>publication.memory</code>, lifecycle keys = currently-refreshed present∖dropout (False signals excluded; always-on camera/floor excluded), empty-state from onboard reset snapshot, and transition from epoch/reset_count. The guided Pi run retained <code>thing:floor_boundary_002</code> after its source disappeared, expired it under the live 10-second policy, and reset <code>epoch-4</code> to <code>epoch-5</code>. <a href="evidence/physical-memory-lifecycle/provenance_extract.html">Tracked evidence</a>.</td>
+              <td>Done in remediation block 2; no forced dropout, local reducer, or movement command was used.</td>
             </tr>
             <tr>
-              <td><span class="status blocked">Blocker</span></td>
+              <td><span class="status done">Addressed</span></td>
               <td>Pi publication metadata and the recorded JPEG are fetched separately; the returned <code>X-Frame-Id</code> is ignored.</td>
-              <td><code>memory_check.py</code> fetches publication then frame; <code>physical_observation.py</code> returns headers the caller discards.</td>
-              <td>Fetch an atomic publication artifact or reject and retry unless the JPEG header matches the publication frame ID.</td>
+              <td><code>fetch_matched_observation_pair</code> with <code>after_frame_id</code> and nonempty JPEG requirement.</td>
+              <td>Done in remediation block 1.</td>
             </tr>
             <tr>
               <td><span class="status blocked">Blocker</span></td>
@@ -340,8 +340,8 @@
 
       <h3 style="margin-top: 18px;">Required Remediation Order</h3>
       <ol>
-        <li><strong>In progress / this PR:</strong> Make Pi publication/frame pairing atomic or explicitly verified.</li>
-        <li>Replace synthetic physical lifecycle phases with checks of the active onboard stage.</li>
+        <li><strong>Done:</strong> Make Pi publication/frame pairing atomic or explicitly verified.</li>
+        <li><strong>Done:</strong> Replace synthetic physical lifecycle phases with checks of the active onboard stage (lifecycle keys = present∖dropout observed evidence; fail-closed frame freshness).</li>
         <li>Preserve Chase frame identity and implement the live shadow/reference evaluator.</li>
         <li>Deeply detach snapshots; enforce byte limits and plugin-safe record identity.</li>
         <li>Add missing conflict, long-sequence, size-bound, stale-state, reset, and frame-pairing tests.</li>
@@ -349,9 +349,17 @@
       </ol>
       <p class="note" style="margin-top: 12px;">
         <strong>2026-07-20 remediation block 1:</strong> <code>fetch_matched_observation_pair</code>
-        retries until publication <code>frame.frame_id</code> equals JPEG <code>X-Frame-Id</code>.
-        Pi <code>memory check --record</code> uses that verified pair and fails closed on mismatch
-        timeout. Remaining remediation items stay open.
+        retries until publication <code>frame.frame_id</code> equals JPEG <code>X-Frame-Id</code>
+        (with <code>after_frame_id</code> freshness). Pi <code>memory check --record</code> fails closed
+        without a verified nonempty pair.
+      </p>
+      <p class="note" style="margin-top: 12px;">
+        <strong>2026-07-20 remediation block 2:</strong> Pi <code>memory check</code> scores
+        <code>publication.memory</code> from the activated onboard stage; lifecycle keys are
+        <code>present_observed − dropout_observed</code> (excluding always-refreshed camera/floor
+        evidence); non-record capture fails closed without a new frame id; expiry waits only for
+        lifecycle keys; reset uses onboard POST + epoch/reset_count. A successful stationary
+        guided run is preserved in the <a href="evidence/physical-memory-lifecycle/provenance_extract.html">physical lifecycle extract</a>.
       </p>
     </section>
 
@@ -455,13 +463,13 @@
           <p><strong>Success signal:</strong> Chase's built-in decision model remains the movement authority while the rewritten cycle runs in shadow/observe-only mode. A live camera-derived run visibly links current perception to retained, expired, and reset memory records through exact source frames. A frame-aligned evaluator may compare the rewritten cycle with Chase debug/reference state, but that state never enters the controller or memory input. Closeout promotes a compact visual extract into tracked milestone evidence.</p>
         </div>
         <div class="card interface">
-          <h3>Verify Physical Evidence Retention <span class="status pending">Open — blocks closeout</span></h3>
+          <h3>Verify Physical Evidence Retention <span class="status done">Validated</span></h3>
           <p><strong>Starting state:</strong> the Pi publishes healthy frame-matched perception, the bounded memory implementation is active, and the idle engine owns action.</p>
           <p><strong>Proposed execution:</strong></p>
           <pre>./cli/automa vehicles memory check \
   --id &lt;picar-id&gt; --record
 ./cli/automa vehicles info memory --id &lt;picar-id&gt;</pre>
-          <p><strong>Success signal:</strong> a stationary guided sequence records an exact perception source frame, its retained record, bounded survival through declared dropout, and visible expiry/reset. The report renders source-frame regions beside memory age and provenance; it never draws stale image coordinates on a newer frame as if they were current. Closeout promotes a compact visual extract into tracked milestone evidence.</p>
+          <p><strong>Success signal:</strong> met by the stationary guided sequence: exact present/dropout source frames, live retained evidence, expiry under the configured maximum age, reset to a new empty epoch, and zero movement. <a href="evidence/physical-memory-lifecycle/provenance_extract.html">Open the tracked visual extract</a>; retained coordinates remain attached to their source frame rather than being drawn as current geometry.</p>
         </div>
       </div>
       <p class="note">
@@ -574,14 +582,15 @@
         </div>
         <div class="card goal">
           <h3>Implemented: Stationary Pi Memory Check</h3>
-          <p><span class="status blocked">Validation rework required</span> <strong>Review shape:</strong> deep and narrow physical.</p>
-          <p><strong>Current behavior:</strong> <code>vehicles memory check --id &lt;picar&gt;</code> samples live publications while control remains zero, but currently forces dropout, evaluates expiry/reset locally, and can mis-pair publication metadata with a later JPEG.</p>
-          <p><strong>Review question remains open:</strong> Can operators demonstrate the live onboard lifecycle with exact source-frame evidence while control stays zero?</p>
+          <p><span class="status done">Validated on physical PiRacer</span> <strong>Review shape:</strong> deep and narrow physical.</p>
+          <p><strong>Current behavior:</strong> <code>vehicles memory check --id &lt;picar&gt;</code> scores present/dropout/expiry from live <code>publication.memory</code>, waits only for keys that disappeared from the current observation (always-on camera/floor may remain), and confirms reset from the onboard empty snapshot plus epoch/reset-count transition. Frame pairing uses verified <code>X-Frame-Id</code> matches with fail-closed freshness.</p>
+          <p><strong>Evidence:</strong> the guided present/remove run retained then expired <code>thing:floor_boundary_002</code> in live onboard memory, confirmed reset by epoch and reset-count transitions, and emitted zero movement. <a href="evidence/physical-memory-lifecycle/provenance_extract.html">Open the source-frame provenance extract</a>.</p>
+          <p><strong>Review answer:</strong> yes; physical lifecycle remediation is complete. Chase alignment and the remaining contract hardening still block milestone closeout.</p>
         </div>
         <div class="card interface">
           <h3>Current Next Review Unit: Package 5 Validation Integrity</h3>
           <p><span class="status active">Next</span> <strong>Review shape:</strong> evidence-path repair with focused contract hardening.</p>
-          <p><strong>Deliverable:</strong> atomic/verified Pi frames, genuine onboard lifecycle validation, preserved Chase frame identity, live shadow evaluation, detached snapshots, enforceable bounds, and missing deterministic tests.</p>
+          <p><strong>Deliverable:</strong> preserved Chase frame identity, live shadow evaluation, detached snapshots, enforceable bounds, and missing deterministic tests. Atomic Pi frame pairing and genuine onboard lifecycle validation are complete.</p>
           <p><strong>Review question:</strong> Does each success result prove behavior of the named external runtime using attributable, exact-frame evidence?</p>
           <p><strong>Package 6 follows</strong> only after this review unit passes.</p>
         </div>
@@ -594,10 +603,10 @@
             <tr><td>Plugin execution</td><td>Loadable implementation shape with framework-owned status and failure isolation.</td><td><strong>Partial.</strong> One reducer interface and failure isolation landed; framework enforcement must reject weakened age bounds and constrain total retained size.</td></tr>
             <tr><td>Host integration</td><td>Equivalent activation and lifecycle in Chase and Donkey hosts.</td><td><strong>Landed</strong> for load, snapshot, stream, and operator reset. Deploy honesty still requires core+autonomy when manage.py must load the stage; Pi reset needs core (HTTP) + autonomy (pilot method).</td></tr>
             <tr><td>Operator inspect</td><td>Stage, inspect, stream, and key→value Memory map without flooding default output.</td><td><strong>Landed.</strong> Terminal health/counts + <code>/memory</code> keys with click-for-value; perception stays separate.</td></tr>
-            <tr><td>Operator lifecycle (reset)</td><td>Explicit reset starts a new empty epoch visible to operators on both hosts.</td><td><strong>Partial.</strong> Reset transport exists on both hosts; confirmation must require epoch/reset-count transition rather than accepting missing count or empty health alone.</td></tr>
+            <tr><td>Operator lifecycle (reset)</td><td>Explicit reset starts a new empty epoch visible to operators on both hosts.</td><td><strong>Landed.</strong> Reset confirmation requires epoch/reset-count transition; the Pi path was validated against the live onboard stage.</td></tr>
             <tr><td>Operator lifecycle (replay)</td><td>Replay a sequence to a digestible end-state without default disk history.</td><td><strong>Landed.</strong> Offline <code>memory replay</code> + stable digest + two-pass check.</td></tr>
             <tr><td>Operator lifecycle (record)</td><td>Opt-in record without default disk history.</td><td><strong>Partial.</strong> <code>memory replay --record</code> and provenance extract landed; configured frame-count and byte bounds remain open.</td></tr>
-            <tr><td>Evaluation / visual provenance</td><td>Chase shadow + stationary Pi present/dropout/expiry/reset with source-frame extracts.</td><td><strong>Blocked.</strong> Repair synthetic lifecycle phases, preserve Chase frame identity, and verify Pi publication/JPEG pairing.</td></tr>
+            <tr><td>Evaluation / visual provenance</td><td>Chase shadow + stationary Pi present/dropout/expiry/reset with source-frame extracts.</td><td><strong>Partial.</strong> The tracked Pi source-frame extract validates live onboard present/dropout/expiry/reset. Chase still needs simulator <code>frameIndex</code> preservation and shadow evaluation alignment.</td></tr>
             <tr><td>Closeout</td><td>Written judgment on usefulness and whether patterns/action are justified; activate 006 only then.</td><td><strong>Blocked.</strong> Package 5 validation integrity must pass first. Pre-plan 006 remains queued, not active.</td></tr>
           </tbody>
         </table>
@@ -823,10 +832,10 @@
             <tr><td>6</td><td>Automa can stage, inspect, run, stream latest memory, <strong>replay</strong> a sequence, and reset state with concise human and complete machine output.</td><td><span class="status done">Met</span> — stage/inspect/stream/reset/replay landed</td></tr>
             <tr><td>7</td><td>Default execution writes no logs, frames, or memory history; recording is explicit and bounded.</td><td><span class="status pending">Partial</span> — defaults write nothing and recording is opt-in, but no configured frame-count or byte bound is enforced.</td></tr>
             <tr><td>8</td><td>Deterministic tests cover recurrence, dropout, conflict, expiry, capacity, reset, failure, and replay, including long-sequence boundedness.</td><td><span class="status blocked">Open</span> — conflict, long-sequence, serialized-size, stale-status, exact-frame pairing, and strong reset-confirmation coverage is missing.</td></tr>
-            <tr><td>9</td><td>One live <code>chaser-depth-obstacles</code> shadow check and one recorded non-moving Pi present/dropout/expiry/reset check verify equivalent stage behavior while the rewritten engine emits zero movement.</td><td><span class="status blocked">Open</span> — Chase phases are synthetic; Pi dropout is forced and expiry/reset run against an ephemeral local stage.</td></tr>
+            <tr><td>9</td><td>One live <code>chaser-depth-obstacles</code> shadow check and one recorded non-moving Pi present/dropout/expiry/reset check verify equivalent stage behavior while the rewritten engine emits zero movement.</td><td><span class="status pending">Partial</span> — Pi is validated against live onboard memory with zero movement; Chase phases remain synthetic.</td></tr>
             <tr><td>10</td><td>During the simulator check, Chase's built-in decision model retains movement authority, the rewrite runs observe-only, and candidate/reference results are aligned by simulator frame identity.</td><td><span class="status blocked">Open</span> — observe-only processing works, but built-in-reference evaluation and simulator-frame alignment are absent.</td></tr>
             <tr><td>11</td><td>Simulator debug, map, and reference-decision state are evaluator-only and are absent from rewritten controller inputs and retained memory provenance.</td><td><span class="status done">Met</span> by design/wiring; re-asserted on check path</td></tr>
-            <tr><td>12</td><td>Tracked simulator and physical reviews visibly trace retained image-space evidence to exact perception source frames and regions, distinguish current from retained/expired evidence, and never treat stale coordinates as current geometry.</td><td><span class="status blocked">Open</span> — no tracked reviews exist, Chase frame identity is dropped, and Pi publication/JPEG pairing is not verified.</td></tr>
+            <tr><td>12</td><td>Tracked simulator and physical reviews visibly trace retained image-space evidence to exact perception source frames and regions, distinguish current from retained/expired evidence, and never treat stale coordinates as current geometry.</td><td><span class="status pending">Partial</span> — <a href="evidence/physical-memory-lifecycle/provenance_extract.html">physical review is tracked</a> with verified Pi frame pairing; Chase frame identity and tracked review remain open.</td></tr>
             <tr><td>13</td><td>A closeout states what memory representation proved useful, what remains unverified, and whether later pattern or action work is justified.</td><td><span class="status blocked">Blocked</span> until package 5 validation repair passes.</td></tr>
           </tbody>
         </table>
@@ -869,6 +878,8 @@
             <tr><td>2026-07-20</td><td>Land Chase-first memory lifecycle check before stationary Pi physical check.</td><td>present/dropout/expiry/reset gates are host-independent memory behavior; a phase-script check with zero movement and optional provenance record proves them without blocking on Pi availability. Physical source-frame Pi check remains the final package-5 gate.</td></tr>
             <tr><td>2026-07-20</td><td>Initial acceptance of the stationary Pi memory check (superseded by the following review).</td><td>The command sampled live publications and asserted zero control, but its lifecycle and exact-frame guarantees had not yet been independently validated. The following decision records why package 5 was reopened.</td></tr>
             <tr><td>2026-07-20</td><td>Reopen package 5 after comprehensive implementation validation.</td><td>The initial checks landed as commands but do not prove their advertised external behavior: Pi dropout is forced, expiry/reset use a local stage, separately fetched JPEGs can mismatch publication frame IDs, and Chase frame identity/reference alignment is absent. Snapshot detachment, total-size bounds, and missing deterministic coverage also block the existing exit criteria. The Implementation Review section supersedes earlier completion claims.</td></tr>
+            <tr><td>2026-07-20</td><td>Remediation block 2: score Pi memory check against the live onboard stage.</td><td>Remove forced dropout and ephemeral local reducer from the Pi path. Present/dropout/expiry use publication.memory; reset uses POST /autonomy/memory/reset with epoch/reset-count confirmation. Chase offline script remains until frameIndex remediation.</td></tr>
+            <tr><td>2026-07-20</td><td>Accept stationary Pi lifecycle remediation after guided physical validation.</td><td>A recorded present/remove sequence used verified JPEG/publication frame pairs and the active onboard ledger. <code>thing:floor_boundary_002</code> survived dropout, expired under the configured 10-second age, and reset to a new empty epoch while control stayed zero. Compact evidence is tracked under <code>evidence/physical-memory-lifecycle/</code>.</td></tr>
           </tbody>
 
 

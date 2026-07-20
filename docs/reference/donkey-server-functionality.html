@@ -550,6 +550,11 @@
             <td>Errors are returned as JSON while the manager retains inspectable error state.</td>
           </tr>
           <tr>
+            <td><code>POST /autonomy/memory/reset</code></td>
+            <td>Resets the activated memory stage to a new empty epoch without restarting Donkey.</td>
+            <td>Requires observation publisher <code>reset_memory</code> (autonomy package) and this route (core vendor patch). Used by <code>automa vehicles memory reset</code>.</td>
+          </tr>
+          <tr>
             <td><code>GET /calibrate</code>, <code>WS /wsCalibrate</code></td>
             <td>Servo and throttle calibration UI/channel.</td>
             <td>Can update calibration pulses while the server is running.</td>

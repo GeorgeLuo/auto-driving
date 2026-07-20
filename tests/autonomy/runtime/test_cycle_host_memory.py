@@ -216,6 +216,32 @@ class CycleHostMemoryWiringTests(unittest.TestCase):
             self.assertTrue(result.control.metadata["has_memory"])
             self.assertIsNotNone(result.memory)
 
+    def test_host_reset_memory_clears_records_and_bumps_epoch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            stage = load_memory_stage_if_present(_write_activation(Path(tmp)))
+            self.assertIsNotNone(stage)
+            host = AutonomyCycleHost(stages=DecisionStages(remember=stage))
+            from autonomy.decision import Observation
+
+            stage.update(
+                DecisionFrameContext("frame_fill", 1, 100),
+                Observation("obs_fill", 90, {}),
+            )
+            self.assertEqual(stage.snapshot().health, "healthy")
+            self.assertEqual(stage.snapshot().record_count, 1)
+            prior_epoch = stage.snapshot().epoch_id
+
+            reset_snapshot = host.reset_memory()
+            self.assertIsNotNone(reset_snapshot)
+            self.assertIn(reset_snapshot.health, {"empty", "unavailable"})
+            self.assertEqual(reset_snapshot.record_count, 0)
+            self.assertNotEqual(reset_snapshot.epoch_id, prior_epoch)
+            self.assertEqual(host.status()["memory"]["last_record_count"], 0)
+
+    def test_host_reset_memory_without_stage_returns_none(self) -> None:
+        host = AutonomyCycleHost()
+        self.assertIsNone(host.reset_memory())
+
     def test_missing_memory_activation_is_none(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             self.assertIsNone(load_memory_stage_if_present(Path(tmp) / "active.json"))

@@ -47,6 +47,20 @@ class AutonomyCycleHost:
             payload["memory"] = remember.status()
         return payload
 
+    def reset_memory(self) -> Any:
+        """Reset the activated memory stage when present.
+
+        Returns the post-reset snapshot from the stage, or ``None`` when no
+        memory stage is configured. Does not raise when the stage is absent.
+        """
+        remember = self.cycle.stages.remember
+        if remember is None:
+            return None
+        reset = getattr(remember, "reset", None)
+        if not callable(reset):
+            raise TypeError("configured memory stage does not support reset")
+        return reset()
+
     def _choose_action(
         self,
         context,

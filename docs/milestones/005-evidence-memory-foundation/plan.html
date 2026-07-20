@@ -358,9 +358,10 @@
         </div>
       </details>
       <p class="note" style="margin-top: 12px;">
-        Packages 1–4 and the live key→value Memory map are landed. Package 5 is
-        still open for reset, replay/record, and guided visual-provenance checks.
-        Package 6 (closeout) and milestone 006 are not active work.
+        Packages 1–4, the live key→value Memory map, and operator memory reset
+        are landed. Package 5 is still open for replay/record and guided
+        visual-provenance checks. Package 6 (closeout) and milestone 006 are not
+        active work.
       </p>
       <div class="grid two" style="margin-top: 14px;">
         <div class="card goal">
@@ -378,18 +379,19 @@
           <p><strong>Non-goals kept:</strong> non-idle action, floor-plan memory, semantic identity, durable default archives.</p>
         </div>
         <div class="card goal">
-          <h3>Current Next Review Unit: Memory Reset Operator Surface</h3>
-          <p><span class="status active">Next PR</span> <strong>Review shape:</strong> deep and narrow.</p>
-          <p><strong>Deliverable:</strong> Automa can reset live memory on Chase and Pi so a new empty epoch is visible through <code>info memory</code> / <code>stream memory</code> / Memory map (zero keys, new <code>epoch_id</code>), without movement or default history writes.</p>
+          <h3>Completed: Memory Reset Operator Surface</h3>
+          <p><span class="status done">This PR</span> <strong>Review shape:</strong> deep and narrow.</p>
+          <p><strong>Deliverable:</strong> <code>vehicles memory reset</code> clears live memory on Chase (automation worker control file) and Pi (<code>POST /autonomy/memory/reset</code>). Confirms empty epoch / zero keys via live probe. Host <code>AutonomyCycleHost.reset_memory</code> and pilot-part reset under observation lock.</p>
           <p><strong>Review question:</strong> After reset, does retained state clear consistently on both hosts, and can an operator confirm it without reading process internals?</p>
-          <p><strong>Likely touch:</strong> CLI memory reset command; host/runtime reset path if missing; focused unit/CLI tests; plan horizon update after merge.</p>
-          <p><strong>Non-goals:</strong> deterministic multi-frame replay, opt-in recording layout, guided visual-check contact sheets, perception algorithm changes, or 006 work.</p>
+          <p><strong>Non-goals kept:</strong> deterministic multi-frame replay, opt-in recording layout, guided visual-check contact sheets, perception algorithm changes, or 006 work.</p>
+          <p><strong>Note:</strong> Pi requires <strong>core</strong> deploy for the HTTP route (vendor patch) and <strong>autonomy</strong> deploy for pilot-part <code>reset_memory</code>.</p>
         </div>
         <div class="card interface">
-          <h3>Next-After-Review (Provisional)</h3>
-          <p><span class="status pending">Unstarted until reset lands</span></p>
-          <p><strong>Expected unit:</strong> deterministic replay (or fixed sequence check) of an observation run into a digestible memory end-state with <code>--json</code>.</p>
-          <p><strong>Then (still provisional):</strong> opt-in recording + guided Chase shadow and stationary Pi visual-provenance check artifacts (source frame beside selected key/value); finally package 6 closeout and promotion of the 006 pre-plan.</p>
+          <h3>Current Next Review Unit: Deterministic Memory Replay</h3>
+          <p><span class="status active">Next after this PR merges</span> <strong>Review shape:</strong> deep and narrow.</p>
+          <p><strong>Deliverable:</strong> replay (or fixed sequence check) of an observation run into a digestible memory end-state with <code>--json</code>, without default history.</p>
+          <p><strong>Review question:</strong> Given the same observation sequence and activation, does memory reach the same bounded end-state and digest?</p>
+          <p><strong>Then (still provisional):</strong> opt-in recording + guided Chase shadow and stationary Pi visual-provenance check artifacts; package 6 closeout; promote 006 pre-plan only after exit criteria.</p>
           <p><strong>Do not start 006</strong> while 005 exit criteria remain open.</p>
         </div>
       </div>
@@ -401,8 +403,8 @@
             <tr><td>Plugin execution</td><td>Loadable implementation shape with framework-owned status and failure isolation.</td><td><strong>Landed.</strong> One reducer interface (<code>update</code>/<code>reset</code>/<code>snapshot</code>) is sufficient for the first implementation.</td></tr>
             <tr><td>Host integration</td><td>Equivalent activation and lifecycle in Chase and Donkey hosts.</td><td><strong>Landed for load + snapshot path.</strong> Deploy honesty requires core+autonomy when manage.py must load the stage. Live <strong>reset path</strong> for operators is the next gap.</td></tr>
             <tr><td>Operator inspect</td><td>Stage, inspect, stream, and key→value Memory map without flooding default output.</td><td><strong>Landed.</strong> Terminal health/counts + <code>/memory</code> keys with click-for-value; perception stays separate.</td></tr>
-            <tr><td>Operator lifecycle (reset)</td><td>Explicit reset starts a new empty epoch visible to operators on both hosts.</td><td><strong>Next review unit.</strong> Plugin <code>reset</code> exists in-process; Automa must expose and verify it live.</td></tr>
-            <tr><td>Operator lifecycle (replay/record)</td><td>Replay a sequence and opt-in record without default disk history.</td><td>Provisional after reset. Need a digestible end-state and explicit recording bounds.</td></tr>
+            <tr><td>Operator lifecycle (reset)</td><td>Explicit reset starts a new empty epoch visible to operators on both hosts.</td><td><strong>Landed (this PR).</strong> <code>vehicles memory reset</code>; Pi HTTP + Chase worker file protocol; live probe confirmation.</td></tr>
+            <tr><td>Operator lifecycle (replay/record)</td><td>Replay a sequence and opt-in record without default disk history.</td><td><strong>Next review unit</strong> (replay first). Need a digestible end-state and explicit recording bounds.</td></tr>
             <tr><td>Evaluation / visual provenance</td><td>Chase shadow + stationary Pi present/dropout/expiry/reset with source-frame extracts.</td><td>Provisional after lifecycle tools. Memory map supports inspect; closeout still needs frozen artifacts that never treat stale coords as current.</td></tr>
             <tr><td>Closeout</td><td>Written judgment on usefulness and whether patterns/action are justified; activate 006 only then.</td><td>Package 6 after evaluation evidence. Pre-plan 006 remains queued, not active.</td></tr>
           </tbody>
@@ -544,9 +546,9 @@
       <details class="work-item" data-status="active" open>
         <summary><span>5. Build Operator And Evaluation Workflows</span><span class="status active">Re-coursed — key→value memory map</span></summary>
         <div class="work-body"><ul>
-          <li><strong>Done earlier:</strong> stage/info/deploy memory; autonomy restart verifies live stage; terminal <code>stream memory</code>.</li>
-          <li><strong>Landed (this re-course):</strong> publish latest <code>MemorySnapshot</code> on the observation path. Perception view stays frame/overlay-first with a <strong>Memory map</strong> link. Separate loopback page at <code>/memory</code> treats the ledger as a key→value map: list <code>record_id</code> keys (filter by kind), click a key to inspect the mapped value (summary + full JSON). Live poll must not steal selection (stable DOM / pointerdown delegation).</li>
-          <li><strong>Still open:</strong> reset, deterministic replay, opt-in recording; guided Pi/Chase check artifacts that freeze a visual provenance extract (source frame beside selected key/value) for closeout.</li>
+          <li><strong>Done earlier:</strong> stage/info/deploy memory; autonomy restart verifies live stage; terminal <code>stream memory</code>; key→value Memory map.</li>
+          <li><strong>Landed (reset unit):</strong> <code>vehicles memory reset</code> clears live retained evidence on Chase and Pi and confirms a new empty epoch via live probe.</li>
+          <li><strong>Still open:</strong> deterministic replay, opt-in recording; guided Pi/Chase check artifacts that freeze a visual provenance extract (source frame beside selected key/value) for closeout.</li>
           <li><strong>Why:</strong> memory is a recency ledger of keys, not a spatial map. A dedicated key/value inspector is more honest than piggybacking perception overlays; provenance checks can still freeze the exact source frame later.</li>
         </ul></div>
       </details>
@@ -561,7 +563,7 @@
       </details>
 
       <div class="progress-track" aria-label="Milestone work packages completed: 4 of 6"><div class="progress-fill" style="width: 66.7%;"></div></div>
-      <p class="small">Progress: packages 1–4 done; package 5 live key→value Memory map landed. Next concrete PR is operator <strong>memory reset</strong> (see Current Delivery Horizon). Replay/record and recorded provenance-check extracts follow; package 6 closeout last. Milestone 006 stays a pre-plan.</p>
+      <p class="small">Progress: packages 1–4 done; package 5 inspect + reset landed. Next concrete PR is deterministic <strong>memory replay</strong> (see Current Delivery Horizon). Opt-in record and visual-provenance checks follow; package 6 closeout last. Milestone 006 stays a pre-plan.</p>
     </section>
 
 
@@ -663,6 +665,7 @@
             <tr><td>2026-07-19</td><td>Separate memory inspector as a key→value ledger page from perception overlays.</td><td>Operators want memory as record_id keys and mapped values, matching BoundedEvidenceLedger’s dict structure rather than another image layer. Perception stays camera-first; /memory lists keys by kind and shows the selected value. stream memory prints the map URL.</td></tr>
             <tr><td>2026-07-19</td><td>Stabilize Memory map selection against live poll races.</td><td>200ms refresh was rebuilding key-row DOM and dropping clicks mid-gesture. Selection uses pointerdown + event delegation on a stable parent, rebuilds only when key identity changes, and keeps the selected key across polls until it leaves the ledger.</td></tr>
             <tr><td>2026-07-19</td><td>Refresh Current Delivery Horizon after Memory map merge; next PR is memory reset.</td><td>Horizon cards still pointed at the first contract PR. Align rolling horizon with packages 1–4 + inspect path landed, package 5 open on reset → replay/record → visual-provenance checks → closeout; keep 006 pre-plan inactive.</td></tr>
+            <tr><td>2026-07-19</td><td>Land operator memory reset on Chase and Pi before replay/visual checks.</td><td>Plugin reset existed in-process only. Operators need a confirmed empty epoch on both hosts. Pi uses POST /autonomy/memory/reset (core patch + autonomy pilot method); Chase uses automation worker request/result files. Replay remains the next review unit.</td></tr>
           </tbody>
 
 

@@ -17,6 +17,7 @@ RUNTIME_ROOT = Path(os.environ.get("AUTOMA_RUNTIME_ROOT", ROOT / "runtime" / "ve
 LATEST_JSON_PATH = "/autonomy/observation/latest"
 LATEST_FRAME_PATH = "/autonomy/observation/latest/frame.jpg"
 STATUS_JSON_PATH = "/autonomy/status"
+MEMORY_RESET_PATH = "/autonomy/memory/reset"
 PHYSICAL_RUNTIME_DIRNAME = "physical_observation"
 
 
@@ -62,6 +63,46 @@ def fetch_autonomy_status(
         raise ConnectionError(f"GET {url} returned non-JSON body") from exc
     if not isinstance(payload, dict):
         raise ConnectionError(f"GET {url} returned a non-object JSON payload")
+    payload.setdefault("http_status", status_code)
+    return payload
+
+
+def post_memory_reset(
+    base_url: str,
+    *,
+    timeout_s: float = 3.0,
+) -> dict[str, Any]:
+    """POST /autonomy/memory/reset on a physical Donkey runtime."""
+
+    url = f"{base_url.rstrip('/')}{MEMORY_RESET_PATH}"
+    request = urllib.request.Request(
+        url,
+        data=b"{}",
+        method="POST",
+        headers={"Content-Type": "application/json", "Accept": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=max(0.1, float(timeout_s))) as response:
+            body = response.read()
+            status_code = getattr(response, "status", 200)
+    except urllib.error.HTTPError as exc:
+        body = exc.read() if exc.fp is not None else b""
+        status_code = int(exc.code)
+        if not body:
+            raise ConnectionError(
+                f"POST {url} failed with HTTP {status_code} and empty body"
+            ) from exc
+    except urllib.error.URLError as exc:
+        raise ConnectionError(f"POST {url} failed: {exc.reason}") from exc
+    except TimeoutError as exc:
+        raise ConnectionError(f"POST {url} timed out after {timeout_s}s") from exc
+
+    try:
+        payload = json.loads(body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ConnectionError(f"POST {url} returned non-JSON body") from exc
+    if not isinstance(payload, dict):
+        raise ConnectionError(f"POST {url} returned a non-object JSON payload")
     payload.setdefault("http_status", status_code)
     return payload
 

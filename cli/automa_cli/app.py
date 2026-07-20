@@ -21,7 +21,12 @@ from .decision import (
     update_vehicle_decision,
 )
 from .lab_plugins import list_perception_candidates, setup_perception_candidate
-from .memory import get_vehicle_memory_info, stream_vehicle_memory, update_vehicle_memory
+from .memory import (
+    get_vehicle_memory_info,
+    reset_vehicle_memory,
+    stream_vehicle_memory,
+    update_vehicle_memory,
+)
 from .operations import run_vehicle_startup_check
 from implementations.memory import (
     DEFAULT_MEMORY_IMPLEMENTATION,
@@ -412,6 +417,51 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print machine-readable live memory snapshots (one JSON object per refresh).",
     )
     memory_stream.set_defaults(handler=_handle_vehicles_stream_memory)
+
+    memory_control = vehicle_commands.add_parser(
+        "memory",
+        help="Operate live vehicle memory (reset; stage via update memory).",
+    )
+    memory_control.set_defaults(handler=_handle_vehicles_memory_help)
+    memory_commands = memory_control.add_subparsers(dest="memory_command")
+    memory_help = memory_commands.add_parser(
+        "help",
+        help="Show memory-level commands.",
+    )
+    memory_help.set_defaults(handler=_handle_vehicles_memory_help)
+    memory_reset = memory_commands.add_parser(
+        "reset",
+        help="Reset live memory to a new empty epoch on Chase or PiCar.",
+        description=(
+            "Reset the activated memory stage on the live host. Chase uses the "
+            "automation worker; PiCar POSTs /autonomy/memory/reset. Confirms an "
+            "empty epoch via live probe. Does not move the vehicle or write history."
+        ),
+    )
+    memory_reset.add_argument(
+        "--id",
+        required=True,
+        dest="vehicle_id",
+        help="Vehicle id from `automa vehicles active`.",
+    )
+    memory_reset.add_argument(
+        "--timeout-s",
+        type=float,
+        default=3.0,
+        help="HTTP/discovery timeout in seconds.",
+    )
+    memory_reset.add_argument(
+        "--wait-s",
+        type=float,
+        default=5.0,
+        help="Seconds to wait for Chase automation worker to acknowledge reset.",
+    )
+    memory_reset.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the full machine-readable reset payload.",
+    )
+    memory_reset.set_defaults(handler=_handle_vehicles_memory_reset)
 
     info = vehicle_commands.add_parser("info", help="Inspect locally staged controller configuration.")
     info_commands = info.add_subparsers(dest="info_command", required=True)
@@ -1206,6 +1256,7 @@ def _handle_vehicles_help(args: argparse.Namespace) -> int:
                 "- automation   manage locally deployed automation workers",
                 "- operation    run bounded vehicle checks and setup tasks",
                 "- info         inspect locally staged controller configuration",
+                "- memory       operate live memory (reset empty epoch)",
                 "- perception   run and configure vehicle perception",
                 "- stream       read rolling local automation outputs",
                 "- help         show this summary",
@@ -1465,6 +1516,39 @@ def _handle_vehicles_stream_memory(args: argparse.Namespace) -> int:
         no_clear=args.no_clear,
         json_output=args.json,
         output=sys.stdout,
+    )
+    if result.message:
+        print(result.message)
+    return result.exit_code
+
+
+def _handle_vehicles_memory_help(args: argparse.Namespace) -> int:
+    print(
+        "\n".join(
+            [
+                "automa vehicles memory commands",
+                "",
+                "- reset  clear live retained evidence; start a new empty epoch",
+                "- help   show this summary",
+                "",
+                "Stage an implementation with: ./cli/automa vehicles update memory --id <vehicle>",
+                "Inspect staged config with:   ./cli/automa vehicles info memory --id <vehicle>",
+                "Stream live state with:       ./cli/automa vehicles stream memory --id <vehicle>",
+                "",
+                "Detailed help:",
+                "- ./cli/automa vehicles memory <command> --help",
+            ]
+        )
+    )
+    return 0
+
+
+def _handle_vehicles_memory_reset(args: argparse.Namespace) -> int:
+    result = reset_vehicle_memory(
+        vehicle_id=args.vehicle_id,
+        timeout_s=args.timeout_s,
+        wait_s=args.wait_s,
+        json_output=args.json,
     )
     if result.message:
         print(result.message)

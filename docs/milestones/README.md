@@ -142,6 +142,114 @@ roll it out broadly in the same PR. Land the pattern first, merge each deliverab
 before branching the next by default, and split work when the primary review
 question stops being singular.
 
+## Milestone Git Isolation
+
+Use one integration branch per active milestone so the complete milestone can
+be reviewed as one cumulative change without making its individual PRs too
+large. The branch topology is:
+
+```text
+main
+└── milestone/006-decision-facing-perception
+    ├── m006/01-contract
+    ├── m006/02-first-implementation
+    └── m006/03-validation
+```
+
+The branch roles are fixed:
+
+- **`main`:** completed milestones and explicitly approved maintenance only.
+- **`milestone/<number>-<slug>`:** all accepted changes for one active
+  milestone, including its plan, evidence, and closeout.
+- **`m<number>/<review-unit>-<slug>`:** one review-sized deliverable targeting
+  the milestone branch, never `main`.
+
+Do not mix two milestones on one integration branch. Do not merge a milestone
+work-block PR directly into `main`. A review repair branches from the milestone
+branch and targets that same milestone branch, so the cumulative milestone PR
+updates automatically.
+
+### Start A Milestone
+
+Start from current remote `main`, create the integration branch, and make the
+plan bootstrap its first commit:
+
+```sh
+git switch main
+git pull --ff-only
+git switch -c milestone/006-decision-facing-perception
+git push -u origin milestone/006-decision-facing-perception
+```
+
+After the plan commit is pushed, open a **draft** cumulative PR from the
+milestone branch to `main`. Keep it open for the milestone's lifetime. Its diff
+is the authoritative whole-milestone review surface; its description links the
+plan, current exit-criteria status, and accepted work-block PRs.
+
+```sh
+gh pr create \
+  --draft \
+  --base main \
+  --head milestone/006-decision-facing-perception \
+  --title "Milestone 006: Decision-Facing Perception"
+```
+
+### Deliver A Review Unit
+
+Branch each review unit from the updated milestone branch:
+
+```sh
+git switch milestone/006-decision-facing-perception
+git pull --ff-only
+git switch -c m006/01-contract
+```
+
+Push it and open its PR against the milestone branch:
+
+```sh
+git push -u origin m006/01-contract
+gh pr create \
+  --base milestone/006-decision-facing-perception \
+  --head m006/01-contract
+```
+
+The PR title starts with `M006 / 01`, and the description states its base branch
+explicitly. Prefer squash-merging each work-block PR so the milestone branch
+contains one commit per accepted review unit. Start the next branch only after
+the prior PR merges and the local milestone branch is updated.
+
+### Close A Milestone
+
+The closeout, completed-milestone ledger update, and final evidence belong on
+the milestone branch. When every exit criterion is met, mark the cumulative PR
+ready for review. That final review answers whether the milestone objective,
+usage contract, evidence, code organization, and unresolved-risk accounting are
+complete as a whole.
+
+Merge the cumulative PR into `main` with a merge commit so its reviewed
+work-unit commits remain visible. Tag the resulting mainline merge
+`milestone-<number>`, then delete the milestone and work branches. GitHub keeps
+the individual PR discussions after branch deletion.
+
+```sh
+gh pr ready <cumulative-pr-number>
+gh pr merge <cumulative-pr-number> --merge --delete-branch
+git switch main
+git pull --ff-only
+git tag milestone-006
+git push origin milestone-006
+```
+
+If approved maintenance reaches `main` during an active milestone, merge the
+updated `main` into the milestone branch before starting another review unit.
+Do not rebase or force-push a published milestone branch. CI must run for PRs
+whose base is a milestone branch as well as for the cumulative PR to `main`.
+
+This branching model is repository-development infrastructure, not an Automa
+vehicle command. A future helper may automate these exact steps, but it must
+fail visibly on uncommitted changes, a stale base, an existing branch, or an
+incorrect PR target rather than hiding Git state.
+
 ## Rolling Delivery Horizon
 
 Only the current PR is committed in detail. A milestone plan also names one
@@ -185,16 +293,20 @@ or an unlabeled visual result as an accuracy claim.
 
 ## Milestone Lifecycle
 
-1. Create one numbered directory and a `plan.html` following this contract.
-2. Define completion usage, fixed exit criteria, a concrete first PR, and a
-   preparation horizon.
-3. Merge one deliverable at a time by default and update the plan after each
-   accepted review unit.
-4. At closeout, freeze the plan and write `closeout.md` with outcomes, decisions,
+1. Create the milestone integration branch from current remote `main`.
+2. Create one numbered directory and a `plan.html` following this contract.
+3. Define completion usage, fixed exit criteria, a concrete first PR, and a
+   preparation horizon; push the plan and open the draft cumulative PR to
+   `main`.
+4. Merge one review-unit PR into the milestone branch at a time and update the
+   plan after each accepted unit.
+5. At closeout, freeze the plan and write `closeout.md` with outcomes, decisions,
    validation, unresolved work, and links to durable reference material.
-5. Append a concise entry to [completed.md](completed.md).
-6. Make the next milestone active (or promote a pre-plan) and update the
-   active-work link in [the documentation guide](../README.md).
+6. Append a concise entry to [completed.md](completed.md), update the active-work
+   link in [the documentation guide](../README.md), and make the cumulative PR
+   ready for whole-milestone review.
+7. Merge the cumulative PR, tag the mainline merge, remove milestone branches,
+   then make the next milestone active (or promote a pre-plan).
 
 Closeouts preserve durable context; they do not duplicate source-level details.
 New architecture facts belong in `docs/reference/`, and future-facing research

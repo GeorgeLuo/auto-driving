@@ -520,20 +520,20 @@ def build_parser() -> argparse.ArgumentParser:
     memory_replay.set_defaults(handler=_handle_vehicles_memory_replay)
     memory_check = memory_commands.add_parser(
         "check",
-        help="Run present/dropout/expiry/reset memory lifecycle gates (Chase-first).",
+        help="Run present/dropout/expiry/reset memory lifecycle gates (Chase or Pi).",
         description=(
-            "Evaluate bounded-evidence lifecycle gates with a scripted observation "
-            "sequence: present retention, dropout survival, max-age expiry, and "
-            "reset to a new empty epoch. Does not move the vehicle. Chase-first "
-            "unit; physical Pi guided check remains a later PR. Pass --record for "
-            "a bounded report and provenance extract under lab/runs/memory-check/."
+            "Evaluate bounded-evidence lifecycle gates: present retention, dropout "
+            "survival, max-age expiry, and reset. Chase/offline uses a phase script; "
+            "PiCar captures live /autonomy/observation/latest publications with "
+            "manual placement prompts (never moves the car). Pass --record for a "
+            "bounded report, optional JPEG frames (Pi), and provenance extract."
         ),
     )
     memory_check.add_argument(
         "--id",
         required=True,
         dest="vehicle_id",
-        help="Vehicle id (Chase staging id or discovered vehicle).",
+        help="Vehicle id (Chase staging id or discovered PiCar).",
     )
     memory_check.add_argument(
         "--implementation",
@@ -544,7 +544,24 @@ def build_parser() -> argparse.ArgumentParser:
     memory_check.add_argument(
         "--record",
         action="store_true",
-        help="Opt-in: write bounded report + provenance_extract.html.",
+        help="Opt-in: write bounded report + provenance_extract.html (and Pi frames).",
+    )
+    memory_check.add_argument(
+        "--auto",
+        action="store_true",
+        help="Pi only: capture without Enter prompts (for automated tests).",
+    )
+    memory_check.add_argument(
+        "--timeout-s",
+        type=float,
+        default=3.0,
+        help="Pi HTTP timeout seconds for publication/frame fetches.",
+    )
+    memory_check.add_argument(
+        "--fresh-timeout-s",
+        type=float,
+        default=12.0,
+        help="Pi: seconds to wait for a fresh observation frame id.",
     )
     memory_check.add_argument(
         "--json",
@@ -1620,7 +1637,7 @@ def _handle_vehicles_memory_help(args: argparse.Namespace) -> int:
                 "",
                 "- reset   clear live retained evidence; start a new empty epoch",
                 "- replay  feed a fixed observation sequence offline; report digest; optional --record",
-                "- check   present/dropout/expiry/reset gates (Chase-first); optional --record",
+                "- check   present/dropout/expiry/reset gates (Chase offline or Pi live); optional --record",
                 "- help    show this summary",
                 "",
                 "Stage an implementation with: ./cli/automa vehicles update memory --id <vehicle>",
@@ -1668,6 +1685,9 @@ def _handle_vehicles_memory_check(args: argparse.Namespace) -> int:
         record=args.record,
         json_output=args.json,
         output=None if args.json else sys.stdout,
+        auto=bool(getattr(args, "auto", False)),
+        timeout_s=float(getattr(args, "timeout_s", 3.0)),
+        fresh_timeout_s=float(getattr(args, "fresh_timeout_s", 12.0)),
     )
     if result.message:
         print(result.message)

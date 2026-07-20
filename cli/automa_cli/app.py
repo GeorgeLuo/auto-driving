@@ -28,6 +28,7 @@ from .memory import (
     stream_vehicle_memory,
     update_vehicle_memory,
 )
+from .memory_check import run_vehicle_memory_check
 from .operations import run_vehicle_startup_check
 from implementations.memory import (
     DEFAULT_MEMORY_IMPLEMENTATION,
@@ -421,7 +422,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     memory_control = vehicle_commands.add_parser(
         "memory",
-        help="Operate vehicle memory (reset, replay; stage via update memory).",
+        help="Operate vehicle memory (reset, replay, check; stage via update memory).",
     )
     memory_control.set_defaults(handler=_handle_vehicles_memory_help)
     memory_commands = memory_control.add_subparsers(dest="memory_command")
@@ -517,6 +518,40 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     memory_replay.set_defaults(handler=_handle_vehicles_memory_replay)
+    memory_check = memory_commands.add_parser(
+        "check",
+        help="Run present/dropout/expiry/reset memory lifecycle gates (Chase-first).",
+        description=(
+            "Evaluate bounded-evidence lifecycle gates with a scripted observation "
+            "sequence: present retention, dropout survival, max-age expiry, and "
+            "reset to a new empty epoch. Does not move the vehicle. Chase-first "
+            "unit; physical Pi guided check remains a later PR. Pass --record for "
+            "a bounded report and provenance extract under lab/runs/memory-check/."
+        ),
+    )
+    memory_check.add_argument(
+        "--id",
+        required=True,
+        dest="vehicle_id",
+        help="Vehicle id (Chase staging id or discovered vehicle).",
+    )
+    memory_check.add_argument(
+        "--implementation",
+        default=None,
+        choices=available_memory_implementation_ids(),
+        help="Packaged memory implementation (default: bounded_evidence check bounds).",
+    )
+    memory_check.add_argument(
+        "--record",
+        action="store_true",
+        help="Opt-in: write bounded report + provenance_extract.html.",
+    )
+    memory_check.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the full machine-readable check report.",
+    )
+    memory_check.set_defaults(handler=_handle_vehicles_memory_check)
 
     info = vehicle_commands.add_parser("info", help="Inspect locally staged controller configuration.")
     info_commands = info.add_subparsers(dest="info_command", required=True)
@@ -1311,7 +1346,7 @@ def _handle_vehicles_help(args: argparse.Namespace) -> int:
                 "- automation   manage locally deployed automation workers",
                 "- operation    run bounded vehicle checks and setup tasks",
                 "- info         inspect locally staged controller configuration",
-                "- memory       operate memory (reset, offline sequence replay)",
+                "- memory       operate memory (reset, replay, lifecycle check)",
                 "- perception   run and configure vehicle perception",
                 "- stream       read rolling local automation outputs",
                 "- help         show this summary",
@@ -1585,6 +1620,7 @@ def _handle_vehicles_memory_help(args: argparse.Namespace) -> int:
                 "",
                 "- reset   clear live retained evidence; start a new empty epoch",
                 "- replay  feed a fixed observation sequence offline; report digest; optional --record",
+                "- check   present/dropout/expiry/reset gates (Chase-first); optional --record",
                 "- help    show this summary",
                 "",
                 "Stage an implementation with: ./cli/automa vehicles update memory --id <vehicle>",
@@ -1619,6 +1655,19 @@ def _handle_vehicles_memory_replay(args: argparse.Namespace) -> int:
         json_output=args.json,
         verify_twice=not args.once,
         record=args.record,
+    )
+    if result.message:
+        print(result.message)
+    return result.exit_code
+
+
+def _handle_vehicles_memory_check(args: argparse.Namespace) -> int:
+    result = run_vehicle_memory_check(
+        vehicle_id=args.vehicle_id,
+        implementation_id=args.implementation,
+        record=args.record,
+        json_output=args.json,
+        output=None if args.json else sys.stdout,
     )
     if result.message:
         print(result.message)

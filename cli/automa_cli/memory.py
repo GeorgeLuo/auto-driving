@@ -24,7 +24,14 @@ from .bundles import (
     sync_controller_bundle,
 )
 from .paths import ROOT, display_path, safe_path_part
-from .physical_observation import fetch_autonomy_status, picar_base_url
+from .perception_view import PerceptionViewServer
+from .physical_observation import (
+    fetch_autonomy_status,
+    fetch_observation_publication,
+    physical_observation_dir,
+    picar_base_url,
+)
+from .streaming import _publish_physical_view
 from .vehicles import discover_active_vehicles, find_vehicle_by_id, format_active_vehicles_snapshot
 
 
@@ -237,6 +244,17 @@ def stream_vehicle_memory(
     if vehicle is None:
         return CommandResult(2, f"Vehicle {vehicle_id!r} was not found.")
 
+    if vehicle.get("provider") == "picar" and not json_output:
+        return _stream_physical_memory_with_inspector(
+            vehicle_id=vehicle_id,
+            vehicle=vehicle,
+            refresh_s=refresh_s,
+            once=once,
+            no_clear=no_clear,
+            timeout_s=timeout_s,
+            output=output,
+        )
+
     stream = output
     try:
         while True:
@@ -278,6 +296,103 @@ def stream_vehicle_memory(
             time.sleep(max(0.1, float(refresh_s)))
     except KeyboardInterrupt:
         return CommandResult(130, "")
+
+
+def _stream_physical_memory_with_inspector(
+    *,
+    vehicle_id: str,
+    vehicle: dict[str, Any],
+    refresh_s: float,
+    once: bool,
+    no_clear: bool,
+    timeout_s: float,
+    output: TextIO | None,
+) -> CommandResult:
+    """Poll status, feed the shared loopback publication, and open /memory inspector."""
+
+    stream = output
+    base_url = picar_base_url(vehicle)
+    if not base_url:
+        return CommandResult(2, f"Vehicle {vehicle_id!r} has no picar base_url connection.")
+
+    runtime_dir = physical_observation_dir(vehicle_id)
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    frame_path = runtime_dir / "latest_frame.jpg"
+    view_server: PerceptionViewServer | None = None
+    view_error: str | None = None
+    try:
+        view_server = PerceptionViewServer(
+            vehicle_id=vehicle_id,
+            automation_dir=runtime_dir,
+        ).start()
+    except OSError as exc:
+        view_error = f"{type(exc).__name__}: {exc}"
+
+    try:
+        while True:
+            live = probe_live_memory(
+                vehicle_id=vehicle_id,
+                vehicle=vehicle,
+                timeout_s=timeout_s,
+            )
+            publication: dict[str, Any] | None = None
+            fetch_error: str | None = None
+            try:
+                publication = fetch_observation_publication(base_url, timeout_s=timeout_s)
+            except ConnectionError as exc:
+                fetch_error = str(exc)
+
+            memory_view_url = None
+            if view_server is not None and view_server.url:
+                memory_view_url = view_server.url.rstrip("/") + "/memory"
+            if publication is not None and view_server is not None:
+                try:
+                    _publish_physical_view(
+                        view_server=view_server,
+                        base_url=base_url,
+                        publication=publication,
+                        frame_path=frame_path,
+                        timeout_s=timeout_s,
+                    )
+                    memory_view_url = view_server.url.rstrip("/") + "/memory"
+                    view_error = None
+                except (ConnectionError, OSError, TypeError, ValueError) as exc:
+                    view_error = f"{type(exc).__name__}: {exc}"
+
+            if stream is not None:
+                if not no_clear:
+                    print("\033[2J\033[H", end="", file=stream)
+                lines = [
+                    _format_live_memory_screen(vehicle_id=vehicle_id, live=live),
+                    "",
+                ]
+                if memory_view_url:
+                    lines.append(f"memory map: {memory_view_url}")
+                    lines.append("perception view: " + memory_view_url.rsplit("/", 1)[0] + "/")
+                elif view_error:
+                    lines.append(f"memory map: unavailable ({view_error})")
+                else:
+                    lines.append("memory map: unavailable")
+                if fetch_error:
+                    lines.append(f"publication: {fetch_error}")
+                elif isinstance(publication, dict) and isinstance(publication.get("memory"), dict):
+                    mem = publication["memory"]
+                    lines.append(
+                        f"publication memory: health={mem.get('health')} "
+                        f"keys={mem.get('record_count')}"
+                    )
+                print("\n".join(lines), file=stream, flush=True)
+
+            if once:
+                if live.get("status") in {"error", "absent"}:
+                    return CommandResult(2, "")
+                return CommandResult(0, "")
+            time.sleep(max(0.1, float(refresh_s)))
+    except KeyboardInterrupt:
+        return CommandResult(130, "")
+    finally:
+        if view_server is not None:
+            view_server.stop()
 
 
 def probe_live_memory(

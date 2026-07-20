@@ -377,11 +377,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     memory_stream = stream_commands.add_parser(
         "memory",
-        help="Show live memory lifecycle health, replacing the terminal view as it updates.",
+        help="Inspect live memory as a key→value ledger (terminal + local map page).",
         description=(
-            "Show live memory lifecycle health (implementation, retained count, epoch, "
-            "failures). PiCar polls /autonomy/status memory component; Chase reads the "
-            "local automation worker state. No frames or history are written."
+            "Inspect live memory as a key→value ledger. Terminal shows health and counts; "
+            "on PiCar a local loopback page lists record_id keys and the selected value. "
+            "Chase reads automation worker state. No history is written by default."
         ),
     )
     memory_stream.add_argument(

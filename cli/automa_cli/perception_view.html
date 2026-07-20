@@ -225,6 +225,7 @@
     <div class="runtime-status">
       <span class="status-dot" id="statusDot"></span>
       <span id="statusText">Connecting</span>
+      <a class="nav" href="/memory" style="color:inherit;text-decoration:none;border:1px solid var(--line);border-radius:4px;padding:6px 10px;font-weight:600;">Memory map</a>
       <button type="button" id="pauseButton">Pause updates</button>
     </div>
   </header>
@@ -239,17 +240,6 @@
     </section>
 
     <aside>
-      <section class="panel">
-        <h2>Stages</h2>
-        <div class="toggle-grid">
-          <label class="toggle"><input type="checkbox" id="perceptionStageToggle" checked> Perception (current)</label>
-          <label class="toggle"><input type="checkbox" id="memoryStageToggle" checked> Memory (retained)</label>
-        </div>
-        <p class="secondary" style="margin: 8px 0 0; color: var(--muted); font-size: 12px;">
-          Memory overlays are dimmed/dashed when their source frame is not the current image.
-        </p>
-      </section>
-
       <section class="panel">
         <h2>Overlays</h2>
         <div class="toggle-grid">
@@ -270,13 +260,8 @@
       </section>
 
       <section class="panel">
-        <h2>Perception findings</h2>
+        <h2>Findings</h2>
         <div class="thing-list" id="things"></div>
-      </section>
-
-      <section class="panel">
-        <h2>Memory records</h2>
-        <div class="thing-list" id="memoryRecords"></div>
       </section>
 
       <section class="panel">
@@ -299,8 +284,6 @@
     const pauseButton = document.getElementById("pauseButton");
     const regionsToggle = document.getElementById("regionsToggle");
     const labelsToggle = document.getElementById("labelsToggle");
-    const perceptionStageToggle = document.getElementById("perceptionStageToggle");
-    const memoryStageToggle = document.getElementById("memoryStageToggle");
     const kindToggles = document.getElementById("kindToggles");
     const kindState = new Map();
     let latest = null;
@@ -309,7 +292,6 @@
     let loadedFrameId = null;
 
     const palette = ["#00d084", "#ffb000", "#ff5a5f", "#4ea5ff", "#d678ff", "#f46f36", "#12b8b0"];
-    const memoryColor = "#8ec8ff";
 
     function colorFor(value) {
       let hash = 0;
@@ -332,21 +314,7 @@
       });
     }
 
-    function drawableMemoryRecords() {
-      const records = latest?.memory?.records;
-      if (!Array.isArray(records)) return [];
-      return records.filter((record) => {
-        const location = record?.location;
-        return location?.frame === "image" &&
-          (normalizedPolygon(location) || normalizedBox(location));
-      });
-    }
 
-    function memoryIsCurrent(record) {
-      const sourceFrame = record?.provenance?.frame_id;
-      const currentFrame = latest?.frame?.frame_id;
-      return Boolean(sourceFrame && currentFrame && sourceFrame === currentFrame);
-    }
 
     function clampNorm(value) {
       return Math.max(0, Math.min(1, Number(value)));
@@ -448,34 +416,6 @@
       }
     }
 
-    function drawShape(polygon, box, color, { fillAlpha = "22", dash = [], lineWidth = null } = {}) {
-      const [x1, y1, x2, y2] = geometryBounds(polygon, box);
-      const x = x1 * canvas.width;
-      const y = y1 * canvas.height;
-      const width = (x2 - x1) * canvas.width;
-      const height = (y2 - y1) * canvas.height;
-      if (width <= 0 || height <= 0) return null;
-      context.fillStyle = `${color}${fillAlpha}`;
-      context.strokeStyle = color;
-      context.lineWidth = lineWidth || Math.max(2, canvas.width / 320);
-      context.setLineDash(dash);
-      if (polygon) {
-        context.beginPath();
-        context.moveTo(polygon[0][0] * canvas.width, polygon[0][1] * canvas.height);
-        for (const point of polygon.slice(1)) {
-          context.lineTo(point[0] * canvas.width, point[1] * canvas.height);
-        }
-        context.closePath();
-        context.fill();
-        context.stroke();
-      } else {
-        context.fillRect(x, y, width, height);
-        context.strokeRect(x, y, width, height);
-      }
-      context.setLineDash([]);
-      return { x, y, width, height };
-    }
-
     function drawOverlays() {
       if (!frameImage.naturalWidth || !latest) return;
       canvas.width = frameImage.naturalWidth;
@@ -483,87 +423,47 @@
       context.clearRect(0, 0, canvas.width, canvas.height);
       const drawRegions = regionsToggle.checked;
       const drawLabels = labelsToggle.checked;
-      const drawPerception = perceptionStageToggle.checked;
-      const drawMemory = memoryStageToggle.checked;
       const occupiedLabels = [];
-
-      if (drawPerception) {
-        for (const thing of drawableThings()) {
-          const kind = String(thing.kind || "unknown");
-          if (kindState.get(kind) === false) continue;
-          const polygon = normalizedPolygon(thing.location);
-          const box = normalizedBox(thing.location);
-          const color = colorFor(kind);
-          const rect = drawRegions
-            ? drawShape(polygon, box, color)
-            : (() => {
-                const bounds = geometryBounds(polygon, box);
-                return {
-                  x: bounds[0] * canvas.width,
-                  y: bounds[1] * canvas.height,
-                  width: (bounds[2] - bounds[0]) * canvas.width,
-                  height: (bounds[3] - bounds[1]) * canvas.height,
-                };
-              })();
-          if (!rect || rect.width <= 0 || rect.height <= 0) continue;
-          if (drawLabels) {
-            const label = overlayLabel(thing, kind);
-            context.font = "14px ui-sans-serif, system-ui, sans-serif";
-            const metrics = context.measureText(label);
-            const labelRect = placeLabel(
-              rect.x, rect.y, rect.width, rect.height,
-              metrics.width + 10, 20, occupiedLabels,
-            );
-            if (labelRect) {
-              context.fillStyle = color;
-              context.fillRect(labelRect.x, labelRect.y, labelRect.width, labelRect.height);
-              context.fillStyle = "#101214";
-              context.fillText(label, labelRect.x + 5, labelRect.y + 15);
+      for (const thing of drawableThings()) {
+        const kind = String(thing.kind || "unknown");
+        if (kindState.get(kind) === false) continue;
+        const polygon = normalizedPolygon(thing.location);
+        const box = normalizedBox(thing.location);
+        const [x1, y1, x2, y2] = geometryBounds(polygon, box);
+        const x = x1 * canvas.width;
+        const y = y1 * canvas.height;
+        const width = (x2 - x1) * canvas.width;
+        const height = (y2 - y1) * canvas.height;
+        if (width <= 0 || height <= 0) continue;
+        const color = colorFor(kind);
+        if (drawRegions) {
+          context.fillStyle = `${color}22`;
+          context.strokeStyle = color;
+          context.lineWidth = Math.max(2, canvas.width / 320);
+          if (polygon) {
+            context.beginPath();
+            context.moveTo(polygon[0][0] * canvas.width, polygon[0][1] * canvas.height);
+            for (const point of polygon.slice(1)) {
+              context.lineTo(point[0] * canvas.width, point[1] * canvas.height);
             }
+            context.closePath();
+            context.fill();
+            context.stroke();
+          } else {
+            context.fillRect(x, y, width, height);
+            context.strokeRect(x, y, width, height);
           }
         }
-      }
-
-      if (drawMemory) {
-        for (const record of drawableMemoryRecords()) {
-          const polygon = normalizedPolygon(record.location);
-          const box = normalizedBox(record.location);
-          const current = memoryIsCurrent(record);
-          const color = memoryColor;
-          const rect = drawRegions
-            ? drawShape(polygon, box, color, {
-                fillAlpha: current ? "28" : "14",
-                dash: current ? [] : [8, 6],
-                lineWidth: Math.max(2, canvas.width / 280),
-              })
-            : (() => {
-                const bounds = geometryBounds(polygon, box);
-                return {
-                  x: bounds[0] * canvas.width,
-                  y: bounds[1] * canvas.height,
-                  width: (bounds[2] - bounds[0]) * canvas.width,
-                  height: (bounds[3] - bounds[1]) * canvas.height,
-                };
-              })();
-          if (!rect || rect.width <= 0 || rect.height <= 0) continue;
-          if (drawLabels) {
-            const source = record.provenance?.frame_id || "unknown-frame";
-            const shortSource = source.length > 18 ? `${source.slice(0, 15)}...` : source;
-            const label = `M ${record.kind || "record"} ${current ? "now" : shortSource} ${Number(record.confidence || 0).toFixed(2)}`;
-            context.font = "13px ui-sans-serif, system-ui, sans-serif";
-            const metrics = context.measureText(label);
-            const labelRect = placeLabel(
-              rect.x, rect.y, rect.width, rect.height,
-              metrics.width + 10, 18, occupiedLabels,
-            );
-            if (labelRect) {
-              context.globalAlpha = current ? 1 : 0.75;
-              context.fillStyle = color;
-              context.fillRect(labelRect.x, labelRect.y, labelRect.width, labelRect.height);
-              context.fillStyle = "#101214";
-              context.fillText(label, labelRect.x + 5, labelRect.y + 13);
-              context.globalAlpha = 1;
-            }
+        if (drawLabels) {
+          const label = overlayLabel(thing, kind);
+          context.font = "14px ui-sans-serif, system-ui, sans-serif";
+          const metrics = context.measureText(label);
+          const labelRect = placeLabel(x, y, width, height, metrics.width + 10, 20, occupiedLabels);
+          if (labelRect) {
+            context.fillStyle = color;
+            context.fillRect(labelRect.x, labelRect.y, labelRect.width, labelRect.height);
+            context.fillStyle = "#101214";
+            context.fillText(label, labelRect.x + 5, labelRect.y + 15);
           }
         }
       }
@@ -618,9 +518,7 @@
       appendMetric(metrics, "Perception", `${latest.cycle?.perception_duration_ms ?? "?"} ms`);
       appendMetric(metrics, "Confidence", Number(latest.perception?.confidence || 0).toFixed(3));
       appendMetric(metrics, "Status", latest.perception?.status || "unknown");
-      appendMetric(metrics, "Memory health", latest.memory?.health || "absent");
-      appendMetric(metrics, "Memory records", latest.memory?.record_count ?? latest.memory?.records?.length ?? "0");
-      appendMetric(metrics, "Memory epoch", latest.memory?.epoch_id || "-");
+      appendMetric(metrics, "Memory keys", latest.memory?.record_count ?? latest.memory?.records?.length ?? "open /memory");
 
       const runs = document.getElementById("pluginRuns");
       runs.replaceChildren();
@@ -653,31 +551,6 @@
       }
       if (!things.children.length) things.textContent = "No findings";
 
-      const memoryList = document.getElementById("memoryRecords");
-      memoryList.replaceChildren();
-      for (const record of latest.memory?.records || []) {
-        const row = document.createElement("div");
-        row.className = "thing";
-        row.style.borderColor = memoryColor;
-        const name = document.createElement("div");
-        name.textContent = record.label || record.record_id || "unnamed record";
-        const detail = document.createElement("div");
-        detail.className = "secondary";
-        const current = memoryIsCurrent(record);
-        detail.textContent = [
-          record.kind || "unknown",
-          current ? "current-frame" : `source:${record.provenance?.frame_id || "?"}`,
-          `conf ${Number(record.confidence || 0).toFixed(3)}`,
-          record.location?.zone || "no-zone",
-        ].join(" | ");
-        row.append(name, detail);
-        memoryList.append(row);
-      }
-      if (!memoryList.children.length) {
-        memoryList.textContent = latest.memory
-          ? "No image-space retained records"
-          : "No memory in publication";
-      }
 
       document.getElementById("rawData").textContent = JSON.stringify(latest, null, 2);
       syncKindToggles();
@@ -733,8 +606,6 @@
     });
     regionsToggle.addEventListener("change", drawOverlays);
     labelsToggle.addEventListener("change", drawOverlays);
-    perceptionStageToggle.addEventListener("change", drawOverlays);
-    memoryStageToggle.addEventListener("change", drawOverlays);
     window.addEventListener("resize", drawOverlays);
 
     refresh();

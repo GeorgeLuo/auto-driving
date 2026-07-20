@@ -258,6 +258,7 @@ class AutonomyPilotPart:
                 "duration_ms": None,
                 "perception": None,
                 "observation": None,
+                "memory": None,
                 "latest_json_path": LATEST_JSON_PATH,
                 "latest_frame_path": LATEST_FRAME_PATH,
             }
@@ -274,6 +275,7 @@ class AutonomyPilotPart:
 
         perception = None if snap.cycle is None else deepcopy(snap.cycle.get("perception"))
         observation = None if snap.cycle is None else deepcopy(snap.cycle.get("observation"))
+        memory = None if snap.cycle is None else deepcopy(snap.cycle.get("memory"))
         return {
             "schema": OBSERVATION_PUBLICATION_SCHEMA,
             "ok": health in {PUBLICATION_HEALTH_HEALTHY, PUBLICATION_HEALTH_STALE},
@@ -302,6 +304,7 @@ class AutonomyPilotPart:
             "skipped_since_previous": snap.skipped_since_previous,
             "perception": perception,
             "observation": observation,
+            "memory": memory,
             "latest_json_path": LATEST_JSON_PATH,
             "latest_frame_path": LATEST_FRAME_PATH,
         }

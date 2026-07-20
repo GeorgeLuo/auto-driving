@@ -350,6 +350,8 @@ def _publication_payload(
     source = perception_record or {}
     perception = source.get("perception")
     perception = perception if isinstance(perception, dict) else None
+    memory = source.get("memory")
+    memory = memory if isinstance(memory, dict) else None
     overlay = _overlay_payload(frame=frame, perception_record=perception_record, now_ms=generated_at_ms)
     return {
         "schema": PUBLICATION_SCHEMA,
@@ -365,6 +367,7 @@ def _publication_payload(
             "action_policy": source.get("action_policy"),
         },
         "perception": perception,
+        "memory": memory,
         "sensor_snapshot": source.get("sensor_snapshot"),
         "observation": source.get("observation"),
         "control": source.get("control"),

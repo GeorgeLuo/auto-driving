@@ -52,8 +52,63 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(payload["algorithm"], "test-observer")
         # Idle host has no perception stage; publication still carries cycle control.
         self.assertIsNone(payload["perception"])
+        self.assertIsNone(payload["memory"])
         self.assertEqual(payload["control"]["reason"], "stable-idle-engine")
         self.assertEqual(payload["frame"]["frame_path"], LATEST_FRAME_PATH)
+
+    def test_publication_includes_memory_snapshot_when_stage_present(self) -> None:
+        from autonomy.decision import (
+            DecisionFrameContext,
+            DecisionStages,
+            MemoryBounds,
+            MemoryProvenance,
+            MemorySnapshot,
+            Observation,
+            RetainedEvidence,
+        )
+        from autonomy.perception import ViewLocation
+        from autonomy.runtime.cycle_host import AutonomyCycleHost
+
+        def remember(context, observation):
+            del observation
+            return MemorySnapshot(
+                memory_id="mem-1",
+                epoch_id="epoch-1",
+                health="healthy",
+                bounds=MemoryBounds(max_records=4),
+                created_at_ms=context.timestamp_ms,
+                records=(
+                    RetainedEvidence(
+                        record_id="thing:boundary",
+                        kind="floor_boundary",
+                        label="boundary",
+                        confidence=0.9,
+                        provenance=MemoryProvenance(
+                            observation_id="obs",
+                            evidence_id="boundary",
+                            coordinate_frame="image",
+                            observed_at_ms=context.timestamp_ms,
+                            updated_at_ms=context.timestamp_ms,
+                            frame_id=context.frame_id,
+                        ),
+                        location=ViewLocation(
+                            frame="image",
+                            zone="center",
+                            bbox_xyxy_norm=(0.2, 0.3, 0.5, 0.8),
+                        ),
+                    ),
+                ),
+                implementation_id="bounded_evidence",
+            )
+
+        host = AutonomyCycleHost(stages=DecisionStages(remember=remember))
+        part = AutonomyPilotPart(host=host, min_interval_s=0.0, algorithm="test")
+        part.run(image_array=np.zeros((8, 8, 3), dtype=np.uint8), mode="user")
+        payload = part.publish_latest(now_ms=part.latest_snapshot.completed_at_ms)
+        self.assertIsNotNone(payload["memory"])
+        self.assertEqual(payload["memory"]["health"], "healthy")
+        self.assertEqual(payload["memory"]["record_count"], 1)
+        self.assertEqual(payload["memory"]["records"][0]["kind"], "floor_boundary")
 
         jpeg, frame_meta = part.publish_latest_frame_jpeg()
         self.assertIsNotNone(jpeg)

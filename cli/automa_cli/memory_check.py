@@ -24,6 +24,8 @@ from implementations.memory import (
 from .memory import (
     build_memory_provenance_rows,
     memory_snapshot_digest,
+    post_memory_reset,
+    probe_live_memory,
     render_memory_provenance_extract_html,
 )
 from .paths import ROOT, display_path, safe_path_part
@@ -71,17 +73,19 @@ def run_vehicle_memory_check(
     auto: bool = False,
     timeout_s: float = 3.0,
     fresh_timeout_s: float = 12.0,
+    expiry_timeout_s: float | None = None,
     input_fn: Callable[[str], str] | None = None,
     fetch_publication: Callable[[str], dict[str, Any]] | None = None,
     fetch_frame: Callable[[str], tuple[bytes, dict[str, str]]] | None = None,
     fetch_matched_pair: Callable[..., dict[str, Any]] | None = None,
+    reset_fn: Callable[[], dict[str, Any]] | None = None,
+    probe_fn: Callable[[], dict[str, Any]] | None = None,
 ) -> CommandResult:
     """Run present/dropout/expiry/reset gates through activated memory.
 
     - Chase / offline staging ids: process-local phase script.
-    - PiCar: guided stationary captures from live ``/autonomy/observation/latest``,
-      then the same lifecycle gates on those live-sourced observations (plus a
-      deterministic max-age jump for expiry). Never commands movement. Recorded
+    - PiCar: scores the **live onboard** stage via publication.memory and
+      onboard reset (no forced dropout, no ephemeral local reducer). Recorded
       captures require publication/JPEG frame-id pairing.
     """
 
@@ -116,6 +120,9 @@ def run_vehicle_memory_check(
             fetch_publication=fetch_publication,
             fetch_frame=fetch_frame,
             fetch_matched_pair=fetch_matched_pair,
+            expiry_timeout_s=expiry_timeout_s,
+            reset_fn=reset_fn,
+            probe_fn=probe_fn,
         )
 
     return run_offline_memory_check(
@@ -335,20 +342,23 @@ def run_physical_memory_check(
     auto: bool = False,
     timeout_s: float = 3.0,
     fresh_timeout_s: float = 12.0,
+    expiry_timeout_s: float | None = None,
     input_fn: Callable[[str], str] | None = None,
     fetch_publication: Callable[[str], dict[str, Any]] | None = None,
     fetch_frame: Callable[[str], tuple[bytes, dict[str, str]]] | None = None,
     fetch_matched_pair: Callable[..., dict[str, Any]] | None = None,
+    reset_fn: Callable[[], dict[str, Any]] | None = None,
+    probe_fn: Callable[[], dict[str, Any]] | None = None,
 ) -> CommandResult:
-    """Stationary Pi memory check against live observation publications.
+    """Stationary Pi check against the **active onboard** memory stage.
 
-    Captures present and dropout publications (never moves the car), asserts
-    control stays zero, then evaluates the same present/dropout/expiry/reset
-    gates on a short-max-age stage fed by those live-sourced observations.
-    When recording images, publication metadata and JPEG must share the same
-    frame id (verified via X-Frame-Id).
+    Every phase is scored from live publications / status (not an ephemeral
+    local reducer). Dropout uses observed publications without forced empties.
+    Expiry waits for the live stage to drop retained keys. Reset calls the
+    onboard reset endpoint and requires an epoch/reset-count transition.
     """
 
+    del implementation_id  # Pi path validates the activated onboard stage only.
     base_url = picar_base_url(vehicle)
     if not base_url:
         return CommandResult(2, f"Vehicle {vehicle_id!r} has no picar base_url connection.")
@@ -356,39 +366,42 @@ def run_physical_memory_check(
     get_publication = fetch_publication or (
         lambda url: fetch_observation_publication(url, timeout_s=timeout_s)
     )
-    get_frame = fetch_frame or (lambda url: fetch_observation_frame(url, timeout_s=timeout_s))
     get_matched_pair = fetch_matched_pair or (
         lambda url, **kwargs: fetch_matched_observation_pair(url, **kwargs)
     )
+    do_reset = reset_fn or (lambda: post_memory_reset(base_url, timeout_s=timeout_s))
+    do_probe = probe_fn or (
+        lambda: probe_live_memory(
+            vehicle_id=vehicle_id,
+            vehicle=vehicle,
+            timeout_s=timeout_s,
+        )
+    )
     prompt = input_fn or input
 
-    _emit(output, "Physical memory check (stationary Pi)")
+    _emit(output, "Physical memory check (stationary Pi — live onboard stage)")
     _emit(output, f"vehicle: {vehicle_id}")
     _emit(output, f"endpoint: {base_url}")
     _emit(output, "movement: never commanded (manual placement only)")
-    _emit(output, "frame pairing: publication frame_id must match JPEG X-Frame-Id when recording")
+    _emit(output, "lifecycle source: live publication.memory / onboard reset")
+    if record:
+        _emit(output, "frame pairing: publication frame_id must match JPEG X-Frame-Id")
     _emit(output, "")
 
     captured_images: dict[str, bytes] = {}
-    live_samples: list[dict[str, Any]] = []
+    all_frames: list[dict[str, Any]] = []
+    phase_results: list[dict[str, Any]] = []
     last_frame_id: str | None = None
     pair_attempts_total = 0
+    present_keys: set[str] = set()
+    prior_epoch: str | None = None
+    prior_reset_count: int | None = None
+    implementation_id_live: str | None = None
+    max_age_ms: int | None = None
 
-    placements = (
-        (
-            "present",
-            "Object present: place a contrasting floor-standing object in view "
-            "(left/center/right). Memory should retain boundary evidence.",
-        ),
-        (
-            "dropout",
-            "Object removed / clear floor: remove the object so perception can drop "
-            "boundary evidence. Retained keys should still survive briefly.",
-        ),
-    )
-
-    for index, (placement, message) in enumerate(placements):
-        _emit(output, f"[{index + 1}/{len(placements)}] {placement}")
+    def capture(placement: str, index: int, message: str) -> dict[str, Any] | CommandResult:
+        nonlocal last_frame_id, pair_attempts_total
+        _emit(output, f"[{index}] {placement}")
         _emit(output, message)
         if not auto:
             try:
@@ -400,8 +413,6 @@ def run_physical_memory_check(
 
         try:
             if record:
-                # Prefer matched pair so recorded JPEGs cannot drift from JSON.
-                # Poll until frame advances past the previous placement capture.
                 pair = get_matched_pair(
                     base_url,
                     timeout_s=timeout_s,
@@ -458,97 +469,480 @@ def run_physical_memory_check(
                 ),
             )
 
-        force_empty = placement == "dropout"
-        check_frame = publication_to_check_frame(
-            publication,
-            index=index,
-            force_empty=force_empty,
-        )
-        live_samples.append(
-            {
-                "placement": placement,
-                "frame": check_frame,
-                "publication": {
-                    "health": publication.get("health"),
-                    "frame_id": frame_id,
-                    "control": publication.get("control"),
-                    "drive_mode": publication.get("drive_mode") or publication.get("mode"),
-                },
-                "control": control,
-                "frame_pair_matched": pair_matched,
-            }
-        )
+        # Never force empty observations — dropout must be observed from the host.
+        check_frame = publication_to_check_frame(publication, index=index, force_empty=False)
+        live_memory = live_memory_from_publication(publication)
+        if live_memory is None:
+            return CommandResult(
+                2,
+                f"{placement}: publication has no memory snapshot. "
+                "Deploy memory activation (core+autonomy) so the onboard stage is live.",
+            )
         _emit(
             output,
-            f"  captured frame_id={frame_id} health={publication.get('health')} "
+            f"  frame_id={frame_id} health={publication.get('health')} "
+            f"memory_keys={live_memory.get('record_count')} "
+            f"memory_health={live_memory.get('health')} "
             f"control_zero={control['control_zero']}"
             + (f" pair_matched={pair_matched}" if record else ""),
         )
+        return {
+            "placement": placement,
+            "frame": check_frame,
+            "frame_id": frame_id,
+            "publication": publication,
+            "control": control,
+            "live_memory": live_memory,
+            "frame_pair_matched": pair_matched,
+        }
 
-    present_frames = [
-        sample["frame"] for sample in live_samples if sample["placement"] == "present"
-    ]
-    dropout_frames = [
-        sample["frame"] for sample in live_samples if sample["placement"] == "dropout"
-    ]
-    if not present_frames:
-        return CommandResult(2, "No present-phase live frames were captured.")
-    if not dropout_frames:
-        return CommandResult(2, "No dropout-phase live frames were captured.")
+    present_cap = capture(
+        "present",
+        1,
+        "Object present: place a contrasting floor-standing object in view. "
+        "Onboard memory should retain boundary evidence.",
+    )
+    if isinstance(present_cap, CommandResult):
+        return present_cap
+    all_frames.append(present_cap["frame"])
+    present_mem = present_cap["live_memory"]
+    implementation_id_live = (
+        str(present_mem.get("implementation_id"))
+        if present_mem.get("implementation_id") is not None
+        else None
+    )
+    bounds = present_mem.get("bounds") if isinstance(present_mem.get("bounds"), dict) else {}
+    if bounds.get("max_age_ms") is not None:
+        try:
+            max_age_ms = int(bounds["max_age_ms"])
+        except (TypeError, ValueError):
+            max_age_ms = None
+    present_score = score_memory_check_phase(
+        phase_name="present",
+        final=present_mem,
+        present_keys=set(),
+        prior_epoch=None,
+    )
+    if present_score.get("passed"):
+        present_keys = record_ids_from_memory(present_mem)
+    prior_epoch = str(present_mem.get("epoch_id") or "") or None
+    phase_results.append(
+        _phase_result(
+            "present",
+            present_score,
+            present_mem,
+            live_control=present_cap["control"],
+            live_frame_ids=[present_cap["frame_id"]],
+            source="live_onboard_publication.memory",
+        )
+    )
+    _emit_phase(output, phase_results[-1])
 
-    # Expiry uses a synthetic time jump after the last live timestamp.
-    last_ts = max(int(frame.get("timestamp_ms") or 0) for frame in present_frames + dropout_frames)
-    expiry_frame = {
-        "frame_id": "expiry_time_jump",
-        "frame_index": 99,
-        "timestamp_ms": last_ts + CHECK_MAX_AGE_MS + 5_000,
-        "observation": {
-            "observation_id": "obs_expiry_jump",
-            "created_at_ms": last_ts + CHECK_MAX_AGE_MS + 5_000,
-            "sensor_snapshot": {},
-            "perception_plugin_id": "lightweight_observer",
-            "summary": ["synthetic max-age jump after live captures"],
-            "things": [],
-            "signals": [],
+    dropout_cap = capture(
+        "dropout",
+        2,
+        "Object removed / clear floor: remove the object so perception drops "
+        "boundary evidence. Onboard retained keys should still survive briefly.",
+    )
+    if isinstance(dropout_cap, CommandResult):
+        return dropout_cap
+    all_frames.append(dropout_cap["frame"])
+    dropout_mem = dropout_cap["live_memory"]
+    dropout_score = score_memory_check_phase(
+        phase_name="dropout",
+        final=dropout_mem,
+        present_keys=present_keys,
+        prior_epoch=prior_epoch,
+    )
+    phase_results.append(
+        _phase_result(
+            "dropout",
+            dropout_score,
+            dropout_mem,
+            live_control=dropout_cap["control"],
+            live_frame_ids=[dropout_cap["frame_id"]],
+            source="live_onboard_publication.memory",
+        )
+    )
+    _emit_phase(output, phase_results[-1])
+
+    # Expiry: wait for the live stage to drop present keys (no local time jump).
+    if max_age_ms is None:
+        max_age_ms = 10_000
+    wait_s = float(expiry_timeout_s) if expiry_timeout_s is not None else float(max_age_ms) / 1000.0 + 8.0
+    _emit(output, f"phase: expiry (waiting up to {wait_s:.1f}s for live onboard keys to age out)")
+    try:
+        expiry_pub, expiry_mem = wait_for_live_key_expiry(
+            base_url=base_url,
+            get_publication=get_publication,
+            present_keys=present_keys,
+            previous_frame_id=last_frame_id,
+            timeout_s=wait_s,
+            poll_timeout_s=fresh_timeout_s,
+        )
+    except TimeoutError as exc:
+        return CommandResult(2, f"expiry phase failed: {exc}")
+    expiry_control = _publication_control(expiry_pub)
+    if not expiry_control["control_zero"]:
+        return CommandResult(2, "expiry: live control became non-zero while waiting")
+    expiry_frame = publication_to_check_frame(expiry_pub, index=2, force_empty=False)
+    all_frames.append(expiry_frame)
+    expiry_score = score_memory_check_phase(
+        phase_name="expiry",
+        final=expiry_mem,
+        present_keys=present_keys,
+        prior_epoch=prior_epoch,
+    )
+    phase_results.append(
+        _phase_result(
+            "expiry",
+            expiry_score,
+            expiry_mem,
+            live_control=expiry_control,
+            live_frame_ids=[str(expiry_frame.get("frame_id") or "")],
+            source="live_onboard_publication.memory",
+        )
+    )
+    _emit_phase(output, phase_results[-1])
+
+    # Reset: onboard endpoint + live probe (epoch / reset_count transition).
+    _emit(output, "phase: reset (POST /autonomy/memory/reset + live probe)")
+    before_live = do_probe()
+    prior_epoch = (
+        str(before_live.get("last_epoch_id") or expiry_mem.get("epoch_id") or prior_epoch or "")
+        or None
+    )
+    if before_live.get("reset_count") is not None:
+        try:
+            prior_reset_count = int(before_live["reset_count"])
+        except (TypeError, ValueError):
+            prior_reset_count = None
+    try:
+        reset_payload = do_reset()
+    except (ConnectionError, ValueError, OSError) as exc:
+        return CommandResult(2, f"onboard memory reset failed: {exc}")
+    if not reset_payload.get("ok"):
+        return CommandResult(
+            2,
+            f"onboard memory reset failed: {reset_payload.get('error') or reset_payload}",
+        )
+    after_live = do_probe()
+    reset_snapshot = live_memory_from_probe(after_live)
+    if reset_snapshot is None and isinstance(reset_payload.get("snapshot"), dict):
+        reset_snapshot = reset_payload["snapshot"]
+    if reset_snapshot is None:
+        return CommandResult(2, "reset: no live memory snapshot after onboard reset")
+    reset_score = score_live_reset(
+        final=reset_snapshot,
+        prior_epoch=prior_epoch,
+        prior_reset_count=prior_reset_count,
+        after_probe=after_live,
+    )
+    phase_results.append(
+        _phase_result(
+            "reset",
+            reset_score,
+            reset_snapshot,
+            live_control=None,
+            live_frame_ids=[],
+            source="live_onboard_reset+probe",
+            extra={"before_probe": before_live, "after_probe": after_live, "reset": reset_payload},
+        )
+    )
+    _emit_phase(output, phase_results[-1])
+
+    passed = all(bool(item.get("passed")) for item in phase_results)
+    present_snapshot = present_mem
+    provenance_rows = build_memory_provenance_rows(final=present_snapshot, frames=all_frames)
+    report: dict[str, Any] = {
+        "schema": MEMORY_CHECK_RESULT_SCHEMA,
+        "vehicle_id": vehicle_id,
+        "provider": "picar",
+        "implementation_id": implementation_id_live,
+        "activation": "live_onboard",
+        "passed": passed,
+        "phases": ["present", "dropout", "expiry", "reset"],
+        "phase_results": phase_results,
+        "present_snapshot": present_snapshot,
+        "final_snapshot": reset_snapshot,
+        "provenance_rows": provenance_rows,
+        "safety": {
+            "movement_commands_sent": False,
+            "action_policy": "physical_observe_only",
+            "rewritten_engine_idle": True,
+            "lifecycle_source": "live_onboard_stage",
+            "forced_dropout": False,
+            "ephemeral_local_reducer": False,
+            "scenario_note": (
+                "Pi path scores publication.memory from the activated onboard stage for "
+                "present/dropout/expiry, and POST /autonomy/memory/reset for reset. "
+                f"Frame-pair attempts={pair_attempts_total}. No movement commands."
+            ),
         },
+        "recorded": False,
+        "record_dir": None,
+        "provenance_extract": None,
     }
-    present_control = live_samples[0]["control"]
-    dropout_control = live_samples[-1]["control"]
-    phases = [
-        {
-            "name": "present",
-            "frames": present_frames,
-            "live_control": present_control,
-            "live_frame_ids": [str(frame.get("frame_id")) for frame in present_frames],
-        },
-        {
-            "name": "dropout",
-            "frames": dropout_frames,
-            "live_control": dropout_control,
-            "live_frame_ids": [str(frame.get("frame_id")) for frame in dropout_frames],
-        },
-        {"name": "expiry", "frames": [expiry_frame]},
-        {"name": "reset", "frames": []},
-    ]
 
-    return run_offline_memory_check(
-        vehicle_id=vehicle_id,
-        provider="picar",
-        implementation_id=implementation_id,
-        record=record,
-        json_output=json_output,
-        output=output,
-        output_root=output_root,
-        phases=phases,
-        captured_images=captured_images or None,
-        safety_note=(
-            "Stationary Pi path captures live /autonomy/observation/latest publications "
-            "with control-zero assertions, then evaluates memory lifecycle gates on those "
-            "live-sourced observations. When --record is set, publication JSON and JPEG "
-            f"must share the same frame id (pair attempts total={pair_attempts_total}). "
-            "Expiry uses a deterministic max-age time jump; reset is evaluated on the "
-            "check stage. No movement commands are sent."
+    if record:
+        try:
+            record_info = write_memory_check_record(
+                report=report,
+                all_frames=all_frames,
+                phase_results=phase_results,
+                output_root=output_root or memory_check_output_root(),
+                captured_images=captured_images or None,
+            )
+        except OSError as exc:
+            return CommandResult(2, f"Could not write memory check record: {exc}")
+        report["recorded"] = True
+        report["record_dir"] = record_info["record_dir"]
+        report["provenance_extract"] = record_info["provenance_extract"]
+        report["record_manifest"] = record_info["manifest"]
+        _emit(output, f"record: {report['record_dir']}")
+        _emit(output, f"provenance extract: {report['provenance_extract']}")
+    else:
+        _emit(output, "record: disabled (pass --record for bounded extract)")
+
+    exit_code = 0 if passed else 1
+    if json_output:
+        return CommandResult(exit_code, json.dumps(report, indent=2, sort_keys=True, default=str))
+    lines = [
+        f"Memory check: {vehicle_id}  {'PASS' if passed else 'FAIL'}",
+        f"Implementation: {implementation_id_live or 'live_onboard'}",
+        "Lifecycle source: live onboard stage",
+        "Phases: "
+        + ", ".join(
+            f"{item['phase']}={'ok' if item['passed'] else 'fail'}" for item in phase_results
         ),
+        "Movement: never commanded",
+    ]
+    if report.get("recorded"):
+        lines.append(f"Record: {report['record_dir']}")
+        lines.append(f"Provenance extract: {report['provenance_extract']}")
+    return CommandResult(exit_code, "\n".join(lines))
+
+
+def live_memory_from_publication(publication: dict[str, Any]) -> dict[str, Any] | None:
+    """Extract the onboard MemorySnapshot payload from a publication."""
+
+    memory = publication.get("memory")
+    if not isinstance(memory, dict):
+        return None
+    # Normalize count if only records are present.
+    if memory.get("record_count") is None and isinstance(memory.get("records"), list):
+        memory = {**memory, "record_count": len(memory["records"])}
+    return memory
+
+
+def live_memory_from_probe(probe: dict[str, Any]) -> dict[str, Any] | None:
+    """Build a snapshot-like dict from vehicle_memory_live_v0 probe fields."""
+
+    if not isinstance(probe, dict):
+        return None
+    if probe.get("status") not in {"live", "error"} and probe.get("last_health") is None:
+        # Still allow empty after reset when status is live.
+        if probe.get("status") != "live":
+            return None
+    records: list[dict[str, Any]] = []
+    # Probe does not always include full records; synthesize empty for scoring.
+    count = probe.get("last_record_count")
+    try:
+        record_count = int(count) if count is not None else 0
+    except (TypeError, ValueError):
+        record_count = 0
+    health = probe.get("last_health") or ("empty" if record_count == 0 else "healthy")
+    return {
+        "health": health,
+        "record_count": record_count,
+        "records": records,
+        "epoch_id": probe.get("last_epoch_id"),
+        "implementation_id": probe.get("implementation_id"),
+        "bounds": probe.get("bounds"),
+    }
+
+
+def record_ids_from_memory(memory: dict[str, Any]) -> set[str]:
+    records = memory.get("records") if isinstance(memory.get("records"), list) else []
+    return {
+        str(record.get("record_id"))
+        for record in records
+        if isinstance(record, dict) and record.get("record_id")
+    }
+
+
+def score_live_reset(
+    *,
+    final: dict[str, Any],
+    prior_epoch: str | None,
+    prior_reset_count: int | None,
+    after_probe: dict[str, Any],
+) -> dict[str, Any]:
+    """Require empty live state and epoch or reset_count transition."""
+
+    base = score_memory_check_phase(
+        phase_name="reset",
+        final=final,
+        present_keys=set(),
+        prior_epoch=prior_epoch,
+    )
+    after_epoch = str(after_probe.get("last_epoch_id") or final.get("epoch_id") or "")
+    epoch_changed = bool(prior_epoch) and after_epoch and after_epoch != prior_epoch
+    reset_count = after_probe.get("reset_count")
+    count_bumped = False
+    if prior_reset_count is not None and reset_count is not None:
+        try:
+            count_bumped = int(reset_count) > int(prior_reset_count)
+        except (TypeError, ValueError):
+            count_bumped = False
+    transition_ok = epoch_changed or count_bumped
+    # Must not accept empty health alone without a transition signal.
+    if not transition_ok:
+        return {
+            "passed": False,
+            "reason": (
+                "reset did not show epoch_id or reset_count transition on the live host "
+                f"(prior_epoch={prior_epoch!r} after_epoch={after_epoch!r} "
+                f"prior_reset_count={prior_reset_count} after_reset_count={reset_count})"
+            ),
+            "prior_epoch": prior_epoch,
+            "epoch_id": after_epoch,
+            "prior_reset_count": prior_reset_count,
+            "reset_count": reset_count,
+        }
+    if not base.get("passed"):
+        return {
+            **base,
+            "prior_reset_count": prior_reset_count,
+            "reset_count": reset_count,
+            "reason": base.get("reason"),
+        }
+    return {
+        **base,
+        "passed": True,
+        "reason": "onboard reset produced empty live state with epoch/reset_count transition",
+        "prior_reset_count": prior_reset_count,
+        "reset_count": reset_count,
+    }
+
+
+def wait_for_live_key_expiry(
+    *,
+    base_url: str,
+    get_publication: Callable[[str], dict[str, Any]],
+    present_keys: set[str],
+    previous_frame_id: str | None,
+    timeout_s: float,
+    poll_timeout_s: float,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Poll live publications until present keys leave the onboard memory snapshot."""
+
+    deadline = time.monotonic() + max(1.0, float(timeout_s))
+    last_frame_id = previous_frame_id
+    last_memory: dict[str, Any] | None = None
+    last_publication: dict[str, Any] | None = None
+    while time.monotonic() < deadline:
+        try:
+            publication = _wait_for_fresh_publication(
+                base_url=base_url,
+                get_publication=get_publication,
+                previous_frame_id=last_frame_id,
+                timeout_s=min(2.0, float(poll_timeout_s)),
+            )
+        except TimeoutError:
+            # Fall back to a non-advancing poll so expiry can still complete.
+            try:
+                publication = get_publication(base_url)
+            except ConnectionError:
+                time.sleep(0.2)
+                continue
+        last_publication = publication
+        frame = publication.get("frame") if isinstance(publication.get("frame"), dict) else {}
+        if frame.get("frame_id"):
+            last_frame_id = str(frame.get("frame_id"))
+        memory = live_memory_from_publication(publication)
+        if memory is None:
+            time.sleep(0.2)
+            continue
+        last_memory = memory
+        remaining = present_keys.intersection(record_ids_from_memory(memory))
+        count = int(memory.get("record_count") or 0)
+        # Expiry success: present keys gone (records list empty or without those ids).
+        if present_keys and not remaining:
+            return publication, memory
+        if not present_keys and count == 0 and str(memory.get("health") or "") in {
+            "empty",
+            "unavailable",
+        }:
+            return publication, memory
+        # If records are not listed in publication, fall back to count=0 empty health.
+        if (
+            present_keys
+            and not isinstance(memory.get("records"), list)
+            and count == 0
+            and str(memory.get("health") or "") in {"empty", "unavailable"}
+        ):
+            return publication, memory
+        time.sleep(0.25)
+
+    detail = ""
+    if last_memory is not None:
+        detail = (
+            f" last_health={last_memory.get('health')} "
+            f"last_count={last_memory.get('record_count')} "
+            f"remaining={sorted(present_keys.intersection(record_ids_from_memory(last_memory)))}"
+        )
+    raise TimeoutError(
+        f"live onboard memory did not drop present keys within {timeout_s}s.{detail}"
+    )
+
+
+def _phase_result(
+    name: str,
+    score: dict[str, Any],
+    final: dict[str, Any],
+    *,
+    live_control: dict[str, Any] | None,
+    live_frame_ids: list[str],
+    source: str,
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    payload = {
+        "phase": name,
+        "passed": bool(score.get("passed")),
+        "score": score,
+        "health": final.get("health"),
+        "record_count": final.get("record_count"),
+        "epoch_id": final.get("epoch_id"),
+        "digest": memory_snapshot_digest(final) if isinstance(final, dict) else None,
+        "record_ids": sorted(record_ids_from_memory(final)),
+        "live_control_zero": (
+            None if live_control is None else bool(live_control.get("control_zero"))
+        ),
+        "live_frame_ids": live_frame_ids,
+        "lifecycle_source": source,
+        "snapshot": final,
+    }
+    if extra:
+        payload.update(extra)
+    if live_control is not None and not live_control.get("control_zero"):
+        payload["passed"] = False
+        payload["score"] = {
+            **score,
+            "passed": False,
+            "reason": "live publication control was non-zero (movement not allowed)",
+        }
+    return payload
+
+
+def _emit_phase(output: TextIO | None, phase_result: dict[str, Any]) -> None:
+    status = "PASS" if phase_result.get("passed") else "FAIL"
+    score = phase_result.get("score") if isinstance(phase_result.get("score"), dict) else {}
+    _emit(
+        output,
+        f"  {status}  keys={phase_result.get('record_count')}  "
+        f"health={phase_result.get('health')}  "
+        f"reason={score.get('reason')}",
     )
 
 

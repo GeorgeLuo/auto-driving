@@ -522,11 +522,11 @@ def build_parser() -> argparse.ArgumentParser:
         "check",
         help="Run present/dropout/expiry/reset memory lifecycle gates (Chase or Pi).",
         description=(
-            "Evaluate bounded-evidence lifecycle gates: present retention, dropout "
-            "survival, max-age expiry, and reset. Chase/offline uses a phase script; "
-            "PiCar captures live /autonomy/observation/latest publications with "
-            "manual placement prompts (never moves the car). Pass --record for a "
-            "bounded report, optional JPEG frames (Pi), and provenance extract."
+            "Evaluate memory lifecycle gates: present, dropout, expiry, and reset. "
+            "Chase/offline uses a phase script. PiCar scores the live onboard stage "
+            "from publication.memory (no forced dropout, no local ephemeral reducer), "
+            "waits for live age expiry, and POSTs onboard reset. Never moves the car. "
+            "Pass --record for a bounded report, verified JPEG pairs (Pi), and extract."
         ),
     )
     memory_check.add_argument(

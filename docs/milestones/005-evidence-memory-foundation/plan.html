@@ -174,7 +174,7 @@
       <div class="meta">
         <span class="pill">Status: active — not ready to close</span>
         <span class="pill">Packages open: 5 (validation repair) and 6</span>
-        <span class="pill">Next after pairing: live onboard lifecycle proof</span>
+        <span class="pill">Next after live Pi lifecycle: Chase frameIndex + shadow</span>
         <span class="pill">Proposed: 2026-07-15</span>
         <span class="pill">Action policy: idle</span>
         <span class="pill">Hosts: Chase and DonkeyCar</span>
@@ -218,8 +218,8 @@
             <tr>
               <td><strong>Stationary Pi visual-provenance check</strong> (present / dropout / expiry / reset, recorded)</td>
               <td>5</td>
-              <td><span class="status blocked">Rework</span></td>
-              <td>Publication/JPEG pairing is verified on <code>--record</code> (remediation 1). Still open: dropout is forced in the checker and expiry/reset use a local ephemeral reducer rather than the live onboard stage.</td>
+              <td><span class="status pending">Partial</span></td>
+              <td>Remediation 1–2: verified frame pairs + live onboard present/dropout/expiry/reset. Still open for full closeout: stronger live scene fixtures / recorded evidence under real max_age, and remediation 3–6.</td>
             </tr>
             <tr>
               <td><strong>Memory contract and bounds hardening</strong></td>
@@ -279,16 +279,16 @@
           <thead><tr><th>Severity</th><th>Finding</th><th>Implementation evidence</th><th>Required correction</th></tr></thead>
           <tbody>
             <tr>
-              <td><span class="status blocked">Blocker</span></td>
+              <td><span class="status done">Addressed</span></td>
               <td>Physical dropout is forced and expiry/reset run through an ephemeral local reducer rather than proving the onboard lifecycle.</td>
-              <td><code>cli/automa_cli/memory_check.py</code>: <code>force_empty</code>, <code>CHECK_MAX_AGE_MS</code>, <code>_load_check_stage</code>.</td>
-              <td>Drive every phase from observed live publications and validate reset/expiry against the activated onboard stage.</td>
+              <td>Was <code>force_empty</code> + local stage; Pi path now uses live <code>publication.memory</code>, live expiry wait, and onboard reset.</td>
+              <td>Done in remediation block 2 (this PR).</td>
             </tr>
             <tr>
-              <td><span class="status blocked">Blocker</span></td>
+              <td><span class="status done">Addressed</span></td>
               <td>Pi publication metadata and the recorded JPEG are fetched separately; the returned <code>X-Frame-Id</code> is ignored.</td>
-              <td><code>memory_check.py</code> fetches publication then frame; <code>physical_observation.py</code> returns headers the caller discards.</td>
-              <td>Fetch an atomic publication artifact or reject and retry unless the JPEG header matches the publication frame ID.</td>
+              <td><code>fetch_matched_observation_pair</code> with <code>after_frame_id</code> and nonempty JPEG requirement.</td>
+              <td>Done in remediation block 1.</td>
             </tr>
             <tr>
               <td><span class="status blocked">Blocker</span></td>
@@ -340,8 +340,8 @@
 
       <h3 style="margin-top: 18px;">Required Remediation Order</h3>
       <ol>
-        <li><strong>In progress / this PR:</strong> Make Pi publication/frame pairing atomic or explicitly verified.</li>
-        <li>Replace synthetic physical lifecycle phases with checks of the active onboard stage.</li>
+        <li><strong>Done:</strong> Make Pi publication/frame pairing atomic or explicitly verified.</li>
+        <li><strong>This PR:</strong> Replace synthetic physical lifecycle phases with checks of the active onboard stage.</li>
         <li>Preserve Chase frame identity and implement the live shadow/reference evaluator.</li>
         <li>Deeply detach snapshots; enforce byte limits and plugin-safe record identity.</li>
         <li>Add missing conflict, long-sequence, size-bound, stale-state, reset, and frame-pairing tests.</li>
@@ -349,9 +349,17 @@
       </ol>
       <p class="note" style="margin-top: 12px;">
         <strong>2026-07-20 remediation block 1:</strong> <code>fetch_matched_observation_pair</code>
-        retries until publication <code>frame.frame_id</code> equals JPEG <code>X-Frame-Id</code>.
-        Pi <code>memory check --record</code> uses that verified pair and fails closed on mismatch
-        timeout. Remaining remediation items stay open.
+        retries until publication <code>frame.frame_id</code> equals JPEG <code>X-Frame-Id</code>
+        (with <code>after_frame_id</code> freshness). Pi <code>memory check --record</code> fails closed
+        without a verified nonempty pair.
+      </p>
+      <p class="note" style="margin-top: 12px;">
+        <strong>2026-07-20 remediation block 2:</strong> Pi <code>memory check</code> scores
+        <code>publication.memory</code> from the activated onboard stage for present/dropout,
+        waits for live key expiry (no local time jump), and confirms reset via
+        <code>POST /autonomy/memory/reset</code> plus epoch/reset-count transition. Forced
+        dropout and ephemeral local reducers are removed from the Pi path. Chase synthetic
+        offline script remains for non-Pi hosts until remediation 3.
       </p>
     </section>
 

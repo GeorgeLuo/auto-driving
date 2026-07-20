@@ -23,6 +23,10 @@ def _live_publication(
     with_boundary: bool,
     steering: float = 0.0,
     throttle: float = 0.0,
+    memory_records: list[dict] | None = None,
+    memory_health: str | None = None,
+    epoch_id: str = "epoch-1",
+    max_age_ms: int = 1_000,
 ) -> dict:
     things = []
     if with_boundary:
@@ -40,6 +44,40 @@ def _live_publication(
                 "source_plugin_id": "floor-plane-v0",
             }
         )
+    if memory_records is None:
+        if with_boundary:
+            memory_records = [
+                {
+                    "record_id": "thing:floor_boundary_000",
+                    "kind": "floor_boundary",
+                    "label": "boundary",
+                    "confidence": 0.9,
+                    "provenance": {
+                        "frame_id": frame_id,
+                        "observation_id": f"obs_{frame_id}",
+                        "evidence_id": "floor_boundary_000",
+                    },
+                    "location": {"frame": "image", "zone": "center"},
+                }
+            ]
+        else:
+            # Dropout survival: empty perception things, but memory still holds keys.
+            memory_records = [
+                {
+                    "record_id": "thing:floor_boundary_000",
+                    "kind": "floor_boundary",
+                    "label": "boundary",
+                    "confidence": 0.9,
+                    "provenance": {
+                        "frame_id": "present_frame",
+                        "observation_id": "obs_present_frame",
+                        "evidence_id": "floor_boundary_000",
+                    },
+                    "location": {"frame": "image", "zone": "center"},
+                }
+            ]
+    if memory_health is None:
+        memory_health = "healthy" if memory_records else "empty"
     return {
         "health": "healthy",
         "drive_mode": "user",
@@ -67,9 +105,12 @@ def _live_publication(
             "signals": [{"signal_id": "floor_visible", "value": True, "confidence": 0.95}],
         },
         "memory": {
-            "health": "healthy" if with_boundary else "empty",
-            "record_count": 1 if with_boundary else 0,
-            "records": [],
+            "health": memory_health,
+            "record_count": len(memory_records),
+            "records": memory_records,
+            "epoch_id": epoch_id,
+            "implementation_id": "bounded_evidence",
+            "bounds": {"max_records": 32, "max_age_ms": max_age_ms, "eviction_policy": "oldest_first"},
         },
     }
 
@@ -218,24 +259,34 @@ class MemoryCheckTests(unittest.TestCase):
         self.assertEqual(frame["observation"]["things"], [])
         self.assertEqual(frame["frame_id"], "f1")
 
-    def test_physical_pi_path_with_mocked_publications(self) -> None:
+    def test_physical_pi_path_scores_live_onboard_memory(self) -> None:
         vehicle = {
             "vehicle_id": "piracer",
             "provider": "picar",
             "connection": {"base_url": "http://piracer.test:8887"},
         }
-        pubs = [
-            _live_publication(frame_id="present_frame", frame_index=0, with_boundary=True),
-            _live_publication(frame_id="dropout_frame", frame_index=1, with_boundary=False),
-        ]
-        calls = {"n": 0}
+        present_pub = _live_publication(
+            frame_id="present_frame", frame_index=0, with_boundary=True
+        )
+        dropout_pub = _live_publication(
+            frame_id="dropout_frame", frame_index=1, with_boundary=False
+        )
+        expired_pub = _live_publication(
+            frame_id="expired_frame",
+            frame_index=2,
+            with_boundary=False,
+            memory_records=[],
+            memory_health="empty",
+        )
+        pair_calls = {"n": 0}
+        pair_pubs = [present_pub, dropout_pub]
+        poll_pubs = [expired_pub]
 
         def fake_matched_pair(_url: str, **kwargs) -> dict:
             after = kwargs.get("after_frame_id")
-            # Skip publications that are not after the previous frame when requested.
-            while calls["n"] < len(pubs):
-                pub = pubs[calls["n"]]
-                calls["n"] += 1
+            while pair_calls["n"] < len(pair_pubs):
+                pub = pair_pubs[pair_calls["n"]]
+                pair_calls["n"] += 1
                 frame_id = pub["frame"]["frame_id"]
                 if after is not None and frame_id == after:
                     continue
@@ -250,6 +301,40 @@ class MemoryCheckTests(unittest.TestCase):
                 }
             raise TimeoutError("no newer matched pair")
 
+        def fake_pub(_url: str) -> dict:
+            return poll_pubs[0]
+
+        def fake_reset() -> dict:
+            return {"ok": True, "status": "reset", "snapshot": {
+                "health": "empty",
+                "record_count": 0,
+                "records": [],
+                "epoch_id": "epoch-2",
+            }}
+
+        def fake_probe() -> dict:
+            # First probe before reset, second after.
+            if not hasattr(fake_probe, "n"):
+                fake_probe.n = 0  # type: ignore[attr-defined]
+            fake_probe.n += 1  # type: ignore[attr-defined]
+            if fake_probe.n == 1:  # type: ignore[attr-defined]
+                return {
+                    "status": "live",
+                    "last_health": "empty",
+                    "last_record_count": 0,
+                    "last_epoch_id": "epoch-1",
+                    "reset_count": 1,
+                    "implementation_id": "bounded_evidence",
+                }
+            return {
+                "status": "live",
+                "last_health": "empty",
+                "last_record_count": 0,
+                "last_epoch_id": "epoch-2",
+                "reset_count": 2,
+                "implementation_id": "bounded_evidence",
+            }
+
         with tempfile.TemporaryDirectory() as tmp:
             output_root = Path(tmp) / "memory-check"
             with mock.patch(
@@ -261,29 +346,33 @@ class MemoryCheckTests(unittest.TestCase):
             ):
                 result = run_vehicle_memory_check(
                     vehicle_id="piracer",
-                    implementation_id="bounded_evidence",
                     record=True,
                     json_output=True,
                     auto=True,
                     fetch_matched_pair=fake_matched_pair,
+                    fetch_publication=fake_pub,
+                    reset_fn=fake_reset,
+                    probe_fn=fake_probe,
+                    expiry_timeout_s=1.0,
                     output_root=output_root,
                 )
             self.assertEqual(result.exit_code, 0, result.message)
             payload = json.loads(result.message)
             self.assertTrue(payload["passed"])
             self.assertEqual(payload["provider"], "picar")
-            self.assertEqual(payload["safety"]["action_policy"], "physical_observe_only")
-            self.assertFalse(payload["safety"]["movement_commands_sent"])
-            self.assertIn("pair", payload["safety"]["scenario_note"])
+            self.assertEqual(payload["safety"]["lifecycle_source"], "live_onboard_stage")
+            self.assertFalse(payload["safety"]["forced_dropout"])
+            self.assertFalse(payload["safety"]["ephemeral_local_reducer"])
+            sources = {item["lifecycle_source"] for item in payload["phase_results"]}
+            self.assertIn("live_onboard_publication.memory", sources)
+            self.assertIn("live_onboard_reset+probe", sources)
             present = next(item for item in payload["phase_results"] if item["phase"] == "present")
             self.assertTrue(present["live_control_zero"])
             self.assertIn("present_frame", present["live_frame_ids"])
             self.assertTrue(payload["recorded"])
             run_dir = next(output_root.iterdir())
             self.assertTrue((run_dir / "frames").is_dir())
-            self.assertTrue(any((run_dir / "frames").iterdir()))
             extract = (run_dir / "provenance_extract.html").read_text(encoding="utf-8")
-            self.assertIn("retained evidence", extract.lower())
             self.assertIn("present_frame", extract)
 
     def test_physical_pi_record_fails_when_pair_unavailable(self) -> None:

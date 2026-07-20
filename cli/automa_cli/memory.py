@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import html
 import json
 import os
 import time
@@ -47,6 +48,27 @@ from .vehicles import discover_active_vehicles, find_vehicle_by_id, format_activ
 RUNTIME_ROOT = Path(os.environ.get("AUTOMA_RUNTIME_ROOT", ROOT / "runtime" / "vehicles"))
 MEMORY_OBSERVATION_SEQUENCE_SCHEMA = "automa_memory_observation_sequence_v0"
 MEMORY_REPLAY_RESULT_SCHEMA = "vehicle_memory_replay_v0"
+MEMORY_REPLAY_RECORD_SCHEMA = "automa_memory_replay_record_v0"
+# Opt-in recording is intentionally small and explicit.
+MEMORY_REPLAY_RECORD_ARTIFACTS = (
+    "manifest.json",
+    "result.json",
+    "sequence.json",
+    "final_memory.json",
+    "digest.txt",
+    "provenance_extract.html",
+)
+
+
+def memory_replay_output_root() -> Path:
+    """Resolve opt-in replay record root (env-overridable at call time)."""
+
+    return Path(
+        os.environ.get(
+            "AUTOMA_MEMORY_REPLAY_OUTPUT_ROOT",
+            str(ROOT / "lab" / "runs" / "memory-replay"),
+        )
+    )
 
 
 @dataclass(frozen=True)
@@ -229,11 +251,15 @@ def replay_vehicle_memory(
     implementation_id: str | None = None,
     json_output: bool = False,
     verify_twice: bool = True,
+    record: bool = False,
+    output_root: Path | None = None,
 ) -> CommandResult:
     """Replay a fixed observation sequence through the staged memory activation.
 
     Offline and process-local: does not talk to the live host, does not write
     history by default, and reports a stable end-state digest for comparison.
+    Pass ``record=True`` for an explicit bounded run directory with a frozen
+    provenance extract (key → value → source frame/observation).
     """
 
     sequence_path = Path(sequence).expanduser()
@@ -309,7 +335,7 @@ def replay_vehicle_memory(
             run_b = run_a
 
     deterministic = run_a["digest"] == run_b["digest"]
-    payload = {
+    payload: dict[str, Any] = {
         "schema": MEMORY_REPLAY_RESULT_SCHEMA,
         "vehicle_id": vehicle_id,
         "sequence": display_path(sequence_path.resolve()) if sequence_path.exists() else str(sequence_path),
@@ -321,6 +347,9 @@ def replay_vehicle_memory(
         "final": run_a["final"],
         "per_frame": run_a["per_frame"],
         "second_pass_digest": run_b["digest"] if verify_twice else None,
+        "recorded": False,
+        "record_dir": None,
+        "provenance_extract": None,
     }
     if not deterministic:
         if json_output:
@@ -336,6 +365,22 @@ def replay_vehicle_memory(
             ),
         )
 
+    if record:
+        try:
+            record_info = write_memory_replay_record(
+                vehicle_id=vehicle_id,
+                sequence_path=sequence_path,
+                frames=frames,
+                payload=payload,
+                output_root=output_root or memory_replay_output_root(),
+            )
+        except OSError as exc:
+            return CommandResult(2, f"Could not write memory replay record: {exc}")
+        payload["recorded"] = True
+        payload["record_dir"] = record_info["record_dir"]
+        payload["provenance_extract"] = record_info["provenance_extract"]
+        payload["record_manifest"] = record_info["manifest"]
+
     if json_output:
         return CommandResult(0, json.dumps(payload, indent=2, sort_keys=True))
     final = run_a["final"]
@@ -348,19 +393,288 @@ def replay_vehicle_memory(
         f"Digest: {run_a['digest']}",
         "Deterministic: yes (two independent passes matched)",
     ]
+    if record:
+        lines.append(f"Record: {payload['record_dir']}")
+        lines.append(f"Provenance extract: {payload['provenance_extract']}")
+    else:
+        lines.append("Record: disabled (pass --record to freeze a bounded provenance extract)")
     records = final.get("records") if isinstance(final.get("records"), list) else []
     if records:
         lines.append("Retained keys:")
-        for record in records[:12]:
-            if not isinstance(record, dict):
+        for record_item in records[:12]:
+            if not isinstance(record_item, dict):
                 continue
             lines.append(
-                f"  - {record.get('record_id')}  kind={record.get('kind')}  "
-                f"conf={record.get('confidence')}"
+                f"  - {record_item.get('record_id')}  kind={record_item.get('kind')}  "
+                f"conf={record_item.get('confidence')}"
             )
         if len(records) > 12:
             lines.append(f"  … {len(records) - 12} more")
     return CommandResult(0, "\n".join(lines))
+
+
+def write_memory_replay_record(
+    *,
+    vehicle_id: str,
+    sequence_path: Path,
+    frames: list[dict[str, Any]],
+    payload: dict[str, Any],
+    output_root: Path,
+) -> dict[str, Any]:
+    """Write an explicit, bounded memory-replay record with provenance extract.
+
+    Default replay writes nothing. This path is opt-in only and never stores
+    live camera history; it freezes sequence observations beside retained keys.
+    """
+
+    run_id = f"{safe_path_part(vehicle_id)}-{time.strftime('%Y%m%d-%H%M%S')}"
+    record_dir = Path(output_root) / run_id
+    record_dir.mkdir(parents=True, exist_ok=False)
+
+    final = payload.get("final") if isinstance(payload.get("final"), dict) else {}
+    sequence_payload = {
+        "schema": MEMORY_OBSERVATION_SEQUENCE_SCHEMA,
+        "source": display_path(sequence_path.resolve()) if sequence_path.exists() else str(sequence_path),
+        "frames": frames,
+    }
+    provenance_rows = build_memory_provenance_rows(final=final, frames=frames)
+    extract_html = render_memory_provenance_extract_html(
+        vehicle_id=vehicle_id,
+        payload=payload,
+        frames=frames,
+        provenance_rows=provenance_rows,
+    )
+
+    (record_dir / "sequence.json").write_text(
+        json.dumps(sequence_payload, indent=2, sort_keys=True, default=str),
+        encoding="utf-8",
+    )
+    (record_dir / "final_memory.json").write_text(
+        json.dumps(final, indent=2, sort_keys=True, default=str),
+        encoding="utf-8",
+    )
+    (record_dir / "digest.txt").write_text(f"{payload.get('digest')}\n", encoding="utf-8")
+    extract_path = record_dir / "provenance_extract.html"
+    extract_path.write_text(extract_html, encoding="utf-8")
+
+    manifest = {
+        "schema": MEMORY_REPLAY_RECORD_SCHEMA,
+        "run_id": run_id,
+        "vehicle_id": vehicle_id,
+        "created_at_ms": int(time.time() * 1000),
+        "opt_in": True,
+        "writes_default_history": False,
+        "implementation_id": payload.get("implementation_id"),
+        "digest": payload.get("digest"),
+        "frame_count": payload.get("frame_count"),
+        "bounds": {
+            "artifacts": list(MEMORY_REPLAY_RECORD_ARTIFACTS),
+            "max_frames_in_record": int(payload.get("frame_count") or 0),
+            "includes_raw_camera_images": False,
+            "includes_live_host_state": False,
+            "retained_evidence_labeled_as": "retained_not_current",
+        },
+        "artifacts": {
+            name: display_path(record_dir / name) for name in MEMORY_REPLAY_RECORD_ARTIFACTS
+        },
+        "provenance_row_count": len(provenance_rows),
+        "notes": [
+            "Recording is disabled unless --record is passed.",
+            "Retained image-space geometry is attributed to provenance.frame_id only.",
+            "This extract does not treat stale coordinates as current camera geometry.",
+        ],
+    }
+    (record_dir / "manifest.json").write_text(
+        json.dumps(manifest, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+    result_payload = {
+        **payload,
+        "recorded": True,
+        "record_dir": display_path(record_dir),
+        "provenance_extract": display_path(extract_path),
+        "record_manifest": manifest,
+        "provenance_rows": provenance_rows,
+    }
+    (record_dir / "result.json").write_text(
+        json.dumps(result_payload, indent=2, sort_keys=True, default=str),
+        encoding="utf-8",
+    )
+    return {
+        "record_dir": display_path(record_dir),
+        "provenance_extract": display_path(extract_path),
+        "manifest": manifest,
+    }
+
+
+def build_memory_provenance_rows(
+    *,
+    final: dict[str, Any],
+    frames: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Pair each retained key with its source sequence frame observation."""
+
+    frames_by_id = {str(frame.get("frame_id")): frame for frame in frames}
+    records = final.get("records") if isinstance(final.get("records"), list) else []
+    rows: list[dict[str, Any]] = []
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        provenance = record.get("provenance") if isinstance(record.get("provenance"), dict) else {}
+        frame_id = str(provenance.get("frame_id") or "")
+        source_frame = frames_by_id.get(frame_id)
+        source_observation = (
+            source_frame.get("observation")
+            if isinstance(source_frame, dict) and isinstance(source_frame.get("observation"), dict)
+            else None
+        )
+        location = record.get("location") if isinstance(record.get("location"), dict) else {}
+        rows.append(
+            {
+                "key": record.get("record_id"),
+                "kind": record.get("kind"),
+                "label": record.get("label"),
+                "confidence": record.get("confidence"),
+                "retained_not_current": True,
+                "location": location,
+                "provenance": {
+                    "frame_id": provenance.get("frame_id"),
+                    "observation_id": provenance.get("observation_id"),
+                    "evidence_id": provenance.get("evidence_id"),
+                    "updated_at_ms": provenance.get("updated_at_ms"),
+                    "source_plugin_id": provenance.get("source_plugin_id"),
+                    "coordinate_frame": provenance.get("coordinate_frame"),
+                },
+                "source_frame_present_in_sequence": source_frame is not None,
+                "source_observation": source_observation,
+                "source_frame_index": (
+                    source_frame.get("frame_index") if isinstance(source_frame, dict) else None
+                ),
+                "source_timestamp_ms": (
+                    source_frame.get("timestamp_ms") if isinstance(source_frame, dict) else None
+                ),
+            }
+        )
+    rows.sort(key=lambda item: str(item.get("key") or ""))
+    return rows
+
+
+def render_memory_provenance_extract_html(
+    *,
+    vehicle_id: str,
+    payload: dict[str, Any],
+    frames: list[dict[str, Any]],
+    provenance_rows: list[dict[str, Any]],
+) -> str:
+    """Render a compact HTML extract: retained key → value → source observation."""
+
+    final = payload.get("final") if isinstance(payload.get("final"), dict) else {}
+    rows_html: list[str] = []
+    for row in provenance_rows:
+        location = row.get("location") if isinstance(row.get("location"), dict) else {}
+        provenance = row.get("provenance") if isinstance(row.get("provenance"), dict) else {}
+        source_obs = row.get("source_observation") if isinstance(row.get("source_observation"), dict) else {}
+        source_block = (
+            f"<pre>{html.escape(json.dumps(source_obs, indent=2, sort_keys=True, default=str))}</pre>"
+            if source_obs
+            else "<p class='warn'>Source observation not found in recorded sequence "
+            f"for frame_id={html.escape(str(provenance.get('frame_id')))}.</p>"
+        )
+        rows_html.append(
+            "\n".join(
+                [
+                    "<section class='record'>",
+                    f"<h3>key <code>{html.escape(str(row.get('key')))}</code></h3>",
+                    "<p class='badge'>retained evidence — not current camera geometry</p>",
+                    "<dl>",
+                    f"<dt>kind</dt><dd>{html.escape(str(row.get('kind')))}</dd>",
+                    f"<dt>label</dt><dd>{html.escape(str(row.get('label')))}</dd>",
+                    f"<dt>confidence</dt><dd>{html.escape(str(row.get('confidence')))}</dd>",
+                    f"<dt>location.zone</dt><dd>{html.escape(str(location.get('zone') or '—'))}</dd>",
+                    f"<dt>location.frame</dt><dd>{html.escape(str(location.get('frame') or '—'))}</dd>",
+                    f"<dt>provenance.frame_id</dt><dd><code>{html.escape(str(provenance.get('frame_id') or '—'))}</code></dd>",
+                    f"<dt>provenance.observation_id</dt><dd><code>{html.escape(str(provenance.get('observation_id') or '—'))}</code></dd>",
+                    f"<dt>source in sequence</dt><dd>{'yes' if row.get('source_frame_present_in_sequence') else 'no'}</dd>",
+                    "</dl>",
+                    "<h4>Mapped value (retained)</h4>",
+                    f"<pre>{html.escape(json.dumps({k: row.get(k) for k in ('key','kind','label','confidence','location','provenance')}, indent=2, sort_keys=True, default=str))}</pre>",
+                    "<h4>Source observation at provenance.frame_id</h4>",
+                    source_block,
+                    "</section>",
+                ]
+            )
+        )
+
+    timeline = []
+    for item in payload.get("per_frame") or []:
+        if not isinstance(item, dict):
+            continue
+        timeline.append(
+            "<li>"
+            f"<code>{html.escape(str(item.get('frame_id')))}</code> "
+            f"keys={html.escape(str(item.get('record_count')))} "
+            f"health={html.escape(str(item.get('health')))}"
+            "</li>"
+        )
+
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Memory provenance extract — {html.escape(vehicle_id)}</title>
+  <style>
+    :root {{ font-family: ui-sans-serif, system-ui, sans-serif; color: #17191c; }}
+    body {{ margin: 24px; max-width: 960px; }}
+    h1 {{ font-size: 1.25rem; }}
+    .meta, .badge, .warn {{ color: #62676f; }}
+    .badge {{
+      display: inline-block; border: 1px solid #d9dde2; border-radius: 999px;
+      padding: 2px 8px; font-size: 12px; background: #f6f7f8;
+    }}
+    .warn {{ color: #a35b00; }}
+    .record {{
+      border: 1px solid #d9dde2; border-radius: 8px; padding: 12px 14px; margin: 14px 0;
+      background: #fafbfc;
+    }}
+    dl {{ display: grid; grid-template-columns: 12rem 1fr; gap: 4px 10px; }}
+    dt {{ color: #62676f; }}
+    dd {{ margin: 0; word-break: break-word; }}
+    pre {{
+      background: #0f1418; color: #e7eef5; padding: 10px; border-radius: 6px;
+      overflow: auto; font-size: 12px; line-height: 1.4;
+    }}
+    code {{ font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }}
+    .note {{
+      border-left: 3px solid #176b87; padding: 8px 12px; background: #e7f3f8; margin: 16px 0;
+    }}
+  </style>
+</head>
+<body>
+  <h1>Memory provenance extract</h1>
+  <p class="meta">
+    vehicle=<strong>{html.escape(vehicle_id)}</strong>
+    · implementation=<code>{html.escape(str(payload.get('implementation_id')))}</code>
+    · digest=<code>{html.escape(str(payload.get('digest')))}</code>
+    · frames={html.escape(str(payload.get('frame_count')))}
+    · final keys={html.escape(str(final.get('record_count')))}
+    · health={html.escape(str(final.get('health')))}
+  </p>
+  <div class="note">
+    Retained evidence is attributed to <code>provenance.frame_id</code> / observation identity.
+    Image-space locations below are <strong>not</strong> current camera geometry; they are
+    frozen claims from the source observation that produced each key.
+  </div>
+  <h2>Replay timeline</h2>
+  <ol>
+    {''.join(timeline) or '<li>no per-frame rows</li>'}
+  </ol>
+  <h2>Retained keys → mapped values → source observations</h2>
+  {''.join(rows_html) if rows_html else '<p class="meta">No retained records in final snapshot.</p>'}
+  <h2>Sequence frames present</h2>
+  <p class="meta">{html.escape(', '.join(str(frame.get('frame_id')) for frame in frames))}</p>
+</body>
+</html>
+"""
 
 
 def load_memory_observation_sequence(path: Path) -> list[dict[str, Any]]:

@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from cli.automa_cli.memory import (
+    MEMORY_REPLAY_RECORD_ARTIFACTS,
     load_memory_observation_sequence,
     memory_snapshot_digest,
     replay_vehicle_memory,
@@ -20,6 +21,11 @@ class MemoryReplayTests(unittest.TestCase):
         result = run_automa("vehicles", "memory", "help")
         self.assertEqual(result.returncode, 0)
         self.assertIn("replay", result.stdout)
+
+    def test_replay_record_flag_in_help(self) -> None:
+        result = run_automa("vehicles", "memory", "replay", "--help")
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("--record", result.stdout)
 
     def test_load_sequence_fixture(self) -> None:
         frames = load_memory_observation_sequence(FIXTURE)
@@ -121,6 +127,103 @@ class MemoryReplayTests(unittest.TestCase):
             (root / "sequence.json").write_text(FIXTURE.read_text(encoding="utf-8"), encoding="utf-8")
             frames = load_memory_observation_sequence(root)
             self.assertEqual(len(frames), 3)
+
+    def test_replay_without_record_writes_nothing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            output_root = Path(tmp) / "memory-replay"
+            result = replay_vehicle_memory(
+                vehicle_id="chase-sim-chaser",
+                sequence=FIXTURE,
+                implementation_id="bounded_evidence",
+                json_output=True,
+                record=False,
+                output_root=output_root,
+            )
+            self.assertEqual(result.exit_code, 0, result.message)
+            payload = json.loads(result.message)
+            self.assertFalse(payload["recorded"])
+            self.assertIsNone(payload["record_dir"])
+            self.assertFalse(output_root.exists())
+
+    def test_replay_record_writes_bounded_provenance_extract(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            output_root = Path(tmp) / "memory-replay"
+            result = replay_vehicle_memory(
+                vehicle_id="chase-sim-chaser",
+                sequence=FIXTURE,
+                implementation_id="bounded_evidence",
+                json_output=True,
+                record=True,
+                output_root=output_root,
+            )
+            self.assertEqual(result.exit_code, 0, result.message)
+            payload = json.loads(result.message)
+            self.assertTrue(payload["recorded"])
+            self.assertIsNotNone(payload["record_dir"])
+            self.assertIsNotNone(payload["provenance_extract"])
+
+            # Resolve record dir from payload display path or output_root children.
+            run_dirs = list(output_root.iterdir())
+            self.assertEqual(len(run_dirs), 1)
+            record_dir = run_dirs[0]
+            for name in MEMORY_REPLAY_RECORD_ARTIFACTS:
+                self.assertTrue((record_dir / name).is_file(), name)
+
+            manifest = json.loads((record_dir / "manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(manifest["schema"], "automa_memory_replay_record_v0")
+            self.assertTrue(manifest["opt_in"])
+            self.assertFalse(manifest["writes_default_history"])
+            self.assertFalse(manifest["bounds"]["includes_raw_camera_images"])
+            self.assertEqual(
+                manifest["bounds"]["retained_evidence_labeled_as"],
+                "retained_not_current",
+            )
+
+            extract = (record_dir / "provenance_extract.html").read_text(encoding="utf-8")
+            self.assertIn("retained evidence", extract.lower())
+            self.assertIn("not current camera geometry", extract.lower())
+            self.assertIn("thing:floor_boundary_000", extract)
+            self.assertIn("provenance.frame_id", extract)
+            self.assertIn("obs_001", extract)  # last update of recurring thing
+
+            result_on_disk = json.loads((record_dir / "result.json").read_text(encoding="utf-8"))
+            self.assertEqual(result_on_disk["digest"], payload["digest"])
+            self.assertGreaterEqual(len(result_on_disk["provenance_rows"]), 1)
+            for row in result_on_disk["provenance_rows"]:
+                self.assertTrue(row["retained_not_current"])
+                self.assertIn("provenance", row)
+
+    def test_cli_record_flag_end_to_end(self) -> None:
+        import os
+
+        with tempfile.TemporaryDirectory() as tmp:
+            output_root = Path(tmp) / "memory-replay"
+            env_key = "AUTOMA_MEMORY_REPLAY_OUTPUT_ROOT"
+            previous = os.environ.get(env_key)
+            os.environ[env_key] = str(output_root)
+            try:
+                result = run_automa(
+                    "vehicles",
+                    "memory",
+                    "replay",
+                    str(FIXTURE),
+                    "--id",
+                    "chase-sim-chaser",
+                    "--implementation",
+                    "bounded_evidence",
+                    "--record",
+                    "--json",
+                )
+            finally:
+                if previous is None:
+                    os.environ.pop(env_key, None)
+                else:
+                    os.environ[env_key] = previous
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            payload = json.loads(result.stdout)
+            self.assertTrue(payload["recorded"])
+            self.assertTrue(output_root.exists())
+            self.assertEqual(len(list(output_root.iterdir())), 1)
 
 
 if __name__ == "__main__":

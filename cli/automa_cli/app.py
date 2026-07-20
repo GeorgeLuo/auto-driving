@@ -471,7 +471,9 @@ def build_parser() -> argparse.ArgumentParser:
             "memory activation (or an ephemeral --implementation). Reports final "
             "health, key counts, retained keys, and a stable end-state digest. "
             "Runs two independent passes by default to prove determinism. "
-            "Process-local; writes no history."
+            "Process-local; writes no history unless --record is passed. "
+            "With --record, freezes a bounded provenance extract (key → value → "
+            "source observation) under lab/runs/memory-replay/."
         ),
     )
     memory_replay.add_argument(
@@ -505,6 +507,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--once",
         action="store_true",
         help="Skip the second independent pass (faster; less determinism proof).",
+    )
+    memory_replay.add_argument(
+        "--record",
+        action="store_true",
+        help=(
+            "Opt-in: write a bounded run directory with result, digest, sequence "
+            "copy, and provenance_extract.html. Disabled by default."
+        ),
     )
     memory_replay.set_defaults(handler=_handle_vehicles_memory_replay)
 
@@ -1574,7 +1584,7 @@ def _handle_vehicles_memory_help(args: argparse.Namespace) -> int:
                 "automa vehicles memory commands",
                 "",
                 "- reset   clear live retained evidence; start a new empty epoch",
-                "- replay  feed a fixed observation sequence offline; report end-state digest",
+                "- replay  feed a fixed observation sequence offline; report digest; optional --record",
                 "- help    show this summary",
                 "",
                 "Stage an implementation with: ./cli/automa vehicles update memory --id <vehicle>",
@@ -1608,6 +1618,7 @@ def _handle_vehicles_memory_replay(args: argparse.Namespace) -> int:
         implementation_id=args.implementation,
         json_output=args.json,
         verify_twice=not args.once,
+        record=args.record,
     )
     if result.message:
         print(result.message)

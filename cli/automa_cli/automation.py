@@ -337,6 +337,9 @@ def run_vehicle_automation(
             "observation": cycle_result.observation.to_dict()
             if cycle_result.observation is not None
             else None,
+            "memory": cycle_result.memory.to_dict()
+            if cycle_result.memory is not None
+            else None,
             "control": cycle_result.control.to_dict(),
             "engine": cycle_host.manager.status(),
             "decision_cycle": cycle_result.to_dict(),

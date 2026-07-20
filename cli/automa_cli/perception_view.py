@@ -21,6 +21,7 @@ PUBLICATION_SCHEMA = "automa_perception_publication_v1"
 VIEW_RECORD_NAME = "perception_view.json"
 VIEW_HOST = "127.0.0.1"
 VIEW_HTML_PATH = Path(__file__).with_name("perception_view.html")
+MEMORY_VIEW_HTML_PATH = Path(__file__).with_name("memory_view.html")
 MAX_BUFFERED_FRAMES = 8
 
 
@@ -208,6 +209,14 @@ class _PerceptionViewHandler(BaseHTTPRequestHandler):
                 return
             self._send(200, body, "text/html; charset=utf-8", include_body=include_body)
             return
+        if route in {"/memory", "/memory.html"}:
+            try:
+                body = MEMORY_VIEW_HTML_PATH.read_bytes()
+            except OSError as exc:
+                self._send_json(500, {"error": str(exc)}, include_body=include_body)
+                return
+            self._send(200, body, "text/html; charset=utf-8", include_body=include_body)
+            return
         if route == "/api/health":
             self._send_json(
                 200,
@@ -350,6 +359,8 @@ def _publication_payload(
     source = perception_record or {}
     perception = source.get("perception")
     perception = perception if isinstance(perception, dict) else None
+    memory = source.get("memory")
+    memory = memory if isinstance(memory, dict) else None
     overlay = _overlay_payload(frame=frame, perception_record=perception_record, now_ms=generated_at_ms)
     return {
         "schema": PUBLICATION_SCHEMA,
@@ -365,6 +376,7 @@ def _publication_payload(
             "action_policy": source.get("action_policy"),
         },
         "perception": perception,
+        "memory": memory,
         "sensor_snapshot": source.get("sensor_snapshot"),
         "observation": source.get("observation"),
         "control": source.get("control"),

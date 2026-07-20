@@ -137,6 +137,7 @@ def publication_to_frame_record(publication: dict[str, Any]) -> dict[str, Any]:
     control = publication.get("control")
     completed_at_ms = frame.get("completed_at_ms")
     duration_ms = publication.get("duration_ms")
+    memory = publication.get("memory")
     return {
         "frame_id": frame.get("frame_id"),
         "frame_index": frame.get("frame_index"),
@@ -146,6 +147,7 @@ def publication_to_frame_record(publication: dict[str, Any]) -> dict[str, Any]:
         "cycle_duration_ms": duration_ms,
         "perception": perception if isinstance(perception, dict) else None,
         "observation": observation if isinstance(observation, dict) else None,
+        "memory": memory if isinstance(memory, dict) else None,
         "control": control if isinstance(control, dict) else None,
         "engine": publication.get("engine"),
         "algorithm": publication.get("algorithm"),

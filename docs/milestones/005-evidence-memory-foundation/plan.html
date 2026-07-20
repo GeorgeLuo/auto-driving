@@ -234,8 +234,10 @@
           <p><strong>Starting state:</strong> memory and the idle decision engine are selected for the vehicle.</p>
           <p><strong>Proposed execution:</strong></p>
           <pre>./cli/automa vehicles automation run --id &lt;vehicle-id&gt;
-./cli/automa vehicles stream memory --id &lt;vehicle-id&gt;</pre>
-          <p><strong>Success signal:</strong> a replacing live view reports lifecycle health, retained record count, age, capacity, provenance summaries, and explicit unavailable or failure state without writing logs by default.</p>
+./cli/automa vehicles stream memory --id &lt;vehicle-id&gt;
+# PiCar also opens a local loopback Memory map at …/memory
+# Perception stays on …/ ; Memory map is a separate key→value page</pre>
+          <p><strong>Success signal:</strong> terminal shows lifecycle health and key count; the Memory map lists <code>record_id</code> keys (filterable by kind) and clicking a key shows the mapped retained-evidence value (summary + JSON). Perception view remains frame/overlay-first with a link to the map. Explicit unavailable/failure states are visible. Default stream writes no history.</p>
         </div>
         <div class="card constraint">
           <h3>Replay, Compare, And Reset</h3>
@@ -519,13 +521,12 @@
       </details>
 
       <details class="work-item" data-status="active" open>
-        <summary><span>5. Build Operator And Evaluation Workflows</span><span class="status active">Re-coursed — deploy proof first</span></summary>
+        <summary><span>5. Build Operator And Evaluation Workflows</span><span class="status active">Re-coursed — key→value memory map</span></summary>
         <div class="work-body"><ul>
-          <li><strong>Done earlier:</strong> <code>vehicles update memory</code> / <code>info memory</code>; autonomy deploy installs <code>runtime/memory/active.json</code>.</li>
-          <li><strong>Done (deploy honesty):</strong> autonomy <code>--restart</code> verifies a live memory stage matching the shipped activation, or fails with core-then-autonomy guidance.</li>
-          <li><strong>Done (live inspect):</strong> <code>vehicles stream memory</code> polls lifecycle health (implementation, health, epoch, record count, failures) on Pi via <code>/autonomy/status</code> and on Chase via automation state; <code>info memory</code> attaches a live probe when the vehicle is reachable.</li>
-          <li><strong>Still open:</strong> reset, deterministic replay, opt-in recording; Chase shadow visual review; stationary Pi memory check with tracked visual provenance.</li>
-          <li><strong>Why re-course then continue:</strong> deploy honesty first, then live inspect so physical evaluation has a non-silent operator path without waiting for full check UX.</li>
+          <li><strong>Done earlier:</strong> stage/info/deploy memory; autonomy restart verifies live stage; terminal <code>stream memory</code>.</li>
+          <li><strong>Landed (this re-course):</strong> publish latest <code>MemorySnapshot</code> on the observation path. Perception view stays frame/overlay-first with a <strong>Memory map</strong> link. Separate loopback page at <code>/memory</code> treats the ledger as a key→value map: list <code>record_id</code> keys (filter by kind), click a key to inspect the mapped value (summary + full JSON). Live poll must not steal selection (stable DOM / pointerdown delegation).</li>
+          <li><strong>Still open:</strong> reset, deterministic replay, opt-in recording; guided Pi/Chase check artifacts that freeze a visual provenance extract (source frame beside selected key/value) for closeout.</li>
+          <li><strong>Why:</strong> memory is a recency ledger of keys, not a spatial map. A dedicated key/value inspector is more honest than piggybacking perception overlays; provenance checks can still freeze the exact source frame later.</li>
         </ul></div>
       </details>
 
@@ -539,8 +540,10 @@
       </details>
 
       <div class="progress-track" aria-label="Milestone work packages completed: 4 of 6"><div class="progress-fill" style="width: 66.7%;"></div></div>
-      <p class="small">Progress: packages 1–4 done; package 5 deploy honesty and live memory stream/info probe landed. Remaining package 5: reset/replay/record and visual checks.</p>
+      <p class="small">Progress: packages 1–4 done; package 5 live key→value Memory map landed (publish + /memory inspector + stream wiring). Reset/replay and recorded provenance-check extracts still open.</p>
     </section>
+
+
 
     <section class="panel">
       <h2>Scope Boundaries</h2>
@@ -635,7 +638,12 @@
             <tr><td>2026-07-18</td><td>Land memory stage/info CLI and autonomy-deploy activation before live stream or visual checks.</td><td>Operators need a supported way to select bounded_evidence and ship runtime/memory/active.json; inspection workflows can follow once activation is routine on Chase and Pi.</td></tr>
             <tr><td>2026-07-19</td><td>Re-course package 5 to prove live memory after autonomy deploy before stream/check work.</td><td>Live smoke installed memory activation via autonomy while a stale core manage.py never loaded the stage—success without memory. Verify matching implementation_id on restart, fail with core-then-autonomy guidance, and document the deploy split. Stream/reset/visual checks remain in package 5 but follow this honesty gate.</td></tr>
             <tr><td>2026-07-19</td><td>Add live memory stream/info probe over status components before visual check UX.</td><td>Operators need a read-only replacing view of health, epoch, and record count on Pi and Chase once deploy honesty exists; full provenance check and reset/replay remain separate deliverables.</td></tr>
+            <tr><td>2026-07-19</td><td>Re-course package 5 again: publish MemorySnapshot into the shared loopback view with stage toggles.</td><td>Terminal counts are not as convincing as perception’s frame-matched frontend. First attempt extended the perception page with Perception/Memory layers; superseded the same day by a dedicated key→value page (next row).</td></tr>
+            <tr><td>2026-07-19</td><td>Separate memory inspector as a key→value ledger page from perception overlays.</td><td>Operators want memory as record_id keys and mapped values, matching BoundedEvidenceLedger’s dict structure rather than another image layer. Perception stays camera-first; /memory lists keys by kind and shows the selected value. stream memory prints the map URL.</td></tr>
+            <tr><td>2026-07-19</td><td>Stabilize Memory map selection against live poll races.</td><td>200ms refresh was rebuilding key-row DOM and dropping clicks mid-gesture. Selection uses pointerdown + event delegation on a stable parent, rebuilds only when key identity changes, and keeps the selected key across polls until it leaves the ledger.</td></tr>
           </tbody>
+
+
 
         </table>
       </div>

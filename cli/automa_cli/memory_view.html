@@ -1,0 +1,586 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Automa Memory Map</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px;
+      --ink: #17191c;
+      --muted: #62676f;
+      --line: #d9dde2;
+      --panel: #f6f7f8;
+      --paper: #ffffff;
+      --green: #177245;
+      --amber: #a35b00;
+      --red: #a52a2a;
+      --blue: #176b87;
+      --select: #e7f3f8;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-width: 320px; background: var(--paper); color: var(--ink); }
+    header {
+      min-height: 52px;
+      padding: 8px 14px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+    }
+    .identity, .runtime-status { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .product { font-weight: 700; white-space: nowrap; }
+    .vehicle { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .status-dot {
+      width: 9px; height: 9px; border-radius: 50%;
+      background: var(--amber); flex: 0 0 auto;
+    }
+    .status-dot.live { background: var(--green); }
+    .status-dot.stale { background: var(--amber); }
+    .status-dot.error { background: var(--red); }
+    a.nav {
+      color: var(--blue);
+      text-decoration: none;
+      font-weight: 600;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      padding: 6px 10px;
+    }
+    a.nav:hover { background: var(--panel); }
+    button {
+      min-height: 32px;
+      border: 1px solid #aeb4bb;
+      border-radius: 4px;
+      padding: 5px 10px;
+      background: var(--paper);
+      color: var(--ink);
+      cursor: pointer;
+      font: inherit;
+    }
+    button:hover { background: #eceff1; }
+    main {
+      height: calc(100vh - 53px);
+      display: grid;
+      grid-template-columns: minmax(260px, 34%) 1fr;
+      min-height: 0;
+    }
+    .keys-panel, .value-panel {
+      min-height: 0;
+      overflow: auto;
+      padding: 12px 14px;
+    }
+    .keys-panel { border-right: 1px solid var(--line); background: var(--panel); }
+    h2 {
+      margin: 0 0 8px;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+    }
+    .map-legend {
+      margin: 0 0 14px;
+      padding: 10px 12px;
+      border: 1px dashed var(--line);
+      border-radius: 6px;
+      background: var(--paper);
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .map-legend code {
+      font-family: var(--mono);
+      color: var(--ink);
+      font-size: 11px;
+    }
+    .metrics {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 4px 10px;
+      margin: 0 0 14px;
+      font-size: 13px;
+    }
+    .metrics dt { color: var(--muted); }
+    .metrics dd { margin: 0; font-variant-numeric: tabular-nums; }
+    .kind-map {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+    .kind-chip {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 3px 8px;
+      background: var(--paper);
+      font-size: 12px;
+    }
+    .kind-chip button {
+      all: unset;
+      cursor: pointer;
+      font: inherit;
+    }
+    .kind-chip.active { border-color: var(--blue); background: var(--select); }
+    .key-list { display: grid; gap: 4px; }
+    .key-row {
+      display: grid;
+      gap: 2px;
+      text-align: left;
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 8px 10px;
+      background: var(--paper);
+      cursor: pointer;
+      font: inherit;
+      color: inherit;
+    }
+    .key-row:hover { border-color: #b7c0c8; }
+    .key-row.selected { border-color: var(--blue); background: var(--select); }
+    .key-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+    }
+    .key-id { font-family: var(--mono); font-size: 12px; word-break: break-all; font-weight: 600; }
+    .key-meta { color: var(--muted); font-size: 12px; }
+    .empty { color: var(--muted); padding: 16px 0; }
+    .value-header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 8px 12px;
+      margin: 0 0 12px;
+    }
+    .value-arrow {
+      color: var(--muted);
+      font-weight: 600;
+    }
+    .value-title {
+      font-family: var(--mono);
+      font-size: 15px;
+      font-weight: 700;
+      word-break: break-all;
+    }
+    .value-kind {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 2px 8px;
+      font-size: 12px;
+      color: var(--muted);
+      background: var(--panel);
+    }
+    .value-grid {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 6px 12px;
+      margin-bottom: 14px;
+    }
+    .value-grid dt { color: var(--muted); }
+    .value-grid dd { margin: 0; word-break: break-word; }
+    .json-label {
+      margin: 0 0 6px;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+    }
+    pre {
+      margin: 0;
+      padding: 12px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #0f1418;
+      color: #e7eef5;
+      font-size: 12px;
+      line-height: 1.45;
+      max-height: calc(100vh - 280px);
+    }
+    @media (max-width: 820px) {
+      main { grid-template-columns: 1fr; height: auto; }
+      .keys-panel { border-right: 0; border-bottom: 1px solid var(--line); max-height: 45vh; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="identity">
+      <span class="product">Memory map</span>
+      <span class="vehicle" id="vehicle">waiting</span>
+    </div>
+    <div class="runtime-status">
+      <span class="status-dot" id="statusDot"></span>
+      <span id="statusText">Connecting</span>
+      <a class="nav" href="/">Perception view</a>
+      <button type="button" id="pauseButton">Pause updates</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="keys-panel" aria-label="Memory keys">
+      <p class="map-legend">
+        Evidence memory is a <strong>key → value</strong> map:
+        <code>record_id</code> keys on the left, click one to inspect the mapped retained-evidence value on the right.
+      </p>
+      <h2>Ledger</h2>
+      <dl class="metrics" id="ledgerMetrics"></dl>
+      <h2>Filter by kind</h2>
+      <div class="kind-map" id="kindMap"></div>
+      <h2>Keys</h2>
+      <div class="key-list" id="keyList"></div>
+    </section>
+    <section class="value-panel" aria-label="Mapped memory value">
+      <h2>Mapped value</h2>
+      <div id="valueEmpty" class="empty">Click a key on the left to inspect its mapped value.</div>
+      <div id="valueBody" hidden>
+        <div class="value-header">
+          <span class="key-label">key</span>
+          <div class="value-title" id="valueKey"></div>
+          <span class="value-arrow">→</span>
+          <span class="value-kind" id="valueKind">value</span>
+        </div>
+        <dl class="value-grid" id="valueSummary"></dl>
+        <div class="json-label">Full mapped value (JSON)</div>
+        <pre id="valueJson"></pre>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const vehicleEl = document.getElementById("vehicle");
+    const statusDot = document.getElementById("statusDot");
+    const statusText = document.getElementById("statusText");
+    const pauseButton = document.getElementById("pauseButton");
+    const ledgerMetrics = document.getElementById("ledgerMetrics");
+    const kindMap = document.getElementById("kindMap");
+    const keyList = document.getElementById("keyList");
+    const valueEmpty = document.getElementById("valueEmpty");
+    const valueBody = document.getElementById("valueBody");
+    const valueKey = document.getElementById("valueKey");
+    const valueKind = document.getElementById("valueKind");
+    const valueSummary = document.getElementById("valueSummary");
+    const valueJson = document.getElementById("valueJson");
+
+    let latest = null;
+    let selectedKey = null;
+    let kindFilter = null;
+    let paused = false;
+    let refreshing = false;
+    let lastKeysFingerprint = "";
+    let lastKindsFingerprint = "";
+    let lastMetricsFingerprint = "";
+    let lastValueFingerprint = "";
+
+    function setStatus(text, mode) {
+      statusText.textContent = text;
+      statusDot.className = `status-dot ${mode || ""}`;
+    }
+
+    function appendMetric(container, name, value) {
+      const term = document.createElement("dt");
+      term.textContent = name;
+      const detail = document.createElement("dd");
+      detail.textContent = value ?? "—";
+      container.append(term, detail);
+    }
+
+    function records() {
+      const list = latest?.memory?.records;
+      return Array.isArray(list) ? list : [];
+    }
+
+    function recordMap() {
+      const map = new Map();
+      for (const record of records()) {
+        const key = String(record.record_id || "");
+        if (key) map.set(key, record);
+      }
+      return map;
+    }
+
+    function kindCounts() {
+      const counts = new Map();
+      for (const record of records()) {
+        const kind = String(record.kind || "unknown");
+        counts.set(kind, (counts.get(kind) || 0) + 1);
+      }
+      return [...counts.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+    }
+
+    function filteredRecords() {
+      const all = records().slice().sort((a, b) =>
+        String(a.record_id || "").localeCompare(String(b.record_id || ""))
+      );
+      if (!kindFilter) return all;
+      return all.filter((record) => String(record.kind || "unknown") === kindFilter);
+    }
+
+    function keyMetaText(record) {
+      const zone = record.location?.zone;
+      return [
+        record.kind || "unknown",
+        zone ? `zone:${zone}` : "no-location",
+        `conf ${Number(record.confidence || 0).toFixed(2)}`,
+      ].join(" · ");
+    }
+
+    function keysFingerprint(rows) {
+      // Identity for list rebuild only. Confidence is excluded so live score
+      // jitter does not destroy buttons mid-click.
+      return rows.map((record) => {
+        const zone = record.location?.zone || "";
+        return `${record.record_id}\0${record.kind || ""}\0${zone}`;
+      }).join("\n") + `\nfilter:${kindFilter || ""}`;
+    }
+
+    function selectKey(key) {
+      if (!key || selectedKey === key) {
+        // Re-apply highlight/value even if same key — handles race recovery.
+        if (key) {
+          selectedKey = key;
+          syncSelectionStyles();
+          renderValue(true);
+        }
+        return;
+      }
+      selectedKey = key;
+      syncSelectionStyles();
+      renderValue(true);
+    }
+
+    function syncSelectionStyles() {
+      for (const button of keyList.querySelectorAll(".key-row")) {
+        const key = button.dataset.key || "";
+        const selected = key === selectedKey;
+        button.classList.toggle("selected", selected);
+        button.setAttribute("aria-pressed", selected ? "true" : "false");
+      }
+    }
+
+    function patchKeyMeta(rows) {
+      const byKey = new Map(rows.map((record) => [String(record.record_id), record]));
+      for (const button of keyList.querySelectorAll(".key-row")) {
+        const record = byKey.get(button.dataset.key || "");
+        if (!record) continue;
+        const meta = button.querySelector(".key-meta");
+        if (meta) meta.textContent = keyMetaText(record);
+      }
+    }
+
+    function renderKinds(force = false) {
+      const counts = kindCounts();
+      const fingerprint = `${kindFilter || ""}\0${records().length}\0` +
+        counts.map(([kind, count]) => `${kind}:${count}`).join("|");
+      if (!force && fingerprint === lastKindsFingerprint) return;
+      lastKindsFingerprint = fingerprint;
+
+      kindMap.replaceChildren();
+      const allChip = document.createElement("span");
+      allChip.className = `kind-chip ${kindFilter == null ? "active" : ""}`;
+      const allBtn = document.createElement("button");
+      allBtn.type = "button";
+      allBtn.dataset.kind = "";
+      allBtn.textContent = `all (${records().length})`;
+      allChip.append(allBtn);
+      kindMap.append(allChip);
+      for (const [kind, count] of counts) {
+        const chip = document.createElement("span");
+        chip.className = `kind-chip ${kindFilter === kind ? "active" : ""}`;
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.dataset.kind = kind;
+        btn.textContent = `${kind} (${count})`;
+        chip.append(btn);
+        kindMap.append(chip);
+      }
+    }
+
+    function renderMetrics() {
+      const memory = latest?.memory || null;
+      const fingerprint = [
+        latest?.vehicle_id || "",
+        memory?.health || "absent",
+        memory?.epoch_id || "",
+        memory?.record_count ?? records().length,
+        memory?.bounds?.max_records ?? "",
+        memory?.bounds?.max_age_ms ?? "",
+        memory?.implementation_id || "",
+        memory?.metadata?.claims_identity ?? false,
+      ].join("\0");
+      if (fingerprint === lastMetricsFingerprint) return;
+      lastMetricsFingerprint = fingerprint;
+
+      vehicleEl.textContent = latest?.vehicle_id || "unknown vehicle";
+      ledgerMetrics.replaceChildren();
+      appendMetric(ledgerMetrics, "Health", memory?.health || "absent");
+      appendMetric(ledgerMetrics, "Epoch", memory?.epoch_id || "—");
+      appendMetric(
+        ledgerMetrics,
+        "Keys",
+        memory
+          ? `${memory.record_count ?? records().length}/${memory.bounds?.max_records ?? "?"} filled`
+          : "—"
+      );
+      appendMetric(ledgerMetrics, "Max age", memory?.bounds?.max_age_ms != null ? `${memory.bounds.max_age_ms} ms` : "—");
+      appendMetric(ledgerMetrics, "Implementation", memory?.implementation_id || "—");
+      appendMetric(ledgerMetrics, "Claims identity", String(memory?.metadata?.claims_identity ?? false));
+    }
+
+    function renderLedger() {
+      const map = recordMap();
+      // Keep selection across live updates; only drop it when the key truly left.
+      if (selectedKey && map.size > 0 && !map.has(selectedKey)) {
+        selectedKey = null;
+        lastValueFingerprint = "";
+      }
+      renderMetrics();
+      renderKinds();
+      renderKeys();
+      renderValue();
+    }
+
+    function renderKeys(force = false) {
+      const rows = filteredRecords();
+      const fingerprint = keysFingerprint(rows);
+      if (!force && fingerprint === lastKeysFingerprint) {
+        patchKeyMeta(rows);
+        syncSelectionStyles();
+        return;
+      }
+      lastKeysFingerprint = fingerprint;
+
+      keyList.replaceChildren();
+      if (!rows.length) {
+        const empty = document.createElement("div");
+        empty.className = "empty";
+        empty.textContent = latest?.memory ? "No keys in this filter." : "No memory snapshot in publication yet.";
+        keyList.append(empty);
+        return;
+      }
+
+      for (const record of rows) {
+        const key = String(record.record_id);
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "key-row";
+        button.dataset.key = key;
+        const label = document.createElement("div");
+        label.className = "key-label";
+        label.textContent = "key";
+        const id = document.createElement("div");
+        id.className = "key-id";
+        id.textContent = key;
+        const meta = document.createElement("div");
+        meta.className = "key-meta";
+        meta.textContent = keyMetaText(record);
+        button.append(label, id, meta);
+        keyList.append(button);
+      }
+      syncSelectionStyles();
+    }
+
+    function renderValue(force = false) {
+      const map = recordMap();
+      if (!selectedKey || !map.has(selectedKey)) {
+        if (force || lastValueFingerprint !== "empty") {
+          lastValueFingerprint = "empty";
+          valueEmpty.hidden = false;
+          valueBody.hidden = true;
+          valueEmpty.textContent = latest?.memory
+            ? "Click a key on the left to inspect its mapped value."
+            : "Waiting for a memory snapshot.";
+        }
+        return;
+      }
+      const value = map.get(selectedKey);
+      const fingerprint = `${selectedKey}\0${JSON.stringify(value)}`;
+      if (!force && fingerprint === lastValueFingerprint) return;
+      lastValueFingerprint = fingerprint;
+
+      valueEmpty.hidden = true;
+      valueBody.hidden = false;
+      valueKey.textContent = selectedKey;
+      valueKind.textContent = value.kind || "retained evidence";
+      valueSummary.replaceChildren();
+      appendMetric(valueSummary, "kind", value.kind);
+      appendMetric(valueSummary, "label", value.label);
+      appendMetric(valueSummary, "confidence", Number(value.confidence || 0).toFixed(3));
+      appendMetric(valueSummary, "location.frame", value.location?.frame || "—");
+      appendMetric(valueSummary, "location.zone", value.location?.zone || "—");
+      if (Array.isArray(value.location?.bbox_xyxy_norm)) {
+        appendMetric(
+          valueSummary,
+          "location.bbox_xyxy_norm",
+          value.location.bbox_xyxy_norm.map((n) => Number(n).toFixed(3)).join(", ")
+        );
+      }
+      appendMetric(valueSummary, "provenance.frame_id", value.provenance?.frame_id || "—");
+      appendMetric(valueSummary, "provenance.observation_id", value.provenance?.observation_id || "—");
+      appendMetric(valueSummary, "provenance.evidence_id", value.provenance?.evidence_id || "—");
+      appendMetric(valueSummary, "provenance.updated_at_ms", value.provenance?.updated_at_ms ?? "—");
+      appendMetric(valueSummary, "source_plugin", value.provenance?.source_plugin_id || "—");
+      valueJson.textContent = JSON.stringify(value, null, 2);
+    }
+
+    // Stable parent handlers so selection survives DOM rebuild races.
+    // pointerdown fires before refresh can replace the button under a click.
+    keyList.addEventListener("pointerdown", (event) => {
+      const button = event.target.closest(".key-row");
+      if (!button || !keyList.contains(button)) return;
+      const key = button.dataset.key;
+      if (!key) return;
+      event.preventDefault();
+      selectKey(key);
+    });
+
+    kindMap.addEventListener("pointerdown", (event) => {
+      const button = event.target.closest("button[data-kind]");
+      if (!button || !kindMap.contains(button)) return;
+      event.preventDefault();
+      const kind = button.dataset.kind || "";
+      kindFilter = kind ? (kindFilter === kind ? null : kind) : null;
+      lastKindsFingerprint = "";
+      lastKeysFingerprint = "";
+      renderKinds(true);
+      renderKeys(true);
+      renderValue();
+    });
+
+    async function refresh() {
+      if (paused || refreshing) return;
+      refreshing = true;
+      try {
+        const response = await fetch("/api/latest", { cache: "no-store" });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        latest = await response.json();
+        renderLedger();
+        const health = latest?.memory?.health;
+        const keyCount = latest?.memory?.record_count ?? records().length;
+        if (!latest?.memory) setStatus("Live | memory absent", "stale");
+        else if (health === "healthy") setStatus(`Live | ${keyCount} keys`, "live");
+        else if (health === "empty") setStatus("Live | empty map", "stale");
+        else setStatus(`Live | memory ${health || "unknown"}`, health === "error" ? "error" : "stale");
+      } catch (error) {
+        setStatus(`Waiting: ${error.message}`, "error");
+      } finally {
+        refreshing = false;
+      }
+    }
+
+    pauseButton.addEventListener("click", () => {
+      paused = !paused;
+      pauseButton.textContent = paused ? "Resume updates" : "Pause updates";
+      setStatus(paused ? "Paused" : "Live", paused ? "" : "live");
+      if (!paused) refresh();
+    });
+
+    refresh();
+    setInterval(refresh, 200);
+  </script>
+</body>
+</html>

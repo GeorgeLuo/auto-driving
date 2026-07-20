@@ -225,6 +225,7 @@
     <div class="runtime-status">
       <span class="status-dot" id="statusDot"></span>
       <span id="statusText">Connecting</span>
+      <a class="nav" href="/memory" style="color:inherit;text-decoration:none;border:1px solid var(--line);border-radius:4px;padding:6px 10px;font-weight:600;">Memory map</a>
       <button type="button" id="pauseButton">Pause updates</button>
     </div>
   </header>
@@ -312,6 +313,8 @@
           (normalizedPolygon(location) || normalizedBox(location));
       });
     }
+
+
 
     function clampNorm(value) {
       return Math.max(0, Math.min(1, Number(value)));
@@ -455,16 +458,7 @@
           const label = overlayLabel(thing, kind);
           context.font = "14px ui-sans-serif, system-ui, sans-serif";
           const metrics = context.measureText(label);
-          const labelHeight = 20;
-          const labelRect = placeLabel(
-            x,
-            y,
-            width,
-            height,
-            metrics.width + 10,
-            labelHeight,
-            occupiedLabels,
-          );
+          const labelRect = placeLabel(x, y, width, height, metrics.width + 10, 20, occupiedLabels);
           if (labelRect) {
             context.fillStyle = color;
             context.fillRect(labelRect.x, labelRect.y, labelRect.width, labelRect.height);
@@ -524,6 +518,7 @@
       appendMetric(metrics, "Perception", `${latest.cycle?.perception_duration_ms ?? "?"} ms`);
       appendMetric(metrics, "Confidence", Number(latest.perception?.confidence || 0).toFixed(3));
       appendMetric(metrics, "Status", latest.perception?.status || "unknown");
+      appendMetric(metrics, "Memory keys", latest.memory?.record_count ?? latest.memory?.records?.length ?? "open /memory");
 
       const runs = document.getElementById("pluginRuns");
       runs.replaceChildren();
@@ -555,6 +550,7 @@
         things.append(row);
       }
       if (!things.children.length) things.textContent = "No findings";
+
 
       document.getElementById("rawData").textContent = JSON.stringify(latest, null, 2);
       syncKindToggles();

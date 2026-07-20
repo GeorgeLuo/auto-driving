@@ -32,9 +32,11 @@ from .donkeycar_vendor import (
     ensure_donkeycar_vendor,
     load_donkeycar_vendor_manifest,
 )
+from .memory import ensure_vehicle_memory_activation
 from .paths import display_path, safe_path_part
 from .perception import ensure_vehicle_perception_activation
 from .vehicles import discover_active_vehicles, find_vehicle_by_id
+from implementations.memory import DEFAULT_MEMORY_IMPLEMENTATION
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -62,7 +64,8 @@ app_root = Path(sys.argv[3])
 expected_sha256 = sys.argv[4]
 perception_source = Path(sys.argv[5])
 decision_source = Path(sys.argv[6])
-release_id = sys.argv[7]
+memory_source = Path(sys.argv[7])
+release_id = sys.argv[8]
 
 digest = hashlib.sha256()
 with archive.open("rb") as handle:
@@ -113,6 +116,7 @@ for package_name in ("autonomy", "implementations"):
 activation_targets = (
     (perception_source, app_root / "runtime" / "perception" / "active.json"),
     (decision_source, app_root / "runtime" / "decision" / "active.json"),
+    (memory_source, app_root / "runtime" / "memory" / "active.json"),
 )
 for source, target in activation_targets:
     payload = json.loads(source.read_text(encoding="utf-8"))
@@ -346,6 +350,7 @@ def update_vehicle_autonomy(
             archive_sha256="<archive-sha256>",
             perception_activation_path=preview_dir / "perception-active.json",
             decision_activation_path=preview_dir / "decision-active.json",
+            memory_activation_path=preview_dir / "memory-active.json",
         )
         payload = _autonomy_update_payload(
             target=target,
@@ -358,6 +363,7 @@ def update_vehicle_autonomy(
             drive_args=drive_args,
             perception_algorithm=DEFAULT_PERCEPTION_ALGORITHM,
             decision_engine="idle",
+            memory_implementation=DEFAULT_MEMORY_IMPLEMENTATION,
             runtime_verification=None,
         )
         if json_output:
@@ -376,6 +382,11 @@ def update_vehicle_autonomy(
         bundle=bundle,
         release=release,
     )
+    memory_activation_path = ensure_vehicle_memory_activation(
+        vehicle_id=vehicle_id,
+        bundle=bundle,
+        release=release,
+    )
     release_id = Path(release["archive"]["path"]).name.removesuffix(".tar.gz")
     deploy_files = _write_remote_activation_files(
         target=target,
@@ -384,6 +395,7 @@ def update_vehicle_autonomy(
         release_id=release_id,
         perception_activation_path=perception_activation_path,
         decision_activation_path=decision_activation_path,
+        memory_activation_path=memory_activation_path,
     )
     commands = _autonomy_sync_commands(
         target=target,
@@ -392,6 +404,7 @@ def update_vehicle_autonomy(
         archive_sha256=str(release["archive"]["sha256"]),
         perception_activation_path=deploy_files["perception"],
         decision_activation_path=deploy_files["decision"],
+        memory_activation_path=deploy_files["memory"],
     )
 
     for label, command in commands:
@@ -412,6 +425,7 @@ def update_vehicle_autonomy(
 
     perception_manifest = json.loads(perception_activation_path.read_text(encoding="utf-8"))
     decision_manifest = json.loads(decision_activation_path.read_text(encoding="utf-8"))
+    memory_manifest = json.loads(memory_activation_path.read_text(encoding="utf-8"))
     if restart:
         try:
             runtime_verification = _verify_physical_autonomy_runtime(
@@ -441,6 +455,7 @@ def update_vehicle_autonomy(
         drive_args=drive_args,
         perception_algorithm=str(perception_manifest["perception"]["algorithm"]),
         decision_engine=str(decision_manifest["decision"]["engine_id"]),
+        memory_implementation=str(memory_manifest["memory"]["implementation_id"]),
         runtime_verification=runtime_verification,
     )
     if json_output:
@@ -454,6 +469,7 @@ def update_vehicle_autonomy(
                 f"Tree SHA-256: {release['tree_sha256']}",
                 f"Perception: {payload['activation']['perception_algorithm']}",
                 f"Decision: {payload['activation']['decision_engine']}",
+                f"Memory: {payload['activation']['memory_implementation']}",
                 f"Runtime restarted: {'yes' if restart else 'no'}",
                 *(
                     ["Runtime verified: selected engine loaded; drive mode remains manual"]
@@ -554,6 +570,7 @@ def _write_remote_activation_files(
     release_id: str,
     perception_activation_path: Path,
     decision_activation_path: Path,
+    memory_activation_path: Path,
 ) -> dict[str, Path]:
     deploy_dir = vehicle_runtime_dir / "deploy" / "donkeycar" / release_id
     deploy_dir.mkdir(parents=True, exist_ok=True)
@@ -589,10 +606,15 @@ def _write_remote_activation_files(
     decision = copy.deepcopy(json.loads(decision_activation_path.read_text(encoding="utf-8")))
     decision["controller_bundle"] = copy.deepcopy(remote_bundle)
 
+    memory = copy.deepcopy(json.loads(memory_activation_path.read_text(encoding="utf-8")))
+    memory["controller_bundle"] = copy.deepcopy(remote_bundle)
+
     perception_path = deploy_dir / "perception-active.json"
     decision_path = deploy_dir / "decision-active.json"
+    memory_path = deploy_dir / "memory-active.json"
     perception_path.write_text(json.dumps(perception, indent=2, sort_keys=True), encoding="utf-8")
     decision_path.write_text(json.dumps(decision, indent=2, sort_keys=True), encoding="utf-8")
+    memory_path.write_text(json.dumps(memory, indent=2, sort_keys=True), encoding="utf-8")
     (deploy_dir / "deployment.json").write_text(
         json.dumps(
             {
@@ -605,6 +627,7 @@ def _write_remote_activation_files(
                 "activation": {
                     "perception": str(perception_path),
                     "decision": str(decision_path),
+                    "memory": str(memory_path),
                 },
             },
             indent=2,
@@ -612,7 +635,11 @@ def _write_remote_activation_files(
         ),
         encoding="utf-8",
     )
-    return {"perception": perception_path, "decision": decision_path}
+    return {
+        "perception": perception_path,
+        "decision": decision_path,
+        "memory": memory_path,
+    }
 
 
 def _autonomy_sync_commands(
@@ -623,6 +650,7 @@ def _autonomy_sync_commands(
     archive_sha256: str,
     perception_activation_path: Path,
     decision_activation_path: Path,
+    memory_activation_path: Path,
 ) -> list[tuple[str, list[str]]]:
     remote_app_root = f"{target.pi_home}/mycar"
     remote_runtime = f"{remote_app_root}/runtime"
@@ -640,6 +668,7 @@ def _autonomy_sync_commands(
             archive_sha256,
             f"{remote_artifact_dir}/{perception_activation_path.name}",
             f"{remote_artifact_dir}/{decision_activation_path.name}",
+            f"{remote_artifact_dir}/{memory_activation_path.name}",
             release_id,
         ]
     )
@@ -655,6 +684,7 @@ def _autonomy_sync_commands(
                 f"{remote_runtime}/controller-releases",
                 f"{remote_runtime}/perception",
                 f"{remote_runtime}/decision",
+                f"{remote_runtime}/memory",
             ],
         ),
         (
@@ -665,6 +695,7 @@ def _autonomy_sync_commands(
                 str(archive_path),
                 str(perception_activation_path),
                 str(decision_activation_path),
+                str(memory_activation_path),
                 f"{target.ssh_target}:{remote_artifact_dir}/",
             ],
         ),
@@ -687,6 +718,7 @@ def _autonomy_update_payload(
     drive_args: str | None,
     perception_algorithm: str,
     decision_engine: str,
+    memory_implementation: str,
     runtime_verification: dict[str, Any] | None,
 ) -> dict[str, Any]:
     command_status = "planned" if dry_run else "completed"
@@ -725,6 +757,7 @@ def _autonomy_update_payload(
         "activation": {
             "perception_algorithm": perception_algorithm,
             "decision_engine": decision_engine,
+            "memory_implementation": memory_implementation,
         },
         "restart_requested": restart,
         "runtime_verification": runtime_verification,
@@ -853,7 +886,8 @@ def _format_autonomy_dry_run(payload: dict[str, Any]) -> str:
             f"source files: {payload['source']['file_count']}",
             (
                 f"activation defaults: perception={payload['activation']['perception_algorithm']} "
-                f"decision={payload['activation']['decision_engine']}"
+                f"decision={payload['activation']['decision_engine']} "
+                f"memory={payload['activation']['memory_implementation']}"
             ),
             "planned commands:",
             *[f"- {entry['step']}: {entry['command']}" for entry in payload["commands"]],

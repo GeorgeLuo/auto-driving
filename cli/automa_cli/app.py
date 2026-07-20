@@ -21,7 +21,12 @@ from .decision import (
     update_vehicle_decision,
 )
 from .lab_plugins import list_perception_candidates, setup_perception_candidate
+from .memory import get_vehicle_memory_info, update_vehicle_memory
 from .operations import run_vehicle_startup_check
+from implementations.memory import (
+    DEFAULT_MEMORY_IMPLEMENTATION,
+    available_memory_implementation_ids,
+)
 from implementations.perception.catalog import (
     DEFAULT_PERCEPTION_ALGORITHM,
     available_perception_algorithm_ids,
@@ -412,6 +417,24 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print the full machine-readable decision info payload.",
     )
     decision_info.set_defaults(handler=_handle_vehicles_info_decision)
+
+    memory_info = info_commands.add_parser(
+        "memory",
+        help="Show the locally staged memory implementation and bounds.",
+        description="Show the locally staged memory implementation and bounds.",
+    )
+    memory_info.add_argument(
+        "--id",
+        required=True,
+        dest="vehicle_id",
+        help="Vehicle id from `automa vehicles active`.",
+    )
+    memory_info.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the full machine-readable memory info payload.",
+    )
+    memory_info.set_defaults(handler=_handle_vehicles_info_memory)
 
     perception_control = vehicle_commands.add_parser(
         "perception",
@@ -1000,6 +1023,40 @@ def build_parser() -> argparse.ArgumentParser:
     )
     decision.set_defaults(handler=_handle_vehicles_update_decision)
 
+    memory = update_commands.add_parser(
+        "memory",
+        help="Stage a memory implementation in the local controller bundle.",
+        description="Stage a memory implementation in the local controller bundle.",
+    )
+    memory.add_argument(
+        "--id",
+        required=True,
+        dest="vehicle_id",
+        help="Vehicle id from `automa vehicles active`.",
+    )
+    memory.add_argument(
+        "--implementation",
+        default=DEFAULT_MEMORY_IMPLEMENTATION,
+        choices=available_memory_implementation_ids(),
+        help=f"Memory implementation to activate (default: {DEFAULT_MEMORY_IMPLEMENTATION}).",
+    )
+    memory.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print the activation manifest without writing it.",
+    )
+    memory.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the full machine-readable memory update payload.",
+    )
+    memory.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Print controller release packaging details.",
+    )
+    memory.set_defaults(handler=_handle_vehicles_update_memory)
+
     simulators = subcommands.add_parser("simulators", help="Prepare and inspect simulator environments.")
     simulators.set_defaults(handler=_handle_simulators_help)
     simulator_commands = simulators.add_subparsers(dest="simulator_command")
@@ -1166,6 +1223,7 @@ def _handle_vehicles_update_help(args: argparse.Namespace) -> int:
                 "- autonomy    deploy physical autonomy controller release",
                 "- perception  stage local vehicle perception code",
                 "- decision    stage local decision configuration",
+                "- memory      stage local memory implementation",
                 "- help        show this summary",
                 "",
                 "Detailed help:",
@@ -1184,6 +1242,7 @@ def _handle_vehicles_info_help(args: argparse.Namespace) -> int:
                 "",
                 "- perception  show staged perception schema and live view",
                 "- decision    show locally staged decision engine schema",
+                "- memory      show locally staged memory implementation",
                 "- help        show this summary",
                 "",
                 "Detailed help:",
@@ -1406,6 +1465,30 @@ def _handle_vehicles_info_decision(args: argparse.Namespace) -> int:
     result = get_vehicle_decision_info(
         vehicle_id=args.vehicle_id,
         json_output=args.json,
+    )
+    if result.message:
+        print(result.message)
+    return result.exit_code
+
+
+def _handle_vehicles_info_memory(args: argparse.Namespace) -> int:
+    result = get_vehicle_memory_info(
+        vehicle_id=args.vehicle_id,
+        json_output=args.json,
+    )
+    if result.message:
+        print(result.message)
+    return result.exit_code
+
+
+def _handle_vehicles_update_memory(args: argparse.Namespace) -> int:
+    result = update_vehicle_memory(
+        vehicle_id=args.vehicle_id,
+        implementation_id=args.implementation,
+        dry_run=args.dry_run,
+        json_output=args.json,
+        verbose=args.verbose,
+        output=None if args.dry_run else (sys.stderr if args.json else sys.stdout),
     )
     if result.message:
         print(result.message)

@@ -9,7 +9,7 @@ import subprocess
 import sys
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any, TextIO
@@ -24,6 +24,10 @@ from autonomy.runtime import AutonomyManager
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReadRequest
 from implementations.vehicle.chase_sim import ChaseSimCar
+from implementations.vehicle.chase_sim.frame_identity import (
+    format_chase_frame_id,
+    simulator_frame_index_from_snapshot,
+)
 from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWebSocketError
 
 from .bundles import controller_bundle_paths
@@ -53,6 +57,8 @@ class CommandResult:
 class _PendingAutomationFrame:
     context: DecisionFrameContext
     front_path: Path
+    # Evaluator-only shadow reference; never fed into the decision cycle.
+    shadow_reference: dict[str, Any] | None = None
 
 
 def run_vehicle_automation(
@@ -406,9 +412,13 @@ def run_vehicle_automation(
             latest_perception_text = perception.text
             perception_dict = perception.to_dict()
 
+        simulator_frame_index = simulator_frame_index_from_snapshot(snapshot)
+        if simulator_frame_index is None:
+            simulator_frame_index = int(context.frame_index)
         frame_record = {
             "frame_id": context.frame_id,
             "frame_index": context.frame_index,
+            "simulator_frame_index": simulator_frame_index,
             "captured_at_ms": snapshot.completed_at_ms,
             "cycle_started_at_ms": cycle_started_at_ms,
             "cycle_completed_at_ms": perception_completed_at_ms,
@@ -432,6 +442,15 @@ def run_vehicle_automation(
             "control_source": state["control_source"],
             "control_application": state["control_application"],
         }
+        # Shadow reference is evaluator-only: sibling of candidate results, not an input.
+        if isinstance(pending.shadow_reference, dict):
+            frame_record["shadow_reference"] = pending.shadow_reference
+            frame_record["shadow_alignment"] = {
+                "aligned": pending.shadow_reference.get("simulator_frame_index")
+                == simulator_frame_index,
+                "candidate_frame_index": simulator_frame_index,
+                "shadow_frame_index": pending.shadow_reference.get("simulator_frame_index"),
+            }
         if view_server is not None:
             try:
                 view_server.publish_perception(frame_record=frame_record)
@@ -459,6 +478,7 @@ def run_vehicle_automation(
             state["last_frame"] = {
                 "frame_id": context.frame_id,
                 "frame_index": context.frame_index,
+                "simulator_frame_index": simulator_frame_index,
                 "captured_at_ms": snapshot.completed_at_ms,
                 "perception_completed_at_ms": perception_completed_at_ms,
                 "perception_duration_ms": perception_completed_at_ms - perception_started_at_ms,
@@ -474,6 +494,11 @@ def run_vehicle_automation(
                 "signals": len(perception.signals) if perception is not None else 0,
                 "control": cycle_result.control.to_dict(),
                 "engine": cycle_host.manager.status().get("engine"),
+                "shadow_aligned": bool(
+                    isinstance(pending.shadow_reference, dict)
+                    and pending.shadow_reference.get("simulator_frame_index")
+                    == simulator_frame_index
+                ),
             }
             state["engine"] = cycle_host.manager.status()
             if memory_stage is not None:
@@ -558,14 +583,14 @@ def run_vehicle_automation(
             car.stop()
 
         worker_thread.start()
-        frame_index = 0
+        capture_sequence = 0
         next_capture_at = time.monotonic()
         capture_interval_s = max(0.0, float(interval_s))
-        while max_frames == 0 or frame_index < max_frames:
+        while max_frames == 0 or capture_sequence < max_frames:
             if worker_failed.is_set():
                 raise worker_errors[0]
             apply_memory_reset_if_requested()
-            if frame_index > 0 and capture_interval_s > 0:
+            if capture_sequence > 0 and capture_interval_s > 0:
                 next_capture_at += capture_interval_s
                 delay_s = max(0.0, next_capture_at - time.monotonic())
                 if worker_failed.wait(delay_s):
@@ -573,17 +598,40 @@ def run_vehicle_automation(
                 apply_memory_reset_if_requested()
 
             captured_started_at_ms = _timestamp_ms()
-            frame_id = f"frame_{frame_index:06d}"
-            perception_output_dir = perception_dir / frame_id if record else None
+            # Provisional id for the sensor request path; rewritten from simulator
+            # frame identity once the capture returns.
+            provisional_id = f"capture_{capture_sequence:06d}"
+            perception_output_dir = None
             snapshot = car.read_sensors(
                 SensorReadRequest(
                     output_dir=frames_dir,
-                    read_id=frame_id,
+                    read_id=provisional_id,
                     requested_sensors=(FRONT_CAMERA_SENSOR_ID,),
                     image_extension="png",
                     front_camera_endpoint="play-front-view-snapshot",
                 )
             )
+            simulator_frame_index = simulator_frame_index_from_snapshot(snapshot)
+            if simulator_frame_index is None and hasattr(car, "last_simulator_frame_index"):
+                simulator_frame_index = getattr(car, "last_simulator_frame_index", None)
+            if simulator_frame_index is not None:
+                frame_index = int(simulator_frame_index)
+                frame_id = format_chase_frame_id(frame_index)
+            else:
+                # Fail closed for live Chase: local counters cannot align shadow refs.
+                raise ValueError(
+                    "Chase sensor capture missing simulator frameIndex; "
+                    "cannot assign camera-derived frame identity for shadow alignment"
+                )
+            # Align SensorSnapshot.read_id with simulator identity (capture used a provisional id).
+            if snapshot.read_id != frame_id:
+                snapshot = replace(snapshot, read_id=frame_id)
+            if record:
+                perception_output_dir = perception_dir / frame_id
+            shadow_reference = None
+            if hasattr(car, "last_capture_shadow_reference"):
+                shadow_reference = getattr(car, "last_capture_shadow_reference", None)
+
             front_reading = snapshot.readings.get(FRONT_CAMERA_SENSOR_ID)
             front_path = (
                 Path(front_reading.path)
@@ -592,17 +640,38 @@ def run_vehicle_automation(
             )
             if front_path is None:
                 raise ValueError("front camera reading has no published path")
+            # Rename capture file to the simulator-anchored frame id when needed.
+            desired_name = f"{frame_id}_{FRONT_CAMERA_SENSOR_ID}{front_path.suffix}"
+            if front_path.name != desired_name:
+                target_path = front_path.with_name(desired_name)
+                try:
+                    if front_path.exists() and not target_path.exists():
+                        front_path.rename(target_path)
+                        front_path = target_path
+                        if front_reading is not None:
+                            updated = replace(front_reading, path=str(front_path))
+                            snapshot = replace(
+                                snapshot,
+                                readings={**snapshot.readings, FRONT_CAMERA_SENSOR_ID: updated},
+                            )
+                except OSError:
+                    pass
             if not record:
                 _copy_file_atomic(front_path, latest_front_camera_path)
 
             capture_record = {
                 "frame_id": frame_id,
                 "frame_index": frame_index,
+                "simulator_frame_index": frame_index,
+                "capture_sequence": capture_sequence,
                 "captured_at_ms": snapshot.completed_at_ms,
                 "capture_started_at_ms": captured_started_at_ms,
                 "capture_duration_ms": snapshot.completed_at_ms - captured_started_at_ms,
                 "sensor_snapshot": snapshot.to_dict(),
             }
+            # Evaluator-only: never placed on DecisionFrameContext / observation.
+            if isinstance(shadow_reference, dict):
+                capture_record["shadow_reference"] = shadow_reference
             if view_server is not None:
                 try:
                     view_server.publish_frame(frame_path=front_path, frame_record=capture_record)
@@ -626,27 +695,39 @@ def run_vehicle_automation(
                     "run_id": run_id,
                     "activation": str(manifest_path),
                     "recording": bool(record),
+                    "simulator_frame_index": frame_index,
+                    "capture_sequence": capture_sequence,
                     "perception_output_dir": (
                         str(perception_output_dir) if perception_output_dir is not None else None
                     ),
                     "control_application": "stop_only_safety_gate" if take_control else "not_applied",
                 },
             )
-            enqueue_latest(_PendingAutomationFrame(context=context, front_path=front_path))
+            enqueue_latest(
+                _PendingAutomationFrame(
+                    context=context,
+                    front_path=front_path,
+                    shadow_reference=shadow_reference if isinstance(shadow_reference, dict) else None,
+                )
+            )
 
             with state_lock:
-                state["frames_captured"] = frame_index + 1
+                state["frames_captured"] = capture_sequence + 1
                 state["last_capture"] = {
                     "frame_id": frame_id,
                     "frame_index": frame_index,
+                    "simulator_frame_index": frame_index,
+                    "capture_sequence": capture_sequence,
                     "captured_at_ms": snapshot.completed_at_ms,
                     "capture_duration_ms": snapshot.completed_at_ms - captured_started_at_ms,
                     "front_camera": display_path(latest_front_camera_path if not record else front_path),
+                    "shadow_aligned": isinstance(shadow_reference, dict)
+                    and shadow_reference.get("simulator_frame_index") == frame_index,
                 }
                 state["updated_at_ms"] = _timestamp_ms()
                 _write_json(state_path, state)
 
-            frame_index += 1
+            capture_sequence += 1
 
         stop_perception_worker(process_latest=True)
         if worker_failed.is_set():

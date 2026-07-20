@@ -675,6 +675,143 @@ class MemoryCheckTests(unittest.TestCase):
         self.assertEqual(result.exit_code, 2)
         self.assertIn("non-zero", result.message)
 
+    def test_chase_shadow_path_scores_live_alignment(self) -> None:
+        vehicle = {
+            "vehicle_id": "chase-sim-chaser",
+            "provider": "chase-sim",
+            "connection": {"ws_url": "ws://chase.test/ws"},
+        }
+        frames = [
+            {
+                "frame_id": "chase_frame_000010",
+                "frame_index": 10,
+                "simulator_frame_index": 10,
+                "control_application": "not_applied",
+                "action_policy": "observe_only",
+                "control": {"applied": False, "reason": "idle"},
+                "shadow_reference": {
+                    "schema": "chase_shadow_reference_v0",
+                    "evaluator_only": True,
+                    "simulator_frame_index": 10,
+                },
+                "observation": {
+                    "observation_id": "obs-10",
+                    "things": [{"thing_id": "front_camera_frame"}],
+                    "signals": [],
+                    "sensor_snapshot": {"metadata": {"simulator_frame_index": 10}},
+                },
+                "memory": {
+                    "health": "healthy",
+                    "record_count": 1,
+                    "records": [
+                        {
+                            "record_id": "thing:front_camera_frame",
+                            "provenance": {"frame_id": "chase_frame_000010"},
+                        }
+                    ],
+                },
+            },
+            {
+                "frame_id": "chase_frame_000011",
+                "frame_index": 11,
+                "simulator_frame_index": 11,
+                "control_application": "not_applied",
+                "action_policy": "observe_only",
+                "control": {"applied": False, "reason": "idle"},
+                "shadow_reference": {
+                    "schema": "chase_shadow_reference_v0",
+                    "evaluator_only": True,
+                    "simulator_frame_index": 11,
+                },
+                "observation": {
+                    "observation_id": "obs-11",
+                    "things": [{"thing_id": "front_camera_frame"}],
+                    "signals": [],
+                    "sensor_snapshot": {"metadata": {"simulator_frame_index": 11}},
+                },
+                "memory": {
+                    "health": "healthy",
+                    "record_count": 1,
+                    "records": [
+                        {
+                            "record_id": "thing:front_camera_frame",
+                            "provenance": {"frame_id": "chase_frame_000011"},
+                        }
+                    ],
+                },
+            },
+        ]
+        cursor = {"n": 0}
+
+        def load_latest() -> dict:
+            idx = min(cursor["n"], len(frames) - 1)
+            cursor["n"] += 1
+            return frames[idx]
+
+        def probe() -> dict:
+            if cursor["n"] < 3:
+                return {
+                    "status": "live",
+                    "last_health": "healthy",
+                    "last_record_count": 1,
+                    "last_epoch_id": "epoch-1",
+                    "reset_count": 1,
+                    "implementation_id": "bounded_evidence",
+                    "activation": "runtime/memory/active.json",
+                }
+            return {
+                "status": "live",
+                "last_health": "empty",
+                "last_record_count": 0,
+                "last_epoch_id": "epoch-2",
+                "reset_count": 2,
+                "implementation_id": "bounded_evidence",
+            }
+
+        def reset() -> dict:
+            return {
+                "ok": True,
+                "status": "reset",
+                "snapshot": {
+                    "health": "empty",
+                    "record_count": 0,
+                    "records": [],
+                    "epoch_id": "epoch-2",
+                },
+            }
+
+        with mock.patch(
+            "cli.automa_cli.memory_check.discover_active_vehicles",
+            return_value={"vehicles": [vehicle]},
+        ), mock.patch(
+            "cli.automa_cli.memory_check.find_vehicle_by_id",
+            return_value=(vehicle, None),
+        ):
+            result = run_vehicle_memory_check(
+                vehicle_id="chase-sim-chaser",
+                json_output=True,
+                load_latest_frame=load_latest,
+                probe_fn=probe,
+                reset_fn=reset,
+                fresh_timeout_s=1.0,
+            )
+        self.assertEqual(result.exit_code, 0, result.message)
+        payload = json.loads(result.message)
+        self.assertTrue(payload["passed"])
+        self.assertEqual(payload["provider"], "chase-sim")
+        self.assertEqual(
+            payload["safety"]["lifecycle_source"],
+            "live_automation_worker+shadow_reference",
+        )
+        phases = {item["phase"] for item in payload["phase_results"]}
+        self.assertIn("shadow_alignment", phases)
+        self.assertIn("memory_provenance", phases)
+        self.assertIn("observe_only", phases)
+        self.assertIn("shadow_isolation", phases)
+        self.assertIn("reset", phases)
+        self.assertTrue(all(item["passed"] for item in payload["phase_results"]))
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+

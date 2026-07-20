@@ -7,6 +7,11 @@ from pathlib import Path
 from typing import Any
 
 from .defaults import DEFAULT_CHASE_UI_WS_URL, get_default_chase_ui_ws_url
+from .frame_identity import (
+    format_chase_frame_id,
+    sanitize_chase_shadow_reference,
+    simulator_frame_index_from_debug,
+)
 from .metrics_ws import MetricsUiWebSocketError, MetricsUiWsClient
 from autonomy.vehicle import (
     FRONT_CAMERA_SENSOR_ID,
@@ -88,6 +93,10 @@ class ChaseSimCar(CarInterface):
         self.ws_url = (ws_url or get_default_chase_ui_ws_url()).strip() or DEFAULT_CHASE_UI_WS_URL
         self.timeout_s = float(timeout_s)
         self.client = MetricsUiWsClient(self.ws_url, timeout_s=self.timeout_s)
+        # Evaluator-only shadow reference from the most recent capture. Not part of
+        # SensorSnapshot so it never enters observation/memory inputs.
+        self._last_capture_shadow_reference: dict[str, Any] | None = None
+        self._last_simulator_frame_index: int | None = None
         self._capabilities = VehicleCapabilities(
             vehicle_id=vehicle_id,
             vehicle_kind="chase-sim-ws",
@@ -319,8 +328,38 @@ class ChaseSimCar(CarInterface):
             "completed_at_ms": int(time.time() * 1000),
         }
 
+    @property
+    def last_capture_shadow_reference(self) -> dict[str, Any] | None:
+        """Evaluator-only shadow reference from the most recent front-camera capture."""
+
+        return self._last_capture_shadow_reference
+
+    @property
+    def last_simulator_frame_index(self) -> int | None:
+        return self._last_simulator_frame_index
+
     def _capture_front_camera(self, path: Path, endpoint: str) -> dict[str, Any]:
+        # Read play_debug first so the image and frame identity come from the same
+        # live frame generation (debug is the identity source of truth).
+        debug: dict[str, Any] = {}
+        try:
+            debug = self._wait_for_play_debug(timeout_s=min(self.timeout_s, 2.0))
+        except (MetricsUiWebSocketError, OSError, TimeoutError, ValueError):
+            try:
+                debug = self._read_debug()
+            except (MetricsUiWebSocketError, OSError, TimeoutError, ValueError):
+                debug = {}
+        simulator_frame_index = simulator_frame_index_from_debug(debug)
+
         snapshot = self.client.get_play_front_view_snapshot(timeout_s=self.timeout_s)
+        # Prefer an explicit frameIndex on the front-view payload when present.
+        if isinstance(snapshot, dict):
+            snapshot_index = simulator_frame_index_from_debug(
+                {"frameIndex": snapshot.get("frameIndex")}
+            )
+            if snapshot_index is not None:
+                simulator_frame_index = snapshot_index
+
         path.parent.mkdir(parents=True, exist_ok=True)
         image = snapshot.get("image") if isinstance(snapshot.get("image"), dict) else {}
         byte_count = 0
@@ -347,18 +386,31 @@ class ChaseSimCar(CarInterface):
         if byte_count == 0 and path.exists():
             byte_count = path.stat().st_size
 
-        return {
+        self._last_simulator_frame_index = simulator_frame_index
+        self._last_capture_shadow_reference = sanitize_chase_shadow_reference(
+            debug if isinstance(debug, dict) else None,
+            simulator_frame_index=simulator_frame_index,
+        )
+
+        capture: dict[str, Any] = {
             "endpoint": endpoint,
             "path": str(path),
             "bytes": byte_count,
             "content_type": content_type,
             "captured_at_ms": int(time.time() * 1000),
         }
+        if simulator_frame_index is not None:
+            capture["simulator_frame_index"] = simulator_frame_index
+            capture["frame_index"] = simulator_frame_index
+            capture["frame_id"] = format_chase_frame_id(simulator_frame_index)
+        return capture
 
     def read_sensors(self, request: SensorReadRequest) -> SensorSnapshot:
         _reject_unsupported_sensors(request)
         started_ms = _timestamp_ms()
         readings: dict[str, SensorReading] = {}
+        self._last_capture_shadow_reference = None
+        self._last_simulator_frame_index = None
 
         if request.sensor_requested(FRONT_CAMERA_SENSOR_ID):
             capture = self._capture_front_camera(
@@ -373,13 +425,18 @@ class ChaseSimCar(CarInterface):
                 metadata=capture,
             )
 
+        snapshot_metadata: dict[str, Any] = {"vehicle": self.capabilities.to_dict()}
+        if self._last_simulator_frame_index is not None:
+            snapshot_metadata["simulator_frame_index"] = self._last_simulator_frame_index
+            snapshot_metadata["frame_id"] = format_chase_frame_id(self._last_simulator_frame_index)
+
         return SensorSnapshot(
             read_id=request.read_id,
             readings=readings,
             started_at_ms=started_ms,
             completed_at_ms=_timestamp_ms(),
             request=request.to_dict(),
-            metadata={"vehicle": self.capabilities.to_dict()},
+            metadata=snapshot_metadata,
         )
 
 

@@ -21,6 +21,11 @@ from implementations.memory import (
     build_memory_activation_payload,
 )
 
+from implementations.vehicle.chase_sim.frame_identity import (
+    score_shadow_alignment_batch,
+)
+
+from .automation import _automation_dir
 from .memory import (
     build_memory_provenance_rows,
     memory_snapshot_digest,
@@ -80,10 +85,12 @@ def run_vehicle_memory_check(
     fetch_matched_pair: Callable[..., dict[str, Any]] | None = None,
     reset_fn: Callable[[], dict[str, Any]] | None = None,
     probe_fn: Callable[[], dict[str, Any]] | None = None,
+    load_latest_frame: Callable[[], dict[str, Any] | None] | None = None,
 ) -> CommandResult:
     """Run present/dropout/expiry/reset gates through activated memory.
 
-    - Chase / offline staging ids: process-local phase script.
+    - Chase-sim (discovered): live automation frames + shadow reference alignment.
+    - Offline staging ids: process-local phase script.
     - PiCar: scores the **live onboard** stage via publication.memory and
       onboard reset (no forced dropout, no ephemeral local reducer). Recorded
       captures require publication/JPEG frame-id pairing.
@@ -125,6 +132,42 @@ def run_vehicle_memory_check(
             probe_fn=probe_fn,
         )
 
+    if provider == "chase-sim":
+        automation_ready = load_latest_frame is not None or _chase_automation_worker_running(
+            vehicle_id
+        )
+        if automation_ready:
+            return run_chase_shadow_memory_check(
+                vehicle_id=vehicle_id,
+                implementation_id=implementation_id,
+                record=record,
+                json_output=json_output,
+                output=output,
+                output_root=output_root,
+                timeout_s=timeout_s,
+                fresh_timeout_s=fresh_timeout_s,
+                min_frames=2,
+                probe_fn=probe_fn,
+                reset_fn=reset_fn,
+                load_latest_frame=load_latest_frame,
+            )
+        # Discovered Chase without a running automation worker: keep the offline
+        # phase script for unit/dev use, but do not claim live shadow success.
+        return run_offline_memory_check(
+            vehicle_id=vehicle_id,
+            provider="chase-sim",
+            implementation_id=implementation_id,
+            record=record,
+            json_output=json_output,
+            output=output,
+            output_root=output_root,
+            safety_note=(
+                "Chase automation worker is not running; offline phase script only. "
+                "Start observe-only automation for live simulator frameIndex + shadow alignment "
+                "(scenario chaser-depth-obstacles)."
+            ),
+        )
+
     return run_offline_memory_check(
         vehicle_id=vehicle_id,
         provider=provider or "offline",
@@ -134,6 +177,558 @@ def run_vehicle_memory_check(
         output=output,
         output_root=output_root,
     )
+
+
+def _chase_automation_worker_running(vehicle_id: str) -> bool:
+    """True only when automation state exists and status is actively running."""
+
+    state_path = _automation_dir(vehicle_id) / "state.json"
+    if not state_path.exists():
+        return False
+    try:
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    if not isinstance(state, dict):
+        return False
+    return str(state.get("status") or "") == "running"
+
+
+def run_chase_shadow_memory_check(
+    *,
+    vehicle_id: str,
+    implementation_id: str | None = None,
+    record: bool = False,
+    json_output: bool = False,
+    output: TextIO | None = None,
+    output_root: Path | None = None,
+    timeout_s: float = 3.0,
+    fresh_timeout_s: float = 12.0,
+    min_frames: int = 2,
+    probe_fn: Callable[[], dict[str, Any]] | None = None,
+    reset_fn: Callable[[], dict[str, Any]] | None = None,
+    load_latest_frame: Callable[[], dict[str, Any] | None] | None = None,
+) -> CommandResult:
+    """Score live Chase automation frames for simulator identity + shadow alignment.
+
+    Requires a running automation worker. Candidate cycle results must carry
+    ``simulator_frame_index`` and an evaluator-only ``shadow_reference`` with the
+    same index. Map/debug never enter observation or memory inputs.
+    """
+
+    selected = implementation_id or DEFAULT_MEMORY_IMPLEMENTATION
+    automation_dir = _automation_dir(vehicle_id)
+    latest_json_path = automation_dir / "latest_perception.json"
+    state_path = automation_dir / "state.json"
+
+    def default_load_latest() -> dict[str, Any] | None:
+        if not latest_json_path.exists():
+            return None
+        try:
+            payload = json.loads(latest_json_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+        return payload if isinstance(payload, dict) else None
+
+    load_frame = load_latest_frame or default_load_latest
+
+    def do_probe() -> dict[str, Any]:
+        if probe_fn is not None:
+            return probe_fn()
+        return probe_live_memory(vehicle_id=vehicle_id, timeout_s=timeout_s)
+
+    def do_reset() -> dict[str, Any]:
+        if reset_fn is not None:
+            return reset_fn()
+        from .memory import _reset_chase_memory
+
+        before = do_probe()
+        return _reset_chase_memory(
+            vehicle_id=vehicle_id,
+            before=before,
+            wait_s=max(1.0, float(timeout_s)),
+        )
+
+    _emit(output, "Memory check (Chase shadow: identity → alignment → provenance → reset)")
+    _emit(output, f"vehicle: {vehicle_id}")
+    _emit(output, f"implementation: {selected}")
+    _emit(output, "provider: chase-sim")
+    _emit(output, "movement: rewritten engine observe-only (built-in model retains authority)")
+    _emit(output, "")
+
+    if not state_path.exists() and load_latest_frame is None:
+        return CommandResult(
+            2,
+            "\n".join(
+                [
+                    f"No automation runtime state for {vehicle_id!r}.",
+                    f"Start observe-only automation first:",
+                    f"  ./cli/automa vehicles automation run --id {vehicle_id} --no-take-control",
+                ]
+            ),
+        )
+
+    probe = do_probe()
+    if probe.get("status") not in {"live", "absent"} and load_latest_frame is None:
+        return CommandResult(
+            2,
+            f"Chase live memory probe failed: {probe.get('error') or probe.get('status')}",
+        )
+
+    frames = collect_chase_automation_frames(
+        load_latest_frame=load_frame,
+        min_frames=max(2, int(min_frames)),
+        timeout_s=max(1.0, float(fresh_timeout_s)),
+    )
+    if len(frames) < max(2, int(min_frames)):
+        return CommandResult(
+            2,
+            "\n".join(
+                [
+                    f"Chase shadow check collected only {len(frames)} automation frame(s); need ≥{min_frames}.",
+                    "Ensure automation is running observe-only against a live Play session",
+                    f"(scenario chaser-depth-obstacles) and writing {display_path(latest_json_path)}.",
+                ]
+            ),
+        )
+
+    phase_results: list[dict[str, Any]] = []
+
+    alignment = score_shadow_alignment_batch(frames, min_frames=max(2, int(min_frames)))
+    phase_results.append(
+        {
+            "phase": "shadow_alignment",
+            "passed": bool(alignment.get("passed")),
+            "score": alignment,
+            "frame_count": len(frames),
+            "live_frame_ids": [frame.get("frame_id") for frame in frames],
+            "lifecycle_source": "live_automation_worker+shadow_reference",
+        }
+    )
+    _emit(
+        output,
+        f"phase: shadow_alignment  "
+        f"{'PASS' if alignment.get('passed') else 'FAIL'}  "
+        f"frames={alignment.get('frame_count')} aligned={alignment.get('aligned_count')}",
+    )
+
+    provenance_score = score_chase_memory_provenance(frames)
+    phase_results.append(
+        {
+            "phase": "memory_provenance",
+            "passed": bool(provenance_score.get("passed")),
+            "score": provenance_score,
+            "frame_count": len(frames),
+            "live_frame_ids": [frame.get("frame_id") for frame in frames],
+            "lifecycle_source": "live_automation_worker",
+        }
+    )
+    _emit(
+        output,
+        f"phase: memory_provenance  "
+        f"{'PASS' if provenance_score.get('passed') else 'FAIL'}  "
+        f"{provenance_score.get('reason')}",
+    )
+
+    observe_score = score_chase_observe_only(frames)
+    phase_results.append(
+        {
+            "phase": "observe_only",
+            "passed": bool(observe_score.get("passed")),
+            "score": observe_score,
+            "frame_count": len(frames),
+            "lifecycle_source": "live_automation_worker",
+        }
+    )
+    _emit(
+        output,
+        f"phase: observe_only  "
+        f"{'PASS' if observe_score.get('passed') else 'FAIL'}  "
+        f"{observe_score.get('reason')}",
+    )
+
+    isolation_score = score_shadow_reference_isolation(frames)
+    phase_results.append(
+        {
+            "phase": "shadow_isolation",
+            "passed": bool(isolation_score.get("passed")),
+            "score": isolation_score,
+            "frame_count": len(frames),
+            "lifecycle_source": "live_automation_worker",
+        }
+    )
+    _emit(
+        output,
+        f"phase: shadow_isolation  "
+        f"{'PASS' if isolation_score.get('passed') else 'FAIL'}  "
+        f"{isolation_score.get('reason')}",
+    )
+
+    prior_epoch = str(probe.get("last_epoch_id") or "") or None
+    prior_reset_count = None
+    if probe.get("reset_count") is not None:
+        try:
+            prior_reset_count = int(probe["reset_count"])
+        except (TypeError, ValueError):
+            prior_reset_count = None
+
+    try:
+        reset_payload = do_reset()
+    except (ConnectionError, OSError, TimeoutError, ValueError) as exc:
+        return CommandResult(2, f"Chase onboard memory reset failed: {exc}")
+    if not reset_payload.get("ok"):
+        return CommandResult(
+            2,
+            f"Chase memory reset failed: {reset_payload.get('error') or reset_payload}",
+        )
+    after_probe = do_probe()
+    reset_snapshot = chase_reset_snapshot_from_payload(reset_payload)
+    reset_score = score_live_reset(
+        reset_snapshot=reset_snapshot,
+        prior_epoch=prior_epoch,
+        prior_reset_count=prior_reset_count,
+        after_probe=after_probe if isinstance(after_probe, dict) else {},
+    )
+    if not reset_score.get("passed"):
+        # Worker result files often carry status only; allow probe transition + empty.
+        reset_score = score_chase_reset_via_probe(
+            prior_epoch=prior_epoch,
+            prior_reset_count=prior_reset_count,
+            after_probe=after_probe if isinstance(after_probe, dict) else {},
+            fallback_reason=str(reset_score.get("reason") or ""),
+        )
+
+    phase_results.append(
+        {
+            "phase": "reset",
+            "passed": bool(reset_score.get("passed")),
+            "score": reset_score,
+            "lifecycle_source": "live_chase_worker_reset+probe",
+            "extra": {"reset": reset_payload, "after_probe": after_probe},
+        }
+    )
+    _emit(
+        output,
+        f"phase: reset  "
+        f"{'PASS' if reset_score.get('passed') else 'FAIL'}  "
+        f"{reset_score.get('reason')}",
+    )
+
+    passed = all(bool(item.get("passed")) for item in phase_results)
+    present_snapshot = {}
+    for frame in reversed(frames):
+        memory = frame.get("memory")
+        if isinstance(memory, dict) and memory.get("records"):
+            present_snapshot = memory
+            break
+    provenance_rows = build_memory_provenance_rows(final=present_snapshot, frames=[])
+
+    report: dict[str, Any] = {
+        "schema": MEMORY_CHECK_RESULT_SCHEMA,
+        "vehicle_id": vehicle_id,
+        "provider": "chase-sim",
+        "implementation_id": selected,
+        "activation": probe.get("activation") or "live_automation_worker",
+        "passed": passed,
+        "phases": [item["phase"] for item in phase_results],
+        "phase_results": phase_results,
+        "present_snapshot": present_snapshot,
+        "final_snapshot": reset_snapshot if isinstance(reset_snapshot, dict) else {},
+        "provenance_rows": provenance_rows,
+        "frames_sampled": [
+            {
+                "frame_id": frame.get("frame_id"),
+                "frame_index": frame.get("frame_index"),
+                "simulator_frame_index": frame.get("simulator_frame_index"),
+                "shadow_aligned": (frame.get("shadow_alignment") or {}).get("aligned")
+                if isinstance(frame.get("shadow_alignment"), dict)
+                else (
+                    isinstance(frame.get("shadow_reference"), dict)
+                    and frame.get("shadow_reference", {}).get("simulator_frame_index")
+                    == frame.get("simulator_frame_index")
+                ),
+            }
+            for frame in frames
+        ],
+        "safety": {
+            "movement_commands_sent": False,
+            "action_policy": "chase_observe_only_shadow",
+            "rewritten_engine_idle": True,
+            "lifecycle_source": "live_automation_worker+shadow_reference",
+            "forced_dropout": False,
+            "ephemeral_local_reducer": False,
+            "scenario_note": (
+                "Live Chase automation frames preserve simulator frameIndex and pair "
+                "candidate cycle results with evaluator-only shadow_reference. Built-in "
+                "model retains movement authority; rewrite stays observe-only."
+            ),
+        },
+        "recorded": False,
+        "record_dir": None,
+        "provenance_extract": None,
+    }
+
+    if record:
+        try:
+            record_info = write_memory_check_record(
+                report=report,
+                all_frames=[],
+                phase_results=phase_results,
+                output_root=output_root or memory_check_output_root(),
+                captured_images=None,
+            )
+        except OSError as exc:
+            return CommandResult(2, f"Could not write memory check record: {exc}")
+        report["recorded"] = True
+        report["record_dir"] = record_info["record_dir"]
+        report["provenance_extract"] = record_info["provenance_extract"]
+        report["record_manifest"] = record_info["manifest"]
+        _emit(output, f"record: {report['record_dir']}")
+        _emit(output, f"provenance extract: {report['provenance_extract']}")
+    else:
+        _emit(output, "record: disabled (pass --record for bounded extract)")
+
+    exit_code = 0 if passed else 1
+    if json_output:
+        return CommandResult(exit_code, json.dumps(report, indent=2, sort_keys=True, default=str))
+    lines = [
+        f"Memory check: {vehicle_id}  {'PASS' if passed else 'FAIL'}",
+        f"Provider: chase-sim (live shadow)",
+        f"Implementation: {selected}",
+        f"Frames sampled: {len(frames)}",
+        f"Phases: {', '.join(item['phase'] + ('✓' if item['passed'] else '✗') for item in phase_results)}",
+    ]
+    return CommandResult(exit_code, "\n".join(lines))
+
+
+def chase_reset_snapshot_from_payload(reset_payload: dict[str, Any]) -> dict[str, Any]:
+    """Normalize Chase worker reset result into an empty-state snapshot mapping."""
+
+    snapshot = reset_payload.get("snapshot")
+    if isinstance(snapshot, dict) and (
+        snapshot.get("health") in {"empty", "unavailable"}
+        or snapshot.get("record_count") == 0
+        or snapshot.get("records") == []
+    ):
+        return {
+            "health": str(snapshot.get("health") or "empty"),
+            "record_count": int(snapshot.get("record_count") or 0),
+            "records": list(snapshot.get("records") or []),
+            "epoch_id": snapshot.get("epoch_id"),
+        }
+
+    memory = reset_payload.get("memory")
+    if isinstance(memory, dict):
+        status = memory.get("status") if isinstance(memory.get("status"), dict) else memory
+        if isinstance(status, dict):
+            health = status.get("last_health") or status.get("health") or "empty"
+            count = status.get("last_record_count")
+            if count is None:
+                count = status.get("record_count")
+            try:
+                count_i = int(count if count is not None else 0)
+            except (TypeError, ValueError):
+                count_i = 0
+            return {
+                "health": str(health or "empty"),
+                "record_count": count_i,
+                "records": [],
+                "epoch_id": status.get("last_epoch_id") or status.get("epoch_id"),
+            }
+
+    return {"health": "empty", "record_count": 0, "records": [], "epoch_id": None}
+
+
+def score_chase_reset_via_probe(
+    *,
+    prior_epoch: str | None,
+    prior_reset_count: int | None,
+    after_probe: dict[str, Any],
+    fallback_reason: str = "",
+) -> dict[str, Any]:
+    after_epoch = str(after_probe.get("last_epoch_id") or "")
+    epoch_ok = bool(prior_epoch) and bool(after_epoch) and after_epoch != prior_epoch
+    count_ok = False
+    if prior_reset_count is not None and after_probe.get("reset_count") is not None:
+        try:
+            count_ok = int(after_probe["reset_count"]) > int(prior_reset_count)
+        except (TypeError, ValueError):
+            count_ok = False
+    empty_ok = after_probe.get("last_record_count") in {0, None} or after_probe.get(
+        "last_health"
+    ) in {"empty", "unavailable"}
+    if (epoch_ok or count_ok) and empty_ok:
+        return {
+            "passed": True,
+            "reason": "chase worker reset confirmed via live probe epoch/reset_count transition",
+            "prior_epoch": prior_epoch,
+            "epoch_id": after_epoch,
+            "prior_reset_count": prior_reset_count,
+            "reset_count": after_probe.get("reset_count"),
+            "record_ids": [],
+        }
+    return {
+        "passed": False,
+        "reason": fallback_reason
+        or (
+            "chase reset did not confirm empty epoch transition "
+            f"(prior_epoch={prior_epoch!r} after_epoch={after_epoch!r})"
+        ),
+        "prior_epoch": prior_epoch,
+        "epoch_id": after_epoch,
+        "prior_reset_count": prior_reset_count,
+        "reset_count": after_probe.get("reset_count"),
+        "record_ids": [],
+    }
+
+
+def collect_chase_automation_frames(
+    *,
+    load_latest_frame: Callable[[], dict[str, Any] | None],
+    min_frames: int,
+    timeout_s: float,
+) -> list[dict[str, Any]]:
+    """Poll latest automation frame until enough distinct simulator frames arrive."""
+
+    deadline = time.monotonic() + max(1.0, float(timeout_s))
+    collected: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    while time.monotonic() < deadline and len(collected) < min_frames:
+        frame = load_latest_frame()
+        if isinstance(frame, dict):
+            frame_id = str(frame.get("frame_id") or "")
+            sim_index = frame.get("simulator_frame_index")
+            if sim_index is None:
+                sim_index = frame.get("frame_index")
+            key = frame_id or f"idx:{sim_index}"
+            if key and key not in seen_ids:
+                seen_ids.add(key)
+                collected.append(frame)
+                if len(collected) >= min_frames:
+                    break
+        time.sleep(0.05)
+    return collected
+
+
+def score_chase_memory_provenance(frames: list[dict[str, Any]]) -> dict[str, Any]:
+    """Require retained memory records (when present) cite simulator frame ids."""
+
+    frames_with_memory = 0
+    mismatched: list[str] = []
+    matched = 0
+    for frame in frames:
+        memory = frame.get("memory") if isinstance(frame.get("memory"), dict) else None
+        if memory is None:
+            continue
+        records = memory.get("records") if isinstance(memory.get("records"), list) else []
+        if not records:
+            continue
+        frames_with_memory += 1
+        expected = str(frame.get("frame_id") or "")
+        sim_index = frame.get("simulator_frame_index")
+        if sim_index is None:
+            sim_index = frame.get("frame_index")
+        for record in records:
+            if not isinstance(record, dict):
+                continue
+            provenance = (
+                record.get("provenance") if isinstance(record.get("provenance"), dict) else {}
+            )
+            prov_frame = str(provenance.get("frame_id") or "")
+            if not prov_frame:
+                continue
+            if expected and prov_frame == expected:
+                matched += 1
+            elif sim_index is not None and prov_frame.endswith(f"{int(sim_index):06d}"):
+                matched += 1
+            else:
+                mismatched.append(f"{record.get('record_id')}:{prov_frame}")
+    # Memory may be empty early; require either no retained records or matching provenance.
+    passed = not mismatched and (frames_with_memory == 0 or matched > 0)
+    return {
+        "passed": passed,
+        "frames_with_memory": frames_with_memory,
+        "matched_provenance_records": matched,
+        "mismatched": mismatched[:12],
+        "reason": (
+            "memory provenance uses simulator frame identity"
+            if passed and matched > 0
+            else (
+                "no retained memory records yet (identity path still valid)"
+                if passed
+                else "memory provenance frame_id does not match simulator identity"
+            )
+        ),
+    }
+
+
+def score_chase_observe_only(frames: list[dict[str, Any]]) -> dict[str, Any]:
+    """Rewritten cycle must not claim applied movement authority."""
+
+    violations: list[str] = []
+    for frame in frames:
+        application = str(frame.get("control_application") or "")
+        action_policy = str(frame.get("action_policy") or "")
+        control = frame.get("control") if isinstance(frame.get("control"), dict) else {}
+        if application and application not in {
+            "not_applied",
+            "observe_only",
+            "stop_only_safety_gate",
+        }:
+            violations.append(f"control_application={application}")
+        if action_policy and "observe" not in action_policy and action_policy not in {
+            "stop_only_safety_gate",
+            "idle",
+            "not_applied",
+        }:
+            # Allow common observe-only labels; flag explicit apply policies.
+            if "apply" in action_policy or action_policy == "autonomy":
+                violations.append(f"action_policy={action_policy}")
+        if control.get("applied") is True:
+            violations.append("control.applied=true")
+    passed = not violations
+    return {
+        "passed": passed,
+        "violations": violations,
+        "reason": (
+            "rewritten engine remains observe-only on sampled frames"
+            if passed
+            else f"observe-only violations: {violations[:5]}"
+        ),
+    }
+
+
+def score_shadow_reference_isolation(frames: list[dict[str, Any]]) -> dict[str, Any]:
+    """Shadow/debug must not appear inside observation or memory record inputs."""
+
+    leaks: list[str] = []
+    for frame in frames:
+        observation = frame.get("observation") if isinstance(frame.get("observation"), dict) else {}
+        if "shadow_reference" in observation:
+            leaks.append(f"{frame.get('frame_id')}:observation.shadow_reference")
+        sensor = observation.get("sensor_snapshot")
+        if isinstance(sensor, dict):
+            meta = sensor.get("metadata") if isinstance(sensor.get("metadata"), dict) else {}
+            if "shadow_reference" in meta:
+                leaks.append(f"{frame.get('frame_id')}:observation.sensor_snapshot.metadata")
+        memory = frame.get("memory") if isinstance(frame.get("memory"), dict) else {}
+        records = memory.get("records") if isinstance(memory.get("records"), list) else []
+        for record in records:
+            if not isinstance(record, dict):
+                continue
+            blob = json.dumps(record, sort_keys=True, default=str)
+            if "shadow_reference" in blob or "chase_shadow_reference_v0" in blob:
+                leaks.append(f"{record.get('record_id')}:memory_record")
+    passed = not leaks
+    return {
+        "passed": passed,
+        "leaks": leaks[:12],
+        "reason": (
+            "shadow_reference stays evaluator-only (absent from observation/memory inputs)"
+            if passed
+            else f"shadow/debug leaked into controller inputs: {leaks[:5]}"
+        ),
+    }
 
 
 def run_offline_memory_check(
@@ -149,7 +744,7 @@ def run_offline_memory_check(
     safety_note: str | None = None,
     captured_images: dict[str, bytes] | None = None,
 ) -> CommandResult:
-    """Run lifecycle gates from a phase script (Chase / offline / Pi post-capture)."""
+    """Run lifecycle gates from a phase script (offline / non-host unit path)."""
 
     selected = implementation_id or DEFAULT_MEMORY_IMPLEMENTATION
     known = available_memory_implementation_ids()

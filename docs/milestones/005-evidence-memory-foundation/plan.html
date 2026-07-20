@@ -174,7 +174,7 @@
       <div class="meta">
         <span class="pill">Status: active — not ready to close</span>
         <span class="pill">Packages open: 5 (validation repair) and 6</span>
-        <span class="pill">Next: Chase frameIndex + shadow</span>
+        <span class="pill">Next: snapshot detach + bounds</span>
         <span class="pill">Proposed: 2026-07-15</span>
         <span class="pill">Action policy: idle</span>
         <span class="pill">Hosts: Chase and DonkeyCar</span>
@@ -212,8 +212,8 @@
             <tr>
               <td><strong>Chase shadow visual-provenance check</strong> (present/dropout/expiry/reset, observe-only)</td>
               <td>5</td>
-              <td><span class="status blocked">Rework</span></td>
-              <td>The current check uses synthetic observations and hardcoded safety results. Preserve Chase <code>frameIndex</code>, run live in <code>chaser-depth-obstacles</code>, and align candidate/reference evidence by that identity.</td>
+              <td><span class="status active">In progress</span></td>
+              <td>Simulator <code>frameIndex</code> is preserved on sensor captures; automation uses it for <code>chase_frame_*</code> identity; live check scores shadow alignment, provenance, observe-only isolation, and worker reset when automation is running. Still open: guided <code>chaser-depth-obstacles</code> recorded visual extract for tracked milestone evidence.</td>
             </tr>
             <tr>
               <td><strong>Stationary Pi visual-provenance check</strong> (present / dropout / expiry / reset, recorded)</td>
@@ -291,10 +291,10 @@
               <td>Done in remediation block 1.</td>
             </tr>
             <tr>
-              <td><span class="status blocked">Blocker</span></td>
+              <td><span class="status active">In progress</span></td>
               <td>The Chase adapter discards simulator <code>frameIndex</code>; automation substitutes a local frame counter, so candidate/reference results cannot be aligned.</td>
-              <td><code>implementations/vehicle/chase_sim/car.py</code> and <code>cli/automa_cli/automation.py</code>.</td>
-              <td>Preserve simulator frame identity in sensor metadata and use it for camera-derived shadow/reference evaluation.</td>
+              <td>Capture metadata and <code>SensorSnapshot</code> now carry <code>simulator_frame_index</code>; automation fails closed without it and assigns <code>chase_frame_{index}</code>. Evaluator-only <code>shadow_reference</code> is paired on frame records (not observation/memory inputs). Live <code>memory check</code> scores alignment when the automation worker is running.</td>
+              <td>Remediation block 3: code path in review. Complete with a guided <code>chaser-depth-obstacles</code> observe-only run and tracked visual extract.</td>
             </tr>
             <tr>
               <td><span class="status pending">High</span></td>
@@ -342,7 +342,7 @@
       <ol>
         <li><strong>Done:</strong> Make Pi publication/frame pairing atomic or explicitly verified.</li>
         <li><strong>Done:</strong> Replace synthetic physical lifecycle phases with checks of the active onboard stage (lifecycle keys = present∖dropout observed evidence; fail-closed frame freshness).</li>
-        <li>Preserve Chase frame identity and implement the live shadow/reference evaluator.</li>
+        <li><strong>In progress:</strong> Preserve Chase frame identity and implement the live shadow/reference evaluator.</li>
         <li>Deeply detach snapshots; enforce byte limits and plugin-safe record identity.</li>
         <li>Add missing conflict, long-sequence, size-bound, stale-state, reset, and frame-pairing tests.</li>
         <li>Run and record trustworthy Chase and Pi reviews, then write package 6 closeout.</li>
@@ -360,6 +360,14 @@
         evidence); non-record capture fails closed without a new frame id; expiry waits only for
         lifecycle keys; reset uses onboard POST + epoch/reset_count. A successful stationary
         guided run is preserved in the <a href="evidence/physical-memory-lifecycle/provenance_extract.html">physical lifecycle extract</a>.
+      </p>
+      <p class="note" style="margin-top: 12px;">
+        <strong>2026-07-20 remediation block 3:</strong> Chase capture preserves simulator
+        <code>frameIndex</code> on sensor metadata; automation uses <code>chase_frame_*</code>
+        identity and fails closed without it; evaluator-only <code>shadow_reference</code> is
+        recorded beside candidate cycle results; live <code>memory check</code> scores shadow
+        alignment, memory provenance, observe-only policy, isolation, and worker reset when
+        automation is running. Guided <code>chaser-depth-obstacles</code> visual extract remains open.
       </p>
     </section>
 
@@ -577,8 +585,9 @@
         </div>
         <div class="card interface">
           <h3>Implemented: Chase-First Memory Lifecycle Check</h3>
-          <p><span class="status blocked">Validation rework required</span> <strong>Review shape:</strong> deep and narrow.</p>
-          <p><strong>Current behavior:</strong> offline <code>memory check</code> phase script with optional record extract. It does not yet satisfy the live scenario, built-in authority, or simulator-frame alignment requirements.</p>
+          <p><span class="status active">Implementation repair in progress</span> <strong>Review shape:</strong> deep and narrow.</p>
+          <p><strong>Current behavior:</strong> live Chase automation preserves simulator <code>frameIndex</code> as <code>chase_frame_*</code> identity and pairs evaluator-only <code>shadow_reference</code> on frame records. When the automation worker is running, <code>memory check</code> scores shadow alignment, provenance, observe-only policy, isolation, and worker reset. Without a worker, the offline phase script remains available and is labeled as offline-only.</p>
+          <p><strong>Still open:</strong> guided <code>chaser-depth-obstacles</code> observe-only run with a tracked source-frame visual extract for milestone evidence.</p>
         </div>
         <div class="card goal">
           <h3>Implemented: Stationary Pi Memory Check</h3>
@@ -590,7 +599,7 @@
         <div class="card interface">
           <h3>Current Next Review Unit: Package 5 Validation Integrity</h3>
           <p><span class="status active">Next</span> <strong>Review shape:</strong> evidence-path repair with focused contract hardening.</p>
-          <p><strong>Deliverable:</strong> preserved Chase frame identity, live shadow evaluation, detached snapshots, enforceable bounds, and missing deterministic tests. Atomic Pi frame pairing and genuine onboard lifecycle validation are complete.</p>
+          <p><strong>Deliverable:</strong> detached snapshots, enforceable property/serialized-size and record bounds, missing deterministic tests, and tracked Chase visual extract. Atomic Pi frame pairing, live onboard Pi lifecycle validation, and Chase frameIndex + shadow alignment code are in place (Chase guided evidence still open).</p>
           <p><strong>Review question:</strong> Does each success result prove behavior of the named external runtime using attributable, exact-frame evidence?</p>
           <p><strong>Package 6 follows</strong> only after this review unit passes.</p>
         </div>
@@ -606,7 +615,7 @@
             <tr><td>Operator lifecycle (reset)</td><td>Explicit reset starts a new empty epoch visible to operators on both hosts.</td><td><strong>Landed.</strong> Reset confirmation requires epoch/reset-count transition; the Pi path was validated against the live onboard stage.</td></tr>
             <tr><td>Operator lifecycle (replay)</td><td>Replay a sequence to a digestible end-state without default disk history.</td><td><strong>Landed.</strong> Offline <code>memory replay</code> + stable digest + two-pass check.</td></tr>
             <tr><td>Operator lifecycle (record)</td><td>Opt-in record without default disk history.</td><td><strong>Partial.</strong> <code>memory replay --record</code> and provenance extract landed; configured frame-count and byte bounds remain open.</td></tr>
-            <tr><td>Evaluation / visual provenance</td><td>Chase shadow + stationary Pi present/dropout/expiry/reset with source-frame extracts.</td><td><strong>Partial.</strong> The tracked Pi source-frame extract validates live onboard present/dropout/expiry/reset. Chase still needs simulator <code>frameIndex</code> preservation and shadow evaluation alignment.</td></tr>
+            <tr><td>Evaluation / visual provenance</td><td>Chase shadow + stationary Pi present/dropout/expiry/reset with source-frame extracts.</td><td><strong>Partial.</strong> Pi extract is tracked. Chase preserves simulator frame identity and scores live shadow alignment in code; guided <code>chaser-depth-obstacles</code> visual extract still open.</td></tr>
             <tr><td>Closeout</td><td>Written judgment on usefulness and whether patterns/action are justified; activate 006 only then.</td><td><strong>Blocked.</strong> Package 5 validation integrity must pass first. Pre-plan 006 remains queued, not active.</td></tr>
           </tbody>
         </table>
@@ -832,10 +841,10 @@
             <tr><td>6</td><td>Automa can stage, inspect, run, stream latest memory, <strong>replay</strong> a sequence, and reset state with concise human and complete machine output.</td><td><span class="status done">Met</span> — stage/inspect/stream/reset/replay landed</td></tr>
             <tr><td>7</td><td>Default execution writes no logs, frames, or memory history; recording is explicit and bounded.</td><td><span class="status pending">Partial</span> — defaults write nothing and recording is opt-in, but no configured frame-count or byte bound is enforced.</td></tr>
             <tr><td>8</td><td>Deterministic tests cover recurrence, dropout, conflict, expiry, capacity, reset, failure, and replay, including long-sequence boundedness.</td><td><span class="status blocked">Open</span> — conflict, long-sequence, serialized-size, stale-status, exact-frame pairing, and strong reset-confirmation coverage is missing.</td></tr>
-            <tr><td>9</td><td>One live <code>chaser-depth-obstacles</code> shadow check and one recorded non-moving Pi present/dropout/expiry/reset check verify equivalent stage behavior while the rewritten engine emits zero movement.</td><td><span class="status pending">Partial</span> — Pi is validated against live onboard memory with zero movement; Chase phases remain synthetic.</td></tr>
-            <tr><td>10</td><td>During the simulator check, Chase's built-in decision model retains movement authority, the rewrite runs observe-only, and candidate/reference results are aligned by simulator frame identity.</td><td><span class="status blocked">Open</span> — observe-only processing works, but built-in-reference evaluation and simulator-frame alignment are absent.</td></tr>
+            <tr><td>9</td><td>One live <code>chaser-depth-obstacles</code> shadow check and one recorded non-moving Pi present/dropout/expiry/reset check verify equivalent stage behavior while the rewritten engine emits zero movement.</td><td><span class="status pending">Partial</span> — Pi is validated against live onboard memory with zero movement; Chase live shadow scoring is implemented, guided scenario extract still open.</td></tr>
+            <tr><td>10</td><td>During the simulator check, Chase's built-in decision model retains movement authority, the rewrite runs observe-only, and candidate/reference results are aligned by simulator frame identity.</td><td><span class="status pending">Partial</span> — simulator frame identity and shadow_reference alignment are implemented on the automation/check path; guided live scenario evidence still required.</td></tr>
             <tr><td>11</td><td>Simulator debug, map, and reference-decision state are evaluator-only and are absent from rewritten controller inputs and retained memory provenance.</td><td><span class="status done">Met</span> by design/wiring; re-asserted on check path</td></tr>
-            <tr><td>12</td><td>Tracked simulator and physical reviews visibly trace retained image-space evidence to exact perception source frames and regions, distinguish current from retained/expired evidence, and never treat stale coordinates as current geometry.</td><td><span class="status pending">Partial</span> — <a href="evidence/physical-memory-lifecycle/provenance_extract.html">physical review is tracked</a> with verified Pi frame pairing; Chase frame identity and tracked review remain open.</td></tr>
+            <tr><td>12</td><td>Tracked simulator and physical reviews visibly trace retained image-space evidence to exact perception source frames and regions, distinguish current from retained/expired evidence, and never treat stale coordinates as current geometry.</td><td><span class="status pending">Partial</span> — <a href="evidence/physical-memory-lifecycle/provenance_extract.html">physical review is tracked</a> with verified Pi frame pairing; Chase frame identity is preserved in code, tracked Chase visual review remains open.</td></tr>
             <tr><td>13</td><td>A closeout states what memory representation proved useful, what remains unverified, and whether later pattern or action work is justified.</td><td><span class="status blocked">Blocked</span> until package 5 validation repair passes.</td></tr>
           </tbody>
         </table>
@@ -880,6 +889,7 @@
             <tr><td>2026-07-20</td><td>Reopen package 5 after comprehensive implementation validation.</td><td>The initial checks landed as commands but do not prove their advertised external behavior: Pi dropout is forced, expiry/reset use a local stage, separately fetched JPEGs can mismatch publication frame IDs, and Chase frame identity/reference alignment is absent. Snapshot detachment, total-size bounds, and missing deterministic coverage also block the existing exit criteria. The Implementation Review section supersedes earlier completion claims.</td></tr>
             <tr><td>2026-07-20</td><td>Remediation block 2: score Pi memory check against the live onboard stage.</td><td>Remove forced dropout and ephemeral local reducer from the Pi path. Present/dropout/expiry use publication.memory; reset uses POST /autonomy/memory/reset with epoch/reset-count confirmation. Chase offline script remains until frameIndex remediation.</td></tr>
             <tr><td>2026-07-20</td><td>Accept stationary Pi lifecycle remediation after guided physical validation.</td><td>A recorded present/remove sequence used verified JPEG/publication frame pairs and the active onboard ledger. <code>thing:floor_boundary_002</code> survived dropout, expired under the configured 10-second age, and reset to a new empty epoch while control stayed zero. Compact evidence is tracked under <code>evidence/physical-memory-lifecycle/</code>.</td></tr>
+            <tr><td>2026-07-20</td><td>Remediation block 3: preserve Chase simulator frameIndex and score live shadow alignment.</td><td>Capture metadata carries <code>simulator_frame_index</code>; automation assigns <code>chase_frame_*</code> identity and fails closed without it. Evaluator-only <code>shadow_reference</code> is paired on frame records (never observation/memory inputs). Live <code>memory check</code> scores alignment, provenance, observe-only, isolation, and worker reset when automation is running. Guided <code>chaser-depth-obstacles</code> visual extract remains for closeout evidence.</td></tr>
           </tbody>
 
 

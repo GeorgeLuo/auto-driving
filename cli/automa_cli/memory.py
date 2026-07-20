@@ -30,6 +30,7 @@ from .physical_observation import (
     fetch_observation_publication,
     physical_observation_dir,
     picar_base_url,
+    post_memory_reset,
 )
 from .streaming import _publish_physical_view
 from .vehicles import discover_active_vehicles, find_vehicle_by_id, format_active_vehicles_snapshot
@@ -209,6 +210,237 @@ def get_vehicle_memory_info(
     if json_output:
         return CommandResult(0, json.dumps(payload, indent=2, sort_keys=True))
     return CommandResult(0, _format_memory_info(payload))
+
+
+def reset_vehicle_memory(
+    *,
+    vehicle_id: str,
+    timeout_s: float = 3.0,
+    wait_s: float = 5.0,
+    json_output: bool = False,
+) -> CommandResult:
+    """Reset live memory on Chase automation or PiCar Donkey runtime.
+
+    After a successful reset the new epoch is empty (zero keys). Operators can
+    confirm with ``info memory``, ``stream memory``, or the Memory map.
+    """
+
+    discovery = discover_active_vehicles(
+        timeout_s=timeout_s,
+        include_picar=True,
+        include_chase_sim=True,
+        include_inactive=True,
+    )
+    vehicle, error = find_vehicle_by_id(discovery, vehicle_id)
+    if error:
+        return CommandResult(
+            2,
+            "\n\n".join(
+                [
+                    error,
+                    "Discovery snapshot:",
+                    format_active_vehicles_snapshot(discovery, include_inactive=True),
+                ]
+            ),
+        )
+    if vehicle is None:
+        return CommandResult(2, f"Vehicle {vehicle_id!r} was not found.")
+
+    provider = vehicle.get("provider")
+    before = probe_live_memory(
+        vehicle_id=vehicle_id,
+        vehicle=vehicle,
+        timeout_s=timeout_s,
+    )
+    if before.get("status") == "absent":
+        return CommandResult(
+            2,
+            "\n".join(
+                [
+                    f"No live memory stage to reset for {vehicle_id!r}.",
+                    str(before.get("error") or "Memory component is absent."),
+                ]
+            ),
+        )
+    if before.get("status") not in {"live", "error"}:
+        return CommandResult(
+            2,
+            "\n".join(
+                [
+                    f"Cannot reset memory for {vehicle_id!r}: live status is {before.get('status')!r}.",
+                    str(before.get("error") or "Start automation (Chase) or deploy autonomy (Pi) first."),
+                ]
+            ),
+        )
+
+    try:
+        if provider == "picar":
+            reset_payload = _reset_physical_memory(
+                vehicle_id=vehicle_id,
+                vehicle=vehicle,
+                timeout_s=timeout_s,
+            )
+        elif provider == "chase-sim":
+            reset_payload = _reset_chase_memory(
+                vehicle_id=vehicle_id,
+                before=before,
+                wait_s=wait_s,
+            )
+        else:
+            return CommandResult(
+                2,
+                f"Vehicle {vehicle_id!r} is provider {provider!r}; memory reset supports picar and chase-sim.",
+            )
+    except (ConnectionError, OSError, TimeoutError, ValueError) as exc:
+        return CommandResult(2, f"Memory reset failed for {vehicle_id}: {exc}")
+
+    after = probe_live_memory(
+        vehicle_id=vehicle_id,
+        vehicle=vehicle,
+        timeout_s=timeout_s,
+    )
+    payload = {
+        "schema": "vehicle_memory_reset_v0",
+        "vehicle_id": vehicle_id,
+        "provider": provider,
+        "ok": bool(reset_payload.get("ok")),
+        "reset": reset_payload,
+        "before": before,
+        "after": after,
+    }
+    if not payload["ok"]:
+        if json_output:
+            return CommandResult(2, json.dumps(payload, indent=2, sort_keys=True))
+        return CommandResult(
+            2,
+            "\n".join(
+                [
+                    f"Memory reset failed: {vehicle_id}",
+                    str(reset_payload.get("error") or reset_payload.get("status") or "unknown error"),
+                ]
+            ),
+        )
+
+    # Operator-facing confirmation: empty epoch with non-decreasing reset count.
+    after_count = after.get("last_record_count")
+    after_health = after.get("last_health")
+    confirmed = after.get("status") == "live" and (
+        after_count in {0, None} or after_health in {"empty", "unavailable"}
+    )
+    payload["confirmed_empty"] = bool(confirmed)
+    if json_output:
+        return CommandResult(0 if confirmed else 2, json.dumps(payload, indent=2, sort_keys=True))
+    lines = [
+        f"Reset memory: {vehicle_id}",
+        f"Implementation: {after.get('implementation_id') or before.get('implementation_id') or '—'}",
+        f"Epoch: {before.get('last_epoch_id') or '—'} -> {after.get('last_epoch_id') or '—'}",
+        f"Keys: {before.get('last_record_count')} -> {after.get('last_record_count')}",
+        f"Health: {before.get('last_health')} -> {after.get('last_health')}",
+        f"Resets: {before.get('reset_count')} -> {after.get('reset_count')}",
+    ]
+    if not confirmed:
+        lines.append("Warning: live probe did not confirm an empty epoch after reset.")
+        return CommandResult(2, "\n".join(lines))
+    return CommandResult(0, "\n".join(lines))
+
+
+def _reset_physical_memory(
+    *,
+    vehicle_id: str,
+    vehicle: dict[str, Any],
+    timeout_s: float,
+) -> dict[str, Any]:
+    base_url = picar_base_url(vehicle)
+    if not base_url:
+        raise ValueError(f"Vehicle {vehicle_id!r} has no picar base_url connection.")
+    payload = post_memory_reset(base_url, timeout_s=timeout_s)
+    if payload.get("ok") is True:
+        return payload
+    # HTTP non-2xx may still carry structured JSON.
+    if payload.get("http_status") in {200, 201} and payload.get("status") == "reset":
+        payload["ok"] = True
+        return payload
+    payload.setdefault("ok", False)
+    payload.setdefault(
+        "error",
+        payload.get("error")
+        or f"POST /autonomy/memory/reset returned HTTP {payload.get('http_status')}",
+    )
+    return payload
+
+
+def _reset_chase_memory(
+    *,
+    vehicle_id: str,
+    before: dict[str, Any],
+    wait_s: float,
+) -> dict[str, Any]:
+    automation_dir = _automation_dir(vehicle_id)
+    if not automation_dir.exists():
+        raise ValueError(
+            f"No automation runtime for {vehicle_id!r}. "
+            f"Run: ./cli/automa vehicles automation run --id {vehicle_id}"
+        )
+    request_path = automation_dir / "memory_reset.request.json"
+    result_path = automation_dir / "memory_reset.result.json"
+    if result_path.exists():
+        result_path.unlink()
+    token = f"reset-{int(time.time() * 1000)}"
+    request = {
+        "schema": "automa_memory_reset_request_v0",
+        "token": token,
+        "requested_at_ms": int(time.time() * 1000),
+        "vehicle_id": vehicle_id,
+    }
+    request_path.write_text(json.dumps(request, indent=2, sort_keys=True), encoding="utf-8")
+
+    deadline = time.monotonic() + max(0.2, float(wait_s))
+    while time.monotonic() < deadline:
+        if result_path.exists():
+            try:
+                result = json.loads(result_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                time.sleep(0.05)
+                continue
+            if isinstance(result, dict) and result.get("token") == token:
+                try:
+                    request_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
+                return result
+        # Fallback: detect reset via live probe when worker updated state.
+        live = probe_live_memory(vehicle_id=vehicle_id)
+        if (
+            live.get("status") == "live"
+            and live.get("last_epoch_id") not in {None, before.get("last_epoch_id")}
+            and (live.get("last_record_count") in {0, None} or live.get("last_health") == "empty")
+        ):
+            try:
+                request_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+            return {
+                "ok": True,
+                "status": "reset",
+                "token": token,
+                "detected_via": "live_probe",
+                "memory": {
+                    "last_epoch_id": live.get("last_epoch_id"),
+                    "last_record_count": live.get("last_record_count"),
+                    "last_health": live.get("last_health"),
+                    "reset_count": live.get("reset_count"),
+                },
+            }
+        time.sleep(0.05)
+
+    try:
+        request_path.unlink(missing_ok=True)
+    except OSError:
+        pass
+    raise TimeoutError(
+        f"Automation worker did not acknowledge memory reset within {wait_s}s. "
+        "Is the worker running?"
+    )
 
 
 def stream_vehicle_memory(

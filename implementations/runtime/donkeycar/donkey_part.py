@@ -4,7 +4,7 @@ import io
 import threading
 import time
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Callable
 
 from autonomy.decision import DecisionFrameContext
@@ -202,6 +202,48 @@ class AutonomyPilotPart:
         read_at_ms = timestamp_ms() if now_ms is None else int(now_ms)
         with self._lock:
             return self._publication_from_locked_state(read_at_ms=read_at_ms)
+
+    def reset_memory(self) -> dict[str, Any]:
+        """Reset the live memory stage under the same lock as observation cycles.
+
+        Clears retained memory on the stage and detaches memory from the latest
+        published observation so operators see an empty map immediately.
+        """
+        with self._lock:
+            reset = getattr(self.host, "reset_memory", None)
+            if not callable(reset):
+                return {
+                    "ok": False,
+                    "status": "unavailable",
+                    "error": "cycle host does not support memory reset",
+                }
+            try:
+                snapshot = reset()
+            except Exception as exc:  # noqa: BLE001 - operator boundary
+                return {
+                    "ok": False,
+                    "status": "error",
+                    "error": f"{type(exc).__name__}: {exc}",
+                }
+            if snapshot is None:
+                return {
+                    "ok": False,
+                    "status": "absent",
+                    "error": "no memory stage is activated",
+                }
+            # Detach memory from the retained publication until the next cycle.
+            if self.latest_snapshot is not None and isinstance(self.latest_snapshot.cycle, dict):
+                cycle = dict(self.latest_snapshot.cycle)
+                cycle["memory"] = snapshot.to_dict() if hasattr(snapshot, "to_dict") else None
+                self.latest_snapshot = replace(self.latest_snapshot, cycle=cycle)
+            stage = self.host.cycle.stages.remember
+            stage_status = stage.status() if stage is not None and callable(getattr(stage, "status", None)) else None
+            return {
+                "ok": True,
+                "status": "reset",
+                "snapshot": snapshot.to_dict() if hasattr(snapshot, "to_dict") else None,
+                "memory": stage_status,
+            }
 
     def publish_latest_frame_jpeg(self) -> tuple[bytes | None, dict[str, Any]]:
         """Return the exact processed frame JPEG with matching publication metadata."""

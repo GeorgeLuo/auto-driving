@@ -221,7 +221,7 @@ index 64581bc..bf5f54d 100755
          }
  
 diff --git a/donkeycar/parts/web_controller/web.py b/donkeycar/parts/web_controller/web.py
-index 8af4669..5dcb312 100644
+index 8af4669..232d5df 100644
 --- a/donkeycar/parts/web_controller/web.py
 +++ b/donkeycar/parts/web_controller/web.py
 @@ -28,6 +28,20 @@ from ... import utils
@@ -254,7 +254,7 @@ index 8af4669..5dcb312 100644
          """
          Create and publish variables needed on many of
          the web handlers.
-@@ -123,15 +137,27 @@ class LocalWebController(tornado.web.Application):
+@@ -123,15 +137,28 @@ class LocalWebController(tornado.web.Application):
          self.num_records = 0
          self.wsclients = []
          self.loop = None
@@ -273,6 +273,7 @@ index 8af4669..5dcb312 100644
 +            (r"/autonomy/reload", AutonomyReloadAPI),
 +            (r"/autonomy/observation/latest", AutonomyObservationLatestAPI),
 +            (r"/autonomy/observation/latest/frame.jpg", AutonomyObservationLatestFrameAPI),
++            (r"/autonomy/memory/reset", AutonomyMemoryResetAPI),
              (r"/wsDrive", WebSocketDriveAPI),
              (r"/wsCalibrate", WebSocketCalibrateAPI),
              (r"/calibrate", CalibrateHandler),
@@ -282,7 +283,7 @@ index 8af4669..5dcb312 100644
              (r"/wsTest", WsTest),
  
              (r"/static/(.*)", StaticFileHandler,
-@@ -245,6 +271,206 @@ class DriveAPI(RequestHandler):
+@@ -245,6 +272,259 @@ class DriveAPI(RequestHandler):
              latch_buttons(self.application.buttons, data['buttons'])
  
  
@@ -486,10 +487,63 @@ index 8af4669..5dcb312 100644
 +        self.write_json({"ok": True, "autonomy": status})
 +
 +
++class AutonomyMemoryResetAPI(AutonomyAPIBase):
++    """Reset the activated memory stage without restarting the Donkey process."""
++
++    def post(self):
++        publisher = getattr(self.application, "observation_publisher", None)
++        if publisher is None or not hasattr(publisher, "reset_memory"):
++            self.write_json(
++                {
++                    "schema": "automa_memory_reset_v0",
++                    "ok": False,
++                    "status": "absent",
++                    "error": "memory reset is not available (observation publisher missing reset_memory)",
++                    "drive_mode": getattr(self.application, "mode", None),
++                },
++                status=503,
++            )
++            return
++
++        result = publisher.reset_memory()
++        if not isinstance(result, dict):
++            self.write_json(
++                {
++                    "schema": "automa_memory_reset_v0",
++                    "ok": False,
++                    "status": "error",
++                    "error": "reset_memory returned a non-object payload",
++                },
++                status=500,
++            )
++            return
++
++        payload = {
++            "schema": "automa_memory_reset_v0",
++            "drive_mode": getattr(self.application, "mode", None),
++            **result,
++        }
++        # Include live autonomy status so operators can confirm empty epoch/counts.
++        manager = getattr(self.application, "autonomy_manager", None)
++        if manager is not None:
++            autonomy = manager.status()
++            payload["autonomy"] = autonomy
++            components = autonomy.get("components") if isinstance(autonomy, dict) else None
++            if isinstance(components, dict) and isinstance(components.get("memory"), dict):
++                payload.setdefault("memory", components["memory"])
++
++        status_code = 200 if payload.get("ok") else 409
++        if payload.get("status") == "absent":
++            status_code = 503
++        elif payload.get("status") == "error":
++            status_code = 500
++        self.write_json(payload, status=status_code)
++
++
  class WsTest(RequestHandler):
      def get(self):
          data = {}
-@@ -391,6 +617,52 @@ class VideoAPI(RequestHandler):
+@@ -391,6 +671,52 @@ class VideoAPI(RequestHandler):
                  await tornado.gen.sleep(interval)
  
  
@@ -542,7 +596,7 @@ index 8af4669..5dcb312 100644
  class BaseHandler(RequestHandler):
      """ Serves the FPV web page"""
      async def get(self):
-@@ -440,5 +712,3 @@ class WebFpv(Application):
+@@ -440,5 +766,3 @@ class WebFpv(Application):
  
      def shutdown(self):
          pass

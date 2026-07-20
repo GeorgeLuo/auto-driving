@@ -221,8 +221,10 @@ class ObservationPublicationTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn('/autonomy/observation/latest', patch)
         self.assertIn('/autonomy/observation/latest/frame.jpg', patch)
+        self.assertIn('/autonomy/memory/reset', patch)
         self.assertIn("class AutonomyObservationLatestAPI", patch)
         self.assertIn("class AutonomyObservationLatestFrameAPI", patch)
+        self.assertIn("class AutonomyMemoryResetAPI", patch)
 
 
 if __name__ == "__main__":

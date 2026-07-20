@@ -11,13 +11,12 @@ is active. It should give the decision cycle bounded, inspectable continuity
 across frames by retaining attributed observation evidence without claiming a
 complete world model or granting movement authority.
 
-**Where it stands:** packages 1–4 and the live key→value Memory map
-(`stream memory` → local `/memory`) are landed. Package 5 is still open.
-The next review unit is **operator memory reset** (new empty epoch visible on
-Chase and Pi). After that: replay/record, guided visual-provenance checks, then
-closeout. Do not treat the Memory map as milestone completion, and do not start
-006 while 005 exit criteria remain open. See the plan’s
-[Current Delivery Horizon](milestones/005-evidence-memory-foundation/plan.html).
+**Where it stands:** **not ready to close.** Packages 1–4, Memory map, and
+operator reset are landed. Still required: deterministic **replay**, opt-in
+**record**, Chase + Pi **visual-provenance checks**, then package 6
+**closeout**. Next PR: deterministic memory replay. See the plan’s
+[Remaining For Closeout](milestones/005-evidence-memory-foundation/plan.html)
+and exit-criteria status table. Do not start 006 while those remain open.
 
 ## Immediate Pre-Plan (Not Active)
 

@@ -298,7 +298,92 @@ def run_vehicle_automation(
         with state_lock:
             state["published_view"] = payload
 
+    memory_reset_lock = threading.Lock()
+
+    def apply_memory_reset_if_requested() -> None:
+        request_path = automation_dir / "memory_reset.request.json"
+        result_path = automation_dir / "memory_reset.result.json"
+        if not request_path.exists():
+            return
+        if not memory_reset_lock.acquire(blocking=False):
+            return
+        try:
+            _apply_memory_reset_locked(request_path=request_path, result_path=result_path)
+        finally:
+            memory_reset_lock.release()
+
+    def _apply_memory_reset_locked(*, request_path: Path, result_path: Path) -> None:
+        if not request_path.exists():
+            return
+        try:
+            request = json.loads(request_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            _write_json(
+                result_path,
+                {
+                    "schema": "automa_memory_reset_result_v0",
+                    "ok": False,
+                    "status": "error",
+                    "error": f"invalid reset request: {exc}",
+                    "completed_at_ms": _timestamp_ms(),
+                },
+            )
+            try:
+                request_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+            return
+        if not isinstance(request, dict):
+            request = {}
+        token = request.get("token")
+        if memory_stage is None:
+            result = {
+                "schema": "automa_memory_reset_result_v0",
+                "ok": False,
+                "status": "absent",
+                "token": token,
+                "error": "no memory stage is activated in the automation worker",
+                "completed_at_ms": _timestamp_ms(),
+            }
+        else:
+            try:
+                snapshot = cycle_host.reset_memory()
+                result = {
+                    "schema": "automa_memory_reset_result_v0",
+                    "ok": True,
+                    "status": "reset",
+                    "token": token,
+                    "snapshot": snapshot.to_dict() if snapshot is not None and hasattr(snapshot, "to_dict") else None,
+                    "memory": memory_stage.status(),
+                    "completed_at_ms": _timestamp_ms(),
+                }
+            except Exception as exc:  # noqa: BLE001 - worker control boundary
+                result = {
+                    "schema": "automa_memory_reset_result_v0",
+                    "ok": False,
+                    "status": "error",
+                    "token": token,
+                    "error": f"{type(exc).__name__}: {exc}",
+                    "completed_at_ms": _timestamp_ms(),
+                }
+        _write_json(result_path, result)
+        with state_lock:
+            if memory_stage is not None:
+                state["memory"] = {
+                    "activation": display_path(memory_activation_path),
+                    "implementation_id": memory_stage.activation.implementation_id,
+                    "implementation_spec": memory_stage.activation.implementation_spec,
+                    "status": memory_stage.status(),
+                }
+            state["updated_at_ms"] = _timestamp_ms()
+            _write_json(state_path, state)
+        try:
+            request_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
     def process_frame(pending: _PendingAutomationFrame) -> None:
+        apply_memory_reset_if_requested()
         context = pending.context
         snapshot = context.sensor_snapshot
         if snapshot is None:
@@ -391,6 +476,13 @@ def run_vehicle_automation(
                 "engine": cycle_host.manager.status().get("engine"),
             }
             state["engine"] = cycle_host.manager.status()
+            if memory_stage is not None:
+                state["memory"] = {
+                    "activation": display_path(memory_activation_path),
+                    "implementation_id": memory_stage.activation.implementation_id,
+                    "implementation_spec": memory_stage.activation.implementation_spec,
+                    "status": memory_stage.status(),
+                }
             state["updated_at_ms"] = _timestamp_ms()
             _write_json(state_path, state)
 
@@ -472,11 +564,13 @@ def run_vehicle_automation(
         while max_frames == 0 or frame_index < max_frames:
             if worker_failed.is_set():
                 raise worker_errors[0]
+            apply_memory_reset_if_requested()
             if frame_index > 0 and capture_interval_s > 0:
                 next_capture_at += capture_interval_s
                 delay_s = max(0.0, next_capture_at - time.monotonic())
                 if worker_failed.wait(delay_s):
                     raise worker_errors[0]
+                apply_memory_reset_if_requested()
 
             captured_started_at_ms = _timestamp_ms()
             frame_id = f"frame_{frame_index:06d}"

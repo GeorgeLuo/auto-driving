@@ -426,12 +426,14 @@ def update_vehicle_autonomy(
     perception_manifest = json.loads(perception_activation_path.read_text(encoding="utf-8"))
     decision_manifest = json.loads(decision_activation_path.read_text(encoding="utf-8"))
     memory_manifest = json.loads(memory_activation_path.read_text(encoding="utf-8"))
+    memory_implementation_id = str(memory_manifest["memory"]["implementation_id"])
     if restart:
         try:
             runtime_verification = _verify_physical_autonomy_runtime(
                 target=target,
                 expected_engine_spec=str(decision_manifest["decision"]["engine_spec"]),
                 expected_perception_algorithm=str(perception_manifest["perception"]["algorithm"]),
+                expected_memory_implementation=memory_implementation_id,
                 timeout_s=max(3.0, timeout_s),
             )
         except RuntimeError as exc:
@@ -455,11 +457,22 @@ def update_vehicle_autonomy(
         drive_args=drive_args,
         perception_algorithm=str(perception_manifest["perception"]["algorithm"]),
         decision_engine=str(decision_manifest["decision"]["engine_id"]),
-        memory_implementation=str(memory_manifest["memory"]["implementation_id"]),
+        memory_implementation=memory_implementation_id,
         runtime_verification=runtime_verification,
     )
     if json_output:
         return CommandResult(0, json.dumps(payload, indent=2, sort_keys=True))
+    verified_lines: list[str] = []
+    if runtime_verification is not None:
+        verified_lines.append(
+            "Runtime verified: selected engine and perception loaded; "
+            "drive mode remains manual"
+        )
+        if runtime_verification.get("memory_implementation"):
+            verified_lines.append(
+                "Memory verified: "
+                f"{runtime_verification['memory_implementation']} stage is live"
+            )
     return CommandResult(
         0,
         "\n".join(
@@ -471,11 +484,7 @@ def update_vehicle_autonomy(
                 f"Decision: {payload['activation']['decision_engine']}",
                 f"Memory: {payload['activation']['memory_implementation']}",
                 f"Runtime restarted: {'yes' if restart else 'no'}",
-                *(
-                    ["Runtime verified: selected engine loaded; drive mode remains manual"]
-                    if runtime_verification is not None
-                    else []
-                ),
+                *verified_lines,
             ]
         ),
     )
@@ -949,6 +958,7 @@ def _verify_physical_autonomy_runtime(
     target: PhysicalTarget,
     expected_engine_spec: str,
     expected_perception_algorithm: str,
+    expected_memory_implementation: str | None = None,
     timeout_s: float,
 ) -> dict[str, Any]:
     verification = inspect_physical_autonomy_runtime(
@@ -958,6 +968,7 @@ def _verify_physical_autonomy_runtime(
     status_url = str(verification["status_url"])
     actual_engine = verification["engine"]
     actual_perception = verification["perception_algorithm"]
+    actual_memory = verification.get("memory_implementation")
     drive_mode = verification["drive_mode"]
     if actual_engine != expected_engine_spec:
         raise RuntimeError(
@@ -968,6 +979,22 @@ def _verify_physical_autonomy_runtime(
             f"{status_url} reported perception {actual_perception!r}, "
             f"expected {expected_perception_algorithm!r}"
         )
+    if expected_memory_implementation:
+        if not actual_memory:
+            vehicle_id = target.vehicle_id
+            raise RuntimeError(
+                f"{status_url} has no live memory stage, but activation "
+                f"{expected_memory_implementation!r} was deployed. "
+                "Memory activation is installed by autonomy deploy; the load path "
+                "lives in the Donkey manage.py harness from core. "
+                f"Run: ./cli/automa vehicles update core --id {vehicle_id} --restart "
+                f"then ./cli/automa vehicles update autonomy --id {vehicle_id} --restart"
+            )
+        if actual_memory != expected_memory_implementation:
+            raise RuntimeError(
+                f"{status_url} reported memory {actual_memory!r}, "
+                f"expected {expected_memory_implementation!r}"
+            )
     if drive_mode != "user":
         raise RuntimeError(
             f"{status_url} reported drive mode {drive_mode!r}; expected 'user' for idle smoke verification"
@@ -1011,16 +1038,26 @@ def inspect_physical_autonomy_runtime(
         raise RuntimeError(f"{status_url} did not report a loaded decision engine")
 
     components = autonomy.get("components")
-    perception = components.get("perception") if isinstance(components, dict) else None
+    if not isinstance(components, dict):
+        components = {}
+    perception = components.get("perception")
     actual_perception = perception.get("algorithm") if isinstance(perception, dict) else None
     if not isinstance(actual_perception, str) or not actual_perception.strip():
         raise RuntimeError(f"{status_url} did not report an active perception algorithm")
+
+    memory = components.get("memory")
+    actual_memory: str | None = None
+    if isinstance(memory, dict):
+        memory_id = memory.get("implementation_id")
+        if isinstance(memory_id, str) and memory_id.strip():
+            actual_memory = memory_id.strip()
 
     drive_mode = payload.get("drive_mode")
     return {
         "status_url": status_url,
         "engine": actual_engine.strip(),
         "perception_algorithm": actual_perception.strip(),
+        "memory_implementation": actual_memory,
         "drive_mode": drive_mode,
         "ok": True,
     }

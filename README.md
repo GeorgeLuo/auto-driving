@@ -106,7 +106,7 @@ The command groups intentionally distinguish different kinds of state:
 | `vehicles perception qualify` | Offline common-frame compare of packaged control vs one lab candidate on labeled physical-check frames; emits promote/reject. |
 | `vehicles perception viability` | 60s onboard cadence/freshness/RSS measurement for a physical PiCar. |
 | `vehicles update core` | Deploys DonkeyCar framework and physical harness code to the Pi. |
-| `vehicles update autonomy` | Deploys a versioned autonomy release and activation metadata to the Pi. |
+| `vehicles update autonomy` | Deploys a versioned autonomy release and activation metadata (perception, decision, memory) to the Pi. With `--restart`, verifies the live memory stage; if activation is present but the stage is missing, update core (manage.py harness) then re-run autonomy. |
 | `vehicles operation ...` | Runs a bounded, explicitly requested vehicle operation. |
 | `simulators ...` | Finds or prepares the SimEval and Metrics UI environment. |
 
@@ -361,25 +361,34 @@ startup.
 ### Physical Activation State
 
 The first physical autonomy deployment creates the default
-`lightweight_observer` perception activation and `idle` decision activation
-when none exist. The Pi loads both activations. The Donkey assembly runs the
-shared autonomy cycle independently of `run_pilot`, so manual `user` mode
-executes onboard perception at `AUTONOMY_OBSERVATION_INTERVAL_S` (default
-0.5 s) using the newest camera frame. While mode remains `user`, pilot outputs
-stay zero and Donkey DriveMode keeps manual input authoritative. The Pi publishes
-the exact latest frame/result on `/autonomy/observation/latest` for Automa
-stream, guided check, and viability measurement.
+`lightweight_observer` perception activation, `idle` decision activation, and
+`bounded_evidence` memory activation when none exist. The Pi loads those
+activations. The Donkey assembly runs the shared autonomy cycle independently of
+`run_pilot`, so manual `user` mode executes onboard perception at
+`AUTONOMY_OBSERVATION_INTERVAL_S` (default 0.5 s) using the newest camera frame.
+While mode remains `user`, pilot outputs stay zero and Donkey DriveMode keeps
+manual input authoritative. The Pi publishes the exact latest frame/result on
+`/autonomy/observation/latest` for Automa stream, guided check, and viability
+measurement.
 
-Decision changes are local until the next autonomy deployment:
+**Deploy split:** autonomy packages ship the controller tree and activation
+files (including `runtime/memory/active.json`). The code path that *loads*
+memory into the Donkey loop lives in `manage.py` from **core**. After harness
+changes that add stages, run core then autonomy with `--restart`. Autonomy
+`--restart` verification fails if a memory activation was shipped but no live
+memory stage appears in `/autonomy/status`.
+
+Decision and memory selection are local until the next autonomy deployment:
 
 ```sh
 ./cli/automa vehicles update decision --id piracer --engine idle
+./cli/automa vehicles update memory --id piracer
 ./cli/automa vehicles update autonomy --id piracer --restart
 ```
 
-`vehicles info perception --id piracer` inspects the staged mapper, enabled
-plugins, machine-readable input contract, and release metadata. Local staging
-does not require the Pi to be online; the subsequent autonomy deploy does.
+`vehicles info perception|decision|memory --id piracer` inspects staged
+activation and release metadata. Local staging does not require the Pi to be
+online; the subsequent autonomy deploy does.
 
 ## Bounded Startup Check
 

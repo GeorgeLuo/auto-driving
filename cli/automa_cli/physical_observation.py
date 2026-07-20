@@ -196,17 +196,22 @@ def fetch_matched_observation_pair(
     timeout_s: float = 3.0,
     match_timeout_s: float = 3.0,
     require_image: bool = True,
+    after_frame_id: str | None = None,
 ) -> dict[str, Any]:
     """Fetch latest publication + JPEG and require matching frame identities.
 
     Separate GETs can race. Retry until ``X-Frame-Id`` equals the publication
-    ``frame.frame_id`` (or until timeout). Raises ``ConnectionError`` / ``TimeoutError``
-    when a verified pair cannot be obtained.
+    ``frame.frame_id`` (or until timeout). When ``require_image`` is true, a
+    nonempty JPEG body is required; publications without an image keep polling
+    instead of succeeding empty. When ``after_frame_id`` is set, the matched
+    pair must use a different frame id. Raises ``TimeoutError`` when a verified
+    pair cannot be obtained.
     """
 
     deadline = time.monotonic() + max(0.2, float(match_timeout_s))
     last_error: str | None = None
     attempts = 0
+    previous = (after_frame_id or "").strip() or None
     while time.monotonic() < deadline:
         attempts += 1
         try:
@@ -217,12 +222,20 @@ def fetch_matched_observation_pair(
             continue
 
         pub_frame_id = frame_id_from_publication(publication)
-        has_image = True
         frame = publication.get("frame") if isinstance(publication.get("frame"), dict) else {}
+        has_image = True
         if "has_image" in frame:
             has_image = bool(frame.get("has_image"))
 
-        if not require_image or not has_image:
+        if not require_image:
+            if not pub_frame_id:
+                last_error = "publication has no frame.frame_id"
+                time.sleep(0.05)
+                continue
+            if previous is not None and pub_frame_id == previous:
+                last_error = f"publication frame_id still {pub_frame_id!r}; waiting for newer frame"
+                time.sleep(0.05)
+                continue
             return {
                 "publication": publication,
                 "frame_bytes": None,
@@ -233,8 +246,19 @@ def fetch_matched_observation_pair(
                 "image_required": False,
             }
 
+        # require_image=True: never succeed without a real JPEG body.
+        if not has_image:
+            last_error = "publication has_image=false; waiting for a frame with an image"
+            time.sleep(0.05)
+            continue
+
         if not pub_frame_id:
             last_error = "publication has no frame.frame_id"
+            time.sleep(0.05)
+            continue
+
+        if previous is not None and pub_frame_id == previous:
+            last_error = f"publication frame_id still {pub_frame_id!r}; waiting for newer frame"
             time.sleep(0.05)
             continue
 
@@ -242,6 +266,11 @@ def fetch_matched_observation_pair(
             frame_bytes, headers = fetch_observation_frame(base_url, timeout_s=timeout_s)
         except ConnectionError as exc:
             last_error = str(exc)
+            time.sleep(0.05)
+            continue
+
+        if not frame_bytes:
+            last_error = "frame response body is empty"
             time.sleep(0.05)
             continue
 
@@ -254,6 +283,10 @@ def fetch_matched_observation_pair(
             last_error = (
                 f"frame pair mismatch publication={pub_frame_id!r} jpeg={jpeg_frame_id!r}"
             )
+            time.sleep(0.05)
+            continue
+        if previous is not None and jpeg_frame_id == previous:
+            last_error = f"jpeg frame_id still {jpeg_frame_id!r}; waiting for newer frame"
             time.sleep(0.05)
             continue
 

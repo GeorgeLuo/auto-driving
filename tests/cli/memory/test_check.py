@@ -230,20 +230,25 @@ class MemoryCheckTests(unittest.TestCase):
         ]
         calls = {"n": 0}
 
-        def fake_matched_pair(_url: str, **_kwargs) -> dict:
-            idx = min(calls["n"], len(pubs) - 1)
-            calls["n"] += 1
-            pub = pubs[idx]
-            frame_id = pub["frame"]["frame_id"]
-            return {
-                "publication": pub,
-                "frame_bytes": b"jpeg-bytes",
-                "frame_headers": {"x-frame-id": frame_id},
-                "frame_id": frame_id,
-                "matched": True,
-                "attempts": 1,
-                "image_required": True,
-            }
+        def fake_matched_pair(_url: str, **kwargs) -> dict:
+            after = kwargs.get("after_frame_id")
+            # Skip publications that are not after the previous frame when requested.
+            while calls["n"] < len(pubs):
+                pub = pubs[calls["n"]]
+                calls["n"] += 1
+                frame_id = pub["frame"]["frame_id"]
+                if after is not None and frame_id == after:
+                    continue
+                return {
+                    "publication": pub,
+                    "frame_bytes": b"jpeg-bytes",
+                    "frame_headers": {"x-frame-id": frame_id},
+                    "frame_id": frame_id,
+                    "matched": True,
+                    "attempts": 1,
+                    "image_required": True,
+                }
+            raise TimeoutError("no newer matched pair")
 
         with tempfile.TemporaryDirectory() as tmp:
             output_root = Path(tmp) / "memory-check"

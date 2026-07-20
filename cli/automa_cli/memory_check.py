@@ -401,38 +401,33 @@ def run_physical_memory_check(
         try:
             if record:
                 # Prefer matched pair so recorded JPEGs cannot drift from JSON.
+                # Poll until frame advances past the previous placement capture.
                 pair = get_matched_pair(
                     base_url,
                     timeout_s=timeout_s,
                     match_timeout_s=max(float(fresh_timeout_s), float(timeout_s)),
                     require_image=True,
+                    after_frame_id=last_frame_id,
                 )
+                if not pair.get("matched"):
+                    return CommandResult(2, f"{placement}: matched pair reported matched=false")
                 publication = pair["publication"]
                 pair_attempts_total += int(pair.get("attempts") or 1)
                 frame_bytes = pair.get("frame_bytes")
                 frame_id = str(pair.get("frame_id") or "")
                 if not frame_id:
                     return CommandResult(2, f"{placement}: matched pair missing frame_id")
-                # Ensure this capture advanced beyond the previous placement.
                 if last_frame_id is not None and frame_id == last_frame_id:
-                    # Retry once more for a newer matched pair.
-                    pair = get_matched_pair(
-                        base_url,
-                        timeout_s=timeout_s,
-                        match_timeout_s=max(float(fresh_timeout_s), float(timeout_s)),
-                        require_image=True,
+                    return CommandResult(
+                        2,
+                        f"{placement}: matched pair did not advance past frame_id={last_frame_id}",
                     )
-                    publication = pair["publication"]
-                    pair_attempts_total += int(pair.get("attempts") or 1)
-                    frame_bytes = pair.get("frame_bytes")
-                    frame_id = str(pair.get("frame_id") or frame_id)
-                    if frame_id == last_frame_id:
-                        return CommandResult(
-                            2,
-                            f"{placement}: matched pair did not advance past frame_id={last_frame_id}",
-                        )
-                if isinstance(frame_bytes, (bytes, bytearray)) and frame_bytes:
-                    captured_images[frame_id] = bytes(frame_bytes)
+                if not isinstance(frame_bytes, (bytes, bytearray)) or not frame_bytes:
+                    return CommandResult(
+                        2,
+                        f"{placement}: matched pair missing nonempty JPEG for frame_id={frame_id}",
+                    )
+                captured_images[frame_id] = bytes(frame_bytes)
                 pair_matched = True
             else:
                 publication = _wait_for_fresh_publication(

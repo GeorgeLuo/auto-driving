@@ -686,13 +686,22 @@ class MemoryCheckTests(unittest.TestCase):
                 "frame_id": "chase_frame_000010",
                 "frame_index": 10,
                 "simulator_frame_index": 10,
+                "control_source": "simulator",
                 "control_application": "not_applied",
                 "action_policy": "observe_only",
-                "control": {"applied": False, "reason": "idle"},
+                "control": {
+                    "applied": False,
+                    "reason": "idle",
+                    "steering": 0.0,
+                    "throttle": 0.0,
+                },
                 "shadow_reference": {
                     "schema": "chase_shadow_reference_v0",
                     "evaluator_only": True,
                     "simulator_frame_index": 10,
+                    "game_id": "chase",
+                    "scenario": "chaser-depth-obstacles",
+                    "chaser_control_source": "builtin",
                 },
                 "observation": {
                     "observation_id": "obs-10",
@@ -715,13 +724,22 @@ class MemoryCheckTests(unittest.TestCase):
                 "frame_id": "chase_frame_000011",
                 "frame_index": 11,
                 "simulator_frame_index": 11,
+                "control_source": "simulator",
                 "control_application": "not_applied",
                 "action_policy": "observe_only",
-                "control": {"applied": False, "reason": "idle"},
+                "control": {
+                    "applied": False,
+                    "reason": "idle",
+                    "steering": 0.0,
+                    "throttle": 0.0,
+                },
                 "shadow_reference": {
                     "schema": "chase_shadow_reference_v0",
                     "evaluator_only": True,
                     "simulator_frame_index": 11,
+                    "game_id": "chase",
+                    "scenario": "chaser-depth-obstacles",
+                    "chaser_control_source": "builtin",
                 },
                 "observation": {
                     "observation_id": "obs-11",
@@ -731,12 +749,17 @@ class MemoryCheckTests(unittest.TestCase):
                 },
                 "memory": {
                     "health": "healthy",
-                    "record_count": 1,
+                    "record_count": 2,
                     "records": [
+                        {
+                            # Legitimate retention from earlier sampled frame.
+                            "record_id": "thing:obstacle_000",
+                            "provenance": {"frame_id": "chase_frame_000010"},
+                        },
                         {
                             "record_id": "thing:front_camera_frame",
                             "provenance": {"frame_id": "chase_frame_000011"},
-                        }
+                        },
                     ],
                 },
             },
@@ -810,8 +833,52 @@ class MemoryCheckTests(unittest.TestCase):
         self.assertIn("shadow_isolation", phases)
         self.assertIn("reset", phases)
         self.assertTrue(all(item["passed"] for item in payload["phase_results"]))
+        self.assertEqual(payload["safety"]["control_source"], "simulator")
+        self.assertEqual(payload["safety"]["action_policy"], "observe_only")
+        self.assertTrue(payload["safety"]["simulator_retains_authority"])
+        provenance = next(
+            item for item in payload["phase_results"] if item["phase"] == "memory_provenance"
+        )
+        self.assertEqual(provenance["score"]["retained_prior_matches"], 1)
+        self.assertEqual(provenance["score"]["current_frame_matches"], 1)
+
+    def test_chase_observe_only_rejects_external_ws_authority(self) -> None:
+        from cli.automa_cli.memory_check import score_chase_observe_only
+
+        frame = {
+            "frame_id": "chase_frame_000001",
+            "control_source": "external_ws",
+            "action_policy": "engine_idle",
+            "control_application": "stop_only_safety_gate",
+            "control": {"applied": False, "steering": 0.0, "throttle": 0.0},
+            "shadow_reference": {"chaser_control_source": "ws"},
+        }
+        score = score_chase_observe_only([frame])
+        self.assertFalse(score["passed"])
+        self.assertTrue(any("external_ws" in v for v in score["violations"]))
+        self.assertTrue(any("shadow.chaser_control_source=ws" in v for v in score["violations"]))
+
+    def test_chase_provenance_rejects_empty_memory(self) -> None:
+        from cli.automa_cli.memory_check import score_chase_memory_provenance
+
+        frames = [
+            {
+                "frame_id": "chase_frame_000001",
+                "simulator_frame_index": 1,
+                "memory": {"health": "empty", "records": []},
+            },
+            {
+                "frame_id": "chase_frame_000002",
+                "simulator_frame_index": 2,
+                "memory": {"health": "empty", "records": []},
+            },
+        ]
+        score = score_chase_memory_provenance(frames)
+        self.assertFalse(score["passed"])
+        self.assertIn("empty", score["reason"])
 
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
 

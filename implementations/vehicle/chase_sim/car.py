@@ -338,30 +338,90 @@ class ChaseSimCar(CarInterface):
     def last_simulator_frame_index(self) -> int | None:
         return self._last_simulator_frame_index
 
-    def _capture_front_camera(self, path: Path, endpoint: str) -> dict[str, Any]:
-        # Read play_debug first so the image and frame identity come from the same
-        # live frame generation (debug is the identity source of truth).
-        debug: dict[str, Any] = {}
+    def _read_play_debug_best_effort(self) -> dict[str, Any]:
         try:
-            debug = self._wait_for_play_debug(timeout_s=min(self.timeout_s, 2.0))
+            return self._wait_for_play_debug(timeout_s=min(self.timeout_s, 2.0))
         except (MetricsUiWebSocketError, OSError, TimeoutError, ValueError):
             try:
-                debug = self._read_debug()
+                return self._read_debug()
             except (MetricsUiWebSocketError, OSError, TimeoutError, ValueError):
-                debug = {}
-        simulator_frame_index = simulator_frame_index_from_debug(debug)
+                return {}
 
-        snapshot = self.client.get_play_front_view_snapshot(timeout_s=self.timeout_s)
-        # Prefer an explicit frameIndex on the front-view payload when present.
-        if isinstance(snapshot, dict):
-            snapshot_index = simulator_frame_index_from_debug(
-                {"frameIndex": snapshot.get("frameIndex")}
-            )
-            if snapshot_index is not None:
-                simulator_frame_index = snapshot_index
+    def _capture_front_camera(self, path: Path, endpoint: str) -> dict[str, Any]:
+        """Capture front camera paired with an exact-identity play_debug frame.
+
+        Debug and camera are sequential WS calls and often land on different
+        simulator frames. We retry until:
+        - debug-before and debug-after share the same frameIndex (no advance
+          during the camera fetch), and
+        - when the camera payload carries frameIndex, it equals that debug index.
+
+        Shadow reference always keeps the debug payload's own frameIndex — never
+        relabeled onto a newer camera frame.
+        """
 
         path.parent.mkdir(parents=True, exist_ok=True)
-        image = snapshot.get("image") if isinstance(snapshot.get("image"), dict) else {}
+        deadline = time.monotonic() + max(0.5, float(self.timeout_s))
+        last_error = "no matched debug/camera pair"
+        matched_debug: dict[str, Any] | None = None
+        matched_snapshot: dict[str, Any] | None = None
+        matched_index: int | None = None
+
+        while time.monotonic() < deadline:
+            debug_before = self._read_play_debug_best_effort()
+            index_before = simulator_frame_index_from_debug(debug_before)
+            try:
+                snapshot = self.client.get_play_front_view_snapshot(timeout_s=self.timeout_s)
+            except (MetricsUiWebSocketError, OSError, TimeoutError, ValueError) as exc:
+                last_error = f"front-view snapshot failed: {exc}"
+                continue
+            if not isinstance(snapshot, dict):
+                last_error = "front-view snapshot was not an object"
+                continue
+            debug_after = self._read_play_debug_best_effort()
+            index_after = simulator_frame_index_from_debug(debug_after)
+            camera_index = simulator_frame_index_from_debug(
+                {"frameIndex": snapshot.get("frameIndex")}
+            )
+
+            if index_before is None or index_after is None:
+                last_error = (
+                    f"missing debug frameIndex "
+                    f"(before={index_before!r} after={index_after!r})"
+                )
+                continue
+            if int(index_before) != int(index_after):
+                last_error = (
+                    f"simulator advanced during capture "
+                    f"({index_before} -> {index_after})"
+                )
+                continue
+            if camera_index is not None and int(camera_index) != int(index_before):
+                last_error = (
+                    f"camera frameIndex {camera_index} != debug frameIndex {index_before}"
+                )
+                continue
+
+            # Stable identity across the pair. Prefer debug_after when equal so
+            # action fields reflect the post-fetch tick at the same index.
+            matched_debug = debug_after if isinstance(debug_after, dict) else debug_before
+            matched_snapshot = snapshot
+            matched_index = int(index_before)
+            break
+
+        if matched_snapshot is None or matched_index is None or matched_debug is None:
+            self._last_simulator_frame_index = None
+            self._last_capture_shadow_reference = None
+            raise TimeoutError(
+                "Timed out waiting for exact-identity Chase debug/camera pair: "
+                f"{last_error}"
+            )
+
+        image = (
+            matched_snapshot.get("image")
+            if isinstance(matched_snapshot.get("image"), dict)
+            else {}
+        )
         byte_count = 0
 
         if isinstance(image.get("svg"), str) and path.suffix.lower() == ".svg":
@@ -386,11 +446,18 @@ class ChaseSimCar(CarInterface):
         if byte_count == 0 and path.exists():
             byte_count = path.stat().st_size
 
-        self._last_simulator_frame_index = simulator_frame_index
+        self._last_simulator_frame_index = matched_index
+        # require_frame_index enforces no relabel of debug onto another identity.
         self._last_capture_shadow_reference = sanitize_chase_shadow_reference(
-            debug if isinstance(debug, dict) else None,
-            simulator_frame_index=simulator_frame_index,
+            matched_debug,
+            require_frame_index=matched_index,
         )
+        if self._last_capture_shadow_reference is None:
+            self._last_simulator_frame_index = None
+            raise TimeoutError(
+                "Chase debug/camera pair matched numerically but shadow reference "
+                "could not be built without relabeling frame identity"
+            )
 
         capture: dict[str, Any] = {
             "endpoint": endpoint,
@@ -398,11 +465,11 @@ class ChaseSimCar(CarInterface):
             "bytes": byte_count,
             "content_type": content_type,
             "captured_at_ms": int(time.time() * 1000),
+            "simulator_frame_index": matched_index,
+            "frame_index": matched_index,
+            "frame_id": format_chase_frame_id(matched_index),
+            "identity_pairing": "debug_stable_across_camera_fetch",
         }
-        if simulator_frame_index is not None:
-            capture["simulator_frame_index"] = simulator_frame_index
-            capture["frame_index"] = simulator_frame_index
-            capture["frame_id"] = format_chase_frame_id(simulator_frame_index)
         return capture
 
     def read_sensors(self, request: SensorReadRequest) -> SensorSnapshot:

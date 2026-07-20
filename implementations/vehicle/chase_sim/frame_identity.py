@@ -88,9 +88,13 @@ def simulator_frame_index_from_snapshot(snapshot: Any) -> int | None:
 def sanitize_chase_shadow_reference(
     debug: dict[str, Any] | None,
     *,
-    simulator_frame_index: int | None = None,
+    require_frame_index: int | None = None,
 ) -> dict[str, Any] | None:
     """Build an evaluator-only shadow reference from play_debug.
+
+    Always uses the debug payload's own ``frameIndex``. When
+    ``require_frame_index`` is provided it must equal that debug index —
+    callers must not relabel an older debug blob onto a newer camera frame.
 
     Intentionally omits map geometry and privileged scene structure. The result
     is for post-cycle alignment scoring only — never fed into observation or
@@ -99,10 +103,11 @@ def sanitize_chase_shadow_reference(
 
     if not isinstance(debug, dict):
         return None
-    frame_index = simulator_frame_index
+    frame_index = simulator_frame_index_from_debug(debug)
     if frame_index is None:
-        frame_index = simulator_frame_index_from_debug(debug)
-    if frame_index is None:
+        return None
+    if require_frame_index is not None and int(require_frame_index) != int(frame_index):
+        # Fail closed: never rewrite debug identity to match a different frame.
         return None
 
     chaser_action = debug.get("actions") if isinstance(debug.get("actions"), dict) else {}
@@ -131,6 +136,36 @@ def sanitize_chase_shadow_reference(
         if reference.get(key) in (None, {}):
             reference.pop(key, None)
     return reference
+
+
+def frame_indices_strictly_increasing(indices: list[int]) -> bool:
+    """True when each index is strictly greater than the previous."""
+
+    if len(indices) < 2:
+        return False
+    return all(indices[i] < indices[i + 1] for i in range(len(indices) - 1))
+
+
+def consistent_game_identity(frames: list[dict[str, Any]]) -> bool:
+    """All frames that declare game_id/scenario must share one value each."""
+
+    game_ids: set[str] = set()
+    scenarios: set[str] = set()
+    for frame in frames:
+        if not isinstance(frame, dict):
+            continue
+        shadow = frame.get("shadow_reference") if isinstance(frame.get("shadow_reference"), dict) else {}
+        game = shadow.get("game_id") or frame.get("game_id")
+        scenario = shadow.get("scenario") or frame.get("scenario")
+        if game is not None and str(game).strip():
+            game_ids.add(str(game))
+        if scenario is not None and str(scenario).strip():
+            scenarios.add(str(scenario))
+    if len(game_ids) > 1:
+        return False
+    if len(scenarios) > 1:
+        return False
+    return True
 
 
 def align_candidate_with_shadow(
@@ -205,7 +240,8 @@ def score_shadow_alignment_batch(
         if index is not None and shadow is not None and not alignment["aligned"]:
             mismatched += 1
 
-    advancing = len(indices) >= 2 and len(set(indices)) >= 2
+    advancing = frame_indices_strictly_increasing(indices)
+    identity_ok = consistent_game_identity(frames)
     aligned_count = sum(1 for item in alignments if item.get("aligned"))
     passed = (
         len(alignments) >= min_frames
@@ -213,6 +249,7 @@ def score_shadow_alignment_batch(
         and missing_shadow == 0
         and mismatched == 0
         and advancing
+        and identity_ok
         and aligned_count == len(alignments)
     )
     return {
@@ -223,6 +260,7 @@ def score_shadow_alignment_batch(
         "missing_shadow": missing_shadow,
         "mismatched": mismatched,
         "advancing_simulator_frames": advancing,
+        "consistent_game_identity": identity_ok,
         "simulator_frame_indices": indices,
         "alignments": alignments,
         "reason": (
@@ -230,7 +268,8 @@ def score_shadow_alignment_batch(
             if passed
             else (
                 "expected ≥"
-                f"{min_frames} frames with advancing simulator_frame_index and matching shadow_reference"
+                f"{min_frames} frames with strictly increasing simulator_frame_index, "
+                "matching shadow_reference, and consistent game/scenario identity"
             ),
         ),
     }

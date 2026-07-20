@@ -263,7 +263,7 @@ def run_chase_shadow_memory_check(
                 [
                     f"No automation runtime state for {vehicle_id!r}.",
                     f"Start observe-only automation first:",
-                    f"  ./cli/automa vehicles automation run --id {vehicle_id} --no-take-control",
+                    f"  ./cli/automa vehicles automation run --id {vehicle_id} --observe-only",
                 ]
             ),
         )
@@ -450,19 +450,11 @@ def run_chase_shadow_memory_check(
             }
             for frame in frames
         ],
-        "safety": {
-            "movement_commands_sent": False,
-            "action_policy": "chase_observe_only_shadow",
-            "rewritten_engine_idle": True,
-            "lifecycle_source": "live_automation_worker+shadow_reference",
-            "forced_dropout": False,
-            "ephemeral_local_reducer": False,
-            "scenario_note": (
-                "Live Chase automation frames preserve simulator frameIndex and pair "
-                "candidate cycle results with evaluator-only shadow_reference. Built-in "
-                "model retains movement authority; rewrite stays observe-only."
-            ),
-        },
+        "safety": derive_chase_safety_from_frames(
+            frames,
+            observe_score=observe_score,
+            alignment_score=alignment,
+        ),
         "recorded": False,
         "record_dir": None,
         "provenance_extract": None,
@@ -611,89 +603,245 @@ def collect_chase_automation_frames(
 
 
 def score_chase_memory_provenance(frames: list[dict[str, Any]]) -> dict[str, Any]:
-    """Require retained memory records (when present) cite simulator frame ids."""
+    """Require retained evidence whose provenance cites a sampled simulator frame.
 
-    frames_with_memory = 0
-    mismatched: list[str] = []
+    Records may legitimately retain evidence from an earlier sampled frame while
+    the current camera frame advances. Validate each provenance.frame_id against
+    the set of sampled frame identities — not only the current frame. Empty
+    memory fails: shadow evaluation needs actual retained evidence.
+    """
+
+    sampled_frame_ids: set[str] = set()
+    sampled_indices: set[int] = set()
+    for frame in frames:
+        if not isinstance(frame, dict):
+            continue
+        frame_id = str(frame.get("frame_id") or "").strip()
+        if frame_id:
+            sampled_frame_ids.add(frame_id)
+        sim_index = frame.get("simulator_frame_index")
+        if sim_index is None:
+            sim_index = frame.get("frame_index")
+        try:
+            if sim_index is not None:
+                sampled_indices.add(int(sim_index))
+                sampled_frame_ids.add(f"chase_frame_{int(sim_index):06d}")
+        except (TypeError, ValueError):
+            pass
+
+    records_seen = 0
     matched = 0
+    current_frame_matches = 0
+    retained_prior_matches = 0
+    mismatched: list[str] = []
+    missing_provenance: list[str] = []
+
+    # Use the latest non-empty memory snapshot among sampled frames.
+    latest_memory: dict[str, Any] | None = None
+    latest_frame_id = ""
     for frame in frames:
         memory = frame.get("memory") if isinstance(frame.get("memory"), dict) else None
         if memory is None:
             continue
         records = memory.get("records") if isinstance(memory.get("records"), list) else []
-        if not records:
+        if records:
+            latest_memory = memory
+            latest_frame_id = str(frame.get("frame_id") or "")
+
+    if latest_memory is None:
+        return {
+            "passed": False,
+            "frames_with_memory": 0,
+            "matched_provenance_records": 0,
+            "current_frame_matches": 0,
+            "retained_prior_matches": 0,
+            "mismatched": [],
+            "missing_provenance": [],
+            "reason": "no retained memory records on sampled frames (empty memory cannot prove provenance)",
+        }
+
+    records = latest_memory.get("records") if isinstance(latest_memory.get("records"), list) else []
+    for record in records:
+        if not isinstance(record, dict):
             continue
-        frames_with_memory += 1
-        expected = str(frame.get("frame_id") or "")
-        sim_index = frame.get("simulator_frame_index")
-        if sim_index is None:
-            sim_index = frame.get("frame_index")
-        for record in records:
-            if not isinstance(record, dict):
+        record_id = str(record.get("record_id") or "")
+        if not record_id:
+            continue
+        records_seen += 1
+        provenance = (
+            record.get("provenance") if isinstance(record.get("provenance"), dict) else {}
+        )
+        prov_frame = str(provenance.get("frame_id") or "").strip()
+        if not prov_frame:
+            missing_provenance.append(record_id)
+            continue
+        if prov_frame not in sampled_frame_ids:
+            # Also accept chase_frame_NNNNNN when N is a sampled index.
+            accepted = False
+            if prov_frame.startswith("chase_frame_"):
+                try:
+                    idx = int(prov_frame.rsplit("_", 1)[-1], 10)
+                    accepted = idx in sampled_indices
+                except ValueError:
+                    accepted = False
+            if not accepted:
+                mismatched.append(f"{record_id}:{prov_frame}")
                 continue
-            provenance = (
-                record.get("provenance") if isinstance(record.get("provenance"), dict) else {}
-            )
-            prov_frame = str(provenance.get("frame_id") or "")
-            if not prov_frame:
-                continue
-            if expected and prov_frame == expected:
-                matched += 1
-            elif sim_index is not None and prov_frame.endswith(f"{int(sim_index):06d}"):
-                matched += 1
-            else:
-                mismatched.append(f"{record.get('record_id')}:{prov_frame}")
-    # Memory may be empty early; require either no retained records or matching provenance.
-    passed = not mismatched and (frames_with_memory == 0 or matched > 0)
+        matched += 1
+        if latest_frame_id and prov_frame == latest_frame_id:
+            current_frame_matches += 1
+        else:
+            retained_prior_matches += 1
+
+    passed = (
+        records_seen > 0
+        and not mismatched
+        and not missing_provenance
+        and matched == records_seen
+    )
     return {
         "passed": passed,
-        "frames_with_memory": frames_with_memory,
+        "frames_with_memory": 1 if records_seen else 0,
+        "record_count": records_seen,
         "matched_provenance_records": matched,
+        "current_frame_matches": current_frame_matches,
+        "retained_prior_matches": retained_prior_matches,
         "mismatched": mismatched[:12],
+        "missing_provenance": missing_provenance[:12],
+        "sampled_frame_ids": sorted(sampled_frame_ids),
         "reason": (
-            "memory provenance uses simulator frame identity"
-            if passed and matched > 0
+            "retained memory provenance cites sampled simulator frames "
+            f"(current={current_frame_matches} retained_prior={retained_prior_matches})"
+            if passed
             else (
-                "no retained memory records yet (identity path still valid)"
-                if passed
-                else "memory provenance frame_id does not match simulator identity"
+                "memory provenance missing, empty, or cites frames outside the sampled set"
             )
         ),
     }
 
 
 def score_chase_observe_only(frames: list[dict[str, Any]]) -> dict[str, Any]:
-    """Rewritten cycle must not claim applied movement authority."""
+    """Require simulator authority and pure observe-only rewrite on every frame.
+
+    Accepted only when each sampled frame reports:
+    - control_source=simulator
+    - action_policy=observe_only
+    - control_application=not_applied
+    - zero steering/throttle on published control
+    - shadow chaser_control_source is not a WebSocket authority
+    """
 
     violations: list[str] = []
     for frame in frames:
-        application = str(frame.get("control_application") or "")
+        if not isinstance(frame, dict):
+            continue
+        frame_id = str(frame.get("frame_id") or "?")
+        control_source = str(frame.get("control_source") or "")
         action_policy = str(frame.get("action_policy") or "")
+        application = str(frame.get("control_application") or "")
         control = frame.get("control") if isinstance(frame.get("control"), dict) else {}
-        if application and application not in {
-            "not_applied",
-            "observe_only",
-            "stop_only_safety_gate",
-        }:
-            violations.append(f"control_application={application}")
-        if action_policy and "observe" not in action_policy and action_policy not in {
-            "stop_only_safety_gate",
-            "idle",
-            "not_applied",
-        }:
-            # Allow common observe-only labels; flag explicit apply policies.
-            if "apply" in action_policy or action_policy == "autonomy":
-                violations.append(f"action_policy={action_policy}")
+        shadow = (
+            frame.get("shadow_reference")
+            if isinstance(frame.get("shadow_reference"), dict)
+            else {}
+        )
+        shadow_source = str(shadow.get("chaser_control_source") or "").lower()
+
+        if control_source != "simulator":
+            violations.append(f"{frame_id}:control_source={control_source or 'missing'}")
+        if action_policy != "observe_only":
+            violations.append(f"{frame_id}:action_policy={action_policy or 'missing'}")
+        if application != "not_applied":
+            violations.append(f"{frame_id}:control_application={application or 'missing'}")
         if control.get("applied") is True:
-            violations.append("control.applied=true")
-    passed = not violations
+            violations.append(f"{frame_id}:control.applied=true")
+        for axis in ("steering", "throttle"):
+            value = control.get(axis)
+            if value is None:
+                continue
+            try:
+                if abs(float(value)) > 1e-9:
+                    violations.append(f"{frame_id}:control.{axis}={value}")
+            except (TypeError, ValueError):
+                violations.append(f"{frame_id}:control.{axis}=unparseable")
+        # Built-in/simulator/keyboard/ai retain scenario authority; any WS path is forbidden.
+        if shadow_source and (
+            shadow_source in {"ws", "websocket", "external_ws", "external"}
+            or "ws" in shadow_source
+            or shadow_source.startswith("external")
+        ):
+            violations.append(f"{frame_id}:shadow.chaser_control_source={shadow_source}")
+
+    passed = bool(frames) and not violations
     return {
         "passed": passed,
-        "violations": violations,
+        "violations": violations[:20],
         "reason": (
-            "rewritten engine remains observe-only on sampled frames"
+            "every sampled frame is simulator-authority observe-only with zero control"
             if passed
             else f"observe-only violations: {violations[:5]}"
+        ),
+    }
+
+
+def derive_chase_safety_from_frames(
+    frames: list[dict[str, Any]],
+    *,
+    observe_score: dict[str, Any],
+    alignment_score: dict[str, Any],
+) -> dict[str, Any]:
+    """Derive safety conclusions from sampled frame evidence (not hardcoded)."""
+
+    control_sources = sorted(
+        {
+            str(frame.get("control_source") or "")
+            for frame in frames
+            if isinstance(frame, dict) and frame.get("control_source")
+        }
+    )
+    action_policies = sorted(
+        {
+            str(frame.get("action_policy") or "")
+            for frame in frames
+            if isinstance(frame, dict) and frame.get("action_policy")
+        }
+    )
+    applications = sorted(
+        {
+            str(frame.get("control_application") or "")
+            for frame in frames
+            if isinstance(frame, dict) and frame.get("control_application")
+        }
+    )
+    shadow_sources = sorted(
+        {
+            str((frame.get("shadow_reference") or {}).get("chaser_control_source") or "")
+            for frame in frames
+            if isinstance(frame, dict)
+            and isinstance(frame.get("shadow_reference"), dict)
+            and (frame.get("shadow_reference") or {}).get("chaser_control_source")
+        }
+    )
+    observe_ok = bool(observe_score.get("passed"))
+    return {
+        "movement_commands_sent": not observe_ok,
+        "control_sources": control_sources,
+        "action_policies": action_policies,
+        "control_applications": applications,
+        "shadow_chaser_control_sources": shadow_sources,
+        "action_policy": action_policies[0] if len(action_policies) == 1 else action_policies,
+        "control_source": control_sources[0] if len(control_sources) == 1 else control_sources,
+        "rewritten_engine_idle": observe_ok and applications == ["not_applied"],
+        "simulator_retains_authority": observe_ok and control_sources == ["simulator"],
+        "lifecycle_source": "live_automation_worker+shadow_reference",
+        "forced_dropout": False,
+        "ephemeral_local_reducer": False,
+        "shadow_alignment_passed": bool(alignment_score.get("passed")),
+        "scenario_note": (
+            "Live Chase automation frames preserve simulator frameIndex and pair "
+            "candidate cycle results with exact-identity evaluator-only shadow_reference. "
+            "Safety conclusions are derived from sampled frame control_source, "
+            "action_policy, control_application, and shadow authority."
         ),
     }
 

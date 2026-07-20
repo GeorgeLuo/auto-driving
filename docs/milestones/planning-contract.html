@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="b357a1b44992b36aafa3f372c8ad01b923178337ae24e2c1eef082bec2a497d8">
+  <meta name="source-sha256" content="ecbf872b8555c2ef32766395c963b046bd1294af4bc02f5897abc0a2854fa84c">
   <base target="_blank">
   <title>Milestone Planning Contract</title>
   <style>
@@ -174,6 +174,87 @@ description.</p>
 roll it out broadly in the same PR. Land the pattern first, merge each deliverable
 before branching the next by default, and split work when the primary review
 question stops being singular.</p>
+<h2>Milestone Git Isolation</h2>
+<p>Use one integration branch per active milestone so the complete milestone can
+be reviewed as one cumulative change without making its individual PRs too
+large. The branch topology is:</p>
+<pre><code class="language-text">main
+└── milestone/006-decision-facing-perception
+    ├── m006/01-contract
+    ├── m006/02-first-implementation
+    └── m006/03-validation
+</code></pre>
+<p>The branch roles are fixed:</p>
+<ul>
+<li><strong><code>main</code>:</strong> completed milestones and explicitly approved maintenance only.</li>
+<li><strong><code>milestone/&lt;number&gt;-&lt;slug&gt;</code>:</strong> all accepted changes for one active
+  milestone, including its plan, evidence, and closeout.</li>
+<li><strong><code>m&lt;number&gt;/&lt;review-unit&gt;-&lt;slug&gt;</code>:</strong> one review-sized deliverable targeting
+  the milestone branch, never <code>main</code>.</li>
+</ul>
+<p>Do not mix two milestones on one integration branch. Do not merge a milestone
+work-block PR directly into <code>main</code>. A review repair branches from the milestone
+branch and targets that same milestone branch, so the cumulative milestone PR
+updates automatically.</p>
+<h3>Start A Milestone</h3>
+<p>Start from current remote <code>main</code>, create the integration branch, and make the
+plan bootstrap its first commit:</p>
+<pre><code class="language-sh">git switch main
+git pull --ff-only
+git switch -c milestone/006-decision-facing-perception
+git push -u origin milestone/006-decision-facing-perception
+</code></pre>
+<p>After the plan commit is pushed, open a <strong>draft</strong> cumulative PR from the
+milestone branch to <code>main</code>. Keep it open for the milestone's lifetime. Its diff
+is the authoritative whole-milestone review surface; its description links the
+plan, current exit-criteria status, and accepted work-block PRs.</p>
+<pre><code class="language-sh">gh pr create \
+  --draft \
+  --base main \
+  --head milestone/006-decision-facing-perception \
+  --title &quot;Milestone 006: Decision-Facing Perception&quot;
+</code></pre>
+<h3>Deliver A Review Unit</h3>
+<p>Branch each review unit from the updated milestone branch:</p>
+<pre><code class="language-sh">git switch milestone/006-decision-facing-perception
+git pull --ff-only
+git switch -c m006/01-contract
+</code></pre>
+<p>Push it and open its PR against the milestone branch:</p>
+<pre><code class="language-sh">git push -u origin m006/01-contract
+gh pr create \
+  --base milestone/006-decision-facing-perception \
+  --head m006/01-contract
+</code></pre>
+<p>The PR title starts with <code>M006 / 01</code>, and the description states its base branch
+explicitly. Prefer squash-merging each work-block PR so the milestone branch
+contains one commit per accepted review unit. Start the next branch only after
+the prior PR merges and the local milestone branch is updated.</p>
+<h3>Close A Milestone</h3>
+<p>The closeout, completed-milestone ledger update, and final evidence belong on
+the milestone branch. When every exit criterion is met, mark the cumulative PR
+ready for review. That final review answers whether the milestone objective,
+usage contract, evidence, code organization, and unresolved-risk accounting are
+complete as a whole.</p>
+<p>Merge the cumulative PR into <code>main</code> with a merge commit so its reviewed
+work-unit commits remain visible. Tag the resulting mainline merge
+<code>milestone-&lt;number&gt;</code>, then delete the milestone and work branches. GitHub keeps
+the individual PR discussions after branch deletion.</p>
+<pre><code class="language-sh">gh pr ready &lt;cumulative-pr-number&gt;
+gh pr merge &lt;cumulative-pr-number&gt; --merge --delete-branch
+git switch main
+git pull --ff-only
+git tag milestone-006
+git push origin milestone-006
+</code></pre>
+<p>If approved maintenance reaches <code>main</code> during an active milestone, merge the
+updated <code>main</code> into the milestone branch before starting another review unit.
+Do not rebase or force-push a published milestone branch. CI must run for PRs
+whose base is a milestone branch as well as for the cumulative PR to <code>main</code>.</p>
+<p>This branching model is repository-development infrastructure, not an Automa
+vehicle command. A future helper may automate these exact steps, but it must
+fail visibly on uncommitted changes, a stale base, an existing branch, or an
+incorrect PR target rather than hiding Git state.</p>
 <h2>Rolling Delivery Horizon</h2>
 <p>Only the current PR is committed in detail. A milestone plan also names one
 likely next review unit so the current work can prepare a clean boundary, but
@@ -212,16 +293,20 @@ Do not present planned behavior as observed behavior, a skipped check as a pass,
 or an unlabeled visual result as an accuracy claim.</p>
 <h2>Milestone Lifecycle</h2>
 <ol>
+<li>Create the milestone integration branch from current remote <code>main</code>.</li>
 <li>Create one numbered directory and a <code>plan.html</code> following this contract.</li>
 <li>Define completion usage, fixed exit criteria, a concrete first PR, and a
-   preparation horizon.</li>
-<li>Merge one deliverable at a time by default and update the plan after each
-   accepted review unit.</li>
+   preparation horizon; push the plan and open the draft cumulative PR to
+   <code>main</code>.</li>
+<li>Merge one review-unit PR into the milestone branch at a time and update the
+   plan after each accepted unit.</li>
 <li>At closeout, freeze the plan and write <code>closeout.md</code> with outcomes, decisions,
    validation, unresolved work, and links to durable reference material.</li>
-<li>Append a concise entry to <a href="completed.md">completed.md</a>.</li>
-<li>Make the next milestone active (or promote a pre-plan) and update the
-   active-work link in <a href="../README.md">the documentation guide</a>.</li>
+<li>Append a concise entry to <a href="completed.md">completed.md</a>, update the active-work
+   link in <a href="../README.md">the documentation guide</a>, and make the cumulative PR
+   ready for whole-milestone review.</li>
+<li>Merge the cumulative PR, tag the mainline merge, remove milestone branches,
+   then make the next milestone active (or promote a pre-plan).</li>
 </ol>
 <p>Closeouts preserve durable context; they do not duplicate source-level details.
 New architecture facts belong in <code>docs/reference/</code>, and future-facing research

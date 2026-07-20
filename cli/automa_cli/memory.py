@@ -1,7 +1,8 @@
-"""Stage, inspect, and stream vehicle memory activations and live state."""
+"""Stage, inspect, stream, reset, and replay vehicle memory."""
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import time
@@ -9,7 +10,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
 
-from autonomy.decision import MEMORY_ACTIVATION_SCHEMA, read_memory_activation
+from autonomy.decision import (
+    MEMORY_ACTIVATION_SCHEMA,
+    ActivatedMemoryStage,
+    DecisionFrameContext,
+    Observation,
+    load_memory_stage_if_present,
+    read_memory_activation,
+)
 from implementations.memory import (
     DEFAULT_MEMORY_IMPLEMENTATION,
     available_memory_implementation_ids,
@@ -37,6 +45,8 @@ from .vehicles import discover_active_vehicles, find_vehicle_by_id, format_activ
 
 
 RUNTIME_ROOT = Path(os.environ.get("AUTOMA_RUNTIME_ROOT", ROOT / "runtime" / "vehicles"))
+MEMORY_OBSERVATION_SEQUENCE_SCHEMA = "automa_memory_observation_sequence_v0"
+MEMORY_REPLAY_RESULT_SCHEMA = "vehicle_memory_replay_v0"
 
 
 @dataclass(frozen=True)
@@ -210,6 +220,334 @@ def get_vehicle_memory_info(
     if json_output:
         return CommandResult(0, json.dumps(payload, indent=2, sort_keys=True))
     return CommandResult(0, _format_memory_info(payload))
+
+
+def replay_vehicle_memory(
+    *,
+    vehicle_id: str,
+    sequence: str | Path,
+    implementation_id: str | None = None,
+    json_output: bool = False,
+    verify_twice: bool = True,
+) -> CommandResult:
+    """Replay a fixed observation sequence through the staged memory activation.
+
+    Offline and process-local: does not talk to the live host, does not write
+    history by default, and reports a stable end-state digest for comparison.
+    """
+
+    sequence_path = Path(sequence).expanduser()
+    try:
+        frames = load_memory_observation_sequence(sequence_path)
+    except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
+        return CommandResult(2, f"Could not load observation sequence {sequence_path}: {exc}")
+    if not frames:
+        return CommandResult(2, f"Observation sequence {sequence_path} contains no frames.")
+
+    bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(vehicle_id))
+    activation_path = Path(bundle["memory_runtime_dir"]) / "active.json"
+    stage: ActivatedMemoryStage | None = None
+    selected_implementation = implementation_id
+    activation_source: str
+
+    if implementation_id is not None:
+        known = available_memory_implementation_ids()
+        if implementation_id not in known:
+            available = ", ".join(known) or "(none)"
+            return CommandResult(
+                2,
+                f"Unknown memory implementation {implementation_id!r}. Available: {available}.",
+            )
+        with _temporary_memory_activation(
+            vehicle_id=vehicle_id,
+            implementation_id=implementation_id,
+            bundle=bundle,
+        ) as temp_activation:
+            stage = ActivatedMemoryStage(read_memory_activation(temp_activation))
+            activation_source = f"ephemeral:{implementation_id}"
+            selected_implementation = implementation_id
+            run_a = _run_memory_sequence(stage=stage, frames=frames)
+            if verify_twice:
+                stage_b = ActivatedMemoryStage(read_memory_activation(temp_activation))
+                run_b = _run_memory_sequence(stage=stage_b, frames=frames)
+            else:
+                run_b = run_a
+    else:
+        if not activation_path.exists():
+            return CommandResult(
+                2,
+                "\n".join(
+                    [
+                        f"No active memory implementation found for {vehicle_id!r}.",
+                        f"Expected activation: {display_path(activation_path)}",
+                        "Run: ./cli/automa vehicles update memory --id <vehicle_id>",
+                        "Or pass --implementation for an ephemeral offline replay.",
+                    ]
+                ),
+            )
+        try:
+            stage = load_memory_stage_if_present(activation_path)
+        except (FileNotFoundError, ValueError, TypeError, ImportError, AttributeError) as exc:
+            return CommandResult(
+                2,
+                f"Could not load memory activation {display_path(activation_path)}: {exc}",
+            )
+        if stage is None:
+            return CommandResult(
+                2,
+                f"Memory activation is missing or empty at {display_path(activation_path)}.",
+            )
+        activation_source = display_path(activation_path)
+        selected_implementation = stage.activation.implementation_id
+        run_a = _run_memory_sequence(stage=stage, frames=frames)
+        if verify_twice:
+            stage_b = load_memory_stage_if_present(activation_path)
+            if stage_b is None:
+                return CommandResult(2, "Could not reload memory activation for determinism check.")
+            run_b = _run_memory_sequence(stage=stage_b, frames=frames)
+        else:
+            run_b = run_a
+
+    deterministic = run_a["digest"] == run_b["digest"]
+    payload = {
+        "schema": MEMORY_REPLAY_RESULT_SCHEMA,
+        "vehicle_id": vehicle_id,
+        "sequence": display_path(sequence_path.resolve()) if sequence_path.exists() else str(sequence_path),
+        "frame_count": len(frames),
+        "implementation_id": selected_implementation,
+        "activation": activation_source,
+        "digest": run_a["digest"],
+        "deterministic": deterministic,
+        "final": run_a["final"],
+        "per_frame": run_a["per_frame"],
+        "second_pass_digest": run_b["digest"] if verify_twice else None,
+    }
+    if not deterministic:
+        if json_output:
+            return CommandResult(2, json.dumps(payload, indent=2, sort_keys=True))
+        return CommandResult(
+            2,
+            "\n".join(
+                [
+                    f"Memory replay is non-deterministic for {vehicle_id}.",
+                    f"Digest pass 1: {run_a['digest']}",
+                    f"Digest pass 2: {run_b['digest']}",
+                ]
+            ),
+        )
+
+    if json_output:
+        return CommandResult(0, json.dumps(payload, indent=2, sort_keys=True))
+    final = run_a["final"]
+    lines = [
+        f"Memory replay: {vehicle_id}",
+        f"Sequence: {payload['sequence']} ({len(frames)} frames)",
+        f"Implementation: {selected_implementation}",
+        f"Activation: {activation_source}",
+        f"Final health: {final.get('health')}  keys={final.get('record_count')}  epoch={final.get('epoch_id')}",
+        f"Digest: {run_a['digest']}",
+        "Deterministic: yes (two independent passes matched)",
+    ]
+    records = final.get("records") if isinstance(final.get("records"), list) else []
+    if records:
+        lines.append("Retained keys:")
+        for record in records[:12]:
+            if not isinstance(record, dict):
+                continue
+            lines.append(
+                f"  - {record.get('record_id')}  kind={record.get('kind')}  "
+                f"conf={record.get('confidence')}"
+            )
+        if len(records) > 12:
+            lines.append(f"  … {len(records) - 12} more")
+    return CommandResult(0, "\n".join(lines))
+
+
+def load_memory_observation_sequence(path: Path) -> list[dict[str, Any]]:
+    """Load a memory observation sequence from a JSON file or directory."""
+
+    if not path.exists():
+        raise FileNotFoundError(f"sequence path does not exist: {path}")
+    if path.is_dir():
+        for name in ("sequence.json", "memory_sequence.json", "observation_sequence.json"):
+            candidate = path / name
+            if candidate.is_file():
+                return load_memory_observation_sequence(candidate)
+        # Directory of frame JSON files (sorted).
+        frame_files = sorted(
+            [
+                item
+                for item in path.iterdir()
+                if item.is_file() and item.suffix.lower() == ".json" and item.name != "manifest.json"
+            ],
+            key=lambda item: item.name,
+        )
+        if not frame_files:
+            raise ValueError(f"directory has no sequence.json or frame JSON files: {path}")
+        frames: list[dict[str, Any]] = []
+        for index, frame_file in enumerate(frame_files):
+            payload = json.loads(frame_file.read_text(encoding="utf-8"))
+            if not isinstance(payload, dict):
+                raise ValueError(f"{frame_file} is not a JSON object")
+            frames.append(_normalize_sequence_frame(payload, default_index=index, source=frame_file.name))
+        return frames
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("sequence file must contain a JSON object")
+    if payload.get("schema") == MEMORY_OBSERVATION_SEQUENCE_SCHEMA or isinstance(payload.get("frames"), list):
+        frames_data = payload.get("frames") or []
+        if not isinstance(frames_data, list):
+            raise ValueError("sequence frames must be a list")
+        return [
+            _normalize_sequence_frame(item, default_index=index, source=f"frames[{index}]")
+            for index, item in enumerate(frames_data)
+            if isinstance(item, dict)
+        ]
+    # Single frame record reused as a one-frame sequence.
+    return [_normalize_sequence_frame(payload, default_index=0, source=path.name)]
+
+
+def memory_snapshot_digest(snapshot: dict[str, Any]) -> str:
+    """Stable digest of memory end-state (records + health, not process identity)."""
+
+    records = snapshot.get("records") if isinstance(snapshot.get("records"), list) else []
+    normalized_records = []
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        # Canonicalize nested structures with sorted JSON.
+        normalized_records.append(json.loads(json.dumps(record, sort_keys=True, default=str)))
+    normalized_records.sort(key=lambda item: str(item.get("record_id") or ""))
+    body = {
+        "implementation_id": snapshot.get("implementation_id"),
+        "health": snapshot.get("health"),
+        "record_count": snapshot.get("record_count", len(normalized_records)),
+        "bounds": snapshot.get("bounds"),
+        "records": normalized_records,
+        "summary": snapshot.get("summary"),
+        "metadata": snapshot.get("metadata"),
+    }
+    encoded = json.dumps(body, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _normalize_sequence_frame(
+    payload: dict[str, Any],
+    *,
+    default_index: int,
+    source: str,
+) -> dict[str, Any]:
+    observation_payload = payload.get("observation")
+    if observation_payload is None and (
+        payload.get("observation_id") is not None or payload.get("things") is not None
+    ):
+        observation_payload = payload
+    if not isinstance(observation_payload, dict):
+        raise ValueError(f"{source}: frame requires an observation object")
+
+    frame_id = str(payload.get("frame_id") or observation_payload.get("frame_id") or f"frame_{default_index:06d}")
+    frame_index = payload.get("frame_index")
+    if frame_index is None:
+        frame_index = default_index
+    timestamp_ms = payload.get("timestamp_ms")
+    if timestamp_ms is None:
+        timestamp_ms = observation_payload.get("created_at_ms")
+    if timestamp_ms is None:
+        timestamp_ms = default_index * 100
+    # Ensure observation has an id.
+    if not observation_payload.get("observation_id"):
+        observation_payload = {
+            **observation_payload,
+            "observation_id": f"obs_{default_index:06d}",
+        }
+    if observation_payload.get("created_at_ms") is None:
+        observation_payload = {
+            **observation_payload,
+            "created_at_ms": int(timestamp_ms),
+        }
+    return {
+        "frame_id": frame_id,
+        "frame_index": int(frame_index),
+        "timestamp_ms": int(timestamp_ms),
+        "observation": observation_payload,
+        "source": source,
+    }
+
+
+def _run_memory_sequence(
+    *,
+    stage: ActivatedMemoryStage,
+    frames: list[dict[str, Any]],
+) -> dict[str, Any]:
+    # Fresh epoch for this pass (stage already reset on construction).
+    per_frame: list[dict[str, Any]] = []
+    final_snapshot = stage.snapshot()
+    for frame in frames:
+        observation = Observation.from_dict(frame["observation"])
+        context = DecisionFrameContext(
+            frame_id=str(frame["frame_id"]),
+            frame_index=int(frame["frame_index"]),
+            timestamp_ms=int(frame["timestamp_ms"]),
+        )
+        snapshot = stage.update(context, observation)
+        final_snapshot = snapshot
+        per_frame.append(
+            {
+                "frame_id": context.frame_id,
+                "frame_index": context.frame_index,
+                "timestamp_ms": context.timestamp_ms,
+                "health": snapshot.health,
+                "record_count": snapshot.record_count,
+                "epoch_id": snapshot.epoch_id,
+            }
+        )
+    final = final_snapshot.to_dict()
+    return {
+        "final": final,
+        "per_frame": per_frame,
+        "digest": memory_snapshot_digest(final),
+    }
+
+
+class _temporary_memory_activation:
+    """Context manager writing an ephemeral activation file for offline replay."""
+
+    def __init__(
+        self,
+        *,
+        vehicle_id: str,
+        implementation_id: str,
+        bundle: dict[str, str],
+    ) -> None:
+        self.vehicle_id = vehicle_id
+        self.implementation_id = implementation_id
+        self.bundle = bundle
+        self.path: Path | None = None
+
+    def __enter__(self) -> Path:
+        import tempfile
+
+        handle = tempfile.NamedTemporaryFile(
+            mode="w",
+            suffix=".json",
+            prefix=f"memory-replay-{safe_path_part(self.vehicle_id)}-",
+            delete=False,
+            encoding="utf-8",
+        )
+        payload = build_memory_activation_payload(self.implementation_id)
+        handle.write(json.dumps(payload, indent=2, sort_keys=True))
+        handle.close()
+        self.path = Path(handle.name)
+        return self.path
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        del exc_type, exc, tb
+        if self.path is not None:
+            try:
+                self.path.unlink(missing_ok=True)
+            except OSError:
+                pass
 
 
 def reset_vehicle_memory(

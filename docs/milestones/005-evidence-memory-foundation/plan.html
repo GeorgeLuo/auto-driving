@@ -174,7 +174,7 @@
       <div class="meta">
         <span class="pill">Status: active — not ready to close</span>
         <span class="pill">Packages open: 5 (partial) and 6</span>
-        <span class="pill">Next PR: deterministic memory replay</span>
+        <span class="pill">Next PR: opt-in record / visual-provenance checks</span>
         <span class="pill">Proposed: 2026-07-15</span>
         <span class="pill">Action policy: idle</span>
         <span class="pill">Hosts: Chase and DonkeyCar</span>
@@ -197,13 +197,13 @@
             <tr>
               <td><strong>Deterministic memory replay</strong> (digestible end-state, <code>--json</code>)</td>
               <td>5</td>
-              <td><span class="status active">Next PR</span></td>
-              <td>Exit criterion: stage/inspect/stream/replay/reset as Automa workflows. Replay is the missing operator lifecycle piece.</td>
+              <td><span class="status done">Landed</span></td>
+              <td><code>vehicles memory replay</code> offline sequence → stable digest; two-pass determinism by default.</td>
             </tr>
             <tr>
               <td><strong>Opt-in recording</strong> for evaluation artifacts (no default history)</td>
               <td>5</td>
-              <td><span class="status pending">Open after replay</span></td>
+              <td><span class="status active">Next</span></td>
               <td>Exit criteria: recording explicit and bounded; guided checks need freezeable artifacts.</td>
             </tr>
             <tr>
@@ -292,15 +292,14 @@
           <p><strong>Success signal:</strong> terminal shows lifecycle health and key count; the Memory map lists <code>record_id</code> keys (filterable by kind) and clicking a key shows the mapped retained-evidence value (summary + JSON). Perception view remains frame/overlay-first with a link to the map. Explicit unavailable/failure states are visible. Default stream writes no history.</p>
         </div>
         <div class="card constraint">
-          <h3>Replay, Compare, And Reset <span class="status active">Partial — reset landed; replay open</span></h3>
+          <h3>Replay, Compare, And Reset <span class="status done">Landed (replay + reset)</span></h3>
           <p><strong>Starting state:</strong> a recorded observation sequence and selected memory configuration are available.</p>
           <p><strong>Proposed execution:</strong></p>
           <pre>./cli/automa vehicles memory replay \
-  &lt;observation-run&gt; --id &lt;vehicle-id&gt;
+  &lt;observation-sequence.json&gt; --id &lt;vehicle-id&gt;
 ./cli/automa vehicles memory reset --id &lt;vehicle-id&gt;
 ./cli/automa vehicles info memory --id &lt;vehicle-id&gt;</pre>
-          <p><strong>Landed:</strong> <code>memory reset</code> clears live state and confirms a new empty epoch on Chase and Pi.</p>
-          <p><strong>Still open:</strong> <code>memory replay</code> (deterministic digest / end-state). That is the next PR.</p>
+          <p><strong>Landed:</strong> offline <code>memory replay</code> reports final health, keys, and a stable digest (two independent passes). Live <code>memory reset</code> clears state on Chase and Pi.</p>
           <p><strong>Success signal:</strong> replay reports a deterministic result digest and concise final state; reset reports an empty new lifecycle epoch. <code>--json</code> provides records and digests for automated comparison.</p>
         </div>
         <div class="card goal">
@@ -412,8 +411,8 @@
         </div>
       </details>
       <p class="note" style="margin-top: 12px;">
-        Packages 1–4, the live key→value Memory map, and operator memory reset
-        are landed. Package 5 is still open for replay/record and guided
+        Packages 1–4, Memory map, operator reset, and offline memory replay are
+        landed. Package 5 is still open for opt-in recording and guided
         visual-provenance checks. Package 6 (closeout) and milestone 006 are not
         active work.
       </p>
@@ -434,18 +433,22 @@
         </div>
         <div class="card goal">
           <h3>Completed: Memory Reset Operator Surface</h3>
-          <p><span class="status done">This PR</span> <strong>Review shape:</strong> deep and narrow.</p>
-          <p><strong>Deliverable:</strong> <code>vehicles memory reset</code> clears live memory on Chase (automation worker control file) and Pi (<code>POST /autonomy/memory/reset</code>). Confirms empty epoch / zero keys via live probe. Host <code>AutonomyCycleHost.reset_memory</code> and pilot-part reset under observation lock.</p>
-          <p><strong>Review question:</strong> After reset, does retained state clear consistently on both hosts, and can an operator confirm it without reading process internals?</p>
-          <p><strong>Non-goals kept:</strong> deterministic multi-frame replay, opt-in recording layout, guided visual-check contact sheets, perception algorithm changes, or 006 work.</p>
-          <p><strong>Note:</strong> Pi requires <strong>core</strong> deploy for the HTTP route (vendor patch) and <strong>autonomy</strong> deploy for pilot-part <code>reset_memory</code>.</p>
+          <p><span class="status done">Merged</span> <strong>Review shape:</strong> deep and narrow.</p>
+          <p><strong>Deliverable:</strong> <code>vehicles memory reset</code> clears live memory on Chase and Pi; empty epoch confirmed via live probe.</p>
         </div>
         <div class="card interface">
-          <h3>Current Next Review Unit: Deterministic Memory Replay</h3>
-          <p><span class="status active">Next after this PR merges</span> <strong>Review shape:</strong> deep and narrow.</p>
-          <p><strong>Deliverable:</strong> replay (or fixed sequence check) of an observation run into a digestible memory end-state with <code>--json</code>, without default history.</p>
-          <p><strong>Review question:</strong> Given the same observation sequence and activation, does memory reach the same bounded end-state and digest?</p>
-          <p><strong>Then (still provisional):</strong> opt-in recording + guided Chase shadow and stationary Pi visual-provenance check artifacts; package 6 closeout; promote 006 pre-plan only after exit criteria.</p>
+          <h3>Completed: Deterministic Memory Replay</h3>
+          <p><span class="status done">This PR</span> <strong>Review shape:</strong> deep and narrow.</p>
+          <p><strong>Deliverable:</strong> <code>vehicles memory replay &lt;sequence&gt; --id …</code> feeds a fixed observation sequence through staged or ephemeral memory offline, reports final state and a stable digest, and verifies two independent passes match. Schema <code>automa_memory_observation_sequence_v0</code>. No default history writes.</p>
+          <p><strong>Review question answered:</strong> Given the same observation sequence and activation, does memory reach the same bounded end-state and digest?</p>
+          <p><strong>Non-goals kept:</strong> live host replay RPC, opt-in recording layout, guided visual-check contact sheets, perception algorithm changes, or 006 work.</p>
+        </div>
+        <div class="card goal">
+          <h3>Current Next Review Unit: Opt-In Record + Visual Provenance Path</h3>
+          <p><span class="status active">Next after this PR merges</span> <strong>Review shape:</strong> deep and narrow (may split record vs checks).</p>
+          <p><strong>Deliverable:</strong> explicit opt-in recording bounds for memory evaluation artifacts, then (or next) guided Chase shadow and stationary Pi present/dropout/expiry/reset checks that freeze source-frame extracts beside retained keys/values.</p>
+          <p><strong>Review question:</strong> Can an operator freeze a reviewable source-frame-to-memory extract without default disk history and without treating stale coordinates as current?</p>
+          <p><strong>Then:</strong> package 6 closeout; promote 006 pre-plan only after exit criteria.</p>
           <p><strong>Do not start 006</strong> while 005 exit criteria remain open.</p>
         </div>
       </div>
@@ -458,8 +461,9 @@
             <tr><td>Host integration</td><td>Equivalent activation and lifecycle in Chase and Donkey hosts.</td><td><strong>Landed</strong> for load, snapshot, stream, and operator reset. Deploy honesty still requires core+autonomy when manage.py must load the stage; Pi reset needs core (HTTP) + autonomy (pilot method).</td></tr>
             <tr><td>Operator inspect</td><td>Stage, inspect, stream, and key→value Memory map without flooding default output.</td><td><strong>Landed.</strong> Terminal health/counts + <code>/memory</code> keys with click-for-value; perception stays separate.</td></tr>
             <tr><td>Operator lifecycle (reset)</td><td>Explicit reset starts a new empty epoch visible to operators on both hosts.</td><td><strong>Landed (this PR).</strong> <code>vehicles memory reset</code>; Pi HTTP + Chase worker file protocol; live probe confirmation.</td></tr>
-            <tr><td>Operator lifecycle (replay/record)</td><td>Replay a sequence and opt-in record without default disk history.</td><td><strong>Next review unit</strong> (replay first). Need a digestible end-state and explicit recording bounds.</td></tr>
-            <tr><td>Evaluation / visual provenance</td><td>Chase shadow + stationary Pi present/dropout/expiry/reset with source-frame extracts.</td><td>Provisional after lifecycle tools. Memory map supports inspect; closeout still needs frozen artifacts that never treat stale coords as current.</td></tr>
+            <tr><td>Operator lifecycle (replay)</td><td>Replay a sequence to a digestible end-state without default disk history.</td><td><strong>Landed.</strong> Offline <code>memory replay</code> + stable digest + two-pass check.</td></tr>
+            <tr><td>Operator lifecycle (record)</td><td>Opt-in record without default disk history.</td><td><strong>Next</strong> (with or before visual checks). Need explicit recording bounds.</td></tr>
+            <tr><td>Evaluation / visual provenance</td><td>Chase shadow + stationary Pi present/dropout/expiry/reset with source-frame extracts.</td><td><strong>Open</strong> after record tools. Memory map supports inspect; closeout still needs frozen artifacts that never treat stale coords as current.</td></tr>
             <tr><td>Closeout</td><td>Written judgment on usefulness and whether patterns/action are justified; activate 006 only then.</td><td>Package 6 after evaluation evidence. Pre-plan 006 remains queued, not active.</td></tr>
           </tbody>
         </table>
@@ -598,17 +602,16 @@
       </details>
 
       <details class="work-item" data-status="active" open>
-        <summary><span>5. Build Operator And Evaluation Workflows</span><span class="status active">Active — replay &amp; visual checks open</span></summary>
+        <summary><span>5. Build Operator And Evaluation Workflows</span><span class="status active">Active — record &amp; visual checks open</span></summary>
         <div class="work-body"><ul>
-          <li><strong>Landed:</strong> stage/info/deploy honesty; live <code>stream memory</code>; key→value Memory map; <code>vehicles memory reset</code> with empty-epoch confirmation on Chase and Pi.</li>
+          <li><strong>Landed:</strong> stage/info/deploy honesty; live <code>stream memory</code>; key→value Memory map; <code>vehicles memory reset</code>; offline <code>vehicles memory replay</code> with stable digest.</li>
           <li><strong>Open (in order):</strong>
             <ol>
-              <li>Deterministic <code>memory replay</code> (next PR).</li>
               <li>Opt-in recording bounds for evaluation artifacts.</li>
               <li>Guided Chase shadow visual-provenance check + stationary Pi present/dropout/expiry/reset check with frozen extracts.</li>
             </ol>
           </li>
-          <li><strong>This package is not done</strong> until those evaluation gates exist. Inspect + reset alone do not satisfy exit criteria 6, 9, or 12.</li>
+          <li><strong>This package is not done</strong> until those evaluation gates exist. Inspect + reset + replay alone do not satisfy exit criteria 9 or 12.</li>
         </ul></div>
       </details>
 
@@ -623,7 +626,7 @@
       </details>
 
       <div class="progress-track" aria-label="Milestone work packages completed: 4 of 6; package 5 partially complete"><div class="progress-fill" style="width: 66.7%;"></div></div>
-      <p class="small"><strong>Not closed.</strong> Packages 1–4 done; package 5 ~halfway (inspect + reset landed; replay, record, visual checks open); package 6 pending. Next PR: deterministic <strong>memory replay</strong>. See Remaining For Closeout and Current Delivery Horizon.</p>
+      <p class="small"><strong>Not closed.</strong> Packages 1–4 done; package 5 inspect + reset + replay landed; opt-in record and visual-provenance checks still open; package 6 pending. Next: record / visual checks. See Remaining For Closeout and Current Delivery Horizon.</p>
     </section>
 
 
@@ -689,9 +692,9 @@
             <tr><td>3</td><td>Memory state has finite capacity and age, deterministic serialization, explicit reset, attributable provenance, and isolated failure behavior.</td><td><span class="status done">Met</span> (operator reset + in-process lifecycle; long-sequence suite continues to cover bounds)</td></tr>
             <tr><td>4</td><td>At least one simple implementation retains and expires structured evidence without claiming semantic or metric world truth.</td><td><span class="status done">Met</span> (<code>BoundedEvidenceLedger</code>)</td></tr>
             <tr><td>5</td><td>The same activation and lifecycle run through local Chase and onboard Donkey hosts; neither receives privileged simulator map state.</td><td><span class="status done">Met</span> for load/update/status/reset path</td></tr>
-            <tr><td>6</td><td>Automa can stage, inspect, run, stream latest memory, <strong>replay</strong> a sequence, and reset state with concise human and complete machine output.</td><td><span class="status active">Partial</span> — stage/inspect/stream/reset landed; <strong>replay open</strong></td></tr>
+            <tr><td>6</td><td>Automa can stage, inspect, run, stream latest memory, <strong>replay</strong> a sequence, and reset state with concise human and complete machine output.</td><td><span class="status done">Met</span> — stage/inspect/stream/reset/replay landed</td></tr>
             <tr><td>7</td><td>Default execution writes no logs, frames, or memory history; recording is explicit and bounded.</td><td><span class="status active">Partial</span> — defaults stay ephemeral; <strong>opt-in record UX open</strong></td></tr>
-            <tr><td>8</td><td>Deterministic tests cover recurrence, dropout, conflict, expiry, capacity, reset, failure, and replay, including long-sequence boundedness.</td><td><span class="status active">Partial</span> — implementation tests cover most; operator replay path still needed</td></tr>
+            <tr><td>8</td><td>Deterministic tests cover recurrence, dropout, conflict, expiry, capacity, reset, failure, and replay, including long-sequence boundedness.</td><td><span class="status done">Met</span> for implementation suite + operator replay two-pass digest; continue extending with check artifacts</td></tr>
             <tr><td>9</td><td>One live <code>chaser-depth-obstacles</code> shadow check and one recorded non-moving Pi present/dropout/expiry/reset check verify equivalent stage behavior while the rewritten engine emits zero movement.</td><td><span class="status pending">Open</span></td></tr>
             <tr><td>10</td><td>During the simulator check, Chase's built-in decision model retains movement authority, the rewrite runs observe-only, and candidate/reference results are aligned by simulator frame identity.</td><td><span class="status pending">Open</span> (with #9)</td></tr>
             <tr><td>11</td><td>Simulator debug, map, and reference-decision state are evaluator-only and are absent from rewritten controller inputs and retained memory provenance.</td><td><span class="status done">Met</span> by design/wiring; re-assert during #9</td></tr>
@@ -733,6 +736,7 @@
             <tr><td>2026-07-19</td><td>Refresh Current Delivery Horizon after Memory map merge; next PR is memory reset.</td><td>Horizon cards still pointed at the first contract PR. Align rolling horizon with packages 1–4 + inspect path landed, package 5 open on reset → replay/record → visual-provenance checks → closeout; keep 006 pre-plan inactive.</td></tr>
             <tr><td>2026-07-19</td><td>Land operator memory reset on Chase and Pi before replay/visual checks.</td><td>Plugin reset existed in-process only. Operators need a confirmed empty epoch on both hosts. Pi uses POST /autonomy/memory/reset (core patch + autonomy pilot method); Chase uses automation worker request/result files. Replay remains the next review unit.</td></tr>
             <tr><td>2026-07-19</td><td>Surface remaining closeout work at the top of the plan (exit criteria status + Remaining For Closeout).</td><td>After inspect/reset, the open path (replay, record, visual checks, package 6) was easy to miss under package-5 prose. Milestone status must read “not ready to close” until those gates land.</td></tr>
+            <tr><td>2026-07-20</td><td>Land offline deterministic memory replay before opt-in record and visual checks.</td><td>Operators need a digestible end-state for fixed observation sequences without live host coupling. Sequence schema + two-pass digest closes exit criterion 6; record and source-frame checks remain for exit 7/9/12.</td></tr>
           </tbody>
 
 

@@ -23,6 +23,7 @@ from .decision import (
 from .lab_plugins import list_perception_candidates, setup_perception_candidate
 from .memory import (
     get_vehicle_memory_info,
+    replay_vehicle_memory,
     reset_vehicle_memory,
     stream_vehicle_memory,
     update_vehicle_memory,
@@ -420,7 +421,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     memory_control = vehicle_commands.add_parser(
         "memory",
-        help="Operate live vehicle memory (reset; stage via update memory).",
+        help="Operate vehicle memory (reset, replay; stage via update memory).",
     )
     memory_control.set_defaults(handler=_handle_vehicles_memory_help)
     memory_commands = memory_control.add_subparsers(dest="memory_command")
@@ -462,6 +463,50 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print the full machine-readable reset payload.",
     )
     memory_reset.set_defaults(handler=_handle_vehicles_memory_reset)
+    memory_replay = memory_commands.add_parser(
+        "replay",
+        help="Replay a fixed observation sequence through staged memory offline.",
+        description=(
+            "Feed a fixed observation sequence through the vehicle's staged "
+            "memory activation (or an ephemeral --implementation). Reports final "
+            "health, key counts, retained keys, and a stable end-state digest. "
+            "Runs two independent passes by default to prove determinism. "
+            "Process-local; writes no history."
+        ),
+    )
+    memory_replay.add_argument(
+        "sequence",
+        help=(
+            "Path to a sequence JSON file (schema automa_memory_observation_sequence_v0) "
+            "or a directory containing sequence.json / frame JSON files."
+        ),
+    )
+    memory_replay.add_argument(
+        "--id",
+        required=True,
+        dest="vehicle_id",
+        help="Vehicle id used to resolve the staged memory activation.",
+    )
+    memory_replay.add_argument(
+        "--implementation",
+        default=None,
+        choices=available_memory_implementation_ids(),
+        help=(
+            "Optional packaged implementation for an ephemeral offline replay "
+            "without reading the staged activation."
+        ),
+    )
+    memory_replay.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the full machine-readable replay payload (includes digest).",
+    )
+    memory_replay.add_argument(
+        "--once",
+        action="store_true",
+        help="Skip the second independent pass (faster; less determinism proof).",
+    )
+    memory_replay.set_defaults(handler=_handle_vehicles_memory_replay)
 
     info = vehicle_commands.add_parser("info", help="Inspect locally staged controller configuration.")
     info_commands = info.add_subparsers(dest="info_command", required=True)
@@ -1256,7 +1301,7 @@ def _handle_vehicles_help(args: argparse.Namespace) -> int:
                 "- automation   manage locally deployed automation workers",
                 "- operation    run bounded vehicle checks and setup tasks",
                 "- info         inspect locally staged controller configuration",
-                "- memory       operate live memory (reset empty epoch)",
+                "- memory       operate memory (reset, offline sequence replay)",
                 "- perception   run and configure vehicle perception",
                 "- stream       read rolling local automation outputs",
                 "- help         show this summary",
@@ -1528,8 +1573,9 @@ def _handle_vehicles_memory_help(args: argparse.Namespace) -> int:
             [
                 "automa vehicles memory commands",
                 "",
-                "- reset  clear live retained evidence; start a new empty epoch",
-                "- help   show this summary",
+                "- reset   clear live retained evidence; start a new empty epoch",
+                "- replay  feed a fixed observation sequence offline; report end-state digest",
+                "- help    show this summary",
                 "",
                 "Stage an implementation with: ./cli/automa vehicles update memory --id <vehicle>",
                 "Inspect staged config with:   ./cli/automa vehicles info memory --id <vehicle>",
@@ -1549,6 +1595,19 @@ def _handle_vehicles_memory_reset(args: argparse.Namespace) -> int:
         timeout_s=args.timeout_s,
         wait_s=args.wait_s,
         json_output=args.json,
+    )
+    if result.message:
+        print(result.message)
+    return result.exit_code
+
+
+def _handle_vehicles_memory_replay(args: argparse.Namespace) -> int:
+    result = replay_vehicle_memory(
+        vehicle_id=args.vehicle_id,
+        sequence=args.sequence,
+        implementation_id=args.implementation,
+        json_output=args.json,
+        verify_twice=not args.once,
     )
     if result.message:
         print(result.message)

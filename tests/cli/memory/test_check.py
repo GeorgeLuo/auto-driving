@@ -9,8 +9,11 @@ from unittest import mock
 
 from cli.automa_cli.memory_check import (
     build_default_memory_check_phases,
+    currently_refreshed_memory_keys,
+    observation_evidence_keys,
     publication_to_check_frame,
     run_vehicle_memory_check,
+    score_live_reset,
     score_memory_check_phase,
 )
 from tests.support.cli_runner import run_automa
@@ -348,23 +351,24 @@ class MemoryCheckTests(unittest.TestCase):
             }}
 
         def fake_probe() -> dict:
-            # First probe before reset, second after.
+            # First probe before reset; second after — cycle may already
+            # repopulate always-on evidence in the new epoch.
             if not hasattr(fake_probe, "n"):
                 fake_probe.n = 0  # type: ignore[attr-defined]
             fake_probe.n += 1  # type: ignore[attr-defined]
             if fake_probe.n == 1:  # type: ignore[attr-defined]
                 return {
                     "status": "live",
-                    "last_health": "empty",
-                    "last_record_count": 0,
+                    "last_health": "healthy",
+                    "last_record_count": 5,
                     "last_epoch_id": "epoch-1",
                     "reset_count": 1,
                     "implementation_id": "bounded_evidence",
                 }
             return {
                 "status": "live",
-                "last_health": "empty",
-                "last_record_count": 0,
+                "last_health": "healthy",
+                "last_record_count": 4,
                 "last_epoch_id": "epoch-2",
                 "reset_count": 2,
                 "implementation_id": "bounded_evidence",
@@ -431,6 +435,160 @@ class MemoryCheckTests(unittest.TestCase):
                 timeout_s=0.4,
             )
         self.assertIn("same", str(ctx.exception))
+
+    def test_score_live_reset_uses_snapshot_empty_not_probe(self) -> None:
+        """Empty-state comes from reset snapshot; probe may already be repopulated."""
+        reset_snapshot = {
+            "health": "empty",
+            "record_count": 0,
+            "records": [],
+            "epoch_id": "epoch-2",
+        }
+        # Always-on cycle repopulated memory before the post-reset probe.
+        after_probe = {
+            "status": "live",
+            "last_health": "healthy",
+            "last_record_count": 4,
+            "last_epoch_id": "epoch-2",
+            "reset_count": 2,
+        }
+        score = score_live_reset(
+            reset_snapshot=reset_snapshot,
+            prior_epoch="epoch-1",
+            prior_reset_count=1,
+            after_probe=after_probe,
+        )
+        self.assertTrue(score["passed"], score.get("reason"))
+        self.assertEqual(score["epoch_id"], "epoch-2")
+        self.assertEqual(score["post_reset_probe_record_count"], 4)
+        self.assertEqual(score["post_reset_probe_health"], "healthy")
+
+    def test_score_live_reset_accepts_reset_count_only_transition(self) -> None:
+        """OR contract: reset_count bump alone is enough when epoch is stable."""
+        reset_snapshot = {
+            "health": "empty",
+            "record_count": 0,
+            "records": [],
+            "epoch_id": "epoch-1",
+        }
+        after_probe = {
+            "last_health": "healthy",
+            "last_record_count": 3,
+            "last_epoch_id": "epoch-1",
+            "reset_count": 5,
+        }
+        score = score_live_reset(
+            reset_snapshot=reset_snapshot,
+            prior_epoch="epoch-1",
+            prior_reset_count=4,
+            after_probe=after_probe,
+        )
+        self.assertTrue(score["passed"], score.get("reason"))
+
+    def test_score_live_reset_rejects_nonempty_snapshot(self) -> None:
+        score = score_live_reset(
+            reset_snapshot={
+                "health": "healthy",
+                "record_count": 2,
+                "records": [{"record_id": "thing:front_camera_frame"}],
+                "epoch_id": "epoch-2",
+            },
+            prior_epoch="epoch-1",
+            prior_reset_count=1,
+            after_probe={"last_epoch_id": "epoch-2", "reset_count": 2},
+        )
+        self.assertFalse(score["passed"])
+        self.assertIn("not empty", score["reason"])
+
+    def test_observation_evidence_keys_skips_explicit_false_signals(self) -> None:
+        pub = {
+            "observation": {
+                "things": [{"thing_id": "traversable_floor", "confidence": 0.9}],
+                "signals": [
+                    {"signal_id": "floor_visible", "value": True, "confidence": 0.9},
+                    {
+                        "signal_id": "floor_boundary_available",
+                        "value": False,
+                        "confidence": 0.9,
+                    },
+                ],
+            }
+        }
+        keys = observation_evidence_keys(pub)
+        self.assertIn("thing:traversable_floor", keys)
+        self.assertIn("signal:floor_visible", keys)
+        self.assertNotIn("signal:floor_boundary_available", keys)
+
+    def test_true_to_false_signal_produces_lifecycle_key(self) -> None:
+        """true→false signal drop must appear as disappeared evidence."""
+        present = {
+            "frame": {"frame_id": "f0"},
+            "observation": {
+                "things": [],
+                "signals": [
+                    {
+                        "signal_id": "floor_boundary_available",
+                        "value": True,
+                        "confidence": 0.9,
+                    },
+                    {"signal_id": "floor_visible", "value": True, "confidence": 0.9},
+                ],
+            },
+            "memory": {
+                "health": "healthy",
+                "records": [
+                    _memory_record(
+                        "signal:floor_boundary_available", frame_id="f0", kind="signal"
+                    ),
+                    _memory_record("signal:floor_visible", frame_id="f0", kind="signal"),
+                ],
+            },
+        }
+        # Ledger skips False: no matching-frame signal record for boundary.
+        dropout = {
+            "frame": {"frame_id": "f1"},
+            "observation": {
+                "things": [],
+                "signals": [
+                    {
+                        "signal_id": "floor_boundary_available",
+                        "value": False,
+                        "confidence": 0.9,
+                    },
+                    {"signal_id": "floor_visible", "value": True, "confidence": 0.9},
+                ],
+            },
+            "memory": {
+                "health": "healthy",
+                "records": [
+                    # Stale retention of prior frame is not currently refreshed.
+                    _memory_record(
+                        "signal:floor_boundary_available", frame_id="f0", kind="signal"
+                    ),
+                    _memory_record("signal:floor_visible", frame_id="f1", kind="signal"),
+                ],
+            },
+        }
+        present_keys = currently_refreshed_memory_keys(present)
+        dropout_keys = currently_refreshed_memory_keys(dropout)
+        lifecycle = present_keys - dropout_keys
+        self.assertIn("signal:floor_boundary_available", lifecycle)
+        self.assertNotIn("signal:floor_visible", lifecycle)
+
+        # Fallback path (no memory records) must also skip False.
+        present_obs_only = {
+            "frame": {"frame_id": "f0"},
+            "observation": present["observation"],
+        }
+        dropout_obs_only = {
+            "frame": {"frame_id": "f1"},
+            "observation": dropout["observation"],
+        }
+        obs_lifecycle = (
+            observation_evidence_keys(present_obs_only)
+            - observation_evidence_keys(dropout_obs_only)
+        )
+        self.assertIn("signal:floor_boundary_available", obs_lifecycle)
 
     def test_physical_pi_record_fails_when_pair_unavailable(self) -> None:
         vehicle = {

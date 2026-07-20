@@ -281,7 +281,7 @@
             <tr>
               <td><span class="status active">In progress</span></td>
               <td>Physical dropout is forced and expiry/reset run through an ephemeral local reducer rather than proving the onboard lifecycle.</td>
-              <td>Pi path uses live <code>publication.memory</code> and onboard reset; lifecycle keys must be present∖dropout observed evidence (not always-on camera/floor). Awaiting successful guided Pi present/removal evidence before marking done.</td>
+              <td>Code path scores live <code>publication.memory</code>, lifecycle keys = currently-refreshed present∖dropout (False signals excluded; always-on camera/floor excluded), empty-state from onboard reset snapshot, transition from epoch/reset_count. Awaiting guided Pi present/removal evidence and redeployed core (<code>POST /autonomy/memory/reset</code>) before marking done.</td>
               <td>Remediation block 2 in review; keep active until physical validation succeeds.</td>
             </tr>
             <tr>
@@ -582,8 +582,9 @@
         </div>
         <div class="card goal">
           <h3>Implemented: Stationary Pi Memory Check</h3>
-          <p><span class="status blocked">Validation rework required</span> <strong>Review shape:</strong> deep and narrow physical.</p>
-          <p><strong>Current behavior:</strong> <code>vehicles memory check --id &lt;picar&gt;</code> samples live publications while control remains zero, but currently forces dropout, evaluates expiry/reset locally, and can mis-pair publication metadata with a later JPEG.</p>
+          <p><span class="status active">Implementation repair in progress</span> <strong>Review shape:</strong> deep and narrow physical.</p>
+          <p><strong>Current behavior:</strong> <code>vehicles memory check --id &lt;picar&gt;</code> scores present/dropout/expiry from live <code>publication.memory</code>, waits only for keys that disappeared from the current observation (always-on camera/floor may remain), and confirms reset from the onboard empty snapshot plus epoch/reset-count transition. Frame pairing uses verified <code>X-Frame-Id</code> matches with fail-closed freshness.</p>
+          <p><strong>Still open:</strong> guided physical present/remove run with reviewed evidence (requires redeployed core exposing <code>POST /autonomy/memory/reset</code>). Until that passes, remediation block 2 stays active — not closeout-ready from code alone.</p>
           <p><strong>Review question remains open:</strong> Can operators demonstrate the live onboard lifecycle with exact source-frame evidence while control stays zero?</p>
         </div>
         <div class="card interface">
@@ -605,7 +606,7 @@
             <tr><td>Operator lifecycle (reset)</td><td>Explicit reset starts a new empty epoch visible to operators on both hosts.</td><td><strong>Partial.</strong> Reset transport exists on both hosts; confirmation must require epoch/reset-count transition rather than accepting missing count or empty health alone.</td></tr>
             <tr><td>Operator lifecycle (replay)</td><td>Replay a sequence to a digestible end-state without default disk history.</td><td><strong>Landed.</strong> Offline <code>memory replay</code> + stable digest + two-pass check.</td></tr>
             <tr><td>Operator lifecycle (record)</td><td>Opt-in record without default disk history.</td><td><strong>Partial.</strong> <code>memory replay --record</code> and provenance extract landed; configured frame-count and byte bounds remain open.</td></tr>
-            <tr><td>Evaluation / visual provenance</td><td>Chase shadow + stationary Pi present/dropout/expiry/reset with source-frame extracts.</td><td><strong>Blocked.</strong> Repair synthetic lifecycle phases, preserve Chase frame identity, and verify Pi publication/JPEG pairing.</td></tr>
+            <tr><td>Evaluation / visual provenance</td><td>Chase shadow + stationary Pi present/dropout/expiry/reset with source-frame extracts.</td><td><strong>Partial.</strong> Pi frame pairing and live onboard lifecycle scoring are repaired in code; guided Pi present/remove evidence still open. Chase still needs simulator <code>frameIndex</code> preservation and shadow evaluation alignment.</td></tr>
             <tr><td>Closeout</td><td>Written judgment on usefulness and whether patterns/action are justified; activate 006 only then.</td><td><strong>Blocked.</strong> Package 5 validation integrity must pass first. Pre-plan 006 remains queued, not active.</td></tr>
           </tbody>
         </table>

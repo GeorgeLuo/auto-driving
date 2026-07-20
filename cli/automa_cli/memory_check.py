@@ -523,7 +523,8 @@ def run_physical_memory_check(
         present_keys=set(),
         prior_epoch=None,
     )
-    present_observed = observation_evidence_keys(present_cap["publication"])
+    # Keys currently refreshed by the active implementation (provenance.frame_id match).
+    present_observed = currently_refreshed_memory_keys(present_cap["publication"])
     prior_epoch = str(present_mem.get("epoch_id") or "") or None
     phase_results.append(
         _phase_result(
@@ -533,7 +534,7 @@ def run_physical_memory_check(
             live_control=present_cap["control"],
             live_frame_ids=[present_cap["frame_id"]],
             source="live_onboard_publication.memory",
-            extra={"observed_evidence_keys": sorted(present_observed)},
+            extra={"refreshed_evidence_keys": sorted(present_observed)},
         )
     )
     _emit_phase(output, phase_results[-1])
@@ -548,9 +549,9 @@ def run_physical_memory_check(
         return dropout_cap
     all_frames.append(dropout_cap["frame"])
     dropout_mem = dropout_cap["live_memory"]
-    dropout_observed = observation_evidence_keys(dropout_cap["publication"])
-    # Lifecycle keys = evidence seen in present observation but not in dropout observation.
-    # Always-refreshed camera/floor keys stay in dropout observation and are excluded.
+    dropout_observed = currently_refreshed_memory_keys(dropout_cap["publication"])
+    # Lifecycle keys = evidence refreshed in present but not still refreshed in dropout.
+    # Always-on camera/floor keys keep matching the latest frame_id and are excluded.
     lifecycle_keys = present_observed - dropout_observed
     if not lifecycle_keys:
         return CommandResult(
@@ -558,8 +559,8 @@ def run_physical_memory_check(
             "\n".join(
                 [
                     "dropout: no evidence disappeared between present and dropout observations.",
-                    f"present_observed={sorted(present_observed)}",
-                    f"dropout_observed={sorted(dropout_observed)}",
+                    f"present_refreshed={sorted(present_observed)}",
+                    f"dropout_refreshed={sorted(dropout_observed)}",
                     "Place then remove a scene object so perception drops at least one key.",
                 ]
             ),
@@ -655,17 +656,20 @@ def run_physical_memory_check(
             2,
             f"onboard memory reset failed: {reset_payload.get('error') or reset_payload}",
         )
+    # Empty-state evidence comes from the atomic reset response, not a later probe
+    # (the always-on cycle can repopulate memory before the next publication).
+    reset_snapshot = reset_payload.get("snapshot")
+    if not isinstance(reset_snapshot, dict):
+        return CommandResult(
+            2,
+            "reset: onboard reset response missing empty snapshot payload",
+        )
     after_live = do_probe()
-    reset_snapshot = live_memory_from_probe(after_live)
-    if reset_snapshot is None and isinstance(reset_payload.get("snapshot"), dict):
-        reset_snapshot = reset_payload["snapshot"]
-    if reset_snapshot is None:
-        return CommandResult(2, "reset: no live memory snapshot after onboard reset")
     reset_score = score_live_reset(
-        final=reset_snapshot,
+        reset_snapshot=reset_snapshot,
         prior_epoch=prior_epoch,
         prior_reset_count=prior_reset_count,
-        after_probe=after_live,
+        after_probe=after_live if isinstance(after_live, dict) else {},
     )
     phase_results.append(
         _phase_result(
@@ -800,11 +804,42 @@ def record_ids_from_memory(memory: dict[str, Any]) -> set[str]:
     }
 
 
-def observation_evidence_keys(publication: dict[str, Any]) -> set[str]:
-    """Ledger-style keys implied by the *current* observation/perception payload.
+def currently_refreshed_memory_keys(publication: dict[str, Any]) -> set[str]:
+    """Keys the active stage refreshed on this publication's frame.
 
-    Used to separate scene evidence that disappeared between present and dropout
-    from always-refreshed camera/floor signals that never leave the current view.
+    Prefer memory records whose ``provenance.frame_id`` matches the publication
+    frame id — that reuses the onboard implementation's admission behavior
+    (including skipping explicit-false signals) instead of re-deriving keys in
+    the CLI. Falls back to filtered observation keys when records are absent.
+    """
+
+    frame = publication.get("frame") if isinstance(publication.get("frame"), dict) else {}
+    frame_id = str(frame.get("frame_id") or "").strip()
+    memory = live_memory_from_publication(publication)
+    records = memory.get("records") if isinstance(memory, dict) else None
+    if frame_id and isinstance(records, list):
+        keys: set[str] = set()
+        for record in records:
+            if not isinstance(record, dict):
+                continue
+            provenance = (
+                record.get("provenance") if isinstance(record.get("provenance"), dict) else {}
+            )
+            if str(provenance.get("frame_id") or "").strip() != frame_id:
+                continue
+            record_id = str(record.get("record_id") or "").strip()
+            if record_id:
+                keys.add(record_id)
+        if keys:
+            return keys
+    return observation_evidence_keys(publication)
+
+
+def observation_evidence_keys(publication: dict[str, Any]) -> set[str]:
+    """Fallback: ledger-style keys from the current observation/perception.
+
+    Matches BoundedEvidenceLedger admission for signals: explicit ``False``
+    values are not treated as currently present evidence.
     """
 
     observation = (
@@ -835,6 +870,9 @@ def observation_evidence_keys(publication: dict[str, Any]) -> set[str]:
     for signal in signals:
         if not isinstance(signal, dict):
             continue
+        # Mirror ledger: skip explicit false / absent signals.
+        if signal.get("value") is False:
+            continue
         signal_id = str(signal.get("signal_id") or "").strip()
         if signal_id:
             keys.add(f"signal:{signal_id}")
@@ -843,21 +881,34 @@ def observation_evidence_keys(publication: dict[str, Any]) -> set[str]:
 
 def score_live_reset(
     *,
-    final: dict[str, Any],
+    reset_snapshot: dict[str, Any],
     prior_epoch: str | None,
     prior_reset_count: int | None,
     after_probe: dict[str, Any],
 ) -> dict[str, Any]:
-    """Require empty live state and epoch or reset_count transition."""
+    """Score empty-state from the atomic reset snapshot; transition from probe.
 
-    base = score_memory_check_phase(
-        phase_name="reset",
-        final=final,
-        present_keys=set(),
-        prior_epoch=prior_epoch,
+    The always-on cycle may repopulate memory before a later probe, so the probe
+    is used only for epoch/reset_count transition — not emptiness.
+    """
+
+    records = (
+        reset_snapshot.get("records") if isinstance(reset_snapshot.get("records"), list) else []
     )
-    after_epoch = str(after_probe.get("last_epoch_id") or final.get("epoch_id") or "")
-    epoch_changed = bool(prior_epoch) and after_epoch and after_epoch != prior_epoch
+    try:
+        count = int(reset_snapshot.get("record_count") if reset_snapshot.get("record_count") is not None else len(records))
+    except (TypeError, ValueError):
+        count = len(records)
+    health = str(reset_snapshot.get("health") or "")
+    empty_ok = count == 0 and health in {"empty", "unavailable"} and not records
+
+    snapshot_epoch = str(reset_snapshot.get("epoch_id") or "")
+    after_epoch = str(after_probe.get("last_epoch_id") or snapshot_epoch or "")
+    epoch_changed = bool(prior_epoch) and bool(after_epoch) and after_epoch != prior_epoch
+    # Reset response epoch alone can also prove transition if probe is lagging.
+    snapshot_epoch_changed = (
+        bool(prior_epoch) and bool(snapshot_epoch) and snapshot_epoch != prior_epoch
+    )
     reset_count = after_probe.get("reset_count")
     count_bumped = False
     if prior_reset_count is not None and reset_count is not None:
@@ -865,34 +916,49 @@ def score_live_reset(
             count_bumped = int(reset_count) > int(prior_reset_count)
         except (TypeError, ValueError):
             count_bumped = False
-    transition_ok = epoch_changed or count_bumped
-    # Must not accept empty health alone without a transition signal.
+    transition_ok = epoch_changed or snapshot_epoch_changed or count_bumped
+
+    if not empty_ok:
+        return {
+            "passed": False,
+            "reason": (
+                "onboard reset snapshot was not empty "
+                f"(health={health!r} record_count={count})"
+            ),
+            "prior_epoch": prior_epoch,
+            "epoch_id": after_epoch or snapshot_epoch,
+            "prior_reset_count": prior_reset_count,
+            "reset_count": reset_count,
+            "record_ids": sorted(record_ids_from_memory(reset_snapshot)),
+        }
     if not transition_ok:
         return {
             "passed": False,
             "reason": (
                 "reset did not show epoch_id or reset_count transition on the live host "
                 f"(prior_epoch={prior_epoch!r} after_epoch={after_epoch!r} "
+                f"snapshot_epoch={snapshot_epoch!r} "
                 f"prior_reset_count={prior_reset_count} after_reset_count={reset_count})"
             ),
             "prior_epoch": prior_epoch,
-            "epoch_id": after_epoch,
+            "epoch_id": after_epoch or snapshot_epoch,
             "prior_reset_count": prior_reset_count,
             "reset_count": reset_count,
-        }
-    if not base.get("passed"):
-        return {
-            **base,
-            "prior_reset_count": prior_reset_count,
-            "reset_count": reset_count,
-            "reason": base.get("reason"),
+            "record_ids": [],
         }
     return {
-        **base,
         "passed": True,
-        "reason": "onboard reset produced empty live state with epoch/reset_count transition",
+        "reason": (
+            "onboard reset returned empty snapshot with epoch/reset_count transition "
+            "(post-reset probe may already show repopulated always-on evidence)"
+        ),
+        "prior_epoch": prior_epoch,
+        "epoch_id": after_epoch or snapshot_epoch,
         "prior_reset_count": prior_reset_count,
         "reset_count": reset_count,
+        "record_ids": [],
+        "post_reset_probe_record_count": after_probe.get("last_record_count"),
+        "post_reset_probe_health": after_probe.get("last_health"),
     }
 
 

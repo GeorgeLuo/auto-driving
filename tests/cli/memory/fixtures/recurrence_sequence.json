@@ -1,0 +1,92 @@
+{
+  "schema": "automa_memory_observation_sequence_v0",
+  "description": "Three-frame sequence: left boundary appears, persists, then clears.",
+  "frames": [
+    {
+      "frame_id": "frame_000",
+      "frame_index": 0,
+      "timestamp_ms": 1000,
+      "observation": {
+        "observation_id": "obs_000",
+        "created_at_ms": 1000,
+        "sensor_snapshot": {},
+        "perception_plugin_id": "lightweight_observer",
+        "summary": ["frame 0 left boundary"],
+        "things": [
+          {
+            "thing_id": "floor_boundary_000",
+            "kind": "floor_boundary",
+            "label": "boundary",
+            "confidence": 0.9,
+            "location": {
+              "frame": "image",
+              "zone": "left",
+              "bbox_xyxy_norm": [0.05, 0.4, 0.35, 0.95]
+            },
+            "source_plugin_id": "floor-plane-v0"
+          }
+        ],
+        "signals": [
+          {
+            "signal_id": "floor_visible",
+            "value": true,
+            "confidence": 0.95
+          }
+        ]
+      }
+    },
+    {
+      "frame_id": "frame_001",
+      "frame_index": 1,
+      "timestamp_ms": 1200,
+      "observation": {
+        "observation_id": "obs_001",
+        "created_at_ms": 1200,
+        "sensor_snapshot": {},
+        "perception_plugin_id": "lightweight_observer",
+        "summary": ["frame 1 boundary still left"],
+        "things": [
+          {
+            "thing_id": "floor_boundary_000",
+            "kind": "floor_boundary",
+            "label": "boundary",
+            "confidence": 0.88,
+            "location": {
+              "frame": "image",
+              "zone": "left",
+              "bbox_xyxy_norm": [0.06, 0.41, 0.36, 0.95]
+            },
+            "source_plugin_id": "floor-plane-v0"
+          }
+        ],
+        "signals": [
+          {
+            "signal_id": "floor_visible",
+            "value": true,
+            "confidence": 0.94
+          }
+        ]
+      }
+    },
+    {
+      "frame_id": "frame_002",
+      "frame_index": 2,
+      "timestamp_ms": 1400,
+      "observation": {
+        "observation_id": "obs_002",
+        "created_at_ms": 1400,
+        "sensor_snapshot": {},
+        "perception_plugin_id": "lightweight_observer",
+        "summary": ["frame 2 clear floor"],
+        "things": [],
+        "signals": [
+          {
+            "signal_id": "floor_visible",
+            "value": true,
+            "confidence": 0.99
+          }
+        ]
+      }
+    }
+  ]
+}

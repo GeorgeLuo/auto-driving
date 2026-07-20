@@ -104,6 +104,7 @@ The command groups intentionally distinguish different kinds of state:
 | `vehicles stream perception` | Displays rolling latest perception. Chase uses the local automation worker; PiCar polls onboard `/autonomy/observation/latest` and opens a local frame-matched perception view (link to Memory map). |
 | `vehicles stream memory` | Inspects live memory as a key→value ledger (terminal + local `/memory` map page on PiCar). Keys are `record_id`s; click a key to see the retained value. |
 | `vehicles memory reset` | Clears live retained evidence on Chase or PiCar and starts a new empty epoch (visible via info/stream/Memory map). Does not move the vehicle. |
+| `vehicles memory replay` | Offline: feeds a fixed observation sequence through staged (or ephemeral) memory and reports a stable end-state digest. Writes no history by default. |
 | `vehicles perception check` | Guided stationary PiCar placement check (clear/left/center/right/removed by default); never moves the car. Use `--record` for review artifacts. |
 | `vehicles perception qualify` | Offline common-frame compare of packaged control vs one lab candidate on labeled physical-check frames; emits promote/reject. |
 | `vehicles perception viability` | 60s onboard cadence/freshness/RSS measurement for a physical PiCar. |

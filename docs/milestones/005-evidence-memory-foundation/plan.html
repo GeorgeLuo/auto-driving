@@ -519,12 +519,12 @@
       </details>
 
       <details class="work-item" data-status="active" open>
-        <summary><span>5. Build Operator And Evaluation Workflows</span><span class="status active">In progress</span></summary>
+        <summary><span>5. Build Operator And Evaluation Workflows</span><span class="status active">Re-coursed — deploy proof first</span></summary>
         <div class="work-body"><ul>
-          <li><strong>Partial:</strong> <code>vehicles update memory</code> and <code>vehicles info memory</code> stage/inspect <code>runtime/memory/active.json</code>; autonomy deploy installs the memory activation on the Pi.</li>
-          <li>Still open: concise live status/stream, reset, deterministic replay, and opt-in recording through Automa.</li>
-          <li>Still open: live <code>chaser-depth-obstacles</code> shadow run with source-frame-to-memory visual review.</li>
-          <li>Still open: stationary guided Pi memory check with tracked visual provenance extract.</li>
+          <li><strong>Done earlier:</strong> <code>vehicles update memory</code> / <code>info memory</code>; autonomy deploy installs <code>runtime/memory/active.json</code>.</li>
+          <li><strong>Current (re-course from live smoke):</strong> autonomy <code>--restart</code> must verify a live memory stage matching the shipped activation. Silent “activation on disk, stage not loaded” is a fail with guidance to update <strong>core</strong> (manage.py harness owns the load path) then re-run autonomy. Document the core/autonomy deploy split for operators.</li>
+          <li><strong>Deferred within package 5:</strong> concise live status/stream, reset, deterministic replay, opt-in recording; Chase shadow visual review; stationary Pi memory check with tracked visual provenance. Those remain required for closeout but follow deploy honesty.</li>
+          <li><strong>Why re-course:</strong> Pi smoke showed autonomy alone can install memory activation while a stale core harness never loads it—no error. Closing that footgun is prerequisite to trusting physical evaluation workflows.</li>
         </ul></div>
       </details>
 
@@ -538,7 +538,7 @@
       </details>
 
       <div class="progress-track" aria-label="Milestone work packages completed: 4 of 6"><div class="progress-fill" style="width: 66.7%;"></div></div>
-      <p class="small">Progress: packages 1–4 done. Package 5 in progress: stage/info/deploy for memory are available; live stream, replay, and visual checks remain.</p>
+      <p class="small">Progress: packages 1–4 done. Package 5 re-coursed: prove memory is live after autonomy deploy (core vs autonomy split) before stream/check visual workflows.</p>
     </section>
 
     <section class="panel">
@@ -553,6 +553,7 @@
             <li>Operator inspection, streaming, replay, and opt-in recording.</li>
             <li>Deterministic sequence tests and live, visually reviewable simulator evaluation.</li>
             <li>Non-moving physical activation, state inspection, and recorded visual-provenance validation.</li>
+            <li>Honest physical deploy verification that a shipped memory activation is actually live (or fails with core-update guidance).</li>
           </ul>
         </div>
         <div class="card risk">
@@ -564,6 +565,7 @@
             <li>Semantic object recognition or universal object identity.</li>
             <li>Durable database, cloud memory, or default frame archives.</li>
             <li>Model training, VLM integration, or privileged simulator state as input.</li>
+            <li>Merging core and autonomy into one deploy command, or rewriting manage.py ownership for this milestone.</li>
           </ul>
         </div>
       </div>
@@ -630,6 +632,7 @@
             <tr><td>2026-07-18</td><td>Pass MemorySnapshot through AutonomySnapshot on both hosts before packaging a production reducer.</td><td>Engines and runtime status must see the same inspectable memory field whether or not a concrete implementation is activated; optional activation keeps idle deployments safe.</td></tr>
             <tr><td>2026-07-18</td><td>Ship BoundedEvidenceLedger as the first packaged memory implementation without identity claims.</td><td>A recency ledger of things/signals is enough to exercise retention, dropout, expiry, and capacity while remaining evidence-not-truth and loadable through the existing activation document.</td></tr>
             <tr><td>2026-07-18</td><td>Land memory stage/info CLI and autonomy-deploy activation before live stream or visual checks.</td><td>Operators need a supported way to select bounded_evidence and ship runtime/memory/active.json; inspection workflows can follow once activation is routine on Chase and Pi.</td></tr>
+            <tr><td>2026-07-19</td><td>Re-course package 5 to prove live memory after autonomy deploy before stream/check work.</td><td>Live smoke installed memory activation via autonomy while a stale core manage.py never loaded the stage—success without memory. Verify matching implementation_id on restart, fail with core-then-autonomy guidance, and document the deploy split. Stream/reset/visual checks remain in package 5 but follow this honesty gate.</td></tr>
           </tbody>
         </table>
       </div>

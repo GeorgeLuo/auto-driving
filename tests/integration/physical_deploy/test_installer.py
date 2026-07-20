@@ -85,7 +85,10 @@ class PhysicalDeployTests(unittest.TestCase):
                 "drive_mode": "user",
                 "autonomy": {
                     "engine": "autonomy.runtime.engine:IdleAutonomyEngine",
-                    "components": {"perception": {"algorithm": "lightweight_observer"}},
+                    "components": {
+                        "perception": {"algorithm": "lightweight_observer"},
+                        "memory": {"implementation_id": "bounded_evidence"},
+                    },
                 },
             }
         ).encode("utf-8")
@@ -95,11 +98,13 @@ class PhysicalDeployTests(unittest.TestCase):
                 target=target,
                 expected_engine_spec="autonomy.runtime.engine:IdleAutonomyEngine",
                 expected_perception_algorithm="lightweight_observer",
+                expected_memory_implementation="bounded_evidence",
                 timeout_s=3.0,
             )
 
         self.assertTrue(verification["ok"])
         self.assertEqual(verification["drive_mode"], "user")
+        self.assertEqual(verification["memory_implementation"], "bounded_evidence")
 
         response.read.return_value = json.dumps(
             {
@@ -107,7 +112,10 @@ class PhysicalDeployTests(unittest.TestCase):
                 "drive_mode": "local",
                 "autonomy": {
                     "engine": "autonomy.runtime.engine:IdleAutonomyEngine",
-                    "components": {"perception": {"algorithm": "lightweight_observer"}},
+                    "components": {
+                        "perception": {"algorithm": "lightweight_observer"},
+                        "memory": {"implementation_id": "bounded_evidence"},
+                    },
                 },
             }
         ).encode("utf-8")
@@ -117,6 +125,65 @@ class PhysicalDeployTests(unittest.TestCase):
                     target=target,
                     expected_engine_spec="autonomy.runtime.engine:IdleAutonomyEngine",
                     expected_perception_algorithm="lightweight_observer",
+                    expected_memory_implementation="bounded_evidence",
+                    timeout_s=3.0,
+                )
+
+    def test_runtime_verification_requires_live_memory_when_activation_shipped(self) -> None:
+        target = PhysicalTarget(
+            vehicle_id="piracer",
+            vehicle={
+                "provider": "picar",
+                "connection": {"base_url": "http://piracer.local:8887"},
+            },
+            provider="picar",
+            ssh_target="piracer@piracer.local",
+            pi_home="/home/piracer",
+        )
+        response = MagicMock()
+        response.__enter__.return_value = response
+        # Stale core: perception ok, no memory component despite shipped activation.
+        response.read.return_value = json.dumps(
+            {
+                "ok": True,
+                "drive_mode": "user",
+                "autonomy": {
+                    "engine": "autonomy.runtime.engine:IdleAutonomyEngine",
+                    "components": {"perception": {"algorithm": "lightweight_observer"}},
+                },
+            }
+        ).encode("utf-8")
+
+        with patch("cli.automa_cli.deploy.urllib_request.urlopen", return_value=response):
+            with self.assertRaisesRegex(RuntimeError, "no live memory stage"):
+                _verify_physical_autonomy_runtime(
+                    target=target,
+                    expected_engine_spec="autonomy.runtime.engine:IdleAutonomyEngine",
+                    expected_perception_algorithm="lightweight_observer",
+                    expected_memory_implementation="bounded_evidence",
+                    timeout_s=3.0,
+                )
+
+        response.read.return_value = json.dumps(
+            {
+                "ok": True,
+                "drive_mode": "user",
+                "autonomy": {
+                    "engine": "autonomy.runtime.engine:IdleAutonomyEngine",
+                    "components": {
+                        "perception": {"algorithm": "lightweight_observer"},
+                        "memory": {"implementation_id": "other_memory"},
+                    },
+                },
+            }
+        ).encode("utf-8")
+        with patch("cli.automa_cli.deploy.urllib_request.urlopen", return_value=response):
+            with self.assertRaisesRegex(RuntimeError, "expected 'bounded_evidence'"):
+                _verify_physical_autonomy_runtime(
+                    target=target,
+                    expected_engine_spec="autonomy.runtime.engine:IdleAutonomyEngine",
+                    expected_perception_algorithm="lightweight_observer",
+                    expected_memory_implementation="bounded_evidence",
                     timeout_s=3.0,
                 )
 

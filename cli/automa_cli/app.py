@@ -882,7 +882,12 @@ def build_parser() -> argparse.ArgumentParser:
     autonomy = update_commands.add_parser(
         "autonomy",
         help="Deploy a versioned autonomy controller release to a physical PiCar.",
-        description="Deploy a versioned autonomy controller release to a physical PiCar.",
+        description=(
+            "Deploy a versioned autonomy controller release to a physical PiCar. "
+            "With --restart, verifies engine, perception, and live memory stage. "
+            "Memory activation ships here; manage.py load path ships with core—if "
+            "verification reports no memory stage, update core then re-run autonomy."
+        ),
     )
     autonomy.add_argument(
         "--id",

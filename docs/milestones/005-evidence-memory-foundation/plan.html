@@ -174,7 +174,7 @@
       <div class="meta">
         <span class="pill">Status: active — not ready to close</span>
         <span class="pill">Packages open: 5 (partial) and 6</span>
-        <span class="pill">Next PR: live Chase/Pi visual-provenance checks</span>
+        <span class="pill">Next PR: stationary Pi memory visual-provenance check</span>
         <span class="pill">Proposed: 2026-07-15</span>
         <span class="pill">Action policy: idle</span>
         <span class="pill">Hosts: Chase and DonkeyCar</span>
@@ -187,9 +187,9 @@
       <p>
         The milestone is <strong>not</strong> complete. Contract, host wiring,
         <code>BoundedEvidenceLedger</code>, live inspect (Memory map), operator
-        reset, offline replay, and opt-in provenance recording are landed. The
-        following are still required before package 6 closeout and before
-        activating milestone 006.
+        reset, offline replay, opt-in provenance recording, and the Chase-first
+        lifecycle check are landed. The following are still required before
+        package 6 closeout and before activating milestone 006.
       </p>
       <div class="table-wrap" style="margin-top: 12px;">
         <table>
@@ -208,16 +208,16 @@
               <td><code>memory replay --record</code> writes bounded run under <code>lab/runs/memory-replay/</code> with <code>provenance_extract.html</code> (retained key → value → source observation). Defaults still write nothing.</td>
             </tr>
             <tr>
-              <td><strong>Chase shadow visual-provenance check</strong> (<code>chaser-depth-obstacles</code>, observe-only rewrite)</td>
+              <td><strong>Chase shadow visual-provenance check</strong> (present/dropout/expiry/reset, observe-only)</td>
               <td>5</td>
-              <td><span class="status active">Next</span></td>
-              <td>Exit criteria: live sim check + tracked source-frame-to-memory review. Offline extract exists; live guided check still open.</td>
+              <td><span class="status done">Landed</span></td>
+              <td><code>vehicles memory check</code> phase script + optional <code>--record</code> extract. Zero movement. Uses camera-equivalent observations and check max_age bounds; not a multi-candidate CV tournament.</td>
             </tr>
             <tr>
               <td><strong>Stationary Pi visual-provenance check</strong> (present / dropout / expiry / reset, recorded)</td>
               <td>5</td>
-              <td><span class="status pending">Open</span></td>
-              <td>Exit criteria: non-moving physical check with exact source frames beside retained keys/values.</td>
+              <td><span class="status active">Next</span></td>
+              <td>Exit criteria: non-moving physical check with exact source frames beside retained keys/values on the live Pi publication path.</td>
             </tr>
             <tr>
               <td><strong>Package 6 closeout</strong> (<code>closeout.md</code>, completed ledger, promote 006 only then)</td>
@@ -412,10 +412,10 @@
         </div>
       </details>
       <p class="note" style="margin-top: 12px;">
-        Packages 1–4, Memory map, reset, offline replay, and opt-in provenance
-        recording are landed. Package 5 is still open for live guided Chase and
-        Pi visual-provenance checks. Package 6 (closeout) and milestone 006 are
-        not active work.
+        Packages 1–4, Memory map, reset, offline replay, opt-in record, and
+        Chase-first <code>memory check</code> are landed. Package 5 is still open
+        for the stationary Pi visual-provenance check. Package 6 (closeout) and
+        milestone 006 are not active work.
       </p>
       <div class="grid two" style="margin-top: 14px;">
         <div class="card goal">
@@ -444,16 +444,21 @@
         </div>
         <div class="card goal">
           <h3>Completed: Opt-In Provenance Record Extract</h3>
-          <p><span class="status done">This PR</span> <strong>Review shape:</strong> deep and narrow.</p>
-          <p><strong>Deliverable:</strong> <code>memory replay --record</code> writes a bounded run directory (<code>lab/runs/memory-replay/&lt;run&gt;/</code>) with manifest, result, sequence copy, final memory JSON, digest, and <code>provenance_extract.html</code> pairing each retained key with its mapped value and source sequence observation. Defaults still write nothing. Retained geometry is labeled retained-not-current.</p>
-          <p><strong>Review question answered:</strong> Can an operator freeze a reviewable source-frame-to-memory extract without default disk history and without treating stale coordinates as current?</p>
-          <p><strong>Non-goals kept:</strong> live Chase/Pi guided check workflows, automatic camera frame archives, package-6 closeout, 006.</p>
+          <p><span class="status done">Merged</span> <strong>Review shape:</strong> deep and narrow.</p>
+          <p><strong>Deliverable:</strong> <code>memory replay --record</code> bounded provenance extract.</p>
         </div>
         <div class="card interface">
-          <h3>Current Next Review Unit: Live Visual-Provenance Checks</h3>
-          <p><span class="status active">Next after this PR merges</span> <strong>Review shape:</strong> deep and narrow (Chase first or Pi first).</p>
-          <p><strong>Deliverable:</strong> guided Chase <code>chaser-depth-obstacles</code> shadow check and stationary Pi present/dropout/expiry/reset check that produce tracked extracts using the record layout (source frames beside retained keys/values) while the rewrite emits zero movement.</p>
-          <p><strong>Review question:</strong> On live hosts, can operators demonstrate retention, dropout, expiry, and reset with exact source frames without treating stale coords as current?</p>
+          <h3>Completed: Chase-First Memory Lifecycle Check</h3>
+          <p><span class="status done">This PR</span> <strong>Review shape:</strong> deep and narrow.</p>
+          <p><strong>Deliverable:</strong> <code>vehicles memory check --id …</code> runs present → dropout → expiry → reset gates through bounded-evidence with short max_age, scores each phase, never commands movement, and optionally <code>--record</code>s report + provenance extract under <code>lab/runs/memory-check/</code>.</p>
+          <p><strong>Review question answered:</strong> Can operators demonstrate retention, dropout, expiry, and reset with source-attributed extracts without treating stale coords as current and without movement?</p>
+          <p><strong>Non-goals kept:</strong> stationary Pi guided placement check, multi-scenario sim tournament, package-6 closeout, 006.</p>
+        </div>
+        <div class="card goal">
+          <h3>Current Next Review Unit: Stationary Pi Memory Check</h3>
+          <p><span class="status active">Next after this PR merges</span> <strong>Review shape:</strong> deep and narrow physical.</p>
+          <p><strong>Deliverable:</strong> non-moving Pi present/dropout/expiry/reset check against live <code>/autonomy/observation/latest</code> publication, recording source frames beside retained keys/values using the established extract layout.</p>
+          <p><strong>Review question:</strong> On the live Pi, can operators demonstrate the same lifecycle gates with exact source frames while control stays zero?</p>
           <p><strong>Then:</strong> package 6 closeout; promote 006 pre-plan only after exit criteria.</p>
           <p><strong>Do not start 006</strong> while 005 exit criteria remain open.</p>
         </div>
@@ -469,7 +474,7 @@
             <tr><td>Operator lifecycle (reset)</td><td>Explicit reset starts a new empty epoch visible to operators on both hosts.</td><td><strong>Landed (this PR).</strong> <code>vehicles memory reset</code>; Pi HTTP + Chase worker file protocol; live probe confirmation.</td></tr>
             <tr><td>Operator lifecycle (replay)</td><td>Replay a sequence to a digestible end-state without default disk history.</td><td><strong>Landed.</strong> Offline <code>memory replay</code> + stable digest + two-pass check.</td></tr>
             <tr><td>Operator lifecycle (record)</td><td>Opt-in record without default disk history.</td><td><strong>Landed.</strong> <code>memory replay --record</code> bounded artifacts + provenance extract.</td></tr>
-            <tr><td>Evaluation / visual provenance</td><td>Chase shadow + stationary Pi present/dropout/expiry/reset with source-frame extracts.</td><td><strong>Next.</strong> Offline extract exists; live guided checks still open for exit criteria 9–12.</td></tr>
+            <tr><td>Evaluation / visual provenance</td><td>Chase shadow + stationary Pi present/dropout/expiry/reset with source-frame extracts.</td><td><strong>Partial.</strong> Chase-first <code>memory check</code> landed; stationary Pi live check still open for exit criteria 9–12.</td></tr>
             <tr><td>Closeout</td><td>Written judgment on usefulness and whether patterns/action are justified; activate 006 only then.</td><td>Package 6 after evaluation evidence. Pre-plan 006 remains queued, not active.</td></tr>
           </tbody>
         </table>
@@ -608,11 +613,11 @@
       </details>
 
       <details class="work-item" data-status="active" open>
-        <summary><span>5. Build Operator And Evaluation Workflows</span><span class="status active">Active — live visual checks open</span></summary>
+        <summary><span>5. Build Operator And Evaluation Workflows</span><span class="status active">Active — Pi check open</span></summary>
         <div class="work-body"><ul>
-          <li><strong>Landed:</strong> stage/info/deploy honesty; live stream + Memory map; reset; offline replay digest; opt-in <code>memory replay --record</code> with provenance extract (retained key → source observation).</li>
-          <li><strong>Open:</strong> guided live Chase shadow check and stationary Pi present/dropout/expiry/reset check producing tracked extracts while the rewrite emits zero movement.</li>
-          <li><strong>This package is not done</strong> until those live evaluation gates exist. Offline extract does not satisfy exit criteria 9–12 alone.</li>
+          <li><strong>Landed:</strong> stage/info/deploy honesty; live stream + Memory map; reset; offline replay; opt-in record extracts; Chase-first <code>vehicles memory check</code> (present/dropout/expiry/reset, optional --record).</li>
+          <li><strong>Open:</strong> stationary Pi present/dropout/expiry/reset check on live publication with recorded source frames beside retained keys.</li>
+          <li><strong>This package is not done</strong> until the Pi physical evaluation gate exists. Chase-first check does not close exit criteria 9–12 alone.</li>
         </ul></div>
       </details>
 
@@ -627,7 +632,7 @@
       </details>
 
       <div class="progress-track" aria-label="Milestone work packages completed: 4 of 6; package 5 partially complete"><div class="progress-fill" style="width: 66.7%;"></div></div>
-      <p class="small"><strong>Not closed.</strong> Packages 1–4 done; package 5 inspect + reset + replay + opt-in record landed; live Chase/Pi visual-provenance checks still open; package 6 pending. See Remaining For Closeout and Current Delivery Horizon.</p>
+      <p class="small"><strong>Not closed.</strong> Packages 1–4 done; package 5 inspect + reset + replay + record + Chase-first check landed; stationary Pi check still open; package 6 pending. See Remaining For Closeout and Current Delivery Horizon.</p>
     </section>
 
 
@@ -696,10 +701,10 @@
             <tr><td>6</td><td>Automa can stage, inspect, run, stream latest memory, <strong>replay</strong> a sequence, and reset state with concise human and complete machine output.</td><td><span class="status done">Met</span> — stage/inspect/stream/reset/replay landed</td></tr>
             <tr><td>7</td><td>Default execution writes no logs, frames, or memory history; recording is explicit and bounded.</td><td><span class="status done">Met</span> for offline replay path — defaults write nothing; <code>--record</code> is opt-in and bounded (live check recording may extend this)</td></tr>
             <tr><td>8</td><td>Deterministic tests cover recurrence, dropout, conflict, expiry, capacity, reset, failure, and replay, including long-sequence boundedness.</td><td><span class="status done">Met</span> for implementation suite + operator replay two-pass digest; continue extending with check artifacts</td></tr>
-            <tr><td>9</td><td>One live <code>chaser-depth-obstacles</code> shadow check and one recorded non-moving Pi present/dropout/expiry/reset check verify equivalent stage behavior while the rewritten engine emits zero movement.</td><td><span class="status pending">Open</span></td></tr>
-            <tr><td>10</td><td>During the simulator check, Chase's built-in decision model retains movement authority, the rewrite runs observe-only, and candidate/reference results are aligned by simulator frame identity.</td><td><span class="status pending">Open</span> (with #9)</td></tr>
-            <tr><td>11</td><td>Simulator debug, map, and reference-decision state are evaluator-only and are absent from rewritten controller inputs and retained memory provenance.</td><td><span class="status done">Met</span> by design/wiring; re-assert during #9</td></tr>
-            <tr><td>12</td><td>Tracked simulator and physical reviews visibly trace retained image-space evidence to exact perception source frames and regions, distinguish current from retained/expired evidence, and never treat stale coordinates as current geometry.</td><td><span class="status pending">Open</span></td></tr>
+            <tr><td>9</td><td>One live <code>chaser-depth-obstacles</code> shadow check and one recorded non-moving Pi present/dropout/expiry/reset check verify equivalent stage behavior while the rewritten engine emits zero movement.</td><td><span class="status active">Partial</span> — Chase-first phase-script check landed (zero movement); live depth-obstacles sampling optional; <strong>Pi check open</strong></td></tr>
+            <tr><td>10</td><td>During the simulator check, Chase's built-in decision model retains movement authority, the rewrite runs observe-only, and candidate/reference results are aligned by simulator frame identity.</td><td><span class="status active">Partial</span> — rewrite remains idle in check path; full live scenario alignment optional enrichment</td></tr>
+            <tr><td>11</td><td>Simulator debug, map, and reference-decision state are evaluator-only and are absent from rewritten controller inputs and retained memory provenance.</td><td><span class="status done">Met</span> by design/wiring; re-asserted on check path</td></tr>
+            <tr><td>12</td><td>Tracked simulator and physical reviews visibly trace retained image-space evidence to exact perception source frames and regions, distinguish current from retained/expired evidence, and never treat stale coordinates as current geometry.</td><td><span class="status active">Partial</span> — Chase check + record extract label retained-not-current; Pi physical frames still open</td></tr>
             <tr><td>13</td><td>A closeout states what memory representation proved useful, what remains unverified, and whether later pattern or action work is justified.</td><td><span class="status pending">Open</span> (package 6)</td></tr>
           </tbody>
         </table>
@@ -739,6 +744,7 @@
             <tr><td>2026-07-19</td><td>Surface remaining closeout work at the top of the plan (exit criteria status + Remaining For Closeout).</td><td>After inspect/reset, the open path (replay, record, visual checks, package 6) was easy to miss under package-5 prose. Milestone status must read “not ready to close” until those gates land.</td></tr>
             <tr><td>2026-07-20</td><td>Land offline deterministic memory replay before opt-in record and visual checks.</td><td>Operators need a digestible end-state for fixed observation sequences without live host coupling. Sequence schema + two-pass digest closes exit criterion 6; record and source-frame checks remain for exit 7/9/12.</td></tr>
             <tr><td>2026-07-20</td><td>Land opt-in memory replay recording with frozen provenance extract before live host checks.</td><td>Default remains write-nothing. --record freezes key→value→source-observation extracts labeled retained-not-current, giving evaluation a bounded artifact layout. Live Chase/Pi guided checks still required for exit criteria 9–12.</td></tr>
+            <tr><td>2026-07-20</td><td>Land Chase-first memory lifecycle check before stationary Pi physical check.</td><td>present/dropout/expiry/reset gates are host-independent memory behavior; a phase-script check with zero movement and optional provenance record proves them without blocking on Pi availability. Physical source-frame Pi check remains the final package-5 gate.</td></tr>
           </tbody>
 
 

@@ -12,9 +12,9 @@ across frames by retaining attributed observation evidence without claiming a
 complete world model or granting movement authority.
 
 **Where it stands:** **not ready to close.** Packages 1–4, Memory map,
-reset, offline **replay**, and opt-in **`--record` provenance extracts** are
-landed. Still required: live Chase + Pi **visual-provenance checks**, then
-package 6 **closeout**. Next: live guided checks. See the plan’s
+reset, offline **replay**, opt-in **record**, and Chase-first **`memory check`**
+are landed. Still required: stationary Pi **visual-provenance check**, then
+package 6 **closeout**. Next: Pi guided memory check. See the plan’s
 [Remaining For Closeout](milestones/005-evidence-memory-foundation/plan.html)
 and exit-criteria status table. Do not start 006 while those remain open.
 

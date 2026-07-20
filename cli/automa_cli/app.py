@@ -21,7 +21,7 @@ from .decision import (
     update_vehicle_decision,
 )
 from .lab_plugins import list_perception_candidates, setup_perception_candidate
-from .memory import get_vehicle_memory_info, update_vehicle_memory
+from .memory import get_vehicle_memory_info, stream_vehicle_memory, update_vehicle_memory
 from .operations import run_vehicle_startup_check
 from implementations.memory import (
     DEFAULT_MEMORY_IMPLEMENTATION,
@@ -374,6 +374,44 @@ def build_parser() -> argparse.ArgumentParser:
         help="Do not clear the terminal before each render.",
     )
     perception_stream.set_defaults(handler=_handle_vehicles_stream_perception)
+
+    memory_stream = stream_commands.add_parser(
+        "memory",
+        help="Show live memory lifecycle health, replacing the terminal view as it updates.",
+        description=(
+            "Show live memory lifecycle health (implementation, retained count, epoch, "
+            "failures). PiCar polls /autonomy/status memory component; Chase reads the "
+            "local automation worker state. No frames or history are written."
+        ),
+    )
+    memory_stream.add_argument(
+        "--id",
+        required=True,
+        dest="vehicle_id",
+        help="Vehicle id from `automa vehicles active`.",
+    )
+    memory_stream.add_argument(
+        "--refresh-s",
+        type=float,
+        default=0.5,
+        help="Refresh cadence for the replacing terminal view.",
+    )
+    memory_stream.add_argument(
+        "--once",
+        action="store_true",
+        help="Render one snapshot and exit.",
+    )
+    memory_stream.add_argument(
+        "--no-clear",
+        action="store_true",
+        help="Do not clear the terminal before each render.",
+    )
+    memory_stream.add_argument(
+        "--json",
+        action="store_true",
+        help="Print machine-readable live memory snapshots (one JSON object per refresh).",
+    )
+    memory_stream.set_defaults(handler=_handle_vehicles_stream_memory)
 
     info = vehicle_commands.add_parser("info", help="Inspect locally staged controller configuration.")
     info_commands = info.add_subparsers(dest="info_command", required=True)
@@ -1291,6 +1329,7 @@ def _handle_vehicles_stream_help(args: argparse.Namespace) -> int:
                 "automa vehicles stream commands",
                 "",
                 "- perception  show latest local automation perception output",
+                "- memory      show live memory lifecycle health",
                 "- help        show this summary",
                 "",
                 "Detailed help:",
@@ -1411,6 +1450,20 @@ def _handle_vehicles_stream_perception(args: argparse.Namespace) -> int:
         refresh_s=args.refresh_s,
         once=args.once,
         no_clear=args.no_clear,
+        output=sys.stdout,
+    )
+    if result.message:
+        print(result.message)
+    return result.exit_code
+
+
+def _handle_vehicles_stream_memory(args: argparse.Namespace) -> int:
+    result = stream_vehicle_memory(
+        vehicle_id=args.vehicle_id,
+        refresh_s=args.refresh_s,
+        once=args.once,
+        no_clear=args.no_clear,
+        json_output=args.json,
         output=sys.stdout,
     )
     if result.message:

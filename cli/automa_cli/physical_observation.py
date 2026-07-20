@@ -16,6 +16,7 @@ RUNTIME_ROOT = Path(os.environ.get("AUTOMA_RUNTIME_ROOT", ROOT / "runtime" / "ve
 
 LATEST_JSON_PATH = "/autonomy/observation/latest"
 LATEST_FRAME_PATH = "/autonomy/observation/latest/frame.jpg"
+STATUS_JSON_PATH = "/autonomy/status"
 PHYSICAL_RUNTIME_DIRNAME = "physical_observation"
 
 
@@ -29,6 +30,40 @@ def physical_view_status(vehicle_id: str, *, timeout_s: float = 0.25) -> dict[st
         physical_observation_dir(vehicle_id),
         timeout_s=timeout_s,
     )
+
+
+def fetch_autonomy_status(
+    base_url: str,
+    *,
+    timeout_s: float = 3.0,
+) -> dict[str, Any]:
+    """GET /autonomy/status from a physical Donkey runtime."""
+
+    url = f"{base_url.rstrip('/')}{STATUS_JSON_PATH}"
+    try:
+        with urllib.request.urlopen(url, timeout=max(0.1, float(timeout_s))) as response:
+            body = response.read()
+            status_code = getattr(response, "status", 200)
+    except urllib.error.HTTPError as exc:
+        body = exc.read() if exc.fp is not None else b""
+        status_code = int(exc.code)
+        if not body:
+            raise ConnectionError(
+                f"GET {url} failed with HTTP {status_code} and empty body"
+            ) from exc
+    except urllib.error.URLError as exc:
+        raise ConnectionError(f"GET {url} failed: {exc.reason}") from exc
+    except TimeoutError as exc:
+        raise ConnectionError(f"GET {url} timed out after {timeout_s}s") from exc
+
+    try:
+        payload = json.loads(body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ConnectionError(f"GET {url} returned non-JSON body") from exc
+    if not isinstance(payload, dict):
+        raise ConnectionError(f"GET {url} returned a non-object JSON payload")
+    payload.setdefault("http_status", status_code)
+    return payload
 
 
 def fetch_observation_publication(

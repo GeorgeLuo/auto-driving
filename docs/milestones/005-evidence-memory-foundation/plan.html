@@ -522,9 +522,10 @@
         <summary><span>5. Build Operator And Evaluation Workflows</span><span class="status active">Re-coursed — deploy proof first</span></summary>
         <div class="work-body"><ul>
           <li><strong>Done earlier:</strong> <code>vehicles update memory</code> / <code>info memory</code>; autonomy deploy installs <code>runtime/memory/active.json</code>.</li>
-          <li><strong>Current (re-course from live smoke):</strong> autonomy <code>--restart</code> must verify a live memory stage matching the shipped activation. Silent “activation on disk, stage not loaded” is a fail with guidance to update <strong>core</strong> (manage.py harness owns the load path) then re-run autonomy. Document the core/autonomy deploy split for operators.</li>
-          <li><strong>Deferred within package 5:</strong> concise live status/stream, reset, deterministic replay, opt-in recording; Chase shadow visual review; stationary Pi memory check with tracked visual provenance. Those remain required for closeout but follow deploy honesty.</li>
-          <li><strong>Why re-course:</strong> Pi smoke showed autonomy alone can install memory activation while a stale core harness never loads it—no error. Closing that footgun is prerequisite to trusting physical evaluation workflows.</li>
+          <li><strong>Done (deploy honesty):</strong> autonomy <code>--restart</code> verifies a live memory stage matching the shipped activation, or fails with core-then-autonomy guidance.</li>
+          <li><strong>Done (live inspect):</strong> <code>vehicles stream memory</code> polls lifecycle health (implementation, health, epoch, record count, failures) on Pi via <code>/autonomy/status</code> and on Chase via automation state; <code>info memory</code> attaches a live probe when the vehicle is reachable.</li>
+          <li><strong>Still open:</strong> reset, deterministic replay, opt-in recording; Chase shadow visual review; stationary Pi memory check with tracked visual provenance.</li>
+          <li><strong>Why re-course then continue:</strong> deploy honesty first, then live inspect so physical evaluation has a non-silent operator path without waiting for full check UX.</li>
         </ul></div>
       </details>
 
@@ -538,7 +539,7 @@
       </details>
 
       <div class="progress-track" aria-label="Milestone work packages completed: 4 of 6"><div class="progress-fill" style="width: 66.7%;"></div></div>
-      <p class="small">Progress: packages 1–4 done. Package 5 re-coursed: prove memory is live after autonomy deploy (core vs autonomy split) before stream/check visual workflows.</p>
+      <p class="small">Progress: packages 1–4 done; package 5 deploy honesty and live memory stream/info probe landed. Remaining package 5: reset/replay/record and visual checks.</p>
     </section>
 
     <section class="panel">
@@ -633,7 +634,9 @@
             <tr><td>2026-07-18</td><td>Ship BoundedEvidenceLedger as the first packaged memory implementation without identity claims.</td><td>A recency ledger of things/signals is enough to exercise retention, dropout, expiry, and capacity while remaining evidence-not-truth and loadable through the existing activation document.</td></tr>
             <tr><td>2026-07-18</td><td>Land memory stage/info CLI and autonomy-deploy activation before live stream or visual checks.</td><td>Operators need a supported way to select bounded_evidence and ship runtime/memory/active.json; inspection workflows can follow once activation is routine on Chase and Pi.</td></tr>
             <tr><td>2026-07-19</td><td>Re-course package 5 to prove live memory after autonomy deploy before stream/check work.</td><td>Live smoke installed memory activation via autonomy while a stale core manage.py never loaded the stage—success without memory. Verify matching implementation_id on restart, fail with core-then-autonomy guidance, and document the deploy split. Stream/reset/visual checks remain in package 5 but follow this honesty gate.</td></tr>
+            <tr><td>2026-07-19</td><td>Add live memory stream/info probe over status components before visual check UX.</td><td>Operators need a read-only replacing view of health, epoch, and record count on Pi and Chase once deploy honesty exists; full provenance check and reset/replay remain separate deliverables.</td></tr>
           </tbody>
+
         </table>
       </div>
     </section>

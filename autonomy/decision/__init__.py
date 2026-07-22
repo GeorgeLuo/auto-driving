@@ -17,14 +17,19 @@ from .cycle import (
     DecisionStages,
 )
 from .memory import (
+    DEFAULT_MAX_PROPERTY_BYTES,
+    DEFAULT_MAX_SERIALIZED_BYTES,
     MEMORY_HEALTH_VALUES,
     MEMORY_SNAPSHOT_SCHEMA,
     MemoryBounds,
     MemoryProvenance,
     MemorySnapshot,
     RetainedEvidence,
+    detach_memory_snapshot,
     empty_memory_snapshot,
     error_memory_snapshot,
+    serialized_mapping_bytes,
+    serialized_memory_snapshot_bytes,
     unavailable_memory_snapshot,
 )
 from .observation import OBSERVATION_SCHEMA, Observation, observation_from_perception
@@ -32,6 +37,8 @@ from .plugin import MemoryImplementation
 
 __all__ = [
     "DECISION_CYCLE_RESULT_SCHEMA",
+    "DEFAULT_MAX_PROPERTY_BYTES",
+    "DEFAULT_MAX_SERIALIZED_BYTES",
     "MEMORY_ACTIVATION_SCHEMA",
     "MEMORY_HEALTH_VALUES",
     "MEMORY_SNAPSHOT_SCHEMA",
@@ -48,6 +55,7 @@ __all__ = [
     "MemorySnapshot",
     "Observation",
     "RetainedEvidence",
+    "detach_memory_snapshot",
     "empty_memory_snapshot",
     "error_memory_snapshot",
     "instantiate_memory_implementation",
@@ -55,5 +63,7 @@ __all__ = [
     "load_memory_stage_if_present",
     "observation_from_perception",
     "read_memory_activation",
+    "serialized_mapping_bytes",
+    "serialized_memory_snapshot_bytes",
     "unavailable_memory_snapshot",
 ]

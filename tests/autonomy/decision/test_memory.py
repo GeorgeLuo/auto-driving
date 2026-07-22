@@ -78,6 +78,26 @@ class MemoryContractTests(unittest.TestCase):
         self.assertEqual(restored.records[0].record_id, "rec_1")
         self.assertEqual(restored.records[0].location.zone, "center")
         self.assertEqual(restored.bounds.max_age_ms, 2_000)
+        self.assertEqual(restored.bounds.max_property_bytes, 4_096)
+        self.assertEqual(restored.bounds.max_serialized_bytes, 262_144)
+
+    def test_detach_memory_snapshot_isolates_nested_mutation(self) -> None:
+        from autonomy.decision import detach_memory_snapshot
+
+        original = MemorySnapshot(
+            memory_id="mem_1",
+            epoch_id="epoch_a",
+            health="healthy",
+            bounds=self.bounds(),
+            created_at_ms=200,
+            records=(self.retained(),),
+            metadata={"source": "unit-test"},
+        )
+        detached = detach_memory_snapshot(original)
+        detached.records[0].properties["width_fraction"] = 0.5
+        detached.metadata["source"] = "mutated"
+        self.assertEqual(original.records[0].properties["width_fraction"], 0.2)
+        self.assertEqual(original.metadata["source"], "unit-test")
 
     def test_empty_unavailable_and_error_factories(self) -> None:
         empty = empty_memory_snapshot(

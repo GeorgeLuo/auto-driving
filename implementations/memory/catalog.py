@@ -26,6 +26,8 @@ MEMORY_IMPLEMENTATIONS: dict[str, dict[str, Any]] = {
             "min_confidence": 0.0,
             "retain_things": True,
             "retain_signals": True,
+            "max_property_bytes": 4_096,
+            "max_serialized_bytes": 262_144,
         },
     },
 }

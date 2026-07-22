@@ -8,6 +8,7 @@ inspectable value contract and lifecycle fields.
 
 from __future__ import annotations
 
+import json
 import math
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
@@ -17,6 +18,9 @@ from autonomy.perception import ViewLocation
 
 
 MEMORY_SNAPSHOT_SCHEMA = "decision_memory_snapshot_v0"
+# Visible defaults for activation and implementations that omit size ceilings.
+DEFAULT_MAX_PROPERTY_BYTES = 4_096
+DEFAULT_MAX_SERIALIZED_BYTES = 262_144
 
 MemoryHealth = Literal["empty", "healthy", "unavailable", "error"]
 MEMORY_HEALTH_VALUES: frozenset[str] = frozenset(
@@ -139,11 +143,13 @@ class RetainedEvidence:
 
 @dataclass(frozen=True)
 class MemoryBounds:
-    """Finite capacity and age policy visible on every snapshot."""
+    """Finite capacity, age, and size policy visible on every snapshot."""
 
     max_records: int
     max_age_ms: int | None = None
     eviction_policy: str = "oldest_first"
+    max_property_bytes: int | None = DEFAULT_MAX_PROPERTY_BYTES
+    max_serialized_bytes: int | None = DEFAULT_MAX_SERIALIZED_BYTES
 
     def __post_init__(self) -> None:
         max_records = _require_positive_int(self.max_records, field_name="max_records")
@@ -155,6 +161,22 @@ class MemoryBounds:
                 _require_positive_int(self.max_age_ms, field_name="max_age_ms"),
             )
         _require_identifier(self.eviction_policy, field_name="eviction_policy")
+        if self.max_property_bytes is not None:
+            object.__setattr__(
+                self,
+                "max_property_bytes",
+                _require_positive_int(
+                    self.max_property_bytes, field_name="max_property_bytes"
+                ),
+            )
+        if self.max_serialized_bytes is not None:
+            object.__setattr__(
+                self,
+                "max_serialized_bytes",
+                _require_positive_int(
+                    self.max_serialized_bytes, field_name="max_serialized_bytes"
+                ),
+            )
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -162,10 +184,18 @@ class MemoryBounds:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "MemoryBounds":
         max_age = data.get("max_age_ms")
+        max_property = data.get("max_property_bytes", DEFAULT_MAX_PROPERTY_BYTES)
+        max_serialized = data.get("max_serialized_bytes", DEFAULT_MAX_SERIALIZED_BYTES)
         return cls(
             max_records=int(data.get("max_records") or 0),
             max_age_ms=int(max_age) if max_age is not None else None,
             eviction_policy=str(data.get("eviction_policy") or "oldest_first"),
+            max_property_bytes=(
+                int(max_property) if max_property is not None else None
+            ),
+            max_serialized_bytes=(
+                int(max_serialized) if max_serialized is not None else None
+            ),
         )
 
 
@@ -271,6 +301,37 @@ class MemorySnapshot:
             metadata=deepcopy(dict(data.get("metadata") or {})),
             schema=str(data.get("schema") or MEMORY_SNAPSHOT_SCHEMA),
         )
+
+
+def detach_memory_snapshot(snapshot: "MemorySnapshot") -> "MemorySnapshot":
+    """Return a deep copy so callers cannot mutate implementation-owned state."""
+
+    if not isinstance(snapshot, MemorySnapshot):
+        raise TypeError(
+            f"detach_memory_snapshot requires MemorySnapshot; got {type(snapshot).__name__}"
+        )
+    return MemorySnapshot.from_dict(snapshot.to_dict())
+
+
+def serialized_memory_snapshot_bytes(snapshot: "MemorySnapshot") -> int:
+    """UTF-8 byte length of the compact JSON form of a snapshot."""
+
+    payload = snapshot.to_dict()
+    return len(
+        json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode(
+            "utf-8"
+        )
+    )
+
+
+def serialized_mapping_bytes(value: Any) -> int:
+    """UTF-8 byte length of a compact JSON mapping (for property bags)."""
+
+    return len(
+        json.dumps(value, sort_keys=True, separators=(",", ":"), default=str).encode(
+            "utf-8"
+        )
+    )
 
 
 def empty_memory_snapshot(

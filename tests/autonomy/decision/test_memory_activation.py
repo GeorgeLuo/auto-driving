@@ -132,6 +132,30 @@ class _OverCapacityMemory(_RecordingMemory):
         )
 
 
+class _WeakAgeMemory(_RecordingMemory):
+    """Reports a weaker age bound than the activation allows."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # Keep internal config as activation requested, but report no age limit.
+        self.bounds = MemoryBounds(
+            max_records=self.bounds.max_records,
+            max_age_ms=None,
+            eviction_policy=self.bounds.eviction_policy,
+        )
+
+
+class _MutatingSharedSnapshotMemory(_RecordingMemory):
+    """Returns the same snapshot object on successive reads (isolation probe)."""
+
+    def update(self, context, observation):
+        super().update(context, observation)
+        return self._snapshot
+
+    def snapshot(self):
+        return self._snapshot
+
+
 def _valid_payload() -> dict:
     return {
         "schema": MEMORY_ACTIVATION_SCHEMA,
@@ -238,6 +262,41 @@ class MemoryActivationTests(unittest.TestCase):
             )
             self.assertEqual(snapshot.health, "error")
             self.assertIn("max_records", snapshot.error or "")
+
+    def test_framework_rejects_removed_max_age_as_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            payload = _valid_payload()
+            payload["memory"]["implementation_spec"] = (
+                "tests.autonomy.decision.test_memory_activation:_WeakAgeMemory"
+            )
+            stage = ActivatedMemoryStage(
+                read_memory_activation(_write_payload(tmp, payload))
+            )
+            snapshot = stage.update(
+                DecisionFrameContext("frame_5", 5, 500),
+                Observation("obs_5", 490, {}),
+            )
+            self.assertEqual(snapshot.health, "error")
+            self.assertIn("max_age_ms", snapshot.error or "")
+
+    def test_framework_detaches_returned_snapshots_from_implementation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            payload = _valid_payload()
+            payload["memory"]["implementation_spec"] = (
+                "tests.autonomy.decision.test_memory_activation:_MutatingSharedSnapshotMemory"
+            )
+            stage = ActivatedMemoryStage(
+                read_memory_activation(_write_payload(tmp, payload))
+            )
+            observation = Observation("obs_6", 590, {})
+            first = stage.update(DecisionFrameContext("frame_6", 6, 600), observation)
+            first.metadata["tampered"] = True
+            if first.records:
+                first.records[0].properties["width"] = 9
+            second = stage.snapshot()
+            self.assertNotIn("tampered", second.metadata)
+            if second.records:
+                self.assertNotIn("width", second.records[0].properties)
 
     def test_activation_document_validation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

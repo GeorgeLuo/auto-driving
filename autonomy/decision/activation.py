@@ -12,10 +12,15 @@ from typing import Any
 
 from .cycle import DecisionFrameContext
 from .memory import (
+    DEFAULT_MAX_PROPERTY_BYTES,
+    DEFAULT_MAX_SERIALIZED_BYTES,
     MemoryBounds,
     MemorySnapshot,
+    detach_memory_snapshot,
     empty_memory_snapshot,
     error_memory_snapshot,
+    serialized_mapping_bytes,
+    serialized_memory_snapshot_bytes,
 )
 from .observation import Observation
 from .plugin import MemoryImplementation
@@ -75,10 +80,20 @@ def bounds_from_config(config: dict[str, Any]) -> MemoryBounds:
     max_records = config.get("max_records", DEFAULT_MAX_RECORDS)
     max_age_ms = config.get("max_age_ms", DEFAULT_MAX_AGE_MS)
     eviction_policy = config.get("eviction_policy", DEFAULT_EVICTION_POLICY)
+    max_property_bytes = config.get("max_property_bytes", DEFAULT_MAX_PROPERTY_BYTES)
+    max_serialized_bytes = config.get(
+        "max_serialized_bytes", DEFAULT_MAX_SERIALIZED_BYTES
+    )
     return MemoryBounds(
         max_records=int(max_records),
         max_age_ms=int(max_age_ms) if max_age_ms is not None else None,
         eviction_policy=str(eviction_policy or DEFAULT_EVICTION_POLICY),
+        max_property_bytes=(
+            int(max_property_bytes) if max_property_bytes is not None else None
+        ),
+        max_serialized_bytes=(
+            int(max_serialized_bytes) if max_serialized_bytes is not None else None
+        ),
     )
 
 
@@ -279,17 +294,39 @@ class ActivatedMemoryStage:
                 f"memory snapshot retains {snapshot.record_count} records but "
                 f"activation max_records is {configured.max_records}"
             )
-        if (
-            configured.max_age_ms is not None
-            and snapshot.bounds.max_age_ms is not None
-            and snapshot.bounds.max_age_ms > configured.max_age_ms
-        ):
-            raise ValueError(
-                "memory snapshot max_age_ms "
-                f"{snapshot.bounds.max_age_ms} exceeds activation max_age_ms "
-                f"{configured.max_age_ms}"
-            )
-        return snapshot
+        # Reject removed or weakened age bounds. None max_age is weaker than a
+        # finite activation age; a larger window is also weaker.
+        if configured.max_age_ms is not None:
+            if snapshot.bounds.max_age_ms is None:
+                raise ValueError(
+                    "memory snapshot removed max_age_ms while activation requires "
+                    f"max_age_ms={configured.max_age_ms}"
+                )
+            if snapshot.bounds.max_age_ms > configured.max_age_ms:
+                raise ValueError(
+                    "memory snapshot max_age_ms "
+                    f"{snapshot.bounds.max_age_ms} exceeds activation max_age_ms "
+                    f"{configured.max_age_ms}"
+                )
+        if configured.max_property_bytes is not None:
+            for record in snapshot.records:
+                size = serialized_mapping_bytes(record.properties)
+                if size > configured.max_property_bytes:
+                    raise ValueError(
+                        "memory record "
+                        f"{record.record_id!r} properties are {size} bytes; "
+                        f"activation max_property_bytes is {configured.max_property_bytes}"
+                    )
+        # Detach before size check so measurement matches the returned object.
+        detached = detach_memory_snapshot(snapshot)
+        if configured.max_serialized_bytes is not None:
+            size = serialized_memory_snapshot_bytes(detached)
+            if size > configured.max_serialized_bytes:
+                raise ValueError(
+                    f"memory snapshot serializes to {size} bytes; "
+                    f"activation max_serialized_bytes is {configured.max_serialized_bytes}"
+                )
+        return detached
 
     def _error_snapshot(self, error: str) -> MemorySnapshot:
         previous = self.last_snapshot

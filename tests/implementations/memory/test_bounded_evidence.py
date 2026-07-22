@@ -92,9 +92,9 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
         self.assertEqual(snapshot.record_count, 2)
         self.assertEqual(snapshot.implementation_id, "bounded_evidence")
         by_id = {record.record_id: record for record in snapshot.records}
-        self.assertIn("thing:floor_boundary_000", by_id)
-        self.assertIn("signal:floor_visible", by_id)
-        thing = by_id["thing:floor_boundary_000"]
+        self.assertIn("thing:floor-plane-v0:floor_boundary_000", by_id)
+        self.assertIn("signal:lightweight_observer:floor_visible", by_id)
+        thing = by_id["thing:floor-plane-v0:floor_boundary_000"]
         self.assertEqual(thing.provenance.observation_id, "obs_1")
         self.assertEqual(thing.provenance.frame_id, "frame_1")
         self.assertEqual(thing.provenance.source_plugin_id, "floor-plane-v0")
@@ -122,7 +122,7 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
         self.assertEqual(first.record_count, 1)
         self.assertEqual(second.record_count, 1)
         record = second.records[0]
-        self.assertEqual(record.record_id, "thing:floor_boundary_000")
+        self.assertEqual(record.record_id, "thing:floor-plane-v0:floor_boundary_000")
         self.assertEqual(record.location.zone, "right")
         self.assertEqual(record.confidence, 0.95)
         self.assertEqual(record.provenance.observation_id, "obs_2")
@@ -160,8 +160,11 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
             _observation("o3", created_at_ms=290, things=(_thing("c"),)),
         )
         ids = {record.record_id for record in snapshot.records}
-        self.assertEqual(ids, {"thing:b", "thing:c"})
-        self.assertNotIn("thing:a", ids)
+        self.assertEqual(
+            ids,
+            {"thing:floor-plane-v0:b", "thing:floor-plane-v0:c"},
+        )
+        self.assertNotIn("thing:floor-plane-v0:a", ids)
 
     def test_reset_starts_new_empty_epoch(self) -> None:
         ledger = BoundedEvidenceLedger(max_records=4, max_age_ms=5_000)
@@ -225,7 +228,66 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
             ),
         )
         ids = {record.record_id for record in snapshot.records}
-        self.assertEqual(ids, {"thing:strong", "signal:boundary"})
+        self.assertEqual(
+            ids,
+            {
+                "thing:floor-plane-v0:strong",
+                "signal:lightweight_observer:boundary",
+            },
+        )
+
+    def test_returned_snapshot_is_detached_from_ledger_state(self) -> None:
+        ledger = BoundedEvidenceLedger(max_records=8, max_age_ms=5_000)
+        first = ledger.update(
+            DecisionFrameContext("frame_1", 1, 1_000),
+            _observation(
+                "obs_1",
+                created_at_ms=990,
+                things=(_thing("floor_boundary_000"),),
+            ),
+        )
+        first.records[0].properties["width_fraction"] = 0.99
+        first.metadata["policy"] = "mutated"
+        second = ledger.snapshot()
+        self.assertEqual(second.records[0].properties["width_fraction"], 0.2)
+        self.assertEqual(second.metadata["policy"], "bounded_evidence_recency")
+        third = ledger.update(DecisionFrameContext("frame_2", 2, 1_100), None)
+        self.assertEqual(third.records[0].properties["width_fraction"], 0.2)
+
+    def test_oversized_properties_are_not_retained(self) -> None:
+        ledger = BoundedEvidenceLedger(
+            max_records=8,
+            max_age_ms=5_000,
+            max_property_bytes=64,
+        )
+        huge = _thing("huge")
+        huge["properties"] = {"blob": "x" * 500}
+        small = _thing("small")
+        snapshot = ledger.update(
+            DecisionFrameContext("f1", 1, 100),
+            _observation("o1", created_at_ms=90, things=(huge, small)),
+        )
+        ids = {record.record_id for record in snapshot.records}
+        self.assertEqual(ids, {"thing:floor-plane-v0:small"})
+
+    def test_plugins_with_same_local_id_do_not_collide(self) -> None:
+        ledger = BoundedEvidenceLedger(max_records=8, max_age_ms=5_000)
+        left = _thing("shared_id", zone="left")
+        left["source_plugin_id"] = "plugin-a"
+        right = _thing("shared_id", zone="right")
+        right["source_plugin_id"] = "plugin-b"
+        snapshot = ledger.update(
+            DecisionFrameContext("f1", 1, 100),
+            _observation("o1", created_at_ms=90, things=(left, right)),
+        )
+        ids = {record.record_id for record in snapshot.records}
+        self.assertEqual(
+            ids,
+            {"thing:plugin-a:shared_id", "thing:plugin-b:shared_id"},
+        )
+        by_id = {record.record_id: record for record in snapshot.records}
+        self.assertEqual(by_id["thing:plugin-a:shared_id"].location.zone, "left")
+        self.assertEqual(by_id["thing:plugin-b:shared_id"].location.zone, "right")
 
 
 if __name__ == "__main__":

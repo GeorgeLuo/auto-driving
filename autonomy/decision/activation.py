@@ -31,6 +31,14 @@ MEMORY_ACTIVATION_SCHEMA = "automa_memory_activation_v0"
 DEFAULT_MAX_RECORDS = 32
 DEFAULT_MAX_AGE_MS = 10_000
 DEFAULT_EVICTION_POLICY = "oldest_first"
+# Fixed ASCII marker for framework-owned fallback snapshots. Never a truncated
+# copy of the activation implementation_id (avoids multibyte / masquerading).
+FRAMEWORK_FALLBACK_IMPLEMENTATION_ID = "framework"
+# Worst-case fixed identity used when measuring activation-time fallback fit.
+_FALLBACK_PROBE_MEMORY_ID = "memory-error-999999"
+_FALLBACK_PROBE_EPOCH_ID = "epoch-error-999999"
+_FALLBACK_PROBE_RESET_MEMORY_ID = "memory-reset-failed-999999"
+_FALLBACK_PROBE_RESET_EPOCH_ID = "epoch-reset-failed-999999"
 
 
 @dataclass(frozen=True)
@@ -85,7 +93,7 @@ def bounds_from_config(config: dict[str, Any]) -> MemoryBounds:
     max_serialized_bytes = config.get(
         "max_serialized_bytes", DEFAULT_MAX_SERIALIZED_BYTES
     )
-    return MemoryBounds(
+    bounds = MemoryBounds(
         max_records=int(max_records),
         max_age_ms=int(max_age_ms) if max_age_ms is not None else None,
         eviction_policy=str(eviction_policy or DEFAULT_EVICTION_POLICY),
@@ -96,6 +104,52 @@ def bounds_from_config(config: dict[str, Any]) -> MemoryBounds:
             int(max_serialized_bytes) if max_serialized_bytes is not None else None
         ),
     )
+    validate_framework_fallback_capacity(bounds)
+    return bounds
+
+
+def validate_framework_fallback_capacity(bounds: MemoryBounds) -> None:
+    """Reject bounds that cannot host the activation-specific minimal fallbacks.
+
+    The static MIN_MAX_SERIALIZED_BYTES floor is not enough when bound fields
+    themselves are large (e.g. a long eviction_policy). Measure the actual
+    canonical JSON size of the minimal reset/error fallback shapes.
+    """
+
+    limit = bounds.max_serialized_bytes
+    if limit is None:
+        return
+
+    probes = (
+        error_memory_snapshot(
+            memory_id=_FALLBACK_PROBE_MEMORY_ID,
+            epoch_id=_FALLBACK_PROBE_EPOCH_ID,
+            bounds=bounds,
+            created_at_ms=0,
+            error="truncated",
+            implementation_id=FRAMEWORK_FALLBACK_IMPLEMENTATION_ID,
+            metadata={},
+        ),
+        empty_memory_snapshot(
+            memory_id=_FALLBACK_PROBE_RESET_MEMORY_ID,
+            epoch_id=_FALLBACK_PROBE_RESET_EPOCH_ID,
+            bounds=bounds,
+            created_at_ms=0,
+            implementation_id=FRAMEWORK_FALLBACK_IMPLEMENTATION_ID,
+            summary=("memory_reset_failed=truncated",),
+            metadata={},
+        ),
+    )
+    for snapshot in probes:
+        size = serialized_memory_snapshot_bytes(snapshot)
+        if size > limit:
+            raise ValueError(
+                "max_serialized_bytes="
+                f"{limit} is too small for framework failure/reset snapshots "
+                f"with these bounds (minimal fallback serializes to {size} bytes). "
+                "Reduce bound-field size (for example eviction_policy) or raise "
+                "max_serialized_bytes."
+            )
 
 
 def load_memory_implementation(
@@ -358,11 +412,6 @@ class ActivatedMemoryStage:
             previous_health=previous.health if previous is not None else None,
         )
 
-    def _framework_implementation_id(self) -> str:
-        """Bounded implementation id for framework-owned fallback snapshots."""
-
-        return _truncate_text(self.activation.implementation_id, 48)
-
     def _bounded_fallback_snapshot(
         self,
         *,
@@ -376,19 +425,26 @@ class ActivatedMemoryStage:
     ) -> MemorySnapshot:
         """Build a framework failure/reset-fallback snapshot under size limits.
 
-        All variable identity fields are framework-owned and length-capped so a
-        previously accepted near-ceiling snapshot cannot make isolation raise.
+        Identity is fixed ASCII framework markers (not truncated activation
+        values). Capacity is validated at activation against these shapes.
         """
 
         configured = self.activation.bounds
         limit = configured.max_serialized_bytes
-        # Keep identity fields short and independent of implementation-supplied values.
-        safe_memory_id = _truncate_text(memory_id, 48)
-        safe_epoch_id = _truncate_text(epoch_id, 48)
-        safe_impl_id = self._framework_implementation_id()
-        # previous_health is one of a small enum; still clamp defensively.
+        # Fixed ASCII framework identity — never truncated activation strings.
+        safe_memory_id = memory_id if memory_id.isascii() else "memory-error-0"
+        safe_epoch_id = epoch_id if epoch_id.isascii() else "epoch-error-0"
+        # Counters are decimal ASCII from the stage; still reject non-ASCII.
+        if not safe_memory_id.isascii():
+            safe_memory_id = "memory-error-0"
+        if not safe_epoch_id.isascii():
+            safe_epoch_id = "epoch-error-0"
+        safe_impl_id = FRAMEWORK_FALLBACK_IMPLEMENTATION_ID
+        # previous_health is a short enum; drop if unexpected.
         safe_previous_health = (
-            _truncate_text(previous_health, 32) if previous_health is not None else None
+            previous_health
+            if previous_health in {"empty", "healthy", "unavailable", "error"}
+            else None
         )
 
         # Prefer the already-bounded diagnostic from the exception boundary.
@@ -418,7 +474,7 @@ class ActivatedMemoryStage:
             if limit is None or serialized_memory_snapshot_bytes(candidate) <= limit:
                 return detach_memory_snapshot(candidate)
 
-        # Last resort: minimal diagnostic + no metadata. Identity remains short.
+        # Last resort: minimal diagnostic + no metadata.
         candidate = self._build_fallback_candidate(
             health=health,
             memory_id=safe_memory_id,
@@ -431,8 +487,7 @@ class ActivatedMemoryStage:
             include_metadata=False,
         )
         if limit is not None and serialized_memory_snapshot_bytes(candidate) > limit:
-            # Should be unreachable when max_serialized_bytes >= MIN_MAX_SERIALIZED_BYTES
-            # and identity fields stay framework-owned/short.
+            # Unreachable when activation validated fallback capacity.
             raise ValueError(
                 "framework could not construct a failure snapshot under "
                 f"max_serialized_bytes={limit}"

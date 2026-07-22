@@ -203,6 +203,10 @@ class _NonJsonPropertyMemory(_RecordingMemory):
         )
 
 
+class _ConfigurableIdMemory(_RecordingMemory):
+    """Allows activation to declare a custom implementation_id (including multibyte)."""
+
+
 class _NearCeilingThenFailMemory(_RecordingMemory):
     """First update returns a near-ceiling empty snapshot; later updates raise."""
 
@@ -522,6 +526,51 @@ class MemoryActivationTests(unittest.TestCase):
             payload["memory"]["implementation_config"]["max_serialized_bytes"] = 1
             with self.assertRaisesRegex(ValueError, "max_serialized_bytes must be >="):
                 read_memory_activation(_write_payload(tmp, payload))
+
+    def test_large_eviction_policy_rejected_when_fallback_cannot_fit(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            payload = _valid_payload()
+            payload["memory"]["implementation_config"]["max_serialized_bytes"] = 512
+            payload["memory"]["implementation_config"]["eviction_policy"] = "p" * 600
+            with self.assertRaisesRegex(ValueError, "too small for framework failure"):
+                read_memory_activation(_write_payload(tmp, payload))
+
+    def test_multibyte_implementation_id_does_not_break_fallback_isolation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            payload = _valid_payload()
+            # Multibyte id matching activation/implementation; fallback must use a
+            # fixed ASCII marker, not a character-truncated copy of this id.
+            multibyte_id = "x" + ("😀" * 100)
+            payload["memory"]["implementation_id"] = multibyte_id
+            payload["memory"]["implementation_spec"] = (
+                "tests.autonomy.decision.test_memory_activation:_ConfigurableIdMemory"
+            )
+            payload["memory"]["implementation_config"]["implementation_id"] = multibyte_id
+            payload["memory"]["implementation_config"]["max_serialized_bytes"] = 512
+            stage = ActivatedMemoryStage(
+                read_memory_activation(_write_payload(tmp, payload))
+            )
+            self.assertEqual(stage.activation.implementation_id, multibyte_id)
+
+            def boom(context, observation):
+                del context, observation
+                raise RuntimeError("boom")
+
+            original_update = stage.implementation.update
+            stage.implementation.update = boom  # type: ignore[method-assign]
+            try:
+                snapshot = stage.update(
+                    DecisionFrameContext("f", 1, 1),
+                    Observation("o", 1, {}),
+                )
+            finally:
+                stage.implementation.update = original_update  # type: ignore[method-assign]
+            self.assertEqual(snapshot.health, "error")
+            self.assertEqual(snapshot.implementation_id, "framework")
+            self.assertNotEqual(snapshot.implementation_id, multibyte_id[:48])
+            from autonomy.decision import serialized_memory_snapshot_bytes
+
+            self.assertLessEqual(serialized_memory_snapshot_bytes(snapshot), 512)
 
     def test_framework_rejects_non_json_property_values(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

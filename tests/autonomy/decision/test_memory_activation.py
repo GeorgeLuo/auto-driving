@@ -32,6 +32,7 @@ class _RecordingMemory:
         max_age_ms: int | None = 1_000,
         eviction_policy: str = "oldest_first",
         fail_on_update: bool = False,
+        fail_on_reset: bool = False,
         implementation_id: str = "recording_test",
         max_property_bytes: int | None = None,
         max_serialized_bytes: int | None = None,
@@ -46,6 +47,7 @@ class _RecordingMemory:
             max_serialized_bytes=max_serialized_bytes,
         )
         self.fail_on_update = fail_on_update
+        self.fail_on_reset = fail_on_reset
         self.epoch = 0
         self.updates = 0
         self._snapshot = self.reset()
@@ -92,6 +94,8 @@ class _RecordingMemory:
         return self._snapshot
 
     def reset(self):
+        if self.fail_on_reset:
+            raise RuntimeError("reset exploded")
         self.epoch += 1
         self._snapshot = empty_memory_snapshot(
             memory_id=f"mem-reset-{self.epoch}",
@@ -388,13 +392,46 @@ class MemoryActivationTests(unittest.TestCase):
             finally:
                 stage.implementation.update = original_update  # type: ignore[method-assign]
             self.assertEqual(snapshot.health, "error")
-            from autonomy.decision import serialized_memory_snapshot_bytes
+            from autonomy.decision import (
+                DEFAULT_MAX_DIAGNOSTIC_CHARS,
+                serialized_memory_snapshot_bytes,
+            )
 
             self.assertLessEqual(serialized_memory_snapshot_bytes(snapshot), 2_000)
             self.assertLessEqual(
                 serialized_memory_snapshot_bytes(stage.last_snapshot),  # type: ignore[arg-type]
                 2_000,
             )
+            # last_error/status must also be bounded (Chase worker publishes this).
+            status = stage.status()
+            self.assertIsNotNone(status["last_error"])
+            self.assertLessEqual(len(status["last_error"]), DEFAULT_MAX_DIAGNOSTIC_CHARS)
+            self.assertLessEqual(len(stage.last_error or ""), DEFAULT_MAX_DIAGNOSTIC_CHARS)
+            self.assertEqual(status["last_error"], stage.last_error)
+            # Status JSON itself must stay modest.
+            status_bytes = len(json.dumps(status, sort_keys=True).encode("utf-8"))
+            self.assertLess(status_bytes, 4_000)
+
+    def test_reset_failure_preserves_bounded_diagnostic(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            payload = _valid_payload()
+            stage = ActivatedMemoryStage(
+                read_memory_activation(_write_payload(tmp, payload))
+            )
+            stage.implementation.fail_on_reset = True
+            snapshot = stage.reset()
+            self.assertEqual(snapshot.health, "empty")
+            self.assertIn("reset exploded", snapshot.summary[0])
+            self.assertIn("reset exploded", snapshot.metadata.get("reset_error", ""))
+            self.assertIn("reset exploded", stage.last_error or "")
+            self.assertEqual(stage.status()["last_error"], stage.last_error)
+
+    def test_impossible_max_serialized_bytes_rejected_at_activation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            payload = _valid_payload()
+            payload["memory"]["implementation_config"]["max_serialized_bytes"] = 1
+            with self.assertRaisesRegex(ValueError, "max_serialized_bytes must be >="):
+                read_memory_activation(_write_payload(tmp, payload))
 
     def test_framework_rejects_non_json_property_values(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

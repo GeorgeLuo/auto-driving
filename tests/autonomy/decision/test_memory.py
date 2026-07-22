@@ -5,6 +5,7 @@ import unittest
 
 from autonomy.decision import (
     MEMORY_SNAPSHOT_SCHEMA,
+    MIN_MAX_SERIALIZED_BYTES,
     MemoryBounds,
     MemoryProvenance,
     MemorySnapshot,
@@ -80,6 +81,20 @@ class MemoryContractTests(unittest.TestCase):
         self.assertEqual(restored.bounds.max_age_ms, 2_000)
         self.assertEqual(restored.bounds.max_property_bytes, 4_096)
         self.assertEqual(restored.bounds.max_serialized_bytes, 262_144)
+
+    def test_max_serialized_bytes_rejects_impossible_ceiling(self) -> None:
+        with self.assertRaisesRegex(ValueError, "max_serialized_bytes must be >="):
+            MemoryBounds(
+                max_records=4,
+                max_age_ms=1_000,
+                max_serialized_bytes=MIN_MAX_SERIALIZED_BYTES - 1,
+            )
+        ok = MemoryBounds(
+            max_records=4,
+            max_age_ms=1_000,
+            max_serialized_bytes=MIN_MAX_SERIALIZED_BYTES,
+        )
+        self.assertEqual(ok.max_serialized_bytes, MIN_MAX_SERIALIZED_BYTES)
 
     def test_detach_memory_snapshot_isolates_nested_mutation(self) -> None:
         from autonomy.decision import detach_memory_snapshot

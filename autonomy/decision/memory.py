@@ -21,6 +21,12 @@ MEMORY_SNAPSHOT_SCHEMA = "decision_memory_snapshot_v0"
 # Visible defaults for activation and implementations that omit size ceilings.
 DEFAULT_MAX_PROPERTY_BYTES = 4_096
 DEFAULT_MAX_SERIALIZED_BYTES = 262_144
+# Floor for max_serialized_bytes: a minimal framework empty/error fallback is ~450
+# bytes once identity fields and bounds are included. Reject smaller ceilings at
+# validation time rather than while constructing stage failure snapshots.
+MIN_MAX_SERIALIZED_BYTES = 512
+# Cap for stage status / worker-facing diagnostic strings (not only snapshots).
+DEFAULT_MAX_DIAGNOSTIC_CHARS = 1_024
 
 MemoryHealth = Literal["empty", "healthy", "unavailable", "error"]
 MEMORY_HEALTH_VALUES: frozenset[str] = frozenset(
@@ -170,13 +176,17 @@ class MemoryBounds:
                 ),
             )
         if self.max_serialized_bytes is not None:
-            object.__setattr__(
-                self,
-                "max_serialized_bytes",
-                _require_positive_int(
-                    self.max_serialized_bytes, field_name="max_serialized_bytes"
-                ),
+            max_serialized = _require_positive_int(
+                self.max_serialized_bytes, field_name="max_serialized_bytes"
             )
+            if max_serialized < MIN_MAX_SERIALIZED_BYTES:
+                raise ValueError(
+                    "max_serialized_bytes must be >= "
+                    f"{MIN_MAX_SERIALIZED_BYTES} so framework failure/reset "
+                    "snapshots can satisfy the ceiling; "
+                    f"got {max_serialized}"
+                )
+            object.__setattr__(self, "max_serialized_bytes", max_serialized)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

@@ -12,6 +12,7 @@ from typing import Any
 
 from .cycle import DecisionFrameContext
 from .memory import (
+    DEFAULT_MAX_DIAGNOSTIC_CHARS,
     DEFAULT_MAX_PROPERTY_BYTES,
     DEFAULT_MAX_SERIALIZED_BYTES,
     MemoryBounds,
@@ -199,7 +200,7 @@ class ActivatedMemoryStage:
             self.last_error = None
         except Exception as exc:  # noqa: BLE001 - stage isolation boundary
             self.failure_count += 1
-            self.last_error = f"{type(exc).__name__}: {exc}"
+            self.last_error = self._bound_diagnostic(f"{type(exc).__name__}: {exc}")
             owned = self._error_snapshot(self.last_error)
         self.last_duration_ms = (time.perf_counter() - started) * 1000.0
         self.update_count += 1
@@ -220,12 +221,12 @@ class ActivatedMemoryStage:
             self.last_error = None
         except Exception as exc:  # noqa: BLE001 - stage isolation boundary
             self.failure_count += 1
-            self.last_error = f"{type(exc).__name__}: {exc}"
+            self.last_error = self._bound_diagnostic(f"{type(exc).__name__}: {exc}")
             owned = self._bounded_fallback_snapshot(
                 memory_id=f"memory-reset-failed-{self.reset_count + 1}",
                 epoch_id=f"epoch-failed-{self.reset_count + 1}",
                 health="empty",
-                error=None,
+                error=self.last_error,
                 summary_prefix="memory_reset_failed",
                 metadata_key="reset_error",
             )
@@ -239,7 +240,7 @@ class ActivatedMemoryStage:
             owned = self._accept_snapshot(current, operation="snapshot")
         except Exception as exc:  # noqa: BLE001 - stage isolation boundary
             self.failure_count += 1
-            self.last_error = f"{type(exc).__name__}: {exc}"
+            self.last_error = self._bound_diagnostic(f"{type(exc).__name__}: {exc}")
             owned = self._error_snapshot(self.last_error)
         return self._publish_snapshot(owned)
 
@@ -332,6 +333,16 @@ class ActivatedMemoryStage:
         self.last_snapshot = owned
         return detach_memory_snapshot(owned)
 
+    def _bound_diagnostic(self, message: str) -> str:
+        """Truncate diagnostics once for last_error, status, and fallbacks."""
+
+        limit = self.activation.bounds.max_serialized_bytes
+        # Keep status/worker-facing text modest even when snapshot ceiling is large.
+        budget = DEFAULT_MAX_DIAGNOSTIC_CHARS
+        if limit is not None:
+            budget = max(64, min(budget, limit // 4))
+        return _truncate_text(str(message), budget)
+
     def _error_snapshot(self, error: str) -> MemorySnapshot:
         previous = self.last_snapshot
         epoch_id = previous.epoch_id if previous is not None else "epoch-error"
@@ -360,40 +371,19 @@ class ActivatedMemoryStage:
 
         configured = self.activation.bounds
         limit = configured.max_serialized_bytes
-        # Leave headroom for fixed snapshot fields around the diagnostic text.
-        diagnostic_budget = 512 if limit is None else max(64, min(limit // 4, 4_096))
-        diagnostic = _truncate_text(error or "unknown failure", diagnostic_budget)
+        # Prefer the already-bounded diagnostic from the exception boundary.
+        base_diagnostic = str(error or "unknown failure")
+        diagnostic_budget = len(base_diagnostic) if base_diagnostic else 64
+        if limit is not None:
+            diagnostic_budget = max(16, min(diagnostic_budget, limit // 4, 4_096))
 
-        if health == "error":
-            candidate = error_memory_snapshot(
-                memory_id=memory_id,
-                epoch_id=epoch_id,
-                bounds=configured,
-                created_at_ms=_timestamp_ms(),
-                error=diagnostic,
-                implementation_id=self.activation.implementation_id,
-                metadata={
-                    "failure_count": self.failure_count,
-                    "previous_health": previous_health,
-                },
-            )
-        else:
-            candidate = empty_memory_snapshot(
-                memory_id=memory_id,
-                epoch_id=epoch_id,
-                bounds=configured,
-                created_at_ms=_timestamp_ms(),
-                implementation_id=self.activation.implementation_id,
-                summary=(f"{summary_prefix}={diagnostic}",),
-                metadata={metadata_key: diagnostic},
-            )
+        budgets: list[int] = [diagnostic_budget]
+        for candidate_budget in (256, 128, 64, 32, 16):
+            if candidate_budget not in budgets and candidate_budget <= diagnostic_budget:
+                budgets.append(candidate_budget)
 
-        if limit is None:
-            return detach_memory_snapshot(candidate)
-
-        # Shrink diagnostics until the serialized snapshot fits the ceiling.
-        for budget in (diagnostic_budget, 256, 128, 64, 32, 16):
-            diagnostic = _truncate_text(error or "unknown failure", budget)
+        for budget in budgets:
+            diagnostic = _truncate_text(base_diagnostic, budget)
             if health == "error":
                 candidate = error_memory_snapshot(
                     memory_id=memory_id,
@@ -417,10 +407,11 @@ class ActivatedMemoryStage:
                     summary=(f"{summary_prefix}={diagnostic}",),
                     metadata={metadata_key: diagnostic},
                 )
-            if serialized_memory_snapshot_bytes(candidate) <= limit:
+            if limit is None or serialized_memory_snapshot_bytes(candidate) <= limit:
                 return detach_memory_snapshot(candidate)
 
-        # Last resort: minimal diagnostic that must fit ordinary ceilings.
+        # Last resort: minimal diagnostic. Activation validation rejects ceilings
+        # too small to host this shape.
         minimal = "truncated"
         if health == "error":
             candidate = error_memory_snapshot(
@@ -442,7 +433,7 @@ class ActivatedMemoryStage:
                 summary=(f"{summary_prefix}={minimal}",),
                 metadata={},
             )
-        if serialized_memory_snapshot_bytes(candidate) > limit:
+        if limit is not None and serialized_memory_snapshot_bytes(candidate) > limit:
             raise ValueError(
                 "framework could not construct a failure snapshot under "
                 f"max_serialized_bytes={limit}"

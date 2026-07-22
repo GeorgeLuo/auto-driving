@@ -24,6 +24,7 @@ from autonomy.decision import (
     RetainedEvidence,
     detach_memory_snapshot,
     empty_memory_snapshot,
+    ensure_strict_json_value,
     serialized_mapping_bytes,
 )
 from autonomy.perception import ViewLocation
@@ -136,7 +137,14 @@ class BoundedEvidenceLedger:
                 source_plugin = thing.get("source_plugin_id")
                 if source_plugin is None:
                     source_plugin = observation.perception_plugin_id
-                properties = deepcopy(dict(thing.get("properties") or {}))
+                try:
+                    properties = ensure_strict_json_value(
+                        deepcopy(dict(thing.get("properties") or {}))
+                    )
+                except ValueError:
+                    continue
+                if not isinstance(properties, dict):
+                    continue
                 if not self._properties_within_bound(properties):
                     continue
                 records.append(
@@ -179,8 +187,22 @@ class BoundedEvidenceLedger:
                 source_plugin = signal.get("source_plugin_id")
                 if source_plugin is None:
                     source_plugin = observation.perception_plugin_id
-                properties = deepcopy(dict(signal.get("properties") or {}))
+                try:
+                    properties = ensure_strict_json_value(
+                        deepcopy(dict(signal.get("properties") or {}))
+                    )
+                except ValueError:
+                    continue
+                if not isinstance(properties, dict):
+                    continue
+                properties = dict(properties)
                 properties["value"] = value
+                try:
+                    properties = ensure_strict_json_value(properties)
+                except ValueError:
+                    continue
+                if not isinstance(properties, dict):
+                    continue
                 if not self._properties_within_bound(properties):
                     continue
                 records.append(
@@ -309,12 +331,19 @@ def namespaced_record_id(
     evidence_id: str,
     source_plugin_id: str | None,
 ) -> str:
-    """Build a plugin-safe ledger key: ``{kind}:{plugin}:{evidence}``."""
+    """Build an injective plugin-safe ledger key.
+
+    Format: ``{kind}:{plugin_len}:{plugin}:{evidence_len}:{evidence}``.
+
+    Length-prefixed components keep delimiter-containing plugin or evidence IDs
+    collision-free (``plugin:a`` vs ``plugin_a`` never share a key).
+    """
 
     plugin = str(source_plugin_id or "unknown").strip() or "unknown"
-    plugin = plugin.replace(":", "_")
-    evidence = str(evidence_id).strip().replace(":", "_")
-    return f"{kind_prefix}:{plugin}:{evidence}"
+    evidence = str(evidence_id).strip()
+    return (
+        f"{kind_prefix}:{len(plugin)}:{plugin}:{len(evidence)}:{evidence}"
+    )
 
 
 def _location_from_payload(payload: Any) -> ViewLocation | None:

@@ -195,55 +195,53 @@ class ActivatedMemoryStage:
             # Observations are frozen; deepcopy defensive metadata only if needed
             # by refusing mutation contracts: never pass writable shared state.
             snapshot = self.implementation.update(context, observation)
-            snapshot = self._accept_snapshot(snapshot, operation="update")
+            owned = self._accept_snapshot(snapshot, operation="update")
             self.last_error = None
         except Exception as exc:  # noqa: BLE001 - stage isolation boundary
             self.failure_count += 1
             self.last_error = f"{type(exc).__name__}: {exc}"
-            snapshot = self._error_snapshot(self.last_error)
+            owned = self._error_snapshot(self.last_error)
         self.last_duration_ms = (time.perf_counter() - started) * 1000.0
         self.update_count += 1
-        self.last_snapshot = snapshot
-        return snapshot
+        return self._publish_snapshot(owned)
 
     def reset(self) -> MemorySnapshot:
         started = time.perf_counter()
         try:
             snapshot = self.implementation.reset()
-            snapshot = self._accept_snapshot(snapshot, operation="reset")
-            if snapshot.health not in {"empty", "unavailable"}:
+            owned = self._accept_snapshot(snapshot, operation="reset")
+            if owned.health not in {"empty", "unavailable"}:
                 raise ValueError(
                     "memory reset must return empty or unavailable health; "
-                    f"got {snapshot.health!r}"
+                    f"got {owned.health!r}"
                 )
-            if snapshot.records:
+            if owned.records:
                 raise ValueError("memory reset must not retain records")
             self.last_error = None
         except Exception as exc:  # noqa: BLE001 - stage isolation boundary
             self.failure_count += 1
             self.last_error = f"{type(exc).__name__}: {exc}"
-            snapshot = empty_memory_snapshot(
+            owned = self._bounded_fallback_snapshot(
                 memory_id=f"memory-reset-failed-{self.reset_count + 1}",
                 epoch_id=f"epoch-failed-{self.reset_count + 1}",
-                bounds=self.activation.bounds,
-                created_at_ms=_timestamp_ms(),
-                implementation_id=self.activation.implementation_id,
-                summary=(f"memory_reset_failed={self.last_error}",),
-                metadata={"reset_error": self.last_error},
+                health="empty",
+                error=None,
+                summary_prefix="memory_reset_failed",
+                metadata_key="reset_error",
             )
         self.last_duration_ms = (time.perf_counter() - started) * 1000.0
         self.reset_count += 1
-        self.last_snapshot = snapshot
-        return snapshot
+        return self._publish_snapshot(owned)
 
     def snapshot(self) -> MemorySnapshot:
         try:
             current = self.implementation.snapshot()
-            return self._accept_snapshot(current, operation="snapshot")
+            owned = self._accept_snapshot(current, operation="snapshot")
         except Exception as exc:  # noqa: BLE001 - stage isolation boundary
             self.failure_count += 1
             self.last_error = f"{type(exc).__name__}: {exc}"
-            return self._error_snapshot(self.last_error)
+            owned = self._error_snapshot(self.last_error)
+        return self._publish_snapshot(owned)
 
     def status(self) -> dict[str, Any]:
         last = self.last_snapshot
@@ -317,7 +315,7 @@ class ActivatedMemoryStage:
                         f"{record.record_id!r} properties are {size} bytes; "
                         f"activation max_property_bytes is {configured.max_property_bytes}"
                     )
-        # Detach before size check so measurement matches the returned object.
+        # Detach before size check so measurement matches owned stage state.
         detached = detach_memory_snapshot(snapshot)
         if configured.max_serialized_bytes is not None:
             size = serialized_memory_snapshot_bytes(detached)
@@ -328,21 +326,128 @@ class ActivatedMemoryStage:
                 )
         return detached
 
+    def _publish_snapshot(self, owned: MemorySnapshot) -> MemorySnapshot:
+        """Store stage-owned state and return a second detached caller copy."""
+
+        self.last_snapshot = owned
+        return detach_memory_snapshot(owned)
+
     def _error_snapshot(self, error: str) -> MemorySnapshot:
         previous = self.last_snapshot
         epoch_id = previous.epoch_id if previous is not None else "epoch-error"
-        return error_memory_snapshot(
+        return self._bounded_fallback_snapshot(
             memory_id=f"memory-error-{self.failure_count}",
             epoch_id=epoch_id,
-            bounds=self.activation.bounds,
-            created_at_ms=_timestamp_ms(),
+            health="error",
             error=error,
-            implementation_id=self.activation.implementation_id,
-            metadata={
-                "failure_count": self.failure_count,
-                "previous_health": previous.health if previous is not None else None,
-            },
+            summary_prefix="memory_error",
+            metadata_key="error",
+            previous_health=previous.health if previous is not None else None,
         )
+
+    def _bounded_fallback_snapshot(
+        self,
+        *,
+        memory_id: str,
+        epoch_id: str,
+        health: str,
+        error: str | None,
+        summary_prefix: str,
+        metadata_key: str,
+        previous_health: str | None = None,
+    ) -> MemorySnapshot:
+        """Build a framework failure/reset-fallback snapshot under size limits."""
+
+        configured = self.activation.bounds
+        limit = configured.max_serialized_bytes
+        # Leave headroom for fixed snapshot fields around the diagnostic text.
+        diagnostic_budget = 512 if limit is None else max(64, min(limit // 4, 4_096))
+        diagnostic = _truncate_text(error or "unknown failure", diagnostic_budget)
+
+        if health == "error":
+            candidate = error_memory_snapshot(
+                memory_id=memory_id,
+                epoch_id=epoch_id,
+                bounds=configured,
+                created_at_ms=_timestamp_ms(),
+                error=diagnostic,
+                implementation_id=self.activation.implementation_id,
+                metadata={
+                    "failure_count": self.failure_count,
+                    "previous_health": previous_health,
+                },
+            )
+        else:
+            candidate = empty_memory_snapshot(
+                memory_id=memory_id,
+                epoch_id=epoch_id,
+                bounds=configured,
+                created_at_ms=_timestamp_ms(),
+                implementation_id=self.activation.implementation_id,
+                summary=(f"{summary_prefix}={diagnostic}",),
+                metadata={metadata_key: diagnostic},
+            )
+
+        if limit is None:
+            return detach_memory_snapshot(candidate)
+
+        # Shrink diagnostics until the serialized snapshot fits the ceiling.
+        for budget in (diagnostic_budget, 256, 128, 64, 32, 16):
+            diagnostic = _truncate_text(error or "unknown failure", budget)
+            if health == "error":
+                candidate = error_memory_snapshot(
+                    memory_id=memory_id,
+                    epoch_id=epoch_id,
+                    bounds=configured,
+                    created_at_ms=_timestamp_ms(),
+                    error=diagnostic,
+                    implementation_id=self.activation.implementation_id,
+                    metadata={
+                        "failure_count": self.failure_count,
+                        "previous_health": previous_health,
+                    },
+                )
+            else:
+                candidate = empty_memory_snapshot(
+                    memory_id=memory_id,
+                    epoch_id=epoch_id,
+                    bounds=configured,
+                    created_at_ms=_timestamp_ms(),
+                    implementation_id=self.activation.implementation_id,
+                    summary=(f"{summary_prefix}={diagnostic}",),
+                    metadata={metadata_key: diagnostic},
+                )
+            if serialized_memory_snapshot_bytes(candidate) <= limit:
+                return detach_memory_snapshot(candidate)
+
+        # Last resort: minimal diagnostic that must fit ordinary ceilings.
+        minimal = "truncated"
+        if health == "error":
+            candidate = error_memory_snapshot(
+                memory_id=memory_id,
+                epoch_id=epoch_id,
+                bounds=configured,
+                created_at_ms=_timestamp_ms(),
+                error=minimal,
+                implementation_id=self.activation.implementation_id,
+                metadata={},
+            )
+        else:
+            candidate = empty_memory_snapshot(
+                memory_id=memory_id,
+                epoch_id=epoch_id,
+                bounds=configured,
+                created_at_ms=_timestamp_ms(),
+                implementation_id=self.activation.implementation_id,
+                summary=(f"{summary_prefix}={minimal}",),
+                metadata={},
+            )
+        if serialized_memory_snapshot_bytes(candidate) > limit:
+            raise ValueError(
+                "framework could not construct a failure snapshot under "
+                f"max_serialized_bytes={limit}"
+            )
+        return detach_memory_snapshot(candidate)
 
 
 def json_load_object(path: Path) -> dict[str, Any]:
@@ -350,6 +455,17 @@ def json_load_object(path: Path) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValueError(f"memory activation must be a JSON object: {path}")
     return payload
+
+
+def _truncate_text(value: str, max_chars: int) -> str:
+    text = str(value)
+    if max_chars <= 0:
+        return ""
+    if len(text) <= max_chars:
+        return text
+    if max_chars <= 3:
+        return text[:max_chars]
+    return text[: max_chars - 3] + "..."
 
 
 def _timestamp_ms() -> int:

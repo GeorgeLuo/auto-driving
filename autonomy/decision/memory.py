@@ -313,25 +313,49 @@ def detach_memory_snapshot(snapshot: "MemorySnapshot") -> "MemorySnapshot":
     return MemorySnapshot.from_dict(snapshot.to_dict())
 
 
-def serialized_memory_snapshot_bytes(snapshot: "MemorySnapshot") -> int:
-    """UTF-8 byte length of the compact JSON form of a snapshot."""
+def canonical_json_bytes(value: Any) -> int:
+    """UTF-8 byte length of strict canonical JSON.
 
-    payload = snapshot.to_dict()
-    return len(
-        json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode(
-            "utf-8"
-        )
-    )
+    Rejects non-JSON types and non-finite numbers. Callers must not retain values
+    that cannot be measured with this path.
+    """
+
+    try:
+        encoded = json.dumps(
+            value,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"value is not strictly JSON-serializable: {type(exc).__name__}: {exc}"
+        ) from exc
+    return len(encoded)
+
+
+def ensure_strict_json_value(value: Any) -> Any:
+    """Round-trip through strict JSON or raise ValueError."""
+
+    try:
+        text = json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
+        return json.loads(text)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"value is not strictly JSON-serializable: {type(exc).__name__}: {exc}"
+        ) from exc
+
+
+def serialized_memory_snapshot_bytes(snapshot: "MemorySnapshot") -> int:
+    """UTF-8 byte length of the compact strict JSON form of a snapshot."""
+
+    return canonical_json_bytes(snapshot.to_dict())
 
 
 def serialized_mapping_bytes(value: Any) -> int:
-    """UTF-8 byte length of a compact JSON mapping (for property bags)."""
+    """UTF-8 byte length of a compact strict JSON mapping (for property bags)."""
 
-    return len(
-        json.dumps(value, sort_keys=True, separators=(",", ":"), default=str).encode(
-            "utf-8"
-        )
-    )
+    return canonical_json_bytes(value)
 
 
 def empty_memory_snapshot(

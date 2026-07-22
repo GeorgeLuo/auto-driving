@@ -33,12 +33,17 @@ class _RecordingMemory:
         eviction_policy: str = "oldest_first",
         fail_on_update: bool = False,
         implementation_id: str = "recording_test",
+        max_property_bytes: int | None = None,
+        max_serialized_bytes: int | None = None,
+        **_ignored,
     ) -> None:
         self.implementation_id = implementation_id
         self.bounds = MemoryBounds(
             max_records=max_records,
             max_age_ms=max_age_ms,
             eviction_policy=eviction_policy,
+            max_property_bytes=max_property_bytes,
+            max_serialized_bytes=max_serialized_bytes,
         )
         self.fail_on_update = fail_on_update
         self.epoch = 0
@@ -154,6 +159,44 @@ class _MutatingSharedSnapshotMemory(_RecordingMemory):
 
     def snapshot(self):
         return self._snapshot
+
+
+class _NonJsonPropertyMemory(_RecordingMemory):
+    """Returns a healthy snapshot with a non-JSON property value."""
+
+    def update(self, context, observation):
+        from autonomy.decision import (
+            MemoryProvenance,
+            MemorySnapshot,
+            RetainedEvidence,
+        )
+
+        del observation
+        return MemorySnapshot(
+            memory_id=f"mem-{context.frame_id}",
+            epoch_id=f"epoch-{self.epoch}",
+            health="healthy",
+            bounds=self.bounds,
+            created_at_ms=context.timestamp_ms,
+            records=(
+                RetainedEvidence(
+                    record_id="rec-opaque",
+                    kind="observation_presence",
+                    label="opaque",
+                    confidence=1.0,
+                    provenance=MemoryProvenance(
+                        observation_id="obs",
+                        evidence_id="opaque",
+                        coordinate_frame="image",
+                        observed_at_ms=1,
+                        updated_at_ms=context.timestamp_ms,
+                        frame_id=context.frame_id,
+                    ),
+                    properties={"opaque": object()},
+                ),
+            ),
+            implementation_id=self.implementation_id,
+        )
 
 
 def _valid_payload() -> dict:
@@ -297,6 +340,77 @@ class MemoryActivationTests(unittest.TestCase):
             self.assertNotIn("tampered", second.metadata)
             if second.records:
                 self.assertNotIn("width", second.records[0].properties)
+
+    def test_caller_mutation_does_not_affect_stage_owned_last_snapshot(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            stage = ActivatedMemoryStage(
+                read_memory_activation(_write_payload(tmp, _valid_payload()))
+            )
+            returned = stage.update(
+                DecisionFrameContext("frame_7", 7, 700),
+                Observation("obs_7", 690, {}),
+            )
+            self.assertIsNot(returned, stage.last_snapshot)
+            returned.metadata["caller"] = "mutated"
+            if returned.records:
+                returned.records[0].properties["extra"] = 1
+            owned = stage.last_snapshot
+            assert owned is not None
+            self.assertNotIn("caller", owned.metadata)
+            if owned.records:
+                self.assertNotIn("extra", owned.records[0].properties)
+            reread = stage.snapshot()
+            self.assertIsNot(reread, stage.last_snapshot)
+            self.assertNotIn("caller", reread.metadata)
+
+    def test_large_exception_diagnostics_stay_under_serialized_ceiling(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            payload = _valid_payload()
+            payload["memory"]["implementation_config"]["fail_on_update"] = True
+            payload["memory"]["implementation_config"]["max_serialized_bytes"] = 2_000
+            stage = ActivatedMemoryStage(
+                read_memory_activation(_write_payload(tmp, payload))
+            )
+            # Force an oversized exception string through the stage boundary.
+            stage.implementation.fail_on_update = True
+            original_update = stage.implementation.update
+
+            def huge_fail(context, observation):
+                del context, observation
+                raise RuntimeError("x" * 300_000)
+
+            stage.implementation.update = huge_fail  # type: ignore[method-assign]
+            try:
+                snapshot = stage.update(
+                    DecisionFrameContext("frame_8", 8, 800),
+                    Observation("obs_8", 790, {}),
+                )
+            finally:
+                stage.implementation.update = original_update  # type: ignore[method-assign]
+            self.assertEqual(snapshot.health, "error")
+            from autonomy.decision import serialized_memory_snapshot_bytes
+
+            self.assertLessEqual(serialized_memory_snapshot_bytes(snapshot), 2_000)
+            self.assertLessEqual(
+                serialized_memory_snapshot_bytes(stage.last_snapshot),  # type: ignore[arg-type]
+                2_000,
+            )
+
+    def test_framework_rejects_non_json_property_values(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            payload = _valid_payload()
+            payload["memory"]["implementation_spec"] = (
+                "tests.autonomy.decision.test_memory_activation:_NonJsonPropertyMemory"
+            )
+            stage = ActivatedMemoryStage(
+                read_memory_activation(_write_payload(tmp, payload))
+            )
+            snapshot = stage.update(
+                DecisionFrameContext("frame_9", 9, 900),
+                Observation("obs_9", 890, {}),
+            )
+            self.assertEqual(snapshot.health, "error")
+            self.assertIn("JSON", snapshot.error or "")
 
     def test_activation_document_validation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

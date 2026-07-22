@@ -333,16 +333,22 @@ def namespaced_record_id(
 ) -> str:
     """Build an injective plugin-safe ledger key.
 
-    Format: ``{kind}:{plugin_len}:{plugin}:{evidence_len}:{evidence}``.
+    Formats:
+    - absent source: ``{kind}:0:{evidence_len}:{evidence}``
+    - present source: ``{kind}:1:{plugin_len}:{plugin}:{evidence_len}:{evidence}``
 
-    Length-prefixed components keep delimiter-containing plugin or evidence IDs
-    collision-free (``plugin:a`` vs ``plugin_a`` never share a key).
+    Optional presence is encoded explicitly so ``None`` never collides with a
+    plugin literally named ``\"unknown\"``. Plugin and evidence strings are kept
+    exactly as supplied (no strip), so whitespace-distinct IDs remain distinct.
+    Length-prefixed components keep delimiter-containing IDs collision-free.
     """
 
-    plugin = str(source_plugin_id or "unknown").strip() or "unknown"
-    evidence = str(evidence_id).strip()
+    evidence = str(evidence_id)
+    if source_plugin_id is None:
+        return f"{kind_prefix}:0:{len(evidence)}:{evidence}"
+    plugin = str(source_plugin_id)
     return (
-        f"{kind_prefix}:{len(plugin)}:{plugin}:{len(evidence)}:{evidence}"
+        f"{kind_prefix}:1:{len(plugin)}:{plugin}:{len(evidence)}:{evidence}"
     )
 
 

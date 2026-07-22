@@ -34,8 +34,8 @@ class _RecordingMemory:
         fail_on_update: bool = False,
         fail_on_reset: bool = False,
         implementation_id: str = "recording_test",
-        max_property_bytes: int | None = None,
-        max_serialized_bytes: int | None = None,
+        max_property_bytes: int | None = 4_096,
+        max_serialized_bytes: int | None = 262_144,
         **_ignored,
     ) -> None:
         self.implementation_id = implementation_id
@@ -205,6 +205,60 @@ class _NonJsonPropertyMemory(_RecordingMemory):
 
 class _ConfigurableIdMemory(_RecordingMemory):
     """Allows activation to declare a custom implementation_id (including multibyte)."""
+
+
+class _BrokenStringError(RuntimeError):
+    def __str__(self) -> str:
+        raise RuntimeError("stringification failed")
+
+
+class _BrokenStrMemory(_RecordingMemory):
+    def __init__(self, **kwargs):
+        self._armed = False
+        super().__init__(**kwargs)
+        self._armed = True
+
+    def update(self, context, observation):
+        if self._armed:
+            raise _BrokenStringError("payload")
+        return super().update(context, observation)
+
+    def reset(self):
+        if self._armed:
+            raise _BrokenStringError("payload")
+        return super().reset()
+
+    def snapshot(self):
+        if self._armed:
+            raise _BrokenStringError("payload")
+        return super().snapshot()
+
+
+class _SelfContradictingBoundsMemory(_RecordingMemory):
+    """Advertises a tight serialized ceiling but returns an oversized empty snapshot."""
+
+    def update(self, context, observation):
+        from autonomy.decision import MemoryBounds, empty_memory_snapshot
+
+        del observation
+        tight = MemoryBounds(
+            max_records=self.bounds.max_records,
+            max_age_ms=self.bounds.max_age_ms,
+            eviction_policy=self.bounds.eviction_policy,
+            max_property_bytes=self.bounds.max_property_bytes or 4_096,
+            max_serialized_bytes=512,
+        )
+        # Inflate epoch so the body exceeds the advertised 512-byte ceiling while
+        # still remaining under the default activation ceiling.
+        return empty_memory_snapshot(
+            memory_id=f"mem-{context.frame_id}",
+            epoch_id="e" + ("x" * 1_200),
+            bounds=tight,
+            created_at_ms=context.timestamp_ms,
+            implementation_id=self.implementation_id,
+            summary=("memory_empty=true",),
+            metadata={"pad": "y" * 200},
+        )
 
 
 class _NearCeilingThenFailMemory(_RecordingMemory):
@@ -595,6 +649,47 @@ class MemoryActivationTests(unittest.TestCase):
             from autonomy.decision import serialized_memory_snapshot_bytes
 
             self.assertLessEqual(serialized_memory_snapshot_bytes(snapshot), 512)
+
+    def test_broken_exception_str_still_isolates_update_reset_snapshot(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            payload = _valid_payload()
+            payload["memory"]["implementation_spec"] = (
+                "tests.autonomy.decision.test_memory_activation:_BrokenStrMemory"
+            )
+            stage = ActivatedMemoryStage(
+                read_memory_activation(_write_payload(tmp, payload))
+            )
+            updated = stage.update(
+                DecisionFrameContext("f1", 1, 1),
+                Observation("o1", 1, {}),
+            )
+            self.assertEqual(updated.health, "error")
+            self.assertIn("unprintable exception", stage.last_error or "")
+            self.assertNotIn("stringification failed", stage.last_error or "")
+
+            reset = stage.reset()
+            self.assertEqual(reset.health, "empty")
+            self.assertIn("unprintable exception", stage.last_error or "")
+
+            snapped = stage.snapshot()
+            self.assertEqual(snapped.health, "error")
+            self.assertIn("unprintable exception", stage.last_error or "")
+
+    def test_rejects_snapshot_that_exceeds_its_own_serialized_ceiling(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            payload = _valid_payload()
+            payload["memory"]["implementation_spec"] = (
+                "tests.autonomy.decision.test_memory_activation:_SelfContradictingBoundsMemory"
+            )
+            stage = ActivatedMemoryStage(
+                read_memory_activation(_write_payload(tmp, payload))
+            )
+            snapshot = stage.update(
+                DecisionFrameContext("f1", 1, 1),
+                Observation("o1", 1, {}),
+            )
+            self.assertEqual(snapshot.health, "error")
+            self.assertIn("declares max_serialized_bytes", snapshot.error or "")
 
     def test_framework_rejects_non_json_property_values(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

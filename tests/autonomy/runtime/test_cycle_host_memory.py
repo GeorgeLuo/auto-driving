@@ -45,8 +45,8 @@ class _RecordingMemory:
         eviction_policy: str = "oldest_first",
         fail_on_update: bool = False,
         implementation_id: str = "recording_test",
-        max_property_bytes: int | None = None,
-        max_serialized_bytes: int | None = None,
+        max_property_bytes: int | None = 4_096,
+        max_serialized_bytes: int | None = 262_144,
         **_ignored,
     ) -> None:
         from autonomy.decision import MemoryBounds, empty_memory_snapshot

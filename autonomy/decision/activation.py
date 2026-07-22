@@ -314,7 +314,7 @@ class ActivatedMemoryStage:
             self.last_error = None
         except Exception as exc:  # noqa: BLE001 - stage isolation boundary
             self.failure_count += 1
-            self.last_error = self._bound_diagnostic(f"{type(exc).__name__}: {exc}")
+            self.last_error = self._bound_diagnostic(format_exception_safely(exc))
             owned = self._error_snapshot(self.last_error)
         self.last_duration_ms = (time.perf_counter() - started) * 1000.0
         self.update_count += 1
@@ -335,7 +335,7 @@ class ActivatedMemoryStage:
             self.last_error = None
         except Exception as exc:  # noqa: BLE001 - stage isolation boundary
             self.failure_count += 1
-            self.last_error = self._bound_diagnostic(f"{type(exc).__name__}: {exc}")
+            self.last_error = self._bound_diagnostic(format_exception_safely(exc))
             memory_id, epoch_id = framework_reset_identity(self.reset_count + 1)
             owned = self._bounded_fallback_snapshot(
                 memory_id=memory_id,
@@ -355,7 +355,7 @@ class ActivatedMemoryStage:
             owned = self._accept_snapshot(current, operation="snapshot")
         except Exception as exc:  # noqa: BLE001 - stage isolation boundary
             self.failure_count += 1
-            self.last_error = self._bound_diagnostic(f"{type(exc).__name__}: {exc}")
+            self.last_error = self._bound_diagnostic(format_exception_safely(exc))
             owned = self._error_snapshot(self.last_error)
         return self._publish_snapshot(owned)
 
@@ -397,10 +397,11 @@ class ActivatedMemoryStage:
                 f"{self.activation.implementation_id!r}"
             )
         configured = self.activation.bounds
-        if snapshot.bounds.max_records > configured.max_records:
+        declared = snapshot.bounds
+        if declared.max_records > configured.max_records:
             raise ValueError(
                 "memory snapshot max_records "
-                f"{snapshot.bounds.max_records} exceeds activation max_records "
+                f"{declared.max_records} exceeds activation max_records "
                 f"{configured.max_records}"
             )
         if snapshot.record_count > configured.max_records:
@@ -408,39 +409,100 @@ class ActivatedMemoryStage:
                 f"memory snapshot retains {snapshot.record_count} records but "
                 f"activation max_records is {configured.max_records}"
             )
-        # Reject removed or weakened age bounds. None max_age is weaker than a
-        # finite activation age; a larger window is also weaker.
+        # Reject removed or weakened age/size bounds. None is weaker than a
+        # finite activation ceiling; a larger window/limit is also weaker.
         if configured.max_age_ms is not None:
-            if snapshot.bounds.max_age_ms is None:
+            if declared.max_age_ms is None:
                 raise ValueError(
                     "memory snapshot removed max_age_ms while activation requires "
                     f"max_age_ms={configured.max_age_ms}"
                 )
-            if snapshot.bounds.max_age_ms > configured.max_age_ms:
+            if declared.max_age_ms > configured.max_age_ms:
                 raise ValueError(
                     "memory snapshot max_age_ms "
-                    f"{snapshot.bounds.max_age_ms} exceeds activation max_age_ms "
+                    f"{declared.max_age_ms} exceeds activation max_age_ms "
                     f"{configured.max_age_ms}"
                 )
         if configured.max_property_bytes is not None:
+            if declared.max_property_bytes is None:
+                raise ValueError(
+                    "memory snapshot removed max_property_bytes while activation "
+                    f"requires max_property_bytes={configured.max_property_bytes}"
+                )
+            if declared.max_property_bytes > configured.max_property_bytes:
+                raise ValueError(
+                    "memory snapshot max_property_bytes "
+                    f"{declared.max_property_bytes} exceeds activation "
+                    f"max_property_bytes={configured.max_property_bytes}"
+                )
+        if configured.max_serialized_bytes is not None:
+            if declared.max_serialized_bytes is None:
+                raise ValueError(
+                    "memory snapshot removed max_serialized_bytes while activation "
+                    f"requires max_serialized_bytes={configured.max_serialized_bytes}"
+                )
+            if declared.max_serialized_bytes > configured.max_serialized_bytes:
+                raise ValueError(
+                    "memory snapshot max_serialized_bytes "
+                    f"{declared.max_serialized_bytes} exceeds activation "
+                    f"max_serialized_bytes={configured.max_serialized_bytes}"
+                )
+
+        # Enforce the tighter of activation and declared property ceilings.
+        property_limit = configured.max_property_bytes
+        if declared.max_property_bytes is not None:
+            property_limit = (
+                declared.max_property_bytes
+                if property_limit is None
+                else min(property_limit, declared.max_property_bytes)
+            )
+        if property_limit is not None:
             for record in snapshot.records:
                 size = serialized_mapping_bytes(record.properties)
-                if size > configured.max_property_bytes:
+                if size > property_limit:
                     raise ValueError(
                         "memory record "
                         f"{record.record_id!r} properties are {size} bytes; "
-                        f"activation max_property_bytes is {configured.max_property_bytes}"
+                        f"allowed max_property_bytes is {property_limit}"
                     )
-        # Detach before size check so measurement matches owned stage state.
+
+        # Detach, measure total size against activation and declared ceilings,
+        # then normalize bounds to the authoritative activation policy.
         detached = detach_memory_snapshot(snapshot)
-        if configured.max_serialized_bytes is not None:
-            size = serialized_memory_snapshot_bytes(detached)
-            if size > configured.max_serialized_bytes:
-                raise ValueError(
-                    f"memory snapshot serializes to {size} bytes; "
-                    f"activation max_serialized_bytes is {configured.max_serialized_bytes}"
-                )
-        return detached
+        size = serialized_memory_snapshot_bytes(detached)
+        if (
+            configured.max_serialized_bytes is not None
+            and size > configured.max_serialized_bytes
+        ):
+            raise ValueError(
+                f"memory snapshot serializes to {size} bytes; "
+                f"activation max_serialized_bytes is {configured.max_serialized_bytes}"
+            )
+        if (
+            declared.max_serialized_bytes is not None
+            and size > declared.max_serialized_bytes
+        ):
+            raise ValueError(
+                f"memory snapshot serializes to {size} bytes but declares "
+                f"max_serialized_bytes={declared.max_serialized_bytes}"
+            )
+        if detached.bounds == configured:
+            return detached
+        return detach_memory_snapshot(
+            MemorySnapshot(
+                memory_id=detached.memory_id,
+                epoch_id=detached.epoch_id,
+                health=detached.health,
+                bounds=configured,
+                created_at_ms=detached.created_at_ms,
+                records=detached.records,
+                summary=detached.summary,
+                implementation_id=detached.implementation_id,
+                error=detached.error,
+                metadata=detached.metadata,
+                schema=detached.schema,
+            )
+        )
 
     def _publish_snapshot(self, owned: MemorySnapshot) -> MemorySnapshot:
         """Store stage-owned state and return a second detached caller copy."""
@@ -593,6 +655,17 @@ def json_load_object(path: Path) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValueError(f"memory activation must be a JSON object: {path}")
     return payload
+
+
+def format_exception_safely(exc: BaseException) -> str:
+    """Format an exception without letting ``__str__`` bypass isolation."""
+
+    type_name = type(exc).__name__
+    try:
+        detail = str(exc)
+    except Exception:  # noqa: BLE001 - secondary failure must not escape
+        return f"{type_name}: <unprintable exception>"
+    return f"{type_name}: {detail}"
 
 
 def _truncate_text(value: str, max_chars: int) -> str:

@@ -41,19 +41,40 @@ class _SlowMapper:
 class _FakeCar:
     def __init__(self, **_kwargs) -> None:
         self.capture_count = 0
+        self.last_capture_shadow_reference: dict | None = None
+        self.last_simulator_frame_index: int | None = None
 
     def read_sensors(self, request):
         now_ms = int(time.time() * 1000)
         path = request.front_camera_path()
         path.parent.mkdir(parents=True, exist_ok=True)
-        Image.new("RGB", (64, 48), (self.capture_count, 40, 60)).save(path)
+        # Simulate advancing Chase play_debug frameIndex values.
+        simulator_frame_index = 100 + self.capture_count
+        Image.new("RGB", (64, 48), (self.capture_count % 256, 40, 60)).save(path)
         self.capture_count += 1
+        self.last_simulator_frame_index = simulator_frame_index
+        self.last_capture_shadow_reference = {
+            "schema": "chase_shadow_reference_v1",
+            "evaluator_only": True,
+            "simulator_frame_index": simulator_frame_index,
+            "simulation_epoch": "chase-run:test",
+            "frame_id": f"chase_frame_{simulator_frame_index:06d}",
+            "game_id": "chase",
+            "scenario": "chaser-depth-obstacles",
+            "chaser_control_source": "builtin",
+        }
         reading = SensorReading(
             sensor_id=FRONT_CAMERA_SENSOR_ID,
             sensor_kind="camera",
             captured_at_ms=now_ms,
             path=str(path),
-            metadata={"content_type": "image/png"},
+            metadata={
+                "content_type": "image/png",
+                "simulator_frame_index": simulator_frame_index,
+                "simulation_epoch": "chase-run:test",
+                "frame_index": simulator_frame_index,
+                "frame_id": f"chase_frame_{simulator_frame_index:06d}",
+            },
         )
         return SensorSnapshot(
             read_id=request.read_id,
@@ -61,6 +82,11 @@ class _FakeCar:
             started_at_ms=now_ms,
             completed_at_ms=now_ms,
             request=request.to_dict(),
+            metadata={
+                "simulator_frame_index": simulator_frame_index,
+                "simulation_epoch": "chase-run:test",
+                "frame_id": f"chase_frame_{simulator_frame_index:06d}",
+            },
         )
 
 
@@ -115,10 +141,22 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 state["frames_processed"] + state["frames_dropped"],
                 state["frames_captured"],
             )
-            self.assertEqual(mapper.frame_ids[-1], "frame_000007")
+            self.assertEqual(mapper.frame_ids[-1], "chase_frame_000107")
             self.assertTrue(
                 (automation_dir / "latest" / "frames" / "latest_front_camera.png").is_file()
             )
+            latest = json.loads(
+                (automation_dir / "latest_perception.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(latest["simulator_frame_index"], 107)
+            self.assertEqual(latest["simulation_epoch"], "chase-run:test")
+            self.assertEqual(latest["frame_id"], "chase_frame_000107")
+            self.assertEqual(
+                latest["shadow_reference"]["simulator_frame_index"],
+                latest["simulator_frame_index"],
+            )
+            self.assertIs(latest["control"]["applied"], False)
+            self.assertNotIn("shadow_reference", latest.get("observation") or {})
             self.assertEqual(
                 list((automation_dir / "latest" / "frames").glob("frame_*_front_camera.png")),
                 [],

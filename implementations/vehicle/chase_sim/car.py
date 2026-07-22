@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import base64
-import json
 import time
 from pathlib import Path
 from typing import Any
 
 from .defaults import DEFAULT_CHASE_UI_WS_URL, get_default_chase_ui_ws_url
+from .frame_identity import (
+    build_chase_shadow_reference,
+    format_chase_frame_id,
+)
 from .metrics_ws import MetricsUiWebSocketError, MetricsUiWsClient
 from autonomy.vehicle import (
     FRONT_CAMERA_SENSOR_ID,
@@ -22,6 +25,7 @@ from autonomy.vehicle import (
 
 CHASE_SET_CHASER_INPUT = "set-chaser-input"
 CHASE_SET_CHASER_CONTROL_SOURCE = "set-chaser-control-source"
+CHASE_ATOMIC_EVALUATION_QUERY = "atomic-evaluation-capture"
 
 
 def _timestamp_ms() -> int:
@@ -88,6 +92,10 @@ class ChaseSimCar(CarInterface):
         self.ws_url = (ws_url or get_default_chase_ui_ws_url()).strip() or DEFAULT_CHASE_UI_WS_URL
         self.timeout_s = float(timeout_s)
         self.client = MetricsUiWsClient(self.ws_url, timeout_s=self.timeout_s)
+        # Evaluator-only shadow reference from the most recent capture. Not part of
+        # SensorSnapshot so it never enters observation/memory inputs.
+        self._last_capture_shadow_reference: dict[str, Any] | None = None
+        self._last_simulator_frame_index: int | None = None
         self._capabilities = VehicleCapabilities(
             vehicle_id=vehicle_id,
             vehicle_kind="chase-sim-ws",
@@ -97,7 +105,7 @@ class ChaseSimCar(CarInterface):
                     "sensor_kind": "camera",
                     "pose": "simulated_fixed_front",
                     "available": True,
-                    "default_endpoint": "play-front-view-snapshot",
+                    "default_endpoint": CHASE_ATOMIC_EVALUATION_QUERY,
                     "physical_limitations": (
                         "simulated low-mounted forward-facing view",
                         "no map/debug state exposed through the vehicle interface",
@@ -319,12 +327,48 @@ class ChaseSimCar(CarInterface):
             "completed_at_ms": int(time.time() * 1000),
         }
 
-    def _capture_front_camera(self, path: Path, endpoint: str) -> dict[str, Any]:
-        snapshot = self.client.get_play_front_view_snapshot(timeout_s=self.timeout_s)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        image = snapshot.get("image") if isinstance(snapshot.get("image"), dict) else {}
-        byte_count = 0
+    @property
+    def last_capture_shadow_reference(self) -> dict[str, Any] | None:
+        """Evaluator-only shadow reference from the most recent front-camera capture."""
 
+        return self._last_capture_shadow_reference
+
+    @property
+    def last_simulator_frame_index(self) -> int | None:
+        return self._last_simulator_frame_index
+
+    def _capture_front_camera(self, path: Path, endpoint: str) -> dict[str, Any]:
+        """Capture one atomic image/identity/evaluator-reference response."""
+
+        path.parent.mkdir(parents=True, exist_ok=True)
+        capture_response = self.client.play_game_query(
+            CHASE_ATOMIC_EVALUATION_QUERY,
+            {"actorId": "chaser", "width": 640, "height": 480},
+            timeout_s=self.timeout_s,
+        )
+        shadow_reference = build_chase_shadow_reference(capture_response)
+        if shadow_reference is None:
+            raise ValueError(
+                "Chase atomic evaluation capture has an invalid identity or control reference"
+            )
+
+        sensor = capture_response.get("sensor")
+        image = sensor.get("image") if isinstance(sensor, dict) else None
+        if not isinstance(image, dict):
+            raise ValueError("Chase atomic evaluation capture has no sensor image")
+        width = image.get("width")
+        height = image.get("height")
+        if (
+            isinstance(width, bool)
+            or not isinstance(width, int)
+            or width <= 0
+            or isinstance(height, bool)
+            or not isinstance(height, int)
+            or height <= 0
+        ):
+            raise ValueError("Chase atomic evaluation capture has invalid image dimensions")
+
+        byte_count = 0
         if isinstance(image.get("svg"), str) and path.suffix.lower() == ".svg":
             path.write_text(image["svg"], encoding="utf-8")
             content_type = "image/svg+xml"
@@ -333,32 +377,42 @@ class ChaseSimCar(CarInterface):
             byte_count = len(data)
             path.write_bytes(data)
         else:
-            content_type = "application/json"
-            payload = json.dumps(
-                {
-                    "error": "snapshot did not include image data",
-                    "content_type": content_type,
-                },
-                indent=2,
-                sort_keys=True,
-            ).encode("utf-8")
-            byte_count = len(payload)
-            path.write_bytes(payload)
+            raise ValueError(
+                "Chase atomic evaluation capture has no image encoding compatible "
+                f"with {path.suffix or 'the requested output'}"
+            )
         if byte_count == 0 and path.exists():
             byte_count = path.stat().st_size
 
-        return {
-            "endpoint": endpoint,
+        frame_index = int(shadow_reference["simulator_frame_index"])
+        simulation_epoch = str(shadow_reference["simulation_epoch"])
+        self._last_simulator_frame_index = frame_index
+        self._last_capture_shadow_reference = shadow_reference
+
+        capture: dict[str, Any] = {
+            "endpoint": CHASE_ATOMIC_EVALUATION_QUERY,
+            "requested_endpoint": endpoint,
             "path": str(path),
             "bytes": byte_count,
             "content_type": content_type,
+            "width": width,
+            "height": height,
             "captured_at_ms": int(time.time() * 1000),
+            "capture_id": shadow_reference["capture_id"],
+            "simulator_frame_index": frame_index,
+            "simulation_epoch": simulation_epoch,
+            "frame_index": frame_index,
+            "frame_id": format_chase_frame_id(frame_index),
+            "identity_pairing": "atomic_evaluation_capture",
         }
+        return capture
 
     def read_sensors(self, request: SensorReadRequest) -> SensorSnapshot:
         _reject_unsupported_sensors(request)
         started_ms = _timestamp_ms()
         readings: dict[str, SensorReading] = {}
+        self._last_capture_shadow_reference = None
+        self._last_simulator_frame_index = None
 
         if request.sensor_requested(FRONT_CAMERA_SENSOR_ID):
             capture = self._capture_front_camera(
@@ -373,13 +427,22 @@ class ChaseSimCar(CarInterface):
                 metadata=capture,
             )
 
+        snapshot_metadata: dict[str, Any] = {"vehicle": self.capabilities.to_dict()}
+        if self._last_simulator_frame_index is not None:
+            snapshot_metadata["simulator_frame_index"] = self._last_simulator_frame_index
+            snapshot_metadata["frame_id"] = format_chase_frame_id(self._last_simulator_frame_index)
+        if isinstance(self._last_capture_shadow_reference, dict):
+            snapshot_metadata["simulation_epoch"] = self._last_capture_shadow_reference[
+                "simulation_epoch"
+            ]
+
         return SensorSnapshot(
             read_id=request.read_id,
             readings=readings,
             started_at_ms=started_ms,
             completed_at_ms=_timestamp_ms(),
             request=request.to_dict(),
-            metadata={"vehicle": self.capabilities.to_dict()},
+            metadata=snapshot_metadata,
         )
 
 

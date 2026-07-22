@@ -255,6 +255,37 @@ class MetricsUiWsClient:
             },
         ).message
 
+    def play_game_query(
+        self,
+        query_id: str,
+        payload: Any = None,
+        *,
+        timeout_s: float | None = None,
+    ) -> dict[str, Any]:
+        response = self.command(
+            {
+                "type": "play_game_query",
+                "queryId": query_id,
+                "payload": payload,
+            },
+            response_type="play_game_query_result",
+            timeout_s=timeout_s,
+        )
+        envelope = response.payload
+        if not isinstance(envelope, dict):
+            raise MetricsUiWebSocketError("Play game query returned no result envelope")
+        if envelope.get("queryId") != query_id:
+            raise MetricsUiWebSocketError(
+                f"Play game query response id {envelope.get('queryId')!r} "
+                f"does not match {query_id!r}"
+            )
+        result = envelope.get("result")
+        if not isinstance(result, dict):
+            raise MetricsUiWebSocketError(
+                f"Play game query {query_id!r} returned a non-object result"
+            )
+        return result
+
     def get_play_debug(self, *, timeout_s: float | None = None) -> dict[str, Any]:
         response = self.command(
             {"type": "get_play_debug"},

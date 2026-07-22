@@ -174,7 +174,8 @@
       <div class="meta">
         <span class="pill">Status: active — not ready to close</span>
         <span class="pill">Packages open: 5 (bounds, expiry, coverage) and 6</span>
-        <span class="pill">Next: snapshot detach + bounds</span>
+        <span class="pill">PR #51: reviewed; merge boundary for Chase remediation</span>
+        <span class="pill">Next: Package 5A — value + bounds integrity</span>
         <span class="pill">Proposed: 2026-07-15</span>
         <span class="pill">Action policy: idle</span>
         <span class="pill">Hosts: Chase and DonkeyCar</span>
@@ -188,9 +189,11 @@
         The milestone is <strong>not</strong> complete. Contract, host wiring,
         <code>BoundedEvidenceLedger</code>, live inspect (Memory map), operator
         reset, offline replay, opt-in provenance recording, and initial Chase/Pi
-        lifecycle-check commands are landed. The 2026-07-20 implementation review
-        found that the validation paths do not yet prove several claims they
-        report as successful. The following remains before package 6 closeout and
+        lifecycle-check commands are landed. Three remediation blocks now prove
+        exact Pi frame pairing, the live onboard Pi lifecycle, and atomic Chase
+        alignment/retention/reset. The remaining findings concern value and
+        artifact bounds, memory-probe liveness, deterministic edge coverage, and
+        live Chase expiry. The following remains before package 6 closeout and
         before activating milestone 006.
       </p>
       <div class="table-wrap" style="margin-top: 12px;">
@@ -231,7 +234,7 @@
               <td><strong>Missing deterministic coverage</strong></td>
               <td>5</td>
               <td><span class="status pending">Required</span></td>
-              <td>Add conflict, long-sequence, serialized-size, stale-worker, frame-pairing, and reset-confirmation tests.</td>
+              <td>Add conflict, long-sequence, property/serialized-size, memory-probe stale-worker, and cross-plugin identity-collision tests. Exact frame-pairing, fresh-frame, and reset-transition coverage is landed.</td>
             </tr>
             <tr>
               <td><strong>Live Chase max-age expiry</strong></td>
@@ -253,6 +256,14 @@
         milestone 006 while these items remain open unless the decision log
         records an explicit parallel exception.
       </p>
+      <div class="card interface" style="margin-top: 14px;">
+        <h3>Implementer Handoff — After PR #51 Merges</h3>
+        <p><strong>Completed merge boundary:</strong> PR #51 is reviewed, CI-clean, and answers the prior atomic-alignment, temporal-provenance, observe-only, and movement-proof findings. Its tracked Chase extract is accepted evidence for alignment, retention, isolation, and reset; do not reopen the removed sequential capture path.</p>
+        <p><strong>Next review unit (Package 5A):</strong> deeply detach returned memory values; bound record properties and serialized snapshots; reject an implementation that removes or weakens configured age limits; namespace retained evidence by source plugin; add focused mutation, size, age-policy, and collision tests.</p>
+        <p><strong>Following review unit (Package 5B):</strong> bound replay frame count and total artifact bytes; make Chase memory probes reject stopped or stale workers; add long-sequence and operator-liveness tests.</p>
+        <p><strong>Final validation unit (Package 5C):</strong> record live Chase retention followed by max-age expiry without reset, rerun the canonical and live checks, then write package 6 closeout. Keep the Metrics UI atomic-capture milestone available as an active dependency until this validation no longer needs contract adjustment.</p>
+        <p><strong>Review state:</strong> “review unit” below means the next bounded pull request, not an unresolved review on PR #51.</p>
+      </div>
     </section>
 
     <section class="panel" id="implementation-review-2026-07-20">
@@ -316,9 +327,9 @@
             </tr>
             <tr>
               <td><span class="status pending">High</span></td>
-              <td>Operator status can call a stopped Chase worker live; stale publication timeout and weak reset confirmation can also pass.</td>
-              <td><code>cli/automa_cli/memory.py:_probe_chase_memory</code>, <code>reset_vehicle_memory</code>; <code>memory_check.py:_wait_for_fresh_publication</code>.</td>
-              <td>Include process state and age in liveness, require a genuinely new frame, and confirm reset by epoch/reset-count transition.</td>
+              <td>The Chase memory probe can still report a stopped worker's retained state as live.</td>
+              <td><code>cli/automa_cli/memory.py:_probe_chase_memory</code> reads the latest state file without requiring a live process or bounded publication age. Fresh-frame polling and epoch/reset-count confirmation are now fail-closed elsewhere.</td>
+              <td>Include worker process state and publication age in memory liveness and add focused stopped/stale-worker tests.</td>
             </tr>
           </tbody>
         </table>
@@ -350,8 +361,8 @@
         <li><strong>Done:</strong> Replace synthetic physical lifecycle phases with checks of the active onboard stage (lifecycle keys = present∖dropout observed evidence; fail-closed frame freshness).</li>
         <li><strong>Done:</strong> Preserve Chase frame identity, consume the atomic evaluator response, and validate a live shadow/reference run.</li>
         <li>Deeply detach snapshots; enforce byte limits and plugin-safe record identity.</li>
-        <li>Add missing conflict, long-sequence, size-bound, stale-state, reset, and frame-pairing tests.</li>
-        <li>Run and record trustworthy Chase and Pi reviews, then write package 6 closeout.</li>
+        <li>Add missing conflict, long-sequence, size-bound, plugin-collision, and memory-probe stale-worker tests.</li>
+        <li>Record live Chase max-age expiry, rerun the accepted Pi/Chase checks, then write package 6 closeout.</li>
       </ol>
       <p class="note" style="margin-top: 12px;">
         <strong>2026-07-20 remediation block 1:</strong> <code>fetch_matched_observation_pair</code>
@@ -410,8 +421,9 @@
       <h2>Completion Usage</h2>
       <p>
         These commands define how milestone 005 is exercised. Core staging,
-        inspection, replay, reset, and streaming are implemented; the two live
-        validation workflows remain under package-5 repair as marked below.
+        inspection, replay, reset, and streaming are implemented; physical
+        lifecycle validation is complete, while Chase max-age expiry and the
+        remaining bounds/liveness contracts remain under package-5 repair.
         Removing or adding a workflow requires an explicit scope decision.
       </p>
       <div class="grid two">
@@ -605,11 +617,11 @@
           <p><strong>Review answer:</strong> yes; physical lifecycle remediation is complete. Chase live expiry and the remaining contract hardening still block milestone closeout.</p>
         </div>
         <div class="card interface">
-          <h3>Current Next Review Unit: Package 5 Validation Integrity</h3>
+          <h3>Current Next Review Unit: Package 5A Value And Bounds Integrity</h3>
           <p><span class="status active">Next</span> <strong>Review shape:</strong> evidence-path repair with focused contract hardening.</p>
-          <p><strong>Deliverable:</strong> detached snapshots, enforceable property/serialized-size and record bounds, missing deterministic tests, and a live Chase max-age expiry result. Atomic Pi frame pairing, live onboard Pi lifecycle validation, and the tracked Chase atomic alignment + retention extract are in place.</p>
-          <p><strong>Review question:</strong> Does each success result prove behavior of the named external runtime using attributable, exact-frame evidence?</p>
-          <p><strong>Package 6 follows</strong> only after this review unit passes.</p>
+          <p><strong>Deliverable:</strong> detached snapshots, enforceable property/serialized-size bounds, plugin-safe retained identity, framework rejection of weakened age bounds, and focused deterministic tests for those contracts.</p>
+          <p><strong>Review question:</strong> Can any implementation or caller mutate, enlarge, collide, or weaken memory beyond the activation's declared limits?</p>
+          <p><strong>Package 5B follows:</strong> record bounds and memory-probe liveness. Package 5C then records Chase max-age expiry before package 6 closeout.</p>
         </div>
       </div>
       <div class="table-wrap" style="margin-top: 16px;">
@@ -849,7 +861,7 @@
             <tr><td>5</td><td>The same activation and lifecycle run through local Chase and onboard Donkey hosts; neither receives privileged simulator map state.</td><td><span class="status done">Met</span> for load/update/status/reset path</td></tr>
             <tr><td>6</td><td>Automa can stage, inspect, run, stream latest memory, <strong>replay</strong> a sequence, and reset state with concise human and complete machine output.</td><td><span class="status done">Met</span> — stage/inspect/stream/reset/replay landed</td></tr>
             <tr><td>7</td><td>Default execution writes no logs, frames, or memory history; recording is explicit and bounded.</td><td><span class="status pending">Partial</span> — defaults write nothing and recording is opt-in, but no configured frame-count or byte bound is enforced.</td></tr>
-            <tr><td>8</td><td>Deterministic tests cover recurrence, dropout, conflict, expiry, capacity, reset, failure, and replay, including long-sequence boundedness.</td><td><span class="status blocked">Open</span> — conflict, long-sequence, serialized-size, stale-status, exact-frame pairing, and strong reset-confirmation coverage is missing.</td></tr>
+            <tr><td>8</td><td>Deterministic tests cover recurrence, dropout, conflict, expiry, capacity, reset, failure, and replay, including long-sequence boundedness.</td><td><span class="status blocked">Open</span> — conflict, long-sequence, serialized/property-size, cross-plugin collision, and memory-probe stale-worker coverage is missing. Exact-frame pairing, fresh-frame, and reset-transition tests are landed.</td></tr>
             <tr><td>9</td><td>One live <code>chaser-depth-obstacles</code> shadow check and one recorded non-moving Pi present/dropout/expiry/reset check verify equivalent stage behavior while the rewritten engine emits zero movement.</td><td><span class="status pending">Partial</span> — Pi lifecycle is fully validated; <a href="evidence/chase-shadow-memory/provenance_extract.html">Chase</a> proves live retention, reset, and zero candidate movement, but live max-age expiry remains open.</td></tr>
             <tr><td>10</td><td>During the simulator check, Chase's built-in decision model retains movement authority, the rewrite runs observe-only, and candidate/reference results are aligned by simulator frame identity.</td><td><span class="status done">Met</span> — the atomic evaluator contract and tracked guided run prove same-epoch advancing alignment, simulator authority, complete zero/not-applied candidate control, and evaluator isolation.</td></tr>
             <tr><td>11</td><td>Simulator debug, map, and reference-decision state are evaluator-only and are absent from rewritten controller inputs and retained memory provenance.</td><td><span class="status done">Met</span> by design/wiring; re-asserted on check path</td></tr>

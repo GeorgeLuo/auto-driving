@@ -224,7 +224,7 @@ class ActivatedMemoryStage:
             self.last_error = self._bound_diagnostic(f"{type(exc).__name__}: {exc}")
             owned = self._bounded_fallback_snapshot(
                 memory_id=f"memory-reset-failed-{self.reset_count + 1}",
-                epoch_id=f"epoch-failed-{self.reset_count + 1}",
+                epoch_id=f"epoch-reset-failed-{self.reset_count + 1}",
                 health="empty",
                 error=self.last_error,
                 summary_prefix="memory_reset_failed",
@@ -345,16 +345,23 @@ class ActivatedMemoryStage:
 
     def _error_snapshot(self, error: str) -> MemorySnapshot:
         previous = self.last_snapshot
-        epoch_id = previous.epoch_id if previous is not None else "epoch-error"
+        # Identity is framework-owned and fixed-size. Never reuse prior epoch_id /
+        # memory_id values — a near-ceiling accepted snapshot can make those
+        # fields too large for a failure fallback under the same byte limit.
         return self._bounded_fallback_snapshot(
             memory_id=f"memory-error-{self.failure_count}",
-            epoch_id=epoch_id,
+            epoch_id=f"epoch-error-{self.failure_count}",
             health="error",
             error=error,
             summary_prefix="memory_error",
             metadata_key="error",
             previous_health=previous.health if previous is not None else None,
         )
+
+    def _framework_implementation_id(self) -> str:
+        """Bounded implementation id for framework-owned fallback snapshots."""
+
+        return _truncate_text(self.activation.implementation_id, 48)
 
     def _bounded_fallback_snapshot(
         self,
@@ -367,10 +374,23 @@ class ActivatedMemoryStage:
         metadata_key: str,
         previous_health: str | None = None,
     ) -> MemorySnapshot:
-        """Build a framework failure/reset-fallback snapshot under size limits."""
+        """Build a framework failure/reset-fallback snapshot under size limits.
+
+        All variable identity fields are framework-owned and length-capped so a
+        previously accepted near-ceiling snapshot cannot make isolation raise.
+        """
 
         configured = self.activation.bounds
         limit = configured.max_serialized_bytes
+        # Keep identity fields short and independent of implementation-supplied values.
+        safe_memory_id = _truncate_text(memory_id, 48)
+        safe_epoch_id = _truncate_text(epoch_id, 48)
+        safe_impl_id = self._framework_implementation_id()
+        # previous_health is one of a small enum; still clamp defensively.
+        safe_previous_health = (
+            _truncate_text(previous_health, 32) if previous_health is not None else None
+        )
+
         # Prefer the already-bounded diagnostic from the exception boundary.
         base_diagnostic = str(error or "unknown failure")
         diagnostic_budget = len(base_diagnostic) if base_diagnostic else 64
@@ -384,61 +404,81 @@ class ActivatedMemoryStage:
 
         for budget in budgets:
             diagnostic = _truncate_text(base_diagnostic, budget)
-            if health == "error":
-                candidate = error_memory_snapshot(
-                    memory_id=memory_id,
-                    epoch_id=epoch_id,
-                    bounds=configured,
-                    created_at_ms=_timestamp_ms(),
-                    error=diagnostic,
-                    implementation_id=self.activation.implementation_id,
-                    metadata={
-                        "failure_count": self.failure_count,
-                        "previous_health": previous_health,
-                    },
-                )
-            else:
-                candidate = empty_memory_snapshot(
-                    memory_id=memory_id,
-                    epoch_id=epoch_id,
-                    bounds=configured,
-                    created_at_ms=_timestamp_ms(),
-                    implementation_id=self.activation.implementation_id,
-                    summary=(f"{summary_prefix}={diagnostic}",),
-                    metadata={metadata_key: diagnostic},
-                )
+            candidate = self._build_fallback_candidate(
+                health=health,
+                memory_id=safe_memory_id,
+                epoch_id=safe_epoch_id,
+                implementation_id=safe_impl_id,
+                diagnostic=diagnostic,
+                summary_prefix=summary_prefix,
+                metadata_key=metadata_key,
+                previous_health=safe_previous_health,
+                include_metadata=True,
+            )
             if limit is None or serialized_memory_snapshot_bytes(candidate) <= limit:
                 return detach_memory_snapshot(candidate)
 
-        # Last resort: minimal diagnostic. Activation validation rejects ceilings
-        # too small to host this shape.
-        minimal = "truncated"
-        if health == "error":
-            candidate = error_memory_snapshot(
-                memory_id=memory_id,
-                epoch_id=epoch_id,
-                bounds=configured,
-                created_at_ms=_timestamp_ms(),
-                error=minimal,
-                implementation_id=self.activation.implementation_id,
-                metadata={},
-            )
-        else:
-            candidate = empty_memory_snapshot(
-                memory_id=memory_id,
-                epoch_id=epoch_id,
-                bounds=configured,
-                created_at_ms=_timestamp_ms(),
-                implementation_id=self.activation.implementation_id,
-                summary=(f"{summary_prefix}={minimal}",),
-                metadata={},
-            )
+        # Last resort: minimal diagnostic + no metadata. Identity remains short.
+        candidate = self._build_fallback_candidate(
+            health=health,
+            memory_id=safe_memory_id,
+            epoch_id=safe_epoch_id,
+            implementation_id=safe_impl_id,
+            diagnostic="truncated",
+            summary_prefix=summary_prefix,
+            metadata_key=metadata_key,
+            previous_health=None,
+            include_metadata=False,
+        )
         if limit is not None and serialized_memory_snapshot_bytes(candidate) > limit:
+            # Should be unreachable when max_serialized_bytes >= MIN_MAX_SERIALIZED_BYTES
+            # and identity fields stay framework-owned/short.
             raise ValueError(
                 "framework could not construct a failure snapshot under "
                 f"max_serialized_bytes={limit}"
             )
         return detach_memory_snapshot(candidate)
+
+    def _build_fallback_candidate(
+        self,
+        *,
+        health: str,
+        memory_id: str,
+        epoch_id: str,
+        implementation_id: str,
+        diagnostic: str,
+        summary_prefix: str,
+        metadata_key: str,
+        previous_health: str | None,
+        include_metadata: bool,
+    ) -> MemorySnapshot:
+        configured = self.activation.bounds
+        if health == "error":
+            metadata: dict[str, Any] = {}
+            if include_metadata:
+                metadata = {
+                    "failure_count": self.failure_count,
+                    "previous_health": previous_health,
+                }
+            return error_memory_snapshot(
+                memory_id=memory_id,
+                epoch_id=epoch_id,
+                bounds=configured,
+                created_at_ms=_timestamp_ms(),
+                error=diagnostic,
+                implementation_id=implementation_id,
+                metadata=metadata,
+            )
+        metadata = {metadata_key: diagnostic} if include_metadata else {}
+        return empty_memory_snapshot(
+            memory_id=memory_id,
+            epoch_id=epoch_id,
+            bounds=configured,
+            created_at_ms=_timestamp_ms(),
+            implementation_id=implementation_id,
+            summary=(f"{summary_prefix}={diagnostic}",),
+            metadata=metadata,
+        )
 
 
 def json_load_object(path: Path) -> dict[str, Any]:

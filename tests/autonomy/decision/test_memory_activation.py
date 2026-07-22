@@ -203,6 +203,64 @@ class _NonJsonPropertyMemory(_RecordingMemory):
         )
 
 
+class _NearCeilingThenFailMemory(_RecordingMemory):
+    """First update returns a near-ceiling empty snapshot; later updates raise."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._updates_seen = 0
+
+    def update(self, context, observation):
+        from autonomy.decision import empty_memory_snapshot, serialized_memory_snapshot_bytes
+
+        del observation
+        self._updates_seen += 1
+        if self._updates_seen >= 2:
+            raise RuntimeError("forced-after-near-ceiling")
+        # Grow epoch_id until the empty snapshot sits just under the ceiling.
+        limit = self.bounds.max_serialized_bytes or 2_000
+        epoch = "e"
+        snapshot = empty_memory_snapshot(
+            memory_id="m",
+            epoch_id=epoch,
+            bounds=self.bounds,
+            created_at_ms=context.timestamp_ms,
+            implementation_id=self.implementation_id,
+        )
+        # Binary-ish growth: expand epoch while still fitting.
+        while True:
+            candidate_epoch = epoch + ("x" * 32)
+            candidate = empty_memory_snapshot(
+                memory_id="m",
+                epoch_id=candidate_epoch,
+                bounds=self.bounds,
+                created_at_ms=context.timestamp_ms,
+                implementation_id=self.implementation_id,
+            )
+            size = serialized_memory_snapshot_bytes(candidate)
+            if size > limit - 12:
+                break
+            epoch = candidate_epoch
+            snapshot = candidate
+        # Fine-tune with single chars.
+        while True:
+            candidate_epoch = epoch + "y"
+            candidate = empty_memory_snapshot(
+                memory_id="m",
+                epoch_id=candidate_epoch,
+                bounds=self.bounds,
+                created_at_ms=context.timestamp_ms,
+                implementation_id=self.implementation_id,
+            )
+            size = serialized_memory_snapshot_bytes(candidate)
+            if size > limit:
+                break
+            epoch = candidate_epoch
+            snapshot = candidate
+        self._snapshot = snapshot
+        return snapshot
+
+
 def _valid_payload() -> dict:
     return {
         "schema": MEMORY_ACTIVATION_SCHEMA,
@@ -411,6 +469,38 @@ class MemoryActivationTests(unittest.TestCase):
             # Status JSON itself must stay modest.
             status_bytes = len(json.dumps(status, sort_keys=True).encode("utf-8"))
             self.assertLess(status_bytes, 4_000)
+
+    def test_error_fallback_ignores_prior_near_ceiling_epoch_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            payload = _valid_payload()
+            payload["memory"]["implementation_spec"] = (
+                "tests.autonomy.decision.test_memory_activation:_NearCeilingThenFailMemory"
+            )
+            payload["memory"]["implementation_config"]["max_serialized_bytes"] = 2_000
+            stage = ActivatedMemoryStage(
+                read_memory_activation(_write_payload(tmp, payload))
+            )
+            first = stage.update(
+                DecisionFrameContext("frame_a", 1, 100),
+                Observation("obs_a", 90, {}),
+            )
+            self.assertEqual(first.health, "empty")
+            self.assertGreater(len(first.epoch_id), 1_000)
+            # Next update raises; isolation must not leak ValueError from fallback size.
+            second = stage.update(
+                DecisionFrameContext("frame_b", 2, 200),
+                Observation("obs_b", 190, {}),
+            )
+            self.assertEqual(second.health, "error")
+            self.assertTrue(second.epoch_id.startswith("epoch-error-"))
+            self.assertLessEqual(len(second.epoch_id), 48)
+            from autonomy.decision import serialized_memory_snapshot_bytes
+
+            self.assertLessEqual(serialized_memory_snapshot_bytes(second), 2_000)
+            self.assertLessEqual(
+                serialized_memory_snapshot_bytes(stage.last_snapshot),  # type: ignore[arg-type]
+                2_000,
+            )
 
     def test_reset_failure_preserves_bounded_diagnostic(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

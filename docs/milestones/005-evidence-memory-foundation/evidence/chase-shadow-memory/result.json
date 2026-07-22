@@ -1,0 +1,70 @@
+{
+  "schema": "milestone_chase_shadow_memory_evidence_v0",
+  "vehicle_id": "chase-sim-chaser",
+  "scenario": "chaser-depth-obstacles",
+  "artifact_run_id": "chase-sim-chaser-20260722-020048",
+  "implementation_id": "bounded_evidence",
+  "atomic_capture_dependency": {
+    "repository": "GeorgeLuo/metrics-ui",
+    "milestone": "002-atomic-chase-evaluation-capture",
+    "merged_to_main": false
+  },
+  "passed": true,
+  "simulation_epoch": "chase-run:e2ae2e9a-a071-4323-b921-fcfd753554e1",
+  "frames": [
+    {
+      "frame_id": "chase_frame_063220",
+      "simulator_frame_index": 63220,
+      "shadow_aligned": true,
+      "memory_record_count": 6
+    },
+    {
+      "frame_id": "chase_frame_063247",
+      "simulator_frame_index": 63247,
+      "shadow_aligned": true,
+      "memory_record_count": 6
+    }
+  ],
+  "provenance": {
+    "matched_records": 12,
+    "current_frame_matches": 10,
+    "retained_prior_matches": 2,
+    "missing": 0,
+    "future": 0,
+    "unknown": 0,
+    "retained_keys": [
+      "signal:floor_boundary_available",
+      "thing:floor_boundary_000"
+    ]
+  },
+  "reset": {
+    "prior_epoch": "epoch-11",
+    "epoch_id": "epoch-12",
+    "prior_reset_count": 10,
+    "reset_count": 11,
+    "record_count": 0
+  },
+  "safety": {
+    "movement_commands_sent": false,
+    "control_evidence_complete": true,
+    "control_source": "simulator",
+    "action_policy": "observe_only",
+    "control_application": "not_applied",
+    "simulator_retains_authority": true,
+    "shadow_chaser_control_source": "programmatic",
+    "shadow_isolated_from_candidate_inputs": true
+  },
+  "claims": {
+    "history_boundary": true,
+    "atomic_shadow_alignment": true,
+    "ordered_retained_provenance": true,
+    "observe_only_isolation": true,
+    "reset": true,
+    "live_max_age_expiry": false
+  },
+  "sha256": {
+    "provenance_extract.html": "464a7e38b31e9492153e80465ff308cb3383c704f521ed5785c3a6cb1d5cec03",
+    "frames/chase_frame_063220.png": "1c8f430b56c972b0c92faccbdcbfa3f855f1f72e981e53becb07f7fa43ed5b97",
+    "frames/chase_frame_063247.png": "3b0ab986bbb591b9d976cf577f0fb5eace8308525189c4d8b1831f909a4437b7"
+  }
+}

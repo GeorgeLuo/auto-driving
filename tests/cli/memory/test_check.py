@@ -340,7 +340,7 @@ class MemoryCheckTests(unittest.TestCase):
                     continue
                 return {
                     "publication": pub,
-                    "frame_bytes": b"jpeg-bytes",
+                    "frame_bytes": b"\xff\xd8jpeg-bytes\xff\xd9",
                     "frame_headers": {"x-frame-id": frame_id},
                     "frame_id": frame_id,
                     "matched": True,
@@ -681,11 +681,13 @@ class MemoryCheckTests(unittest.TestCase):
             "provider": "chase-sim",
             "connection": {"ws_url": "ws://chase.test/ws"},
         }
-        frames = [
-            {
-                "frame_id": "chase_frame_000010",
-                "frame_index": 10,
-                "simulator_frame_index": 10,
+
+        def chase_frame(index: int, records: list[dict]) -> dict:
+            return {
+                "frame_id": f"chase_frame_{index:06d}",
+                "frame_index": index,
+                "simulator_frame_index": index,
+                "simulation_epoch": "chase-run:test",
                 "control_source": "simulator",
                 "control_application": "not_applied",
                 "action_policy": "observe_only",
@@ -696,73 +698,56 @@ class MemoryCheckTests(unittest.TestCase):
                     "throttle": 0.0,
                 },
                 "shadow_reference": {
-                    "schema": "chase_shadow_reference_v0",
+                    "schema": "chase_shadow_reference_v1",
                     "evaluator_only": True,
-                    "simulator_frame_index": 10,
+                    "simulator_frame_index": index,
+                    "simulation_epoch": "chase-run:test",
                     "game_id": "chase",
                     "scenario": "chaser-depth-obstacles",
-                    "chaser_control_source": "builtin",
+                    "chaser_control_source": "programmatic",
                 },
                 "observation": {
-                    "observation_id": "obs-10",
+                    "observation_id": f"obs-{index}",
                     "things": [{"thing_id": "front_camera_frame"}],
                     "signals": [],
-                    "sensor_snapshot": {"metadata": {"simulator_frame_index": 10}},
-                },
-                "memory": {
-                    "health": "healthy",
-                    "record_count": 1,
-                    "records": [
-                        {
-                            "record_id": "thing:front_camera_frame",
-                            "provenance": {"frame_id": "chase_frame_000010"},
+                    "sensor_snapshot": {
+                        "metadata": {
+                            "simulator_frame_index": index,
+                            "simulation_epoch": "chase-run:test",
                         }
-                    ],
-                },
-            },
-            {
-                "frame_id": "chase_frame_000011",
-                "frame_index": 11,
-                "simulator_frame_index": 11,
-                "control_source": "simulator",
-                "control_application": "not_applied",
-                "action_policy": "observe_only",
-                "control": {
-                    "applied": False,
-                    "reason": "idle",
-                    "steering": 0.0,
-                    "throttle": 0.0,
-                },
-                "shadow_reference": {
-                    "schema": "chase_shadow_reference_v0",
-                    "evaluator_only": True,
-                    "simulator_frame_index": 11,
-                    "game_id": "chase",
-                    "scenario": "chaser-depth-obstacles",
-                    "chaser_control_source": "builtin",
-                },
-                "observation": {
-                    "observation_id": "obs-11",
-                    "things": [{"thing_id": "front_camera_frame"}],
-                    "signals": [],
-                    "sensor_snapshot": {"metadata": {"simulator_frame_index": 11}},
+                    },
                 },
                 "memory": {
-                    "health": "healthy",
-                    "record_count": 2,
-                    "records": [
-                        {
-                            # Legitimate retention from earlier sampled frame.
-                            "record_id": "thing:obstacle_000",
-                            "provenance": {"frame_id": "chase_frame_000010"},
-                        },
-                        {
-                            "record_id": "thing:front_camera_frame",
-                            "provenance": {"frame_id": "chase_frame_000011"},
-                        },
-                    ],
+                    "health": "healthy" if records else "empty",
+                    "record_count": len(records),
+                    "records": records,
                 },
-            },
+            }
+
+        frames = [
+            chase_frame(9, []),  # Existing worker state establishes the boundary index.
+            chase_frame(
+                10,
+                [
+                    {
+                        "record_id": "thing:front_camera_frame",
+                        "provenance": {"frame_id": "chase_frame_000010"},
+                    }
+                ],
+            ),
+            chase_frame(
+                11,
+                [
+                    {
+                        "record_id": "thing:obstacle_000",
+                        "provenance": {"frame_id": "chase_frame_000010"},
+                    },
+                    {
+                        "record_id": "thing:front_camera_frame",
+                        "provenance": {"frame_id": "chase_frame_000011"},
+                    },
+                ],
+            ),
         ]
         cursor = {"n": 0}
 
@@ -771,27 +756,31 @@ class MemoryCheckTests(unittest.TestCase):
             cursor["n"] += 1
             return frames[idx]
 
+        probe_calls = {"n": 0}
+
         def probe() -> dict:
-            if cursor["n"] < 3:
-                return {
-                    "status": "live",
-                    "last_health": "healthy",
-                    "last_record_count": 1,
-                    "last_epoch_id": "epoch-1",
-                    "reset_count": 1,
-                    "implementation_id": "bounded_evidence",
-                    "activation": "runtime/memory/active.json",
-                }
+            snapshots = [
+                ("healthy", 1, "memory-epoch-0", 0),
+                ("empty", 0, "memory-epoch-1", 1),
+                ("healthy", 2, "memory-epoch-1", 1),
+                ("empty", 0, "memory-epoch-2", 2),
+            ]
+            index = min(probe_calls["n"], len(snapshots) - 1)
+            probe_calls["n"] += 1
+            health, count, epoch, reset_count = snapshots[index]
             return {
                 "status": "live",
-                "last_health": "empty",
-                "last_record_count": 0,
-                "last_epoch_id": "epoch-2",
-                "reset_count": 2,
+                "last_health": health,
+                "last_record_count": count,
+                "last_epoch_id": epoch,
+                "reset_count": reset_count,
                 "implementation_id": "bounded_evidence",
+                "activation": "runtime/memory/active.json",
             }
 
+        reset_calls = {"n": 0}
         def reset() -> dict:
+            reset_calls["n"] += 1
             return {
                 "ok": True,
                 "status": "reset",
@@ -799,10 +788,19 @@ class MemoryCheckTests(unittest.TestCase):
                     "health": "empty",
                     "record_count": 0,
                     "records": [],
-                    "epoch_id": "epoch-2",
+                    "epoch_id": f"memory-epoch-{reset_calls['n']}",
                 },
             }
 
+        recorded_images: list[str] = []
+
+        def load_frame_image(frame_id: str) -> bytes:
+            recorded_images.append(frame_id)
+            return b"\x89PNG\r\n\x1a\nexact-frame"
+
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        output_root = Path(temporary.name) / "memory-check"
         with mock.patch(
             "cli.automa_cli.memory_check.discover_active_vehicles",
             return_value={"vehicles": [vehicle]},
@@ -812,11 +810,14 @@ class MemoryCheckTests(unittest.TestCase):
         ):
             result = run_vehicle_memory_check(
                 vehicle_id="chase-sim-chaser",
+                record=True,
                 json_output=True,
                 load_latest_frame=load_latest,
+                load_frame_image=load_frame_image,
                 probe_fn=probe,
                 reset_fn=reset,
                 fresh_timeout_s=1.0,
+                output_root=output_root,
             )
         self.assertEqual(result.exit_code, 0, result.message)
         payload = json.loads(result.message)
@@ -827,6 +828,7 @@ class MemoryCheckTests(unittest.TestCase):
             "live_automation_worker+shadow_reference",
         )
         phases = {item["phase"] for item in payload["phase_results"]}
+        self.assertIn("history_boundary", phases)
         self.assertIn("shadow_alignment", phases)
         self.assertIn("memory_provenance", phases)
         self.assertIn("observe_only", phases)
@@ -836,11 +838,31 @@ class MemoryCheckTests(unittest.TestCase):
         self.assertEqual(payload["safety"]["control_source"], "simulator")
         self.assertEqual(payload["safety"]["action_policy"], "observe_only")
         self.assertTrue(payload["safety"]["simulator_retains_authority"])
+        self.assertFalse(payload["safety"]["movement_commands_sent"])
         provenance = next(
             item for item in payload["phase_results"] if item["phase"] == "memory_provenance"
         )
         self.assertEqual(provenance["score"]["retained_prior_matches"], 1)
-        self.assertEqual(provenance["score"]["current_frame_matches"], 1)
+        self.assertEqual(provenance["score"]["current_frame_matches"], 2)
+        self.assertTrue(
+            all(row["source_frame_present_in_sequence"] for row in payload["provenance_rows"])
+        )
+        self.assertEqual(
+            recorded_images,
+            ["chase_frame_000010", "chase_frame_000011"],
+        )
+        record_dir = next(output_root.iterdir())
+        sequence = json.loads((record_dir / "sequence.json").read_text(encoding="utf-8"))
+        self.assertEqual(sequence["source"], "live_chase_automation")
+        self.assertEqual(len(sequence["frames"]), 2)
+        manifest = json.loads((record_dir / "manifest.json").read_text(encoding="utf-8"))
+        self.assertTrue(manifest["bounds"]["includes_raw_camera_images"])
+        self.assertTrue(any("does not claim" in note for note in manifest["notes"]))
+        extract = (record_dir / "provenance_extract.html").read_text(encoding="utf-8")
+        self.assertIn('<img src="frames/chase_frame_000010.png"', extract)
+        self.assertIn('<img src="frames/chase_frame_000011.png"', extract)
+        self.assertIn("<code>chase_frame_000010</code> keys=1 health=healthy", extract)
+        self.assertNotIn("Source observation not found", extract)
 
     def test_chase_observe_only_rejects_external_ws_authority(self) -> None:
         from cli.automa_cli.memory_check import score_chase_observe_only
@@ -857,6 +879,161 @@ class MemoryCheckTests(unittest.TestCase):
         self.assertFalse(score["passed"])
         self.assertTrue(any("external_ws" in v for v in score["violations"]))
         self.assertTrue(any("shadow.chaser_control_source=ws" in v for v in score["violations"]))
+
+    def test_chase_observe_only_requires_explicit_complete_zero_control(self) -> None:
+        from cli.automa_cli.memory_check import (
+            derive_chase_safety_from_frames,
+            score_chase_observe_only,
+        )
+
+        frame = {
+            "frame_id": "chase_frame_000001",
+            "control_source": "simulator",
+            "action_policy": "observe_only",
+            "control_application": "not_applied",
+            "control": {"applied": False, "steering": 0.0},
+            "shadow_reference": {"chaser_control_source": "programmatic"},
+        }
+        score = score_chase_observe_only([frame])
+        self.assertFalse(score["passed"])
+        self.assertIn(
+            "chase_frame_000001:control.throttle=missing",
+            score["violations"],
+        )
+
+        safety = derive_chase_safety_from_frames(
+            [frame],
+            observe_score=score,
+            alignment_score={"passed": True},
+        )
+        self.assertIsNone(safety["movement_commands_sent"])
+        self.assertFalse(safety["control_evidence_complete"])
+
+        moving = {
+            **frame,
+            "control": {"applied": False, "steering": 0.2, "throttle": 0.0},
+        }
+        moving_score = score_chase_observe_only([moving])
+        moving_safety = derive_chase_safety_from_frames(
+            [moving],
+            observe_score=moving_score,
+            alignment_score={"passed": True},
+        )
+        self.assertTrue(moving_safety["movement_commands_sent"])
+
+    def test_chase_provenance_is_ordered_per_memory_snapshot(self) -> None:
+        from cli.automa_cli.memory_check import score_chase_memory_provenance
+
+        frames = [
+            {
+                "frame_id": "chase_frame_000010",
+                "simulator_frame_index": 10,
+                "memory": {
+                    "records": [
+                        {
+                            "record_id": "thing:current",
+                            "provenance": {"frame_id": "chase_frame_000010"},
+                        }
+                    ]
+                },
+            },
+            {
+                "frame_id": "chase_frame_000011",
+                "simulator_frame_index": 11,
+                "memory": {
+                    "records": [
+                        {
+                            "record_id": "thing:retained",
+                            "provenance": {"frame_id": "chase_frame_000010"},
+                        }
+                    ]
+                },
+            },
+        ]
+        score = score_chase_memory_provenance(frames)
+        self.assertTrue(score["passed"], score)
+        self.assertEqual(score["current_frame_matches"], 1)
+        self.assertEqual(score["retained_prior_matches"], 1)
+
+        future = [
+            {
+                **frames[0],
+                "memory": {
+                    "records": [
+                        {
+                            "record_id": "thing:future",
+                            "provenance": {"frame_id": "chase_frame_000011"},
+                        }
+                    ]
+                },
+            },
+            frames[1],
+        ]
+        future_score = score_chase_memory_provenance(future)
+        self.assertFalse(future_score["passed"])
+        self.assertTrue(future_score["future_provenance"])
+
+        pre_boundary = [
+            {
+                **frames[0],
+                "memory": {
+                    "records": [
+                        {
+                            "record_id": "thing:stale",
+                            "provenance": {"frame_id": "chase_frame_000009"},
+                        }
+                    ]
+                },
+            },
+            frames[1],
+        ]
+        stale_score = score_chase_memory_provenance(pre_boundary)
+        self.assertFalse(stale_score["passed"])
+        self.assertTrue(stale_score["mismatched"])
+
+    def test_chase_collection_discards_unobserved_warmup_lineage(self) -> None:
+        from cli.automa_cli.memory_check import collect_chase_automation_frames
+
+        def frame(index: int, source_index: int) -> dict:
+            return {
+                "frame_id": f"chase_frame_{index:06d}",
+                "simulator_frame_index": index,
+                "memory": {
+                    "health": "healthy",
+                    "records": [
+                        {
+                            "record_id": "thing:boundary",
+                            "provenance": {
+                                "frame_id": f"chase_frame_{source_index:06d}"
+                            },
+                        }
+                    ],
+                },
+            }
+
+        publications = [
+            frame(10, 9),
+            frame(11, 11),
+            frame(12, 11),
+        ]
+        cursor = {"value": 0}
+
+        def load_latest() -> dict:
+            index = min(cursor["value"], len(publications) - 1)
+            cursor["value"] += 1
+            return publications[index]
+
+        collected = collect_chase_automation_frames(
+            load_latest_frame=load_latest,
+            min_frames=2,
+            timeout_s=1.0,
+            after_simulator_frame_index=8,
+        )
+
+        self.assertEqual(
+            [item["frame_id"] for item in collected],
+            ["chase_frame_000011", "chase_frame_000012"],
+        )
 
     def test_chase_provenance_rejects_empty_memory(self) -> None:
         from cli.automa_cli.memory_check import score_chase_memory_provenance
@@ -880,5 +1057,3 @@ class MemoryCheckTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
-
-

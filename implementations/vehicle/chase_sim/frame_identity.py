@@ -1,13 +1,14 @@
-"""Simulator frame identity and evaluator-only shadow reference helpers.
+"""Chase simulator frame identity and evaluator-only reference helpers.
 
-Chase Play exposes ``frameIndex`` on play_debug. The vehicle adapter must preserve
-that identity on sensor captures so candidate cycle results can be aligned with
-built-in reference state. Full debug/map payloads stay evaluator-only and must
-not become memory or controller inputs.
+The atomic evaluation capture owns the camera image, simulation-run identity,
+and a bounded control reference for one immutable simulator state. The control
+reference is for post-cycle scoring only; it must never become perception,
+observation, memory, or controller input.
 """
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 
@@ -30,112 +31,104 @@ def coerce_simulator_frame_index(value: Any) -> int | None:
 
 
 def format_chase_frame_id(frame_index: int) -> str:
-    """Stable camera-derived frame id anchored to the simulator frame index."""
+    """Stable frame label anchored to the simulator frame index."""
 
     return f"chase_frame_{int(frame_index):06d}"
-
-
-def simulator_frame_index_from_debug(debug: dict[str, Any] | None) -> int | None:
-    if not isinstance(debug, dict):
-        return None
-    return coerce_simulator_frame_index(debug.get("frameIndex"))
 
 
 def simulator_frame_index_from_snapshot(snapshot: Any) -> int | None:
     """Extract simulator frame index from a SensorSnapshot or its dict form."""
 
-    if snapshot is None:
-        return None
-    metadata: dict[str, Any] = {}
-    readings: dict[str, Any] = {}
-    if isinstance(snapshot, dict):
-        meta = snapshot.get("metadata")
-        if isinstance(meta, dict):
-            metadata = meta
-        raw_readings = snapshot.get("readings")
-        if isinstance(raw_readings, dict):
-            readings = raw_readings
-    else:
-        meta = getattr(snapshot, "metadata", None)
-        if isinstance(meta, dict):
-            metadata = meta
-        raw_readings = getattr(snapshot, "readings", None)
-        if isinstance(raw_readings, dict):
-            readings = raw_readings
-
-    for key in ("simulator_frame_index", "frame_index", "frameIndex"):
-        index = coerce_simulator_frame_index(metadata.get(key))
-        if index is not None:
-            return index
-
-    for reading in readings.values():
-        reading_meta: dict[str, Any] = {}
-        if isinstance(reading, dict):
-            maybe = reading.get("metadata")
-            if isinstance(maybe, dict):
-                reading_meta = maybe
-        else:
-            maybe = getattr(reading, "metadata", None)
-            if isinstance(maybe, dict):
-                reading_meta = maybe
+    for metadata in _snapshot_metadata_records(snapshot):
         for key in ("simulator_frame_index", "frame_index", "frameIndex"):
-            index = coerce_simulator_frame_index(reading_meta.get(key))
+            index = coerce_simulator_frame_index(metadata.get(key))
             if index is not None:
                 return index
     return None
 
 
-def sanitize_chase_shadow_reference(
-    debug: dict[str, Any] | None,
-    *,
-    require_frame_index: int | None = None,
+def simulator_epoch_from_snapshot(snapshot: Any) -> str | None:
+    """Extract the simulation-run epoch from a SensorSnapshot or dict form."""
+
+    for metadata in _snapshot_metadata_records(snapshot):
+        for key in ("simulation_epoch", "simulationEpoch"):
+            value = metadata.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    return None
+
+
+def build_chase_shadow_reference(
+    capture: dict[str, Any] | None,
 ) -> dict[str, Any] | None:
-    """Build an evaluator-only shadow reference from play_debug.
+    """Validate an atomic capture and copy only its bounded control reference."""
 
-    Always uses the debug payload's own ``frameIndex``. When
-    ``require_frame_index`` is provided it must equal that debug index —
-    callers must not relabel an older debug blob onto a newer camera frame.
-
-    Intentionally omits map geometry and privileged scene structure. The result
-    is for post-cycle alignment scoring only — never fed into observation or
-    memory inputs.
-    """
-
-    if not isinstance(debug, dict):
+    if not isinstance(capture, dict):
         return None
-    frame_index = simulator_frame_index_from_debug(debug)
-    if frame_index is None:
+    version = capture.get("contractVersion")
+    if isinstance(version, bool) or version != 1:
         return None
-    if require_frame_index is not None and int(require_frame_index) != int(frame_index):
-        # Fail closed: never rewrite debug identity to match a different frame.
+    capture_id = _nonempty_string(capture.get("captureId"))
+    actor_id = _nonempty_string(capture.get("actorId"))
+    if capture_id is None or actor_id != "chaser":
         return None
 
-    chaser_action = debug.get("actions") if isinstance(debug.get("actions"), dict) else {}
-    actors = debug.get("actors") if isinstance(debug.get("actors"), dict) else {}
-    chaser = actors.get("chaser") if isinstance(actors.get("chaser"), dict) else {}
-    chaser_action_block = chaser.get("action") if isinstance(chaser.get("action"), dict) else {}
+    playback = capture.get("playback")
+    if not isinstance(playback, dict) or playback.get("advanced") is not False:
+        return None
 
-    reference: dict[str, Any] = {
-        "schema": "chase_shadow_reference_v0",
+    identity = capture.get("frameIdentity")
+    if not isinstance(identity, dict):
+        return None
+    game_id = _nonempty_string(identity.get("gameId"))
+    simulation_epoch = _nonempty_string(identity.get("simulationEpoch"))
+    frame_index = coerce_simulator_frame_index(identity.get("frameIndex"))
+    if game_id != "chase" or simulation_epoch is None or frame_index is None:
+        return None
+
+    evaluator = capture.get("evaluator")
+    if (
+        not isinstance(evaluator, dict)
+        or evaluator.get("classification") != "non-sensor"
+    ):
+        return None
+    reference = evaluator.get("reference")
+    if not isinstance(reference, dict) or reference.get("kind") != "actor-control-reference":
+        return None
+
+    scenario = _nonempty_string(reference.get("scenarioId"))
+    control_source = _nonempty_string(reference.get("controlSource"))
+    phase = _nonempty_string(reference.get("phase"))
+    action_frame_index = coerce_simulator_frame_index(reference.get("actionFrameIndex"))
+    control_input = _bounded_control(reference.get("input"), include_proposal=False)
+    control_action = _bounded_control(reference.get("action"), include_proposal=True)
+    if (
+        scenario is None
+        or control_source is None
+        or phase is None
+        or action_frame_index is None
+        or action_frame_index > frame_index
+        or control_input is None
+        or control_action is None
+    ):
+        return None
+
+    return {
+        "schema": "chase_shadow_reference_v1",
         "evaluator_only": True,
+        "capture_id": capture_id,
+        "actor_id": actor_id,
         "simulator_frame_index": frame_index,
+        "simulation_epoch": simulation_epoch,
         "frame_id": format_chase_frame_id(frame_index),
-        "game_id": debug.get("gameId"),
-        "scenario": debug.get("scenario") or debug.get("scenarioId"),
-        "chaser_control_source": (
-            _nested(debug, ("actions", "chaserInput", "source"))
-            or _nested(debug, ("actions", "chaserAction", "source"))
-            or chaser_action_block.get("source")
-        ),
-        "chaser_input": _shallow_copy_dict(chaser_action.get("chaserInput")),
-        "chaser_action": _shallow_copy_dict(chaser_action.get("chaserAction")),
-        "actor_action": _shallow_copy_dict(chaser_action_block),
+        "game_id": game_id,
+        "scenario": scenario,
+        "chaser_control_source": control_source,
+        "phase": phase,
+        "action_frame_index": action_frame_index,
+        "chaser_input": control_input,
+        "chaser_action": control_action,
     }
-    # Drop empty optional blocks for stable, compact artifacts.
-    for key in ("chaser_input", "chaser_action", "actor_action", "scenario", "chaser_control_source"):
-        if reference.get(key) in (None, {}):
-            reference.pop(key, None)
-    return reference
 
 
 def frame_indices_strictly_increasing(indices: list[int]) -> bool:
@@ -143,58 +136,44 @@ def frame_indices_strictly_increasing(indices: list[int]) -> bool:
 
     if len(indices) < 2:
         return False
-    return all(indices[i] < indices[i + 1] for i in range(len(indices) - 1))
-
-
-def consistent_game_identity(frames: list[dict[str, Any]]) -> bool:
-    """All frames that declare game_id/scenario must share one value each."""
-
-    game_ids: set[str] = set()
-    scenarios: set[str] = set()
-    for frame in frames:
-        if not isinstance(frame, dict):
-            continue
-        shadow = frame.get("shadow_reference") if isinstance(frame.get("shadow_reference"), dict) else {}
-        game = shadow.get("game_id") or frame.get("game_id")
-        scenario = shadow.get("scenario") or frame.get("scenario")
-        if game is not None and str(game).strip():
-            game_ids.add(str(game))
-        if scenario is not None and str(scenario).strip():
-            scenarios.add(str(scenario))
-    if len(game_ids) > 1:
-        return False
-    if len(scenarios) > 1:
-        return False
-    return True
+    return all(indices[index] < indices[index + 1] for index in range(len(indices) - 1))
 
 
 def align_candidate_with_shadow(
     *,
     candidate_frame_index: int | None,
+    candidate_simulation_epoch: str | None,
     shadow_reference: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    """Score whether candidate and shadow reference share simulator frame identity."""
+    """Score candidate/reference alignment using full simulation-run identity."""
 
     shadow_index = None
+    shadow_epoch = None
     if isinstance(shadow_reference, dict):
         shadow_index = coerce_simulator_frame_index(
             shadow_reference.get("simulator_frame_index")
             if shadow_reference.get("simulator_frame_index") is not None
             else shadow_reference.get("frame_index")
         )
+        shadow_epoch = _nonempty_string(shadow_reference.get("simulation_epoch"))
+    candidate_epoch = _nonempty_string(candidate_simulation_epoch)
     matched = (
         candidate_frame_index is not None
         and shadow_index is not None
         and int(candidate_frame_index) == int(shadow_index)
+        and candidate_epoch is not None
+        and candidate_epoch == shadow_epoch
     )
     return {
         "aligned": matched,
         "candidate_frame_index": candidate_frame_index,
         "shadow_frame_index": shadow_index,
+        "candidate_simulation_epoch": candidate_epoch,
+        "shadow_simulation_epoch": shadow_epoch,
         "reason": (
-            "candidate and shadow share simulator frame identity"
+            "candidate and shadow share simulation epoch and frame index"
             if matched
-            else "candidate/shadow simulator frame identity mismatch or missing"
+            else "candidate/shadow simulation-run identity mismatch or missing"
         ),
     }
 
@@ -204,21 +183,27 @@ def score_shadow_alignment_batch(
     *,
     min_frames: int = 2,
 ) -> dict[str, Any]:
-    """Score a sequence of candidate frame records for identity + shadow alignment."""
+    """Score candidate records for advancing, same-run atomic alignment."""
 
     alignments: list[dict[str, Any]] = []
     indices: list[int] = []
+    game_ids: set[str] = set()
+    scenarios: set[str] = set()
+    epochs: set[str] = set()
     missing_identity = 0
     missing_shadow = 0
+    missing_run_identity = 0
     mismatched = 0
     for frame in frames:
         if not isinstance(frame, dict):
+            missing_identity += 1
             continue
         index = coerce_simulator_frame_index(
             frame.get("simulator_frame_index")
             if frame.get("simulator_frame_index") is not None
             else frame.get("frame_index")
         )
+        candidate_epoch = _nonempty_string(frame.get("simulation_epoch"))
         shadow = frame.get("shadow_reference")
         if not isinstance(shadow, dict):
             shadow = None
@@ -227,21 +212,36 @@ def score_shadow_alignment_batch(
             missing_identity += 1
         else:
             indices.append(int(index))
+        if candidate_epoch is None:
+            missing_run_identity += 1
+
+        if shadow is not None:
+            game = _nonempty_string(shadow.get("game_id"))
+            scenario = _nonempty_string(shadow.get("scenario"))
+            epoch = _nonempty_string(shadow.get("simulation_epoch"))
+            if game is None or scenario is None or epoch is None:
+                missing_run_identity += 1
+            else:
+                game_ids.add(game)
+                scenarios.add(scenario)
+                epochs.add(epoch)
+
         alignment = align_candidate_with_shadow(
             candidate_frame_index=index,
+            candidate_simulation_epoch=candidate_epoch,
             shadow_reference=shadow,
         )
-        alignments.append(
-            {
-                "frame_id": frame.get("frame_id"),
-                **alignment,
-            }
-        )
+        alignments.append({"frame_id": frame.get("frame_id"), **alignment})
         if index is not None and shadow is not None and not alignment["aligned"]:
             mismatched += 1
 
     advancing = frame_indices_strictly_increasing(indices)
-    identity_ok = consistent_game_identity(frames)
+    consistent_run_identity = (
+        missing_run_identity == 0
+        and game_ids == {"chase"}
+        and len(scenarios) == 1
+        and len(epochs) == 1
+    )
     aligned_count = sum(1 for item in alignments if item.get("aligned"))
     passed = (
         len(alignments) >= min_frames
@@ -249,7 +249,7 @@ def score_shadow_alignment_batch(
         and missing_shadow == 0
         and mismatched == 0
         and advancing
-        and identity_ok
+        and consistent_run_identity
         and aligned_count == len(alignments)
     )
     return {
@@ -258,42 +258,84 @@ def score_shadow_alignment_batch(
         "aligned_count": aligned_count,
         "missing_identity": missing_identity,
         "missing_shadow": missing_shadow,
+        "missing_run_identity": missing_run_identity,
         "mismatched": mismatched,
         "advancing_simulator_frames": advancing,
-        "consistent_game_identity": identity_ok,
+        "consistent_run_identity": consistent_run_identity,
+        "game_ids": sorted(game_ids),
+        "scenarios": sorted(scenarios),
+        "simulation_epochs": sorted(epochs),
         "simulator_frame_indices": indices,
         "alignments": alignments,
         "reason": (
-            "live frames preserve simulator identity and align with evaluator-only shadow references"
+            "live frames advance within one simulation run and align with atomic references"
             if passed
             else (
                 "expected ≥"
-                f"{min_frames} frames with strictly increasing simulator_frame_index, "
-                "matching shadow_reference, and consistent game/scenario identity"
-            ),
+                f"{min_frames} advancing frames with matching epoch/index references "
+                "and one non-empty game/scenario/simulation epoch"
+            )
         ),
     }
 
 
-def _nested(record: dict[str, Any], path: tuple[str, ...]) -> Any:
-    value: Any = record
-    for key in path:
-        if not isinstance(value, dict):
-            return None
-        value = value.get(key)
-    return value
+def _snapshot_metadata_records(snapshot: Any) -> list[dict[str, Any]]:
+    if snapshot is None:
+        return []
+    metadata: dict[str, Any] = {}
+    readings: dict[str, Any] = {}
+    if isinstance(snapshot, dict):
+        maybe_metadata = snapshot.get("metadata")
+        maybe_readings = snapshot.get("readings")
+    else:
+        maybe_metadata = getattr(snapshot, "metadata", None)
+        maybe_readings = getattr(snapshot, "readings", None)
+    if isinstance(maybe_metadata, dict):
+        metadata = maybe_metadata
+    if isinstance(maybe_readings, dict):
+        readings = maybe_readings
+
+    records = [metadata]
+    for reading in readings.values():
+        maybe = reading.get("metadata") if isinstance(reading, dict) else getattr(reading, "metadata", None)
+        if isinstance(maybe, dict):
+            records.append(maybe)
+    return records
 
 
-def _shallow_copy_dict(value: Any) -> dict[str, Any] | None:
+def _nonempty_string(value: Any) -> str | None:
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def _bounded_control(value: Any, *, include_proposal: bool) -> dict[str, Any] | None:
     if not isinstance(value, dict):
         return None
-    # Copy only JSON-scalar leaves one level deep; drop nested map-like blobs.
-    out: dict[str, Any] = {}
-    for key, item in value.items():
-        if isinstance(item, (str, int, float, bool)) or item is None:
-            out[str(key)] = item
-        elif isinstance(item, (list, tuple)) and all(
-            isinstance(entry, (str, int, float, bool)) or entry is None for entry in item
-        ):
-            out[str(key)] = list(item)
-    return out
+    source = _nonempty_string(value.get("source"))
+    forward = value.get("forward")
+    reverse = value.get("reverse")
+    steering = value.get("steering")
+    if (
+        source is None
+        or not isinstance(forward, bool)
+        or not isinstance(reverse, bool)
+        or isinstance(steering, bool)
+        or not isinstance(steering, (int, float))
+        or not math.isfinite(float(steering))
+        or float(steering) < -1.0
+        or float(steering) > 1.0
+    ):
+        return None
+    result: dict[str, Any] = {
+        "source": source,
+        "forward": forward,
+        "reverse": reverse,
+        "steering": float(steering),
+    }
+    if include_proposal:
+        proposal = value.get("selectedActionProposalId")
+        if proposal is not None:
+            proposal = _nonempty_string(proposal)
+            if proposal is None:
+                return None
+        result["selectedActionProposalId"] = proposal
+    return result

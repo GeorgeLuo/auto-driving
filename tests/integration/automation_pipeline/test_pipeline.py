@@ -54,11 +54,13 @@ class _FakeCar:
         self.capture_count += 1
         self.last_simulator_frame_index = simulator_frame_index
         self.last_capture_shadow_reference = {
-            "schema": "chase_shadow_reference_v0",
+            "schema": "chase_shadow_reference_v1",
             "evaluator_only": True,
             "simulator_frame_index": simulator_frame_index,
+            "simulation_epoch": "chase-run:test",
             "frame_id": f"chase_frame_{simulator_frame_index:06d}",
             "game_id": "chase",
+            "scenario": "chaser-depth-obstacles",
             "chaser_control_source": "builtin",
         }
         reading = SensorReading(
@@ -69,6 +71,7 @@ class _FakeCar:
             metadata={
                 "content_type": "image/png",
                 "simulator_frame_index": simulator_frame_index,
+                "simulation_epoch": "chase-run:test",
                 "frame_index": simulator_frame_index,
                 "frame_id": f"chase_frame_{simulator_frame_index:06d}",
             },
@@ -81,6 +84,7 @@ class _FakeCar:
             request=request.to_dict(),
             metadata={
                 "simulator_frame_index": simulator_frame_index,
+                "simulation_epoch": "chase-run:test",
                 "frame_id": f"chase_frame_{simulator_frame_index:06d}",
             },
         )
@@ -145,11 +149,13 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 (automation_dir / "latest_perception.json").read_text(encoding="utf-8")
             )
             self.assertEqual(latest["simulator_frame_index"], 107)
+            self.assertEqual(latest["simulation_epoch"], "chase-run:test")
             self.assertEqual(latest["frame_id"], "chase_frame_000107")
             self.assertEqual(
                 latest["shadow_reference"]["simulator_frame_index"],
                 latest["simulator_frame_index"],
             )
+            self.assertIs(latest["control"]["applied"], False)
             self.assertNotIn("shadow_reference", latest.get("observation") or {})
             self.assertEqual(
                 list((automation_dir / "latest" / "frames").glob("frame_*_front_camera.png")),

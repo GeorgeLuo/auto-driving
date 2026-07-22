@@ -26,6 +26,7 @@ from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReadRequest
 from implementations.vehicle.chase_sim import ChaseSimCar
 from implementations.vehicle.chase_sim.frame_identity import (
     format_chase_frame_id,
+    simulator_epoch_from_snapshot,
     simulator_frame_index_from_snapshot,
 )
 from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWebSocketError
@@ -412,13 +413,23 @@ def run_vehicle_automation(
             latest_perception_text = perception.text
             perception_dict = perception.to_dict()
 
+        control_record = {
+            **cycle_result.control.to_dict(),
+            # The current Chase worker never applies decision output to the car.
+            # In observe-only mode it also performs no control handoff or stop command.
+            "applied": False,
+        }
         simulator_frame_index = simulator_frame_index_from_snapshot(snapshot)
-        if simulator_frame_index is None:
-            simulator_frame_index = int(context.frame_index)
+        simulation_epoch = simulator_epoch_from_snapshot(snapshot)
+        if simulator_frame_index is None or simulation_epoch is None:
+            raise ValueError(
+                "Chase decision frame is missing atomic simulation-run identity"
+            )
         frame_record = {
             "frame_id": context.frame_id,
             "frame_index": context.frame_index,
             "simulator_frame_index": simulator_frame_index,
+            "simulation_epoch": simulation_epoch,
             "captured_at_ms": snapshot.completed_at_ms,
             "cycle_started_at_ms": cycle_started_at_ms,
             "cycle_completed_at_ms": perception_completed_at_ms,
@@ -435,7 +446,7 @@ def run_vehicle_automation(
             "memory": cycle_result.memory.to_dict()
             if cycle_result.memory is not None
             else None,
-            "control": cycle_result.control.to_dict(),
+            "control": control_record,
             "engine": cycle_host.manager.status(),
             "decision_cycle": cycle_result.to_dict(),
             "action_policy": state["action_policy"],
@@ -447,9 +458,12 @@ def run_vehicle_automation(
             frame_record["shadow_reference"] = pending.shadow_reference
             frame_record["shadow_alignment"] = {
                 "aligned": pending.shadow_reference.get("simulator_frame_index")
-                == simulator_frame_index,
+                == simulator_frame_index
+                and pending.shadow_reference.get("simulation_epoch") == simulation_epoch,
                 "candidate_frame_index": simulator_frame_index,
                 "shadow_frame_index": pending.shadow_reference.get("simulator_frame_index"),
+                "candidate_simulation_epoch": simulation_epoch,
+                "shadow_simulation_epoch": pending.shadow_reference.get("simulation_epoch"),
             }
         if view_server is not None:
             try:
@@ -479,6 +493,7 @@ def run_vehicle_automation(
                 "frame_id": context.frame_id,
                 "frame_index": context.frame_index,
                 "simulator_frame_index": simulator_frame_index,
+                "simulation_epoch": simulation_epoch,
                 "captured_at_ms": snapshot.completed_at_ms,
                 "perception_completed_at_ms": perception_completed_at_ms,
                 "perception_duration_ms": perception_completed_at_ms - perception_started_at_ms,
@@ -492,12 +507,13 @@ def run_vehicle_automation(
                 else display_path(latest_text_path),
                 "things": len(perception.things) if perception is not None else 0,
                 "signals": len(perception.signals) if perception is not None else 0,
-                "control": cycle_result.control.to_dict(),
+                "control": control_record,
                 "engine": cycle_host.manager.status().get("engine"),
                 "shadow_aligned": bool(
                     isinstance(pending.shadow_reference, dict)
                     and pending.shadow_reference.get("simulator_frame_index")
                     == simulator_frame_index
+                    and pending.shadow_reference.get("simulation_epoch") == simulation_epoch
                 ),
             }
             state["engine"] = cycle_host.manager.status()
@@ -608,7 +624,7 @@ def run_vehicle_automation(
                     read_id=provisional_id,
                     requested_sensors=(FRONT_CAMERA_SENSOR_ID,),
                     image_extension="png",
-                    front_camera_endpoint="play-front-view-snapshot",
+                    front_camera_endpoint="atomic-evaluation-capture",
                 )
             )
             simulator_frame_index = simulator_frame_index_from_snapshot(snapshot)
@@ -622,6 +638,12 @@ def run_vehicle_automation(
                 raise ValueError(
                     "Chase sensor capture missing simulator frameIndex; "
                     "cannot assign camera-derived frame identity for shadow alignment"
+                )
+            simulation_epoch = simulator_epoch_from_snapshot(snapshot)
+            if simulation_epoch is None:
+                raise ValueError(
+                    "Chase sensor capture missing simulationEpoch; "
+                    "cannot establish atomic run identity for shadow alignment"
                 )
             # Align SensorSnapshot.read_id with simulator identity (capture used a provisional id).
             if snapshot.read_id != frame_id:
@@ -663,6 +685,7 @@ def run_vehicle_automation(
                 "frame_id": frame_id,
                 "frame_index": frame_index,
                 "simulator_frame_index": frame_index,
+                "simulation_epoch": simulation_epoch,
                 "capture_sequence": capture_sequence,
                 "captured_at_ms": snapshot.completed_at_ms,
                 "capture_started_at_ms": captured_started_at_ms,
@@ -696,6 +719,7 @@ def run_vehicle_automation(
                     "activation": str(manifest_path),
                     "recording": bool(record),
                     "simulator_frame_index": frame_index,
+                    "simulation_epoch": simulation_epoch,
                     "capture_sequence": capture_sequence,
                     "perception_output_dir": (
                         str(perception_output_dir) if perception_output_dir is not None else None
@@ -717,12 +741,14 @@ def run_vehicle_automation(
                     "frame_id": frame_id,
                     "frame_index": frame_index,
                     "simulator_frame_index": frame_index,
+                    "simulation_epoch": simulation_epoch,
                     "capture_sequence": capture_sequence,
                     "captured_at_ms": snapshot.completed_at_ms,
                     "capture_duration_ms": snapshot.completed_at_ms - captured_started_at_ms,
                     "front_camera": display_path(latest_front_camera_path if not record else front_path),
                     "shadow_aligned": isinstance(shadow_reference, dict)
-                    and shadow_reference.get("simulator_frame_index") == frame_index,
+                    and shadow_reference.get("simulator_frame_index") == frame_index
+                    and shadow_reference.get("simulation_epoch") == simulation_epoch,
                 }
                 state["updated_at_ms"] = _timestamp_ms()
                 _write_json(state_path, state)

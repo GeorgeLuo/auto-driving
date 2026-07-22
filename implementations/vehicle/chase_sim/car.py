@@ -1,16 +1,14 @@
 from __future__ import annotations
 
 import base64
-import json
 import time
 from pathlib import Path
 from typing import Any
 
 from .defaults import DEFAULT_CHASE_UI_WS_URL, get_default_chase_ui_ws_url
 from .frame_identity import (
+    build_chase_shadow_reference,
     format_chase_frame_id,
-    sanitize_chase_shadow_reference,
-    simulator_frame_index_from_debug,
 )
 from .metrics_ws import MetricsUiWebSocketError, MetricsUiWsClient
 from autonomy.vehicle import (
@@ -27,6 +25,7 @@ from autonomy.vehicle import (
 
 CHASE_SET_CHASER_INPUT = "set-chaser-input"
 CHASE_SET_CHASER_CONTROL_SOURCE = "set-chaser-control-source"
+CHASE_ATOMIC_EVALUATION_QUERY = "atomic-evaluation-capture"
 
 
 def _timestamp_ms() -> int:
@@ -106,7 +105,7 @@ class ChaseSimCar(CarInterface):
                     "sensor_kind": "camera",
                     "pose": "simulated_fixed_front",
                     "available": True,
-                    "default_endpoint": "play-front-view-snapshot",
+                    "default_endpoint": CHASE_ATOMIC_EVALUATION_QUERY,
                     "physical_limitations": (
                         "simulated low-mounted forward-facing view",
                         "no map/debug state exposed through the vehicle interface",
@@ -338,92 +337,38 @@ class ChaseSimCar(CarInterface):
     def last_simulator_frame_index(self) -> int | None:
         return self._last_simulator_frame_index
 
-    def _read_play_debug_best_effort(self) -> dict[str, Any]:
-        try:
-            return self._wait_for_play_debug(timeout_s=min(self.timeout_s, 2.0))
-        except (MetricsUiWebSocketError, OSError, TimeoutError, ValueError):
-            try:
-                return self._read_debug()
-            except (MetricsUiWebSocketError, OSError, TimeoutError, ValueError):
-                return {}
-
     def _capture_front_camera(self, path: Path, endpoint: str) -> dict[str, Any]:
-        """Capture front camera paired with an exact-identity play_debug frame.
-
-        Debug and camera are sequential WS calls and often land on different
-        simulator frames. We retry until:
-        - debug-before and debug-after share the same frameIndex (no advance
-          during the camera fetch), and
-        - when the camera payload carries frameIndex, it equals that debug index.
-
-        Shadow reference always keeps the debug payload's own frameIndex — never
-        relabeled onto a newer camera frame.
-        """
+        """Capture one atomic image/identity/evaluator-reference response."""
 
         path.parent.mkdir(parents=True, exist_ok=True)
-        deadline = time.monotonic() + max(0.5, float(self.timeout_s))
-        last_error = "no matched debug/camera pair"
-        matched_debug: dict[str, Any] | None = None
-        matched_snapshot: dict[str, Any] | None = None
-        matched_index: int | None = None
-
-        while time.monotonic() < deadline:
-            debug_before = self._read_play_debug_best_effort()
-            index_before = simulator_frame_index_from_debug(debug_before)
-            try:
-                snapshot = self.client.get_play_front_view_snapshot(timeout_s=self.timeout_s)
-            except (MetricsUiWebSocketError, OSError, TimeoutError, ValueError) as exc:
-                last_error = f"front-view snapshot failed: {exc}"
-                continue
-            if not isinstance(snapshot, dict):
-                last_error = "front-view snapshot was not an object"
-                continue
-            debug_after = self._read_play_debug_best_effort()
-            index_after = simulator_frame_index_from_debug(debug_after)
-            camera_index = simulator_frame_index_from_debug(
-                {"frameIndex": snapshot.get("frameIndex")}
-            )
-
-            if index_before is None or index_after is None:
-                last_error = (
-                    f"missing debug frameIndex "
-                    f"(before={index_before!r} after={index_after!r})"
-                )
-                continue
-            if int(index_before) != int(index_after):
-                last_error = (
-                    f"simulator advanced during capture "
-                    f"({index_before} -> {index_after})"
-                )
-                continue
-            if camera_index is not None and int(camera_index) != int(index_before):
-                last_error = (
-                    f"camera frameIndex {camera_index} != debug frameIndex {index_before}"
-                )
-                continue
-
-            # Stable identity across the pair. Prefer debug_after when equal so
-            # action fields reflect the post-fetch tick at the same index.
-            matched_debug = debug_after if isinstance(debug_after, dict) else debug_before
-            matched_snapshot = snapshot
-            matched_index = int(index_before)
-            break
-
-        if matched_snapshot is None or matched_index is None or matched_debug is None:
-            self._last_simulator_frame_index = None
-            self._last_capture_shadow_reference = None
-            raise TimeoutError(
-                "Timed out waiting for exact-identity Chase debug/camera pair: "
-                f"{last_error}"
-            )
-
-        image = (
-            matched_snapshot.get("image")
-            if isinstance(matched_snapshot.get("image"), dict)
-            else {}
+        capture_response = self.client.play_game_query(
+            CHASE_ATOMIC_EVALUATION_QUERY,
+            {"actorId": "chaser", "width": 640, "height": 480},
+            timeout_s=self.timeout_s,
         )
-        byte_count = 0
+        shadow_reference = build_chase_shadow_reference(capture_response)
+        if shadow_reference is None:
+            raise ValueError(
+                "Chase atomic evaluation capture has an invalid identity or control reference"
+            )
 
+        sensor = capture_response.get("sensor")
+        image = sensor.get("image") if isinstance(sensor, dict) else None
+        if not isinstance(image, dict):
+            raise ValueError("Chase atomic evaluation capture has no sensor image")
+        width = image.get("width")
+        height = image.get("height")
+        if (
+            isinstance(width, bool)
+            or not isinstance(width, int)
+            or width <= 0
+            or isinstance(height, bool)
+            or not isinstance(height, int)
+            or height <= 0
+        ):
+            raise ValueError("Chase atomic evaluation capture has invalid image dimensions")
+
+        byte_count = 0
         if isinstance(image.get("svg"), str) and path.suffix.lower() == ".svg":
             path.write_text(image["svg"], encoding="utf-8")
             content_type = "image/svg+xml"
@@ -432,43 +377,33 @@ class ChaseSimCar(CarInterface):
             byte_count = len(data)
             path.write_bytes(data)
         else:
-            content_type = "application/json"
-            payload = json.dumps(
-                {
-                    "error": "snapshot did not include image data",
-                    "content_type": content_type,
-                },
-                indent=2,
-                sort_keys=True,
-            ).encode("utf-8")
-            byte_count = len(payload)
-            path.write_bytes(payload)
+            raise ValueError(
+                "Chase atomic evaluation capture has no image encoding compatible "
+                f"with {path.suffix or 'the requested output'}"
+            )
         if byte_count == 0 and path.exists():
             byte_count = path.stat().st_size
 
-        self._last_simulator_frame_index = matched_index
-        # require_frame_index enforces no relabel of debug onto another identity.
-        self._last_capture_shadow_reference = sanitize_chase_shadow_reference(
-            matched_debug,
-            require_frame_index=matched_index,
-        )
-        if self._last_capture_shadow_reference is None:
-            self._last_simulator_frame_index = None
-            raise TimeoutError(
-                "Chase debug/camera pair matched numerically but shadow reference "
-                "could not be built without relabeling frame identity"
-            )
+        frame_index = int(shadow_reference["simulator_frame_index"])
+        simulation_epoch = str(shadow_reference["simulation_epoch"])
+        self._last_simulator_frame_index = frame_index
+        self._last_capture_shadow_reference = shadow_reference
 
         capture: dict[str, Any] = {
-            "endpoint": endpoint,
+            "endpoint": CHASE_ATOMIC_EVALUATION_QUERY,
+            "requested_endpoint": endpoint,
             "path": str(path),
             "bytes": byte_count,
             "content_type": content_type,
+            "width": width,
+            "height": height,
             "captured_at_ms": int(time.time() * 1000),
-            "simulator_frame_index": matched_index,
-            "frame_index": matched_index,
-            "frame_id": format_chase_frame_id(matched_index),
-            "identity_pairing": "debug_stable_across_camera_fetch",
+            "capture_id": shadow_reference["capture_id"],
+            "simulator_frame_index": frame_index,
+            "simulation_epoch": simulation_epoch,
+            "frame_index": frame_index,
+            "frame_id": format_chase_frame_id(frame_index),
+            "identity_pairing": "atomic_evaluation_capture",
         }
         return capture
 
@@ -496,6 +431,10 @@ class ChaseSimCar(CarInterface):
         if self._last_simulator_frame_index is not None:
             snapshot_metadata["simulator_frame_index"] = self._last_simulator_frame_index
             snapshot_metadata["frame_id"] = format_chase_frame_id(self._last_simulator_frame_index)
+        if isinstance(self._last_capture_shadow_reference, dict):
+            snapshot_metadata["simulation_epoch"] = self._last_capture_shadow_reference[
+                "simulation_epoch"
+            ]
 
         return SensorSnapshot(
             read_id=request.read_id,

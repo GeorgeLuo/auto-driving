@@ -26,7 +26,7 @@ def create_vehicle_access(vehicle: dict[str, Any], *, timeout_s: float) -> Vehic
         return VehicleAccess(
             car=ChaseSimCar(ws_url=ws_url, timeout_s=timeout_s, vehicle_id=vehicle_id),
             image_extension="png",
-            front_camera_endpoint="play-front-view-snapshot",
+            front_camera_endpoint="atomic-evaluation-capture",
         )
     if provider == "picar":
         base_url = connection.get("base_url") if isinstance(connection.get("base_url"), str) else None

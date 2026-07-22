@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, TextIO
+from urllib.parse import quote, urljoin
+from urllib.request import urlopen
 
 from autonomy.decision import (
     ActivatedMemoryStage,
@@ -22,6 +25,8 @@ from implementations.memory import (
 )
 
 from implementations.vehicle.chase_sim.frame_identity import (
+    coerce_simulator_frame_index,
+    format_chase_frame_id,
     score_shadow_alignment_batch,
 )
 
@@ -34,6 +39,7 @@ from .memory import (
     render_memory_provenance_extract_html,
 )
 from .paths import ROOT, display_path, safe_path_part
+from .perception_view import get_perception_view_status
 from .physical_observation import (
     fetch_matched_observation_pair,
     fetch_observation_frame,
@@ -86,6 +92,7 @@ def run_vehicle_memory_check(
     reset_fn: Callable[[], dict[str, Any]] | None = None,
     probe_fn: Callable[[], dict[str, Any]] | None = None,
     load_latest_frame: Callable[[], dict[str, Any] | None] | None = None,
+    load_frame_image: Callable[[str], bytes | None] | None = None,
 ) -> CommandResult:
     """Run present/dropout/expiry/reset gates through activated memory.
 
@@ -150,6 +157,7 @@ def run_vehicle_memory_check(
                 probe_fn=probe_fn,
                 reset_fn=reset_fn,
                 load_latest_frame=load_latest_frame,
+                load_frame_image=load_frame_image,
             )
         # Discovered Chase without a running automation worker: keep the offline
         # phase script for unit/dev use, but do not claim live shadow success.
@@ -208,6 +216,7 @@ def run_chase_shadow_memory_check(
     probe_fn: Callable[[], dict[str, Any]] | None = None,
     reset_fn: Callable[[], dict[str, Any]] | None = None,
     load_latest_frame: Callable[[], dict[str, Any] | None] | None = None,
+    load_frame_image: Callable[[str], bytes | None] | None = None,
 ) -> CommandResult:
     """Score live Chase automation frames for simulator identity + shadow alignment.
 
@@ -232,6 +241,15 @@ def run_chase_shadow_memory_check(
 
     load_frame = load_latest_frame or default_load_latest
 
+    def default_load_frame_image(frame_id: str) -> bytes | None:
+        return fetch_chase_perception_view_frame(
+            automation_dir=automation_dir,
+            frame_id=frame_id,
+            timeout_s=timeout_s,
+        )
+
+    load_image = load_frame_image or default_load_frame_image
+
     def do_probe() -> dict[str, Any]:
         if probe_fn is not None:
             return probe_fn()
@@ -248,6 +266,33 @@ def run_chase_shadow_memory_check(
             before=before,
             wait_s=max(1.0, float(timeout_s)),
         )
+
+    def reset_and_score(
+        before_probe: dict[str, Any],
+    ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
+        prior_epoch = str(before_probe.get("last_epoch_id") or "") or None
+        prior_reset_count = _optional_int(before_probe.get("reset_count"))
+        reset_payload = do_reset()
+        if not reset_payload.get("ok"):
+            raise ValueError(
+                f"Chase memory reset failed: {reset_payload.get('error') or reset_payload}"
+            )
+        after_probe = do_probe()
+        reset_snapshot = chase_reset_snapshot_from_payload(reset_payload)
+        reset_score = score_live_reset(
+            reset_snapshot=reset_snapshot,
+            prior_epoch=prior_epoch,
+            prior_reset_count=prior_reset_count,
+            after_probe=after_probe if isinstance(after_probe, dict) else {},
+        )
+        if not reset_score.get("passed"):
+            reset_score = score_chase_reset_via_probe(
+                prior_epoch=prior_epoch,
+                prior_reset_count=prior_reset_count,
+                after_probe=after_probe if isinstance(after_probe, dict) else {},
+                fallback_reason=str(reset_score.get("reason") or ""),
+            )
+        return reset_payload, after_probe, reset_snapshot, reset_score
 
     _emit(output, "Memory check (Chase shadow: identity → alignment → provenance → reset)")
     _emit(output, f"vehicle: {vehicle_id}")
@@ -275,10 +320,43 @@ def run_chase_shadow_memory_check(
             f"Chase live memory probe failed: {probe.get('error') or probe.get('status')}",
         )
 
+    boundary_frame = load_frame()
+    boundary_index = _chase_frame_index(boundary_frame)
+    try:
+        (
+            boundary_reset_payload,
+            boundary_after_probe,
+            boundary_snapshot,
+            boundary_score,
+        ) = reset_and_score(probe)
+    except (ConnectionError, OSError, TimeoutError, ValueError) as exc:
+        return CommandResult(2, f"Could not establish Chase memory history boundary: {exc}")
+
+    phase_results: list[dict[str, Any]] = [
+        {
+            "phase": "history_boundary",
+            "passed": bool(boundary_score.get("passed")),
+            "score": boundary_score,
+            "lifecycle_source": "live_chase_worker_reset+probe",
+            "extra": {
+                "before_simulator_frame_index": boundary_index,
+                "reset": boundary_reset_payload,
+                "after_probe": boundary_after_probe,
+            },
+        }
+    ]
+    _emit(
+        output,
+        f"phase: history_boundary  "
+        f"{'PASS' if boundary_score.get('passed') else 'FAIL'}  "
+        f"{boundary_score.get('reason')}",
+    )
+
     frames = collect_chase_automation_frames(
         load_latest_frame=load_frame,
         min_frames=max(2, int(min_frames)),
         timeout_s=max(1.0, float(fresh_timeout_s)),
+        after_simulator_frame_index=boundary_index,
     )
     if len(frames) < max(2, int(min_frames)):
         return CommandResult(
@@ -292,7 +370,19 @@ def run_chase_shadow_memory_check(
             ),
         )
 
-    phase_results: list[dict[str, Any]] = []
+    captured_images: dict[str, bytes] = {}
+    if record:
+        try:
+            for frame in frames:
+                frame_id = str(frame.get("frame_id") or "").strip()
+                if not frame_id:
+                    raise ValueError("sampled Chase frame is missing frame_id")
+                image = load_image(frame_id)
+                if not image:
+                    raise ValueError(f"no exact buffered image for {frame_id}")
+                captured_images[frame_id] = bytes(image)
+        except (ConnectionError, OSError, TimeoutError, ValueError) as exc:
+            return CommandResult(2, f"Could not record exact Chase source frames: {exc}")
 
     alignment = score_shadow_alignment_batch(frames, min_frames=max(2, int(min_frames)))
     phase_results.append(
@@ -313,6 +403,15 @@ def run_chase_shadow_memory_check(
     )
 
     provenance_score = score_chase_memory_provenance(frames)
+    if (
+        provenance_score.get("passed")
+        and int(provenance_score.get("retained_prior_matches") or 0) < 1
+    ):
+        provenance_score = {
+            **provenance_score,
+            "passed": False,
+            "reason": "sampled Chase window contains no retained prior-frame evidence",
+        }
     phase_results.append(
         {
             "phase": "memory_provenance",
@@ -364,39 +463,13 @@ def run_chase_shadow_memory_check(
         f"{isolation_score.get('reason')}",
     )
 
-    prior_epoch = str(probe.get("last_epoch_id") or "") or None
-    prior_reset_count = None
-    if probe.get("reset_count") is not None:
-        try:
-            prior_reset_count = int(probe["reset_count"])
-        except (TypeError, ValueError):
-            prior_reset_count = None
-
     try:
-        reset_payload = do_reset()
+        before_final_probe = do_probe()
+        reset_payload, after_probe, reset_snapshot, reset_score = reset_and_score(
+            before_final_probe
+        )
     except (ConnectionError, OSError, TimeoutError, ValueError) as exc:
         return CommandResult(2, f"Chase onboard memory reset failed: {exc}")
-    if not reset_payload.get("ok"):
-        return CommandResult(
-            2,
-            f"Chase memory reset failed: {reset_payload.get('error') or reset_payload}",
-        )
-    after_probe = do_probe()
-    reset_snapshot = chase_reset_snapshot_from_payload(reset_payload)
-    reset_score = score_live_reset(
-        reset_snapshot=reset_snapshot,
-        prior_epoch=prior_epoch,
-        prior_reset_count=prior_reset_count,
-        after_probe=after_probe if isinstance(after_probe, dict) else {},
-    )
-    if not reset_score.get("passed"):
-        # Worker result files often carry status only; allow probe transition + empty.
-        reset_score = score_chase_reset_via_probe(
-            prior_epoch=prior_epoch,
-            prior_reset_count=prior_reset_count,
-            after_probe=after_probe if isinstance(after_probe, dict) else {},
-            fallback_reason=str(reset_score.get("reason") or ""),
-        )
 
     phase_results.append(
         {
@@ -421,7 +494,7 @@ def run_chase_shadow_memory_check(
         if isinstance(memory, dict) and memory.get("records"):
             present_snapshot = memory
             break
-    provenance_rows = build_memory_provenance_rows(final=present_snapshot, frames=[])
+    provenance_rows = build_memory_provenance_rows(final=present_snapshot, frames=frames)
 
     report: dict[str, Any] = {
         "schema": MEMORY_CHECK_RESULT_SCHEMA,
@@ -434,12 +507,14 @@ def run_chase_shadow_memory_check(
         "phase_results": phase_results,
         "present_snapshot": present_snapshot,
         "final_snapshot": reset_snapshot if isinstance(reset_snapshot, dict) else {},
+        "history_boundary_snapshot": boundary_snapshot,
         "provenance_rows": provenance_rows,
         "frames_sampled": [
             {
                 "frame_id": frame.get("frame_id"),
                 "frame_index": frame.get("frame_index"),
                 "simulator_frame_index": frame.get("simulator_frame_index"),
+                "simulation_epoch": frame.get("simulation_epoch"),
                 "shadow_aligned": (frame.get("shadow_alignment") or {}).get("aligned")
                 if isinstance(frame.get("shadow_alignment"), dict)
                 else (
@@ -464,12 +539,12 @@ def run_chase_shadow_memory_check(
         try:
             record_info = write_memory_check_record(
                 report=report,
-                all_frames=[],
+                all_frames=frames,
                 phase_results=phase_results,
                 output_root=output_root or memory_check_output_root(),
-                captured_images=None,
+                captured_images=captured_images,
             )
-        except OSError as exc:
+        except (OSError, ValueError) as exc:
             return CommandResult(2, f"Could not write memory check record: {exc}")
         report["recorded"] = True
         report["record_dir"] = record_info["record_dir"]
@@ -574,147 +649,206 @@ def score_chase_reset_via_probe(
     }
 
 
+def _optional_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        return int(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _chase_frame_index(frame: Any) -> int | None:
+    if not isinstance(frame, dict):
+        return None
+    value = frame.get("simulator_frame_index")
+    if value is None:
+        value = frame.get("frame_index")
+    return coerce_simulator_frame_index(value)
+
+
+def fetch_chase_perception_view_frame(
+    *,
+    automation_dir: Path,
+    frame_id: str,
+    timeout_s: float,
+) -> bytes:
+    """Fetch one exact Chase frame from the worker's bounded in-memory view."""
+
+    status = get_perception_view_status(
+        automation_dir,
+        timeout_s=min(1.0, max(0.1, float(timeout_s))),
+    )
+    if not status.get("available"):
+        raise ConnectionError(str(status.get("reason") or "perception view is unavailable"))
+    view_url = str(status.get("url") or "").strip()
+    if not view_url:
+        raise ConnectionError("perception view did not publish a URL")
+    frame_url = urljoin(view_url, f"frame?v={quote(frame_id, safe='')}")
+    with urlopen(frame_url, timeout=max(0.1, float(timeout_s))) as response:
+        content_type = response.headers.get_content_type()
+        if not content_type.startswith("image/"):
+            raise ValueError(
+                f"exact buffered frame {frame_id} returned {content_type}, expected image/*"
+            )
+        image = response.read()
+    if not image:
+        raise ValueError(f"exact buffered frame {frame_id} was empty")
+    return image
+
+
 def collect_chase_automation_frames(
     *,
     load_latest_frame: Callable[[], dict[str, Any] | None],
     min_frames: int,
     timeout_s: float,
+    after_simulator_frame_index: int | None = None,
 ) -> list[dict[str, Any]]:
-    """Poll latest automation frame until enough distinct simulator frames arrive."""
+    """Collect an observed, ordered provenance window after the reset boundary."""
 
     deadline = time.monotonic() + max(1.0, float(timeout_s))
     collected: list[dict[str, Any]] = []
     seen_ids: set[str] = set()
-    while time.monotonic() < deadline and len(collected) < min_frames:
+    while time.monotonic() < deadline:
         frame = load_latest_frame()
         if isinstance(frame, dict):
             frame_id = str(frame.get("frame_id") or "")
-            sim_index = frame.get("simulator_frame_index")
-            if sim_index is None:
-                sim_index = frame.get("frame_index")
+            sim_index = _chase_frame_index(frame)
+            if (
+                after_simulator_frame_index is not None
+                and (sim_index is None or sim_index <= after_simulator_frame_index)
+            ):
+                time.sleep(0.05)
+                continue
             key = frame_id or f"idx:{sim_index}"
             if key and key not in seen_ids:
                 seen_ids.add(key)
-                collected.append(frame)
-                if len(collected) >= min_frames:
+                trial = [*collected, frame]
+                trial_score = score_chase_memory_provenance(trial)
+                if trial_score.get("passed"):
+                    collected = trial
+                else:
+                    anchor_score = score_chase_memory_provenance([frame])
+                    if anchor_score.get("passed"):
+                        collected = [frame]
+                if (
+                    len(collected) >= min_frames
+                    and score_chase_memory_provenance(collected).get(
+                        "retained_prior_matches", 0
+                    )
+                    > 0
+                ):
                     break
+                # Keep the candidate within the view server's exact-frame buffer.
+                if len(collected) >= 8:
+                    anchor_score = score_chase_memory_provenance([collected[-1]])
+                    collected = [collected[-1]] if anchor_score.get("passed") else []
         time.sleep(0.05)
     return collected
 
 
 def score_chase_memory_provenance(frames: list[dict[str, Any]]) -> dict[str, Any]:
-    """Require retained evidence whose provenance cites a sampled simulator frame.
+    """Require every memory snapshot to cite an observed current/prior frame."""
 
-    Records may legitimately retain evidence from an earlier sampled frame while
-    the current camera frame advances. Validate each provenance.frame_id against
-    the set of sampled frame identities — not only the current frame. Empty
-    memory fails: shadow evaluation needs actual retained evidence.
-    """
-
-    sampled_frame_ids: set[str] = set()
-    sampled_indices: set[int] = set()
+    all_sampled: dict[str, int] = {}
     for frame in frames:
         if not isinstance(frame, dict):
             continue
+        index = _chase_frame_index(frame)
+        if index is None:
+            continue
         frame_id = str(frame.get("frame_id") or "").strip()
         if frame_id:
-            sampled_frame_ids.add(frame_id)
-        sim_index = frame.get("simulator_frame_index")
-        if sim_index is None:
-            sim_index = frame.get("frame_index")
-        try:
-            if sim_index is not None:
-                sampled_indices.add(int(sim_index))
-                sampled_frame_ids.add(f"chase_frame_{int(sim_index):06d}")
-        except (TypeError, ValueError):
-            pass
+            all_sampled[frame_id] = index
+        all_sampled[format_chase_frame_id(index)] = index
 
+    observed: dict[str, int] = {}
+    frames_with_memory = 0
     records_seen = 0
     matched = 0
     current_frame_matches = 0
     retained_prior_matches = 0
     mismatched: list[str] = []
     missing_provenance: list[str] = []
+    future_provenance: list[str] = []
 
-    # Use the latest non-empty memory snapshot among sampled frames.
-    latest_memory: dict[str, Any] | None = None
-    latest_frame_id = ""
     for frame in frames:
-        memory = frame.get("memory") if isinstance(frame.get("memory"), dict) else None
-        if memory is None:
+        if not isinstance(frame, dict):
+            mismatched.append("invalid-frame-record")
             continue
+        containing_index = _chase_frame_index(frame)
+        containing_frame_id = str(frame.get("frame_id") or "").strip()
+        if containing_index is None:
+            mismatched.append(f"{containing_frame_id or '?'}:missing-frame-index")
+            continue
+        if containing_frame_id:
+            observed[containing_frame_id] = containing_index
+        observed[format_chase_frame_id(containing_index)] = containing_index
+
+        memory = frame.get("memory") if isinstance(frame.get("memory"), dict) else {}
         records = memory.get("records") if isinstance(memory.get("records"), list) else []
-        if records:
-            latest_memory = memory
-            latest_frame_id = str(frame.get("frame_id") or "")
-
-    if latest_memory is None:
-        return {
-            "passed": False,
-            "frames_with_memory": 0,
-            "matched_provenance_records": 0,
-            "current_frame_matches": 0,
-            "retained_prior_matches": 0,
-            "mismatched": [],
-            "missing_provenance": [],
-            "reason": "no retained memory records on sampled frames (empty memory cannot prove provenance)",
-        }
-
-    records = latest_memory.get("records") if isinstance(latest_memory.get("records"), list) else []
-    for record in records:
-        if not isinstance(record, dict):
+        if not records:
             continue
-        record_id = str(record.get("record_id") or "")
-        if not record_id:
-            continue
-        records_seen += 1
-        provenance = (
-            record.get("provenance") if isinstance(record.get("provenance"), dict) else {}
-        )
-        prov_frame = str(provenance.get("frame_id") or "").strip()
-        if not prov_frame:
-            missing_provenance.append(record_id)
-            continue
-        if prov_frame not in sampled_frame_ids:
-            # Also accept chase_frame_NNNNNN when N is a sampled index.
-            accepted = False
-            if prov_frame.startswith("chase_frame_"):
-                try:
-                    idx = int(prov_frame.rsplit("_", 1)[-1], 10)
-                    accepted = idx in sampled_indices
-                except ValueError:
-                    accepted = False
-            if not accepted:
-                mismatched.append(f"{record_id}:{prov_frame}")
+        frames_with_memory += 1
+        for record in records:
+            if not isinstance(record, dict):
+                mismatched.append(f"{containing_frame_id}:invalid-memory-record")
                 continue
-        matched += 1
-        if latest_frame_id and prov_frame == latest_frame_id:
-            current_frame_matches += 1
-        else:
-            retained_prior_matches += 1
+            record_id = str(record.get("record_id") or "<unnamed>")
+            records_seen += 1
+            provenance = (
+                record.get("provenance")
+                if isinstance(record.get("provenance"), dict)
+                else {}
+            )
+            prov_frame = str(provenance.get("frame_id") or "").strip()
+            label = f"{containing_frame_id}:{record_id}"
+            if not prov_frame:
+                missing_provenance.append(label)
+                continue
+
+            source_index = observed.get(prov_frame)
+            if source_index is None:
+                future_index = all_sampled.get(prov_frame)
+                if future_index is not None and future_index > containing_index:
+                    future_provenance.append(f"{label}:{prov_frame}")
+                else:
+                    mismatched.append(f"{label}:{prov_frame}")
+                continue
+            if source_index > containing_index:
+                future_provenance.append(f"{label}:{prov_frame}")
+                continue
+
+            matched += 1
+            if source_index == containing_index:
+                current_frame_matches += 1
+            else:
+                retained_prior_matches += 1
 
     passed = (
         records_seen > 0
         and not mismatched
         and not missing_provenance
+        and not future_provenance
         and matched == records_seen
     )
     return {
         "passed": passed,
-        "frames_with_memory": 1 if records_seen else 0,
+        "frames_with_memory": frames_with_memory,
         "record_count": records_seen,
         "matched_provenance_records": matched,
         "current_frame_matches": current_frame_matches,
         "retained_prior_matches": retained_prior_matches,
         "mismatched": mismatched[:12],
         "missing_provenance": missing_provenance[:12],
-        "sampled_frame_ids": sorted(sampled_frame_ids),
+        "future_provenance": future_provenance[:12],
+        "sampled_frame_ids": sorted(all_sampled),
         "reason": (
-            "retained memory provenance cites sampled simulator frames "
+            "memory provenance cites only observed current/prior simulator frames "
             f"(current={current_frame_matches} retained_prior={retained_prior_matches})"
             if passed
             else (
-                "memory provenance missing, empty, or cites frames outside the sampled set"
+                "memory provenance is empty, missing, unknown, or cites a future frame"
             )
         ),
     }
@@ -734,12 +868,14 @@ def score_chase_observe_only(frames: list[dict[str, Any]]) -> dict[str, Any]:
     violations: list[str] = []
     for frame in frames:
         if not isinstance(frame, dict):
+            violations.append("invalid-frame-record")
             continue
         frame_id = str(frame.get("frame_id") or "?")
         control_source = str(frame.get("control_source") or "")
         action_policy = str(frame.get("action_policy") or "")
         application = str(frame.get("control_application") or "")
-        control = frame.get("control") if isinstance(frame.get("control"), dict) else {}
+        control_value = frame.get("control")
+        control = control_value if isinstance(control_value, dict) else None
         shadow = (
             frame.get("shadow_reference")
             if isinstance(frame.get("shadow_reference"), dict)
@@ -753,19 +889,29 @@ def score_chase_observe_only(frames: list[dict[str, Any]]) -> dict[str, Any]:
             violations.append(f"{frame_id}:action_policy={action_policy or 'missing'}")
         if application != "not_applied":
             violations.append(f"{frame_id}:control_application={application or 'missing'}")
-        if control.get("applied") is True:
-            violations.append(f"{frame_id}:control.applied=true")
-        for axis in ("steering", "throttle"):
-            value = control.get(axis)
-            if value is None:
-                continue
-            try:
-                if abs(float(value)) > 1e-9:
+        if control is None:
+            violations.append(f"{frame_id}:control=missing")
+        else:
+            if control.get("applied") is not False:
+                applied = control.get("applied") if "applied" in control else "missing"
+                violations.append(f"{frame_id}:control.applied={applied}")
+            for axis in ("steering", "throttle"):
+                if axis not in control:
+                    violations.append(f"{frame_id}:control.{axis}=missing")
+                    continue
+                value = control[axis]
+                if (
+                    isinstance(value, bool)
+                    or not isinstance(value, (int, float))
+                    or not math.isfinite(float(value))
+                ):
+                    violations.append(f"{frame_id}:control.{axis}=invalid")
+                elif abs(float(value)) > 1e-9:
                     violations.append(f"{frame_id}:control.{axis}={value}")
-            except (TypeError, ValueError):
-                violations.append(f"{frame_id}:control.{axis}=unparseable")
         # Built-in/simulator/keyboard/ai retain scenario authority; any WS path is forbidden.
-        if shadow_source and (
+        if not shadow_source:
+            violations.append(f"{frame_id}:shadow.chaser_control_source=missing")
+        elif (
             shadow_source in {"ws", "websocket", "external_ws", "external"}
             or "ws" in shadow_source
             or shadow_source.startswith("external")
@@ -782,6 +928,39 @@ def score_chase_observe_only(frames: list[dict[str, Any]]) -> dict[str, Any]:
             else f"observe-only violations: {violations[:5]}"
         ),
     }
+
+
+def _movement_commands_sent(frames: list[dict[str, Any]]) -> bool | None:
+    """Return direct control evidence: movement, no movement, or incomplete."""
+
+    if not frames:
+        return None
+    incomplete = False
+    for frame in frames:
+        if not isinstance(frame, dict):
+            incomplete = True
+            continue
+        control = frame.get("control")
+        if not isinstance(control, dict):
+            incomplete = True
+            continue
+        applied = control.get("applied")
+        if applied is True:
+            return True
+        if applied is not False:
+            incomplete = True
+        for axis in ("steering", "throttle"):
+            value = control.get(axis) if axis in control else None
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not math.isfinite(float(value))
+            ):
+                incomplete = True
+                continue
+            if abs(float(value)) > 1e-9:
+                return True
+    return None if incomplete else False
 
 
 def derive_chase_safety_from_frames(
@@ -823,15 +1002,21 @@ def derive_chase_safety_from_frames(
         }
     )
     observe_ok = bool(observe_score.get("passed"))
+    movement_commands_sent = _movement_commands_sent(frames)
     return {
-        "movement_commands_sent": not observe_ok,
+        "movement_commands_sent": movement_commands_sent,
+        "control_evidence_complete": movement_commands_sent is not None,
         "control_sources": control_sources,
         "action_policies": action_policies,
         "control_applications": applications,
         "shadow_chaser_control_sources": shadow_sources,
         "action_policy": action_policies[0] if len(action_policies) == 1 else action_policies,
         "control_source": control_sources[0] if len(control_sources) == 1 else control_sources,
-        "rewritten_engine_idle": observe_ok and applications == ["not_applied"],
+        "rewritten_engine_idle": (
+            observe_ok
+            and movement_commands_sent is False
+            and applications == ["not_applied"]
+        ),
         "simulator_retains_authority": observe_ok and control_sources == ["simulator"],
         "lifecycle_source": "live_automation_worker+shadow_reference",
         "forced_dropout": False,
@@ -865,7 +1050,7 @@ def score_shadow_reference_isolation(frames: list[dict[str, Any]]) -> dict[str, 
             if not isinstance(record, dict):
                 continue
             blob = json.dumps(record, sort_keys=True, default=str)
-            if "shadow_reference" in blob or "chase_shadow_reference_v0" in blob:
+            if "shadow_reference" in blob or "chase_shadow_reference_" in blob:
                 leaks.append(f"{record.get('record_id')}:memory_record")
     passed = not leaks
     return {
@@ -1043,7 +1228,7 @@ def run_offline_memory_check(
                 output_root=output_root or memory_check_output_root(),
                 captured_images=captured_images,
             )
-        except OSError as exc:
+        except (OSError, ValueError) as exc:
             return CommandResult(2, f"Could not write memory check record: {exc}")
         report["recorded"] = True
         report["record_dir"] = record_info["record_dir"]
@@ -1469,7 +1654,7 @@ def run_physical_memory_check(
                 output_root=output_root or memory_check_output_root(),
                 captured_images=captured_images or None,
             )
-        except OSError as exc:
+        except (OSError, ValueError) as exc:
             return CommandResult(2, f"Could not write memory check record: {exc}")
         report["recorded"] = True
         report["record_dir"] = record_info["record_dir"]
@@ -2146,19 +2331,31 @@ def write_memory_check_record(
         if isinstance(report.get("provenance_rows"), list)
         else []
     )
-    extract_payload = {
-        "implementation_id": report.get("implementation_id"),
-        "digest": memory_snapshot_digest(present_snapshot) if present_snapshot else "",
-        "frame_count": len(all_frames),
-        "final": present_snapshot,
-        "per_frame": [
+    per_frame = []
+    for frame in all_frames:
+        memory = frame.get("memory") if isinstance(frame.get("memory"), dict) else {}
+        per_frame.append(
+            {
+                "frame_id": frame.get("frame_id"),
+                "record_count": memory.get("record_count"),
+                "health": memory.get("health"),
+            }
+        )
+    if not per_frame:
+        per_frame = [
             {
                 "frame_id": item.get("phase"),
                 "record_count": item.get("record_count"),
                 "health": item.get("health"),
             }
             for item in phase_results
-        ],
+        ]
+    extract_payload = {
+        "implementation_id": report.get("implementation_id"),
+        "digest": memory_snapshot_digest(present_snapshot) if present_snapshot else "",
+        "frame_count": len(all_frames),
+        "final": present_snapshot,
+        "per_frame": per_frame,
     }
     (record_dir / "sequence.json").write_text(
         json.dumps(
@@ -2167,7 +2364,11 @@ def write_memory_check_record(
                 "source": (
                     "live_pi_publications"
                     if report.get("provider") == "picar"
-                    else "memory_check_default_phases"
+                    else (
+                        "live_chase_automation"
+                        if report.get("provider") == "chase-sim"
+                        else "memory_check_default_phases"
+                    )
                 ),
                 "frames": all_frames,
             },
@@ -2187,7 +2388,7 @@ def write_memory_check_record(
         frames_dir = record_dir / "frames"
         frames_dir.mkdir(parents=True, exist_ok=True)
         for frame_id, blob in captured_images.items():
-            safe_name = safe_path_part(str(frame_id)) + ".jpg"
+            safe_name = safe_path_part(str(frame_id)) + captured_image_extension(blob)
             path = frames_dir / safe_name
             path.write_bytes(blob)
             image_paths[str(frame_id)] = display_path(path)
@@ -2233,12 +2434,7 @@ def write_memory_check_record(
             name: display_path(record_dir / name.rstrip("/"))
             for name in artifacts
         },
-        "notes": [
-            "Recording is disabled unless --record is passed.",
-            "Phase script exercises present, dropout survival, max-age expiry, and reset.",
-            "Retained geometry is attributed to provenance.frame_id only.",
-            "Pi path may include exact JPEG frames captured with each live publication.",
-        ],
+        "notes": memory_check_record_notes(report),
     }
     (record_dir / "manifest.json").write_text(
         json.dumps(manifest, indent=2, sort_keys=True),
@@ -2260,6 +2456,35 @@ def write_memory_check_record(
         "provenance_extract": display_path(extract_path),
         "manifest": manifest,
     }
+
+
+def captured_image_extension(blob: bytes) -> str:
+    """Return a truthful extension for supported recorded image bytes."""
+
+    if blob.startswith(b"\x89PNG\r\n\x1a\n"):
+        return ".png"
+    if blob.startswith(b"\xff\xd8"):
+        return ".jpg"
+    raise ValueError("recorded frame is neither PNG nor JPEG")
+
+
+def memory_check_record_notes(report: dict[str, Any]) -> list[str]:
+    notes = [
+        "Recording is disabled unless --record is passed.",
+        "Retained geometry is attributed to provenance.frame_id only.",
+        "Live-host records include exact source images when frame pairing is available.",
+    ]
+    if report.get("provider") == "chase-sim":
+        notes.append(
+            "The live Chase check covers history boundary, atomic shadow alignment, "
+            "ordered provenance, observe-only isolation, and reset; it does not claim "
+            "a live max-age expiry phase."
+        )
+    else:
+        notes.append(
+            "The lifecycle check covers present, dropout survival, max-age expiry, and reset."
+        )
+    return notes
 
 
 def _load_check_stage(

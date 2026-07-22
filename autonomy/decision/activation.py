@@ -34,11 +34,10 @@ DEFAULT_EVICTION_POLICY = "oldest_first"
 # Fixed ASCII marker for framework-owned fallback snapshots. Never a truncated
 # copy of the activation implementation_id (avoids multibyte / masquerading).
 FRAMEWORK_FALLBACK_IMPLEMENTATION_ID = "framework"
-# Worst-case fixed identity used when measuring activation-time fallback fit.
-_FALLBACK_PROBE_MEMORY_ID = "memory-error-999999"
-_FALLBACK_PROBE_EPOCH_ID = "epoch-error-999999"
-_FALLBACK_PROBE_RESET_MEMORY_ID = "memory-reset-failed-999999"
-_FALLBACK_PROBE_RESET_EPOCH_ID = "epoch-reset-failed-999999"
+# Fixed-width counter suffix keeps identity length independent of runtime growth.
+FALLBACK_COUNTER_WIDTH = 10
+# Millisecond timestamps are capped to 13 ASCII digits for a fixed JSON width.
+MAX_FALLBACK_TIMESTAMP_MS = 9_999_999_999_999
 
 
 @dataclass(frozen=True)
@@ -108,36 +107,97 @@ def bounds_from_config(config: dict[str, Any]) -> MemoryBounds:
     return bounds
 
 
+def _format_fallback_counter(n: int) -> str:
+    """Zero-pad counters so identity field width is independent of growth."""
+
+    max_value = 10**FALLBACK_COUNTER_WIDTH - 1
+    capped = max(0, min(int(n), max_value))
+    return f"{capped:0{FALLBACK_COUNTER_WIDTH}d}"
+
+
+def framework_fallback_timestamp_ms(now_ms: int | None = None) -> int:
+    """Return a timestamp clamped to the fixed max width used in validation."""
+
+    value = int(time.time() * 1000) if now_ms is None else int(now_ms)
+    return max(0, min(value, MAX_FALLBACK_TIMESTAMP_MS))
+
+
+def framework_error_identity(failure_count: int) -> tuple[str, str]:
+    tag = _format_fallback_counter(failure_count)
+    return f"memory-error-{tag}", f"epoch-error-{tag}"
+
+
+def framework_reset_identity(reset_count: int) -> tuple[str, str]:
+    tag = _format_fallback_counter(reset_count)
+    return f"memory-reset-failed-{tag}", f"epoch-reset-failed-{tag}"
+
+
+def build_minimal_framework_fallback(
+    bounds: MemoryBounds,
+    *,
+    health: str,
+    memory_id: str,
+    epoch_id: str,
+    created_at_ms: int,
+    summary_prefix: str = "memory_error",
+) -> MemorySnapshot:
+    """Shared last-resort fallback shape used by validation and runtime."""
+
+    if health == "error":
+        return error_memory_snapshot(
+            memory_id=memory_id,
+            epoch_id=epoch_id,
+            bounds=bounds,
+            created_at_ms=created_at_ms,
+            error="truncated",
+            implementation_id=FRAMEWORK_FALLBACK_IMPLEMENTATION_ID,
+            metadata={},
+        )
+    return empty_memory_snapshot(
+        memory_id=memory_id,
+        epoch_id=epoch_id,
+        bounds=bounds,
+        created_at_ms=created_at_ms,
+        implementation_id=FRAMEWORK_FALLBACK_IMPLEMENTATION_ID,
+        summary=(f"{summary_prefix}=truncated",),
+        metadata={},
+    )
+
+
 def validate_framework_fallback_capacity(bounds: MemoryBounds) -> None:
     """Reject bounds that cannot host the activation-specific minimal fallbacks.
 
-    The static MIN_MAX_SERIALIZED_BYTES floor is not enough when bound fields
-    themselves are large (e.g. a long eviction_policy). Measure the actual
-    canonical JSON size of the minimal reset/error fallback shapes.
+    Probes the same last-resort shapes runtime uses, with worst-case fixed-width
+    identity counters and the maximum reserved timestamp width.
     """
 
     limit = bounds.max_serialized_bytes
     if limit is None:
         return
 
+    # Worst-case identity width and timestamp width that runtime may emit.
+    error_memory_id, error_epoch_id = framework_error_identity(
+        10**FALLBACK_COUNTER_WIDTH - 1
+    )
+    reset_memory_id, reset_epoch_id = framework_reset_identity(
+        10**FALLBACK_COUNTER_WIDTH - 1
+    )
+    created_at_ms = MAX_FALLBACK_TIMESTAMP_MS
     probes = (
-        error_memory_snapshot(
-            memory_id=_FALLBACK_PROBE_MEMORY_ID,
-            epoch_id=_FALLBACK_PROBE_EPOCH_ID,
-            bounds=bounds,
-            created_at_ms=0,
-            error="truncated",
-            implementation_id=FRAMEWORK_FALLBACK_IMPLEMENTATION_ID,
-            metadata={},
+        build_minimal_framework_fallback(
+            bounds,
+            health="error",
+            memory_id=error_memory_id,
+            epoch_id=error_epoch_id,
+            created_at_ms=created_at_ms,
         ),
-        empty_memory_snapshot(
-            memory_id=_FALLBACK_PROBE_RESET_MEMORY_ID,
-            epoch_id=_FALLBACK_PROBE_RESET_EPOCH_ID,
-            bounds=bounds,
-            created_at_ms=0,
-            implementation_id=FRAMEWORK_FALLBACK_IMPLEMENTATION_ID,
-            summary=("memory_reset_failed=truncated",),
-            metadata={},
+        build_minimal_framework_fallback(
+            bounds,
+            health="empty",
+            memory_id=reset_memory_id,
+            epoch_id=reset_epoch_id,
+            created_at_ms=created_at_ms,
+            summary_prefix="memory_reset_failed",
         ),
     )
     for snapshot in probes:
@@ -276,9 +336,10 @@ class ActivatedMemoryStage:
         except Exception as exc:  # noqa: BLE001 - stage isolation boundary
             self.failure_count += 1
             self.last_error = self._bound_diagnostic(f"{type(exc).__name__}: {exc}")
+            memory_id, epoch_id = framework_reset_identity(self.reset_count + 1)
             owned = self._bounded_fallback_snapshot(
-                memory_id=f"memory-reset-failed-{self.reset_count + 1}",
-                epoch_id=f"epoch-reset-failed-{self.reset_count + 1}",
+                memory_id=memory_id,
+                epoch_id=epoch_id,
                 health="empty",
                 error=self.last_error,
                 summary_prefix="memory_reset_failed",
@@ -399,12 +460,13 @@ class ActivatedMemoryStage:
 
     def _error_snapshot(self, error: str) -> MemorySnapshot:
         previous = self.last_snapshot
-        # Identity is framework-owned and fixed-size. Never reuse prior epoch_id /
+        # Identity is framework-owned and fixed-width. Never reuse prior epoch_id /
         # memory_id values — a near-ceiling accepted snapshot can make those
         # fields too large for a failure fallback under the same byte limit.
+        memory_id, epoch_id = framework_error_identity(self.failure_count)
         return self._bounded_fallback_snapshot(
-            memory_id=f"memory-error-{self.failure_count}",
-            epoch_id=f"epoch-error-{self.failure_count}",
+            memory_id=memory_id,
+            epoch_id=epoch_id,
             health="error",
             error=error,
             summary_prefix="memory_error",
@@ -425,22 +487,13 @@ class ActivatedMemoryStage:
     ) -> MemorySnapshot:
         """Build a framework failure/reset-fallback snapshot under size limits.
 
-        Identity is fixed ASCII framework markers (not truncated activation
-        values). Capacity is validated at activation against these shapes.
+        Identity and timestamp width match the shapes validated at activation.
         """
 
         configured = self.activation.bounds
         limit = configured.max_serialized_bytes
-        # Fixed ASCII framework identity — never truncated activation strings.
-        safe_memory_id = memory_id if memory_id.isascii() else "memory-error-0"
-        safe_epoch_id = epoch_id if epoch_id.isascii() else "epoch-error-0"
-        # Counters are decimal ASCII from the stage; still reject non-ASCII.
-        if not safe_memory_id.isascii():
-            safe_memory_id = "memory-error-0"
-        if not safe_epoch_id.isascii():
-            safe_epoch_id = "epoch-error-0"
+        created_at_ms = framework_fallback_timestamp_ms()
         safe_impl_id = FRAMEWORK_FALLBACK_IMPLEMENTATION_ID
-        # previous_health is a short enum; drop if unexpected.
         safe_previous_health = (
             previous_health
             if previous_health in {"empty", "healthy", "unavailable", "error"}
@@ -462,29 +515,27 @@ class ActivatedMemoryStage:
             diagnostic = _truncate_text(base_diagnostic, budget)
             candidate = self._build_fallback_candidate(
                 health=health,
-                memory_id=safe_memory_id,
-                epoch_id=safe_epoch_id,
+                memory_id=memory_id,
+                epoch_id=epoch_id,
                 implementation_id=safe_impl_id,
                 diagnostic=diagnostic,
                 summary_prefix=summary_prefix,
                 metadata_key=metadata_key,
                 previous_health=safe_previous_health,
                 include_metadata=True,
+                created_at_ms=created_at_ms,
             )
             if limit is None or serialized_memory_snapshot_bytes(candidate) <= limit:
                 return detach_memory_snapshot(candidate)
 
-        # Last resort: minimal diagnostic + no metadata.
-        candidate = self._build_fallback_candidate(
+        # Last resort: same shared shape measured at activation time.
+        candidate = build_minimal_framework_fallback(
+            configured,
             health=health,
-            memory_id=safe_memory_id,
-            epoch_id=safe_epoch_id,
-            implementation_id=safe_impl_id,
-            diagnostic="truncated",
+            memory_id=memory_id,
+            epoch_id=epoch_id,
+            created_at_ms=created_at_ms,
             summary_prefix=summary_prefix,
-            metadata_key=metadata_key,
-            previous_health=None,
-            include_metadata=False,
         )
         if limit is not None and serialized_memory_snapshot_bytes(candidate) > limit:
             # Unreachable when activation validated fallback capacity.
@@ -506,6 +557,7 @@ class ActivatedMemoryStage:
         metadata_key: str,
         previous_health: str | None,
         include_metadata: bool,
+        created_at_ms: int,
     ) -> MemorySnapshot:
         configured = self.activation.bounds
         if health == "error":
@@ -519,7 +571,7 @@ class ActivatedMemoryStage:
                 memory_id=memory_id,
                 epoch_id=epoch_id,
                 bounds=configured,
-                created_at_ms=_timestamp_ms(),
+                created_at_ms=created_at_ms,
                 error=diagnostic,
                 implementation_id=implementation_id,
                 metadata=metadata,
@@ -529,7 +581,7 @@ class ActivatedMemoryStage:
             memory_id=memory_id,
             epoch_id=epoch_id,
             bounds=configured,
-            created_at_ms=_timestamp_ms(),
+            created_at_ms=created_at_ms,
             implementation_id=implementation_id,
             summary=(f"{summary_prefix}={diagnostic}",),
             metadata=metadata,

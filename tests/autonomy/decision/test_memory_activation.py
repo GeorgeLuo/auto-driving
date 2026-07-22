@@ -535,6 +535,30 @@ class MemoryActivationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "too small for framework failure"):
                 read_memory_activation(_write_payload(tmp, payload))
 
+    def test_near_threshold_bounds_still_isolate_reset_failure(self) -> None:
+        """Activation probe must match live timestamp/identity width.
+
+        A policy that fits the worst-case validated shape must still isolate
+        reset failures without raising under the same ceiling.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            payload = _valid_payload()
+            payload["memory"]["implementation_config"]["max_serialized_bytes"] = 512
+            # Just under the activation-time capacity limit for these bounds.
+            payload["memory"]["implementation_config"]["eviction_policy"] = "p" * 85
+            stage = ActivatedMemoryStage(
+                read_memory_activation(_write_payload(tmp, payload))
+            )
+            stage.implementation.fail_on_reset = True
+            snapshot = stage.reset()
+            self.assertEqual(snapshot.health, "empty")
+            self.assertTrue(snapshot.epoch_id.startswith("epoch-reset-failed-"))
+            self.assertEqual(len(snapshot.epoch_id.split("-")[-1]), 10)
+            from autonomy.decision import serialized_memory_snapshot_bytes
+
+            self.assertLessEqual(serialized_memory_snapshot_bytes(snapshot), 512)
+            self.assertIn("reset exploded", stage.last_error or "")
+
     def test_multibyte_implementation_id_does_not_break_fallback_isolation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             payload = _valid_payload()

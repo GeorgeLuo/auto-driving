@@ -186,6 +186,7 @@ class MemoryStreamTests(unittest.TestCase):
                 state=state,
                 probed_at_ms=now,
                 max_age_ms=30_000,
+                vehicle_id="chase-sim-chaser",
             )
         self.assertFalse(verdict["live"])
         self.assertEqual(verdict["status"], "stale")
@@ -202,15 +203,92 @@ class MemoryStreamTests(unittest.TestCase):
                 "status": {"last_health": "healthy", "last_record_count": 1},
             },
         }
-        with patch("cli.automa_cli.memory._pid_alive", return_value=True):
+        with patch("cli.automa_cli.memory._pid_alive", return_value=True), patch(
+            "cli.automa_cli.memory._pid_matches_automation", return_value=True
+        ):
             verdict = assess_chase_memory_worker_liveness(
                 state=state,
                 probed_at_ms=now,
                 max_age_ms=30_000,
+                vehicle_id="chase-sim-chaser",
             )
         self.assertFalse(verdict["live"])
         self.assertEqual(verdict["status"], "stale")
         self.assertIn("stale", verdict["error"])
+
+    def test_chase_probe_rejects_pid_not_matching_automation(self) -> None:
+        now = 1_700_000_000_000
+        state = {
+            "status": "running",
+            "pid": 424242,
+            "updated_at_ms": now - 500,
+            "memory": {
+                "implementation_id": "bounded_evidence",
+                "status": {"last_health": "healthy", "last_record_count": 1},
+            },
+        }
+        with patch("cli.automa_cli.memory._pid_alive", return_value=True), patch(
+            "cli.automa_cli.memory._pid_matches_automation", return_value=False
+        ):
+            verdict = assess_chase_memory_worker_liveness(
+                state=state,
+                probed_at_ms=now,
+                max_age_ms=30_000,
+                vehicle_id="chase-sim-chaser",
+            )
+        self.assertFalse(verdict["live"])
+        self.assertEqual(verdict["status"], "stale")
+        self.assertIn("PID reuse", verdict["error"])
+
+    def test_chase_probe_rejects_future_publication_timestamp(self) -> None:
+        now = 1_700_000_000_000
+        state = {
+            "status": "running",
+            "pid": 424242,
+            "updated_at_ms": now + 86_400_000,
+            "memory": {
+                "implementation_id": "bounded_evidence",
+                "status": {"last_health": "healthy", "last_record_count": 1},
+            },
+        }
+        with patch("cli.automa_cli.memory._pid_alive", return_value=True), patch(
+            "cli.automa_cli.memory._pid_matches_automation", return_value=True
+        ):
+            verdict = assess_chase_memory_worker_liveness(
+                state=state,
+                probed_at_ms=now,
+                max_age_ms=30_000,
+                vehicle_id="chase-sim-chaser",
+                clock_skew_ms=2_000,
+            )
+        self.assertFalse(verdict["live"])
+        self.assertEqual(verdict["status"], "stale")
+        self.assertIn("future", verdict["error"])
+        self.assertEqual(verdict["age_ms"], -86_400_000)
+
+    def test_chase_probe_allows_small_forward_clock_skew(self) -> None:
+        now = 1_700_000_000_000
+        state = {
+            "status": "running",
+            "pid": 424242,
+            "updated_at_ms": now + 500,
+            "memory": {
+                "implementation_id": "bounded_evidence",
+                "status": {"last_health": "healthy", "last_record_count": 1},
+            },
+        }
+        with patch("cli.automa_cli.memory._pid_alive", return_value=True), patch(
+            "cli.automa_cli.memory._pid_matches_automation", return_value=True
+        ):
+            verdict = assess_chase_memory_worker_liveness(
+                state=state,
+                probed_at_ms=now,
+                max_age_ms=30_000,
+                vehicle_id="chase-sim-chaser",
+                clock_skew_ms=2_000,
+            )
+        self.assertTrue(verdict["live"])
+        self.assertEqual(verdict["age_ms"], 0)
 
     def test_chase_probe_live_when_running_fresh_and_pid_alive(self) -> None:
         now = 1_700_000_000_000
@@ -250,6 +328,8 @@ class MemoryStreamTests(unittest.TestCase):
                 "cli.automa_cli.memory._automation_dir",
                 return_value=state_path.parent,
             ), patch("cli.automa_cli.memory._pid_alive", return_value=True), patch(
+                "cli.automa_cli.memory._pid_matches_automation", return_value=True
+            ), patch(
                 "cli.automa_cli.memory.time.time", return_value=now / 1000.0
             ):
                 live = probe_live_memory(

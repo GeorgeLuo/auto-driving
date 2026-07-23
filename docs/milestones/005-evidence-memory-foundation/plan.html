@@ -173,9 +173,10 @@
       </p>
       <div class="meta">
         <span class="pill">Status: active — not ready to close</span>
-        <span class="pill">Packages open: 5 (bounds, expiry, coverage) and 6</span>
-        <span class="pill">PR #51: merged (Chase shadow)</span>
-        <span class="pill">Next: Package 5B — record bounds + probe liveness</span>
+        <span class="pill">Packages open: 5 (5B in review) and 6</span>
+        <span class="pill">PR #52: merged (Package 5A bounds)</span>
+        <span class="pill">Current frontier: Package 5B (this PR)</span>
+        <span class="pill">Next frontier co-reviewed here: live Chase max-age expiry</span>
         <span class="pill">Proposed: 2026-07-15</span>
         <span class="pill">Action policy: idle</span>
         <span class="pill">Hosts: Chase and DonkeyCar</span>
@@ -209,8 +210,8 @@
             <tr>
               <td><strong>Opt-in recording</strong> for evaluation artifacts (no default history)</td>
               <td>5</td>
-              <td><span class="status pending">Partial</span></td>
-              <td>Recording is opt-in, but replay has no configured frame-count or byte ceiling. Add an enforceable artifact bound before calling it bounded.</td>
+              <td><span class="status active">In progress (5B)</span></td>
+              <td>Package 5B enforces replay <code>max_frames</code> and total artifact-byte ceilings on <code>--record</code>, with fail-closed cleanup of oversize trees.</td>
             </tr>
             <tr>
               <td><strong>Chase shadow visual-provenance check</strong> (retention/alignment/reset, observe-only)</td>
@@ -239,14 +240,14 @@
             <tr>
               <td><strong>Live Chase max-age expiry</strong></td>
               <td>5</td>
-              <td><span class="status pending">Required</span></td>
-              <td>The tracked Chase run proves real dropout retention and reset, but intentionally does not infer age expiry from either. Observe a retained key surviving dropout and disappearing under the configured age bound before closeout.</td>
+              <td><span class="status pending">Queued — co-reviewed on this PR</span></td>
+              <td>Tracked Chase run proves retention and reset only. Full next-frontier contract is under Current Delivery Horizon for approval with Package 5B closeout. Implementation starts only after this PR merges and that card is accepted.</td>
             </tr>
             <tr>
               <td><strong>Package 6 closeout</strong> (<code>closeout.md</code>, completed ledger, promote 006 only then)</td>
               <td>6</td>
-              <td><span class="status blocked">Blocked</span></td>
-              <td>Write the closeout only after package 5 validation repair produces trustworthy simulator and Pi evidence.</td>
+              <td><span class="status blocked">Preparation horizon</span></td>
+              <td>Separate review kind (milestone judgment). Not part of the live-expiry frontier. Promote after package 5 gates including Chase max-age are met.</td>
             </tr>
           </tbody>
         </table>
@@ -257,12 +258,12 @@
         records an explicit parallel exception.
       </p>
       <div class="card interface" style="margin-top: 14px;">
-        <h3>Implementer Handoff — After PR #51 Merges</h3>
-        <p><strong>Completed merge boundary:</strong> PR #51 is reviewed, CI-clean, and answers the prior atomic-alignment, temporal-provenance, observe-only, and movement-proof findings. Its tracked Chase extract is accepted evidence for alignment, retention, isolation, and reset; do not reopen the removed sequential capture path.</p>
-        <p><strong>Current review unit (Package 5A):</strong> deeply detach returned memory values; bound record properties and serialized snapshots; reject an implementation that removes or weakens configured age limits; namespace retained evidence by source plugin; add focused mutation, size, age-policy, and collision tests.</p>
-        <p><strong>Following review unit (Package 5B):</strong> bound replay frame count and total artifact bytes; make Chase memory probes reject stopped or stale workers; add long-sequence and operator-liveness tests.</p>
-        <p><strong>Final validation unit (Package 5C):</strong> record live Chase retention followed by max-age expiry without reset, rerun the canonical and live checks, then write package 6 closeout. Keep the Metrics UI atomic-capture milestone available as an active dependency until this validation no longer needs contract adjustment.</p>
-        <p><strong>Review state:</strong> “review unit” below means the next bounded pull request, not an unresolved review on PR #51.</p>
+        <h3>Implementer Handoff — Co-Review Next Frontier On The Current PR</h3>
+        <p><strong>Practice:</strong> the <em>next</em> frontier is formalized on the <em>current</em> unmerged PR (plan card + PR description section), so human attention can accept this unit’s code <strong>and</strong> approve what may start after merge in one pass. Do not open a separate planning-only PR for the next unit when the current frontier is still open.</p>
+        <p><strong>Completed:</strong> PR #51 Chase shadow path; Package 5A (PR #52).</p>
+        <p><strong>This PR (Package 5B):</strong> record bounds + Chase probe liveness — see invariant cards below. Merging this PR closes the current frontier only after review of the code matrices.</p>
+        <p><strong>Next frontier (queued on this PR, not started):</strong> live Chase max-age expiry evidence — full contract in the card below. Approving this PR’s plan section accepts that scope for the follow-on implementation PR. Does <strong>not</strong> include package 6 closeout.</p>
+        <p><strong>Preparation horizon:</strong> Package 6 closeout after Chase max-age evidence is accepted. Metrics UI atomic capture remains an active dependency for live Chase work until expiry no longer needs contract adjustment.</p>
       </div>
     </section>
 
@@ -314,22 +315,22 @@
               <td>Done in remediation block 3. The adapter consumes one atomic response, preserves simulation epoch + frame index, and a guided run is tracked under <a href="evidence/chase-shadow-memory/provenance_extract.html">Chase shadow memory evidence</a>.</td>
             </tr>
             <tr>
-              <td><span class="status active">In progress</span></td>
+              <td><span class="status done">Addressed</span></td>
               <td><code>MemorySnapshot</code> is frozen only shallowly and the ledger returns its internal snapshot directly.</td>
               <td>Package 5A: <code>detach_memory_snapshot</code> on every stage accept path and ledger <code>update</code>/<code>reset</code>/<code>snapshot</code>; mutation of returned properties/metadata no longer affects ledger state.</td>
-              <td>Complete in Package 5A review unit with mutation-isolation tests.</td>
+              <td>Done in Package 5A (PR #52).</td>
             </tr>
             <tr>
               <td><span class="status active">In progress</span></td>
               <td>Record count is bounded, but retained properties, serialized snapshots, and recorded replays are not byte-bounded.</td>
-              <td>Package 5A: <code>max_property_bytes</code> and <code>max_serialized_bytes</code> on <code>MemoryBounds</code>, ledger admission, and framework accept. Replay frame-count/artifact-byte ceilings remain Package 5B.</td>
-              <td>Land property/snapshot size in 5A; record artifact bounds in 5B.</td>
+              <td>Package 5A landed property/serialized snapshot ceilings. Package 5B enforces replay frame-count and total artifact-byte ceilings on opt-in <code>--record</code>.</td>
+              <td>Complete record artifact bounds in Package 5B.</td>
             </tr>
             <tr>
-              <td><span class="status pending">High</span></td>
+              <td><span class="status active">In progress</span></td>
               <td>The Chase memory probe can still report a stopped worker's retained state as live.</td>
-              <td><code>cli/automa_cli/memory.py:_probe_chase_memory</code> reads the latest state file without requiring a live process or bounded publication age. Fresh-frame polling and epoch/reset-count confirmation are now fail-closed elsewhere.</td>
-              <td>Include worker process state and publication age in memory liveness and add focused stopped/stale-worker tests.</td>
+              <td>Package 5B: <code>assess_chase_memory_worker_liveness</code> requires <code>status</code> running/starting, live PID, and <code>updated_at_ms</code> within max age before reporting live memory.</td>
+              <td>Complete stopped/stale-worker coverage in Package 5B.</td>
             </tr>
           </tbody>
         </table>
@@ -360,9 +361,9 @@
         <li><strong>Done:</strong> Make Pi publication/frame pairing atomic or explicitly verified.</li>
         <li><strong>Done:</strong> Replace synthetic physical lifecycle phases with checks of the active onboard stage (lifecycle keys = present∖dropout observed evidence; fail-closed frame freshness).</li>
         <li><strong>Done:</strong> Preserve Chase frame identity, consume the atomic evaluator response, and validate a live shadow/reference run.</li>
-        <li><strong>In progress (Package 5A):</strong> Deeply detach snapshots; enforce property/serialized-size limits and plugin-safe record identity; reject weakened age bounds.</li>
-        <li>Add missing long-sequence, replay artifact-bound, and memory-probe stale-worker tests (Package 5B); retain 5A mutation/size/age/collision coverage with the contract.</li>
-        <li>Record live Chase max-age expiry, rerun the accepted Pi/Chase checks, then write package 6 closeout.</li>
+        <li><strong>Done (Package 5A):</strong> Deeply detach snapshots; enforce property/serialized-size limits and plugin-safe record identity; reject weakened age bounds.</li>
+        <li><strong>In progress (Package 5B):</strong> Replay frame-count and artifact-byte ceilings; Chase memory-probe liveness (running PID + publication age); long-sequence capacity tests.</li>
+        <li><strong>Queued next frontier (co-reviewed on Package 5B PR, not started):</strong> live Chase max-age expiry evidence only — see Current Delivery Horizon. Package 6 closeout stays preparation horizon.</li>
       </ol>
       <p class="note" style="margin-top: 12px;">
         <strong>2026-07-20 remediation block 1:</strong> <code>fetch_matched_observation_pair</code>
@@ -617,26 +618,49 @@
           <p><strong>Review answer:</strong> yes; physical lifecycle remediation is complete. Chase live expiry and the remaining contract hardening still block milestone closeout.</p>
         </div>
         <div class="card interface">
-          <h3>Current Review Unit: Package 5A Value And Bounds Integrity</h3>
-          <p><span class="status active">Active</span> <strong>Review shape:</strong> evidence-path repair with focused contract hardening.</p>
-          <p><strong>Deliverable:</strong> detached snapshots on every accept path; <code>max_property_bytes</code>/<code>max_serialized_bytes</code> on <code>MemoryBounds</code>; plugin-namespaced record ids (<code>thing:{plugin}:{id}</code>); framework rejection when an implementation removes or weakens configured age bounds; mutation, size, age-policy, and collision tests.</p>
-          <p><strong>Review question:</strong> Can any implementation or caller mutate, enlarge, collide, or weaken memory beyond the activation's declared limits?</p>
-          <p><strong>Package 5B follows:</strong> record bounds and memory-probe liveness. Package 5C then records Chase max-age expiry before package 6 closeout.</p>
+          <h3>Current Frontier (This PR): Package 5B Record Bounds And Probe Liveness</h3>
+          <p><span class="status active">In review</span> <strong>Review kind:</strong> deterministic class closure (two related operator boundaries on one CLI surface).</p>
+          <p><strong>Deliverable:</strong> enforceable replay frame and total artifact-byte ceilings on opt-in <code>memory replay --record</code> with fail-closed cleanup; Chase memory probes that report live only for a verified automation worker with a trustworthy publication time; one-shot stream exit 0 only for <code>live</code>.</p>
+          <p><strong>Review question:</strong> Can operators treat a recorded replay extract as bounded, and can a live Chase memory probe be trusted only when the automation worker is actually fresh?</p>
+          <p><strong>Invariant A — recorded extract is bounded and fail-closed:</strong> an opt-in record never leaves unbounded frame materialization, an oversize tree, or a self-describing size that exceeds the hard ceiling. <strong>Owner:</strong> <code>load_memory_observation_sequence</code> (load ceilings) + <code>write_memory_replay_record</code> / <code>_stabilize_record_byte_count</code> / <code>_directory_byte_size</code> / <code>_remove_tree_strict</code> (disk ceiling + cleanup). <strong>Paths:</strong> monolithic and directory sequence load (directory scan stops at <code>max_frames+1</code>); record write; unmeasurable artifact; manifest/result rewrite; exception cleanup. <strong>Matrix:</strong> exact- and over-frame file and directory sequences; oversized sequence file preflight; oversize record; unmeasurable artifact aborts write; declared <code>bytes_in_record</code> converges across digit boundaries and equals on-disk total; on failure remove the partial tree, or fail visibly with the exact residual path when the filesystem prevents removal. <strong>Unverified here:</strong> host memory under pathological multi-GB files beyond the preflight (rejected by size); concurrent writers to the same record dir.</p>
+          <p><strong>Invariant B — Chase live memory means a fresh automation worker:</strong> probe status <code>live</code> requires running/starting state, a live PID whose process command verifies automation identity for the vehicle, and automation state <code>updated_at_ms</code> within max age and not in the future beyond clock-skew tolerance. One-shot <code>stream memory --once</code> returns exit 0 only for <code>live</code>; every non-live status is nonzero. <strong>Owner:</strong> <code>assess_chase_memory_worker_liveness</code> + shared exact <code>--id</code> command matcher + <code>_once_memory_stream_result</code> (CLI boundary). <strong>Paths:</strong> stopped status; dead PID; PID reuse; missing vehicle id; unavailable process command; missing/stale/future publication; small forward skew; one-shot exit codes. <strong>External assumptions:</strong> <code>ps</code> command line is a reliable automation-identity signal; unavailable command fails closed as stale (stricter than stop-path permissive matching). <code>updated_at_ms</code> is the automation-wide state heartbeat refreshed by the capture loop, not proof that the memory stage itself just completed an update. <strong>Unverified here:</strong> live Chase max-age evidence (queued next frontier); physical Pi probe paths; hostile PID command spoofing.</p>
+          <p><strong>External evidence required for this PR:</strong> none (deterministic CLI/unit tests only).</p>
+        </div>
+        <div class="card goal">
+          <h3>Next Frontier (Co-Reviewed On This PR — Not Started)</h3>
+          <p><span class="status pending">Queued for approval with Package 5B merge</span> <strong>Review kind:</strong> live / external evidence (guided procedure + tracked artifact). Not closeout.</p>
+          <p><strong>Why it is on this PR:</strong> so the human reviewing Package 5B can also accept or revise what may begin after merge, without a second planning PR competing for attention.</p>
+          <p><strong>Prerequisite:</strong> this PR (Package 5B) merges.</p>
+          <p><strong>Attention budget:</strong> one human pass over procedure, claim language, extract/check output, and explicit non-claims. No dual “harness redesign + closeout.” Optional check-path scoring only if required for honesty—do not pre-name a harness subdivision.</p>
+          <p><strong>Review question:</strong> Can a guided live Chase run show a retained key surviving dropout and then disappearing under the configured <code>max_age_ms</code> <strong>without reset</strong>, while staying observe-only / zero candidate movement and keeping exact source-frame provenance for retained evidence?</p>
+          <p><strong>Success signal:</strong> (1) retained key with exact source frame; (2) key still retained after dropout (retained-not-current); (3) wait under configured max age without reset; (4) key gone from live memory; (5) control remains zero / observe-only; (6) recorded extract labels expiry as age-bound, not reset. Proposed path: <code>vehicles memory check --id chase-sim-chaser --record</code> under <code>chaser-depth-obstacles</code> (flags may settle during implementation).</p>
+          <p><strong>Invariant (live-evidence form):</strong> after dropout retention, a lifecycle key expires under configured max age without reset; the check does not treat reset, worker restart, or always-on keys as expiry success.</p>
+          <p><strong>Enforcement owner:</strong> live Chase memory-check path + evidence artifact contract (not a new ledger algorithm). Ledger expiry is already unit-tested; this frontier proves the live Chase path.</p>
+          <p><strong>Affected paths:</strong> guided present → dropout → age wait → gone; expiry-phase scoring; optional <code>--record</code> extract; no reset between dropout and expiry success.</p>
+          <p><strong>Adversarial matrix:</strong> still-present after wait → fail; expiry only via reset → fail; always-on keys excluded; non-zero control → fail; missing exact frame pairing → fail closed; non-live worker (Package 5B semantics) → not a pass.</p>
+          <p><strong>External assumptions:</strong> Chase + Metrics UI atomic capture available; wall clock and activation <code>max_age_ms</code> (or documented check override); automation worker remains live through the wait (Package 5B meaning of live).</p>
+          <p><strong>In scope:</strong> guided procedure; tracked evidence under <code>evidence/</code> (new run or honest additive claim); minimal check scoring only if the command cannot fail closed on missing expiry; plan update promoting this card to current after this PR merges.</p>
+          <p><strong>Out of scope / non-goals:</strong> <code>closeout.md</code> / completed ledger / promote 006; re-proving Pi lifecycle or Chase atomic alignment from scratch; 5A/5B redesign; multi-key conflict expansion; package sub-ID ladders.</p>
+          <p><strong>Validation intent:</strong> deterministic tests only if harness changes; live guided run required for the follow-on PR—CI alone cannot close that frontier.</p>
+          <p><strong>Implementation gate:</strong> open the follow-on implementation PR only after this PR merges and this card was accepted (or revised) in review. The follow-on PR description restates this card; it does not invent new scope.</p>
+        </div>
+        <div class="card constraint">
+          <h3>Preparation Horizon (Not Approved By This PR)</h3>
+          <p><span class="status blocked">Not promoted</span> <strong>Review kind:</strong> milestone closeout judgment.</p>
+          <p><strong>Package 6 closeout</strong> after live Chase max-age evidence is accepted: write <code>closeout.md</code>, completed ledger, freeze residual risk, decide whether to activate 006. Optional smoke re-runs are closeout validation, not a named package chain on this PR.</p>
         </div>
       </div>
       <div class="table-wrap" style="margin-top: 16px;">
         <table>
           <thead><tr><th>Preparation Horizon</th><th>Known End-State Need</th><th>Must Be Learned First / Status</th></tr></thead>
           <tbody>
-            <tr><td>Stable values and lifecycle</td><td>Typed snapshot/update records, provenance, bounds, reset identity, deterministic serialization.</td><td><strong>Partial.</strong> Typed values landed; Package 5A adds deep detach plus property/serialized-size bounds. Replay artifact ceilings remain 5B.</td></tr>
-            <tr><td>Plugin execution</td><td>Loadable implementation shape with framework-owned status and failure isolation.</td><td><strong>Partial.</strong> Package 5A rejects removed/weakened age bounds, namespaces record ids by plugin, and bounds property/snapshot size at the stage boundary.</td></tr>
-            <tr><td>Host integration</td><td>Equivalent activation and lifecycle in Chase and Donkey hosts.</td><td><strong>Landed</strong> for load, snapshot, stream, and operator reset. Deploy honesty still requires core+autonomy when manage.py must load the stage; Pi reset needs core (HTTP) + autonomy (pilot method).</td></tr>
-            <tr><td>Operator inspect</td><td>Stage, inspect, stream, and key→value Memory map without flooding default output.</td><td><strong>Landed.</strong> Terminal health/counts + <code>/memory</code> keys with click-for-value; perception stays separate.</td></tr>
-            <tr><td>Operator lifecycle (reset)</td><td>Explicit reset starts a new empty epoch visible to operators on both hosts.</td><td><strong>Landed.</strong> Reset confirmation requires epoch/reset-count transition; the Pi path was validated against the live onboard stage.</td></tr>
-            <tr><td>Operator lifecycle (replay)</td><td>Replay a sequence to a digestible end-state without default disk history.</td><td><strong>Landed.</strong> Offline <code>memory replay</code> + stable digest + two-pass check.</td></tr>
-            <tr><td>Operator lifecycle (record)</td><td>Opt-in record without default disk history.</td><td><strong>Partial.</strong> <code>memory replay --record</code> and provenance extract landed; configured frame-count and byte bounds remain open.</td></tr>
-            <tr><td>Evaluation / visual provenance</td><td>Chase shadow + stationary Pi present/dropout/expiry/reset with source-frame extracts.</td><td><strong>Partial.</strong> <a href="evidence/physical-memory-lifecycle/provenance_extract.html">Pi</a> and <a href="evidence/chase-shadow-memory/provenance_extract.html">Chase</a> extracts are tracked. Chase proves atomic alignment, real retained-prior evidence, reset, and zero candidate movement; live max-age expiry remains open.</td></tr>
-            <tr><td>Closeout</td><td>Written judgment on usefulness and whether patterns/action are justified; activate 006 only then.</td><td><strong>Blocked.</strong> Package 5 validation integrity must pass first. Pre-plan 006 remains queued, not active.</td></tr>
+            <tr><td>Stable values and lifecycle</td><td>Typed snapshot/update records, provenance, bounds, reset identity, deterministic serialization.</td><td><strong>Partial.</strong> 5A landed detach/size/ids; this PR closes replay artifact ceilings.</td></tr>
+            <tr><td>Plugin execution</td><td>Loadable implementation shape with framework-owned status and failure isolation.</td><td><strong>Landed</strong> for age-policy rejection and plugin-safe ids (5A).</td></tr>
+            <tr><td>Host integration</td><td>Equivalent activation and lifecycle in Chase and Donkey hosts.</td><td><strong>Landed</strong> for load, snapshot, stream, and operator reset.</td></tr>
+            <tr><td>Operator inspect / reset / replay</td><td>Stage, inspect, stream, reset, replay without default disk history.</td><td><strong>Landed.</strong></td></tr>
+            <tr><td>Operator lifecycle (record)</td><td>Opt-in record without default disk history.</td><td><strong>This PR:</strong> frame-count and total artifact-byte ceilings with fail-closed cleanup.</td></tr>
+            <tr><td>Evaluation / visual provenance</td><td>Chase + Pi present/dropout/expiry/reset with source-frame extracts.</td><td><strong>Partial.</strong> Pi complete; Chase retention/alignment/reset tracked; <strong>live Chase max-age is the next frontier co-reviewed on this PR</strong>.</td></tr>
+            <tr><td>Closeout</td><td>Written judgment; activate 006 only then.</td><td><strong>Blocked</strong> until package 5 gates including Chase max-age pass. Not part of this PR’s approval of the next frontier.</td></tr>
           </tbody>
         </table>
       </div>
@@ -860,8 +884,8 @@
             <tr><td>4</td><td>At least one simple implementation retains and expires structured evidence without claiming semantic or metric world truth.</td><td><span class="status done">Met</span> (<code>BoundedEvidenceLedger</code>)</td></tr>
             <tr><td>5</td><td>The same activation and lifecycle run through local Chase and onboard Donkey hosts; neither receives privileged simulator map state.</td><td><span class="status done">Met</span> for load/update/status/reset path</td></tr>
             <tr><td>6</td><td>Automa can stage, inspect, run, stream latest memory, <strong>replay</strong> a sequence, and reset state with concise human and complete machine output.</td><td><span class="status done">Met</span> — stage/inspect/stream/reset/replay landed</td></tr>
-            <tr><td>7</td><td>Default execution writes no logs, frames, or memory history; recording is explicit and bounded.</td><td><span class="status pending">Partial</span> — defaults write nothing and recording is opt-in, but no configured frame-count or byte bound is enforced.</td></tr>
-            <tr><td>8</td><td>Deterministic tests cover recurrence, dropout, conflict, expiry, capacity, reset, failure, and replay, including long-sequence boundedness.</td><td><span class="status blocked">Open</span> — conflict, long-sequence, serialized/property-size, cross-plugin collision, and memory-probe stale-worker coverage is missing. Exact-frame pairing, fresh-frame, and reset-transition tests are landed.</td></tr>
+            <tr><td>7</td><td>Default execution writes no logs, frames, or memory history; recording is explicit and bounded.</td><td><span class="status pending">Partial</span> — defaults write nothing; Package 5B enforces opt-in replay frame-count and artifact-byte ceilings.</td></tr>
+            <tr><td>8</td><td>Deterministic tests cover recurrence, dropout, conflict, expiry, capacity, reset, failure, and replay, including long-sequence boundedness.</td><td><span class="status pending">Partial</span> — Package 5A/5B add size, collision, long-sequence capacity, and stale-worker probe coverage. Broader conflict scenarios may still expand later.</td></tr>
             <tr><td>9</td><td>One live <code>chaser-depth-obstacles</code> shadow check and one recorded non-moving Pi present/dropout/expiry/reset check verify equivalent stage behavior while the rewritten engine emits zero movement.</td><td><span class="status pending">Partial</span> — Pi lifecycle is fully validated; <a href="evidence/chase-shadow-memory/provenance_extract.html">Chase</a> proves live retention, reset, and zero candidate movement, but live max-age expiry remains open.</td></tr>
             <tr><td>10</td><td>During the simulator check, Chase's built-in decision model retains movement authority, the rewrite runs observe-only, and candidate/reference results are aligned by simulator frame identity.</td><td><span class="status done">Met</span> — the atomic evaluator contract and tracked guided run prove same-epoch advancing alignment, simulator authority, complete zero/not-applied candidate control, and evaluator isolation.</td></tr>
             <tr><td>11</td><td>Simulator debug, map, and reference-decision state are evaluator-only and are absent from rewritten controller inputs and retained memory provenance.</td><td><span class="status done">Met</span> by design/wiring; re-asserted on check path</td></tr>
@@ -913,6 +937,9 @@
             <tr><td>2026-07-20</td><td>Remediation block 3: preserve Chase simulator frameIndex and score live shadow alignment.</td><td>Initial sequential debug/camera pairing proved impossible against an advancing session and triggered Metrics UI Milestone 002 for an atomic evaluator response. Auto-driving must consume and validate that response before either repository treats the dependency as complete.</td></tr>
             <tr><td>2026-07-22</td><td>Accept the atomic Chase shadow path and keep the Metrics UI milestone unmerged through auto-driving closeout.</td><td>The adapter now has one atomic capture path and no compatibility fallback. Two repeated live <code>chaser-depth-obstacles</code> checks proved advancing same-epoch alignment, an observed retained-prior transition, explicit zero/not-applied candidate control, simulator authority, evaluator isolation, exact source images, and reset. The tracked extract is under <code>evidence/chase-shadow-memory/</code>. Metrics UI Milestone 002 remains the active dependency until the remaining auto-driving bounds, coverage, and live expiry work no longer needs contract adjustment.</td></tr>
             <tr><td>2026-07-22</td><td>Package 5A: value and bounds integrity.</td><td>Deep-detach returned snapshots; add <code>max_property_bytes</code>/<code>max_serialized_bytes</code>; namespace ledger keys as <code>kind:plugin:evidence</code>; reject removed or weakened age bounds at the framework boundary; cover mutation isolation, oversized properties, age-policy rejection, and cross-plugin collision. Replay artifact ceilings and probe liveness stay Package 5B.</td></tr>
+            <tr><td>2026-07-23</td><td>Package 5B: record bounds and Chase probe liveness.</td><td>Enforce replay max frame count and total artifact-byte ceilings on <code>--record</code> with fail-closed cleanup. Chase live memory probes require running/starting status, a live PID, and a fresh <code>updated_at_ms</code>. Add long-sequence capacity and stopped/stale worker tests.</td></tr>
+            <tr><td>2026-07-23</td><td>Revise Package 5B delivery entry for invariant closure.</td><td>After the shared planning-contract invariant-closure guidance (PR #54), restate Package 5B as two universal guarantees with enforcement owners, affected paths, compact adversarial matrices, external assumptions, and unverified limits. Align PR #53 description to that shape so review checks class closure rather than accumulating path-local cases (Package 5A lesson).</td></tr>
+            <tr><td>2026-07-23</td><td>Co-review the next frontier on the current unmerged PR.</td><td>Put the full live Chase max-age expiry contract on Package 5B’s plan/PR so human attention can approve this unit’s code and the next unit’s scope in one pass. Closeout stays preparation horizon. Prefer this over a separate planning-only PR while the current frontier is still open.</td></tr>
           </tbody>
 
 

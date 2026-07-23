@@ -261,6 +261,57 @@ class _SelfContradictingBoundsMemory(_RecordingMemory):
         )
 
 
+class _NormalizationInflatesSizeMemory(_RecordingMemory):
+    """Snapshot fits its short eviction_policy but is rejected for policy mismatch."""
+
+    def update(self, context, observation):
+        from autonomy.decision import MemoryBounds, empty_memory_snapshot
+
+        del observation
+        short_bounds = MemoryBounds(
+            max_records=self.bounds.max_records,
+            max_age_ms=self.bounds.max_age_ms,
+            eviction_policy="x",
+            max_property_bytes=self.bounds.max_property_bytes or 4_096,
+            max_serialized_bytes=self.bounds.max_serialized_bytes or 600,
+        )
+        return empty_memory_snapshot(
+            memory_id=f"mem-{context.frame_id}",
+            epoch_id="epoch-1",
+            bounds=short_bounds,
+            created_at_ms=context.timestamp_ms,
+            implementation_id=self.implementation_id,
+            summary=("memory_empty=true",),
+            metadata={},
+        )
+
+
+class _TighterDeclaredSizeMemory(_RecordingMemory):
+    """Same policy label; declared size fields are smaller so normalize grows the body."""
+
+    def update(self, context, observation):
+        from autonomy.decision import MemoryBounds, empty_memory_snapshot
+
+        del observation
+        tighter = MemoryBounds(
+            max_records=self.bounds.max_records,
+            max_age_ms=self.bounds.max_age_ms,
+            eviction_policy=self.bounds.eviction_policy,
+            max_property_bytes=64,
+            max_serialized_bytes=512,
+        )
+        # Pad so declared body is just under 512 and activation-normalized body exceeds 512.
+        return empty_memory_snapshot(
+            memory_id="m",
+            epoch_id="e",
+            bounds=tighter,
+            created_at_ms=1,
+            implementation_id=self.implementation_id,
+            summary=("memory_empty=true",),
+            metadata={"p": "x" * 144},
+        )
+
+
 class _NearCeilingThenFailMemory(_RecordingMemory):
     """First update returns a near-ceiling empty snapshot; later updates raise."""
 
@@ -690,6 +741,51 @@ class MemoryActivationTests(unittest.TestCase):
             )
             self.assertEqual(snapshot.health, "error")
             self.assertIn("declares max_serialized_bytes", snapshot.error or "")
+
+    def test_rejects_when_normalization_would_exceed_activation_ceiling(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            payload = _valid_payload()
+            payload["memory"]["implementation_config"]["max_serialized_bytes"] = 600
+            payload["memory"]["implementation_config"]["eviction_policy"] = "p" * 140
+            payload["memory"]["implementation_spec"] = (
+                "tests.autonomy.decision.test_memory_activation:_NormalizationInflatesSizeMemory"
+            )
+            stage = ActivatedMemoryStage(
+                read_memory_activation(_write_payload(tmp, payload))
+            )
+            snapshot = stage.update(
+                DecisionFrameContext("f1", 1, 1),
+                Observation("o1", 1, {}),
+            )
+            # Policy mismatch is rejected before silent normalize-and-relabel.
+            self.assertEqual(snapshot.health, "error")
+            self.assertIsNotNone(stage.last_error)
+            self.assertIn("eviction_policy", stage.last_error or "")
+            from autonomy.decision import serialized_memory_snapshot_bytes
+
+            self.assertLessEqual(serialized_memory_snapshot_bytes(snapshot), 600)
+
+    def test_rejects_when_normalization_increases_size_past_activation_ceiling(self) -> None:
+        """Same eviction_policy; tighter declared size fields make normalize grow past limit."""
+        with tempfile.TemporaryDirectory() as tmp:
+            payload = _valid_payload()
+            payload["memory"]["implementation_config"]["max_serialized_bytes"] = 512
+            payload["memory"]["implementation_config"]["eviction_policy"] = "oldest_first"
+            payload["memory"]["implementation_spec"] = (
+                "tests.autonomy.decision.test_memory_activation:_TighterDeclaredSizeMemory"
+            )
+            stage = ActivatedMemoryStage(
+                read_memory_activation(_write_payload(tmp, payload))
+            )
+            snapshot = stage.update(
+                DecisionFrameContext("f1", 1, 1),
+                Observation("o1", 1, {}),
+            )
+            self.assertEqual(snapshot.health, "error")
+            self.assertIn("normalized memory snapshot", stage.last_error or "")
+            from autonomy.decision import serialized_memory_snapshot_bytes
+
+            self.assertLessEqual(serialized_memory_snapshot_bytes(snapshot), 512)
 
     def test_framework_rejects_non_json_property_values(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -409,6 +409,14 @@ class ActivatedMemoryStage:
                 f"memory snapshot retains {snapshot.record_count} records but "
                 f"activation max_records is {configured.max_records}"
             )
+        # Policy labels are not orderable; require an exact match rather than
+        # silently relabeling implementation behavior on normalize.
+        if declared.eviction_policy != configured.eviction_policy:
+            raise ValueError(
+                "memory snapshot eviction_policy "
+                f"{declared.eviction_policy!r} does not match activation "
+                f"eviction_policy {configured.eviction_policy!r}"
+            )
         # Reject removed or weakened age/size bounds. None is weaker than a
         # finite activation ceiling; a larger window/limit is also weaker.
         if configured.max_age_ms is not None:
@@ -466,43 +474,48 @@ class ActivatedMemoryStage:
                         f"allowed max_property_bytes is {property_limit}"
                     )
 
-        # Detach, measure total size against activation and declared ceilings,
-        # then normalize bounds to the authoritative activation policy.
+        # Detach the implementation value and enforce its own declared ceiling
+        # first (self-consistency of the advertised policy).
         detached = detach_memory_snapshot(snapshot)
-        size = serialized_memory_snapshot_bytes(detached)
-        if (
-            configured.max_serialized_bytes is not None
-            and size > configured.max_serialized_bytes
-        ):
-            raise ValueError(
-                f"memory snapshot serializes to {size} bytes; "
-                f"activation max_serialized_bytes is {configured.max_serialized_bytes}"
-            )
+        declared_size = serialized_memory_snapshot_bytes(detached)
         if (
             declared.max_serialized_bytes is not None
-            and size > declared.max_serialized_bytes
+            and declared_size > declared.max_serialized_bytes
         ):
             raise ValueError(
-                f"memory snapshot serializes to {size} bytes but declares "
+                f"memory snapshot serializes to {declared_size} bytes but declares "
                 f"max_serialized_bytes={declared.max_serialized_bytes}"
             )
+
+        # Normalize to activation bounds, then measure the final returned value.
         if detached.bounds == configured:
-            return detached
-        return detach_memory_snapshot(
-            MemorySnapshot(
-                memory_id=detached.memory_id,
-                epoch_id=detached.epoch_id,
-                health=detached.health,
-                bounds=configured,
-                created_at_ms=detached.created_at_ms,
-                records=detached.records,
-                summary=detached.summary,
-                implementation_id=detached.implementation_id,
-                error=detached.error,
-                metadata=detached.metadata,
-                schema=detached.schema,
+            normalized = detached
+        else:
+            normalized = detach_memory_snapshot(
+                MemorySnapshot(
+                    memory_id=detached.memory_id,
+                    epoch_id=detached.epoch_id,
+                    health=detached.health,
+                    bounds=configured,
+                    created_at_ms=detached.created_at_ms,
+                    records=detached.records,
+                    summary=detached.summary,
+                    implementation_id=detached.implementation_id,
+                    error=detached.error,
+                    metadata=detached.metadata,
+                    schema=detached.schema,
+                )
             )
-        )
+        final_size = serialized_memory_snapshot_bytes(normalized)
+        if (
+            configured.max_serialized_bytes is not None
+            and final_size > configured.max_serialized_bytes
+        ):
+            raise ValueError(
+                f"normalized memory snapshot serializes to {final_size} bytes; "
+                f"activation max_serialized_bytes is {configured.max_serialized_bytes}"
+            )
+        return normalized
 
     def _publish_snapshot(self, owned: MemorySnapshot) -> MemorySnapshot:
         """Store stage-owned state and return a second detached caller copy."""

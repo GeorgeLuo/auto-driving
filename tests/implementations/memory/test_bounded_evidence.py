@@ -92,9 +92,9 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
         self.assertEqual(snapshot.record_count, 2)
         self.assertEqual(snapshot.implementation_id, "bounded_evidence")
         by_id = {record.record_id: record for record in snapshot.records}
-        self.assertIn("thing:floor_boundary_000", by_id)
-        self.assertIn("signal:floor_visible", by_id)
-        thing = by_id["thing:floor_boundary_000"]
+        self.assertIn("thing:1:14:floor-plane-v0:18:floor_boundary_000", by_id)
+        self.assertIn("signal:1:20:lightweight_observer:13:floor_visible", by_id)
+        thing = by_id["thing:1:14:floor-plane-v0:18:floor_boundary_000"]
         self.assertEqual(thing.provenance.observation_id, "obs_1")
         self.assertEqual(thing.provenance.frame_id, "frame_1")
         self.assertEqual(thing.provenance.source_plugin_id, "floor-plane-v0")
@@ -122,7 +122,7 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
         self.assertEqual(first.record_count, 1)
         self.assertEqual(second.record_count, 1)
         record = second.records[0]
-        self.assertEqual(record.record_id, "thing:floor_boundary_000")
+        self.assertEqual(record.record_id, "thing:1:14:floor-plane-v0:18:floor_boundary_000")
         self.assertEqual(record.location.zone, "right")
         self.assertEqual(record.confidence, 0.95)
         self.assertEqual(record.provenance.observation_id, "obs_2")
@@ -160,8 +160,11 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
             _observation("o3", created_at_ms=290, things=(_thing("c"),)),
         )
         ids = {record.record_id for record in snapshot.records}
-        self.assertEqual(ids, {"thing:b", "thing:c"})
-        self.assertNotIn("thing:a", ids)
+        self.assertEqual(
+            ids,
+            {"thing:1:14:floor-plane-v0:1:b", "thing:1:14:floor-plane-v0:1:c"},
+        )
+        self.assertNotIn("thing:1:14:floor-plane-v0:1:a", ids)
 
     def test_reset_starts_new_empty_epoch(self) -> None:
         ledger = BoundedEvidenceLedger(max_records=4, max_age_ms=5_000)
@@ -225,7 +228,133 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
             ),
         )
         ids = {record.record_id for record in snapshot.records}
-        self.assertEqual(ids, {"thing:strong", "signal:boundary"})
+        self.assertEqual(
+            ids,
+            {
+                "thing:1:14:floor-plane-v0:6:strong",
+                "signal:1:20:lightweight_observer:8:boundary",
+            },
+        )
+
+    def test_returned_snapshot_is_detached_from_ledger_state(self) -> None:
+        ledger = BoundedEvidenceLedger(max_records=8, max_age_ms=5_000)
+        first = ledger.update(
+            DecisionFrameContext("frame_1", 1, 1_000),
+            _observation(
+                "obs_1",
+                created_at_ms=990,
+                things=(_thing("floor_boundary_000"),),
+            ),
+        )
+        first.records[0].properties["width_fraction"] = 0.99
+        first.metadata["policy"] = "mutated"
+        second = ledger.snapshot()
+        self.assertEqual(second.records[0].properties["width_fraction"], 0.2)
+        self.assertEqual(second.metadata["policy"], "bounded_evidence_recency")
+        third = ledger.update(DecisionFrameContext("frame_2", 2, 1_100), None)
+        self.assertEqual(third.records[0].properties["width_fraction"], 0.2)
+
+    def test_oversized_properties_are_not_retained(self) -> None:
+        ledger = BoundedEvidenceLedger(
+            max_records=8,
+            max_age_ms=5_000,
+            max_property_bytes=64,
+        )
+        huge = _thing("huge")
+        huge["properties"] = {"blob": "x" * 500}
+        small = _thing("small")
+        snapshot = ledger.update(
+            DecisionFrameContext("f1", 1, 100),
+            _observation("o1", created_at_ms=90, things=(huge, small)),
+        )
+        ids = {record.record_id for record in snapshot.records}
+        self.assertEqual(ids, {"thing:1:14:floor-plane-v0:5:small"})
+
+    def test_plugins_with_same_local_id_do_not_collide(self) -> None:
+        ledger = BoundedEvidenceLedger(max_records=8, max_age_ms=5_000)
+        left = _thing("shared_id", zone="left")
+        left["source_plugin_id"] = "plugin-a"
+        right = _thing("shared_id", zone="right")
+        right["source_plugin_id"] = "plugin-b"
+        snapshot = ledger.update(
+            DecisionFrameContext("f1", 1, 100),
+            _observation("o1", created_at_ms=90, things=(left, right)),
+        )
+        ids = {record.record_id for record in snapshot.records}
+        self.assertEqual(
+            ids,
+            {"thing:1:8:plugin-a:9:shared_id", "thing:1:8:plugin-b:9:shared_id"},
+        )
+        by_id = {record.record_id: record for record in snapshot.records}
+        self.assertEqual(by_id["thing:1:8:plugin-a:9:shared_id"].location.zone, "left")
+        self.assertEqual(by_id["thing:1:8:plugin-b:9:shared_id"].location.zone, "right")
+
+    def test_delimiter_containing_plugin_ids_do_not_collide(self) -> None:
+        from implementations.memory.bounded_evidence import namespaced_record_id
+
+        left = namespaced_record_id("thing", "shared", "plugin:a")
+        right = namespaced_record_id("thing", "shared", "plugin_a")
+        self.assertNotEqual(left, right)
+        self.assertEqual(left, "thing:1:8:plugin:a:6:shared")
+        self.assertEqual(right, "thing:1:8:plugin_a:6:shared")
+
+        ledger = BoundedEvidenceLedger(max_records=8, max_age_ms=5_000)
+        a = _thing("shared", zone="left")
+        a["source_plugin_id"] = "plugin:a"
+        b = _thing("shared", zone="right")
+        b["source_plugin_id"] = "plugin_a"
+        snapshot = ledger.update(
+            DecisionFrameContext("f1", 1, 100),
+            _observation("o1", created_at_ms=90, things=(a, b)),
+        )
+        ids = {record.record_id for record in snapshot.records}
+        self.assertEqual(ids, {left, right})
+
+    def test_namespace_preserves_absent_vs_literal_unknown_and_whitespace(self) -> None:
+        from implementations.memory.bounded_evidence import namespaced_record_id
+
+        absent = namespaced_record_id("thing", "shared", None)
+        literal_unknown = namespaced_record_id("thing", "shared", "unknown")
+        plain = namespaced_record_id("thing", "shared", "plugin")
+        spaced = namespaced_record_id("thing", "shared", " plugin ")
+        self.assertNotEqual(absent, literal_unknown)
+        self.assertEqual(absent, "thing:0:6:shared")
+        self.assertEqual(literal_unknown, "thing:1:7:unknown:6:shared")
+        self.assertNotEqual(plain, spaced)
+        self.assertEqual(plain, "thing:1:6:plugin:6:shared")
+        self.assertEqual(spaced, "thing:1:8: plugin :6:shared")
+
+        ledger = BoundedEvidenceLedger(max_records=8, max_age_ms=5_000)
+        no_plugin = _thing("shared", zone="left")
+        no_plugin["source_plugin_id"] = None
+        # Observation without perception_plugin_id keeps source absent.
+        unknown_plugin = _thing("shared", zone="right")
+        unknown_plugin["source_plugin_id"] = "unknown"
+        snapshot = ledger.update(
+            DecisionFrameContext("f1", 1, 100),
+            Observation(
+                observation_id="o1",
+                created_at_ms=90,
+                sensor_snapshot={},
+                perception_plugin_id=None,
+                summary=("test",),
+                things=(no_plugin, unknown_plugin),
+            ),
+        )
+        ids = {record.record_id for record in snapshot.records}
+        self.assertEqual(ids, {absent, literal_unknown})
+
+    def test_non_json_property_values_are_not_retained(self) -> None:
+        ledger = BoundedEvidenceLedger(max_records=8, max_age_ms=5_000)
+        bad = _thing("opaque")
+        bad["properties"] = {"opaque": object()}
+        good = _thing("ok")
+        snapshot = ledger.update(
+            DecisionFrameContext("f1", 1, 100),
+            _observation("o1", created_at_ms=90, things=(bad, good)),
+        )
+        ids = {record.record_id for record in snapshot.records}
+        self.assertEqual(ids, {"thing:1:14:floor-plane-v0:2:ok"})
 
 
 if __name__ == "__main__":

@@ -45,6 +45,9 @@ class _RecordingMemory:
         eviction_policy: str = "oldest_first",
         fail_on_update: bool = False,
         implementation_id: str = "recording_test",
+        max_property_bytes: int | None = 4_096,
+        max_serialized_bytes: int | None = 262_144,
+        **_ignored,
     ) -> None:
         from autonomy.decision import MemoryBounds, empty_memory_snapshot
 
@@ -53,6 +56,8 @@ class _RecordingMemory:
             max_records=max_records,
             max_age_ms=max_age_ms,
             eviction_policy=eviction_policy,
+            max_property_bytes=max_property_bytes,
+            max_serialized_bytes=max_serialized_bytes,
         )
         self.fail_on_update = fail_on_update
         self.epoch = 0
@@ -145,6 +150,44 @@ def _write_activation(root: Path, *, fail_on_update: bool = False) -> Path:
 
 
 class CycleHostMemoryWiringTests(unittest.TestCase):
+    def test_engine_cannot_mutate_stage_owned_memory_through_cycle_result(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            stage = load_memory_stage_if_present(_write_activation(Path(tmp)))
+            self.assertIsNotNone(stage)
+            manager = AutonomyManager()
+            engine = _PushyEngine()
+            manager.engine = engine
+            from autonomy.decision import Observation
+
+            host = AutonomyCycleHost(
+                manager=manager,
+                stages=DecisionStages(
+                    observe=lambda context, perception: Observation(
+                        observation_id="obs-1",
+                        created_at_ms=1,
+                        sensor_snapshot={},
+                        summary=("test",),
+                    ),
+                    remember=stage,
+                ),
+            )
+            result = host.run(DecisionFrameContext("frame_1", 0, 1_000))
+            assert result.memory is not None
+            assert stage is not None
+            self.assertIsNot(result.memory, stage.last_snapshot)
+            # Mutate the cycle result handed to callers/engines.
+            result.memory.metadata["engine_mutated"] = True
+            if result.memory.records:
+                result.memory.records[0].properties["tamper"] = True
+            if hasattr(engine, "last_snapshot") and engine.last_snapshot.memory is not None:
+                engine.last_snapshot.memory.metadata["via_engine"] = True
+            owned = stage.last_snapshot
+            assert owned is not None
+            self.assertNotIn("engine_mutated", owned.metadata)
+            self.assertNotIn("via_engine", owned.metadata)
+            if owned.records:
+                self.assertNotIn("tamper", owned.records[0].properties)
+
     def test_host_passes_memory_snapshot_to_engine_and_status(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             stage = load_memory_stage_if_present(_write_activation(Path(tmp)))

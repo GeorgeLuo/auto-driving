@@ -3,6 +3,9 @@
 Retains attributed things and signals across cycles with finite capacity and
 age. Recurring evidence_ids update the same ledger slot within an epoch; that
 is recency bookkeeping, not semantic object identity or world truth.
+
+Record ids are namespaced by source plugin so two plugins cannot silently
+overwrite one another with the same local evidence id.
 """
 
 from __future__ import annotations
@@ -11,13 +14,18 @@ from copy import deepcopy
 from typing import Any
 
 from autonomy.decision import (
+    DEFAULT_MAX_PROPERTY_BYTES,
+    DEFAULT_MAX_SERIALIZED_BYTES,
     DecisionFrameContext,
     MemoryBounds,
     MemoryProvenance,
     MemorySnapshot,
     Observation,
     RetainedEvidence,
+    detach_memory_snapshot,
     empty_memory_snapshot,
+    ensure_strict_json_value,
+    serialized_mapping_bytes,
 )
 from autonomy.perception import ViewLocation
 
@@ -36,6 +44,8 @@ class BoundedEvidenceLedger:
         min_confidence: float = 0.0,
         retain_things: bool = True,
         retain_signals: bool = True,
+        max_property_bytes: int | None = DEFAULT_MAX_PROPERTY_BYTES,
+        max_serialized_bytes: int | None = DEFAULT_MAX_SERIALIZED_BYTES,
         **_ignored: Any,
     ) -> None:
         if eviction_policy != "oldest_first":
@@ -46,6 +56,12 @@ class BoundedEvidenceLedger:
             max_records=int(max_records),
             max_age_ms=int(max_age_ms) if max_age_ms is not None else None,
             eviction_policy=str(eviction_policy),
+            max_property_bytes=(
+                int(max_property_bytes) if max_property_bytes is not None else None
+            ),
+            max_serialized_bytes=(
+                int(max_serialized_bytes) if max_serialized_bytes is not None else None
+            ),
         )
         self.min_confidence = max(0.0, min(1.0, float(min_confidence)))
         self.retain_things = bool(retain_things)
@@ -70,7 +86,7 @@ class BoundedEvidenceLedger:
             created_at_ms=now_ms,
             observation=observation,
         )
-        return self._latest
+        return detach_memory_snapshot(self._latest)
 
     def reset(self) -> MemorySnapshot:
         self._epoch += 1
@@ -91,10 +107,10 @@ class BoundedEvidenceLedger:
                 "claims_identity": False,
             },
         )
-        return self._latest
+        return detach_memory_snapshot(self._latest)
 
     def snapshot(self) -> MemorySnapshot:
-        return self._latest
+        return detach_memory_snapshot(self._latest)
 
     def _extract_records(
         self,
@@ -121,9 +137,21 @@ class BoundedEvidenceLedger:
                 source_plugin = thing.get("source_plugin_id")
                 if source_plugin is None:
                     source_plugin = observation.perception_plugin_id
+                try:
+                    properties = ensure_strict_json_value(
+                        deepcopy(dict(thing.get("properties") or {}))
+                    )
+                except ValueError:
+                    continue
+                if not isinstance(properties, dict):
+                    continue
+                if not self._properties_within_bound(properties):
+                    continue
                 records.append(
                     RetainedEvidence(
-                        record_id=f"thing:{evidence_id}",
+                        record_id=namespaced_record_id(
+                            "thing", evidence_id, source_plugin
+                        ),
                         kind=str(thing.get("kind") or "thing"),
                         label=str(thing.get("label") or evidence_id),
                         confidence=confidence,
@@ -139,7 +167,7 @@ class BoundedEvidenceLedger:
                             frame_id=context.frame_id,
                         ),
                         location=location,
-                        properties=deepcopy(dict(thing.get("properties") or {})),
+                        properties=properties,
                     )
                 )
         if self.retain_signals:
@@ -159,11 +187,29 @@ class BoundedEvidenceLedger:
                 source_plugin = signal.get("source_plugin_id")
                 if source_plugin is None:
                     source_plugin = observation.perception_plugin_id
-                properties = deepcopy(dict(signal.get("properties") or {}))
+                try:
+                    properties = ensure_strict_json_value(
+                        deepcopy(dict(signal.get("properties") or {}))
+                    )
+                except ValueError:
+                    continue
+                if not isinstance(properties, dict):
+                    continue
+                properties = dict(properties)
                 properties["value"] = value
+                try:
+                    properties = ensure_strict_json_value(properties)
+                except ValueError:
+                    continue
+                if not isinstance(properties, dict):
+                    continue
+                if not self._properties_within_bound(properties):
+                    continue
                 records.append(
                     RetainedEvidence(
-                        record_id=f"signal:{signal_id}",
+                        record_id=namespaced_record_id(
+                            "signal", signal_id, source_plugin
+                        ),
                         kind="signal",
                         label=signal_id,
                         confidence=confidence,
@@ -183,6 +229,12 @@ class BoundedEvidenceLedger:
                     )
                 )
         return records
+
+    def _properties_within_bound(self, properties: dict[str, Any]) -> bool:
+        limit = self.bounds.max_property_bytes
+        if limit is None:
+            return True
+        return serialized_mapping_bytes(properties) <= limit
 
     def _expire(self, *, now_ms: int) -> None:
         max_age_ms = self.bounds.max_age_ms
@@ -272,6 +324,32 @@ class BoundedEvidenceLedger:
                 ),
             },
         )
+
+
+def namespaced_record_id(
+    kind_prefix: str,
+    evidence_id: str,
+    source_plugin_id: str | None,
+) -> str:
+    """Build an injective plugin-safe ledger key.
+
+    Formats:
+    - absent source: ``{kind}:0:{evidence_len}:{evidence}``
+    - present source: ``{kind}:1:{plugin_len}:{plugin}:{evidence_len}:{evidence}``
+
+    Optional presence is encoded explicitly so ``None`` never collides with a
+    plugin literally named ``\"unknown\"``. Plugin and evidence strings are kept
+    exactly as supplied (no strip), so whitespace-distinct IDs remain distinct.
+    Length-prefixed components keep delimiter-containing IDs collision-free.
+    """
+
+    evidence = str(evidence_id)
+    if source_plugin_id is None:
+        return f"{kind_prefix}:0:{len(evidence)}:{evidence}"
+    plugin = str(source_plugin_id)
+    return (
+        f"{kind_prefix}:1:{len(plugin)}:{plugin}:{len(evidence)}:{evidence}"
+    )
 
 
 def _location_from_payload(payload: Any) -> ViewLocation | None:

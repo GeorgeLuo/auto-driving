@@ -174,8 +174,8 @@
       <div class="meta">
         <span class="pill">Status: active — not ready to close</span>
         <span class="pill">Packages open: 5 (bounds, expiry, coverage) and 6</span>
-        <span class="pill">PR #51: reviewed; merge boundary for Chase remediation</span>
-        <span class="pill">Next: Package 5A — value + bounds integrity</span>
+        <span class="pill">PR #51: merged (Chase shadow)</span>
+        <span class="pill">Next: Package 5B — record bounds + probe liveness</span>
         <span class="pill">Proposed: 2026-07-15</span>
         <span class="pill">Action policy: idle</span>
         <span class="pill">Hosts: Chase and DonkeyCar</span>
@@ -227,8 +227,8 @@
             <tr>
               <td><strong>Memory contract and bounds hardening</strong></td>
               <td>5</td>
-              <td><span class="status pending">Required</span></td>
-              <td>Detach mutable snapshot values, enforce property/serialized-size bounds, namespace plugin evidence IDs, and reject implementations that weaken configured age bounds.</td>
+              <td><span class="status active">In progress (5A)</span></td>
+              <td>Deep detach of returned snapshots, property/serialized-size bounds, plugin-namespaced record ids, and framework rejection of removed/weakened age bounds are in the Package 5A review unit. Replay artifact frame-count/byte ceilings remain for Package 5B.</td>
             </tr>
             <tr>
               <td><strong>Missing deterministic coverage</strong></td>
@@ -259,7 +259,7 @@
       <div class="card interface" style="margin-top: 14px;">
         <h3>Implementer Handoff — After PR #51 Merges</h3>
         <p><strong>Completed merge boundary:</strong> PR #51 is reviewed, CI-clean, and answers the prior atomic-alignment, temporal-provenance, observe-only, and movement-proof findings. Its tracked Chase extract is accepted evidence for alignment, retention, isolation, and reset; do not reopen the removed sequential capture path.</p>
-        <p><strong>Next review unit (Package 5A):</strong> deeply detach returned memory values; bound record properties and serialized snapshots; reject an implementation that removes or weakens configured age limits; namespace retained evidence by source plugin; add focused mutation, size, age-policy, and collision tests.</p>
+        <p><strong>Current review unit (Package 5A):</strong> deeply detach returned memory values; bound record properties and serialized snapshots; reject an implementation that removes or weakens configured age limits; namespace retained evidence by source plugin; add focused mutation, size, age-policy, and collision tests.</p>
         <p><strong>Following review unit (Package 5B):</strong> bound replay frame count and total artifact bytes; make Chase memory probes reject stopped or stale workers; add long-sequence and operator-liveness tests.</p>
         <p><strong>Final validation unit (Package 5C):</strong> record live Chase retention followed by max-age expiry without reset, rerun the canonical and live checks, then write package 6 closeout. Keep the Metrics UI atomic-capture milestone available as an active dependency until this validation no longer needs contract adjustment.</p>
         <p><strong>Review state:</strong> “review unit” below means the next bounded pull request, not an unresolved review on PR #51.</p>
@@ -314,16 +314,16 @@
               <td>Done in remediation block 3. The adapter consumes one atomic response, preserves simulation epoch + frame index, and a guided run is tracked under <a href="evidence/chase-shadow-memory/provenance_extract.html">Chase shadow memory evidence</a>.</td>
             </tr>
             <tr>
-              <td><span class="status pending">High</span></td>
+              <td><span class="status active">In progress</span></td>
               <td><code>MemorySnapshot</code> is frozen only shallowly and the ledger returns its internal snapshot directly.</td>
-              <td><code>autonomy/decision/memory.py</code> mutable dictionaries; <code>implementations/memory/bounded_evidence.py:snapshot</code>.</td>
-              <td>Expose deeply immutable values or detached copies and add a mutation-isolation test.</td>
+              <td>Package 5A: <code>detach_memory_snapshot</code> on every stage accept path and ledger <code>update</code>/<code>reset</code>/<code>snapshot</code>; mutation of returned properties/metadata no longer affects ledger state.</td>
+              <td>Complete in Package 5A review unit with mutation-isolation tests.</td>
             </tr>
             <tr>
-              <td><span class="status pending">High</span></td>
+              <td><span class="status active">In progress</span></td>
               <td>Record count is bounded, but retained properties, serialized snapshots, and recorded replays are not byte-bounded.</td>
-              <td><code>BoundedEvidenceLedger</code> copies arbitrary properties; replay records every supplied frame.</td>
-              <td>Define and enforce property, snapshot, frame-count, and artifact-byte limits.</td>
+              <td>Package 5A: <code>max_property_bytes</code> and <code>max_serialized_bytes</code> on <code>MemoryBounds</code>, ledger admission, and framework accept. Replay frame-count/artifact-byte ceilings remain Package 5B.</td>
+              <td>Land property/snapshot size in 5A; record artifact bounds in 5B.</td>
             </tr>
             <tr>
               <td><span class="status pending">High</span></td>
@@ -360,8 +360,8 @@
         <li><strong>Done:</strong> Make Pi publication/frame pairing atomic or explicitly verified.</li>
         <li><strong>Done:</strong> Replace synthetic physical lifecycle phases with checks of the active onboard stage (lifecycle keys = present∖dropout observed evidence; fail-closed frame freshness).</li>
         <li><strong>Done:</strong> Preserve Chase frame identity, consume the atomic evaluator response, and validate a live shadow/reference run.</li>
-        <li>Deeply detach snapshots; enforce byte limits and plugin-safe record identity.</li>
-        <li>Add missing conflict, long-sequence, size-bound, plugin-collision, and memory-probe stale-worker tests.</li>
+        <li><strong>In progress (Package 5A):</strong> Deeply detach snapshots; enforce property/serialized-size limits and plugin-safe record identity; reject weakened age bounds.</li>
+        <li>Add missing long-sequence, replay artifact-bound, and memory-probe stale-worker tests (Package 5B); retain 5A mutation/size/age/collision coverage with the contract.</li>
         <li>Record live Chase max-age expiry, rerun the accepted Pi/Chase checks, then write package 6 closeout.</li>
       </ol>
       <p class="note" style="margin-top: 12px;">
@@ -617,9 +617,9 @@
           <p><strong>Review answer:</strong> yes; physical lifecycle remediation is complete. Chase live expiry and the remaining contract hardening still block milestone closeout.</p>
         </div>
         <div class="card interface">
-          <h3>Current Next Review Unit: Package 5A Value And Bounds Integrity</h3>
-          <p><span class="status active">Next</span> <strong>Review shape:</strong> evidence-path repair with focused contract hardening.</p>
-          <p><strong>Deliverable:</strong> detached snapshots, enforceable property/serialized-size bounds, plugin-safe retained identity, framework rejection of weakened age bounds, and focused deterministic tests for those contracts.</p>
+          <h3>Current Review Unit: Package 5A Value And Bounds Integrity</h3>
+          <p><span class="status active">Active</span> <strong>Review shape:</strong> evidence-path repair with focused contract hardening.</p>
+          <p><strong>Deliverable:</strong> detached snapshots on every accept path; <code>max_property_bytes</code>/<code>max_serialized_bytes</code> on <code>MemoryBounds</code>; plugin-namespaced record ids (<code>thing:{plugin}:{id}</code>); framework rejection when an implementation removes or weakens configured age bounds; mutation, size, age-policy, and collision tests.</p>
           <p><strong>Review question:</strong> Can any implementation or caller mutate, enlarge, collide, or weaken memory beyond the activation's declared limits?</p>
           <p><strong>Package 5B follows:</strong> record bounds and memory-probe liveness. Package 5C then records Chase max-age expiry before package 6 closeout.</p>
         </div>
@@ -628,8 +628,8 @@
         <table>
           <thead><tr><th>Preparation Horizon</th><th>Known End-State Need</th><th>Must Be Learned First / Status</th></tr></thead>
           <tbody>
-            <tr><td>Stable values and lifecycle</td><td>Typed snapshot/update records, provenance, bounds, reset identity, deterministic serialization.</td><td><strong>Partial.</strong> Typed values and fields landed; deep detachment and serialized-size bounds remain open.</td></tr>
-            <tr><td>Plugin execution</td><td>Loadable implementation shape with framework-owned status and failure isolation.</td><td><strong>Partial.</strong> One reducer interface and failure isolation landed; framework enforcement must reject weakened age bounds and constrain total retained size.</td></tr>
+            <tr><td>Stable values and lifecycle</td><td>Typed snapshot/update records, provenance, bounds, reset identity, deterministic serialization.</td><td><strong>Partial.</strong> Typed values landed; Package 5A adds deep detach plus property/serialized-size bounds. Replay artifact ceilings remain 5B.</td></tr>
+            <tr><td>Plugin execution</td><td>Loadable implementation shape with framework-owned status and failure isolation.</td><td><strong>Partial.</strong> Package 5A rejects removed/weakened age bounds, namespaces record ids by plugin, and bounds property/snapshot size at the stage boundary.</td></tr>
             <tr><td>Host integration</td><td>Equivalent activation and lifecycle in Chase and Donkey hosts.</td><td><strong>Landed</strong> for load, snapshot, stream, and operator reset. Deploy honesty still requires core+autonomy when manage.py must load the stage; Pi reset needs core (HTTP) + autonomy (pilot method).</td></tr>
             <tr><td>Operator inspect</td><td>Stage, inspect, stream, and key→value Memory map without flooding default output.</td><td><strong>Landed.</strong> Terminal health/counts + <code>/memory</code> keys with click-for-value; perception stays separate.</td></tr>
             <tr><td>Operator lifecycle (reset)</td><td>Explicit reset starts a new empty epoch visible to operators on both hosts.</td><td><strong>Landed.</strong> Reset confirmation requires epoch/reset-count transition; the Pi path was validated against the live onboard stage.</td></tr>
@@ -856,7 +856,7 @@
           <tbody>
             <tr><td>1</td><td>Stable memory input and output types replace public <code>Any</code> at the decision-cycle boundary without encoding a concrete mapping algorithm.</td><td><span class="status done">Met</span></td></tr>
             <tr><td>2</td><td>Observation, memory, patterns, projections, and action have distinct documented meanings and stage ownership.</td><td><span class="status done">Met</span></td></tr>
-            <tr><td>3</td><td>Memory state has finite capacity and age, deterministic serialization, explicit reset, attributable provenance, and isolated failure behavior.</td><td><span class="status pending">Partial</span> — record count/age and failure isolation exist, but snapshots expose mutable internal state and serialized/property size is unbounded.</td></tr>
+            <tr><td>3</td><td>Memory state has finite capacity and age, deterministic serialization, explicit reset, attributable provenance, and isolated failure behavior.</td><td><span class="status pending">Partial</span> — Package 5A detaches snapshots and bounds property/serialized size with plugin-safe ids; replay artifact bounds remain open.</td></tr>
             <tr><td>4</td><td>At least one simple implementation retains and expires structured evidence without claiming semantic or metric world truth.</td><td><span class="status done">Met</span> (<code>BoundedEvidenceLedger</code>)</td></tr>
             <tr><td>5</td><td>The same activation and lifecycle run through local Chase and onboard Donkey hosts; neither receives privileged simulator map state.</td><td><span class="status done">Met</span> for load/update/status/reset path</td></tr>
             <tr><td>6</td><td>Automa can stage, inspect, run, stream latest memory, <strong>replay</strong> a sequence, and reset state with concise human and complete machine output.</td><td><span class="status done">Met</span> — stage/inspect/stream/reset/replay landed</td></tr>
@@ -912,6 +912,7 @@
             <tr><td>2026-07-20</td><td>Accept stationary Pi lifecycle remediation after guided physical validation.</td><td>A recorded present/remove sequence used verified JPEG/publication frame pairs and the active onboard ledger. <code>thing:floor_boundary_002</code> survived dropout, expired under the configured 10-second age, and reset to a new empty epoch while control stayed zero. Compact evidence is tracked under <code>evidence/physical-memory-lifecycle/</code>.</td></tr>
             <tr><td>2026-07-20</td><td>Remediation block 3: preserve Chase simulator frameIndex and score live shadow alignment.</td><td>Initial sequential debug/camera pairing proved impossible against an advancing session and triggered Metrics UI Milestone 002 for an atomic evaluator response. Auto-driving must consume and validate that response before either repository treats the dependency as complete.</td></tr>
             <tr><td>2026-07-22</td><td>Accept the atomic Chase shadow path and keep the Metrics UI milestone unmerged through auto-driving closeout.</td><td>The adapter now has one atomic capture path and no compatibility fallback. Two repeated live <code>chaser-depth-obstacles</code> checks proved advancing same-epoch alignment, an observed retained-prior transition, explicit zero/not-applied candidate control, simulator authority, evaluator isolation, exact source images, and reset. The tracked extract is under <code>evidence/chase-shadow-memory/</code>. Metrics UI Milestone 002 remains the active dependency until the remaining auto-driving bounds, coverage, and live expiry work no longer needs contract adjustment.</td></tr>
+            <tr><td>2026-07-22</td><td>Package 5A: value and bounds integrity.</td><td>Deep-detach returned snapshots; add <code>max_property_bytes</code>/<code>max_serialized_bytes</code>; namespace ledger keys as <code>kind:plugin:evidence</code>; reject removed or weakened age bounds at the framework boundary; cover mutation isolation, oversized properties, age-policy rejection, and cross-plugin collision. Replay artifact ceilings and probe liveness stay Package 5B.</td></tr>
           </tbody>
 
 

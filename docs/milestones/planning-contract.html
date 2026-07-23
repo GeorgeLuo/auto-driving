@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="ecbf872b8555c2ef32766395c963b046bd1294af4bc02f5897abc0a2854fa84c">
+  <meta name="source-sha256" content="2e3002ffea6bcf013f386d2c7d9bc8d9e106f8495a3eedbe3ab6a3f70011607f">
   <base target="_blank">
   <title>Milestone Planning Contract</title>
   <style>
@@ -170,6 +170,52 @@ cleanup.</p>
 should make the shape of the change inspectable before implementation without
 becoming a line-by-line design. Reconcile meaningful deviations in the final PR
 description.</p>
+<h3>Invariant Closure And Review Readiness</h3>
+<p>Treat words such as <code>bounded</code>, <code>detached</code>, <code>deterministic</code>, <code>exact</code>,
+<code>fail-closed</code>, <code>fresh</code>, and <code>no movement</code> as universal guarantees, not
+positive-path examples. For a PR that introduces or changes such a guarantee,
+record a compact invariant-closure statement in the current delivery entry and
+PR description:</p>
+<ul>
+<li><strong>Invariant:</strong> the externally observable guarantee, stated without its
+  implementation.</li>
+<li><strong>Enforcement owner:</strong> the single boundary or shared helper responsible for
+  enforcing it.</li>
+<li><strong>Affected paths:</strong> the applicable success, update, reset, snapshot, error,
+  storage, return, serialization, and publication paths.</li>
+<li><strong>Adversarial matrix:</strong> relevant below-boundary, exact-boundary,
+  above-boundary, missing, malformed, stale, conflicting, and repeated inputs.</li>
+<li><strong>External assumptions:</strong> behavior that requires simulator, physical device,
+  filesystem, clock, process, or remote-API evidence.</li>
+<li><strong>Unverified limits:</strong> remaining uncertainty that the PR does not claim to
+  close.</li>
+</ul>
+<p>Apply this proportionately. A broad mechanical PR may reference the invariant
+and evidence already accepted in its pattern-setting PR instead of rebuilding
+the matrix. A deep-and-narrow behavioral PR should keep the matrix small enough
+to inspect as part of its one review question.</p>
+<p>Before requesting review, the implementer must:</p>
+<ol>
+<li>Test the failure class and adjacent paths, not only the first known
+   reproduction.</li>
+<li>Enforce the guarantee at its owning boundary instead of accumulating local
+   guards in callers.</li>
+<li>Validate the final externally visible value after all normalization,
+   wrapping, storage, and serialization.</li>
+<li>Prove cross-system assumptions against the relevant live system before
+   presenting them as observed behavior.</li>
+<li>Perform one fresh adversarial pass after a review repair before requesting
+   re-review.</li>
+</ol>
+<p>Review findings should name the violated invariant and the class of bypass, with
+a concrete reproduction as evidence. A repair response records the root cause,
+the owning enforcement point changed, adjacent paths audited, regression
+coverage added, and assumptions that remain unverified. Keep a later finding in
+the same PR when it still violates the stated invariant; route unrelated
+discoveries into the rolling horizon rather than silently expanding scope.</p>
+<p>One review-and-repair cycle is normal. After two repair cycles for the same
+invariant, stop adding case-specific checks and reassess the abstraction,
+enforcement location, and PR scope before continuing.</p>
 <p>Every PR leaves the repository in a complete state. Do not define a pattern and
 roll it out broadly in the same PR. Land the pattern first, merge each deliverable
 before branching the next by default, and split work when the primary review
@@ -264,8 +310,11 @@ beyond it stays in the preparation horizon.</p>
 <ul>
 <li>status and review shape;</li>
 <li>deliverable and review question;</li>
+<li>invariant, enforcement owner, and compact adversarial matrix when the review
+  question claims a universal guarantee;</li>
 <li>expected or actual file impacts;</li>
-<li>non-goals; and</li>
+<li>non-goals;</li>
+<li>external evidence required and assumptions still unverified; and</li>
 <li>measured validation evidence.</li>
 </ul>
 <p>The next-after-review entry records:</p>

@@ -137,6 +137,56 @@ should make the shape of the change inspectable before implementation without
 becoming a line-by-line design. Reconcile meaningful deviations in the final PR
 description.
 
+### Invariant Closure And Review Readiness
+
+Treat words such as `bounded`, `detached`, `deterministic`, `exact`,
+`fail-closed`, `fresh`, and `no movement` as universal guarantees, not
+positive-path examples. For a PR that introduces or changes such a guarantee,
+record a compact invariant-closure statement in the current delivery entry and
+PR description:
+
+- **Invariant:** the externally observable guarantee, stated without its
+  implementation.
+- **Enforcement owner:** the single boundary or shared helper responsible for
+  enforcing it.
+- **Affected paths:** the applicable success, update, reset, snapshot, error,
+  storage, return, serialization, and publication paths.
+- **Adversarial matrix:** relevant below-boundary, exact-boundary,
+  above-boundary, missing, malformed, stale, conflicting, and repeated inputs.
+- **External assumptions:** behavior that requires simulator, physical device,
+  filesystem, clock, process, or remote-API evidence.
+- **Unverified limits:** remaining uncertainty that the PR does not claim to
+  close.
+
+Apply this proportionately. A broad mechanical PR may reference the invariant
+and evidence already accepted in its pattern-setting PR instead of rebuilding
+the matrix. A deep-and-narrow behavioral PR should keep the matrix small enough
+to inspect as part of its one review question.
+
+Before requesting review, the implementer must:
+
+1. Test the failure class and adjacent paths, not only the first known
+   reproduction.
+2. Enforce the guarantee at its owning boundary instead of accumulating local
+   guards in callers.
+3. Validate the final externally visible value after all normalization,
+   wrapping, storage, and serialization.
+4. Prove cross-system assumptions against the relevant live system before
+   presenting them as observed behavior.
+5. Perform one fresh adversarial pass after a review repair before requesting
+   re-review.
+
+Review findings should name the violated invariant and the class of bypass, with
+a concrete reproduction as evidence. A repair response records the root cause,
+the owning enforcement point changed, adjacent paths audited, regression
+coverage added, and assumptions that remain unverified. Keep a later finding in
+the same PR when it still violates the stated invariant; route unrelated
+discoveries into the rolling horizon rather than silently expanding scope.
+
+One review-and-repair cycle is normal. After two repair cycles for the same
+invariant, stop adding case-specific checks and reassess the abstraction,
+enforcement location, and PR scope before continuing.
+
 Every PR leaves the repository in a complete state. Do not define a pattern and
 roll it out broadly in the same PR. Land the pattern first, merge each deliverable
 before branching the next by default, and split work when the primary review
@@ -261,8 +311,11 @@ The current PR records:
 
 - status and review shape;
 - deliverable and review question;
+- invariant, enforcement owner, and compact adversarial matrix when the review
+  question claims a universal guarantee;
 - expected or actual file impacts;
-- non-goals; and
+- non-goals;
+- external evidence required and assumptions still unverified; and
 - measured validation evidence.
 
 The next-after-review entry records:

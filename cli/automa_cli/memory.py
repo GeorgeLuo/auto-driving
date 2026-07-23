@@ -507,9 +507,9 @@ def write_memory_replay_record(
         extract_path.write_text(extract_html, encoding="utf-8")
 
         total_bytes = _directory_byte_size(record_dir)
-        # Reserve headroom for manifest + result which are written next.
-        reserved = 64 * 1024
-        if total_bytes + reserved > int(max_record_bytes):
+        # Early reject only when already over the hard ceiling; manifest/result
+        # growth is enforced by the authoritative stabilize measurement.
+        if total_bytes > int(max_record_bytes):
             raise ValueError(
                 f"record artifacts are {total_bytes} bytes before manifest/result; "
                 f"max_record_bytes={int(max_record_bytes)}"
@@ -1423,30 +1423,38 @@ def stream_vehicle_memory(
                     print("\033[2J\033[H", end="", file=stream)
                 print(line, file=stream, flush=True)
             if once:
-                if live.get("status") == "error":
-                    return CommandResult(
-                        2,
-                        str(live.get("error") or "memory stream failed")
-                        if stream is None
-                        else "",
-                    )
-                if live.get("status") == "absent":
-                    return CommandResult(
-                        2,
-                        (
-                            str(
-                                live.get("error")
-                                or "memory stage is not live on the vehicle"
-                            )
-                            if stream is None
-                            else ""
-                        ),
-                    )
-                # Avoid double-print when the handler also emits result.message.
-                return CommandResult(0, "" if stream is not None else line)
+                return _once_memory_stream_result(
+                    live=live,
+                    line=line,
+                    stream=stream,
+                )
             time.sleep(max(0.1, float(refresh_s)))
     except KeyboardInterrupt:
         return CommandResult(130, "")
+
+
+def _once_memory_stream_result(
+    *,
+    live: dict[str, Any],
+    line: str,
+    stream: TextIO | None,
+) -> CommandResult:
+    """One-shot stream succeeds only when live memory is confirmed.
+
+    Non-live statuses (stopped, stale, absent, error, unavailable, …) keep their
+    structured diagnostic payload/line but return nonzero so automation cannot
+    treat retained or stopped state as success.
+    """
+
+    status = str(live.get("status") or "unknown")
+    if status == "live":
+        # Avoid double-print when the handler also emits result.message.
+        return CommandResult(0, "" if stream is not None else line)
+    diagnostic = str(
+        live.get("error")
+        or f"memory stream is not live (status={status})"
+    )
+    return CommandResult(2, "" if stream is not None else (line or diagnostic))
 
 
 def _stream_physical_memory_with_inspector(
@@ -1535,9 +1543,11 @@ def _stream_physical_memory_with_inspector(
                 print("\n".join(lines), file=stream, flush=True)
 
             if once:
-                if live.get("status") in {"error", "absent"}:
-                    return CommandResult(2, "")
-                return CommandResult(0, "")
+                return _once_memory_stream_result(
+                    live=live,
+                    line="",
+                    stream=stream,
+                )
             time.sleep(max(0.1, float(refresh_s)))
     except KeyboardInterrupt:
         return CommandResult(130, "")
@@ -1783,6 +1793,10 @@ def assess_chase_memory_worker_liveness(
     a previous state.json still contains a memory status block. A live PID must
     also match the automation run identity for this vehicle; unavailable process
     identity fails closed (unlike stop-path permissive matching).
+
+    ``updated_at_ms`` is the automation-wide state heartbeat refreshed by the
+    capture loop. It proves worker publication freshness, not that the memory
+    stage itself just completed an update.
     """
 
     run_status = str(state.get("status") or "")

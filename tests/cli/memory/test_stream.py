@@ -129,7 +129,111 @@ class MemoryStreamTests(unittest.TestCase):
                 json_output=True,
                 output=None,
             )
-        self.assertEqual(result.exit_code, 0)
+        self.assertEqual(result.exit_code, 0, result.message)
+        payload = json.loads(result.message)
+        self.assertEqual(payload["schema"], "vehicle_memory_live_v0")
+        self.assertEqual(payload["status"], "live")
+        self.assertEqual(payload["vehicle_id"], "piracer")
+        self.assertEqual(payload["implementation_id"], "bounded_evidence")
+        self.assertEqual(payload["last_record_count"], 3)
+
+    def test_chase_stream_once_live_exits_zero(self) -> None:
+        now = 1_700_000_000_000
+        vehicle = {"vehicle_id": "chase-sim-chaser", "provider": "chase-sim", "active": True}
+        discovery = {
+            "schema": "automa_vehicle_discovery_v0",
+            "vehicles": [vehicle],
+            "inactive": [],
+            "active_count": 1,
+        }
+        live_payload = {
+            "schema": "vehicle_memory_live_v0",
+            "vehicle_id": "chase-sim-chaser",
+            "provider": "chase-sim",
+            "status": "live",
+            "last_record_count": 5,
+            "worker_status": "running",
+            "probed_at_ms": now,
+        }
+        with patch(
+            "cli.automa_cli.memory.discover_active_vehicles", return_value=discovery
+        ), patch(
+            "cli.automa_cli.memory.probe_live_memory", return_value=live_payload
+        ):
+            result = stream_vehicle_memory(
+                vehicle_id="chase-sim-chaser",
+                once=True,
+                json_output=True,
+                output=None,
+            )
+        self.assertEqual(result.exit_code, 0, result.message)
+        payload = json.loads(result.message)
+        self.assertEqual(payload["status"], "live")
+        self.assertEqual(payload["last_record_count"], 5)
+
+    def test_chase_stream_once_stale_exits_nonzero(self) -> None:
+        vehicle = {"vehicle_id": "chase-sim-chaser", "provider": "chase-sim", "active": True}
+        discovery = {
+            "schema": "automa_vehicle_discovery_v0",
+            "vehicles": [vehicle],
+            "inactive": [],
+            "active_count": 1,
+        }
+        stale_payload = {
+            "schema": "vehicle_memory_live_v0",
+            "vehicle_id": "chase-sim-chaser",
+            "provider": "chase-sim",
+            "status": "stale",
+            "error": "Automation state is stale (age_ms=60000, max_age_ms=30000).",
+            "worker_status": "running",
+        }
+        with patch(
+            "cli.automa_cli.memory.discover_active_vehicles", return_value=discovery
+        ), patch(
+            "cli.automa_cli.memory.probe_live_memory", return_value=stale_payload
+        ):
+            result = stream_vehicle_memory(
+                vehicle_id="chase-sim-chaser",
+                once=True,
+                json_output=True,
+                output=None,
+            )
+        self.assertEqual(result.exit_code, 2)
+        payload = json.loads(result.message)
+        self.assertEqual(payload["status"], "stale")
+        self.assertIn("stale", payload["error"])
+
+    def test_chase_stream_once_stopped_exits_nonzero(self) -> None:
+        vehicle = {"vehicle_id": "chase-sim-chaser", "provider": "chase-sim", "active": True}
+        discovery = {
+            "schema": "automa_vehicle_discovery_v0",
+            "vehicles": [vehicle],
+            "inactive": [],
+            "active_count": 1,
+        }
+        stopped_payload = {
+            "schema": "vehicle_memory_live_v0",
+            "vehicle_id": "chase-sim-chaser",
+            "provider": "chase-sim",
+            "status": "stopped",
+            "error": "Automation worker is not running (status=completed).",
+            "worker_status": "completed",
+        }
+        with patch(
+            "cli.automa_cli.memory.discover_active_vehicles", return_value=discovery
+        ), patch(
+            "cli.automa_cli.memory.probe_live_memory", return_value=stopped_payload
+        ):
+            result = stream_vehicle_memory(
+                vehicle_id="chase-sim-chaser",
+                once=True,
+                json_output=True,
+                output=None,
+            )
+        self.assertEqual(result.exit_code, 2)
+        payload = json.loads(result.message)
+        self.assertEqual(payload["status"], "stopped")
+        self.assertIn("not running", payload["error"])
 
     def test_chase_probe_rejects_stopped_worker(self) -> None:
         now = 1_700_000_000_000

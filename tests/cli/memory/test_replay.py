@@ -359,6 +359,35 @@ class MemoryReplayTests(unittest.TestCase):
             frames = load_memory_observation_sequence(root, max_frames=3)
             self.assertEqual(len(frames), 3)
 
+    def test_loader_file_accepts_exact_frame_boundary(self) -> None:
+        frames = [
+            {
+                "frame_id": f"frame_{index:04d}",
+                "frame_index": index,
+                "timestamp_ms": 1_000 + index,
+                "observation": {
+                    "observation_id": f"obs_{index:04d}",
+                    "created_at_ms": 1_000 + index,
+                    "sensor_snapshot": {},
+                    "perception_plugin_id": "lightweight_observer",
+                    "summary": [f"frame {index}"],
+                    "things": [],
+                    "signals": [],
+                },
+            }
+            for index in range(3)
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            sequence = Path(tmp) / "exact.json"
+            sequence.write_text(
+                json.dumps(
+                    {"schema": "automa_memory_observation_sequence_v0", "frames": frames}
+                ),
+                encoding="utf-8",
+            )
+            loaded = load_memory_observation_sequence(sequence, max_frames=3)
+            self.assertEqual(len(loaded), 3)
+
     def test_loader_directory_stops_scan_at_max_plus_one(self) -> None:
         """Reject without materializing every matching path under a large directory."""
 
@@ -508,9 +537,8 @@ class MemoryReplayTests(unittest.TestCase):
             result = json.loads((record_dir / "result.json").read_text(encoding="utf-8"))
             self.assertEqual(result["record_manifest"]["bounds"]["bytes_in_record"], 1001)
 
-    def test_record_enforces_total_byte_ceiling(self) -> None:
-        frames = load_memory_observation_sequence(FIXTURE)
-        payload = {
+    def _record_payload(self, frames: list) -> dict:
+        return {
             "schema": "vehicle_memory_replay_v0",
             "vehicle_id": "chase-sim-chaser",
             "frame_count": len(frames),
@@ -534,6 +562,10 @@ class MemoryReplayTests(unittest.TestCase):
                 ],
             },
         }
+
+    def test_record_enforces_total_byte_ceiling(self) -> None:
+        frames = load_memory_observation_sequence(FIXTURE)
+        payload = self._record_payload(frames)
         with tempfile.TemporaryDirectory() as tmp:
             output_root = Path(tmp) / "memory-replay"
             with self.assertRaisesRegex(ValueError, "max_record_bytes"):
@@ -548,6 +580,65 @@ class MemoryReplayTests(unittest.TestCase):
                 )
             # Fail closed: no partial record directory left behind.
             self.assertFalse(output_root.exists() and any(output_root.iterdir()))
+
+    def test_record_byte_ceiling_below_exact_and_above(self) -> None:
+        """Configured max_record_bytes is the acceptance boundary (no fixed reservation)."""
+
+        frames = load_memory_observation_sequence(FIXTURE)
+        payload = self._record_payload(frames)
+        frozen_stamp = "20200101-000000"
+        frozen_time = 1_577_836_800.0
+
+        def clear_output(root: Path) -> None:
+            if root.exists():
+                for child in list(root.iterdir()):
+                    _remove_tree_strict(child)
+
+        def write_with(root: Path, ceiling: int) -> dict:
+            return write_memory_replay_record(
+                vehicle_id="chase-sim-chaser",
+                sequence_path=FIXTURE,
+                frames=frames,
+                payload=payload,
+                output_root=root,
+                max_frames=16,
+                max_record_bytes=ceiling,
+            )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            output_root = Path(tmp) / "memory-replay"
+            with patch(
+                "cli.automa_cli.memory.time.strftime", return_value=frozen_stamp
+            ), patch("cli.automa_cli.memory.time.time", return_value=frozen_time):
+                # Generous ceiling succeeds (above any tight bound).
+                generous = write_with(output_root, 2 * 1024 * 1024)
+                measured = int(generous["manifest"]["bounds"]["bytes_in_record"])
+                self.assertGreater(measured, 1_000)
+
+                # Re-measure under a ceiling with the same digit width as the final
+                # size so max_record_bytes encoding does not change the total.
+                clear_output(output_root)
+                tight = write_with(output_root, measured)
+                exact = int(tight["manifest"]["bounds"]["bytes_in_record"])
+                self.assertLessEqual(exact, measured)
+
+                # Exact boundary: same digit-width ceiling equals on-disk total.
+                clear_output(output_root)
+                at_limit = write_with(output_root, exact)
+                self.assertEqual(at_limit["manifest"]["bounds"]["bytes_in_record"], exact)
+                record_dir = output_root / Path(at_limit["record_dir"]).name
+                self.assertEqual(_directory_byte_size(record_dir), exact)
+
+                # Above boundary: also succeeds.
+                clear_output(output_root)
+                above = write_with(output_root, exact + 128)
+                self.assertEqual(above["manifest"]["bounds"]["bytes_in_record"], exact)
+
+                # Below boundary: rejected and cleaned up.
+                clear_output(output_root)
+                with self.assertRaisesRegex(ValueError, "max_record_bytes"):
+                    write_with(output_root, exact - 1)
+                self.assertFalse(output_root.exists() and any(output_root.iterdir()))
 
     def test_record_stabilizes_bytes_in_record_on_disk(self) -> None:
         frames = load_memory_observation_sequence(FIXTURE)

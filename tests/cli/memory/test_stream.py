@@ -13,6 +13,10 @@ from cli.automa_cli.memory import (
 )
 from tests.support.cli_runner import run_automa
 
+AUTOMATION_COMMAND = (
+    "python -m cli.automa vehicles automation run chase-sim-chaser --observe-only"
+)
+
 
 class MemoryStreamTests(unittest.TestCase):
     def test_probe_physical_memory_live(self) -> None:
@@ -204,7 +208,7 @@ class MemoryStreamTests(unittest.TestCase):
             },
         }
         with patch("cli.automa_cli.memory._pid_alive", return_value=True), patch(
-            "cli.automa_cli.memory._pid_matches_automation", return_value=True
+            "cli.automa_cli.memory._process_command", return_value=AUTOMATION_COMMAND
         ):
             verdict = assess_chase_memory_worker_liveness(
                 state=state,
@@ -228,7 +232,8 @@ class MemoryStreamTests(unittest.TestCase):
             },
         }
         with patch("cli.automa_cli.memory._pid_alive", return_value=True), patch(
-            "cli.automa_cli.memory._pid_matches_automation", return_value=False
+            "cli.automa_cli.memory._process_command",
+            return_value="python -m other_service --worker",
         ):
             verdict = assess_chase_memory_worker_liveness(
                 state=state,
@@ -239,6 +244,54 @@ class MemoryStreamTests(unittest.TestCase):
         self.assertFalse(verdict["live"])
         self.assertEqual(verdict["status"], "stale")
         self.assertIn("PID reuse", verdict["error"])
+
+    def test_chase_probe_rejects_unavailable_process_identity(self) -> None:
+        now = 1_700_000_000_000
+        state = {
+            "status": "running",
+            "pid": 424242,
+            "updated_at_ms": now - 500,
+            "memory": {
+                "implementation_id": "bounded_evidence",
+                "status": {"last_health": "healthy", "last_record_count": 1},
+            },
+        }
+        with patch("cli.automa_cli.memory._pid_alive", return_value=True), patch(
+            "cli.automa_cli.memory._process_command", return_value=None
+        ):
+            verdict = assess_chase_memory_worker_liveness(
+                state=state,
+                probed_at_ms=now,
+                max_age_ms=30_000,
+                vehicle_id="chase-sim-chaser",
+            )
+        self.assertFalse(verdict["live"])
+        self.assertEqual(verdict["status"], "stale")
+        self.assertIn("cannot verify", verdict["error"])
+
+    def test_chase_probe_rejects_missing_vehicle_identity(self) -> None:
+        now = 1_700_000_000_000
+        state = {
+            "status": "running",
+            "pid": 424242,
+            "updated_at_ms": now - 500,
+            "memory": {
+                "implementation_id": "bounded_evidence",
+                "status": {"last_health": "healthy", "last_record_count": 1},
+            },
+        }
+        with patch("cli.automa_cli.memory._pid_alive", return_value=True), patch(
+            "cli.automa_cli.memory._process_command", return_value=AUTOMATION_COMMAND
+        ):
+            verdict = assess_chase_memory_worker_liveness(
+                state=state,
+                probed_at_ms=now,
+                max_age_ms=30_000,
+                vehicle_id=None,
+            )
+        self.assertFalse(verdict["live"])
+        self.assertEqual(verdict["status"], "stale")
+        self.assertIn("vehicle_id is required", verdict["error"])
 
     def test_chase_probe_rejects_future_publication_timestamp(self) -> None:
         now = 1_700_000_000_000
@@ -252,7 +305,7 @@ class MemoryStreamTests(unittest.TestCase):
             },
         }
         with patch("cli.automa_cli.memory._pid_alive", return_value=True), patch(
-            "cli.automa_cli.memory._pid_matches_automation", return_value=True
+            "cli.automa_cli.memory._process_command", return_value=AUTOMATION_COMMAND
         ):
             verdict = assess_chase_memory_worker_liveness(
                 state=state,
@@ -278,7 +331,7 @@ class MemoryStreamTests(unittest.TestCase):
             },
         }
         with patch("cli.automa_cli.memory._pid_alive", return_value=True), patch(
-            "cli.automa_cli.memory._pid_matches_automation", return_value=True
+            "cli.automa_cli.memory._process_command", return_value=AUTOMATION_COMMAND
         ):
             verdict = assess_chase_memory_worker_liveness(
                 state=state,
@@ -328,7 +381,7 @@ class MemoryStreamTests(unittest.TestCase):
                 "cli.automa_cli.memory._automation_dir",
                 return_value=state_path.parent,
             ), patch("cli.automa_cli.memory._pid_alive", return_value=True), patch(
-                "cli.automa_cli.memory._pid_matches_automation", return_value=True
+                "cli.automa_cli.memory._process_command", return_value=AUTOMATION_COMMAND
             ), patch(
                 "cli.automa_cli.memory.time.time", return_value=now / 1000.0
             ):

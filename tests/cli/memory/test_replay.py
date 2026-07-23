@@ -4,11 +4,14 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from cli.automa_cli.memory import (
     MEMORY_REPLAY_MAX_FRAMES,
     MEMORY_REPLAY_RECORD_ARTIFACTS,
     _directory_byte_size,
+    _remove_tree_strict,
+    _stabilize_record_byte_count,
     load_memory_observation_sequence,
     memory_snapshot_digest,
     replay_vehicle_memory,
@@ -329,6 +332,181 @@ class MemoryReplayTests(unittest.TestCase):
                 )
             with self.assertRaisesRegex(ValueError, "frame files"):
                 load_memory_observation_sequence(root, max_frames=3)
+
+    def test_loader_directory_accepts_exact_frame_boundary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for index in range(3):
+                (root / f"frame_{index:03d}.json").write_text(
+                    json.dumps(
+                        {
+                            "frame_id": f"frame_{index:03d}",
+                            "frame_index": index,
+                            "timestamp_ms": index,
+                            "observation": {
+                                "observation_id": f"obs_{index:03d}",
+                                "created_at_ms": index,
+                                "sensor_snapshot": {},
+                                "perception_plugin_id": "lightweight_observer",
+                                "summary": [],
+                                "things": [],
+                                "signals": [],
+                            },
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+            frames = load_memory_observation_sequence(root, max_frames=3)
+            self.assertEqual(len(frames), 3)
+
+    def test_loader_directory_stops_scan_at_max_plus_one(self) -> None:
+        """Reject without materializing every matching path under a large directory."""
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for index in range(12):
+                (root / f"frame_{index:03d}.json").write_text(
+                    json.dumps(
+                        {
+                            "frame_id": f"frame_{index:03d}",
+                            "frame_index": index,
+                            "timestamp_ms": index,
+                            "observation": {
+                                "observation_id": f"obs_{index:03d}",
+                                "created_at_ms": index,
+                                "sensor_snapshot": {},
+                                "perception_plugin_id": "lightweight_observer",
+                                "summary": [],
+                                "things": [],
+                                "signals": [],
+                            },
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+            frame_hits: list[str] = []
+            real_is_file = Path.is_file
+
+            def tracking_is_file(self: Path) -> bool:
+                result = real_is_file(self)
+                # Count only real frame JSON matches (named sequence candidates may be probed first).
+                if (
+                    result
+                    and self.parent == root
+                    and self.name.startswith("frame_")
+                    and self.suffix.lower() == ".json"
+                ):
+                    frame_hits.append(self.name)
+                    if len(frame_hits) > 4:
+                        raise AssertionError(
+                            f"directory scan continued past max_frames+1: {frame_hits}"
+                        )
+                return result
+
+            with patch.object(Path, "is_file", tracking_is_file):
+                with self.assertRaisesRegex(ValueError, "more than 3 frame files"):
+                    load_memory_observation_sequence(root, max_frames=3)
+            # max_frames=3 → reject on the 4th match; no further frame is_file checks.
+            self.assertEqual(len(frame_hits), 4)
+            with patch.object(Path, "read_text", side_effect=AssertionError("read")):
+                with self.assertRaisesRegex(ValueError, "more than 3 frame files"):
+                    load_memory_observation_sequence(root, max_frames=3)
+
+    def test_directory_byte_size_fails_closed_on_stat_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            target = root / "sequence.json"
+            target.write_text("{}", encoding="utf-8")
+            real_lstat = Path.lstat
+
+            def flaky_lstat(self: Path, *args, **kwargs):
+                if self.name == "sequence.json":
+                    raise OSError("injected stat failure")
+                return real_lstat(self, *args, **kwargs)
+
+            with patch.object(Path, "lstat", flaky_lstat):
+                with self.assertRaisesRegex(OSError, "could not measure record artifact"):
+                    _directory_byte_size(root)
+
+    def test_record_aborts_when_artifact_cannot_be_measured(self) -> None:
+        frames = load_memory_observation_sequence(FIXTURE)
+        payload = {
+            "schema": "vehicle_memory_replay_v0",
+            "vehicle_id": "chase-sim-chaser",
+            "frame_count": len(frames),
+            "implementation_id": "bounded_evidence",
+            "digest": "abc",
+            "final": {"health": "healthy", "record_count": 0, "records": []},
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            output_root = Path(tmp) / "memory-replay"
+            real_lstat = Path.lstat
+
+            def flaky_lstat(self: Path, *args, **kwargs):
+                if self.name == "sequence.json":
+                    raise OSError("injected stat failure")
+                return real_lstat(self, *args, **kwargs)
+
+            with patch.object(Path, "lstat", flaky_lstat):
+                with self.assertRaisesRegex(OSError, "could not measure"):
+                    write_memory_replay_record(
+                        vehicle_id="chase-sim-chaser",
+                        sequence_path=FIXTURE,
+                        frames=frames,
+                        payload=payload,
+                        output_root=output_root,
+                        max_frames=16,
+                        max_record_bytes=2 * 1024 * 1024,
+                    )
+            self.assertFalse(output_root.exists() and any(output_root.iterdir()))
+
+    def test_cleanup_failure_surfaces_residual_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            record_dir = Path(tmp) / "partial-record"
+            record_dir.mkdir()
+            sticky = record_dir / "sequence.json"
+            sticky.write_text("{}", encoding="utf-8")
+            real_unlink = Path.unlink
+
+            def deny_unlink(self: Path, *args, **kwargs):
+                if self.name == "sequence.json":
+                    raise PermissionError("denied")
+                return real_unlink(self, *args, **kwargs)
+
+            with patch.object(Path, "unlink", deny_unlink):
+                with self.assertRaisesRegex(OSError, "failed to remove partial record tree") as ctx:
+                    _remove_tree_strict(record_dir)
+            self.assertTrue(sticky.exists())
+            self.assertIn(str(record_dir), str(ctx.exception))
+            self.assertIn("sequence.json", str(ctx.exception))
+
+    def test_stabilize_converges_across_digit_boundary(self) -> None:
+        """Declared size must converge when digit width grows (e.g. 999 -> 1001)."""
+
+        with tempfile.TemporaryDirectory() as tmp:
+            record_dir = Path(tmp) / "record"
+            record_dir.mkdir()
+            (record_dir / "payload.bin").write_bytes(b"x" * 10)
+            extract_path = record_dir / "provenance_extract.html"
+            extract_path.write_text("<html></html>", encoding="utf-8")
+            manifest: dict = {"bounds": {}}
+            # measure → write → measure (grew) → measure → write → measure (stable)
+            sizes = [999, 1001, 1001, 1001]
+            with patch(
+                "cli.automa_cli.memory._directory_byte_size", side_effect=sizes
+            ):
+                total = _stabilize_record_byte_count(
+                    record_dir=record_dir,
+                    manifest=manifest,
+                    payload={"schema": "vehicle_memory_replay_v0", "digest": "x"},
+                    extract_path=extract_path,
+                    provenance_rows=[],
+                    max_record_bytes=10_000,
+                )
+            self.assertEqual(total, 1001)
+            self.assertEqual(manifest["bounds"]["bytes_in_record"], 1001)
+            result = json.loads((record_dir / "result.json").read_text(encoding="utf-8"))
+            self.assertEqual(result["record_manifest"]["bounds"]["bytes_in_record"], 1001)
 
     def test_record_enforces_total_byte_ceiling(self) -> None:
         frames = load_memory_observation_sequence(FIXTURE)

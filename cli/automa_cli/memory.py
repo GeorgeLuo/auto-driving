@@ -6,6 +6,7 @@ import hashlib
 import html
 import json
 import os
+import stat as stat_mod
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,7 +27,7 @@ from implementations.memory import (
     memory_implementation_spec,
 )
 
-from .automation import _automation_dir, _pid_alive, _pid_matches_automation
+from .automation import _automation_dir, _pid_alive, _process_command
 from .bundles import (
     controller_bundle_paths,
     release_activation_summary,
@@ -628,13 +629,22 @@ def _stabilize_record_byte_count(
 
 
 def _directory_byte_size(root: Path) -> int:
+    """Sum regular-file sizes under root; fail closed if any artifact cannot be measured."""
+
     total = 0
     for path in root.rglob("*"):
-        if path.is_file():
-            try:
-                total += path.stat().st_size
-            except OSError:
-                continue
+        try:
+            st = path.lstat()
+        except OSError as exc:
+            raise OSError(
+                f"could not measure record artifact {path}: {exc}"
+            ) from exc
+        # Count regular files only; directories are structure, not payload bytes.
+        if stat_mod.S_ISREG(st.st_mode):
+            total += st.st_size
+        elif stat_mod.S_ISLNK(st.st_mode):
+            # Symlinks are unexpected in a record tree; still measure the link node.
+            total += st.st_size
     return total
 
 
@@ -886,24 +896,29 @@ def load_memory_observation_sequence(
                     max_frames=frame_limit,
                     max_sequence_file_bytes=file_byte_limit,
                 )
-        # Directory of frame JSON files (sorted).
-        frame_files = sorted(
-            [
-                item
-                for item in path.iterdir()
-                if item.is_file()
-                and item.suffix.lower() == ".json"
-                and item.name != "manifest.json"
-            ],
-            key=lambda item: item.name,
-        )
+        # Directory of frame JSON files: scan incrementally, reject at max+1,
+        # then sort only the accepted bounded list for deterministic load order.
+        frame_files: list[Path] = []
+        for item in path.iterdir():
+            try:
+                is_json_frame = (
+                    item.is_file()
+                    and item.suffix.lower() == ".json"
+                    and item.name != "manifest.json"
+                )
+            except OSError as exc:
+                raise ValueError(f"could not inspect sequence entry {item}: {exc}") from exc
+            if not is_json_frame:
+                continue
+            frame_files.append(item)
+            if frame_limit is not None and len(frame_files) > frame_limit:
+                raise ValueError(
+                    f"sequence directory has more than {frame_limit} frame files; "
+                    f"max allowed is {frame_limit}"
+                )
         if not frame_files:
             raise ValueError(f"directory has no sequence.json or frame JSON files: {path}")
-        if frame_limit is not None and len(frame_files) > frame_limit:
-            raise ValueError(
-                f"sequence directory has {len(frame_files)} frame files; "
-                f"max allowed is {frame_limit}"
-            )
+        frame_files.sort(key=lambda item: item.name)
         frames: list[dict[str, Any]] = []
         for index, frame_file in enumerate(frame_files):
             if file_byte_limit is not None:
@@ -1761,7 +1776,8 @@ def assess_chase_memory_worker_liveness(
 
     Stopped or stale workers must not be reported as live memory merely because
     a previous state.json still contains a memory status block. A live PID must
-    also match the automation run identity for this vehicle.
+    also match the automation run identity for this vehicle; unavailable process
+    identity fails closed (unlike stop-path permissive matching).
     """
 
     run_status = str(state.get("status") or "")
@@ -1800,14 +1816,43 @@ def assess_chase_memory_worker_liveness(
             "updated_at_ms": updated_at,
             "age_ms": age_ms,
         }
-    if isinstance(pid, int) and vehicle_id is not None:
-        if not _pid_matches_automation(pid, vehicle_id):
+    # Live memory requires verified automation identity — fail closed if unknown.
+    if vehicle_id is None or not str(vehicle_id).strip():
+        return {
+            "live": False,
+            "status": "stale",
+            "error": (
+                "vehicle_id is required to verify the automation worker identity "
+                "before trusting live memory."
+            ),
+            "pid": pid,
+            "updated_at_ms": updated_at,
+            "age_ms": age_ms,
+        }
+    vehicle_key = str(vehicle_id).strip()
+    if isinstance(pid, int):
+        command = _process_command(pid)
+        if command is None:
+            return {
+                "live": False,
+                "status": "stale",
+                "error": (
+                    f"Could not read process command for PID {pid}; "
+                    "cannot verify automation worker identity. "
+                    "Treating live memory as unavailable."
+                ),
+                "pid": pid,
+                "updated_at_ms": updated_at,
+                "age_ms": age_ms,
+            }
+        required_parts = ("automa", "vehicles", "automation", "run", vehicle_key)
+        if not all(part in command for part in required_parts):
             return {
                 "live": False,
                 "status": "stale",
                 "error": (
                     f"PID {pid} is alive but is not the automation worker for "
-                    f"{vehicle_id!r} (possible PID reuse). Restart automation."
+                    f"{vehicle_key!r} (possible PID reuse). Restart automation."
                 ),
                 "pid": pid,
                 "updated_at_ms": updated_at,

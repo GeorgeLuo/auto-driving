@@ -14,13 +14,23 @@ merge determine the next one. This prevents early implementation assumptions
 from becoming commitments while still making the direction and stopping
 conditions explicit.
 
+Separate the **milestone** from the **frontier**:
+
+- **Milestone:** the stable objective, completion usage, and exit criteria that
+  define success for the whole effort.
+- **Frontier:** the next slice of that objective that can carry a real contract
+  *now*—a singular review question, and when the claim is universal, an
+  invariant-closure statement—and still fit one human review pass.
+
 The plan must distinguish:
 
 - **Observed state:** verified repository behavior, measurements, and gaps.
-- **Current delivery:** implemented or actively changing work with one review
-  question.
-- **Queued delivery:** the one likely next review unit, defined but not started.
-- **Preparation horizon:** ordered needs that remain provisional until promoted.
+- **Current delivery (frontier under review):** implemented or actively changing
+  work with one review question.
+- **Queued delivery (next frontier candidate):** the one likely next review unit,
+  defined but not started.
+- **Preparation horizon:** ordered needs that remain provisional until promoted;
+  not a schedule of named subdivisions.
 - **Completion usage:** the small, stable set of new human workflows the
   completed milestone must make possible.
 - **Exit criteria:** fixed milestone outcomes that do not depend on a particular
@@ -108,7 +118,17 @@ visible during planning without making every plan a second source of truth.
 ## Pull Request Delivery Contract
 
 Every pull request is one complete, reviewable deliverable. Review size is a
-logical-complexity budget, not a line-count target.
+logical-complexity budget, not a line-count target. The scarce resource is
+**human review attention** in the loop: a unit that cannot be reviewed carefully
+in one pass is too large, even if the code is locally tidy.
+
+### Attention Budget
+
+Size each review unit so one human can hold the full review context—question,
+owners, matrix or evidence kind, and validation—without thrashing across
+unrelated claims. Prefer fewer sequential units that close a contractable edge
+over many named subdivisions that multiply handoffs. Throughput is limited by
+review and re-review attention, not by how finely packages can be labeled.
 
 ### Deep And Narrow
 
@@ -121,6 +141,23 @@ question without also auditing a repository-wide rollout.
 Apply an already-reviewed pattern across many files. These changes may be large
 by file count, but must avoid new behavior, new abstractions, and unrelated
 cleanup.
+
+### Review Context Over Labels
+
+Divisions matter as **how the work is reviewed**, not as a growing path of
+package sub-IDs. Prefer the rolling vocabulary—current frontier, next frontier
+candidate, preparation horizon—over proliferating labels such as long
+`5C-a` / `5C-b` / `5C-harness` chains unless a second unit is truly required.
+
+When a split is necessary, name the **review kind** that changes the contract:
+
+- deterministic class closure (invariant, owner, matrix, tests);
+- live or external evidence (guided procedure, artifact, assumptions);
+- milestone closeout judgment (exit criteria, residual risk, promote-or-not).
+
+Do not invent subdivisions merely to make remaining work look smaller. A split
+is justified only when the primary review question, evidence type, or attention
+budget no longer fits one pass.
 
 Every PR description identifies:
 
@@ -302,10 +339,23 @@ incorrect PR target rather than hiding Git state.
 
 ## Rolling Delivery Horizon
 
-Only the current PR is committed in detail. A milestone plan also names one
-likely next review unit so the current work can prepare a clean boundary, but
+Only the current frontier is committed in detail. A milestone plan also names
+one likely next frontier so the current work can prepare a clean boundary, but
 that next unit remains unstarted until the current one is accepted. Everything
-beyond it stays in the preparation horizon.
+beyond it stays in the preparation horizon and is not a fixed subdivision tree.
+
+**Promote to the frontier only when both are true:**
+
+1. **Contractable now:** the work can carry one review question, and when the
+   claim is universal, an invariant-closure statement with owner and matrix (or
+   a clear live-evidence / closeout review kind).
+2. **Reviewable in one pass:** the full context fits the human attention budget
+   above—no dual unrelated universals, no closeout folded into evidence, no
+   speculative multi-step package ladder.
+
+Work that is still only a milestone need, an unverified hypothesis, or too large
+for one careful review stays in the preparation horizon until both conditions
+hold.
 
 The current PR records:
 
@@ -330,8 +380,10 @@ After each merge:
 1. Re-read the milestone objective and exit criteria.
 2. Record what changed, what was learned, and which assumptions failed.
 3. Update baseline evidence and work-package status.
-4. Promote one preparation-horizon item into the next concrete PR.
-5. Leave later work provisional rather than constructing a detailed schedule.
+4. Promote one preparation-horizon item into the next concrete frontier only if
+   it is contractable now and reviewable in one pass.
+5. Leave later work provisional rather than constructing a detailed schedule of
+   named subdivisions.
 
 ## Status And Evidence
 

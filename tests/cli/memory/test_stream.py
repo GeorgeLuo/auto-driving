@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from cli.automa_cli.automation import _automation_command_matches_vehicle
 from cli.automa_cli.memory import (
     assess_chase_memory_worker_liveness,
     probe_live_memory,
@@ -13,8 +14,11 @@ from cli.automa_cli.memory import (
 )
 from tests.support.cli_runner import run_automa
 
+# Mirrors start_automation launcher argv: ... automation run --id <vehicle_id> ...
 AUTOMATION_COMMAND = (
-    "python -m cli.automa vehicles automation run chase-sim-chaser --observe-only"
+    "/usr/bin/python3 /repo/cli/automa vehicles automation run "
+    "--id chase-sim-chaser --timeout-s 0 --interval-s 0.1 --frames 0 --foreground "
+    "--observe-only"
 )
 
 
@@ -244,6 +248,67 @@ class MemoryStreamTests(unittest.TestCase):
         self.assertFalse(verdict["live"])
         self.assertEqual(verdict["status"], "stale")
         self.assertIn("PID reuse", verdict["error"])
+
+    def test_chase_probe_rejects_vehicle_id_prefix_collision(self) -> None:
+        """A worker for chase-sim-chaser-2 must not satisfy probe for chase-sim-chaser."""
+
+        now = 1_700_000_000_000
+        longer_id_command = (
+            "/usr/bin/python3 /repo/cli/automa vehicles automation run "
+            "--id chase-sim-chaser-2 --timeout-s 0 --interval-s 0.1 --frames 0 "
+            "--foreground --observe-only"
+        )
+        state = {
+            "status": "running",
+            "pid": 424242,
+            "updated_at_ms": now - 500,
+            "memory": {
+                "implementation_id": "bounded_evidence",
+                "status": {"last_health": "healthy", "last_record_count": 1},
+            },
+        }
+        self.assertTrue(
+            _automation_command_matches_vehicle(longer_id_command, "chase-sim-chaser-2")
+        )
+        self.assertFalse(
+            _automation_command_matches_vehicle(longer_id_command, "chase-sim-chaser")
+        )
+        with patch("cli.automa_cli.memory._pid_alive", return_value=True), patch(
+            "cli.automa_cli.memory._process_command", return_value=longer_id_command
+        ):
+            verdict = assess_chase_memory_worker_liveness(
+                state=state,
+                probed_at_ms=now,
+                max_age_ms=30_000,
+                vehicle_id="chase-sim-chaser",
+            )
+        self.assertFalse(verdict["live"])
+        self.assertEqual(verdict["status"], "stale")
+        self.assertIn("PID reuse", verdict["error"])
+
+    def test_automation_command_match_requires_exact_id_token(self) -> None:
+        exact = (
+            "python /repo/cli/automa vehicles automation run --id chase-sim-chaser --foreground"
+        )
+        self.assertTrue(_automation_command_matches_vehicle(exact, "chase-sim-chaser"))
+        self.assertFalse(
+            _automation_command_matches_vehicle(exact, "chase-sim-chaser-extra")
+        )
+        # Substring vehicle_id in a longer --id value must not match.
+        prefixed = (
+            "python /repo/cli/automa vehicles automation run "
+            "--id chase-sim-chaser-extra --foreground"
+        )
+        self.assertFalse(
+            _automation_command_matches_vehicle(prefixed, "chase-sim-chaser")
+        )
+        # Positional vehicle without --id is not the real launcher shape.
+        positional = (
+            "python /repo/cli/automa vehicles automation run chase-sim-chaser --foreground"
+        )
+        self.assertFalse(
+            _automation_command_matches_vehicle(positional, "chase-sim-chaser")
+        )
 
     def test_chase_probe_rejects_unavailable_process_identity(self) -> None:
         now = 1_700_000_000_000

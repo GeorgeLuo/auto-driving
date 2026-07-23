@@ -27,7 +27,12 @@ from implementations.memory import (
     memory_implementation_spec,
 )
 
-from .automation import _automation_dir, _pid_alive, _process_command
+from .automation import (
+    _automation_command_matches_vehicle,
+    _automation_dir,
+    _pid_alive,
+    _process_command,
+)
 from .bundles import (
     controller_bundle_paths,
     release_activation_summary,
@@ -1845,8 +1850,7 @@ def assess_chase_memory_worker_liveness(
                 "updated_at_ms": updated_at,
                 "age_ms": age_ms,
             }
-        required_parts = ("automa", "vehicles", "automation", "run", vehicle_key)
-        if not all(part in command for part in required_parts):
+        if not _automation_command_matches_vehicle(command, vehicle_key):
             return {
                 "live": False,
                 "status": "stale",

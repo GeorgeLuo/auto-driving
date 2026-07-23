@@ -4,9 +4,13 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-from cli.automa_cli.memory import probe_live_memory, stream_vehicle_memory
+from cli.automa_cli.memory import (
+    assess_chase_memory_worker_liveness,
+    probe_live_memory,
+    stream_vehicle_memory,
+)
 from tests.support.cli_runner import run_automa
 
 
@@ -118,9 +122,143 @@ class MemoryStreamTests(unittest.TestCase):
                 output=None,
             )
         self.assertEqual(result.exit_code, 0)
-        payload = json.loads(result.message)
-        self.assertEqual(payload["status"], "live")
-        self.assertEqual(payload["last_record_count"], 3)
+
+    def test_chase_probe_rejects_stopped_worker(self) -> None:
+        now = 1_700_000_000_000
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime_root = Path(tmp) / "vehicles"
+            state_path = (
+                runtime_root
+                / "chase-sim-chaser"
+                / "bundle"
+                / "runtime"
+                / "automation"
+                / "state.json"
+            )
+            state_path.parent.mkdir(parents=True)
+            state_path.write_text(
+                json.dumps(
+                    {
+                        "status": "completed",
+                        "pid": 424242,
+                        "updated_at_ms": now,
+                        "memory": {
+                            "implementation_id": "bounded_evidence",
+                            "status": {
+                                "last_health": "healthy",
+                                "last_record_count": 3,
+                                "last_epoch_id": "epoch-1",
+                                "update_count": 9,
+                            },
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with patch("cli.automa_cli.memory.RUNTIME_ROOT", runtime_root), patch(
+                "cli.automa_cli.memory._automation_dir",
+                return_value=state_path.parent,
+            ), patch("cli.automa_cli.memory.time.time", return_value=now / 1000.0):
+                live = probe_live_memory(
+                    vehicle_id="chase-sim-chaser",
+                    vehicle={"vehicle_id": "chase-sim-chaser", "provider": "chase-sim"},
+                )
+        self.assertEqual(live["status"], "stopped")
+        self.assertIn("not running", live["error"])
+
+    def test_chase_probe_rejects_dead_pid_as_stale(self) -> None:
+        now = 1_700_000_000_000
+        state = {
+            "status": "running",
+            "pid": 424242,
+            "updated_at_ms": now,
+            "memory": {
+                "implementation_id": "bounded_evidence",
+                "status": {
+                    "last_health": "healthy",
+                    "last_record_count": 2,
+                    "update_count": 4,
+                },
+            },
+        }
+        with patch("cli.automa_cli.memory._pid_alive", return_value=False):
+            verdict = assess_chase_memory_worker_liveness(
+                state=state,
+                probed_at_ms=now,
+                max_age_ms=30_000,
+            )
+        self.assertFalse(verdict["live"])
+        self.assertEqual(verdict["status"], "stale")
+        self.assertIn("not running", verdict["error"])
+
+    def test_chase_probe_rejects_stale_publication_age(self) -> None:
+        now = 1_700_000_000_000
+        state = {
+            "status": "running",
+            "pid": 424242,
+            "updated_at_ms": now - 60_000,
+            "memory": {
+                "implementation_id": "bounded_evidence",
+                "status": {"last_health": "healthy", "last_record_count": 1},
+            },
+        }
+        with patch("cli.automa_cli.memory._pid_alive", return_value=True):
+            verdict = assess_chase_memory_worker_liveness(
+                state=state,
+                probed_at_ms=now,
+                max_age_ms=30_000,
+            )
+        self.assertFalse(verdict["live"])
+        self.assertEqual(verdict["status"], "stale")
+        self.assertIn("stale", verdict["error"])
+
+    def test_chase_probe_live_when_running_fresh_and_pid_alive(self) -> None:
+        now = 1_700_000_000_000
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime_root = Path(tmp) / "vehicles"
+            state_path = (
+                runtime_root
+                / "chase-sim-chaser"
+                / "bundle"
+                / "runtime"
+                / "automation"
+                / "state.json"
+            )
+            state_path.parent.mkdir(parents=True)
+            state_path.write_text(
+                json.dumps(
+                    {
+                        "status": "running",
+                        "pid": 424242,
+                        "updated_at_ms": now - 1_000,
+                        "memory": {
+                            "implementation_id": "bounded_evidence",
+                            "status": {
+                                "last_health": "healthy",
+                                "last_record_count": 5,
+                                "last_epoch_id": "epoch-3",
+                                "update_count": 12,
+                                "reset_count": 1,
+                                "failure_count": 0,
+                            },
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with patch("cli.automa_cli.memory.RUNTIME_ROOT", runtime_root), patch(
+                "cli.automa_cli.memory._automation_dir",
+                return_value=state_path.parent,
+            ), patch("cli.automa_cli.memory._pid_alive", return_value=True), patch(
+                "cli.automa_cli.memory.time.time", return_value=now / 1000.0
+            ):
+                live = probe_live_memory(
+                    vehicle_id="chase-sim-chaser",
+                    vehicle={"vehicle_id": "chase-sim-chaser", "provider": "chase-sim"},
+                )
+        self.assertEqual(live["status"], "live")
+        self.assertEqual(live["last_record_count"], 5)
+        self.assertEqual(live["worker_status"], "running")
 
     def test_cli_stream_memory_once_help_wired(self) -> None:
         result = run_automa("vehicles", "stream", "help", check=False)

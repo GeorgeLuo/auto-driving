@@ -6,10 +6,12 @@ import unittest
 from pathlib import Path
 
 from cli.automa_cli.memory import (
+    MEMORY_REPLAY_MAX_FRAMES,
     MEMORY_REPLAY_RECORD_ARTIFACTS,
     load_memory_observation_sequence,
     memory_snapshot_digest,
     replay_vehicle_memory,
+    write_memory_replay_record,
 )
 from tests.support.cli_runner import run_automa
 
@@ -178,6 +180,9 @@ class MemoryReplayTests(unittest.TestCase):
                 manifest["bounds"]["retained_evidence_labeled_as"],
                 "retained_not_current",
             )
+            self.assertEqual(manifest["bounds"]["max_frames"], MEMORY_REPLAY_MAX_FRAMES)
+            self.assertIn("bytes_in_record", manifest["bounds"])
+            self.assertGreater(manifest["bounds"]["bytes_in_record"], 0)
 
             extract = (record_dir / "provenance_extract.html").read_text(encoding="utf-8")
             self.assertIn("retained evidence", extract.lower())
@@ -224,6 +229,80 @@ class MemoryReplayTests(unittest.TestCase):
             self.assertTrue(payload["recorded"])
             self.assertTrue(output_root.exists())
             self.assertEqual(len(list(output_root.iterdir())), 1)
+
+    def test_replay_rejects_sequences_over_frame_ceiling(self) -> None:
+        frames = [
+            {
+                "frame_id": f"frame_{index:04d}",
+                "frame_index": index,
+                "timestamp_ms": 1_000 + index,
+                "observation": {
+                    "observation_id": f"obs_{index:04d}",
+                    "created_at_ms": 1_000 + index,
+                    "sensor_snapshot": {},
+                    "perception_plugin_id": "lightweight_observer",
+                    "summary": [f"frame {index}"],
+                    "things": [],
+                    "signals": [],
+                },
+            }
+            for index in range(MEMORY_REPLAY_MAX_FRAMES + 1)
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            sequence = Path(tmp) / "too_long.json"
+            sequence.write_text(
+                json.dumps({"schema": "automa_memory_observation_sequence_v0", "frames": frames}),
+                encoding="utf-8",
+            )
+            result = replay_vehicle_memory(
+                vehicle_id="chase-sim-chaser",
+                sequence=sequence,
+                implementation_id="bounded_evidence",
+                json_output=True,
+            )
+        self.assertEqual(result.exit_code, 2)
+        self.assertIn("max allowed", result.message)
+
+    def test_record_enforces_total_byte_ceiling(self) -> None:
+        frames = load_memory_observation_sequence(FIXTURE)
+        payload = {
+            "schema": "vehicle_memory_replay_v0",
+            "vehicle_id": "chase-sim-chaser",
+            "frame_count": len(frames),
+            "implementation_id": "bounded_evidence",
+            "digest": "abc",
+            "final": {
+                "health": "healthy",
+                "record_count": 1,
+                "records": [
+                    {
+                        "record_id": "thing:1:14:floor-plane-v0:18:floor_boundary_000",
+                        "kind": "floor_boundary",
+                        "label": "boundary",
+                        "confidence": 0.9,
+                        "provenance": {
+                            "frame_id": "frame_001",
+                            "observation_id": "obs_001",
+                            "evidence_id": "floor_boundary_000",
+                        },
+                    }
+                ],
+            },
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            output_root = Path(tmp) / "memory-replay"
+            with self.assertRaisesRegex(ValueError, "max_record_bytes"):
+                write_memory_replay_record(
+                    vehicle_id="chase-sim-chaser",
+                    sequence_path=FIXTURE,
+                    frames=frames,
+                    payload=payload,
+                    output_root=output_root,
+                    max_frames=16,
+                    max_record_bytes=200,
+                )
+            # Fail closed: no partial record directory left behind.
+            self.assertFalse(output_root.exists() and any(output_root.iterdir()))
 
 
 if __name__ == "__main__":

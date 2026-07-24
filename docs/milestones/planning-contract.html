@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="2e3002ffea6bcf013f386d2c7d9bc8d9e106f8495a3eedbe3ab6a3f70011607f">
+  <meta name="source-sha256" content="3eaa473cfd5731327d46b30f4298fe4a102b6dfdac898468c076430ef679a669">
   <base target="_blank">
   <title>Milestone Planning Contract</title>
   <style>
@@ -66,13 +66,23 @@ of pull requests. Keep the next review unit concrete and let evidence from each
 merge determine the next one. This prevents early implementation assumptions
 from becoming commitments while still making the direction and stopping
 conditions explicit.</p>
+<p>Separate the <strong>milestone</strong> from the <strong>frontier</strong>:</p>
+<ul>
+<li><strong>Milestone:</strong> the stable objective, completion usage, and exit criteria that
+  define success for the whole effort.</li>
+<li><strong>Frontier:</strong> the next slice of that objective that can carry a real contract
+  <em>now</em>—a singular review question, and when the claim is universal, an
+  invariant-closure statement—and still fit one human review pass.</li>
+</ul>
 <p>The plan must distinguish:</p>
 <ul>
 <li><strong>Observed state:</strong> verified repository behavior, measurements, and gaps.</li>
-<li><strong>Current delivery:</strong> implemented or actively changing work with one review
-  question.</li>
-<li><strong>Queued delivery:</strong> the one likely next review unit, defined but not started.</li>
-<li><strong>Preparation horizon:</strong> ordered needs that remain provisional until promoted.</li>
+<li><strong>Current delivery (frontier under review):</strong> implemented or actively changing
+  work with one review question.</li>
+<li><strong>Queued delivery (next frontier candidate):</strong> the one likely next review unit,
+  defined but not started.</li>
+<li><strong>Preparation horizon:</strong> ordered needs that remain provisional until promoted;
+  not a schedule of named subdivisions.</li>
 <li><strong>Completion usage:</strong> the small, stable set of new human workflows the
   completed milestone must make possible.</li>
 <li><strong>Exit criteria:</strong> fixed milestone outcomes that do not depend on a particular
@@ -147,7 +157,15 @@ Markdown source and that the active milestone embeds it. This keeps the rules
 visible during planning without making every plan a second source of truth.</p>
 <h2>Pull Request Delivery Contract</h2>
 <p>Every pull request is one complete, reviewable deliverable. Review size is a
-logical-complexity budget, not a line-count target.</p>
+logical-complexity budget, not a line-count target. The scarce resource is
+<strong>human review attention</strong> in the loop: a unit that cannot be reviewed carefully
+in one pass is too large, even if the code is locally tidy.</p>
+<h3>Attention Budget</h3>
+<p>Size each review unit so one human can hold the full review context—question,
+owners, matrix or evidence kind, and validation—without thrashing across
+unrelated claims. Prefer fewer sequential units that close a contractable edge
+over many named subdivisions that multiply handoffs. Throughput is limited by
+review and re-review attention, not by how finely packages can be labeled.</p>
 <h3>Deep And Narrow</h3>
 <p>Introduce or settle one policy, abstraction, or behavioral contract in a small
 number of owning files. The reviewer should be able to reason deeply about one
@@ -156,6 +174,20 @@ question without also auditing a repository-wide rollout.</p>
 <p>Apply an already-reviewed pattern across many files. These changes may be large
 by file count, but must avoid new behavior, new abstractions, and unrelated
 cleanup.</p>
+<h3>Review Context Over Labels</h3>
+<p>Divisions matter as <strong>how the work is reviewed</strong>, not as a growing path of
+package sub-IDs. Prefer the rolling vocabulary—current frontier, next frontier
+candidate, preparation horizon—over proliferating labels such as long
+<code>5C-a</code> / <code>5C-b</code> / <code>5C-harness</code> chains unless a second unit is truly required.</p>
+<p>When a split is necessary, name the <strong>review kind</strong> that changes the contract:</p>
+<ul>
+<li>deterministic class closure (invariant, owner, matrix, tests);</li>
+<li>live or external evidence (guided procedure, artifact, assumptions);</li>
+<li>milestone closeout judgment (exit criteria, residual risk, promote-or-not).</li>
+</ul>
+<p>Do not invent subdivisions merely to make remaining work look smaller. A split
+is justified only when the primary review question, evidence type, or attention
+budget no longer fits one pass.</p>
 <p>Every PR description identifies:</p>
 <ul>
 <li>one explicit review question;</li>
@@ -302,10 +334,22 @@ vehicle command. A future helper may automate these exact steps, but it must
 fail visibly on uncommitted changes, a stale base, an existing branch, or an
 incorrect PR target rather than hiding Git state.</p>
 <h2>Rolling Delivery Horizon</h2>
-<p>Only the current PR is committed in detail. A milestone plan also names one
-likely next review unit so the current work can prepare a clean boundary, but
+<p>Only the current frontier is committed in detail. A milestone plan also names
+one likely next frontier so the current work can prepare a clean boundary, but
 that next unit remains unstarted until the current one is accepted. Everything
-beyond it stays in the preparation horizon.</p>
+beyond it stays in the preparation horizon and is not a fixed subdivision tree.</p>
+<p><strong>Promote to the frontier only when both are true:</strong></p>
+<ol>
+<li><strong>Contractable now:</strong> the work can carry one review question, and when the
+   claim is universal, an invariant-closure statement with owner and matrix (or
+   a clear live-evidence / closeout review kind).</li>
+<li><strong>Reviewable in one pass:</strong> the full context fits the human attention budget
+   above—no dual unrelated universals, no closeout folded into evidence, no
+   speculative multi-step package ladder.</li>
+</ol>
+<p>Work that is still only a milestone need, an unverified hypothesis, or too large
+for one careful review stays in the preparation horizon until both conditions
+hold.</p>
 <p>The current PR records:</p>
 <ul>
 <li>status and review shape;</li>
@@ -329,8 +373,10 @@ beyond it stays in the preparation horizon.</p>
 <li>Re-read the milestone objective and exit criteria.</li>
 <li>Record what changed, what was learned, and which assumptions failed.</li>
 <li>Update baseline evidence and work-package status.</li>
-<li>Promote one preparation-horizon item into the next concrete PR.</li>
-<li>Leave later work provisional rather than constructing a detailed schedule.</li>
+<li>Promote one preparation-horizon item into the next concrete frontier only if
+   it is contractable now and reviewable in one pass.</li>
+<li>Leave later work provisional rather than constructing a detailed schedule of
+   named subdivisions.</li>
 </ol>
 <h2>Status And Evidence</h2>
 <p>Use <code>pending</code>, <code>active</code>, <code>blocked</code>, and <code>done</code> consistently. A work package is

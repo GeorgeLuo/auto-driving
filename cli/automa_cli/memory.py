@@ -6,6 +6,7 @@ import hashlib
 import html
 import json
 import os
+import stat as stat_mod
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,7 +27,12 @@ from implementations.memory import (
     memory_implementation_spec,
 )
 
-from .automation import _automation_dir
+from .automation import (
+    _automation_command_matches_vehicle,
+    _automation_dir,
+    _pid_alive,
+    _process_command,
+)
 from .bundles import (
     controller_bundle_paths,
     release_activation_summary,
@@ -57,6 +63,26 @@ MEMORY_REPLAY_RECORD_ARTIFACTS = (
     "final_memory.json",
     "digest.txt",
     "provenance_extract.html",
+)
+# Enforceable ceilings for opt-in replay records (not live host history).
+MEMORY_REPLAY_MAX_FRAMES = int(os.environ.get("AUTOMA_MEMORY_REPLAY_MAX_FRAMES", "256"))
+MEMORY_REPLAY_MAX_RECORD_BYTES = int(
+    os.environ.get("AUTOMA_MEMORY_REPLAY_MAX_RECORD_BYTES", str(8 * 1024 * 1024))
+)
+# Preflight ceiling for monolithic sequence JSON before full parse.
+MEMORY_REPLAY_MAX_SEQUENCE_FILE_BYTES = int(
+    os.environ.get(
+        "AUTOMA_MEMORY_REPLAY_MAX_SEQUENCE_FILE_BYTES",
+        str(32 * 1024 * 1024),
+    )
+)
+# Chase memory probe treats workers older than this as stale.
+CHASE_MEMORY_PROBE_MAX_AGE_MS = int(
+    os.environ.get("AUTOMA_CHASE_MEMORY_PROBE_MAX_AGE_MS", "30000")
+)
+# Allow tiny forward clock skew before treating updated_at_ms as invalid.
+CHASE_MEMORY_PROBE_CLOCK_SKEW_MS = int(
+    os.environ.get("AUTOMA_CHASE_MEMORY_PROBE_CLOCK_SKEW_MS", "2000")
 )
 
 
@@ -264,7 +290,11 @@ def replay_vehicle_memory(
 
     sequence_path = Path(sequence).expanduser()
     try:
-        frames = load_memory_observation_sequence(sequence_path)
+        frames = load_memory_observation_sequence(
+            sequence_path,
+            max_frames=MEMORY_REPLAY_MAX_FRAMES,
+            max_sequence_file_bytes=MEMORY_REPLAY_MAX_SEQUENCE_FILE_BYTES,
+        )
     except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
         return CommandResult(2, f"Could not load observation sequence {sequence_path}: {exc}")
     if not frames:
@@ -373,13 +403,16 @@ def replay_vehicle_memory(
                 frames=frames,
                 payload=payload,
                 output_root=output_root or memory_replay_output_root(),
+                max_frames=MEMORY_REPLAY_MAX_FRAMES,
+                max_record_bytes=MEMORY_REPLAY_MAX_RECORD_BYTES,
             )
-        except OSError as exc:
+        except (OSError, ValueError) as exc:
             return CommandResult(2, f"Could not write memory replay record: {exc}")
         payload["recorded"] = True
         payload["record_dir"] = record_info["record_dir"]
         payload["provenance_extract"] = record_info["provenance_extract"]
         payload["record_manifest"] = record_info["manifest"]
+        payload["record_bounds"] = record_info["manifest"].get("bounds")
 
     if json_output:
         return CommandResult(0, json.dumps(payload, indent=2, sort_keys=True))
@@ -420,91 +453,228 @@ def write_memory_replay_record(
     frames: list[dict[str, Any]],
     payload: dict[str, Any],
     output_root: Path,
+    max_frames: int = MEMORY_REPLAY_MAX_FRAMES,
+    max_record_bytes: int = MEMORY_REPLAY_MAX_RECORD_BYTES,
 ) -> dict[str, Any]:
     """Write an explicit, bounded memory-replay record with provenance extract.
 
     Default replay writes nothing. This path is opt-in only and never stores
     live camera history; it freezes sequence observations beside retained keys.
+    Enforces configured frame-count and total artifact-byte ceilings.
     """
+
+    frame_count = len(frames)
+    if frame_count > int(max_frames):
+        raise ValueError(
+            f"record refuses {frame_count} frames; max_frames={int(max_frames)}"
+        )
 
     run_id = f"{safe_path_part(vehicle_id)}-{time.strftime('%Y%m%d-%H%M%S')}"
     record_dir = Path(output_root) / run_id
     record_dir.mkdir(parents=True, exist_ok=False)
 
-    final = payload.get("final") if isinstance(payload.get("final"), dict) else {}
-    sequence_payload = {
-        "schema": MEMORY_OBSERVATION_SEQUENCE_SCHEMA,
-        "source": display_path(sequence_path.resolve()) if sequence_path.exists() else str(sequence_path),
-        "frames": frames,
-    }
-    provenance_rows = build_memory_provenance_rows(final=final, frames=frames)
-    extract_html = render_memory_provenance_extract_html(
-        vehicle_id=vehicle_id,
-        payload=payload,
-        frames=frames,
-        provenance_rows=provenance_rows,
-    )
+    try:
+        final = payload.get("final") if isinstance(payload.get("final"), dict) else {}
+        sequence_payload = {
+            "schema": MEMORY_OBSERVATION_SEQUENCE_SCHEMA,
+            "source": (
+                display_path(sequence_path.resolve())
+                if sequence_path.exists()
+                else str(sequence_path)
+            ),
+            "frames": frames,
+        }
+        provenance_rows = build_memory_provenance_rows(final=final, frames=frames)
+        extract_html = render_memory_provenance_extract_html(
+            vehicle_id=vehicle_id,
+            payload=payload,
+            frames=frames,
+            provenance_rows=provenance_rows,
+        )
 
-    (record_dir / "sequence.json").write_text(
-        json.dumps(sequence_payload, indent=2, sort_keys=True, default=str),
-        encoding="utf-8",
-    )
-    (record_dir / "final_memory.json").write_text(
-        json.dumps(final, indent=2, sort_keys=True, default=str),
-        encoding="utf-8",
-    )
-    (record_dir / "digest.txt").write_text(f"{payload.get('digest')}\n", encoding="utf-8")
-    extract_path = record_dir / "provenance_extract.html"
-    extract_path.write_text(extract_html, encoding="utf-8")
+        (record_dir / "sequence.json").write_text(
+            json.dumps(sequence_payload, indent=2, sort_keys=True, default=str),
+            encoding="utf-8",
+        )
+        (record_dir / "final_memory.json").write_text(
+            json.dumps(final, indent=2, sort_keys=True, default=str),
+            encoding="utf-8",
+        )
+        (record_dir / "digest.txt").write_text(
+            f"{payload.get('digest')}\n", encoding="utf-8"
+        )
+        extract_path = record_dir / "provenance_extract.html"
+        extract_path.write_text(extract_html, encoding="utf-8")
 
-    manifest = {
-        "schema": MEMORY_REPLAY_RECORD_SCHEMA,
-        "run_id": run_id,
-        "vehicle_id": vehicle_id,
-        "created_at_ms": int(time.time() * 1000),
-        "opt_in": True,
-        "writes_default_history": False,
-        "implementation_id": payload.get("implementation_id"),
-        "digest": payload.get("digest"),
-        "frame_count": payload.get("frame_count"),
-        "bounds": {
-            "artifacts": list(MEMORY_REPLAY_RECORD_ARTIFACTS),
-            "max_frames_in_record": int(payload.get("frame_count") or 0),
-            "includes_raw_camera_images": False,
-            "includes_live_host_state": False,
-            "retained_evidence_labeled_as": "retained_not_current",
-        },
-        "artifacts": {
-            name: display_path(record_dir / name) for name in MEMORY_REPLAY_RECORD_ARTIFACTS
-        },
-        "provenance_row_count": len(provenance_rows),
-        "notes": [
-            "Recording is disabled unless --record is passed.",
-            "Retained image-space geometry is attributed to provenance.frame_id only.",
-            "This extract does not treat stale coordinates as current camera geometry.",
-        ],
-    }
-    (record_dir / "manifest.json").write_text(
-        json.dumps(manifest, indent=2, sort_keys=True),
-        encoding="utf-8",
-    )
-    result_payload = {
-        **payload,
-        "recorded": True,
-        "record_dir": display_path(record_dir),
-        "provenance_extract": display_path(extract_path),
-        "record_manifest": manifest,
-        "provenance_rows": provenance_rows,
-    }
-    (record_dir / "result.json").write_text(
-        json.dumps(result_payload, indent=2, sort_keys=True, default=str),
-        encoding="utf-8",
-    )
+        total_bytes = _directory_byte_size(record_dir)
+        # Early reject only when already over the hard ceiling; manifest/result
+        # growth is enforced by the authoritative stabilize measurement.
+        if total_bytes > int(max_record_bytes):
+            raise ValueError(
+                f"record artifacts are {total_bytes} bytes before manifest/result; "
+                f"max_record_bytes={int(max_record_bytes)}"
+            )
+
+        manifest = {
+            "schema": MEMORY_REPLAY_RECORD_SCHEMA,
+            "run_id": run_id,
+            "vehicle_id": vehicle_id,
+            "created_at_ms": int(time.time() * 1000),
+            "opt_in": True,
+            "writes_default_history": False,
+            "implementation_id": payload.get("implementation_id"),
+            "digest": payload.get("digest"),
+            "frame_count": frame_count,
+            "bounds": {
+                "artifacts": list(MEMORY_REPLAY_RECORD_ARTIFACTS),
+                "max_frames": int(max_frames),
+                "max_record_bytes": int(max_record_bytes),
+                "frames_in_record": frame_count,
+                "includes_raw_camera_images": False,
+                "includes_live_host_state": False,
+                "retained_evidence_labeled_as": "retained_not_current",
+            },
+            "artifacts": {
+                name: display_path(record_dir / name)
+                for name in MEMORY_REPLAY_RECORD_ARTIFACTS
+            },
+            "provenance_row_count": len(provenance_rows),
+            "notes": [
+                "Recording is disabled unless --record is passed.",
+                "Retained image-space geometry is attributed to provenance.frame_id only.",
+                "This extract does not treat stale coordinates as current camera geometry.",
+                f"Frame count is capped at {int(max_frames)}; total artifact bytes at {int(max_record_bytes)}.",
+            ],
+        }
+        # Stabilize the self-referential bytes_in_record field and rewrite both
+        # manifest and result so nested bounds match the final on-disk total.
+        total_bytes = _stabilize_record_byte_count(
+            record_dir=record_dir,
+            manifest=manifest,
+            payload=payload,
+            extract_path=extract_path,
+            provenance_rows=provenance_rows,
+            max_record_bytes=int(max_record_bytes),
+        )
+        manifest["bounds"]["bytes_in_record"] = total_bytes
+    except Exception as exc:
+        # Fail closed: do not leave a partial oversize/invalid record tree.
+        try:
+            _remove_tree_strict(record_dir)
+        except OSError as cleanup_exc:
+            raise ValueError(
+                f"{exc}; also failed to clean partial record at {record_dir}: {cleanup_exc}"
+            ) from cleanup_exc
+        raise
+
     return {
         "record_dir": display_path(record_dir),
         "provenance_extract": display_path(extract_path),
         "manifest": manifest,
     }
+
+
+def _stabilize_record_byte_count(
+    *,
+    record_dir: Path,
+    manifest: dict[str, Any],
+    payload: dict[str, Any],
+    extract_path: Path,
+    provenance_rows: list[dict[str, Any]],
+    max_record_bytes: int,
+) -> int:
+    """Rewrite manifest/result until bytes_in_record matches on-disk total."""
+
+    total_bytes = 0
+    for _ in range(8):
+        # Provisional size for this iteration; write manifest + result, then measure.
+        total_bytes = _directory_byte_size(record_dir)
+        # Estimate growth from rewriting both files with the size field present.
+        manifest["bounds"]["bytes_in_record"] = total_bytes
+        result_payload = {
+            **payload,
+            "recorded": True,
+            "record_dir": display_path(record_dir),
+            "provenance_extract": display_path(extract_path),
+            "record_manifest": manifest,
+            "provenance_rows": provenance_rows,
+            "record_bounds": manifest.get("bounds"),
+        }
+        (record_dir / "manifest.json").write_text(
+            json.dumps(manifest, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        (record_dir / "result.json").write_text(
+            json.dumps(result_payload, indent=2, sort_keys=True, default=str),
+            encoding="utf-8",
+        )
+        measured = _directory_byte_size(record_dir)
+        if measured > max_record_bytes:
+            raise ValueError(
+                f"record total size is {measured} bytes; "
+                f"max_record_bytes={max_record_bytes}"
+            )
+        if measured == total_bytes:
+            return measured
+        # Decimal-digit boundary: update and rewrite until stable.
+        total_bytes = measured
+        manifest["bounds"]["bytes_in_record"] = measured
+    # Final verification after loop.
+    measured = _directory_byte_size(record_dir)
+    if measured > max_record_bytes:
+        raise ValueError(
+            f"record total size is {measured} bytes; max_record_bytes={max_record_bytes}"
+        )
+    if manifest["bounds"].get("bytes_in_record") != measured:
+        raise ValueError(
+            f"could not stabilize bytes_in_record (declared "
+            f"{manifest['bounds'].get('bytes_in_record')} vs on-disk {measured})"
+        )
+    return measured
+
+
+def _directory_byte_size(root: Path) -> int:
+    """Sum regular-file sizes under root; fail closed if any artifact cannot be measured."""
+
+    total = 0
+    for path in root.rglob("*"):
+        try:
+            st = path.lstat()
+        except OSError as exc:
+            raise OSError(
+                f"could not measure record artifact {path}: {exc}"
+            ) from exc
+        # Count regular files only; directories are structure, not payload bytes.
+        if stat_mod.S_ISREG(st.st_mode):
+            total += st.st_size
+        elif stat_mod.S_ISLNK(st.st_mode):
+            # Symlinks are unexpected in a record tree; still measure the link node.
+            total += st.st_size
+    return total
+
+
+def _remove_tree_strict(path: Path) -> None:
+    """Remove a record directory and fail if anything remains."""
+
+    if not path.exists():
+        return
+    errors: list[str] = []
+    for child in sorted(path.rglob("*"), reverse=True):
+        try:
+            if child.is_file() or child.is_symlink():
+                child.unlink()
+            elif child.is_dir():
+                child.rmdir()
+        except OSError as exc:
+            errors.append(f"{child}: {exc}")
+    try:
+        if path.exists():
+            path.rmdir()
+    except OSError as exc:
+        errors.append(f"{path}: {exc}")
+    if path.exists() or errors:
+        detail = "; ".join(errors) if errors else "path still exists"
+        raise OSError(f"failed to remove partial record tree {path}: {detail}")
 
 
 def build_memory_provenance_rows(
@@ -701,47 +871,120 @@ def render_memory_provenance_extract_html(
 """
 
 
-def load_memory_observation_sequence(path: Path) -> list[dict[str, Any]]:
-    """Load a memory observation sequence from a JSON file or directory."""
+def load_memory_observation_sequence(
+    path: Path,
+    *,
+    max_frames: int | None = None,
+    max_sequence_file_bytes: int | None = None,
+) -> list[dict[str, Any]]:
+    """Load a memory observation sequence from a JSON file or directory.
+
+    When ``max_frames`` is set, refuse sequences larger than that bound during
+    load (directory iteration stops at max+1; monolithic JSON uses a file-size
+    preflight before full parse).
+    """
 
     if not path.exists():
         raise FileNotFoundError(f"sequence path does not exist: {path}")
+    frame_limit = int(max_frames) if max_frames is not None else None
+    file_byte_limit = (
+        int(max_sequence_file_bytes)
+        if max_sequence_file_bytes is not None
+        else None
+    )
     if path.is_dir():
         for name in ("sequence.json", "memory_sequence.json", "observation_sequence.json"):
             candidate = path / name
             if candidate.is_file():
-                return load_memory_observation_sequence(candidate)
-        # Directory of frame JSON files (sorted).
-        frame_files = sorted(
-            [
-                item
-                for item in path.iterdir()
-                if item.is_file() and item.suffix.lower() == ".json" and item.name != "manifest.json"
-            ],
-            key=lambda item: item.name,
-        )
+                return load_memory_observation_sequence(
+                    candidate,
+                    max_frames=frame_limit,
+                    max_sequence_file_bytes=file_byte_limit,
+                )
+        # Directory of frame JSON files: scan incrementally, reject at max+1,
+        # then sort only the accepted bounded list for deterministic load order.
+        frame_files: list[Path] = []
+        for item in path.iterdir():
+            try:
+                is_json_frame = (
+                    item.is_file()
+                    and item.suffix.lower() == ".json"
+                    and item.name != "manifest.json"
+                )
+            except OSError as exc:
+                raise ValueError(f"could not inspect sequence entry {item}: {exc}") from exc
+            if not is_json_frame:
+                continue
+            frame_files.append(item)
+            if frame_limit is not None and len(frame_files) > frame_limit:
+                raise ValueError(
+                    f"sequence directory has more than {frame_limit} frame files; "
+                    f"max allowed is {frame_limit}"
+                )
         if not frame_files:
             raise ValueError(f"directory has no sequence.json or frame JSON files: {path}")
+        frame_files.sort(key=lambda item: item.name)
         frames: list[dict[str, Any]] = []
         for index, frame_file in enumerate(frame_files):
+            if file_byte_limit is not None:
+                try:
+                    size = frame_file.stat().st_size
+                except OSError as exc:
+                    raise ValueError(f"could not stat {frame_file}: {exc}") from exc
+                if size > file_byte_limit:
+                    raise ValueError(
+                        f"frame file {frame_file.name} is {size} bytes; "
+                        f"max sequence file bytes is {file_byte_limit}"
+                    )
             payload = json.loads(frame_file.read_text(encoding="utf-8"))
             if not isinstance(payload, dict):
                 raise ValueError(f"{frame_file} is not a JSON object")
-            frames.append(_normalize_sequence_frame(payload, default_index=index, source=frame_file.name))
+            frames.append(
+                _normalize_sequence_frame(
+                    payload, default_index=index, source=frame_file.name
+                )
+            )
         return frames
+
+    if file_byte_limit is not None:
+        try:
+            file_size = path.stat().st_size
+        except OSError as exc:
+            raise ValueError(f"could not stat sequence file {path}: {exc}") from exc
+        if file_size > file_byte_limit:
+            raise ValueError(
+                f"sequence file is {file_size} bytes; "
+                f"max allowed is {file_byte_limit} "
+                "(raise AUTOMA_MEMORY_REPLAY_MAX_SEQUENCE_FILE_BYTES to override)"
+            )
 
     payload = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         raise ValueError("sequence file must contain a JSON object")
-    if payload.get("schema") == MEMORY_OBSERVATION_SEQUENCE_SCHEMA or isinstance(payload.get("frames"), list):
+    if payload.get("schema") == MEMORY_OBSERVATION_SEQUENCE_SCHEMA or isinstance(
+        payload.get("frames"), list
+    ):
         frames_data = payload.get("frames") or []
         if not isinstance(frames_data, list):
             raise ValueError("sequence frames must be a list")
-        return [
-            _normalize_sequence_frame(item, default_index=index, source=f"frames[{index}]")
-            for index, item in enumerate(frames_data)
-            if isinstance(item, dict)
-        ]
+        # Count dict frames without normalizing past the limit.
+        dict_count = sum(1 for item in frames_data if isinstance(item, dict))
+        if frame_limit is not None and dict_count > frame_limit:
+            raise ValueError(
+                f"sequence has {dict_count} frames; max allowed is {frame_limit}"
+            )
+        frames = []
+        for index, item in enumerate(frames_data):
+            if not isinstance(item, dict):
+                continue
+            if frame_limit is not None and len(frames) >= frame_limit:
+                break
+            frames.append(
+                _normalize_sequence_frame(
+                    item, default_index=index, source=f"frames[{index}]"
+                )
+            )
+        return frames
     # Single frame record reused as a one-frame sequence.
     return [_normalize_sequence_frame(payload, default_index=0, source=path.name)]
 
@@ -1180,30 +1423,38 @@ def stream_vehicle_memory(
                     print("\033[2J\033[H", end="", file=stream)
                 print(line, file=stream, flush=True)
             if once:
-                if live.get("status") == "error":
-                    return CommandResult(
-                        2,
-                        str(live.get("error") or "memory stream failed")
-                        if stream is None
-                        else "",
-                    )
-                if live.get("status") == "absent":
-                    return CommandResult(
-                        2,
-                        (
-                            str(
-                                live.get("error")
-                                or "memory stage is not live on the vehicle"
-                            )
-                            if stream is None
-                            else ""
-                        ),
-                    )
-                # Avoid double-print when the handler also emits result.message.
-                return CommandResult(0, "" if stream is not None else line)
+                return _once_memory_stream_result(
+                    live=live,
+                    line=line,
+                    stream=stream,
+                )
             time.sleep(max(0.1, float(refresh_s)))
     except KeyboardInterrupt:
         return CommandResult(130, "")
+
+
+def _once_memory_stream_result(
+    *,
+    live: dict[str, Any],
+    line: str,
+    stream: TextIO | None,
+) -> CommandResult:
+    """One-shot stream succeeds only when live memory is confirmed.
+
+    Non-live statuses (stopped, stale, absent, error, unavailable, …) keep their
+    structured diagnostic payload/line but return nonzero so automation cannot
+    treat retained or stopped state as success.
+    """
+
+    status = str(live.get("status") or "unknown")
+    if status == "live":
+        # Avoid double-print when the handler also emits result.message.
+        return CommandResult(0, "" if stream is not None else line)
+    diagnostic = str(
+        live.get("error")
+        or f"memory stream is not live (status={status})"
+    )
+    return CommandResult(2, "" if stream is not None else (line or diagnostic))
 
 
 def _stream_physical_memory_with_inspector(
@@ -1292,9 +1543,11 @@ def _stream_physical_memory_with_inspector(
                 print("\n".join(lines), file=stream, flush=True)
 
             if once:
-                if live.get("status") in {"error", "absent"}:
-                    return CommandResult(2, "")
-                return CommandResult(0, "")
+                return _once_memory_stream_result(
+                    live=live,
+                    line="",
+                    stream=stream,
+                )
             time.sleep(max(0.1, float(refresh_s)))
     except KeyboardInterrupt:
         return CommandResult(130, "")
@@ -1459,6 +1712,26 @@ def _probe_chase_memory(*, vehicle_id: str) -> dict[str, Any]:
             "probed_at_ms": probed_at_ms,
         }
 
+    liveness = assess_chase_memory_worker_liveness(
+        state=state,
+        probed_at_ms=probed_at_ms,
+        max_age_ms=CHASE_MEMORY_PROBE_MAX_AGE_MS,
+        vehicle_id=vehicle_id,
+    )
+    if not liveness["live"]:
+        return {
+            "schema": "vehicle_memory_live_v0",
+            "vehicle_id": vehicle_id,
+            "provider": "chase-sim",
+            "status": liveness["status"],
+            "error": liveness["error"],
+            "probed_at_ms": probed_at_ms,
+            "worker_status": state.get("status"),
+            "worker_pid": liveness.get("pid"),
+            "worker_updated_at_ms": liveness.get("updated_at_ms"),
+            "max_age_ms": CHASE_MEMORY_PROBE_MAX_AGE_MS,
+        }
+
     memory = state.get("memory") if isinstance(state.get("memory"), dict) else None
     if memory is None or memory.get("status") == "absent":
         return {
@@ -1473,6 +1746,8 @@ def _probe_chase_memory(*, vehicle_id: str) -> dict[str, Any]:
             ),
             "probed_at_ms": probed_at_ms,
             "worker_memory": memory,
+            "worker_status": state.get("status"),
+            "worker_pid": liveness.get("pid"),
         }
 
     status_block = memory.get("status") if isinstance(memory.get("status"), dict) else memory
@@ -1498,6 +1773,153 @@ def _probe_chase_memory(*, vehicle_id: str) -> dict[str, Any]:
         "reset_count": status_block.get("reset_count"),
         "failure_count": status_block.get("failure_count"),
         "probed_at_ms": probed_at_ms,
+        "worker_status": state.get("status"),
+        "worker_pid": liveness.get("pid"),
+        "worker_updated_at_ms": liveness.get("updated_at_ms"),
+    }
+
+
+def assess_chase_memory_worker_liveness(
+    *,
+    state: dict[str, Any],
+    probed_at_ms: int,
+    max_age_ms: int = CHASE_MEMORY_PROBE_MAX_AGE_MS,
+    vehicle_id: str | None = None,
+    clock_skew_ms: int = CHASE_MEMORY_PROBE_CLOCK_SKEW_MS,
+) -> dict[str, Any]:
+    """Require a running automation process and a fresh state publication.
+
+    Stopped or stale workers must not be reported as live memory merely because
+    a previous state.json still contains a memory status block. A live PID must
+    also match the automation run identity for this vehicle; unavailable process
+    identity fails closed (unlike stop-path permissive matching).
+
+    ``updated_at_ms`` is the automation-wide state heartbeat refreshed by the
+    capture loop. It proves worker publication freshness, not that the memory
+    stage itself just completed an update.
+    """
+
+    run_status = str(state.get("status") or "")
+    pid = state.get("pid")
+    if not isinstance(pid, int):
+        pid = None
+    pid_alive = _pid_alive(pid) if isinstance(pid, int) else False
+    updated_at_ms = state.get("updated_at_ms")
+    try:
+        updated_at = int(updated_at_ms) if updated_at_ms is not None else None
+    except (TypeError, ValueError):
+        updated_at = None
+    age_ms = (probed_at_ms - updated_at) if updated_at is not None else None
+
+    if run_status not in {"running", "starting"}:
+        return {
+            "live": False,
+            "status": "stopped",
+            "error": (
+                f"Automation worker is not running (status={run_status or 'unknown'}). "
+                "Start observe-only automation before probing live memory."
+            ),
+            "pid": pid,
+            "updated_at_ms": updated_at,
+            "age_ms": age_ms,
+        }
+    if not pid_alive:
+        return {
+            "live": False,
+            "status": "stale",
+            "error": (
+                f"Automation worker PID {pid} is not running "
+                f"(state status={run_status}). Restart automation before probing live memory."
+            ),
+            "pid": pid,
+            "updated_at_ms": updated_at,
+            "age_ms": age_ms,
+        }
+    # Live memory requires verified automation identity — fail closed if unknown.
+    if vehicle_id is None or not str(vehicle_id).strip():
+        return {
+            "live": False,
+            "status": "stale",
+            "error": (
+                "vehicle_id is required to verify the automation worker identity "
+                "before trusting live memory."
+            ),
+            "pid": pid,
+            "updated_at_ms": updated_at,
+            "age_ms": age_ms,
+        }
+    vehicle_key = str(vehicle_id).strip()
+    if isinstance(pid, int):
+        command = _process_command(pid)
+        if command is None:
+            return {
+                "live": False,
+                "status": "stale",
+                "error": (
+                    f"Could not read process command for PID {pid}; "
+                    "cannot verify automation worker identity. "
+                    "Treating live memory as unavailable."
+                ),
+                "pid": pid,
+                "updated_at_ms": updated_at,
+                "age_ms": age_ms,
+            }
+        if not _automation_command_matches_vehicle(command, vehicle_key):
+            return {
+                "live": False,
+                "status": "stale",
+                "error": (
+                    f"PID {pid} is alive but is not the automation worker for "
+                    f"{vehicle_key!r} (possible PID reuse). Restart automation."
+                ),
+                "pid": pid,
+                "updated_at_ms": updated_at,
+                "age_ms": age_ms,
+            }
+    if updated_at is None:
+        return {
+            "live": False,
+            "status": "stale",
+            "error": (
+                "Automation state is missing updated_at_ms; cannot confirm a live publication."
+            ),
+            "pid": pid,
+            "updated_at_ms": None,
+            "age_ms": None,
+        }
+    # Future timestamps (beyond small clock skew) are not trustworthy freshness.
+    if age_ms is not None and age_ms < -int(clock_skew_ms):
+        return {
+            "live": False,
+            "status": "stale",
+            "error": (
+                f"Automation state updated_at_ms is in the future "
+                f"(age_ms={age_ms}, skew_tolerance_ms={int(clock_skew_ms)}). "
+                "Rejecting as invalid publication time."
+            ),
+            "pid": pid,
+            "updated_at_ms": updated_at,
+            "age_ms": age_ms,
+        }
+    if age_ms is not None and age_ms > int(max_age_ms):
+        return {
+            "live": False,
+            "status": "stale",
+            "error": (
+                f"Automation state is stale (age_ms={age_ms}, max_age_ms={int(max_age_ms)}). "
+                "Worker may be hung; restart automation for a fresh memory publication."
+            ),
+            "pid": pid,
+            "updated_at_ms": updated_at,
+            "age_ms": age_ms,
+        }
+    return {
+        "live": True,
+        "status": "live",
+        "error": None,
+        "pid": pid,
+        "updated_at_ms": updated_at,
+        "age_ms": max(0, age_ms) if age_ms is not None else None,
     }
 
 

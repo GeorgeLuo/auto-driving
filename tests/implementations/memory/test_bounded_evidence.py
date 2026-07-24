@@ -344,6 +344,23 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
         ids = {record.record_id for record in snapshot.records}
         self.assertEqual(ids, {absent, literal_unknown})
 
+    def test_long_sequence_stays_within_record_capacity(self) -> None:
+        ledger = BoundedEvidenceLedger(max_records=8, max_age_ms=10_000)
+        for index in range(64):
+            snapshot = ledger.update(
+                DecisionFrameContext(f"frame_{index}", index, 1_000 + index * 10),
+                _observation(
+                    f"obs_{index}",
+                    created_at_ms=990 + index * 10,
+                    things=(_thing(f"item_{index % 20}"),),
+                ),
+            )
+            self.assertLessEqual(snapshot.record_count, 8)
+        final = ledger.snapshot()
+        self.assertEqual(final.record_count, 8)
+        self.assertEqual(final.health, "healthy")
+        self.assertEqual(final.bounds.max_records, 8)
+
     def test_non_json_property_values_are_not_retained(self) -> None:
         ledger = BoundedEvidenceLedger(max_records=8, max_age_ms=5_000)
         bad = _thing("opaque")

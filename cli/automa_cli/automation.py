@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import queue
+import shlex
 import signal
 import shutil
 import subprocess
@@ -1842,11 +1843,51 @@ def _pid_alive(pid: int) -> bool:
 
 
 def _pid_matches_automation(pid: int, vehicle_id: str) -> bool:
+    """Return whether *pid* looks like this vehicle's automation worker.
+
+    When the process command cannot be read, returns True (stop path stays
+    permissive). Callers that must fail closed should read the command first
+    and use :func:`_automation_command_matches_vehicle` directly.
+    """
+
     command = _process_command(pid)
     if command is None:
         return True
-    required_parts = ("automa", "vehicles", "automation", "run", vehicle_id)
-    return all(part in command for part in required_parts)
+    return _automation_command_matches_vehicle(command, vehicle_id)
+
+
+def _automation_command_matches_vehicle(command: str, vehicle_id: str) -> bool:
+    """Pure check: command is an automation run for exactly *vehicle_id*.
+
+    Requires the contiguous launcher subcommand ``vehicles automation run`` and
+    an exact ``--id <vehicle_id>`` argument pair (token equality, not substring).
+    """
+
+    if not vehicle_id or not str(vehicle_id).strip():
+        return False
+    vehicle_key = str(vehicle_id).strip()
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        return False
+    if not tokens:
+        return False
+    # Contiguous launcher subcommand as emitted by start_automation.
+    matched_run = False
+    for index in range(len(tokens) - 2):
+        if tokens[index : index + 3] == ["vehicles", "automation", "run"]:
+            matched_run = True
+            break
+    if not matched_run:
+        return False
+    for index, token in enumerate(tokens):
+        if token == "--id":
+            if index + 1 < len(tokens) and tokens[index + 1] == vehicle_key:
+                return True
+        elif token.startswith("--id="):
+            if token[len("--id=") :] == vehicle_key:
+                return True
+    return False
 
 
 def _process_command(pid: int) -> str | None:

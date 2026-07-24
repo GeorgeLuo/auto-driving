@@ -749,12 +749,24 @@ class MemoryCheckTests(unittest.TestCase):
                 ],
             ),
         ]
+        # After collection, max-age wait polls load_latest until lifecycle keys leave.
+        expired_frame = chase_frame(
+            20,
+            [
+                {
+                    "record_id": "thing:front_camera_frame",
+                    "provenance": {"frame_id": "chase_frame_000020"},
+                }
+            ],
+        )
         cursor = {"n": 0}
 
         def load_latest() -> dict:
-            idx = min(cursor["n"], len(frames) - 1)
+            idx = cursor["n"]
             cursor["n"] += 1
-            return frames[idx]
+            if idx < len(frames):
+                return frames[idx]
+            return expired_frame
 
         probe_calls = {"n": 0}
 
@@ -817,6 +829,7 @@ class MemoryCheckTests(unittest.TestCase):
                 probe_fn=probe,
                 reset_fn=reset,
                 fresh_timeout_s=1.0,
+                expiry_timeout_s=1.0,
                 output_root=output_root,
             )
         self.assertEqual(result.exit_code, 0, result.message)
@@ -833,6 +846,7 @@ class MemoryCheckTests(unittest.TestCase):
         self.assertIn("memory_provenance", phases)
         self.assertIn("observe_only", phases)
         self.assertIn("shadow_isolation", phases)
+        self.assertIn("max_age_expiry", phases)
         self.assertIn("reset", phases)
         self.assertTrue(all(item["passed"] for item in payload["phase_results"]))
         self.assertEqual(payload["safety"]["control_source"], "simulator")
@@ -844,6 +858,12 @@ class MemoryCheckTests(unittest.TestCase):
         )
         self.assertEqual(provenance["score"]["retained_prior_matches"], 1)
         self.assertEqual(provenance["score"]["current_frame_matches"], 2)
+        expiry = next(
+            item for item in payload["phase_results"] if item["phase"] == "max_age_expiry"
+        )
+        self.assertEqual(expiry["score"]["lifecycle_keys"], ["thing:obstacle_000"])
+        self.assertFalse(expiry["score"]["reset_used"])
+        self.assertNotIn("thing:obstacle_000", expiry["score"]["record_ids"])
         self.assertTrue(
             all(row["source_frame_present_in_sequence"] for row in payload["provenance_rows"])
         )
@@ -863,6 +883,211 @@ class MemoryCheckTests(unittest.TestCase):
         self.assertIn('<img src="frames/chase_frame_000011.png"', extract)
         self.assertIn("<code>chase_frame_000010</code> keys=1 health=healthy", extract)
         self.assertNotIn("Source observation not found", extract)
+
+    def test_chase_lifecycle_keys_exclude_always_on_and_require_retained_prior(self) -> None:
+        from cli.automa_cli.memory_check import extract_chase_lifecycle_keys
+
+        frames = [
+            {
+                "frame_id": "chase_frame_000010",
+                "simulator_frame_index": 10,
+                "memory": {
+                    "records": [
+                        {
+                            "record_id": "thing:front_camera_frame",
+                            "provenance": {"frame_id": "chase_frame_000010"},
+                        },
+                        {
+                            "record_id": "thing:obstacle_000",
+                            "provenance": {"frame_id": "chase_frame_000010"},
+                        },
+                    ]
+                },
+            },
+            {
+                "frame_id": "chase_frame_000011",
+                "simulator_frame_index": 11,
+                "memory": {
+                    "records": [
+                        {
+                            "record_id": "thing:obstacle_000",
+                            "provenance": {"frame_id": "chase_frame_000010"},
+                        },
+                        {
+                            "record_id": "thing:front_camera_frame",
+                            "provenance": {"frame_id": "chase_frame_000011"},
+                        },
+                        {
+                            "record_id": "thing:traversable_floor",
+                            "provenance": {"frame_id": "chase_frame_000010"},
+                        },
+                    ]
+                },
+            },
+        ]
+        keys = extract_chase_lifecycle_keys(frames)
+        self.assertEqual(keys, {"thing:obstacle_000"})
+
+    def test_chase_max_age_score_rejects_reset_and_remaining_keys(self) -> None:
+        from cli.automa_cli.memory_check import score_chase_max_age_expiry
+
+        gone = score_chase_max_age_expiry(
+            lifecycle_keys={"thing:obstacle_000"},
+            final_memory={
+                "health": "healthy",
+                "records": [
+                    {"record_id": "thing:front_camera_frame"},
+                ],
+            },
+            control_zero=True,
+            reset_used=False,
+        )
+        self.assertTrue(gone["passed"])
+
+        still = score_chase_max_age_expiry(
+            lifecycle_keys={"thing:obstacle_000"},
+            final_memory={
+                "health": "healthy",
+                "records": [{"record_id": "thing:obstacle_000"}],
+            },
+            control_zero=True,
+            reset_used=False,
+        )
+        self.assertFalse(still["passed"])
+        self.assertIn("still present", still["reason"])
+
+        reset_used = score_chase_max_age_expiry(
+            lifecycle_keys={"thing:obstacle_000"},
+            final_memory={"health": "empty", "records": []},
+            control_zero=True,
+            reset_used=True,
+        )
+        self.assertFalse(reset_used["passed"])
+        self.assertIn("reset", reset_used["reason"])
+
+    def test_chase_max_age_expiry_timeout_is_fail_closed(self) -> None:
+        vehicle = {
+            "vehicle_id": "chase-sim-chaser",
+            "provider": "chase-sim",
+            "connection": {"ws_url": "ws://chase.test/ws"},
+        }
+
+        def chase_frame(index: int, records: list[dict]) -> dict:
+            return {
+                "frame_id": f"chase_frame_{index:06d}",
+                "frame_index": index,
+                "simulator_frame_index": index,
+                "simulation_epoch": "chase-run:test",
+                "control_source": "simulator",
+                "control_application": "not_applied",
+                "action_policy": "observe_only",
+                "control": {
+                    "applied": False,
+                    "reason": "idle",
+                    "steering": 0.0,
+                    "throttle": 0.0,
+                },
+                "shadow_reference": {
+                    "schema": "chase_shadow_reference_v1",
+                    "evaluator_only": True,
+                    "simulator_frame_index": index,
+                    "simulation_epoch": "chase-run:test",
+                    "game_id": "chase",
+                    "scenario": "chaser-depth-obstacles",
+                    "chaser_control_source": "programmatic",
+                },
+                "observation": {
+                    "observation_id": f"obs-{index}",
+                    "things": [{"thing_id": "front_camera_frame"}],
+                    "signals": [],
+                    "sensor_snapshot": {
+                        "metadata": {
+                            "simulator_frame_index": index,
+                            "simulation_epoch": "chase-run:test",
+                        }
+                    },
+                },
+                "memory": {
+                    "health": "healthy" if records else "empty",
+                    "record_count": len(records),
+                    "records": records,
+                },
+            }
+
+        frames = [
+            chase_frame(9, []),
+            chase_frame(
+                10,
+                [
+                    {
+                        "record_id": "thing:obstacle_000",
+                        "provenance": {"frame_id": "chase_frame_000010"},
+                    }
+                ],
+            ),
+            chase_frame(
+                11,
+                [
+                    {
+                        "record_id": "thing:obstacle_000",
+                        "provenance": {"frame_id": "chase_frame_000010"},
+                    }
+                ],
+            ),
+        ]
+        cursor = {"n": 0}
+
+        def load_latest() -> dict:
+            # Never drop the lifecycle key → max-age wait must fail closed.
+            idx = min(cursor["n"], len(frames) - 1)
+            cursor["n"] += 1
+            return frames[idx]
+
+        probe_calls = {"n": 0}
+
+        def probe() -> dict:
+            probe_calls["n"] += 1
+            return {
+                "status": "live",
+                "last_health": "healthy",
+                "last_record_count": 1,
+                "last_epoch_id": "memory-epoch-1",
+                "reset_count": 1,
+                "bounds": {"max_age_ms": 1000},
+                "implementation_id": "bounded_evidence",
+            }
+
+        def reset() -> dict:
+            return {
+                "ok": True,
+                "status": "reset",
+                "snapshot": {
+                    "health": "empty",
+                    "record_count": 0,
+                    "records": [],
+                    "epoch_id": "memory-epoch-2",
+                },
+            }
+
+        with mock.patch(
+            "cli.automa_cli.memory_check.discover_active_vehicles",
+            return_value={"vehicles": [vehicle]},
+        ), mock.patch(
+            "cli.automa_cli.memory_check.find_vehicle_by_id",
+            return_value=(vehicle, None),
+        ):
+            result = run_vehicle_memory_check(
+                vehicle_id="chase-sim-chaser",
+                json_output=True,
+                load_latest_frame=load_latest,
+                probe_fn=probe,
+                reset_fn=reset,
+                fresh_timeout_s=1.0,
+                expiry_timeout_s=0.6,
+            )
+        self.assertEqual(result.exit_code, 2, result.message)
+        self.assertIn("max_age_expiry", result.message)
+        self.assertIn("did not drop", result.message)
 
     def test_chase_observe_only_rejects_external_ws_authority(self) -> None:
         from cli.automa_cli.memory_check import score_chase_observe_only

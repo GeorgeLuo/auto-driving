@@ -1,109 +1,188 @@
-# Milestone Planning Contract
+# Milestone Planning And Delivery Contract
 
-This file defines the planning and delivery format for every active and future
-milestone. Individual milestone plans contain their own goals, evidence, work,
-and decisions; they should link here instead of restating these general rules.
+This file is the canonical planning and pull-request delivery contract for the
+repository. Individual milestone plans contain their own objectives, usage,
+status, and decisions. They link here instead of restating these rules.
+
 Closed milestone plans are frozen historical records and are not required to be
-retrofitted.
+retrofitted to this format.
 
-## Planning Model
+## Goals
 
-A milestone has a stable objective and exit criteria, but not a fixed schedule
-of pull requests. Keep the next review unit concrete and let evidence from each
-merge determine the next one. This prevents early implementation assumptions
-from becoming commitments while still making the direction and stopping
-conditions explicit.
+Separate:
 
-Separate the **milestone** from the **frontier**:
+1. feature-level milestone outcomes;
+2. planning priority (frontier);
+3. review-sized PR deliverables (review units);
+4. implementation tasks inside a review unit;
+5. external evidence units;
+6. milestone closeout;
+7. Git branches.
 
-- **Milestone:** the stable objective, completion usage, and exit criteria that
-  define success for the whole effort.
-- **Frontier:** the next slice of that objective that can carry a real contract
-  *now*—a singular review question, and when the claim is universal, an
-  invariant-closure statement—and still fit one human review pass.
+Minimize manual synchronization after a merge. A normal accepted review unit
+should require only a handful of milestone-plan edits:
 
-The plan must distinguish:
+1. add one accepted-review-unit ledger row;
+2. update affected exit criteria;
+3. update unresolved risks;
+4. promote the next frontier;
+5. select at most one new next-frontier candidate.
 
-- **Observed state:** verified repository behavior, measurements, and gaps.
-- **Current delivery (frontier under review):** implemented or actively changing
-  work with one review question.
-- **Queued delivery (next frontier candidate):** the one likely next review unit,
-  defined but not started.
-- **Preparation horizon:** ordered needs that remain provisional until promoted;
-  not a schedule of named subdivisions.
-- **Completion usage:** the small, stable set of new human workflows the
-  completed milestone must make possible.
-- **Exit criteria:** fixed milestone outcomes that do not depend on a particular
-  implementation path.
+Do not preserve redundant sections merely because they already exist.
 
-### Completion Usage Contract
+## Work-Unit Model
 
-Every active milestone enumerates the straightforward usage that should be
-possible after closeout. Describe each workflow from the user's perspective:
-the starting context, a proposed command, API, or UI execution path, and the
-observable result that tells them it worked. The proposal must be concrete
-enough for a reviewer to understand how the completed behavior will be run,
-while remaining free of internal implementation steps. Clearly label commands
-or interfaces that do not exist yet as proposed rather than observed behavior.
+### Milestone
 
-The workflow set is part of milestone scope and should not drift casually.
-Adding or removing a workflow requires an explicit scope decision in the plan's
-decision log. Exact command spelling, flags, schemas, limits, and presentation
-may evolve during implementation as long as the original usage remains apparent
-and executable. Update the proposal when those details settle. Every completion
-workflow must be supported by exit criteria and closeout evidence; otherwise it
-is aspiration rather than delivered usage.
+A **milestone** is a feature-level user or operator outcome.
 
-Each completion workflow records:
+It defines:
 
-- **Starting state:** what must already be available or selected.
-- **Proposed execution:** the shortest expected human path through the public
-  interface.
-- **Success signal:** the concise output or state change that proves it worked.
-- **Automation path, when needed:** structured output suitable for tests without
-  making machine-oriented flags the default human experience.
+- a stable objective;
+- observable completion usage;
+- fixed exit criteria;
+- milestone-level scope boundaries;
+- safety or operating constraints;
+- final external proof where required;
+- residual-risk and closeout expectations.
 
-## Common Plan Format
+A milestone is **not** a predetermined sequence of pull requests.
 
-Each active milestone uses a standalone `plan.html` with the same high-level
-shape as the [milestone 003 plan](003-test-architecture-and-operator-contracts/plan.html).
-Keep it portable, readable without a server, responsive on narrow screens, and
-free of external assets.
+A milestone answers:
 
-Use these sections in this order unless a section is genuinely irrelevant:
+> What new thing can a user or operator reliably do after this work is complete?
 
-1. **Header:** milestone number, literal title, objective summary, status,
-   start date, important operating constraints, and delivery model.
-2. **High-Level Objective:** a small set of outcome cards and a concise statement
-   of what success means.
-3. **Completion Usage:** an implementation-agnostic enumeration of the new
-   workflows a human can run after closeout, proposed public execution paths,
-   and the result each workflow exposes.
-4. **Baseline:** observed status, evidence, and remaining gap for each major area.
-5. **Current Delivery Horizon:** current PR, next-after-review candidate,
-   preparation horizon, and current delivery state.
-6. **Milestone-Specific Contracts:** architecture, interfaces, output policies,
-   target structures, or other rules needed to evaluate this milestone.
-7. **Work Plan:** expandable work packages with `pending`, `active`, `blocked`,
-   or `done` status and an accurate aggregate progress indicator.
-8. **Scope Boundaries:** explicit in-scope and out-of-scope work.
-9. **Risks And Controls:** likely failure modes paired with concrete controls.
-10. **Exit Criteria:** observable conditions required before closeout.
-11. **Decision Log:** dated decisions and reasons, including assumptions that
-    changed during implementation.
+### Frontier
 
-Plans should support quick scanning. Use status pills, compact tables, cards for
-distinct concepts, and expandable work packages when they improve navigation.
-Do not add interactive elements that merely decorate the page. Plan text should
-describe outcomes, evidence, and decisions rather than narrating every code edit.
+The **frontier** is a planning position, not a branch or task.
 
-### Shared Contract Visibility
+It identifies the next milestone claim ready for active attention.
 
-Every active plan embeds the rendered version of this contract in a collapsed,
-expandable section. The canonical content remains this Markdown file; do not
-copy its rules into individual plans or edit `planning-contract.html` directly.
+The plan may contain:
 
-Refresh the generated rendering after changing this file:
+- exactly one **current frontier**;
+- at most one **next-frontier candidate**;
+- a **preparation horizon** for later provisional needs.
+
+The frontier determines priority and readiness. It is not a detailed speculative
+roadmap.
+
+Promote work to the frontier only when it is:
+
+1. **contractable now** through one review question; and
+2. **reviewable in one careful human pass**.
+
+Human review attention is the throughput limit. Prefer fewer sequential units
+that close a contractable edge over many named subdivisions that multiply
+handoffs.
+
+### Review Unit
+
+A **review unit** is one complete pull-request deliverable.
+
+It implements or proves one frontier claim and answers **one primary review
+question**.
+
+A review unit may be:
+
+- deterministic invariant closure;
+- a behavioral feature slice;
+- a broad mechanical rollout;
+- live or external evidence;
+- a migration;
+- a review repair;
+- milestone closeout.
+
+Do not call all review units “features.” Use the generic term **review unit**.
+
+### Task
+
+A **task** is a concrete implementation action inside a review unit.
+
+Tasks normally do **not** receive separate branches or PRs. Group tasks only
+when they support the same review question and acceptance boundary.
+
+### Evidence Unit
+
+When the review question changes from implementation correctness to real-system
+proof, create a separate **evidence** review unit.
+
+Examples: guided simulator validation, physical-device validation, benchmark,
+operator acceptance procedure, tracked provenance artifact.
+
+Do not combine deep deterministic contract review and substantial live-system
+proof merely because they support the same milestone.
+
+### Repair Cycle
+
+A review finding remains in the existing PR when it still challenges that PR’s
+stated contract.
+
+A repair response should identify:
+
+- root cause;
+- owning enforcement boundary changed;
+- adjacent paths audited;
+- regression coverage added;
+- assumptions still unverified.
+
+Create a separate repair review unit only when a distinct PR is genuinely
+necessary.
+
+### Closeout
+
+**Milestone closeout** is a separate review unit asking:
+
+> Is the milestone complete as a whole?
+
+It evaluates completion usage, every exit criterion, cumulative implementation,
+external evidence, durable documentation, unresolved risks, and whether the next
+milestone or pre-plan should be activated.
+
+Closeout must not conceal unfinished implementation or validation.
+
+## Information Ownership
+
+| Information | Canonical location |
+| --- | --- |
+| Milestone objective | Milestone plan |
+| Completion usage | Milestone plan |
+| Exit criteria and status | Milestone plan |
+| Current and next frontier | Milestone plan |
+| Detailed invariant and adversarial matrix | Review-unit PR |
+| File impact and exact validation commands | Review-unit PR |
+| Review findings and repair history | Review-unit PR |
+| Accepted result of a merged PR | One-row plan ledger |
+| Current architecture behavior | `docs/reference/` |
+| Repository navigation | `docs/README.md` |
+| Final milestone judgment | `closeout.md` |
+| Future research without commitment | `docs/synthesis/` |
+
+Do not copy complete PR descriptions into milestone plans.
+
+Do not copy architecture facts into milestone plans when they belong in durable
+reference documentation.
+
+Do not make `docs/README.md` a second source of detailed milestone status.
+
+## Milestone Layout
+
+Prefer:
+
+```text
+docs/milestones/<number>-<slug>/
+├── plan.md          # canonical plan (active milestones)
+├── plan.html        # generated; do not edit directly
+├── closeout.md      # created at closeout
+└── evidence/
+```
+
+`plan.md` is canonical for active milestones. `plan.html` is generated from it.
+
+The shared contract lives in this file (`docs/milestones/README.md`). Its
+browser rendering is `planning-contract.html`.
+
+Refresh generated HTML after contract or plan Markdown changes:
 
 ```sh
 python3 -m pip install -r docs/requirements.txt
@@ -111,350 +190,333 @@ python3 docs/render_markdown.py
 python3 docs/render_markdown.py --check
 ```
 
-The deterministic test suite verifies that the rendering identifies the current
-Markdown source and that the active milestone embeds it. This keeps the rules
-visible during planning without making every plan a second source of truth.
+Closed historical plans may remain hand-authored `plan.html` files and are not
+required to gain a `plan.md`.
 
-## Pull Request Delivery Contract
+## Git Branch Model
 
-Every pull request is one complete, reviewable deliverable. Review size is a
-logical-complexity budget, not a line-count target. The scarce resource is
-**human review attention** in the loop: a unit that cannot be reviewed carefully
-in one pass is too large, even if the code is locally tidy.
-
-### Attention Budget
-
-Size each review unit so one human can hold the full review context—question,
-owners, matrix or evidence kind, and validation—without thrashing across
-unrelated claims. Prefer fewer sequential units that close a contractable edge
-over many named subdivisions that multiply handoffs. Throughput is limited by
-review and re-review attention, not by how finely packages can be labeled.
-
-### Deep And Narrow
-
-Introduce or settle one policy, abstraction, or behavioral contract in a small
-number of owning files. The reviewer should be able to reason deeply about one
-question without also auditing a repository-wide rollout.
-
-### Broad And Mechanical
-
-Apply an already-reviewed pattern across many files. These changes may be large
-by file count, but must avoid new behavior, new abstractions, and unrelated
-cleanup.
-
-### Review Context Over Labels
-
-Divisions matter as **how the work is reviewed**, not as a growing path of
-package sub-IDs. Prefer the rolling vocabulary—current frontier, next frontier
-candidate, preparation horizon—over proliferating labels such as long
-`5C-a` / `5C-b` / `5C-harness` chains unless a second unit is truly required.
-
-When a split is necessary, name the **review kind** that changes the contract:
-
-- deterministic class closure (invariant, owner, matrix, tests);
-- live or external evidence (guided procedure, artifact, assumptions);
-- milestone closeout judgment (exit criteria, residual risk, promote-or-not).
-
-Do not invent subdivisions merely to make remaining work look smaller. A split
-is justified only when the primary review question, evidence type, or attention
-budget no longer fits one pass.
-
-Every PR description identifies:
-
-- one explicit review question;
-- the review shape and any files requiring deeper attention;
-- a concise file-impact list grouped as `Create`, `Modify`, and `Remove` where
-  applicable;
-- dependencies and explicit non-goals;
-- validation performed and its result; and
-- user, operator, or developer impact.
-
-List file impacts at ownership granularity with one purpose per path. The list
-should make the shape of the change inspectable before implementation without
-becoming a line-by-line design. Reconcile meaningful deviations in the final PR
-description.
-
-### Invariant Closure And Review Readiness
-
-Treat words such as `bounded`, `detached`, `deterministic`, `exact`,
-`fail-closed`, `fresh`, and `no movement` as universal guarantees, not
-positive-path examples. For a PR that introduces or changes such a guarantee,
-record a compact invariant-closure statement in the current delivery entry and
-PR description:
-
-- **Invariant:** the externally observable guarantee, stated without its
-  implementation.
-- **Enforcement owner:** the single boundary or shared helper responsible for
-  enforcing it.
-- **Affected paths:** the applicable success, update, reset, snapshot, error,
-  storage, return, serialization, and publication paths.
-- **Adversarial matrix:** relevant below-boundary, exact-boundary,
-  above-boundary, missing, malformed, stale, conflicting, and repeated inputs.
-- **External assumptions:** behavior that requires simulator, physical device,
-  filesystem, clock, process, or remote-API evidence.
-- **Unverified limits:** remaining uncertainty that the PR does not claim to
-  close.
-
-Apply this proportionately. A broad mechanical PR may reference the invariant
-and evidence already accepted in its pattern-setting PR instead of rebuilding
-the matrix. A deep-and-narrow behavioral PR should keep the matrix small enough
-to inspect as part of its one review question.
-
-Before requesting review, the implementer must:
-
-1. Test the failure class and adjacent paths, not only the first known
-   reproduction.
-2. Enforce the guarantee at its owning boundary instead of accumulating local
-   guards in callers.
-3. Validate the final externally visible value after all normalization,
-   wrapping, storage, and serialization.
-4. Prove cross-system assumptions against the relevant live system before
-   presenting them as observed behavior.
-5. Perform one fresh adversarial pass after a review repair before requesting
-   re-review.
-
-Review findings should name the violated invariant and the class of bypass, with
-a concrete reproduction as evidence. A repair response records the root cause,
-the owning enforcement point changed, adjacent paths audited, regression
-coverage added, and assumptions that remain unverified. Keep a later finding in
-the same PR when it still violates the stated invariant; route unrelated
-discoveries into the rolling horizon rather than silently expanding scope.
-
-One review-and-repair cycle is normal. After two repair cycles for the same
-invariant, stop adding case-specific checks and reassess the abstraction,
-enforcement location, and PR scope before continuing.
-
-Every PR leaves the repository in a complete state. Do not define a pattern and
-roll it out broadly in the same PR. Land the pattern first, merge each deliverable
-before branching the next by default, and split work when the primary review
-question stops being singular.
-
-## Milestone Git Isolation
-
-Use one integration branch per active milestone so the complete milestone can
-be reviewed as one cumulative change without making its individual PRs too
-large. The branch topology is:
+Use one integration branch per active milestone.
 
 ```text
 main
-└── milestone/006-decision-facing-perception
-    ├── m006/01-contract
-    ├── m006/02-first-implementation
-    └── m006/03-validation
+└── milestone/<number>-<slug>
+    ├── m<number>/<review-unit>-<slug>
+    ├── m<number>/<review-unit>-<slug>
+    └── m<number>/closeout
 ```
 
-The branch roles are fixed:
+### `main`
 
-- **`main`:** completed milestones and explicitly approved maintenance only.
-- **`milestone/<number>-<slug>`:** all accepted changes for one active
-  milestone, including its plan, evidence, and closeout.
-- **`m<number>/<review-unit>-<slug>`:** one review-sized deliverable targeting
-  the milestone branch, never `main`.
+Completed milestones and explicitly approved maintenance only.
 
-Do not mix two milestones on one integration branch. Do not merge a milestone
-work-block PR directly into `main`. A review repair branches from the milestone
-branch and targets that same milestone branch, so the cumulative milestone PR
-updates automatically.
+### `milestone/<number>-<slug>`
 
-### Start A Milestone
+All accepted work for one active milestone: accepted review units, plan updates,
+evidence, reference updates, and closeout.
 
-Start from current remote `main`, create the integration branch, and make the
-plan bootstrap its first commit:
+Open one long-lived **draft cumulative PR** from the milestone branch to `main`.
 
-```sh
-git switch main
-git pull --ff-only
-git switch -c milestone/006-decision-facing-perception
-git push -u origin milestone/006-decision-facing-perception
+### `m<number>/<review-unit>-<slug>`
+
+One review-sized deliverable.
+
+Every review-unit branch:
+
+- starts from the updated milestone branch;
+- **targets the milestone branch**, never `main` directly;
+- contains one primary review question;
+- leaves the milestone branch coherent after merge.
+
+Prefer squash-merging review-unit PRs into the milestone branch. Merge the final
+cumulative milestone PR into `main` with a **merge commit** so accepted review
+units remain visible.
+
+Do not begin the next implementation branch before the current review unit
+merges unless the milestone decision log records a narrow parallel exception.
+
+If approved maintenance reaches `main` during an active milestone, merge updated
+`main` into the milestone branch before starting another review unit. Do not
+rebase or force-push a published milestone branch.
+
+### Historical deviation note
+
+Earlier 005 work often targeted `main` directly. New review units for active
+milestones must use the milestone-branch topology above. Document any temporary
+exception in the milestone decision log.
+
+## Compact Milestone Plan Structure
+
+Active plans use these sections only.
+
+### 1. Header
+
+| Field | Value |
+| --- | --- |
+| Status | Active / pre-plan / closed |
+| Milestone branch | `milestone/<number>-<slug>` |
+| Cumulative PR | `#…` or `TBD` |
+| Current frontier | short name — PR `#…` |
+| Started | YYYY-MM-DD |
+| Action policy | e.g. Idle / no movement |
+
+### 2. Objective
+
+One concise paragraph: what becomes possible, not how it is implemented.
+
+### 3. Completion Usage
+
+Stable human workflows after closeout:
+
+| Workflow | Starting state | Execution | Success signal | Criteria |
+| --- | --- | --- | --- | --- |
+
+### 4. Scope Boundaries
+
+One concise in-scope / out-of-scope table. Review-unit non-goals live in the PR.
+
+### 5. Exit Criteria
+
+Authoritative completion table:
+
+| ID | Criterion | Status | Evidence / remaining gap |
+| --- | --- | --- | --- |
+
+Allowed statuses: `Unmet`, `Partial`, `Met`, `Blocked`.
+
+Do **not** maintain separate remaining-for-closeout, remediation-order, package
+progress, or completion-percentage sections. Those must be derivable from this
+table.
+
+### 6. Current Delivery
+
+Exactly one current frontier and at most one next-frontier candidate.
+
+**Current frontier** records: name, PR, branch, review kind, one review
+question, affected exit criteria, prerequisite, concise milestone-level
+non-goal. Link to the PR. Do **not** paste the PR matrix or file impact here.
+
+**Next-frontier candidate** records: name, expected review kind, one likely
+question, prerequisite, concise non-goal. Not started; scope may change.
+
+### 7. Accepted Review Units
+
+Append-only one-row-per-merged-PR ledger:
+
+| PR | Accepted review question | Result | Exit criteria | Durable evidence |
+| --- | --- | --- | --- | --- |
+
+### 8. Open Risks And Unverified Assumptions
+
+Only unresolved items that affect milestone acceptance or frontier selection.
+Remove resolved rows.
+
+### 9. Milestone Decisions
+
+Only decisions that change objective, usage, scope, exit criteria, review-unit
+boundaries, external assumptions, or activation/closeout policy.
+
+### 10. Closeout
+
+While active, keep minimal: blocked until every exit criterion is `Met`; list
+closeout outputs. Write substantive closeout only when closeout is the current
+review unit.
+
+## Pull Request Delivery
+
+### Attention Budget
+
+Review size is a logical-complexity and human-attention budget, not a line-count
+limit. A unit that cannot be reviewed carefully in one pass is too large.
+
+### Singular Review Question Rule
+
+A review question must represent one independently acceptable claim.
+
+**Split** when:
+
+- the question requires “and” to connect independently acceptable guarantees;
+- it contains multiple primary enforcement boundaries;
+- deterministic implementation and substantial live proof both require deep review;
+- the reviewer must alternate between unrelated subsystems;
+- one half could be accepted while the other remains false;
+- repairs reveal the original abstraction cannot close the claimed class;
+- closeout judgment is mixed with unfinished implementation.
+
+**Do not split** merely because the diff is large, several files participate in
+one contract, one invariant needs coordinated tasks, or a repair adds adjacent
+paths and tests.
+
+### Review Kinds
+
+| Kind | Focus |
+| --- | --- |
+| Deterministic invariant closure | Universal guarantee, owner, bypasses, boundaries, final external values |
+| Behavioral feature slice | User path, success/failure, contract compatibility |
+| Broad mechanical rollout | Faithful application of an accepted pattern; link pattern PR |
+| Live or external evidence | Procedure, artifacts, assumptions, non-claims; CI alone is insufficient |
+| Review repair | Separate PR only when needed; root cause, owner, adjacent paths, regressions |
+| Milestone closeout | Whole-milestone acceptance judgment |
+
+### Review-Unit PR States
+
+| State | Meaning |
+| --- | --- |
+| Draft | Question still changing, required behavior missing, validation incomplete, or adversarial pass incomplete |
+| Ready for review | Singular stable question, complete for scope, validation recorded, limitations explicit, description matches diff |
+| Changes requested | Stated question cannot yet be answered affirmatively |
+| Approved | Reviewer accepts that this PR answers its stated question within its scope, assumptions, and non-goals |
+
+Approval does **not** mean the milestone is complete, every improvement belongs
+in this PR, the next frontier is automatically approved, or external
+assumptions are proven.
+
+### Review-Unit PR Template
+
+Use `.github/pull_request_template.md` (required headings):
+
+- Milestone context
+- Review kind
+- Review question
+- User or operator impact
+- Deliverable
+- Invariant or acceptance contract
+- Enforcement or acceptance owner
+- Affected paths
+- Adversarial matrix
+- External assumptions
+- Unverified limits
+- Scope (in / out)
+- File impact
+- Validation
+- Review notes
+
+Detailed matrices and file impacts belong **only** in the PR, not the milestone plan.
+
+### Invariant Closure (When Claiming Universals)
+
+Words such as `bounded`, `detached`, `deterministic`, `exact`, `fail-closed`,
+`fresh`, and `no movement` are universal guarantees, not positive-path
+examples. Record invariant, owner, affected paths, adversarial matrix, external
+assumptions, and unverified limits in the PR.
+
+Before requesting review:
+
+1. Test the failure class and adjacent paths, not only the first reproduction.
+2. Enforce at the owning boundary.
+3. Validate the final externally visible value after normalize/store/serialize.
+4. Prove cross-system assumptions against the relevant live system before
+   presenting them as observed.
+5. Perform one fresh adversarial pass after a repair before re-review.
+
+### Review Finding Format
+
+```markdown
+[P1] <Concise finding title>
+
+**Violated contract**
+<Invariant or acceptance condition that does not hold.>
+
+**Bypass or failure class**
+<How the implementation escapes the owning boundary.>
+
+**Reproduction**
+<Concrete input, state, command, or test.>
+
+**Why this belongs in the current PR**
+<Why it challenges the stated review question.>
+
+**Required outcome**
+<Observable result required for acceptance.>
 ```
 
-After the plan commit is pushed, open a **draft** cumulative PR from the
-milestone branch to `main`. Keep it open for the milestone's lifetime. Its diff
-is the authoritative whole-milestone review surface; its description links the
-plan, current exit-criteria status, and accepted work-block PRs.
+Severities: `P0` unsafe/destructive; `P1` stated question materially false;
+`P2` meaningful adjacent gap (normally fix before merge); `P3` nonblocking.
 
-```sh
-gh pr create \
-  --draft \
-  --base main \
-  --head milestone/006-decision-facing-perception \
-  --title "Milestone 006: Decision-Facing Perception"
+### Author Repair Response
+
+```markdown
+## Review Repair Summary
+
+Revision: `<commit>`
+
+### Finding 1 — <title>
+
+- Root cause:
+- Owning boundary changed:
+- Adjacent paths audited:
+- Regression coverage:
+- Remaining assumption:
+
+## Validation
+
+<commands and results>
+
+## Fresh Adversarial Pass
+
+<Additional cases checked after repair>
 ```
 
-### Deliver A Review Unit
+One review-and-repair cycle is normal. After two substantial repair cycles for
+the same invariant, reconsider abstraction, enforcement location, PR scope, and
+whether the question is singular.
 
-Branch each review unit from the updated milestone branch:
+### Cumulative Milestone PR
 
-```sh
-git switch milestone/006-decision-facing-perception
-git pull --ff-only
-git switch -c m006/01-contract
-```
+Use `.github/PULL_REQUEST_TEMPLATE/milestone.md`. Keep it compact: objective,
+link to completion usage and exit criteria, list of accepted review units,
+status, unresolved risks, final validation at closeout. Do not paste every
+child PR matrix.
 
-Push it and open its PR against the milestone branch:
+## Merge And Promotion Procedure
 
-```sh
-git push -u origin m006/01-contract
-gh pr create \
-  --base milestone/006-decision-facing-perception \
-  --head m006/01-contract
-```
+After a review-unit PR is accepted:
 
-The PR title starts with `M006 / 01`, and the description states its base branch
-explicitly. Prefer squash-merging each work-block PR so the milestone branch
-contains one commit per accepted review unit. Start the next branch only after
-the prior PR merges and the local milestone branch is updated.
+1. squash-merge into the milestone branch;
+2. add one accepted-review-unit row to the plan;
+3. update affected exit criteria;
+4. update unresolved risks;
+5. promote the next frontier only after merge;
+6. branch the next review unit from the updated milestone branch.
 
-### Close A Milestone
+At milestone closeout:
 
-The closeout, completed-milestone ledger update, and final evidence belong on
-the milestone branch. When every exit criterion is met, mark the cumulative PR
-ready for review. That final review answers whether the milestone objective,
-usage contract, evidence, code organization, and unresolved-risk accounting are
-complete as a whole.
-
-Merge the cumulative PR into `main` with a merge commit so its reviewed
-work-unit commits remain visible. Tag the resulting mainline merge
-`milestone-<number>`, then delete the milestone and work branches. GitHub keeps
-the individual PR discussions after branch deletion.
-
-```sh
-gh pr ready <cumulative-pr-number>
-gh pr merge <cumulative-pr-number> --merge --delete-branch
-git switch main
-git pull --ff-only
-git tag milestone-006
-git push origin milestone-006
-```
-
-If approved maintenance reaches `main` during an active milestone, merge the
-updated `main` into the milestone branch before starting another review unit.
-Do not rebase or force-push a published milestone branch. CI must run for PRs
-whose base is a milestone branch as well as for the cumulative PR to `main`.
-
-This branching model is repository-development infrastructure, not an Automa
-vehicle command. A future helper may automate these exact steps, but it must
-fail visibly on uncommitted changes, a stale base, an existing branch, or an
-incorrect PR target rather than hiding Git state.
-
-## Rolling Delivery Horizon
-
-Only the current frontier is committed in detail. A milestone plan also names
-one likely next frontier so the current work can prepare a clean boundary, but
-that next unit remains unstarted until the current one is accepted. Everything
-beyond it stays in the preparation horizon and is not a fixed subdivision tree.
-
-**Promote to the frontier only when both are true:**
-
-1. **Contractable now:** the work can carry one review question, and when the
-   claim is universal, an invariant-closure statement with owner and matrix (or
-   a clear live-evidence / closeout review kind).
-2. **Reviewable in one pass:** the full context fits the human attention budget
-   above—no dual unrelated universals, no closeout folded into evidence, no
-   speculative multi-step package ladder.
-
-Work that is still only a milestone need, an unverified hypothesis, or too large
-for one careful review stays in the preparation horizon until both conditions
-hold.
-
-The current PR records:
-
-- status and review shape;
-- deliverable and review question;
-- invariant, enforcement owner, and compact adversarial matrix when the review
-  question claims a universal guarantee;
-- expected or actual file impacts;
-- non-goals;
-- external evidence required and assumptions still unverified; and
-- measured validation evidence.
-
-The next-after-review entry records:
-
-- the expected review shape and question;
-- a bounded expected deliverable;
-- proposed file impacts when they are known; and
-- non-goals that prevent work from leaking forward.
-
-After each merge:
-
-1. Re-read the milestone objective and exit criteria.
-2. Record what changed, what was learned, and which assumptions failed.
-3. Update baseline evidence and work-package status.
-4. Promote one preparation-horizon item into the next concrete frontier only if
-   it is contractable now and reviewable in one pass.
-5. Leave later work provisional rather than constructing a detailed schedule of
-   named subdivisions.
-
-## Status And Evidence
-
-Use `pending`, `active`, `blocked`, and `done` consistently. A work package is
-`done` only when all of its acceptance conditions are met; completing one PR
-inside it does not complete the whole package.
-
-Evidence should be reproducible and appropriately scoped. Record test counts,
-timings, artifacts, or live-system observations when they support a conclusion.
-Do not present planned behavior as observed behavior, a skipped check as a pass,
-or an unlabeled visual result as an accuracy claim.
-
-## Milestone Lifecycle
-
-1. Create the milestone integration branch from current remote `main`.
-2. Create one numbered directory and a `plan.html` following this contract.
-3. Define completion usage, fixed exit criteria, a concrete first PR, and a
-   preparation horizon; push the plan and open the draft cumulative PR to
-   `main`.
-4. Merge one review-unit PR into the milestone branch at a time and update the
-   plan after each accepted unit.
-5. At closeout, freeze the plan and write `closeout.md` with outcomes, decisions,
-   validation, unresolved work, and links to durable reference material.
-6. Append a concise entry to [completed.md](completed.md), update the active-work
-   link in [the documentation guide](../README.md), and make the cumulative PR
-   ready for whole-milestone review.
-7. Merge the cumulative PR, tag the mainline merge, remove milestone branches,
-   then make the next milestone active (or promote a pre-plan).
-
-Closeouts preserve durable context; they do not duplicate source-level details.
-New architecture facts belong in `docs/reference/`, and future-facing research
-belongs in `docs/synthesis/`.
+1. complete `closeout.md`;
+2. update the completed-milestone ledger;
+3. update `docs/README.md` navigation only;
+4. mark the cumulative milestone PR ready;
+5. review the milestone as a whole;
+6. merge into `main` with a merge commit;
+7. tag the mainline merge;
+8. remove obsolete milestone and review-unit branches;
+9. activate or revise the next pre-plan only after closeout.
 
 ## Immediate Deferred Work And Pre-Plans
 
-Closeouts may leave residual work. That residual is not a free-form backlog.
-Route it into exactly one of these places:
+Closeouts may leave residual work. Route it into exactly one of:
 
 1. **Durable reference** (`docs/reference/`): settled current behavior.
-2. **Synthesis** (`docs/synthesis/`): research evidence without commitment.
+2. **Synthesis** (`docs/synthesis/`): research without commitment.
 3. **At most one pre-plan** after the active milestone: the single most immediate
-   next problem that is already known and would block a named later capability.
+   next problem already forced by evidence.
 
-### What Counts As Immediate Deferred Work
+Pre-plans are not active work. Do not implement them while another milestone is
+active unless the decision log records an explicit parallel exception.
 
-Immediate deferred work is the smallest next milestone-shaped question that is
-already forced by evidence—for example, “packaged perception is fit for memory
-but not for non-idle decision.” It is not a wishlist of ideas, a multi-year
-roadmap, or a growing list of “nice to haves.”
+## Shared Contract Visibility
 
-### Pre-Plan Rules
+Active plans should link this contract (Markdown and/or rendered HTML). Do not
+copy its rules into individual plans. Do not edit `planning-contract.html`
+directly.
 
-- A pre-plan lives at `milestones/<number>-<slug>/plan.html` with status such as
-  `pre-plan - queued after NNN`.
-- It has a fixed objective, explicit non-goals, a stop condition, and provisional
-  packages—same honesty as an active plan, without competing for implementation
-  attention.
-- Pre-plans are **not active work**. Do not implement them while another
-  milestone is active unless the active plan’s decision log explicitly allows a
-  narrow parallel exception.
-- Prefer **one** written pre-plan for “next after active.” Do not stack many
-  future milestone drafts. When a newer pre-plan supersedes an older one, mark
-  the old status superseded and link forward.
-- Revise a pre-plan only when prerequisite closeout evidence changes the bounded
-  question—not to absorb every new idea discovered during the active milestone.
-- On activation, promote the pre-plan to active status, name the first review
-  unit, and update the documentation guide. On abandon, record why and leave no
-  dangling “maybe later” list.
+## Non-Goals Of This Contract
 
-### Stop Expanding
+This contract does not:
 
-If a residual cannot be stated as a single milestone objective with a stop
-condition, it is not ready for a pre-plan. Leave it in synthesis or omit it
-until evidence forces a sharper question.
+- redesign product architecture;
+- create a detailed long-term roadmap;
+- introduce many package sub-IDs;
+- turn the milestone plan into a ticket backlog;
+- copy PR-level matrices into the plan;
+- require one branch per implementation task;
+- equate PR quality with line count;
+- make generated HTML a second manually edited source of truth.

@@ -3,968 +3,460 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Milestone 005: Evidence Memory Foundation</title>
+  <meta name="source-sha256" content="a62250128699903f2d16f10a74a144d55bb6a27280946d05dfbcf59d4fa88628">
+  <base target="_blank">
+  <title>Milestone plan — 005-evidence-memory-foundation</title>
   <style>
     :root {
-      color-scheme: light dark;
-      --bg: #f5f7f8;
-      --surface: #ffffff;
-      --surface-alt: #eef3f5;
-      --text: #182126;
-      --muted: #58666d;
-      --line: #cbd5d9;
-      --blue: #176b87;
-      --blue-soft: #dceff5;
-      --green: #2d7650;
-      --green-soft: #dff1e7;
-      --amber: #9b6615;
-      --amber-soft: #f7e9ca;
-      --red: #a44343;
-      --red-soft: #f7dfdf;
-      --violet: #68539a;
-      --violet-soft: #ebe5f7;
-      --neutral: #dce3e6;
-      --shadow: 0 8px 24px rgba(20, 35, 42, 0.08);
+      --ink: #17211f;
+      --muted: #596762;
+      --line: #c9d5ce;
+      --bg: #f5f7f4;
+      --panel: #ffffff;
+      --teal: #26778a;
+      --neutral: #edf1ee;
     }
-
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg: #111619;
-        --surface: #192126;
-        --surface-alt: #202b31;
-        --text: #edf3f5;
-        --muted: #afbdc3;
-        --line: #35444b;
-        --blue: #69b7d0;
-        --blue-soft: #173b47;
-        --green: #77c699;
-        --green-soft: #173a29;
-        --amber: #e5b55f;
-        --amber-soft: #463515;
-        --red: #ed9090;
-        --red-soft: #482323;
-        --violet: #b9a5e8;
-        --violet-soft: #33294c;
-        --neutral: #2b373d;
-        --shadow: none;
-      }
-    }
-
     * { box-sizing: border-box; }
     body {
       margin: 0;
       background: var(--bg);
-      color: var(--text);
-      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       line-height: 1.55;
     }
-    main { width: min(1180px, calc(100% - 32px)); margin: 0 auto; padding: 32px 0 64px; }
-    header { padding: 28px 0 18px; }
-    h1, h2, h3 { margin: 0; line-height: 1.2; letter-spacing: 0; }
-    h1 { max-width: 900px; font-size: clamp(32px, 5vw, 52px); }
-    h2 { margin-bottom: 14px; font-size: 24px; }
-    h3 { font-size: 17px; }
-    p { margin: 0; }
-    a { color: var(--blue); }
-    code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-    code { overflow-wrap: anywhere; }
-    .lead { max-width: 900px; margin-top: 14px; color: var(--muted); font-size: 18px; }
-    .meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
-    .pill, .status {
-      display: inline-flex;
-      align-items: center;
-      min-height: 28px;
-      padding: 4px 9px;
+    main { width: min(960px, calc(100% - 30px)); margin: 0 auto; padding: 24px 0 48px; }
+    .source {
+      margin-bottom: 20px;
+      padding: 10px 12px;
       border: 1px solid var(--line);
       border-radius: 6px;
+      background: var(--panel);
+      color: var(--muted);
       font-size: 13px;
-      font-weight: 700;
     }
-    .pill { background: var(--surface-alt); }
-    .status.done { color: var(--green); background: var(--green-soft); border-color: var(--green); }
-    .status.active { color: var(--blue); background: var(--blue-soft); border-color: var(--blue); }
-    .status.pending { color: var(--amber); background: var(--amber-soft); border-color: var(--amber); }
-    .status.blocked { color: var(--red); background: var(--red-soft); border-color: var(--red); }
-    .status.global { color: var(--violet); background: var(--violet-soft); border-color: var(--violet); }
-
-    .panel {
-      margin-top: 20px;
-      padding: 22px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: var(--surface);
-      box-shadow: var(--shadow);
-    }
-    .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
-    .grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .card { min-width: 0; padding: 16px; border-left: 4px solid var(--line); background: var(--surface-alt); }
-    .card p, .card ul { margin-top: 9px; }
-    .card.goal { border-color: var(--blue); }
-    .card.interface { border-color: var(--violet); }
-    .card.constraint { border-color: var(--green); }
-    .card.risk { border-color: var(--red); }
-    .note { margin-top: 14px; padding: 14px 16px; border-left: 4px solid var(--amber); background: var(--amber-soft); }
-    .small { color: var(--muted); font-size: 13px; }
-
-    .table-wrap { overflow-x: auto; }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { padding: 11px 12px; border: 1px solid var(--line); text-align: left; vertical-align: top; }
-    th { background: var(--surface-alt); }
-    ul, ol { margin: 10px 0 0; padding-left: 22px; }
-    li + li { margin-top: 6px; }
-    pre {
-      margin: 12px 0 0;
-      padding: 15px;
-      overflow-x: auto;
-      border: 1px solid var(--line);
-      border-radius: 6px;
-      background: var(--surface-alt);
-      font-size: 13px;
-      line-height: 1.5;
-    }
-
-    details { border: 1px solid var(--line); background: var(--surface); }
-    details + details { margin-top: 10px; }
-    summary {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      padding: 13px 15px;
-      cursor: pointer;
-      font-weight: 700;
-    }
-    .work-body, .reference-body { padding: 0 15px 15px; }
-    .reference-item { margin-top: 14px; }
-    .reference-frame { width: 100%; min-height: 720px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); }
-    .filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
-    .filters button {
-      min-height: 36px;
-      padding: 7px 11px;
-      border: 1px solid var(--line);
-      border-radius: 6px;
-      background: var(--surface-alt);
-      color: var(--text);
-      cursor: pointer;
-      font: inherit;
-    }
-    .filters button[aria-pressed="true"] { border-color: var(--blue); color: var(--blue); font-weight: 700; }
-    .progress-track { height: 10px; margin-top: 14px; overflow: hidden; border-radius: 5px; background: var(--neutral); }
-    .progress-fill { width: 0; height: 100%; background: var(--green); }
-
-    @media (max-width: 860px) {
-      main { width: min(100% - 20px, 1180px); padding-top: 18px; }
-      .panel { padding: 16px; }
-      .grid, .grid.two { grid-template-columns: 1fr; }
-      th, td { min-width: 180px; }
-      summary { align-items: flex-start; }
+    h1, h2, h3 { letter-spacing: 0; line-height: 1.2; color: var(--ink); }
+    h1 { margin: 0 0 20px; font-size: 32px; }
+    h2 { margin: 28px 0 10px; padding-bottom: 7px; border-bottom: 1px solid var(--line); font-size: 21px; }
+    h3 { margin: 20px 0 8px; font-size: 16px; }
+    p, li { color: var(--muted); }
+    p { margin: 9px 0; }
+    li { margin: 5px 0; }
+    a { color: var(--teal); }
+    code { padding: 2px 5px; border-radius: 4px; background: var(--neutral); color: #1e3932; }
+    pre { overflow-x: auto; padding: 13px; border-radius: 6px; background: var(--ink); color: #e6f1eb; }
+    pre code { padding: 0; background: transparent; color: inherit; }
+    table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 14px; }
+    th, td { padding: 9px; border: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { background: var(--neutral); color: var(--ink); }
+    td { color: var(--muted); background: var(--panel); }
+    blockquote {
+      margin: 12px 0;
+      padding: 8px 14px;
+      border-left: 4px solid var(--teal);
+      background: var(--neutral);
+      color: var(--muted);
     }
   </style>
 </head>
 <body>
+  <!-- Generated by docs/render_markdown.py. Do not edit directly. -->
   <main>
-    <header>
-      <h1>Milestone 005: Evidence Memory Foundation</h1>
-      <p class="lead">
-        Give the decision cycle bounded, inspectable continuity across frames.
-        Memory should retain attributed observation evidence without claiming a
-        complete world model, changing perception semantics, or granting movement
-        authority before its lifecycle and value are understood.
-      </p>
-      <div class="meta">
-        <span class="pill">Status: active — not ready to close</span>
-        <span class="pill">Packages open: 5 (5B in review) and 6</span>
-        <span class="pill">PR #52: merged (Package 5A bounds)</span>
-        <span class="pill">Current frontier: Package 5B (this PR)</span>
-        <span class="pill">Next frontier co-reviewed here: live Chase max-age expiry</span>
-        <span class="pill">Proposed: 2026-07-15</span>
-        <span class="pill">Action policy: idle</span>
-        <span class="pill">Hosts: Chase and DonkeyCar</span>
-        <span class="pill">Delivery: rolling PR horizon</span>
-      </div>
-    </header>
-
-    <section class="panel">
-      <h2>Remaining For Closeout</h2>
-      <p>
-        The milestone is <strong>not</strong> complete. Contract, host wiring,
-        <code>BoundedEvidenceLedger</code>, live inspect (Memory map), operator
-        reset, offline replay, opt-in provenance recording, and initial Chase/Pi
-        lifecycle-check commands are landed. Three remediation blocks now prove
-        exact Pi frame pairing, the live onboard Pi lifecycle, and atomic Chase
-        alignment/retention/reset. The remaining findings concern value and
-        artifact bounds, memory-probe liveness, deterministic edge coverage, and
-        live Chase expiry. The following remains before package 6 closeout and
-        before activating milestone 006.
-      </p>
-      <div class="table-wrap" style="margin-top: 12px;">
-        <table>
-          <thead><tr><th>Still required</th><th>Owner package</th><th>Status</th><th>Why it blocks closeout</th></tr></thead>
-          <tbody>
-            <tr>
-              <td><strong>Deterministic memory replay</strong> (digestible end-state, <code>--json</code>)</td>
-              <td>5</td>
-              <td><span class="status done">Landed</span></td>
-              <td><code>vehicles memory replay</code> offline sequence → stable digest; two-pass determinism by default.</td>
-            </tr>
-            <tr>
-              <td><strong>Opt-in recording</strong> for evaluation artifacts (no default history)</td>
-              <td>5</td>
-              <td><span class="status active">In progress (5B)</span></td>
-              <td>Package 5B enforces replay <code>max_frames</code> and total artifact-byte ceilings on <code>--record</code>, with fail-closed cleanup of oversize trees.</td>
-            </tr>
-            <tr>
-              <td><strong>Chase shadow visual-provenance check</strong> (retention/alignment/reset, observe-only)</td>
-              <td>5</td>
-              <td><span class="status done">Validated</span></td>
-              <td>Metrics UI's atomic evaluator response is consumed without a sequential fallback. A live <code>chaser-depth-obstacles</code> run proved same-epoch advancing frame alignment, retained-prior provenance, simulator authority, evaluator isolation, exact source images, and reset. <a href="evidence/chase-shadow-memory/provenance_extract.html">Review the tracked extract</a>. Live max-age expiry remains explicitly unclaimed and is tracked separately below.</td>
-            </tr>
-            <tr>
-              <td><strong>Stationary Pi visual-provenance check</strong> (present / dropout / expiry / reset, recorded)</td>
-              <td>5</td>
-              <td><span class="status done">Validated</span></td>
-              <td>Verified exact frame pairs and live onboard present/dropout/expiry/reset under the configured 10-second maximum age. <a href="evidence/physical-memory-lifecycle/provenance_extract.html">Review the tracked visual-provenance extract</a>. Bounds, coverage, Chase expiry, and package 6 still block full milestone closeout.</td>
-            </tr>
-            <tr>
-              <td><strong>Memory contract and bounds hardening</strong></td>
-              <td>5</td>
-              <td><span class="status active">In progress (5A)</span></td>
-              <td>Deep detach of returned snapshots, property/serialized-size bounds, plugin-namespaced record ids, and framework rejection of removed/weakened age bounds are in the Package 5A review unit. Replay artifact frame-count/byte ceilings remain for Package 5B.</td>
-            </tr>
-            <tr>
-              <td><strong>Missing deterministic coverage</strong></td>
-              <td>5</td>
-              <td><span class="status pending">Required</span></td>
-              <td>Add conflict, long-sequence, property/serialized-size, memory-probe stale-worker, and cross-plugin identity-collision tests. Exact frame-pairing, fresh-frame, and reset-transition coverage is landed.</td>
-            </tr>
-            <tr>
-              <td><strong>Live Chase max-age expiry</strong></td>
-              <td>5</td>
-              <td><span class="status pending">Queued — co-reviewed on this PR</span></td>
-              <td>Tracked Chase run proves retention and reset only. Full next-frontier contract is under Current Delivery Horizon for approval with Package 5B closeout. Implementation starts only after this PR merges and that card is accepted.</td>
-            </tr>
-            <tr>
-              <td><strong>Package 6 closeout</strong> (<code>closeout.md</code>, completed ledger, promote 006 only then)</td>
-              <td>6</td>
-              <td><span class="status blocked">Preparation horizon</span></td>
-              <td>Separate review kind (milestone judgment). Not part of the live-expiry frontier. Promote after package 5 gates including Chase max-age are met.</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <p class="note" style="margin-top: 12px;">
-        Do not treat Memory map + reset as milestone completion. Do not implement
-        milestone 006 while these items remain open unless the decision log
-        records an explicit parallel exception.
-      </p>
-      <div class="card interface" style="margin-top: 14px;">
-        <h3>Implementer Handoff — Co-Review Next Frontier On The Current PR</h3>
-        <p><strong>Practice:</strong> the <em>next</em> frontier is formalized on the <em>current</em> unmerged PR (plan card + PR description section), so human attention can accept this unit’s code <strong>and</strong> approve what may start after merge in one pass. Do not open a separate planning-only PR for the next unit when the current frontier is still open.</p>
-        <p><strong>Completed:</strong> PR #51 Chase shadow path; Package 5A (PR #52).</p>
-        <p><strong>This PR (Package 5B):</strong> record bounds + Chase probe liveness — see invariant cards below. Merging this PR closes the current frontier only after review of the code matrices.</p>
-        <p><strong>Next frontier (queued on this PR, not started):</strong> live Chase max-age expiry evidence — full contract in the card below. Approving this PR’s plan section accepts that scope for the follow-on implementation PR. Does <strong>not</strong> include package 6 closeout.</p>
-        <p><strong>Preparation horizon:</strong> Package 6 closeout after Chase max-age evidence is accepted. Metrics UI atomic capture remains an active dependency for live Chase work until expiry no longer needs contract adjustment.</p>
-      </div>
-    </section>
-
-    <section class="panel" id="implementation-review-2026-07-20">
-      <h2>Implementation Review — 2026-07-20</h2>
-      <div class="card risk">
-        <h3>Closeout Verdict <span class="status blocked">Not ready</span></h3>
-        <p>
-          The typed memory boundary, bounded-evidence reducer, equivalent host
-          wiring, failure isolation, and operator commands are credible. The
-          milestone cannot close because its current checks can report success
-          without proving the required live lifecycle and exact-frame provenance.
-          This review supersedes earlier package-5 and exit-criterion completion
-          claims where they conflict.
-        </p>
-      </div>
-
-      <h3 style="margin-top: 18px;">Validation Performed</h3>
-      <ul>
-        <li><strong>Deterministic suite:</strong> 256 tests passed.</li>
-        <li><strong>Live Chase:</strong> <code>chaser-depth-obstacles</code> processed 5/5 observe-only frames with five memory updates and no applied action.</li>
-        <li><strong>Live Pi:</strong> more than 1,300 updates, zero reducer failures, and approximately 0.5 ms reducer latency while manual/idle control remained active.</li>
-        <li><strong>Frame-pair probe:</strong> 6 of 40 publication/JPEG samples had different frame IDs.</li>
-        <li><strong>Physical lifecycle probe:</strong> the same unchanged scene passed present/dropout/expiry/reset, demonstrating that the checker can synthesize success.</li>
-        <li><strong>Snapshot mutation probe:</strong> mutating a returned record property or snapshot metadata changed subsequent ledger state.</li>
-      </ul>
-
-      <h3 style="margin-top: 18px;">Closeout Blockers</h3>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Severity</th><th>Finding</th><th>Implementation evidence</th><th>Required correction</th></tr></thead>
-          <tbody>
-            <tr>
-              <td><span class="status done">Addressed</span></td>
-              <td>The previous physical check forced dropout and ran expiry/reset through an ephemeral local reducer rather than proving the onboard lifecycle.</td>
-              <td>Code path scores live <code>publication.memory</code>, lifecycle keys = currently-refreshed present∖dropout (False signals excluded; always-on camera/floor excluded), empty-state from onboard reset snapshot, and transition from epoch/reset_count. The guided Pi run retained <code>thing:floor_boundary_002</code> after its source disappeared, expired it under the live 10-second policy, and reset <code>epoch-4</code> to <code>epoch-5</code>. <a href="evidence/physical-memory-lifecycle/provenance_extract.html">Tracked evidence</a>.</td>
-              <td>Done in remediation block 2; no forced dropout, local reducer, or movement command was used.</td>
-            </tr>
-            <tr>
-              <td><span class="status done">Addressed</span></td>
-              <td>Pi publication metadata and the recorded JPEG are fetched separately; the returned <code>X-Frame-Id</code> is ignored.</td>
-              <td><code>fetch_matched_observation_pair</code> with <code>after_frame_id</code> and nonempty JPEG requirement.</td>
-              <td>Done in remediation block 1.</td>
-            </tr>
-            <tr>
-              <td><span class="status done">Addressed</span></td>
-              <td>The Chase adapter discards simulator <code>frameIndex</code>; automation substitutes a local frame counter, so candidate/reference results cannot be aligned.</td>
-              <td>Capture metadata and <code>SensorSnapshot</code> now carry <code>simulator_frame_index</code>; automation fails closed without it and assigns <code>chase_frame_{index}</code>. Evaluator-only <code>shadow_reference</code> is paired on frame records (not observation/memory inputs). Live <code>memory check</code> scores alignment when the automation worker is running.</td>
-              <td>Done in remediation block 3. The adapter consumes one atomic response, preserves simulation epoch + frame index, and a guided run is tracked under <a href="evidence/chase-shadow-memory/provenance_extract.html">Chase shadow memory evidence</a>.</td>
-            </tr>
-            <tr>
-              <td><span class="status done">Addressed</span></td>
-              <td><code>MemorySnapshot</code> is frozen only shallowly and the ledger returns its internal snapshot directly.</td>
-              <td>Package 5A: <code>detach_memory_snapshot</code> on every stage accept path and ledger <code>update</code>/<code>reset</code>/<code>snapshot</code>; mutation of returned properties/metadata no longer affects ledger state.</td>
-              <td>Done in Package 5A (PR #52).</td>
-            </tr>
-            <tr>
-              <td><span class="status active">In progress</span></td>
-              <td>Record count is bounded, but retained properties, serialized snapshots, and recorded replays are not byte-bounded.</td>
-              <td>Package 5A landed property/serialized snapshot ceilings. Package 5B enforces replay frame-count and total artifact-byte ceilings on opt-in <code>--record</code>.</td>
-              <td>Complete record artifact bounds in Package 5B.</td>
-            </tr>
-            <tr>
-              <td><span class="status active">In progress</span></td>
-              <td>The Chase memory probe can still report a stopped worker's retained state as live.</td>
-              <td>Package 5B: <code>assess_chase_memory_worker_liveness</code> requires <code>status</code> running/starting, live PID, and <code>updated_at_ms</code> within max age before reporting live memory.</td>
-              <td>Complete stopped/stale-worker coverage in Package 5B.</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <h3 style="margin-top: 18px;">Scaling And Design Risks</h3>
-      <div class="grid two">
-        <div class="card constraint">
-          <h3>Plugin Identity</h3>
-          <p>Ledger keys omit <code>source_plugin_id</code>. Two plugins using the same local thing or signal ID can silently overwrite one another. Namespace IDs at the framework boundary.</p>
-        </div>
-        <div class="card constraint">
-          <h3>Checker Coupling</h3>
-          <p>The generic CLI checker assumes <code>BoundedEvidenceLedger</code> policy: retained <code>thing:</code> keys, dropout survival, and fixed age expiry. Split host sampling from implementation-specific lifecycle assertions.</p>
-        </div>
-        <div class="card risk">
-          <h3>CLI Concentration</h3>
-          <p>Transport, lifecycle evaluation, artifact writing, rendering, and human output are concentrated in large CLI modules. Extract cohesive adapters/evaluators only while repairing these paths; avoid a broad speculative framework.</p>
-        </div>
-        <div class="card risk">
-          <h3>Validation Blindspot</h3>
-          <p>The major risk is testing synthesized checker behavior rather than external reality. A passing check must establish where each observation came from and which runtime actually changed.</p>
-        </div>
-      </div>
-
-      <h3 style="margin-top: 18px;">Required Remediation Order</h3>
-      <ol>
-        <li><strong>Done:</strong> Make Pi publication/frame pairing atomic or explicitly verified.</li>
-        <li><strong>Done:</strong> Replace synthetic physical lifecycle phases with checks of the active onboard stage (lifecycle keys = present∖dropout observed evidence; fail-closed frame freshness).</li>
-        <li><strong>Done:</strong> Preserve Chase frame identity, consume the atomic evaluator response, and validate a live shadow/reference run.</li>
-        <li><strong>Done (Package 5A):</strong> Deeply detach snapshots; enforce property/serialized-size limits and plugin-safe record identity; reject weakened age bounds.</li>
-        <li><strong>In progress (Package 5B):</strong> Replay frame-count and artifact-byte ceilings; Chase memory-probe liveness (running PID + publication age); long-sequence capacity tests.</li>
-        <li><strong>Queued next frontier (co-reviewed on Package 5B PR, not started):</strong> live Chase max-age expiry evidence only — see Current Delivery Horizon. Package 6 closeout stays preparation horizon.</li>
-      </ol>
-      <p class="note" style="margin-top: 12px;">
-        <strong>2026-07-20 remediation block 1:</strong> <code>fetch_matched_observation_pair</code>
-        retries until publication <code>frame.frame_id</code> equals JPEG <code>X-Frame-Id</code>
-        (with <code>after_frame_id</code> freshness). Pi <code>memory check --record</code> fails closed
-        without a verified nonempty pair.
-      </p>
-      <p class="note" style="margin-top: 12px;">
-        <strong>2026-07-20 remediation block 2:</strong> Pi <code>memory check</code> scores
-        <code>publication.memory</code> from the activated onboard stage; lifecycle keys are
-        <code>present_observed − dropout_observed</code> (excluding always-refreshed camera/floor
-        evidence); non-record capture fails closed without a new frame id; expiry waits only for
-        lifecycle keys; reset uses onboard POST + epoch/reset_count. A successful stationary
-        guided run is preserved in the <a href="evidence/physical-memory-lifecycle/provenance_extract.html">physical lifecycle extract</a>.
-      </p>
-      <p class="note" style="margin-top: 12px;">
-        <strong>2026-07-20 remediation block 3:</strong> Chase capture preserves simulator
-        <code>frameIndex</code> on sensor metadata; automation uses <code>chase_frame_*</code>
-        identity and fails closed without it; evaluator-only <code>shadow_reference</code> is
-        recorded beside candidate cycle results; live <code>memory check</code> scores shadow
-        alignment, ordered memory provenance, observe-only policy, isolation, and worker reset
-        when automation is running. The guided <code>chaser-depth-obstacles</code> run is preserved
-        in the <a href="evidence/chase-shadow-memory/provenance_extract.html">tracked visual extract</a>.
-        It proves retained-prior evidence but does not claim live max-age expiry.
-      </p>
-    </section>
-
-    <section class="panel">
-      <h2>High-Level Objective</h2>
-      <div class="grid">
-        <div class="card goal">
-          <h3>Retain Evidence, Not Truth</h3>
-          <p>Carry selected observations across frames with source, time, confidence, and uncertainty intact. Memory records what was observed and retained, not what definitively exists.</p>
-        </div>
-        <div class="card interface">
-          <h3>One Lifecycle Across Hosts</h3>
-          <p>Run the same memory contract and implementation selection in the local Chase controller and onboard Pi host without simulator map input or vehicle-specific memory types.</p>
-        </div>
-        <div class="card constraint">
-          <h3>Bounded And Inspectable</h3>
-          <p>Make capacity, expiry, reset, provenance, and current state visible to operators. Default execution remains in memory and writes no frame or history artifacts.</p>
-        </div>
-      </div>
-      <p class="note">
-        Success is not a detailed floor plan. Success is a stable, economical
-        answer to "what recent evidence is the controller retaining, why, and for
-        how long?" that behaves the same in replay, simulation, and the physical
-        runtime while the car remains idle. In both Chase and on the Pi, that
-        answer must be visually reviewable against the exact source frames that
-        produced the retained evidence; schema compatibility and record counts
-        alone are not enough to close the milestone.
-      </p>
-    </section>
-
-    <section class="panel" data-completion-usage>
-      <h2>Completion Usage</h2>
-      <p>
-        These commands define how milestone 005 is exercised. Core staging,
-        inspection, replay, reset, and streaming are implemented; physical
-        lifecycle validation is complete, while Chase max-age expiry and the
-        remaining bounds/liveness contracts remain under package-5 repair.
-        Removing or adding a workflow requires an explicit scope decision.
-      </p>
-      <div class="grid two">
-        <div class="card interface">
-          <h3>Select And Verify Memory <span class="status done">Landed</span></h3>
-          <p><strong>Starting state:</strong> a vehicle appears in <code>vehicles active</code> and a packaged memory implementation is available.</p>
-          <p><strong>Proposed execution:</strong></p>
-          <pre>./cli/automa vehicles active
-./cli/automa vehicles update memory \
-  --id &lt;vehicle-id&gt; \
-  --implementation bounded_evidence
-./cli/automa vehicles info memory --id &lt;vehicle-id&gt;</pre>
-          <p><strong>Success signal:</strong> concise output names the selected implementation, release, capacity, expiry policy, and activation health. <code>--json</code> exposes the same selection for automation.</p>
-        </div>
-        <div class="card goal">
-          <h3>Run And Inspect Retained Evidence <span class="status done">Landed</span></h3>
-          <p><strong>Starting state:</strong> memory and the idle decision engine are selected for the vehicle.</p>
-          <p><strong>Proposed execution:</strong></p>
-          <pre>./cli/automa vehicles automation run --id &lt;vehicle-id&gt;
-./cli/automa vehicles stream memory --id &lt;vehicle-id&gt;
-# PiCar also opens a local loopback Memory map at …/memory
-# Perception stays on …/ ; Memory map is a separate key→value page</pre>
-          <p><strong>Success signal:</strong> terminal shows lifecycle health and key count; the Memory map lists <code>record_id</code> keys (filterable by kind) and clicking a key shows the mapped retained-evidence value (summary + JSON). Perception view remains frame/overlay-first with a link to the map. Explicit unavailable/failure states are visible. Default stream writes no history.</p>
-        </div>
-        <div class="card constraint">
-          <h3>Replay, Compare, And Reset <span class="status done">Landed (replay + reset)</span></h3>
-          <p><strong>Starting state:</strong> a recorded observation sequence and selected memory configuration are available.</p>
-          <p><strong>Proposed execution:</strong></p>
-          <pre>./cli/automa vehicles memory replay \
-  &lt;observation-sequence.json&gt; --id &lt;vehicle-id&gt;
-./cli/automa vehicles memory reset --id &lt;vehicle-id&gt;
-./cli/automa vehicles info memory --id &lt;vehicle-id&gt;</pre>
-          <p><strong>Landed:</strong> offline <code>memory replay</code> reports final health, keys, and a stable digest (two independent passes). Live <code>memory reset</code> clears state on Chase and Pi.</p>
-          <p><strong>Success signal:</strong> replay reports a deterministic result digest and concise final state; reset reports an empty new lifecycle epoch. <code>--json</code> provides records and digests for automated comparison.</p>
-        </div>
-        <div class="card goal">
-          <h3>Move Between Simulator And Pi <span class="status done">Mostly landed</span></h3>
-          <p><strong>Starting state:</strong> Chase is ready and a PiRacer is reachable; both appear in <code>vehicles active</code>.</p>
-          <p><strong>Proposed execution:</strong></p>
-          <pre>./cli/automa simulators ensure
-./cli/automa vehicles active
-./cli/automa vehicles update memory \
-  --id chase-sim-chaser \
-  --implementation bounded_evidence
-./cli/automa vehicles update memory \
-  --id &lt;picar-id&gt; \
-  --implementation bounded_evidence
-./cli/automa vehicles update autonomy \
-  --id &lt;picar-id&gt; --restart
-./cli/automa vehicles info memory --id chase-sim-chaser
-./cli/automa vehicles info memory --id &lt;picar-id&gt;</pre>
-          <p><strong>Success signal:</strong> both hosts report the same memory implementation and lifecycle schema, bounded state, and idle steering/throttle; physical deployment additionally reports its activated autonomy release.</p>
-        </div>
-        <div class="card interface">
-          <h3>Verify Simulator Evidence Retention <span class="status active">Retention proven; expiry open</span></h3>
-          <p><strong>Starting state:</strong> the Chase frontend is available and the bounded memory implementation is packaged for the local controller.</p>
-          <p><strong>Proposed execution:</strong></p>
-          <pre>./cli/automa simulators ensure \
-  --scenario chaser-depth-obstacles
-./cli/automa vehicles update memory \
-  --id chase-sim-chaser \
-  --implementation bounded_evidence
-./cli/automa vehicles memory check \
-  --id chase-sim-chaser --record</pre>
-          <p><strong>Current result:</strong> Chase's built-in decision model remained the movement authority while the rewritten cycle ran in shadow/observe-only mode. The <a href="evidence/chase-shadow-memory/provenance_extract.html">tracked run</a> links an observed floor boundary to retained-prior memory through exact source frames, proves atomic evaluator alignment and reset, and shows no evaluator leak. The remaining success signal is disappearance of that retained key under the configured max-age bound without using reset.</p>
-        </div>
-        <div class="card interface">
-          <h3>Verify Physical Evidence Retention <span class="status done">Validated</span></h3>
-          <p><strong>Starting state:</strong> the Pi publishes healthy frame-matched perception, the bounded memory implementation is active, and the idle engine owns action.</p>
-          <p><strong>Proposed execution:</strong></p>
-          <pre>./cli/automa vehicles memory check \
-  --id &lt;picar-id&gt; --record
-./cli/automa vehicles info memory --id &lt;picar-id&gt;</pre>
-          <p><strong>Success signal:</strong> met by the stationary guided sequence: exact present/dropout source frames, live retained evidence, expiry under the configured maximum age, reset to a new empty epoch, and zero movement. <a href="evidence/physical-memory-lifecycle/provenance_extract.html">Open the tracked visual extract</a>; retained coordinates remain attached to their source frame rather than being drawn as current geometry.</p>
-        </div>
-      </div>
-      <p class="note">
-        Default runs remain ephemeral and concise. A user must opt in before a
-        replay input, frame, log, or memory history is written to disk.
-      </p>
-    </section>
-
-    <section class="panel">
-      <h2>Baseline</h2>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Area</th><th>Observed State</th><th>Gap</th></tr></thead>
-          <tbody>
-            <tr>
-              <td>Current observation</td>
-              <td><code>Observation</code> contains detached sensor metadata, perception identity, summaries, structured things, signals, artifacts, and limits for one cycle.</td>
-              <td>No policy says which evidence survives, how retained records cite observations, or how conflicting and missing evidence affect prior state.</td>
-            </tr>
-            <tr>
-              <td>Decision seam</td>
-              <td><code>DecisionCycle</code> already calls an optional <code>remember</code> stage after observation and before patterns, projections, and action.</td>
-              <td><code>MemoryStage</code> and <code>DecisionCycleResult.memory</code> are <code>Any</code>; ownership, reset, boundedness, serialization, and failure behavior are undefined.</td>
-            </tr>
-            <tr>
-              <td>Runtime hosts</td>
-              <td>Local Chase and DonkeyCar both run <code>AutonomyCycleHost</code> and currently configure only perception before the idle engine.</td>
-              <td>The host discards memory, patterns, and projections when constructing <code>AutonomySnapshot</code>, so an engine cannot inspect the staged results through the shared runtime input.</td>
-            </tr>
-            <tr>
-              <td>Temporal perception</td>
-              <td>Windowed motion plugins maintain bounded run-local tracks and explicitly avoid semantic identity claims.</td>
-              <td>Plugin-local tracks are not decision memory and must not silently become durable object IDs or world facts.</td>
-            </tr>
-            <tr>
-              <td>Operator access</td>
-              <td>Automa can stage code, inspect activations, run automation, stream perception, replay captures, and publish a loopback perception view.</td>
-              <td>There is no memory activation, status, stream, replay summary, or clear distinction between latest observation and retained state.</td>
-            </tr>
-            <tr>
-              <td>Persistence</td>
-              <td>Normal automation avoids disk logs and artifacts; explicit recording creates bounded run directories.</td>
-              <td>Memory lifetime across worker restart, activation change, scenario reset, and physical reboot is not specified. Durable storage is not yet justified.</td>
-            </tr>
-            <tr>
-              <td>Validation</td>
-              <td>The ownership-aligned suite directly protects stage order, detached serialization, plugin state, host symmetry, CLI output, and bounded live checks.</td>
-              <td>No fixtures exercise evidence recurrence, dropout, conflict, expiry, reset, deterministic replay, or growth over long sequences.</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    <section class="panel">
-      <h2>Current Delivery Horizon</h2>
-      <p>
-        This milestone follows the shared
-        <a href="../README.md">planning and pull-request delivery contract</a>.
-        Later implementation choices remain provisional until the preceding
-        contract is reviewed.
-      </p>
-      <details class="reference-item" data-shared-planning-contract>
-        <summary><span>Shared Planning And Delivery Contract</span><span class="status global">Global</span></summary>
-        <div class="reference-body">
-          <p>Rendered from the canonical <a href="../README.md">Markdown source</a>. Edit the source and regenerate the shared view rather than copying rules into this plan.</p>
-          <iframe class="reference-frame" src="../planning-contract.html" title="Shared milestone planning and pull-request delivery contract" loading="lazy"></iframe>
-        </div>
-      </details>
-      <p class="note" style="margin-top: 12px;">
-        Packages 1–4 and the basic package-5 operator surfaces are landed.
-        Package-5 validation integrity remains open following the 2026-07-20
-        review. Do not activate milestone 006 until those findings are repaired
-        and package 6 closeout is written.
-      </p>
-      <div class="grid two" style="margin-top: 14px;">
-        <div class="card goal">
-          <h3>Prerequisite: Physical Perception Parity</h3>
-          <p><span class="status done">Milestone 004 closed</span> <strong>Review shape:</strong> separate milestone (complete).</p>
-          <p><strong>Required outcome:</strong> the Pi runs perception independently of movement authority and publishes frame-matched structured findings through the same operator workflow used for Chase.</p>
-          <p><strong>Plan:</strong> <a href="../004-physical-perception-parity/plan.html">Milestone 004: Physical Perception Parity</a> · <a href="../004-physical-perception-parity/closeout.md">closeout</a>.</p>
-          <p><strong>Prerequisite met:</strong> always-on manual observation, exact latest publication, and measured viability on the packaged observer.</p>
-        </div>
-        <div class="card interface">
-          <h3>Completed: Contract Through Live Memory Map</h3>
-          <p><span class="status done">Packages 1–4 + live inspect path merged</span> <strong>Review shape:</strong> stacked deep-and-narrow PRs.</p>
-          <p><strong>Delivered:</strong> typed <code>MemorySnapshot</code>; framework activation and stage runner; Chase + Donkey host wiring; <code>BoundedEvidenceLedger</code>; stage/info CLI and autonomy-deploy honesty; terminal <code>stream memory</code>; observation publication of latest memory; separate loopback <strong>Memory map</strong> at <code>/memory</code> (key→value: click <code>record_id</code> for mapped value). Perception view stays camera-first.</p>
-          <p><strong>Review question answered:</strong> Can operators see retained evidence as keys and inspect each mapped value without treating memory as a spatial overlay?</p>
-          <p><strong>Non-goals kept:</strong> non-idle action, floor-plan memory, semantic identity, durable default archives.</p>
-        </div>
-        <div class="card goal">
-          <h3>Completed: Memory Reset Operator Surface</h3>
-          <p><span class="status done">Merged</span> <strong>Review shape:</strong> deep and narrow.</p>
-          <p><strong>Deliverable:</strong> <code>vehicles memory reset</code> clears live memory on Chase and Pi; empty epoch confirmed via live probe.</p>
-        </div>
-        <div class="card interface">
-          <h3>Completed: Deterministic Memory Replay</h3>
-          <p><span class="status done">Merged</span> <strong>Review shape:</strong> deep and narrow.</p>
-          <p><strong>Deliverable:</strong> offline <code>memory replay</code> with stable digest and two-pass determinism.</p>
-        </div>
-        <div class="card goal">
-          <h3>Implemented: Opt-In Provenance Record Extract</h3>
-          <p><span class="status pending">Bounds repair required</span> <strong>Review shape:</strong> deep and narrow.</p>
-          <p><strong>Deliverable:</strong> <code>memory replay --record</code> provenance extract. Add enforceable frame-count and byte bounds before accepting criterion 7.</p>
-        </div>
-        <div class="card interface">
-          <h3>Implemented: Chase-First Memory Lifecycle Check</h3>
-          <p><span class="status done">Atomic shadow path validated</span> <strong>Review shape:</strong> deep and narrow.</p>
-          <p><strong>Current behavior:</strong> live Chase automation consumes one atomic evaluation capture, preserves simulation epoch + <code>frameIndex</code> as <code>chase_frame_*</code> identity, and keeps evaluator-only <code>shadow_reference</code> beside rather than inside candidate inputs. <code>memory check</code> establishes a reset boundary, samples only an observed ordered provenance window with real retained-prior evidence, scores authority/isolation, records exact images, and resets the active worker.</p>
-          <p><strong>Evidence:</strong> the <a href="evidence/chase-shadow-memory/provenance_extract.html">guided <code>chaser-depth-obstacles</code> extract</a> passed alignment, retention provenance, observe-only, isolation, and reset. Live max-age expiry remains open and explicitly unclaimed.</p>
-        </div>
-        <div class="card goal">
-          <h3>Implemented: Stationary Pi Memory Check</h3>
-          <p><span class="status done">Validated on physical PiRacer</span> <strong>Review shape:</strong> deep and narrow physical.</p>
-          <p><strong>Current behavior:</strong> <code>vehicles memory check --id &lt;picar&gt;</code> scores present/dropout/expiry from live <code>publication.memory</code>, waits only for keys that disappeared from the current observation (always-on camera/floor may remain), and confirms reset from the onboard empty snapshot plus epoch/reset-count transition. Frame pairing uses verified <code>X-Frame-Id</code> matches with fail-closed freshness.</p>
-          <p><strong>Evidence:</strong> the guided present/remove run retained then expired <code>thing:floor_boundary_002</code> in live onboard memory, confirmed reset by epoch and reset-count transitions, and emitted zero movement. <a href="evidence/physical-memory-lifecycle/provenance_extract.html">Open the source-frame provenance extract</a>.</p>
-          <p><strong>Review answer:</strong> yes; physical lifecycle remediation is complete. Chase live expiry and the remaining contract hardening still block milestone closeout.</p>
-        </div>
-        <div class="card interface">
-          <h3>Current Frontier (This PR): Package 5B Record Bounds And Probe Liveness</h3>
-          <p><span class="status active">In review</span> <strong>Review kind:</strong> deterministic class closure (two related operator boundaries on one CLI surface).</p>
-          <p><strong>Deliverable:</strong> enforceable replay frame and total artifact-byte ceilings on opt-in <code>memory replay --record</code> with fail-closed cleanup; Chase memory probes that report live only for a verified automation worker with a trustworthy publication time; one-shot stream exit 0 only for <code>live</code>.</p>
-          <p><strong>Review question:</strong> Can operators treat a recorded replay extract as bounded, and can a live Chase memory probe be trusted only when the automation worker is actually fresh?</p>
-          <p><strong>Invariant A — recorded extract is bounded and fail-closed:</strong> an opt-in record never leaves unbounded frame materialization, an oversize tree, or a self-describing size that exceeds the hard ceiling. <strong>Owner:</strong> <code>load_memory_observation_sequence</code> (load ceilings) + <code>write_memory_replay_record</code> / <code>_stabilize_record_byte_count</code> / <code>_directory_byte_size</code> / <code>_remove_tree_strict</code> (disk ceiling + cleanup). <strong>Paths:</strong> monolithic and directory sequence load (directory scan stops at <code>max_frames+1</code>); record write; unmeasurable artifact; manifest/result rewrite; exception cleanup. <strong>Matrix:</strong> exact- and over-frame file and directory sequences; oversized sequence file preflight; oversize record; unmeasurable artifact aborts write; declared <code>bytes_in_record</code> converges across digit boundaries and equals on-disk total; on failure remove the partial tree, or fail visibly with the exact residual path when the filesystem prevents removal. <strong>Unverified here:</strong> host memory under pathological multi-GB files beyond the preflight (rejected by size); concurrent writers to the same record dir.</p>
-          <p><strong>Invariant B — Chase live memory means a fresh automation worker:</strong> probe status <code>live</code> requires running/starting state, a live PID whose process command verifies automation identity for the vehicle, and automation state <code>updated_at_ms</code> within max age and not in the future beyond clock-skew tolerance. One-shot <code>stream memory --once</code> returns exit 0 only for <code>live</code>; every non-live status is nonzero. <strong>Owner:</strong> <code>assess_chase_memory_worker_liveness</code> + shared exact <code>--id</code> command matcher + <code>_once_memory_stream_result</code> (CLI boundary). <strong>Paths:</strong> stopped status; dead PID; PID reuse; missing vehicle id; unavailable process command; missing/stale/future publication; small forward skew; one-shot exit codes. <strong>External assumptions:</strong> <code>ps</code> command line is a reliable automation-identity signal; unavailable command fails closed as stale (stricter than stop-path permissive matching). <code>updated_at_ms</code> is the automation-wide state heartbeat refreshed by the capture loop, not proof that the memory stage itself just completed an update. <strong>Unverified here:</strong> live Chase max-age evidence (queued next frontier); physical Pi probe paths; hostile PID command spoofing.</p>
-          <p><strong>External evidence required for this PR:</strong> none (deterministic CLI/unit tests only).</p>
-        </div>
-        <div class="card goal">
-          <h3>Next Frontier (Co-Reviewed On This PR — Not Started)</h3>
-          <p><span class="status pending">Queued for approval with Package 5B merge</span> <strong>Review kind:</strong> live / external evidence (guided procedure + tracked artifact). Not closeout.</p>
-          <p><strong>Why it is on this PR:</strong> so the human reviewing Package 5B can also accept or revise what may begin after merge, without a second planning PR competing for attention.</p>
-          <p><strong>Prerequisite:</strong> this PR (Package 5B) merges.</p>
-          <p><strong>Attention budget:</strong> one human pass over procedure, claim language, extract/check output, and explicit non-claims. No dual “harness redesign + closeout.” Optional check-path scoring only if required for honesty—do not pre-name a harness subdivision.</p>
-          <p><strong>Review question:</strong> Can a guided live Chase run show a retained key surviving dropout and then disappearing under the configured <code>max_age_ms</code> <strong>without reset</strong>, while staying observe-only / zero candidate movement and keeping exact source-frame provenance for retained evidence?</p>
-          <p><strong>Success signal:</strong> (1) retained key with exact source frame; (2) key still retained after dropout (retained-not-current); (3) wait under configured max age without reset; (4) key gone from live memory; (5) control remains zero / observe-only; (6) recorded extract labels expiry as age-bound, not reset. Proposed path: <code>vehicles memory check --id chase-sim-chaser --record</code> under <code>chaser-depth-obstacles</code> (flags may settle during implementation).</p>
-          <p><strong>Invariant (live-evidence form):</strong> after dropout retention, a lifecycle key expires under configured max age without reset; the check does not treat reset, worker restart, or always-on keys as expiry success.</p>
-          <p><strong>Enforcement owner:</strong> live Chase memory-check path + evidence artifact contract (not a new ledger algorithm). Ledger expiry is already unit-tested; this frontier proves the live Chase path.</p>
-          <p><strong>Affected paths:</strong> guided present → dropout → age wait → gone; expiry-phase scoring; optional <code>--record</code> extract; no reset between dropout and expiry success.</p>
-          <p><strong>Adversarial matrix:</strong> still-present after wait → fail; expiry only via reset → fail; always-on keys excluded; non-zero control → fail; missing exact frame pairing → fail closed; non-live worker (Package 5B semantics) → not a pass.</p>
-          <p><strong>External assumptions:</strong> Chase + Metrics UI atomic capture available; wall clock and activation <code>max_age_ms</code> (or documented check override); automation worker remains live through the wait (Package 5B meaning of live).</p>
-          <p><strong>In scope:</strong> guided procedure; tracked evidence under <code>evidence/</code> (new run or honest additive claim); minimal check scoring only if the command cannot fail closed on missing expiry; plan update promoting this card to current after this PR merges.</p>
-          <p><strong>Out of scope / non-goals:</strong> <code>closeout.md</code> / completed ledger / promote 006; re-proving Pi lifecycle or Chase atomic alignment from scratch; 5A/5B redesign; multi-key conflict expansion; package sub-ID ladders.</p>
-          <p><strong>Validation intent:</strong> deterministic tests only if harness changes; live guided run required for the follow-on PR—CI alone cannot close that frontier.</p>
-          <p><strong>Implementation gate:</strong> open the follow-on implementation PR only after this PR merges and this card was accepted (or revised) in review. The follow-on PR description restates this card; it does not invent new scope.</p>
-        </div>
-        <div class="card constraint">
-          <h3>Preparation Horizon (Not Approved By This PR)</h3>
-          <p><span class="status blocked">Not promoted</span> <strong>Review kind:</strong> milestone closeout judgment.</p>
-          <p><strong>Package 6 closeout</strong> after live Chase max-age evidence is accepted: write <code>closeout.md</code>, completed ledger, freeze residual risk, decide whether to activate 006. Optional smoke re-runs are closeout validation, not a named package chain on this PR.</p>
-        </div>
-      </div>
-      <div class="table-wrap" style="margin-top: 16px;">
-        <table>
-          <thead><tr><th>Preparation Horizon</th><th>Known End-State Need</th><th>Must Be Learned First / Status</th></tr></thead>
-          <tbody>
-            <tr><td>Stable values and lifecycle</td><td>Typed snapshot/update records, provenance, bounds, reset identity, deterministic serialization.</td><td><strong>Partial.</strong> 5A landed detach/size/ids; this PR closes replay artifact ceilings.</td></tr>
-            <tr><td>Plugin execution</td><td>Loadable implementation shape with framework-owned status and failure isolation.</td><td><strong>Landed</strong> for age-policy rejection and plugin-safe ids (5A).</td></tr>
-            <tr><td>Host integration</td><td>Equivalent activation and lifecycle in Chase and Donkey hosts.</td><td><strong>Landed</strong> for load, snapshot, stream, and operator reset.</td></tr>
-            <tr><td>Operator inspect / reset / replay</td><td>Stage, inspect, stream, reset, replay without default disk history.</td><td><strong>Landed.</strong></td></tr>
-            <tr><td>Operator lifecycle (record)</td><td>Opt-in record without default disk history.</td><td><strong>This PR:</strong> frame-count and total artifact-byte ceilings with fail-closed cleanup.</td></tr>
-            <tr><td>Evaluation / visual provenance</td><td>Chase + Pi present/dropout/expiry/reset with source-frame extracts.</td><td><strong>Partial.</strong> Pi complete; Chase retention/alignment/reset tracked; <strong>live Chase max-age is the next frontier co-reviewed on this PR</strong>.</td></tr>
-            <tr><td>Closeout</td><td>Written judgment; activate 006 only then.</td><td><strong>Blocked</strong> until package 5 gates including Chase max-age pass. Not part of this PR’s approval of the next frontier.</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    <section class="panel">
-      <h2>Stage Meaning</h2>
-      <pre>SensorSnapshot
-  -> PerceptionText       current plugin evidence
-  -> Observation          decision-facing representation of one moment
-  -> MemorySnapshot       bounded evidence retained across moments
-  -> Patterns             recurring relationships inferred from memory
-  -> Projections          hypotheses about possible future state
-  -> Action               immediate control output (idle throughout this milestone)</pre>
-      <div class="grid two" style="margin-top: 14px;">
-        <div class="card interface">
-          <h3>Observation</h3>
-          <p>Answers what the current cycle made available. It is frame-scoped, detached for inspection, and may explicitly report missing or degraded perception.</p>
-        </div>
-        <div class="card goal">
-          <h3>Memory</h3>
-          <p>Answers what attributed evidence remains relevant after one cycle. It owns retention and expiry, not semantic classification or future inference.</p>
-        </div>
-        <div class="card constraint">
-          <h3>Patterns</h3>
-          <p>Answer what relationships recur across retained evidence. They are later derived claims and are not required to make memory useful.</p>
-        </div>
-        <div class="card risk">
-          <h3>Projections And Action</h3>
-          <p>Answer what may happen and what should be done now. They remain no-op so memory can be evaluated without movement masking its failures.</p>
-        </div>
-      </div>
-    </section>
-
-    <section class="panel">
-      <h2>Memory Contract Constraints</h2>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Concern</th><th>Required Direction</th><th>Not Yet Assumed</th></tr></thead>
-          <tbody>
-            <tr><td>Provenance</td><td>Every retained claim cites source observation, plugin/evidence identity, coordinate frame, observed time, and update time.</td><td>That two similar records are the same physical object.</td></tr>
-            <tr><td>Confidence</td><td>Retain source confidence and make any aggregate confidence rule attributable.</td><td>That repetition alone turns uncertain evidence into truth.</td></tr>
-            <tr><td>Bounds</td><td>Capacity, age, and eviction behavior are finite, configured, visible, and testable.</td><td>Unbounded history, raw frame archives, or an implicit database.</td></tr>
-            <tr><td>Lifecycle</td><td>Construction, update, read, reset, activation replacement, and failure states have one owner.</td><td>Persistence across process or device restart.</td></tr>
-            <tr><td>Coordinates</td><td>Preserve declared image or relative frames and reject incompatible fusion unless an implementation explicitly transforms them.</td><td>Calibrated metric geometry or a shared global map.</td></tr>
-            <tr><td>Inspection</td><td>Return stable summaries and structured records detached from live mutable state. Retained image-space evidence preserves the exact source frame/observation identity needed for opt-in visual review.</td><td>Dumping every internal index or implementation cache to operators, retaining raw frames by default, or projecting stale coordinates onto a newer frame without an explicit transform.</td></tr>
-            <tr><td>Failure</td><td>A memory failure is explicit, produces no new retained claim, and cannot produce movement.</td><td>Silently falling back to stale state as if it were current.</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <p class="note">Complexity belongs in the stable lifecycle and safety boundary when it makes implementations smaller. A memory plugin should primarily express what to retain, update, merge, or expire; it should not duplicate activation parsing, status rendering, persistence policy, or host wiring.</p>
-    </section>
-
-    <section class="panel">
-      <h2>Evaluation Contract</h2>
-      <div class="grid">
-        <div class="card goal">
-          <h3>Deterministic Sequences</h3>
-          <p>Use synthetic observations to prove recurrence, dropout, conflict, expiry, capacity, reset, failure isolation, and repeatable replay without CV variability.</p>
-        </div>
-        <div class="card interface">
-          <h3>Simulator Evidence</h3>
-          <p>Let Chase's built-in model drive <code>chaser-depth-obstacles</code> while the rewritten cycle runs observe-only in shadow. Record a source-frame-to-memory visual review and a frame-aligned reference snapshot. Hidden scene state may score an implementation but never becomes its memory input.</p>
-        </div>
-        <div class="card constraint">
-          <h3>Physical Evidence</h3>
-          <p>Run a stationary present/dropout/expiry/reset sequence on the Pi. Record an opt-in review that pairs each retained item with the exact perception source frame and region while the idle engine retains zero steering and throttle.</p>
-        </div>
-      </div>
-      <div class="table-wrap" style="margin-top: 14px;">
-        <table>
-          <thead><tr><th>Measure</th><th>Purpose</th></tr></thead>
-          <tbody>
-            <tr><td>Provenance completeness</td><td>Every retained record can be traced back to the observation and evidence that produced it.</td></tr>
-            <tr><td>Retention and expiry accuracy</td><td>Records survive and disappear according to declared policy under recurrence and dropout.</td></tr>
-            <tr><td>False persistence</td><td>Unsupported evidence does not remain indefinitely or silently become current.</td></tr>
-            <tr><td>Identity continuity</td><td>Only implementations that claim association are scored for unnecessary splits and unsupported merges.</td></tr>
-            <tr><td>Bounded cost</td><td>Record count, memory use, and update latency remain bounded as sequence length grows.</td></tr>
-            <tr><td>Replay determinism</td><td>The same ordered observations and configuration produce the same serialized memory result.</td></tr>
-            <tr><td>Shadow reference isolation</td><td>Chase reference/debug state is aligned by simulator frame identity and used only after the rewritten cycle as evaluator data; controller input and retained provenance remain camera-derived.</td></tr>
-            <tr><td>Visual provenance alignment</td><td>Recorded simulator and Pi reviews show that retained image-space evidence cites and marks the source region that actually produced it, without implying stale geometry is current.</td></tr>
-            <tr><td>Operator signal</td><td>Human output explains state, age, health, and recovery without flooding; JSON remains complete.</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    <section class="panel">
-      <h2>Work Plan</h2>
-      <div class="filters" aria-label="Filter work packages">
-        <button type="button" data-filter="all" aria-pressed="true">All</button>
-        <button type="button" data-filter="active" aria-pressed="false">Active</button>
-        <button type="button" data-filter="pending" aria-pressed="false">Pending</button>
-        <button type="button" data-filter="done" aria-pressed="false">Done</button>
-      </div>
-
-      <details class="work-item" data-status="done" open>
-        <summary><span>1. Settle Stable Memory Values And Lifecycle</span><span class="status done">Done</span></summary>
-        <div class="work-body"><ul>
-          <li><strong>Implemented:</strong> <code>MemorySnapshot</code>, <code>RetainedEvidence</code>, <code>MemoryProvenance</code>, and <code>MemoryBounds</code> under <code>autonomy/decision/memory.py</code>.</li>
-          <li><strong>Implemented:</strong> health states <code>empty</code>/<code>healthy</code>/<code>unavailable</code>/<code>error</code>, epoch ids for reset generations, detached <code>to_dict</code>/<code>from_dict</code>, and capacity enforcement on the snapshot value.</li>
-          <li><strong>Implemented:</strong> decision cycle <code>remember</code> stage and result field are typed as <code>MemorySnapshot | None</code>; non-snapshot returns raise <code>TypeError</code>.</li>
-          <li><strong>Tested:</strong> focused value and cycle tests; patterns/projections remain untyped <code>Any</code> until later stages earn contracts.</li>
-        </ul></div>
-      </details>
-
-      <details class="work-item" data-status="done" open>
-        <summary><span>2. Define Plugin Execution And Activation</span><span class="status done">Done</span></summary>
-        <div class="work-body"><ul>
-          <li><strong>Implemented:</strong> <code>MemoryImplementation</code> protocol with <code>update</code>/<code>reset</code>/<code>snapshot</code> only.</li>
-          <li><strong>Implemented:</strong> one activation schema <code>automa_memory_activation_v0</code> via <code>read_memory_activation</code>; no compatibility aliases.</li>
-          <li><strong>Implemented:</strong> <code>ActivatedMemoryStage</code> owns load, timing, status, failure isolation (errors → error snapshot, no raise), and activation-bound capacity checks.</li>
-          <li><strong>Tested:</strong> activation validation, cycle wiring, reset epoch, isolated update failures, over-capacity rejection. No concrete production reducer yet.</li>
-        </ul></div>
-      </details>
-
-      <details class="work-item" data-status="done" open>
-        <summary><span>3. Wire Equivalent Runtime Hosts</span><span class="status done">Done</span></summary>
-        <div class="work-body"><ul>
-          <li><strong>Implemented:</strong> Chase automation and Donkey <code>manage.py</code> optionally load <code>runtime/memory/active.json</code> into <code>DecisionStages.remember</code>.</li>
-          <li><strong>Implemented:</strong> <code>AutonomySnapshot.memory</code> carries the cycle memory result to engines; host status exposes memory stage status when present.</li>
-          <li><strong>Implemented:</strong> idle engine reports <code>has_memory</code>; memory update failures remain isolated error snapshots and do not change control.</li>
-          <li><strong>Note:</strong> no production reducer is packaged yet—hosts stay no-op when the activation file is absent.</li>
-        </ul></div>
-      </details>
-
-      <details class="work-item" data-status="done" open>
-        <summary><span>4. Add One Functional Memory Implementation</span><span class="status done">Done</span></summary>
-        <div class="work-body"><ul>
-          <li><strong>Implemented:</strong> <code>BoundedEvidenceLedger</code> under <code>implementations/memory/</code> retains observation things/signals with provenance, max-age expiry, and oldest-first eviction.</li>
-          <li><strong>Implemented:</strong> explicit catalog selection via <code>bounded_evidence</code> and <code>build_memory_activation_payload</code> for <code>automa_memory_activation_v0</code>.</li>
-          <li><strong>Claims boundary:</strong> recency slots reuse evidence ids within an epoch only; metadata sets <code>claims_identity=false</code>. No floor-plan or fusion schema.</li>
-          <li><strong>Tested:</strong> retention, dropout survival/expiry, capacity eviction, reset, and framework activation load.</li>
-        </ul></div>
-      </details>
-
-      <details class="work-item" data-status="active" open>
-        <summary><span>5. Build Operator And Evaluation Workflows</span><span class="status active">Validation repair</span></summary>
-        <div class="work-body"><ul>
-          <li><strong>Landed:</strong> stage/info/deploy honesty; live stream + Memory map; reset; offline replay; opt-in record extracts; Chase-first phase-script check; stationary Pi live-publication check with control-zero and optional JPEG + provenance extract.</li>
-          <li><strong>Validated after review:</strong> live Pi lifecycle, exact Pi frame pairing, atomic Chase frame/reference identity, real Chase retained-prior provenance, observe-only authority, evaluator isolation, and tracked source-frame extracts.</li>
-          <li><strong>Still open:</strong> harden snapshot/bounds semantics, fill deterministic coverage gaps, and prove live Chase max-age expiry without reset.</li>
-        </ul></div>
-      </details>
-
-      <details class="work-item" data-status="active" open>
-        <summary><span>6. Consolidate Findings And Close</span><span class="status active">Next</span></summary>
-        <div class="work-body"><ul>
-          <li>Write <code>closeout.md</code>: which retained representation proved useful, cost, failures, residual risk.</li>
-          <li>Decide whether patterns, projections, or information-gathering action have enough evidence for later work.</li>
-          <li>Append <code>completed.md</code>, freeze this plan, promote the 006 pre-plan only after package 5 evidence exists.</li>
-          <li>Preserve unresolved algorithm experiments as bounded synthesis or lab work rather than stable memory contracts.</li>
-        </ul></div>
-      </details>
-
-      <div class="progress-track" aria-label="Milestone work packages completed: 4 of 6"><div class="progress-fill" style="width: 66.7%;"></div></div>
-      <p class="small"><strong>Not closed.</strong> Packages 1–4 are done; package 5 is in validation repair and package 6 remains blocked. See the implementation review and Remaining For Closeout.</p>
-    </section>
-
-
-
-    <section class="panel">
-      <h2>Scope Boundaries</h2>
-      <div class="grid two">
-        <div class="card constraint">
-          <h3>In Scope</h3>
-          <ul>
-            <li>Stable memory values, lifecycle, activation, reset, and failure behavior.</li>
-            <li>Simple loadable memory implementations with bounded state.</li>
-            <li>Equivalent local simulator and onboard Pi host integration.</li>
-            <li>Operator inspection, streaming, replay, and opt-in recording.</li>
-            <li>Deterministic sequence tests and live, visually reviewable simulator evaluation.</li>
-            <li>Non-moving physical activation, state inspection, and recorded visual-provenance validation.</li>
-            <li>Honest physical deploy verification that a shipped memory activation is actually live (or fails with core-update guidance).</li>
-          </ul>
-        </div>
-        <div class="card risk">
-          <h3>Out Of Scope</h3>
-          <ul>
-            <li>Non-idle decision or action policy.</li>
-            <li>Path planning, navigation, collision avoidance, or map-based control.</li>
-            <li>Metric SLAM, calibrated global coordinates, or a complete floor plan.</li>
-            <li>Semantic object recognition or universal object identity.</li>
-            <li>Durable database, cloud memory, or default frame archives.</li>
-            <li>Model training, VLM integration, or privileged simulator state as input.</li>
-            <li>Merging core and autonomy into one deploy command, or rewriting manage.py ownership for this milestone.</li>
-          </ul>
-        </div>
-      </div>
-    </section>
-
-    <section class="panel">
-      <h2>Risks And Controls</h2>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Risk</th><th>Control</th></tr></thead>
-          <tbody>
-            <tr><td>Memory silently becomes asserted world truth.</td><td>Require provenance, source confidence, coordinate frame, recency, and explicit implementation claim boundaries on every retained record.</td></tr>
-            <tr><td>Plugin implementations inherit framework complexity.</td><td>Put activation, bounds enforcement, lifecycle, timing, status, and failure isolation in stable infrastructure; keep plugins focused on update policy.</td></tr>
-            <tr><td>A generic memory framework is designed before one useful reducer exists.</td><td>Land the smallest stable contract first, then one bounded implementation; add abstractions only from demonstrated duplication.</td></tr>
-            <tr><td>Hidden state grows with run length or survives reset.</td><td>Test capacity, expiry, long sequences, activation replacement, reset, and serialized size directly.</td></tr>
-            <tr><td>Raw images become accidental memory or disk history.</td><td>Store evidence references and compact attributes by default; require explicit recording for artifacts and define cleanup.</td></tr>
-            <tr><td>Simulator convenience leaks map truth into runtime input.</td><td>Use only vehicle sensor-derived observations for memory. Hidden scene state is evaluator-only.</td></tr>
-            <tr><td>Memory failures influence movement.</td><td>Keep action idle, isolate stage failure, and assert zero control in local and physical validation.</td></tr>
-            <tr><td>Operator output becomes an unbounded record dump.</td><td>Default to health, counts, age, capacity, and concise summaries; provide complete structured detail only through machine output or explicit inspection.</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    <section class="panel">
-      <h2>Exit Criteria</h2>
-      <p class="small">Tracked against delivery. Milestone closeout requires every row <span class="status done">Met</span>.</p>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>#</th><th>Criterion</th><th>Status</th></tr></thead>
-          <tbody>
-            <tr><td>1</td><td>Stable memory input and output types replace public <code>Any</code> at the decision-cycle boundary without encoding a concrete mapping algorithm.</td><td><span class="status done">Met</span></td></tr>
-            <tr><td>2</td><td>Observation, memory, patterns, projections, and action have distinct documented meanings and stage ownership.</td><td><span class="status done">Met</span></td></tr>
-            <tr><td>3</td><td>Memory state has finite capacity and age, deterministic serialization, explicit reset, attributable provenance, and isolated failure behavior.</td><td><span class="status pending">Partial</span> — Package 5A detaches snapshots and bounds property/serialized size with plugin-safe ids; replay artifact bounds remain open.</td></tr>
-            <tr><td>4</td><td>At least one simple implementation retains and expires structured evidence without claiming semantic or metric world truth.</td><td><span class="status done">Met</span> (<code>BoundedEvidenceLedger</code>)</td></tr>
-            <tr><td>5</td><td>The same activation and lifecycle run through local Chase and onboard Donkey hosts; neither receives privileged simulator map state.</td><td><span class="status done">Met</span> for load/update/status/reset path</td></tr>
-            <tr><td>6</td><td>Automa can stage, inspect, run, stream latest memory, <strong>replay</strong> a sequence, and reset state with concise human and complete machine output.</td><td><span class="status done">Met</span> — stage/inspect/stream/reset/replay landed</td></tr>
-            <tr><td>7</td><td>Default execution writes no logs, frames, or memory history; recording is explicit and bounded.</td><td><span class="status pending">Partial</span> — defaults write nothing; Package 5B enforces opt-in replay frame-count and artifact-byte ceilings.</td></tr>
-            <tr><td>8</td><td>Deterministic tests cover recurrence, dropout, conflict, expiry, capacity, reset, failure, and replay, including long-sequence boundedness.</td><td><span class="status pending">Partial</span> — Package 5A/5B add size, collision, long-sequence capacity, and stale-worker probe coverage. Broader conflict scenarios may still expand later.</td></tr>
-            <tr><td>9</td><td>One live <code>chaser-depth-obstacles</code> shadow check and one recorded non-moving Pi present/dropout/expiry/reset check verify equivalent stage behavior while the rewritten engine emits zero movement.</td><td><span class="status pending">Partial</span> — Pi lifecycle is fully validated; <a href="evidence/chase-shadow-memory/provenance_extract.html">Chase</a> proves live retention, reset, and zero candidate movement, but live max-age expiry remains open.</td></tr>
-            <tr><td>10</td><td>During the simulator check, Chase's built-in decision model retains movement authority, the rewrite runs observe-only, and candidate/reference results are aligned by simulator frame identity.</td><td><span class="status done">Met</span> — the atomic evaluator contract and tracked guided run prove same-epoch advancing alignment, simulator authority, complete zero/not-applied candidate control, and evaluator isolation.</td></tr>
-            <tr><td>11</td><td>Simulator debug, map, and reference-decision state are evaluator-only and are absent from rewritten controller inputs and retained memory provenance.</td><td><span class="status done">Met</span> by design/wiring; re-asserted on check path</td></tr>
-            <tr><td>12</td><td>Tracked simulator and physical reviews visibly trace retained image-space evidence to exact perception source frames and regions, distinguish current from retained/expired evidence, and never treat stale coordinates as current geometry.</td><td><span class="status done">Met</span> — both <a href="evidence/physical-memory-lifecycle/provenance_extract.html">physical</a> and <a href="evidence/chase-shadow-memory/provenance_extract.html">simulator</a> extracts preserve exact source images and observations; retained locations are labeled as source-frame evidence, not current geometry.</td></tr>
-            <tr><td>13</td><td>A closeout states what memory representation proved useful, what remains unverified, and whether later pattern or action work is justified.</td><td><span class="status blocked">Blocked</span> until package 5 validation repair passes.</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    <section class="panel">
-      <h2>Decision Log</h2>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Date</th><th>Decision</th><th>Reason</th></tr></thead>
-          <tbody>
-            <tr><td>2026-07-15</td><td>Make bounded evidence memory the next milestone after perception and test hardening.</td><td>The cycle and observation boundaries are now protected, while two prior closeouts identify memory as the next missing prerequisite for non-idle decisions.</td></tr>
-            <tr><td>2026-07-15</td><td>Define memory as retained attributed evidence rather than a world model.</td><td>Current perception emits uncertain, coordinate-scoped claims. A stronger semantic or geometric model must be earned by implementation evidence rather than embedded in the stable interface.</td></tr>
-            <tr><td>2026-07-15</td><td>Keep action idle for the entire milestone.</td><td>Memory lifecycle and representation should be evaluated independently; movement would add safety risk and make failures harder to attribute.</td></tr>
-            <tr><td>2026-07-15</td><td>Keep memory bounded and process-local by default.</td><td>Persistence has cost, cleanup, migration, and stale-state consequences that are not justified before a useful in-memory representation exists.</td></tr>
-            <tr><td>2026-07-15</td><td>Do not promote perception track IDs into durable identity.</td><td>Current temporal groups are run-local motion evidence and have not demonstrated semantic continuity through occlusion, viewpoint change, or restart.</td></tr>
-            <tr><td>2026-07-15</td><td>Require the same memory interface in simulator and physical hosts.</td><td>Environment-specific truth would undermine the purpose of testing autonomy logic against a simulator before deploying it to the Pi.</td></tr>
-            <tr><td>2026-07-15</td><td>Make completion usage a stable part of milestone scope.</td><td>Concrete user-visible workflows constrain architecture toward runnable outcomes while allowing command details and implementation choices to evolve from evidence.</td></tr>
-            <tr><td>2026-07-16</td><td>Defer evidence memory to milestone 005 and make physical perception parity milestone 004.</td><td>The Pi loads compatible perception code, but manual mode does not execute the onboard stage and operators cannot stream frame-matched findings. Memory must not begin on an unverified physical input path.</td></tr>
-            <tr><td>2026-07-18</td><td>Activate milestone 005 after physical perception parity closed.</td><td>Live always-on observation, exact latest publication, guided check artifacts, strategy rejection, and 60s viability are recorded. Memory can retain attributed observations from the proven path.</td></tr>
-            <tr><td>2026-07-18</td><td>Require visual provenance in the physical memory closeout gate.</td><td>Compatible schemas and bounded record counts do not show that memory plausibly derives from real perception. A stationary recorded check must trace retained regions to exact source frames and visibly demonstrate retention, expiry, and reset before later decision stages begin.</td></tr>
-            <tr><td>2026-07-18</td><td>Require the same visual provenance demonstration in Chase.</td><td>Simulator compatibility alone does not prove that live camera-derived observations become plausible memory. The depth-obstacles scenario must produce a tracked source-frame-to-memory review, with hidden scene state reserved for scoring.</td></tr>
-            <tr><td>2026-07-18</td><td>Use Chase's built-in decision model as a shadow-validation reference.</td><td>The built-in model can drive a changing scene and provide frame-aligned evaluator state while the rewrite remains observe-only. Its privileged state must never become candidate input or an interface contract, and comparison should test declared plausibility rather than exact imitation.</td></tr>
-            <tr><td>2026-07-18</td><td>Land typed MemorySnapshot values before any reducer or host wiring.</td><td>Removing public Any at the decision seam forces provenance, bounds, and failure health into the stable contract without encoding retention policy in the cycle.</td></tr>
-            <tr><td>2026-07-18</td><td>Give memory a single activation document and framework-owned stage runner before any host wiring.</td><td>Implementations stay limited to update/reset/snapshot. Load, timing, status, capacity enforcement, and failure isolation belong in stable infrastructure so hosts share one behavior.</td></tr>
-            <tr><td>2026-07-18</td><td>Pass MemorySnapshot through AutonomySnapshot on both hosts before packaging a production reducer.</td><td>Engines and runtime status must see the same inspectable memory field whether or not a concrete implementation is activated; optional activation keeps idle deployments safe.</td></tr>
-            <tr><td>2026-07-18</td><td>Ship BoundedEvidenceLedger as the first packaged memory implementation without identity claims.</td><td>A recency ledger of things/signals is enough to exercise retention, dropout, expiry, and capacity while remaining evidence-not-truth and loadable through the existing activation document.</td></tr>
-            <tr><td>2026-07-18</td><td>Land memory stage/info CLI and autonomy-deploy activation before live stream or visual checks.</td><td>Operators need a supported way to select bounded_evidence and ship runtime/memory/active.json; inspection workflows can follow once activation is routine on Chase and Pi.</td></tr>
-            <tr><td>2026-07-19</td><td>Re-course package 5 to prove live memory after autonomy deploy before stream/check work.</td><td>Live smoke installed memory activation via autonomy while a stale core manage.py never loaded the stage—success without memory. Verify matching implementation_id on restart, fail with core-then-autonomy guidance, and document the deploy split. Stream/reset/visual checks remain in package 5 but follow this honesty gate.</td></tr>
-            <tr><td>2026-07-19</td><td>Add live memory stream/info probe over status components before visual check UX.</td><td>Operators need a read-only replacing view of health, epoch, and record count on Pi and Chase once deploy honesty exists; full provenance check and reset/replay remain separate deliverables.</td></tr>
-            <tr><td>2026-07-19</td><td>Re-course package 5 again: publish MemorySnapshot into the shared loopback view with stage toggles.</td><td>Terminal counts are not as convincing as perception’s frame-matched frontend. First attempt extended the perception page with Perception/Memory layers; superseded the same day by a dedicated key→value page (next row).</td></tr>
-            <tr><td>2026-07-19</td><td>Separate memory inspector as a key→value ledger page from perception overlays.</td><td>Operators want memory as record_id keys and mapped values, matching BoundedEvidenceLedger’s dict structure rather than another image layer. Perception stays camera-first; /memory lists keys by kind and shows the selected value. stream memory prints the map URL.</td></tr>
-            <tr><td>2026-07-19</td><td>Stabilize Memory map selection against live poll races.</td><td>200ms refresh was rebuilding key-row DOM and dropping clicks mid-gesture. Selection uses pointerdown + event delegation on a stable parent, rebuilds only when key identity changes, and keeps the selected key across polls until it leaves the ledger.</td></tr>
-            <tr><td>2026-07-19</td><td>Refresh Current Delivery Horizon after Memory map merge; next PR is memory reset.</td><td>Horizon cards still pointed at the first contract PR. Align rolling horizon with packages 1–4 + inspect path landed, package 5 open on reset → replay/record → visual-provenance checks → closeout; keep 006 pre-plan inactive.</td></tr>
-            <tr><td>2026-07-19</td><td>Land operator memory reset on Chase and Pi before replay/visual checks.</td><td>Plugin reset existed in-process only. Operators need a confirmed empty epoch on both hosts. Pi uses POST /autonomy/memory/reset (core patch + autonomy pilot method); Chase uses automation worker request/result files. Replay remains the next review unit.</td></tr>
-            <tr><td>2026-07-19</td><td>Surface remaining closeout work at the top of the plan (exit criteria status + Remaining For Closeout).</td><td>After inspect/reset, the open path (replay, record, visual checks, package 6) was easy to miss under package-5 prose. Milestone status must read “not ready to close” until those gates land.</td></tr>
-            <tr><td>2026-07-20</td><td>Land offline deterministic memory replay before opt-in record and visual checks.</td><td>Operators need a digestible end-state for fixed observation sequences without live host coupling. Sequence schema + two-pass digest closes exit criterion 6; record and source-frame checks remain for exit 7/9/12.</td></tr>
-            <tr><td>2026-07-20</td><td>Land opt-in memory replay recording with frozen provenance extract before live host checks.</td><td>Default remains write-nothing. --record freezes key→value→source-observation extracts labeled retained-not-current, giving evaluation a bounded artifact layout. Live Chase/Pi guided checks still required for exit criteria 9–12.</td></tr>
-            <tr><td>2026-07-20</td><td>Land Chase-first memory lifecycle check before stationary Pi physical check.</td><td>present/dropout/expiry/reset gates are host-independent memory behavior; a phase-script check with zero movement and optional provenance record proves them without blocking on Pi availability. Physical source-frame Pi check remains the final package-5 gate.</td></tr>
-            <tr><td>2026-07-20</td><td>Initial acceptance of the stationary Pi memory check (superseded by the following review).</td><td>The command sampled live publications and asserted zero control, but its lifecycle and exact-frame guarantees had not yet been independently validated. The following decision records why package 5 was reopened.</td></tr>
-            <tr><td>2026-07-20</td><td>Reopen package 5 after comprehensive implementation validation.</td><td>The initial checks landed as commands but do not prove their advertised external behavior: Pi dropout is forced, expiry/reset use a local stage, separately fetched JPEGs can mismatch publication frame IDs, and Chase frame identity/reference alignment is absent. Snapshot detachment, total-size bounds, and missing deterministic coverage also block the existing exit criteria. The Implementation Review section supersedes earlier completion claims.</td></tr>
-            <tr><td>2026-07-20</td><td>Remediation block 2: score Pi memory check against the live onboard stage.</td><td>Remove forced dropout and ephemeral local reducer from the Pi path. Present/dropout/expiry use publication.memory; reset uses POST /autonomy/memory/reset with epoch/reset-count confirmation. Chase offline script remains until frameIndex remediation.</td></tr>
-            <tr><td>2026-07-20</td><td>Accept stationary Pi lifecycle remediation after guided physical validation.</td><td>A recorded present/remove sequence used verified JPEG/publication frame pairs and the active onboard ledger. <code>thing:floor_boundary_002</code> survived dropout, expired under the configured 10-second age, and reset to a new empty epoch while control stayed zero. Compact evidence is tracked under <code>evidence/physical-memory-lifecycle/</code>.</td></tr>
-            <tr><td>2026-07-20</td><td>Remediation block 3: preserve Chase simulator frameIndex and score live shadow alignment.</td><td>Initial sequential debug/camera pairing proved impossible against an advancing session and triggered Metrics UI Milestone 002 for an atomic evaluator response. Auto-driving must consume and validate that response before either repository treats the dependency as complete.</td></tr>
-            <tr><td>2026-07-22</td><td>Accept the atomic Chase shadow path and keep the Metrics UI milestone unmerged through auto-driving closeout.</td><td>The adapter now has one atomic capture path and no compatibility fallback. Two repeated live <code>chaser-depth-obstacles</code> checks proved advancing same-epoch alignment, an observed retained-prior transition, explicit zero/not-applied candidate control, simulator authority, evaluator isolation, exact source images, and reset. The tracked extract is under <code>evidence/chase-shadow-memory/</code>. Metrics UI Milestone 002 remains the active dependency until the remaining auto-driving bounds, coverage, and live expiry work no longer needs contract adjustment.</td></tr>
-            <tr><td>2026-07-22</td><td>Package 5A: value and bounds integrity.</td><td>Deep-detach returned snapshots; add <code>max_property_bytes</code>/<code>max_serialized_bytes</code>; namespace ledger keys as <code>kind:plugin:evidence</code>; reject removed or weakened age bounds at the framework boundary; cover mutation isolation, oversized properties, age-policy rejection, and cross-plugin collision. Replay artifact ceilings and probe liveness stay Package 5B.</td></tr>
-            <tr><td>2026-07-23</td><td>Package 5B: record bounds and Chase probe liveness.</td><td>Enforce replay max frame count and total artifact-byte ceilings on <code>--record</code> with fail-closed cleanup. Chase live memory probes require running/starting status, a live PID, and a fresh <code>updated_at_ms</code>. Add long-sequence capacity and stopped/stale worker tests.</td></tr>
-            <tr><td>2026-07-23</td><td>Revise Package 5B delivery entry for invariant closure.</td><td>After the shared planning-contract invariant-closure guidance (PR #54), restate Package 5B as two universal guarantees with enforcement owners, affected paths, compact adversarial matrices, external assumptions, and unverified limits. Align PR #53 description to that shape so review checks class closure rather than accumulating path-local cases (Package 5A lesson).</td></tr>
-            <tr><td>2026-07-23</td><td>Co-review the next frontier on the current unmerged PR.</td><td>Put the full live Chase max-age expiry contract on Package 5B’s plan/PR so human attention can approve this unit’s code and the next unit’s scope in one pass. Closeout stays preparation horizon. Prefer this over a separate planning-only PR while the current frontier is still open.</td></tr>
-          </tbody>
-
-
-
-        </table>
-      </div>
-    </section>
+    <div class="source">Canonical source: <a href="plan.md">plan.md</a></div>
+    <h1>Milestone 005 — Evidence Memory Foundation</h1>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Status</td>
+<td>Active</td>
+</tr>
+<tr>
+<td>Milestone branch</td>
+<td><code>milestone/005-evidence-memory-foundation</code> (to be created for new review units)</td>
+</tr>
+<tr>
+<td>Cumulative PR</td>
+<td>TBD — open draft from milestone branch to <code>main</code> when topology is active</td>
+</tr>
+<tr>
+<td>Current frontier</td>
+<td>Live Chase max-age expiry — <a href="https://github.com/GeorgeLuo/auto-driving/pull/57">PR #57</a></td>
+</tr>
+<tr>
+<td>Started</td>
+<td>2026-07-15</td>
+</tr>
+<tr>
+<td>Action policy</td>
+<td>Idle / no movement for the entire milestone</td>
+</tr>
+</tbody>
+</table>
+<p>Shared planning contract: <a href="../README.md">README.md</a> · <a href="../planning-contract.html">planning-contract.html</a></p>
+<h2>Objective</h2>
+<p>Give the decision cycle bounded, inspectable continuity across frames by
+retaining attributed observation evidence—without claiming a complete world
+model, changing perception semantics, or granting movement authority.</p>
+<h2>Completion Usage</h2>
+<table>
+<thead>
+<tr>
+<th>Workflow</th>
+<th>Starting state</th>
+<th>Execution</th>
+<th>Success signal</th>
+<th>Criteria</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Stage memory</td>
+<td>Known vehicle</td>
+<td><code>vehicles update memory --id &lt;id&gt; --implementation bounded_evidence</code></td>
+<td>Activation present; stage loadable</td>
+<td>M005-04, M005-05</td>
+</tr>
+<tr>
+<td>Inspect / stream memory</td>
+<td>Active memory stage</td>
+<td><code>vehicles stream memory --id &lt;id&gt;</code> / Memory map</td>
+<td>Health, epoch, retained keys visible</td>
+<td>M005-05, M005-06</td>
+</tr>
+<tr>
+<td>Reset memory</td>
+<td>Running host with memory</td>
+<td><code>vehicles memory reset --id &lt;id&gt;</code></td>
+<td>Empty state with new epoch / reset count</td>
+<td>M005-03, M005-05</td>
+</tr>
+<tr>
+<td>Replay observations</td>
+<td>Observation sequence file</td>
+<td><code>vehicles memory replay &lt;sequence&gt; --id &lt;id&gt;</code></td>
+<td>Stable digest; bounded end state</td>
+<td>M005-06, M005-08</td>
+</tr>
+<tr>
+<td>Record provenance</td>
+<td>Explicit <code>--record</code></td>
+<td>Replay or lifecycle check with <code>--record</code></td>
+<td>Bounded provenance extract; no default history</td>
+<td>M005-07, M005-12</td>
+</tr>
+<tr>
+<td>Lifecycle check (Pi)</td>
+<td>Stationary Pi, live stage</td>
+<td><code>vehicles memory check --id &lt;picar&gt; --record</code></td>
+<td>Present / dropout / expiry / reset without movement</td>
+<td>M005-09, M005-12</td>
+</tr>
+<tr>
+<td>Lifecycle check (Chase)</td>
+<td>Chase sim + observe-only automation</td>
+<td><code>vehicles memory check --id chase-sim-chaser --record</code></td>
+<td>Alignment, retention, max-age, reset without candidate movement</td>
+<td>M005-09–M005-12</td>
+</tr>
+</tbody>
+</table>
+<h2>Scope Boundaries</h2>
+<table>
+<thead>
+<tr>
+<th>In scope</th>
+<th>Out of scope</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Typed memory values, activation, host wiring, bounded evidence ledger</td>
+<td>Semantic recognition, metric world models, track-ID identity claims</td>
+</tr>
+<tr>
+<td>Operator stage / inspect / stream / reset / replay / opt-in record</td>
+<td>Default disk history or always-on recording</td>
+</tr>
+<tr>
+<td>Simulator and physical lifecycle evidence while action is idle</td>
+<td>Non-idle movement authority or action policies</td>
+</tr>
+<tr>
+<td>Framework-owned bounds, failure isolation, plugin-safe identity</td>
+<td>Open multi-candidate perception search</td>
+</tr>
+<tr>
+<td>Closeout judgment when criteria are met</td>
+<td>Activating milestone 006 before 005 closeout</td>
+</tr>
+</tbody>
+</table>
+<h2>Exit Criteria</h2>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Criterion</th>
+<th>Status</th>
+<th>Evidence / remaining gap</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>M005-01</td>
+<td>Stable memory input and output types replace public <code>Any</code> at the decision-cycle boundary without encoding a concrete mapping algorithm</td>
+<td>Met</td>
+<td>Typed <code>MemorySnapshot</code> / activation contracts</td>
+</tr>
+<tr>
+<td>M005-02</td>
+<td>Observation, memory, patterns, projections, and action have distinct documented meanings and stage ownership</td>
+<td>Met</td>
+<td>Stage meaning and idle action policy</td>
+</tr>
+<tr>
+<td>M005-03</td>
+<td>Memory state has finite capacity and age, deterministic serialization, explicit reset, attributable provenance, and isolated failure behavior</td>
+<td>Partial</td>
+<td>Core bounds, detach, plugin-safe IDs in #52; replay artifact bounds in #53</td>
+</tr>
+<tr>
+<td>M005-04</td>
+<td>At least one simple implementation retains and expires structured evidence without claiming semantic or metric world truth</td>
+<td>Met</td>
+<td><code>BoundedEvidenceLedger</code></td>
+</tr>
+<tr>
+<td>M005-05</td>
+<td>Same activation and lifecycle run through local Chase and onboard Donkey hosts; neither receives privileged simulator map state</td>
+<td>Met</td>
+<td>Load / update / status / reset paths on both hosts</td>
+</tr>
+<tr>
+<td>M005-06</td>
+<td>Automa can stage, inspect, run, stream latest memory, replay a sequence, and reset with concise human and complete machine output</td>
+<td>Met</td>
+<td>Stage / inspect / stream / reset / replay landed</td>
+</tr>
+<tr>
+<td>M005-07</td>
+<td>Default execution writes no logs, frames, or memory history; recording is explicit and bounded</td>
+<td>Partial</td>
+<td>Defaults write nothing; #53 enforces opt-in replay frame/byte ceilings</td>
+</tr>
+<tr>
+<td>M005-08</td>
+<td>Deterministic tests cover recurrence, dropout, conflict, expiry, capacity, reset, failure, and replay, including long-sequence boundedness</td>
+<td>Partial</td>
+<td>#52/#53 size, collision, long-sequence, stale-worker, max-age scoring; broader conflict scenarios may expand later</td>
+</tr>
+<tr>
+<td>M005-09</td>
+<td>One live Chase shadow check and one recorded non-moving Pi present/dropout/expiry/reset check verify equivalent stage behavior while the rewritten engine emits zero movement</td>
+<td>Partial</td>
+<td>Pi validated; Chase retention/alignment/reset accepted (#51); max-age expiry scoring under review (#57); live extract still required for full claim</td>
+</tr>
+<tr>
+<td>M005-10</td>
+<td>During the simulator check, Chase’s built-in decision model retains movement authority, the rewrite runs observe-only, and candidate/reference results align by simulator frame identity</td>
+<td>Met</td>
+<td>Atomic evaluator path and tracked guided run</td>
+</tr>
+<tr>
+<td>M005-11</td>
+<td>Simulator debug, map, and reference-decision state are evaluator-only and absent from rewritten controller inputs and retained memory provenance</td>
+<td>Met</td>
+<td>By design/wiring; re-asserted on check path</td>
+</tr>
+<tr>
+<td>M005-12</td>
+<td>Tracked simulator and physical reviews visibly trace retained image-space evidence to exact perception source frames and regions; distinguish current from retained/expired; never treat stale coordinates as current geometry</td>
+<td>Met</td>
+<td>Physical and Chase provenance extracts tracked</td>
+</tr>
+<tr>
+<td>M005-13</td>
+<td>Closeout states what memory representation proved useful, what remains unverified, and whether later pattern or action work is justified</td>
+<td>Blocked</td>
+<td>Requires all other criteria <code>Met</code></td>
+</tr>
+</tbody>
+</table>
+<h2>Current Delivery</h2>
+<h3>Current Frontier</h3>
+<p><strong>Live Chase max-age expiry</strong></p>
+<ul>
+<li>PR: <a href="https://github.com/GeorgeLuo/auto-driving/pull/57">#57</a></li>
+<li>Branch: <code>agent/chase-live-max-age-expiry</code> <em>(historical topology targets <code>main</code>; new units should use <code>m005/…</code> → milestone branch)</em></li>
+<li>Review kind: Live external evidence + deterministic scoring path</li>
+<li>Review question: Can a guided live Chase run show a retained key surviving dropout and then disappearing under configured <code>max_age_ms</code> without reset, while observe-only / zero movement and exact source-frame provenance hold?</li>
+<li>Exit criteria affected: M005-08, M005-09</li>
+<li>Prerequisite: Package 5B (#53) accepted</li>
+<li>Milestone-level non-goal: Package 6 closeout; Pi re-proof; 5A/5B redesign</li>
+</ul>
+<h3>Next-Frontier Candidate</h3>
+<p><strong>Milestone closeout</strong></p>
+<ul>
+<li>Review kind: Milestone closeout</li>
+<li>Question: Is milestone 005 complete as a whole, and should the 006 pre-plan be activated?</li>
+<li>Prerequisite: Every exit criterion <code>Met</code>, including live Chase max-age evidence</li>
+<li>Non-goal: New feature implementation under the closeout PR</li>
+</ul>
+<p>Not started. Scope may change based on evidence from the current frontier.</p>
+<h2>Accepted Review Units</h2>
+<table>
+<thead>
+<tr>
+<th>PR</th>
+<th>Accepted review question</th>
+<th>Result</th>
+<th>Exit criteria</th>
+<th>Durable evidence</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>#51</td>
+<td>Is Chase retained evidence aligned to exact simulator frames while movement remains external and evaluator state isolated?</td>
+<td>Accepted</td>
+<td>M005-09, M005-10, M005-11, M005-12</td>
+<td><code>evidence/chase-shadow-memory/</code></td>
+</tr>
+<tr>
+<td>#52</td>
+<td>Can callers mutate, enlarge, collide, or weaken activated memory bounds?</td>
+<td>Accepted</td>
+<td>M005-03, M005-08</td>
+<td>Deterministic bounds/detach/identity tests</td>
+</tr>
+<tr>
+<td>#53</td>
+<td>Can operators treat a recorded replay extract as bounded and fail-closed, and can a live Chase memory probe be trusted only when the automation worker is fresh?</td>
+<td>Accepted</td>
+<td>M005-03, M005-07, M005-08</td>
+<td>Deterministic record/probe/once-exit tests</td>
+</tr>
+</tbody>
+</table>
+<p>Earlier stage/inspect/reset/replay/record and Pi lifecycle work is accepted in prior merges; this ledger focuses on review units with durable PR references for the validation-repair arc. Expand rows as new units merge under this contract.</p>
+<h2>Open Risks And Unverified Assumptions</h2>
+<table>
+<thead>
+<tr>
+<th>Risk or assumption</th>
+<th>Consequence</th>
+<th>Resolution path</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Live Chase max-age has not yet been proven with a tracked guided extract under the new scoring path</td>
+<td>M005-09 remains partial</td>
+<td>Current frontier #57 + operator live run</td>
+</tr>
+<tr>
+<td>Process identity for Chase live probe relies on host command inspection</td>
+<td>Probe may be unavailable or spoofable on unsupported hosts</td>
+<td>Fail closed; document limitation</td>
+</tr>
+<tr>
+<td>Memory is process-local by default</td>
+<td>Restart continuity is not guaranteed</td>
+<td>Explicit milestone non-goal</td>
+</tr>
+<tr>
+<td>Metrics UI atomic capture remains an external dependency for Chase evidence</td>
+<td>Capture quality depends on sibling repository</td>
+<td>Keep dependency until auto-driving no longer needs contract adjustment</td>
+</tr>
+<tr>
+<td>Historical 005 review units targeted <code>main</code> rather than a milestone integration branch</td>
+<td>Cumulative whole-milestone review is harder</td>
+<td>Adopt milestone branch topology for remaining units and closeout</td>
+</tr>
+</tbody>
+</table>
+<h2>Milestone Decisions</h2>
+<table>
+<thead>
+<tr>
+<th>Date</th>
+<th>Decision</th>
+<th>Reason</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2026-07-15</td>
+<td>Memory is retained attributed evidence, not a world model</td>
+<td>Perception emits uncertain, coordinate-scoped claims; stronger models must be earned</td>
+</tr>
+<tr>
+<td>2026-07-15</td>
+<td>Action stays idle for the entire milestone</td>
+<td>Evaluate memory lifecycle without movement safety coupling</td>
+</tr>
+<tr>
+<td>2026-07-15</td>
+<td>Memory is bounded and process-local by default</td>
+<td>Persistence costs are unjustified before useful in-memory representation exists</td>
+</tr>
+<tr>
+<td>2026-07-15</td>
+<td>Do not promote perception track IDs into durable identity</td>
+<td>Track groups are run-local motion evidence without proven continuity</td>
+</tr>
+<tr>
+<td>2026-07-15</td>
+<td>Same memory interface on Chase and Donkey hosts</td>
+<td>Environment-specific truth would undermine sim-before-Pi testing</td>
+</tr>
+<tr>
+<td>2026-07-18</td>
+<td>Require visual provenance on Pi and Chase</td>
+<td>Counts alone do not prove memory derives from real perception</td>
+</tr>
+<tr>
+<td>2026-07-18</td>
+<td>Chase built-in model is shadow reference only</td>
+<td>Privileged state must never become candidate input</td>
+</tr>
+<tr>
+<td>2026-07-20</td>
+<td>Reopen package 5 after validation review</td>
+<td>Checks reported success without proving live lifecycle and exact-frame claims</td>
+</tr>
+<tr>
+<td>2026-07-22</td>
+<td>Accept atomic Chase shadow path; keep Metrics UI dependency</td>
+<td>Proven alignment/retention/reset; still need max-age and remaining integrity work</td>
+</tr>
+<tr>
+<td>2026-07-23</td>
+<td>Co-review next frontier on the current unmerged PR</td>
+<td>Human attention can accept current code and next scope in one pass</td>
+</tr>
+<tr>
+<td>2026-07-24</td>
+<td>Adopt compact plan ownership and review-unit branch model</td>
+<td>Remove duplicated status surfaces; minimize post-merge plan sync</td>
+</tr>
+</tbody>
+</table>
+<h2>Closeout</h2>
+<p>Blocked until every exit criterion is <code>Met</code>.</p>
+<p>Closeout will produce:</p>
+<ul>
+<li><code>closeout.md</code>;</li>
+<li>completed-milestone ledger update;</li>
+<li>final residual-risk statement;</li>
+<li>decision to activate, revise, or abandon the 006 pre-plan.</li>
+</ul>
   </main>
-
-  <script>
-    const workItems = [...document.querySelectorAll('.work-item')];
-    const filterButtons = [...document.querySelectorAll('[data-filter]')];
-
-    function applyFilter(status) {
-      workItems.forEach((item) => {
-        item.hidden = status !== 'all' && item.dataset.status !== status;
-      });
-      filterButtons.forEach((button) => {
-        button.setAttribute('aria-pressed', String(button.dataset.filter === status));
-      });
-    }
-
-    filterButtons.forEach((button) => {
-      button.addEventListener('click', () => applyFilter(button.dataset.filter));
-    });
-  </script>
 </body>
 </html>

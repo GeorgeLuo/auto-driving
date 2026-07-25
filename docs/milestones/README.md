@@ -298,6 +298,14 @@ non-goal. Link to the PR. Do **not** paste the PR matrix or file impact here.
 **Next-frontier candidate** records: name, expected review kind, one likely
 question, prerequisite, concise non-goal. Not started; scope may change.
 
+**Frontier handoff:** closing the current frontier (accepting its review unit)
+always updates Current Delivery so the plan still answers “what is active?”
+and “what is likely next?”. Promote the existing next-frontier candidate to
+current, then select at most one new next-frontier candidate—or record that
+milestone closeout is next when no further in-milestone unit remains. Do not
+leave Current Delivery without a current frontier while the milestone is active
+(closeout becomes the current frontier when it is the active review unit).
+
 ### 7. Accepted Review Units
 
 Append-only one-row-per-merged-PR ledger:
@@ -469,14 +477,26 @@ child PR matrix.
 
 ## Merge And Promotion Procedure
 
-After a review-unit PR is accepted:
+After a review-unit PR is accepted (frontier handoff):
 
 1. squash-merge into the milestone branch;
 2. add one accepted-review-unit row to the plan;
 3. update affected exit criteria;
 4. update unresolved risks;
-5. promote the next frontier only after merge;
-6. branch the next review unit from the updated milestone branch.
+5. **promote** the next-frontier candidate to **current frontier** (or make
+   milestone closeout the current frontier when that is the next unit);
+6. **select at most one new next-frontier candidate**—or explicitly record that
+   no further in-milestone candidate remains and closeout is next;
+7. branch the new current frontier’s review unit from the updated milestone
+   branch (unless closeout is deferred until remaining criteria are met).
+
+Steps 5–6 are mandatory plan edits on every accepted review unit. Promoting
+without naming the following candidate (or “closeout next”) leaves the plan
+without a planning handoff.
+
+Prefer drafting or revising the next-frontier candidate on the current review
+unit’s PR so the same human pass can accept this unit and the likely next
+scope. Final promotion still happens only after merge (steps 5–6).
 
 At milestone closeout:
 
@@ -488,7 +508,9 @@ At milestone closeout:
 6. merge into `main` with a merge commit;
 7. tag the mainline merge;
 8. remove obsolete milestone and review-unit branches;
-9. activate or revise the next pre-plan only after closeout.
+9. activate or revise the next pre-plan only after closeout
+   (this is the cross-milestone handoff, distinct from in-milestone
+   next-frontier selection in steps 5–6 above).
 
 ## Immediate Deferred Work And Pre-Plans
 

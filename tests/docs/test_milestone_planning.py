@@ -155,6 +155,13 @@ class MilestonePlanningTests(unittest.TestCase):
         self.assertIn("Singular Review Question Rule", text)
         self.assertIn('requires “and”', text)
 
+    def test_contract_requires_frontier_handoff_to_define_next_candidate(self) -> None:
+        text = CONTRACT_SOURCE.read_text(encoding="utf-8")
+        self.assertIn("Frontier handoff:", text)
+        self.assertIn("promote** the next-frontier candidate to **current frontier", text)
+        self.assertIn("select at most one new next-frontier candidate", text)
+        self.assertIn("mandatory plan edits", text)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

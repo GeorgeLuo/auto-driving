@@ -28,6 +28,7 @@ def _chase_frame(
     timestamp_ms: int | None = None,
     control: dict | None = None,
     simulation_epoch: str = "chase-run:test",
+    memory_epoch_id: str = "memory-epoch-0",
     omit_observe_only: bool = False,
 ) -> dict:
     frame = {
@@ -69,6 +70,7 @@ def _chase_frame(
             "health": "healthy" if records else "empty",
             "record_count": len(records),
             "records": records,
+            "epoch_id": memory_epoch_id,
         },
     }
     if not omit_observe_only:
@@ -85,11 +87,12 @@ def _live_probe(
     max_age_ms: int = 1000,
     max_records: int = 32,
     include_bounds: bool = True,
+    count: int = 1,
 ) -> dict:
     payload = {
         "status": "live",
         "last_health": "healthy",
-        "last_record_count": 1,
+        "last_record_count": count,
         "last_epoch_id": epoch,
         "reset_count": reset_count,
         "worker_pid": pid,
@@ -189,7 +192,7 @@ class ChaseMaxAgeUnitTests(unittest.TestCase):
         self.assertTrue(ok3)
 
     def test_identity_requires_worker_pid_and_epochs(self) -> None:
-        frame = _chase_frame(1, [])
+        frame = _chase_frame(1, [], memory_epoch_id="e1")
         with self.assertRaisesRegex(ValueError, "worker_pid"):
             require_chase_max_age_identity(
                 {"status": "live", "reset_count": 1, "last_epoch_id": "e1"},
@@ -208,7 +211,17 @@ class ChaseMaxAgeUnitTests(unittest.TestCase):
                     "reset_count": 1,
                     "last_epoch_id": "e1",
                 },
-                {"frame_id": "x", "simulator_frame_index": 1},
+                {"frame_id": "x", "simulator_frame_index": 1, "memory": {"records": [], "epoch_id": "e1"}},
+            )
+        with self.assertRaisesRegex(ValueError, "does not match"):
+            require_chase_max_age_identity(
+                {
+                    "status": "live",
+                    "worker_pid": 7,
+                    "reset_count": 1,
+                    "last_epoch_id": "probe-epoch",
+                },
+                _chase_frame(1, [], memory_epoch_id="frame-epoch"),
             )
         identity = require_chase_max_age_identity(
             {
@@ -221,6 +234,7 @@ class ChaseMaxAgeUnitTests(unittest.TestCase):
         )
         self.assertEqual(identity.worker_pid, 7)
         self.assertEqual(identity.simulation_epoch, "chase-run:test")
+        self.assertEqual(identity.memory_epoch_id, "e1")
 
     def test_capacity_replacement_on_full_ledger_is_ambiguous(self) -> None:
         self.assertTrue(
@@ -272,9 +286,27 @@ class ChaseMaxAgeIntegrationTests(unittest.TestCase):
         }
         now = int(time.time() * 1000)
         old = now - 5_000
+        worker = {
+            "reset_count": 0,
+            "epoch": "memory-epoch-0",
+            "count": 1,
+            "health": "healthy",
+            "pid": 4242,
+        }
+
+        def _frame_with_current_epoch(index: int, records: list[dict], **kwargs) -> dict:
+            # After history_boundary reset the live worker epoch advances; frames
+            # must publish that generation so probe/frame correlation holds.
+            return _chase_frame(
+                index,
+                records,
+                memory_epoch_id=worker["epoch"],
+                **kwargs,
+            )
+
         frames = [
-            _chase_frame(9, []),
-            _chase_frame(
+            _frame_with_current_epoch(9, []),
+            _frame_with_current_epoch(
                 10,
                 [
                     {
@@ -287,7 +319,7 @@ class ChaseMaxAgeIntegrationTests(unittest.TestCase):
                 ],
                 timestamp_ms=old,
             ),
-            _chase_frame(
+            _frame_with_current_epoch(
                 11,
                 [
                     {
@@ -308,65 +340,63 @@ class ChaseMaxAgeIntegrationTests(unittest.TestCase):
                 timestamp_ms=old + 100,
             ),
         ]
-        present_wait = _chase_frame(
-            12,
-            [
-                {
-                    "record_id": "thing:obstacle_000",
-                    "provenance": {
-                        "frame_id": "chase_frame_000010",
-                        "updated_at_ms": old,
-                    },
-                },
-                {
-                    "record_id": "thing:front_camera_frame",
-                    "provenance": {
-                        "frame_id": "chase_frame_000012",
-                        "updated_at_ms": now,
-                    },
-                },
-            ],
-            timestamp_ms=now,
-        )
-        expired = _chase_frame(
-            20,
-            [
-                {
-                    "record_id": "thing:front_camera_frame",
-                    "provenance": {
-                        "frame_id": "chase_frame_000020",
-                        "updated_at_ms": now,
-                    },
-                }
-            ],
-            timestamp_ms=now,
-        )
         cursor = {"n": 0}
         wait_polls = {"n": 0}
 
         def load_latest() -> dict:
             if cursor["n"] < len(frames):
-                frame = frames[cursor["n"]]
+                # Rebuild so collection frames pick up post-reset worker epoch.
+                template = frames[cursor["n"]]
                 cursor["n"] += 1
-                return frame
+                records = list((template.get("memory") or {}).get("records") or [])
+                return _frame_with_current_epoch(
+                    int(template["simulator_frame_index"]),
+                    records,
+                    timestamp_ms=int(template.get("timestamp_ms") or now),
+                )
+            # Extra present samples cover baseline identity load + first wait poll.
             wait_polls["n"] += 1
-            if wait_polls["n"] == 1:
-                return present_wait
-            return expired
-
-        worker = {
-            "reset_count": 0,
-            "epoch": "memory-epoch-0",
-            "count": 1,
-            "health": "healthy",
-            "pid": 4242,
-        }
+            if wait_polls["n"] <= 2:
+                return _frame_with_current_epoch(
+                    12,
+                    [
+                        {
+                            "record_id": "thing:obstacle_000",
+                            "provenance": {
+                                "frame_id": "chase_frame_000010",
+                                "updated_at_ms": old,
+                            },
+                        },
+                        {
+                            "record_id": "thing:front_camera_frame",
+                            "provenance": {
+                                "frame_id": "chase_frame_000012",
+                                "updated_at_ms": now,
+                            },
+                        },
+                    ],
+                    timestamp_ms=now,
+                )
+            return _frame_with_current_epoch(
+                20,
+                [
+                    {
+                        "record_id": "thing:front_camera_frame",
+                        "provenance": {
+                            "frame_id": "chase_frame_000020",
+                            "updated_at_ms": now,
+                        },
+                    }
+                ],
+                timestamp_ms=now,
+            )
 
         def probe() -> dict:
             return _live_probe(
                 reset_count=worker["reset_count"],
                 epoch=worker["epoch"],
                 pid=worker["pid"],
+                count=worker["count"],
             )
 
         def reset() -> dict:
@@ -507,6 +537,97 @@ class ChaseMaxAgeIntegrationTests(unittest.TestCase):
         )
         self.assertIn("max_age_ms", expiry["score"]["reason"])
 
+    def test_stale_frame_memory_epoch_does_not_count_as_present(self) -> None:
+        """Pre-reset frame must not supply keys-present for a current probe."""
+
+        now = int(time.time() * 1000)
+        old = now - 10_000
+        stale_present = _chase_frame(
+            12,
+            [
+                {
+                    "record_id": "thing:obstacle_000",
+                    "provenance": {
+                        "frame_id": "chase_frame_000010",
+                        "updated_at_ms": old,
+                    },
+                }
+            ],
+            timestamp_ms=now,
+            memory_epoch_id="pre-reset-epoch",
+        )
+        current_empty = _chase_frame(
+            20,
+            [],
+            timestamp_ms=now,
+            memory_epoch_id="memory-epoch-0",
+        )
+        polls = {"n": 0}
+
+        def load_latest() -> dict:
+            polls["n"] += 1
+            return stale_present if polls["n"] == 1 else current_empty
+
+        result = wait_for_chase_memory_key_expiry(
+            load_latest_frame=load_latest,
+            probe_fn=lambda: _live_probe(reset_count=1, epoch="memory-epoch-0"),
+            present_keys={"thing:obstacle_000"},
+            max_age_ms=1000,
+            timeout_s=1.0,
+            key_anchors_ms={"thing:obstacle_000": old},
+            identity=ChaseMaxAgeIdentity(
+                worker_pid=4242,
+                reset_count=1,
+                memory_epoch_id="memory-epoch-0",
+                simulation_epoch="chase-run:test",
+            ),
+            max_records=32,
+        )
+        self.assertFalse(result.passed)
+        self.assertIn("epoch_id", result.reason)
+
+    def test_full_ledger_while_key_present_fails_headroom(self) -> None:
+        now = int(time.time() * 1000)
+        old = now - 10_000
+        full = _chase_frame(
+            12,
+            [
+                {
+                    "record_id": "thing:obstacle_000",
+                    "provenance": {
+                        "frame_id": "chase_frame_000010",
+                        "updated_at_ms": old,
+                    },
+                },
+                {
+                    "record_id": "thing:other_000",
+                    "provenance": {
+                        "frame_id": "chase_frame_000012",
+                        "updated_at_ms": now,
+                    },
+                },
+            ],
+            timestamp_ms=now,
+        )
+        result = wait_for_chase_memory_key_expiry(
+            load_latest_frame=lambda: full,
+            probe_fn=lambda: _live_probe(reset_count=1, epoch="memory-epoch-0", max_records=2),
+            present_keys={"thing:obstacle_000"},
+            max_age_ms=1000,
+            timeout_s=1.0,
+            key_anchors_ms={"thing:obstacle_000": old},
+            identity=ChaseMaxAgeIdentity(
+                worker_pid=4242,
+                reset_count=1,
+                memory_epoch_id="memory-epoch-0",
+                simulation_epoch="chase-run:test",
+            ),
+            max_records=2,
+        )
+        self.assertFalse(result.passed)
+        self.assertIn("headroom", result.reason.lower())
+        self.assertFalse(result.score.get("headroom_proven", True))
+
     def test_chase_max_age_expiry_timeout_is_fail_closed(self) -> None:
         vehicle = {
             "vehicle_id": "chase-sim-chaser",
@@ -599,6 +720,15 @@ class ChaseMaxAgeIntegrationTests(unittest.TestCase):
                 },
             }
 
+        # Collection + wait frames must share the probed memory epoch.
+        def load_latest_with_epoch() -> dict:
+            frame = load_latest()
+            memory = dict(frame.get("memory") or {})
+            memory["epoch_id"] = "memory-epoch-1"
+            frame = dict(frame)
+            frame["memory"] = memory
+            return frame
+
         with mock.patch(
             "cli.automa_cli.memory_check.discover_active_vehicles",
             return_value={"vehicles": [vehicle]},
@@ -609,7 +739,7 @@ class ChaseMaxAgeIntegrationTests(unittest.TestCase):
             result = run_vehicle_memory_check(
                 vehicle_id="chase-sim-chaser",
                 json_output=True,
-                load_latest_frame=load_latest,
+                load_latest_frame=load_latest_with_epoch,
                 probe_fn=probe,
                 reset_fn=reset,
                 fresh_timeout_s=1.0,
@@ -640,7 +770,7 @@ class ChaseMaxAgeIntegrationTests(unittest.TestCase):
         )
         result = wait_for_chase_memory_key_expiry(
             load_latest_frame=lambda: present,
-            probe_fn=lambda: _live_probe(reset_count=1, epoch="e1"),
+            probe_fn=lambda: _live_probe(reset_count=1, epoch="memory-epoch-0"),
             present_keys={"thing:obstacle_000"},
             max_age_ms=1000,
             timeout_s=1.0,
@@ -648,7 +778,7 @@ class ChaseMaxAgeIntegrationTests(unittest.TestCase):
             identity=ChaseMaxAgeIdentity(
                 worker_pid=4242,
                 reset_count=1,
-                memory_epoch_id="e1",
+                memory_epoch_id="memory-epoch-0",
                 simulation_epoch="chase-run:test",
             ),
             max_records=32,
@@ -675,7 +805,7 @@ class ChaseMaxAgeIntegrationTests(unittest.TestCase):
         )
         result = wait_for_chase_memory_key_expiry(
             load_latest_frame=lambda: frame,
-            probe_fn=lambda: _live_probe(reset_count=1, epoch="e1"),
+            probe_fn=lambda: _live_probe(reset_count=1, epoch="memory-epoch-0"),
             present_keys={"thing:obstacle_000"},
             max_age_ms=1000,
             timeout_s=1.0,
@@ -683,7 +813,7 @@ class ChaseMaxAgeIntegrationTests(unittest.TestCase):
             identity=ChaseMaxAgeIdentity(
                 worker_pid=4242,
                 reset_count=1,
-                memory_epoch_id="e1",
+                memory_epoch_id="memory-epoch-0",
                 simulation_epoch="chase-run:test",
             ),
             max_records=32,
@@ -721,7 +851,7 @@ class ChaseMaxAgeIntegrationTests(unittest.TestCase):
 
         result = wait_for_chase_memory_key_expiry(
             load_latest_frame=load_latest,
-            probe_fn=lambda: _live_probe(reset_count=1, epoch="e1"),
+            probe_fn=lambda: _live_probe(reset_count=1, epoch="memory-epoch-0"),
             present_keys={"thing:obstacle_000"},
             max_age_ms=1000,
             timeout_s=2.0,
@@ -729,7 +859,7 @@ class ChaseMaxAgeIntegrationTests(unittest.TestCase):
             identity=ChaseMaxAgeIdentity(
                 worker_pid=4242,
                 reset_count=1,
-                memory_epoch_id="e1",
+                memory_epoch_id="memory-epoch-0",
                 simulation_epoch="chase-run:test",
             ),
             max_records=32,
@@ -755,7 +885,7 @@ class ChaseMaxAgeIntegrationTests(unittest.TestCase):
         )
 
         def probe() -> dict:
-            payload = _live_probe(reset_count=1, epoch="e1")
+            payload = _live_probe(reset_count=1, epoch="memory-epoch-0")
             del payload["worker_pid"]
             return payload
 
@@ -769,7 +899,7 @@ class ChaseMaxAgeIntegrationTests(unittest.TestCase):
             identity=ChaseMaxAgeIdentity(
                 worker_pid=4242,
                 reset_count=1,
-                memory_epoch_id="e1",
+                memory_epoch_id="memory-epoch-0",
                 simulation_epoch="chase-run:test",
             ),
             max_records=32,
@@ -817,7 +947,9 @@ class ChaseMaxAgeIntegrationTests(unittest.TestCase):
 
         result = wait_for_chase_memory_key_expiry(
             load_latest_frame=load_latest,
-            probe_fn=lambda: _live_probe(reset_count=1, epoch="e1", max_records=1),
+            probe_fn=lambda: _live_probe(
+                reset_count=1, epoch="memory-epoch-0", max_records=1
+            ),
             present_keys={"thing:obstacle_000"},
             max_age_ms=1000,
             timeout_s=2.0,
@@ -825,13 +957,16 @@ class ChaseMaxAgeIntegrationTests(unittest.TestCase):
             identity=ChaseMaxAgeIdentity(
                 worker_pid=4242,
                 reset_count=1,
-                memory_epoch_id="e1",
+                memory_epoch_id="memory-epoch-0",
                 simulation_epoch="chase-run:test",
             ),
             max_records=1,
         )
         self.assertFalse(result.passed)
-        self.assertIn("capacity", result.reason.lower())
+        # Full ledger while key present fails headroom; replacement also capacity-ambiguous.
+        self.assertTrue(
+            "headroom" in result.reason.lower() or "capacity" in result.reason.lower()
+        )
 
     def test_malformed_memory_does_not_pass_immediately(self) -> None:
         bad = _chase_frame(12, [])
@@ -839,7 +974,7 @@ class ChaseMaxAgeIntegrationTests(unittest.TestCase):
         with self.assertRaises(TimeoutError):
             wait_for_chase_memory_key_expiry(
                 load_latest_frame=lambda: bad,
-                probe_fn=lambda: _live_probe(reset_count=1, epoch="e1"),
+                probe_fn=lambda: _live_probe(reset_count=1, epoch="memory-epoch-0"),
                 present_keys={"thing:obstacle_000"},
                 max_age_ms=1000,
                 timeout_s=0.6,
@@ -847,7 +982,7 @@ class ChaseMaxAgeIntegrationTests(unittest.TestCase):
                 identity=ChaseMaxAgeIdentity(
                     worker_pid=4242,
                     reset_count=1,
-                    memory_epoch_id="e1",
+                    memory_epoch_id="memory-epoch-0",
                     simulation_epoch="chase-run:test",
                 ),
                 max_records=32,
@@ -861,9 +996,23 @@ class ChaseMaxAgeIntegrationTests(unittest.TestCase):
         }
         now = int(time.time() * 1000)
         old = now - 5_000
-        frames = [
-            _chase_frame(9, []),
-            _chase_frame(
+        worker = {
+            "reset_count": 0,
+            "epoch": "memory-epoch-0",
+            "pid": 4242,
+        }
+
+        def _live_frame(index: int, records: list[dict], **kwargs) -> dict:
+            return _chase_frame(
+                index,
+                records,
+                memory_epoch_id=worker["epoch"],
+                **kwargs,
+            )
+
+        collection = [
+            (9, [], {}),
+            (
                 10,
                 [
                     {
@@ -874,9 +1023,9 @@ class ChaseMaxAgeIntegrationTests(unittest.TestCase):
                         },
                     }
                 ],
-                timestamp_ms=old,
+                {"timestamp_ms": old},
             ),
-            _chase_frame(
+            (
                 11,
                 [
                     {
@@ -894,38 +1043,59 @@ class ChaseMaxAgeIntegrationTests(unittest.TestCase):
                         },
                     },
                 ],
-                timestamp_ms=old + 100,
+                {"timestamp_ms": old + 100},
             ),
         ]
-        present_wait = _chase_frame(
-            12,
-            [
-                {
-                    "record_id": "thing:obstacle_000",
-                    "provenance": {
-                        "frame_id": "chase_frame_000010",
-                        "updated_at_ms": old,
-                    },
-                }
-            ],
-            timestamp_ms=now,
-        )
-        expired = _chase_frame(20, [], timestamp_ms=now)
         cursor = {"n": 0}
         wait_polls = {"n": 0}
 
         def load_latest() -> dict:
-            if cursor["n"] < len(frames):
-                frame = frames[cursor["n"]]
+            if cursor["n"] < len(collection):
+                index, records, kwargs = collection[cursor["n"]]
                 cursor["n"] += 1
-                return frame
+                return _live_frame(index, records, **kwargs)
             wait_polls["n"] += 1
-            return present_wait if wait_polls["n"] == 1 else expired
+            if wait_polls["n"] <= 2:
+                return _live_frame(
+                    12,
+                    [
+                        {
+                            "record_id": "thing:obstacle_000",
+                            "provenance": {
+                                "frame_id": "chase_frame_000010",
+                                "updated_at_ms": old,
+                            },
+                        }
+                    ],
+                    timestamp_ms=now,
+                )
+            return _live_frame(20, [], timestamp_ms=now)
 
         def load_frame_image(frame_id: str) -> bytes:
             if frame_id == "chase_frame_000020":
                 raise ConnectionError("image endpoint unavailable")
             return b"\x89PNG\r\n\x1a\nexact-frame"
+
+        def probe() -> dict:
+            return _live_probe(
+                reset_count=worker["reset_count"],
+                epoch=worker["epoch"],
+                pid=worker["pid"],
+            )
+
+        def reset() -> dict:
+            worker["reset_count"] += 1
+            worker["epoch"] = f"memory-epoch-{worker['reset_count']}"
+            return {
+                "ok": True,
+                "status": "reset",
+                "snapshot": {
+                    "health": "empty",
+                    "record_count": 0,
+                    "records": [],
+                    "epoch_id": worker["epoch"],
+                },
+            }
 
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
@@ -942,17 +1112,8 @@ class ChaseMaxAgeIntegrationTests(unittest.TestCase):
                 json_output=True,
                 load_latest_frame=load_latest,
                 load_frame_image=load_frame_image,
-                probe_fn=lambda: _live_probe(),
-                reset_fn=lambda: {
-                    "ok": True,
-                    "status": "reset",
-                    "snapshot": {
-                        "health": "empty",
-                        "record_count": 0,
-                        "records": [],
-                        "epoch_id": "after",
-                    },
-                },
+                probe_fn=probe,
+                reset_fn=reset,
                 fresh_timeout_s=1.0,
                 expiry_timeout_s=2.0,
                 output_root=Path(temporary.name) / "memory-check",

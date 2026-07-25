@@ -560,8 +560,12 @@ def run_chase_shadow_memory_check(
         if expiry_timeout_s is not None
         else float(max_age_ms) / 1000.0 + 8.0
     )
+    # Correlate a freshly loaded frame with a concurrent probe so baseline
+    # identity is not a stale collection sample paired with a newer worker.
     baseline_probe = do_probe()
-    baseline_frame = frames[-1] if frames else None
+    baseline_frame = load_frame()
+    if not isinstance(baseline_frame, dict):
+        baseline_frame = frames[-1] if frames else None
     try:
         identity = require_chase_max_age_identity(baseline_probe, baseline_frame)
     except ValueError as exc:

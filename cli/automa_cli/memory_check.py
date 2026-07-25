@@ -35,6 +35,8 @@ from .chase_max_age import (
     extract_chase_lifecycle_keys,
     lifecycle_key_anchors_ms,
     parse_required_max_age_ms,
+    parse_required_max_records,
+    require_chase_max_age_identity,
     wait_for_chase_memory_key_expiry,
 )
 from .memory import (
@@ -481,12 +483,6 @@ def run_chase_shadow_memory_check(
     # live memory under configured max_age with strict zero control.
     lifecycle_keys = extract_chase_lifecycle_keys(frames)
     bounds = probe.get("bounds") if isinstance(probe.get("bounds"), dict) else {}
-    max_records = None
-    if isinstance(bounds, dict) and bounds.get("max_records") is not None:
-        try:
-            max_records = int(bounds["max_records"])
-        except (TypeError, ValueError):
-            max_records = None
 
     def _chase_fail(
         *,
@@ -548,6 +544,7 @@ def run_chase_shadow_memory_check(
 
     try:
         max_age_ms = parse_required_max_age_ms(bounds)
+        max_records = parse_required_max_records(bounds)
     except ValueError as exc:
         score = {
             "passed": False,
@@ -564,26 +561,27 @@ def run_chase_shadow_memory_check(
         else float(max_age_ms) / 1000.0 + 8.0
     )
     baseline_probe = do_probe()
-    baseline_reset = (
-        int(baseline_probe["reset_count"])
-        if isinstance(baseline_probe, dict)
-        and baseline_probe.get("reset_count") is not None
-        else None
-    )
+    baseline_frame = frames[-1] if frames else None
     try:
-        if baseline_reset is None and baseline_probe.get("reset_count") is not None:
-            baseline_reset = int(baseline_probe["reset_count"])
-    except (TypeError, ValueError, AttributeError):
-        baseline_reset = None
-    baseline_epoch = None
-    if isinstance(baseline_probe, dict) and baseline_probe.get("last_epoch_id"):
-        baseline_epoch = str(baseline_probe.get("last_epoch_id"))
+        identity = require_chase_max_age_identity(baseline_probe, baseline_frame)
+    except ValueError as exc:
+        score = {
+            "passed": False,
+            "reason": str(exc),
+            "lifecycle_keys": sorted(lifecycle_keys),
+            "reset_used": False,
+            "max_age_ms": max_age_ms,
+            "identity_stable": False,
+        }
+        _emit(output, f"phase: max_age_expiry  FAIL  {exc}")
+        return _chase_fail(exit_code=1, reason=str(exc), phase_score=score)
 
     _emit(
         output,
         f"phase: max_age_expiry (waiting up to {wait_s:.1f}s for "
         f"{sorted(lifecycle_keys)} to age out without reset; "
-        f"max_age_ms={max_age_ms})",
+        f"max_age_ms={max_age_ms}; worker_pid={identity.worker_pid}; "
+        f"simulation_epoch={identity.simulation_epoch!r})",
     )
     try:
         wait_result = wait_for_chase_memory_key_expiry(
@@ -593,8 +591,7 @@ def run_chase_shadow_memory_check(
             max_age_ms=max_age_ms,
             timeout_s=wait_s,
             key_anchors_ms=lifecycle_key_anchors_ms(frames, lifecycle_keys),
-            baseline_reset_count=baseline_reset,
-            baseline_epoch_id=baseline_epoch,
+            identity=identity,
             max_records=max_records,
         )
     except TimeoutError as exc:
@@ -621,15 +618,66 @@ def run_chase_shadow_memory_check(
     expiry_frame = wait_result.expiry_frame
     if isinstance(expiry_frame, dict):
         frames.append(expiry_frame)
-        if record:
+        if record and wait_result.passed:
             frame_id = str(expiry_frame.get("frame_id") or "").strip()
-            if frame_id and frame_id not in captured_images:
+            if not frame_id:
+                reason = (
+                    "max-age expiry passed but expiry frame has no frame_id; "
+                    "cannot record provenance image"
+                )
+                expiry_score["passed"] = False
+                expiry_score["reason"] = reason
+                phase_results.append(
+                    {
+                        "phase": "max_age_expiry",
+                        "passed": False,
+                        "score": expiry_score,
+                        "live_frame_ids": [],
+                        "lifecycle_source": "live_automation_worker",
+                    }
+                )
+                _emit(output, f"phase: max_age_expiry  FAIL  {reason}")
+                return _chase_fail(exit_code=1, reason=reason, phase_score=None)
+            if frame_id not in captured_images:
                 try:
                     image = load_image(frame_id)
-                    if image:
-                        captured_images[frame_id] = bytes(image)
-                except (ConnectionError, OSError, TimeoutError, ValueError):
-                    pass
+                except (ConnectionError, OSError, TimeoutError, ValueError) as exc:
+                    reason = (
+                        f"max-age expiry passed but expiry image for {frame_id!r} "
+                        f"could not be loaded: {exc}"
+                    )
+                    expiry_score["passed"] = False
+                    expiry_score["reason"] = reason
+                    phase_results.append(
+                        {
+                            "phase": "max_age_expiry",
+                            "passed": False,
+                            "score": expiry_score,
+                            "live_frame_ids": [frame_id],
+                            "lifecycle_source": "live_automation_worker",
+                        }
+                    )
+                    _emit(output, f"phase: max_age_expiry  FAIL  {reason}")
+                    return _chase_fail(exit_code=1, reason=reason, phase_score=None)
+                if not image:
+                    reason = (
+                        f"max-age expiry passed but expiry image for {frame_id!r} "
+                        "was empty"
+                    )
+                    expiry_score["passed"] = False
+                    expiry_score["reason"] = reason
+                    phase_results.append(
+                        {
+                            "phase": "max_age_expiry",
+                            "passed": False,
+                            "score": expiry_score,
+                            "live_frame_ids": [frame_id],
+                            "lifecycle_source": "live_automation_worker",
+                        }
+                    )
+                    _emit(output, f"phase: max_age_expiry  FAIL  {reason}")
+                    return _chase_fail(exit_code=1, reason=reason, phase_score=None)
+                captured_images[frame_id] = bytes(image)
 
     phase_results.append(
         {
@@ -642,8 +690,11 @@ def run_chase_shadow_memory_check(
             "lifecycle_source": "live_automation_worker",
             "extra": {
                 "max_age_ms": max_age_ms,
+                "max_records": max_records,
                 "wait_s": wait_s,
                 "reset_used": False,
+                "worker_pid": identity.worker_pid,
+                "simulation_epoch": identity.simulation_epoch,
                 "wait_frame_count": len(wait_result.wait_frames),
             },
         }

@@ -676,13 +676,61 @@ class MemoryCheckTests(unittest.TestCase):
         self.assertIn("non-zero", result.message)
 
     def test_chase_shadow_path_scores_live_alignment(self) -> None:
-        # Full max-age matrix lives in tests/cli/memory/test_chase_max_age.py.
-        # Keep a thin smoke that still exercises the Chase path wiring.
-        from tests.cli.memory.test_chase_max_age import ChaseMaxAgeIntegrationTests
+        # Full Chase max-age path lives in tests/cli/memory/test_chase_max_age.py.
+        # Keep provenance scoring smoke here without cross-TestCase invocation.
+        from cli.automa_cli.memory_check import score_chase_memory_provenance
 
-        ChaseMaxAgeIntegrationTests(
-            "test_chase_shadow_path_includes_max_age_expiry_and_record"
-        ).test_chase_shadow_path_includes_max_age_expiry_and_record()
+        frames = [
+            {
+                "frame_id": "chase_frame_000010",
+                "simulator_frame_index": 10,
+                "simulation_epoch": "chase-run:test",
+                "memory": {
+                    "records": [
+                        {
+                            "record_id": "thing:obstacle_000",
+                            "provenance": {"frame_id": "chase_frame_000010"},
+                        }
+                    ]
+                },
+                "observation": {
+                    "things": [{"thing_id": "obstacle_000"}],
+                    "signals": [],
+                    "sensor_snapshot": {
+                        "metadata": {
+                            "simulator_frame_index": 10,
+                            "simulation_epoch": "chase-run:test",
+                        }
+                    },
+                },
+            },
+            {
+                "frame_id": "chase_frame_000011",
+                "simulator_frame_index": 11,
+                "simulation_epoch": "chase-run:test",
+                "memory": {
+                    "records": [
+                        {
+                            "record_id": "thing:obstacle_000",
+                            "provenance": {"frame_id": "chase_frame_000010"},
+                        }
+                    ]
+                },
+                "observation": {
+                    "things": [{"thing_id": "obstacle_000"}],
+                    "signals": [],
+                    "sensor_snapshot": {
+                        "metadata": {
+                            "simulator_frame_index": 11,
+                            "simulation_epoch": "chase-run:test",
+                        }
+                    },
+                },
+            },
+        ]
+        score = score_chase_memory_provenance(frames)
+        self.assertIsInstance(score, dict)
+        self.assertIn("passed", score)
 
     def test_chase_observe_only_rejects_external_ws_authority(self) -> None:
         from cli.automa_cli.memory_check import score_chase_observe_only

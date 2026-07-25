@@ -34,6 +34,29 @@ def _chase_frame_index(frame: dict[str, Any]) -> int | None:
         return None
 
 
+def frame_simulation_epoch(frame: dict[str, Any]) -> str | None:
+    """Stable simulation identity from a Chase evaluation frame."""
+
+    raw = frame.get("simulation_epoch")
+    if raw is not None and str(raw).strip():
+        return str(raw).strip()
+    observation = frame.get("observation")
+    if isinstance(observation, dict):
+        snapshot = observation.get("sensor_snapshot")
+        if isinstance(snapshot, dict):
+            metadata = snapshot.get("metadata")
+            if isinstance(metadata, dict):
+                meta_epoch = metadata.get("simulation_epoch")
+                if meta_epoch is not None and str(meta_epoch).strip():
+                    return str(meta_epoch).strip()
+    shadow = frame.get("shadow_reference")
+    if isinstance(shadow, dict):
+        shadow_epoch = shadow.get("simulation_epoch")
+        if shadow_epoch is not None and str(shadow_epoch).strip():
+            return str(shadow_epoch).strip()
+    return None
+
+
 def record_ids_from_memory(memory: dict[str, Any]) -> set[str]:
     records = memory.get("records") if isinstance(memory.get("records"), list) else []
     return {
@@ -99,6 +122,23 @@ def parse_required_max_age_ms(bounds: Any) -> int:
         raise ValueError(f"bounds.max_age_ms is invalid: {raw!r}") from exc
     if value <= 0:
         raise ValueError(f"bounds.max_age_ms must be positive; got {value}")
+    return value
+
+
+def parse_required_max_records(bounds: Any) -> int:
+    """Require a positive configured max_records so capacity eviction can be ruled out."""
+
+    if not isinstance(bounds, dict):
+        raise ValueError("memory bounds are missing; cannot prove max-age expiry")
+    raw = bounds.get("max_records")
+    if raw is None:
+        raise ValueError("bounds.max_records is missing; cannot prove max-age expiry")
+    try:
+        value = int(raw)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"bounds.max_records is invalid: {raw!r}") from exc
+    if value <= 0:
+        raise ValueError(f"bounds.max_records must be positive; got {value}")
     return value
 
 
@@ -179,11 +219,15 @@ def frame_control_is_strict_zero(frame: dict[str, Any]) -> tuple[bool, str | Non
             return False, f"control.{axis} invalid"
         if abs(float(value)) > 1e-9:
             return False, f"control.{axis}={value} (require zero)"
-    action_policy = str(frame.get("action_policy") or "")
-    if action_policy and action_policy != "observe_only":
+    if "action_policy" not in frame or frame.get("action_policy") in (None, ""):
+        return False, "action_policy missing"
+    action_policy = str(frame.get("action_policy"))
+    if action_policy != "observe_only":
         return False, f"action_policy={action_policy}"
-    application = str(frame.get("control_application") or "")
-    if application and application != "not_applied":
+    if "control_application" not in frame or frame.get("control_application") in (None, ""):
+        return False, "control_application missing"
+    application = str(frame.get("control_application"))
+    if application != "not_applied":
         return False, f"control_application={application}"
     return True, None
 
@@ -201,6 +245,91 @@ def require_valid_memory(frame: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(memory.get("records"), list):
         raise ValueError("frame.memory.records is not a list")
     return memory
+
+
+@dataclass(frozen=True)
+class ChaseMaxAgeIdentity:
+    """Worker + simulation identity that must remain continuous through expiry."""
+
+    worker_pid: int
+    reset_count: int
+    memory_epoch_id: str
+    simulation_epoch: str
+
+
+def require_chase_max_age_identity(
+    probe: Any,
+    frame: dict[str, Any] | None,
+) -> ChaseMaxAgeIdentity:
+    """Fail closed when probe or frame cannot establish continuous identity."""
+
+    if not isinstance(probe, dict):
+        raise ValueError("live probe is missing; cannot prove max-age identity continuity")
+    if probe.get("status") != "live":
+        raise ValueError(
+            f"worker not live at max-age baseline (status={probe.get('status')!r})"
+        )
+    pid = probe.get("worker_pid")
+    if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0:
+        raise ValueError(
+            "worker_pid is missing or invalid on live probe; cannot prove worker continuity"
+        )
+    reset_count = _optional_int(probe.get("reset_count"))
+    if reset_count is None:
+        raise ValueError(
+            "reset_count is missing on live probe; cannot prove reset did not clear memory"
+        )
+    epoch = str(probe.get("last_epoch_id") or "").strip()
+    if not epoch:
+        raise ValueError(
+            "last_epoch_id is missing on live probe; cannot prove memory epoch continuity"
+        )
+    if not isinstance(frame, dict):
+        raise ValueError(
+            "baseline frame is missing; cannot prove simulation epoch continuity"
+        )
+    simulation_epoch = frame_simulation_epoch(frame)
+    if not simulation_epoch:
+        raise ValueError(
+            "simulation_epoch is missing on baseline frame; cannot prove simulation continuity"
+        )
+    return ChaseMaxAgeIdentity(
+        worker_pid=pid,
+        reset_count=reset_count,
+        memory_epoch_id=epoch,
+        simulation_epoch=simulation_epoch,
+    )
+
+
+def capacity_eviction_is_ambiguous(
+    *,
+    present_keys: set[str],
+    present_ids: set[str],
+    max_records: int,
+    previous_present_ids: set[str] | None = None,
+) -> bool:
+    """True when tracked-key loss on a full ledger may be capacity replacement."""
+
+    if max_records <= 0:
+        return True
+    remaining = present_keys.intersection(present_ids)
+    if remaining == present_keys:
+        return False
+    # Some tracked keys missing.
+    if len(present_ids) < max_records:
+        return False
+    # Full ledger with missing tracked keys: replacement non-always-on IDs are ambiguous.
+    other_ids = present_ids - present_keys
+    non_always_on_other = {rid for rid in other_ids if not is_chase_always_on_key(rid)}
+    if non_always_on_other:
+        return True
+    if previous_present_ids is not None:
+        replacements = present_ids - previous_present_ids
+        if any(not is_chase_always_on_key(rid) for rid in replacements):
+            return True
+    # Full ledger of only always-on keys after tracked loss is still causally
+    # ambiguous for a capacity-bounded stage (headroom was not available).
+    return True
 
 
 @dataclass
@@ -221,10 +350,10 @@ def score_chase_max_age_expiry(
     reset_used: bool,
     max_age_ms: int | None,
     age_elapsed_ms: int | None,
-    reset_count_stable: bool,
-    epoch_stable: bool,
+    identity_stable: bool,
     frames_advanced: bool,
     capacity_eviction_ambiguous: bool,
+    headroom_proven: bool,
 ) -> dict[str, Any]:
     """Score a completed max-age wait against the live-expiry invariant."""
 
@@ -235,16 +364,17 @@ def score_chase_max_age_expiry(
         and age_elapsed_ms is not None
         and age_elapsed_ms >= max_age_ms
     )
+    # Headroom is supporting evidence; causal ambiguity is the hard reject.
+    capacity_ok = not capacity_eviction_ambiguous
     passed = (
         bool(lifecycle_keys)
         and not remaining
         and control_ok
         and not reset_used
         and age_ok
-        and reset_count_stable
-        and epoch_stable
+        and identity_stable
         and frames_advanced
-        and not capacity_eviction_ambiguous
+        and capacity_ok
     )
     if not lifecycle_keys:
         reason = "no lifecycle keys to expire"
@@ -254,10 +384,8 @@ def score_chase_max_age_expiry(
         reason = "reset was used; max-age expiry must not rely on reset"
     elif not control_ok:
         reason = "control was non-zero or incomplete during max-age wait"
-    elif not reset_count_stable:
-        reason = "reset_count changed during max-age wait"
-    elif not epoch_stable:
-        reason = "memory epoch changed during max-age wait"
+    elif not identity_stable:
+        reason = "worker or simulation identity changed during max-age wait"
     elif not frames_advanced:
         reason = "simulator frames did not advance during max-age wait"
     elif capacity_eviction_ambiguous:
@@ -284,12 +412,53 @@ def score_chase_max_age_expiry(
         "reset_used": reset_used,
         "max_age_ms": max_age_ms,
         "age_elapsed_ms": age_elapsed_ms,
-        "reset_count_stable": reset_count_stable,
-        "epoch_stable": epoch_stable,
+        "identity_stable": identity_stable,
         "frames_advanced": frames_advanced,
         "capacity_eviction_ambiguous": capacity_eviction_ambiguous,
+        "headroom_proven": headroom_proven,
         "record_ids": sorted(record_ids_from_memory(final_memory)),
     }
+
+
+def _fail_wait(
+    *,
+    reason: str,
+    frame: dict[str, Any] | None,
+    memory: dict[str, Any] | None,
+    wait_frames: list[dict[str, Any]],
+    present_keys: set[str],
+    max_age_ms: int,
+    control_ok: bool,
+    reset_used: bool,
+    identity_stable: bool,
+    frames_advanced: bool,
+    capacity_eviction_ambiguous: bool,
+    headroom_proven: bool,
+    age_elapsed_ms: int | None = None,
+) -> ChaseMaxAgeWaitResult:
+    final_memory = memory if isinstance(memory, dict) else {"records": []}
+    score = score_chase_max_age_expiry(
+        lifecycle_keys=present_keys,
+        final_memory=final_memory,
+        control_ok=control_ok,
+        reset_used=reset_used,
+        max_age_ms=max_age_ms,
+        age_elapsed_ms=age_elapsed_ms,
+        identity_stable=identity_stable,
+        frames_advanced=frames_advanced,
+        capacity_eviction_ambiguous=capacity_eviction_ambiguous,
+        headroom_proven=headroom_proven,
+    )
+    score["reason"] = reason
+    score["passed"] = False
+    return ChaseMaxAgeWaitResult(
+        passed=False,
+        reason=reason,
+        expiry_frame=frame,
+        expiry_memory=memory,
+        wait_frames=wait_frames if frame is None else wait_frames + [frame],
+        score=score,
+    )
 
 
 def wait_for_chase_memory_key_expiry(
@@ -300,9 +469,8 @@ def wait_for_chase_memory_key_expiry(
     max_age_ms: int,
     timeout_s: float,
     key_anchors_ms: dict[str, int],
-    baseline_reset_count: int | None,
-    baseline_epoch_id: str | None,
-    max_records: int | None = None,
+    identity: ChaseMaxAgeIdentity,
+    max_records: int,
 ) -> ChaseMaxAgeWaitResult:
     """Poll live Chase frames until lifecycle keys age out without reset/movement."""
 
@@ -310,15 +478,19 @@ def wait_for_chase_memory_key_expiry(
         raise ValueError("present_keys must be non-empty")
     if max_age_ms <= 0:
         raise ValueError("max_age_ms must be positive")
+    if max_records <= 0:
+        raise ValueError("max_records must be positive")
 
     deadline = time.monotonic() + max(1.0, float(timeout_s))
     wait_frames: list[dict[str, Any]] = []
     first_index: int | None = None
     max_index: int | None = None
     saw_keys_present = False
+    headroom_while_present = True
     anchors = dict(key_anchors_ms)
     wait_start_wall_ms = int(time.time() * 1000)
     last_error: str | None = None
+    previous_present_ids: set[str] | None = None
 
     while time.monotonic() < deadline:
         frame = load_latest_frame()
@@ -336,24 +508,54 @@ def wait_for_chase_memory_key_expiry(
 
         control_ok, control_reason = frame_control_is_strict_zero(frame)
         if not control_ok:
-            return ChaseMaxAgeWaitResult(
-                passed=False,
+            return _fail_wait(
                 reason=f"movement or incomplete control during max-age wait: {control_reason}",
-                expiry_frame=frame,
-                expiry_memory=memory,
-                wait_frames=wait_frames + [frame],
-                score=score_chase_max_age_expiry(
-                    lifecycle_keys=present_keys,
-                    final_memory=memory,
-                    control_ok=False,
-                    reset_used=False,
-                    max_age_ms=max_age_ms,
-                    age_elapsed_ms=None,
-                    reset_count_stable=True,
-                    epoch_stable=True,
-                    frames_advanced=False,
-                    capacity_eviction_ambiguous=False,
+                frame=frame,
+                memory=memory,
+                wait_frames=wait_frames,
+                present_keys=present_keys,
+                max_age_ms=max_age_ms,
+                control_ok=False,
+                reset_used=False,
+                identity_stable=True,
+                frames_advanced=False,
+                capacity_eviction_ambiguous=False,
+                headroom_proven=False,
+            )
+
+        sim_epoch = frame_simulation_epoch(frame)
+        if not sim_epoch:
+            return _fail_wait(
+                reason="simulation_epoch missing on wait frame",
+                frame=frame,
+                memory=memory,
+                wait_frames=wait_frames,
+                present_keys=present_keys,
+                max_age_ms=max_age_ms,
+                control_ok=True,
+                reset_used=False,
+                identity_stable=False,
+                frames_advanced=False,
+                capacity_eviction_ambiguous=False,
+                headroom_proven=False,
+            )
+        if sim_epoch != identity.simulation_epoch:
+            return _fail_wait(
+                reason=(
+                    f"simulation_epoch changed during max-age wait "
+                    f"({identity.simulation_epoch!r} -> {sim_epoch!r})"
                 ),
+                frame=frame,
+                memory=memory,
+                wait_frames=wait_frames,
+                present_keys=present_keys,
+                max_age_ms=max_age_ms,
+                control_ok=True,
+                reset_used=False,
+                identity_stable=False,
+                frames_advanced=False,
+                capacity_eviction_ambiguous=False,
+                headroom_proven=False,
             )
 
         probe = probe_fn()
@@ -365,56 +567,110 @@ def wait_for_chase_memory_key_expiry(
             time.sleep(0.2)
             continue
 
+        pid = probe.get("worker_pid")
+        if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0:
+            return _fail_wait(
+                reason="worker_pid missing on probe during max-age wait",
+                frame=frame,
+                memory=memory,
+                wait_frames=wait_frames,
+                present_keys=present_keys,
+                max_age_ms=max_age_ms,
+                control_ok=True,
+                reset_used=False,
+                identity_stable=False,
+                frames_advanced=False,
+                capacity_eviction_ambiguous=False,
+                headroom_proven=False,
+            )
+        if pid != identity.worker_pid:
+            return _fail_wait(
+                reason=(
+                    f"worker_pid changed during max-age wait "
+                    f"({identity.worker_pid} -> {pid})"
+                ),
+                frame=frame,
+                memory=memory,
+                wait_frames=wait_frames,
+                present_keys=present_keys,
+                max_age_ms=max_age_ms,
+                control_ok=True,
+                reset_used=False,
+                identity_stable=False,
+                frames_advanced=False,
+                capacity_eviction_ambiguous=False,
+                headroom_proven=False,
+            )
+
         reset_count = _optional_int(probe.get("reset_count"))
-        epoch_id = str(probe.get("last_epoch_id") or "") or None
-        if baseline_reset_count is not None and reset_count is not None:
-            if reset_count != baseline_reset_count:
-                return ChaseMaxAgeWaitResult(
-                    passed=False,
-                    reason=(
-                        f"reset_count changed during max-age wait "
-                        f"({baseline_reset_count} -> {reset_count})"
-                    ),
-                    expiry_frame=frame,
-                    expiry_memory=memory,
-                    wait_frames=wait_frames + [frame],
-                    score=score_chase_max_age_expiry(
-                        lifecycle_keys=present_keys,
-                        final_memory=memory,
-                        control_ok=True,
-                        reset_used=True,
-                        max_age_ms=max_age_ms,
-                        age_elapsed_ms=None,
-                        reset_count_stable=False,
-                        epoch_stable=True,
-                        frames_advanced=False,
-                        capacity_eviction_ambiguous=False,
-                    ),
-                )
-        if baseline_epoch_id is not None and epoch_id is not None:
-            if epoch_id != baseline_epoch_id:
-                return ChaseMaxAgeWaitResult(
-                    passed=False,
-                    reason=(
-                        f"memory epoch changed during max-age wait "
-                        f"({baseline_epoch_id!r} -> {epoch_id!r})"
-                    ),
-                    expiry_frame=frame,
-                    expiry_memory=memory,
-                    wait_frames=wait_frames + [frame],
-                    score=score_chase_max_age_expiry(
-                        lifecycle_keys=present_keys,
-                        final_memory=memory,
-                        control_ok=True,
-                        reset_used=False,
-                        max_age_ms=max_age_ms,
-                        age_elapsed_ms=None,
-                        reset_count_stable=True,
-                        epoch_stable=False,
-                        frames_advanced=False,
-                        capacity_eviction_ambiguous=False,
-                    ),
-                )
+        if reset_count is None:
+            return _fail_wait(
+                reason="reset_count missing on probe during max-age wait",
+                frame=frame,
+                memory=memory,
+                wait_frames=wait_frames,
+                present_keys=present_keys,
+                max_age_ms=max_age_ms,
+                control_ok=True,
+                reset_used=False,
+                identity_stable=False,
+                frames_advanced=False,
+                capacity_eviction_ambiguous=False,
+                headroom_proven=False,
+            )
+        if reset_count != identity.reset_count:
+            return _fail_wait(
+                reason=(
+                    f"reset_count changed during max-age wait "
+                    f"({identity.reset_count} -> {reset_count})"
+                ),
+                frame=frame,
+                memory=memory,
+                wait_frames=wait_frames,
+                present_keys=present_keys,
+                max_age_ms=max_age_ms,
+                control_ok=True,
+                reset_used=True,
+                identity_stable=False,
+                frames_advanced=False,
+                capacity_eviction_ambiguous=False,
+                headroom_proven=False,
+            )
+
+        epoch_id = str(probe.get("last_epoch_id") or "").strip()
+        if not epoch_id:
+            return _fail_wait(
+                reason="memory epoch missing on probe during max-age wait",
+                frame=frame,
+                memory=memory,
+                wait_frames=wait_frames,
+                present_keys=present_keys,
+                max_age_ms=max_age_ms,
+                control_ok=True,
+                reset_used=False,
+                identity_stable=False,
+                frames_advanced=False,
+                capacity_eviction_ambiguous=False,
+                headroom_proven=False,
+            )
+        if epoch_id != identity.memory_epoch_id:
+            return _fail_wait(
+                reason=(
+                    f"memory epoch changed during max-age wait "
+                    f"({identity.memory_epoch_id!r} -> {epoch_id!r})"
+                ),
+                frame=frame,
+                memory=memory,
+                wait_frames=wait_frames,
+                present_keys=present_keys,
+                max_age_ms=max_age_ms,
+                control_ok=True,
+                reset_used=False,
+                identity_stable=False,
+                frames_advanced=False,
+                capacity_eviction_ambiguous=False,
+                headroom_proven=False,
+            )
 
         index = _chase_frame_index(frame)
         if index is not None:
@@ -424,8 +680,12 @@ def wait_for_chase_memory_key_expiry(
 
         present_ids = record_ids_from_memory(memory)
         remaining = present_keys.intersection(present_ids)
+        record_count = len(memory.get("records") or [])
+
         if remaining:
             saw_keys_present = True
+            if record_count >= max_records:
+                headroom_while_present = False
             frame_ts = _optional_int(frame.get("timestamp_ms")) or int(time.time() * 1000)
             for record in memory.get("records") or []:
                 if not isinstance(record, dict):
@@ -438,57 +698,54 @@ def wait_for_chase_memory_key_expiry(
                 if prior is None or updated > prior:
                     anchors[rid] = updated
 
+        if capacity_eviction_is_ambiguous(
+            present_keys=present_keys,
+            present_ids=present_ids,
+            max_records=max_records,
+            previous_present_ids=previous_present_ids,
+        ):
+            now_ms = int(time.time() * 1000)
+            min_age = None
+            for key in present_keys - present_ids:
+                anchor = anchors.get(key, wait_start_wall_ms)
+                age = now_ms - anchor
+                min_age = age if min_age is None else min(min_age, age)
+            return _fail_wait(
+                reason=(
+                    "lifecycle key loss while ledger at max_records "
+                    "(capacity eviction ambiguous; not pure max-age expiry)"
+                ),
+                frame=frame,
+                memory=memory,
+                wait_frames=wait_frames,
+                present_keys=present_keys,
+                max_age_ms=max_age_ms,
+                control_ok=True,
+                reset_used=False,
+                identity_stable=True,
+                frames_advanced=(
+                    first_index is not None
+                    and max_index is not None
+                    and max_index > first_index
+                ),
+                capacity_eviction_ambiguous=True,
+                headroom_proven=False,
+                age_elapsed_ms=min_age,
+            )
+
+        previous_present_ids = set(present_ids)
         wait_frames.append(frame)
 
         if remaining:
-            # Capacity eviction ambiguity: full ledger and new keys while lifecycle keys drop.
-            if (
-                max_records is not None
-                and max_records > 0
-                and len(present_ids) >= max_records
-                and not present_keys.issubset(present_ids)
-            ):
-                # Only fail if keys already missing before age elapsed.
-                now_ms = int(time.time() * 1000)
-                min_age = None
-                for key in present_keys - present_ids:
-                    anchor = anchors.get(key, wait_start_wall_ms)
-                    age = now_ms - anchor
-                    min_age = age if min_age is None else min(min_age, age)
-                if min_age is not None and min_age < max_age_ms:
-                    return ChaseMaxAgeWaitResult(
-                        passed=False,
-                        reason=(
-                            "lifecycle key loss while ledger at max_records before "
-                            "max-age elapsed (capacity eviction ambiguous)"
-                        ),
-                        expiry_frame=frame,
-                        expiry_memory=memory,
-                        wait_frames=wait_frames,
-                        score=score_chase_max_age_expiry(
-                            lifecycle_keys=present_keys,
-                            final_memory=memory,
-                            control_ok=True,
-                            reset_used=False,
-                            max_age_ms=max_age_ms,
-                            age_elapsed_ms=min_age,
-                            reset_count_stable=True,
-                            epoch_stable=True,
-                            frames_advanced=(
-                                first_index is not None
-                                and max_index is not None
-                                and max_index > first_index
-                            ),
-                            capacity_eviction_ambiguous=True,
-                        ),
-                    )
             time.sleep(0.25)
             continue
 
         # Keys gone.
         if not saw_keys_present:
-            # Never observed keys present during wait — reject stale/keyless frames.
-            last_error = "lifecycle keys never observed present during wait (stale or keyless frame)"
+            last_error = (
+                "lifecycle keys never observed present during wait "
+                "(stale or keyless frame)"
+            )
             time.sleep(0.2)
             continue
 
@@ -497,6 +754,14 @@ def wait_for_chase_memory_key_expiry(
             and max_index is not None
             and max_index > first_index
         )
+        # Final ambiguity check after keys leave (covers full-ledger replacement).
+        final_ambiguous = capacity_eviction_is_ambiguous(
+            present_keys=present_keys,
+            present_ids=present_ids,
+            max_records=max_records,
+            previous_present_ids=previous_present_ids,
+        )
+        headroom_proven = headroom_while_present and record_count < max_records
         now_ms = int(time.time() * 1000)
         ages = []
         for key in present_keys:
@@ -510,10 +775,10 @@ def wait_for_chase_memory_key_expiry(
             reset_used=False,
             max_age_ms=max_age_ms,
             age_elapsed_ms=age_elapsed_ms,
-            reset_count_stable=True,
-            epoch_stable=True,
+            identity_stable=True,
             frames_advanced=frames_advanced,
-            capacity_eviction_ambiguous=False,
+            capacity_eviction_ambiguous=final_ambiguous,
+            headroom_proven=headroom_proven,
         )
         return ChaseMaxAgeWaitResult(
             passed=bool(score["passed"]),
@@ -526,5 +791,6 @@ def wait_for_chase_memory_key_expiry(
 
     detail = f" last_error={last_error}" if last_error else ""
     raise TimeoutError(
-        f"live Chase memory did not complete max-age expiry within {timeout_s}s.{detail}"
+        f"live Chase memory did not complete max-age expiry within {timeout_s}s "
+        f"(lifecycle keys did not drop under continuous worker identity).{detail}"
     )

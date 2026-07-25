@@ -26,7 +26,9 @@ should require only a handful of milestone-plan edits:
 2. update affected exit criteria;
 3. update unresolved risks;
 4. promote the next frontier;
-5. select at most one new next-frontier candidate.
+5. select at most one new next-frontier candidate with a **minimal
+   pre-implementation acceptance contract** (or record that closeout is next
+   with that contract filled).
 
 Do not preserve redundant sections merely because they already exist.
 
@@ -67,10 +69,20 @@ The plan may contain:
 The frontier determines priority and readiness. It is not a detailed speculative
 roadmap.
 
-Promote work to the frontier only when it is:
+A **next-frontier candidate** is not a name stub. Selecting one defines a
+minimal pre-implementation acceptance contract so promotion can open a branch
+against a frozen scope rather than inventing the unit during coding. Full
+adversarial matrices, file impact, and exact validation remain on the future
+PR; they do not replace the plan-level contract.
+
+Promote work to the **current** frontier only when it is:
 
 1. **contractable now** through one review question; and
 2. **reviewable in one careful human pass**.
+
+Select a **next-frontier candidate** only when those same readiness conditions
+hold **and** the minimal acceptance fields below are filled. A title with a
+vague likely question is not a candidate.
 
 Human review attention is the throughput limit. Prefer fewer sequential units
 that close a contractable edge over many named subdivisions that multiply
@@ -292,19 +304,47 @@ table.
 Exactly one current frontier and at most one next-frontier candidate.
 
 **Current frontier** records: name, PR, branch, review kind, one review
-question, affected exit criteria, prerequisite, concise milestone-level
-non-goal. Link to the PR. Do **not** paste the PR matrix or file impact here.
+question, enforcement or acceptance owner, affected exit criteria,
+prerequisite, concise milestone-level non-goal. Link to the PR. Do **not**
+paste the PR matrix or file impact here.
 
-**Next-frontier candidate** records: name, expected review kind, one likely
-question, prerequisite, concise non-goal. Not started; scope may change.
+**Next-frontier candidate** is a pre-implementation acceptance contract. It is
+valid only when it records at least:
+
+- **name;**
+- **expected review kind;**
+- **one review question** stable enough that promotion would open
+  implementation against it;
+- **enforcement or acceptance owner** (module, boundary, procedure surface, or
+  closeout judgment surface);
+- **affected exit criteria** (stable IDs);
+- **prerequisite;**
+- **concise non-goals** (what must not leak into that unit).
+
+It is not started and must not yet have an implementation branch or PR. The
+acceptance boundary—question, owner, non-goals, and affected exit criteria—is
+**frozen before the implementation branch is opened**. Implementation detail,
+adversarial matrix, file impact, and exact validation commands stay on the
+future PR; they may be sketched during co-review but do not substitute for the
+plan-level contract. Prerequisite status and residual evidence may update as
+the current frontier lands; do not silently widen the candidate’s review
+question or non-goals after the branch is opened—that requires an explicit plan
+decision.
+
+A name plus a vague “likely question” alone is not a candidate. Leave the slot
+as milestone closeout only when the closeout fields above are filled, or
+explicitly state that no further in-milestone unit remains and closeout is
+next with those fields present.
 
 **Frontier handoff:** closing the current frontier (accepting its review unit)
 always updates Current Delivery so the plan still answers “what is active?”
 and “what is likely next?”. Promote the existing next-frontier candidate to
-current, then select at most one new next-frontier candidate—or record that
-milestone closeout is next when no further in-milestone unit remains. Do not
-leave Current Delivery without a current frontier while the milestone is active
-(closeout becomes the current frontier when it is the active review unit).
+current (its pre-implementation contract becomes the current unit’s acceptance
+boundary), then select at most one new next-frontier candidate with a complete
+minimal contract—or record that milestone closeout is next when no further
+in-milestone unit remains. Do not leave Current Delivery without a current
+frontier while the milestone is active (closeout becomes the current frontier
+when it is the active review unit).
 
 ### 7. Accepted Review Units
 
@@ -484,19 +524,26 @@ After a review-unit PR is accepted (frontier handoff):
 3. update affected exit criteria;
 4. update unresolved risks;
 5. **promote** the next-frontier candidate to **current frontier** (or make
-   milestone closeout the current frontier when that is the next unit);
-6. **select at most one new next-frontier candidate**—or explicitly record that
-   no further in-milestone candidate remains and closeout is next;
-7. branch the new current frontier’s review unit from the updated milestone
-   branch (unless closeout is deferred until remaining criteria are met).
+   milestone closeout the current frontier when that is the next unit),
+   carrying its frozen minimal acceptance contract forward;
+6. **select at most one new next-frontier candidate** with a complete minimal
+   acceptance contract—or explicitly record that no further in-milestone
+   candidate remains and closeout is next (also with the closeout contract
+   fields filled);
+7. open the new current frontier’s implementation branch only after step 5,
+   from the updated milestone branch, and only against that frozen contract
+   (unless closeout is deferred until remaining criteria are met).
 
 Steps 5–6 are mandatory plan edits on every accepted review unit. Promoting
-without naming the following candidate (or “closeout next”) leaves the plan
-without a planning handoff.
+without a following candidate that carries a minimal acceptance contract (or
+without “closeout next” and its contract fields) leaves the plan without a
+planning handoff. Opening an implementation branch before the acceptance
+boundary is frozen invents scope during coding and is out of contract.
 
-Prefer drafting or revising the next-frontier candidate on the current review
-unit’s PR so the same human pass can accept this unit and the likely next
-scope. Final promotion still happens only after merge (steps 5–6).
+Prefer drafting or revising the next-frontier candidate’s **minimal acceptance
+contract** on the current review unit’s PR so the same human pass can accept
+this unit and freeze the next unit’s scope. Final promotion still happens only
+after merge (steps 5–6).
 
 At milestone closeout:
 

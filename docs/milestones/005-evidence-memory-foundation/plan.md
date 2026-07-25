@@ -67,6 +67,7 @@ model, changing perception semantics, or granting movement authority.
 - Branch: `agent/chase-live-max-age-expiry` *(historical topology targets `main`; new units should use `m005/…` → milestone branch)*
 - Review kind: Live external evidence + deterministic scoring path
 - Review question: Can a guided live Chase run show a retained key surviving dropout and then disappearing under configured `max_age_ms` without reset, while observe-only / zero movement and exact source-frame provenance hold?
+- Acceptance owner: live Chase `memory check` scoring path (`chase_max_age` / check harness) and tracked provenance extract
 - Exit criteria affected: M005-08, M005-09
 - Prerequisite: Package 5B (#53) accepted
 - Milestone-level non-goal: Package 6 closeout; Pi re-proof; 5A/5B redesign
@@ -76,11 +77,13 @@ model, changing perception semantics, or granting movement authority.
 **Milestone closeout**
 
 - Review kind: Milestone closeout
-- Question: Is milestone 005 complete as a whole, and should the 006 pre-plan be activated?
-- Prerequisite: Every exit criterion `Met`, including live Chase max-age evidence
-- Non-goal: New feature implementation under the closeout PR
+- Review question: Is milestone 005 complete as a whole—every exit criterion Met, completion usage supported, residual risk stated—and should the 006 pre-plan be activated, revised, or abandoned?
+- Acceptance owner: `closeout.md` plus the cumulative milestone PR judgment against exit criteria and completion usage
+- Exit criteria affected: M005-13 (and confirmation that M005-01–M005-12 are Met)
+- Prerequisite: Every exit criterion Met, including live Chase max-age evidence from the current frontier (#57)
+- Non-goals: New feature implementation under the closeout PR; reopening max-age scoring design; activating 006 before closeout acceptance
 
-Not started. Scope may change based on evidence from the current frontier.
+Not started; no closeout branch yet. Acceptance boundary above is frozen before a closeout branch is opened. Prerequisite status may update when #57 lands; do not widen the closeout question into new implementation.
 
 ## Accepted Review Units
 
@@ -117,6 +120,7 @@ Earlier stage/inspect/reset/replay/record and Pi lifecycle work is accepted in p
 | 2026-07-22 | Accept atomic Chase shadow path; keep Metrics UI dependency | Proven alignment/retention/reset; still need max-age and remaining integrity work |
 | 2026-07-23 | Co-review next frontier on the current unmerged PR | Human attention can accept current code and next scope in one pass |
 | 2026-07-24 | Adopt compact plan ownership and review-unit branch model | Remove duplicated status surfaces; minimize post-merge plan sync |
+| 2026-07-24 | Require a minimal pre-implementation acceptance contract for next-frontier candidates | Selecting “what’s next” must freeze question, owner, exit criteria, and non-goals before a branch is opened; name stubs are not candidates |
 
 ## Closeout
 

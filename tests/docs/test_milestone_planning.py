@@ -162,6 +162,42 @@ class MilestonePlanningTests(unittest.TestCase):
         self.assertIn("select at most one new next-frontier candidate", text)
         self.assertIn("mandatory plan edits", text)
 
+    def test_contract_requires_next_frontier_minimal_acceptance_contract(self) -> None:
+        text = CONTRACT_SOURCE.read_text(encoding="utf-8")
+        self.assertIn("pre-implementation acceptance contract", text)
+        self.assertIn("frozen before the implementation branch is opened", text)
+        self.assertIn("enforcement or acceptance owner", text)
+        self.assertIn("A name plus a vague “likely question” alone is not a candidate", text)
+        self.assertIn(
+            "Opening an implementation branch before the acceptance",
+            text,
+        )
+
+    def test_active_plan_next_frontier_records_minimal_contract_fields(self) -> None:
+        plan_md, _ = _active_plan_paths()
+        text = plan_md.read_text(encoding="utf-8")
+        # Fields may appear for both current and next frontier; require the labels.
+        for label in (
+            "Review kind:",
+            "Review question:",
+            "Acceptance owner:",
+            "Exit criteria affected:",
+            "Prerequisite:",
+            "Non-goal",
+        ):
+            self.assertIn(label, text, f"missing next/current frontier field {label}")
+        next_section = text.split("### Next-Frontier Candidate", 1)[1]
+        next_section = next_section.split("## ", 1)[0]
+        for label in (
+            "Review kind:",
+            "Review question:",
+            "Acceptance owner:",
+            "Exit criteria affected:",
+            "Prerequisite:",
+            "Non-goal",
+        ):
+            self.assertIn(label, next_section, f"next-frontier missing {label}")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

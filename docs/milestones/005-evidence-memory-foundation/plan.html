@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="a62250128699903f2d16f10a74a144d55bb6a27280946d05dfbcf59d4fa88628">
+  <meta name="source-sha256" content="7aa18057d88fe2cb03447b6eea683d7db53afaef20e53ee71fc6e575f0d5fc7a">
   <base target="_blank">
   <title>Milestone plan — 005-evidence-memory-foundation</title>
   <style>
@@ -295,6 +295,7 @@ model, changing perception semantics, or granting movement authority.</p>
 <li>Branch: <code>agent/chase-live-max-age-expiry</code> <em>(historical topology targets <code>main</code>; new units should use <code>m005/…</code> → milestone branch)</em></li>
 <li>Review kind: Live external evidence + deterministic scoring path</li>
 <li>Review question: Can a guided live Chase run show a retained key surviving dropout and then disappearing under configured <code>max_age_ms</code> without reset, while observe-only / zero movement and exact source-frame provenance hold?</li>
+<li>Acceptance owner: live Chase <code>memory check</code> scoring path (<code>chase_max_age</code> / check harness) and tracked provenance extract</li>
 <li>Exit criteria affected: M005-08, M005-09</li>
 <li>Prerequisite: Package 5B (#53) accepted</li>
 <li>Milestone-level non-goal: Package 6 closeout; Pi re-proof; 5A/5B redesign</li>
@@ -303,11 +304,13 @@ model, changing perception semantics, or granting movement authority.</p>
 <p><strong>Milestone closeout</strong></p>
 <ul>
 <li>Review kind: Milestone closeout</li>
-<li>Question: Is milestone 005 complete as a whole, and should the 006 pre-plan be activated?</li>
-<li>Prerequisite: Every exit criterion <code>Met</code>, including live Chase max-age evidence</li>
-<li>Non-goal: New feature implementation under the closeout PR</li>
+<li>Review question: Is milestone 005 complete as a whole—every exit criterion Met, completion usage supported, residual risk stated—and should the 006 pre-plan be activated, revised, or abandoned?</li>
+<li>Acceptance owner: <code>closeout.md</code> plus the cumulative milestone PR judgment against exit criteria and completion usage</li>
+<li>Exit criteria affected: M005-13 (and confirmation that M005-01–M005-12 are Met)</li>
+<li>Prerequisite: Every exit criterion Met, including live Chase max-age evidence from the current frontier (#57)</li>
+<li>Non-goals: New feature implementation under the closeout PR; reopening max-age scoring design; activating 006 before closeout acceptance</li>
 </ul>
-<p>Not started. Scope may change based on evidence from the current frontier.</p>
+<p>Not started; no closeout branch yet. Acceptance boundary above is frozen before a closeout branch is opened. Prerequisite status may update when #57 lands; do not widen the closeout question into new implementation.</p>
 <h2>Accepted Review Units</h2>
 <table>
 <thead>
@@ -445,6 +448,11 @@ model, changing perception semantics, or granting movement authority.</p>
 <td>2026-07-24</td>
 <td>Adopt compact plan ownership and review-unit branch model</td>
 <td>Remove duplicated status surfaces; minimize post-merge plan sync</td>
+</tr>
+<tr>
+<td>2026-07-24</td>
+<td>Require a minimal pre-implementation acceptance contract for next-frontier candidates</td>
+<td>Selecting “what’s next” must freeze question, owner, exit criteria, and non-goals before a branch is opened; name stubs are not candidates</td>
 </tr>
 </tbody>
 </table>

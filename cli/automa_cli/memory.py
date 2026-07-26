@@ -1777,7 +1777,6 @@ def _probe_chase_memory(*, vehicle_id: str) -> dict[str, Any]:
         "worker_pid": liveness.get("pid"),
         "run_id": state.get("run_id"),
         "worker_updated_at_ms": liveness.get("updated_at_ms"),
-        "capacity_eviction_count": status_block.get("capacity_eviction_count"),
     }
 
 

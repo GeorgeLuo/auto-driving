@@ -301,7 +301,8 @@ def require_chase_max_age_identity(
 
     Continuity requires an immutable automation ``run_id`` (not just memory epoch
     strings, which restart at ``epoch-1``), matching frame/probe memory epochs,
-    and a known capacity-eviction counter baseline.
+    and a capacity-eviction counter baseline taken from the correlated frame's
+    published ``MemorySnapshot.metadata`` (not from stage/probe status).
     """
 
     if not isinstance(probe, dict):
@@ -329,12 +330,6 @@ def require_chase_max_age_identity(
     if not epoch:
         raise ValueError(
             "last_epoch_id is missing on live probe; cannot prove memory epoch continuity"
-        )
-    probe_evictions = _optional_int(probe.get("capacity_eviction_count"))
-    if probe_evictions is None or probe_evictions < 0:
-        raise ValueError(
-            "capacity_eviction_count is missing on live probe; "
-            "cannot prove age expiry versus capacity eviction"
         )
     if not isinstance(frame, dict):
         raise ValueError(
@@ -373,16 +368,13 @@ def require_chase_max_age_identity(
         raise ValueError(
             f"frame.worker_pid does not match probe.worker_pid ({frame_pid} != {pid})"
         )
+    # Capacity eviction telemetry is implementation-published snapshot metadata.
+    # The CLI max-age proof reads it from frames only so autonomy/ stays generic.
     frame_evictions = frame_capacity_eviction_count(frame)
     if frame_evictions is None or frame_evictions < 0:
         raise ValueError(
-            "frame capacity_eviction_count is missing; "
+            "frame.memory.metadata.capacity_eviction_count is missing; "
             "cannot prove age expiry versus capacity eviction"
-        )
-    if frame_evictions != probe_evictions:
-        raise ValueError(
-            "frame capacity_eviction_count does not match probe "
-            f"({frame_evictions} != {probe_evictions})"
         )
     return ChaseMaxAgeIdentity(
         worker_pid=pid,
@@ -390,7 +382,7 @@ def require_chase_max_age_identity(
         reset_count=reset_count,
         memory_epoch_id=epoch,
         simulation_epoch=simulation_epoch,
-        capacity_eviction_count=probe_evictions,
+        capacity_eviction_count=frame_evictions,
     )
 
 
@@ -882,14 +874,16 @@ def wait_for_chase_memory_key_expiry(
                 headroom_proven=False,
             )
 
-        # Authoritative capacity-eviction counter survives unsampled intermediate
-        # frames: any increase during the wait voids a pure max-age claim.
-        probe_evictions = _optional_int(probe.get("capacity_eviction_count"))
+        # Authoritative capacity-eviction counter from frame MemorySnapshot
+        # metadata survives unsampled intermediate frames: any increase during
+        # the wait voids a pure max-age claim. Read only from the correlated
+        # frame (not stage/probe status) so autonomy stays generic.
         frame_evictions = frame_capacity_eviction_count(frame)
-        if probe_evictions is None or frame_evictions is None:
+        if frame_evictions is None:
             return _fail_wait(
                 reason=(
-                    "capacity_eviction_count missing on probe or frame during max-age wait"
+                    "frame.memory.metadata.capacity_eviction_count missing "
+                    "during max-age wait"
                 ),
                 frame=frame,
                 memory=memory,
@@ -903,30 +897,12 @@ def wait_for_chase_memory_key_expiry(
                 capacity_eviction_ambiguous=True,
                 headroom_proven=False,
             )
-        if frame_evictions != probe_evictions:
-            return _fail_wait(
-                reason=(
-                    "frame capacity_eviction_count does not match probe "
-                    f"(frame={frame_evictions}, probe={probe_evictions})"
-                ),
-                frame=frame,
-                memory=memory,
-                wait_frames=wait_frames,
-                present_keys=present_keys,
-                max_age_ms=max_age_ms,
-                control_ok=True,
-                reset_used=False,
-                identity_stable=True,
-                frames_advanced=False,
-                capacity_eviction_ambiguous=True,
-                headroom_proven=False,
-            )
-        if probe_evictions > identity.capacity_eviction_count:
+        if frame_evictions > identity.capacity_eviction_count:
             return _fail_wait(
                 reason=(
                     "capacity eviction occurred during max-age wait "
                     f"(baseline={identity.capacity_eviction_count}, "
-                    f"now={probe_evictions}); not pure max-age expiry"
+                    f"now={frame_evictions}); not pure max-age expiry"
                 ),
                 frame=frame,
                 memory=memory,
@@ -940,11 +916,11 @@ def wait_for_chase_memory_key_expiry(
                 capacity_eviction_ambiguous=True,
                 headroom_proven=False,
             )
-        if probe_evictions < identity.capacity_eviction_count:
+        if frame_evictions < identity.capacity_eviction_count:
             return _fail_wait(
                 reason=(
                     "capacity_eviction_count decreased during max-age wait "
-                    f"({identity.capacity_eviction_count} -> {probe_evictions}); "
+                    f"({identity.capacity_eviction_count} -> {frame_evictions}); "
                     "worker generation discontinuity"
                 ),
                 frame=frame,

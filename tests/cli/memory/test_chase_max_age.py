@@ -232,7 +232,6 @@ class ChaseMaxAgeUnitTests(unittest.TestCase):
                     "reset_count": 1,
                     "last_epoch_id": "e1",
                     "run_id": "run-a",
-                    "capacity_eviction_count": 0,
                 },
                 frame,
             )
@@ -243,7 +242,6 @@ class ChaseMaxAgeUnitTests(unittest.TestCase):
                     "worker_pid": 7,
                     "reset_count": 1,
                     "last_epoch_id": "e1",
-                    "capacity_eviction_count": 0,
                 },
                 frame,
             )
@@ -255,7 +253,6 @@ class ChaseMaxAgeUnitTests(unittest.TestCase):
                     "run_id": "run-a",
                     "reset_count": 1,
                     "last_epoch_id": "probe-epoch",
-                    "capacity_eviction_count": 0,
                 },
                 _chase_frame(
                     1,
@@ -273,9 +270,27 @@ class ChaseMaxAgeUnitTests(unittest.TestCase):
                     "run_id": "run-new",
                     "reset_count": 1,
                     "last_epoch_id": "e1",
-                    "capacity_eviction_count": 0,
                 },
                 frame,
+            )
+        with self.assertRaisesRegex(ValueError, "capacity_eviction_count"):
+            bare = _chase_frame(1, [], memory_epoch_id="e1", run_id="run-a", worker_pid=7)
+            bare["memory"] = {
+                "health": "empty",
+                "record_count": 0,
+                "records": [],
+                "epoch_id": "e1",
+                "metadata": {},
+            }
+            require_chase_max_age_identity(
+                {
+                    "status": "live",
+                    "worker_pid": 7,
+                    "run_id": "run-a",
+                    "reset_count": 1,
+                    "last_epoch_id": "e1",
+                },
+                bare,
             )
         identity = require_chase_max_age_identity(
             {
@@ -284,7 +299,6 @@ class ChaseMaxAgeUnitTests(unittest.TestCase):
                 "run_id": "run-a",
                 "reset_count": 1,
                 "last_epoch_id": "e1",
-                "capacity_eviction_count": 0,
             },
             frame,
         )
@@ -711,7 +725,7 @@ class ChaseMaxAgeIntegrationTests(unittest.TestCase):
         )
 
     def test_capacity_eviction_counter_increase_fails(self) -> None:
-        """Unsampled full-ledger eviction is still visible via the counter."""
+        """Unsampled full-ledger eviction is still visible via frame metadata."""
 
         now = int(time.time() * 1000)
         old = now - 10_000
@@ -729,8 +743,9 @@ class ChaseMaxAgeIntegrationTests(unittest.TestCase):
             timestamp_ms=now,
             capacity_eviction_count=0,
         )
-        # Intermediate capacity eviction occurred (counter advanced) even though
-        # the sampled final frame has headroom and no tracked key.
+        # Intermediate capacity eviction occurred (counter advanced on the
+        # published snapshot) even though the sampled final frame has headroom
+        # and no tracked key. Counter is read from frame metadata only.
         expired = _chase_frame(
             22,
             [
@@ -751,18 +766,9 @@ class ChaseMaxAgeIntegrationTests(unittest.TestCase):
             polls["n"] += 1
             return present if polls["n"] == 1 else expired
 
-        def probe() -> dict:
-            # Probe tracks the same counter as the latest frame metadata.
-            count = 0 if polls["n"] <= 1 else 1
-            return _live_probe(
-                reset_count=1,
-                epoch="memory-epoch-0",
-                capacity_eviction_count=count,
-            )
-
         result = wait_for_chase_memory_key_expiry(
             load_latest_frame=load_latest,
-            probe_fn=probe,
+            probe_fn=lambda: _live_probe(reset_count=1, epoch="memory-epoch-0"),
             present_keys={"thing:obstacle_000"},
             max_age_ms=1000,
             timeout_s=2.0,

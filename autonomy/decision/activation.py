@@ -361,19 +361,14 @@ class ActivatedMemoryStage:
 
     def status(self) -> dict[str, Any]:
         last = self.last_snapshot
+        # Telemetry is published only through snapshot metadata, never by reading
+        # private fields of a concrete MemoryImplementation.
         capacity_eviction_count = None
         if last is not None and isinstance(last.metadata, dict):
             raw = last.metadata.get("capacity_eviction_count")
             if raw is not None:
                 try:
                     capacity_eviction_count = int(raw)
-                except (TypeError, ValueError):
-                    capacity_eviction_count = None
-        if capacity_eviction_count is None:
-            raw_impl = getattr(self.implementation, "_capacity_eviction_count", None)
-            if raw_impl is not None:
-                try:
-                    capacity_eviction_count = int(raw_impl)
                 except (TypeError, ValueError):
                     capacity_eviction_count = None
         return {

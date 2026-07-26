@@ -67,6 +67,7 @@ class BoundedEvidenceLedger:
         self.retain_things = bool(retain_things)
         self.retain_signals = bool(retain_signals)
         self._epoch = 0
+        self._capacity_eviction_count = 0
         self._records: dict[str, RetainedEvidence] = {}
         self._latest = self.reset()
 
@@ -91,6 +92,7 @@ class BoundedEvidenceLedger:
     def reset(self) -> MemorySnapshot:
         self._epoch += 1
         self._records = {}
+        self._capacity_eviction_count = 0
         self._latest = empty_memory_snapshot(
             memory_id=f"memory-reset-{self._epoch}",
             epoch_id=f"epoch-{self._epoch}",
@@ -105,6 +107,7 @@ class BoundedEvidenceLedger:
             metadata={
                 "policy": "bounded_evidence_recency",
                 "claims_identity": False,
+                "capacity_eviction_count": self._capacity_eviction_count,
             },
         )
         return detach_memory_snapshot(self._latest)
@@ -260,6 +263,7 @@ class BoundedEvidenceLedger:
         )
         for record in ordered[:overflow]:
             self._records.pop(record.record_id, None)
+            self._capacity_eviction_count += 1
 
     def _build_snapshot(
         self,
@@ -299,6 +303,7 @@ class BoundedEvidenceLedger:
                     "observation_id": (
                         observation.observation_id if observation is not None else None
                     ),
+                    "capacity_eviction_count": self._capacity_eviction_count,
                 },
             )
         kinds = sorted({record.kind for record in records})
@@ -322,6 +327,7 @@ class BoundedEvidenceLedger:
                 "observation_id": (
                     observation.observation_id if observation is not None else None
                 ),
+                "capacity_eviction_count": self._capacity_eviction_count,
             },
         )
 

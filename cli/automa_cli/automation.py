@@ -431,6 +431,9 @@ def run_vehicle_automation(
             "frame_index": context.frame_index,
             "simulator_frame_index": simulator_frame_index,
             "simulation_epoch": simulation_epoch,
+            # Immutable automation generation: pairs frame publications with probe.
+            "run_id": state.get("run_id"),
+            "worker_pid": state.get("pid"),
             "captured_at_ms": snapshot.completed_at_ms,
             "cycle_started_at_ms": cycle_started_at_ms,
             "cycle_completed_at_ms": perception_completed_at_ms,

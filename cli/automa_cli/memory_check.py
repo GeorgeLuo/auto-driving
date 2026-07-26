@@ -585,7 +585,9 @@ def run_chase_shadow_memory_check(
         f"phase: max_age_expiry (waiting up to {wait_s:.1f}s for "
         f"{sorted(lifecycle_keys)} to age out without reset; "
         f"max_age_ms={max_age_ms}; worker_pid={identity.worker_pid}; "
-        f"simulation_epoch={identity.simulation_epoch!r})",
+        f"run_id={identity.run_id!r}; "
+        f"simulation_epoch={identity.simulation_epoch!r}; "
+        f"capacity_evictions={identity.capacity_eviction_count})",
     )
     try:
         wait_result = wait_for_chase_memory_key_expiry(
@@ -698,7 +700,9 @@ def run_chase_shadow_memory_check(
                 "wait_s": wait_s,
                 "reset_used": False,
                 "worker_pid": identity.worker_pid,
+                "run_id": identity.run_id,
                 "simulation_epoch": identity.simulation_epoch,
+                "capacity_eviction_count": identity.capacity_eviction_count,
                 "wait_frame_count": len(wait_result.wait_frames),
             },
         }

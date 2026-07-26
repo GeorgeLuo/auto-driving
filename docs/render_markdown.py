@@ -5,8 +5,15 @@ import argparse
 import hashlib
 import html
 import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from docs.milestones.workflow import PlanContractError, validate_plan_path
 
 try:
     import markdown
@@ -15,8 +22,6 @@ except ImportError as exc:  # pragma: no cover
         "Markdown rendering requires `python3 -m pip install -r docs/requirements.txt`."
     ) from exc
 
-
-ROOT = Path(__file__).resolve().parents[1]
 MILESTONES = ROOT / "docs" / "milestones"
 
 
@@ -137,6 +142,14 @@ def run(*, check: bool) -> int:
     documents = discover_documents()
     stale: list[Path] = []
     for document in documents:
+        if document.source.name == "plan.md":
+            try:
+                validate_plan_path(document.source)
+            except PlanContractError as exc:
+                print(
+                    f"Invalid milestone plan: {document.source.relative_to(ROOT)}: {exc}"
+                )
+                return 1
         rendered = render_document(document)
         if check:
             if not document.target.exists() or document.target.read_text(encoding="utf-8") != rendered:

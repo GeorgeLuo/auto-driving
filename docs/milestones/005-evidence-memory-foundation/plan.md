@@ -3,9 +3,12 @@
 | Field | Value |
 | --- | --- |
 | Status | Active |
-| Milestone branch | `milestone/005-evidence-memory-foundation` (to be created for new review units) |
-| Cumulative PR | TBD — open draft from milestone branch to `main` when topology is active |
+| Milestone branch | `milestone/005-evidence-memory-foundation` (create from `main` after the coordinated #57 then #58 merges) |
+| Cumulative PR | TBD — transitional closeout delta from the milestone branch to `main`; whole-milestone judgment uses this plan and baseline |
 | Current frontier | Live Chase max-age expiry — [PR #57](https://github.com/GeorgeLuo/auto-driving/pull/57) |
+| Contract baseline | `22cfff9` — M005 work through PR #50, before the compact contract |
+| Grandfathered PRs | #57 (current evidence unit), #58 (contract migration); both retain their existing `main` targets |
+| Cutover | Merge #57 first; then #58 absorbs its accepted result into canonical `plan.md`; closeout is the first M005 unit on the milestone branch |
 | Started | 2026-07-15 |
 | Action policy | Idle / no movement for the entire milestone |
 
@@ -45,11 +48,11 @@ model, changing perception semantics, or granting movement authority.
 | --- | --- | --- | --- |
 | M005-01 | Stable memory input and output types replace public `Any` at the decision-cycle boundary without encoding a concrete mapping algorithm | Met | Typed `MemorySnapshot` / activation contracts |
 | M005-02 | Observation, memory, patterns, projections, and action have distinct documented meanings and stage ownership | Met | Stage meaning and idle action policy |
-| M005-03 | Memory state has finite capacity and age, deterministic serialization, explicit reset, attributable provenance, and isolated failure behavior | Partial | Core bounds, detach, plugin-safe IDs in #52; replay artifact bounds in #53 |
+| M005-03 | Memory state has finite capacity and age, deterministic serialization, explicit reset, attributable provenance, and isolated failure behavior | Met | Core bounds, detach, plugin-safe IDs in #52; replay artifact bounds and isolated failure behavior in #53 |
 | M005-04 | At least one simple implementation retains and expires structured evidence without claiming semantic or metric world truth | Met | `BoundedEvidenceLedger` |
 | M005-05 | Same activation and lifecycle run through local Chase and onboard Donkey hosts; neither receives privileged simulator map state | Met | Load / update / status / reset paths on both hosts |
 | M005-06 | Automa can stage, inspect, run, stream latest memory, replay a sequence, and reset with concise human and complete machine output | Met | Stage / inspect / stream / reset / replay landed |
-| M005-07 | Default execution writes no logs, frames, or memory history; recording is explicit and bounded | Partial | Defaults write nothing; #53 enforces opt-in replay frame/byte ceilings |
+| M005-07 | Default execution writes no logs, frames, or memory history; recording is explicit and bounded | Met | Defaults write nothing; #53 enforces opt-in replay frame/byte ceilings |
 | M005-08 | Deterministic tests cover recurrence, dropout, conflict, expiry, capacity, reset, failure, and replay, including long-sequence boundedness | Partial | #52/#53 size, collision, long-sequence, stale-worker, max-age scoring; broader conflict scenarios may expand later |
 | M005-09 | One live Chase shadow check and one recorded non-moving Pi present/dropout/expiry/reset check verify equivalent stage behavior while the rewritten engine emits zero movement | Partial | Pi validated; Chase retention/alignment/reset accepted (#51); max-age expiry scoring under review (#57); live extract still required for full claim |
 | M005-10 | During the simulator check, Chase’s built-in decision model retains movement authority, the rewrite runs observe-only, and candidate/reference results align by simulator frame identity | Met | Atomic evaluator path and tracked guided run |
@@ -71,15 +74,17 @@ model, changing perception semantics, or granting movement authority.
 - Exit criteria affected: M005-08, M005-09
 - Prerequisite: Package 5B (#53) accepted
 - Milestone-level non-goal: Package 6 closeout; Pi re-proof; 5A/5B redesign
+- Transition exception: Grandfathered mixed deterministic/live unit targeting `main`; acceptable only if its body is reconciled and the guided live extract is attached without further implementation
 
 ### Next-Frontier Candidate
 
 **Milestone closeout**
 
+- Branch: `m005/closeout` (planned; not opened)
 - Review kind: Milestone closeout
 - Review question: Is milestone 005 complete as a whole—every exit criterion Met, completion usage supported, residual risk stated—and should the 006 pre-plan be activated, revised, or abandoned?
 - Acceptance owner: `closeout.md` plus the cumulative milestone PR judgment against exit criteria and completion usage
-- Exit criteria affected: M005-13 (and confirmation that M005-01–M005-12 are Met)
+- Exit criteria affected: M005-13
 - Prerequisite: Every exit criterion Met, including live Chase max-age evidence from the current frontier (#57)
 - Non-goals: New feature implementation under the closeout PR; reopening max-age scoring design; activating 006 before closeout acceptance
 
@@ -89,11 +94,13 @@ Not started; no closeout branch yet. Acceptance boundary above is frozen before 
 
 | PR | Accepted review question | Result | Exit criteria | Durable evidence |
 | --- | --- | --- | --- | --- |
+| Baseline #34–#50 (`22cfff9`) | Are the pre-contract M005 memory foundation, operator paths, Pi lifecycle proof, and integration-branch decision accepted as historical starting state? | Accepted before compact-contract adoption | M005-01–M005-12 at the statuses recorded above | Mainline history through `22cfff9`; tracked Pi and replay evidence referenced by the criteria |
 | #51 | Is Chase retained evidence aligned to exact simulator frames while movement remains external and evaluator state isolated? | Accepted | M005-09, M005-10, M005-11, M005-12 | `evidence/chase-shadow-memory/` |
 | #52 | Can callers mutate, enlarge, collide, or weaken activated memory bounds? | Accepted | M005-03, M005-08 | Deterministic bounds/detach/identity tests |
 | #53 | Can operators treat a recorded replay extract as bounded and fail-closed, and can a live Chase memory probe be trusted only when the automation worker is fresh? | Accepted | M005-03, M005-07, M005-08 | Deterministic record/probe/once-exit tests |
 
-Earlier stage/inspect/reset/replay/record and Pi lifecycle work is accepted in prior merges; this ledger focuses on review units with durable PR references for the validation-repair arc. Expand rows as new units merge under this contract.
+The baseline row is the explicit adoption boundary; post-baseline review units
+remain one row per merged PR.
 
 ## Open Risks And Unverified Assumptions
 
@@ -103,7 +110,7 @@ Earlier stage/inspect/reset/replay/record and Pi lifecycle work is accepted in p
 | Process identity for Chase live probe relies on host command inspection | Probe may be unavailable or spoofable on unsupported hosts | Fail closed; document limitation |
 | Memory is process-local by default | Restart continuity is not guaranteed | Explicit milestone non-goal |
 | Metrics UI atomic capture remains an external dependency for Chase evidence | Capture quality depends on sibling repository | Keep dependency until auto-driving no longer needs contract adjustment |
-| Historical 005 review units targeted `main` rather than a milestone integration branch | Cumulative whole-milestone review is harder | Adopt milestone branch topology for remaining units and closeout |
+| Historical 005 review units targeted `main` rather than a milestone integration branch | The final cumulative PR is a closeout delta rather than the literal implementation history | Use baseline `22cfff9`; merge grandfathered #57, then #58; create the milestone branch from that resulting `main` for closeout |
 
 ## Milestone Decisions
 
@@ -121,6 +128,7 @@ Earlier stage/inspect/reset/replay/record and Pi lifecycle work is accepted in p
 | 2026-07-23 | Co-review next frontier on the current unmerged PR | Human attention can accept current code and next scope in one pass |
 | 2026-07-24 | Adopt compact plan ownership and review-unit branch model | Remove duplicated status surfaces; minimize post-merge plan sync |
 | 2026-07-24 | Require a minimal pre-implementation acceptance contract for next-frontier candidates | Selecting “what’s next” must freeze question, owner, exit criteria, and non-goals before a branch is opened; name stubs are not candidates |
+| 2026-07-26 | Cut over M005 after grandfathered PR #57 and contract PR #58 merge in that order | Avoid retargeting #57 or merging conflicting hand-authored HTML; #58 becomes the canonical plan migration, then closeout starts from a milestone branch created at the resulting `main` |
 
 ## Closeout
 

@@ -26,9 +26,9 @@ should require only a handful of milestone-plan edits:
 2. update affected exit criteria;
 3. update unresolved risks;
 4. promote the next frontier;
-5. select at most one new next-frontier candidate with a **minimal
-   pre-implementation acceptance contract** (or record that closeout is next
-   with that contract filled).
+5. optionally select one new next-frontier candidate with a **minimal
+   pre-implementation acceptance contract**, or leave the next-candidate slot
+   explicitly empty with a reason.
 
 Do not preserve redundant sections merely because they already exist.
 
@@ -63,7 +63,7 @@ It identifies the next milestone claim ready for active attention.
 The plan may contain:
 
 - exactly one **current frontier**;
-- at most one **next-frontier candidate**;
+- one **next-frontier slot** containing at most one candidate;
 - a **preparation horizon** for later provisional needs.
 
 The frontier determines priority and readiness. It is not a detailed speculative
@@ -83,6 +83,11 @@ Promote work to the **current** frontier only when it is:
 Select a **next-frontier candidate** only when those same readiness conditions
 hold **and** the minimal acceptance fields below are filled. A title with a
 vague likely question is not a candidate.
+
+An empty next-frontier slot is honest when current evidence does not yet justify
+another contract or when milestone closeout is already current. Record why it is
+empty and what decision or evidence could fill it. Do not invent speculative
+scope merely to keep the slot populated.
 
 Human review attention is the throughput limit. Prefer fewer sequential units
 that close a contractable edge over many named subdivisions that multiply
@@ -124,6 +129,12 @@ operator acceptance procedure, tracked provenance artifact.
 
 Do not combine deep deterministic contract review and substantial live-system
 proof merely because they support the same milestone.
+
+A bounded live check may remain in an implementation review unit when it is
+immediate, requires no additional implementation, and adds little independent
+review burden. Split it into an evidence unit when it needs separate environment
+preparation, repeatable operator procedure, tracked artifacts, or an acceptance
+judgment that could fail while the implementation contract still passes.
 
 ### Repair Cycle
 
@@ -256,6 +267,27 @@ Earlier 005 work often targeted `main` directly. New review units for active
 milestones must use the milestone-branch topology above. Document any temporary
 exception in the milestone decision log.
 
+### Adopting This Contract Mid-Milestone
+
+Do not pretend an already-active milestone always used this topology. Its plan
+must record:
+
+1. a **historical baseline** commit or accepted-review-unit summary for work
+   merged before adoption;
+2. a `Grandfathered PRs` header field naming every open grandfathered PR, with
+   its existing target branch and whether it keeps a mixed review kind
+   temporarily;
+3. the exact **cutover point** after which review units use the milestone branch;
+4. how conflicting hand-authored and generated planning files will resolve in
+   favor of the canonical Markdown source; and
+5. whether the first cumulative PR is a transitional closeout delta rather than
+   a literal diff of all earlier milestone work.
+
+Do not retarget or reconstruct a published historical PR merely for topology
+purity when doing so adds risk without improving its review. Reconcile its
+description and evidence to the new contract proportionately, then begin the new
+branch model at the declared cutover.
+
 ## Compact Milestone Plan Structure
 
 Active plans use these sections only.
@@ -264,7 +296,7 @@ Active plans use these sections only.
 
 | Field | Value |
 | --- | --- |
-| Status | Active / pre-plan / closed |
+| Status | Active / Blocked / pre-plan / closed |
 | Milestone branch | `milestone/<number>-<slug>` |
 | Cumulative PR | `#…` or `TBD` |
 | Current frontier | short name — PR `#…` |
@@ -301,17 +333,19 @@ table.
 
 ### 6. Current Delivery
 
-Exactly one current frontier and at most one next-frontier candidate.
+Exactly one current frontier while a milestone is active, plus one
+next-frontier slot containing zero or one candidate.
 
-**Current frontier** records: name, PR, branch, review kind, one review
+**Current frontier** records: name, planned branch, review kind, one review
 question, enforcement or acceptance owner, affected exit criteria,
-prerequisite, concise milestone-level non-goal. Link to the PR. Do **not**
-paste the PR matrix or file impact here.
+prerequisite, and concise milestone-level non-goal. Add and link its PR once the
+branch opens. Do **not** paste the PR matrix or file impact here.
 
-**Next-frontier candidate** is a pre-implementation acceptance contract. It is
-valid only when it records at least:
+When populated, the **next-frontier candidate** is a pre-implementation
+acceptance contract. It is valid only when it records at least:
 
 - **name;**
+- **planned review-unit branch;**
 - **expected review kind;**
 - **one review question** stable enough that promotion would open
   implementation against it;
@@ -331,20 +365,33 @@ the current frontier lands; do not silently widen the candidate’s review
 question or non-goals after the branch is opened—that requires an explicit plan
 decision.
 
-A name plus a vague “likely question” alone is not a candidate. Leave the slot
-as milestone closeout only when the closeout fields above are filled, or
-explicitly state that no further in-milestone unit remains and closeout is
-next with those fields present.
+A name plus a vague “likely question” alone is not a candidate. Use an explicit
+empty slot instead:
+
+```markdown
+### Next-Frontier Candidate
+
+**None**
+
+- Reason: <why another contract is not justified now>
+- Revisit when: <named evidence, decision, or closeout result>
+```
+
+The empty slot opens no implementation branch. It is the required terminal state
+while closeout is current, and it may also be used while a named blocker prevents
+honest candidate selection.
 
 **Frontier handoff:** closing the current frontier (accepting its review unit)
 always updates Current Delivery so the plan still answers “what is active?”
-and “what is likely next?”. Promote the existing next-frontier candidate to
-current (its pre-implementation contract becomes the current unit’s acceptance
-boundary), then select at most one new next-frontier candidate with a complete
-minimal contract—or record that milestone closeout is next when no further
-in-milestone unit remains. Do not leave Current Delivery without a current
-frontier while the milestone is active (closeout becomes the current frontier
-when it is the active review unit).
+and “what may be next?”. Promote the existing next-frontier candidate to current
+(its pre-implementation contract becomes the current unit’s acceptance
+boundary), then reset the next slot to explicit `None`. A later candidate enters
+through the newly current review unit so it is visible in that PR before it can
+be promoted; the mechanical handoff must not invent one. Do not leave Current
+Delivery without a current frontier while the milestone is active: closeout
+becomes current when it is the active review unit, and a bounded decision or
+evidence unit becomes current when more evidence is required to choose
+implementation work.
 
 ### 7. Accepted Review Units
 
@@ -435,6 +482,7 @@ Use `.github/pull_request_template.md` (required headings):
 - Unverified limits
 - Scope (in / out)
 - File impact
+- Scope reconciliation
 - Validation
 - Review notes
 
@@ -508,6 +556,14 @@ One review-and-repair cycle is normal. After two substantial repair cycles for
 the same invariant, reconsider abstraction, enforcement location, PR scope, and
 whether the question is singular.
 
+Before every review or re-review request, reconcile the PR description to the
+current diff. Refresh the review question when its wording no longer matches,
+the enforcement or acceptance owner, affected paths, adversarial matrix, file
+impact, external assumptions, unverified limits, and exact validation results.
+Summarize meaningful scope deepening and state whether it still closes the same
+claim. Do not make the reviewer reconstruct the actual contract from commit
+history.
+
 ### Cumulative Milestone PR
 
 Use `.github/PULL_REQUEST_TEMPLATE/milestone.md`. Keep it compact: objective,
@@ -517,33 +573,52 @@ child PR matrix.
 
 ## Merge And Promotion Procedure
 
-After a review-unit PR is accepted (frontier handoff):
+After a review-unit PR is accepted:
 
-1. squash-merge into the milestone branch;
-2. add one accepted-review-unit row to the plan;
-3. update affected exit criteria;
-4. update unresolved risks;
-5. **promote** the next-frontier candidate to **current frontier** (or make
-   milestone closeout the current frontier when that is the next unit),
-   carrying its frozen minimal acceptance contract forward;
-6. **select at most one new next-frontier candidate** with a complete minimal
-   acceptance contract—or explicitly record that no further in-milestone
-   candidate remains and closeout is next (also with the closeout contract
-   fields filled);
-7. open the new current frontier’s implementation branch only after step 5,
-   from the updated milestone branch, and only against that frozen contract
-   (unless closeout is deferred until remaining criteria are met).
+1. squash-merge it into the milestone branch;
+2. the maintainer who merges it runs the executable handoff below on the clean
+   milestone branch;
+3. inspect and commit only the resulting canonical plan and generated HTML;
+4. open the new current frontier’s branch only after the handoff commit, from
+   the updated milestone branch and against the frozen current contract.
 
-Steps 5–6 are mandatory plan edits on every accepted review unit. Promoting
-without a following candidate that carries a minimal acceptance contract (or
-without “closeout next” and its contract fields) leaves the plan without a
-planning handoff. Opening an implementation branch before the acceptance
-boundary is frozen invents scope during coding and is out of contract.
+```sh
+python3 docs/milestones/workflow.py receipt-example
+python3 docs/milestones/workflow.py handoff \
+  --plan docs/milestones/<number>-<slug>/plan.md \
+  --receipt /path/to/handoff.json
+python3 docs/milestones/workflow.py start \
+  --plan docs/milestones/<number>-<slug>/plan.md \
+  --branch m<number>/<review-unit>-<slug>
+```
 
-Prefer drafting or revising the next-frontier candidate’s **minimal acceptance
-contract** on the current review unit’s PR so the same human pass can accept
-this unit and freeze the next unit’s scope. Final promotion still happens only
-after merge (steps 5–6).
+The tool, rather than agent memory, enforces the order. It refuses a dirty
+worktree, the wrong branch, a receipt whose PR does not match the current
+frontier, or a merge commit that is not already an ancestor of the milestone
+branch. It also asks GitHub to confirm that the named PR is merged into that
+milestone branch at the receipt SHA. It validates criterion statuses and
+frontier fields, limits criterion updates to the current frontier, prevents
+premature closeout, updates the ledger and risks, promotes the already-reviewed
+next candidate (or records a blocked/closed outcome), resets the next slot, and
+regenerates HTML. It then leaves the narrow diff for inspection and commit.
+`docs/render_markdown.py` invokes the same validator, so CI rejects hand-edited
+plans that bypass the state contract. The `start` command then refuses to create
+a review-unit branch unless the handoff is committed, the worktree is clean, the
+current frontier has no already-open PR, and its planned branch matches the
+requested branch.
+
+The handoff commit is a narrow exception to PR-only changes because it applies
+mechanical post-merge facts that cannot truthfully exist in the merged review
+unit beforehand. It must not introduce code, widen an acceptance contract,
+invent an unreviewed candidate, or change milestone scope. If the handoff needs
+judgment beyond the already reviewed plan state, use a plan-only review unit
+instead.
+
+Drafting or revising the next candidate on the current PR is optional. It gives
+the reviewer visibility into the likely handoff, but it is not a second review
+question and current-PR acceptance must not depend on accepting future scope.
+After that candidate is promoted, its own review unit may introduce a later
+candidate. When none is ready, leave the slot empty rather than forcing one.
 
 At milestone closeout:
 
@@ -557,7 +632,7 @@ At milestone closeout:
 8. remove obsolete milestone and review-unit branches;
 9. activate or revise the next pre-plan only after closeout
    (this is the cross-milestone handoff, distinct from in-milestone
-   next-frontier selection in steps 5–6 above).
+   frontier handoff above).
 
 ## Immediate Deferred Work And Pre-Plans
 

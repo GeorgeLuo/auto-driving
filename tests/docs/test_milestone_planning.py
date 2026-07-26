@@ -5,6 +5,8 @@ import re
 import unittest
 from pathlib import Path
 
+from docs.milestones.workflow import validate_plan_path
+
 
 ROOT = Path(__file__).resolve().parents[2]
 DOCS = ROOT / "docs"
@@ -81,23 +83,18 @@ class MilestonePlanningTests(unittest.TestCase):
 
     def test_active_plan_has_one_current_frontier_and_at_most_one_next(self) -> None:
         plan_md, _ = _active_plan_paths()
-        text = plan_md.read_text(encoding="utf-8")
-        self.assertEqual(text.count("### Current Frontier"), 1)
-        self.assertEqual(text.count("### Next-Frontier Candidate"), 1)
-        self.assertIn("Review question:", text)
-        self.assertRegex(text, r"Milestone branch\s*\|\s*`milestone/")
+        state = validate_plan_path(plan_md)
+        self.assertFalse(state.current.is_empty)
+        self.assertFalse(state.next_frontier.is_empty)
+        self.assertTrue(state.current.fields["review question"])
+        self.assertTrue(state.milestone_branch.startswith("milestone/"))
 
     def test_active_plan_exit_criteria_use_stable_ids(self) -> None:
         plan_md, _ = _active_plan_paths()
-        text = plan_md.read_text(encoding="utf-8")
-        ids = re.findall(r"\|\s*(M\d{3}-\d{2})\s*\|", text)
+        state = validate_plan_path(plan_md)
+        ids = [row[0] for row in state.criteria.rows]
         self.assertGreaterEqual(len(ids), 3)
         self.assertEqual(len(ids), len(set(ids)), "exit criteria IDs must be unique")
-        for status in ("Met", "Partial", "Blocked", "Unmet"):
-            if status in text:
-                break
-        else:
-            self.fail("exit criteria table should use allowed statuses")
 
     def test_docs_guide_is_navigation_only_for_progress(self) -> None:
         guide = GUIDE.read_text(encoding="utf-8")
@@ -123,6 +120,7 @@ class MilestonePlanningTests(unittest.TestCase):
             "## Adversarial Matrix",
             "## Scope",
             "## File Impact",
+            "## Scope Reconciliation",
             "## Validation",
         ):
             self.assertIn(heading, text)
@@ -155,12 +153,14 @@ class MilestonePlanningTests(unittest.TestCase):
         self.assertIn("Singular Review Question Rule", text)
         self.assertIn('requires “and”', text)
 
-    def test_contract_requires_frontier_handoff_to_define_next_candidate(self) -> None:
+    def test_contract_assigns_frontier_handoff_to_executable_workflow(self) -> None:
         text = CONTRACT_SOURCE.read_text(encoding="utf-8")
+        normalized = " ".join(text.split())
         self.assertIn("Frontier handoff:", text)
-        self.assertIn("promote** the next-frontier candidate to **current frontier", text)
-        self.assertIn("select at most one new next-frontier candidate", text)
-        self.assertIn("mandatory plan edits", text)
+        self.assertIn("docs/milestones/workflow.py handoff", text)
+        self.assertIn("docs/milestones/workflow.py start", text)
+        self.assertIn("merge commit that is not already an ancestor", normalized)
+        self.assertIn("resets the next slot", normalized)
 
     def test_contract_requires_next_frontier_minimal_acceptance_contract(self) -> None:
         text = CONTRACT_SOURCE.read_text(encoding="utf-8")
@@ -168,35 +168,22 @@ class MilestonePlanningTests(unittest.TestCase):
         self.assertIn("frozen before the implementation branch is opened", text)
         self.assertIn("enforcement or acceptance owner", text)
         self.assertIn("A name plus a vague “likely question” alone is not a candidate", text)
-        self.assertIn(
-            "Opening an implementation branch before the acceptance",
-            text,
-        )
+        self.assertIn("empty next-frontier slot", text)
 
     def test_active_plan_next_frontier_records_minimal_contract_fields(self) -> None:
         plan_md, _ = _active_plan_paths()
-        text = plan_md.read_text(encoding="utf-8")
-        # Fields may appear for both current and next frontier; require the labels.
-        for label in (
-            "Review kind:",
-            "Review question:",
-            "Acceptance owner:",
-            "Exit criteria affected:",
-            "Prerequisite:",
-            "Non-goal",
-        ):
-            self.assertIn(label, text, f"missing next/current frontier field {label}")
-        next_section = text.split("### Next-Frontier Candidate", 1)[1]
-        next_section = next_section.split("## ", 1)[0]
-        for label in (
-            "Review kind:",
-            "Review question:",
-            "Acceptance owner:",
-            "Exit criteria affected:",
-            "Prerequisite:",
-            "Non-goal",
-        ):
-            self.assertIn(label, next_section, f"next-frontier missing {label}")
+        state = validate_plan_path(plan_md)
+        for frontier in (state.current, state.next_frontier):
+            for field in (
+                "branch",
+                "review kind",
+                "review question",
+                "acceptance owner",
+                "exit criteria affected",
+                "prerequisite",
+                "non-goals",
+            ):
+                self.assertTrue(frontier.fields[field], f"missing frontier field {field}")
 
 
 if __name__ == "__main__":

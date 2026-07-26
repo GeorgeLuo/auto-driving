@@ -61,6 +61,12 @@
 
 -
 
+## Scope Reconciliation
+
+<!-- Before every review or re-review, reconcile this body to the current diff.
+     Summarize meaningful changes to question, owner, matrix, file impact,
+     assumptions, or validation. Write "None; initial review" when applicable. -->
+
 ## Validation
 
 ```text

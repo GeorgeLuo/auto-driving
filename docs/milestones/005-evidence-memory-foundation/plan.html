@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="7aa18057d88fe2cb03447b6eea683d7db53afaef20e53ee71fc6e575f0d5fc7a">
+  <meta name="source-sha256" content="66490d6abef61900ea862f1ada6b530da74c43cb7d98f842f67acee414551428">
   <base target="_blank">
   <title>Milestone plan — 005-evidence-memory-foundation</title>
   <style>
@@ -77,15 +77,27 @@
 </tr>
 <tr>
 <td>Milestone branch</td>
-<td><code>milestone/005-evidence-memory-foundation</code> (to be created for new review units)</td>
+<td><code>milestone/005-evidence-memory-foundation</code> (create from <code>main</code> after the coordinated #57 then #58 merges)</td>
 </tr>
 <tr>
 <td>Cumulative PR</td>
-<td>TBD — open draft from milestone branch to <code>main</code> when topology is active</td>
+<td>TBD — transitional closeout delta from the milestone branch to <code>main</code>; whole-milestone judgment uses this plan and baseline</td>
 </tr>
 <tr>
 <td>Current frontier</td>
 <td>Live Chase max-age expiry — <a href="https://github.com/GeorgeLuo/auto-driving/pull/57">PR #57</a></td>
+</tr>
+<tr>
+<td>Contract baseline</td>
+<td><code>22cfff9</code> — M005 work through PR #50, before the compact contract</td>
+</tr>
+<tr>
+<td>Grandfathered PRs</td>
+<td>#57 (current evidence unit), #58 (contract migration); both retain their existing <code>main</code> targets</td>
+</tr>
+<tr>
+<td>Cutover</td>
+<td>Merge #57 first; then #58 absorbs its accepted result into canonical <code>plan.md</code>; closeout is the first M005 unit on the milestone branch</td>
 </tr>
 <tr>
 <td>Started</td>
@@ -222,8 +234,8 @@ model, changing perception semantics, or granting movement authority.</p>
 <tr>
 <td>M005-03</td>
 <td>Memory state has finite capacity and age, deterministic serialization, explicit reset, attributable provenance, and isolated failure behavior</td>
-<td>Partial</td>
-<td>Core bounds, detach, plugin-safe IDs in #52; replay artifact bounds in #53</td>
+<td>Met</td>
+<td>Core bounds, detach, plugin-safe IDs in #52; replay artifact bounds and isolated failure behavior in #53</td>
 </tr>
 <tr>
 <td>M005-04</td>
@@ -246,7 +258,7 @@ model, changing perception semantics, or granting movement authority.</p>
 <tr>
 <td>M005-07</td>
 <td>Default execution writes no logs, frames, or memory history; recording is explicit and bounded</td>
-<td>Partial</td>
+<td>Met</td>
 <td>Defaults write nothing; #53 enforces opt-in replay frame/byte ceilings</td>
 </tr>
 <tr>
@@ -299,14 +311,16 @@ model, changing perception semantics, or granting movement authority.</p>
 <li>Exit criteria affected: M005-08, M005-09</li>
 <li>Prerequisite: Package 5B (#53) accepted</li>
 <li>Milestone-level non-goal: Package 6 closeout; Pi re-proof; 5A/5B redesign</li>
+<li>Transition exception: Grandfathered mixed deterministic/live unit targeting <code>main</code>; acceptable only if its body is reconciled and the guided live extract is attached without further implementation</li>
 </ul>
 <h3>Next-Frontier Candidate</h3>
 <p><strong>Milestone closeout</strong></p>
 <ul>
+<li>Branch: <code>m005/closeout</code> (planned; not opened)</li>
 <li>Review kind: Milestone closeout</li>
 <li>Review question: Is milestone 005 complete as a whole—every exit criterion Met, completion usage supported, residual risk stated—and should the 006 pre-plan be activated, revised, or abandoned?</li>
 <li>Acceptance owner: <code>closeout.md</code> plus the cumulative milestone PR judgment against exit criteria and completion usage</li>
-<li>Exit criteria affected: M005-13 (and confirmation that M005-01–M005-12 are Met)</li>
+<li>Exit criteria affected: M005-13</li>
 <li>Prerequisite: Every exit criterion Met, including live Chase max-age evidence from the current frontier (#57)</li>
 <li>Non-goals: New feature implementation under the closeout PR; reopening max-age scoring design; activating 006 before closeout acceptance</li>
 </ul>
@@ -323,6 +337,13 @@ model, changing perception semantics, or granting movement authority.</p>
 </tr>
 </thead>
 <tbody>
+<tr>
+<td>Baseline #34–#50 (<code>22cfff9</code>)</td>
+<td>Are the pre-contract M005 memory foundation, operator paths, Pi lifecycle proof, and integration-branch decision accepted as historical starting state?</td>
+<td>Accepted before compact-contract adoption</td>
+<td>M005-01–M005-12 at the statuses recorded above</td>
+<td>Mainline history through <code>22cfff9</code>; tracked Pi and replay evidence referenced by the criteria</td>
+</tr>
 <tr>
 <td>#51</td>
 <td>Is Chase retained evidence aligned to exact simulator frames while movement remains external and evaluator state isolated?</td>
@@ -346,7 +367,8 @@ model, changing perception semantics, or granting movement authority.</p>
 </tr>
 </tbody>
 </table>
-<p>Earlier stage/inspect/reset/replay/record and Pi lifecycle work is accepted in prior merges; this ledger focuses on review units with durable PR references for the validation-repair arc. Expand rows as new units merge under this contract.</p>
+<p>The baseline row is the explicit adoption boundary; post-baseline review units
+remain one row per merged PR.</p>
 <h2>Open Risks And Unverified Assumptions</h2>
 <table>
 <thead>
@@ -379,8 +401,8 @@ model, changing perception semantics, or granting movement authority.</p>
 </tr>
 <tr>
 <td>Historical 005 review units targeted <code>main</code> rather than a milestone integration branch</td>
-<td>Cumulative whole-milestone review is harder</td>
-<td>Adopt milestone branch topology for remaining units and closeout</td>
+<td>The final cumulative PR is a closeout delta rather than the literal implementation history</td>
+<td>Use baseline <code>22cfff9</code>; merge grandfathered #57, then #58; create the milestone branch from that resulting <code>main</code> for closeout</td>
 </tr>
 </tbody>
 </table>
@@ -453,6 +475,11 @@ model, changing perception semantics, or granting movement authority.</p>
 <td>2026-07-24</td>
 <td>Require a minimal pre-implementation acceptance contract for next-frontier candidates</td>
 <td>Selecting “what’s next” must freeze question, owner, exit criteria, and non-goals before a branch is opened; name stubs are not candidates</td>
+</tr>
+<tr>
+<td>2026-07-26</td>
+<td>Cut over M005 after grandfathered PR #57 and contract PR #58 merge in that order</td>
+<td>Avoid retargeting #57 or merging conflicting hand-authored HTML; #58 becomes the canonical plan migration, then closeout starts from a milestone branch created at the resulting <code>main</code></td>
 </tr>
 </tbody>
 </table>

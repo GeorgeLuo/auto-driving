@@ -1,0 +1,125 @@
+{
+  "schema": "milestone_chase_max_age_expiry_evidence_v0",
+  "vehicle_id": "chase-sim-chaser",
+  "scenario": "chaser-depth-obstacles",
+  "artifact_run_id": "chase-sim-chaser-20260726-014031",
+  "implementation_id": "bounded_evidence",
+  "perception": "candidate:floor_continuity",
+  "atomic_capture_dependency": {
+    "repository": "GeorgeLuo/metrics-ui",
+    "commit": "351e3af",
+    "branch": "m002/04-closeout",
+    "merged_to_main": false
+  },
+  "bounds": {
+    "max_age_ms": 1000,
+    "max_records": 32,
+    "eviction_policy": "oldest_first"
+  },
+  "passed": true,
+  "simulation_epoch": "chase-run:aaeaadb1-efaf-456f-bb48-a6e884e310a8",
+  "automation_run_id": "automation-20260726-013956-86a80f3af558",
+  "worker_pid": 57146,
+  "frames": [
+    {
+      "frame_id": "chase_frame_082364",
+      "simulator_frame_index": 82364,
+      "role": "lifecycle_source",
+      "tracked_key_present": true,
+      "tracked_key_provenance_frame_id": "chase_frame_082364",
+      "sha256": "a8cceecc7827ac96173ed74c4f8be03687ed868dc560393ad448482ac03a9b42"
+    },
+    {
+      "frame_id": "chase_frame_082379",
+      "simulator_frame_index": 82379,
+      "role": "retained_prior",
+      "tracked_key_present": true,
+      "tracked_key_provenance_frame_id": "chase_frame_082364",
+      "sha256": "60174d685e03b3af3d1a1a685b1acecce44e850ca070a18d807316d02d89a2f4"
+    },
+    {
+      "frame_id": "chase_frame_082424",
+      "simulator_frame_index": 82424,
+      "role": "max_age_expiry",
+      "tracked_key_present": false,
+      "sha256": "fd3c76f1eeda95a21d880a9e23a895b04b017b627623a80773dc20a60e1f3490"
+    }
+  ],
+  "phase_results": [
+    {
+      "phase": "history_boundary",
+      "passed": true,
+      "prior_epoch": "epoch-2",
+      "epoch_id": "epoch-3",
+      "prior_reset_count": 1,
+      "reset_count": 2
+    },
+    {
+      "phase": "shadow_alignment",
+      "passed": true,
+      "aligned_count": 5,
+      "advancing_simulator_frames": true,
+      "consistent_run_identity": true,
+      "missing_identity": 0,
+      "missing_shadow": 0
+    },
+    {
+      "phase": "memory_provenance",
+      "passed": true,
+      "matched_provenance_records": 34,
+      "current_frame_matches": 33,
+      "retained_prior_matches": 1,
+      "missing_provenance": 0,
+      "future_provenance": 0
+    },
+    {
+      "phase": "observe_only",
+      "passed": true,
+      "violations": []
+    },
+    {
+      "phase": "shadow_isolation",
+      "passed": true,
+      "leaks": []
+    },
+    {
+      "phase": "max_age_expiry",
+      "passed": true,
+      "lifecycle_keys": [
+        "thing:1:19:floor-continuity-v1:18:floor_boundary_002"
+      ],
+      "age_elapsed_ms": 1133,
+      "max_age_ms": 1000,
+      "reset_used": false,
+      "control_ok": true,
+      "identity_stable": true,
+      "frames_advanced": true,
+      "headroom_proven": true,
+      "capacity_eviction_ambiguous": false,
+      "remaining_keys": []
+    },
+    {
+      "phase": "reset",
+      "passed": true,
+      "prior_epoch": "epoch-3",
+      "epoch_id": "epoch-4",
+      "prior_reset_count": 2,
+      "reset_count": 3
+    }
+  ],
+  "safety": {
+    "action_policy": "observe_only",
+    "control_application": "not_applied",
+    "control_source": "simulator",
+    "shadow_chaser_control_source": "programmatic",
+    "control_evidence_complete": true,
+    "movement_commands_sent": false,
+    "simulator_retains_authority": true,
+    "forced_dropout": false,
+    "ephemeral_local_reducer": false
+  },
+  "source_artifact_sha256": {
+    "report.json": "78006dcbb03a83310243e59594e49a80fdcc5e7888073fe5cf06ef4cdc50e5d6",
+    "sequence.json": "ece9451bdb618b6c978d061d11bfe4d7e72eb640f764158ecc9729f00314810c"
+  }
+}

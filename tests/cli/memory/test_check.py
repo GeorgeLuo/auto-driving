@@ -732,6 +732,30 @@ class MemoryCheckTests(unittest.TestCase):
         self.assertIsInstance(score, dict)
         self.assertIn("passed", score)
 
+    def test_chase_check_internal_probe_bypasses_vehicle_discovery(self) -> None:
+        from cli.automa_cli.memory_check import run_chase_shadow_memory_check
+
+        with mock.patch(
+            "cli.automa_cli.memory_check.probe_live_memory",
+            return_value={"status": "unavailable", "error": "test stop"},
+        ) as probe:
+            result = run_chase_shadow_memory_check(
+                vehicle_id="chase-sim-chaser",
+                load_latest_frame=lambda: None,
+            )
+
+        self.assertEqual(result.exit_code, 2)
+        self.assertGreaterEqual(probe.call_count, 1)
+        for call in probe.call_args_list:
+            self.assertEqual(
+                call,
+                mock.call(
+                    vehicle_id="chase-sim-chaser",
+                    vehicle={"provider": "chase-sim"},
+                    timeout_s=3.0,
+                ),
+            )
+
     def test_chase_observe_only_rejects_external_ws_authority(self) -> None:
         from cli.automa_cli.memory_check import score_chase_observe_only
 

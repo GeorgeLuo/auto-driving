@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from cli.automa_cli.memory import reset_vehicle_memory
+from cli.automa_cli.memory import _reset_chase_memory, reset_vehicle_memory
 from tests.support.cli_runner import run_automa
 
 
@@ -164,6 +164,53 @@ class MemoryResetCommandTests(unittest.TestCase):
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["reset"]["status"], "reset")
         self.assertTrue(payload["confirmed_empty"])
+
+    def test_chase_reset_ack_is_not_blocked_by_vehicle_discovery(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            automation_dir = Path(tmp) / "automation"
+            automation_dir.mkdir(parents=True)
+
+            def fake_worker() -> None:
+                request_path = automation_dir / "memory_reset.request.json"
+                deadline = time.monotonic() + 1.0
+                while time.monotonic() < deadline:
+                    if request_path.exists():
+                        request = json.loads(request_path.read_text(encoding="utf-8"))
+                        (automation_dir / "memory_reset.result.json").write_text(
+                            json.dumps(
+                                {
+                                    "schema": "automa_memory_reset_result_v0",
+                                    "ok": True,
+                                    "status": "reset",
+                                    "token": request["token"],
+                                }
+                            ),
+                            encoding="utf-8",
+                        )
+                        return
+                    time.sleep(0.005)
+
+            worker = threading.Thread(target=fake_worker, daemon=True)
+            worker.start()
+            with mock.patch(
+                "cli.automa_cli.memory._automation_dir",
+                return_value=automation_dir,
+            ), mock.patch(
+                "cli.automa_cli.memory._probe_chase_memory",
+                return_value={"status": "live", "last_epoch_id": "epoch-1"},
+            ), mock.patch(
+                "cli.automa_cli.memory.probe_live_memory",
+                side_effect=AssertionError("general discovery must not run inside Chase reset wait"),
+            ):
+                result = _reset_chase_memory(
+                    vehicle_id="chase-sim-chaser",
+                    before={"last_epoch_id": "epoch-1"},
+                    wait_s=0.5,
+                )
+            worker.join(timeout=1.0)
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["status"], "reset")
 
     def test_reset_vehicle_memory_absent_is_actionable(self) -> None:
         vehicle = {

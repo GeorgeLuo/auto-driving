@@ -265,7 +265,11 @@ def run_chase_shadow_memory_check(
     def do_probe() -> dict[str, Any]:
         if probe_fn is not None:
             return probe_fn()
-        return probe_live_memory(vehicle_id=vehicle_id, timeout_s=timeout_s)
+        return probe_live_memory(
+            vehicle_id=vehicle_id,
+            vehicle={"provider": "chase-sim"},
+            timeout_s=timeout_s,
+        )
 
     def do_reset() -> dict[str, Any]:
         if reset_fn is not None:

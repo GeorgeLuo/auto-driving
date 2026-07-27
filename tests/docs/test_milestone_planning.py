@@ -15,6 +15,9 @@ CONTRACT_SOURCE = MILESTONES / "README.md"
 CONTRACT_RENDER = MILESTONES / "planning-contract.html"
 GUIDE = DOCS / "README.md"
 PR_TEMPLATE = ROOT / ".github" / "pull_request_template.md"
+PROPOSAL_PR_TEMPLATE = (
+    ROOT / ".github" / "PULL_REQUEST_TEMPLATE" / "proposal.md"
+)
 MILESTONE_PR_TEMPLATE = ROOT / ".github" / "PULL_REQUEST_TEMPLATE" / "milestone.md"
 
 
@@ -74,6 +77,7 @@ class MilestonePlanningTests(unittest.TestCase):
             "## Current Delivery",
             "### Current Frontier",
             "### Next-Frontier Candidate",
+            "## Workflow History",
             "## Accepted Review Units",
             "## Open Risks And Unverified Assumptions",
             "## Milestone Decisions",
@@ -114,6 +118,7 @@ class MilestonePlanningTests(unittest.TestCase):
         text = PR_TEMPLATE.read_text(encoding="utf-8")
         for heading in (
             "## Milestone Context",
+            "## Accepted Proposal",
             "## Review Kind",
             "## Review Question",
             "## Invariant Or Acceptance Contract",
@@ -124,6 +129,13 @@ class MilestonePlanningTests(unittest.TestCase):
             "## Validation",
         ):
             self.assertIn(heading, text)
+
+    def test_proposal_pr_template_forbids_implementation(self) -> None:
+        self.assertTrue(PROPOSAL_PR_TEMPLATE.is_file())
+        text = PROPOSAL_PR_TEMPLATE.read_text(encoding="utf-8")
+        self.assertIn("## Independence Check", text)
+        self.assertIn("No product or runtime implementation changed", text)
+        self.assertIn("Proposal artifact", text)
 
     def test_cumulative_milestone_pr_template_targets_main_topology(self) -> None:
         self.assertTrue(MILESTONE_PR_TEMPLATE.is_file())
@@ -143,7 +155,7 @@ class MilestonePlanningTests(unittest.TestCase):
             "### Repair Cycle",
             "### Closeout",
             "milestone/<number>-<slug>",
-            "m<number>/<review-unit>-<slug>",
+            "m<number>/<frontier>-proposal",
         ):
             self.assertIn(term, text)
         self.assertIn("targets the milestone branch", text.lower())
@@ -158,14 +170,17 @@ class MilestonePlanningTests(unittest.TestCase):
         normalized = " ".join(text.split())
         self.assertIn("Frontier handoff:", text)
         self.assertIn("docs/milestones/workflow.py handoff", text)
-        self.assertIn("docs/milestones/workflow.py start", text)
+        self.assertIn("docs/milestones/workflow.py start-proposal", text)
+        self.assertIn("docs/milestones/workflow.py accept-proposal", text)
+        self.assertIn("docs/milestones/workflow.py start-implementation", text)
         self.assertIn("merge commit that is not already an ancestor", normalized)
-        self.assertIn("resets the next slot", normalized)
+        self.assertIn("promotes the reviewed next candidate", normalized)
 
     def test_contract_requires_next_frontier_minimal_acceptance_contract(self) -> None:
         text = CONTRACT_SOURCE.read_text(encoding="utf-8")
+        normalized = " ".join(text.split())
         self.assertIn("pre-implementation acceptance contract", text)
-        self.assertIn("frozen before the implementation branch is opened", text)
+        self.assertIn("frozen before the proposal branch opens", normalized)
         self.assertIn("enforcement or acceptance owner", text)
         self.assertIn("A name plus a vague “likely question” alone is not a candidate", text)
         self.assertIn("empty next-frontier slot", text)
@@ -175,7 +190,9 @@ class MilestonePlanningTests(unittest.TestCase):
         state = validate_plan_path(plan_md)
         for frontier in (state.current, state.next_frontier):
             for field in (
-                "branch",
+                "proposal branch",
+                "implementation branch",
+                "proposal path",
                 "review kind",
                 "review question",
                 "acceptance owner",
@@ -184,6 +201,10 @@ class MilestonePlanningTests(unittest.TestCase):
                 "non-goals",
             ):
                 self.assertTrue(frontier.fields[field], f"missing frontier field {field}")
+        self.assertEqual(
+            state.current.fields["workflow state"],
+            "ready_for_proposal",
+        )
 
 
 if __name__ == "__main__":

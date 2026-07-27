@@ -8,6 +8,12 @@
 - Current frontier:
 - Prerequisite:
 
+## Accepted Proposal
+
+- Proposal PR:
+- Proposal merge commit:
+- Proposal artifact:
+
 ## Review Kind
 
 <!-- One primary kind: deterministic invariant closure | behavioral feature slice |

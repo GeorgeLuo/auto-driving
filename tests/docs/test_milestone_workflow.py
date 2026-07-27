@@ -8,7 +8,7 @@ from pathlib import Path
 from docs.milestones.workflow import (
     PlanContractError,
     apply_handoff,
-    start_current_frontier_branch,
+    start_proposal_branch,
     validate_merged_pr_metadata,
     validate_plan_text,
     verify_handoff_git_state,
@@ -23,9 +23,33 @@ def _plan_with_current_pr(text: str) -> str:
     marker = "**Conflicting evidence semantics**\n\n"
     if marker not in text:
         raise AssertionError("current frontier marker is missing")
-    return text.replace(
+    updated = text.replace(
         marker,
         marker + "- PR: [#59](https://example.invalid/59)\n",
+        1,
+    )
+    updated = updated.replace(
+        "- Workflow state: ready_for_proposal\n",
+        "- Workflow state: implementation_in_review\n",
+        1,
+    )
+    updated = updated.replace(
+        "- Proposal path: `docs/milestones/005-evidence-memory-foundation/proposals/conflicting-evidence.md`\n",
+        "- Proposal path: `docs/milestones/005-evidence-memory-foundation/proposals/conflicting-evidence.md`\n"
+        "- Accepted proposal: [#60](https://example.invalid/60) at `abc1234`\n",
+        1,
+    )
+    history_row = (
+        "| Conflicting evidence semantics | ready_for_proposal | #58 froze the minimal "
+        "frontier contract; draft implementation PR #59 is paused because no independent "
+        "proposal has been reviewed and accepted |"
+    )
+    return updated.replace(
+        history_row,
+        history_row
+        + "\n| Conflicting evidence semantics | proposal_in_review | Proposal branch started. |"
+        + "\n| Conflicting evidence semantics | ready_for_implementation | Proposal PR #60 accepted. |"
+        + "\n| Conflicting evidence semantics | implementation_in_review | Implementation branch started. |",
         1,
     )
 
@@ -97,13 +121,13 @@ class MilestonePlanContractTests(unittest.TestCase):
 
     def test_next_frontier_branch_must_use_milestone_prefix(self) -> None:
         invalid = self.plan_text.replace(
-            "- Branch: `m005/closeout` (planned; not opened)\n",
-            "- Branch: `agent/closeout`\n",
+            "- Implementation branch: `m005/closeout` (planned; not opened)\n",
+            "- Implementation branch: `agent/closeout`\n",
         )
 
         with self.assertRaisesRegex(
             PlanContractError,
-            "Next-Frontier Candidate branch",
+            "Next-Frontier Candidate implementation branch",
         ):
             validate_plan_text(invalid)
 
@@ -122,7 +146,7 @@ class MilestonePlanContractTests(unittest.TestCase):
 
     def test_mid_milestone_adoption_requires_cutover_and_baseline_ledger(self) -> None:
         missing_cutover = self.plan_text.replace(
-            "| Cutover | #57 merged to `main`; #58 records its accepted result and establishes the remaining conflict frontier; create the milestone branch from `main` after #58 |\n",
+            "| Cutover | #57 merged to `main`; #58 recorded its accepted result and established the remaining conflict frontier; the milestone branch was created from resulting `main` |\n",
             "",
         )
         with self.assertRaisesRegex(PlanContractError, "baseline and Cutover"):
@@ -162,12 +186,12 @@ class MilestonePlanContractTests(unittest.TestCase):
             updated,
         )
 
-    def test_handoff_rejects_wrong_current_pr(self) -> None:
-        receipt = _receipt()
-        receipt["accepted_pr"] = 60
-
-        with self.assertRaisesRegex(PlanContractError, "does not match"):
-            apply_handoff(self.open_plan_text, receipt)
+    def test_handoff_rejects_before_implementation_review(self) -> None:
+        with self.assertRaisesRegex(
+            PlanContractError,
+            "requires workflow state implementation_in_review",
+        ):
+            apply_handoff(self.plan_text, _receipt())
 
     def test_handoff_rejects_duplicate_ledger_entry(self) -> None:
         marker = "\n\nThe baseline row is the explicit adoption boundary"
@@ -232,7 +256,26 @@ class MilestonePlanContractTests(unittest.TestCase):
         promoted = apply_handoff(self.open_plan_text, _receipt())
         promoted = promoted.replace(
             "**Milestone closeout**\n",
-            "**Milestone closeout**\n\n- PR: [#60](https://example.invalid/60)",
+            "**Milestone closeout**\n\n- PR: [#60](https://example.invalid/60)\n",
+            1,
+        )
+        promoted = promoted.replace(
+            "- Workflow state: ready_for_proposal\n",
+            "- Workflow state: implementation_in_review\n",
+            1,
+        )
+        promoted = promoted.replace(
+            "- Proposal path: `docs/milestones/005-evidence-memory-foundation/proposals/closeout.md`\n",
+            "- Proposal path: `docs/milestones/005-evidence-memory-foundation/proposals/closeout.md`\n"
+            "- Accepted proposal: [#61](https://example.invalid/61) at `cab1234`\n",
+            1,
+        )
+        promoted = promoted.replace(
+            "\n\n## Accepted Review Units",
+            "\n| Milestone closeout | proposal_in_review | Proposal branch started. |"
+            "\n| Milestone closeout | ready_for_implementation | Proposal PR #61 accepted. |"
+            "\n| Milestone closeout | implementation_in_review | Implementation branch started. |"
+            "\n\n## Accepted Review Units",
             1,
         )
         close_receipt = {
@@ -269,6 +312,7 @@ class MilestonePlanContractTests(unittest.TestCase):
         valid = {
             "state": "MERGED",
             "baseRefName": "milestone/005-evidence-memory-foundation",
+            "headRefName": "m005/conflicting-evidence",
             "mergeCommit": {"oid": "abc123456789"},
         }
         validate_merged_pr_metadata(valid, state, receipt)
@@ -356,7 +400,7 @@ class MilestoneHandoffGitOrderingTests(unittest.TestCase):
                     repo_root=root,
                 )
 
-    def test_start_creates_only_the_promoted_current_frontier_branch(self) -> None:
+    def test_start_creates_only_the_current_proposal_branch(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             plan = root / "docs" / "milestones" / "005-evidence-memory-foundation" / "plan.md"
@@ -377,27 +421,35 @@ class MilestoneHandoffGitOrderingTests(unittest.TestCase):
             )
             state = validate_plan_text(current)
 
-            start_current_frontier_branch(
+            start_proposal_branch(
                 plan,
                 state,
-                "m005/conflicting-evidence",
+                "m005/conflicting-evidence-proposal",
                 repo_root=root,
             )
 
             self.assertEqual(
                 self._git(root, "branch", "--show-current"),
-                "m005/conflicting-evidence",
+                "m005/conflicting-evidence-proposal",
+            )
+            transitioned = validate_plan_text(plan.read_text(encoding="utf-8"))
+            self.assertEqual(
+                transitioned.current.fields["workflow state"],
+                "proposal_in_review",
             )
 
-    def test_start_rejects_current_frontier_with_existing_pr(self) -> None:
+    def test_proposal_start_rejects_frontier_past_proposal_state(self) -> None:
         state = validate_plan_text(
             _plan_with_current_pr(PLAN.read_text(encoding="utf-8"))
         )
-        with self.assertRaisesRegex(PlanContractError, "already has a PR"):
-            start_current_frontier_branch(
+        with self.assertRaisesRegex(
+            PlanContractError,
+            "requires ready_for_proposal",
+        ):
+            start_proposal_branch(
                 PLAN,
                 state,
-                "m005/conflicting-evidence",
+                "m005/conflicting-evidence-proposal",
                 repo_root=ROOT,
             )
 
@@ -423,16 +475,16 @@ class MilestoneHandoffGitOrderingTests(unittest.TestCase):
             self._git(
                 root,
                 "update-ref",
-                "refs/remotes/origin/m005/conflicting-evidence",
+                "refs/remotes/origin/m005/conflicting-evidence-proposal",
                 "HEAD",
             )
             state = validate_plan_text(current)
 
             with self.assertRaisesRegex(PlanContractError, "branch already exists"):
-                start_current_frontier_branch(
+                start_proposal_branch(
                     plan,
                     state,
-                    "m005/conflicting-evidence",
+                    "m005/conflicting-evidence-proposal",
                     repo_root=root,
                 )
 

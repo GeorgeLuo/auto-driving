@@ -15,13 +15,42 @@ ROOT = Path(__file__).resolve().parents[2]
 MILESTONES = ROOT / "docs" / "milestones"
 ALLOWED_MILESTONE_STATUSES = {"Active", "Blocked", "pre-plan", "closed"}
 ALLOWED_CRITERION_STATUSES = {"Unmet", "Partial", "Met", "Blocked"}
-FRONTIER_FIELDS = (
-    "branch",
+COMMON_FRONTIER_FIELDS = (
     "review kind",
     "review question",
     "acceptance owner",
     "exit criteria affected",
     "prerequisite",
+)
+CURRENT_FRONTIER_FIELDS = (
+    *COMMON_FRONTIER_FIELDS,
+    "workflow state",
+    "proposal branch",
+    "implementation branch",
+    "proposal path",
+)
+NEXT_FRONTIER_FIELDS = (
+    *COMMON_FRONTIER_FIELDS,
+    "proposal branch",
+    "implementation branch",
+    "proposal path",
+)
+WORKFLOW_STATES = {
+    "ready_for_proposal",
+    "proposal_in_review",
+    "ready_for_implementation",
+    "implementation_in_review",
+}
+PROPOSAL_REQUIRED_HEADINGS = (
+    "## Review Question",
+    "## Proposed Contract",
+    "## Ownership",
+    "## Affected Paths",
+    "## Adversarial Matrix",
+    "## External Assumptions",
+    "## Non-Goals",
+    "## File Impact",
+    "## Validation Plan",
 )
 EXAMPLE_RECEIPT: dict[str, Any] = {
     "schema": "milestone_handoff_v1",
@@ -76,6 +105,7 @@ class PlanState:
     next_frontier: Frontier
     criteria: MarkdownTable
     ledger: MarkdownTable
+    workflow_history: MarkdownTable
     risks: MarkdownTable
 
 
@@ -184,13 +214,19 @@ def _header_values(text: str) -> dict[str, str]:
     return values
 
 
-def _require_frontier_fields(frontier: Frontier, *, heading: str) -> None:
+def _require_frontier_fields(
+    frontier: Frontier,
+    *,
+    heading: str,
+    current: bool,
+) -> None:
     if frontier.is_empty:
         for field in ("reason", "revisit when"):
             if not frontier.fields.get(field):
                 raise PlanContractError(f"{heading} empty state is missing {field!r}")
         return
-    for field in FRONTIER_FIELDS:
+    required = CURRENT_FRONTIER_FIELDS if current else NEXT_FRONTIER_FIELDS
+    for field in required:
         if not frontier.fields.get(field):
             raise PlanContractError(f"{heading} is missing {field!r}")
     if not frontier.fields.get("non-goals"):
@@ -226,13 +262,44 @@ def _frontier_criterion_ids(
     return criterion_ids
 
 
-def _frontier_branch(frontier: Frontier, *, heading: str) -> str:
-    raw_value = frontier.fields["branch"]
+def _frontier_branch(frontier: Frontier, *, heading: str, field: str) -> str:
+    raw_value = frontier.fields[field]
     quoted = re.search(r"`([^`]+)`", raw_value)
     branch = quoted.group(1) if quoted else raw_value.split(maxsplit=1)[0]
     if re.fullmatch(r"[A-Za-z0-9._/-]+", branch) is None:
-        raise PlanContractError(f"{heading} has an invalid planned branch")
+        raise PlanContractError(f"{heading} has an invalid {field}")
     return branch
+
+
+def _frontier_proposal_path(frontier: Frontier, *, heading: str) -> str:
+    raw_value = frontier.fields["proposal path"]
+    quoted = re.search(r"`([^`]+)`", raw_value)
+    path = quoted.group(1) if quoted else raw_value.split(maxsplit=1)[0]
+    if (
+        re.fullmatch(
+            r"docs/milestones/\d{3}-[A-Za-z0-9._-]+/proposals/[A-Za-z0-9._-]+\.md",
+            path,
+        )
+        is None
+    ):
+        raise PlanContractError(
+            f"{heading} proposal path must be "
+            "docs/milestones/<number>-<slug>/proposals/<name>.md"
+        )
+    return path
+
+
+def _accepted_proposal(frontier: Frontier, *, heading: str) -> tuple[int, str] | None:
+    raw_value = frontier.fields.get("accepted proposal")
+    if not raw_value:
+        return None
+    pr_match = re.search(r"#(\d+)", raw_value)
+    sha_match = re.search(r"`([0-9a-f]{7,40})`", raw_value)
+    if pr_match is None or sha_match is None:
+        raise PlanContractError(
+            f"{heading} accepted proposal must identify a PR and merge commit"
+        )
+    return int(pr_match.group(1)), sha_match.group(1)
 
 
 def validate_plan_text(text: str) -> PlanState:
@@ -294,8 +361,16 @@ def validate_plan_text(text: str) -> PlanState:
 
     current = parse_frontier(text, "### Current Frontier")
     next_frontier = parse_frontier(text, "### Next-Frontier Candidate")
-    _require_frontier_fields(current, heading="Current Frontier")
-    _require_frontier_fields(next_frontier, heading="Next-Frontier Candidate")
+    _require_frontier_fields(
+        current,
+        heading="Current Frontier",
+        current=True,
+    )
+    _require_frontier_fields(
+        next_frontier,
+        heading="Next-Frontier Candidate",
+        current=False,
+    )
     _frontier_criterion_ids(
         current,
         heading="Current Frontier",
@@ -309,39 +384,90 @@ def validate_plan_text(text: str) -> PlanState:
 
     expected_review_prefix = f"m{milestone_number}/"
     if not current.is_empty:
-        current_branch = _frontier_branch(current, heading="Current Frontier")
-        transition_exception = current.fields.get("transition exception")
-        if (
-            not current_branch.startswith(expected_review_prefix)
-            and not (
-                baseline_value
-                and cutover_value
-                and transition_exception
-            )
-        ):
+        proposal_branch = _frontier_branch(
+            current,
+            heading="Current Frontier",
+            field="proposal branch",
+        )
+        implementation_branch = _frontier_branch(
+            current,
+            heading="Current Frontier",
+            field="implementation branch",
+        )
+        if proposal_branch == implementation_branch:
             raise PlanContractError(
-                f"Current Frontier branch must start with {expected_review_prefix!r}"
+                "Current Frontier proposal and implementation branches must differ"
             )
-        if not current_branch.startswith(expected_review_prefix):
-            current_pr_match = re.search(r"#(\d+)", current.fields.get("pr", ""))
-            if (
-                current_pr_match is None
-                or int(current_pr_match.group(1)) not in grandfathered_prs
-            ):
+        _frontier_proposal_path(current, heading="Current Frontier")
+        workflow_state = current.fields["workflow state"].strip("`")
+        if workflow_state not in WORKFLOW_STATES:
+            raise PlanContractError(
+                f"Current Frontier has invalid workflow state {workflow_state!r}"
+            )
+        accepted_proposal = _accepted_proposal(
+            current,
+            heading="Current Frontier",
+        )
+        if workflow_state in {"ready_for_proposal", "proposal_in_review"}:
+            if accepted_proposal is not None:
                 raise PlanContractError(
-                    "Current Frontier transition exception must identify a "
-                    "Grandfathered PR"
+                    f"{workflow_state} cannot already identify an accepted proposal"
+                )
+        elif accepted_proposal is None:
+            raise PlanContractError(
+                f"{workflow_state} requires an accepted proposal PR and merge commit"
+            )
+        if workflow_state.startswith("ready_for_") and current.fields.get("pr"):
+            raise PlanContractError(
+                f"{workflow_state} cannot identify an active review PR"
+            )
+        for branch_kind, branch in (
+            ("proposal", proposal_branch),
+            ("implementation", implementation_branch),
+        ):
+            if not branch.startswith(expected_review_prefix):
+                raise PlanContractError(
+                    f"Current Frontier {branch_kind} branch must start with "
+                    f"{expected_review_prefix!r}"
                 )
     if not next_frontier.is_empty:
-        next_branch = _frontier_branch(
+        forbidden_next_fields = {
+            field
+            for field in ("workflow state", "accepted proposal", "pr")
+            if next_frontier.fields.get(field)
+        }
+        if forbidden_next_fields:
+            raise PlanContractError(
+                "Next-Frontier Candidate is queued and cannot contain "
+                + ", ".join(sorted(forbidden_next_fields))
+            )
+        next_proposal_branch = _frontier_branch(
+            next_frontier,
+            heading="Next-Frontier Candidate",
+            field="proposal branch",
+        )
+        next_implementation_branch = _frontier_branch(
+            next_frontier,
+            heading="Next-Frontier Candidate",
+            field="implementation branch",
+        )
+        if next_proposal_branch == next_implementation_branch:
+            raise PlanContractError(
+                "Next-Frontier Candidate proposal and implementation branches must differ"
+            )
+        _frontier_proposal_path(
             next_frontier,
             heading="Next-Frontier Candidate",
         )
-        if not next_branch.startswith(expected_review_prefix):
-            raise PlanContractError(
-                "Next-Frontier Candidate branch must start with "
-                f"{expected_review_prefix!r}"
-            )
+        for branch_kind, branch in (
+            ("proposal", next_proposal_branch),
+            ("implementation", next_implementation_branch),
+        ):
+            if not branch.startswith(expected_review_prefix):
+                raise PlanContractError(
+                    f"Next-Frontier Candidate {branch_kind} branch must start with "
+                    f"{expected_review_prefix!r}"
+                )
 
     if status == "Active" and current.is_empty:
         raise PlanContractError("Active milestone must have a current frontier")
@@ -378,6 +504,63 @@ def validate_plan_text(text: str) -> PlanState:
             raise PlanContractError(f"duplicate accepted ledger PR: #{pr_number}")
         accepted_prs.add(pr_number)
 
+    workflow_history = parse_table(text, "## Workflow History")
+    if workflow_history.header != ("Frontier", "State", "Evidence"):
+        raise PlanContractError("Workflow History table has an unexpected header")
+    allowed_history_states = WORKFLOW_STATES | {"accepted"}
+    prior_history_row: tuple[str, str, str] | None = None
+    expected_transition = {
+        "ready_for_proposal": "proposal_in_review",
+        "proposal_in_review": "ready_for_implementation",
+        "ready_for_implementation": "implementation_in_review",
+        "implementation_in_review": "accepted",
+    }
+    for history_frontier, history_state, history_evidence in workflow_history.rows:
+        if not history_frontier or not history_evidence:
+            raise PlanContractError(
+                "Workflow History frontier and evidence must be non-empty"
+            )
+        if history_state not in allowed_history_states:
+            raise PlanContractError(
+                f"Workflow History has invalid state {history_state!r}"
+            )
+        if prior_history_row is None:
+            if history_state != "ready_for_proposal":
+                raise PlanContractError(
+                    "Workflow History must begin at ready_for_proposal"
+                )
+        else:
+            prior_frontier, prior_state, _ = prior_history_row
+            if history_frontier == prior_frontier:
+                if expected_transition.get(prior_state) != history_state:
+                    raise PlanContractError(
+                        "Workflow History has an invalid same-frontier transition "
+                        f"{prior_state} -> {history_state}"
+                    )
+            elif prior_state != "accepted" or history_state != "ready_for_proposal":
+                raise PlanContractError(
+                    "Workflow History can change frontier only after accepted "
+                    "and must restart at ready_for_proposal"
+                )
+        prior_history_row = (
+            history_frontier,
+            history_state,
+            history_evidence,
+        )
+    if status == "Active" and not current.is_empty:
+        if not workflow_history.rows:
+            raise PlanContractError("Active milestone requires workflow history")
+        last_frontier, last_state, _ = workflow_history.rows[-1]
+        if last_frontier != current.name:
+            raise PlanContractError(
+                "Workflow History latest frontier does not match Current Frontier"
+            )
+        expected_state = current.fields["workflow state"].strip("`")
+        if last_state != expected_state:
+            raise PlanContractError(
+                "Workflow History latest state does not match Current Frontier"
+            )
+
     if baseline_value is not None:
         baseline_match = re.search(r"`([0-9a-f]{7,40})`", baseline_value)
         if baseline_match is None:
@@ -405,6 +588,7 @@ def validate_plan_text(text: str) -> PlanState:
         next_frontier=next_frontier,
         criteria=criteria,
         ledger=ledger,
+        workflow_history=workflow_history,
         risks=risks,
     )
 
@@ -414,7 +598,26 @@ def validate_plan_path(path: Path) -> PlanState:
         text = path.read_text(encoding="utf-8")
     except OSError as exc:
         raise PlanContractError(f"cannot read {path}: {exc}") from exc
-    return validate_plan_text(text)
+    state = validate_plan_text(text)
+    resolved_path = path.resolve()
+    repo_root = resolved_path.parents[3]
+    expected_proposal_parent = resolved_path.parent / "proposals"
+    for heading, frontier in (
+        ("Current Frontier", state.current),
+        ("Next-Frontier Candidate", state.next_frontier),
+    ):
+        if frontier.is_empty:
+            continue
+        proposal_path = repo_root / _frontier_proposal_path(
+            frontier,
+            heading=heading,
+        )
+        if proposal_path.parent.resolve() != expected_proposal_parent.resolve():
+            raise PlanContractError(
+                f"{heading} proposal path must be inside "
+                f"{expected_proposal_parent.relative_to(repo_root)}"
+            )
+    return state
 
 
 def _safe_cell(value: Any, *, field: str) -> str:
@@ -474,6 +677,25 @@ def _replace_header_value(text: str, field: str, value: str) -> str:
     raise PlanContractError(f"milestone header is missing {field!r}")
 
 
+def _append_workflow_history(
+    text: str,
+    *,
+    frontier: str,
+    state: str,
+    evidence: str,
+) -> str:
+    table = parse_table(text, "## Workflow History")
+    rows = [list(row) for row in table.rows]
+    rows.append(
+        [
+            _safe_cell(frontier, field="workflow_history.frontier"),
+            _safe_cell(state, field="workflow_history.state"),
+            _safe_cell(evidence, field="workflow_history.evidence"),
+        ]
+    )
+    return _replace_table(text, "## Workflow History", rows)
+
+
 def _frontier_body(frontier: Frontier, *, current: bool) -> list[str]:
     if frontier.is_empty:
         return [
@@ -485,7 +707,12 @@ def _frontier_body(frontier: Frontier, *, current: bool) -> list[str]:
     lines = [f"**{frontier.name}**", ""]
     preferred = (
         ("pr", "PR"),
-        ("branch", "Branch"),
+        ("workflow state", "Workflow state"),
+        ("proposal branch", "Proposal branch"),
+        ("implementation branch", "Implementation branch"),
+        ("proposal path", "Proposal path"),
+        ("accepted proposal", "Accepted proposal"),
+        ("paused implementation", "Paused implementation"),
         ("review kind", "Review kind"),
         ("review question", "Review question"),
         ("acceptance owner", "Acceptance owner"),
@@ -521,14 +748,6 @@ def _empty_next_frontier_from_receipt(payload: Any) -> Frontier:
     )
 
 
-def _current_pr_number(current: Frontier) -> int:
-    value = current.fields.get("pr", "")
-    match = re.search(r"#(\d+)", value)
-    if match is None:
-        raise PlanContractError("Current Frontier must identify a PR number")
-    return int(match.group(1))
-
-
 def _normalize_receipt(receipt: dict[str, Any]) -> dict[str, Any]:
     if receipt.get("schema") != "milestone_handoff_v1":
         raise PlanContractError("receipt schema must be milestone_handoff_v1")
@@ -560,9 +779,9 @@ def apply_handoff(text: str, receipt_payload: dict[str, Any]) -> str:
     accepted_pr = receipt["accepted_pr"]
     if state.status != "Active":
         raise PlanContractError("frontier handoff requires an Active milestone")
-    if _current_pr_number(state.current) != accepted_pr:
+    if state.current.fields.get("workflow state") != "implementation_in_review":
         raise PlanContractError(
-            f"receipt PR #{accepted_pr} does not match the current frontier"
+            "frontier handoff requires workflow state implementation_in_review"
         )
     if any(row[0] == f"#{accepted_pr}" for row in state.ledger.rows):
         raise PlanContractError(f"PR #{accepted_pr} is already in the accepted ledger")
@@ -632,6 +851,15 @@ def apply_handoff(text: str, receipt_payload: dict[str, Any]) -> str:
         risk_rows = [existing for existing in risk_rows if existing[0] != row[0]]
         risk_rows.append(row)
     text = _replace_table(text, "## Open Risks And Unverified Assumptions", risk_rows)
+    text = _append_workflow_history(
+        text,
+        frontier=state.current.name or "Unknown frontier",
+        state="accepted",
+        evidence=(
+            f"Implementation PR #{accepted_pr} merged at "
+            f"{receipt['accepted_merge_commit']}."
+        ),
+    )
 
     outcome = receipt["outcome"]
     if outcome == "advance":
@@ -639,7 +867,13 @@ def apply_handoff(text: str, receipt_payload: dict[str, Any]) -> str:
             raise PlanContractError(
                 "advance requires a reviewed next-frontier candidate to promote"
             )
-        new_current = state.next_frontier
+        new_current = Frontier(
+            name=state.next_frontier.name,
+            fields={
+                **state.next_frontier.fields,
+                "workflow state": "ready_for_proposal",
+            },
+        )
         if new_current.fields["review kind"].lower() == "milestone closeout":
             closeout_criteria = _frontier_criterion_ids(
                 new_current,
@@ -659,6 +893,12 @@ def apply_handoff(text: str, receipt_payload: dict[str, Any]) -> str:
         new_next = _empty_next_frontier_from_receipt(receipt.get("next_frontier"))
         text = _replace_header_value(text, "Status", "Active")
         text = _replace_header_value(text, "Current frontier", new_current.name or "None")
+        text = _append_workflow_history(
+            text,
+            frontier=new_current.name or "Unknown frontier",
+            state="ready_for_proposal",
+            evidence=f"Promoted after implementation PR #{accepted_pr}.",
+        )
     elif outcome == "block":
         reason = _safe_cell(receipt.get("blocked_reason"), field="blocked_reason")
         revisit = _safe_cell(receipt.get("revisit_when"), field="revisit_when")
@@ -777,6 +1017,15 @@ def validate_merged_pr_metadata(
         raise PlanContractError(
             f"PR #{receipt['accepted_pr']} did not target {state.milestone_branch}"
         )
+    expected_head = _frontier_branch(
+        state.current,
+        heading="Current Frontier",
+        field="implementation branch",
+    )
+    if payload.get("headRefName") != expected_head:
+        raise PlanContractError(
+            f"PR #{receipt['accepted_pr']} did not use {expected_head}"
+        )
     merge_commit = payload.get("mergeCommit")
     merge_oid = merge_commit.get("oid") if isinstance(merge_commit, dict) else None
     expected = receipt["accepted_merge_commit"]
@@ -800,7 +1049,7 @@ def verify_handoff_github_state(
                 "view",
                 str(receipt["accepted_pr"]),
                 "--json",
-                "state,mergeCommit,baseRefName",
+                "state,mergeCommit,baseRefName,headRefName",
             ],
             cwd=repo_root,
             check=True,
@@ -821,25 +1070,74 @@ def verify_handoff_github_state(
     validate_merged_pr_metadata(payload, state, receipt)
 
 
-def start_current_frontier_branch(
+def _replace_current_frontier_state(
+    text: str,
+    *,
+    expected_state: str,
+    new_state: str,
+    evidence: str,
+    accepted_proposal: str | None = None,
+) -> str:
+    state = validate_plan_text(text)
+    if state.status != "Active" or state.current.is_empty:
+        raise PlanContractError("workflow transition requires an active current frontier")
+    actual_state = state.current.fields["workflow state"]
+    if actual_state != expected_state:
+        raise PlanContractError(
+            f"workflow transition requires {expected_state}, currently {actual_state}"
+        )
+    fields = dict(state.current.fields)
+    fields["workflow state"] = new_state
+    fields.pop("pr", None)
+    if accepted_proposal is not None:
+        fields["accepted proposal"] = accepted_proposal
+    updated = _replace_frontier(
+        text,
+        "### Current Frontier",
+        _frontier_body(
+            Frontier(name=state.current.name, fields=fields),
+            current=True,
+        ),
+    )
+    updated = _append_workflow_history(
+        updated,
+        frontier=state.current.name or "Unknown frontier",
+        state=new_state,
+        evidence=evidence,
+    )
+    validate_plan_text(updated)
+    return updated
+
+
+def _start_frontier_branch(
     plan: Path,
     state: PlanState,
     requested_branch: str,
     *,
+    branch_field: str,
+    expected_state: str,
+    new_state: str,
     repo_root: Path = ROOT,
-) -> None:
+) -> str:
     repo_root = repo_root.resolve()
     _validate_plan_location(plan, repo_root=repo_root)
     if state.status != "Active" or state.current.is_empty:
         raise PlanContractError("branch start requires an active current frontier")
+    if state.current.fields.get("workflow state") != expected_state:
+        raise PlanContractError(
+            f"branch start requires {expected_state}, currently "
+            f"{state.current.fields.get('workflow state')}"
+        )
     if state.current.fields.get("pr"):
         raise PlanContractError(
             "current frontier already has a PR; complete its handoff before starting"
         )
-    planned_value = state.current.fields.get("branch", "")
+    planned_value = state.current.fields.get(branch_field, "")
     planned_match = re.search(r"`?(m\d{3}/[A-Za-z0-9._/-]+)`?", planned_value)
     if planned_match is None:
-        raise PlanContractError("current frontier must contain a planned review-unit branch")
+        raise PlanContractError(
+            f"current frontier must contain a planned {branch_field}"
+        )
     planned_branch = planned_match.group(1)
     expected_prefix = f"m{state.milestone_number}/"
     if not planned_branch.startswith(expected_prefix):
@@ -876,6 +1174,396 @@ def start_current_frontier_branch(
     ):
         raise PlanContractError(f"branch already exists: {requested_branch}")
     _run_git(["switch", "-c", requested_branch], cwd=repo_root)
+    original = plan.read_text(encoding="utf-8")
+    updated = _replace_current_frontier_state(
+        original,
+        expected_state=expected_state,
+        new_state=new_state,
+        evidence=f"Started {requested_branch}.",
+    )
+    plan.write_text(updated, encoding="utf-8")
+    return updated
+
+
+def start_proposal_branch(
+    plan: Path,
+    state: PlanState,
+    requested_branch: str,
+    *,
+    repo_root: Path = ROOT,
+) -> str:
+    return _start_frontier_branch(
+        plan,
+        state,
+        requested_branch,
+        branch_field="proposal branch",
+        expected_state="ready_for_proposal",
+        new_state="proposal_in_review",
+        repo_root=repo_root,
+    )
+
+
+def start_implementation_branch(
+    plan: Path,
+    state: PlanState,
+    requested_branch: str,
+    *,
+    repo_root: Path = ROOT,
+) -> str:
+    return _start_frontier_branch(
+        plan,
+        state,
+        requested_branch,
+        branch_field="implementation branch",
+        expected_state="ready_for_implementation",
+        new_state="implementation_in_review",
+        repo_root=repo_root,
+    )
+
+
+def validate_proposal_text(text: str) -> None:
+    if not text.startswith("# Proposal:"):
+        raise PlanContractError("proposal must start with '# Proposal:'")
+    for heading in PROPOSAL_REQUIRED_HEADINGS:
+        if heading not in text:
+            raise PlanContractError(f"proposal is missing {heading}")
+
+
+def proposal_allowed_paths(plan: Path, state: PlanState, *, repo_root: Path = ROOT) -> set[str]:
+    plan_relative = _validate_plan_location(plan, repo_root=repo_root.resolve()).as_posix()
+    html_relative = str(Path(plan_relative).with_suffix(".html"))
+    proposal_relative = _frontier_proposal_path(
+        state.current,
+        heading="Current Frontier",
+    )
+    return {plan_relative, html_relative, proposal_relative}
+
+
+def validate_merged_proposal_metadata(
+    payload: dict[str, Any],
+    state: PlanState,
+    *,
+    proposal_pr: int,
+    allowed_paths: set[str],
+) -> tuple[str, str]:
+    if state.current.fields.get("workflow state") != "proposal_in_review":
+        raise PlanContractError(
+            "proposal acceptance requires workflow state proposal_in_review"
+        )
+    if payload.get("state") != "MERGED":
+        raise PlanContractError(f"proposal PR #{proposal_pr} is not merged")
+    if payload.get("baseRefName") != state.milestone_branch:
+        raise PlanContractError(
+            f"proposal PR #{proposal_pr} did not target {state.milestone_branch}"
+        )
+    expected_head = _frontier_branch(
+        state.current,
+        heading="Current Frontier",
+        field="proposal branch",
+    )
+    if payload.get("headRefName") != expected_head:
+        raise PlanContractError(
+            f"proposal PR #{proposal_pr} did not use {expected_head}"
+        )
+    merge_commit = payload.get("mergeCommit")
+    merge_oid = merge_commit.get("oid") if isinstance(merge_commit, dict) else None
+    if not isinstance(merge_oid, str) or re.fullmatch(r"[0-9a-f]{40}", merge_oid) is None:
+        raise PlanContractError(
+            f"proposal PR #{proposal_pr} has no full merge commit"
+        )
+    files = payload.get("files")
+    if not isinstance(files, list):
+        raise PlanContractError(
+            f"proposal PR #{proposal_pr} did not expose its changed files"
+        )
+    changed = {
+        item.get("path")
+        for item in files
+        if isinstance(item, dict) and isinstance(item.get("path"), str)
+    }
+    unexpected = changed - allowed_paths
+    if unexpected:
+        raise PlanContractError(
+            "proposal PR contains implementation changes: "
+            + ", ".join(sorted(unexpected))
+        )
+    proposal_path = _frontier_proposal_path(
+        state.current,
+        heading="Current Frontier",
+    )
+    if proposal_path not in changed:
+        raise PlanContractError(
+            f"proposal PR must create or update {proposal_path}"
+        )
+    return merge_oid, str(payload.get("url") or f"PR #{proposal_pr}")
+
+
+def accept_proposal(
+    text: str,
+    *,
+    proposal_pr: int,
+    merge_commit: str,
+    proposal_url: str,
+) -> str:
+    return _replace_current_frontier_state(
+        text,
+        expected_state="proposal_in_review",
+        new_state="ready_for_implementation",
+        evidence=f"Proposal PR #{proposal_pr} accepted at {merge_commit}.",
+        accepted_proposal=(
+            f"[#{proposal_pr}]({proposal_url}) at `{merge_commit}`"
+        ),
+    )
+
+
+def validate_review_unit_transition(
+    base_text: str,
+    head_text: str,
+    *,
+    plan_path: str,
+    changed_paths: set[str],
+    head_branch: str,
+    proposal_text: str | None = None,
+) -> str:
+    base = validate_plan_text(base_text)
+    head = validate_plan_text(head_text)
+    if base.current.is_empty or head.current.is_empty:
+        raise PlanContractError("review-unit PR requires an active current frontier")
+    if base.current.name != head.current.name:
+        raise PlanContractError("review-unit PR cannot replace the current frontier")
+    if base.next_frontier != head.next_frontier:
+        raise PlanContractError("review-unit PR cannot change the queued frontier")
+    mutable_fields = {"workflow state", "pr"}
+    for field in (
+        set(base.current.fields) | set(head.current.fields)
+    ) - mutable_fields:
+        if base.current.fields.get(field) != head.current.fields.get(field):
+            raise PlanContractError(
+                f"review-unit PR changed frozen frontier field {field!r}"
+            )
+    if base.criteria != head.criteria:
+        raise PlanContractError(
+            "review-unit PR cannot pre-claim exit-criterion changes"
+        )
+    if base.ledger != head.ledger:
+        raise PlanContractError(
+            "review-unit PR cannot pre-claim an accepted ledger entry"
+        )
+    if base.risks != head.risks:
+        raise PlanContractError(
+            "review-unit PR cannot pre-claim risk resolution"
+        )
+    base_history = base.workflow_history.rows
+    head_history = head.workflow_history.rows
+    if (
+        len(head_history) != len(base_history) + 1
+        or head_history[: len(base_history)] != base_history
+    ):
+        raise PlanContractError(
+            "review-unit PR must append exactly one workflow-history transition"
+        )
+
+    base_state = base.current.fields["workflow state"]
+    head_state = head.current.fields["workflow state"]
+    proposal_path = _frontier_proposal_path(
+        base.current,
+        heading="Current Frontier",
+    )
+    if base_state == "ready_for_proposal":
+        if head_state != "proposal_in_review":
+            raise PlanContractError(
+                "proposal PR must transition ready_for_proposal to proposal_in_review"
+            )
+        expected_branch = _frontier_branch(
+            base.current,
+            heading="Current Frontier",
+            field="proposal branch",
+        )
+        if head_branch != expected_branch:
+            raise PlanContractError(
+                f"proposal PR must use {expected_branch}, not {head_branch}"
+            )
+        plan_html = str(Path(plan_path).with_suffix(".html"))
+        allowed_paths = {plan_path, plan_html, proposal_path}
+        unexpected = changed_paths - allowed_paths
+        if unexpected:
+            raise PlanContractError(
+                "proposal PR contains implementation changes: "
+                + ", ".join(sorted(unexpected))
+            )
+        if proposal_path not in changed_paths or proposal_text is None:
+            raise PlanContractError(f"proposal PR must provide {proposal_path}")
+        validate_proposal_text(proposal_text)
+        transition_kind = "proposal"
+    elif base_state == "ready_for_implementation":
+        if head_state != "implementation_in_review":
+            raise PlanContractError(
+                "implementation PR must transition ready_for_implementation "
+                "to implementation_in_review"
+            )
+        expected_branch = _frontier_branch(
+            base.current,
+            heading="Current Frontier",
+            field="implementation branch",
+        )
+        if head_branch != expected_branch:
+            raise PlanContractError(
+                f"implementation PR must use {expected_branch}, not {head_branch}"
+            )
+        if (
+            base.current.fields.get("accepted proposal")
+            != head.current.fields.get("accepted proposal")
+        ):
+            raise PlanContractError(
+                "implementation PR cannot replace its accepted proposal"
+            )
+        if proposal_path in changed_paths:
+            raise PlanContractError(
+                "implementation PR cannot modify the accepted proposal"
+            )
+        transition_kind = "implementation"
+    else:
+        raise PlanContractError(
+            f"base workflow state {base_state!r} does not accept a new review-unit PR"
+        )
+
+    last_frontier, last_state, _ = head_history[-1]
+    if last_frontier != head.current.name or last_state != head_state:
+        raise PlanContractError(
+            "review-unit PR history does not record its workflow transition"
+        )
+    return transition_kind
+
+
+def _git_text_at(ref: str, path: str, *, repo_root: Path = ROOT) -> str:
+    result = _run_git(["show", f"{ref}:{path}"], cwd=repo_root, check=False)
+    if result.returncode != 0:
+        raise PlanContractError(f"{path} is unavailable at {ref}")
+    return result.stdout
+
+
+def _plan_at_branch(
+    ref: str,
+    *,
+    milestone_branch: str,
+    repo_root: Path = ROOT,
+) -> tuple[str, str]:
+    listing = _run_git(
+        ["ls-tree", "-r", "--name-only", ref, "--", "docs/milestones"],
+        cwd=repo_root,
+    ).stdout.splitlines()
+    for path in listing:
+        if not path.endswith("/plan.md"):
+            continue
+        text = _git_text_at(ref, path, repo_root=repo_root)
+        try:
+            state = validate_plan_text(text)
+        except PlanContractError:
+            continue
+        if state.milestone_branch == milestone_branch:
+            return path, text
+    raise PlanContractError(
+        f"no canonical plan at {ref} owns milestone branch {milestone_branch}"
+    )
+
+
+def validate_review_unit_git_diff(
+    *,
+    base_ref: str,
+    head_ref: str,
+    base_sha: str,
+    head_sha: str,
+    repo_root: Path = ROOT,
+) -> str | None:
+    if not base_ref.startswith("milestone/"):
+        return None
+    plan_path, base_text = _plan_at_branch(
+        base_sha,
+        milestone_branch=base_ref,
+        repo_root=repo_root,
+    )
+    head_text = _git_text_at(head_sha, plan_path, repo_root=repo_root)
+    changed_paths = set(
+        _run_git(
+            ["diff", "--name-only", base_sha, head_sha],
+            cwd=repo_root,
+        ).stdout.splitlines()
+    )
+    base = validate_plan_text(base_text)
+    proposal_text: str | None = None
+    if base.current.fields.get("workflow state") == "ready_for_proposal":
+        proposal_path = _frontier_proposal_path(
+            base.current,
+            heading="Current Frontier",
+        )
+        proposal_text = _git_text_at(
+            head_sha,
+            proposal_path,
+            repo_root=repo_root,
+        )
+    return validate_review_unit_transition(
+        base_text,
+        head_text,
+        plan_path=plan_path,
+        changed_paths=changed_paths,
+        head_branch=head_ref,
+        proposal_text=proposal_text,
+    )
+
+
+def _workflow_status_payload(plan: Path, state: PlanState) -> dict[str, Any]:
+    if state.current.is_empty:
+        return {
+            "milestone": state.milestone_number,
+            "status": state.status,
+            "frontier": None,
+            "workflow_state": None,
+            "next_action": state.current.fields.get("revisit when"),
+            "plan": str(plan),
+        }
+    workflow_state = state.current.fields["workflow state"]
+    next_actions = {
+        "ready_for_proposal": (
+            "Hand the frozen frontier contract to a proposal author. "
+            "Do not start implementation."
+        ),
+        "proposal_in_review": (
+            "Review and finalize the proposal. Implementation remains blocked."
+        ),
+        "ready_for_implementation": (
+            "Hand the accepted proposal to the implementer."
+        ),
+        "implementation_in_review": (
+            "Review the implementation against the accepted proposal."
+        ),
+    }
+    return {
+        "milestone": state.milestone_number,
+        "status": state.status,
+        "frontier": state.current.name,
+        "workflow_state": workflow_state,
+        "proposal_branch": _frontier_branch(
+            state.current,
+            heading="Current Frontier",
+            field="proposal branch",
+        ),
+        "implementation_branch": _frontier_branch(
+            state.current,
+            heading="Current Frontier",
+            field="implementation branch",
+        ),
+        "proposal_path": _frontier_proposal_path(
+            state.current,
+            heading="Current Frontier",
+        ),
+        "accepted_proposal": state.current.fields.get("accepted proposal"),
+        "next_action": next_actions[workflow_state],
+        "plan": str(plan),
+        "history": [
+            {"frontier": row[0], "state": row[1], "evidence": row[2]}
+            for row in state.workflow_history.rows
+        ],
+    }
 
 
 def _load_receipt(path: Path) -> dict[str, Any]:
@@ -930,17 +1618,164 @@ def _cmd_handoff(plan: Path, receipt_path: Path) -> int:
     return 0
 
 
-def _cmd_start(plan: Path, branch: str) -> int:
+def _write_plan_and_render(plan: Path, original: str, updated: str) -> None:
+    try:
+        plan.write_text(updated, encoding="utf-8")
+        _render_docs()
+    except Exception:
+        plan.write_text(original, encoding="utf-8")
+        _render_docs()
+        raise
+
+
+def _cmd_start_proposal(plan: Path, branch: str) -> int:
     plan = plan.resolve()
     state = validate_plan_path(plan)
-    start_current_frontier_branch(plan, state, branch)
-    print(f"Started {branch} for current frontier {state.current.name}.")
+    start_proposal_branch(plan, state, branch)
+    _render_docs()
+    print(f"Proposal branch started: {branch}")
+    print(f"Frontier: {state.current.name}")
+    print(
+        "Next: author only the proposal and planning transition; "
+        "implementation changes are blocked."
+    )
+    return 0
+
+
+def _cmd_accept_proposal(plan: Path, proposal_pr: int) -> int:
+    plan = plan.resolve()
+    original = plan.read_text(encoding="utf-8")
+    state = validate_plan_text(original)
+    repo_root = ROOT.resolve()
+    _validate_plan_location(plan, repo_root=repo_root)
+    branch = _run_git(["branch", "--show-current"], cwd=repo_root).stdout.strip()
+    if branch != state.milestone_branch:
+        raise PlanContractError(
+            f"proposal acceptance must run on {state.milestone_branch!r}, "
+            f"currently {branch!r}"
+        )
+    if _run_git(["status", "--porcelain"], cwd=repo_root).stdout.strip():
+        raise PlanContractError("proposal acceptance requires a clean worktree")
+    try:
+        result = subprocess.run(
+            [
+                "gh",
+                "pr",
+                "view",
+                str(proposal_pr),
+                "--json",
+                "state,mergeCommit,baseRefName,headRefName,files,url",
+            ],
+            cwd=repo_root,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError as exc:
+        raise PlanContractError(
+            "GitHub CLI `gh` is required for proposal acceptance"
+        ) from exc
+    except subprocess.CalledProcessError as exc:
+        detail = exc.stderr.strip() or exc.stdout.strip() or str(exc)
+        raise PlanContractError(f"cannot verify proposal PR on GitHub: {detail}") from exc
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise PlanContractError("GitHub CLI returned invalid proposal metadata") from exc
+    if not isinstance(payload, dict):
+        raise PlanContractError("GitHub CLI returned invalid proposal metadata")
+    merge_commit, proposal_url = validate_merged_proposal_metadata(
+        payload,
+        state,
+        proposal_pr=proposal_pr,
+        allowed_paths=proposal_allowed_paths(plan, state),
+    )
+    ancestor = _run_git(
+        ["merge-base", "--is-ancestor", merge_commit, "HEAD"],
+        cwd=repo_root,
+        check=False,
+    )
+    if ancestor.returncode != 0:
+        raise PlanContractError(
+            f"proposal merge commit {merge_commit} is not an ancestor of HEAD"
+        )
+    proposal_path = repo_root / _frontier_proposal_path(
+        state.current,
+        heading="Current Frontier",
+    )
+    validate_proposal_text(proposal_path.read_text(encoding="utf-8"))
+    updated = accept_proposal(
+        original,
+        proposal_pr=proposal_pr,
+        merge_commit=merge_commit,
+        proposal_url=proposal_url,
+    )
+    _write_plan_and_render(plan, original, updated)
+    print(f"Accepted proposal PR #{proposal_pr} for {state.current.name}.")
+    print("Workflow state: ready_for_implementation")
+    print(
+        "Next: hand the accepted proposal to the implementer, then use "
+        "start-implementation."
+    )
+    return 0
+
+
+def _cmd_start_implementation(plan: Path, branch: str) -> int:
+    plan = plan.resolve()
+    state = validate_plan_path(plan)
+    start_implementation_branch(plan, state, branch)
+    _render_docs()
+    print(f"Implementation branch started: {branch}")
+    print(f"Frontier: {state.current.name}")
+    print("Accepted proposal: " + state.current.fields["accepted proposal"])
+    print("Next: implement only the accepted proposal, then open the implementation PR.")
+    return 0
+
+
+def _cmd_status(plan: Path, *, as_json: bool) -> int:
+    plan = plan.resolve()
+    state = validate_plan_path(plan)
+    payload = _workflow_status_payload(plan.relative_to(ROOT), state)
+    if as_json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+    print(f"Milestone {payload['milestone']}: {payload['status']}")
+    print(f"Frontier: {payload['frontier'] or 'None'}")
+    print(f"Workflow state: {payload['workflow_state'] or 'none'}")
+    if payload.get("proposal_path"):
+        print(f"Proposal: {payload['proposal_path']}")
+    if payload.get("accepted_proposal"):
+        print(f"Accepted proposal: {payload['accepted_proposal']}")
+    print(f"Next: {payload['next_action']}")
+    return 0
+
+
+def _cmd_validate_pr(
+    *,
+    base_ref: str,
+    head_ref: str,
+    base_sha: str,
+    head_sha: str,
+) -> int:
+    transition = validate_review_unit_git_diff(
+        base_ref=base_ref,
+        head_ref=head_ref,
+        base_sha=base_sha,
+        head_sha=head_sha,
+    )
+    if transition is None:
+        print(f"PR targets {base_ref}; milestone review-unit gate not applicable.")
+    else:
+        print(f"Valid {transition} PR transition into {base_ref}.")
     return 0
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Validate milestone plans and apply ordered frontier handoffs.",
+        description=(
+            "Validate milestone plans and enforce proposal-before-implementation "
+            "frontier handoffs."
+        ),
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -957,12 +1792,42 @@ def main() -> int:
     handoff_parser.add_argument("--plan", required=True, type=Path)
     handoff_parser.add_argument("--receipt", required=True, type=Path)
 
-    start_parser = subparsers.add_parser(
-        "start",
-        help="create the current frontier branch after a committed handoff",
+    status_parser = subparsers.add_parser(
+        "status",
+        help="show the current workflow state and next handoff",
     )
-    start_parser.add_argument("--plan", required=True, type=Path)
-    start_parser.add_argument("--branch", required=True)
+    status_parser.add_argument("--plan", required=True, type=Path)
+    status_parser.add_argument("--json", action="store_true")
+
+    proposal_start_parser = subparsers.add_parser(
+        "start-proposal",
+        help="create the proposal-only branch for a ready frontier",
+    )
+    proposal_start_parser.add_argument("--plan", required=True, type=Path)
+    proposal_start_parser.add_argument("--branch", required=True)
+
+    proposal_accept_parser = subparsers.add_parser(
+        "accept-proposal",
+        help="record a merged proposal PR and unblock implementation",
+    )
+    proposal_accept_parser.add_argument("--plan", required=True, type=Path)
+    proposal_accept_parser.add_argument("--pr", required=True, type=int)
+
+    implementation_start_parser = subparsers.add_parser(
+        "start-implementation",
+        help="create the implementation branch after proposal acceptance",
+    )
+    implementation_start_parser.add_argument("--plan", required=True, type=Path)
+    implementation_start_parser.add_argument("--branch", required=True)
+
+    validate_pr_parser = subparsers.add_parser(
+        "validate-pr",
+        help="validate a proposal or implementation PR transition",
+    )
+    validate_pr_parser.add_argument("--base-ref", required=True)
+    validate_pr_parser.add_argument("--head-ref", required=True)
+    validate_pr_parser.add_argument("--base-sha", required=True)
+    validate_pr_parser.add_argument("--head-sha", required=True)
 
     subparsers.add_parser(
         "receipt-example",
@@ -976,8 +1841,21 @@ def main() -> int:
         if args.command == "receipt-example":
             print(json.dumps(EXAMPLE_RECEIPT, indent=2, sort_keys=True))
             return 0
-        if args.command == "start":
-            return _cmd_start(args.plan, args.branch)
+        if args.command == "status":
+            return _cmd_status(args.plan, as_json=args.json)
+        if args.command == "start-proposal":
+            return _cmd_start_proposal(args.plan, args.branch)
+        if args.command == "accept-proposal":
+            return _cmd_accept_proposal(args.plan, args.pr)
+        if args.command == "start-implementation":
+            return _cmd_start_implementation(args.plan, args.branch)
+        if args.command == "validate-pr":
+            return _cmd_validate_pr(
+                base_ref=args.base_ref,
+                head_ref=args.head_ref,
+                base_sha=args.base_sha,
+                head_sha=args.head_sha,
+            )
         return _cmd_handoff(args.plan, args.receipt)
     except (OSError, PlanContractError, subprocess.CalledProcessError) as exc:
         print(f"Milestone workflow error: {exc}", file=sys.stderr)

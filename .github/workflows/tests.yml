@@ -24,6 +24,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -42,6 +44,15 @@ jobs:
         run: |
           python3 docs/milestones/workflow.py validate
           python3 docs/render_markdown.py --check
+
+      - name: Validate proposal and implementation phase
+        if: github.event_name == 'pull_request'
+        run: |
+          python3 docs/milestones/workflow.py validate-pr \
+            --base-ref "${{ github.base_ref }}" \
+            --head-ref "${{ github.head_ref }}" \
+            --base-sha "${{ github.event.pull_request.base.sha }}" \
+            --head-sha "${{ github.event.pull_request.head.sha }}"
 
       - name: Run deterministic tests with coverage
         run: |

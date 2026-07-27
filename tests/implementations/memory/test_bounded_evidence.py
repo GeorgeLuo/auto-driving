@@ -71,6 +71,7 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
             entry["implementation_spec"],
             "implementations.memory.bounded_evidence:BoundedEvidenceLedger",
         )
+        self.assertIn("conflict", entry["description"])
 
     def test_retains_things_and_signals_with_provenance(self) -> None:
         ledger = BoundedEvidenceLedger(max_records=8, max_age_ms=5_000)
@@ -103,6 +104,8 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
 
     def test_recurring_evidence_updates_same_slot_without_identity_claim(self) -> None:
         ledger = BoundedEvidenceLedger(max_records=8, max_age_ms=10_000)
+        updated = _thing("floor_boundary_000", zone="right", confidence=0.95)
+        updated["properties"]["width_fraction"] = 0.35
         first = ledger.update(
             DecisionFrameContext("frame_1", 1, 100),
             _observation(
@@ -116,7 +119,7 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
             _observation(
                 "obs_2",
                 created_at_ms=190,
-                things=(_thing("floor_boundary_000", zone="right", confidence=0.95),),
+                things=(updated,),
             ),
         )
         self.assertEqual(first.record_count, 1)
@@ -127,6 +130,172 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
         self.assertEqual(record.confidence, 0.95)
         self.assertEqual(record.provenance.observation_id, "obs_2")
         self.assertEqual(record.provenance.updated_at_ms, 200)
+        self.assertEqual(record.properties["width_fraction"], 0.35)
+        self.assertEqual(second.metadata["conflict_count"], 0)
+        self.assertEqual(second.metadata["last_update_conflict_count"], 0)
+
+    def test_incompatible_recurrence_invalidates_both_claims(self) -> None:
+        ledger = BoundedEvidenceLedger(max_records=8, max_age_ms=10_000)
+        ledger.update(
+            DecisionFrameContext("frame_1", 1, 100),
+            _observation(
+                "obs_1",
+                created_at_ms=90,
+                things=(_thing("shared", kind="floor_boundary"),),
+            ),
+        )
+        conflict = ledger.update(
+            DecisionFrameContext("frame_2", 2, 200),
+            _observation(
+                "obs_2",
+                created_at_ms=190,
+                things=(_thing("shared", kind="obstruction"),),
+            ),
+        )
+
+        self.assertEqual(conflict.health, "empty")
+        self.assertEqual(conflict.record_count, 0)
+        self.assertEqual(
+            conflict.metadata["conflict_policy"],
+            "invalidate_incompatible_slot",
+        )
+        self.assertEqual(conflict.metadata["conflict_count"], 1)
+        self.assertEqual(conflict.metadata["last_update_conflict_count"], 1)
+        self.assertEqual(conflict.metadata["capacity_eviction_count"], 0)
+        self.assertIn("conflict_count=1", conflict.summary)
+
+        recovered = ledger.update(
+            DecisionFrameContext("frame_3", 3, 300),
+            _observation(
+                "obs_3",
+                created_at_ms=290,
+                things=(_thing("shared", kind="obstruction"),),
+            ),
+        )
+        self.assertEqual(recovered.health, "healthy")
+        self.assertEqual(recovered.records[0].kind, "obstruction")
+        self.assertEqual(recovered.metadata["conflict_count"], 1)
+        self.assertEqual(recovered.metadata["last_update_conflict_count"], 0)
+
+    def test_location_and_property_shape_changes_are_incompatible(self) -> None:
+        mutations = []
+
+        coordinate_frame = _thing("shared")
+        coordinate_frame["location"]["frame"] = "topdown_fov"
+        mutations.append(coordinate_frame)
+
+        polygon = _thing("shared")
+        polygon["location"]["polygon_xy_norm"] = [
+            [0.4, 0.5],
+            [0.6, 0.5],
+            [0.6, 0.9],
+        ]
+        mutations.append(polygon)
+
+        nested_property = _thing("shared")
+        nested_property["properties"]["width_fraction"] = {"value": 0.2}
+        mutations.append(nested_property)
+
+        for mutation in mutations:
+            with self.subTest(mutation=mutation):
+                ledger = BoundedEvidenceLedger(max_records=8, max_age_ms=10_000)
+                ledger.update(
+                    DecisionFrameContext("frame_1", 1, 100),
+                    _observation(
+                        "obs_1",
+                        created_at_ms=90,
+                        things=(_thing("shared"),),
+                    ),
+                )
+                snapshot = ledger.update(
+                    DecisionFrameContext("frame_2", 2, 200),
+                    _observation(
+                        "obs_2",
+                        created_at_ms=190,
+                        things=(mutation,),
+                    ),
+                )
+                self.assertEqual(snapshot.health, "empty")
+                self.assertEqual(snapshot.metadata["conflict_count"], 1)
+
+    def test_signal_value_type_change_invalidates_slot(self) -> None:
+        ledger = BoundedEvidenceLedger(max_records=8, max_age_ms=10_000)
+        ledger.update(
+            DecisionFrameContext("frame_1", 1, 100),
+            _observation(
+                "obs_1",
+                created_at_ms=90,
+                signals=(
+                    {
+                        "signal_id": "floor_visible",
+                        "value": True,
+                        "confidence": 0.9,
+                    },
+                ),
+            ),
+        )
+        snapshot = ledger.update(
+            DecisionFrameContext("frame_2", 2, 200),
+            _observation(
+                "obs_2",
+                created_at_ms=190,
+                signals=(
+                    {
+                        "signal_id": "floor_visible",
+                        "value": "present",
+                        "confidence": 0.9,
+                    },
+                ),
+            ),
+        )
+
+        self.assertEqual(snapshot.health, "empty")
+        self.assertEqual(snapshot.metadata["conflict_count"], 1)
+
+    def test_same_observation_contradiction_is_order_independent(self) -> None:
+        left = _thing("shared", zone="left")
+        right = _thing("shared", zone="right")
+
+        snapshots = []
+        for things in ((left, right), (right, left)):
+            ledger = BoundedEvidenceLedger(max_records=8, max_age_ms=10_000)
+            snapshots.append(
+                ledger.update(
+                    DecisionFrameContext("frame_1", 1, 100),
+                    _observation(
+                        "obs_1",
+                        created_at_ms=90,
+                        things=things,
+                    ),
+                )
+            )
+
+        self.assertEqual(snapshots[0].to_dict(), snapshots[1].to_dict())
+        self.assertEqual(snapshots[0].health, "empty")
+        self.assertEqual(snapshots[0].metadata["conflict_count"], 1)
+
+    def test_expired_slot_does_not_conflict_with_new_structure(self) -> None:
+        ledger = BoundedEvidenceLedger(max_records=8, max_age_ms=50)
+        ledger.update(
+            DecisionFrameContext("frame_1", 1, 100),
+            _observation(
+                "obs_1",
+                created_at_ms=90,
+                things=(_thing("shared", kind="floor_boundary"),),
+            ),
+        )
+        snapshot = ledger.update(
+            DecisionFrameContext("frame_2", 2, 200),
+            _observation(
+                "obs_2",
+                created_at_ms=190,
+                things=(_thing("shared", kind="obstruction"),),
+            ),
+        )
+
+        self.assertEqual(snapshot.health, "healthy")
+        self.assertEqual(snapshot.records[0].kind, "obstruction")
+        self.assertEqual(snapshot.metadata["conflict_count"], 0)
 
     def test_survives_dropout_until_max_age_then_expires(self) -> None:
         ledger = BoundedEvidenceLedger(max_records=8, max_age_ms=300)
@@ -141,6 +310,8 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
         during = ledger.update(DecisionFrameContext("frame_2", 2, 1_200), None)
         self.assertEqual(during.health, "healthy")
         self.assertEqual(during.record_count, 1)
+        self.assertEqual(during.records[0].provenance.updated_at_ms, 1_000)
+        self.assertEqual(during.metadata["last_update_conflict_count"], 0)
         expired = ledger.update(DecisionFrameContext("frame_3", 3, 1_400), None)
         self.assertEqual(expired.health, "empty")
         self.assertEqual(expired.record_count, 0)
@@ -173,11 +344,21 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
             DecisionFrameContext("f1", 1, 100),
             _observation("o1", created_at_ms=90, things=(_thing("a"),)),
         )
+        ledger.update(
+            DecisionFrameContext("f_conflict", 2, 150),
+            _observation(
+                "o_conflict",
+                created_at_ms=140,
+                things=(_thing("a", kind="obstruction"),),
+            ),
+        )
+        self.assertEqual(ledger.snapshot().metadata["conflict_count"], 1)
         previous_epoch = ledger.snapshot().epoch_id
         reset = ledger.reset()
         self.assertEqual(reset.health, "empty")
         self.assertEqual(reset.record_count, 0)
         self.assertNotEqual(reset.epoch_id, previous_epoch)
+        self.assertEqual(reset.metadata["conflict_count"], 0)
         # prior evidence must not reappear after reset
         after = ledger.update(DecisionFrameContext("f2", 2, 200), None)
         self.assertEqual(after.health, "empty")

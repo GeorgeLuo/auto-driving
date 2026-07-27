@@ -16,8 +16,9 @@ MEMORY_IMPLEMENTATIONS: dict[str, dict[str, Any]] = {
         ),
         "description": (
             "Bounded recency ledger of observation things and signals with "
-            "provenance, age expiry, and oldest-first eviction. Does not claim "
-            "semantic object identity or world truth."
+            "provenance, age expiry, oldest-first eviction, and fail-closed "
+            "same-slot conflict handling. Does not claim semantic object identity "
+            "or world truth."
         ),
         "default_config": {
             "max_records": 32,

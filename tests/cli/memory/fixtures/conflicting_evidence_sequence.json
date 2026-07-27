@@ -1,0 +1,157 @@
+{
+  "schema": "automa_memory_observation_sequence_v0",
+  "description": "Compatible recurrence, dropout, then incompatible evidence on one attributed slot.",
+  "frames": [
+    {
+      "frame_id": "frame_000",
+      "frame_index": 0,
+      "timestamp_ms": 1000,
+      "observation": {
+        "observation_id": "obs_000",
+        "created_at_ms": 1000,
+        "sensor_snapshot": {},
+        "perception_plugin_id": "lightweight_observer",
+        "summary": [
+          "initial floor boundary"
+        ],
+        "things": [
+          {
+            "thing_id": "shared_000",
+            "kind": "floor_boundary",
+            "label": "boundary",
+            "confidence": 0.9,
+            "location": {
+              "frame": "image",
+              "zone": "left",
+              "bbox_xyxy_norm": [
+                0.1,
+                0.4,
+                0.3,
+                0.9
+              ]
+            },
+            "properties": {
+              "width_fraction": 0.2
+            },
+            "source_plugin_id": "floor-plane-v0"
+          }
+        ],
+        "signals": [
+          {
+            "signal_id": "floor_visible",
+            "value": true,
+            "confidence": 0.95
+          }
+        ]
+      }
+    },
+    {
+      "frame_id": "frame_001",
+      "frame_index": 1,
+      "timestamp_ms": 1200,
+      "observation": {
+        "observation_id": "obs_001",
+        "created_at_ms": 1200,
+        "sensor_snapshot": {},
+        "perception_plugin_id": "lightweight_observer",
+        "summary": [
+          "compatible boundary recurrence"
+        ],
+        "things": [
+          {
+            "thing_id": "shared_000",
+            "kind": "floor_boundary",
+            "label": "boundary",
+            "confidence": 0.92,
+            "location": {
+              "frame": "image",
+              "zone": "center",
+              "bbox_xyxy_norm": [
+                0.2,
+                0.4,
+                0.45,
+                0.9
+              ]
+            },
+            "properties": {
+              "width_fraction": 0.25
+            },
+            "source_plugin_id": "floor-plane-v0"
+          }
+        ],
+        "signals": [
+          {
+            "signal_id": "floor_visible",
+            "value": true,
+            "confidence": 0.96
+          }
+        ]
+      }
+    },
+    {
+      "frame_id": "frame_002",
+      "frame_index": 2,
+      "timestamp_ms": 1400,
+      "observation": {
+        "observation_id": "obs_002",
+        "created_at_ms": 1400,
+        "sensor_snapshot": {},
+        "perception_plugin_id": "lightweight_observer",
+        "summary": [
+          "boundary missing for one frame"
+        ],
+        "things": [],
+        "signals": [
+          {
+            "signal_id": "floor_visible",
+            "value": true,
+            "confidence": 0.97
+          }
+        ]
+      }
+    },
+    {
+      "frame_id": "frame_003",
+      "frame_index": 3,
+      "timestamp_ms": 1600,
+      "observation": {
+        "observation_id": "obs_003",
+        "created_at_ms": 1600,
+        "sensor_snapshot": {},
+        "perception_plugin_id": "lightweight_observer",
+        "summary": [
+          "same attributed slot changes structural kind"
+        ],
+        "things": [
+          {
+            "thing_id": "shared_000",
+            "kind": "obstruction",
+            "label": "obstruction",
+            "confidence": 0.91,
+            "location": {
+              "frame": "image",
+              "zone": "center",
+              "bbox_xyxy_norm": [
+                0.2,
+                0.4,
+                0.45,
+                0.9
+              ]
+            },
+            "properties": {
+              "width_fraction": 0.25
+            },
+            "source_plugin_id": "floor-plane-v0"
+          }
+        ],
+        "signals": [
+          {
+            "signal_id": "floor_visible",
+            "value": true,
+            "confidence": 0.98
+          }
+        ]
+      }
+    }
+  ]
+}

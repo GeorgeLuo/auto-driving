@@ -1,8 +1,9 @@
 """Bounded recency ledger of observation evidence.
 
 Retains attributed things and signals across cycles with finite capacity and
-age. Recurring evidence_ids update the same ledger slot within an epoch; that
-is recency bookkeeping, not semantic object identity or world truth.
+age. Recurring evidence_ids update the same ledger slot while their structure
+remains compatible. An incompatible recurrence invalidates the slot rather than
+choosing either claim as truth.
 
 Record ids are namespaced by source plugin so two plugins cannot silently
 overwrite one another with the same local evidence id.
@@ -28,6 +29,9 @@ from autonomy.decision import (
     serialized_mapping_bytes,
 )
 from autonomy.perception import ViewLocation
+
+
+CONFLICT_POLICY = "invalidate_incompatible_slot"
 
 
 class BoundedEvidenceLedger:
@@ -68,6 +72,8 @@ class BoundedEvidenceLedger:
         self.retain_signals = bool(retain_signals)
         self._epoch = 0
         self._capacity_eviction_count = 0
+        self._conflict_count = 0
+        self._last_update_conflict_count = 0
         self._records: dict[str, RetainedEvidence] = {}
         self._latest = self.reset()
 
@@ -77,10 +83,12 @@ class BoundedEvidenceLedger:
         observation: Observation | None,
     ) -> MemorySnapshot:
         now_ms = int(context.timestamp_ms)
-        if observation is not None:
-            for record in self._extract_records(context, observation, now_ms=now_ms):
-                self._records[record.record_id] = record
+        self._last_update_conflict_count = 0
         self._expire(now_ms=now_ms)
+        if observation is not None:
+            self._apply_records(
+                self._extract_records(context, observation, now_ms=now_ms)
+            )
         self._enforce_capacity()
         self._latest = self._build_snapshot(
             memory_id=f"memory-{context.frame_id}",
@@ -93,6 +101,8 @@ class BoundedEvidenceLedger:
         self._epoch += 1
         self._records = {}
         self._capacity_eviction_count = 0
+        self._conflict_count = 0
+        self._last_update_conflict_count = 0
         self._latest = empty_memory_snapshot(
             memory_id=f"memory-reset-{self._epoch}",
             epoch_id=f"epoch-{self._epoch}",
@@ -108,6 +118,9 @@ class BoundedEvidenceLedger:
                 "policy": "bounded_evidence_recency",
                 "claims_identity": False,
                 "capacity_eviction_count": self._capacity_eviction_count,
+                "conflict_policy": CONFLICT_POLICY,
+                "conflict_count": self._conflict_count,
+                "last_update_conflict_count": self._last_update_conflict_count,
             },
         )
         return detach_memory_snapshot(self._latest)
@@ -239,6 +252,33 @@ class BoundedEvidenceLedger:
             return True
         return serialized_mapping_bytes(properties) <= limit
 
+    def _apply_records(self, records: list[RetainedEvidence]) -> None:
+        """Apply one observation without making tuple order a conflict tiebreaker."""
+
+        grouped: dict[str, list[RetainedEvidence]] = {}
+        for record in records:
+            grouped.setdefault(record.record_id, []).append(record)
+
+        for record_id in sorted(grouped):
+            candidates = grouped[record_id]
+            candidate = candidates[0]
+            if any(item != candidate for item in candidates[1:]):
+                self._invalidate_conflict(record_id)
+                continue
+
+            retained = self._records.get(record_id)
+            if retained is not None and not _structurally_compatible(
+                retained, candidate
+            ):
+                self._invalidate_conflict(record_id)
+                continue
+            self._records[record_id] = candidate
+
+    def _invalidate_conflict(self, record_id: str) -> None:
+        self._records.pop(record_id, None)
+        self._conflict_count += 1
+        self._last_update_conflict_count += 1
+
     def _expire(self, *, now_ms: int) -> None:
         max_age_ms = self.bounds.max_age_ms
         if max_age_ms is None:
@@ -272,6 +312,25 @@ class BoundedEvidenceLedger:
         created_at_ms: int,
         observation: Observation | None,
     ) -> MemorySnapshot:
+        conflict_summary = (
+            (
+                f"conflict_count={self._conflict_count}",
+                f"last_update_conflicts={self._last_update_conflict_count}",
+            )
+            if self._conflict_count
+            else ()
+        )
+        metadata = {
+            "policy": "bounded_evidence_recency",
+            "claims_identity": False,
+            "observation_id": (
+                observation.observation_id if observation is not None else None
+            ),
+            "capacity_eviction_count": self._capacity_eviction_count,
+            "conflict_policy": CONFLICT_POLICY,
+            "conflict_count": self._conflict_count,
+            "last_update_conflict_count": self._last_update_conflict_count,
+        }
         records = tuple(
             sorted(
                 self._records.values(),
@@ -296,15 +355,9 @@ class BoundedEvidenceLedger:
                         if observation is None
                         else "reason=no_retained_evidence"
                     ),
+                    *conflict_summary,
                 ),
-                metadata={
-                    "policy": "bounded_evidence_recency",
-                    "claims_identity": False,
-                    "observation_id": (
-                        observation.observation_id if observation is not None else None
-                    ),
-                    "capacity_eviction_count": self._capacity_eviction_count,
-                },
+                metadata=metadata,
             )
         kinds = sorted({record.kind for record in records})
         return MemorySnapshot(
@@ -319,16 +372,10 @@ class BoundedEvidenceLedger:
                 f"epoch_id=epoch-{self._epoch}",
                 f"kinds={','.join(kinds)}",
                 "policy=bounded_evidence_recency",
+                *conflict_summary,
             ),
             implementation_id=self.implementation_id,
-            metadata={
-                "policy": "bounded_evidence_recency",
-                "claims_identity": False,
-                "observation_id": (
-                    observation.observation_id if observation is not None else None
-                ),
-                "capacity_eviction_count": self._capacity_eviction_count,
-            },
+            metadata=metadata,
         )
 
 
@@ -356,6 +403,58 @@ def namespaced_record_id(
     return (
         f"{kind_prefix}:1:{len(plugin)}:{plugin}:{len(evidence)}:{evidence}"
     )
+
+
+def _structurally_compatible(
+    retained: RetainedEvidence,
+    candidate: RetainedEvidence,
+) -> bool:
+    return _record_structure(retained) == _record_structure(candidate)
+
+
+def _record_structure(record: RetainedEvidence) -> tuple[Any, ...]:
+    """Return the schema that must remain stable while a slot is retained."""
+
+    location = record.location
+    location_structure = (
+        None
+        if location is None
+        else (
+            bool(location.bbox_xyxy_norm is not None),
+            bool(location.polygon_xy_norm is not None),
+        )
+    )
+    return (
+        record.kind,
+        record.provenance.coordinate_frame,
+        location_structure,
+        _json_structure(record.properties),
+    )
+
+
+def _json_structure(value: Any) -> tuple[Any, ...]:
+    """Describe strict JSON shape while allowing ordinary scalar value changes."""
+
+    if value is None:
+        return ("null",)
+    if isinstance(value, bool):
+        return ("boolean",)
+    if isinstance(value, (int, float)):
+        return ("number",)
+    if isinstance(value, str):
+        return ("string",)
+    if isinstance(value, list):
+        item_shapes = {_json_structure(item) for item in value}
+        return ("array", tuple(sorted(item_shapes, key=repr)))
+    if isinstance(value, dict):
+        return (
+            "object",
+            tuple(
+                (str(key), _json_structure(item))
+                for key, item in sorted(value.items())
+            ),
+        )
+    raise TypeError(f"unsupported retained JSON value: {type(value).__name__}")
 
 
 def _location_from_payload(payload: Any) -> ViewLocation | None:

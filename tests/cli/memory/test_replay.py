@@ -20,6 +20,11 @@ from cli.automa_cli.memory import (
 from tests.support.cli_runner import run_automa
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "recurrence_sequence.json"
+CONFLICT_FIXTURE = (
+    Path(__file__).resolve().parent
+    / "fixtures"
+    / "conflicting_evidence_sequence.json"
+)
 
 
 class MemoryReplayTests(unittest.TestCase):
@@ -70,6 +75,34 @@ class MemoryReplayTests(unittest.TestCase):
         self.assertIn("signal:1:20:lightweight_observer:13:floor_visible", record_ids)
         # Last observation updated signal; thing still retained from prior frames.
         self.assertEqual(payload_a["final"]["record_count"], 2)
+
+    def test_conflicting_evidence_replay_invalidates_only_its_slot(self) -> None:
+        result = replay_vehicle_memory(
+            vehicle_id="chase-sim-chaser",
+            sequence=CONFLICT_FIXTURE,
+            implementation_id="bounded_evidence",
+            json_output=True,
+            verify_twice=True,
+        )
+
+        self.assertEqual(result.exit_code, 0, result.message)
+        payload = json.loads(result.message)
+        self.assertTrue(payload["deterministic"])
+        self.assertEqual(payload["frame_count"], 4)
+        final = payload["final"]
+        self.assertEqual(final["health"], "healthy")
+        self.assertEqual(final["record_count"], 1)
+        self.assertEqual(
+            [record["record_id"] for record in final["records"]],
+            ["signal:1:20:lightweight_observer:13:floor_visible"],
+        )
+        self.assertEqual(
+            final["metadata"]["conflict_policy"],
+            "invalidate_incompatible_slot",
+        )
+        self.assertEqual(final["metadata"]["conflict_count"], 1)
+        self.assertEqual(final["metadata"]["last_update_conflict_count"], 1)
+        self.assertEqual(final["metadata"]["capacity_eviction_count"], 0)
 
     def test_replay_cli_json_matches_digest(self) -> None:
         result = run_automa(

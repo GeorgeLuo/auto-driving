@@ -17,17 +17,24 @@ from docs.milestones.workflow import (
 
 ROOT = Path(__file__).resolve().parents[2]
 PLAN = ROOT / "docs" / "milestones" / "005-evidence-memory-foundation" / "plan.md"
+CURRENT_PR_LINE = "- PR: [#59](https://github.com/GeorgeLuo/auto-driving/pull/59)\n"
 
 
 def _plan_with_current_pr(text: str) -> str:
+    if CURRENT_PR_LINE in text:
+        return text
     marker = "**Conflicting evidence semantics**\n\n"
     if marker not in text:
         raise AssertionError("current frontier marker is missing")
     return text.replace(
         marker,
-        marker + "- PR: [#59](https://example.invalid/59)\n",
+        marker + CURRENT_PR_LINE,
         1,
     )
+
+
+def _plan_without_current_pr(text: str) -> str:
+    return text.replace(CURRENT_PR_LINE, "", 1)
 
 
 def _receipt(*, merge_commit: str = "deadbee") -> dict[str, object]:
@@ -122,7 +129,7 @@ class MilestonePlanContractTests(unittest.TestCase):
 
     def test_mid_milestone_adoption_requires_cutover_and_baseline_ledger(self) -> None:
         missing_cutover = self.plan_text.replace(
-            "| Cutover | #57 merged to `main`; #58 records its accepted result and establishes the remaining conflict frontier; create the milestone branch from `main` after #58 |\n",
+            "| Cutover | Complete: #57 and #58 merged to `main`; the milestone branch starts at `6b89c88`; PR #59 and later review units target the milestone branch |\n",
             "",
         )
         with self.assertRaisesRegex(PlanContractError, "baseline and Cutover"):
@@ -361,7 +368,7 @@ class MilestoneHandoffGitOrderingTests(unittest.TestCase):
             root = Path(temp_dir)
             plan = root / "docs" / "milestones" / "005-evidence-memory-foundation" / "plan.md"
             plan.parent.mkdir(parents=True)
-            current = PLAN.read_text(encoding="utf-8")
+            current = _plan_without_current_pr(PLAN.read_text(encoding="utf-8"))
             plan.write_text(current, encoding="utf-8")
             self._git(root, "init", "-b", "milestone/005-evidence-memory-foundation")
             self._git(root, "add", ".")
@@ -406,7 +413,7 @@ class MilestoneHandoffGitOrderingTests(unittest.TestCase):
             root = Path(temp_dir)
             plan = root / "docs" / "milestones" / "005-evidence-memory-foundation" / "plan.md"
             plan.parent.mkdir(parents=True)
-            current = PLAN.read_text(encoding="utf-8")
+            current = _plan_without_current_pr(PLAN.read_text(encoding="utf-8"))
             plan.write_text(current, encoding="utf-8")
             self._git(root, "init", "-b", "milestone/005-evidence-memory-foundation")
             self._git(root, "add", ".")

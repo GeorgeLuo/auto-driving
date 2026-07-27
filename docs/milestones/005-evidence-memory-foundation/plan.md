@@ -3,12 +3,12 @@
 | Field | Value |
 | --- | --- |
 | Status | Active |
-| Milestone branch | `milestone/005-evidence-memory-foundation` (create from `main` after #58 merges) |
+| Milestone branch | `milestone/005-evidence-memory-foundation` |
 | Cumulative PR | TBD — transitional closeout delta from the milestone branch to `main`; whole-milestone judgment uses this plan and baseline |
-| Current frontier | Conflicting evidence semantics |
+| Current frontier | Conflicting evidence semantics ([PR #59](https://github.com/GeorgeLuo/auto-driving/pull/59)) |
 | Contract baseline | `22cfff9` — M005 work through PR #50, before the compact contract |
 | Grandfathered PRs | #57 (accepted evidence unit), #58 (contract migration); both retain their existing `main` targets |
-| Cutover | #57 merged to `main`; #58 records its accepted result and establishes the remaining conflict frontier; create the milestone branch from `main` after #58 |
+| Cutover | Complete: #57 and #58 merged to `main`; the milestone branch starts at `6b89c88`; PR #59 and later review units target the milestone branch |
 | Started | 2026-07-15 |
 | Action policy | Idle / no movement for the entire milestone |
 
@@ -66,12 +66,13 @@ model, changing perception semantics, or granting movement authority.
 
 **Conflicting evidence semantics**
 
-- Branch: `m005/conflicting-evidence` (planned; not opened)
+- PR: [#59](https://github.com/GeorgeLuo/auto-driving/pull/59)
+- Branch: `m005/conflicting-evidence` (active)
 - Review kind: Deterministic invariant closure
 - Review question: Does the bounded evidence ledger handle contradictory attributed evidence, same-slot recurrence, missing evidence, and structurally incompatible updates deterministically without silently claiming semantic truth?
 - Acceptance owner: `BoundedEvidenceLedger` update policy plus focused implementation and replay fixtures
 - Exit criteria affected: M005-08
-- Prerequisite: PR #58 merged and `milestone/005-evidence-memory-foundation` created from the resulting `main`
+- Prerequisite: Met — PR #58 merged and `milestone/005-evidence-memory-foundation` was created from resulting `main`
 - Milestone-level non-goal: Semantic fusion, object identity, confidence aggregation, live-host re-proof, or action behavior
 
 ### Next-Frontier Candidate
@@ -111,7 +112,7 @@ remain one row per merged PR.
 | Process identity for Chase live probe relies on host command inspection | Probe may be unavailable or spoofable on unsupported hosts | Fail closed; document limitation |
 | Memory is process-local by default | Restart continuity is not guaranteed | Explicit milestone non-goal |
 | Metrics UI atomic capture remains an external dependency for Chase evidence | Capture quality depends on sibling repository | Keep dependency until auto-driving no longer needs contract adjustment |
-| Historical 005 review units targeted `main` rather than a milestone integration branch | The final cumulative PR is a remaining-work delta rather than the literal implementation history | Use baseline `22cfff9`; after grandfathered #58 merges, create the milestone branch for conflict closure and closeout |
+| Historical 005 review units targeted `main` rather than a milestone integration branch | The final cumulative PR is a remaining-work delta rather than the literal implementation history | Use baseline `22cfff9`; the completed cutover places #59, closeout, and their handoffs on the milestone branch |
 
 ## Milestone Decisions
 
@@ -131,6 +132,7 @@ remain one row per merged PR.
 | 2026-07-24 | Require a minimal pre-implementation acceptance contract for next-frontier candidates | Selecting “what’s next” must freeze question, owner, exit criteria, and non-goals before a branch is opened; name stubs are not candidates |
 | 2026-07-26 | Cut over M005 after grandfathered PR #57 and contract PR #58 merge in that order | Avoid retargeting #57 or merging conflicting hand-authored HTML; #58 becomes the canonical plan migration and the remaining review units use the milestone branch |
 | 2026-07-27 | Accept #57 and keep conflicting evidence ahead of closeout | The live Chase causal proof closes M005-09, but its accepted contract explicitly leaves M005-08 open; closeout cannot conceal an unspecified conflict policy |
+| 2026-07-27 | Complete the branch-topology cutover and open PR #59 | Remaining M005 review units now target the milestone branch; the cumulative PR will represent the remaining-work delta |
 
 ## Closeout
 

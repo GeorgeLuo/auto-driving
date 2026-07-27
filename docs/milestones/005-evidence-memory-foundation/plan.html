@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="6be64c90a40776947a71ba8734ec40eb020dc45db3c32d56f67c6a21dde4de63">
+  <meta name="source-sha256" content="a795e009764ab9d630686c3738c43e55b79f1831e456ac3f7a037a56fa2947f4">
   <base target="_blank">
   <title>Milestone plan — 005-evidence-memory-foundation</title>
   <style>
@@ -77,7 +77,7 @@
 </tr>
 <tr>
 <td>Milestone branch</td>
-<td><code>milestone/005-evidence-memory-foundation</code> (create from <code>main</code> after #58 merges)</td>
+<td><code>milestone/005-evidence-memory-foundation</code></td>
 </tr>
 <tr>
 <td>Cumulative PR</td>
@@ -85,7 +85,7 @@
 </tr>
 <tr>
 <td>Current frontier</td>
-<td>Conflicting evidence semantics</td>
+<td>Conflicting evidence semantics (<a href="https://github.com/GeorgeLuo/auto-driving/pull/59">PR #59</a>)</td>
 </tr>
 <tr>
 <td>Contract baseline</td>
@@ -97,7 +97,7 @@
 </tr>
 <tr>
 <td>Cutover</td>
-<td>#57 merged to <code>main</code>; #58 records its accepted result and establishes the remaining conflict frontier; create the milestone branch from <code>main</code> after #58</td>
+<td>Complete: #57 and #58 merged to <code>main</code>; the milestone branch starts at <code>6b89c88</code>; PR #59 and later review units target the milestone branch</td>
 </tr>
 <tr>
 <td>Started</td>
@@ -303,12 +303,13 @@ model, changing perception semantics, or granting movement authority.</p>
 <h3>Current Frontier</h3>
 <p><strong>Conflicting evidence semantics</strong></p>
 <ul>
-<li>Branch: <code>m005/conflicting-evidence</code> (planned; not opened)</li>
+<li>PR: <a href="https://github.com/GeorgeLuo/auto-driving/pull/59">#59</a></li>
+<li>Branch: <code>m005/conflicting-evidence</code> (active)</li>
 <li>Review kind: Deterministic invariant closure</li>
 <li>Review question: Does the bounded evidence ledger handle contradictory attributed evidence, same-slot recurrence, missing evidence, and structurally incompatible updates deterministically without silently claiming semantic truth?</li>
 <li>Acceptance owner: <code>BoundedEvidenceLedger</code> update policy plus focused implementation and replay fixtures</li>
 <li>Exit criteria affected: M005-08</li>
-<li>Prerequisite: PR #58 merged and <code>milestone/005-evidence-memory-foundation</code> created from the resulting <code>main</code></li>
+<li>Prerequisite: Met — PR #58 merged and <code>milestone/005-evidence-memory-foundation</code> was created from resulting <code>main</code></li>
 <li>Milestone-level non-goal: Semantic fusion, object identity, confidence aggregation, live-host re-proof, or action behavior</li>
 </ul>
 <h3>Next-Frontier Candidate</h3>
@@ -409,7 +410,7 @@ remain one row per merged PR.</p>
 <tr>
 <td>Historical 005 review units targeted <code>main</code> rather than a milestone integration branch</td>
 <td>The final cumulative PR is a remaining-work delta rather than the literal implementation history</td>
-<td>Use baseline <code>22cfff9</code>; after grandfathered #58 merges, create the milestone branch for conflict closure and closeout</td>
+<td>Use baseline <code>22cfff9</code>; the completed cutover places #59, closeout, and their handoffs on the milestone branch</td>
 </tr>
 </tbody>
 </table>
@@ -492,6 +493,11 @@ remain one row per merged PR.</p>
 <td>2026-07-27</td>
 <td>Accept #57 and keep conflicting evidence ahead of closeout</td>
 <td>The live Chase causal proof closes M005-09, but its accepted contract explicitly leaves M005-08 open; closeout cannot conceal an unspecified conflict policy</td>
+</tr>
+<tr>
+<td>2026-07-27</td>
+<td>Complete the branch-topology cutover and open PR #59</td>
+<td>Remaining M005 review units now target the milestone branch; the cumulative PR will represent the remaining-work delta</td>
 </tr>
 </tbody>
 </table>

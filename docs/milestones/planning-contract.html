@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="dac5f3ad00a1c19cb1056ca7c9ce5746aa1c767bc251608ad2e4b4b19fc95cad">
+  <meta name="source-sha256" content="e1ae4143657eb0c0bfa3987b26b742fdac5bd6aa1c18018f2647d824a3994220">
   <base target="_blank">
   <title>Milestone Planning And Delivery Contract</title>
   <style>
@@ -73,13 +73,13 @@ retrofitted to this format.</p>
 <ol>
 <li>feature-level milestone outcomes;</li>
 <li>planning priority (frontier);</li>
-<li>review-sized PR deliverables (review units);</li>
-<li>implementation tasks inside a review unit;</li>
+<li>review-sized proposal and implementation PR deliverables (review units);</li>
+<li>implementation tasks inside an accepted proposal;</li>
 <li>external evidence units;</li>
 <li>milestone closeout;</li>
 <li>Git branches.</li>
 </ol>
-<p>Minimize manual synchronization after a merge. A normal accepted review unit
+<p>Minimize manual synchronization after a merge. A normal accepted implementation
 should require only a handful of milestone-plan edits:</p>
 <ol>
 <li>add one accepted-review-unit ledger row;</li>
@@ -121,10 +121,10 @@ should require only a handful of milestone-plan edits:</p>
 <p>The frontier determines priority and readiness. It is not a detailed speculative
 roadmap.</p>
 <p>A <strong>next-frontier candidate</strong> is not a name stub. Selecting one defines a
-minimal pre-implementation acceptance contract so promotion can open a branch
-against a frozen scope rather than inventing the unit during coding. Full
-adversarial matrices, file impact, and exact validation remain on the future
-PR; they do not replace the plan-level contract.</p>
+minimal pre-implementation acceptance contract so promotion can open a proposal
+branch against a frozen scope rather than inventing the unit during coding.
+Full adversarial matrices, file impact, and exact validation are settled in the
+independent proposal before implementation begins.</p>
 <p>Promote work to the <strong>current</strong> frontier only when it is:</p>
 <ol>
 <li><strong>contractable now</strong> through one review question; and</li>
@@ -141,9 +141,10 @@ scope merely to keep the slot populated.</p>
 that close a contractable edge over many named subdivisions that multiply
 handoffs.</p>
 <h3>Review Unit</h3>
-<p>A <strong>review unit</strong> is one complete pull-request deliverable.</p>
-<p>It implements or proves one frontier claim and answers <strong>one primary review
-question</strong>.</p>
+<p>A <strong>review unit</strong> is one complete pull-request deliverable. A frontier normally
+has a proposal review unit followed by an implementation review unit.</p>
+<p>It proposes, implements, or proves one frontier claim and answers <strong>one primary
+review question</strong>.</p>
 <p>A review unit may be:</p>
 <ul>
 <li>deterministic invariant closure;</li>
@@ -220,11 +221,15 @@ milestone or pre-plan should be activated.</p>
 </tr>
 <tr>
 <td>Detailed invariant and adversarial matrix</td>
-<td>Review-unit PR</td>
+<td>Accepted proposal document</td>
 </tr>
 <tr>
-<td>File impact and exact validation commands</td>
-<td>Review-unit PR</td>
+<td>Planned file impact and validation commands</td>
+<td>Accepted proposal document</td>
+</tr>
+<tr>
+<td>Actual file impact and validation results</td>
+<td>Implementation PR</td>
 </tr>
 <tr>
 <td>Review findings and repair history</td>
@@ -261,6 +266,7 @@ reference documentation.</p>
 <pre><code class="language-text">docs/milestones/&lt;number&gt;-&lt;slug&gt;/
 ├── plan.md          # canonical plan (active milestones)
 ├── plan.html        # generated; do not edit directly
+├── proposals/       # independently reviewed frontier contracts
 ├── closeout.md      # created at closeout
 └── evidence/
 </code></pre>
@@ -278,9 +284,9 @@ required to gain a <code>plan.md</code>.</p>
 <p>Use one integration branch per active milestone.</p>
 <pre><code class="language-text">main
 └── milestone/&lt;number&gt;-&lt;slug&gt;
-    ├── m&lt;number&gt;/&lt;review-unit&gt;-&lt;slug&gt;
-    ├── m&lt;number&gt;/&lt;review-unit&gt;-&lt;slug&gt;
-    └── m&lt;number&gt;/closeout
+    ├── m&lt;number&gt;/&lt;frontier&gt;-proposal
+    ├── m&lt;number&gt;/&lt;frontier&gt;
+    └── ...
 </code></pre>
 <h3><code>main</code></h3>
 <p>Completed milestones and explicitly approved maintenance only.</p>
@@ -288,20 +294,28 @@ required to gain a <code>plan.md</code>.</p>
 <p>All accepted work for one active milestone: accepted review units, plan updates,
 evidence, reference updates, and closeout.</p>
 <p>Open one long-lived <strong>draft cumulative PR</strong> from the milestone branch to <code>main</code>.</p>
-<h3><code>m&lt;number&gt;/&lt;review-unit&gt;-&lt;slug&gt;</code></h3>
-<p>One review-sized deliverable.</p>
-<p>Every review-unit branch:</p>
+<h3>Frontier branches</h3>
+<p>Each frontier has two independently reviewed branches:</p>
 <ul>
-<li>starts from the updated milestone branch;</li>
+<li><code>m&lt;number&gt;/&lt;frontier&gt;-proposal</code> contains only the tracked proposal, canonical
+  plan transition, and generated plan HTML;</li>
+<li><code>m&lt;number&gt;/&lt;frontier&gt;</code> implements only the accepted proposal.</li>
+</ul>
+<p>Both branches:</p>
+<ul>
+<li>start from the updated milestone branch at their permitted workflow state;</li>
 <li><strong>targets the milestone branch</strong>, never <code>main</code> directly;</li>
 <li>contains one primary review question;</li>
 <li>leaves the milestone branch coherent after merge.</li>
 </ul>
-<p>Prefer squash-merging review-unit PRs into the milestone branch. Merge the final
-cumulative milestone PR into <code>main</code> with a <strong>merge commit</strong> so accepted review
-units remain visible.</p>
-<p>Do not begin the next implementation branch before the current review unit
-merges unless the milestone decision log records a narrow parallel exception.</p>
+<p>Prefer squash-merging both PRs into the milestone branch. Proposal merge is an
+approval receipt, not implementation acceptance. Merge the final cumulative
+milestone PR into <code>main</code> with a <strong>merge commit</strong> so accepted frontier history
+remains visible.</p>
+<p>Do not create an implementation branch until its proposal PR has merged and the
+workflow records <code>ready_for_implementation</code>. Do not begin the next frontier
+before the current implementation PR merges unless the milestone decision log
+records a narrow parallel exception.</p>
 <p>If approved maintenance reaches <code>main</code> during an active milestone, merge updated
 <code>main</code> into the milestone branch before starting another review unit. Do not
 rebase or force-push a published milestone branch.</p>
@@ -353,7 +367,7 @@ branch model at the declared cutover.</p>
 </tr>
 <tr>
 <td>Current frontier</td>
-<td>short name — PR <code>#…</code></td>
+<td>short name</td>
 </tr>
 <tr>
 <td>Started</td>
@@ -418,33 +432,38 @@ table.</p>
 <h3>6. Current Delivery</h3>
 <p>Exactly one current frontier while a milestone is active, plus one
 next-frontier slot containing zero or one candidate.</p>
-<p><strong>Current frontier</strong> records: name, planned branch, review kind, one review
-question, enforcement or acceptance owner, affected exit criteria,
-prerequisite, and concise milestone-level non-goal. Add and link its PR once the
-branch opens. Do <strong>not</strong> paste the PR matrix or file impact here.</p>
+<p><strong>Current frontier</strong> records: name, workflow state, separate proposal and
+implementation branches, proposal path, review kind, one review question,
+enforcement or acceptance owner, affected exit criteria, prerequisite, and
+concise milestone-level non-goal. Record the accepted proposal PR and merge
+commit before implementation starts. Add the active PR only for the phase
+currently under review.</p>
 <p>When populated, the <strong>next-frontier candidate</strong> is a pre-implementation
 acceptance contract. It is valid only when it records at least:</p>
 <ul>
 <li><strong>name;</strong></li>
-<li><strong>planned review-unit branch;</strong></li>
+<li><strong>planned proposal branch;</strong></li>
+<li><strong>planned implementation branch;</strong></li>
+<li><strong>planned proposal path;</strong></li>
 <li><strong>expected review kind;</strong></li>
-<li><strong>one review question</strong> stable enough that promotion would open
-  implementation against it;</li>
+<li><strong>one review question</strong> stable enough that promotion would open proposal work
+  against it;</li>
 <li><strong>enforcement or acceptance owner</strong> (module, boundary, procedure surface, or
   closeout judgment surface);</li>
 <li><strong>affected exit criteria</strong> (stable IDs);</li>
 <li><strong>prerequisite;</strong></li>
 <li><strong>concise non-goals</strong> (what must not leak into that unit).</li>
 </ul>
-<p>It is not started and must not yet have an implementation branch or PR. The
-acceptance boundary—question, owner, non-goals, and affected exit criteria—is
-<strong>frozen before the implementation branch is opened</strong>. Implementation detail,
-adversarial matrix, file impact, and exact validation commands stay on the
-future PR; they may be sketched during co-review but do not substitute for the
-plan-level contract. Prerequisite status and residual evidence may update as
-the current frontier lands; do not silently widen the candidate’s review
-question or non-goals after the branch is opened—that requires an explicit plan
-decision.</p>
+<p>It is not started and must not yet have either branch or a PR. The acceptance
+boundary—question, owner, non-goals, and affected exit criteria—is frozen before
+the proposal branch opens. The proposal then defines implementation detail,
+adversarial matrix, file impact, and validation plan in a tracked document.
+That proposal is reviewed and merged independently, without implementation
+changes. Only its accepted merge may move the frontier to
+<code>ready_for_implementation</code> and permit the implementation branch to open.
+Prerequisite status and residual evidence may update as the current frontier
+lands; do not silently widen the candidate’s question or non-goals after
+proposal work starts.</p>
 <p>A name plus a vague “likely question” alone is not a candidate. Use an explicit
 empty slot instead:</p>
 <pre><code class="language-markdown">### Next-Frontier Candidate
@@ -454,7 +473,7 @@ empty slot instead:</p>
 - Reason: &lt;why another contract is not justified now&gt;
 - Revisit when: &lt;named evidence, decision, or closeout result&gt;
 </code></pre>
-<p>The empty slot opens no implementation branch. It is the required terminal state
+<p>The empty slot opens no proposal or implementation branch. It is the required terminal state
 while closeout is current, and it may also be used while a named blocker prevents
 honest candidate selection.</p>
 <p><strong>Frontier handoff:</strong> closing the current frontier (accepting its review unit)
@@ -468,7 +487,28 @@ Delivery without a current frontier while the milestone is active: closeout
 becomes current when it is the active review unit, and a bounded decision or
 evidence unit becomes current when more evidence is required to choose
 implementation work.</p>
-<h3>7. Accepted Review Units</h3>
+<h3>7. Workflow History</h3>
+<p>Append-only state-transition ledger:</p>
+<table>
+<thead>
+<tr>
+<th>Frontier</th>
+<th>State</th>
+<th>Evidence</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>The latest row must match the current frontier and its machine-readable workflow
+state. Preserve proposal acceptance and implementation acceptance as separate
+events.</p>
+<h3>8. Accepted Review Units</h3>
 <p>Append-only one-row-per-merged-PR ledger:</p>
 <table>
 <thead>
@@ -490,13 +530,13 @@ implementation work.</p>
 </tr>
 </tbody>
 </table>
-<h3>8. Open Risks And Unverified Assumptions</h3>
+<h3>9. Open Risks And Unverified Assumptions</h3>
 <p>Only unresolved items that affect milestone acceptance or frontier selection.
 Remove resolved rows.</p>
-<h3>9. Milestone Decisions</h3>
+<h3>10. Milestone Decisions</h3>
 <p>Only decisions that change objective, usage, scope, exit criteria, review-unit
 boundaries, external assumptions, or activation/closeout policy.</p>
-<h3>10. Closeout</h3>
+<h3>11. Closeout</h3>
 <p>While active, keep minimal: blocked until every exit criterion is <code>Met</code>; list
 closeout outputs. Write substantive closeout only when closeout is the current
 review unit.</p>
@@ -554,6 +594,63 @@ paths and tests.</p>
 </tr>
 </tbody>
 </table>
+<h3>Proposal And Implementation Are Separate</h3>
+<p>Every frontier moves through these states in order:</p>
+<table>
+<thead>
+<tr>
+<th>Workflow state</th>
+<th>Meaning</th>
+<th>Permitted work</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ready_for_proposal</code></td>
+<td>The bounded frontier is ready to hand to a proposal author</td>
+<td>Start only the proposal branch</td>
+</tr>
+<tr>
+<td><code>proposal_in_review</code></td>
+<td>A proposal is being authored or reviewed</td>
+<td>Proposal document and plan transition only</td>
+</tr>
+<tr>
+<td><code>ready_for_implementation</code></td>
+<td>The proposal PR merged and its exact commit is recorded</td>
+<td>Start only the implementation branch</td>
+</tr>
+<tr>
+<td><code>implementation_in_review</code></td>
+<td>Accepted scope is being implemented or reviewed</td>
+<td>Product, test, and documentation changes described by the accepted proposal</td>
+</tr>
+</tbody>
+</table>
+<p>The expected collaboration is explicit:</p>
+<ol>
+<li>the reviewer reports <strong>ready for proposal</strong> and stops;</li>
+<li>the operator gives proposal work to the proposal author;</li>
+<li>the reviewer reviews and finalizes that proposal without implementation;</li>
+<li>proposal merge records acceptance and the reviewer reports <strong>ready for
+   implementation</strong>;</li>
+<li>the operator gives the accepted proposal to the implementer;</li>
+<li>implementation review begins only after implementation is complete enough
+   to answer the accepted review question.</li>
+</ol>
+<p>The proposal author and implementer may be the same person or model, but they
+must operate in separate branches and review phases. The reviewer must not
+silently fill both roles in one change.</p>
+<p>Each proposal lives at the current frontier’s declared <code>proposal path</code> and uses
+<code>.github/PULL_REQUEST_TEMPLATE/proposal.md</code>. It records the review question,
+proposed contract, owner, affected paths, adversarial matrix, assumptions,
+non-goals, file impacts, and validation plan. It contains no product code,
+tests of unimplemented behavior, generated runtime artifacts, or implementation
+repair.</p>
+<p>Each implementation PR uses <code>.github/pull_request_template.md</code>, links the
+accepted proposal PR and merge commit, and reconciles its actual diff to that
+proposal. A changed proposal requires a new proposal review; implementation may
+not rewrite its own acceptance boundary.</p>
 <h3>Review-Unit PR States</h3>
 <table>
 <thead>
@@ -584,10 +681,15 @@ paths and tests.</p>
 <p>Approval does <strong>not</strong> mean the milestone is complete, every improvement belongs
 in this PR, the next frontier is automatically approved, or external
 assumptions are proven.</p>
-<h3>Review-Unit PR Template</h3>
+<h3>Proposal PR Template</h3>
+<p>Use <code>.github/PULL_REQUEST_TEMPLATE/proposal.md</code>. The proposal document itself is
+the durable contract; the PR body gives the reviewer its milestone context,
+question, scope, and explicit confirmation that no implementation is present.</p>
+<h3>Implementation PR Template</h3>
 <p>Use <code>.github/pull_request_template.md</code> (required headings):</p>
 <ul>
 <li>Milestone context</li>
+<li>Accepted proposal</li>
 <li>Review kind</li>
 <li>Review question</li>
 <li>User or operator impact</li>
@@ -604,12 +706,15 @@ assumptions are proven.</p>
 <li>Validation</li>
 <li>Review notes</li>
 </ul>
-<p>Detailed matrices and file impacts belong <strong>only</strong> in the PR, not the milestone plan.</p>
+<p>Detailed matrices, file impacts, and validation design originate in the
+accepted proposal. The implementation PR reconciles them to observed work
+without silently changing them.</p>
 <h3>Invariant Closure (When Claiming Universals)</h3>
 <p>Words such as <code>bounded</code>, <code>detached</code>, <code>deterministic</code>, <code>exact</code>, <code>fail-closed</code>,
 <code>fresh</code>, and <code>no movement</code> are universal guarantees, not positive-path
-examples. Record invariant, owner, affected paths, adversarial matrix, external
-assumptions, and unverified limits in the PR.</p>
+examples. Settle invariant, owner, affected paths, adversarial matrix, external
+assumptions, and unverified limits in the proposal. The implementation PR
+reports how the accepted contract was enforced and validated.</p>
 <p>Before requesting review:</p>
 <ol>
 <li>Test the failure class and adjacent paths, not only the first reproduction.</li>
@@ -676,7 +781,29 @@ link to completion usage and exit criteria, list of accepted review units,
 status, unresolved risks, final validation at closeout. Do not paste every
 child PR matrix.</p>
 <h2>Merge And Promotion Procedure</h2>
-<p>After a review-unit PR is accepted:</p>
+<p>Inspect the current handoff before assigning work:</p>
+<pre><code class="language-sh">python3 docs/milestones/workflow.py status \
+  --plan docs/milestones/&lt;number&gt;-&lt;slug&gt;/plan.md
+</code></pre>
+<p>When it reports <code>ready_for_proposal</code>, create only the proposal branch:</p>
+<pre><code class="language-sh">python3 docs/milestones/workflow.py start-proposal \
+  --plan docs/milestones/&lt;number&gt;-&lt;slug&gt;/plan.md \
+  --branch m&lt;number&gt;/&lt;frontier&gt;-proposal
+</code></pre>
+<p>The proposal author commits the proposal artifact, plan transition, and rendered
+HTML, then opens a proposal PR to the milestone branch. After review and merge,
+the maintainer updates the clean milestone branch and records acceptance:</p>
+<pre><code class="language-sh">python3 docs/milestones/workflow.py accept-proposal \
+  --plan docs/milestones/&lt;number&gt;-&lt;slug&gt;/plan.md \
+  --pr &lt;proposal-pr-number&gt;
+</code></pre>
+<p>Inspect and commit the resulting plan and HTML transition. Only when status
+reports <code>ready_for_implementation</code> may the implementation branch start:</p>
+<pre><code class="language-sh">python3 docs/milestones/workflow.py start-implementation \
+  --plan docs/milestones/&lt;number&gt;-&lt;slug&gt;/plan.md \
+  --branch m&lt;number&gt;/&lt;frontier&gt;
+</code></pre>
+<p>After the implementation PR is accepted:</p>
 <ol>
 <li>squash-merge it into the milestone branch;</li>
 <li>the maintainer who merges it runs the executable handoff below on the clean
@@ -689,24 +816,29 @@ child PR matrix.</p>
 python3 docs/milestones/workflow.py handoff \
   --plan docs/milestones/&lt;number&gt;-&lt;slug&gt;/plan.md \
   --receipt /path/to/handoff.json
-python3 docs/milestones/workflow.py start \
-  --plan docs/milestones/&lt;number&gt;-&lt;slug&gt;/plan.md \
-  --branch m&lt;number&gt;/&lt;review-unit&gt;-&lt;slug&gt;
 </code></pre>
-<p>The tool, rather than agent memory, enforces the order. It refuses a dirty
-worktree, the wrong branch, a receipt whose PR does not match the current
-frontier, or a merge commit that is not already an ancestor of the milestone
-branch. It also asks GitHub to confirm that the named PR is merged into that
-milestone branch at the receipt SHA. It validates criterion statuses and
-frontier fields, limits criterion updates to the current frontier, prevents
-premature closeout, updates the ledger and risks, promotes the already-reviewed
-next candidate (or records a blocked/closed outcome), resets the next slot, and
-regenerates HTML. It then leaves the narrow diff for inspection and commit.
-<code>docs/render_markdown.py</code> invokes the same validator, so CI rejects hand-edited
-plans that bypass the state contract. The <code>start</code> command then refuses to create
-a review-unit branch unless the handoff is committed, the worktree is clean, the
-current frontier has no already-open PR, and its planned branch matches the
-requested branch.</p>
+<p>The helper, rather than agent memory, enforces the local order. It refuses a
+dirty worktree, the wrong branch, a branch/state mismatch, an unmerged proposal,
+an implementation start without an accepted proposal, an implementation PR
+from the wrong branch, or a merge commit that is not already an ancestor of the
+milestone branch. Proposal acceptance asks GitHub to confirm
+the exact base, head, merge commit, and changed-file allowlist. Implementation
+handoff asks GitHub to confirm the implementation PR and commit, then limits
+criterion updates to the current frontier, prevents premature closeout, updates
+the accepted ledger and risks, promotes the reviewed next candidate to
+<code>ready_for_proposal</code>, records workflow history, and regenerates HTML.</p>
+<p>CI runs <code>workflow.py validate-pr</code> on every PR targeting a milestone branch. A
+proposal PR may change only its declared proposal document, canonical plan, and
+generated plan HTML. An implementation PR is rejected unless its base records
+an accepted proposal; it may not modify that proposal or the frozen frontier.
+<code>docs/render_markdown.py</code> invokes the same plan validator, so hand-edited state
+that omits required fields or history is rejected.</p>
+<p>The machine cannot prove which model authored a phase, that a reviewer
+understood a proposal, or that approval was intellectually sound. The operator
+owns those judgments. What the repository does guarantee is that the current
+state and next handoff are visible, the accepted proposal is durable, proposal
+and implementation diffs are separate, and implementation cannot pass CI
+before proposal acceptance.</p>
 <p>The handoff commit is a narrow exception to PR-only changes because it applies
 mechanical post-merge facts that cannot truthfully exist in the merged review
 unit beforehand. It must not introduce code, widen an acceptance contract,
@@ -727,7 +859,7 @@ candidate. When none is ready, leave the slot empty rather than forcing one.</p>
 <li>review the milestone as a whole;</li>
 <li>merge into <code>main</code> with a merge commit;</li>
 <li>tag the mainline merge;</li>
-<li>remove obsolete milestone and review-unit branches;</li>
+<li>remove obsolete milestone, proposal, and implementation branches;</li>
 <li>activate or revise the next pre-plan only after closeout
    (this is the cross-milestone handoff, distinct from in-milestone
    frontier handoff above).</li>
@@ -753,7 +885,7 @@ directly.</p>
 <li>create a detailed long-term roadmap;</li>
 <li>introduce many package sub-IDs;</li>
 <li>turn the milestone plan into a ticket backlog;</li>
-<li>copy PR-level matrices into the plan;</li>
+<li>copy proposal-level matrices into the plan;</li>
 <li>require one branch per implementation task;</li>
 <li>equate PR quality with line count;</li>
 <li>make generated HTML a second manually edited source of truth.</li>

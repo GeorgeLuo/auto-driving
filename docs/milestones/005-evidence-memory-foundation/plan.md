@@ -3,12 +3,12 @@
 | Field | Value |
 | --- | --- |
 | Status | Active |
-| Milestone branch | `milestone/005-evidence-memory-foundation` (create from `main` after #58 merges) |
+| Milestone branch | `milestone/005-evidence-memory-foundation` (active; created from `main` after #58) |
 | Cumulative PR | TBD — transitional closeout delta from the milestone branch to `main`; whole-milestone judgment uses this plan and baseline |
 | Current frontier | Conflicting evidence semantics |
 | Contract baseline | `22cfff9` — M005 work through PR #50, before the compact contract |
 | Grandfathered PRs | #57 (accepted evidence unit), #58 (contract migration); both retain their existing `main` targets |
-| Cutover | #57 merged to `main`; #58 records its accepted result and establishes the remaining conflict frontier; create the milestone branch from `main` after #58 |
+| Cutover | #57 merged to `main`; #58 recorded its accepted result and established the remaining conflict frontier; the milestone branch was created from resulting `main` |
 | Started | 2026-07-15 |
 | Action policy | Idle / no movement for the entire milestone |
 
@@ -66,7 +66,11 @@ model, changing perception semantics, or granting movement authority.
 
 **Conflicting evidence semantics**
 
-- Branch: `m005/conflicting-evidence` (planned; not opened)
+- Workflow state: ready_for_proposal
+- Proposal branch: `m005/conflicting-evidence-proposal` (planned; not opened)
+- Implementation branch: `m005/conflicting-evidence` (exists; draft PR #59 is paused)
+- Proposal path: `docs/milestones/005-evidence-memory-foundation/proposals/conflicting-evidence.md`
+- Paused implementation: [#59](https://github.com/GeorgeLuo/auto-driving/pull/59) was opened before the independent proposal gate and cannot become ready or merge until a proposal is accepted
 - Review kind: Deterministic invariant closure
 - Review question: Does the bounded evidence ledger handle contradictory attributed evidence, same-slot recurrence, missing evidence, and structurally incompatible updates deterministically without silently claiming semantic truth?
 - Acceptance owner: `BoundedEvidenceLedger` update policy plus focused implementation and replay fixtures
@@ -78,7 +82,9 @@ model, changing perception semantics, or granting movement authority.
 
 **Milestone closeout**
 
-- Branch: `m005/closeout` (planned; not opened)
+- Proposal branch: `m005/closeout-proposal` (planned; not opened)
+- Implementation branch: `m005/closeout` (planned; not opened)
+- Proposal path: `docs/milestones/005-evidence-memory-foundation/proposals/closeout.md`
 - Review kind: Milestone closeout
 - Review question: Is milestone 005 complete as a whole—every exit criterion Met, completion usage supported, residual risk stated—and should the 006 pre-plan be activated, revised, or abandoned?
 - Acceptance owner: `closeout.md` plus the cumulative milestone PR judgment against exit criteria and completion usage
@@ -89,6 +95,12 @@ model, changing perception semantics, or granting movement authority.
 Not started; no closeout branch yet. The acceptance boundary is frozen, but
 the branch cannot start until the current conflict frontier closes M005-08.
 Do not move conflict implementation into closeout.
+
+## Workflow History
+
+| Frontier | State | Evidence |
+| --- | --- | --- |
+| Conflicting evidence semantics | ready_for_proposal | #58 froze the minimal frontier contract; draft implementation PR #59 is paused because no independent proposal has been reviewed and accepted |
 
 ## Accepted Review Units
 
@@ -131,6 +143,7 @@ remain one row per merged PR.
 | 2026-07-24 | Require a minimal pre-implementation acceptance contract for next-frontier candidates | Selecting “what’s next” must freeze question, owner, exit criteria, and non-goals before a branch is opened; name stubs are not candidates |
 | 2026-07-26 | Cut over M005 after grandfathered PR #57 and contract PR #58 merge in that order | Avoid retargeting #57 or merging conflicting hand-authored HTML; #58 becomes the canonical plan migration and the remaining review units use the milestone branch |
 | 2026-07-27 | Accept #57 and keep conflicting evidence ahead of closeout | The live Chase causal proof closes M005-09, but its accepted contract explicitly leaves M005-08 open; closeout cannot conceal an unspecified conflict policy |
+| 2026-07-27 | Separate proposal review from implementation review | A lower model authors a proposal, the reviewer accepts it, and only then may implementation begin; machine state and history must expose the handoff |
 
 ## Closeout
 

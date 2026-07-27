@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="6be64c90a40776947a71ba8734ec40eb020dc45db3c32d56f67c6a21dde4de63">
+  <meta name="source-sha256" content="22009a2d8ae93b38dca0be4b2a8c8f1919e3c4b7d45b4b92695d04061168bd3c">
   <base target="_blank">
   <title>Milestone plan — 005-evidence-memory-foundation</title>
   <style>
@@ -77,7 +77,7 @@
 </tr>
 <tr>
 <td>Milestone branch</td>
-<td><code>milestone/005-evidence-memory-foundation</code> (create from <code>main</code> after #58 merges)</td>
+<td><code>milestone/005-evidence-memory-foundation</code> (active; created from <code>main</code> after #58)</td>
 </tr>
 <tr>
 <td>Cumulative PR</td>
@@ -97,7 +97,7 @@
 </tr>
 <tr>
 <td>Cutover</td>
-<td>#57 merged to <code>main</code>; #58 records its accepted result and establishes the remaining conflict frontier; create the milestone branch from <code>main</code> after #58</td>
+<td>#57 merged to <code>main</code>; #58 recorded its accepted result and established the remaining conflict frontier; the milestone branch was created from resulting <code>main</code></td>
 </tr>
 <tr>
 <td>Started</td>
@@ -303,7 +303,11 @@ model, changing perception semantics, or granting movement authority.</p>
 <h3>Current Frontier</h3>
 <p><strong>Conflicting evidence semantics</strong></p>
 <ul>
-<li>Branch: <code>m005/conflicting-evidence</code> (planned; not opened)</li>
+<li>Workflow state: ready_for_proposal</li>
+<li>Proposal branch: <code>m005/conflicting-evidence-proposal</code> (planned; not opened)</li>
+<li>Implementation branch: <code>m005/conflicting-evidence</code> (exists; draft PR #59 is paused)</li>
+<li>Proposal path: <code>docs/milestones/005-evidence-memory-foundation/proposals/conflicting-evidence.md</code></li>
+<li>Paused implementation: <a href="https://github.com/GeorgeLuo/auto-driving/pull/59">#59</a> was opened before the independent proposal gate and cannot become ready or merge until a proposal is accepted</li>
 <li>Review kind: Deterministic invariant closure</li>
 <li>Review question: Does the bounded evidence ledger handle contradictory attributed evidence, same-slot recurrence, missing evidence, and structurally incompatible updates deterministically without silently claiming semantic truth?</li>
 <li>Acceptance owner: <code>BoundedEvidenceLedger</code> update policy plus focused implementation and replay fixtures</li>
@@ -314,7 +318,9 @@ model, changing perception semantics, or granting movement authority.</p>
 <h3>Next-Frontier Candidate</h3>
 <p><strong>Milestone closeout</strong></p>
 <ul>
-<li>Branch: <code>m005/closeout</code> (planned; not opened)</li>
+<li>Proposal branch: <code>m005/closeout-proposal</code> (planned; not opened)</li>
+<li>Implementation branch: <code>m005/closeout</code> (planned; not opened)</li>
+<li>Proposal path: <code>docs/milestones/005-evidence-memory-foundation/proposals/closeout.md</code></li>
 <li>Review kind: Milestone closeout</li>
 <li>Review question: Is milestone 005 complete as a whole—every exit criterion Met, completion usage supported, residual risk stated—and should the 006 pre-plan be activated, revised, or abandoned?</li>
 <li>Acceptance owner: <code>closeout.md</code> plus the cumulative milestone PR judgment against exit criteria and completion usage</li>
@@ -325,6 +331,23 @@ model, changing perception semantics, or granting movement authority.</p>
 <p>Not started; no closeout branch yet. The acceptance boundary is frozen, but
 the branch cannot start until the current conflict frontier closes M005-08.
 Do not move conflict implementation into closeout.</p>
+<h2>Workflow History</h2>
+<table>
+<thead>
+<tr>
+<th>Frontier</th>
+<th>State</th>
+<th>Evidence</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Conflicting evidence semantics</td>
+<td>ready_for_proposal</td>
+<td>#58 froze the minimal frontier contract; draft implementation PR #59 is paused because no independent proposal has been reviewed and accepted</td>
+</tr>
+</tbody>
+</table>
 <h2>Accepted Review Units</h2>
 <table>
 <thead>
@@ -492,6 +515,11 @@ remain one row per merged PR.</p>
 <td>2026-07-27</td>
 <td>Accept #57 and keep conflicting evidence ahead of closeout</td>
 <td>The live Chase causal proof closes M005-09, but its accepted contract explicitly leaves M005-08 open; closeout cannot conceal an unspecified conflict policy</td>
+</tr>
+<tr>
+<td>2026-07-27</td>
+<td>Separate proposal review from implementation review</td>
+<td>A lower model authors a proposal, the reviewer accepts it, and only then may implementation begin; machine state and history must expose the handoff</td>
 </tr>
 </tbody>
 </table>

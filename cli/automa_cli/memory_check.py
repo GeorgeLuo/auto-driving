@@ -31,6 +31,14 @@ from implementations.vehicle.chase_sim.frame_identity import (
 )
 
 from .automation import _automation_dir
+from .chase_max_age import (
+    extract_chase_lifecycle_keys,
+    lifecycle_key_anchors_ms,
+    parse_required_max_age_ms,
+    parse_required_max_records,
+    require_chase_max_age_identity,
+    wait_for_chase_memory_key_expiry,
+)
 from .memory import (
     build_memory_provenance_rows,
     memory_snapshot_digest,
@@ -153,6 +161,7 @@ def run_vehicle_memory_check(
                 output_root=output_root,
                 timeout_s=timeout_s,
                 fresh_timeout_s=fresh_timeout_s,
+                expiry_timeout_s=expiry_timeout_s,
                 min_frames=2,
                 probe_fn=probe_fn,
                 reset_fn=reset_fn,
@@ -212,17 +221,20 @@ def run_chase_shadow_memory_check(
     output_root: Path | None = None,
     timeout_s: float = 3.0,
     fresh_timeout_s: float = 12.0,
+    expiry_timeout_s: float | None = None,
     min_frames: int = 2,
     probe_fn: Callable[[], dict[str, Any]] | None = None,
     reset_fn: Callable[[], dict[str, Any]] | None = None,
     load_latest_frame: Callable[[], dict[str, Any] | None] | None = None,
     load_frame_image: Callable[[str], bytes | None] | None = None,
 ) -> CommandResult:
-    """Score live Chase automation frames for simulator identity + shadow alignment.
+    """Score live Chase automation frames for identity, retention, max-age, reset.
 
     Requires a running automation worker. Candidate cycle results must carry
     ``simulator_frame_index`` and an evaluator-only ``shadow_reference`` with the
-    same index. Map/debug never enter observation or memory inputs.
+    same index. After retained-prior evidence is observed, lifecycle keys must
+    leave live memory under max-age **without** reset. Map/debug never enter
+    observation or memory inputs.
     """
 
     selected = implementation_id or DEFAULT_MEMORY_IMPLEMENTATION
@@ -253,7 +265,11 @@ def run_chase_shadow_memory_check(
     def do_probe() -> dict[str, Any]:
         if probe_fn is not None:
             return probe_fn()
-        return probe_live_memory(vehicle_id=vehicle_id, timeout_s=timeout_s)
+        return probe_live_memory(
+            vehicle_id=vehicle_id,
+            vehicle={"provider": "chase-sim"},
+            timeout_s=timeout_s,
+        )
 
     def do_reset() -> dict[str, Any]:
         if reset_fn is not None:
@@ -294,7 +310,11 @@ def run_chase_shadow_memory_check(
             )
         return reset_payload, after_probe, reset_snapshot, reset_score
 
-    _emit(output, "Memory check (Chase shadow: identity → alignment → provenance → reset)")
+    _emit(
+        output,
+        "Memory check (Chase shadow: identity → alignment → provenance → "
+        "max-age expiry → reset)",
+    )
     _emit(output, f"vehicle: {vehicle_id}")
     _emit(output, f"implementation: {selected}")
     _emit(output, "provider: chase-sim")
@@ -462,6 +482,247 @@ def run_chase_shadow_memory_check(
         f"{'PASS' if isolation_score.get('passed') else 'FAIL'}  "
         f"{isolation_score.get('reason')}",
     )
+
+    # Max-age expiry without reset: retained-prior lifecycle keys must leave
+    # live memory under configured max_age with strict zero control.
+    lifecycle_keys = extract_chase_lifecycle_keys(frames)
+    bounds = probe.get("bounds") if isinstance(probe.get("bounds"), dict) else {}
+
+    def _chase_fail(
+        *,
+        exit_code: int,
+        reason: str,
+        phase_score: dict[str, Any] | None = None,
+    ) -> CommandResult:
+        if phase_score is not None:
+            phase_results.append(
+                {
+                    "phase": "max_age_expiry",
+                    "passed": False,
+                    "score": phase_score,
+                    "lifecycle_source": "live_automation_worker",
+                }
+            )
+        report_early = {
+            "schema": MEMORY_CHECK_RESULT_SCHEMA,
+            "vehicle_id": vehicle_id,
+            "provider": "chase-sim",
+            "implementation_id": selected,
+            "activation": probe.get("activation") or "live_automation_worker",
+            "passed": False,
+            "phases": [item["phase"] for item in phase_results],
+            "phase_results": phase_results,
+            "recorded": False,
+            "record_dir": None,
+            "provenance_extract": None,
+            "error": reason,
+        }
+        if json_output:
+            return CommandResult(
+                exit_code,
+                json.dumps(report_early, indent=2, sort_keys=True, default=str),
+            )
+        return CommandResult(
+            exit_code,
+            "\n".join(
+                [
+                    f"Memory check: {vehicle_id}  FAIL",
+                    "Provider: chase-sim (live shadow)",
+                    f"max_age_expiry: {reason}",
+                ]
+            ),
+        )
+
+    if not lifecycle_keys:
+        score = {
+            "passed": False,
+            "reason": (
+                "no lifecycle keys (retained-prior, non-always-on) available to "
+                "prove max-age expiry without reset"
+            ),
+            "lifecycle_keys": [],
+            "reset_used": False,
+        }
+        _emit(output, f"phase: max_age_expiry  FAIL  {score['reason']}")
+        return _chase_fail(exit_code=1, reason=str(score["reason"]), phase_score=score)
+
+    try:
+        max_age_ms = parse_required_max_age_ms(bounds)
+        max_records = parse_required_max_records(bounds)
+    except ValueError as exc:
+        score = {
+            "passed": False,
+            "reason": str(exc),
+            "lifecycle_keys": sorted(lifecycle_keys),
+            "reset_used": False,
+        }
+        _emit(output, f"phase: max_age_expiry  FAIL  {exc}")
+        return _chase_fail(exit_code=1, reason=str(exc), phase_score=score)
+
+    wait_s = (
+        float(expiry_timeout_s)
+        if expiry_timeout_s is not None
+        else float(max_age_ms) / 1000.0 + 8.0
+    )
+    # Correlate a freshly loaded frame with a concurrent probe so baseline
+    # identity is not a stale collection sample paired with a newer worker.
+    baseline_probe = do_probe()
+    baseline_frame = load_frame()
+    if not isinstance(baseline_frame, dict):
+        baseline_frame = frames[-1] if frames else None
+    try:
+        identity = require_chase_max_age_identity(baseline_probe, baseline_frame)
+    except ValueError as exc:
+        score = {
+            "passed": False,
+            "reason": str(exc),
+            "lifecycle_keys": sorted(lifecycle_keys),
+            "reset_used": False,
+            "max_age_ms": max_age_ms,
+            "identity_stable": False,
+        }
+        _emit(output, f"phase: max_age_expiry  FAIL  {exc}")
+        return _chase_fail(exit_code=1, reason=str(exc), phase_score=score)
+
+    _emit(
+        output,
+        f"phase: max_age_expiry (waiting up to {wait_s:.1f}s for "
+        f"{sorted(lifecycle_keys)} to age out without reset; "
+        f"max_age_ms={max_age_ms}; worker_pid={identity.worker_pid}; "
+        f"run_id={identity.run_id!r}; "
+        f"simulation_epoch={identity.simulation_epoch!r}; "
+        f"capacity_evictions={identity.capacity_eviction_count})",
+    )
+    try:
+        wait_result = wait_for_chase_memory_key_expiry(
+            load_latest_frame=load_frame,
+            probe_fn=do_probe,
+            present_keys=lifecycle_keys,
+            max_age_ms=max_age_ms,
+            timeout_s=wait_s,
+            key_anchors_ms=lifecycle_key_anchors_ms(frames, lifecycle_keys),
+            identity=identity,
+            max_records=max_records,
+        )
+    except TimeoutError as exc:
+        score = {
+            "passed": False,
+            "reason": str(exc),
+            "lifecycle_keys": sorted(lifecycle_keys),
+            "reset_used": False,
+            "max_age_ms": max_age_ms,
+        }
+        return _chase_fail(exit_code=2, reason=str(exc), phase_score=score)
+    except ValueError as exc:
+        score = {
+            "passed": False,
+            "reason": str(exc),
+            "lifecycle_keys": sorted(lifecycle_keys),
+            "reset_used": False,
+            "max_age_ms": max_age_ms,
+        }
+        return _chase_fail(exit_code=1, reason=str(exc), phase_score=score)
+
+    expiry_score = dict(wait_result.score or {})
+    expiry_score.setdefault("reason", wait_result.reason)
+    expiry_frame = wait_result.expiry_frame
+    if isinstance(expiry_frame, dict):
+        frames.append(expiry_frame)
+        if record and wait_result.passed:
+            frame_id = str(expiry_frame.get("frame_id") or "").strip()
+            if not frame_id:
+                reason = (
+                    "max-age expiry passed but expiry frame has no frame_id; "
+                    "cannot record provenance image"
+                )
+                expiry_score["passed"] = False
+                expiry_score["reason"] = reason
+                phase_results.append(
+                    {
+                        "phase": "max_age_expiry",
+                        "passed": False,
+                        "score": expiry_score,
+                        "live_frame_ids": [],
+                        "lifecycle_source": "live_automation_worker",
+                    }
+                )
+                _emit(output, f"phase: max_age_expiry  FAIL  {reason}")
+                return _chase_fail(exit_code=1, reason=reason, phase_score=None)
+            if frame_id not in captured_images:
+                try:
+                    image = load_image(frame_id)
+                except (ConnectionError, OSError, TimeoutError, ValueError) as exc:
+                    reason = (
+                        f"max-age expiry passed but expiry image for {frame_id!r} "
+                        f"could not be loaded: {exc}"
+                    )
+                    expiry_score["passed"] = False
+                    expiry_score["reason"] = reason
+                    phase_results.append(
+                        {
+                            "phase": "max_age_expiry",
+                            "passed": False,
+                            "score": expiry_score,
+                            "live_frame_ids": [frame_id],
+                            "lifecycle_source": "live_automation_worker",
+                        }
+                    )
+                    _emit(output, f"phase: max_age_expiry  FAIL  {reason}")
+                    return _chase_fail(exit_code=1, reason=reason, phase_score=None)
+                if not image:
+                    reason = (
+                        f"max-age expiry passed but expiry image for {frame_id!r} "
+                        "was empty"
+                    )
+                    expiry_score["passed"] = False
+                    expiry_score["reason"] = reason
+                    phase_results.append(
+                        {
+                            "phase": "max_age_expiry",
+                            "passed": False,
+                            "score": expiry_score,
+                            "live_frame_ids": [frame_id],
+                            "lifecycle_source": "live_automation_worker",
+                        }
+                    )
+                    _emit(output, f"phase: max_age_expiry  FAIL  {reason}")
+                    return _chase_fail(exit_code=1, reason=reason, phase_score=None)
+                captured_images[frame_id] = bytes(image)
+
+    phase_results.append(
+        {
+            "phase": "max_age_expiry",
+            "passed": bool(wait_result.passed),
+            "score": expiry_score,
+            "live_frame_ids": (
+                [expiry_frame.get("frame_id")] if isinstance(expiry_frame, dict) else []
+            ),
+            "lifecycle_source": "live_automation_worker",
+            "extra": {
+                "max_age_ms": max_age_ms,
+                "max_records": max_records,
+                "wait_s": wait_s,
+                "reset_used": False,
+                "worker_pid": identity.worker_pid,
+                "run_id": identity.run_id,
+                "simulation_epoch": identity.simulation_epoch,
+                "capacity_eviction_count": identity.capacity_eviction_count,
+                "wait_frame_count": len(wait_result.wait_frames),
+            },
+        }
+    )
+    _emit(
+        output,
+        f"phase: max_age_expiry  "
+        f"{'PASS' if wait_result.passed else 'FAIL'}  "
+        f"{expiry_score.get('reason')}",
+    )
+    if not wait_result.passed:
+        return _chase_fail(
+            exit_code=1,
+            reason=str(expiry_score.get("reason") or wait_result.reason),
+            phase_score=None,  # already appended
+        )
 
     try:
         before_final_probe = do_probe()
@@ -2475,11 +2736,34 @@ def memory_check_record_notes(report: dict[str, Any]) -> list[str]:
         "Live-host records include exact source images when frame pairing is available.",
     ]
     if report.get("provider") == "chase-sim":
-        notes.append(
-            "The live Chase check covers history boundary, atomic shadow alignment, "
-            "ordered provenance, observe-only isolation, and reset; it does not claim "
-            "a live max-age expiry phase."
+        phases = {
+            str(item.get("phase") or "")
+            for item in (report.get("phase_results") or [])
+            if isinstance(item, dict)
+        }
+        max_age_passed = any(
+            isinstance(item, dict)
+            and item.get("phase") == "max_age_expiry"
+            and item.get("passed")
+            for item in (report.get("phase_results") or [])
+            if isinstance(item, dict)
         )
+        if max_age_passed:
+            notes.append(
+                "The live Chase check covers history boundary, atomic shadow alignment, "
+                "ordered provenance, max-age expiry without reset, observe-only isolation, "
+                "and reset."
+            )
+        elif "max_age_expiry" in phases:
+            notes.append(
+                "The live Chase check attempted max-age expiry without reset; "
+                "that phase did not pass—do not treat this record as max-age proof."
+            )
+        else:
+            notes.append(
+                "The live Chase check covers history boundary, atomic shadow alignment, "
+                "ordered provenance, observe-only isolation, and reset."
+            )
     else:
         notes.append(
             "The lifecycle check covers present, dropout survival, max-age expiry, and reset."

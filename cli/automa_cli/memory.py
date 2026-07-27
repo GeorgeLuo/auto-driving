@@ -1328,7 +1328,10 @@ def _reset_chase_memory(
                     pass
                 return result
         # Fallback: detect reset via live probe when worker updated state.
-        live = probe_live_memory(vehicle_id=vehicle_id)
+        # This is already the Chase file protocol. Avoid general vehicle
+        # discovery here: it can outlast the acknowledgement deadline and
+        # hide a result the worker has already written.
+        live = _probe_chase_memory(vehicle_id=vehicle_id)
         if (
             live.get("status") == "live"
             and live.get("last_epoch_id") not in {None, before.get("last_epoch_id")}
@@ -1775,6 +1778,7 @@ def _probe_chase_memory(*, vehicle_id: str) -> dict[str, Any]:
         "probed_at_ms": probed_at_ms,
         "worker_status": state.get("status"),
         "worker_pid": liveness.get("pid"),
+        "run_id": state.get("run_id"),
         "worker_updated_at_ms": liveness.get("updated_at_ms"),
     }
 

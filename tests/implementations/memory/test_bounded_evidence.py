@@ -165,6 +165,7 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
             {"thing:1:14:floor-plane-v0:1:b", "thing:1:14:floor-plane-v0:1:c"},
         )
         self.assertNotIn("thing:1:14:floor-plane-v0:1:a", ids)
+        self.assertEqual(snapshot.metadata.get("capacity_eviction_count"), 1)
 
     def test_reset_starts_new_empty_epoch(self) -> None:
         ledger = BoundedEvidenceLedger(max_records=4, max_age_ms=5_000)

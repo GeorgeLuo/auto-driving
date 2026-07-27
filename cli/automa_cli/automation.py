@@ -10,6 +10,7 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
 from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
@@ -431,6 +432,9 @@ def run_vehicle_automation(
             "frame_index": context.frame_index,
             "simulator_frame_index": simulator_frame_index,
             "simulation_epoch": simulation_epoch,
+            # Immutable automation generation: pairs frame publications with probe.
+            "run_id": state.get("run_id"),
+            "worker_pid": state.get("pid"),
             "captured_at_ms": snapshot.completed_at_ms,
             "cycle_started_at_ms": cycle_started_at_ms,
             "cycle_completed_at_ms": perception_completed_at_ms,
@@ -1730,7 +1734,15 @@ def _manifest_get_dict(manifest: dict[str, Any], section: str, key: str) -> dict
 
 
 def _now_id(prefix: str) -> str:
-    return f"{prefix}-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+    """Generate a unique automation/run identifier.
+
+    Wall-clock seconds alone collide when two workers start in the same second.
+    Append a UUID fragment so the generation token is unique even under a frozen
+    or equal timestamp.
+    """
+
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    return f"{prefix}-{stamp}-{uuid.uuid4().hex[:12]}"
 
 
 def _timestamp_ms() -> int:

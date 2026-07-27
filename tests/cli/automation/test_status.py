@@ -238,3 +238,23 @@ class AutomationStatusTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class AutomationRunIdTests(unittest.TestCase):
+    def test_now_id_is_unique_within_same_wall_clock_second(self) -> None:
+        from datetime import datetime
+        from unittest import mock
+
+        from cli.automa_cli.automation import _now_id
+
+        frozen = datetime(2026, 7, 26, 12, 0, 0)
+        with mock.patch("cli.automa_cli.automation.datetime") as mocked:
+            mocked.now.return_value = frozen
+            first = _now_id("automation")
+            second = _now_id("automation")
+        self.assertNotEqual(first, second)
+        self.assertTrue(first.startswith("automation-20260726-120000-"))
+        self.assertTrue(second.startswith("automation-20260726-120000-"))
+        # Trailing UUID fragments must both be present and distinct.
+        self.assertEqual(len(first.split("-")), 4)
+        self.assertNotEqual(first.rsplit("-", 1)[-1], second.rsplit("-", 1)[-1])

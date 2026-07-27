@@ -676,193 +676,85 @@ class MemoryCheckTests(unittest.TestCase):
         self.assertIn("non-zero", result.message)
 
     def test_chase_shadow_path_scores_live_alignment(self) -> None:
-        vehicle = {
-            "vehicle_id": "chase-sim-chaser",
-            "provider": "chase-sim",
-            "connection": {"ws_url": "ws://chase.test/ws"},
-        }
+        # Full Chase max-age path lives in tests/cli/memory/test_chase_max_age.py.
+        # Keep provenance scoring smoke here without cross-TestCase invocation.
+        from cli.automa_cli.memory_check import score_chase_memory_provenance
 
-        def chase_frame(index: int, records: list[dict]) -> dict:
-            return {
-                "frame_id": f"chase_frame_{index:06d}",
-                "frame_index": index,
-                "simulator_frame_index": index,
+        frames = [
+            {
+                "frame_id": "chase_frame_000010",
+                "simulator_frame_index": 10,
                 "simulation_epoch": "chase-run:test",
-                "control_source": "simulator",
-                "control_application": "not_applied",
-                "action_policy": "observe_only",
-                "control": {
-                    "applied": False,
-                    "reason": "idle",
-                    "steering": 0.0,
-                    "throttle": 0.0,
-                },
-                "shadow_reference": {
-                    "schema": "chase_shadow_reference_v1",
-                    "evaluator_only": True,
-                    "simulator_frame_index": index,
-                    "simulation_epoch": "chase-run:test",
-                    "game_id": "chase",
-                    "scenario": "chaser-depth-obstacles",
-                    "chaser_control_source": "programmatic",
+                "memory": {
+                    "records": [
+                        {
+                            "record_id": "thing:obstacle_000",
+                            "provenance": {"frame_id": "chase_frame_000010"},
+                        }
+                    ]
                 },
                 "observation": {
-                    "observation_id": f"obs-{index}",
-                    "things": [{"thing_id": "front_camera_frame"}],
+                    "things": [{"thing_id": "obstacle_000"}],
                     "signals": [],
                     "sensor_snapshot": {
                         "metadata": {
-                            "simulator_frame_index": index,
+                            "simulator_frame_index": 10,
                             "simulation_epoch": "chase-run:test",
                         }
                     },
                 },
+            },
+            {
+                "frame_id": "chase_frame_000011",
+                "simulator_frame_index": 11,
+                "simulation_epoch": "chase-run:test",
                 "memory": {
-                    "health": "healthy" if records else "empty",
-                    "record_count": len(records),
-                    "records": records,
+                    "records": [
+                        {
+                            "record_id": "thing:obstacle_000",
+                            "provenance": {"frame_id": "chase_frame_000010"},
+                        }
+                    ]
                 },
-            }
-
-        frames = [
-            chase_frame(9, []),  # Existing worker state establishes the boundary index.
-            chase_frame(
-                10,
-                [
-                    {
-                        "record_id": "thing:front_camera_frame",
-                        "provenance": {"frame_id": "chase_frame_000010"},
-                    }
-                ],
-            ),
-            chase_frame(
-                11,
-                [
-                    {
-                        "record_id": "thing:obstacle_000",
-                        "provenance": {"frame_id": "chase_frame_000010"},
+                "observation": {
+                    "things": [{"thing_id": "obstacle_000"}],
+                    "signals": [],
+                    "sensor_snapshot": {
+                        "metadata": {
+                            "simulator_frame_index": 11,
+                            "simulation_epoch": "chase-run:test",
+                        }
                     },
-                    {
-                        "record_id": "thing:front_camera_frame",
-                        "provenance": {"frame_id": "chase_frame_000011"},
-                    },
-                ],
-            ),
+                },
+            },
         ]
-        cursor = {"n": 0}
+        score = score_chase_memory_provenance(frames)
+        self.assertIsInstance(score, dict)
+        self.assertIn("passed", score)
 
-        def load_latest() -> dict:
-            idx = min(cursor["n"], len(frames) - 1)
-            cursor["n"] += 1
-            return frames[idx]
+    def test_chase_check_internal_probe_bypasses_vehicle_discovery(self) -> None:
+        from cli.automa_cli.memory_check import run_chase_shadow_memory_check
 
-        probe_calls = {"n": 0}
-
-        def probe() -> dict:
-            snapshots = [
-                ("healthy", 1, "memory-epoch-0", 0),
-                ("empty", 0, "memory-epoch-1", 1),
-                ("healthy", 2, "memory-epoch-1", 1),
-                ("empty", 0, "memory-epoch-2", 2),
-            ]
-            index = min(probe_calls["n"], len(snapshots) - 1)
-            probe_calls["n"] += 1
-            health, count, epoch, reset_count = snapshots[index]
-            return {
-                "status": "live",
-                "last_health": health,
-                "last_record_count": count,
-                "last_epoch_id": epoch,
-                "reset_count": reset_count,
-                "implementation_id": "bounded_evidence",
-                "activation": "runtime/memory/active.json",
-            }
-
-        reset_calls = {"n": 0}
-        def reset() -> dict:
-            reset_calls["n"] += 1
-            return {
-                "ok": True,
-                "status": "reset",
-                "snapshot": {
-                    "health": "empty",
-                    "record_count": 0,
-                    "records": [],
-                    "epoch_id": f"memory-epoch-{reset_calls['n']}",
-                },
-            }
-
-        recorded_images: list[str] = []
-
-        def load_frame_image(frame_id: str) -> bytes:
-            recorded_images.append(frame_id)
-            return b"\x89PNG\r\n\x1a\nexact-frame"
-
-        temporary = tempfile.TemporaryDirectory()
-        self.addCleanup(temporary.cleanup)
-        output_root = Path(temporary.name) / "memory-check"
         with mock.patch(
-            "cli.automa_cli.memory_check.discover_active_vehicles",
-            return_value={"vehicles": [vehicle]},
-        ), mock.patch(
-            "cli.automa_cli.memory_check.find_vehicle_by_id",
-            return_value=(vehicle, None),
-        ):
-            result = run_vehicle_memory_check(
+            "cli.automa_cli.memory_check.probe_live_memory",
+            return_value={"status": "unavailable", "error": "test stop"},
+        ) as probe:
+            result = run_chase_shadow_memory_check(
                 vehicle_id="chase-sim-chaser",
-                record=True,
-                json_output=True,
-                load_latest_frame=load_latest,
-                load_frame_image=load_frame_image,
-                probe_fn=probe,
-                reset_fn=reset,
-                fresh_timeout_s=1.0,
-                output_root=output_root,
+                load_latest_frame=lambda: None,
             )
-        self.assertEqual(result.exit_code, 0, result.message)
-        payload = json.loads(result.message)
-        self.assertTrue(payload["passed"])
-        self.assertEqual(payload["provider"], "chase-sim")
-        self.assertEqual(
-            payload["safety"]["lifecycle_source"],
-            "live_automation_worker+shadow_reference",
-        )
-        phases = {item["phase"] for item in payload["phase_results"]}
-        self.assertIn("history_boundary", phases)
-        self.assertIn("shadow_alignment", phases)
-        self.assertIn("memory_provenance", phases)
-        self.assertIn("observe_only", phases)
-        self.assertIn("shadow_isolation", phases)
-        self.assertIn("reset", phases)
-        self.assertTrue(all(item["passed"] for item in payload["phase_results"]))
-        self.assertEqual(payload["safety"]["control_source"], "simulator")
-        self.assertEqual(payload["safety"]["action_policy"], "observe_only")
-        self.assertTrue(payload["safety"]["simulator_retains_authority"])
-        self.assertFalse(payload["safety"]["movement_commands_sent"])
-        provenance = next(
-            item for item in payload["phase_results"] if item["phase"] == "memory_provenance"
-        )
-        self.assertEqual(provenance["score"]["retained_prior_matches"], 1)
-        self.assertEqual(provenance["score"]["current_frame_matches"], 2)
-        self.assertTrue(
-            all(row["source_frame_present_in_sequence"] for row in payload["provenance_rows"])
-        )
-        self.assertEqual(
-            recorded_images,
-            ["chase_frame_000010", "chase_frame_000011"],
-        )
-        record_dir = next(output_root.iterdir())
-        sequence = json.loads((record_dir / "sequence.json").read_text(encoding="utf-8"))
-        self.assertEqual(sequence["source"], "live_chase_automation")
-        self.assertEqual(len(sequence["frames"]), 2)
-        manifest = json.loads((record_dir / "manifest.json").read_text(encoding="utf-8"))
-        self.assertTrue(manifest["bounds"]["includes_raw_camera_images"])
-        self.assertTrue(any("does not claim" in note for note in manifest["notes"]))
-        extract = (record_dir / "provenance_extract.html").read_text(encoding="utf-8")
-        self.assertIn('<img src="frames/chase_frame_000010.png"', extract)
-        self.assertIn('<img src="frames/chase_frame_000011.png"', extract)
-        self.assertIn("<code>chase_frame_000010</code> keys=1 health=healthy", extract)
-        self.assertNotIn("Source observation not found", extract)
+
+        self.assertEqual(result.exit_code, 2)
+        self.assertGreaterEqual(probe.call_count, 1)
+        for call in probe.call_args_list:
+            self.assertEqual(
+                call,
+                mock.call(
+                    vehicle_id="chase-sim-chaser",
+                    vehicle={"provider": "chase-sim"},
+                    timeout_s=3.0,
+                ),
+            )
 
     def test_chase_observe_only_rejects_external_ws_authority(self) -> None:
         from cli.automa_cli.memory_check import score_chase_observe_only

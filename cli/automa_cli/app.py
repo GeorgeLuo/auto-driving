@@ -522,11 +522,13 @@ def build_parser() -> argparse.ArgumentParser:
         "check",
         help="Run present/dropout/expiry/reset memory lifecycle gates (Chase or Pi).",
         description=(
-            "Evaluate memory lifecycle gates: present, dropout, expiry, and reset. "
-            "Chase/offline uses a phase script. PiCar scores the live onboard stage "
-            "from publication.memory (no forced dropout, no local ephemeral reducer), "
-            "waits for live age expiry, and POSTs onboard reset. Never moves the car. "
-            "Pass --record for a bounded report, verified JPEG pairs (Pi), and extract."
+            "Evaluate memory lifecycle gates: present, dropout, max-age expiry, and reset. "
+            "Chase (live automation) scores shadow identity/alignment, retained-prior "
+            "provenance, max-age expiry without reset, observe-only control, and reset. "
+            "Offline ids use a phase script. PiCar scores the live onboard stage from "
+            "publication.memory (no forced dropout, no local ephemeral reducer), waits "
+            "for live age expiry, and POSTs onboard reset. Never moves the car. "
+            "Pass --record for a bounded report, source frames, and extract."
         ),
     )
     memory_check.add_argument(
@@ -555,13 +557,25 @@ def build_parser() -> argparse.ArgumentParser:
         "--timeout-s",
         type=float,
         default=3.0,
-        help="Pi HTTP timeout seconds for publication/frame fetches.",
+        help="HTTP/probe timeout seconds (Pi publication fetch; Chase probe/reset wait).",
     )
     memory_check.add_argument(
         "--fresh-timeout-s",
         type=float,
         default=12.0,
-        help="Pi: seconds to wait for a fresh observation frame id.",
+        help=(
+            "Seconds to wait for fresh frames: Pi observation frame id; "
+            "Chase automation sample collection."
+        ),
+    )
+    memory_check.add_argument(
+        "--expiry-timeout-s",
+        type=float,
+        default=None,
+        help=(
+            "Optional max wait for max-age expiry phase (Pi and Chase). "
+            "Default is configured max_age_ms plus a small grace window."
+        ),
     )
     memory_check.add_argument(
         "--json",
@@ -1688,6 +1702,7 @@ def _handle_vehicles_memory_check(args: argparse.Namespace) -> int:
         auto=bool(getattr(args, "auto", False)),
         timeout_s=float(getattr(args, "timeout_s", 3.0)),
         fresh_timeout_s=float(getattr(args, "fresh_timeout_s", 12.0)),
+        expiry_timeout_s=getattr(args, "expiry_timeout_s", None),
     )
     if result.message:
         print(result.message)

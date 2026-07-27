@@ -19,26 +19,33 @@ ROOT = Path(__file__).resolve().parents[2]
 PLAN = ROOT / "docs" / "milestones" / "005-evidence-memory-foundation" / "plan.md"
 
 
+def _plan_with_current_pr(text: str) -> str:
+    marker = "**Conflicting evidence semantics**\n\n"
+    if marker not in text:
+        raise AssertionError("current frontier marker is missing")
+    return text.replace(
+        marker,
+        marker + "- PR: [#59](https://example.invalid/59)\n",
+        1,
+    )
+
+
 def _receipt(*, merge_commit: str = "deadbee") -> dict[str, object]:
     return {
         "schema": "milestone_handoff_v1",
-        "accepted_pr": 57,
+        "accepted_pr": 59,
         "accepted_merge_commit": merge_commit,
         "outcome": "advance",
         "result": "Accepted",
-        "durable_evidence": "evidence/chase-max-age/",
+        "durable_evidence": "Focused conflict and replay tests",
         "criterion_updates": {
             "M005-08": {
                 "status": "Met",
-                "evidence": "Deterministic max-age adversarial coverage accepted in #57",
-            },
-            "M005-09": {
-                "status": "Met",
-                "evidence": "Guided Chase max-age extract accepted in #57",
+                "evidence": "Deterministic conflicting-evidence contract accepted in #59",
             },
         },
         "risk_remove": [
-            "Live Chase max-age has not yet been proven with a tracked guided extract under the new scoring path"
+            "Conflicting evidence from one source/key has no explicit compatibility or replacement contract"
         ],
         "risk_upsert": [],
         "next_frontier": {
@@ -52,6 +59,7 @@ def _receipt(*, merge_commit: str = "deadbee") -> dict[str, object]:
 class MilestonePlanContractTests(unittest.TestCase):
     def setUp(self) -> None:
         self.plan_text = PLAN.read_text(encoding="utf-8")
+        self.open_plan_text = _plan_with_current_pr(self.plan_text)
 
     def test_invalid_exit_status_is_rejected_in_its_table_cell(self) -> None:
         invalid = self.plan_text.replace(
@@ -64,7 +72,7 @@ class MilestonePlanContractTests(unittest.TestCase):
 
     def test_missing_current_frontier_owner_is_rejected(self) -> None:
         invalid = self.plan_text.replace(
-            "- Acceptance owner: live Chase `memory check` scoring path (`chase_max_age` / check harness) and tracked provenance extract\n",
+            "- Acceptance owner: `BoundedEvidenceLedger` update policy plus focused implementation and replay fixtures\n",
             "",
         )
 
@@ -76,8 +84,9 @@ class MilestonePlanContractTests(unittest.TestCase):
 
     def test_frontier_criteria_must_be_known_explicit_ids(self) -> None:
         invalid = self.plan_text.replace(
-            "- Exit criteria affected: M005-08, M005-09\n",
+            "- Exit criteria affected: M005-08\n",
             "- Exit criteria affected: M005-08 through M005-09\n",
+            1,
         )
 
         with self.assertRaisesRegex(
@@ -113,7 +122,7 @@ class MilestonePlanContractTests(unittest.TestCase):
 
     def test_mid_milestone_adoption_requires_cutover_and_baseline_ledger(self) -> None:
         missing_cutover = self.plan_text.replace(
-            "| Cutover | Merge #57 first; then #58 absorbs its accepted result into canonical `plan.md`; closeout is the first M005 unit on the milestone branch |\n",
+            "| Cutover | #57 merged to `main`; #58 records its accepted result and establishes the remaining conflict frontier; create the milestone branch from `main` after #58 |\n",
             "",
         )
         with self.assertRaisesRegex(PlanContractError, "baseline and Cutover"):
@@ -126,76 +135,56 @@ class MilestonePlanContractTests(unittest.TestCase):
         with self.assertRaisesRegex(PlanContractError, "Contract baseline row"):
             validate_plan_text(missing_baseline_row)
 
-    def test_mid_milestone_adoption_names_grandfathered_current_pr(self) -> None:
+    def test_mid_milestone_adoption_names_grandfathered_prs(self) -> None:
         missing_field = self.plan_text.replace(
-            "| Grandfathered PRs | #57 (current evidence unit), #58 (contract migration); both retain their existing `main` targets |\n",
+            "| Grandfathered PRs | #57 (accepted evidence unit), #58 (contract migration); both retain their existing `main` targets |\n",
             "",
         )
         with self.assertRaisesRegex(PlanContractError, "Grandfathered PRs"):
             validate_plan_text(missing_field)
 
-        missing_current = self.plan_text.replace(
-            "#57 (current evidence unit), #58 (contract migration)",
-            "#58 (contract migration)",
-        )
-        with self.assertRaisesRegex(
-            PlanContractError,
-            "transition exception.*Grandfathered PR",
-        ):
-            validate_plan_text(missing_current)
-
     def test_handoff_promotes_closeout_and_allows_terminal_next_slot(self) -> None:
-        updated = apply_handoff(self.plan_text, _receipt())
+        updated = apply_handoff(self.open_plan_text, _receipt())
         state = validate_plan_text(updated)
 
         self.assertEqual(state.status, "Active")
         self.assertEqual(state.current.name, "Milestone closeout")
         self.assertTrue(state.next_frontier.is_empty)
         self.assertIn(
-            ("#57",),
+            ("#59",),
             tuple((row[0],) for row in state.ledger.rows),
         )
         statuses = {row[0]: row[2] for row in state.criteria.rows}
         self.assertEqual(statuses["M005-08"], "Met")
         self.assertEqual(statuses["M005-09"], "Met")
         self.assertNotIn(
-            "Live Chase max-age has not yet been proven",
+            "Conflicting evidence from one source/key has no explicit",
             updated,
         )
 
     def test_handoff_rejects_wrong_current_pr(self) -> None:
         receipt = _receipt()
-        receipt["accepted_pr"] = 58
+        receipt["accepted_pr"] = 60
 
         with self.assertRaisesRegex(PlanContractError, "does not match"):
-            apply_handoff(self.plan_text, receipt)
+            apply_handoff(self.open_plan_text, receipt)
 
     def test_handoff_rejects_duplicate_ledger_entry(self) -> None:
-        marker = (
-            "| #53 | Can operators treat a recorded replay extract as bounded and fail-closed, "
-            "and can a live Chase memory probe be trusted only when the automation worker is fresh? "
-            "| Accepted | M005-03, M005-07, M005-08 | Deterministic record/probe/once-exit tests |"
-        )
-        duplicate_plan = self.plan_text.replace(
+        marker = "\n\nThe baseline row is the explicit adoption boundary"
+        duplicate_plan = self.open_plan_text.replace(
             marker,
-            marker
-            + "\n| #57 | Already accepted | Accepted | M005-08, M005-09 | duplicate |",
+            "\n| #59 | Already accepted | Accepted | M005-08 | duplicate |" + marker,
         )
 
         with self.assertRaisesRegex(PlanContractError, "already in the accepted ledger"):
             apply_handoff(duplicate_plan, _receipt())
 
     def test_plan_validation_rejects_duplicate_ledger_pr_rows(self) -> None:
-        marker = (
-            "| #53 | Can operators treat a recorded replay extract as bounded and fail-closed, "
-            "and can a live Chase memory probe be trusted only when the automation worker is fresh? "
-            "| Accepted | M005-03, M005-07, M005-08 | Deterministic record/probe/once-exit tests |"
-        )
+        marker = "\n\nThe baseline row is the explicit adoption boundary"
         duplicate_plan = self.plan_text.replace(
             marker,
-            marker
-            + "\n| #57 | First row | Accepted | M005-08, M005-09 | first |"
-            + "\n| #57 | Second row | Accepted | M005-08, M005-09 | second |",
+            "\n| #57 | Duplicate accepted result | Accepted | M005-09 | duplicate |"
+            + marker,
         )
 
         with self.assertRaisesRegex(PlanContractError, "duplicate accepted ledger PR"):
@@ -212,7 +201,7 @@ class MilestonePlanContractTests(unittest.TestCase):
             PlanContractError,
             "outside the current frontier: M005-03",
         ):
-            apply_handoff(self.plan_text, receipt)
+            apply_handoff(self.open_plan_text, receipt)
 
     def test_handoff_cannot_invent_next_candidate(self) -> None:
         receipt = _receipt()
@@ -225,10 +214,10 @@ class MilestonePlanContractTests(unittest.TestCase):
             PlanContractError,
             "cannot invent an unreviewed next candidate",
         ):
-            apply_handoff(self.plan_text, receipt)
+            apply_handoff(self.open_plan_text, receipt)
 
     def test_handoff_rejects_premature_closeout_promotion(self) -> None:
-        incomplete = self.plan_text.replace(
+        incomplete = self.open_plan_text.replace(
             "| M005-07 | Default execution writes no logs, frames, or memory history; recording is explicit and bounded | Met |",
             "| M005-07 | Default execution writes no logs, frames, or memory history; recording is explicit and bounded | Partial |",
         )
@@ -240,15 +229,15 @@ class MilestonePlanContractTests(unittest.TestCase):
             apply_handoff(incomplete, _receipt())
 
     def test_closeout_handoff_requires_and_records_all_criteria_met(self) -> None:
-        promoted = apply_handoff(self.plan_text, _receipt())
+        promoted = apply_handoff(self.open_plan_text, _receipt())
         promoted = promoted.replace(
             "**Milestone closeout**\n",
-            "**Milestone closeout**\n\n- PR: [#58](https://example.invalid/58)",
+            "**Milestone closeout**\n\n- PR: [#60](https://example.invalid/60)",
             1,
         )
         close_receipt = {
             "schema": "milestone_handoff_v1",
-            "accepted_pr": 58,
+            "accepted_pr": 60,
             "accepted_merge_commit": "feedbee",
             "outcome": "close",
             "result": "Accepted",
@@ -275,7 +264,7 @@ class MilestonePlanContractTests(unittest.TestCase):
         self.assertTrue(closed.next_frontier.is_empty)
 
     def test_github_metadata_must_match_merge_and_milestone_branch(self) -> None:
-        state = validate_plan_text(self.plan_text)
+        state = validate_plan_text(self.open_plan_text)
         receipt = _receipt(merge_commit="abc1234")
         valid = {
             "state": "MERGED",
@@ -309,7 +298,10 @@ class MilestoneHandoffGitOrderingTests(unittest.TestCase):
             root = Path(temp_dir)
             plan = root / "docs" / "milestones" / "005-evidence-memory-foundation" / "plan.md"
             plan.parent.mkdir(parents=True)
-            plan.write_text(PLAN.read_text(encoding="utf-8"), encoding="utf-8")
+            plan.write_text(
+                _plan_with_current_pr(PLAN.read_text(encoding="utf-8")),
+                encoding="utf-8",
+            )
             self._git(root, "init", "-b", "milestone/005-evidence-memory-foundation")
             self._git(root, "add", ".")
             self._git(
@@ -337,7 +329,10 @@ class MilestoneHandoffGitOrderingTests(unittest.TestCase):
             root = Path(temp_dir)
             plan = root / "docs" / "milestones" / "005-evidence-memory-foundation" / "plan.md"
             plan.parent.mkdir(parents=True)
-            plan.write_text(PLAN.read_text(encoding="utf-8"), encoding="utf-8")
+            plan.write_text(
+                _plan_with_current_pr(PLAN.read_text(encoding="utf-8")),
+                encoding="utf-8",
+            )
             self._git(root, "init", "-b", "m005/incorrect-review-unit")
             self._git(root, "add", ".")
             self._git(
@@ -366,8 +361,8 @@ class MilestoneHandoffGitOrderingTests(unittest.TestCase):
             root = Path(temp_dir)
             plan = root / "docs" / "milestones" / "005-evidence-memory-foundation" / "plan.md"
             plan.parent.mkdir(parents=True)
-            promoted = apply_handoff(PLAN.read_text(encoding="utf-8"), _receipt())
-            plan.write_text(promoted, encoding="utf-8")
+            current = PLAN.read_text(encoding="utf-8")
+            plan.write_text(current, encoding="utf-8")
             self._git(root, "init", "-b", "milestone/005-evidence-memory-foundation")
             self._git(root, "add", ".")
             self._git(
@@ -380,27 +375,29 @@ class MilestoneHandoffGitOrderingTests(unittest.TestCase):
                 "-m",
                 "frontier handoff",
             )
-            state = validate_plan_text(promoted)
+            state = validate_plan_text(current)
 
             start_current_frontier_branch(
                 plan,
                 state,
-                "m005/closeout",
+                "m005/conflicting-evidence",
                 repo_root=root,
             )
 
             self.assertEqual(
                 self._git(root, "branch", "--show-current"),
-                "m005/closeout",
+                "m005/conflicting-evidence",
             )
 
     def test_start_rejects_current_frontier_with_existing_pr(self) -> None:
-        state = validate_plan_text(PLAN.read_text(encoding="utf-8"))
+        state = validate_plan_text(
+            _plan_with_current_pr(PLAN.read_text(encoding="utf-8"))
+        )
         with self.assertRaisesRegex(PlanContractError, "already has a PR"):
             start_current_frontier_branch(
                 PLAN,
                 state,
-                "m005/closeout",
+                "m005/conflicting-evidence",
                 repo_root=ROOT,
             )
 
@@ -409,8 +406,8 @@ class MilestoneHandoffGitOrderingTests(unittest.TestCase):
             root = Path(temp_dir)
             plan = root / "docs" / "milestones" / "005-evidence-memory-foundation" / "plan.md"
             plan.parent.mkdir(parents=True)
-            promoted = apply_handoff(PLAN.read_text(encoding="utf-8"), _receipt())
-            plan.write_text(promoted, encoding="utf-8")
+            current = PLAN.read_text(encoding="utf-8")
+            plan.write_text(current, encoding="utf-8")
             self._git(root, "init", "-b", "milestone/005-evidence-memory-foundation")
             self._git(root, "add", ".")
             self._git(
@@ -426,16 +423,16 @@ class MilestoneHandoffGitOrderingTests(unittest.TestCase):
             self._git(
                 root,
                 "update-ref",
-                "refs/remotes/origin/m005/closeout",
+                "refs/remotes/origin/m005/conflicting-evidence",
                 "HEAD",
             )
-            state = validate_plan_text(promoted)
+            state = validate_plan_text(current)
 
             with self.assertRaisesRegex(PlanContractError, "branch already exists"):
                 start_current_frontier_branch(
                     plan,
                     state,
-                    "m005/closeout",
+                    "m005/conflicting-evidence",
                     repo_root=root,
                 )
 

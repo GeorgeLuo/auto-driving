@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="66490d6abef61900ea862f1ada6b530da74c43cb7d98f842f67acee414551428">
+  <meta name="source-sha256" content="6be64c90a40776947a71ba8734ec40eb020dc45db3c32d56f67c6a21dde4de63">
   <base target="_blank">
   <title>Milestone plan — 005-evidence-memory-foundation</title>
   <style>
@@ -77,7 +77,7 @@
 </tr>
 <tr>
 <td>Milestone branch</td>
-<td><code>milestone/005-evidence-memory-foundation</code> (create from <code>main</code> after the coordinated #57 then #58 merges)</td>
+<td><code>milestone/005-evidence-memory-foundation</code> (create from <code>main</code> after #58 merges)</td>
 </tr>
 <tr>
 <td>Cumulative PR</td>
@@ -85,7 +85,7 @@
 </tr>
 <tr>
 <td>Current frontier</td>
-<td>Live Chase max-age expiry — <a href="https://github.com/GeorgeLuo/auto-driving/pull/57">PR #57</a></td>
+<td>Conflicting evidence semantics</td>
 </tr>
 <tr>
 <td>Contract baseline</td>
@@ -93,11 +93,11 @@
 </tr>
 <tr>
 <td>Grandfathered PRs</td>
-<td>#57 (current evidence unit), #58 (contract migration); both retain their existing <code>main</code> targets</td>
+<td>#57 (accepted evidence unit), #58 (contract migration); both retain their existing <code>main</code> targets</td>
 </tr>
 <tr>
 <td>Cutover</td>
-<td>Merge #57 first; then #58 absorbs its accepted result into canonical <code>plan.md</code>; closeout is the first M005 unit on the milestone branch</td>
+<td>#57 merged to <code>main</code>; #58 records its accepted result and establishes the remaining conflict frontier; create the milestone branch from <code>main</code> after #58</td>
 </tr>
 <tr>
 <td>Started</td>
@@ -265,13 +265,13 @@ model, changing perception semantics, or granting movement authority.</p>
 <td>M005-08</td>
 <td>Deterministic tests cover recurrence, dropout, conflict, expiry, capacity, reset, failure, and replay, including long-sequence boundedness</td>
 <td>Partial</td>
-<td>#52/#53 size, collision, long-sequence, stale-worker, max-age scoring; broader conflict scenarios may expand later</td>
+<td>Recurrence, dropout, expiry, capacity, reset, failure, replay, collision, long-sequence, and causal Chase adversarial coverage are accepted; the same-slot conflicting-evidence policy remains unspecified</td>
 </tr>
 <tr>
 <td>M005-09</td>
 <td>One live Chase shadow check and one recorded non-moving Pi present/dropout/expiry/reset check verify equivalent stage behavior while the rewritten engine emits zero movement</td>
-<td>Partial</td>
-<td>Pi validated; Chase retention/alignment/reset accepted (#51); max-age expiry scoring under review (#57); live extract still required for full claim</td>
+<td>Met</td>
+<td>Pi lifecycle is recorded; #57 adds a guided Chase extract with <code>max_age_expiry</code> passing after 1,133 ms against a 1,000 ms bound, <code>reset_used=false</code>, and zero unapplied candidate control</td>
 </tr>
 <tr>
 <td>M005-10</td>
@@ -301,17 +301,15 @@ model, changing perception semantics, or granting movement authority.</p>
 </table>
 <h2>Current Delivery</h2>
 <h3>Current Frontier</h3>
-<p><strong>Live Chase max-age expiry</strong></p>
+<p><strong>Conflicting evidence semantics</strong></p>
 <ul>
-<li>PR: <a href="https://github.com/GeorgeLuo/auto-driving/pull/57">#57</a></li>
-<li>Branch: <code>agent/chase-live-max-age-expiry</code> <em>(historical topology targets <code>main</code>; new units should use <code>m005/…</code> → milestone branch)</em></li>
-<li>Review kind: Live external evidence + deterministic scoring path</li>
-<li>Review question: Can a guided live Chase run show a retained key surviving dropout and then disappearing under configured <code>max_age_ms</code> without reset, while observe-only / zero movement and exact source-frame provenance hold?</li>
-<li>Acceptance owner: live Chase <code>memory check</code> scoring path (<code>chase_max_age</code> / check harness) and tracked provenance extract</li>
-<li>Exit criteria affected: M005-08, M005-09</li>
-<li>Prerequisite: Package 5B (#53) accepted</li>
-<li>Milestone-level non-goal: Package 6 closeout; Pi re-proof; 5A/5B redesign</li>
-<li>Transition exception: Grandfathered mixed deterministic/live unit targeting <code>main</code>; acceptable only if its body is reconciled and the guided live extract is attached without further implementation</li>
+<li>Branch: <code>m005/conflicting-evidence</code> (planned; not opened)</li>
+<li>Review kind: Deterministic invariant closure</li>
+<li>Review question: Does the bounded evidence ledger handle contradictory attributed evidence, same-slot recurrence, missing evidence, and structurally incompatible updates deterministically without silently claiming semantic truth?</li>
+<li>Acceptance owner: <code>BoundedEvidenceLedger</code> update policy plus focused implementation and replay fixtures</li>
+<li>Exit criteria affected: M005-08</li>
+<li>Prerequisite: PR #58 merged and <code>milestone/005-evidence-memory-foundation</code> created from the resulting <code>main</code></li>
+<li>Milestone-level non-goal: Semantic fusion, object identity, confidence aggregation, live-host re-proof, or action behavior</li>
 </ul>
 <h3>Next-Frontier Candidate</h3>
 <p><strong>Milestone closeout</strong></p>
@@ -321,10 +319,12 @@ model, changing perception semantics, or granting movement authority.</p>
 <li>Review question: Is milestone 005 complete as a whole—every exit criterion Met, completion usage supported, residual risk stated—and should the 006 pre-plan be activated, revised, or abandoned?</li>
 <li>Acceptance owner: <code>closeout.md</code> plus the cumulative milestone PR judgment against exit criteria and completion usage</li>
 <li>Exit criteria affected: M005-13</li>
-<li>Prerequisite: Every exit criterion Met, including live Chase max-age evidence from the current frontier (#57)</li>
+<li>Prerequisite: Every exit criterion Met, including the current conflicting-evidence contract</li>
 <li>Non-goals: New feature implementation under the closeout PR; reopening max-age scoring design; activating 006 before closeout acceptance</li>
 </ul>
-<p>Not started; no closeout branch yet. Acceptance boundary above is frozen before a closeout branch is opened. Prerequisite status may update when #57 lands; do not widen the closeout question into new implementation.</p>
+<p>Not started; no closeout branch yet. The acceptance boundary is frozen, but
+the branch cannot start until the current conflict frontier closes M005-08.
+Do not move conflict implementation into closeout.</p>
 <h2>Accepted Review Units</h2>
 <table>
 <thead>
@@ -365,6 +365,13 @@ model, changing perception semantics, or granting movement authority.</p>
 <td>M005-03, M005-07, M005-08</td>
 <td>Deterministic record/probe/once-exit tests</td>
 </tr>
+<tr>
+<td>#57</td>
+<td>Can a guided live Chase run prove max-age expiry without reset while generation identity, capacity causality, zero unapplied control, and exact provenance hold?</td>
+<td>Accepted</td>
+<td>M005-08, M005-09</td>
+<td><code>evidence/chase-max-age-expiry/</code>; 73 focused and 353 full deterministic tests</td>
+</tr>
 </tbody>
 </table>
 <p>The baseline row is the explicit adoption boundary; post-baseline review units
@@ -380,9 +387,9 @@ remain one row per merged PR.</p>
 </thead>
 <tbody>
 <tr>
-<td>Live Chase max-age has not yet been proven with a tracked guided extract under the new scoring path</td>
-<td>M005-09 remains partial</td>
-<td>Current frontier #57 + operator live run</td>
+<td>Conflicting evidence from one source/key has no explicit compatibility or replacement contract</td>
+<td>A plugin can change structural meaning while the recency ledger silently overwrites prior evidence; M005-08 remains partial</td>
+<td>Current <code>m005/conflicting-evidence</code> frontier: define the minimal evidence-not-truth policy and lock it with deterministic and replay tests</td>
 </tr>
 <tr>
 <td>Process identity for Chase live probe relies on host command inspection</td>
@@ -401,8 +408,8 @@ remain one row per merged PR.</p>
 </tr>
 <tr>
 <td>Historical 005 review units targeted <code>main</code> rather than a milestone integration branch</td>
-<td>The final cumulative PR is a closeout delta rather than the literal implementation history</td>
-<td>Use baseline <code>22cfff9</code>; merge grandfathered #57, then #58; create the milestone branch from that resulting <code>main</code> for closeout</td>
+<td>The final cumulative PR is a remaining-work delta rather than the literal implementation history</td>
+<td>Use baseline <code>22cfff9</code>; after grandfathered #58 merges, create the milestone branch for conflict closure and closeout</td>
 </tr>
 </tbody>
 </table>
@@ -479,7 +486,12 @@ remain one row per merged PR.</p>
 <tr>
 <td>2026-07-26</td>
 <td>Cut over M005 after grandfathered PR #57 and contract PR #58 merge in that order</td>
-<td>Avoid retargeting #57 or merging conflicting hand-authored HTML; #58 becomes the canonical plan migration, then closeout starts from a milestone branch created at the resulting <code>main</code></td>
+<td>Avoid retargeting #57 or merging conflicting hand-authored HTML; #58 becomes the canonical plan migration and the remaining review units use the milestone branch</td>
+</tr>
+<tr>
+<td>2026-07-27</td>
+<td>Accept #57 and keep conflicting evidence ahead of closeout</td>
+<td>The live Chase causal proof closes M005-09, but its accepted contract explicitly leaves M005-08 open; closeout cannot conceal an unspecified conflict policy</td>
 </tr>
 </tbody>
 </table>

@@ -361,6 +361,9 @@ class ActivatedMemoryStage:
 
     def status(self) -> dict[str, Any]:
         last = self.last_snapshot
+        # Keep this stage generic: do not promote implementation-specific
+        # telemetry keys (for example capacity eviction counters) into status.
+        # Callers that need snapshot metadata read the published MemorySnapshot.
         return {
             "implementation_id": self.activation.implementation_id,
             "implementation_spec": self.activation.implementation_spec,

@@ -1,79 +1,59 @@
 # Documentation Guide
 
 This directory separates current reference material, future-facing synthesis,
-and milestone history.
-Read this file first when starting work.
+and milestone history. Read this file first when starting work.
 
-## Active Work
+## Active Milestone
 
-Milestone 005, [Evidence Memory Foundation](milestones/005-evidence-memory-foundation/plan.html),
-is active. It should give the decision cycle bounded, inspectable continuity
-across frames by retaining attributed observation evidence without claiming a
-complete world model or granting movement authority.
+**Milestone 005 — Evidence Memory Foundation**
 
-**Where it stands:** **not ready to close** (package 6 only). Packages 1–5 are
-landed, including Memory map, reset, replay, opt-in record, Chase lifecycle
-check, and stationary Pi live-publication **memory check**. Next: package 6
-**closeout** (`closeout.md`, completed ledger, then promote 006 pre-plan). See
-[Remaining For Closeout](milestones/005-evidence-memory-foundation/plan.html).
-Do not start 006 implementation until closeout lands.
+| Field | Value |
+| --- | --- |
+| Status | Active |
+| Plan | [plan.html](milestones/005-evidence-memory-foundation/plan.html) · [plan.md](milestones/005-evidence-memory-foundation/plan.md) |
+| Cumulative PR | TBD (milestone branch topology) |
+| Current frontier | See the plan Current Delivery section |
+
+Detailed exit criteria, frontiers, and risks live only in the milestone plan.
+Do not treat this guide as a second progress log.
 
 ## Immediate Pre-Plan (Not Active)
 
-Milestone 006, [Decision-Facing Perception Readiness](milestones/006-decision-facing-perception-readiness/plan.html),
-is a **pre-plan** queued after 005. It records the immediate deferred question
-from physical parity: whether packaged floor-boundary evidence is fit for a
-first constrained non-idle decision path, or whether exactly one bounded
-upgrade should be attempted under the same contract. It is not a multi-candidate
-backlog and must not absorb open-ended CV research.
+**Milestone 006 — Decision-Facing Perception Readiness**
 
-See the [immediate deferred work and pre-plan rules](milestones/README.md#immediate-deferred-work-and-pre-plans)
-in the planning contract.
+- Plan: [plan.html](milestones/006-decision-facing-perception-readiness/plan.html)
+- Status: pre-plan, queued after 005
+- Not active work; do not implement while 005 is open unless the 005 decision
+  log records an explicit parallel exception
 
 ## Recently Closed
 
-Milestone 004, [Physical Perception Parity](milestones/004-physical-perception-parity/plan.html),
-is closed. The Pi runs always-on manual-mode observation, publishes an exact
-latest snapshot, and retains the packaged floor-plane observer after rejecting
-floor-continuity. Residual quality limits are deferred to the 006 pre-plan, not
-an expanding list. Closeout:
-[004 closeout](milestones/004-physical-perception-parity/closeout.md).
+**Milestone 004 — Physical Perception Parity** is closed.
+Closeout: [004 closeout](milestones/004-physical-perception-parity/closeout.md).
 
 ## Reading Order
 
-1. Read the shared [`milestones/README.md`](milestones/README.md) planning and
-   pull-request delivery contract, or use its
-   [rendered view](milestones/planning-contract.html).
-2. Read the active milestone plan when one is listed above. If none is active,
-   formalize the next goal before implementation. Read a listed pre-plan only
-   as the bounded next question—not as current work.
-3. Read [`milestones/completed.md`](milestones/completed.md) for durable context
-   from closed work.
-4. Read only the relevant documents under `reference/` for current system
-   behavior.
-5. Consult `synthesis/` when evaluating future work or looking for previously
-   researched approaches. Synthesis notes are evidence, not backlog commitments.
+1. Shared [planning and delivery contract](milestones/README.md)
+   ([rendered](milestones/planning-contract.html)).
+2. Active milestone plan when one is listed above.
+3. [completed.md](milestones/completed.md) for durable closed-work context.
+4. Relevant documents under `reference/` for current system behavior.
+5. `synthesis/` for research evidence—not backlog commitments.
 
-Do not treat closed milestone plans as current architecture. They are frozen
-records that explain why prior work was shaped the way it was.
+Do not treat closed milestone plans as current architecture.
 
 ## Structure
 
-- `reference/` is the living source of truth for architecture diagrams and
-  contracts.
-- `synthesis/` relates external research and repository evidence to bounded
-  candidate work without making it part of the active milestone.
-- `milestones/README.md` is the shared milestone format, rolling-horizon, and
-  pull-request delivery contract.
-- `milestones/planning-contract.html` is its generated browser rendering; active
-  plans expose it in an expandable section.
-- `milestones/<number>-<slug>/plan.html` is the detailed plan and status record
-  for one milestone.
-- `milestones/<number>-<slug>/closeout.md` is the compressed durable summary
-  created when that milestone closes.
-- `milestones/completed.md` is the append-only high-level ledger of closed
-  milestones.
+| Path | Role |
+| --- | --- |
+| `reference/` | Living architecture and contracts |
+| `synthesis/` | Research evidence without commitment |
+| `milestones/README.md` | Canonical planning and PR delivery contract |
+| `milestones/planning-contract.html` | Generated rendering of the contract |
+| `milestones/<n>-<slug>/plan.md` | Canonical active-milestone plan |
+| `milestones/<n>-<slug>/plan.html` | Generated plan rendering (do not edit by hand) |
+| `milestones/<n>-<slug>/closeout.md` | Durable summary at closeout |
+| `milestones/completed.md` | Append-only closed-milestone ledger |
 
-The shared milestone contract owns lifecycle, plan-format, PR-review, rolling
-horizon, and evidence rules. Keep this guide limited to documentation discovery
-so those development instructions have one authoritative location.
+Historical closed milestones may retain hand-authored `plan.html` files without
+a `plan.md`. Active milestones use Markdown as the source of truth.

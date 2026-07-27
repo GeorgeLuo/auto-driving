@@ -33,9 +33,15 @@ jobs:
           cache-dependency-path: |
             requirements.txt
             requirements-test.txt
+            docs/requirements.txt
 
       - name: Install test dependencies
-        run: python3 -m pip install -r requirements-test.txt
+        run: python3 -m pip install -r requirements-test.txt -r docs/requirements.txt
+
+      - name: Validate milestone planning state
+        run: |
+          python3 docs/milestones/workflow.py validate
+          python3 docs/render_markdown.py --check
 
       - name: Run deterministic tests with coverage
         run: |

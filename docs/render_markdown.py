@@ -5,18 +5,24 @@ import argparse
 import hashlib
 import html
 import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from docs.milestones.workflow import PlanContractError, validate_plan_path
+
 try:
     import markdown
-except ImportError as exc:  # pragma: no cover - exercised only in an incomplete dev environment
+except ImportError as exc:  # pragma: no cover
     raise SystemExit(
         "Markdown rendering requires `python3 -m pip install -r docs/requirements.txt`."
     ) from exc
 
-
-ROOT = Path(__file__).resolve().parents[1]
+MILESTONES = ROOT / "docs" / "milestones"
 
 
 @dataclass(frozen=True)
@@ -26,13 +32,24 @@ class RenderedMarkdown:
     title: str
 
 
-DOCUMENTS = (
-    RenderedMarkdown(
-        source=ROOT / "docs" / "milestones" / "README.md",
-        target=ROOT / "docs" / "milestones" / "planning-contract.html",
-        title="Milestone Planning Contract",
-    ),
-)
+def discover_documents() -> tuple[RenderedMarkdown, ...]:
+    documents: list[RenderedMarkdown] = [
+        RenderedMarkdown(
+            source=MILESTONES / "README.md",
+            target=MILESTONES / "planning-contract.html",
+            title="Milestone Planning And Delivery Contract",
+        )
+    ]
+    for plan_md in sorted(MILESTONES.glob("*/plan.md")):
+        slug = plan_md.parent.name
+        documents.append(
+            RenderedMarkdown(
+                source=plan_md,
+                target=plan_md.with_suffix(".html"),
+                title=f"Milestone plan — {slug}",
+            )
+        )
+    return tuple(documents)
 
 
 def source_digest(source_text: str) -> str:
@@ -45,7 +62,7 @@ def render_document(document: RenderedMarkdown) -> str:
     source_href = Path(os.path.relpath(document.source, document.target.parent)).as_posix()
     body = markdown.markdown(
         source_text,
-        extensions=("extra", "sane_lists"),
+        extensions=("extra", "sane_lists", "tables"),
         output_format="html5",
     )
     title = html.escape(document.title)
@@ -76,7 +93,7 @@ def render_document(document: RenderedMarkdown) -> str:
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       line-height: 1.55;
     }}
-    main {{ width: min(900px, calc(100% - 30px)); margin: 0 auto; padding: 24px 0 48px; }}
+    main {{ width: min(960px, calc(100% - 30px)); margin: 0 auto; padding: 24px 0 48px; }}
     .source {{
       margin-bottom: 20px;
       padding: 10px 12px;
@@ -86,7 +103,7 @@ def render_document(document: RenderedMarkdown) -> str:
       color: var(--muted);
       font-size: 13px;
     }}
-    h1, h2, h3 {{ letter-spacing: 0; line-height: 1.2; }}
+    h1, h2, h3 {{ letter-spacing: 0; line-height: 1.2; color: var(--ink); }}
     h1 {{ margin: 0 0 20px; font-size: 32px; }}
     h2 {{ margin: 28px 0 10px; padding-bottom: 7px; border-bottom: 1px solid var(--line); font-size: 21px; }}
     h3 {{ margin: 20px 0 8px; font-size: 16px; }}
@@ -97,9 +114,17 @@ def render_document(document: RenderedMarkdown) -> str:
     code {{ padding: 2px 5px; border-radius: 4px; background: var(--neutral); color: #1e3932; }}
     pre {{ overflow-x: auto; padding: 13px; border-radius: 6px; background: var(--ink); color: #e6f1eb; }}
     pre code {{ padding: 0; background: transparent; color: inherit; }}
-    table {{ width: 100%; border-collapse: collapse; }}
-    th, td {{ padding: 9px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }}
-    th {{ background: var(--neutral); }}
+    table {{ width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 14px; }}
+    th, td {{ padding: 9px; border: 1px solid var(--line); text-align: left; vertical-align: top; }}
+    th {{ background: var(--neutral); color: var(--ink); }}
+    td {{ color: var(--muted); background: var(--panel); }}
+    blockquote {{
+      margin: 12px 0;
+      padding: 8px 14px;
+      border-left: 4px solid var(--teal);
+      background: var(--neutral);
+      color: var(--muted);
+    }}
   </style>
 </head>
 <body>
@@ -114,13 +139,23 @@ def render_document(document: RenderedMarkdown) -> str:
 
 
 def run(*, check: bool) -> int:
+    documents = discover_documents()
     stale: list[Path] = []
-    for document in DOCUMENTS:
+    for document in documents:
+        if document.source.name == "plan.md":
+            try:
+                validate_plan_path(document.source)
+            except PlanContractError as exc:
+                print(
+                    f"Invalid milestone plan: {document.source.relative_to(ROOT)}: {exc}"
+                )
+                return 1
         rendered = render_document(document)
         if check:
             if not document.target.exists() or document.target.read_text(encoding="utf-8") != rendered:
                 stale.append(document.target)
             continue
+        document.target.parent.mkdir(parents=True, exist_ok=True)
         document.target.write_text(rendered, encoding="utf-8")
         print(f"Rendered {document.target.relative_to(ROOT)}")
 

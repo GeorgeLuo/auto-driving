@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="22009a2d8ae93b38dca0be4b2a8c8f1919e3c4b7d45b4b92695d04061168bd3c">
+  <meta name="source-sha256" content="2610b8832d6ef387c7ff00d4c12048ed4c923a9cb1c389be63d6fc00c35e1edb">
   <base target="_blank">
   <title>Milestone plan — 005-evidence-memory-foundation</title>
   <style>
@@ -305,9 +305,8 @@ model, changing perception semantics, or granting movement authority.</p>
 <ul>
 <li>Workflow state: ready_for_proposal</li>
 <li>Proposal branch: <code>m005/conflicting-evidence-proposal</code> (planned; not opened)</li>
-<li>Implementation branch: <code>m005/conflicting-evidence</code> (exists; draft PR #59 is paused)</li>
+<li>Implementation branch: <code>m005/conflicting-evidence</code> (planned; not opened)</li>
 <li>Proposal path: <code>docs/milestones/005-evidence-memory-foundation/proposals/conflicting-evidence.md</code></li>
-<li>Paused implementation: <a href="https://github.com/GeorgeLuo/auto-driving/pull/59">#59</a> was opened before the independent proposal gate and cannot become ready or merge until a proposal is accepted</li>
 <li>Review kind: Deterministic invariant closure</li>
 <li>Review question: Does the bounded evidence ledger handle contradictory attributed evidence, same-slot recurrence, missing evidence, and structurally incompatible updates deterministically without silently claiming semantic truth?</li>
 <li>Acceptance owner: <code>BoundedEvidenceLedger</code> update policy plus focused implementation and replay fixtures</li>
@@ -344,7 +343,7 @@ Do not move conflict implementation into closeout.</p>
 <tr>
 <td>Conflicting evidence semantics</td>
 <td>ready_for_proposal</td>
-<td>#58 froze the minimal frontier contract; draft implementation PR #59 is paused because no independent proposal has been reviewed and accepted</td>
+<td>#58 froze the minimal frontier contract; independent proposal work is next under the proposal-before-implementation gate</td>
 </tr>
 </tbody>
 </table>

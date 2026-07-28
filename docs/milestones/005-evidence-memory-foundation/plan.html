@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="547698e4936228934e3811f0c9e4a06d6fc2006ec21bf9b1f3ffb09cdbcc4a0a">
+  <meta name="source-sha256" content="d7ede456a61dae4429d4a7df52eee2c246652a94c79ce543439137201710efb1">
   <base target="_blank">
   <title>Milestone plan — 005-evidence-memory-foundation</title>
   <style>
@@ -81,7 +81,7 @@
 </tr>
 <tr>
 <td>Cumulative PR</td>
-<td>TBD — transitional closeout delta from the milestone branch to <code>main</code>; whole-milestone judgment uses this plan and baseline</td>
+<td><a href="https://github.com/GeorgeLuo/auto-driving/pull/68">#68</a> (draft transitional delta to <code>main</code>; mark ready after Phase B handoff)</td>
 </tr>
 <tr>
 <td>Current frontier</td>
@@ -303,9 +303,9 @@ model, changing perception semantics, or granting movement authority.</p>
 <h3>Current Frontier</h3>
 <p><strong>Milestone closeout</strong></p>
 <ul>
-<li>Workflow state: ready_for_implementation</li>
+<li>Workflow state: implementation_in_review</li>
 <li>Proposal branch: <code>m005/closeout-proposal</code></li>
-<li>Implementation branch: <code>m005/closeout</code> (planned; not opened)</li>
+<li>Implementation branch: <code>m005/closeout</code></li>
 <li>Proposal path: <code>docs/milestones/005-evidence-memory-foundation/proposals/closeout.md</code></li>
 <li>Accepted proposal: <a href="https://github.com/GeorgeLuo/auto-driving/pull/66">#66</a> at <code>0bd2920e15b2dc022428ca40a99cd2b3c29b43e5</code></li>
 <li>Review kind: Milestone closeout</li>
@@ -370,6 +370,11 @@ model, changing perception semantics, or granting movement authority.</p>
 <td>Milestone closeout</td>
 <td>ready_for_implementation</td>
 <td>Proposal PR #66 accepted at 0bd2920e15b2dc022428ca40a99cd2b3c29b43e5.</td>
+</tr>
+<tr>
+<td>Milestone closeout</td>
+<td>implementation_in_review</td>
+<td>Started m005/closeout.</td>
 </tr>
 </tbody>
 </table>
@@ -553,17 +558,28 @@ remain one row per merged PR.</p>
 <td>Separate proposal review from implementation review</td>
 <td>A lower model authors a proposal, the reviewer accepts it, and only then may implementation begin; machine state and history must expose the handoff</td>
 </tr>
+<tr>
+<td>2026-07-28</td>
+<td>Publish closeout judgment; activate 006 after plan Status closes</td>
+<td>Phase A documents usefulness, residual limits, and 006 activate in <code>closeout.md</code>; M005-13 Met and Status closed remain Phase B <code>complete-implementation</code></td>
+</tr>
 </tbody>
 </table>
 <h2>Closeout</h2>
-<p>Blocked until every exit criterion is <code>Met</code>.</p>
-<p>Closeout will produce:</p>
-<ul>
-<li><code>closeout.md</code>;</li>
-<li>completed-milestone ledger update;</li>
-<li>final residual-risk statement;</li>
-<li>decision to activate, revise, or abandon the 006 pre-plan.</li>
-</ul>
+<p>Phase A judgment is published in
+<a href="closeout.md">closeout.md</a>. It states what memory representation proved useful,
+residual limits, and the decision to <strong>activate</strong> the 006 pre-plan after 005
+plan Status is closed.</p>
+<p><strong>Not yet applied in this implementation PR (Phase B only):</strong> M005-13 Met, Open
+Risks removal matching the restated residuals, Status <code>closed</code>, empty frontiers,
+and the accepted-ledger row for the closeout implementation PR. Those mutations
+are owned exclusively by:</p>
+<pre><code class="language-text">python3 docs/milestones/workflow.py complete-implementation \
+  --plan docs/milestones/005-evidence-memory-foundation/plan.md \
+  --pr &lt;closeout-implementation-pr&gt;
+</code></pre>
+<p>Cumulative PR: <a href="https://github.com/GeorgeLuo/auto-driving/pull/68">#68</a> — mark
+ready after that handoff (Phase C), not as handoff durable evidence.</p>
   </main>
 </body>
 </html>

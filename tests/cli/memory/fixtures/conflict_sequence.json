@@ -1,0 +1,104 @@
+{
+  "schema": "automa_memory_observation_sequence_v0",
+  "description": "Conflict semantics: admit boundary, incompatible kind invalidates, re-admit, then no-op update.",
+  "frames": [
+    {
+      "frame_id": "frame_000",
+      "frame_index": 0,
+      "timestamp_ms": 1000,
+      "observation": {
+        "observation_id": "obs_000",
+        "created_at_ms": 1000,
+        "sensor_snapshot": {},
+        "perception_plugin_id": "lightweight_observer",
+        "summary": ["admit boundary"],
+        "things": [
+          {
+            "thing_id": "slot_a",
+            "kind": "floor_boundary",
+            "label": "boundary",
+            "confidence": 0.9,
+            "location": {
+              "frame": "image",
+              "zone": "left",
+              "bbox_xyxy_norm": [0.05, 0.4, 0.35, 0.95]
+            },
+            "properties": {"score": 1},
+            "source_plugin_id": "floor-plane-v0"
+          }
+        ],
+        "signals": []
+      }
+    },
+    {
+      "frame_id": "frame_001",
+      "frame_index": 1,
+      "timestamp_ms": 1200,
+      "observation": {
+        "observation_id": "obs_001",
+        "created_at_ms": 1200,
+        "sensor_snapshot": {},
+        "perception_plugin_id": "lightweight_observer",
+        "summary": ["incompatible kind on same slot"],
+        "things": [
+          {
+            "thing_id": "slot_a",
+            "kind": "obstacle",
+            "label": "obstacle",
+            "confidence": 0.9,
+            "location": {
+              "frame": "image",
+              "zone": "left",
+              "bbox_xyxy_norm": [0.05, 0.4, 0.35, 0.95]
+            },
+            "properties": {"score": 1},
+            "source_plugin_id": "floor-plane-v0"
+          }
+        ],
+        "signals": []
+      }
+    },
+    {
+      "frame_id": "frame_002",
+      "frame_index": 2,
+      "timestamp_ms": 1400,
+      "observation": {
+        "observation_id": "obs_002",
+        "created_at_ms": 1400,
+        "sensor_snapshot": {},
+        "perception_plugin_id": "lightweight_observer",
+        "summary": ["empty-slot re-admit obstacle"],
+        "things": [
+          {
+            "thing_id": "slot_a",
+            "kind": "obstacle",
+            "label": "obstacle",
+            "confidence": 0.88,
+            "location": {
+              "frame": "image",
+              "zone": "center",
+              "bbox_xyxy_norm": [0.2, 0.4, 0.5, 0.9]
+            },
+            "properties": {"score": 2},
+            "source_plugin_id": "floor-plane-v0"
+          }
+        ],
+        "signals": []
+      }
+    },
+    {
+      "frame_id": "frame_003",
+      "frame_index": 3,
+      "timestamp_ms": 1600,
+      "observation": {
+        "observation_id": "obs_003",
+        "created_at_ms": 1600,
+        "sensor_snapshot": {},
+        "perception_plugin_id": "lightweight_observer",
+        "summary": ["no-op observation"],
+        "things": [],
+        "signals": []
+      }
+    }
+  ]
+}

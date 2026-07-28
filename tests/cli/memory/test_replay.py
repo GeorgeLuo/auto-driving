@@ -20,6 +20,9 @@ from cli.automa_cli.memory import (
 from tests.support.cli_runner import run_automa
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "recurrence_sequence.json"
+CONFLICT_FIXTURE = (
+    Path(__file__).resolve().parent / "fixtures" / "conflict_sequence.json"
+)
 
 
 class MemoryReplayTests(unittest.TestCase):
@@ -687,6 +690,31 @@ class MemoryReplayTests(unittest.TestCase):
                 on_disk,
             )
             self.assertEqual(result_on_disk["record_bounds"]["bytes_in_record"], on_disk)
+
+    def test_replay_conflict_sequence_asserts_policy_and_counters(self) -> None:
+        """Offline update-frame sequence for bounded_evidence conflict policy."""
+
+        result = replay_vehicle_memory(
+            vehicle_id="chase-sim-chaser",
+            sequence=CONFLICT_FIXTURE,
+            implementation_id="bounded_evidence",
+            json_output=True,
+            verify_twice=True,
+        )
+        self.assertEqual(result.exit_code, 0, result.message)
+        payload = json.loads(result.message)
+        self.assertEqual(payload["frame_count"], 4)
+        final = payload["final"]
+        self.assertEqual(final["implementation_id"], "bounded_evidence")
+        self.assertEqual(final["record_count"], 1)
+        metadata = final.get("metadata") or {}
+        self.assertEqual(metadata.get("conflict_policy"), "bounded_evidence_structural_v1")
+        # Frame 1 invalidates; frame 2 re-admits without conflict; frame 3 no-op.
+        self.assertEqual(metadata.get("conflict_count"), 1)
+        self.assertEqual(metadata.get("last_update_conflict_count"), 0)
+        record_ids = {item["record_id"] for item in final["records"]}
+        self.assertTrue(any(i.endswith(":6:slot_a") for i in record_ids))
+        self.assertEqual(final["records"][0]["kind"], "obstacle")
 
 
 if __name__ == "__main__":

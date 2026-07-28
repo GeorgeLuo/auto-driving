@@ -4,8 +4,10 @@ Retains attributed things and signals across cycles with finite capacity and
 age. Recurring evidence_ids update the same ledger slot within an epoch; that
 is recency bookkeeping, not semantic object identity or world truth.
 
-Record ids are namespaced by source plugin so two plugins cannot silently
-overwrite one another with the same local evidence id.
+Same-slot updates follow structural compatibility and same-observation payload
+equality (conflict policy ``bounded_evidence_structural_v1``). Record ids are
+namespaced by source plugin so two plugins cannot silently overwrite one
+another with the same local evidence id.
 """
 
 from __future__ import annotations
@@ -28,6 +30,8 @@ from autonomy.decision import (
     serialized_mapping_bytes,
 )
 from autonomy.perception import ViewLocation
+
+CONFLICT_POLICY = "bounded_evidence_structural_v1"
 
 
 class BoundedEvidenceLedger:
@@ -68,6 +72,8 @@ class BoundedEvidenceLedger:
         self.retain_signals = bool(retain_signals)
         self._epoch = 0
         self._capacity_eviction_count = 0
+        self._conflict_count = 0
+        self._last_update_conflict_count = 0
         self._records: dict[str, RetainedEvidence] = {}
         self._latest = self.reset()
 
@@ -77,10 +83,38 @@ class BoundedEvidenceLedger:
         observation: Observation | None,
     ) -> MemorySnapshot:
         now_ms = int(context.timestamp_ms)
+        candidates: list[RetainedEvidence] = []
         if observation is not None:
-            for record in self._extract_records(context, observation, now_ms=now_ms):
-                self._records[record.record_id] = record
+            candidates = self._extract_records(context, observation, now_ms=now_ms)
+
+        # Expire before same-slot comparison (proposal update order).
         self._expire(now_ms=now_ms)
+
+        update_conflicts = 0
+        groups: dict[str, list[RetainedEvidence]] = {}
+        for candidate in candidates:
+            groups.setdefault(candidate.record_id, []).append(candidate)
+
+        for record_id, group in groups.items():
+            if _group_has_contradiction(group):
+                if record_id in self._records:
+                    del self._records[record_id]
+                update_conflicts += 1
+                continue
+            # Payload-equal group collapses to one representative.
+            candidate = group[0]
+            retained = self._records.get(record_id)
+            if retained is None:
+                self._records[record_id] = candidate
+                continue
+            if _structurally_compatible(retained, candidate):
+                self._records[record_id] = candidate
+                continue
+            del self._records[record_id]
+            update_conflicts += 1
+
+        self._last_update_conflict_count = update_conflicts
+        self._conflict_count += update_conflicts
         self._enforce_capacity()
         self._latest = self._build_snapshot(
             memory_id=f"memory-{context.frame_id}",
@@ -93,6 +127,8 @@ class BoundedEvidenceLedger:
         self._epoch += 1
         self._records = {}
         self._capacity_eviction_count = 0
+        self._conflict_count = 0
+        self._last_update_conflict_count = 0
         self._latest = empty_memory_snapshot(
             memory_id=f"memory-reset-{self._epoch}",
             epoch_id=f"epoch-{self._epoch}",
@@ -104,16 +140,24 @@ class BoundedEvidenceLedger:
                 f"epoch_id=epoch-{self._epoch}",
                 "policy=bounded_evidence_recency",
             ),
-            metadata={
-                "policy": "bounded_evidence_recency",
-                "claims_identity": False,
-                "capacity_eviction_count": self._capacity_eviction_count,
-            },
+            metadata=self._metadata(observation_id=None),
         )
         return detach_memory_snapshot(self._latest)
 
     def snapshot(self) -> MemorySnapshot:
+        # Pure read: must not zero last_update_conflict_count.
         return detach_memory_snapshot(self._latest)
+
+    def _metadata(self, *, observation_id: str | None) -> dict[str, Any]:
+        return {
+            "policy": "bounded_evidence_recency",
+            "claims_identity": False,
+            "observation_id": observation_id,
+            "capacity_eviction_count": self._capacity_eviction_count,
+            "conflict_policy": CONFLICT_POLICY,
+            "conflict_count": self._conflict_count,
+            "last_update_conflict_count": self._last_update_conflict_count,
+        }
 
     def _extract_records(
         self,
@@ -272,6 +316,9 @@ class BoundedEvidenceLedger:
         created_at_ms: int,
         observation: Observation | None,
     ) -> MemorySnapshot:
+        observation_id = (
+            observation.observation_id if observation is not None else None
+        )
         records = tuple(
             sorted(
                 self._records.values(),
@@ -297,14 +344,7 @@ class BoundedEvidenceLedger:
                         else "reason=no_retained_evidence"
                     ),
                 ),
-                metadata={
-                    "policy": "bounded_evidence_recency",
-                    "claims_identity": False,
-                    "observation_id": (
-                        observation.observation_id if observation is not None else None
-                    ),
-                    "capacity_eviction_count": self._capacity_eviction_count,
-                },
+                metadata=self._metadata(observation_id=observation_id),
             )
         kinds = sorted({record.kind for record in records})
         return MemorySnapshot(
@@ -321,14 +361,7 @@ class BoundedEvidenceLedger:
                 "policy=bounded_evidence_recency",
             ),
             implementation_id=self.implementation_id,
-            metadata={
-                "policy": "bounded_evidence_recency",
-                "claims_identity": False,
-                "observation_id": (
-                    observation.observation_id if observation is not None else None
-                ),
-                "capacity_eviction_count": self._capacity_eviction_count,
-            },
+            metadata=self._metadata(observation_id=observation_id),
         )
 
 
@@ -365,3 +398,112 @@ def _location_from_payload(payload: Any) -> ViewLocation | None:
         return ViewLocation.from_dict(payload)
     except (TypeError, ValueError):
         return None
+
+
+def location_geometry_signature(
+    location: ViewLocation | None,
+) -> tuple[bool, bool] | None:
+    """Return (has_bbox, has_polygon), or None when location is absent."""
+
+    if location is None:
+        return None
+    return (
+        location.bbox_xyxy_norm is not None,
+        location.polygon_xy_norm is not None,
+    )
+
+
+def property_shape(value: Any) -> Any:
+    """Canonical recursive JSON type shape (proposal algorithm)."""
+
+    if value is None:
+        return "null"
+    if type(value) is bool:
+        return "boolean"
+    if isinstance(value, (int, float)) and type(value) is not bool:
+        return "number"
+    if isinstance(value, str):
+        return "string"
+    if isinstance(value, list):
+        return ("array",) + tuple(property_shape(item) for item in value)
+    if isinstance(value, dict):
+        return (
+            "object",
+            tuple((key, property_shape(value[key])) for key in sorted(value)),
+        )
+    return ("unknown", type(value).__name__)
+
+
+def json_values_equal(left: Any, right: Any) -> bool:
+    """Deep JSON value equality with exact int/float compare (no float())."""
+
+    if type(left) is bool or type(right) is bool:
+        return type(left) is bool and type(right) is bool and left == right
+    if isinstance(left, (int, float)) and isinstance(right, (int, float)):
+        return left == right
+    if left is None and right is None:
+        return True
+    if isinstance(left, str) and isinstance(right, str):
+        return left == right
+    if isinstance(left, list) and isinstance(right, list):
+        return len(left) == len(right) and all(
+            json_values_equal(a, b) for a, b in zip(left, right)
+        )
+    if isinstance(left, dict) and isinstance(right, dict):
+        if set(left) != set(right):
+            return False
+        return all(json_values_equal(left[key], right[key]) for key in left)
+    return False
+
+
+def payload_equal(left: RetainedEvidence, right: RetainedEvidence) -> bool:
+    """Same-observation payload equality (provenance excluded)."""
+
+    if left.record_id != right.record_id:
+        return False
+    if left.kind != right.kind:
+        return False
+    if left.label != right.label:
+        return False
+    if left.confidence != right.confidence:
+        return False
+    if left.location is None and right.location is None:
+        location_ok = True
+    elif left.location is None or right.location is None:
+        location_ok = False
+    else:
+        location_ok = left.location.to_dict() == right.location.to_dict()
+    if not location_ok:
+        return False
+    return json_values_equal(left.properties, right.properties)
+
+
+def structurally_compatible(
+    retained: RetainedEvidence, candidate: RetainedEvidence
+) -> bool:
+    """Cross-observation structural compatibility."""
+
+    if retained.kind != candidate.kind:
+        return False
+    if (retained.location is None) != (candidate.location is None):
+        return False
+    if retained.location is not None and candidate.location is not None:
+        if retained.location.frame != candidate.location.frame:
+            return False
+        if location_geometry_signature(retained.location) != location_geometry_signature(
+            candidate.location
+        ):
+            return False
+    return property_shape(retained.properties) == property_shape(candidate.properties)
+
+
+# Public aliases used by tests for table-driven coverage of pure helpers.
+_structurally_compatible = structurally_compatible
+_payload_equal = payload_equal
+
+
+def _group_has_contradiction(group: list[RetainedEvidence]) -> bool:
+    if len(group) < 2:
+        return False
+    first = group[0]
+    return any(not payload_equal(first, other) for other in group[1:])

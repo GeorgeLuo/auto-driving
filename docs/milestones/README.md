@@ -507,9 +507,42 @@ silently fill both roles in one change.
 Each proposal lives at the current frontier’s declared `proposal path` and uses
 `.github/PULL_REQUEST_TEMPLATE/proposal.md`. It records the review question,
 proposed contract, owner, affected paths, adversarial matrix, assumptions,
-non-goals, file impacts, and validation plan. It contains no product code,
-tests of unimplemented behavior, generated runtime artifacts, or implementation
-repair.
+non-goals, file impacts, validation plan, and the expected successful handoff.
+It contains no product code, tests of unimplemented behavior, generated runtime
+artifacts, or implementation repair.
+
+`## Expected Handoff` contains exactly one `json` code block. It uses
+`milestone_handoff_template_v1`, which is the normal handoff receipt without
+`accepted_pr` or `accepted_merge_commit`. Those facts do not exist until merge.
+The reviewed template may use `{pr}` and `{merge_commit}` inside strings; the
+completion command substitutes them without changing any other judgment:
+
+```json
+{
+  "schema": "milestone_handoff_template_v1",
+  "outcome": "advance",
+  "result": "Accepted",
+  "durable_evidence": "Accepted implementation and focused tests in PR #{pr}",
+  "criterion_updates": {
+    "M000-01": {
+      "status": "Met",
+      "evidence": "Contract accepted in PR #{pr}"
+    }
+  },
+  "risk_remove": [],
+  "risk_upsert": [],
+  "next_frontier": {
+    "state": "none",
+    "reason": "No later candidate is reviewed.",
+    "revisit_when": "The promoted frontier determines what follows."
+  }
+}
+```
+
+Proposal validation simulates the later implementation handoff against the
+frozen plan. It rejects templates that update unowned criteria, remove unknown
+risks, promote closeout while other criteria remain unmet, or invent an
+unreviewed next candidate.
 
 Each implementation PR uses `.github/pull_request_template.md`, links the
 accepted proposal PR and merge commit, and reconciles its actual diff to that
@@ -684,28 +717,36 @@ python3 docs/milestones/workflow.py start-implementation \
 After the implementation PR is accepted:
 
 1. squash-merge it into the milestone branch;
-2. the maintainer who merges it runs the executable handoff below on the clean
-   milestone branch;
-3. inspect and commit only the resulting canonical plan and generated HTML;
-4. open the new current frontier’s branch only after the handoff commit, from
-   the updated milestone branch and against the frozen current contract.
+2. from a clean local milestone branch, run the completion command below;
+3. confirm its reported frontier and workflow state;
+4. open the new current frontier’s proposal branch only after completion.
 
 ```sh
-python3 docs/milestones/workflow.py receipt-example
-python3 docs/milestones/workflow.py handoff \
+python3 docs/milestones/workflow.py complete-implementation \
   --plan docs/milestones/<number>-<slug>/plan.md \
-  --receipt /path/to/handoff.json
+  --pr <implementation-pr-number>
 ```
+
+`complete-implementation` fetches and fast-forwards the milestone branch,
+confirms the implementation PR is merged from the planned branch, fills the
+reviewed template with the PR number and merge SHA, applies the existing
+handoff owner, verifies that only canonical `plan.md` and generated `plan.html`
+changed, commits them, and pushes the milestone branch. It stops at
+`ready_for_proposal`; it never starts the next proposal branch.
+
+The lower-level `handoff --receipt <path>` command remains available for a
+reviewed exceptional receipt or recovery, but normal successful completion
+must not reconstruct acceptance judgment after merge.
 
 The helper, rather than agent memory, enforces the local order. It refuses a
 dirty worktree, the wrong branch, a branch/state mismatch, an unmerged proposal,
 an implementation start without an accepted proposal, an implementation PR
 from the wrong branch, or a merge commit that is not already an ancestor of the
-milestone branch. Proposal acceptance asks GitHub to confirm
-the exact base, head, merge commit, and changed-file allowlist. Implementation
-handoff asks GitHub to confirm the implementation PR and commit, then limits
-criterion updates to the current frontier, prevents premature closeout, updates
-the accepted ledger and risks, promotes the reviewed next candidate to
+milestone branch. Proposal acceptance asks GitHub to confirm the exact base,
+head, merge commit, and changed-file allowlist. Implementation completion asks
+GitHub to confirm the implementation PR and commit, then limits criterion
+updates to the current frontier, prevents premature closeout, updates the
+accepted ledger and risks, promotes the reviewed next candidate to
 `ready_for_proposal`, records workflow history, and regenerates HTML.
 
 CI runs `workflow.py validate-pr` on every PR targeting a milestone branch. A

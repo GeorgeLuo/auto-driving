@@ -97,6 +97,44 @@ def _plan_with_current_pr(text: str) -> str:
     return _append_history_rows(updated, missing_steps)
 
 
+def _plan_before_implementation_review(text: str) -> str:
+    """Rewind live plan to ready_for_implementation for handoff-reject tests.
+
+    During an open implementation unit the live plan is already
+    implementation_in_review; this fixture peels that step so apply_handoff
+    still has an earlier valid state to reject against.
+    """
+
+    state = validate_plan_text(text)
+    if state.current.is_empty or state.current.name is None:
+        raise AssertionError("active current frontier required for handoff fixtures")
+    current_state = state.current.fields["workflow state"]
+    if current_state != "implementation_in_review":
+        return text
+
+    frontier = state.current.name
+    updated = re.sub(r"^- PR: .+\n", "", text, count=1, flags=re.M)
+    updated = updated.replace(
+        "- Workflow state: implementation_in_review\n",
+        "- Workflow state: ready_for_implementation\n",
+        1,
+    )
+    matches = list(
+        re.finditer(
+            rf"\| {re.escape(frontier)} \| implementation_in_review \| .+\n",
+            updated,
+        )
+    )
+    if not matches:
+        raise AssertionError(
+            "expected a Workflow History row for implementation_in_review"
+        )
+    last = matches[-1]
+    updated = updated[: last.start()] + updated[last.end() :]
+    validate_plan_text(updated)
+    return updated
+
+
 def _receipt(*, merge_commit: str = "deadbee") -> dict[str, object]:
     return {
         "schema": "milestone_handoff_v1",
@@ -230,11 +268,12 @@ class MilestonePlanContractTests(unittest.TestCase):
         )
 
     def test_handoff_rejects_before_implementation_review(self) -> None:
+        earlier = _plan_before_implementation_review(self.plan_text)
         with self.assertRaisesRegex(
             PlanContractError,
             "requires workflow state implementation_in_review",
         ):
-            apply_handoff(self.plan_text, _receipt())
+            apply_handoff(earlier, _receipt())
 
     def test_handoff_rejects_duplicate_ledger_entry(self) -> None:
         marker = "\n\nThe baseline row is the explicit adoption boundary"

@@ -5,7 +5,7 @@ import re
 import unittest
 from pathlib import Path
 
-from docs.milestones.workflow import validate_plan_path
+from docs.milestones.workflow import parse_table, validate_plan_path
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -104,6 +104,22 @@ class MilestonePlanningTests(unittest.TestCase):
             "## Closeout",
         ):
             self.assertIn(heading, text, f"missing section {heading}")
+
+    def test_completion_usage_starts_with_primary_demonstration(self) -> None:
+        paths = _active_plan_paths()
+        if paths is None:
+            return
+        plan_md, _ = paths
+        table = parse_table(
+            plan_md.read_text(encoding="utf-8"),
+            "## Completion Usage",
+        )
+        self.assertEqual(
+            table.header,
+            ("Workflow", "Starting state", "Execution", "Success signal", "Criteria"),
+        )
+        self.assertTrue(table.rows, "Completion Usage must contain workflows")
+        self.assertEqual(table.rows[0][0], "Primary demonstration")
 
     def test_active_plan_has_one_current_frontier_and_at_most_one_next(self) -> None:
         paths = _active_plan_paths()
@@ -224,6 +240,11 @@ class MilestonePlanningTests(unittest.TestCase):
         self.assertIn("enforcement or acceptance owner", text)
         self.assertIn("A name plus a vague “likely question” alone is not a candidate", text)
         self.assertIn("empty next-frontier slot", text)
+
+    def test_contract_requires_one_primary_completion_demonstration(self) -> None:
+        text = CONTRACT_SOURCE.read_text(encoding="utf-8")
+        self.assertIn("The first body row must be `Primary demonstration`", text)
+        self.assertIn("leave schemas, lifecycle matrices, edge cases", text)
 
     def test_active_plan_next_frontier_records_minimal_contract_fields(self) -> None:
         paths = _active_plan_paths()

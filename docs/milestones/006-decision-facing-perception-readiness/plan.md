@@ -69,11 +69,11 @@ for simulator and physical vehicles.
 
 **Modular shadow action proposal foundation**
 
-- Workflow state: proposal_in_review
-- PR: [#73](https://github.com/GeorgeLuo/auto-driving/pull/73)
+- Workflow state: ready_for_implementation
 - Proposal branch: `m006/shadow-proposals-proposal`
 - Implementation branch: `m006/shadow-proposals`
 - Proposal path: `docs/milestones/006-decision-facing-perception-readiness/proposals/shadow-proposals.md`
+- Accepted proposal: [#73](https://github.com/GeorgeLuo/auto-driving/pull/73) at `7a585fc5eab8028b7454ad0040575cf4120c8e92`
 - Review kind: Behavioral feature slice
 - Review question: Can independent action-proposal plugins consume one immutable, cycle-aligned decision data source and produce attributable, replayable action plans while runtime authority guarantees that no proposed command is applied?
 - Acceptance owner: Decision-data source, proposal/plan contracts, proposal runner, deterministic selector, shadow-authority result, and the `avoid_recent_obstruction` reference implementation
@@ -102,6 +102,7 @@ for simulator and physical vehicles.
 | Decision-facing fitness measures | ready_for_proposal | Activated after M005 cumulative PR #68 merged and mainline merge was tagged `milestone-005`. |
 | Modular shadow action proposal foundation | ready_for_proposal | Plan revision: replaced the unstarted fitness-first frontier before any M006 proposal branch or artifact existed. |
 | Modular shadow action proposal foundation | proposal_in_review | Started m006/shadow-proposals-proposal. |
+| Modular shadow action proposal foundation | ready_for_implementation | Proposal PR #73 accepted at 7a585fc5eab8028b7454ad0040575cf4120c8e92. |
 
 ## Accepted Review Units
 

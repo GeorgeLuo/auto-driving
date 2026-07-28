@@ -97,15 +97,35 @@ This removes a second 4096-byte proposal body from the plan budget.
 
 #### Compositional plan budget (proof with `canonical_json_bytes`)
 
-Worst-case legal plan body sizes:
+Identifier value ceilings used in the envelope (ASCII bytes):
+
+```text
+selected_proposal_id value     ≤ 129
+contribution.proposal_id value ≤ 129
+contribution.plugin_id value   ≤ 64
+                               ----
+identifier values alone        = 322 bytes (before JSON keys/quotes/commas)
+```
+
+Conservative envelope allowance for a **selected** plan skeleton
+(schema, plan_id≤76, frame_id≤64, timestamp_ms≤16 digits, status, selector_id,
+`selected_proposal_id`, one contribution object, structural punctuation — **without**
+`candidates` array bodies and **without** plan `metadata`):
+
+```text
+measured-style upper bound for skeleton ≤ 1024 bytes
+  (covers the ≥720 B maximum-ID selected skeleton measured with
+   canonical_json_bytes, plus margin for key names and separators)
+```
+
+Worst-case legal full plan:
 
 ```text
 4 * 4096  = 16384   candidates (exactly one per enabled plugin, each ≤ 4096 B)
-+ ≤ 200           selected_proposal_id + contribution ids (ASCII ≤ 129 each)
-+ 1024            plan metadata
-+ ≤ 512           remaining envelope keys (schema, plan_id≤76, frame_id≤64,
-                  timestamp_ms≤16 digits, status, selector_id, contributions array structure)
-= ≤ 18120  < 24576
++ 1024              plan metadata
++ 1024              selected-plan skeleton envelope (above)
+= 18432  < 24576
+headroom  = 24576 - 18432 = 6144 bytes
 ```
 
 **Invariant (frozen):** every set of 1..4 proposals that each pass ActionProposal
@@ -115,7 +135,8 @@ overflow path.
 
 Implementations must construct an actual maximum object (4 proposals each
 forced to 4096 serialized bytes under the field grammar, max-length ASCII ids,
-max `timestamp_ms`) and assert plan construction **succeeds** under the ceiling.
+max `timestamp_ms`, selected status with max-length `selected_proposal_id`) and
+assert plan construction **succeeds** under the ceiling via `canonical_json_bytes`.
 
 #### Cycle entry precondition (invalid frame_id)
 
@@ -342,7 +363,7 @@ omission. The runner **never** drops a plugin from `candidates`.
 | Field | Type | Rule |
 | --- | --- | --- |
 | `schema` | exact `action_proposal_v0` | |
-| `proposal_id` | string | Exact `{plugin_id}:{frame_id}` under ASCII grammar |
+| `proposal_id` | string | Exact `{plugin_id}:{frame_id}` under ASCII grammar; **must equal** `plugin_id + ":" + current source.frame_id` at runner admission |
 | `plugin_id` | string | ASCII grammar 1..64; reference is `avoid_recent_obstruction` |
 | `lifecycle` | enum | See lifecycle table |
 | `confidence` | float | **Reject** if non-finite or not in `[0, 1]` (no silent clamp at proposal boundary) |
@@ -407,16 +428,38 @@ propose(source: DecisionDataSource) -> ActionProposal
 Rules:
 
 - **Must return exactly one** `ActionProposal` instance (never `None`).
+- Returned identity **must** satisfy (for current `source.frame_id` and the
+  invoked plugin id `invoked_plugin_id`):
+  ```text
+  candidate.plugin_id == invoked_plugin_id
+  candidate.proposal_id == invoked_plugin_id + ":" + source.frame_id
+  ```
 - Pure with respect to DecisionDataSource: no memory writes, no perception runs,
   no network/vehicle I/O, no evaluator access.
 - Deterministic for identical source payloads.
 - Fail closed into `error` or `missing_input` / `incompatible` / `inactive`
   rather than inventing evidence or omitting a return.
+- Plugins must not cache and re-return a prior frame's proposal object.
+
+#### Runner admission of each plugin return (exact)
+
+After `propose` returns for `invoked_plugin_id` on `source`:
+
+1. If the return is not an `ActionProposal` instance, or `propose` raised →
+   insert synthetic candidate with reason **`plugin_exception`** (raise) or
+   **`plugin_invalid_return`** (wrong type).
+2. Else if **not** both identity equalities hold:
+   ```text
+   candidate.plugin_id == invoked_plugin_id
+   candidate.proposal_id == invoked_plugin_id + ":" + source.frame_id
+   ```
+   → **discard** the returned object for selection purposes and insert synthetic
+   candidate with reason **`plugin_invalid_return`** (same shape as below).
+   A valid prior-frame proposal is therefore **never** admitted into
+   `candidates` and **cannot** be selected.
+3. Else admit the returned proposal into `candidates`.
 
 #### Runner synthetic candidate (exact)
-
-If `propose` raises or returns a non-`ActionProposal` value, the runner inserts
-**exactly one** synthetic proposal for that `plugin_id`:
 
 | Field | Value |
 | --- | --- |
@@ -425,10 +468,11 @@ If `propose` raises or returns a non-`ActionProposal` value, the runner inserts
 | `available` | `false` |
 | `command` | `null` |
 | `confidence` | `0.0` |
-| `reason` | `plugin_exception` or `plugin_invalid_return` (≤ 240) |
+| `reason` | exact `plugin_exception` or `plugin_invalid_return` |
 | `assumptions` | `[]` |
 | `source_refs` | `[]` |
-| `proposal_id` | `{plugin_id}:{frame_id}` |
+| `plugin_id` | `invoked_plugin_id` |
+| `proposal_id` | `invoked_plugin_id + ":" + source.frame_id` |
 | `metadata` | `{}` |
 
 If even the synthetic proposal cannot be constructed (should not happen under
@@ -442,14 +486,15 @@ One deterministic selector with id `deterministic_first_active`.
 #### Inputs
 
 - The same `DecisionDataSource`
-- The complete ordered list of `ActionProposal` results from enabled plugins
-  (catalog order; stable sort by `plugin_id` if order otherwise undefined)
+- The complete ordered list of **runner-admitted** `ActionProposal` candidates
+  (exactly one per enabled plugin; already frame-aligned)
 
 #### Selection algorithm (exact)
 
 1. Require `len(candidates) == len(enabled_plugins)` and one candidate per
-   enabled `plugin_id`. If not, cycle `engine_error` /
-   `action_plan_invariant_violated`.
+   enabled `plugin_id`, each already satisfying
+   `proposal_id == plugin_id + ":" + source.frame_id`. If not, cycle
+   `engine_error` / `action_plan_invariant_violated`.
 2. If any candidate fails the lifecycle compatibility matrix (constructor bug),
    cycle `engine_error` / `action_proposal_matrix_violated`.
 3. Partition into **active** when **all** hold:
@@ -457,6 +502,7 @@ One deterministic selector with id `deterministic_first_active`.
    - `freshness == lifecycle` (fresh↔fresh, retained↔retained)
    - `available is true`
    - `command is not null`
+   - `proposal_id` ends with `":" + source.frame_id` (redundant defense)
 4. If active is empty:
    - Emit plan with `selected_proposal_id=null`, `contributions=[]`,
      `status="idle"`.
@@ -464,7 +510,8 @@ One deterministic selector with id `deterministic_first_active`.
    - Sort active by: higher `confidence` descending; tie-break by `plugin_id`
      ascending lexicographic.
    - Select the first proposal after sort.
-   - Set `selected_proposal_id` to that proposal's `proposal_id`.
+   - Set `selected_proposal_id` to that proposal's `proposal_id` (always current
+     frame).
    - Emit **exactly one** contribution:
      `{proposal_id, plugin_id, weight: 1.0, role: "selected"}`.
    - Authority `proposed` is a deep-detached copy of that candidate's `command`
@@ -796,11 +843,13 @@ combined view.
 | Capabilities unavailable | Use config `steer_magnitude`; assume `capabilities_not_ready` |
 | Capabilities ready with invalid max_abs_steering | Plugin `error` / `invalid_capabilities` |
 | reason length 241 / >16 source_refs / proposal >4096 B | Reject proposal construction |
-| Max legal 4×4096 candidates (ASCII max ids); `selected_proposal_id` only | Plan **must build**; `canonical_json_bytes(plan) ≤ 24576`; tested with real object |
+| Max legal 4×4096 candidates (ASCII max ids); `selected_proposal_id` only | Plan **must build**; `canonical_json_bytes(plan) ≤ 24576`; tested with real object; skeleton ≤1024 + metadata 1024 + candidates 16384 = 18432 |
 | Unicode/emoji `frame_id` | Reject at cycle entry (`ShadowCycleInputError`); no cycle result |
 | `frame_id` length 65 ASCII | Same: `ShadowCycleInputError`; no cycle result |
 | `enabled_plugins=[]` | Reject activation |
 | Plugin raises / returns None | Synthetic `error` candidate; candidates count = enabled count |
+| Plugin returns otherwise-valid proposal with prior `frame_id` in `proposal_id` | Synthetic `plugin_invalid_return` for current frame; prior proposal **not** in candidates; **cannot** be selected |
+| Plugin returns wrong `plugin_id` | Synthetic `plugin_invalid_return` |
 | engine_error after valid entry | `plan is null`; fixed `cycle_reason` code; authority always constructable with same `frame_id` |
 | `authorized_output.reason` on engine_error | Still exact `shadow-only-idle` |
 | Confidence `1.5` or `NaN` on ActionProposal | Reject construction |
@@ -897,8 +946,9 @@ Acceptance requires:
 4. DecisionDataSource is immutable across plugins.
 5. Compositional bounds proven with `canonical_json_bytes`, ASCII id grammar,
    `selected_proposal_id` (no selected body copy); max legal set **builds**.
-6. Exactly one candidate per enabled plugin; synthetic `error` on plugin failure;
-   `enabled_plugins` length **1..4**.
+6. Exactly one candidate per enabled plugin; synthetic `error` on plugin failure
+   or frame/plugin identity mismatch (`plugin_invalid_return`); prior-frame
+   proposals cannot be selected; `enabled_plugins` length **1..4**.
 7. Invalid frame context → `ShadowCycleInputError` (no cycle result). engine_error
    only after valid entry; fixed reason codes; authority always constructable.
 8. Selector matches `deterministic_first_active`; contributions empty or exactly

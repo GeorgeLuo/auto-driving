@@ -2,10 +2,10 @@
 
 | Field | Value |
 | --- | --- |
-| Status | Active |
+| Status | closed |
 | Milestone branch | `milestone/005-evidence-memory-foundation` (active; created from `main` after #58) |
 | Cumulative PR | [#68](https://github.com/GeorgeLuo/auto-driving/pull/68) (draft transitional delta to `main`; mark ready after Phase B handoff) |
-| Current frontier | Milestone closeout |
+| Current frontier | None (closed) |
 | Contract baseline | `22cfff9` — M005 work through PR #50, before the compact contract |
 | Grandfathered PRs | #57 (accepted evidence unit), #58 (contract migration); both retain their existing `main` targets |
 | Cutover | #57 merged to `main`; #58 recorded its accepted result and established the remaining conflict frontier; the milestone branch was created from resulting `main` |
@@ -58,33 +58,23 @@ model, changing perception semantics, or granting movement authority.
 | M005-10 | During the simulator check, Chase’s built-in decision model retains movement authority, the rewrite runs observe-only, and candidate/reference results align by simulator frame identity | Met | Atomic evaluator path and tracked guided run |
 | M005-11 | Simulator debug, map, and reference-decision state are evaluator-only and absent from rewritten controller inputs and retained memory provenance | Met | By design/wiring; re-asserted on check path |
 | M005-12 | Tracked simulator and physical reviews visibly trace retained image-space evidence to exact perception source frames and regions; distinguish current from retained/expired; never treat stale coordinates as current geometry | Met | Physical and Chase provenance extracts tracked |
-| M005-13 | Closeout states what memory representation proved useful, what remains unverified, and whether later pattern or action work is justified | Blocked | Requires all other criteria `Met` |
+| M005-13 | Closeout states what memory representation proved useful, what remains unverified, and whether later pattern or action work is justified | Met | Closeout published usefulness, residual risk, and 006 activate decision in closeout.md; terminal Met applied by complete-implementation for PR #69 |
 
 ## Current Delivery
 
 ### Current Frontier
 
-**Milestone closeout**
+**None**
 
-- Workflow state: implementation_in_review
-- PR: [#69](https://github.com/GeorgeLuo/auto-driving/pull/69)
-- Proposal branch: `m005/closeout-proposal`
-- Implementation branch: `m005/closeout`
-- Proposal path: `docs/milestones/005-evidence-memory-foundation/proposals/closeout.md`
-- Accepted proposal: [#66](https://github.com/GeorgeLuo/auto-driving/pull/66) at `0bd2920e15b2dc022428ca40a99cd2b3c29b43e5`
-- Review kind: Milestone closeout
-- Review question: Is milestone 005 complete as a whole—every exit criterion Met, completion usage supported, residual risk stated—and should the 006 pre-plan be activated, revised, or abandoned?
-- Acceptance owner: `closeout.md` plus the cumulative milestone PR judgment against exit criteria and completion usage
-- Exit criteria affected: M005-13
-- Prerequisite: Every exit criterion Met, including the current conflicting-evidence contract
-- Milestone-level non-goal: New feature implementation under the closeout PR; reopening max-age scoring design; activating 006 before closeout acceptance
+- Reason: Milestone closed after PR #69.
+- Revisit when: No in-milestone work remains.
 
 ### Next-Frontier Candidate
 
 **None**
 
-- Reason: No post-closeout frontier is reviewed.
-- Revisit when: Milestone closeout decides whether to activate milestone 006.
+- Reason: Cross-milestone activation is decided by closeout.
+- Revisit when: The next milestone is activated separately.
 
 ## Workflow History
 
@@ -99,6 +89,7 @@ model, changing perception semantics, or granting movement authority.
 | Milestone closeout | proposal_in_review | Started m005/closeout-proposal. |
 | Milestone closeout | ready_for_implementation | Proposal PR #66 accepted at 0bd2920e15b2dc022428ca40a99cd2b3c29b43e5. |
 | Milestone closeout | implementation_in_review | Started m005/closeout. |
+| Milestone closeout | accepted | Implementation PR #69 merged at 6be8d8ac3c2f90b145b0ef2abfd627f311f9944c. |
 
 ## Accepted Review Units
 
@@ -110,6 +101,7 @@ model, changing perception semantics, or granting movement authority.
 | #53 | Can operators treat a recorded replay extract as bounded and fail-closed, and can a live Chase memory probe be trusted only when the automation worker is fresh? | Accepted | M005-03, M005-07, M005-08 | Deterministic record/probe/once-exit tests |
 | #57 | Can a guided live Chase run prove max-age expiry without reset while generation identity, capacity causality, zero unapplied control, and exact provenance hold? | Accepted | M005-08, M005-09 | `evidence/chase-max-age-expiry/`; 73 focused and 353 full deterministic tests |
 | #64 | Does the bounded evidence ledger handle contradictory attributed evidence, same-slot recurrence, missing evidence, and structurally incompatible updates deterministically without silently claiming semantic truth? | Accepted | M005-08 | Deterministic conflict-policy matrix and per-prefix replay proof; 85 focused tests |
+| #69 | Is milestone 005 complete as a whole—every exit criterion Met, completion usage supported, residual risk stated—and should the 006 pre-plan be activated, revised, or abandoned? | Accepted | M005-13 | closeout.md; completed.md 005 entry; residual limits restated; 006 activate decision recorded; cumulative PR identity recorded for post-handoff readiness in implementation PR #69 |
 
 The baseline row is the explicit adoption boundary; post-baseline review units
 remain one row per merged PR.
@@ -118,10 +110,6 @@ remain one row per merged PR.
 
 | Risk or assumption | Consequence | Resolution path |
 | --- | --- | --- |
-| Process identity for Chase live probe relies on host command inspection | Probe may be unavailable or spoofable on unsupported hosts | Fail closed; document limitation |
-| Memory is process-local by default | Restart continuity is not guaranteed | Explicit milestone non-goal |
-| Metrics UI atomic capture remains an external dependency for Chase evidence | Capture quality depends on sibling repository | Keep dependency until auto-driving no longer needs contract adjustment |
-| Historical 005 review units targeted `main` rather than a milestone integration branch | The final cumulative PR is a remaining-work delta rather than the literal implementation history | Use baseline `22cfff9`; after grandfathered #58 merges, create the milestone branch for conflict closure and closeout |
 
 ## Milestone Decisions
 

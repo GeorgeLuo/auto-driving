@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="3f9b94b54ca2dbdc80f228d736dc7c2fa9737ace63cd07ed7d3eb0329023fa47">
+  <meta name="source-sha256" content="81225544d32e2567c2e75eadd4788c66937f321ea57090e96bdd758a6d7e99d2">
   <base target="_blank">
   <title>Milestone plan — 005-evidence-memory-foundation</title>
   <style>
@@ -73,7 +73,7 @@
 <tbody>
 <tr>
 <td>Status</td>
-<td>Active</td>
+<td>closed</td>
 </tr>
 <tr>
 <td>Milestone branch</td>
@@ -85,7 +85,7 @@
 </tr>
 <tr>
 <td>Current frontier</td>
-<td>Milestone closeout</td>
+<td>None (closed)</td>
 </tr>
 <tr>
 <td>Contract baseline</td>
@@ -294,33 +294,23 @@ model, changing perception semantics, or granting movement authority.</p>
 <tr>
 <td>M005-13</td>
 <td>Closeout states what memory representation proved useful, what remains unverified, and whether later pattern or action work is justified</td>
-<td>Blocked</td>
-<td>Requires all other criteria <code>Met</code></td>
+<td>Met</td>
+<td>Closeout published usefulness, residual risk, and 006 activate decision in closeout.md; terminal Met applied by complete-implementation for PR #69</td>
 </tr>
 </tbody>
 </table>
 <h2>Current Delivery</h2>
 <h3>Current Frontier</h3>
-<p><strong>Milestone closeout</strong></p>
+<p><strong>None</strong></p>
 <ul>
-<li>Workflow state: implementation_in_review</li>
-<li>PR: <a href="https://github.com/GeorgeLuo/auto-driving/pull/69">#69</a></li>
-<li>Proposal branch: <code>m005/closeout-proposal</code></li>
-<li>Implementation branch: <code>m005/closeout</code></li>
-<li>Proposal path: <code>docs/milestones/005-evidence-memory-foundation/proposals/closeout.md</code></li>
-<li>Accepted proposal: <a href="https://github.com/GeorgeLuo/auto-driving/pull/66">#66</a> at <code>0bd2920e15b2dc022428ca40a99cd2b3c29b43e5</code></li>
-<li>Review kind: Milestone closeout</li>
-<li>Review question: Is milestone 005 complete as a whole—every exit criterion Met, completion usage supported, residual risk stated—and should the 006 pre-plan be activated, revised, or abandoned?</li>
-<li>Acceptance owner: <code>closeout.md</code> plus the cumulative milestone PR judgment against exit criteria and completion usage</li>
-<li>Exit criteria affected: M005-13</li>
-<li>Prerequisite: Every exit criterion Met, including the current conflicting-evidence contract</li>
-<li>Milestone-level non-goal: New feature implementation under the closeout PR; reopening max-age scoring design; activating 006 before closeout acceptance</li>
+<li>Reason: Milestone closed after PR #69.</li>
+<li>Revisit when: No in-milestone work remains.</li>
 </ul>
 <h3>Next-Frontier Candidate</h3>
 <p><strong>None</strong></p>
 <ul>
-<li>Reason: No post-closeout frontier is reviewed.</li>
-<li>Revisit when: Milestone closeout decides whether to activate milestone 006.</li>
+<li>Reason: Cross-milestone activation is decided by closeout.</li>
+<li>Revisit when: The next milestone is activated separately.</li>
 </ul>
 <h2>Workflow History</h2>
 <table>
@@ -376,6 +366,11 @@ model, changing perception semantics, or granting movement authority.</p>
 <td>Milestone closeout</td>
 <td>implementation_in_review</td>
 <td>Started m005/closeout.</td>
+</tr>
+<tr>
+<td>Milestone closeout</td>
+<td>accepted</td>
+<td>Implementation PR #69 merged at 6be8d8ac3c2f90b145b0ef2abfd627f311f9944c.</td>
 </tr>
 </tbody>
 </table>
@@ -433,6 +428,13 @@ model, changing perception semantics, or granting movement authority.</p>
 <td>M005-08</td>
 <td>Deterministic conflict-policy matrix and per-prefix replay proof; 85 focused tests</td>
 </tr>
+<tr>
+<td>#69</td>
+<td>Is milestone 005 complete as a whole—every exit criterion Met, completion usage supported, residual risk stated—and should the 006 pre-plan be activated, revised, or abandoned?</td>
+<td>Accepted</td>
+<td>M005-13</td>
+<td>closeout.md; completed.md 005 entry; residual limits restated; 006 activate decision recorded; cumulative PR identity recorded for post-handoff readiness in implementation PR #69</td>
+</tr>
 </tbody>
 </table>
 <p>The baseline row is the explicit adoption boundary; post-baseline review units
@@ -448,24 +450,9 @@ remain one row per merged PR.</p>
 </thead>
 <tbody>
 <tr>
-<td>Process identity for Chase live probe relies on host command inspection</td>
-<td>Probe may be unavailable or spoofable on unsupported hosts</td>
-<td>Fail closed; document limitation</td>
-</tr>
-<tr>
-<td>Memory is process-local by default</td>
-<td>Restart continuity is not guaranteed</td>
-<td>Explicit milestone non-goal</td>
-</tr>
-<tr>
-<td>Metrics UI atomic capture remains an external dependency for Chase evidence</td>
-<td>Capture quality depends on sibling repository</td>
-<td>Keep dependency until auto-driving no longer needs contract adjustment</td>
-</tr>
-<tr>
-<td>Historical 005 review units targeted <code>main</code> rather than a milestone integration branch</td>
-<td>The final cumulative PR is a remaining-work delta rather than the literal implementation history</td>
-<td>Use baseline <code>22cfff9</code>; after grandfathered #58 merges, create the milestone branch for conflict closure and closeout</td>
+<td></td>
+<td></td>
+<td></td>
 </tr>
 </tbody>
 </table>

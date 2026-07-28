@@ -67,9 +67,10 @@ model, changing perception semantics, or granting movement authority.
 **Conflicting evidence semantics**
 
 - Workflow state: ready_for_proposal
-- Proposal branch: `m005/conflicting-evidence-proposal` (planned; not opened)
-- Implementation branch: `m005/conflicting-evidence` (planned; not opened)
+- Proposal branch: `m005/conflicting-evidence-proposal`
+- Implementation branch: `m005/conflicting-evidence`
 - Proposal path: `docs/milestones/005-evidence-memory-foundation/proposals/conflicting-evidence.md`
+- Paused implementation: [#59](https://github.com/GeorgeLuo/auto-driving/pull/59) on `m005/conflicting-evidence` opened before the independent proposal gate; it is **not** accepted implementation evidence and remains blocked until an independent proposal is accepted and implementation is re-handed under the gate
 - Review kind: Deterministic invariant closure
 - Review question: Does the bounded evidence ledger handle contradictory attributed evidence, same-slot recurrence, missing evidence, and structurally incompatible updates deterministically without silently claiming semantic truth?
 - Acceptance owner: `BoundedEvidenceLedger` update policy plus focused implementation and replay fixtures
@@ -99,7 +100,7 @@ Do not move conflict implementation into closeout.
 
 | Frontier | State | Evidence |
 | --- | --- | --- |
-| Conflicting evidence semantics | ready_for_proposal | #58 froze the minimal frontier contract; independent proposal work is next under the proposal-before-implementation gate |
+| Conflicting evidence semantics | ready_for_proposal | #58 froze the minimal frontier contract; draft implementation PR #59 / `m005/conflicting-evidence` exists as a pre-gate exception and remains blocked until an independent proposal is accepted |
 
 ## Accepted Review Units
 

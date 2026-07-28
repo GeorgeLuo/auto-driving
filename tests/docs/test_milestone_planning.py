@@ -201,9 +201,12 @@ class MilestonePlanningTests(unittest.TestCase):
                 "non-goals",
             ):
                 self.assertTrue(frontier.fields[field], f"missing frontier field {field}")
-        self.assertEqual(
+        # Active frontier may be anywhere in the proposal/implementation machine.
+        from docs.milestones.workflow import WORKFLOW_STATES
+
+        self.assertIn(
             state.current.fields["workflow state"],
-            "ready_for_proposal",
+            WORKFLOW_STATES,
         )
 
 

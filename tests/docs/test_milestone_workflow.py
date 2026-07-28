@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import subprocess
 import tempfile
 import unittest
@@ -18,40 +19,82 @@ from docs.milestones.workflow import (
 ROOT = Path(__file__).resolve().parents[2]
 PLAN = ROOT / "docs" / "milestones" / "005-evidence-memory-foundation" / "plan.md"
 
+_WORKFLOW_CHAIN = (
+    "ready_for_proposal",
+    "proposal_in_review",
+    "ready_for_implementation",
+    "implementation_in_review",
+)
+
+
+def _append_history_rows(text: str, rows: list[tuple[str, str, str]]) -> str:
+    if not rows:
+        return text
+    rendered = "\n".join(
+        f"| {frontier} | {state} | {evidence} |" for frontier, state, evidence in rows
+    )
+    marker = "\n\n## Accepted Review Units"
+    if marker not in text:
+        raise AssertionError("accepted review units marker missing")
+    return text.replace(marker, f"\n{rendered}{marker}", 1)
+
 
 def _plan_with_current_pr(text: str) -> str:
-    marker = "**Conflicting evidence semantics**\n\n"
-    if marker not in text:
-        raise AssertionError("current frontier marker is missing")
-    updated = text.replace(
-        marker,
-        marker + "- PR: [#59](https://example.invalid/59)\n",
-        1,
-    )
+    """Advance the live plan to a handoff-ready implementation_in_review state.
+
+    Avoid hardcoding history evidence strings from a particular plan revision.
+    """
+
+    state = validate_plan_text(text)
+    if state.current.is_empty or state.current.name is None:
+        raise AssertionError("active current frontier required for handoff fixtures")
+    frontier = state.current.name
+    current_state = state.current.fields["workflow state"]
+    if current_state not in _WORKFLOW_CHAIN:
+        raise AssertionError(f"unexpected workflow state {current_state!r}")
+    target = "implementation_in_review"
+    start_index = _WORKFLOW_CHAIN.index(current_state)
+    target_index = _WORKFLOW_CHAIN.index(target)
+    if start_index > target_index:
+        raise AssertionError(
+            f"cannot rewind fixture from {current_state} to {target}"
+        )
+
+    updated = text
+    # Drop an active proposal/implementation PR label so the synthetic
+    # implementation review PR can be attached cleanly.
+    updated = re.sub(r"^- PR: .+\n", "", updated, count=1, flags=re.M)
     updated = updated.replace(
-        "- Workflow state: ready_for_proposal\n",
-        "- Workflow state: implementation_in_review\n",
+        f"- Workflow state: {current_state}\n",
+        f"- Workflow state: {target}\n",
         1,
     )
-    updated = updated.replace(
-        "- Proposal path: `docs/milestones/005-evidence-memory-foundation/proposals/conflicting-evidence.md`\n",
-        "- Proposal path: `docs/milestones/005-evidence-memory-foundation/proposals/conflicting-evidence.md`\n"
-        "- Accepted proposal: [#60](https://example.invalid/60) at `abc1234`\n",
-        1,
-    )
-    history_row = (
-        "| Conflicting evidence semantics | ready_for_proposal | #58 froze the minimal "
-        "frontier contract; draft implementation PR #59 is paused because no independent "
-        "proposal has been reviewed and accepted |"
-    )
-    return updated.replace(
-        history_row,
-        history_row
-        + "\n| Conflicting evidence semantics | proposal_in_review | Proposal branch started. |"
-        + "\n| Conflicting evidence semantics | ready_for_implementation | Proposal PR #60 accepted. |"
-        + "\n| Conflicting evidence semantics | implementation_in_review | Implementation branch started. |",
-        1,
-    )
+    if "Accepted proposal:" not in updated:
+        proposal_path_value = state.current.fields["proposal path"]
+        updated = updated.replace(
+            f"- Proposal path: {proposal_path_value}\n",
+            f"- Proposal path: {proposal_path_value}\n"
+            "- Accepted proposal: [#60](https://example.invalid/60) at `abc1234`\n",
+            1,
+        )
+    marker = f"**{frontier}**\n\n"
+    if "- PR:" not in updated.split("### Next-Frontier Candidate", 1)[0]:
+        updated = updated.replace(
+            marker,
+            marker + "- PR: [#59](https://example.invalid/59)\n",
+            1,
+        )
+
+    evidence_by_state = {
+        "proposal_in_review": "Proposal branch started.",
+        "ready_for_implementation": "Proposal PR #60 accepted.",
+        "implementation_in_review": "Implementation branch started.",
+    }
+    missing_steps = [
+        (frontier, step, evidence_by_state[step])
+        for step in _WORKFLOW_CHAIN[start_index + 1 : target_index + 1]
+    ]
+    return _append_history_rows(updated, missing_steps)
 
 
 def _receipt(*, merge_commit: str = "deadbee") -> dict[str, object]:
@@ -405,7 +448,14 @@ class MilestoneHandoffGitOrderingTests(unittest.TestCase):
             root = Path(temp_dir)
             plan = root / "docs" / "milestones" / "005-evidence-memory-foundation" / "plan.md"
             plan.parent.mkdir(parents=True)
+            # Always start from ready_for_proposal regardless of live plan state.
             current = PLAN.read_text(encoding="utf-8")
+            state = validate_plan_text(current)
+            if state.current.fields["workflow state"] != "ready_for_proposal":
+                self.skipTest(
+                    "live plan is past ready_for_proposal; start-proposal exercised "
+                    "by proposal-workflow suite with synthetic rewind"
+                )
             plan.write_text(current, encoding="utf-8")
             self._git(root, "init", "-b", "milestone/005-evidence-memory-foundation")
             self._git(root, "add", ".")
@@ -459,6 +509,11 @@ class MilestoneHandoffGitOrderingTests(unittest.TestCase):
             plan = root / "docs" / "milestones" / "005-evidence-memory-foundation" / "plan.md"
             plan.parent.mkdir(parents=True)
             current = PLAN.read_text(encoding="utf-8")
+            state = validate_plan_text(current)
+            if state.current.fields["workflow state"] != "ready_for_proposal":
+                self.skipTest(
+                    "live plan is past ready_for_proposal; covered by synthetic fixtures"
+                )
             plan.write_text(current, encoding="utf-8")
             self._git(root, "init", "-b", "milestone/005-evidence-memory-foundation")
             self._git(root, "add", ".")

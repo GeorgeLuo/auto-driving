@@ -66,7 +66,8 @@ model, changing perception semantics, or granting movement authority.
 
 **Conflicting evidence semantics**
 
-- Workflow state: ready_for_implementation
+- Workflow state: implementation_in_review
+- PR: [#64](https://github.com/GeorgeLuo/auto-driving/pull/64)
 - Proposal branch: `m005/conflicting-evidence-proposal`
 - Implementation branch: `m005/conflicting-evidence`
 - Proposal path: `docs/milestones/005-evidence-memory-foundation/proposals/conflicting-evidence.md`
@@ -104,6 +105,7 @@ Do not move conflict implementation into closeout.
 | Conflicting evidence semantics | ready_for_proposal | #58 froze the minimal frontier contract; draft implementation PR #59 / `m005/conflicting-evidence` exists as a pre-gate exception and remains blocked until an independent proposal is accepted |
 | Conflicting evidence semantics | proposal_in_review | Proposal PR #61 opened for independent conflict-semantics review. |
 | Conflicting evidence semantics | ready_for_implementation | Proposal PR #61 accepted at 13b73f45958a50bff8aea5e2789b9052234604cb. |
+| Conflicting evidence semantics | implementation_in_review | Started m005/conflicting-evidence. |
 
 ## Accepted Review Units
 

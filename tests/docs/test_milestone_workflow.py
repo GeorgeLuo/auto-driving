@@ -369,7 +369,11 @@ class MilestoneHandoffGitOrderingTests(unittest.TestCase):
             root = Path(temp_dir)
             plan = root / PLAN_RELATIVE
             plan.parent.mkdir(parents=True)
-            current = ready_plan_text()
+            current = ready_plan_text().replace(
+                f"- Proposal branch: `{PROPOSAL_BRANCH}`\n",
+                f"- Proposal branch: `{PROPOSAL_BRANCH}` (planned; not opened)\n",
+                1,
+            )
             plan.write_text(current, encoding="utf-8")
             self._git(root, "init", "-b", MILESTONE_BRANCH)
             self._git(root, "add", ".")
@@ -400,6 +404,10 @@ class MilestoneHandoffGitOrderingTests(unittest.TestCase):
             self.assertEqual(
                 transitioned.current.fields["workflow state"],
                 "proposal_in_review",
+            )
+            self.assertEqual(
+                transitioned.current.fields["proposal branch"],
+                f"`{PROPOSAL_BRANCH}`",
             )
 
     def test_proposal_start_rejects_frontier_past_proposal_state(self) -> None:

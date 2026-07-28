@@ -1090,6 +1090,7 @@ def _replace_current_frontier_state(
     new_state: str,
     evidence: str,
     accepted_proposal: str | None = None,
+    opened_branch_field: str | None = None,
 ) -> str:
     state = validate_plan_text(text)
     if state.status != "Active" or state.current.is_empty:
@@ -1102,6 +1103,13 @@ def _replace_current_frontier_state(
     fields = dict(state.current.fields)
     fields["workflow state"] = new_state
     fields.pop("pr", None)
+    if opened_branch_field is not None:
+        opened_branch = _frontier_branch(
+            state.current,
+            heading="Current Frontier",
+            field=opened_branch_field,
+        )
+        fields[opened_branch_field] = f"`{opened_branch}`"
     if accepted_proposal is not None:
         fields["accepted proposal"] = accepted_proposal
     updated = _replace_frontier(
@@ -1193,6 +1201,7 @@ def _start_frontier_branch(
         expected_state=expected_state,
         new_state=new_state,
         evidence=f"Started {requested_branch}.",
+        opened_branch_field=branch_field,
     )
     plan.write_text(updated, encoding="utf-8")
     return updated
@@ -1480,13 +1489,43 @@ def validate_review_unit_transition(
         raise PlanContractError("review-unit PR cannot replace the current frontier")
     if base.next_frontier != head.next_frontier:
         raise PlanContractError("review-unit PR cannot change the queued frontier")
+    base_state = base.current.fields["workflow state"]
+    head_state = head.current.fields["workflow state"]
+    opened_branch_field = {
+        ("ready_for_proposal", "proposal_in_review"): "proposal branch",
+        (
+            "ready_for_implementation",
+            "implementation_in_review",
+        ): "implementation branch",
+    }.get((base_state, head_state))
     mutable_fields = {"workflow state", "pr"}
+    if opened_branch_field is not None:
+        mutable_fields.add(opened_branch_field)
     for field in (
         set(base.current.fields) | set(head.current.fields)
     ) - mutable_fields:
         if base.current.fields.get(field) != head.current.fields.get(field):
             raise PlanContractError(
                 f"review-unit PR changed frozen frontier field {field!r}"
+            )
+    if opened_branch_field is not None:
+        base_branch = _frontier_branch(
+            base.current,
+            heading="Current Frontier",
+            field=opened_branch_field,
+        )
+        head_branch_value = _frontier_branch(
+            head.current,
+            heading="Current Frontier",
+            field=opened_branch_field,
+        )
+        if head_branch_value != base_branch:
+            raise PlanContractError(
+                f"review-unit PR changed frozen {opened_branch_field} identity"
+            )
+        if head.current.fields[opened_branch_field] != f"`{base_branch}`":
+            raise PlanContractError(
+                f"opened {opened_branch_field} must be the canonical branch name"
             )
     if base.criteria != head.criteria:
         raise PlanContractError(
@@ -1510,8 +1549,6 @@ def validate_review_unit_transition(
             "review-unit PR must append exactly one workflow-history transition"
         )
 
-    base_state = base.current.fields["workflow state"]
-    head_state = head.current.fields["workflow state"]
     proposal_path = _frontier_proposal_path(
         base.current,
         heading="Current Frontier",

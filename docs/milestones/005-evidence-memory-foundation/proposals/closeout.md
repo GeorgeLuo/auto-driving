@@ -13,38 +13,59 @@ usage supported, residual risk stated—and should the 006 pre-plan be activated
 revised, or abandoned?
 
 This proposal is ready for implementation only if an implementer can write
-`closeout.md`, ledger/navigation updates, and the cumulative milestone PR
-judgment without inventing new product policy or reopening closed frontiers.
+`closeout.md`, completed-ledger and navigation updates, and prepare the
+cumulative PR **without** pre-claiming terminal plan mutations that the
+post-merge mechanical handoff owns.
 
 ## Proposed Contract
 
+### Execution phases (must not be collapsed)
+
+Closeout has **three** ordered phases. Mixing them fails CI or invents false
+plan history.
+
+| Phase | When | Owner | What may change |
+| --- | --- | --- | --- |
+| **A. Implementation PR** (`m005/closeout` → milestone) | Before merge | Implementer | Durable judgment docs; navigation; optional plan prose that does **not** touch criteria, risks, ledger, or frontier identity; open/update cumulative PR and record its exact number |
+| **B. Post-merge handoff** | After squash-merge of the implementation PR, on a clean milestone branch | `workflow.py complete-implementation --pr <implementation-pr>` | **Only** mechanical terminal plan mutations from this proposal’s Expected Handoff template (M005-13 Met, risk removal, Status `closed`, empty frontiers, accepted-ledger row, history) plus generated `plan.html` |
+| **C. Post-handoff operator steps** | After handoff commit is on the milestone tip | Operator | Mark the **exact** cumulative PR ready; whole-milestone review; merge commit to `main`; tag; branch cleanup; 006 activation note as navigation only |
+
+The enforced review-unit contract **prohibits** the implementation PR from
+changing exit-criterion statuses, open risks, or the accepted ledger, and
+requires the active closeout frontier to remain present while Status is
+`Active`. Therefore phase A must not set M005-13=`Met`, must not clear risks,
+must not empty frontiers, and must not set Status=`closed`. Those mutations are
+**exclusively** phase B via `complete-implementation` applying this template.
+
 ### Whole-milestone acceptance rule
 
-Milestone 005 is **complete** only when all of the following hold at the
-closeout implementation merge:
+Milestone 005 is **complete** only when phases A–C succeed:
 
-1. **Every exit criterion M005-01–M005-13 is `Met`** in the plan Exit Criteria
-   table. M005-01–M005-12 are already `Met` with accepted review-unit evidence.
-   Closeout marks **M005-13** `Met` by publishing the durable judgment surfaces
-   below—not by new runtime behavior.
-2. **Completion Usage remains honest.** The plan’s Completion Usage table is the
-   operator surface set. Closeout must restate that stage / inspect / stream /
-   reset / replay / opt-in record / Pi lifecycle check / Chase lifecycle check
-   remain the supported workflows, with idle action policy unchanged for the
-   whole milestone. Closeout must not invent new operator commands or claim
-   movement authority.
-3. **No concealed unfinished work.** Closeout must not mark criteria Met by
-   narrative alone when the ledger row evidence is missing. If any criterion
-   other than M005-13 is not already `Met` at implementation start, stop and
-   open a repair unit—do not hide the gap inside closeout.
-4. **Residual risk is explicit.** Open risks that remain true after closeout are
-   either removed from the plan risk table and restated as durable residual
-   limits in `closeout.md`, or kept only if they still block a later milestone
-   (they must not silently disappear).
-5. **Cross-milestone handoff is explicit.** Closeout records one decision for
-   the 006 pre-plan: **activate**, **revise**, or **abandon**. Activating 006 is
-   a status/navigation change after 005 closes; it is **not** 005 scope and must
-   not ship 006 product work under `m005/closeout`.
+1. **M005-01–M005-12 stay Met** on the plan at implementation start (already
+   true with accepted implementation units). If any is not Met, stop—open a
+   repair unit; do not hide the gap in closeout.
+2. **Phase A publishes durable judgment** in `closeout.md` (usefulness, residual
+   limits, 006 activate decision, validation snapshot, references) plus
+   `completed.md` and `docs/README.md` navigation, without new runtime behavior.
+3. **Phase B marks M005-13 Met and closes the milestone** through the reviewed
+   Expected Handoff (`outcome: close`), not by hand-editing those cells in the
+   implementation PR.
+4. **Completion Usage remains honest.** `closeout.md` restates that stage /
+   inspect / stream / reset / replay / opt-in record / Pi lifecycle check /
+   Chase lifecycle check remain the supported workflows, with idle action for
+   the whole milestone. No new operator commands; no movement authority.
+5. **Residual risk is explicit.** Phase A restates remaining limits in
+   `closeout.md`. Phase B removes the matching open-risk rows named in Expected
+   Handoff. Risks must not vanish from the plan without residual restatement.
+6. **Cross-milestone handoff is explicit.** Phase A records **activate** for the
+   006 pre-plan. Phase C may update navigation after 005 is closed; it must not
+   ship 006 product work under `m005/closeout`.
+7. **Cumulative PR identity is explicit and not conflated with the
+   implementation PR.** Phase A opens or updates the cumulative PR
+   (`milestone/005-evidence-memory-foundation` → `main`) and records its **exact
+   number** in `closeout.md`. Phase C marks **that** PR ready after handoff.
+   `complete-implementation` only verifies the **implementation** PR (`{pr}`);
+   it must not be described as proving cumulative readiness.
 
 ### Criterion judgment basis (do not re-prove)
 
@@ -65,11 +86,11 @@ accepted contracts.
 | M005-10 | Atomic evaluator path / #51 | Mention observe-only rewrite; built-in model retains movement authority |
 | M005-11 | Design/wiring + #51 | Mention evaluator-only shadow state absent from candidate/memory |
 | M005-12 | Physical + Chase provenance extracts | Mention retained image-space evidence traces to source frames; retained ≠ current |
-| M005-13 | **This unit** | Publish `closeout.md` + completed ledger + residual risk + 006 decision |
+| M005-13 | **Phase A docs + phase B handoff** | Phase A publishes `closeout.md` / completed / nav; phase B sets Met via Expected Handoff |
 
 ### What memory representation proved useful
 
-Closeout **must** state, in substance:
+Closeout **must** state, in substance (phase A, in `closeout.md`):
 
 - Retained attributed observation evidence (`thing` / `signal` slots) with
   plugin-safe identity, finite capacity and age, detachable snapshots, explicit
@@ -82,7 +103,8 @@ Closeout **must** state, in substance:
 
 ### What remains unverified (residual limits)
 
-Closeout **must** record at least:
+Closeout **must** record at least (phase A in `closeout.md`; phase B removes
+matching plan risk rows):
 
 | Residual | Why it remains |
 | --- | --- |
@@ -108,110 +130,143 @@ Rationale:
 - No evidence from 005 justifies abandoning 006 or replacing it with a different
   milestone.
 
-**Revise only if** closeout implementation finds the pre-plan text factually
-wrong relative to closed 004/005 evidence (status line / prerequisite wording).
-Do not expand 006 scope under 005 closeout. **Do not activate 006 product work**
-while 005 closeout is open.
+**Revise only if** phase A finds the pre-plan text factually wrong relative to
+closed 004/005 evidence (status line / prerequisite wording). Do not expand 006
+scope under 005 closeout. **Do not implement 006 product work** in any phase of
+this unit.
 
-### Required closeout outputs
+### Required outputs by phase
 
-Implementation of this proposal produces exactly:
+#### Phase A — implementation PR only
 
 1. **`docs/milestones/005-evidence-memory-foundation/closeout.md`** — durable
-   judgment: outcome, what proved useful, residual limits, validation snapshot,
-   deferred/next work (006 activate), references to plan and accepted units.
-2. **Plan terminal state** — M005-13 `Met`; Status `closed`; current/next
-   frontiers empty per `outcome: close` handoff; Open Risks emptied of items
-   restated as residual in closeout; Milestone Decisions row recording closeout
-   and the 006 activation decision.
-3. **`docs/milestones/completed.md`** — append-only 005 entry linking plan and
-   closeout (same shape as 001–004 entries).
-4. **`docs/README.md`** — navigation only: 005 moves to recently closed; 006
-   remains the immediate pre-plan (or is noted as next-to-activate after the
-   cumulative merge process completes—do not claim 006 is Active until its own
-   activation step).
-5. **Cumulative milestone PR** — open or update the long-lived PR from
+   judgment: outcome narrative, what proved useful, residual limits, validation
+   snapshot, deferred work (006 activate), references, and the **exact cumulative
+   PR number** once opened (e.g. “Cumulative PR: #N; mark ready after handoff”).
+2. **`docs/milestones/completed.md`** — append-only 005 entry linking plan and
+   closeout (same shape as 001–004).
+3. **`docs/README.md`** — navigation only: prepare 005 as recently closed / 006
+   still pre-plan. Do not claim 006 Active. Wording may say closeout is in
+   progress if Status is still Active at PR open; final “closed” navigation must
+   remain consistent after phase B.
+4. **Plan prose allowed under the review-unit freeze** — optional Milestone
+   Decisions row and `## Closeout` body that **point at** `closeout.md` and
+   restate the 006 activate decision. **Forbidden in the implementation PR:**
+   Exit Criteria status/evidence cells; Open Risks rows; Accepted Review Units
+   rows; replacing/emptying Current Frontier or Next-Frontier Candidate;
+   header Status=`closed` or Current frontier=`None`.
+5. **Cumulative PR process** — open or update
    `milestone/005-evidence-memory-foundation` → `main` as a transitional
-   remaining-work delta; mark it ready for whole-milestone review. Prefer merge
-   commit into `main` after acceptance (per planning contract). Do not squash
-   away milestone history on that final merge.
-6. **No product/runtime implementation** under `m005/closeout` except docs and
-   plan/HTML generation required by the workflow.
+   remaining-work delta; record the exact PR number in `closeout.md`. Leave it
+   draft or otherwise **not** the readiness gate for phase B. Prefer merge commit
+   into `main` later (phase C). Do not squash away milestone history on that
+   final merge.
+6. **No product/runtime implementation** under `m005/closeout`.
+
+#### Phase B — post-merge `complete-implementation` only
+
+Applies this proposal’s Expected Handoff template with the **implementation** PR
+number and merge SHA:
+
+- M005-13 → `Met` with handoff evidence string
+- `risk_remove` for the four named open risks (restated as residual in
+  `closeout.md`)
+- Status → `closed`; frontiers emptied; accepted-ledger row for the
+  implementation PR; workflow history update
+- Commit **only** `plan.md` + generated `plan.html` on the milestone branch
+
+#### Phase C — post-handoff operator steps (not mechanical handoff evidence)
+
+1. Mark the **exact cumulative PR number recorded in `closeout.md`** ready for
+   whole-milestone review (if still draft).
+2. Review and merge that cumulative PR into `main` with a merge commit.
+3. Tag; remove obsolete milestone/proposal/implementation branches.
+4. Activate or revise 006 only as a cross-milestone navigation/status step—not
+   as 005 product scope.
 
 ### Closeout.md required sections
 
 Use prior closeouts (e.g. 004) as structure guide. Required content blocks:
 
-- Outcome (closed date; one-paragraph whole-milestone result)
-- Durable Decisions (memory-as-evidence, idle action, bounds, dual-host, provenance, conflict policy pointer)
-- What Was Demonstrated (table: claim → evidence path / PR)
-- Failures And Residual Limits (table or bullets matching residual list above)
-- Validation (deterministic suite status at closeout tip; cite that live proofs
+- Outcome (closed date / whole-milestone result; may note “plan Status closed
+  via post-merge handoff” if written before phase B)
+- Durable Decisions (memory-as-evidence, idle action, bounds, dual-host,
+  provenance, conflict policy pointer)
+- What Was Demonstrated (table: claim → evidence path / implementation PR)
+- Failures And Residual Limits (matching residual list above)
+- Validation (deterministic suite status at closeout tip; cite live proofs
   already landed under #51/#57 and Pi evidence; no new live run required unless
-  the plan evidence is missing)
+  plan evidence is missing)
 - Deferred Work (006 activate; no other competing pre-plan)
-- References (plan, completed ledger, key PRs)
+- Cumulative PR identity (exact number; “ready after handoff” responsibility)
+- References (plan, completed ledger, key **implementation** PRs)
 
 ### Validation and non-claims
 
 - Closeout validation is **documentation and plan integrity**, plus a full
-  deterministic test run at the closeout tip to ensure the cumulative delta does
-  not regress. Live Pi/Chase re-proof is **not** required for closeout if
-  M005-09–M005-12 evidence remains tracked and referenced.
+  deterministic test run at the closeout implementation tip. Live Pi/Chase
+  re-proof is **not** required if M005-09–M005-12 evidence remains tracked.
 - Closeout does **not** claim semantic world models, movement authority, or
   restart-durable memory.
 - Closeout does **not** re-score max-age design or reopen #64’s conflict matrix.
+- Phase B does **not** verify cumulative PR readiness; phase C does, by number.
 
 ## Ownership
 
 | Concern | Owner |
 | --- | --- |
-| Whole-milestone judgment text | `docs/milestones/005-evidence-memory-foundation/closeout.md` |
-| Exit criterion M005-13 + terminal plan state | `plan.md` / generated `plan.html` via workflow handoff |
-| Completed ledger | `docs/milestones/completed.md` |
-| Navigation | `docs/README.md` only |
-| Cumulative PR readiness / merge topology | Milestone branch → `main` PR (process) |
-| 006 activation note | Closeout + docs navigation; not 006 product code |
+| Whole-milestone judgment text | Phase A: `closeout.md` |
+| M005-13 Met + Status closed + risk clear + empty frontiers | Phase B: `complete-implementation` + Expected Handoff |
+| Completed ledger | Phase A: `docs/milestones/completed.md` |
+| Navigation | Phase A (+ C touch-up): `docs/README.md` only |
+| Cumulative PR open + exact number | Phase A (record in `closeout.md`) |
+| Cumulative PR mark-ready / merge to `main` | Phase C (operator; not `{pr}` in handoff) |
+| 006 activate decision text | Phase A in `closeout.md`; C for any post-close nav |
 
 ## Affected Paths
 
-- Success: all criteria Met; closeout.md published; milestone Status `closed`;
-  completed ledger updated; cumulative PR ready; 006 decision = activate.
-- Block: any non-closeout criterion not Met at implementation start → stop;
-  do not force close.
-- Residual: open risks restated in closeout.md; plan risk table cleared of
-  restated items.
-- Cross-milestone: 006 remains pre-plan until its own activation; no 006
-  implementation under this unit.
-- Product code: unchanged.
+- Phase A success: `closeout.md` + completed + nav (+ optional allowed plan
+  prose); cumulative PR exists with recorded number; frontier still Active
+  closeout / `implementation_in_review` until merge.
+- Phase B success: plan terminal state from Expected Handoff; only plan.md/html
+  in the handoff commit.
+- Phase C success: named cumulative PR ready and merged; 006 not implemented
+  under 005.
+- Block: any non-closeout criterion not Met at implementation start → stop.
+- Product code: unchanged in all phases.
 
 ## Adversarial Matrix
 
 | Case | Expected result |
 | --- | --- |
-| All M005-01–M005-12 already Met; closeout docs land | M005-13 Met; Status closed; handoff `outcome: close` succeeds |
-| Implementer invents new CLI / memory behavior in closeout PR | Out of scope; reject |
+| Phase A ships closeout docs; phase B runs complete-implementation | M005-13 Met; Status closed; ledger row for implementation PR |
+| Phase A sets M005-13 Met or Status closed in the implementation PR | Reject (review-unit freeze / validate-pr) |
+| Phase A clears Open Risks or ledger rows | Reject |
+| Implementer invents new CLI / memory behavior | Out of scope; reject |
 | Implementer reopens conflict policy or max-age scoring | Out of scope; reject |
-| Closeout marks M005-13 Met without closeout.md | Reject |
-| Closeout omits residual process-local / Metrics UI / cumulative-delta limits | Reject |
-| Closeout activates 006 product work (code/tests under 006 scope) | Reject; docs/status only |
-| Closeout abandons 006 without decision-log rationale stronger than this proposal | Reject; proposal freezes **activate** |
-| Closeout claims live re-proof without new evidence paths | Reject; cite existing tracked evidence |
-| Cumulative PR targets something other than `main` from milestone branch | Reject topology |
-| Completion Usage workflows contradicted (e.g. claims default disk history) | Reject |
-| Open risk silently deleted without residual restatement | Reject |
-| Attempt to promote a next in-milestone frontier after close | Reject; next remains none |
+| Phase B claimed without closeout.md | Reject (judgment missing) |
+| Residual limits omitted from closeout.md | Reject |
+| 006 product work under m005/closeout | Reject |
+| Abandon 006 without stronger rationale than this proposal | Reject; frozen **activate** |
+| Live re-proof claimed without new evidence paths | Reject; cite tracked evidence |
+| Cumulative PR targets something other than main from milestone branch | Reject topology |
+| durable_evidence claims “cumulative PR ready” via implementation `{pr}` | Reject; cumulative readiness is phase C by exact number |
+| Completion Usage claims default disk history | Reject |
+| Risk removed in phase B without residual restatement in closeout.md | Reject |
+| Next in-milestone frontier after close | Reject; next remains none |
 
 ## External Assumptions
 
-- Accepted review units #51–#53, #57, #61, #64 (and baseline through #50) remain
-  the evidence of record for Met criteria.
+- Accepted **implementation** review units in the plan ledger (#51–#53, #57, #64,
+  and baseline through #50) remain the evidence of record for Met criteria.
+  Proposal PR **#61** is the accepted **proposal** for #64 (Workflow History /
+  accepted-proposal field), not a ledger review unit.
 - Tracked evidence under
   `docs/milestones/005-evidence-memory-foundation/evidence/` remains present.
 - The 006 pre-plan document already exists and correctly describes immediate
   deferred perception-fitness work after memory.
 - Milestone branch `milestone/005-evidence-memory-foundation` is the integration
-  tip for the cumulative PR after this unit merges.
+  tip for the cumulative PR after phase A merges and phase B completes.
 
 ## Non-Goals
 
@@ -219,77 +274,108 @@ Use prior closeouts (e.g. 004) as structure guide. Required content blocks:
   integrity / full deterministic suite green.
 - Live vehicle re-proof, re-recording Pi/Chase extracts, or Metrics UI changes.
 - Reopening M005-08 conflict semantics or max-age scoring design.
-- Activating 006 as Active product work or implementing 006 packages.
+- Activating 006 as Active product work or implementing 006 packages in this unit.
 - Semantic fusion, object identity, confidence aggregation, non-idle action.
 - Rewriting pre-contract mainline history; the cumulative PR may remain a
   transitional delta.
+- Teaching `complete-implementation` to verify cumulative PR readiness (out of
+  scope for this unit; phase C remains operator-owned).
 
 ## File Impact
 
-### Create
+### Phase A — create
 
-- `docs/milestones/005-evidence-memory-foundation/closeout.md` — durable
-  whole-milestone judgment (sections above).
+- `docs/milestones/005-evidence-memory-foundation/closeout.md`
 
-### Modify
+### Phase A — modify
 
-- `docs/milestones/005-evidence-memory-foundation/plan.md` — M005-13 Met;
-  Status closed; frontiers emptied via close handoff; risks/decisions updates;
-  Closeout section completed.
-- `docs/milestones/005-evidence-memory-foundation/plan.html` — generated only.
 - `docs/milestones/completed.md` — append 005 entry.
-- `docs/README.md` — navigation only (005 closed; 006 still pre-plan / next).
+- `docs/README.md` — navigation only.
+- `docs/milestones/005-evidence-memory-foundation/plan.md` — **only** allowed
+  prose under the freeze (e.g. Milestone Decisions / Closeout body pointing at
+  `closeout.md`). Must **not** change Exit Criteria, Open Risks, Accepted Review
+  Units, frontier identity, or Status=`closed`. Workflow state / PR / history
+  transitions remain those produced by `start-implementation` and the
+  implementation PR link, not terminal close.
+- `docs/milestones/005-evidence-memory-foundation/plan.html` — generated only when
+  plan.md changes.
 
-### Process (not necessarily path-local)
+### Phase A — process
 
-- Cumulative PR: `milestone/005-evidence-memory-foundation` → `main`, ready for
-  whole-milestone review after closeout content merges to the milestone branch.
+- Open/update cumulative PR (milestone → `main`); record exact number in
+  `closeout.md`. Do not treat “ready” as phase A acceptance evidence.
+
+### Phase B — modify (mechanical only)
+
+- `plan.md` / `plan.html` via `complete-implementation` applying Expected Handoff
+  (M005-13 Met, risks removed, Status closed, frontiers emptied, ledger row).
+
+### Phase C — process
+
+- Mark the recorded cumulative PR ready; merge commit to `main`; tag; branch
+  cleanup; optional 006 navigation.
 
 ### Remove
 
-- None required. Obsolete branch cleanup happens **after** cumulative merge per
-  planning contract, not as a silent PR side effect.
+- None in phases A–B. Obsolete branch cleanup is phase C after cumulative merge.
 
 ## Validation Plan
 
 Documentation and integrity only (plus full deterministic suite):
 
 ```text
-# Proposal independence (this PR)
+# Proposal independence (this PR) — supply real SHAs from the PR refs
 python3 docs/milestones/workflow.py validate-pr \
-  --plan docs/milestones/005-evidence-memory-foundation/plan.md \
-  --base milestone/005-evidence-memory-foundation \
-  --head m005/closeout-proposal
+  --base-ref milestone/005-evidence-memory-foundation \
+  --head-ref m005/closeout-proposal \
+  --base-sha <base-sha> \
+  --head-sha <head-sha>
 
-# After implementation (closeout PR, not this proposal)
+# After implementation PR (phase A tip), same form with m005/closeout refs
+python3 docs/milestones/workflow.py validate-pr \
+  --base-ref milestone/005-evidence-memory-foundation \
+  --head-ref m005/closeout \
+  --base-sha <base-sha> \
+  --head-sha <head-sha>
+
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -q
 python3 docs/render_markdown.py --check
+
+# After squash-merge of the implementation PR (phase B)
+python3 docs/milestones/workflow.py complete-implementation \
+  --plan docs/milestones/005-evidence-memory-foundation/plan.md \
+  --pr <implementation-pr-number>
 ```
 
 Acceptance requires:
 
-1. Every adversarial matrix row is addressed by closeout content or explicitly
-   out of scope with a reject rule above.
-2. `closeout.md` states usefulness, residual limits, and **activate 006**.
-3. Plan validates closed with all criteria Met.
-4. No product paths outside File Impact appear in the implementation PR.
-5. Deterministic suite green at closeout tip.
+1. Every adversarial matrix row is addressed by the phase split or a reject rule.
+2. Phase A `closeout.md` states usefulness, residual limits, **activate 006**,
+   and the **exact cumulative PR number**.
+3. Phase A does not pre-claim M005-13 Met, risk removal, empty frontiers, or
+   Status closed.
+4. Phase B handoff validates and leaves Status closed with all criteria Met.
+5. No product paths outside File Impact appear in the implementation PR.
+6. Deterministic suite green at the phase A tip.
+7. Phase C marks ready / merges the cumulative PR by the number in `closeout.md`
+   (not assumed from implementation `{pr}`).
 
 ## Expected Handoff
 
-Post-merge implementation success template (merge-time PR/SHA filled by
-workflow; do not predeclare them):
+Post-merge **implementation** success template (merge-time implementation PR and
+SHA filled by `complete-implementation`; do not predeclare them). This template
+is **phase B only**—it must not claim cumulative PR readiness:
 
 ```json
 {
   "schema": "milestone_handoff_template_v1",
   "outcome": "close",
   "result": "Accepted",
-  "durable_evidence": "closeout.md; completed.md 005 entry; cumulative milestone PR ready; residual limits restated; 006 activate decision recorded in PR #{pr}",
+  "durable_evidence": "closeout.md; completed.md 005 entry; residual limits restated; 006 activate decision recorded; cumulative PR identity recorded for post-handoff readiness in implementation PR #{pr}",
   "criterion_updates": {
     "M005-13": {
       "status": "Met",
-      "evidence": "Closeout published usefulness, residual risk, and 006 activate decision; cumulative milestone PR ready in PR #{pr}"
+      "evidence": "Closeout published usefulness, residual risk, and 006 activate decision in closeout.md; terminal Met applied by complete-implementation for PR #{pr}"
     }
   },
   "risk_remove": [
@@ -302,22 +388,32 @@ workflow; do not predeclare them):
 }
 ```
 
-After this proposal merges:
+### Sequence after this proposal merges
 
-1. Record acceptance (`ready_for_implementation`) with:
+1. **Accept proposal** (milestone branch):
    ```text
    python3 docs/milestones/workflow.py accept-proposal \
      --plan docs/milestones/005-evidence-memory-foundation/plan.md \
      --pr <this-proposal-pr-number>
    ```
-2. Start **only** the implementation branch from the post-acceptance milestone tip:
+   Commit the resulting plan/HTML on the milestone branch.
+2. **Start implementation only**:
    ```text
    python3 docs/milestones/workflow.py start-implementation \
      --plan docs/milestones/005-evidence-memory-foundation/plan.md \
      --branch m005/closeout
    ```
-3. Implement **only** this proposal (docs + plan terminal state + cumulative PR
-   readiness). Do not start 006 implementation.
-4. On merge of the closeout implementation PR, complete handoff with
-   `outcome: close` using this template so the milestone Status becomes
-   `closed` and M005-13 is Met.
+3. **Phase A:** implement only the phase A File Impact (docs + allowed plan
+   prose + open/record cumulative PR number). Open implementation PR. Do not
+   start 006. Do not set terminal criterion/risk/status in the PR.
+4. Squash-merge the implementation PR into the milestone branch.
+5. **Phase B:** on a clean local milestone branch:
+   ```text
+   python3 docs/milestones/workflow.py complete-implementation \
+     --plan docs/milestones/005-evidence-memory-foundation/plan.md \
+     --pr <implementation-pr-number>
+   ```
+   This applies the Expected Handoff above (M005-13 Met, risks cleared, Status
+   closed). It does **not** mark the cumulative PR ready.
+6. **Phase C:** mark ready and merge the cumulative PR named in `closeout.md`;
+   tag; cleanup branches; 006 navigation only.

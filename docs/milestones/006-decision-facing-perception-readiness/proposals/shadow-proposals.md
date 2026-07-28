@@ -33,14 +33,14 @@ consume the same proposal/plan/authority objects without redefinition.
 | Reference plugin id | `avoid_recent_obstruction` |
 | Selector id | `deterministic_first_active` |
 | Canonical proposed command | `ProposedVehicleCommand` (below) — **not** raw `VehicleAction` and **not** applied `AutonomyControl` |
-| Shadow authority | Three distinct channels: proposed command, authorized autonomy output, application status (below) |
+| Shadow authority | Proposed command, authorized output, `proposed_applied=false`, optional host application report (below) |
 | Bounds | See **Serializable bounds** (enforceable ceilings; fail closed) |
 
 ### Serializable bounds (M006-02 / M006-03)
 
 All lengths are **maximum inclusive**. Exceeding a bound is **fail-closed** at the
-owning constructor or runner (raise / reject the object); do not silently
-truncate except where a row explicitly says truncate.
+owning constructor or runner (**reject** the object / activation — never silent
+truncate, never “skip run with partial output”).
 
 | Bound | Limit | Owner | Overflow behavior |
 | --- | --- | --- | --- |
@@ -49,16 +49,42 @@ truncate except where a row explicitly says truncate.
 | `assumptions` count | 8 | constructor | Reject |
 | `source_refs` count | 16 | constructor | Reject |
 | Each `SourceRef.id` / `note` | 128 / 64 code points | constructor | Reject |
-| Proposal `metadata` serialized JSON | 2048 bytes (UTF-8 canonical) | constructor | Reject |
-| Single `ActionProposal` full serialized JSON | 8192 bytes | constructor after field checks | Reject |
-| `enabled_plugins` count | 8 | activation / runner | Reject activation or skip run with engine error snapshot |
+| Proposal `metadata` serialized JSON | 1024 bytes (UTF-8 canonical) | constructor | Reject |
+| Single `ActionProposal` full serialized JSON | **4096** bytes | constructor after field checks | Reject |
+| `enabled_plugins` count | **4** | activation validation | **Reject activation** (config invalid; engine must not start) |
 | Each `plugin_id` | 64 code points | catalog | Reject catalog entry |
-| `candidates` count | ≤ enabled plugin count (≤ 8) | plan builder | Reject plan if exceeded |
-| `contributions` count | ≤ 8 | plan builder | Reject |
-| Plan `metadata` serialized JSON | 2048 bytes | plan builder | Reject |
-| Full `ActionPlan` serialized JSON | 65536 bytes | plan builder | Reject |
+| `enabled_plugins` uniqueness | all ids distinct; each must exist in catalog | activation validation | Reject activation |
+| `candidates` count | = number of successful plugin returns ≤ 4 | plan builder | Reject plan if exceeded |
+| `contributions` count | **0** when idle; **exactly 1** when selected | plan builder | Reject |
+| Plan `metadata` serialized JSON | 1024 bytes | plan builder | Reject |
+| Full `ActionPlan` serialized JSON | **24576** bytes (24 KiB) | plan builder | Reject plan; runner emits **engine_error** authority (below) |
 | Envelope `reason` | 240 code points | DecisionDataSource builder | Reject envelope |
 | DecisionDataSource `metadata` | 2048 bytes | builder | Reject |
+
+#### Compositional plan budget (exact)
+
+Worst case must fit:
+
+```text
+4 * 4096  (candidates, each max proposal)
++ 4096    (selected deep-copy of one candidate)
++ 1024    (plan metadata)
++ 2048    (plan envelope: schema, ids, status, contributions, selector_id)
+= 23552  ≤ 24576
+```
+
+Implementations must unit-test a **maximum legal complete set**: 4 proposals each
+serialized at 4096 bytes (or the largest representable under field limits) and
+assert the plan either builds under 24576 bytes or is rejected with the single
+engine_error path below — not both partial success paths.
+
+#### Runner/activation overflow outcome (single path)
+
+| Failure | Exact outcome |
+| --- | --- |
+| Invalid activation (`enabled_plugins` count/uniqueness/unknown id, bad `steer_magnitude`, bad `accepted_kinds`) | **Reject activation** before any cycle runs |
+| A plugin returns an object that fails ActionProposal construction | Treat as that plugin’s synthetic `error` proposal if the runner can build one within bounds; if not, **engine_error** for the cycle |
+| ActionPlan construction fails bounds | **engine_error** for the cycle: `authorized_output` idle, `proposed=null`, `proposed_applied=false`, `host_application` unavailable, no selected plan (or plan status idle with empty candidates only if that still fits; preferred: no plan object, only authority + diagnostic reason `action_plan_bounds_exceeded`) |
 
 Plugins that cannot emit a valid proposal under these bounds must return
 lifecycle `error` with a short reason (itself ≤ 240), not an oversized object.
@@ -228,41 +254,56 @@ invokes each enabled plugin once). Schema `action_proposal_v0`.
 | `lifecycle` | enum | See lifecycle table |
 | `confidence` | float | **Reject** if non-finite or not in `[0, 1]` (no silent clamp at proposal boundary) |
 | `reason` | string | Required; max **240** code points; reject if longer |
-| `command` | `ProposedVehicleCommand` or `null` | **Required non-null** when lifecycle is `fresh` or `retained`; **must be null** when lifecycle is `inactive`, `stale`, `incompatible`, `missing_input`, or `error` |
-| `freshness` | enum | `fresh`, `retained`, `stale`, `none` |
+| `command` | `ProposedVehicleCommand` or `null` | Must match compatibility matrix below |
+| `freshness` | enum | `fresh`, `retained`, `stale`, `none` — must match matrix |
 | `assumptions` | list[string] | Max **8** entries; each ≤ **64** code points |
-| `source_refs` | list[SourceRef] | Max **16** entries |
-| `available` | bool | `true` only for `fresh` or `retained` |
-| `metadata` | strict JSON object | Max **2048** serialized bytes |
+| `source_refs` | list[SourceRef] | Max **16** entries; count requirements per matrix |
+| `available` | bool | Must match matrix (derived; constructor rejects mismatch) |
+| `metadata` | strict JSON object | Max **1024** serialized bytes |
 
-Full proposal serialization ceiling: **8192** bytes (see Serializable bounds).
+Full proposal serialization ceiling: **4096** bytes (see Serializable bounds).
 
-#### Lifecycle values
+#### Lifecycle × freshness × available × command × source_refs (exact)
 
-| Lifecycle | Meaning | `available` | `command` |
-| --- | --- | --- | --- |
-| `fresh` | Active proposal from current-cycle evidence | true | non-null |
-| `retained` | Active proposal continuing from retained memory still within age | true | non-null |
-| `stale` | Supporting evidence exceeded freshness policy; no command | false | null |
-| `inactive` | Plugin ran but has nothing to propose (no claim of error) | false | null |
-| `incompatible` | Inputs present but structurally unusable for this plugin | false | null |
-| `missing_input` | Required component envelope not `ready` | false | null |
-| `error` | Plugin failed closed; reason required | false | null |
+Constructor **rejects** any combination not listed. Selector may assume every
+admitted proposal already satisfies this matrix.
+
+| `lifecycle` | allowed `freshness` | `available` | `command` | `source_refs` min |
+| --- | --- | --- | --- | --- |
+| `fresh` | `fresh` only | `true` | non-null | ≥ 1 |
+| `retained` | `retained` only | `true` | non-null | ≥ 1 |
+| `stale` | `stale` only | `false` | `null` | ≥ 1 (last supporting refs) |
+| `inactive` | `none` only | `false` | `null` | ≥ 0 |
+| `incompatible` | `none` only | `false` | `null` | ≥ 0 |
+| `missing_input` | `none` only | `false` | `null` | ≥ 0 |
+| `error` | `none` only | `false` | `null` | ≥ 0 |
+
+Forbidden examples (must reject): `lifecycle=fresh` with `freshness=stale`;
+`lifecycle=retained` with `available=false`; `lifecycle=stale` with non-null
+`command`; `lifecycle=inactive` with `freshness=fresh`.
+
+#### Lifecycle meanings
+
+| Lifecycle | Meaning |
+| --- | --- |
+| `fresh` | Active proposal from current-cycle evidence |
+| `retained` | Active proposal from retained memory still within age policy |
+| `stale` | Best supporting evidence is stale; no command |
+| `inactive` | Plugin ran; nothing to propose (including no accepted kinds) |
+| `incompatible` | Accepted-kind inputs present but structurally unusable |
+| `missing_input` | Required envelope not ready |
+| `error` | Plugin failed closed |
 
 #### SourceRef
 
 | Field | Type | Rule |
 | --- | --- | --- |
 | `kind` | `"observation" \| "memory_record" \| "pattern" \| "projection" \| "capability"` | |
-| `id` | string | e.g. memory `record_id`, observation_id |
+| `id` | string | e.g. memory `record_id`, observation_id; max 128 |
 | `frame_id` | string or null | Exact frame when known |
 | `observation_id` | string or null | When applicable |
 | `plugin_id` | string or null | Perception/memory source plugin when known |
-| `note` | string | Short role tag e.g. `"primary_obstruction"` |
-
-At least one `source_refs` entry is required for `fresh` and `retained`.
-`stale` should retain the last supporting refs when known. `missing_input` /
-`error` may cite the missing component name via `kind` + `id`.
+| `note` | string | Short role tag e.g. `"primary_obstruction"`; max 64 |
 
 #### Plugin protocol
 
@@ -290,18 +331,25 @@ One deterministic selector with id `deterministic_first_active`.
 
 #### Selection algorithm (exact)
 
-1. Partition proposals into **active** (`lifecycle in {fresh, retained}` and
-   `available is true` and `command is not null`) vs **inactive_set** (all others).
-2. If active is empty:
-   - Emit plan with `selected=null`, `contributions=[]` (or only diagnostic
-     contributions with `weight=0`), `status="idle"`.
-3. If active is non-empty:
+1. Drop any proposal that fails the lifecycle compatibility matrix (should not
+   occur if constructors enforce the matrix; if present, treat as runner
+   `engine_error` for the cycle).
+2. Partition into **active** when **all** hold:
+   - `lifecycle in {fresh, retained}`
+   - `freshness == lifecycle` (i.e. fresh↔fresh, retained↔retained)
+   - `available is true`
+   - `command is not null`
+3. If active is empty:
+   - Emit plan with `selected=null`, `contributions=[]` (empty list only — **no**
+     diagnostic weight-0 contributions), `status="idle"`.
+4. If active is non-empty:
    - Sort active by: higher `confidence` descending; tie-break by `plugin_id`
      ascending lexicographic.
    - Select the first proposal after sort.
-   - Emit one contribution: `{proposal_id, plugin_id, weight: 1.0, role: "selected"}`.
-4. **Never** blend steering/throttle from multiple proposals in this unit.
-5. **Never** implement Chase-style consensus, tournaments, or learned mixing.
+   - Emit **exactly one** contribution:
+     `{proposal_id, plugin_id, weight: 1.0, role: "selected"}`.
+5. **Never** blend steering/throttle from multiple proposals in this unit.
+6. **Never** implement Chase-style consensus, tournaments, or learned mixing.
 
 #### ActionPlan fields (`action_plan_v0`)
 
@@ -312,25 +360,25 @@ One deterministic selector with id `deterministic_first_active`.
 | `frame_id` | string | |
 | `timestamp_ms` | int | From source |
 | `status` | `"selected" \| "idle"` | |
-| `selected` | ActionProposal or null | Deep-detached copy |
-| `contributions` | list | Max 8; as above |
-| `candidates` | list[ActionProposal] | Complete set for enabled plugins (≤ 8), detached, stable order by `plugin_id` |
+| `selected` | ActionProposal or null | Deep-detached copy when selected; null when idle |
+| `contributions` | list | Empty when idle; exactly one entry when selected |
+| `candidates` | list[ActionProposal] | Complete set for enabled plugins (≤ 4), detached, stable order by `plugin_id` |
 | `selector_id` | exact `deterministic_first_active` | |
-| `metadata` | object | Max 2048 serialized bytes; may include lifecycle counts |
+| `metadata` | object | Max 1024 serialized bytes; may include lifecycle counts |
 
-Full plan serialization ceiling: **65536** bytes.
+Full plan serialization ceiling: **24576** bytes (see compositional budget).
 
-### Shadow authority: three channels (M006-03)
+### Shadow authority: proposed vs authorized vs host application (M006-03)
 
 After the plan is produced, runtime authority emits
 `ShadowAuthorityResult` (`shadow_authority_result_v0`) **separate** from the plan.
-It freezes **three** non-interchangeable channels:
 
-| Channel | Field | Meaning for this milestone |
+| Channel | Field | What the decision layer may claim |
 | --- | --- | --- |
-| **Proposed** | `proposed` | Selected `ProposedVehicleCommand` or `null` — intent only |
-| **Authorized autonomy output** | `authorized_output` | What the autonomy path is allowed to hand to host gates this cycle — **always idle zeros** under `shadow-proposals` |
-| **Application status** | `application` | Whether that output (or any autonomy command) was **applied to actuators** — **always not applied** for this engine |
+| **Proposed** | `proposed` | Selected intent only |
+| **Authorized autonomy output** | `authorized_output` | What this engine hands to host gates — **always idle zeros** for `shadow-proposals` |
+| **Proposed-applied guarantee** | `proposed_applied` | **Always `false`**: the **proposed** command was not applied as vehicle intent by this engine |
+| **Host application report** | `host_application` | Envelope: ready only if host reports actuator application this cycle; else unavailable/unknown — **never invented** by shadow authority |
 
 #### ShadowAuthorityResult fields
 
@@ -340,35 +388,39 @@ It freezes **three** non-interchangeable channels:
 | `frame_id` | string | |
 | `proposed` | `ProposedVehicleCommand` or null | Copy of selected command when plan `status=selected`; else `null` |
 | `authorized_output` | object | Always `{steering: 0.0, throttle: 0.0, confidence: 1.0, reason: "shadow-only-idle"}` for engine `shadow-proposals` |
-| `application` | object | Always `{applied: false, reason: "shadow_only_not_applied"}` for this engine. **Never** `applied: true` for a proposed command in this milestone |
+| `proposed_applied` | bool | **Always `false`** for engine `shadow-proposals`. Means: the nonzero/zero **proposal was not applied as the proposed command**. Does **not** claim whether authorized idle zeros reached actuators after host gating |
+| `host_application` | component envelope | `status=ready` only when host supplies whether/what was applied to actuators this cycle; otherwise `unavailable` with reason `host_did_not_report_application` (or `error` if reporter failed). Value when ready: `{applied: bool, steering, throttle, source: "host", reason}` |
 | `proposed_equals_authorized` | bool | See exact table below |
 | `authority_mode` | exact `"shadow_only"` | |
 | `drive_mode_gate` | string | Echo host mode when known (`user` / `autonomy` / `unknown`) without overriding host gates |
 
 #### `proposed_equals_authorized` (exact)
 
-Compare `proposed` to `authorized_output` on steering/throttle only (gear ignored
-if proposed is null). Use absolute tolerance `1e-9`.
+Compare `proposed` to `authorized_output` on steering/throttle only. Tolerance
+`1e-9`.
 
 | `proposed` | `authorized_output` (always idle) | `proposed_equals_authorized` |
 | --- | --- | --- |
-| `null` | zeros | **`true`** (no proposal; authorized idle matches “no nonzero intent”) |
+| `null` | zeros | **`true`** |
 | non-null with `abs(steering)<1e-9` and `abs(throttle)<1e-9` | zeros | **`true`** |
 | non-null with any `|steering|≥1e-9` or `|throttle|≥1e-9` | zeros | **`false`** |
 
-Note: operator-facing “applied” is **`application.applied`**, always `false` for
-this engine. Do **not** set `application.applied=true` for authorized idle.
-Completion usage that shows `applied=false` refers to `application.applied`.
+#### Operator-facing `applied=false` mapping
+
+Milestone completion usage that shows **`applied=false`** means
+**`proposed_applied=false`** (the proposal was not applied). It must **not** be
+implemented as a hardcoded claim that host actuators received nothing: after host
+gating, authorized idle may be what the pilot path emits (e.g. non-user modes
+forwarding autonomy output). Actual actuator application is only
+`host_application` when the host reports it.
 
 Rules:
 
 - Decision-cycle `AutonomyControl` returned toward the vehicle path must equal
   `authorized_output` (idle) regardless of selected proposal.
-- Host DriveMode / user-mode gates remain authoritative; this unit does not
-  bypass them or claim physical application.
-- Inspectable outputs must show `proposed`, `authorized_output`, and
-  `application` so operators cannot confuse intent with authorization or
-  application.
+- Host DriveMode / user-mode gates remain authoritative.
+- Inspectable outputs must show `proposed`, `authorized_output`,
+  `proposed_applied`, and `host_application` separately.
 
 Compatibility with the later combined decision view: plan, candidates,
 authority, and source refs must be serializable together under one JSON object
@@ -404,37 +456,77 @@ avoidance, navigation, or identity tracking.
 
 #### Accepted obstruction evidence (exact)
 
+Default `accepted_kinds` (frozen defaults — include packaged Chase sim kind):
+
+```text
+["floor_boundary", "obstacle", "obstruction_evidence"]
+```
+
+- `floor_boundary` / `obstacle`: physical/packaged floor-plane style kinds
+- `obstruction_evidence`: exact kind emitted by packaged Chase `sim_color_targets`
+
 A record is an **accepted obstruction candidate** only if **all** hold:
 
-1. `kind` is exactly one of: **`floor_boundary`**, **`obstacle`**
-   (no label substring matching; no other kinds).
+1. `kind` is exactly one of the activation `accepted_kinds` list (default above;
+   no label substring matching).
 2. `location` is present and `location.frame == "image"`.
 3. Lateral cue exists:
    - `location.zone` in `{left, right}`, **or**
    - `bbox_xyxy_norm` is a 4-tuple/list of finite floats so
      `mid_x = (x0 + x1) / 2` is defined.
 
-Unrecognized kinds (including located sensor-frame, surface, generic-region,
-or any other kind) are **ignored** for selection. If after filtering no accepted
+Unrecognized kinds are **ignored** for selection. If after filtering no accepted
 candidates remain → lifecycle **`inactive`**, command null
 (reason `no_accepted_obstruction_evidence`). Do **not** emit a command from
 unrecognized located records.
 
-Optional activation override: `accepted_kinds` may replace the default pair only
-with a non-empty list of identifier strings (max 8 kinds, each ≤ 64 code points)
-reviewed in the implementation PR config defaults. Default remains
-`["floor_boundary", "obstacle"]`.
+Activation may replace `accepted_kinds` only with a non-empty list of at most 8
+identifier strings (each ≤ 64 code points, unique). Invalid config → **reject
+activation**.
 
-#### Record selection
+#### Freshness classification of one accepted record (exact)
+
+Let `now = source.timestamp_ms`, `updated = record.provenance.updated_at_ms`.
+
+| Condition | Resulting freshness class |
+| --- | --- |
+| `updated > now` (future-dated provenance) | **`invalid_future`** — not selectable; see below |
+| `provenance.frame_id == source.frame_id` | `fresh` |
+| else if `now - updated` is in `0 .. retained_max_age_ms` inclusive | `retained` |
+| else (`now - updated > retained_max_age_ms`) | `stale` |
+
+Do **not** clamp future ages to zero. Default `retained_max_age_ms = 1000`;
+activation override must be a finite int with `1 ≤ retained_max_age_ms ≤ 60_000`
+or **reject activation**.
+
+#### Record selection (exact order)
 
 From `memory.value.records` when memory envelope is ready:
 
-1. Filter to accepted obstruction candidates (exact rules above).
-2. Primary record = highest `confidence` among accepted; tie-break by
-   `record_id` ascending lexicographic.
-3. If none → `inactive`, freshness `none`, command null.
+1. Filter to accepted obstruction candidates (structure rules above).
+2. Drop `invalid_future` records from active consideration; if **every** accepted
+   candidate is `invalid_future` (and at least one exists) → lifecycle **`error`**,
+   reason `future_dated_provenance`, freshness `none`, command null.
+3. Partition remaining accepted candidates into `fresh`, `retained`, and `stale`
+   classes using the table above.
+4. **Active pool** = all `fresh` candidates if any exist; else all `retained`
+   candidates if any exist; else empty.
+5. If active pool is non-empty:
+   - Primary = highest `confidence` in the active pool; tie-break `record_id`
+     ascending.
+   - Emit lifecycle/freshness matching the primary’s class (`fresh` or
+     `retained`), command from lateral policy, `available=true`.
+6. Else if any `stale` accepted candidates exist:
+   - Primary = highest confidence among stale; tie-break `record_id`.
+   - Emit lifecycle `stale`, freshness `stale`, command null, `available=false`,
+     source_refs from that primary.
+7. Else → `inactive`, freshness `none`, command null.
 
-#### Lateral side (accepted candidates only)
+**Stale high-confidence records must not suppress fresh/retained evidence:**
+step 4 guarantees any fresh candidate is preferred to all retained, and any
+retained to all stale, before confidence is considered.
+
+#### Lateral side (active primary only)
 
 | Cue | Side |
 | --- | --- |
@@ -442,38 +534,32 @@ From `memory.value.records` when memory envelope is ready:
 | `zone == "right"` | right |
 | zone missing or `center`, bbox `mid_x < 0.45` | left |
 | zone missing or `center`, bbox `mid_x > 0.55` | right |
-| otherwise (center band without left/right zone) | **inactive** (no steer-away claim) |
+| otherwise (center band without left/right zone) | **inactive** for this record (try next in pool by confidence order; if none left in active pool, fall through as no active) |
 
 Zone `left`/`right` wins over bbox when both are present.
-
-#### Freshness policy
-
-Let `now = source.timestamp_ms`, `updated = record.provenance.updated_at_ms`,
-`age = max(0, now - updated)`.
-
-| Condition | freshness | lifecycle (if otherwise active) |
-| --- | --- | --- |
-| `provenance.frame_id == source.frame_id` | `fresh` | `fresh` |
-| else if `age ≤ retained_max_age_ms` | `retained` | `retained` |
-| else | `stale` | `stale` (command null) |
-
-Default `retained_max_age_ms = 1000` unless activation config overrides with a
-positive int ≤ 60_000. Stale is **not** an error; it is an explicit lifecycle.
 
 #### Command when active (`fresh` or `retained`)
 
 | Side | steering | throttle | gear |
 | --- | --- | --- | --- |
-| left obstruction | `+steer_magnitude` (steer right / away) | `0.0` | `hold` |
-| right obstruction | `-steer_magnitude` (steer left / away) | `0.0` | `hold` |
+| left obstruction | `+m` (steer right / away) | `0.0` | `hold` |
+| right obstruction | `-m` (steer left / away) | `0.0` | `hold` |
 
-Default `steer_magnitude = 0.35`, then
-`min(steer_magnitude, capabilities.max_abs_steering)` (capabilities ready
-required; if capabilities not ready, use `0.35` then clamp to `[-1,1]`).
+**`steer_magnitude` config:** finite float with **`0 < steer_magnitude ≤ 1`**;
+default `0.35`. If not finite or outside that range → **reject activation**.
 
-**Confidence on the proposal:** use primary record `confidence` only if it is
-finite and in `[0, 1]`; otherwise emit lifecycle `error` with reason
-`invalid_record_confidence` (do not clamp at the plugin boundary).
+**Magnitude `m` when capabilities ready:**
+`m = min(steer_magnitude, capabilities.value.max_abs_steering)` after validating
+`max_abs_steering` is finite and in `(0, 1]`; if capability field invalid →
+plugin `error` reason `invalid_capabilities`.
+
+**When capabilities envelope is not ready (`unavailable` or `error`):**
+use `m = steer_magnitude` unchanged (still in `(0, 1]` from activation). Do **not**
+invent a different default. Reason assumptions must still list
+`capabilities_not_ready` in `assumptions` when this path is used.
+
+**Confidence on the proposal:** use primary record `confidence` only if finite
+and in `[0, 1]`; otherwise lifecycle `error`, reason `invalid_record_confidence`.
 
 #### Incompatible
 
@@ -511,16 +597,20 @@ Include at least:
 This unit introduces the minimal activation/runner so plugins execute:
 
 - Activation engine id: `shadow-proposals`
-- Config keys (optional overrides): `retained_max_age_ms` (default 1000),
-  `steer_magnitude` (default 0.35), `enabled_plugins` (default
-  `["avoid_recent_obstruction"]`, max 8), `accepted_kinds` (default
-  `["floor_boundary", "obstacle"]`)
-- Per cycle: build DecisionDataSource → run each enabled plugin → select plan →
-  build ShadowAuthorityResult → return **authorized idle** `AutonomyControl` to
-  the vehicle path (`application.applied=false`) while retaining
-  plan/proposals/authority for inspection
-- Host may leave `prior_host_applied_command` unavailable; runner must not invent
-  applied history
+- Config (defaults; invalid values **reject activation**):
+  - `retained_max_age_ms`: default `1000`; require `1..60000`
+  - `steer_magnitude`: default `0.35`; require finite and `0 < value ≤ 1`
+  - `enabled_plugins`: default `["avoid_recent_obstruction"]`; max **4** unique
+    catalog ids
+  - `accepted_kinds`: default
+    `["floor_boundary", "obstacle", "obstruction_evidence"]`; max 8 unique ids
+- Per cycle: build DecisionDataSource → run each enabled plugin once in
+  `plugin_id` ascending order → select plan → build ShadowAuthorityResult →
+  return **authorized idle** `AutonomyControl` with
+  `proposed_applied=false` and `host_application` from host reporter or
+  unavailable
+- Host may leave `prior_host_applied_command` and `host_application` unavailable;
+  runner must not invent applied history
 
 Operator CLI surfaces (stage/info/stream/apply/view) that complete M006-05 are
 **not** required to be finished in this unit; however, types must be importable
@@ -543,55 +633,48 @@ combined view.
 
 ### Affected Paths
 
-- Success: memory healthy with accepted obstruction → plugin fresh/retained →
-  selector selects → authority: nonzero `proposed`, idle `authorized_output`,
-  `application.applied=false`, `proposed_equals_authorized=false`.
-- Memory health `empty`: envelope ready; plugin `inactive`; plan idle;
-  `proposed=null`; `proposed_equals_authorized=true`.
-- Memory health `unavailable` or `error`: envelope unavailable/error with
-  `value=null`; plugin `missing_input`; plan idle.
-- Stale accepted evidence: plugin `stale`; plan idle (single plugin).
-- Only non-accepted kinds located: plugin `inactive` (not a command).
-- Accepted kind but non-image frame only: plugin `incompatible`.
-- Plugin exception / invalid confidence / bound overflow: plugin `error`; plan
-  idle; authorized still idle; `application.applied=false`.
-- Serialization: all public objects round-trip under bound ceilings.
-- Evaluator leakage: not present on DecisionDataSource; tests assert absence.
-- Prior host-applied: default unavailable; never invent applied idle as history.
+- Success: memory healthy with accepted obstruction (fresh/retained preferred) →
+  selector selects → authority: `proposed` may be nonzero; `authorized_output`
+  idle; `proposed_applied=false`; `host_application` unavailable unless host
+  reports; `proposed_equals_authorized=false` when proposed nonzero.
+- Stale-only evidence: plugin `stale`; plan idle; `proposed_applied=false`.
+- Fresh record present with higher-confidence stale sibling: select **fresh**
+  path (not stale).
+- Future-dated provenance only: plugin `error` / `future_dated_provenance`.
+- Memory empty/unavailable/error: as health mapping; never invent host application.
+- Bound/plan overflow: single engine_error path; authorized idle;
+  `proposed_applied=false`.
+- Serialization under compositional budget; max legal 4-candidate set tested.
 
 ## Adversarial Matrix
 
 | Case | Expected result |
 | --- | --- |
 | DecisionDataSource frozen; plugin mutates a dict field it received | Other plugins/selector still see original values (detach/freeze) |
-| Memory health `unavailable` | Envelope `unavailable`/`value=null`; plugin `missing_input`; plan idle |
-| Memory health `error` | Envelope `error`/`value=null`; plugin `missing_input` (not plugin `error`); plan idle |
-| Memory health `empty` | Envelope `ready` with empty snapshot; plugin `inactive` |
-| Memory health `healthy`, left-zone `floor_boundary`, frame_id match | `fresh`; steering `+steer_magnitude`; throttle 0 |
-| Right-zone `obstacle` retained within age | `retained`; steering `-steer_magnitude` |
-| Accepted evidence age > retained_max_age_ms | `stale`; command null |
-| Only `kind=surface` (or other non-accepted) with location | `inactive`; no command |
-| Accepted kind with non-image location frame only | `incompatible` |
-| Center-only bbox mid_x in `[0.45, 0.55]` | `inactive` |
-| Two active proposals different confidence | Higher confidence selected; weight 1.0; no blend |
-| Two active equal confidence | Lower `plugin_id` lexicographic wins |
-| Selected nonzero proposal | `proposed` nonzero; `authorized_output` zeros; `application.applied=false`; `proposed_equals_authorized=false` |
-| No active proposals (`proposed=null`) | Plan idle; `proposed_equals_authorized=true`; `application.applied=false` |
-| Active proposal with zero command | `proposed_equals_authorized=true`; still `application.applied=false` |
-| Proposal command uses VehicleAction booleans only | Reject at construction |
-| source_refs missing on fresh proposal | Reject proposal construction |
-| command non-null on stale lifecycle | Reject proposal construction |
-| reason length 241 | Reject proposal construction |
-| >16 source_refs | Reject proposal construction |
-| enabled_plugins count 9 | Reject activation / fail closed before run |
-| ActionPlan serialized >65536 bytes | Reject plan construction |
-| Confidence `1.5` or `NaN` on ActionProposal | Reject construction (no silent clamp) |
-| Record confidence `NaN` in plugin | Plugin lifecycle `error` / `invalid_record_confidence` |
-| Plugin attempts memory.update | Not available on DecisionDataSource |
-| Patterns/projections unavailable | Reference plugin still works from memory alone |
-| `prior_host_applied_command` unavailable | Default; plugin ignores; no invented applied history |
-| Host reports true prior applied command | Envelope ready; unused by M006-04 plugin |
-| Evaluator/map keys in source construction | Must not appear on DecisionDataSource |
+| Memory health `unavailable` / `error` | Envelope not ready / `value=null`; plugin `missing_input` |
+| Memory health `empty` | Ready empty snapshot; plugin `inactive` |
+| Left-zone `floor_boundary` frame match | `fresh` + steer away |
+| `obstruction_evidence` kind (Chase packaged) with lateral cue | Accepted; active when fresh/retained |
+| Right-zone `obstacle` retained | `retained` + steer away |
+| Stale conf 0.9 and fresh conf 0.8 both accepted | Select **fresh** 0.8 path |
+| Only stale accepted evidence | `stale`; command null |
+| Future `updated_at_ms > now` | `error` / `future_dated_provenance` (no age clamp) |
+| Only non-accepted kind located | `inactive` |
+| Accepted kind non-image frame only | `incompatible` |
+| `lifecycle=fresh` + `freshness=stale` | Reject at ActionProposal construction |
+| Selected nonzero proposal | `proposed_applied=false`; `proposed_equals_authorized=false`; host_application not invented |
+| Host does not report application | `host_application.status=unavailable` |
+| No active proposals | Plan idle; `contributions=[]`; `proposed_equals_authorized=true`; `proposed_applied=false` |
+| `steer_magnitude=-0.35` or `0` or `1.1` or NaN | Reject activation |
+| Duplicate `enabled_plugins` or unknown id or count 5 | Reject activation |
+| Capabilities unavailable | Use config `steer_magnitude`; assume `capabilities_not_ready` |
+| Capabilities ready with invalid max_abs_steering | Plugin `error` / `invalid_capabilities` |
+| reason length 241 / >16 source_refs / proposal >4096 B | Reject proposal construction |
+| 4×4096 candidates + selected copy would exceed 24576 | Reject plan → engine_error path |
+| Max legal complete set under budget | Plan builds; tested |
+| Confidence `1.5` or `NaN` on ActionProposal | Reject construction |
+| VehicleAction as proposal command | Reject construction |
+| Evaluator/map keys on DecisionDataSource | Must not appear |
 
 ## External Assumptions
 
@@ -676,18 +759,23 @@ Acceptance requires:
 1. Every adversarial matrix row has a direct test or explicit subsumption note.
 2. Memory health → envelope mapping is exact; empty ≠ unavailable; error envelope
    has `value=null` and yields plugin `missing_input`.
-3. DecisionDataSource is immutable across plugins.
-4. ProposedVehicleCommand is the only proposal command shape.
-5. Bounds tables are enforced with fail-closed constructors (no silent truncate
-   except where not used).
-6. Selector matches `deterministic_first_active` exactly; no blending.
-7. Authority always: idle `authorized_output`, `application.applied=false`, and
-   `proposed_equals_authorized` per the frozen table.
-8. `avoid_recent_obstruction` accepts only configured kinds (default
-   `floor_boundary`/`obstacle`); unrecognized kinds never produce a command.
-9. Confidence rejects non-finite and out-of-range values (no silent clamp at
-   ActionProposal construction).
-10. No live vehicle dependency in CI; no evaluator fields on DecisionDataSource.
+3. Lifecycle×freshness×available×command×source_refs matrix is enforced at
+   construction; selector never admits contradictory tuples.
+4. DecisionDataSource is immutable across plugins.
+5. Compositional bounds hold; max legal 4-candidate set is tested; plan overflow
+   uses the single engine_error path.
+6. Selector matches `deterministic_first_active` exactly; contributions empty or
+   exactly one; no blending.
+7. Authority: idle `authorized_output`, **`proposed_applied=false`**, host
+   application only when reported; `proposed_equals_authorized` per table.
+8. Active selection prefers fresh over retained over stale before confidence;
+   future-dated provenance fails closed.
+9. Default accepted kinds include `obstruction_evidence`; unrecognized kinds
+   never produce a command.
+10. `steer_magnitude` activation range enforced; capabilities unavailable path
+    exact.
+11. Confidence rejects non-finite/out-of-range values (no silent clamp).
+12. No live vehicle dependency in CI; no evaluator fields on DecisionDataSource.
 
 ## Expected Handoff
 

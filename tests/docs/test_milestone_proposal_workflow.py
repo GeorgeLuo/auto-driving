@@ -15,61 +15,16 @@ from docs.milestones.workflow import (
     validate_review_unit_transition,
     validate_review_unit_git_diff,
 )
-
-
-ROOT = Path(__file__).resolve().parents[2]
-PLAN_PATH = (
-    ROOT / "docs" / "milestones" / "005-evidence-memory-foundation" / "plan.md"
+from tests.docs.milestone_workflow_fixtures import (
+    CURRENT_FRONTIER,
+    IMPLEMENTATION_BRANCH,
+    MILESTONE_BRANCH,
+    PLAN_RELATIVE,
+    PROPOSAL_BRANCH,
+    PROPOSAL_RELATIVE,
+    proposal_text,
+    ready_plan_text,
 )
-PLAN_RELATIVE = PLAN_PATH.relative_to(ROOT).as_posix()
-PROPOSAL_RELATIVE = (
-    "docs/milestones/005-evidence-memory-foundation/"
-    "proposals/conflicting-evidence.md"
-)
-
-
-def _proposal_text() -> str:
-    return """# Proposal: Conflicting evidence semantics
-
-## Review Question
-
-Is the conflict policy bounded and deterministic?
-
-## Proposed Contract
-
-One slot has one structural contract.
-
-## Ownership
-
-The bounded evidence ledger owns compatibility.
-
-## Affected Paths
-
-Update, expiry, reset, and replay.
-
-## Adversarial Matrix
-
-| Case | Expected |
-| --- | --- |
-| Conflict | Invalidate |
-
-## External Assumptions
-
-Plugin IDs are stable within a source.
-
-## Non-Goals
-
-Semantic truth selection.
-
-## File Impact
-
-Memory implementation and focused tests.
-
-## Validation Plan
-
-Unit and replay tests.
-"""
-
 
 def _move_to_review(text: str, *, implementation: bool = False) -> str:
     state = validate_plan_text(text)
@@ -92,18 +47,24 @@ def _move_to_review(text: str, *, implementation: bool = False) -> str:
 
 class ProposalDocumentTests(unittest.TestCase):
     def test_required_proposal_shape_is_accepted(self) -> None:
-        validate_proposal_text(_proposal_text())
+        validate_proposal_text(proposal_text())
 
     def test_missing_validation_plan_is_rejected(self) -> None:
         with self.assertRaisesRegex(PlanContractError, "Validation Plan"):
             validate_proposal_text(
-                _proposal_text().replace("## Validation Plan", "## Checks")
+                proposal_text().replace("## Validation Plan", "## Checks")
+            )
+
+    def test_missing_expected_handoff_is_rejected(self) -> None:
+        with self.assertRaisesRegex(PlanContractError, "Expected Handoff"):
+            validate_proposal_text(
+                proposal_text().replace("## Expected Handoff", "## Later State")
             )
 
 
 class WorkflowStateContractTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.plan = PLAN_PATH.read_text(encoding="utf-8")
+        self.plan = ready_plan_text()
 
     def test_implementation_ready_requires_accepted_proposal_receipt(self) -> None:
         invalid = self.plan.replace(
@@ -111,8 +72,8 @@ class WorkflowStateContractTests(unittest.TestCase):
             "- Workflow state: ready_for_implementation\n",
             1,
         ).replace(
-            "| Conflicting evidence semantics | ready_for_proposal |",
-            "| Conflicting evidence semantics | ready_for_implementation |",
+            f"| {CURRENT_FRONTIER} | ready_for_proposal |",
+            f"| {CURRENT_FRONTIER} | ready_for_implementation |",
             1,
         )
         with self.assertRaisesRegex(
@@ -136,7 +97,7 @@ class WorkflowStateContractTests(unittest.TestCase):
 
 class ReviewUnitTransitionTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.base = PLAN_PATH.read_text(encoding="utf-8")
+        self.base = ready_plan_text()
         self.proposal_head = _move_to_review(self.base)
 
     def test_proposal_pr_is_documentation_only(self) -> None:
@@ -149,8 +110,8 @@ class ReviewUnitTransitionTests(unittest.TestCase):
                 str(Path(PLAN_RELATIVE).with_suffix(".html")),
                 PROPOSAL_RELATIVE,
             },
-            head_branch="m005/conflicting-evidence-proposal",
-            proposal_text=_proposal_text(),
+            head_branch=PROPOSAL_BRANCH,
+            proposal_text=proposal_text(),
         )
         self.assertEqual(transition, "proposal")
 
@@ -168,14 +129,13 @@ class ReviewUnitTransitionTests(unittest.TestCase):
                     PROPOSAL_RELATIVE,
                     "implementations/memory/bounded_evidence.py",
                 },
-                head_branch="m005/conflicting-evidence-proposal",
-                proposal_text=_proposal_text(),
+                head_branch=PROPOSAL_BRANCH,
+                proposal_text=proposal_text(),
             )
 
     def test_proposal_pr_cannot_rewrite_frozen_non_goals(self) -> None:
         changed_contract = self.proposal_head.replace(
-            "Semantic fusion, object identity, confidence aggregation, "
-            "live-host re-proof, or action behavior",
+            "Semantic identity",
             "Anything the implementer chooses",
             1,
         )
@@ -188,8 +148,8 @@ class ReviewUnitTransitionTests(unittest.TestCase):
                 changed_contract,
                 plan_path=PLAN_RELATIVE,
                 changed_paths={PLAN_RELATIVE, PROPOSAL_RELATIVE},
-                head_branch="m005/conflicting-evidence-proposal",
-                proposal_text=_proposal_text(),
+                head_branch=PROPOSAL_BRANCH,
+                proposal_text=proposal_text(),
             )
 
     def test_implementation_requires_accepted_proposal(self) -> None:
@@ -203,7 +163,7 @@ class ReviewUnitTransitionTests(unittest.TestCase):
                     PLAN_RELATIVE,
                     "implementations/memory/bounded_evidence.py",
                 },
-                head_branch="m005/conflicting-evidence",
+                head_branch=IMPLEMENTATION_BRANCH,
             )
 
     def test_accepted_proposal_unlocks_implementation(self) -> None:
@@ -224,7 +184,7 @@ class ReviewUnitTransitionTests(unittest.TestCase):
                 "implementations/memory/bounded_evidence.py",
                 "tests/implementations/memory/test_bounded_evidence.py",
             },
-            head_branch="m005/conflicting-evidence",
+            head_branch=IMPLEMENTATION_BRANCH,
         )
         self.assertEqual(transition, "implementation")
 
@@ -245,13 +205,13 @@ class ReviewUnitTransitionTests(unittest.TestCase):
                 implementation_head,
                 plan_path=PLAN_RELATIVE,
                 changed_paths={PLAN_RELATIVE, PROPOSAL_RELATIVE},
-                head_branch="m005/conflicting-evidence",
+                head_branch=IMPLEMENTATION_BRANCH,
             )
 
 
 class ProposalAcceptanceMetadataTests(unittest.TestCase):
     def setUp(self) -> None:
-        proposal_plan = _move_to_review(PLAN_PATH.read_text(encoding="utf-8"))
+        proposal_plan = _move_to_review(ready_plan_text())
         self.state = validate_plan_text(proposal_plan)
         self.allowed = {
             PLAN_RELATIVE,
@@ -262,8 +222,8 @@ class ProposalAcceptanceMetadataTests(unittest.TestCase):
     def _payload(self) -> dict[str, object]:
         return {
             "state": "MERGED",
-            "baseRefName": "milestone/005-evidence-memory-foundation",
-            "headRefName": "m005/conflicting-evidence-proposal",
+            "baseRefName": MILESTONE_BRANCH,
+            "headRefName": PROPOSAL_BRANCH,
             "mergeCommit": {"oid": "b" * 40},
             "url": "https://example.invalid/60",
             "files": [
@@ -316,8 +276,8 @@ class ReviewUnitGitDiffTests(unittest.TestCase):
             root = Path(temp_dir)
             plan = root / PLAN_RELATIVE
             plan.parent.mkdir(parents=True)
-            plan.write_text(PLAN_PATH.read_text(encoding="utf-8"), encoding="utf-8")
-            self._git(root, "init", "-b", "milestone/005-evidence-memory-foundation")
+            plan.write_text(ready_plan_text(), encoding="utf-8")
+            self._git(root, "init", "-b", MILESTONE_BRANCH)
             self._git(root, "add", ".")
             self._git(
                 root,
@@ -330,14 +290,14 @@ class ReviewUnitGitDiffTests(unittest.TestCase):
                 "ready for proposal",
             )
             base_sha = self._git(root, "rev-parse", "HEAD")
-            self._git(root, "switch", "-c", "m005/conflicting-evidence-proposal")
+            self._git(root, "switch", "-c", PROPOSAL_BRANCH)
             plan.write_text(
                 _move_to_review(plan.read_text(encoding="utf-8")),
                 encoding="utf-8",
             )
             proposal = root / PROPOSAL_RELATIVE
             proposal.parent.mkdir(parents=True)
-            proposal.write_text(_proposal_text(), encoding="utf-8")
+            proposal.write_text(proposal_text(), encoding="utf-8")
             self._git(root, "add", ".")
             self._git(
                 root,
@@ -352,8 +312,8 @@ class ReviewUnitGitDiffTests(unittest.TestCase):
             head_sha = self._git(root, "rev-parse", "HEAD")
 
             transition = validate_review_unit_git_diff(
-                base_ref="milestone/005-evidence-memory-foundation",
-                head_ref="m005/conflicting-evidence-proposal",
+                base_ref=MILESTONE_BRANCH,
+                head_ref=PROPOSAL_BRANCH,
                 base_sha=base_sha,
                 head_sha=head_sha,
                 repo_root=root,
@@ -367,7 +327,7 @@ class ReviewUnitGitDiffTests(unittest.TestCase):
             plan = root / PLAN_RELATIVE
             plan.parent.mkdir(parents=True)
             proposal_review = _move_to_review(
-                PLAN_PATH.read_text(encoding="utf-8")
+                ready_plan_text()
             )
             accepted = accept_proposal(
                 proposal_review,
@@ -376,7 +336,7 @@ class ReviewUnitGitDiffTests(unittest.TestCase):
                 proposal_url="https://example.invalid/60",
             )
             plan.write_text(accepted, encoding="utf-8")
-            self._git(root, "init", "-b", "milestone/005-evidence-memory-foundation")
+            self._git(root, "init", "-b", MILESTONE_BRANCH)
             self._git(root, "add", ".")
             self._git(
                 root,
@@ -392,13 +352,13 @@ class ReviewUnitGitDiffTests(unittest.TestCase):
             start_implementation_branch(
                 plan,
                 validate_plan_text(accepted),
-                "m005/conflicting-evidence",
+                IMPLEMENTATION_BRANCH,
                 repo_root=root,
             )
 
             self.assertEqual(
                 self._git(root, "branch", "--show-current"),
-                "m005/conflicting-evidence",
+                IMPLEMENTATION_BRANCH,
             )
             transitioned = validate_plan_text(plan.read_text(encoding="utf-8"))
             self.assertEqual(

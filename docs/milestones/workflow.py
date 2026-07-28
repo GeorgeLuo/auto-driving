@@ -8,7 +8,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -51,7 +51,9 @@ PROPOSAL_REQUIRED_HEADINGS = (
     "## Non-Goals",
     "## File Impact",
     "## Validation Plan",
+    "## Expected Handoff",
 )
+HANDOFF_TEMPLATE_SCHEMA = "milestone_handoff_template_v1"
 EXAMPLE_RECEIPT: dict[str, Any] = {
     "schema": "milestone_handoff_v1",
     "accepted_pr": 123,
@@ -1041,13 +1043,22 @@ def verify_handoff_github_state(
     *,
     repo_root: Path = ROOT,
 ) -> None:
+    payload = _fetch_pr_metadata(receipt["accepted_pr"], repo_root=repo_root)
+    validate_merged_pr_metadata(payload, state, receipt)
+
+
+def _fetch_pr_metadata(
+    pr_number: int,
+    *,
+    repo_root: Path = ROOT,
+) -> dict[str, Any]:
     try:
         result = subprocess.run(
             [
                 "gh",
                 "pr",
                 "view",
-                str(receipt["accepted_pr"]),
+                str(pr_number),
                 "--json",
                 "state,mergeCommit,baseRefName,headRefName",
             ],
@@ -1060,14 +1071,16 @@ def verify_handoff_github_state(
         raise PlanContractError("GitHub CLI `gh` is required for handoff") from exc
     except subprocess.CalledProcessError as exc:
         detail = exc.stderr.strip() or exc.stdout.strip() or str(exc)
-        raise PlanContractError(f"cannot verify accepted PR on GitHub: {detail}") from exc
+        raise PlanContractError(
+            f"cannot verify accepted PR on GitHub: {detail}"
+        ) from exc
     try:
         payload = json.loads(result.stdout)
     except json.JSONDecodeError as exc:
         raise PlanContractError("GitHub CLI returned invalid PR metadata") from exc
     if not isinstance(payload, dict):
         raise PlanContractError("GitHub CLI returned invalid PR metadata")
-    validate_merged_pr_metadata(payload, state, receipt)
+    return payload
 
 
 def _replace_current_frontier_state(
@@ -1227,6 +1240,140 @@ def validate_proposal_text(text: str) -> None:
     for heading in PROPOSAL_REQUIRED_HEADINGS:
         if heading not in text:
             raise PlanContractError(f"proposal is missing {heading}")
+    load_handoff_template(text)
+
+
+def load_handoff_template(proposal_text: str) -> dict[str, Any]:
+    """Load and validate the proposal's reviewed post-merge handoff template."""
+
+    lines = proposal_text.splitlines()
+    start, end = _section_bounds(lines, "## Expected Handoff")
+    fence_indexes = [
+        index for index in range(start, end) if lines[index].strip() == "```json"
+    ]
+    if len(fence_indexes) != 1:
+        raise PlanContractError(
+            "Expected Handoff must contain exactly one ```json code block"
+        )
+    fence_start = fence_indexes[0]
+    fence_end: int | None = None
+    for index in range(fence_start + 1, end):
+        if lines[index].strip() == "```":
+            fence_end = index
+            break
+    if fence_end is None:
+        raise PlanContractError("Expected Handoff JSON code block is not closed")
+    try:
+        payload = json.loads("\n".join(lines[fence_start + 1 : fence_end]))
+    except json.JSONDecodeError as exc:
+        raise PlanContractError(f"Expected Handoff contains invalid JSON: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise PlanContractError("Expected Handoff template must be a JSON object")
+    materialize_handoff_receipt(
+        payload,
+        accepted_pr=1,
+        accepted_merge_commit="a" * 40,
+    )
+    return payload
+
+
+def _replace_handoff_tokens(
+    value: Any,
+    *,
+    accepted_pr: int,
+    accepted_merge_commit: str,
+) -> Any:
+    if isinstance(value, str):
+        return value.replace("{pr}", str(accepted_pr)).replace(
+            "{merge_commit}",
+            accepted_merge_commit,
+        )
+    if isinstance(value, list):
+        return [
+            _replace_handoff_tokens(
+                item,
+                accepted_pr=accepted_pr,
+                accepted_merge_commit=accepted_merge_commit,
+            )
+            for item in value
+        ]
+    if isinstance(value, dict):
+        return {
+            key: _replace_handoff_tokens(
+                item,
+                accepted_pr=accepted_pr,
+                accepted_merge_commit=accepted_merge_commit,
+            )
+            for key, item in value.items()
+        }
+    return value
+
+
+def materialize_handoff_receipt(
+    template: dict[str, Any],
+    *,
+    accepted_pr: int,
+    accepted_merge_commit: str,
+) -> dict[str, Any]:
+    """Fill merge-time identity into a proposal-reviewed handoff template."""
+
+    if template.get("schema") != HANDOFF_TEMPLATE_SCHEMA:
+        raise PlanContractError(
+            f"Expected Handoff schema must be {HANDOFF_TEMPLATE_SCHEMA}"
+        )
+    forbidden = {"accepted_pr", "accepted_merge_commit"} & set(template)
+    if forbidden:
+        raise PlanContractError(
+            "Expected Handoff cannot predeclare merge-time fields: "
+            + ", ".join(sorted(forbidden))
+        )
+    materialized = _replace_handoff_tokens(
+        template,
+        accepted_pr=accepted_pr,
+        accepted_merge_commit=accepted_merge_commit,
+    )
+    materialized["schema"] = "milestone_handoff_v1"
+    materialized["accepted_pr"] = accepted_pr
+    materialized["accepted_merge_commit"] = accepted_merge_commit
+    return _normalize_receipt(materialized)
+
+
+def validate_handoff_template_against_plan(
+    proposal_text: str,
+    proposal_review_plan: str,
+) -> None:
+    """Prove the reviewed success template can advance the frozen plan."""
+
+    state = validate_plan_text(proposal_review_plan)
+    if state.current.fields.get("workflow state") != "proposal_in_review":
+        raise PlanContractError(
+            "Expected Handoff validation requires proposal_in_review"
+        )
+    used_prs = {
+        int(match.group(1))
+        for row in state.ledger.rows
+        if (match := re.fullmatch(r"#(\d+)", row[0])) is not None
+    }
+    proposal_pr = max(used_prs, default=0) + 1
+    implementation_pr = proposal_pr + 1
+    accepted = accept_proposal(
+        proposal_review_plan,
+        proposal_pr=proposal_pr,
+        merge_commit="b" * 40,
+        proposal_url="https://example.invalid/proposal",
+    )
+    implementation_review = _replace_current_frontier_state(
+        accepted,
+        expected_state="ready_for_implementation",
+        new_state="implementation_in_review",
+        evidence="Implementation branch started.",
+    )
+    receipt = materialize_handoff_receipt(
+        load_handoff_template(proposal_text),
+        accepted_pr=implementation_pr,
+        accepted_merge_commit="c" * 40,
+    )
+    apply_handoff(implementation_review, receipt)
 
 
 def proposal_allowed_paths(plan: Path, state: PlanState, *, repo_root: Path = ROOT) -> set[str]:
@@ -1394,6 +1541,7 @@ def validate_review_unit_transition(
         if proposal_path not in changed_paths or proposal_text is None:
             raise PlanContractError(f"proposal PR must provide {proposal_path}")
         validate_proposal_text(proposal_text)
+        validate_handoff_template_against_plan(proposal_text, head_text)
         transition_kind = "proposal"
     elif base_state == "ready_for_implementation":
         if head_state != "implementation_in_review":
@@ -1598,6 +1746,138 @@ def _cmd_validate(paths: list[Path]) -> int:
     return 0
 
 
+def _worktree_changed_paths(*, repo_root: Path) -> set[str]:
+    tracked = _run_git(
+        ["diff", "--name-only"],
+        cwd=repo_root,
+    ).stdout.splitlines()
+    untracked = _run_git(
+        ["ls-files", "--others", "--exclude-standard"],
+        cwd=repo_root,
+    ).stdout.splitlines()
+    return {path for path in (*tracked, *untracked) if path}
+
+
+def complete_implementation(
+    plan: Path,
+    accepted_pr: int,
+    *,
+    repo_root: Path = ROOT,
+    pr_payload: dict[str, Any] | None = None,
+    render_docs: Callable[[], None] | None = None,
+    push: bool = True,
+) -> PlanState:
+    """Advance a merged implementation using its proposal-reviewed template."""
+
+    repo_root = repo_root.resolve()
+    plan = plan.resolve()
+    initial = validate_plan_path(plan)
+    _validate_plan_location(plan, repo_root=repo_root)
+    branch = _run_git(["branch", "--show-current"], cwd=repo_root).stdout.strip()
+    if branch != initial.milestone_branch:
+        raise PlanContractError(
+            "complete-implementation must run on "
+            f"{initial.milestone_branch!r}, currently {branch!r}"
+        )
+    if _run_git(["status", "--porcelain"], cwd=repo_root).stdout.strip():
+        raise PlanContractError("complete-implementation requires a clean worktree")
+
+    _run_git(
+        ["fetch", "origin", initial.milestone_branch],
+        cwd=repo_root,
+    )
+    _run_git(
+        ["merge", "--ff-only", f"origin/{initial.milestone_branch}"],
+        cwd=repo_root,
+    )
+
+    original = plan.read_text(encoding="utf-8")
+    state = validate_plan_text(original)
+    if state.current.fields.get("workflow state") != "implementation_in_review":
+        raise PlanContractError(
+            "complete-implementation requires workflow state "
+            "implementation_in_review"
+        )
+
+    payload = (
+        pr_payload
+        if pr_payload is not None
+        else _fetch_pr_metadata(accepted_pr, repo_root=repo_root)
+    )
+    merge_commit = payload.get("mergeCommit")
+    merge_oid = merge_commit.get("oid") if isinstance(merge_commit, dict) else None
+    if not isinstance(merge_oid, str) or re.fullmatch(r"[0-9a-f]{40}", merge_oid) is None:
+        raise PlanContractError(f"PR #{accepted_pr} has no full merge commit")
+
+    proposal_path = repo_root / _frontier_proposal_path(
+        state.current,
+        heading="Current Frontier",
+    )
+    try:
+        proposal_text = proposal_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise PlanContractError(
+            f"cannot read accepted proposal {proposal_path}: {exc}"
+        ) from exc
+    validate_proposal_text(proposal_text)
+    receipt = materialize_handoff_receipt(
+        load_handoff_template(proposal_text),
+        accepted_pr=accepted_pr,
+        accepted_merge_commit=merge_oid,
+    )
+    verify_handoff_git_state(plan, state, receipt, repo_root=repo_root)
+    validate_merged_pr_metadata(payload, state, receipt)
+    updated = apply_handoff(original, receipt)
+
+    renderer = render_docs or _render_docs
+    html_path = plan.with_suffix(".html")
+    original_html = html_path.read_bytes() if html_path.exists() else None
+    committed = False
+    try:
+        plan.write_text(updated, encoding="utf-8")
+        renderer()
+        completed = validate_plan_path(plan)
+        plan_relative = plan.relative_to(repo_root).as_posix()
+        html_relative = html_path.relative_to(repo_root).as_posix()
+        changed = _worktree_changed_paths(repo_root=repo_root)
+        expected = {plan_relative, html_relative}
+        if changed != expected:
+            raise PlanContractError(
+                "complete-implementation produced unexpected paths: "
+                + ", ".join(sorted(changed ^ expected))
+            )
+        diff_check = _run_git(["diff", "--check"], cwd=repo_root, check=False)
+        if diff_check.returncode != 0:
+            detail = diff_check.stdout.strip() or diff_check.stderr.strip()
+            raise PlanContractError(f"handoff diff check failed: {detail}")
+        _run_git(
+            ["add", "--", plan_relative, html_relative],
+            cwd=repo_root,
+        )
+        _run_git(
+            ["commit", "-m", f"Record PR {accepted_pr} milestone handoff"],
+            cwd=repo_root,
+        )
+        committed = True
+        if push:
+            _run_git(
+                ["push", "origin", state.milestone_branch],
+                cwd=repo_root,
+            )
+    except Exception:
+        if committed:
+            raise
+        if _run_git(["diff", "--cached", "--quiet"], cwd=repo_root, check=False).returncode:
+            _run_git(["reset"], cwd=repo_root)
+        plan.write_text(original, encoding="utf-8")
+        if original_html is None:
+            html_path.unlink(missing_ok=True)
+        else:
+            html_path.write_bytes(original_html)
+        raise
+    return completed
+
+
 def _cmd_handoff(plan: Path, receipt_path: Path) -> int:
     plan = plan.resolve()
     receipt = _load_receipt(receipt_path)
@@ -1615,6 +1895,25 @@ def _cmd_handoff(plan: Path, receipt_path: Path) -> int:
         raise
     print(f"Applied PR #{receipt['accepted_pr']} handoff to {plan.relative_to(ROOT)}")
     print("Review the plan diff, run tests, then commit the plan and generated HTML together.")
+    return 0
+
+
+def _cmd_complete_implementation(plan: Path, accepted_pr: int) -> int:
+    completed = complete_implementation(plan, accepted_pr)
+    print(f"Completed implementation PR #{accepted_pr}.")
+    print(f"Frontier: {completed.current.name or 'None'}")
+    workflow_state = completed.current.fields.get("workflow state")
+    print(f"Workflow state: {workflow_state or 'none'}")
+    if workflow_state == "ready_for_proposal":
+        proposal_branch = _frontier_branch(
+            completed.current,
+            heading="Current Frontier",
+            field="proposal branch",
+        )
+        print(
+            "Next: python3 docs/milestones/workflow.py start-proposal "
+            f"--plan {plan} --branch {proposal_branch}"
+        )
     return 0
 
 
@@ -1703,7 +2002,9 @@ def _cmd_accept_proposal(plan: Path, proposal_pr: int) -> int:
         state.current,
         heading="Current Frontier",
     )
-    validate_proposal_text(proposal_path.read_text(encoding="utf-8"))
+    proposal_text = proposal_path.read_text(encoding="utf-8")
+    validate_proposal_text(proposal_text)
+    validate_handoff_template_against_plan(proposal_text, original)
     updated = accept_proposal(
         original,
         proposal_pr=proposal_pr,
@@ -1792,6 +2093,13 @@ def main() -> int:
     handoff_parser.add_argument("--plan", required=True, type=Path)
     handoff_parser.add_argument("--receipt", required=True, type=Path)
 
+    complete_parser = subparsers.add_parser(
+        "complete-implementation",
+        help="finish a merged implementation from its reviewed handoff template",
+    )
+    complete_parser.add_argument("--plan", required=True, type=Path)
+    complete_parser.add_argument("--pr", required=True, type=int)
+
     status_parser = subparsers.add_parser(
         "status",
         help="show the current workflow state and next handoff",
@@ -1849,6 +2157,8 @@ def main() -> int:
             return _cmd_accept_proposal(args.plan, args.pr)
         if args.command == "start-implementation":
             return _cmd_start_implementation(args.plan, args.branch)
+        if args.command == "complete-implementation":
+            return _cmd_complete_implementation(args.plan, args.pr)
         if args.command == "validate-pr":
             return _cmd_validate_pr(
                 base_ref=args.base_ref,

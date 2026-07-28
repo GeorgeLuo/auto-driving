@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="e1ae4143657eb0c0bfa3987b26b742fdac5bd6aa1c18018f2647d824a3994220">
+  <meta name="source-sha256" content="a82b909a7cb4aafc8a81d1fa50f08099e095f245c89ba3cbbba68b6f07c3b070">
   <base target="_blank">
   <title>Milestone Planning And Delivery Contract</title>
   <style>
@@ -644,9 +644,38 @@ silently fill both roles in one change.</p>
 <p>Each proposal lives at the current frontier’s declared <code>proposal path</code> and uses
 <code>.github/PULL_REQUEST_TEMPLATE/proposal.md</code>. It records the review question,
 proposed contract, owner, affected paths, adversarial matrix, assumptions,
-non-goals, file impacts, and validation plan. It contains no product code,
-tests of unimplemented behavior, generated runtime artifacts, or implementation
-repair.</p>
+non-goals, file impacts, validation plan, and the expected successful handoff.
+It contains no product code, tests of unimplemented behavior, generated runtime
+artifacts, or implementation repair.</p>
+<p><code>## Expected Handoff</code> contains exactly one <code>json</code> code block. It uses
+<code>milestone_handoff_template_v1</code>, which is the normal handoff receipt without
+<code>accepted_pr</code> or <code>accepted_merge_commit</code>. Those facts do not exist until merge.
+The reviewed template may use <code>{pr}</code> and <code>{merge_commit}</code> inside strings; the
+completion command substitutes them without changing any other judgment:</p>
+<pre><code class="language-json">{
+  &quot;schema&quot;: &quot;milestone_handoff_template_v1&quot;,
+  &quot;outcome&quot;: &quot;advance&quot;,
+  &quot;result&quot;: &quot;Accepted&quot;,
+  &quot;durable_evidence&quot;: &quot;Accepted implementation and focused tests in PR #{pr}&quot;,
+  &quot;criterion_updates&quot;: {
+    &quot;M000-01&quot;: {
+      &quot;status&quot;: &quot;Met&quot;,
+      &quot;evidence&quot;: &quot;Contract accepted in PR #{pr}&quot;
+    }
+  },
+  &quot;risk_remove&quot;: [],
+  &quot;risk_upsert&quot;: [],
+  &quot;next_frontier&quot;: {
+    &quot;state&quot;: &quot;none&quot;,
+    &quot;reason&quot;: &quot;No later candidate is reviewed.&quot;,
+    &quot;revisit_when&quot;: &quot;The promoted frontier determines what follows.&quot;
+  }
+}
+</code></pre>
+<p>Proposal validation simulates the later implementation handoff against the
+frozen plan. It rejects templates that update unowned criteria, remove unknown
+risks, promote closeout while other criteria remain unmet, or invent an
+unreviewed next candidate.</p>
 <p>Each implementation PR uses <code>.github/pull_request_template.md</code>, links the
 accepted proposal PR and merge commit, and reconciles its actual diff to that
 proposal. A changed proposal requires a new proposal review; implementation may
@@ -806,26 +835,32 @@ reports <code>ready_for_implementation</code> may the implementation branch star
 <p>After the implementation PR is accepted:</p>
 <ol>
 <li>squash-merge it into the milestone branch;</li>
-<li>the maintainer who merges it runs the executable handoff below on the clean
-   milestone branch;</li>
-<li>inspect and commit only the resulting canonical plan and generated HTML;</li>
-<li>open the new current frontier’s branch only after the handoff commit, from
-   the updated milestone branch and against the frozen current contract.</li>
+<li>from a clean local milestone branch, run the completion command below;</li>
+<li>confirm its reported frontier and workflow state;</li>
+<li>open the new current frontier’s proposal branch only after completion.</li>
 </ol>
-<pre><code class="language-sh">python3 docs/milestones/workflow.py receipt-example
-python3 docs/milestones/workflow.py handoff \
+<pre><code class="language-sh">python3 docs/milestones/workflow.py complete-implementation \
   --plan docs/milestones/&lt;number&gt;-&lt;slug&gt;/plan.md \
-  --receipt /path/to/handoff.json
+  --pr &lt;implementation-pr-number&gt;
 </code></pre>
+<p><code>complete-implementation</code> fetches and fast-forwards the milestone branch,
+confirms the implementation PR is merged from the planned branch, fills the
+reviewed template with the PR number and merge SHA, applies the existing
+handoff owner, verifies that only canonical <code>plan.md</code> and generated <code>plan.html</code>
+changed, commits them, and pushes the milestone branch. It stops at
+<code>ready_for_proposal</code>; it never starts the next proposal branch.</p>
+<p>The lower-level <code>handoff --receipt &lt;path&gt;</code> command remains available for a
+reviewed exceptional receipt or recovery, but normal successful completion
+must not reconstruct acceptance judgment after merge.</p>
 <p>The helper, rather than agent memory, enforces the local order. It refuses a
 dirty worktree, the wrong branch, a branch/state mismatch, an unmerged proposal,
 an implementation start without an accepted proposal, an implementation PR
 from the wrong branch, or a merge commit that is not already an ancestor of the
-milestone branch. Proposal acceptance asks GitHub to confirm
-the exact base, head, merge commit, and changed-file allowlist. Implementation
-handoff asks GitHub to confirm the implementation PR and commit, then limits
-criterion updates to the current frontier, prevents premature closeout, updates
-the accepted ledger and risks, promotes the reviewed next candidate to
+milestone branch. Proposal acceptance asks GitHub to confirm the exact base,
+head, merge commit, and changed-file allowlist. Implementation completion asks
+GitHub to confirm the implementation PR and commit, then limits criterion
+updates to the current frontier, prevents premature closeout, updates the
+accepted ledger and risks, promotes the reviewed next candidate to
 <code>ready_for_proposal</code>, records workflow history, and regenerates HTML.</p>
 <p>CI runs <code>workflow.py validate-pr</code> on every PR targeting a milestone branch. A
 proposal PR may change only its declared proposal document, canonical plan, and

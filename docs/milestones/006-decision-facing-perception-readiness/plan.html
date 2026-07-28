@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="4df93ce2c59b36f37b75f81c45d7b7266671a5bc41177f2dbfce3167c66c07f8">
+  <meta name="source-sha256" content="d734b3bcb1820042e8eba6612d43912a5b580f68f90159453b3e016de11a182c">
   <base target="_blank">
   <title>Milestone plan — 006-decision-facing-perception-readiness</title>
   <style>
@@ -85,7 +85,7 @@
 </tr>
 <tr>
 <td>Current frontier</td>
-<td>Decision-facing fitness measures</td>
+<td>Modular shadow action proposal foundation</td>
 </tr>
 <tr>
 <td>Started</td>
@@ -93,16 +93,20 @@
 </tr>
 <tr>
 <td>Action policy</td>
-<td>Idle / no movement for the entire milestone</td>
+<td>Proposals may contain movement intent; applied vehicle control remains zero for the entire milestone</td>
 </tr>
 </tbody>
 </table>
 <p>Shared planning contract: <a href="../README.md">README.md</a> · <a href="../planning-contract.html">planning-contract.html</a></p>
 <h2>Objective</h2>
-<p>Decide whether packaged perception evidence is reliable enough for one named,
-constrained decision experiment, or qualify at most one bounded upgrade under
-the existing perception contract. The result must be reproducible on recorded
-evidence and visually inspectable without granting movement authority.</p>
+<p>Establish one modular, replayable path from the decision cycle's current
+observation, retained memory, pattern outputs, and projections to attributable
+shadow action proposals. Prove the path with one memory-backed proposal
+implementation and the same operator workflow against Chase and PiRacer inputs,
+while runtime authority guarantees that no proposed movement is applied. This
+tests whether the existing perception and memory contracts are usable by
+decision logic; it does not establish autonomous movement safety or require a
+prediction algorithm.</p>
 <h2>Completion Usage</h2>
 <table>
 <thead>
@@ -116,44 +120,53 @@ evidence and visually inspectable without granting movement authority.</p>
 </thead>
 <tbody>
 <tr>
-<td>Collect physical control evidence</td>
-<td>Stationary PiRacer with packaged perception active</td>
-<td><code>./cli/automa vehicles perception check --id piracer --record</code></td>
-<td>Labeled, frame-matched check run with zero control</td>
-<td>M006-01, M006-02, M006-05</td>
+<td>Primary demonstration</td>
+<td>Chase or stationary PiRacer with supported obstruction evidence left or right of center and the shadow engine staged</td>
+<td>Run the stage/automation/stream workflow, open the decision-view URL, then replay the recorded sequence</td>
+<td><code>avoid_recent_obstruction</code> proposes steering away from attributable retained evidence, the mixer selects it, the proposal progresses from fresh/retained through stale to inactive, the combined view explains the path, replay is deterministic, and applied autonomy control remains idle</td>
+<td>M006-02, M006-03, M006-04, M006-05, M006-06, M006-07</td>
 </tr>
 <tr>
-<td>Score decision fitness</td>
-<td>Recorded labeled sequence</td>
-<td><code>./cli/automa vehicles perception fitness --from-run &lt;dir&gt;</code></td>
-<td>Concise threshold verdict plus machine-readable measures and exact-frame references</td>
-<td>M006-01, M006-02</td>
+<td>Stage and inspect shadow decision logic</td>
+<td>Reachable or locally staged vehicle bundle</td>
+<td><code>./cli/automa vehicles update decision --id &lt;vehicle&gt; --engine shadow-proposals</code> then <code>./cli/automa vehicles info decision --id &lt;vehicle&gt;</code></td>
+<td>Human-readable output names the immutable decision inputs, enabled proposal plugins, mixer, output schema, shadow-only authority, and combined decision-view URL; <code>--json</code> exposes the complete machine contract</td>
+<td>M006-01, M006-02, M006-03</td>
 </tr>
 <tr>
-<td>Exercise the same input boundary</td>
-<td>Active Chase or recorded simulator sequence</td>
-<td><code>./cli/automa vehicles perception run --id chase-sim-chaser --record</code> then <code>./cli/automa vehicles perception fitness --from-run &lt;dir&gt;</code></td>
-<td>Simulator evidence is processed without controller access to map or evaluator truth</td>
-<td>M006-02, M006-05</td>
+<td>Observe current shadow proposals</td>
+<td>Staged decision logic and an active automation worker</td>
+<td><code>./cli/automa vehicles automation run --id &lt;vehicle&gt;</code> then <code>./cli/automa vehicles stream decision --id &lt;vehicle&gt;</code></td>
+<td>Replacing latest-frame display and browser view show source frame, retained evidence overlay, proposal status and command, selected contribution, exact source references, and <code>applied=false</code></td>
+<td>M006-02, M006-03, M006-04, M006-05</td>
 </tr>
 <tr>
-<td>Qualify one upgrade when earned</td>
-<td>Control failed its declared gate</td>
-<td><code>./cli/automa vehicles perception qualify --from-check-run &lt;dir&gt; --candidate &lt;id&gt;</code></td>
-<td>Exactly one <code>promote</code> or <code>reject_keep_control</code> result on common frames</td>
-<td>M006-03</td>
+<td>Replay a recorded decision sequence</td>
+<td>Recorded observations with memory inputs or enough evidence to reproduce them</td>
+<td><code>./cli/automa vehicles decision apply --from-run &lt;dir&gt;</code></td>
+<td>Concise deterministic digest and per-frame proposal transitions; <code>--record</code> adds an exact-frame HTML review artifact, and no files are written otherwise</td>
+<td>M006-02, M006-04, M006-05</td>
 </tr>
 <tr>
-<td>Verify a promoted physical path</td>
-<td>Candidate was promoted and deployed</td>
-<td><code>./cli/automa vehicles perception viability --id piracer</code></td>
-<td>Cadence, freshness, inspection, and zero-control gates pass</td>
-<td>M006-04, M006-06</td>
+<td>Exercise Chase without privileged input</td>
+<td>Chase frontend active with the staged shadow engine</td>
+<td>Run the stage/automation/stream workflow with <code>--id chase-sim-chaser</code></td>
+<td>Candidate proposals use camera-derived observation, memory, patterns, and projections only; evaluator shadow data remains isolated and proposed controls are not applied</td>
+<td>M006-05, M006-06, M006-07</td>
+</tr>
+<tr>
+<td>Demonstrate the physical path</td>
+<td>Stationary PiRacer in user mode, pointed at evidence supported by the packaged perception chain</td>
+<td>Run the stage/automation/stream workflow with <code>--id piracer</code></td>
+<td>Live proposal output changes with attributable fresh/absent/stale memory evidence while drive mode stays <code>user</code> and pilot output stays zero</td>
+<td>M006-04, M006-05, M006-06, M006-07</td>
 </tr>
 </tbody>
 </table>
-<p>Command details may sharpen through accepted proposals, but the workflow count
-and their observable outcomes must not expand into an open candidate search.</p>
+<p>Command details may sharpen through accepted proposals, but completion must retain
+one shared decision-data boundary, one reference proposal implementation, one
+simple mixer, explicit shadow authority, and equivalent human-facing workflows
+for simulator and physical vehicles.</p>
 <h2>Scope Boundaries</h2>
 <table>
 <thead>
@@ -164,28 +177,32 @@ and their observable outcomes must not expand into an open candidate search.</p>
 </thead>
 <tbody>
 <tr>
-<td>Decision-facing fitness measures and thresholds for one named constrained policy class</td>
-<td>Non-idle movement, collision-avoidance claims, or action-policy implementation</td>
+<td>Immutable, cycle-aligned decision data exposing observation, memory, patterns, projections, capabilities, timing, and prior applied-action context</td>
+<td>Proposal plugins running perception, mutating memory, querying live stage state, or consuming evaluator truth</td>
 </tr>
 <tr>
-<td>Packaged control scored first on labeled, exact-frame evidence</td>
-<td>Multi-candidate tournaments or trying every lab experiment</td>
+<td>Modular proposal plugins with explicit availability, confidence, reason, proposed command, freshness, and source references</td>
+<td>Complex consensus, learned mixing, proposal tournaments, or multiple policy implementations</td>
 </tr>
 <tr>
-<td>At most one common-frame upgrade qualification if the control fails</td>
-<td>Semantic recognition, VLM products, metric SLAM, or floor-plan reconstruction</td>
+<td>One deterministic selector/mixer and an inspectable action-plan result</td>
+<td>Applying proposed controls, collision-avoidance claims, or non-idle vehicle authority</td>
 </tr>
 <tr>
-<td>Recorded-sequence evaluation usable with Pi and Chase capture paths</td>
-<td>Privileged simulator map/evaluator state entering controller perception or memory</td>
+<td>One bounded <code>avoid_recent_obstruction</code> reference proposal that uses retained relative location and fails closed on absent, stale, incompatible, or incomplete evidence</td>
+<td>Treating the diagnostic behavior as collision avoidance, semantic identity, metric localization, world-model reconstruction, or treating recurring evidence IDs as physical-object identity</td>
 </tr>
 <tr>
-<td>Pi viability and visual inspection if an upgrade is promoted</td>
-<td>Rewriting perception, memory, or always-on publication contracts</td>
+<td>Pattern and projection outputs available through the same source contract, including explicit unavailable/error states</td>
+<td>Implementing or validating long-horizon prediction, trajectory planning, SLAM, or a metric motion model</td>
 </tr>
 <tr>
-<td>A closeout sufficiency decision for the next milestone</td>
-<td>Treating attractive overlays or desktop speed as adoption evidence</td>
+<td>Recorded replay, live streaming, and visual/structured evidence on Chase and PiRacer paths</td>
+<td>New perception algorithms, VLM products, physical driving trials, or unrelated CLI expansion</td>
+</tr>
+<tr>
+<td>A single canonical proposed vehicle-command shape with runtime-specific application adapters</td>
+<td>Preserving parallel legacy action shapes or embedding DonkeyCar/Chase details in proposal plugins</td>
 </tr>
 </tbody>
 </table>
@@ -202,37 +219,49 @@ and their observable outcomes must not expand into an open candidate search.</p>
 <tbody>
 <tr>
 <td>M006-01</td>
-<td>One named constrained decision-policy class has a reviewed fitness contract with explicit measures, thresholds, labels, uncertainty treatment, and stop conditions</td>
+<td>One immutable, cycle-aligned decision-data contract exposes current observation, retained memory, pattern outputs, projection outputs, vehicle capabilities, timing, and prior applied-action context with explicit unavailable/error states and no evaluator data</td>
 <td>Unmet</td>
 <td>First frontier</td>
 </tr>
 <tr>
 <td>M006-02</td>
-<td>Automa scores the packaged control from bounded recorded evidence with concise human output, complete machine output, exact-frame references, deterministic replay, and no default disk writes</td>
+<td>Independent proposal plugins consume only the decision-data contract and emit a bounded, serializable proposal containing identity, lifecycle status, confidence, reason, one canonical proposed command, freshness, assumptions, and exact evidence/pattern/projection references</td>
 <td>Unmet</td>
-<td>Requires accepted fitness contract and implementation</td>
+<td>First frontier</td>
 </tr>
 <tr>
 <td>M006-03</td>
-<td>The packaged control either passes its declared gate or exactly one upgrade attempt receives an explicit <code>promote</code> or <code>reject_keep_control</code> result on common frames</td>
+<td>One deterministic selector/mixer consumes the complete proposal set and emits an inspectable action plan with selected proposal or contributions, while a separate runtime authority result proves proposed and applied control cannot be confused</td>
 <td>Unmet</td>
-<td>Control must be scored before candidate selection</td>
+<td>First frontier</td>
 </tr>
 <tr>
 <td>M006-04</td>
-<td>If an upgrade is promoted, its onboard Pi path passes cadence, freshness, inspectability, and zero-control viability gates; otherwise this criterion is met by recorded non-promotion</td>
+<td>One packaged <code>avoid_recent_obstruction</code> proposal demonstrates left/right active steering, retained-fresh continuity, stale-to-inactive fallback, incompatible input, missing input, and plugin-error behavior without claiming navigation safety or semantic identity</td>
 <td>Unmet</td>
-<td>Conditional on M006-03</td>
+<td>First frontier</td>
 </tr>
 <tr>
 <td>M006-05</td>
-<td>Tracked visual evidence demonstrates the scored representation on physical frames and exercises the same recorded-sequence boundary with Chase or controlled fixtures without controller access to privileged truth</td>
+<td>Automa can stage, inspect, replay, and stream the decision path with concise default output, complete <code>--json</code> output, deterministic replay, latest-frame replacement, a combined frame/evidence/proposal/authority view, an opt-in exact-frame HTML artifact, and no default disk writes</td>
 <td>Unmet</td>
-<td>Requires exact-frame review artifacts</td>
+<td>Requires accepted foundation</td>
 </tr>
 <tr>
 <td>M006-06</td>
-<td>Closeout states whether a later shadow/non-idle decision milestone is justified, preserves residual limits, and confirms action remained idle throughout M006</td>
+<td>Tracked Chase and physical evidence exercise the same proposal contract and combined review view, showing exact source provenance, freshness transitions, proposal selection, proposed movement intent, and zero applied control</td>
+<td>Unmet</td>
+<td>Cross-environment evidence frontier</td>
+</tr>
+<tr>
+<td>M006-07</td>
+<td>Chase evaluator/shadow state remains outside controller inputs, and PiRacer remains in user mode with zero pilot output throughout all milestone evidence</td>
+<td>Unmet</td>
+<td>Cross-environment evidence frontier</td>
+</tr>
+<tr>
+<td>M006-08</td>
+<td>Closeout states whether the evidence justifies a later bounded movement or prediction milestone and preserves unresolved perception, identity, self-motion, command-model, and safety limits</td>
 <td>Unmet</td>
 <td>Closeout only</td>
 </tr>
@@ -240,31 +269,31 @@ and their observable outcomes must not expand into an open candidate search.</p>
 </table>
 <h2>Current Delivery</h2>
 <h3>Current Frontier</h3>
-<p><strong>Decision-facing fitness measures</strong></p>
+<p><strong>Modular shadow action proposal foundation</strong></p>
 <ul>
-<li>Workflow state: <code>ready_for_proposal</code></li>
-<li>Proposal branch: <code>m006/decision-fitness-proposal</code></li>
-<li>Implementation branch: <code>m006/decision-fitness</code></li>
-<li>Proposal path: <code>docs/milestones/006-decision-facing-perception-readiness/proposals/decision-fitness.md</code></li>
-<li>Review kind: Decision-fitness contract</li>
-<li>Review question: Can one bounded, host-neutral fitness contract turn recorded perception checks into reproducible evidence about whether the packaged control can support a named constrained shadow-decision policy while action remains idle?</li>
-<li>Acceptance owner: Recorded-sequence fitness schema, scorer boundary, and Automa human/machine report contract</li>
-<li>Exit criteria affected: M006-01, M006-02</li>
-<li>Prerequisite: Milestone 005 closed at <code>milestone-005</code>; existing Pi check and Chase capture paths remain available</li>
-<li>Non-goals: Algorithm changes, candidate selection, movement, semantic detection, metric geometry, or a second evaluation framework</li>
+<li>Workflow state: ready_for_proposal</li>
+<li>Proposal branch: <code>m006/shadow-proposals-proposal</code></li>
+<li>Implementation branch: <code>m006/shadow-proposals</code></li>
+<li>Proposal path: <code>docs/milestones/006-decision-facing-perception-readiness/proposals/shadow-proposals.md</code></li>
+<li>Review kind: Behavioral feature slice</li>
+<li>Review question: Can independent action-proposal plugins consume one immutable, cycle-aligned decision data source and produce attributable, replayable action plans while runtime authority guarantees that no proposed command is applied?</li>
+<li>Acceptance owner: Decision-data source, proposal/plan contracts, proposal runner, deterministic selector, shadow-authority result, and the <code>avoid_recent_obstruction</code> reference implementation</li>
+<li>Exit criteria affected: M006-01, M006-02, M006-03, M006-04</li>
+<li>Prerequisite: Milestone 005 closed at <code>milestone-005</code>; bounded evidence memory, exact provenance, replay, and idle Chase/Pi host paths remain available</li>
+<li>Non-goals: Applied movement, new perception logic, prediction algorithms, semantic identity, metric geometry, complex mixing, evaluator input, or more than one reference proposal</li>
 </ul>
 <h3>Next-Frontier Candidate</h3>
-<p><strong>Control fitness evidence</strong></p>
+<p><strong>Cross-environment shadow proposal evidence</strong></p>
 <ul>
-<li>Proposal branch: <code>m006/control-fitness-evidence-proposal</code></li>
-<li>Implementation branch: <code>m006/control-fitness-evidence</code></li>
-<li>Proposal path: <code>docs/milestones/006-decision-facing-perception-readiness/proposals/control-fitness-evidence.md</code></li>
-<li>Review kind: Recorded control evaluation</li>
-<li>Review question: Does the packaged control satisfy the accepted decision-fitness gate on bounded exact-frame evidence?</li>
-<li>Acceptance owner: Tracked control report and exact-frame visual evidence</li>
-<li>Exit criteria affected: M006-02, M006-03, M006-05</li>
-<li>Prerequisite: Decision-facing fitness implementation accepted</li>
-<li>Non-goals: Selecting or implementing an upgrade before the control verdict, live movement, or expanding the candidate budget</li>
+<li>Proposal branch: <code>m006/shadow-proposal-evidence-proposal</code></li>
+<li>Implementation branch: <code>m006/shadow-proposal-evidence</code></li>
+<li>Proposal path: <code>docs/milestones/006-decision-facing-perception-readiness/proposals/shadow-proposal-evidence.md</code></li>
+<li>Review kind: Live or external evidence</li>
+<li>Review question: Does the staged <code>avoid_recent_obstruction</code> proposal produce deterministic, provenance-complete shadow action plans and one correlated visual explanation through the same operator workflow on recorded replay, Chase, and PiRacer inputs while applied control remains zero?</li>
+<li>Acceptance owner: Automa decision stage/info/apply/stream/view surfaces and tracked exact-frame Chase/Pi shadow evidence</li>
+<li>Exit criteria affected: M006-05, M006-06, M006-07</li>
+<li>Prerequisite: Modular shadow action proposal foundation accepted with replayable proposal and authority schemas</li>
+<li>Non-goals: Changing proposal semantics during evidence collection, selecting another proposal, applying movement, using privileged simulator state, or claiming physical navigation readiness</li>
 </ul>
 <h2>Workflow History</h2>
 <table>
@@ -280,6 +309,11 @@ and their observable outcomes must not expand into an open candidate search.</p>
 <td>Decision-facing fitness measures</td>
 <td>ready_for_proposal</td>
 <td>Activated after M005 cumulative PR #68 merged and mainline merge was tagged <code>milestone-005</code>.</td>
+</tr>
+<tr>
+<td>Modular shadow action proposal foundation</td>
+<td>ready_for_proposal</td>
+<td>Plan revision: replaced the unstarted fitness-first frontier before any M006 proposal branch or artifact existed.</td>
 </tr>
 </tbody>
 </table>
@@ -315,24 +349,44 @@ and their observable outcomes must not expand into an open candidate search.</p>
 </thead>
 <tbody>
 <tr>
-<td>Existing physical check runs may not cover the declared distance, placement, and lighting band</td>
-<td>A threshold could appear reliable only because the evidence is narrow</td>
-<td>The first proposal must name minimum coverage and fail closed when evidence is insufficient</td>
+<td>A shared decision-data source could degrade into an untyped mutable bag</td>
+<td>Proposal dependencies and stage ownership would become implicit and order-sensitive</td>
+<td>Require an immutable typed contract, stable component keys, explicit unavailable/error values, and mutation tests</td>
 </tr>
 <tr>
-<td>A scorer could overfit one run or encode Pi-only directory conventions</td>
-<td>Results would not replay or transfer through the shared vehicle boundary</td>
-<td>Keep the evaluation input bounded and host-neutral; require held-out or repeated evidence where the proposal justifies it</td>
+<td>Recurring evidence IDs do not establish physical-object identity</td>
+<td>A proposal could steer toward a different object that reused a detector slot</td>
+<td>Carry exact provenance and freshness, state the no-identity limit, and keep all milestone output shadow-only</td>
 </tr>
 <tr>
-<td>Simulator scenes do not reproduce carpet, lighting, or camera optics</td>
-<td>Chase success could be mistaken for physical readiness</td>
-<td>Use Chase for contract and causal-path checks; physical frames remain required for the fitness verdict</td>
+<td>Current bounded memory keeps the newest recurring record rather than a trajectory</td>
+<td>Memory alone cannot support motion inference or validate long-horizon predictions</td>
+<td>Prove latest-evidence proposal use now; retain pattern/projection slots and defer bounded temporal state to a reviewed later milestone</td>
 </tr>
 <tr>
-<td>Confidence values are not yet calibrated probabilities</td>
-<td>Thresholds may imply unsupported certainty</td>
-<td>Treat confidence as algorithm evidence and validate observable behavior rather than probabilistic truth</td>
+<td>Apparent image motion combines object motion with vehicle self-motion</td>
+<td>A later projection could attribute commanded camera motion to a perceived object</td>
+<td>Include prior applied-action context in the source contract and require future prediction work to condition on it</td>
+</tr>
+<tr>
+<td><code>VehicleAction</code> and <code>AutonomyControl</code> currently express direction/throttle differently</td>
+<td>Proposal implementations could accumulate runtime-specific adapters or contradictory command semantics</td>
+<td>The first proposal must select one canonical proposed-command contract and isolate runtime conversion without compatibility branches</td>
+</tr>
+<tr>
+<td>A mixer interface could invite premature consensus machinery</td>
+<td>Framework complexity would grow before one proposal proves the data path</td>
+<td>Implement one deterministic selector, keep contribution provenance, and explicitly defer Chase-style consensus</td>
+</tr>
+<tr>
+<td>Packaged physical perception may not emit stable evidence for every placement</td>
+<td>A structurally correct proposal may be inactive on narrow physical scenes</td>
+<td>Use existing supported evidence, show active and fail-closed states honestly, and do not tune perception inside this milestone</td>
+</tr>
+<tr>
+<td>Simulator success could be mistaken for physical readiness</td>
+<td>Exact synthetic state and clean rendering do not represent carpet, optics, latency, or slip</td>
+<td>Use Chase for contract/replay checks and require separate stationary Pi evidence without movement claims</td>
 </tr>
 </tbody>
 </table>
@@ -358,23 +412,38 @@ and their observable outcomes must not expand into an open candidate search.</p>
 </tr>
 <tr>
 <td>2026-07-18</td>
-<td>Budget at most one upgrade attempt</td>
-<td>Prevent an open algorithm search while allowing one evidence-driven correction</td>
+<td>Budget at most one decision implementation</td>
+<td>Prevent an open policy or algorithm search while proving one concrete consumer of the stage contracts</td>
 </tr>
 <tr>
 <td>2026-07-28</td>
 <td>Activate M006 after M005 whole-milestone merge</td>
-<td>Bounded evidence memory, provenance, replay, and idle host parity are now closed and tagged</td>
+<td>Bounded evidence memory, provenance, replay, and idle host parity are closed and tagged</td>
 </tr>
 <tr>
 <td>2026-07-28</td>
-<td>Make fitness host-neutral but physical-grounded</td>
-<td>Simulator and Pi should exercise one recorded-sequence contract, while only physical evidence can establish physical readiness</td>
+<td>Replace abstract fitness-first work before proposal authoring</td>
+<td>An inspectable shadow proposal is a more direct test of decision-facing usability and still permits recorded fitness evidence without movement</td>
 </tr>
 <tr>
 <td>2026-07-28</td>
-<td>Require proposal review before fitness implementation</td>
-<td>Measures and thresholds define success and must not be invented by implementation</td>
+<td>Give every proposal the same immutable decision-data source</td>
+<td>Memory, patterns, and projections should be independently usable without proposal-specific engine wiring or shared mutation</td>
+</tr>
+<tr>
+<td>2026-07-28</td>
+<td>Carry prediction access but defer prediction algorithms</td>
+<td>The architecture should not block prediction-backed proposals, while current memory does not yet justify trajectory claims</td>
+</tr>
+<tr>
+<td>2026-07-28</td>
+<td>Keep proposal generation modular and mixing simple</td>
+<td>Independent plugins preserve experimentation; one deterministic selector avoids importing unvalidated Chase consensus mechanics</td>
+</tr>
+<tr>
+<td>2026-07-28</td>
+<td>Permit nonzero shadow intent but forbid application</td>
+<td>Proposed and applied controls must be distinguishable before any movement milestone begins</td>
 </tr>
 </tbody>
 </table>
@@ -384,8 +453,11 @@ and their observable outcomes must not expand into an open candidate search.</p>
 <ul>
 <li><code>closeout.md</code>;</li>
 <li>a completed-milestone ledger entry;</li>
-<li>a final control-or-upgrade decision and residual-risk statement;</li>
-<li>a decision to activate, revise, or abandon one later shadow/non-idle decision pre-plan.</li>
+<li>tracked simulator and physical shadow-proposal evidence;</li>
+<li>a residual-risk statement covering perception uncertainty, identity, temporal
+  history, self-motion, command conversion, and movement safety;</li>
+<li>a decision to activate, revise, or abandon one bounded movement or prediction
+  pre-plan.</li>
 </ul>
   </main>
 </body>

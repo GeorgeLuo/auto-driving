@@ -161,11 +161,15 @@ class DecisionDataSourceTests(unittest.TestCase):
         def plugin_a(source: DecisionDataSource) -> ActionProposal:
             seen.append(source.capabilities.value)
             value = source.capabilities.value
-            if isinstance(value, tuple):
-                # frozen mapping — mutation of nested structure must not affect peers
-                pass
-            elif isinstance(value, dict):
+            # Frozen mapping rejects item assignment; plain dict would mutate a
+            # shared view — neither path may change peer observations.
+            if isinstance(value, dict):
                 value["max_abs_steering"] = 0.01
+            else:
+                try:
+                    value["max_abs_steering"] = 0.01  # type: ignore[index]
+                except TypeError:
+                    pass
             return ActionProposal(
                 plugin_id="a",
                 frame_id=source.frame_id,

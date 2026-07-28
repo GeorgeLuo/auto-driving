@@ -158,6 +158,29 @@ class ShadowProposalsEngine:
         except ValueError as exc:
             raise ShadowCycleInputError(str(exc)) from exc
 
+        gate = drive_mode_gate if isinstance(drive_mode_gate, str) else "unknown"
+        # Host-report boundary owned after valid entry (never raise TypeError out).
+        if host_application is not None and not isinstance(
+            host_application, ComponentEnvelope
+        ):
+            return _engine_error(
+                frame_id=frame_id,
+                reason="engine_internal_error",
+                source=None,
+                drive_mode_gate=gate,
+            )
+
+        def fail(reason: str, *, source: DecisionDataSource | None) -> tuple[
+            ShadowDecisionCycleResult, AutonomyControl
+        ]:
+            return _engine_error(
+                frame_id=frame_id,
+                reason=reason,
+                source=source,
+                host_application=host_application,
+                drive_mode_gate=gate,
+            )
+
         try:
             source = build_decision_data_source(
                 frame_id=frame_id,
@@ -170,114 +193,94 @@ class ShadowProposalsEngine:
                 prior_host_applied_command=prior_host_applied_command,
             )
         except Exception:
-            authority = build_authority(
-                frame_id=frame_id,
-                cycle_status="engine_error",
-                cycle_reason="decision_data_source_invalid",
-                proposed=None,
-                host_application=host_application,
-                drive_mode_gate=drive_mode_gate,
-            )
-            result = ShadowDecisionCycleResult(
-                frame_id=frame_id,
-                status="engine_error",
-                reason="decision_data_source_invalid",
-                source=None,
-                plan=None,
-                authority=authority,
-            )
-            return result, authorized_idle_control()
+            return fail("decision_data_source_invalid", source=None)
 
         candidates: list[ActionProposal] = []
-        for plugin_id in sorted(self.config.enabled_plugins):
-            plugin = self.plugins.get(plugin_id)
-            if plugin is None:
-                candidates.append(
-                    synthetic_error_proposal(
-                        plugin_id=plugin_id,
-                        frame_id=frame_id,
-                        reason="plugin_invalid_return",
-                    )
-                )
-                continue
-            raised: BaseException | None = None
-            returned: object = None
-            try:
-                # Isolate nested state so one plugin cannot mutate another's view.
-                returned = plugin(deepcopy(source))
-            except BaseException as exc:  # noqa: BLE001 - fail closed per proposal
-                raised = exc
-            try:
-                candidates.append(
-                    _admit_candidate(
-                        returned=returned,
-                        invoked_plugin_id=plugin_id,
-                        frame_id=frame_id,
-                        raised=raised,
-                    )
-                )
-            except Exception:
-                authority = build_authority(
-                    frame_id=frame_id,
-                    cycle_status="engine_error",
-                    cycle_reason="synthetic_error_proposal_failed",
-                    proposed=None,
-                    host_application=host_application,
-                    drive_mode_gate=drive_mode_gate,
-                )
-                result = ShadowDecisionCycleResult(
-                    frame_id=frame_id,
-                    status="engine_error",
-                    reason="synthetic_error_proposal_failed",
-                    source=source,
-                    plan=None,
-                    authority=authority,
-                )
-                return result, authorized_idle_control()
-
         try:
+            for plugin_id in sorted(self.config.enabled_plugins):
+                plugin = self.plugins.get(plugin_id)
+                if plugin is None:
+                    candidates.append(
+                        synthetic_error_proposal(
+                            plugin_id=plugin_id,
+                            frame_id=frame_id,
+                            reason="plugin_invalid_return",
+                        )
+                    )
+                    continue
+                raised: BaseException | None = None
+                returned: object = None
+                try:
+                    # Isolate nested state so one plugin cannot mutate another's view.
+                    returned = plugin(deepcopy(source))
+                except BaseException as exc:  # noqa: BLE001 - fail closed per proposal
+                    raised = exc
+                try:
+                    candidates.append(
+                        _admit_candidate(
+                            returned=returned,
+                            invoked_plugin_id=plugin_id,
+                            frame_id=frame_id,
+                            raised=raised,
+                        )
+                    )
+                except Exception:
+                    return fail("synthetic_error_proposal_failed", source=source)
+
             if len(candidates) != len(self.config.enabled_plugins):
-                raise ValueError("candidate count mismatch")
+                return fail("action_plan_invariant_violated", source=source)
             plan = select_action_plan(
                 frame_id=frame_id,
                 timestamp_ms=timestamp_ms,
                 candidates=candidates,
             )
-        except Exception:
+            selected = plan.selected_candidate()
+            proposed = selected.command if selected is not None else None
             authority = build_authority(
                 frame_id=frame_id,
-                cycle_status="engine_error",
-                cycle_reason="action_plan_invariant_violated",
-                proposed=None,
+                cycle_status="ok",
+                cycle_reason="",
+                proposed=proposed,
                 host_application=host_application,
-                drive_mode_gate=drive_mode_gate,
+                drive_mode_gate=gate,
             )
             result = ShadowDecisionCycleResult(
                 frame_id=frame_id,
-                status="engine_error",
-                reason="action_plan_invariant_violated",
+                status="ok",
+                reason="",
                 source=source,
-                plan=None,
+                plan=plan,
                 authority=authority,
             )
             return result, authorized_idle_control()
+        except Exception:
+            return fail("engine_internal_error", source=source)
 
-        selected = plan.selected_candidate()
-        proposed = selected.command if selected is not None else None
-        authority = build_authority(
-            frame_id=frame_id,
-            cycle_status="ok",
-            cycle_reason="",
-            proposed=proposed,
-            host_application=host_application,
-            drive_mode_gate=drive_mode_gate,
-        )
-        result = ShadowDecisionCycleResult(
-            frame_id=frame_id,
-            status="ok",
-            reason="",
-            source=source,
-            plan=plan,
-            authority=authority,
-        )
-        return result, authorized_idle_control()
+
+def _engine_error(
+    *,
+    frame_id: str,
+    reason: str,
+    source: DecisionDataSource | None,
+    host_application: ComponentEnvelope | None = None,
+    drive_mode_gate: str = "unknown",
+) -> tuple[ShadowDecisionCycleResult, AutonomyControl]:
+    authority = build_authority(
+        frame_id=frame_id,
+        cycle_status="engine_error",
+        cycle_reason=reason,
+        proposed=None,
+        host_application=host_application
+        if isinstance(host_application, ComponentEnvelope)
+        else None,
+        drive_mode_gate=drive_mode_gate,
+    )
+    result = ShadowDecisionCycleResult(
+        frame_id=frame_id,
+        status="engine_error",
+        reason=reason,
+        source=source,
+        plan=None,
+        authority=authority,
+    )
+    return result, authorized_idle_control()

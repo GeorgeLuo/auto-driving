@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Mapping
 from typing import Any, Sequence
 
 from autonomy.decision.action_proposal import (
@@ -262,19 +263,17 @@ def propose(
         magnitude = float(steer_magnitude)
         caps = source.capabilities
         if caps.status == "ready":
-            # Ready but non-dict or invalid fields fail closed — do not treat as
-            # unavailable fallback.
+            # Ready but non-mapping or invalid fields fail closed — do not treat
+            # as unavailable fallback. Frozen JSON objects are Mapping, not dict.
             caps_value = caps.value
-            if hasattr(caps_value, "to_dict"):
-                caps_value = caps_value.to_dict()
-            # deep_freeze stores mappings as sorted tuples of pairs
-            if isinstance(caps_value, tuple) and caps_value and isinstance(
-                caps_value[0], tuple
+            if hasattr(caps_value, "to_dict") and callable(
+                getattr(caps_value, "to_dict")
             ):
-                try:
-                    caps_value = {key: item for key, item in caps_value}
-                except (TypeError, ValueError):
-                    caps_value = None
+                caps_value = caps_value.to_dict()
+            if isinstance(caps_value, Mapping) and not isinstance(
+                caps_value, (str, bytes)
+            ):
+                caps_value = dict(caps_value)
             if not isinstance(caps_value, dict):
                 return ActionProposal(
                     plugin_id=PLUGIN_ID,

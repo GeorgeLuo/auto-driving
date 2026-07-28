@@ -72,10 +72,13 @@ class ComponentEnvelope:
 
     def to_dict(self) -> dict[str, Any]:
         value = self.value
-        if hasattr(value, "to_dict"):
+        if hasattr(value, "to_dict") and callable(getattr(value, "to_dict")):
             value = value.to_dict()
-        elif isinstance(value, tuple):
-            value = frozen_mapping_to_dict(value)
+        else:
+            # Frozen JSON (FrozenJsonObject / nested tuples) → plain dict/list.
+            thawed = frozen_mapping_to_dict(value)
+            if thawed is not value:
+                value = thawed
         return {
             "status": self.status,
             "value": value,

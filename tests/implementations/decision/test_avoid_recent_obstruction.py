@@ -261,6 +261,33 @@ class AvoidRecentObstructionTests(unittest.TestCase):
         self.assertEqual(p.lifecycle, "error")
         self.assertEqual(p.reason, "invalid_capabilities")
 
+    def test_capabilities_unavailable_uses_configured_magnitude(self) -> None:
+        from autonomy.decision.decision_data import unavailable_envelope
+
+        snap = MemorySnapshot(
+            memory_id="m",
+            epoch_id="e",
+            health="healthy",
+            bounds=_bounds(),
+            created_at_ms=1000,
+            records=(_record(),),
+            implementation_id="bounded_evidence",
+        )
+        source = build_decision_data_source(
+            frame_id="frame_001",
+            frame_index=0,
+            timestamp_ms=1000,
+            memory=snap,
+            capabilities=unavailable_envelope(
+                "stage_not_configured", updated_at_ms=1000
+            ),
+        )
+        p = propose(source, steer_magnitude=0.4)
+        self.assertEqual(p.lifecycle, "fresh")
+        assert p.command is not None
+        self.assertAlmostEqual(p.command.steering, 0.4)
+        self.assertIn("capabilities_not_ready", p.assumptions)
+
 
 if __name__ == "__main__":
     unittest.main()

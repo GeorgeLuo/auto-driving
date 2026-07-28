@@ -102,6 +102,13 @@ class ActionPlan:
             contrib = contributions[0]
             if contrib.proposal_id != self.selected_proposal_id:
                 raise ValueError("contribution.proposal_id must match selection")
+            selected = next(
+                c for c in ordered if c.proposal_id == self.selected_proposal_id
+            )
+            if contrib.plugin_id != selected.plugin_id:
+                raise ValueError(
+                    "contribution.plugin_id must match selected candidate plugin_id"
+                )
             if contrib.role != "selected" or contrib.weight != 1.0:
                 raise ValueError("contribution must be weight=1.0 role=selected")
         object.__setattr__(self, "contributions", contributions)

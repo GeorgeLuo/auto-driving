@@ -243,5 +243,227 @@ class RunnerBoundaryTests(unittest.TestCase):
                 available=False,
             )
 
+    def test_metadata_round_trip_preserves_object_array_identity(self) -> None:
+        cases = (
+            {},
+            {"empty": {}},
+            {"arr": []},
+            {"nested": {"a": [], "b": {}}},
+            {"pairs": [["x", 1], ["y", 2]]},
+        )
+        for meta in cases:
+            with self.subTest(meta=meta):
+                prop = ActionProposal(
+                    plugin_id="avoid_recent_obstruction",
+                    frame_id="frame_001",
+                    lifecycle="inactive",
+                    freshness="none",
+                    confidence=0.0,
+                    reason="noop",
+                    command=None,
+                    available=False,
+                    metadata=meta,
+                )
+                self.assertEqual(prop.to_dict()["metadata"], meta)
+        with self.assertRaises(ValueError):
+            ActionProposal(
+                plugin_id="avoid_recent_obstruction",
+                frame_id="frame_001",
+                lifecycle="inactive",
+                freshness="none",
+                confidence=0.0,
+                reason="noop",
+                command=None,
+                available=False,
+                metadata={"set": {1, 2}},
+            )
+        # Empty default metadata serializes as object, not array.
+        err = synthetic_error_proposal(
+            plugin_id="p", frame_id="f", reason="plugin_exception"
+        )
+        self.assertEqual(err.to_dict()["metadata"], {})
+
+    def test_contribution_plugin_id_must_match_selected(self) -> None:
+        from autonomy.decision.action_plan import ActionPlan, PlanContribution
+
+        a = _active_proposal(plugin_id="aaa")
+        with self.assertRaises(ValueError):
+            ActionPlan(
+                frame_id="frame_001",
+                timestamp_ms=1,
+                status="selected",
+                candidates=(a,),
+                selected_proposal_id=a.proposal_id,
+                contributions=(
+                    PlanContribution(
+                        proposal_id=a.proposal_id,
+                        plugin_id="wrong",
+                        weight=1.0,
+                        role="selected",
+                    ),
+                ),
+            )
+
+    def test_host_application_bad_type_is_engine_error(self) -> None:
+        engine = create_shadow_proposals_engine()
+        result, control = engine.run_cycle(
+            frame_id="frame_001",
+            frame_index=0,
+            timestamp_ms=1,
+            host_application="bad",  # type: ignore[arg-type]
+        )
+        self.assertEqual(result.status, "engine_error")
+        self.assertEqual(result.reason, "engine_internal_error")
+        self.assertIsNone(result.plan)
+        self.assertEqual(
+            result.authority.authorized_output["reason"], "shadow-only-idle"
+        )
+        self.assertFalse(result.authority.proposed_applied)
+        self.assertEqual(control.steering, 0.0)
+
+    def test_bound_rejections(self) -> None:
+        with self.assertRaises(ValueError):
+            ActionProposal(
+                plugin_id="avoid_recent_obstruction",
+                frame_id="frame_001",
+                lifecycle="inactive",
+                freshness="none",
+                confidence=0.0,
+                reason="r" * 241,
+                command=None,
+                available=False,
+            )
+        refs = tuple(
+            SourceRef(kind="memory_record", id=f"r{i}") for i in range(17)
+        )
+        with self.assertRaises(ValueError):
+            ActionProposal(
+                plugin_id="avoid_recent_obstruction",
+                frame_id="frame_001",
+                lifecycle="stale",
+                freshness="stale",
+                confidence=0.0,
+                reason="stale",
+                command=None,
+                source_refs=refs,
+                available=False,
+            )
+
+    def test_invalid_activation_configs(self) -> None:
+        with self.assertRaises(ValueError):
+            ShadowProposalsConfig(steer_magnitude=-0.1)
+        with self.assertRaises(ValueError):
+            ShadowProposalsConfig(steer_magnitude=1.1)
+        with self.assertRaises(ValueError):
+            ShadowProposalsConfig(
+                enabled_plugins=("a", "a"),
+                known_plugins=frozenset({"a"}),
+            )
+        with self.assertRaises(ValueError):
+            ShadowProposalsConfig(
+                enabled_plugins=("missing",),
+                known_plugins=frozenset({"a"}),
+            )
+        with self.assertRaises(ValueError):
+            ShadowProposalsConfig(
+                enabled_plugins=("a", "b", "c", "d", "e"),
+                known_plugins=frozenset({"a", "b", "c", "d", "e"}),
+            )
+
+    def test_plugin_none_wrong_id_and_exception(self) -> None:
+        from autonomy.decision.decision_data import DecisionDataSource
+
+        def return_none(source: DecisionDataSource) -> ActionProposal:
+            return None  # type: ignore[return-value]
+
+        def wrong_id(source: DecisionDataSource) -> ActionProposal:
+            return _active_proposal(plugin_id="other", frame_id=source.frame_id)
+
+        def boom(source: DecisionDataSource) -> ActionProposal:
+            raise RuntimeError("plugin crashed")
+
+        for plugin_fn, reason in (
+            (return_none, "plugin_invalid_return"),
+            (wrong_id, "plugin_invalid_return"),
+            (boom, "plugin_exception"),
+        ):
+            with self.subTest(reason=reason):
+                engine = ShadowProposalsEngine(
+                    config=ShadowProposalsConfig(
+                        enabled_plugins=("avoid_recent_obstruction",),
+                        known_plugins=frozenset({"avoid_recent_obstruction"}),
+                    ),
+                    plugins={"avoid_recent_obstruction": plugin_fn},
+                )
+                result, control = engine.run_cycle(
+                    frame_id="frame_001", frame_index=0, timestamp_ms=1
+                )
+                self.assertEqual(result.status, "ok")
+                assert result.plan is not None
+                self.assertEqual(len(result.plan.candidates), 1)
+                self.assertEqual(result.plan.candidates[0].reason, reason)
+                self.assertEqual(result.plan.candidates[0].lifecycle, "error")
+                self.assertEqual(control.steering, 0.0)
+
+    def test_proposal_over_max_bytes_rejected(self) -> None:
+        # Pad metadata until canonical size exceeds 4096.
+        pad = "x" * 3800
+        with self.assertRaises(ValueError):
+            ActionProposal(
+                plugin_id="avoid_recent_obstruction",
+                frame_id="frame_001",
+                lifecycle="inactive",
+                freshness="none",
+                confidence=0.0,
+                reason="noop",
+                command=None,
+                available=False,
+                metadata={"pad": pad},
+            )
+
+    def test_plan_and_source_empty_metadata_is_object(self) -> None:
+        from autonomy.decision.action_plan import ActionPlan
+        from autonomy.decision.decision_data import build_decision_data_source
+
+        plan = ActionPlan(
+            frame_id="frame_001",
+            timestamp_ms=1,
+            status="idle",
+            candidates=(_active_proposal(),),
+            selected_proposal_id=None,
+            contributions=(),
+        )
+        self.assertEqual(plan.to_dict()["metadata"], {})
+        source = build_decision_data_source(
+            frame_id="frame_001", frame_index=0, timestamp_ms=1
+        )
+        self.assertEqual(source.to_dict()["metadata"], {})
+        # Nested empty object in ready envelope value.
+        from autonomy.decision.decision_data import ready_envelope
+
+        env = ready_envelope({"empty": {}, "arr": []}, updated_at_ms=1)
+        self.assertEqual(env.to_dict()["value"], {"empty": {}, "arr": []})
+
+    def test_frame_id_65_chars_raises(self) -> None:
+        engine = create_shadow_proposals_engine()
+        with self.assertRaises(ShadowCycleInputError):
+            engine.run_cycle(frame_id="f" * 65, frame_index=0, timestamp_ms=1)
+
+    def test_vehicle_action_not_valid_command(self) -> None:
+        from autonomy.vehicle import VehicleAction
+
+        with self.assertRaises((TypeError, ValueError)):
+            ActionProposal(
+                plugin_id="avoid_recent_obstruction",
+                frame_id="frame_001",
+                lifecycle="fresh",
+                freshness="fresh",
+                confidence=0.5,
+                reason="bad",
+                command=VehicleAction(steering=0.1),  # type: ignore[arg-type]
+                source_refs=(SourceRef(kind="memory_record", id="r"),),
+                available=True,
+            )
+
 if __name__ == "__main__":
     unittest.main()

@@ -67,6 +67,7 @@ model, changing perception semantics, or granting movement authority.
 **Conflicting evidence semantics**
 
 - Workflow state: implementation_in_review
+- PR: [#64](https://github.com/GeorgeLuo/auto-driving/pull/64)
 - Proposal branch: `m005/conflicting-evidence-proposal`
 - Implementation branch: `m005/conflicting-evidence`
 - Proposal path: `docs/milestones/005-evidence-memory-foundation/proposals/conflicting-evidence.md`

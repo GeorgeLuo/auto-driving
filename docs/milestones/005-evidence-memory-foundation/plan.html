@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="a07a4fb5d863f1cfb41a6ed9e0e59d2d678219677f3fe56ae0f5b7b9862b4bd3">
+  <meta name="source-sha256" content="17bd1d967184c20b63fc2f50bc6f48984a1045e3fcb1c58201952a20c185475a">
   <base target="_blank">
   <title>Milestone plan — 005-evidence-memory-foundation</title>
   <style>
@@ -303,7 +303,8 @@ model, changing perception semantics, or granting movement authority.</p>
 <h3>Current Frontier</h3>
 <p><strong>Conflicting evidence semantics</strong></p>
 <ul>
-<li>Workflow state: ready_for_proposal</li>
+<li>Workflow state: proposal_in_review</li>
+<li>PR: <a href="https://github.com/GeorgeLuo/auto-driving/pull/61">#61</a></li>
 <li>Proposal branch: <code>m005/conflicting-evidence-proposal</code></li>
 <li>Implementation branch: <code>m005/conflicting-evidence</code></li>
 <li>Proposal path: <code>docs/milestones/005-evidence-memory-foundation/proposals/conflicting-evidence.md</code></li>
@@ -345,6 +346,11 @@ Do not move conflict implementation into closeout.</p>
 <td>Conflicting evidence semantics</td>
 <td>ready_for_proposal</td>
 <td>#58 froze the minimal frontier contract; draft implementation PR #59 / <code>m005/conflicting-evidence</code> exists as a pre-gate exception and remains blocked until an independent proposal is accepted</td>
+</tr>
+<tr>
+<td>Conflicting evidence semantics</td>
+<td>proposal_in_review</td>
+<td>Proposal PR #61 opened for independent conflict-semantics review.</td>
 </tr>
 </tbody>
 </table>
@@ -515,6 +521,11 @@ remain one row per merged PR.</p>
 <td>2026-07-27</td>
 <td>Accept #57 and keep conflicting evidence ahead of closeout</td>
 <td>The live Chase causal proof closes M005-09, but its accepted contract explicitly leaves M005-08 open; closeout cannot conceal an unspecified conflict policy</td>
+</tr>
+<tr>
+<td>2026-07-27</td>
+<td>Open independent proposal for conflicting-evidence before implementation</td>
+<td>Proposal gate requires reviewed contract, matrix, and validation plan before implementation may proceed under the gate</td>
 </tr>
 <tr>
 <td>2026-07-27</td>

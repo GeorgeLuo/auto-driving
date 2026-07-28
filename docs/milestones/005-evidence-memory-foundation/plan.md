@@ -66,7 +66,8 @@ model, changing perception semantics, or granting movement authority.
 
 **Conflicting evidence semantics**
 
-- Workflow state: ready_for_proposal
+- Workflow state: proposal_in_review
+- PR: [#61](https://github.com/GeorgeLuo/auto-driving/pull/61)
 - Proposal branch: `m005/conflicting-evidence-proposal`
 - Implementation branch: `m005/conflicting-evidence`
 - Proposal path: `docs/milestones/005-evidence-memory-foundation/proposals/conflicting-evidence.md`
@@ -101,6 +102,7 @@ Do not move conflict implementation into closeout.
 | Frontier | State | Evidence |
 | --- | --- | --- |
 | Conflicting evidence semantics | ready_for_proposal | #58 froze the minimal frontier contract; draft implementation PR #59 / `m005/conflicting-evidence` exists as a pre-gate exception and remains blocked until an independent proposal is accepted |
+| Conflicting evidence semantics | proposal_in_review | Proposal PR #61 opened for independent conflict-semantics review. |
 
 ## Accepted Review Units
 
@@ -143,6 +145,7 @@ remain one row per merged PR.
 | 2026-07-24 | Require a minimal pre-implementation acceptance contract for next-frontier candidates | Selecting “what’s next” must freeze question, owner, exit criteria, and non-goals before a branch is opened; name stubs are not candidates |
 | 2026-07-26 | Cut over M005 after grandfathered PR #57 and contract PR #58 merge in that order | Avoid retargeting #57 or merging conflicting hand-authored HTML; #58 becomes the canonical plan migration and the remaining review units use the milestone branch |
 | 2026-07-27 | Accept #57 and keep conflicting evidence ahead of closeout | The live Chase causal proof closes M005-09, but its accepted contract explicitly leaves M005-08 open; closeout cannot conceal an unspecified conflict policy |
+| 2026-07-27 | Open independent proposal for conflicting-evidence before implementation | Proposal gate requires reviewed contract, matrix, and validation plan before implementation may proceed under the gate |
 | 2026-07-27 | Separate proposal review from implementation review | A lower model authors a proposal, the reviewer accepts it, and only then may implementation begin; machine state and history must expose the handoff |
 
 ## Closeout

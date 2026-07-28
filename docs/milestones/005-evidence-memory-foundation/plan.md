@@ -5,7 +5,7 @@
 | Status | Active |
 | Milestone branch | `milestone/005-evidence-memory-foundation` (active; created from `main` after #58) |
 | Cumulative PR | TBD — transitional closeout delta from the milestone branch to `main`; whole-milestone judgment uses this plan and baseline |
-| Current frontier | Conflicting evidence semantics |
+| Current frontier | Milestone closeout |
 | Contract baseline | `22cfff9` — M005 work through PR #50, before the compact contract |
 | Grandfathered PRs | #57 (accepted evidence unit), #58 (contract migration); both retain their existing `main` targets |
 | Cutover | #57 merged to `main`; #58 recorded its accepted result and established the remaining conflict frontier; the milestone branch was created from resulting `main` |
@@ -53,7 +53,7 @@ model, changing perception semantics, or granting movement authority.
 | M005-05 | Same activation and lifecycle run through local Chase and onboard Donkey hosts; neither receives privileged simulator map state | Met | Load / update / status / reset paths on both hosts |
 | M005-06 | Automa can stage, inspect, run, stream latest memory, replay a sequence, and reset with concise human and complete machine output | Met | Stage / inspect / stream / reset / replay landed |
 | M005-07 | Default execution writes no logs, frames, or memory history; recording is explicit and bounded | Met | Defaults write nothing; #53 enforces opt-in replay frame/byte ceilings |
-| M005-08 | Deterministic tests cover recurrence, dropout, conflict, expiry, capacity, reset, failure, and replay, including long-sequence boundedness | Partial | Recurrence, dropout, expiry, capacity, reset, failure, replay, collision, long-sequence, and causal Chase adversarial coverage are accepted; the same-slot conflicting-evidence policy remains unspecified |
+| M005-08 | Deterministic tests cover recurrence, dropout, conflict, expiry, capacity, reset, failure, and replay, including long-sequence boundedness | Met | PR #64 accepted the deterministic same-slot conflict contract, adversarial matrix, and per-prefix replay proof |
 | M005-09 | One live Chase shadow check and one recorded non-moving Pi present/dropout/expiry/reset check verify equivalent stage behavior while the rewritten engine emits zero movement | Met | Pi lifecycle is recorded; #57 adds a guided Chase extract with `max_age_expiry` passing after 1,133 ms against a 1,000 ms bound, `reset_used=false`, and zero unapplied candidate control |
 | M005-10 | During the simulator check, Chase’s built-in decision model retains movement authority, the rewrite runs observe-only, and candidate/reference results align by simulator frame identity | Met | Atomic evaluator path and tracked guided run |
 | M005-11 | Simulator debug, map, and reference-decision state are evaluator-only and absent from rewritten controller inputs and retained memory provenance | Met | By design/wiring; re-asserted on check path |
@@ -64,26 +64,9 @@ model, changing perception semantics, or granting movement authority.
 
 ### Current Frontier
 
-**Conflicting evidence semantics**
-
-- Workflow state: implementation_in_review
-- PR: [#64](https://github.com/GeorgeLuo/auto-driving/pull/64)
-- Proposal branch: `m005/conflicting-evidence-proposal`
-- Implementation branch: `m005/conflicting-evidence`
-- Proposal path: `docs/milestones/005-evidence-memory-foundation/proposals/conflicting-evidence.md`
-- Accepted proposal: [#61](https://github.com/GeorgeLuo/auto-driving/pull/61) at `13b73f45958a50bff8aea5e2789b9052234604cb`
-- Paused implementation: [#59](https://github.com/GeorgeLuo/auto-driving/pull/59) on `m005/conflicting-evidence` opened before the independent proposal gate; it is **not** accepted implementation evidence and remains blocked until an independent proposal is accepted and implementation is re-handed under the gate
-- Review kind: Deterministic invariant closure
-- Review question: Does the bounded evidence ledger handle contradictory attributed evidence, same-slot recurrence, missing evidence, and structurally incompatible updates deterministically without silently claiming semantic truth?
-- Acceptance owner: `BoundedEvidenceLedger` update policy plus focused implementation and replay fixtures
-- Exit criteria affected: M005-08
-- Prerequisite: PR #58 merged and `milestone/005-evidence-memory-foundation` created from the resulting `main`
-- Milestone-level non-goal: Semantic fusion, object identity, confidence aggregation, live-host re-proof, or action behavior
-
-### Next-Frontier Candidate
-
 **Milestone closeout**
 
+- Workflow state: ready_for_proposal
 - Proposal branch: `m005/closeout-proposal` (planned; not opened)
 - Implementation branch: `m005/closeout` (planned; not opened)
 - Proposal path: `docs/milestones/005-evidence-memory-foundation/proposals/closeout.md`
@@ -92,11 +75,14 @@ model, changing perception semantics, or granting movement authority.
 - Acceptance owner: `closeout.md` plus the cumulative milestone PR judgment against exit criteria and completion usage
 - Exit criteria affected: M005-13
 - Prerequisite: Every exit criterion Met, including the current conflicting-evidence contract
-- Non-goals: New feature implementation under the closeout PR; reopening max-age scoring design; activating 006 before closeout acceptance
+- Milestone-level non-goal: New feature implementation under the closeout PR; reopening max-age scoring design; activating 006 before closeout acceptance
 
-Not started; no closeout branch yet. The acceptance boundary is frozen, but
-the branch cannot start until the current conflict frontier closes M005-08.
-Do not move conflict implementation into closeout.
+### Next-Frontier Candidate
+
+**None**
+
+- Reason: No post-closeout frontier is reviewed.
+- Revisit when: Milestone closeout decides whether to activate milestone 006.
 
 ## Workflow History
 
@@ -106,6 +92,8 @@ Do not move conflict implementation into closeout.
 | Conflicting evidence semantics | proposal_in_review | Proposal PR #61 opened for independent conflict-semantics review. |
 | Conflicting evidence semantics | ready_for_implementation | Proposal PR #61 accepted at 13b73f45958a50bff8aea5e2789b9052234604cb. |
 | Conflicting evidence semantics | implementation_in_review | Started m005/conflicting-evidence. |
+| Conflicting evidence semantics | accepted | Implementation PR #64 merged at 8d4772ba45575b6e0a3b73fdb08656d0c0dcccbd. |
+| Milestone closeout | ready_for_proposal | Promoted after implementation PR #64. |
 
 ## Accepted Review Units
 
@@ -116,6 +104,7 @@ Do not move conflict implementation into closeout.
 | #52 | Can callers mutate, enlarge, collide, or weaken activated memory bounds? | Accepted | M005-03, M005-08 | Deterministic bounds/detach/identity tests |
 | #53 | Can operators treat a recorded replay extract as bounded and fail-closed, and can a live Chase memory probe be trusted only when the automation worker is fresh? | Accepted | M005-03, M005-07, M005-08 | Deterministic record/probe/once-exit tests |
 | #57 | Can a guided live Chase run prove max-age expiry without reset while generation identity, capacity causality, zero unapplied control, and exact provenance hold? | Accepted | M005-08, M005-09 | `evidence/chase-max-age-expiry/`; 73 focused and 353 full deterministic tests |
+| #64 | Does the bounded evidence ledger handle contradictory attributed evidence, same-slot recurrence, missing evidence, and structurally incompatible updates deterministically without silently claiming semantic truth? | Accepted | M005-08 | Deterministic conflict-policy matrix and per-prefix replay proof; 85 focused tests |
 
 The baseline row is the explicit adoption boundary; post-baseline review units
 remain one row per merged PR.
@@ -124,7 +113,6 @@ remain one row per merged PR.
 
 | Risk or assumption | Consequence | Resolution path |
 | --- | --- | --- |
-| Conflicting evidence from one source/key has no explicit compatibility or replacement contract | A plugin can change structural meaning while the recency ledger silently overwrites prior evidence; M005-08 remains partial | Current `m005/conflicting-evidence` frontier: define the minimal evidence-not-truth policy and lock it with deterministic and replay tests |
 | Process identity for Chase live probe relies on host command inspection | Probe may be unavailable or spoofable on unsupported hosts | Fail closed; document limitation |
 | Memory is process-local by default | Restart continuity is not guaranteed | Explicit milestone non-goal |
 | Metrics UI atomic capture remains an external dependency for Chase evidence | Capture quality depends on sibling repository | Keep dependency until auto-driving no longer needs contract adjustment |

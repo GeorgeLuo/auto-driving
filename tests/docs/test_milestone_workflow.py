@@ -268,7 +268,13 @@ class MilestonePlanContractTests(unittest.TestCase):
         )
 
     def test_handoff_rejects_before_implementation_review(self) -> None:
-        earlier = _plan_before_implementation_review(self.plan_text)
+        # open_plan_text is normalized to implementation_in_review, so the rewind
+        # always targets ready_for_implementation even after this frontier hands off.
+        earlier = _plan_before_implementation_review(self.open_plan_text)
+        self.assertEqual(
+            validate_plan_text(earlier).current.fields["workflow state"],
+            "ready_for_implementation",
+        )
         with self.assertRaisesRegex(
             PlanContractError,
             "requires workflow state implementation_in_review",

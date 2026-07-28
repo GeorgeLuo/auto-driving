@@ -280,31 +280,29 @@ class ConflictMatrixTests(unittest.TestCase):
                 self.assertEqual(snap.metadata["last_update_conflict_count"], 1)
 
     def test_same_observation_confidence_and_bbox_contradictions(self) -> None:
-        ledger = _ledger()
-        snap = ledger.update(
-            _ctx("f1", 1, 100),
-            _observation(
-                "o1",
-                created_at_ms=90,
-                things=(_thing(confidence=0.5), _thing(confidence=0.9)),
-            ),
-        )
-        self.assertEqual(snap.record_count, 0)
-        self.assertEqual(snap.metadata["last_update_conflict_count"], 1)
+        # Both tuple orders required by the accepted matrix (not subsumed by score-only).
+        for order in ("ab", "ba"):
+            with self.subTest(field="confidence", order=order):
+                a = _thing(confidence=0.5)
+                b = _thing(confidence=0.9)
+                things = (a, b) if order == "ab" else (b, a)
+                snap = _ledger().update(
+                    _ctx("f1", 1, 100),
+                    _observation("o1", created_at_ms=90, things=things),
+                )
+                self.assertEqual(snap.record_count, 0)
+                self.assertEqual(snap.metadata["last_update_conflict_count"], 1)
 
-        ledger = _ledger()
-        snap = ledger.update(
-            _ctx("f1", 1, 100),
-            _observation(
-                "o1",
-                created_at_ms=90,
-                things=(
-                    _thing(bbox=[0.1, 0.1, 0.2, 0.2]),
-                    _thing(bbox=[0.3, 0.3, 0.4, 0.4]),
-                ),
-            ),
-        )
-        self.assertEqual(snap.record_count, 0)
+            with self.subTest(field="bbox", order=order):
+                a = _thing(bbox=[0.1, 0.1, 0.2, 0.2])
+                b = _thing(bbox=[0.3, 0.3, 0.4, 0.4])
+                things = (a, b) if order == "ab" else (b, a)
+                snap = _ledger().update(
+                    _ctx("f1", 1, 100),
+                    _observation("o1", created_at_ms=90, things=things),
+                )
+                self.assertEqual(snap.record_count, 0)
+                self.assertEqual(snap.metadata["last_update_conflict_count"], 1)
 
     def test_same_observation_payload_equal_collapse(self) -> None:
         ledger = _ledger()
@@ -317,78 +315,42 @@ class ConflictMatrixTests(unittest.TestCase):
         self.assertEqual(snap.metadata["last_update_conflict_count"], 0)
 
     def test_numeric_payload_equality_boundaries(self) -> None:
-        ledger = _ledger()
-        snap = ledger.update(
-            _ctx("f1", 1, 100),
-            _observation(
-                "o1",
-                created_at_ms=90,
-                things=(
-                    _thing(properties={"score": 1}),
-                    _thing(properties={"score": 1.0}),
-                ),
-            ),
+        # Each pair is exercised in both tuple orders per the accepted matrix.
+        equal_pairs = (
+            (1, 1.0),
+            (0, -0.0),
+            (10**400, 10**400),
         )
-        self.assertEqual(snap.record_count, 1)
-        self.assertEqual(snap.metadata["last_update_conflict_count"], 0)
+        unequal_pairs = (
+            (2**53, 2**53 + 1),
+            (True, 1),
+        )
+        for left, right in equal_pairs:
+            for order in ("ab", "ba"):
+                with self.subTest(pair=(left, right), order=order, equal=True):
+                    a = _thing(properties={"score": left})
+                    b = _thing(properties={"score": right})
+                    things = (a, b) if order == "ab" else (b, a)
+                    snap = _ledger().update(
+                        _ctx("f1", 1, 100),
+                        _observation("o1", created_at_ms=90, things=things),
+                    )
+                    self.assertEqual(snap.record_count, 1)
+                    self.assertEqual(snap.metadata["last_update_conflict_count"], 0)
 
-        ledger = _ledger()
-        snap = ledger.update(
-            _ctx("f1", 1, 100),
-            _observation(
-                "o1",
-                created_at_ms=90,
-                things=(
-                    _thing(properties={"score": 0}),
-                    _thing(properties={"score": -0.0}),
-                ),
-            ),
-        )
-        self.assertEqual(snap.record_count, 1)
-
-        ledger = _ledger()
-        snap = ledger.update(
-            _ctx("f1", 1, 100),
-            _observation(
-                "o1",
-                created_at_ms=90,
-                things=(
-                    _thing(properties={"score": 2**53}),
-                    _thing(properties={"score": 2**53 + 1}),
-                ),
-            ),
-        )
-        self.assertEqual(snap.record_count, 0)
-        self.assertEqual(snap.metadata["last_update_conflict_count"], 1)
-
-        ledger = _ledger()
-        big = 10**400
-        snap = ledger.update(
-            _ctx("f1", 1, 100),
-            _observation(
-                "o1",
-                created_at_ms=90,
-                things=(
-                    _thing(properties={"score": big}),
-                    _thing(properties={"score": big}),
-                ),
-            ),
-        )
-        self.assertEqual(snap.record_count, 1)
-
-        ledger = _ledger()
-        snap = ledger.update(
-            _ctx("f1", 1, 100),
-            _observation(
-                "o1",
-                created_at_ms=90,
-                things=(
-                    _thing(properties={"flag": True}),
-                    _thing(properties={"flag": 1}),
-                ),
-            ),
-        )
-        self.assertEqual(snap.record_count, 0)
+        for left, right in unequal_pairs:
+            for order in ("ab", "ba"):
+                with self.subTest(pair=(left, right), order=order, equal=False):
+                    prop = "flag" if isinstance(left, bool) or isinstance(right, bool) else "score"
+                    a = _thing(properties={prop: left})
+                    b = _thing(properties={prop: right})
+                    things = (a, b) if order == "ab" else (b, a)
+                    snap = _ledger().update(
+                        _ctx("f1", 1, 100),
+                        _observation("o1", created_at_ms=90, things=things),
+                    )
+                    self.assertEqual(snap.record_count, 0)
+                    self.assertEqual(snap.metadata["last_update_conflict_count"], 1)
 
     def test_three_unequal_candidates_and_two_slots(self) -> None:
         ledger = _ledger()
@@ -527,6 +489,71 @@ class ConflictMatrixTests(unittest.TestCase):
         self.assertEqual(snap.metadata["capacity_eviction_count"], 1)
         self.assertEqual(snap.metadata["conflict_count"], 0)
         self.assertEqual(snap.metadata["last_update_conflict_count"], 0)
+
+    def test_expiry_before_compare_admits_without_conflict(self) -> None:
+        """Retained older than max_age expires before same-slot compare (matrix row)."""
+
+        ledger = _ledger(max_age_ms=100)
+        ledger.update(
+            _ctx("f1", 1, 1000),
+            _observation(
+                "o1",
+                created_at_ms=1000,
+                things=(_thing(kind="floor_boundary"),),
+            ),
+        )
+        # Past max_age with a structurally incompatible kind: expiry first → empty-slot admit.
+        snap = ledger.update(
+            _ctx("f2", 2, 1200),
+            _observation(
+                "o2",
+                created_at_ms=1200,
+                things=(_thing(kind="obstacle"),),
+            ),
+        )
+        self.assertEqual(snap.record_count, 1)
+        self.assertEqual(snap.records[0].kind, "obstacle")
+        self.assertEqual(snap.metadata["conflict_count"], 0)
+        self.assertEqual(snap.metadata["last_update_conflict_count"], 0)
+
+    def test_capacity_pressure_after_conflict_invalidation(self) -> None:
+        """Conflict free-slot then capacity pressure keeps counters separate (matrix row)."""
+
+        ledger = _ledger(max_records=2)
+        ledger.update(
+            _ctx("f1", 1, 100),
+            _observation(
+                "o1",
+                created_at_ms=90,
+                things=(_thing("a"), _thing("b")),
+            ),
+        )
+        conflict = ledger.update(
+            _ctx("f2", 2, 200),
+            _observation(
+                "o2",
+                created_at_ms=190,
+                things=(_thing("a", kind="obstacle"),),
+            ),
+        )
+        self.assertEqual(conflict.record_count, 1)
+        self.assertEqual(conflict.metadata["conflict_count"], 1)
+        self.assertEqual(conflict.metadata["last_update_conflict_count"], 1)
+        self.assertEqual(conflict.metadata["capacity_eviction_count"], 0)
+
+        # One retained (b) + two new admits exceeds max_records=2 → capacity eviction only.
+        pressure = ledger.update(
+            _ctx("f3", 3, 300),
+            _observation(
+                "o3",
+                created_at_ms=290,
+                things=(_thing("c"), _thing("d")),
+            ),
+        )
+        self.assertEqual(pressure.record_count, 2)
+        self.assertGreaterEqual(pressure.metadata["capacity_eviction_count"], 1)
+        self.assertEqual(pressure.metadata["conflict_count"], 1)
+        self.assertEqual(pressure.metadata["last_update_conflict_count"], 0)
 
     def test_reset_zeros_conflict_counters(self) -> None:
         ledger = _ledger()

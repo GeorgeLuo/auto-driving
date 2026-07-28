@@ -70,6 +70,7 @@ for simulator and physical vehicles.
 **Modular shadow action proposal foundation**
 
 - Workflow state: implementation_in_review
+- PR: [#74](https://github.com/GeorgeLuo/auto-driving/pull/74)
 - Proposal branch: `m006/shadow-proposals-proposal`
 - Implementation branch: `m006/shadow-proposals`
 - Proposal path: `docs/milestones/006-decision-facing-perception-readiness/proposals/shadow-proposals.md`

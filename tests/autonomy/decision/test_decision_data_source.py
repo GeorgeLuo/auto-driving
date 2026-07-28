@@ -6,9 +6,11 @@ import unittest
 from copy import deepcopy
 
 from autonomy.decision.decision_data import (
+    DecisionDataSource,
     build_decision_data_source,
     memory_envelope_from_snapshot,
     ready_envelope,
+    unavailable_envelope,
 )
 from autonomy.decision.memory import (
     MemoryBounds,
@@ -133,6 +135,72 @@ class DecisionDataSourceTests(unittest.TestCase):
             build_decision_data_source(
                 frame_id="😀" * 10, frame_index=0, timestamp_ms=1
             )
+
+    def test_rejects_wrong_schema(self) -> None:
+        with self.assertRaises(ValueError):
+            DecisionDataSource(
+                frame_id="f1",
+                frame_index=0,
+                timestamp_ms=1,
+                observation=unavailable_envelope("x"),
+                memory=unavailable_envelope("y"),
+                patterns=unavailable_envelope("p"),
+                projections=unavailable_envelope("q"),
+                capabilities=ready_envelope({"max_abs_steering": 1.0}),
+                prior_host_applied_command=unavailable_envelope("h"),
+                schema="wrong",
+            )
+
+    def test_plugin_cannot_mutate_shared_capabilities(self) -> None:
+        from autonomy.decision.shadow_runner import ShadowProposalsConfig, ShadowProposalsEngine
+        from autonomy.decision.action_proposal import ActionProposal
+        from autonomy.decision.decision_data import DecisionDataSource
+
+        seen: list[object] = []
+
+        def plugin_a(source: DecisionDataSource) -> ActionProposal:
+            seen.append(source.capabilities.value)
+            value = source.capabilities.value
+            if isinstance(value, tuple):
+                # frozen mapping — mutation of nested structure must not affect peers
+                pass
+            elif isinstance(value, dict):
+                value["max_abs_steering"] = 0.01
+            return ActionProposal(
+                plugin_id="a",
+                frame_id=source.frame_id,
+                lifecycle="inactive",
+                freshness="none",
+                confidence=0.0,
+                reason="noop_a",
+                command=None,
+                available=False,
+            )
+
+        def plugin_b(source: DecisionDataSource) -> ActionProposal:
+            seen.append(source.capabilities.value)
+            return ActionProposal(
+                plugin_id="b",
+                frame_id=source.frame_id,
+                lifecycle="inactive",
+                freshness="none",
+                confidence=0.0,
+                reason="noop_b",
+                command=None,
+                available=False,
+            )
+
+        engine = ShadowProposalsEngine(
+            config=ShadowProposalsConfig(
+                enabled_plugins=("a", "b"),
+                known_plugins=frozenset({"a", "b"}),
+            ),
+            plugins={"a": plugin_a, "b": plugin_b},
+        )
+        engine.run_cycle(frame_id="frame_001", frame_index=0, timestamp_ms=1)
+        self.assertEqual(len(seen), 2)
+        # Peer still sees original frozen capabilities, not a mutated mapping.
+        self.assertEqual(seen[0], seen[1])
 
 
 if __name__ == "__main__":

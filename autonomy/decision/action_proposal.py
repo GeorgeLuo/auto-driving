@@ -9,6 +9,8 @@ from typing import Any, Literal
 
 from autonomy.decision.memory import canonical_json_bytes
 from autonomy.decision.shadow_ids import (
+    deep_freeze,
+    frozen_mapping_to_dict,
     proposal_id_for,
     require_ascii_id,
     require_code_point_len,
@@ -224,8 +226,8 @@ class ActionProposal:
         reason = require_code_point_len(
             str(self.reason), field_name="reason", max_len=MAX_REASON
         )
-        if not reason and self.lifecycle == "error":
-            raise ValueError("error lifecycle requires a non-empty reason")
+        if not reason.strip():
+            raise ValueError("reason must be a non-empty string")
         object.__setattr__(self, "reason", reason)
 
         allowed_freshness, available, command_required, min_refs = _MATRIX[self.lifecycle]
@@ -269,14 +271,17 @@ class ActionProposal:
                 raise TypeError("source_refs must contain SourceRef")
         object.__setattr__(self, "source_refs", refs)
 
-        metadata = deepcopy(dict(self.metadata))
-        if canonical_json_bytes(metadata) > MAX_PROPOSAL_METADATA_BYTES:
+        metadata = deep_freeze(dict(self.metadata))
+        meta_plain = frozen_mapping_to_dict(metadata)
+        if canonical_json_bytes(meta_plain) > MAX_PROPOSAL_METADATA_BYTES:
             raise ValueError(
                 f"proposal metadata exceeds {MAX_PROPOSAL_METADATA_BYTES} bytes"
             )
         object.__setattr__(self, "metadata", metadata)
         if self.schema != ACTION_PROPOSAL_SCHEMA:
-            raise ValueError("invalid ActionProposal schema")
+            raise ValueError(
+                f"schema must be {ACTION_PROPOSAL_SCHEMA!r}; got {self.schema!r}"
+            )
         size = canonical_json_bytes(self.to_dict())
         if size > MAX_PROPOSAL_BYTES:
             raise ValueError(
@@ -297,7 +302,7 @@ class ActionProposal:
             "assumptions": list(self.assumptions),
             "source_refs": [ref.to_dict() for ref in self.source_refs],
             "available": self.available,
-            "metadata": deepcopy(self.metadata),
+            "metadata": frozen_mapping_to_dict(self.metadata),
         }
 
     @classmethod

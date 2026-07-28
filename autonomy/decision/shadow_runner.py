@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol, Sequence
 
@@ -69,7 +70,9 @@ class ShadowProposalsConfig:
             raise ValueError("accepted_kinds must be unique")
         for kind in kinds:
             require_ascii_id(kind, field_name="accepted_kind")
-        age = int(self.retained_max_age_ms)
+        if type(self.retained_max_age_ms) is not int:
+            raise ValueError("retained_max_age_ms must be a non-bool int")
+        age = self.retained_max_age_ms
         if not 1 <= age <= 60_000:
             raise ValueError("retained_max_age_ms must be in 1..60000")
         object.__setattr__(self, "retained_max_age_ms", age)
@@ -200,7 +203,8 @@ class ShadowProposalsEngine:
             raised: BaseException | None = None
             returned: object = None
             try:
-                returned = plugin(source)
+                # Isolate nested state so one plugin cannot mutate another's view.
+                returned = plugin(deepcopy(source))
             except BaseException as exc:  # noqa: BLE001 - fail closed per proposal
                 raised = exc
             try:

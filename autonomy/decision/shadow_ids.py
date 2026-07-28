@@ -24,13 +24,46 @@ def require_ascii_id(value: object, *, field_name: str) -> str:
 
 
 def require_safe_int(value: object, *, field_name: str) -> int:
-    try:
-        normalized = int(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"{field_name} must be an integer") from exc
-    if normalized < 0 or normalized > MAX_SAFE_INT:
+    # Reject bool (subclass of int), floats, and numeric strings.
+    if type(value) is not int:
+        raise ValueError(f"{field_name} must be a non-bool int; got {type(value).__name__}")
+    if value < 0 or value > MAX_SAFE_INT:
         raise ValueError(f"{field_name} must be in 0..{MAX_SAFE_INT}")
-    return normalized
+    return value
+
+
+def deep_freeze(value: object) -> object:
+    """Recursively freeze mappings/sequences into immutable containers."""
+
+    if isinstance(value, dict):
+        return tuple(
+            sorted(
+                ((str(key), deep_freeze(item)) for key, item in value.items()),
+                key=lambda pair: pair[0],
+            )
+        )
+    if isinstance(value, (list, tuple)):
+        return tuple(deep_freeze(item) for item in value)
+    if isinstance(value, set):
+        return tuple(sorted((deep_freeze(item) for item in value), key=repr))
+    return value
+
+
+def frozen_mapping_to_dict(value: object) -> object:
+    """Convert deep_freeze mapping tuples back to plain JSON-friendly data."""
+
+    if isinstance(value, tuple) and value and isinstance(value[0], tuple) and len(value[0]) == 2:
+        # Heuristic: mapping stored as sorted (key, value) pairs.
+        try:
+            return {
+                key: frozen_mapping_to_dict(item)
+                for key, item in value  # type: ignore[misc]
+            }
+        except (TypeError, ValueError):
+            return tuple(frozen_mapping_to_dict(item) for item in value)
+    if isinstance(value, tuple):
+        return [frozen_mapping_to_dict(item) for item in value]
+    return value
 
 
 def proposal_id_for(plugin_id: str, frame_id: str) -> str:

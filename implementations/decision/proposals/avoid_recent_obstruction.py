@@ -50,15 +50,15 @@ def _lateral_side(record: RetainedEvidence) -> str | None:
     return None
 
 
-def _is_accepted_structure(
+def _is_accepted_kind_image_located(
     record: RetainedEvidence, *, accepted_kinds: set[str]
 ) -> bool:
+    """Accepted kind with image location (may still lack lateral side / be center)."""
+
     if record.kind not in accepted_kinds:
         return False
     location = record.location
-    if location is None or location.frame != "image":
-        return False
-    return _lateral_side(record) is not None
+    return location is not None and location.frame == "image"
 
 
 def _freshness_class(
@@ -163,29 +163,24 @@ def propose(
     kinds = set(accepted_kinds)
     accepted_kind_records = [r for r in snapshot.records if r.kind in kinds]
     structural = [
-        r for r in accepted_kind_records if _is_accepted_structure(r, accepted_kinds=kinds)
+        r
+        for r in accepted_kind_records
+        if _is_accepted_kind_image_located(r, accepted_kinds=kinds)
     ]
 
     if accepted_kind_records and not structural:
-        # Accepted kinds present but not image-located / no lateral cue.
-        non_image = [
-            r
-            for r in accepted_kind_records
-            if r.location is None or r.location.frame != "image"
-        ]
-        if non_image and len(non_image) == len(accepted_kind_records):
-            return ActionProposal(
-                plugin_id=PLUGIN_ID,
-                frame_id=source.frame_id,
-                lifecycle="incompatible",
-                freshness="none",
-                confidence=0.0,
-                reason="accepted_kind_non_image_location",
-                command=None,
-                assumptions=BASE_ASSUMPTIONS,
-                available=False,
-            )
-        return _inactive(source, "no_accepted_obstruction_evidence")
+        # Accepted kinds present but none image-located.
+        return ActionProposal(
+            plugin_id=PLUGIN_ID,
+            frame_id=source.frame_id,
+            lifecycle="incompatible",
+            freshness="none",
+            confidence=0.0,
+            reason="accepted_kind_non_image_location",
+            command=None,
+            assumptions=BASE_ASSUMPTIONS,
+            available=False,
+        )
 
     if not structural:
         return _inactive(source, "no_accepted_obstruction_evidence")
@@ -222,9 +217,19 @@ def propose(
     def pick(records: list[RetainedEvidence]) -> RetainedEvidence:
         return sorted(records, key=lambda r: (-r.confidence, r.record_id))[0]
 
-    active_pool = fresh if fresh else retained
-    if active_pool:
-        # Prefer records with a lateral side; skip center-only within pool.
+    # Fresh pool first if any fresh records exist — do not fall back to retained
+    # when the fresh pool is only center-band (no usable lateral side).
+    if fresh:
+        active_pool: list[RetainedEvidence] | None = fresh
+        pool_lifecycle = "fresh"
+    elif retained:
+        active_pool = retained
+        pool_lifecycle = "retained"
+    else:
+        active_pool = None
+        pool_lifecycle = None
+
+    if active_pool is not None:
         ordered = sorted(active_pool, key=lambda r: (-r.confidence, r.record_id))
         primary = None
         side = None
@@ -234,24 +239,7 @@ def propose(
                 primary = record
                 break
         if primary is None:
-            # fall through if no lateral side in active pool
-            if stale:
-                primary = pick(stale)
-                return ActionProposal(
-                    plugin_id=PLUGIN_ID,
-                    frame_id=source.frame_id,
-                    lifecycle="stale",
-                    freshness="stale",
-                    confidence=primary.confidence
-                    if 0.0 <= primary.confidence <= 1.0
-                    and math.isfinite(primary.confidence)
-                    else 0.0,
-                    reason="stale_obstruction_evidence",
-                    command=None,
-                    assumptions=BASE_ASSUMPTIONS,
-                    source_refs=(_source_ref(primary),),
-                    available=False,
-                )
+            # Active freshness class present but no lateral cue in that class.
             return _inactive(source, "no_lateral_obstruction_evidence")
 
         if not math.isfinite(primary.confidence) or not (
@@ -273,9 +261,34 @@ def propose(
         assumptions = list(BASE_ASSUMPTIONS)
         magnitude = float(steer_magnitude)
         caps = source.capabilities
-        if caps.status == "ready" and isinstance(caps.value, dict):
+        if caps.status == "ready":
+            # Ready but non-dict or invalid fields fail closed — do not treat as
+            # unavailable fallback.
+            caps_value = caps.value
+            if hasattr(caps_value, "to_dict"):
+                caps_value = caps_value.to_dict()
+            # deep_freeze stores mappings as sorted tuples of pairs
+            if isinstance(caps_value, tuple) and caps_value and isinstance(
+                caps_value[0], tuple
+            ):
+                try:
+                    caps_value = {key: item for key, item in caps_value}
+                except (TypeError, ValueError):
+                    caps_value = None
+            if not isinstance(caps_value, dict):
+                return ActionProposal(
+                    plugin_id=PLUGIN_ID,
+                    frame_id=source.frame_id,
+                    lifecycle="error",
+                    freshness="none",
+                    confidence=0.0,
+                    reason="invalid_capabilities",
+                    command=None,
+                    assumptions=BASE_ASSUMPTIONS,
+                    available=False,
+                )
             try:
-                max_abs = float(caps.value.get("max_abs_steering"))
+                max_abs = float(caps_value.get("max_abs_steering"))
             except (TypeError, ValueError):
                 max_abs = None
             if max_abs is None or not math.isfinite(max_abs) or not (0.0 < max_abs <= 1.0):
@@ -295,16 +308,7 @@ def propose(
             assumptions.append("capabilities_not_ready")
 
         steering = magnitude if side == "left" else -magnitude
-        lifecycle = (
-            "fresh"
-            if primary.provenance.frame_id == source.frame_id
-            else "retained"
-        )
-        # Prefer classified class for primary
-        for cls, rec in usable:
-            if rec.record_id == primary.record_id:
-                lifecycle = cls if cls in {"fresh", "retained"} else lifecycle
-                break
+        lifecycle = pool_lifecycle or "retained"
 
         command = ProposedVehicleCommand(
             steering=steering, throttle=0.0, gear="hold"

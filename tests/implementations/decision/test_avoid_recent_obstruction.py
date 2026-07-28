@@ -215,6 +215,52 @@ class AvoidRecentObstructionTests(unittest.TestCase):
         )
         self.assertEqual(p.lifecycle, "inactive")
 
+    def test_fresh_center_does_not_fall_back_to_retained_side(self) -> None:
+        # Fresh pool exists (center only). Must not fall back to older retained left.
+        fresh_center = _record(
+            zone="center",
+            bbox=(0.45, 0.0, 0.55, 1.0),
+            frame_id="frame_002",
+            updated_at_ms=2000,
+            confidence=0.5,
+            record_id="thing:1:center",
+        )
+        retained_left = _record(
+            zone="left",
+            frame_id="old",
+            updated_at_ms=1000,
+            confidence=0.99,
+            record_id="thing:1:left",
+        )
+        p = propose(
+            _source((fresh_center, retained_left), now=2000, frame="frame_002")
+        )
+        self.assertEqual(p.lifecycle, "inactive")
+        self.assertIsNone(p.command)
+
+    def test_ready_malformed_capabilities_error(self) -> None:
+        from autonomy.decision.decision_data import ready_envelope
+
+        snap = MemorySnapshot(
+            memory_id="m",
+            epoch_id="e",
+            health="healthy",
+            bounds=_bounds(),
+            created_at_ms=1000,
+            records=(_record(),),
+            implementation_id="bounded_evidence",
+        )
+        source = build_decision_data_source(
+            frame_id="frame_001",
+            frame_index=0,
+            timestamp_ms=1000,
+            memory=snap,
+            capabilities=ready_envelope("not-a-dict", updated_at_ms=1000),
+        )
+        p = propose(source)
+        self.assertEqual(p.lifecycle, "error")
+        self.assertEqual(p.reason, "invalid_capabilities")
+
 
 if __name__ == "__main__":
     unittest.main()

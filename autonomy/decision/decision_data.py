@@ -14,6 +14,8 @@ from autonomy.decision.memory import (
 )
 from autonomy.decision.observation import Observation
 from autonomy.decision.shadow_ids import (
+    deep_freeze,
+    frozen_mapping_to_dict,
     require_ascii_id,
     require_code_point_len,
     require_safe_int,
@@ -52,6 +54,16 @@ class ComponentEnvelope:
                 raise ValueError("ready envelope reason must be empty")
             if self.value is None:
                 raise ValueError("ready envelope requires a value")
+            # Freeze nested JSON-like payloads; leave typed domain objects as-is
+            # after detaching known snapshot/observation types.
+            value = self.value
+            if isinstance(value, MemorySnapshot):
+                value = detach_memory_snapshot(value)
+            elif isinstance(value, Observation):
+                value = Observation.from_dict(value.to_dict())
+            elif isinstance(value, (dict, list, tuple, set)):
+                value = deep_freeze(value)
+            object.__setattr__(self, "value", value)
         else:
             if self.value is not None:
                 raise ValueError(f"{self.status} envelope value must be null")
@@ -62,8 +74,8 @@ class ComponentEnvelope:
         value = self.value
         if hasattr(value, "to_dict"):
             value = value.to_dict()
-        elif isinstance(value, dict):
-            value = deepcopy(value)
+        elif isinstance(value, tuple):
+            value = frozen_mapping_to_dict(value)
         return {
             "status": self.status,
             "value": value,
@@ -191,6 +203,10 @@ class DecisionDataSource:
         if source_id != f"decision-data:{frame_id}":
             raise ValueError("source_id must be decision-data:{frame_id}")
         object.__setattr__(self, "source_id", source_id)
+        if self.schema != DECISION_DATA_SOURCE_SCHEMA:
+            raise ValueError(
+                f"schema must be {DECISION_DATA_SOURCE_SCHEMA!r}; got {self.schema!r}"
+            )
         for name in (
             "observation",
             "memory",
@@ -202,8 +218,8 @@ class DecisionDataSource:
             envelope = getattr(self, name)
             if not isinstance(envelope, ComponentEnvelope):
                 raise TypeError(f"{name} must be ComponentEnvelope")
-        metadata = deepcopy(dict(self.metadata))
-        meta_bytes = canonical_json_bytes(metadata)
+        metadata = deep_freeze(dict(self.metadata))
+        meta_bytes = canonical_json_bytes(frozen_mapping_to_dict(metadata))
         if meta_bytes > MAX_SOURCE_METADATA_BYTES:
             raise ValueError(
                 f"DecisionDataSource metadata exceeds {MAX_SOURCE_METADATA_BYTES} bytes"
@@ -223,7 +239,7 @@ class DecisionDataSource:
             "projections": self.projections.to_dict(),
             "capabilities": self.capabilities.to_dict(),
             "prior_host_applied_command": self.prior_host_applied_command.to_dict(),
-            "metadata": deepcopy(self.metadata),
+            "metadata": frozen_mapping_to_dict(self.metadata),
         }
 
 

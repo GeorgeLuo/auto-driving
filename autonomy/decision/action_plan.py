@@ -8,7 +8,13 @@ from typing import Any
 
 from autonomy.decision.action_proposal import ActionProposal
 from autonomy.decision.memory import canonical_json_bytes
-from autonomy.decision.shadow_ids import plan_id_for, require_ascii_id, require_safe_int
+from autonomy.decision.shadow_ids import (
+    deep_freeze,
+    frozen_mapping_to_dict,
+    plan_id_for,
+    require_ascii_id,
+    require_safe_int,
+)
 
 ACTION_PLAN_SCHEMA = "action_plan_v0"
 SELECTOR_ID = "deterministic_first_active"
@@ -100,14 +106,17 @@ class ActionPlan:
                 raise ValueError("contribution must be weight=1.0 role=selected")
         object.__setattr__(self, "contributions", contributions)
 
-        metadata = deepcopy(dict(self.metadata))
-        if canonical_json_bytes(metadata) > MAX_PLAN_METADATA_BYTES:
+        metadata = deep_freeze(dict(self.metadata))
+        meta_plain = frozen_mapping_to_dict(metadata)
+        if canonical_json_bytes(meta_plain) > MAX_PLAN_METADATA_BYTES:
             raise ValueError(
                 f"plan metadata exceeds {MAX_PLAN_METADATA_BYTES} bytes"
             )
         object.__setattr__(self, "metadata", metadata)
         if self.schema != ACTION_PLAN_SCHEMA:
-            raise ValueError("invalid ActionPlan schema")
+            raise ValueError(
+                f"schema must be {ACTION_PLAN_SCHEMA!r}; got {self.schema!r}"
+            )
         size = canonical_json_bytes(self.to_dict())
         if size > MAX_PLAN_BYTES:
             raise ValueError(
@@ -133,7 +142,7 @@ class ActionPlan:
             "contributions": [item.to_dict() for item in self.contributions],
             "candidates": [item.to_dict() for item in self.candidates],
             "selector_id": self.selector_id,
-            "metadata": deepcopy(self.metadata),
+            "metadata": frozen_mapping_to_dict(self.metadata),
         }
 
 

@@ -153,68 +153,95 @@ class RunnerBoundaryTests(unittest.TestCase):
             ShadowProposalsConfig(enabled_plugins=())
 
     def test_max_legal_plan_builds(self) -> None:
-        # Four near-max proposals under field grammar must form a legal plan.
+        # Four *exact* 4096-byte proposals with max frame_id and max timestamp.
         plugins = ["p0", "p1", "p2", "p3"]
         frame = "f" * 64
         candidates = []
         reason = "r" * 240
-        assumptions = ("shadow_only", "image_relative_only")
-        refs = (
+        assumptions = tuple(("a" + ("b" * 62)) for _ in range(8))
+        refs = tuple(
             SourceRef(
                 kind="memory_record",
-                id="primary",
+                id=("i" * 120),
                 frame_id=frame,
-                note="primary_obstruction",
-            ),
+                note=("n" * 64),
+            )
+            for _ in range(8)
         )
+
+        def build(plugin_id: str, pad: int) -> ActionProposal:
+            return ActionProposal(
+                plugin_id=plugin_id,
+                frame_id=frame,
+                lifecycle="fresh",
+                freshness="fresh",
+                confidence=0.5,
+                reason=reason,
+                command=ProposedVehicleCommand(
+                    steering=0.1, throttle=0.0, gear="hold"
+                ),
+                assumptions=assumptions,
+                source_refs=refs,
+                available=True,
+                metadata={"pad": "x" * pad},
+            )
+
         for plugin_id in plugins:
-            # Binary-search metadata padding to approach the 4096-byte ceiling.
-            low, high = 1, 3500
-            best = None
-            while low <= high:
-                mid = (low + high) // 2
+            # size0 is ~3975 with id_len=120 and 8 refs; pad metadata to 4096.
+            exact = None
+            for pad in range(0, 200):
                 try:
-                    prop = ActionProposal(
-                        plugin_id=plugin_id,
-                        frame_id=frame,
-                        lifecycle="fresh",
-                        freshness="fresh",
-                        confidence=0.5,
-                        reason=reason,
-                        command=ProposedVehicleCommand(
-                            steering=0.1, throttle=0.0, gear="hold"
-                        ),
-                        assumptions=assumptions,
-                        source_refs=refs,
-                        available=True,
-                        metadata={"pad": "x" * mid},
-                    )
+                    prop = build(plugin_id, pad)
                 except ValueError:
-                    high = mid - 1
-                    continue
+                    break
                 size = canonical_json_bytes(prop.to_dict())
-                if size <= 4096:
-                    best = prop
-                    low = mid + 1
-                else:
-                    high = mid - 1
-            assert best is not None
-            candidates.append(best)
-            size = canonical_json_bytes(best.to_dict())
-            self.assertLessEqual(size, 4096)
-            # Near ceiling: base fields + max metadata (1024) land well above 1.5 KiB.
-            self.assertGreaterEqual(size, 1500)
+                if size == 4096:
+                    exact = prop
+                    break
+            self.assertIsNotNone(
+                exact, f"could not craft 4096-byte proposal for {plugin_id}"
+            )
+            assert exact is not None
+            self.assertEqual(canonical_json_bytes(exact.to_dict()), 4096)
+            candidates.append(exact)
 
         plan = select_action_plan(
             frame_id=frame,
             timestamp_ms=9_007_199_254_740_991,
             candidates=candidates,
-            metadata={"pad": "m" * 200},
+            metadata={"pad": "m" * 50},
         )
         size = canonical_json_bytes(plan.to_dict())
         self.assertLessEqual(size, 24_576)
         self.assertEqual(plan.status, "selected")
         self.assertTrue(plan.selected_proposal_id.endswith(":" + frame))
+
+    def test_metadata_frozen_after_construction(self) -> None:
+        prop = _active_proposal()
+        # Frozen metadata must not grow after the size check.
+        with self.assertRaises(Exception):
+            prop.metadata["pad"] = "x" * 20_000  # type: ignore[index]
+        self.assertLessEqual(canonical_json_bytes(prop.to_dict()), 4096)
+
+    def test_require_safe_int_rejects_coercion(self) -> None:
+        from autonomy.decision.shadow_ids import require_safe_int
+
+        for bad in (1.9, "12", True, False):
+            with self.assertRaises(ValueError):
+                require_safe_int(bad, field_name="timestamp_ms")
+
+    def test_empty_reason_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            ActionProposal(
+                plugin_id="avoid_recent_obstruction",
+                frame_id="frame_001",
+                lifecycle="inactive",
+                freshness="none",
+                confidence=0.0,
+                reason="",
+                command=None,
+                available=False,
+            )
 
 if __name__ == "__main__":
     unittest.main()

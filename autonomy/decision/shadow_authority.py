@@ -83,6 +83,10 @@ class ShadowAuthorityResult:
         object.__setattr__(
             self, "frame_id", require_ascii_id(self.frame_id, field_name="frame_id")
         )
+        if self.schema != SHADOW_AUTHORITY_RESULT_SCHEMA:
+            raise ValueError(
+                f"schema must be {SHADOW_AUTHORITY_RESULT_SCHEMA!r}; got {self.schema!r}"
+            )
         if self.authority_mode != "shadow_only":
             raise ValueError("authority_mode must be shadow_only")
         if self.proposed_applied is not False:
@@ -142,6 +146,11 @@ class ShadowDecisionCycleResult:
         object.__setattr__(
             self, "frame_id", require_ascii_id(self.frame_id, field_name="frame_id")
         )
+        if self.schema != SHADOW_DECISION_CYCLE_RESULT_SCHEMA:
+            raise ValueError(
+                f"schema must be {SHADOW_DECISION_CYCLE_RESULT_SCHEMA!r}; "
+                f"got {self.schema!r}"
+            )
         if self.status not in {"ok", "engine_error"}:
             raise ValueError(f"invalid cycle status {self.status!r}")
         if self.status == "ok":

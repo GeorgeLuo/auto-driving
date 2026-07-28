@@ -115,6 +115,52 @@ class ReviewUnitTransitionTests(unittest.TestCase):
         )
         self.assertEqual(transition, "proposal")
 
+    def test_proposal_pr_normalizes_opened_branch_annotation(self) -> None:
+        annotated = f"`{PROPOSAL_BRANCH}` (planned; not opened)"
+        base = self.base.replace(f"`{PROPOSAL_BRANCH}`", annotated, 1)
+        head = _move_to_review(base).replace(annotated, f"`{PROPOSAL_BRANCH}`", 1)
+
+        transition = validate_review_unit_transition(
+            base,
+            head,
+            plan_path=PLAN_RELATIVE,
+            changed_paths={
+                PLAN_RELATIVE,
+                str(Path(PLAN_RELATIVE).with_suffix(".html")),
+                PROPOSAL_RELATIVE,
+            },
+            head_branch=PROPOSAL_BRANCH,
+            proposal_text=proposal_text(),
+        )
+
+        self.assertEqual(transition, "proposal")
+
+    def test_proposal_pr_cannot_change_opened_branch_identity(self) -> None:
+        annotated = f"`{PROPOSAL_BRANCH}` (planned; not opened)"
+        base = self.base.replace(f"`{PROPOSAL_BRANCH}`", annotated, 1)
+        head = _move_to_review(base).replace(
+            annotated,
+            "`m900/different-proposal`",
+            1,
+        )
+
+        with self.assertRaisesRegex(
+            PlanContractError,
+            "changed frozen proposal branch identity",
+        ):
+            validate_review_unit_transition(
+                base,
+                head,
+                plan_path=PLAN_RELATIVE,
+                changed_paths={
+                    PLAN_RELATIVE,
+                    str(Path(PLAN_RELATIVE).with_suffix(".html")),
+                    PROPOSAL_RELATIVE,
+                },
+                head_branch=PROPOSAL_BRANCH,
+                proposal_text=proposal_text(),
+            )
+
     def test_proposal_pr_rejects_implementation_file(self) -> None:
         with self.assertRaisesRegex(
             PlanContractError,
@@ -186,6 +232,34 @@ class ReviewUnitTransitionTests(unittest.TestCase):
             },
             head_branch=IMPLEMENTATION_BRANCH,
         )
+        self.assertEqual(transition, "implementation")
+
+    def test_implementation_pr_normalizes_opened_branch_annotation(self) -> None:
+        accepted = accept_proposal(
+            self.proposal_head,
+            proposal_pr=60,
+            merge_commit="a" * 40,
+            proposal_url="https://example.invalid/60",
+        )
+        annotated = f"`{IMPLEMENTATION_BRANCH}` (planned; not opened)"
+        accepted = accepted.replace(f"`{IMPLEMENTATION_BRANCH}`", annotated, 1)
+        implementation_head = _move_to_review(
+            accepted,
+            implementation=True,
+        ).replace(annotated, f"`{IMPLEMENTATION_BRANCH}`", 1)
+
+        transition = validate_review_unit_transition(
+            accepted,
+            implementation_head,
+            plan_path=PLAN_RELATIVE,
+            changed_paths={
+                PLAN_RELATIVE,
+                str(Path(PLAN_RELATIVE).with_suffix(".html")),
+                "implementations/memory/bounded_evidence.py",
+            },
+            head_branch=IMPLEMENTATION_BRANCH,
+        )
+
         self.assertEqual(transition, "implementation")
 
     def test_implementation_cannot_modify_accepted_proposal(self) -> None:
@@ -327,7 +401,12 @@ class ReviewUnitGitDiffTests(unittest.TestCase):
             plan = root / PLAN_RELATIVE
             plan.parent.mkdir(parents=True)
             proposal_review = _move_to_review(
-                ready_plan_text()
+                ready_plan_text().replace(
+                    f"- Implementation branch: `{IMPLEMENTATION_BRANCH}`\n",
+                    f"- Implementation branch: `{IMPLEMENTATION_BRANCH}` "
+                    "(planned; not opened)\n",
+                    1,
+                )
             )
             accepted = accept_proposal(
                 proposal_review,
@@ -364,6 +443,10 @@ class ReviewUnitGitDiffTests(unittest.TestCase):
             self.assertEqual(
                 transitioned.current.fields["workflow state"],
                 "implementation_in_review",
+            )
+            self.assertEqual(
+                transitioned.current.fields["implementation branch"],
+                f"`{IMPLEMENTATION_BRANCH}`",
             )
 
 

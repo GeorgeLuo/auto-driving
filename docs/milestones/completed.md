@@ -100,3 +100,30 @@ later candidate work rather than blockers for memory.
 
 Full record: [plan](004-physical-perception-parity/plan.html) and
 [closeout](004-physical-perception-parity/closeout.md).
+
+## 005 - Evidence Memory Foundation
+
+Closed: 2026-07-28 (judgment published; plan Status becomes closed via
+post-merge closeout handoff)
+
+Delivered bounded decision-cycle memory: typed snapshots and activation, dual
+host wiring, operator stage/inspect/stream/reset/replay with opt-in provenance
+recording, packaged `BoundedEvidenceLedger`, deterministic recurrence and
+same-slot structural conflict policy, and observe-only Pi/Chase lifecycle proofs
+with visual provenance. Action remained idle for the entire milestone.
+
+Durable decisions: treat memory as attributed evidence rather than a world
+model; keep action idle; bound capacity/age and keep process-local defaults;
+require dual-host parity without privileged map inputs; require visual
+provenance; keep Chase built-in state evaluator-only; enforce fail-closed
+structural conflict without semantic fusion; separate proposal from
+implementation review.
+
+Remaining work: activate milestone 006 (decision-facing perception readiness)
+after 005 plan Status is closed; residual physical perception quality for
+movement, process-local memory, and Metrics UI capture dependency remain
+documented limits rather than 005 blockers.
+
+Full record: [plan](005-evidence-memory-foundation/plan.md) ·
+[plan.html](005-evidence-memory-foundation/plan.html) and
+[closeout](005-evidence-memory-foundation/closeout.md).

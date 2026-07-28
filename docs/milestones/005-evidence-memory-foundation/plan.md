@@ -4,7 +4,7 @@
 | --- | --- |
 | Status | Active |
 | Milestone branch | `milestone/005-evidence-memory-foundation` (active; created from `main` after #58) |
-| Cumulative PR | TBD — transitional closeout delta from the milestone branch to `main`; whole-milestone judgment uses this plan and baseline |
+| Cumulative PR | [#68](https://github.com/GeorgeLuo/auto-driving/pull/68) (draft transitional delta to `main`; mark ready after Phase B handoff) |
 | Current frontier | Milestone closeout |
 | Contract baseline | `22cfff9` — M005 work through PR #50, before the compact contract |
 | Grandfathered PRs | #57 (accepted evidence unit), #58 (contract migration); both retain their existing `main` targets |
@@ -66,9 +66,10 @@ model, changing perception semantics, or granting movement authority.
 
 **Milestone closeout**
 
-- Workflow state: ready_for_implementation
+- Workflow state: implementation_in_review
+- PR: [#69](https://github.com/GeorgeLuo/auto-driving/pull/69)
 - Proposal branch: `m005/closeout-proposal`
-- Implementation branch: `m005/closeout` (planned; not opened)
+- Implementation branch: `m005/closeout`
 - Proposal path: `docs/milestones/005-evidence-memory-foundation/proposals/closeout.md`
 - Accepted proposal: [#66](https://github.com/GeorgeLuo/auto-driving/pull/66) at `0bd2920e15b2dc022428ca40a99cd2b3c29b43e5`
 - Review kind: Milestone closeout
@@ -97,6 +98,7 @@ model, changing perception semantics, or granting movement authority.
 | Milestone closeout | ready_for_proposal | Promoted after implementation PR #64. |
 | Milestone closeout | proposal_in_review | Started m005/closeout-proposal. |
 | Milestone closeout | ready_for_implementation | Proposal PR #66 accepted at 0bd2920e15b2dc022428ca40a99cd2b3c29b43e5. |
+| Milestone closeout | implementation_in_review | Started m005/closeout. |
 
 ## Accepted Review Units
 
@@ -141,14 +143,25 @@ remain one row per merged PR.
 | 2026-07-27 | Accept #57 and keep conflicting evidence ahead of closeout | The live Chase causal proof closes M005-09, but its accepted contract explicitly leaves M005-08 open; closeout cannot conceal an unspecified conflict policy |
 | 2026-07-27 | Open independent proposal for conflicting-evidence before implementation | Proposal gate requires reviewed contract, matrix, and validation plan before implementation may proceed under the gate |
 | 2026-07-27 | Separate proposal review from implementation review | A lower model authors a proposal, the reviewer accepts it, and only then may implementation begin; machine state and history must expose the handoff |
+| 2026-07-28 | Publish closeout judgment; activate 006 after plan Status closes | Phase A documents usefulness, residual limits, and 006 activate in `closeout.md`; M005-13 Met and Status closed remain Phase B `complete-implementation` |
 
 ## Closeout
 
-Blocked until every exit criterion is `Met`.
+Phase A judgment is published in
+[closeout.md](closeout.md). It states what memory representation proved useful,
+residual limits, and the decision to **activate** the 006 pre-plan after 005
+plan Status is closed.
 
-Closeout will produce:
+**Not yet applied in this implementation PR (Phase B only):** M005-13 Met, Open
+Risks removal matching the restated residuals, Status `closed`, empty frontiers,
+and the accepted-ledger row for the closeout implementation PR. Those mutations
+are owned exclusively by:
 
-- `closeout.md`;
-- completed-milestone ledger update;
-- final residual-risk statement;
-- decision to activate, revise, or abandon the 006 pre-plan.
+```text
+python3 docs/milestones/workflow.py complete-implementation \
+  --plan docs/milestones/005-evidence-memory-foundation/plan.md \
+  --pr <closeout-implementation-pr>
+```
+
+Cumulative PR: [#68](https://github.com/GeorgeLuo/auto-driving/pull/68) — mark
+ready after that handoff (Phase C), not as handoff durable evidence.

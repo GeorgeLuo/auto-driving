@@ -5,31 +5,39 @@ and milestone history. Read this file first when starting work.
 
 ## Active Milestone
 
-**Milestone 005 — Evidence Memory Foundation**
+**Milestone 005 — Evidence Memory Foundation** (closeout in progress)
 
 | Field | Value |
 | --- | --- |
-| Status | Active |
+| Status | Active until post-merge closeout handoff |
 | Plan | [plan.html](milestones/005-evidence-memory-foundation/plan.html) · [plan.md](milestones/005-evidence-memory-foundation/plan.md) |
-| Cumulative PR | TBD (milestone branch topology) |
-| Current frontier | See the plan Current Delivery section |
+| Closeout judgment | [closeout.md](milestones/005-evidence-memory-foundation/closeout.md) |
+| Cumulative PR | [#68](https://github.com/GeorgeLuo/auto-driving/pull/68) (draft; mark ready after handoff) |
+| Current frontier | Milestone closeout — see plan Current Delivery |
 
 Detailed exit criteria, frontiers, and risks live only in the milestone plan.
-Do not treat this guide as a second progress log.
+Do not treat this guide as a second progress log. After Phase B handoff, move
+005 to Recently Closed and leave 006 as the immediate pre-plan until its own
+activation step.
 
 ## Immediate Pre-Plan (Not Active)
 
 **Milestone 006 — Decision-Facing Perception Readiness**
 
 - Plan: [plan.html](milestones/006-decision-facing-perception-readiness/plan.html)
-- Status: pre-plan, queued after 005
-- Not active work; do not implement while 005 is open unless the 005 decision
-  log records an explicit parallel exception
+- Status: pre-plan, queued after 005 closeout (activate decision recorded in
+  005 closeout; not Active product work)
+- Do not implement 006 while 005 plan Status is still Active unless the 005
+  decision log records an explicit parallel exception
 
 ## Recently Closed
 
 **Milestone 004 — Physical Perception Parity** is closed.
 Closeout: [004 closeout](milestones/004-physical-perception-parity/closeout.md).
+
+**Milestone 005** judgment is published in
+[closeout.md](milestones/005-evidence-memory-foundation/closeout.md); plan
+Status becomes closed only after the closeout implementation handoff.
 
 ## Reading Order
 

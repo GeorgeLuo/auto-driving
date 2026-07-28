@@ -221,6 +221,11 @@ class RunnerBoundaryTests(unittest.TestCase):
         # Frozen metadata must not grow after the size check.
         with self.assertRaises(Exception):
             prop.metadata["pad"] = "x" * 20_000  # type: ignore[index]
+        # Backing store must also reject ordinary mutation (not only __setitem__).
+        with self.assertRaises(Exception):
+            prop.metadata._data["pad"] = "x" * 20_000  # type: ignore[index]
+        with self.assertRaises(Exception):
+            prop.metadata._data = {"pad": "x" * 20_000}  # type: ignore[misc]
         self.assertLessEqual(canonical_json_bytes(prop.to_dict()), 4096)
 
     def test_require_safe_int_rejects_coercion(self) -> None:
@@ -464,6 +469,124 @@ class RunnerBoundaryTests(unittest.TestCase):
                 source_refs=(SourceRef(kind="memory_record", id="r"),),
                 available=True,
             )
+
+    def test_non_string_json_keys_rejected(self) -> None:
+        from autonomy.decision.shadow_ids import deep_freeze
+
+        for bad in ({1: "value"}, {True: "x"}, {None: "y"}, {"ok": {2: "nested"}}):
+            with self.subTest(bad=bad):
+                with self.assertRaises(ValueError):
+                    deep_freeze(bad)
+                with self.assertRaises(ValueError):
+                    ActionProposal(
+                        plugin_id="avoid_recent_obstruction",
+                        frame_id="frame_001",
+                        lifecycle="inactive",
+                        freshness="none",
+                        confidence=0.0,
+                        reason="noop",
+                        command=None,
+                        available=False,
+                        metadata=bad,  # type: ignore[arg-type]
+                    )
+
+    def test_plugin_cannot_admit_oversize_via_metadata_mutation(self) -> None:
+        from autonomy.decision.decision_data import DecisionDataSource
+        from autonomy.decision.shadow_ids import FrozenJsonObject
+
+        def corrupt(source: DecisionDataSource) -> ActionProposal:
+            proposal = ActionProposal(
+                plugin_id="avoid_recent_obstruction",
+                frame_id=source.frame_id,
+                lifecycle="inactive",
+                freshness="none",
+                confidence=0.0,
+                reason="noop",
+                command=None,
+                available=False,
+                metadata={},
+            )
+            # Sealed storage rejects ordinary growth paths.
+            with self.assertRaises(Exception):
+                proposal.metadata._data["pad"] = "x" * 5000  # type: ignore[index]
+            # Even if a plugin rebinds metadata after construction, admission
+            # re-validates bounds and refuses oversized candidates.
+            object.__setattr__(
+                proposal, "metadata", FrozenJsonObject({"pad": "x" * 5000})
+            )
+            self.assertGreater(canonical_json_bytes(proposal.to_dict()), 4096)
+            return proposal
+
+        engine = ShadowProposalsEngine(
+            config=ShadowProposalsConfig(
+                enabled_plugins=("avoid_recent_obstruction",),
+                known_plugins=frozenset({"avoid_recent_obstruction"}),
+            ),
+            plugins={"avoid_recent_obstruction": corrupt},
+        )
+        result, control = engine.run_cycle(
+            frame_id="frame_001", frame_index=0, timestamp_ms=1
+        )
+        self.assertEqual(result.status, "engine_error")
+        self.assertEqual(result.reason, "action_proposal_matrix_violated")
+        self.assertIsNone(result.plan)
+        self.assertEqual(
+            result.authority.authorized_output["reason"], "shadow-only-idle"
+        )
+        self.assertEqual(control.steering, 0.0)
+
+    def test_select_action_plan_failure_is_plan_invariant(self) -> None:
+        from unittest.mock import patch
+
+        engine = create_shadow_proposals_engine()
+        with patch(
+            "autonomy.decision.shadow_runner.select_action_plan",
+            side_effect=ValueError("plan broken"),
+        ):
+            result, control = engine.run_cycle(
+                frame_id="frame_001", frame_index=0, timestamp_ms=1
+            )
+        self.assertEqual(result.status, "engine_error")
+        self.assertEqual(result.reason, "action_plan_invariant_violated")
+        self.assertIsNone(result.plan)
+        self.assertEqual(
+            result.authority.authorized_output["reason"], "shadow-only-idle"
+        )
+        self.assertEqual(control.steering, 0.0)
+
+    def test_corrupted_lifecycle_matrix_is_engine_error(self) -> None:
+        from autonomy.decision.decision_data import DecisionDataSource
+
+        def corrupt_matrix(source: DecisionDataSource) -> ActionProposal:
+            proposal = ActionProposal(
+                plugin_id="avoid_recent_obstruction",
+                frame_id=source.frame_id,
+                lifecycle="inactive",
+                freshness="none",
+                confidence=0.0,
+                reason="noop",
+                command=None,
+                available=False,
+            )
+            # Post-construction constructor-bug simulation.
+            object.__setattr__(proposal, "lifecycle", "fresh")
+            object.__setattr__(proposal, "freshness", "stale")
+            object.__setattr__(proposal, "available", True)
+            return proposal
+
+        engine = ShadowProposalsEngine(
+            config=ShadowProposalsConfig(
+                enabled_plugins=("avoid_recent_obstruction",),
+                known_plugins=frozenset({"avoid_recent_obstruction"}),
+            ),
+            plugins={"avoid_recent_obstruction": corrupt_matrix},
+        )
+        result, _ = engine.run_cycle(
+            frame_id="frame_001", frame_index=0, timestamp_ms=1
+        )
+        self.assertEqual(result.status, "engine_error")
+        self.assertEqual(result.reason, "action_proposal_matrix_violated")
+        self.assertIsNone(result.plan)
 
 if __name__ == "__main__":
     unittest.main()

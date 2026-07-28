@@ -6,25 +6,28 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol, Sequence
 
-from autonomy.decision.action_plan import ActionPlan, select_action_plan
-from autonomy.decision.action_proposal import ActionProposal, synthetic_error_proposal
+from autonomy.decision.action_plan import select_action_plan
+from autonomy.decision.action_proposal import (
+    MAX_PROPOSAL_BYTES,
+    ActionProposal,
+    synthetic_error_proposal,
+)
 from autonomy.decision.decision_data import (
     ComponentEnvelope,
     DecisionDataSource,
     build_decision_data_source,
     default_capabilities,
     ready_envelope,
-    unavailable_envelope,
 )
-from autonomy.decision.memory import MemorySnapshot
+from autonomy.decision.memory import MemorySnapshot, canonical_json_bytes
 from autonomy.decision.observation import Observation
 from autonomy.decision.shadow_authority import (
-    ShadowAuthorityResult,
     ShadowDecisionCycleResult,
     authorized_idle_control,
     build_authority,
 )
 from autonomy.decision.shadow_ids import (
+    ActionProposalMatrixError,
     ShadowCycleInputError,
     proposal_id_for,
     require_ascii_id,
@@ -116,7 +119,33 @@ def _admit_candidate(
             frame_id=frame_id,
             reason="plugin_invalid_return",
         )
-    return returned
+    # Re-validate lifecycle matrix + byte bounds and admit a reconstructed copy
+    # so post-construction mutation of nested storage cannot inflate candidates.
+    try:
+        plain = returned.to_dict()
+        size = canonical_json_bytes(plain)
+        if size > MAX_PROPOSAL_BYTES:
+            raise ActionProposalMatrixError(
+                f"admitted proposal serializes to {size} bytes; max {MAX_PROPOSAL_BYTES}"
+            )
+        validated = ActionProposal.from_dict(plain)
+    except ActionProposalMatrixError:
+        raise
+    except Exception as exc:
+        raise ActionProposalMatrixError(
+            f"candidate fails lifecycle/bounds matrix: {exc}"
+        ) from exc
+    if (
+        validated.plugin_id != invoked_plugin_id
+        or validated.proposal_id != expected_id
+        or validated.frame_id != frame_id
+    ):
+        return synthetic_error_proposal(
+            plugin_id=invoked_plugin_id,
+            frame_id=frame_id,
+            reason="plugin_invalid_return",
+        )
+    return validated
 
 
 @dataclass
@@ -200,13 +229,16 @@ class ShadowProposalsEngine:
             for plugin_id in sorted(self.config.enabled_plugins):
                 plugin = self.plugins.get(plugin_id)
                 if plugin is None:
-                    candidates.append(
-                        synthetic_error_proposal(
-                            plugin_id=plugin_id,
-                            frame_id=frame_id,
-                            reason="plugin_invalid_return",
+                    try:
+                        candidates.append(
+                            synthetic_error_proposal(
+                                plugin_id=plugin_id,
+                                frame_id=frame_id,
+                                reason="plugin_invalid_return",
+                            )
                         )
-                    )
+                    except Exception:
+                        return fail("synthetic_error_proposal_failed", source=source)
                     continue
                 raised: BaseException | None = None
                 returned: object = None
@@ -224,16 +256,21 @@ class ShadowProposalsEngine:
                             raised=raised,
                         )
                     )
+                except ActionProposalMatrixError:
+                    return fail("action_proposal_matrix_violated", source=source)
                 except Exception:
                     return fail("synthetic_error_proposal_failed", source=source)
 
             if len(candidates) != len(self.config.enabled_plugins):
                 return fail("action_plan_invariant_violated", source=source)
-            plan = select_action_plan(
-                frame_id=frame_id,
-                timestamp_ms=timestamp_ms,
-                candidates=candidates,
-            )
+            try:
+                plan = select_action_plan(
+                    frame_id=frame_id,
+                    timestamp_ms=timestamp_ms,
+                    candidates=candidates,
+                )
+            except Exception:
+                return fail("action_plan_invariant_violated", source=source)
             selected = plan.selected_candidate()
             proposed = selected.command if selected is not None else None
             authority = build_authority(

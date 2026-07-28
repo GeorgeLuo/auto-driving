@@ -16,6 +16,7 @@ from docs.milestones.workflow import (
     validate_review_unit_git_diff,
 )
 from tests.docs.milestone_workflow_fixtures import (
+    CURRENT_CRITERION,
     CURRENT_FRONTIER,
     IMPLEMENTATION_BRANCH,
     MILESTONE_BRANCH,
@@ -25,6 +26,10 @@ from tests.docs.milestone_workflow_fixtures import (
     proposal_text,
     ready_plan_text,
 )
+
+PLAN_REVISION_BRANCH = "m900/plan-shadow-proposals"
+REVISED_FRONTIER = "Shadow action proposals"
+
 
 def _move_to_review(text: str, *, implementation: bool = False) -> str:
     state = validate_plan_text(text)
@@ -40,6 +45,29 @@ def _move_to_review(text: str, *, implementation: bool = False) -> str:
     return updated.replace(
         "\n\n## Accepted Review Units",
         f"\n| {state.current.name} | {new_state} | Review branch started. |"
+        "\n\n## Accepted Review Units",
+        1,
+    )
+
+
+def _revise_plan(text: str) -> str:
+    revised = text.replace(
+        f"| Current frontier | {CURRENT_FRONTIER} |",
+        f"| Current frontier | {REVISED_FRONTIER} |",
+        1,
+    ).replace(
+        f"**{CURRENT_FRONTIER}**",
+        f"**{REVISED_FRONTIER}**",
+        1,
+    ).replace(
+        "Does repeated evidence follow one deterministic contract?",
+        "Can independent plugins emit attributable shadow action proposals?",
+        1,
+    )
+    return revised.replace(
+        "\n\n## Accepted Review Units",
+        f"\n| {REVISED_FRONTIER} | ready_for_proposal | "
+        "Plan revision: scope replaced before proposal authoring. |"
         "\n\n## Accepted Review Units",
         1,
     )
@@ -94,6 +122,26 @@ class WorkflowStateContractTests(unittest.TestCase):
         ):
             validate_plan_text(invalid)
 
+    def test_preproposal_plan_revision_preserves_history(self) -> None:
+        state = validate_plan_text(_revise_plan(self.plan))
+
+        self.assertEqual(state.current.name, REVISED_FRONTIER)
+        self.assertEqual(
+            state.workflow_history.rows[-2:],
+            (
+                (
+                    CURRENT_FRONTIER,
+                    "ready_for_proposal",
+                    "Synthetic frontier is ready.",
+                ),
+                (
+                    REVISED_FRONTIER,
+                    "ready_for_proposal",
+                    "Plan revision: scope replaced before proposal authoring.",
+                ),
+            ),
+        )
+
 
 class ReviewUnitTransitionTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -114,6 +162,146 @@ class ReviewUnitTransitionTests(unittest.TestCase):
             proposal_text=proposal_text(),
         )
         self.assertEqual(transition, "proposal")
+
+    def test_plan_revision_can_replace_unstarted_frontier(self) -> None:
+        transition = validate_review_unit_transition(
+            self.base,
+            _revise_plan(self.base),
+            plan_path=PLAN_RELATIVE,
+            changed_paths={
+                PLAN_RELATIVE,
+                str(Path(PLAN_RELATIVE).with_suffix(".html")),
+            },
+            head_branch=PLAN_REVISION_BRANCH,
+        )
+
+        self.assertEqual(transition, "plan_revision")
+
+    def test_plan_revision_normalizes_markdown_formatted_workflow_state(self) -> None:
+        formatted_base = self.base.replace(
+            "- Workflow state: ready_for_proposal\n",
+            "- Workflow state: `ready_for_proposal`\n",
+            1,
+        )
+        transition = validate_review_unit_transition(
+            formatted_base,
+            _revise_plan(formatted_base),
+            plan_path=PLAN_RELATIVE,
+            changed_paths={
+                PLAN_RELATIVE,
+                str(Path(PLAN_RELATIVE).with_suffix(".html")),
+            },
+            head_branch=PLAN_REVISION_BRANCH,
+        )
+
+        self.assertEqual(transition, "plan_revision")
+
+    def test_plan_revision_rejects_non_plan_files(self) -> None:
+        with self.assertRaisesRegex(
+            PlanContractError,
+            "contains non-plan changes",
+        ):
+            validate_review_unit_transition(
+                self.base,
+                _revise_plan(self.base),
+                plan_path=PLAN_RELATIVE,
+                changed_paths={
+                    PLAN_RELATIVE,
+                    str(Path(PLAN_RELATIVE).with_suffix(".html")),
+                    "implementations/decision/proposals.py",
+                },
+                head_branch=PLAN_REVISION_BRANCH,
+            )
+
+    def test_plan_revision_requires_rendered_html(self) -> None:
+        with self.assertRaisesRegex(
+            PlanContractError,
+            "must update canonical plan and rendered HTML",
+        ):
+            validate_review_unit_transition(
+                self.base,
+                _revise_plan(self.base),
+                plan_path=PLAN_RELATIVE,
+                changed_paths={PLAN_RELATIVE},
+                head_branch=PLAN_REVISION_BRANCH,
+            )
+
+    def test_plan_revision_is_unavailable_after_review_starts(self) -> None:
+        started = _move_to_review(self.base)
+        with self.assertRaisesRegex(
+            PlanContractError,
+            "requires ready_for_proposal before and after review",
+        ):
+            validate_review_unit_transition(
+                started,
+                started,
+                plan_path=PLAN_RELATIVE,
+                changed_paths={
+                    PLAN_RELATIVE,
+                    str(Path(PLAN_RELATIVE).with_suffix(".html")),
+                },
+                head_branch=PLAN_REVISION_BRANCH,
+            )
+
+    def test_plan_revision_cannot_rewrite_accepted_ledger(self) -> None:
+        revised = _revise_plan(self.base).replace(
+            "Synthetic baseline",
+            "Reinterpreted baseline",
+            1,
+        )
+        with self.assertRaisesRegex(
+            PlanContractError,
+            "cannot rewrite accepted review-unit evidence",
+        ):
+            validate_review_unit_transition(
+                self.base,
+                revised,
+                plan_path=PLAN_RELATIVE,
+                changed_paths={
+                    PLAN_RELATIVE,
+                    str(Path(PLAN_RELATIVE).with_suffix(".html")),
+                },
+                head_branch=PLAN_REVISION_BRANCH,
+            )
+
+    def test_plan_revision_cannot_preclaim_met_criterion(self) -> None:
+        revised = _revise_plan(self.base).replace(
+            f"| {CURRENT_CRITERION} | Evidence conflicts are deterministic "
+            "| Partial | Policy remains open |",
+            f"| {CURRENT_CRITERION} | Evidence conflicts are deterministic "
+            "| Met | Plan says so |",
+            1,
+        )
+        with self.assertRaisesRegex(
+            PlanContractError,
+            "cannot add or rewrite a Met exit criterion",
+        ):
+            validate_review_unit_transition(
+                self.base,
+                revised,
+                plan_path=PLAN_RELATIVE,
+                changed_paths={
+                    PLAN_RELATIVE,
+                    str(Path(PLAN_RELATIVE).with_suffix(".html")),
+                },
+                head_branch=PLAN_REVISION_BRANCH,
+            )
+
+    def test_plan_revision_requires_reserved_branch(self) -> None:
+        with self.assertRaisesRegex(
+            PlanContractError,
+            "cannot replace the current frontier",
+        ):
+            validate_review_unit_transition(
+                self.base,
+                _revise_plan(self.base),
+                plan_path=PLAN_RELATIVE,
+                changed_paths={
+                    PLAN_RELATIVE,
+                    str(Path(PLAN_RELATIVE).with_suffix(".html")),
+                },
+                head_branch="m900/shadow-proposals",
+            )
 
     def test_proposal_pr_normalizes_opened_branch_annotation(self) -> None:
         annotated = f"`{PROPOSAL_BRANCH}` (planned; not opened)"
@@ -394,6 +582,53 @@ class ReviewUnitGitDiffTests(unittest.TestCase):
             )
 
             self.assertEqual(transition, "proposal")
+
+    def test_git_diff_gate_recognizes_plan_revision(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            plan = root / PLAN_RELATIVE
+            plan.parent.mkdir(parents=True)
+            plan.write_text(ready_plan_text(), encoding="utf-8")
+            plan_html = plan.with_suffix(".html")
+            plan_html.write_text("base", encoding="utf-8")
+            self._git(root, "init", "-b", MILESTONE_BRANCH)
+            self._git(root, "add", ".")
+            self._git(
+                root,
+                "-c",
+                "user.name=Milestone Test",
+                "-c",
+                "user.email=milestone@example.invalid",
+                "commit",
+                "-m",
+                "ready for proposal",
+            )
+            base_sha = self._git(root, "rev-parse", "HEAD")
+            self._git(root, "switch", "-c", PLAN_REVISION_BRANCH)
+            plan.write_text(_revise_plan(ready_plan_text()), encoding="utf-8")
+            plan_html.write_text("revised", encoding="utf-8")
+            self._git(root, "add", ".")
+            self._git(
+                root,
+                "-c",
+                "user.name=Milestone Test",
+                "-c",
+                "user.email=milestone@example.invalid",
+                "commit",
+                "-m",
+                "revise unstarted frontier",
+            )
+            head_sha = self._git(root, "rev-parse", "HEAD")
+
+            transition = validate_review_unit_git_diff(
+                base_ref=MILESTONE_BRANCH,
+                head_ref=PLAN_REVISION_BRANCH,
+                base_sha=base_sha,
+                head_sha=head_sha,
+                repo_root=root,
+            )
+
+            self.assertEqual(transition, "plan_revision")
 
     def test_implementation_branch_starts_only_after_proposal_acceptance(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

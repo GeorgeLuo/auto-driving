@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="a82b909a7cb4aafc8a81d1fa50f08099e095f245c89ba3cbbba68b6f07c3b070">
+  <meta name="source-sha256" content="a952491d39a1321ead1011ae7403f286ccb6b29f934672dfbab253bf1c435391">
   <base target="_blank">
   <title>Milestone Planning And Delivery Contract</title>
   <style>
@@ -403,6 +403,12 @@ branch model at the declared cutover.</p>
 </tr>
 </tbody>
 </table>
+<p>The first body row must be <code>Primary demonstration</code>. It states one bounded,
+end-to-end feature outcome that a human can execute and recognize after
+closeout. Keep it to one row and leave schemas, lifecycle matrices, edge cases,
+and validation mechanics to the frontier proposal. Supporting workflow rows may
+then cover setup, inspection, replay, or environment-specific execution without
+creating another feature-goal section.</p>
 <h3>4. Scope Boundaries</h3>
 <p>One concise in-scope / out-of-scope table. Review-unit non-goals live in the PR.</p>
 <h3>5. Exit Criteria</h3>
@@ -608,7 +614,7 @@ paths and tests.</p>
 <tr>
 <td><code>ready_for_proposal</code></td>
 <td>The bounded frontier is ready to hand to a proposal author</td>
-<td>Start only the proposal branch</td>
+<td>Start the proposal branch, or review a necessary pre-proposal plan revision</td>
 </tr>
 <tr>
 <td><code>proposal_in_review</code></td>
@@ -641,6 +647,15 @@ paths and tests.</p>
 <p>The proposal author and implementer may be the same person or model, but they
 must operate in separate branches and review phases. The reviewer must not
 silently fill both roles in one change.</p>
+<p>If the frozen frontier is found to be wrong before proposal work starts, revise
+it in a separate plan-only review unit. Use a
+<code>m&lt;number&gt;/plan-&lt;slug&gt;</code> branch, keep the workflow state
+<code>ready_for_proposal</code>, and change only canonical <code>plan.md</code> plus generated
+<code>plan.html</code>. Preserve accepted review-unit evidence and every existing <code>Met</code>
+criterion, append one Workflow History row whose evidence begins
+<code>Plan revision:</code>, and do not add a proposal, tests, or product code. The merged
+revision returns to the normal <code>ready_for_proposal</code> handoff; it does not count
+as proposal acceptance or authorize implementation.</p>
 <p>Each proposal lives at the current frontier’s declared <code>proposal path</code> and uses
 <code>.github/PULL_REQUEST_TEMPLATE/proposal.md</code>. It records the review question,
 proposed contract, owner, affected paths, adversarial matrix, assumptions,
@@ -814,6 +829,11 @@ child PR matrix.</p>
 <pre><code class="language-sh">python3 docs/milestones/workflow.py status \
   --plan docs/milestones/&lt;number&gt;-&lt;slug&gt;/plan.md
 </code></pre>
+<p>When it reports <code>ready_for_proposal</code> but the scope itself needs review, create a
+<code>m&lt;number&gt;/plan-&lt;slug&gt;</code> branch and open a plan-only PR to the milestone branch.
+CI recognizes that reserved branch shape and rejects changes outside canonical
+<code>plan.md</code> and generated <code>plan.html</code>. After that PR merges, inspect status again
+and hand the revised frontier to the proposal author.</p>
 <p>When it reports <code>ready_for_proposal</code>, create only the proposal branch:</p>
 <pre><code class="language-sh">python3 docs/milestones/workflow.py start-proposal \
   --plan docs/milestones/&lt;number&gt;-&lt;slug&gt;/plan.md \

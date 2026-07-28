@@ -116,16 +116,24 @@ with different `label`, `confidence`, coordinates, or property **values** is
 JSON numbers use one shape token (`"number"`), but value equality is still
 defined explicitly:
 
-- Booleans are never equal to numbers (`true` ≠ `1`, `false` ≠ `0`).
-- Two numbers `a` and `b` are equal iff `float(a) == float(b)` under ordinary
-  IEEE-754 float comparison after both are coerced to float (so `1` and `1.0`
-  are equal; `0` and `-0.0` are equal because `float(0) == float(-0.0)`).
+- Booleans are never equal to numbers (`true` ≠ `1`, `false` ≠ `0`). Exclude
+  booleans before any numeric comparison.
+- Two admitted numbers `a` and `b` (Python `int` and/or `float` after
+  strict-JSON admission) are equal iff `a == b` under ordinary Python equality
+  **without** coercing either operand with `float(...)`.
+  - This yields the intended mixed-width equalities `1 == 1.0` and
+    `0 == -0.0`.
+  - Distinct large integers remain distinct:
+    `9007199254740992 != 9007199254740993` (unlike `float(a) == float(b)`,
+    which collapses them).
+  - Equality must not raise on large finite integers (do not call `float` on
+    them during compare).
 - Non-finite floats are not admitted by existing strict-JSON gates; if a value
   is not a finite number or boolean/string/null/array/object under those gates,
   it never reaches equality.
 
-Do **not** use canonical JSON text/bytes for number equality (that would treat
-`1` and `1.0` as unequal).
+Do **not** use `float(a) == float(b)` (lossy / may `OverflowError`). Do **not**
+use canonical JSON text/bytes for number equality.
 
 ### Structural compatibility (cross-observation only)
 
@@ -324,8 +332,10 @@ Rules:
 | Same-observation two candidates, equal structure, different confidence, both orders | Slot empty; +1 each run |
 | Same-observation two candidates, equal structure, different bbox coords, both orders | Slot empty; +1 each run |
 | Same-observation two payload-equal candidates (incl. equal props/label/confidence/location) | Collapse to one; then normal same-slot policy; no conflict from duplicate alone |
-| Same-observation two candidates differing only by JSON number form `1` vs `1.0` on a property, both tuple orders | Payload-equal (float compare); collapse; no conflict from duplicate alone |
+| Same-observation two candidates differing only by JSON number form `1` vs `1.0` on a property, both tuple orders | Payload-equal (`1 == 1.0`); collapse; no conflict from duplicate alone |
 | Same-observation two candidates differing only by `0` vs `-0.0` on a property, both tuple orders | Payload-equal; collapse; no conflict |
+| Same-observation two candidates differing only by integers `2**53` vs `2**53 + 1` on a property, both tuple orders | Not equal (exact int equality); contradiction; +1; no raise |
+| Same-observation two candidates with the same large finite integer property value (e.g. `10**400` if admitted as int) | Payload-equal; collapse; equality path must not raise |
 | Same-observation `true` vs number `1` on a property, both orders | Not equal (boolean ≠ number); contradiction; +1 |
 | Same-observation three pairwise-unequal candidates for one slot | Slot empty; last_update_conflict_count = 1 |
 | Two slots each with a same-observation contradiction in one update | last_update_conflict_count = 2 |
@@ -378,13 +388,16 @@ each signature/shape row to a named matrix case above.
 ### Create
 
 - `tests/implementations/memory/test_bounded_evidence_conflicts.py` — adversarial
-  matrix coverage for compatibility, payload equality (including numeric
-  boundaries), same-observation order independence, counters (including
-  snapshot preservation), post-conflict empty-slot re-admit, `False` signal
+  matrix coverage for compatibility, payload equality (including `1`/`1.0`,
+  `2**53` boundary contradiction, large-int no-raise), same-observation order
+  independence, counters including the conflict → repeated `snapshot()` →
+  clean `update` sequence, post-conflict empty-slot re-admit, `False` signal
   missing behavior, and table-driven location/property-shape cases.
-- `tests/cli/memory/fixtures/conflict_sequence.json` — offline sequence for
-  conflict invalidation and counter transitions (including snapshot reads
-  between updates).
+- `tests/cli/memory/fixtures/conflict_sequence.json` — offline **update**
+  sequence for conflict invalidation and counter transitions across successive
+  observation frames only. The current replay format has no snapshot operation;
+  pure `snapshot()` preservation is **not** encoded here (owned by the
+  implementation test module above).
 
 ### Modify
 
@@ -396,7 +409,8 @@ each signature/shape row to a named matrix case above.
   definition.
 - `tests/cli/memory/test_replay.py` — add focused cases (clearly named test
   methods) that load `conflict_sequence.json` and assert records +
-  `conflict_policy` / counters. Do not invent a second fixture root.
+  `conflict_policy` / counters across **update** frames. Do not invent a second
+  fixture root or widen the replay schema for snapshot ops.
 - Milestone plan/ledger only at implementation handoff (not in this proposal
   PR).
 

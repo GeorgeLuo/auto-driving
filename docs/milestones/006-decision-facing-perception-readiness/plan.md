@@ -69,7 +69,8 @@ for simulator and physical vehicles.
 
 **Modular shadow action proposal foundation**
 
-- Workflow state: ready_for_proposal
+- Workflow state: proposal_in_review
+- PR: [#73](https://github.com/GeorgeLuo/auto-driving/pull/73)
 - Proposal branch: `m006/shadow-proposals-proposal`
 - Implementation branch: `m006/shadow-proposals`
 - Proposal path: `docs/milestones/006-decision-facing-perception-readiness/proposals/shadow-proposals.md`
@@ -78,7 +79,7 @@ for simulator and physical vehicles.
 - Acceptance owner: Decision-data source, proposal/plan contracts, proposal runner, deterministic selector, shadow-authority result, and the `avoid_recent_obstruction` reference implementation
 - Exit criteria affected: M006-01, M006-02, M006-03, M006-04
 - Prerequisite: Milestone 005 closed at `milestone-005`; bounded evidence memory, exact provenance, replay, and idle Chase/Pi host paths remain available
-- Non-goals: Applied movement, new perception logic, prediction algorithms, semantic identity, metric geometry, complex mixing, evaluator input, or more than one reference proposal
+- Milestone-level non-goal: Applied movement, new perception logic, prediction algorithms, semantic identity, metric geometry, complex mixing, evaluator input, or more than one reference proposal
 
 ### Next-Frontier Candidate
 
@@ -100,6 +101,7 @@ for simulator and physical vehicles.
 | --- | --- | --- |
 | Decision-facing fitness measures | ready_for_proposal | Activated after M005 cumulative PR #68 merged and mainline merge was tagged `milestone-005`. |
 | Modular shadow action proposal foundation | ready_for_proposal | Plan revision: replaced the unstarted fitness-first frontier before any M006 proposal branch or artifact existed. |
+| Modular shadow action proposal foundation | proposal_in_review | Started m006/shadow-proposals-proposal. |
 
 ## Accepted Review Units
 

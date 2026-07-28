@@ -5,28 +5,21 @@ and milestone history. Read this file first when starting work.
 
 ## Active Milestone
 
-**Milestone 005 — Evidence Memory Foundation**
-
-| Field | Value |
-| --- | --- |
-| Status | Active |
-| Plan | [plan.html](milestones/005-evidence-memory-foundation/plan.html) · [plan.md](milestones/005-evidence-memory-foundation/plan.md) |
-| Cumulative PR | TBD (milestone branch topology) |
-| Current frontier | See the plan Current Delivery section |
-
-Detailed exit criteria, frontiers, and risks live only in the milestone plan.
-Do not treat this guide as a second progress log.
+**None.** Milestone 005 is closed. Its whole-milestone review is
+[PR #68](https://github.com/GeorgeLuo/auto-driving/pull/68).
 
 ## Immediate Pre-Plan (Not Active)
 
 **Milestone 006 — Decision-Facing Perception Readiness**
 
 - Plan: [plan.html](milestones/006-decision-facing-perception-readiness/plan.html)
-- Status: pre-plan, queued after 005
-- Not active work; do not implement while 005 is open unless the 005 decision
-  log records an explicit parallel exception
+- Status: pre-plan; activation selected by the 005 closeout but not yet Active
+- Do not implement 006 until its own activation step completes
 
 ## Recently Closed
+
+**Milestone 005 — Evidence Memory Foundation** is closed.
+Closeout: [005 closeout](milestones/005-evidence-memory-foundation/closeout.md).
 
 **Milestone 004 — Physical Perception Parity** is closed.
 Closeout: [004 closeout](milestones/004-physical-perception-parity/closeout.md).

@@ -1,6 +1,7 @@
 # Milestone 005 Closeout: Evidence Memory Foundation
 
-Status: closeout judgment published 2026-07-28  
+Status: closeout judgment published 2026-07-28
+
 (Plan header Status remains Active until post-merge `complete-implementation`
 sets Status `closed` and M005-13 Met.)
 

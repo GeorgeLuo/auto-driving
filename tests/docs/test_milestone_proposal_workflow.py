@@ -188,13 +188,17 @@ class WorkflowStateContractTests(unittest.TestCase):
     def test_latest_history_must_match_current_state(self) -> None:
         state = validate_plan_text(self.plan)
         current = state.current.fields["workflow state"]
-        # Flip only the current state line so history lags.
+        # Flip only the current state line so history lags. Drop PR/accepted
+        # labels first so the deliberate lag is the history mismatch, not a
+        # secondary ready_for_* / PR invariant.
+        invalid = re.sub(r"^- PR: .+\n", "", self.plan, count=1, flags=re.M)
+        invalid = re.sub(r"^- Accepted proposal: .+\n", "", invalid, count=1, flags=re.M)
         other = (
             "proposal_in_review"
             if current == "ready_for_proposal"
             else "ready_for_proposal"
         )
-        invalid = self.plan.replace(
+        invalid = invalid.replace(
             f"- Workflow state: {current}\n",
             f"- Workflow state: {other}\n",
             1,

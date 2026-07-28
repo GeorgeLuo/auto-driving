@@ -89,7 +89,9 @@ class MilestonePlanningTests(unittest.TestCase):
         plan_md, _ = _active_plan_paths()
         state = validate_plan_path(plan_md)
         self.assertFalse(state.current.is_empty)
-        self.assertFalse(state.next_frontier.is_empty)
+        # Terminal closeout may leave next empty; otherwise at most one named next.
+        if not state.next_frontier.is_empty:
+            self.assertTrue(state.next_frontier.fields["review question"])
         self.assertTrue(state.current.fields["review question"])
         self.assertTrue(state.milestone_branch.startswith("milestone/"))
 
@@ -169,7 +171,8 @@ class MilestonePlanningTests(unittest.TestCase):
         text = CONTRACT_SOURCE.read_text(encoding="utf-8")
         normalized = " ".join(text.split())
         self.assertIn("Frontier handoff:", text)
-        self.assertIn("docs/milestones/workflow.py handoff", text)
+        self.assertIn("docs/milestones/workflow.py complete-implementation", text)
+        self.assertIn("handoff --receipt <path>", text)
         self.assertIn("docs/milestones/workflow.py start-proposal", text)
         self.assertIn("docs/milestones/workflow.py accept-proposal", text)
         self.assertIn("docs/milestones/workflow.py start-implementation", text)
@@ -188,7 +191,10 @@ class MilestonePlanningTests(unittest.TestCase):
     def test_active_plan_next_frontier_records_minimal_contract_fields(self) -> None:
         plan_md, _ = _active_plan_paths()
         state = validate_plan_path(plan_md)
-        for frontier in (state.current, state.next_frontier):
+        frontiers = [state.current]
+        if not state.next_frontier.is_empty:
+            frontiers.append(state.next_frontier)
+        for frontier in frontiers:
             for field in (
                 "proposal branch",
                 "implementation branch",

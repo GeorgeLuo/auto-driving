@@ -33,6 +33,7 @@
 - [ ] No implementation tests or generated runtime artifacts were added.
 - [ ] The proposal, plan transition, and generated plan HTML are the only changes.
 - [ ] The implementation branch has not started.
+- [ ] `Expected Handoff` records the reviewed success transition without PR/SHA values.
 
 ## Review Notes
 

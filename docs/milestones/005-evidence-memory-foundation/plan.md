@@ -66,11 +66,11 @@ model, changing perception semantics, or granting movement authority.
 
 **Milestone closeout**
 
-- Workflow state: proposal_in_review
-- PR: [#66](https://github.com/GeorgeLuo/auto-driving/pull/66)
+- Workflow state: ready_for_implementation
 - Proposal branch: `m005/closeout-proposal`
 - Implementation branch: `m005/closeout` (planned; not opened)
 - Proposal path: `docs/milestones/005-evidence-memory-foundation/proposals/closeout.md`
+- Accepted proposal: [#66](https://github.com/GeorgeLuo/auto-driving/pull/66) at `0bd2920e15b2dc022428ca40a99cd2b3c29b43e5`
 - Review kind: Milestone closeout
 - Review question: Is milestone 005 complete as a whole—every exit criterion Met, completion usage supported, residual risk stated—and should the 006 pre-plan be activated, revised, or abandoned?
 - Acceptance owner: `closeout.md` plus the cumulative milestone PR judgment against exit criteria and completion usage
@@ -96,6 +96,7 @@ model, changing perception semantics, or granting movement authority.
 | Conflicting evidence semantics | accepted | Implementation PR #64 merged at 8d4772ba45575b6e0a3b73fdb08656d0c0dcccbd. |
 | Milestone closeout | ready_for_proposal | Promoted after implementation PR #64. |
 | Milestone closeout | proposal_in_review | Started m005/closeout-proposal. |
+| Milestone closeout | ready_for_implementation | Proposal PR #66 accepted at 0bd2920e15b2dc022428ca40a99cd2b3c29b43e5. |
 
 ## Accepted Review Units
 

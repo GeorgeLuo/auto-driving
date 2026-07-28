@@ -74,8 +74,8 @@ admitted provenance.
 | Timestamp case | Required behavior |
 | --- | --- |
 | Compatible candidate in a later `update` than retained | Replace retained (invocation-order newer). |
-| Compatible candidate whose `context.timestamp_ms` is lower than retained provenance (regressing clock / replay) | Still replace if the candidate arrives in a later `update` invocation; do **not** invent a second clock-based invalidation. Document that callers must not expect timestamp regression alone to protect prior evidence. |
-| Two updates with equal `timestamp_ms` | Invocation order still decides; first applied stays until second update replaces. |
+| Compatible candidate whose `context.timestamp_ms` is lower than retained provenance (regressing clock / replay) | Still replace if the candidate arrives in a later `update` invocation; do **not** invent a second clock-based invalidation. Callers must not expect timestamp regression alone to protect prior evidence. |
+| Two successive `update` calls with **equal** `timestamp_ms` and compatible payloads | Invocation order still decides: second update replaces first. |
 | Same `update` call with multiple candidates | No recency winner; use same-observation equality/contradiction only. |
 
 ### Same-observation resolution (before ledger apply)
@@ -104,12 +104,28 @@ Two candidates for the same slot are **payload-equal** only when their
 | `label` | Yes | Exact string |
 | `confidence` | Yes | Exact float after existing confidence normalization |
 | `location` | Yes | Both `None`, or both present with equal `ViewLocation.to_dict()` after construction normalization |
-| `properties` | Yes | Deep equality of JSON values after existing strict-JSON admission (see type rules for shape; equality uses value identity: numbers exact, strings exact, object keys exact, array order and length matter) |
-| `provenance` | **No** | Excluded from equality so two identical claims with different observation/frame ids in one batch still collapse if all payload fields above match. If provenance exclusion is too loose for a case, the remaining payload fields still must match. |
+| `properties` | Yes | Deep equality of JSON values after existing strict-JSON admission (see numeric rule and type rules below; strings exact; object keys exact; array order and length matter) |
+| `provenance` | **No** | Excluded from equality so two identical claims with different observation/frame ids in one batch still collapse if all payload fields above match. |
 
 Payload equality is **stricter** than structural compatibility. Equal structure
 with different `label`, `confidence`, coordinates, or property **values** is
 **not** payload-equal → same-observation contradiction.
+
+#### Numeric value equality (payload equality only)
+
+JSON numbers use one shape token (`"number"`), but value equality is still
+defined explicitly:
+
+- Booleans are never equal to numbers (`true` ≠ `1`, `false` ≠ `0`).
+- Two numbers `a` and `b` are equal iff `float(a) == float(b)` under ordinary
+  IEEE-754 float comparison after both are coerced to float (so `1` and `1.0`
+  are equal; `0` and `-0.0` are equal because `float(0) == float(-0.0)`).
+- Non-finite floats are not admitted by existing strict-JSON gates; if a value
+  is not a finite number or boolean/string/null/array/object under those gates,
+  it never reaches equality.
+
+Do **not** use canonical JSON text/bytes for number equality (that would treat
+`1` and `1.0` as unequal).
 
 ### Structural compatibility (cross-observation only)
 
@@ -216,11 +232,21 @@ On every **successfully published** `BoundedEvidenceLedger` snapshot from
 | --- | --- |
 | `conflict_policy` | Exact string: `bounded_evidence_structural_v1` |
 | `conflict_count` | Non-negative int; cumulative **slots invalidated** in the current epoch |
-| `last_update_conflict_count` | Non-negative int; slots invalidated during the latest `update` only; `0` on `reset` / pure `snapshot` |
+| `last_update_conflict_count` | Non-negative int; slots invalidated during the **most recent completed `update`** in this epoch |
 
 Counting unit: **one per invalidated slot per update**, not per candidate pair.
 
-Examples for `last_update_conflict_count`:
+`last_update_conflict_count` lifecycle:
+
+- Set at the end of each `update` to the number of slots invalidated in that
+  call (may be `0` for a conflict-free update).
+- **`snapshot()` must not change it.** Pure reads republish the same count from
+  the latest completed update (or `0` after reset / before any update in the
+  epoch). Reading memory must not hide a prior conflict.
+- `reset` sets `conflict_count = 0` and `last_update_conflict_count = 0`.
+- Do **not** zero `last_update_conflict_count` merely because `snapshot()` ran.
+
+Examples for `last_update_conflict_count` **within one update**:
 
 | Situation in one update | Count |
 | --- | --- |
@@ -230,13 +256,22 @@ Examples for `last_update_conflict_count`:
 | Two slots each receiving an incompatible single candidate | 2 |
 | Compatible refresh only | 0 |
 
+Required sequence:
+
+1. An `update` that invalidates exactly one slot → published
+   `last_update_conflict_count = 1`.
+2. Any number of subsequent `snapshot()` calls (and controller reads of
+   `_latest`) still report `last_update_conflict_count = 1` and the same
+   `conflict_count`.
+3. A later conflict-free `update` → `last_update_conflict_count = 0`
+   (`conflict_count` unchanged unless that update also invalidates).
+
 Rules:
 
 - Capacity eviction does **not** increment conflict counters.
 - Age expiry does **not** increment conflict counters.
-- `reset` starts a new epoch with `conflict_count = 0` and
-  `last_update_conflict_count = 0` (and capacity eviction counter reset as
-  today).
+- `reset` starts a new epoch with both conflict counters `0` (and capacity
+  eviction counter reset as today).
 - Do not retain conflicting payloads or a side conflict ledger.
 - Framework-generated failure fallbacks from `ActivatedMemoryStage` that do not
   run the ledger implementation are **not** required to carry these keys; the
@@ -289,18 +324,30 @@ Rules:
 | Same-observation two candidates, equal structure, different confidence, both orders | Slot empty; +1 each run |
 | Same-observation two candidates, equal structure, different bbox coords, both orders | Slot empty; +1 each run |
 | Same-observation two payload-equal candidates (incl. equal props/label/confidence/location) | Collapse to one; then normal same-slot policy; no conflict from duplicate alone |
+| Same-observation two candidates differing only by JSON number form `1` vs `1.0` on a property, both tuple orders | Payload-equal (float compare); collapse; no conflict from duplicate alone |
+| Same-observation two candidates differing only by `0` vs `-0.0` on a property, both tuple orders | Payload-equal; collapse; no conflict |
+| Same-observation `true` vs number `1` on a property, both orders | Not equal (boolean ≠ number); contradiction; +1 |
 | Same-observation three pairwise-unequal candidates for one slot | Slot empty; last_update_conflict_count = 1 |
 | Two slots each with a same-observation contradiction in one update | last_update_conflict_count = 2 |
 | Missing evidence while retained within max_age | Slot remains; no conflict |
 | `True` signal retained, later observation has explicit `False` for same signal id | `False` dropped at extract; treated as missing; retain until age; no conflict |
 | Retained older than max_age, then new candidate | Expiry first; empty-slot admit; no conflict |
 | After conflict invalidation, next update admits a single compatible-looking candidate | Empty-slot write succeeds (no tombstone) |
+| Two successive updates with equal `timestamp_ms`, compatible payload | Second replaces first by invocation order; no conflict |
 | Later update with regressing `timestamp_ms` but compatible payload | Replace by invocation order; no conflict |
+| Conflict update (+1) then two pure `snapshot()` calls | Both snapshots still report last_update_conflict_count = 1 |
+| Then a conflict-free `update` | last_update_conflict_count = 0; conflict_count unchanged |
 | Capacity pressure after a conflict invalidation | capacity_eviction_count only; conflict counters separate |
 | Reset after conflicts | Empty; conflict counters 0; new epoch_id |
 | Unrelated other slots | Unaffected |
 | Cross-plugin same local id | Distinct slots |
 | Caller mutates returned snapshot | Detached; ledger unchanged |
+
+Table-driven unit coverage (in `test_bounded_evidence_conflicts.py`) must also
+directly exercise the location geometry-signature table and the property-shape
+algorithm (including empty array, heterogeneous array, and sorted object keys),
+either as dedicated parametrized tests or by explicit subsumption notes linking
+each signature/shape row to a named matrix case above.
 
 ## External Assumptions
 
@@ -331,22 +378,25 @@ Rules:
 ### Create
 
 - `tests/implementations/memory/test_bounded_evidence_conflicts.py` — adversarial
-  matrix coverage for compatibility, payload equality, same-observation order
-  independence, counters, post-conflict empty-slot re-admit, and `False` signal
-  missing behavior.
+  matrix coverage for compatibility, payload equality (including numeric
+  boundaries), same-observation order independence, counters (including
+  snapshot preservation), post-conflict empty-slot re-admit, `False` signal
+  missing behavior, and table-driven location/property-shape cases.
 - `tests/cli/memory/fixtures/conflict_sequence.json` — offline sequence for
-  conflict invalidation and counter transitions.
-- `tests/cli/memory/test_replay.py` — add focused cases (or a clearly named
-  test method group in this file) that load `conflict_sequence.json` and assert
-  records + `conflict_policy` / counters. Do not invent a second fixture root.
+  conflict invalidation and counter transitions (including snapshot reads
+  between updates).
 
 ### Modify
 
 - `implementations/memory/bounded_evidence.py` — equality, compatibility,
-  invalidation, metadata counters; keep capacity/age paths separate.
+  invalidation, metadata counters; keep capacity/age paths separate;
+  `snapshot()` must not zero `last_update_conflict_count`.
 - `tests/implementations/memory/test_bounded_evidence.py` — only as needed so
   existing recurrence tests still pass under the explicit compatibility
   definition.
+- `tests/cli/memory/test_replay.py` — add focused cases (clearly named test
+  methods) that load `conflict_sequence.json` and assert records +
+  `conflict_policy` / counters. Do not invent a second fixture root.
 - Milestone plan/ledger only at implementation handoff (not in this proposal
   PR).
 
@@ -391,18 +441,42 @@ Do not add a second durable store of conflicting payloads.
 
 ## Handoff
 
-After this proposal merges:
+After this proposal merges, execute **exactly** this sequence (the executable
+gate rejects any remaining matching local/remote ref for the implementation
+branch name):
 
 1. Record acceptance (`ready_for_implementation`) with the proposal merge commit
-   via `workflow.py accept-proposal`.
-2. **Retire the pre-gate implementation attempt:** close draft PR #59 without
-   merge (or convert it to closed/not planned) and delete or abandon the old
-   `m005/conflicting-evidence` tip so it cannot be mistaken for accepted work.
-3. From the **post-acceptance milestone tip**, run
-   `workflow.py start-implementation` to create a **fresh**
-   `m005/conflicting-evidence` branch (recreate the branch name from the new
-   tip; do not fast-forward or merge the pre-gate tip as if it were approved).
-4. Implement **only** this accepted proposal on that fresh branch; open a new
-   implementation PR. Pre-gate code may be used only as informal reference after
-   re-validation against this contract—it carries **no** acceptance.
+   via:
+   ```text
+   python3 docs/milestones/workflow.py accept-proposal \
+     --plan docs/milestones/005-evidence-memory-foundation/plan.md \
+     --pr <this-proposal-pr-number>
+   ```
+   Commit the resulting plan/HTML on the milestone branch.
+2. **Retire the pre-gate implementation attempt (mandatory deletes):**
+   - Close draft PR #59 without merge (`gh pr close 59`).
+   - Remove any linked worktree that checks out `m005/conflicting-evidence`.
+   - Delete local and remote branch refs:
+     ```text
+     git branch -D m005/conflicting-evidence   # if present locally
+     git push origin --delete m005/conflicting-evidence
+     git fetch --prune origin
+     ```
+   - Confirm no remaining ref:
+     `git show-ref | grep m005/conflicting-evidence` must print nothing.
+3. On the **post-acceptance milestone tip** with a clean worktree, run:
+   ```text
+   python3 docs/milestones/workflow.py start-implementation \
+     --plan docs/milestones/005-evidence-memory-foundation/plan.md \
+     --branch m005/conflicting-evidence
+   ```
+   This creates a **fresh** branch from that tip. Do **not** recreate history
+   by merging or resetting onto the deleted pre-gate tip.
+4. Implement **only** this accepted proposal on that fresh branch; open a **new**
+   implementation PR. Pre-gate code may be used only as informal offline
+   reference after re-validation against this contract—it carries **no**
+   acceptance and must not be force-pushed back as the branch tip.
 5. Do not widen into closeout or live re-proof.
+
+Merely abandoning the old tip without deleting the remote/local branch refs is
+**not** sufficient: `start-implementation` will still refuse the name.

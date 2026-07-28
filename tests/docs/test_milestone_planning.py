@@ -251,7 +251,7 @@ class MilestonePlanningTests(unittest.TestCase):
         from docs.milestones.workflow import WORKFLOW_STATES
 
         self.assertIn(
-            state.current.fields["workflow state"].strip("`"),
+            state.current.fields["workflow state"],
             WORKFLOW_STATES,
         )
 

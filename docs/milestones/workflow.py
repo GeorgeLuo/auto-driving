@@ -197,7 +197,11 @@ def parse_frontier(text: str, heading: str) -> Frontier:
         if field_match is None:
             field_match = re.match(r"-\s+([^:]+):\s*(.*)", stripped)
         if field_match:
-            fields[_normalize_field(field_match.group(1))] = field_match.group(2).strip()
+            field = _normalize_field(field_match.group(1))
+            value = field_match.group(2).strip()
+            if field == "workflow state":
+                value = value.strip("`")
+            fields[field] = value
 
     if name is None and not any(line.strip() == "**None**" for line in lines[start:end]):
         raise PlanContractError(f"{heading} must identify a frontier name or **None**")

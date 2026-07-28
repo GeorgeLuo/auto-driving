@@ -5,16 +5,23 @@ and milestone history. Read this file first when starting work.
 
 ## Active Milestone
 
-**None.** Milestone 005 is closed. Its whole-milestone review is
-[PR #68](https://github.com/GeorgeLuo/auto-driving/pull/68).
+**Milestone 006 — Decision-Facing Perception Readiness**
+
+| Field | Value |
+| --- | --- |
+| Status | Active |
+| Plan | [plan.html](milestones/006-decision-facing-perception-readiness/plan.html) · [plan.md](milestones/006-decision-facing-perception-readiness/plan.md) |
+| Cumulative PR | TBD |
+| Current frontier | Decision-facing fitness measures |
+
+Detailed exit criteria, workflow state, and risks live only in the milestone
+plan. The current frontier is ready for an independent proposal; perception
+implementation must not begin before that proposal is accepted.
 
 ## Immediate Pre-Plan (Not Active)
 
-**Milestone 006 — Decision-Facing Perception Readiness**
-
-- Plan: [plan.html](milestones/006-decision-facing-perception-readiness/plan.html)
-- Status: pre-plan; activation selected by the 005 closeout but not yet Active
-- Do not implement 006 until its own activation step completes
+**None.** M006 closeout will decide whether a shadow/non-idle decision pre-plan
+is justified.
 
 ## Recently Closed
 

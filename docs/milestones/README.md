@@ -324,6 +324,13 @@ Stable human workflows after closeout:
 | Workflow | Starting state | Execution | Success signal | Criteria |
 | --- | --- | --- | --- | --- |
 
+The first body row must be `Primary demonstration`. It states one bounded,
+end-to-end feature outcome that a human can execute and recognize after
+closeout. Keep it to one row and leave schemas, lifecycle matrices, edge cases,
+and validation mechanics to the frontier proposal. Supporting workflow rows may
+then cover setup, inspection, replay, or environment-specific execution without
+creating another feature-goal section.
+
 ### 4. Scope Boundaries
 
 One concise in-scope / out-of-scope table. Review-unit non-goals live in the PR.
@@ -484,7 +491,7 @@ Every frontier moves through these states in order:
 
 | Workflow state | Meaning | Permitted work |
 | --- | --- | --- |
-| `ready_for_proposal` | The bounded frontier is ready to hand to a proposal author | Start only the proposal branch |
+| `ready_for_proposal` | The bounded frontier is ready to hand to a proposal author | Start the proposal branch, or review a necessary pre-proposal plan revision |
 | `proposal_in_review` | A proposal is being authored or reviewed | Proposal document and plan transition only |
 | `ready_for_implementation` | The proposal PR merged and its exact commit is recorded | Start only the implementation branch |
 | `implementation_in_review` | Accepted scope is being implemented or reviewed | Product, test, and documentation changes described by the accepted proposal |
@@ -503,6 +510,16 @@ The expected collaboration is explicit:
 The proposal author and implementer may be the same person or model, but they
 must operate in separate branches and review phases. The reviewer must not
 silently fill both roles in one change.
+
+If the frozen frontier is found to be wrong before proposal work starts, revise
+it in a separate plan-only review unit. Use a
+`m<number>/plan-<slug>` branch, keep the workflow state
+`ready_for_proposal`, and change only canonical `plan.md` plus generated
+`plan.html`. Preserve accepted review-unit evidence and every existing `Met`
+criterion, append one Workflow History row whose evidence begins
+`Plan revision:`, and do not add a proposal, tests, or product code. The merged
+revision returns to the normal `ready_for_proposal` handoff; it does not count
+as proposal acceptance or authorize implementation.
 
 Each proposal lives at the current frontier’s declared `proposal path` and uses
 `.github/PULL_REQUEST_TEMPLATE/proposal.md`. It records the review question,
@@ -686,6 +703,12 @@ Inspect the current handoff before assigning work:
 python3 docs/milestones/workflow.py status \
   --plan docs/milestones/<number>-<slug>/plan.md
 ```
+
+When it reports `ready_for_proposal` but the scope itself needs review, create a
+`m<number>/plan-<slug>` branch and open a plan-only PR to the milestone branch.
+CI recognizes that reserved branch shape and rejects changes outside canonical
+`plan.md` and generated `plan.html`. After that PR merges, inspect status again
+and hand the revised frontier to the proposal author.
 
 When it reports `ready_for_proposal`, create only the proposal branch:
 

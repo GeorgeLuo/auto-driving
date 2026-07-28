@@ -44,6 +44,9 @@ truncate, never “skip run with partial output”).
 
 | Bound | Limit | Owner | Overflow behavior |
 | --- | --- | --- | --- |
+| `frame_id` / `source.frame_id` | 128 code points | DecisionDataSource / context validation | Reject source construction |
+| `plan_id` | exact `action-plan:{frame_id}` so ≤ `11 + 128` | plan builder | Derived; reject if `frame_id` invalid |
+| `proposal_id` | exact `{plugin_id}:{frame_id}` so ≤ `64 + 1 + 128` | proposal constructor | Reject if components invalid |
 | `reason` string | 240 Unicode code points | `ActionProposal` constructor | Reject proposal construction |
 | Each `assumptions[]` entry | 64 code points | constructor | Reject |
 | `assumptions` count | 8 | constructor | Reject |
@@ -54,40 +57,73 @@ truncate, never “skip run with partial output”).
 | `enabled_plugins` count | **4** | activation validation | **Reject activation** (config invalid; engine must not start) |
 | Each `plugin_id` | 64 code points | catalog | Reject catalog entry |
 | `enabled_plugins` uniqueness | all ids distinct; each must exist in catalog | activation validation | Reject activation |
-| `candidates` count | = number of successful plugin returns ≤ 4 | plan builder | Reject plan if exceeded |
+| `candidates` count | **exactly** `len(enabled_plugins)` (1..4) | plan builder | Reject plan if not equal |
 | `contributions` count | **0** when idle; **exactly 1** when selected | plan builder | Reject |
 | Plan `metadata` serialized JSON | 1024 bytes | plan builder | Reject |
-| Full `ActionPlan` serialized JSON | **24576** bytes (24 KiB) | plan builder | Reject plan; runner emits **engine_error** authority (below) |
+| Full `ActionPlan` serialized JSON | **24576** bytes (24 KiB) | plan builder | **Must not fail** for any legal candidate set (see budget); if it fails, that is an implementation bug |
 | Envelope `reason` | 240 code points | DecisionDataSource builder | Reject envelope |
 | DecisionDataSource `metadata` | 2048 bytes | builder | Reject |
+| Cycle/authority diagnostic `reason` | 240 code points | cycle result | Reject |
 
-#### Compositional plan budget (exact)
+#### Compositional plan budget (invariant: every legal set fits)
 
-Worst case must fit:
+With identifier bounds above, worst case **must** serialize successfully:
 
 ```text
-4 * 4096  (candidates, each max proposal)
-+ 4096    (selected deep-copy of one candidate)
+4 * 4096  (candidates — exactly one per enabled plugin, each ≤ 4096 B)
++ 4096    (selected deep-copy of one candidate, when status=selected)
 + 1024    (plan metadata)
-+ 2048    (plan envelope: schema, ids, status, contributions, selector_id)
++ 2048    (fixed plan envelope keys + bounded plan_id/frame_id/selector_id/status/contributions)
 = 23552  ≤ 24576
 ```
 
-Implementations must unit-test a **maximum legal complete set**: 4 proposals each
-serialized at 4096 bytes (or the largest representable under field limits) and
-assert the plan either builds under 24576 bytes or is rejected with the single
-engine_error path below — not both partial success paths.
+**Invariant (choose-one, frozen):** every set of 1..4 proposals that each pass
+ActionProposal construction **always** yields a successful ActionPlan under
+24576 bytes. There is **no** allowed “legal set overflows to engine_error” path.
+Implementations must unit-test a maximum legal complete set (4× max-size
+proposals + selected copy) and assert **plan construction succeeds**.
 
-#### Runner/activation overflow outcome (single path)
+#### Cycle result envelope (every successful cycle)
 
-| Failure | Exact outcome |
-| --- | --- |
-| Invalid activation (`enabled_plugins` count/uniqueness/unknown id, bad `steer_magnitude`, bad `accepted_kinds`) | **Reject activation** before any cycle runs |
-| A plugin returns an object that fails ActionProposal construction | Treat as that plugin’s synthetic `error` proposal if the runner can build one within bounds; if not, **engine_error** for the cycle |
-| ActionPlan construction fails bounds | **engine_error** for the cycle: `authorized_output` idle, `proposed=null`, `proposed_applied=false`, `host_application` unavailable, no selected plan (or plan status idle with empty candidates only if that still fits; preferred: no plan object, only authority + diagnostic reason `action_plan_bounds_exceeded`) |
+Every cycle produces one frozen `ShadowDecisionCycleResult`
+(`shadow_decision_cycle_result_v0`):
 
-Plugins that cannot emit a valid proposal under these bounds must return
-lifecycle `error` with a short reason (itself ≤ 240), not an oversized object.
+| Field | Type | Rule |
+| --- | --- | --- |
+| `schema` | exact `shadow_decision_cycle_result_v0` | |
+| `frame_id` | string | ≤ 128 |
+| `status` | `"ok" \| "engine_error"` | |
+| `reason` | string | `""` when `ok`; required non-empty ≤ 240 when `engine_error` |
+| `source` | DecisionDataSource or null | non-null when source built; null only if source construction failed |
+| `plan` | ActionPlan or null | non-null iff `status=ok`; **null** iff `status=engine_error` |
+| `authority` | ShadowAuthorityResult | **always** present |
+
+#### Runner outcomes (singular paths)
+
+| Situation | `status` | `plan` | `authority` | `reason` |
+| --- | --- | --- | --- | --- |
+| Normal selection or idle plan | `ok` | ActionPlan | normal fields | `""` |
+| Plugin raises / returns non-ActionProposal | `ok` | ActionPlan including a **synthetic** `error` candidate for that plugin_id (see below) | normal | `""` |
+| DecisionDataSource construction fails | `engine_error` | `null` | idle authorized, `proposed=null`, `proposed_applied=false`, `host_application` unavailable | `decision_data_source_invalid` or bounded detail |
+| Plan builder invariant broken (candidate count ≠ enabled count, etc.) | `engine_error` | `null` | same idle authority shape | `action_plan_invariant_violated` |
+| Unexpected internal exception after source built | `engine_error` | `null` | same idle authority shape | `engine_internal_error` (detail truncated to 240) |
+
+Invalid activation still **rejects activation** before any cycle (no cycle result).
+
+**There is no** “idle plan with empty candidates” alternative for engine_error.
+**There is no** placement of cycle errors solely in `authorized_output.reason`
+(that field stays `shadow-only-idle` whenever authority is emitted).
+
+#### ShadowAuthorityResult diagnostic field
+
+Add exact field:
+
+| Field | Type | Rule |
+| --- | --- | --- |
+| `cycle_status` | `"ok" \| "engine_error"` | Mirrors cycle result `status` |
+| `cycle_reason` | string | Mirrors cycle result `reason` (max 240) |
+
+So authority alone is inspectable without a separate side channel.
 
 ### DecisionDataSource (M006-01)
 
@@ -243,8 +279,9 @@ Conversion isolation:
 
 ### ActionProposal (M006-02)
 
-Each plugin emits zero or one `ActionProposal` per cycle (this unit’s runner
-invokes each enabled plugin once). Schema `action_proposal_v0`.
+Each enabled plugin emits **exactly one** `ActionProposal` per cycle. Schema
+`action_proposal_v0`. Ordinary “nothing to do” is lifecycle `inactive`, not
+omission. The runner **never** drops a plugin from `candidates`.
 
 | Field | Type | Rule |
 | --- | --- | --- |
@@ -313,11 +350,34 @@ propose(source: DecisionDataSource) -> ActionProposal
 
 Rules:
 
+- **Must return exactly one** `ActionProposal` instance (never `None`).
 - Pure with respect to DecisionDataSource: no memory writes, no perception runs,
   no network/vehicle I/O, no evaluator access.
 - Deterministic for identical source payloads.
-- Fail closed into `error` or `missing_input` / `incompatible` rather than
-  inventing evidence.
+- Fail closed into `error` or `missing_input` / `incompatible` / `inactive`
+  rather than inventing evidence or omitting a return.
+
+#### Runner synthetic candidate (exact)
+
+If `propose` raises or returns a non-`ActionProposal` value, the runner inserts
+**exactly one** synthetic proposal for that `plugin_id`:
+
+| Field | Value |
+| --- | --- |
+| `lifecycle` | `error` |
+| `freshness` | `none` |
+| `available` | `false` |
+| `command` | `null` |
+| `confidence` | `0.0` |
+| `reason` | `plugin_exception` or `plugin_invalid_return` (≤ 240) |
+| `assumptions` | `[]` |
+| `source_refs` | `[]` |
+| `proposal_id` | `{plugin_id}:{frame_id}` |
+| `metadata` | `{}` |
+
+If even the synthetic proposal cannot be constructed (should not happen under
+these field limits), the cycle is `engine_error` with reason
+`synthetic_error_proposal_failed`.
 
 ### ActionPlan selector / mixer (M006-03)
 
@@ -331,25 +391,26 @@ One deterministic selector with id `deterministic_first_active`.
 
 #### Selection algorithm (exact)
 
-1. Drop any proposal that fails the lifecycle compatibility matrix (should not
-   occur if constructors enforce the matrix; if present, treat as runner
-   `engine_error` for the cycle).
-2. Partition into **active** when **all** hold:
+1. Require `len(candidates) == len(enabled_plugins)` and one candidate per
+   enabled `plugin_id`. If not, cycle `engine_error` /
+   `action_plan_invariant_violated`.
+2. If any candidate fails the lifecycle compatibility matrix (constructor bug),
+   cycle `engine_error` / `action_proposal_matrix_violated`.
+3. Partition into **active** when **all** hold:
    - `lifecycle in {fresh, retained}`
-   - `freshness == lifecycle` (i.e. fresh↔fresh, retained↔retained)
+   - `freshness == lifecycle` (fresh↔fresh, retained↔retained)
    - `available is true`
    - `command is not null`
-3. If active is empty:
-   - Emit plan with `selected=null`, `contributions=[]` (empty list only — **no**
-     diagnostic weight-0 contributions), `status="idle"`.
-4. If active is non-empty:
+4. If active is empty:
+   - Emit plan with `selected=null`, `contributions=[]`, `status="idle"`.
+5. If active is non-empty:
    - Sort active by: higher `confidence` descending; tie-break by `plugin_id`
      ascending lexicographic.
    - Select the first proposal after sort.
    - Emit **exactly one** contribution:
      `{proposal_id, plugin_id, weight: 1.0, role: "selected"}`.
-5. **Never** blend steering/throttle from multiple proposals in this unit.
-6. **Never** implement Chase-style consensus, tournaments, or learned mixing.
+6. **Never** blend steering/throttle from multiple proposals in this unit.
+7. **Never** implement Chase-style consensus, tournaments, or learned mixing.
 
 #### ActionPlan fields (`action_plan_v0`)
 
@@ -357,16 +418,17 @@ One deterministic selector with id `deterministic_first_active`.
 | --- | --- | --- |
 | `schema` | exact `action_plan_v0` | |
 | `plan_id` | string | Exact `action-plan:{frame_id}` |
-| `frame_id` | string | |
+| `frame_id` | string | ≤ 128 code points |
 | `timestamp_ms` | int | From source |
 | `status` | `"selected" \| "idle"` | |
 | `selected` | ActionProposal or null | Deep-detached copy when selected; null when idle |
 | `contributions` | list | Empty when idle; exactly one entry when selected |
-| `candidates` | list[ActionProposal] | Complete set for enabled plugins (≤ 4), detached, stable order by `plugin_id` |
+| `candidates` | list[ActionProposal] | **Exactly** one entry per enabled plugin, detached, stable order by `plugin_id` ascending |
 | `selector_id` | exact `deterministic_first_active` | |
 | `metadata` | object | Max 1024 serialized bytes; may include lifecycle counts |
 
-Full plan serialization ceiling: **24576** bytes (see compositional budget).
+Full plan serialization ceiling: **24576** bytes. Under identifier bounds, every
+legal candidate set **must** fit (no overflow branch for legal sets).
 
 ### Shadow authority: proposed vs authorized vs host application (M006-03)
 
@@ -385,12 +447,14 @@ After the plan is produced, runtime authority emits
 | Field | Type | Rule |
 | --- | --- | --- |
 | `schema` | exact `shadow_authority_result_v0` | |
-| `frame_id` | string | |
-| `proposed` | `ProposedVehicleCommand` or null | Copy of selected command when plan `status=selected`; else `null` |
-| `authorized_output` | object | Always `{steering: 0.0, throttle: 0.0, confidence: 1.0, reason: "shadow-only-idle"}` for engine `shadow-proposals` |
-| `proposed_applied` | bool | **Always `false`** for engine `shadow-proposals`. Means: the nonzero/zero **proposal was not applied as the proposed command**. Does **not** claim whether authorized idle zeros reached actuators after host gating |
-| `host_application` | component envelope | `status=ready` only when host supplies whether/what was applied to actuators this cycle; otherwise `unavailable` with reason `host_did_not_report_application` (or `error` if reporter failed). Value when ready: `{applied: bool, steering, throttle, source: "host", reason}` |
-| `proposed_equals_authorized` | bool | See exact table below |
+| `frame_id` | string | ≤ 128 |
+| `proposed` | `ProposedVehicleCommand` or null | Copy of selected command when plan `status=selected`; **`null` when plan idle or `cycle_status=engine_error`** |
+| `authorized_output` | object | Always `{steering: 0.0, throttle: 0.0, confidence: 1.0, reason: "shadow-only-idle"}` for engine `shadow-proposals` (including engine_error cycles) |
+| `proposed_applied` | bool | **Always `false`** for engine `shadow-proposals`. Means: the **proposed** command was not applied as proposed. Does **not** claim host actuator application of authorized idle |
+| `host_application` | component envelope | Ready only when host reports actuator application this cycle; else `unavailable` / `error` — never invented |
+| `proposed_equals_authorized` | bool | See table below (`true` when `proposed` is null) |
+| `cycle_status` | `"ok" \| "engine_error"` | Mirrors `ShadowDecisionCycleResult.status` |
+| `cycle_reason` | string | Mirrors cycle reason; `""` when ok; max 240 |
 | `authority_mode` | exact `"shadow_only"` | |
 | `drive_mode_gate` | string | Echo host mode when known (`user` / `autonomy` / `unknown`) without overriding host gates |
 
@@ -604,13 +668,13 @@ This unit introduces the minimal activation/runner so plugins execute:
     catalog ids
   - `accepted_kinds`: default
     `["floor_boundary", "obstacle", "obstruction_evidence"]`; max 8 unique ids
-- Per cycle: build DecisionDataSource → run each enabled plugin once in
-  `plugin_id` ascending order → select plan → build ShadowAuthorityResult →
-  return **authorized idle** `AutonomyControl` with
-  `proposed_applied=false` and `host_application` from host reporter or
-  unavailable
+- Per cycle: build DecisionDataSource → invoke each enabled plugin once in
+  `plugin_id` ascending order → **exactly one candidate each** (synthetic
+  `error` if needed) → build ActionPlan → build ShadowAuthorityResult → emit
+  `ShadowDecisionCycleResult` → return **authorized idle** `AutonomyControl`
+  (`proposed_applied=false`; `host_application` only if host reports)
 - Host may leave `prior_host_applied_command` and `host_application` unavailable;
-  runner must not invent applied history
+  runner must not invent host application history
 
 Operator CLI surfaces (stage/info/stream/apply/view) that complete M006-05 are
 **not** required to be finished in this unit; however, types must be importable
@@ -625,7 +689,8 @@ combined view.
 | DecisionDataSource type + freeze | `autonomy/decision/` (new module e.g. `decision_data.py`) |
 | ActionProposal, ProposedVehicleCommand, SourceRef | `autonomy/decision/` (e.g. `action_proposal.py`) |
 | ActionPlan + deterministic selector | `autonomy/decision/` (e.g. `action_plan.py`) |
-| ShadowAuthorityResult + applied idle enforcement | `autonomy/decision/` + cycle/engine integration points |
+| ShadowAuthorityResult + authorized-idle / `proposed_applied=false` | `autonomy/decision/` + cycle/engine integration |
+| `ShadowDecisionCycleResult` ok/engine_error envelope | same runner module |
 | Plugin protocol + catalog loading | `autonomy/decision/` + `implementations/decision/` |
 | `avoid_recent_obstruction` | `implementations/decision/proposals/avoid_recent_obstruction.py` (path may sharpen) |
 | Activation id `shadow-proposals` | decision activation/catalog parallel to memory activation |
@@ -642,9 +707,10 @@ combined view.
   path (not stale).
 - Future-dated provenance only: plugin `error` / `future_dated_provenance`.
 - Memory empty/unavailable/error: as health mapping; never invent host application.
-- Bound/plan overflow: single engine_error path; authorized idle;
-  `proposed_applied=false`.
-- Serialization under compositional budget; max legal 4-candidate set tested.
+- Legal max 4-candidate set: plan **always builds** under budget (tested).
+- engine_error: `plan=null`, authority present with `cycle_status=engine_error`
+  and `cycle_reason` set; authorized idle; `proposed_applied=false`.
+- Every enabled plugin appears exactly once in `candidates`.
 
 ## Adversarial Matrix
 
@@ -670,8 +736,9 @@ combined view.
 | Capabilities unavailable | Use config `steer_magnitude`; assume `capabilities_not_ready` |
 | Capabilities ready with invalid max_abs_steering | Plugin `error` / `invalid_capabilities` |
 | reason length 241 / >16 source_refs / proposal >4096 B | Reject proposal construction |
-| 4×4096 candidates + selected copy would exceed 24576 | Reject plan → engine_error path |
-| Max legal complete set under budget | Plan builds; tested |
+| Max legal 4×4096 candidates + selected copy | Plan **must build** under 24576; tested |
+| Plugin raises / returns None | Synthetic `error` candidate still present; candidates count unchanged |
+| engine_error cycle | `plan is null`; authority `cycle_status=engine_error`; `authorized_output.reason` still `shadow-only-idle`; diagnostic in `cycle_reason` only |
 | Confidence `1.5` or `NaN` on ActionProposal | Reject construction |
 | VehicleAction as proposal command | Reject construction |
 | Evaluator/map keys on DecisionDataSource | Must not appear |
@@ -707,10 +774,11 @@ combined view.
 - `autonomy/decision/decision_data.py` (or equivalent) — DecisionDataSource +
   component envelopes
 - `autonomy/decision/action_proposal.py` — ProposedVehicleCommand, SourceRef,
-  ActionProposal + validation
+  ActionProposal + matrix/bounds validation
 - `autonomy/decision/action_plan.py` — ActionPlan + `deterministic_first_active`
   selector
-- `autonomy/decision/shadow_authority.py` — ShadowAuthorityResult helpers
+- `autonomy/decision/shadow_authority.py` — ShadowAuthorityResult +
+  ShadowDecisionCycleResult helpers
 - `implementations/decision/proposals/avoid_recent_obstruction.py` — reference
   plugin
 - `implementations/decision/catalog.py` / activation wiring for `shadow-proposals`
@@ -718,15 +786,15 @@ combined view.
 - `tests/autonomy/decision/test_decision_data_source.py`
 - `tests/autonomy/decision/test_action_proposal_plan.py`
 - `tests/implementations/decision/test_avoid_recent_obstruction.py`
-- Focused runner test module proving applied idle + proposed/applied separation
+- Focused runner tests: authorized idle, `proposed_applied=false`, one candidate
+  per plugin, max legal plan builds, engine_error shape
 
 ### Modify
 
 - `autonomy/decision/__init__.py` — exports
 - `autonomy/decision/cycle.py` and/or runtime engine integration — only as needed
-  to build DecisionDataSource, run shadow engine, keep applied idle, and attach
-  inspectable plan/authority on cycle results or engine metadata **without**
-  applying proposals
+  to build DecisionDataSource, run shadow engine, emit authorized idle control,
+  attach inspectable cycle result/plan/authority **without** applying proposals
 - Decision activation / packaging paths parallel to memory activation (minimal)
 - Milestone plan/HTML only at implementation handoff transitions
 
@@ -762,20 +830,23 @@ Acceptance requires:
 3. Lifecycle×freshness×available×command×source_refs matrix is enforced at
    construction; selector never admits contradictory tuples.
 4. DecisionDataSource is immutable across plugins.
-5. Compositional bounds hold; max legal 4-candidate set is tested; plan overflow
-   uses the single engine_error path.
-6. Selector matches `deterministic_first_active` exactly; contributions empty or
-   exactly one; no blending.
-7. Authority: idle `authorized_output`, **`proposed_applied=false`**, host
+5. Compositional bounds hold; every legal candidate set fits; max legal set
+   **builds** (no dual overflow path for legal sets).
+6. Exactly one candidate per enabled plugin; synthetic `error` on plugin failure.
+7. engine_error representation is singular: `ShadowDecisionCycleResult` with
+   `plan=null` and authority `cycle_status`/`cycle_reason`.
+8. Selector matches `deterministic_first_active`; contributions empty or exactly
+   one; no blending.
+9. Authority: idle `authorized_output`, **`proposed_applied=false`**, host
    application only when reported; `proposed_equals_authorized` per table.
-8. Active selection prefers fresh over retained over stale before confidence;
-   future-dated provenance fails closed.
-9. Default accepted kinds include `obstruction_evidence`; unrecognized kinds
-   never produce a command.
-10. `steer_magnitude` activation range enforced; capabilities unavailable path
+10. Active selection prefers fresh over retained over stale before confidence;
+    future-dated provenance fails closed.
+11. Default accepted kinds include `obstruction_evidence`; unrecognized kinds
+    never produce a command.
+12. `steer_magnitude` activation range enforced; capabilities unavailable path
     exact.
-11. Confidence rejects non-finite/out-of-range values (no silent clamp).
-12. No live vehicle dependency in CI; no evaluator fields on DecisionDataSource.
+13. Confidence rejects non-finite/out-of-range values (no silent clamp).
+14. No live vehicle dependency in CI; no evaluator fields on DecisionDataSource.
 
 ## Expected Handoff
 
@@ -787,23 +858,23 @@ Post-merge implementation success template (merge-time identity filled by
   "schema": "milestone_handoff_template_v1",
   "outcome": "advance",
   "result": "Accepted",
-  "durable_evidence": "DecisionDataSource, ActionProposal/Plan, shadow authority, and avoid_recent_obstruction deterministic matrix in PR #{pr}",
+  "durable_evidence": "DecisionDataSource, ActionProposal/Plan, ShadowAuthorityResult (proposed_applied=false), ShadowDecisionCycleResult, and avoid_recent_obstruction matrix in PR #{pr}",
   "criterion_updates": {
     "M006-01": {
       "status": "Met",
-      "evidence": "Immutable DecisionDataSource with observation/memory/patterns/projections/capabilities/prior_applied envelopes in PR #{pr}"
+      "evidence": "Immutable DecisionDataSource with observation/memory/patterns/projections/capabilities/prior_host_applied_command envelopes in PR #{pr}"
     },
     "M006-02": {
       "status": "Met",
-      "evidence": "ActionProposal schema with lifecycle, confidence, reason, ProposedVehicleCommand, freshness, assumptions, source_refs in PR #{pr}"
+      "evidence": "Bounded ActionProposal schema with lifecycle/freshness matrix, ProposedVehicleCommand, assumptions, source_refs; one candidate per enabled plugin in PR #{pr}"
     },
     "M006-03": {
       "status": "Met",
-      "evidence": "deterministic_first_active ActionPlan selector and ShadowAuthorityResult proposed-vs-applied separation in PR #{pr}"
+      "evidence": "deterministic_first_active ActionPlan; ShadowAuthorityResult proposed vs authorized_output vs proposed_applied=false vs host_application; cycle ok/engine_error envelope in PR #{pr}"
     },
     "M006-04": {
       "status": "Met",
-      "evidence": "avoid_recent_obstruction fresh/retained/stale/inactive/incompatible/missing_input/error matrix in PR #{pr}"
+      "evidence": "avoid_recent_obstruction fresh-before-stale selection and lifecycle matrix including obstruction_evidence kind in PR #{pr}"
     }
   },
   "risk_remove": [

@@ -66,7 +66,7 @@ model, changing perception semantics, or granting movement authority.
 
 **Milestone closeout**
 
-- Workflow state: ready_for_proposal
+- Workflow state: proposal_in_review
 - Proposal branch: `m005/closeout-proposal` (planned; not opened)
 - Implementation branch: `m005/closeout` (planned; not opened)
 - Proposal path: `docs/milestones/005-evidence-memory-foundation/proposals/closeout.md`
@@ -94,6 +94,7 @@ model, changing perception semantics, or granting movement authority.
 | Conflicting evidence semantics | implementation_in_review | Started m005/conflicting-evidence. |
 | Conflicting evidence semantics | accepted | Implementation PR #64 merged at 8d4772ba45575b6e0a3b73fdb08656d0c0dcccbd. |
 | Milestone closeout | ready_for_proposal | Promoted after implementation PR #64. |
+| Milestone closeout | proposal_in_review | Started m005/closeout-proposal. |
 
 ## Accepted Review Units
 

@@ -69,7 +69,7 @@ for simulator and physical vehicles.
 
 **Modular shadow action proposal foundation**
 
-- Workflow state: ready_for_implementation
+- Workflow state: implementation_in_review
 - Proposal branch: `m006/shadow-proposals-proposal`
 - Implementation branch: `m006/shadow-proposals`
 - Proposal path: `docs/milestones/006-decision-facing-perception-readiness/proposals/shadow-proposals.md`
@@ -103,6 +103,7 @@ for simulator and physical vehicles.
 | Modular shadow action proposal foundation | ready_for_proposal | Plan revision: replaced the unstarted fitness-first frontier before any M006 proposal branch or artifact existed. |
 | Modular shadow action proposal foundation | proposal_in_review | Started m006/shadow-proposals-proposal. |
 | Modular shadow action proposal foundation | ready_for_implementation | Proposal PR #73 accepted at 7a585fc5eab8028b7454ad0040575cf4120c8e92. |
+| Modular shadow action proposal foundation | implementation_in_review | Started m006/shadow-proposals. |
 
 ## Accepted Review Units
 

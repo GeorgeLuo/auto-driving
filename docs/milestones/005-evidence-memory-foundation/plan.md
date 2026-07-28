@@ -67,7 +67,8 @@ model, changing perception semantics, or granting movement authority.
 **Milestone closeout**
 
 - Workflow state: proposal_in_review
-- Proposal branch: `m005/closeout-proposal` (planned; not opened)
+- PR: [#66](https://github.com/GeorgeLuo/auto-driving/pull/66)
+- Proposal branch: `m005/closeout-proposal`
 - Implementation branch: `m005/closeout` (planned; not opened)
 - Proposal path: `docs/milestones/005-evidence-memory-foundation/proposals/closeout.md`
 - Review kind: Milestone closeout

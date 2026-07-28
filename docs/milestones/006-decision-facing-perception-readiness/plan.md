@@ -4,7 +4,7 @@
 | --- | --- |
 | Status | Active |
 | Milestone branch | `milestone/006-decision-facing-perception-readiness` |
-| Cumulative PR | TBD |
+| Cumulative PR | [#70](https://github.com/GeorgeLuo/auto-driving/pull/70) (draft until whole-milestone closeout) |
 | Current frontier | Decision-facing fitness measures |
 | Started | 2026-07-28 |
 | Action policy | Idle / no movement for the entire milestone |

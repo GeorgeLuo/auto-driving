@@ -11,7 +11,7 @@ and milestone history. Read this file first when starting work.
 | --- | --- |
 | Status | Active |
 | Plan | [plan.html](milestones/006-decision-facing-perception-readiness/plan.html) · [plan.md](milestones/006-decision-facing-perception-readiness/plan.md) |
-| Cumulative PR | TBD |
+| Cumulative PR | [#70](https://github.com/GeorgeLuo/auto-driving/pull/70) (draft) |
 | Current frontier | Decision-facing fitness measures |
 
 Detailed exit criteria, workflow state, and risks live only in the milestone

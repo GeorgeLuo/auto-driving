@@ -38,6 +38,27 @@ from .memory import (
 )
 from .observation import OBSERVATION_SCHEMA, Observation, observation_from_perception
 from .plugin import MemoryImplementation
+from .shadow_ids import ShadowCycleInputError
+from .decision_data import (
+    DECISION_DATA_SOURCE_SCHEMA,
+    ComponentEnvelope,
+    DecisionDataSource,
+    build_decision_data_source,
+)
+from .action_proposal import (
+    ACTION_PROPOSAL_SCHEMA,
+    ActionProposal,
+    ProposedVehicleCommand,
+    SourceRef,
+)
+from .action_plan import ACTION_PLAN_SCHEMA, ActionPlan, SELECTOR_ID, select_action_plan
+from .shadow_authority import (
+    SHADOW_AUTHORITY_RESULT_SCHEMA,
+    SHADOW_DECISION_CYCLE_RESULT_SCHEMA,
+    ShadowAuthorityResult,
+    ShadowDecisionCycleResult,
+)
+from .shadow_runner import ENGINE_ID, ShadowProposalsConfig, ShadowProposalsEngine
 
 __all__ = [
     "DECISION_CYCLE_RESULT_SCHEMA",
@@ -74,4 +95,24 @@ __all__ = [
     "serialized_mapping_bytes",
     "serialized_memory_snapshot_bytes",
     "unavailable_memory_snapshot",
+    "ShadowCycleInputError",
+    "DECISION_DATA_SOURCE_SCHEMA",
+    "ComponentEnvelope",
+    "DecisionDataSource",
+    "build_decision_data_source",
+    "ACTION_PROPOSAL_SCHEMA",
+    "ActionProposal",
+    "ProposedVehicleCommand",
+    "SourceRef",
+    "ACTION_PLAN_SCHEMA",
+    "ActionPlan",
+    "SELECTOR_ID",
+    "select_action_plan",
+    "SHADOW_AUTHORITY_RESULT_SCHEMA",
+    "SHADOW_DECISION_CYCLE_RESULT_SCHEMA",
+    "ShadowAuthorityResult",
+    "ShadowDecisionCycleResult",
+    "ENGINE_ID",
+    "ShadowProposalsConfig",
+    "ShadowProposalsEngine",
 ]

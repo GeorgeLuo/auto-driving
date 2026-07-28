@@ -3,8 +3,8 @@
 | Field | Value |
 | --- | --- |
 | Status | closed |
-| Milestone branch | `milestone/005-evidence-memory-foundation` (active; created from `main` after #58) |
-| Cumulative PR | [#68](https://github.com/GeorgeLuo/auto-driving/pull/68) (draft transitional delta to `main`; mark ready after Phase B handoff) |
+| Milestone branch | `milestone/005-evidence-memory-foundation` (closed; created from `main` after #58) |
+| Cumulative PR | [#68](https://github.com/GeorgeLuo/auto-driving/pull/68) (transitional delta to `main`; Phase B complete; whole-milestone review) |
 | Current frontier | None (closed) |
 | Contract baseline | `22cfff9` — M005 work through PR #50, before the compact contract |
 | Grandfathered PRs | #57 (accepted evidence unit), #58 (contract migration); both retain their existing `main` targets |
@@ -135,21 +135,13 @@ remain one row per merged PR.
 
 ## Closeout
 
-Phase A judgment is published in
-[closeout.md](closeout.md). It states what memory representation proved useful,
-residual limits, and the decision to **activate** the 006 pre-plan after 005
-plan Status is closed.
+The durable judgment is published in [closeout.md](closeout.md). It states what
+memory representation proved useful, residual limits, and the decision to
+activate the 006 pre-plan through a separate cross-milestone step.
 
-**Not yet applied in this implementation PR (Phase B only):** M005-13 Met, Open
-Risks removal matching the restated residuals, Status `closed`, empty frontiers,
-and the accepted-ledger row for the closeout implementation PR. Those mutations
-are owned exclusively by:
+The post-merge handoff for PR #69 marked M005-13 Met, removed the open-risk rows
+restated in the closeout, set Status `closed`, emptied both frontier slots, and
+recorded the accepted implementation unit.
 
-```text
-python3 docs/milestones/workflow.py complete-implementation \
-  --plan docs/milestones/005-evidence-memory-foundation/plan.md \
-  --pr <closeout-implementation-pr>
-```
-
-Cumulative PR: [#68](https://github.com/GeorgeLuo/auto-driving/pull/68) — mark
-ready after that handoff (Phase C), not as handoff durable evidence.
+Cumulative PR [#68](https://github.com/GeorgeLuo/auto-driving/pull/68) is the
+Phase C whole-milestone review surface.

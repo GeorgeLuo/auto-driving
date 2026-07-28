@@ -1,9 +1,9 @@
 # Milestone 005 Closeout: Evidence Memory Foundation
 
-Status: closeout judgment published 2026-07-28
+Status: closed 2026-07-28
 
-(Plan header Status remains Active until post-merge `complete-implementation`
-sets Status `closed` and M005-13 Met.)
+The post-merge `complete-implementation` handoff for PR #69 set plan Status
+`closed`, marked M005-13 Met, and recorded the accepted closeout unit.
 
 ## Outcome
 
@@ -16,10 +16,9 @@ idle for the entire milestone. Memory retains attributed observation evidence; i
 does not claim a world model, semantic identity, or movement authority.
 
 Whole-milestone acceptance is the durable judgment in this file plus the
-accepted review-unit ledger in the plan. Terminal plan mutations (M005-13 Met,
-risk-table clear, Status closed, empty frontiers) are owned by post-merge
-`complete-implementation` for the closeout implementation PR—not by this Phase A
-document alone.
+accepted review-unit ledger in the plan. The post-merge handoff applied the
+terminal plan mutations: M005-13 Met, risk-table clear, Status closed, and empty
+frontiers.
 
 ## Durable Decisions
 
@@ -96,16 +95,15 @@ from the plan without concealing unfinished product work.
   `evidence/`; this closeout does **not** re-run live vehicles or reopen #64’s
   conflict matrix.
 - No closeout step commands movement or grants non-idle action authority.
-- Plan integrity: Phase A leaves Exit Criteria, Open Risks, Accepted Review Units,
-  and Status Active unchanged; Phase B applies terminal handoff.
+- Plan integrity: Phase A left Exit Criteria, Open Risks, Accepted Review Units,
+  and Status Active unchanged; Phase B applied the reviewed terminal handoff.
 
 ## Deferred Work
 
 - **Activate** the existing pre-plan
   [Milestone 006 — Decision-Facing Perception Readiness](../006-decision-facing-perception-readiness/plan.html)
-  after 005 plan Status is closed (Phase B) and operator post-handoff steps allow
-  cross-milestone navigation. Activation is a status/navigation step, not 005
-  product scope.
+  only through its separate cross-milestone activation step after cumulative
+  closeout review. Activation is not 005 product scope.
 - Do **not** implement 006 packages under `m005/closeout`.
 - No competing pre-plan is introduced by this closeout.
 
@@ -117,7 +115,7 @@ from the plan without concealing unfinished product work.
 | Base | `main` |
 | Head | `milestone/005-evidence-memory-foundation` |
 | Shape | Transitional remaining-work delta (post-baseline milestone tip) |
-| Readiness | **Mark ready after Phase B handoff** (operator Phase C). Not verified by `complete-implementation` for the closeout implementation PR. |
+| Readiness | Phase B complete; this PR is the Phase C whole-milestone review surface. |
 
 ## References
 

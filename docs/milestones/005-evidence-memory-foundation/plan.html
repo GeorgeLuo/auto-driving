@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="81225544d32e2567c2e75eadd4788c66937f321ea57090e96bdd758a6d7e99d2">
+  <meta name="source-sha256" content="6fb5920bb6d1339180d80deeaa98808d849abf2ffa88236e7ad4cce9781be951">
   <base target="_blank">
   <title>Milestone plan — 005-evidence-memory-foundation</title>
   <style>
@@ -77,11 +77,11 @@
 </tr>
 <tr>
 <td>Milestone branch</td>
-<td><code>milestone/005-evidence-memory-foundation</code> (active; created from <code>main</code> after #58)</td>
+<td><code>milestone/005-evidence-memory-foundation</code> (closed; created from <code>main</code> after #58)</td>
 </tr>
 <tr>
 <td>Cumulative PR</td>
-<td><a href="https://github.com/GeorgeLuo/auto-driving/pull/68">#68</a> (draft transitional delta to <code>main</code>; mark ready after Phase B handoff)</td>
+<td><a href="https://github.com/GeorgeLuo/auto-driving/pull/68">#68</a> (transitional delta to <code>main</code>; Phase B complete; whole-milestone review)</td>
 </tr>
 <tr>
 <td>Current frontier</td>
@@ -554,20 +554,14 @@ remain one row per merged PR.</p>
 </tbody>
 </table>
 <h2>Closeout</h2>
-<p>Phase A judgment is published in
-<a href="closeout.md">closeout.md</a>. It states what memory representation proved useful,
-residual limits, and the decision to <strong>activate</strong> the 006 pre-plan after 005
-plan Status is closed.</p>
-<p><strong>Not yet applied in this implementation PR (Phase B only):</strong> M005-13 Met, Open
-Risks removal matching the restated residuals, Status <code>closed</code>, empty frontiers,
-and the accepted-ledger row for the closeout implementation PR. Those mutations
-are owned exclusively by:</p>
-<pre><code class="language-text">python3 docs/milestones/workflow.py complete-implementation \
-  --plan docs/milestones/005-evidence-memory-foundation/plan.md \
-  --pr &lt;closeout-implementation-pr&gt;
-</code></pre>
-<p>Cumulative PR: <a href="https://github.com/GeorgeLuo/auto-driving/pull/68">#68</a> — mark
-ready after that handoff (Phase C), not as handoff durable evidence.</p>
+<p>The durable judgment is published in <a href="closeout.md">closeout.md</a>. It states what
+memory representation proved useful, residual limits, and the decision to
+activate the 006 pre-plan through a separate cross-milestone step.</p>
+<p>The post-merge handoff for PR #69 marked M005-13 Met, removed the open-risk rows
+restated in the closeout, set Status <code>closed</code>, emptied both frontier slots, and
+recorded the accepted implementation unit.</p>
+<p>Cumulative PR <a href="https://github.com/GeorgeLuo/auto-driving/pull/68">#68</a> is the
+Phase C whole-milestone review surface.</p>
   </main>
 </body>
 </html>

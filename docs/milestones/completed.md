@@ -103,8 +103,7 @@ Full record: [plan](004-physical-perception-parity/plan.html) and
 
 ## 005 - Evidence Memory Foundation
 
-Closed: 2026-07-28 (judgment published; plan Status becomes closed via
-post-merge closeout handoff)
+Closed: 2026-07-28
 
 Delivered bounded decision-cycle memory: typed snapshots and activation, dual
 host wiring, operator stage/inspect/stream/reset/replay with opt-in provenance
@@ -120,9 +119,9 @@ structural conflict without semantic fusion; separate proposal from
 implementation review.
 
 Remaining work: activate milestone 006 (decision-facing perception readiness)
-after 005 plan Status is closed; residual physical perception quality for
-movement, process-local memory, and Metrics UI capture dependency remain
-documented limits rather than 005 blockers.
+through its separate cross-milestone activation step; residual physical
+perception quality for movement, process-local memory, and Metrics UI capture
+dependency remain documented limits rather than 005 blockers.
 
 Full record: [plan](005-evidence-memory-foundation/plan.md) ·
 [plan.html](005-evidence-memory-foundation/plan.html) and

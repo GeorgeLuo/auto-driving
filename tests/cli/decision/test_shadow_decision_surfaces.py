@@ -572,6 +572,82 @@ class ShadowDecisionSurfaceTests(unittest.TestCase):
         cmd_schema["plan"]["candidates"][0] = cmd0b
         self.assertEqual(_accept_with_cycle(cmd_schema), "latest_frame_invalid")
 
+        # Aggregate cycle alignment: valid nested objects that do not form one cycle.
+        from autonomy.decision.action_proposal import ProposedVehicleCommand
+        from implementations.decision.catalog import create_shadow_proposals_engine
+
+        engine = create_shadow_proposals_engine()
+        cycle2, _ = engine.run_cycle(
+            frame_id="frame_002",
+            frame_index=2,
+            timestamp_ms=2000,
+            observation=strict_decode_apply_observation(
+                json.loads((ACTIVE_RUN / "sequence.json").read_text())["frames"][0][
+                    "observation"
+                ]
+            ),
+            memory=strict_decode_apply_memory(
+                json.loads((ACTIVE_RUN / "sequence.json").read_text())["frames"][0][
+                    "memory"
+                ]
+            ),
+        )
+        cycle2_dict = cycle2.to_dict()
+
+        # (A) authority.proposed idle zeros while selected plan command is nonzero
+        idle_proposed = dict(frame["cycle"])
+        idle_proposed["authority"] = dict(frame["cycle"]["authority"])
+        idle_proposed["authority"]["proposed"] = ProposedVehicleCommand(
+            steering=0.0, throttle=0.0
+        ).to_dict()
+        idle_proposed["authority"]["proposed_equals_authorized"] = True
+        self.assertEqual(_accept_with_cycle(idle_proposed), "latest_frame_invalid")
+
+        # (B) replace plan with a valid plan from another frame_id
+        other_plan = dict(frame["cycle"])
+        other_plan["plan"] = cycle2_dict["plan"]
+        self.assertEqual(_accept_with_cycle(other_plan), "latest_frame_invalid")
+
+        # (C) replace source with another frame's source and retarget envelope timing
+        other_source = dict(frame)
+        other_source["cycle"] = dict(frame["cycle"])
+        other_source["cycle"]["source"] = cycle2_dict["source"]
+        other_source["frame_index"] = 2
+        other_source["timestamp_ms"] = 2000
+        other_source["observation_summary"] = _observation_summary(
+            other_source["cycle"]["source"]
+        )
+        other_source["memory_summary"] = _memory_summary(
+            other_source["cycle"]["source"]
+        )
+        other_source["plan_summary"] = _plan_summary(other_source["cycle"]["plan"])
+        other_source["authority_summary"] = _authority_summary(
+            other_source["cycle"]["authority"], other_source["cycle"]
+        )
+        with self.assertRaises(Exception) as ctx:
+            accept_decision_stream_frame(
+                other_source,
+                activation=activation,
+                automation_state=state,
+                now_ms=6000,
+                is_pid_alive=lambda pid: True,
+            )
+        self.assertEqual(ctx.exception.error, "latest_frame_invalid")
+
+        # (D) only top-level frame_index/timestamp_ms diverge from source
+        bad_timing = dict(frame)
+        bad_timing["frame_index"] = 99
+        bad_timing["timestamp_ms"] = 99999
+        with self.assertRaises(Exception) as ctx:
+            accept_decision_stream_frame(
+                bad_timing,
+                activation=activation,
+                automation_state=state,
+                now_ms=6000,
+                is_pid_alive=lambda pid: True,
+            )
+        self.assertEqual(ctx.exception.error, "latest_frame_invalid")
+
     def test_publish_and_stream_once_cli(self) -> None:
         self._stage()
         cycle = self._sample_cycle()

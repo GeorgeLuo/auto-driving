@@ -1102,7 +1102,8 @@ def _require_stream_frame_envelope(frame: dict[str, Any]) -> None:
             "latest_frame_invalid",
             "Latest decision frame cycle must be an object.",
         )
-    _require_exact_cycle_export(cycle)
+    reconstructed = _require_exact_cycle_export(cycle)
+    _require_aggregate_cycle_alignment(frame, reconstructed)
 
 
 def _require_observation_summary(payload: object) -> None:
@@ -1569,12 +1570,13 @@ def _strict_decode_source(payload: object, *, field: str) -> DecisionDataSource:
     return source
 
 
-def _require_exact_cycle_export(cycle: dict[str, Any]) -> None:
+def _require_exact_cycle_export(cycle: dict[str, Any]) -> ShadowDecisionCycleResult:
     """Strict reconstruction + full canonical export equality for the cycle.
 
     One owning boundary: reconstruct typed PR #74 objects (authority, plan,
     proposals/commands, source) and require lossless ``to_dict()`` equality.
     Adjacent nested authority/command/mode tampering is rejected as a class.
+    Returns the reconstructed cycle for aggregate alignment checks.
     """
 
     _require_exact_keys(cycle, CYCLE_EXACT_KEYS, field="cycle")
@@ -1626,6 +1628,129 @@ def _require_exact_cycle_export(cycle: dict[str, Any]) -> None:
             details={"field": "cycle"},
         ) from exc
     _require_canonical_export_equal(cycle, reconstructed.to_dict(), field="cycle")
+    return reconstructed
+
+
+def _require_aggregate_cycle_alignment(
+    frame: dict[str, Any],
+    cycle: ShadowDecisionCycleResult,
+) -> None:
+    """Enforce cross-object cycle alignment the nested constructors do not own.
+
+    - cycle / authority / plan / source share one frame_id
+    - plan/source timestamps agree when both present
+    - stream envelope frame_index/timestamp_ms come from the cycle source
+    - authority.proposed is the selected plan command (or null for idle/error)
+    """
+
+    frame_id = cycle.frame_id
+    if frame.get("frame_id") != frame_id:
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            "stream frame_id must equal cycle.frame_id.",
+            details={"field": "frame_id"},
+        )
+    if cycle.authority.frame_id != frame_id:
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            "authority.frame_id must equal cycle.frame_id.",
+            details={"field": "cycle.authority.frame_id"},
+        )
+
+    plan = cycle.plan
+    source = cycle.source
+    if plan is not None and plan.frame_id != frame_id:
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            "plan.frame_id must equal cycle.frame_id.",
+            details={"field": "cycle.plan.frame_id"},
+        )
+    if source is not None and source.frame_id != frame_id:
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            "source.frame_id must equal cycle.frame_id.",
+            details={"field": "cycle.source.frame_id"},
+        )
+    if plan is not None and source is not None:
+        if plan.timestamp_ms != source.timestamp_ms:
+            raise DecisionSurfaceError(
+                "latest_frame_invalid",
+                "plan.timestamp_ms must equal source.timestamp_ms.",
+                details={"field": "cycle.plan.timestamp_ms"},
+            )
+
+    # Stream envelope timing identity is derived from the cycle source.
+    expected_index = source.frame_index if source is not None else 0
+    expected_ts = source.timestamp_ms if source is not None else 0
+    if frame.get("frame_index") != expected_index:
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            "stream frame_index must match cycle source frame_index.",
+            details={
+                "field": "frame_index",
+                "expected": expected_index,
+                "got": frame.get("frame_index"),
+            },
+        )
+    if frame.get("timestamp_ms") != expected_ts:
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            "stream timestamp_ms must match cycle source timestamp_ms.",
+            details={
+                "field": "timestamp_ms",
+                "expected": expected_ts,
+                "got": frame.get("timestamp_ms"),
+            },
+        )
+
+    # authority.proposed must be the selected plan command (detached equal value).
+    proposed = cycle.authority.proposed
+    if cycle.status == "engine_error" or plan is None or plan.status == "idle":
+        if proposed is not None:
+            raise DecisionSurfaceError(
+                "latest_frame_invalid",
+                "authority.proposed must be null when plan is idle/absent or cycle is engine_error.",
+                details={"field": "cycle.authority.proposed"},
+            )
+        return
+
+    selected = plan.selected_candidate()
+    if selected is None:
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            "selected plan is missing the selected candidate.",
+            details={"field": "cycle.plan.selected_proposal_id"},
+        )
+    selected_command = selected.command
+    if selected_command is None:
+        if proposed is not None:
+            raise DecisionSurfaceError(
+                "latest_frame_invalid",
+                "authority.proposed must be null when the selected candidate has no command.",
+                details={"field": "cycle.authority.proposed"},
+            )
+        return
+    if proposed is None:
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            "authority.proposed must equal the selected plan command.",
+            details={"field": "cycle.authority.proposed"},
+        )
+    try:
+        if canonical_json_utf8(_json_ready(proposed.to_dict())) != canonical_json_utf8(
+            _json_ready(selected_command.to_dict())
+        ):
+            raise DecisionSurfaceError(
+                "latest_frame_invalid",
+                "authority.proposed must equal the selected plan command.",
+                details={"field": "cycle.authority.proposed"},
+            )
+    except ValueError as exc:
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            f"authority.proposed/selected command are not strictly JSON-serializable: {exc}",
+            details={"field": "cycle.authority.proposed"},
+        ) from exc
 
 
 def _require_stream_summaries_match_cycle(

@@ -1374,6 +1374,32 @@ class ShadowDecisionSurfaceTests(unittest.TestCase):
             )
             self.assertEqual(list(Path(out).iterdir()), [])
 
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as out:
+            temp_root = Path(tmp)
+            real_parent = temp_root / "real-parent"
+            real_run = real_parent / "run"
+            shutil.copytree(ACTIVE_RUN, real_run)
+            source_frames = real_run / "frames"
+            source_frames.mkdir()
+            (source_frames / "frame_001.png").write_bytes(b"fixture")
+            linked_parent = temp_root / "linked-parent"
+            linked_parent.symlink_to(real_parent, target_is_directory=True)
+            nested_under_link = linked_parent / "run"
+            self.assertFalse(nested_under_link.is_symlink())
+            rejected_ancestor = apply_vehicle_decision(
+                vehicle_id="chase-sim-chaser",
+                from_run=nested_under_link,
+                json_output=True,
+                record=True,
+                output_root=Path(out),
+            )
+            self.assertEqual(rejected_ancestor.exit_code, 2)
+            self.assertEqual(
+                json.loads(rejected_ancestor.message)["error"],
+                "run_invalid",
+            )
+            self.assertEqual(list(Path(out).iterdir()), [])
+
     def test_apply_cli_json(self) -> None:
         self._stage()
         missing_id = run_automa(
@@ -1432,6 +1458,47 @@ class ShadowDecisionSurfaceTests(unittest.TestCase):
             payload = json.loads(result.stdout)
             self.assertEqual(payload["schema"], "vehicle_decision_error_v0")
             self.assertEqual(payload["error"], "record_write_failed")
+
+    def test_apply_record_name_collisions_preserve_preexisting_paths(self) -> None:
+        self._stage()
+        with tempfile.TemporaryDirectory() as out:
+            out_root = Path(out)
+            final_name = "chase-sim-chaser-STAMP-abc123"
+            partial_name = f".{final_name}.partial"
+            for collision_name in (final_name, partial_name):
+                with self.subTest(collision_name=collision_name):
+                    collision = out_root / collision_name
+                    collision.mkdir()
+                    sentinel = collision / "sentinel.txt"
+                    sentinel.write_text("keep me", encoding="utf-8")
+                    with (
+                        patch(
+                            "cli.automa_cli.decision.time.strftime",
+                            return_value="STAMP",
+                        ),
+                        patch(
+                            "cli.automa_cli.decision.secrets.token_hex",
+                            return_value="abc123",
+                        ),
+                    ):
+                        result = apply_vehicle_decision(
+                            vehicle_id="chase-sim-chaser",
+                            from_run=ACTIVE_RUN,
+                            json_output=True,
+                            record=True,
+                            output_root=out_root,
+                        )
+                    self.assertEqual(result.exit_code, 2)
+                    self.assertEqual(
+                        json.loads(result.message)["error"],
+                        "record_write_failed",
+                    )
+                    self.assertTrue(collision.is_dir())
+                    self.assertEqual(
+                        sentinel.read_text(encoding="utf-8"),
+                        "keep me",
+                    )
+                    shutil.rmtree(collision)
 
     def test_apply_no_memory_frame(self) -> None:
         self._stage()

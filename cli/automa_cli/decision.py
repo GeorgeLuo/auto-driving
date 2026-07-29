@@ -2812,6 +2812,8 @@ def _write_apply_record(
     nonce = secrets.token_hex(3)
     final_dir = output_root / f"{safe_path_part(vehicle_id)}-{stamp}-{nonce}"
     partial_dir = output_root / f".{safe_path_part(vehicle_id)}-{stamp}-{nonce}.partial"
+    partial_owned = False
+    final_owned = False
     try:
         output_root.mkdir(parents=True, exist_ok=True)
         if final_dir.exists() or partial_dir.exists():
@@ -2821,6 +2823,7 @@ def _write_apply_record(
                 vehicle_id=vehicle_id,
             )
         partial_dir.mkdir(parents=True, exist_ok=False)
+        partial_owned = True
         frames_dir = partial_dir / "frames"
         source_frames_dir = partial_dir / "source_frames"
         frames_dir.mkdir()
@@ -2848,16 +2851,7 @@ def _write_apply_record(
             html_image_rel = None
             src = from_run_dir / "frames" / f"{frame_id}.png"
             source_frames_root = from_run_dir / "frames"
-            if (
-                from_run_dir.is_symlink()
-                or source_frames_root.is_symlink()
-                or src.is_symlink()
-            ):
-                raise DecisionSurfaceError(
-                    "run_invalid",
-                    f"Source image path must not use symlinks: {src}",
-                    vehicle_id=vehicle_id,
-                )
+            _require_no_source_path_symlinks(src, vehicle_id=vehicle_id)
             if src.is_file():
                 resolved = src.resolve()
                 base = source_frames_root.resolve()
@@ -2932,9 +2926,19 @@ def _write_apply_record(
 
         # Publication is the final operation: readers never observe a partial tree.
         partial_dir.rename(final_dir)
+        partial_owned = False
+        final_owned = True
         return final_dir
     except DecisionSurfaceError as exc:
-        cleanup_errors = _cleanup_record_paths(partial_dir, final_dir)
+        owned_paths = [
+            path
+            for path, owned in (
+                (partial_dir, partial_owned),
+                (final_dir, final_owned),
+            )
+            if owned
+        ]
+        cleanup_errors = _cleanup_record_paths(*owned_paths)
         if cleanup_errors:
             raise DecisionSurfaceError(
                 exc.error,
@@ -2948,7 +2952,15 @@ def _write_apply_record(
             ) from exc
         raise
     except Exception as exc:  # noqa: BLE001
-        cleanup_errors = _cleanup_record_paths(partial_dir, final_dir)
+        owned_paths = [
+            path
+            for path, owned in (
+                (partial_dir, partial_owned),
+                (final_dir, final_owned),
+            )
+            if owned
+        ]
+        cleanup_errors = _cleanup_record_paths(*owned_paths)
         cleanup_text = (
             f" Cleanup also failed: {'; '.join(cleanup_errors)}"
             if cleanup_errors
@@ -2964,6 +2976,30 @@ def _write_apply_record(
                 "cleanup_errors": cleanup_errors,
             },
         ) from exc
+
+
+def _require_no_source_path_symlinks(
+    source_path: Path,
+    *,
+    vehicle_id: str,
+) -> None:
+    """Reject symlinks in every user-controlled lexical source component.
+
+    macOS exposes root-level namespace aliases such as ``/var -> /private/var``.
+    Normalize only that platform-level alias; every deeper component from the
+    supplied path remains subject to the no-symlink record contract.
+    """
+
+    lexical = source_path if source_path.is_absolute() else Path.cwd() / source_path
+    root = Path(lexical.anchor)
+    for candidate in reversed((lexical, *lexical.parents[:-1])):
+        if candidate.is_symlink() and candidate.parent != root:
+            raise DecisionSurfaceError(
+                "run_invalid",
+                f"Source image path must not use symlink component {candidate}: "
+                f"{source_path}",
+                vehicle_id=vehicle_id,
+            )
 
 
 def render_decision_exact_frame_html(

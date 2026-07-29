@@ -67,8 +67,11 @@ be consumable unchanged by that later evidence unit.
 | Run sequence schema | `automa_decision_apply_sequence_v0` |
 | Exact-frame HTML schema | `decision_exact_frame_review_v0` |
 | Combined view id | `decision-combined-v0` |
-| Serialization | `canonical_json_bytes` for digests, determinism, and size ceilings |
+| Serialization (size ceilings) | `canonical_json_bytes` → **int** length only (never equality) |
+| Serialization (determinism) | `canonical_json_utf8(value) -> bytes` — see **Canonical bytes** below |
 | Default disk writes | **None** (apply/stream write nothing unless `--record`) |
+| Stream freshness max age | `30_000` ms (`AUTOMA_DECISION_STREAM_MAX_AGE_MS`) |
+| Apply record output root | `AUTOMA_DECISION_APPLY_OUTPUT_ROOT` or `lab/runs/decision-apply/` |
 
 ### Scope (M006-05 only)
 
@@ -117,16 +120,16 @@ unit freezes the missing adapter and publication boundary so stage → automatio
 | Inner engine | Built exactly once via `create_shadow_proposals_engine(ShadowProposalsConfig(...))`. No second plugin map. |
 | `reset()` | Clears `last_cycle_result` to `None`. Does not mutate catalog/plugins. |
 | `describe_schema()` | Returns a dict with at least: `schema="autonomy_engine_schema_v0"`, `engine_id="shadow-proposals"`, `engine_spec` of this class, `purpose` text naming shadow-only idle authority, `stages` naming action=`shadow_proposals_run_cycle`, and `output.type="AutonomyControl"` with `movement="always idle"`. |
-| `step(snapshot)` | Maps snapshot → `run_cycle` (below), stores full `ShadowDecisionCycleResult` on `self.last_cycle_result`, returns `authorized_idle_control()` always (never proposed command as control). |
-| `last_cycle_result` | Public attribute; `None` before first successful mapping attempt; after each `step`, the `ShadowDecisionCycleResult` from `run_cycle` (including `engine_error` cycles). |
+| `step(snapshot)` | **Always** sets `last_cycle_result = None` first. Then maps snapshot → `run_cycle` (below). On success, stores the returned `ShadowDecisionCycleResult` (including `engine_error` cycles from the runner). On **entry/mapping failure** (invalid `frame_id`, bad types before `run_cycle`, or `ShadowCycleInputError` from the runner): leaves `last_cycle_result = None`, does **not** invent a cycle result, returns `AutonomyControl` idle with reason `shadow-adapter-entry-error` and metadata describing the failure. On any other unexpected exception after entry: same — `last_cycle_result = None`, idle control with reason `shadow-adapter-step-error`. When `run_cycle` returns normally, returns `authorized_idle_control()` always (never proposed command as control). |
+| `last_cycle_result` | Public attribute. `None` after `reset`, at the start of every `step`, and after any step that did not obtain a real `ShadowDecisionCycleResult` from `run_cycle`. Never retains a prior cycle across a failed step. |
 
 #### Snapshot → `run_cycle` mapping (exact)
 
 | `run_cycle` kwarg | Source |
 | --- | --- |
-| `frame_id` | `snapshot.cycle["frame_id"]` if present and valid ASCII id; else `"frame-" + str(snapshot.cycle.get("frame_index", 0))` only when that synthesizes a valid id; else raise/`engine_error` via runner input rules — **prefer** host-provided `frame_id`. Automation must supply `frame_id` in `DecisionFrameContext` / cycle dict. |
-| `frame_index` | `snapshot.cycle["frame_index"]` if present; else `0` |
-| `timestamp_ms` | `snapshot.timestamp_ms` |
+| `frame_id` | **Required** from `snapshot.cycle["frame_id"]` as a valid ASCII id (PR #74 grammar). If missing or invalid: **entry failure** (`last_cycle_result=None`); do **not** synthesize a frame id. Automation must supply `frame_id` in `DecisionFrameContext` / cycle dict. |
+| `frame_index` | `snapshot.cycle["frame_index"]` if present as non-bool int; else entry failure |
+| `timestamp_ms` | `snapshot.timestamp_ms` (non-bool int); else entry failure |
 | `observation` | `snapshot.observation` when it is `Observation` or `dict`; else `None` |
 | `observation_error` | `snapshot.metadata.get("observation_error")` when `str`; else `None` |
 | `memory` | `snapshot.memory` when it is `MemorySnapshot`; else `None` (unavailable path) |
@@ -136,7 +139,23 @@ unit freezes the missing adapter and publication boundary so stage → automatio
 | `capabilities` | `snapshot.metadata.get("capabilities")` when `ComponentEnvelope`; else default ready capabilities |
 
 `step` never invents a nonzero `AutonomyControl`. Proposed intent lives only on
-`last_cycle_result.authority.proposed`.
+`last_cycle_result.authority.proposed` when a cycle result exists.
+
+#### Canonical bytes (determinism helper)
+
+`canonical_json_bytes` in this repository returns an **integer length**, not
+bytes. Equal lengths must never be treated as equal content.
+
+| Helper | Signature | Rule |
+| --- | --- | --- |
+| `canonical_json_utf8` | `(value) -> bytes` | **Create** (or re-export) as `json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")`. Reject non-JSON / non-finite the same way as the size helper. |
+| `canonical_json_bytes` | `(value) -> int` | Existing helper; use **only** for size ceilings (`len` of the same encoding). |
+
+Determinism and digests: compare and SHA-256 **`canonical_json_utf8(digest)`**
+byte strings. Implementation may place `canonical_json_utf8` next to
+`canonical_json_bytes` in `autonomy/decision/memory.py` (or a shared util) and
+define `canonical_json_bytes = lambda v: len(canonical_json_utf8(v))` if desired
+without changing existing call sites' return type.
 
 #### Activation wiring
 
@@ -151,13 +170,17 @@ unit freezes the missing adapter and publication boundary so stage → automatio
 | Item | Rule |
 | --- | --- |
 | Owning file | `cli/automa_cli/automation.py` (**modify**) |
-| When | After each successful `cycle_host.run(context)` when staged `engine_id == "shadow-proposals"`. |
-| Read cycle result | From `cycle_host.manager.engine.last_cycle_result` when the loaded engine exposes it; if missing after a step, fail the frame publication with a clear error (do not invent a partial shadow frame). |
+| When | After each `cycle_host.run(context)` when staged `engine_id == "shadow-proposals"`. |
+| Read cycle result | From `cycle_host.manager.engine.last_cycle_result`. |
+| Publish gate (all required) | (1) `last_cycle_result is not None`; (2) `last_cycle_result.frame_id == context.frame_id` (exact string match); (3) staged activation still `shadow-proposals`. If any gate fails: **do not** write/replace `latest_decision.json` (leave previous file untouched **only** until generation rules below invalidate it — see stream acceptance). Log/count a non-fatal publish skip; do not invent a partial shadow frame. |
+| Generation identity | Every published payload includes `run_id` (current automation run id), `worker_pid` (`os.getpid()`), `activation_engine_id` (`shadow-proposals`), and `activation_activated_at_ms` (from the staged decision activation's `activated_at_ms`). These must match the live automation `state.json` / activation at publish time. |
+| On automation start | Before first frame: delete or atomically replace `latest_decision.json` with nothing usable — either remove the file or write a non-stream placeholder that fails stream schema validation. Stale files from prior workers must not remain valid. |
+| On restage of decision engine | Next automation start (or immediate invalidation if automation is running) must clear `latest_decision.json` so a previous shadow frame cannot satisfy stream after idle/restage. |
 | Latest frame path | `{vehicle_runtime}/automation/latest_decision.json` |
-| Write protocol | Write temp file in the same directory, `fsync`, then `os.replace` onto `latest_decision.json` (atomic replace). Same pattern for optional per-run copies under `--record` automation runs if already used for perception. |
-| Payload | Exactly one `vehicle_decision_stream_frame_v0` object (schema below), built from `ShadowDecisionCycleResult.to_dict()` plus stream envelope fields. |
-| Not written by default on apply | Offline apply does not write `latest_decision.json` unless an explicit future flag is added; this unit keeps apply offline-only. |
-| Stream reader | `stream decision` reads **only** `latest_decision.json` (replacement UX). Does not append history. |
+| Write protocol | Write temp file in the same directory, `fsync`, then `os.replace` onto `latest_decision.json` (atomic replace). |
+| Payload | Exactly one `vehicle_decision_stream_frame_v0` object (schema below), built from `ShadowDecisionCycleResult.to_dict()` plus stream envelope fields including generation identity. |
+| Not written by default on apply | Offline apply does not write `latest_decision.json`; apply is offline-only. |
+| Stream reader | `stream decision` reads **only** `latest_decision.json` (replacement UX). Does not append history. Acceptance rules in the stream section. |
 
 #### Fixture-backed stream for CI
 
@@ -185,14 +208,15 @@ helpers.
 ./cli/automa vehicles stream decision --id <vehicle>
 ./cli/automa vehicles stream decision --id <vehicle> --once --json
 
-# 3b) Offline deterministic apply
-./cli/automa vehicles decision apply --from-run <dir>
-./cli/automa vehicles decision apply --from-run <dir> --json
-./cli/automa vehicles decision apply --from-run <dir> --record
+# 3b) Offline deterministic apply (--id required)
+./cli/automa vehicles decision apply --id <vehicle> --from-run <dir>
+./cli/automa vehicles decision apply --id <vehicle> --from-run <dir> --json
+./cli/automa vehicles decision apply --id <vehicle> --from-run <dir> --record
 ```
 
-Flag names above are frozen for validation. Implementation may add optional
-flags only if they do not change the required outcomes.
+Flag names above are frozen for validation. `--id` is **required** on apply
+(same vehicle identity as stage/info). Implementation may add optional flags
+only if they do not change the required outcomes.
 
 ### Exit codes (all decision surfaces)
 
@@ -225,12 +249,14 @@ Stable `error` codes (extend only with proposal change):
 | `invalid_engine_config` | update |
 | `activation_missing` | info, stream, apply |
 | `activation_invalid` | info, stream, apply |
-| `wrong_engine` | stream (shadow path requires `shadow-proposals`) |
+| `wrong_engine` | stream **and** apply (activation exists but `engine_id ≠ shadow-proposals`) |
 | `latest_frame_missing` | stream |
 | `latest_frame_invalid` | stream |
+| `latest_frame_stale` | stream (age / dead worker / generation mismatch) |
 | `run_missing` / `run_invalid` / `run_bounds_exceeded` | apply |
 | `apply_non_deterministic` | apply |
 | `record_bounds_exceeded` / `record_write_failed` | apply `--record` |
+| `missing_vehicle_id` | apply when `--id` omitted |
 
 Without `--json`, errors are multi-line human text including remediation (e.g.
 point at `update decision`).
@@ -313,8 +339,12 @@ Each published/read frame object:
 | `schema` | string | exact `vehicle_decision_stream_frame_v0` |
 | `vehicle_id` | string | |
 | `engine_id` | string | must be `shadow-proposals` for this stream path |
-| `published_at_ms` | int | wall clock at publish (not used for proposal logic) |
-| `frame_id` | string | ASCII id grammar from PR #74 |
+| `run_id` | string | automation run that published this frame |
+| `worker_pid` | int | publisher process id |
+| `activation_engine_id` | string | exact `shadow-proposals` |
+| `activation_activated_at_ms` | int | from staged activation at publish |
+| `published_at_ms` | int | wall clock at publish (freshness only; not proposal logic) |
+| `frame_id` | string | ASCII id grammar from PR #74; must equal `cycle.frame_id` |
 | `frame_index` | int | from cycle |
 | `timestamp_ms` | int | cycle timestamp |
 | `cycle` | object | exact `ShadowDecisionCycleResult.to_dict()` (`shadow_decision_cycle_result_v0`) |
@@ -326,6 +356,20 @@ Each published/read frame object:
 
 **Do not include** an `applied_control` key. Actual host application is only
 `cycle.authority.host_application` / `authority_summary.host_application`.
+
+**Stream acceptance (all required or exit 2):**
+
+| Check | Failure code |
+| --- | --- |
+| File exists and parses as object with `schema=vehicle_decision_stream_frame_v0` | `latest_frame_missing` / `latest_frame_invalid` |
+| Vehicle activation present and `engine_id == shadow-proposals` | `activation_missing` / `wrong_engine` |
+| Frame `activation_activated_at_ms` equals current activation `activated_at_ms` and `activation_engine_id` / `engine_id` are `shadow-proposals` | `latest_frame_stale` |
+| Automation `state.json` exists; `state.run_id == frame.run_id`; if `state.status == "running"`, `state.pid` is a live process **or** (for fixture tests only) `state.pid == frame.worker_pid` with `status` in `{"running","completed"}` and age ok | `latest_frame_stale` |
+| `now_ms - published_at_ms ≤ AUTOMA_DECISION_STREAM_MAX_AGE_MS` (default 30000) | `latest_frame_stale` |
+| `frame_id == cycle.frame_id` and summaries consistent with cycle | `latest_frame_invalid` |
+
+`--once` succeeds only when all acceptance checks pass. Continuous stream redraws
+on success and surfaces the last error on failure without inventing a frame.
 
 `observation_summary` (no privileged handles):
 
@@ -353,7 +397,7 @@ Derived from `cycle.source.observation` envelope when source present; else
 | --- | --- | --- |
 | `status` | string \| null | `selected` \| `idle` \| null when `cycle.plan` is null |
 | `selected_proposal_id` | string \| null | |
-| `candidates` | array | each: `{proposal_id, plugin_id, lifecycle, freshness, confidence, reason, command}` where `command` is `{steering, throttle}` or `null` |
+| `candidates` | array | each: `{proposal_id, plugin_id, lifecycle, freshness, confidence, reason, command, source_refs}` where `command` is `{steering, throttle}` or `null` and `source_refs` is the candidate's PR #74 `source_refs` array (may be empty) |
 | `contributions` | array | from plan or `[]` |
 
 `authority_summary` (mirrors PR #74 authority; no invented applied field):
@@ -373,13 +417,24 @@ CLI modes:
 | Mode | Behavior |
 | --- | --- |
 | default | Human latest-frame screen; refresh until interrupt |
-| `--once` | Single frame then exit 0 if frame valid |
+| `--once` | Single frame then exit 0 if frame **accepted** (all freshness gates) |
 | `--json` | One JSON object per refresh (or once); no ANSI clear |
 | missing activation | exit 2 `activation_missing` |
 | engine ≠ `shadow-proposals` | exit 2 `wrong_engine` (fail closed; **no** silent idle swap and **no** success with non-shadow labeling) |
 | missing/invalid latest frame | exit 2 `latest_frame_missing` / `latest_frame_invalid` |
+| stale / wrong generation / dead worker | exit 2 `latest_frame_stale` |
 
-#### Apply / replay (`decision apply --from-run`)
+#### Apply / replay (`decision apply --id <vehicle> --from-run <dir>`)
+
+##### Vehicle identity and activation (frozen)
+
+| Item | Rule |
+| --- | --- |
+| CLI | **`--id <vehicle>` is required.** Omit → exit 2 `missing_vehicle_id` with remediation naming `--id`. |
+| Sequence file | Must **not** carry a competing vehicle identity. If `sequence.json` contains top-level `vehicle_id` and it differs from `--id`, exit 2 `run_invalid`. If present and equal, accept. Prefer omitting `vehicle_id` from the sequence. |
+| Activation path | `{RUNTIME_ROOT}/<safe_vehicle_id>/…/decision/active.json` via existing bundle helpers for `--id` only. No directory walk, no default vehicle, no inference from `--from-run` path. |
+| Engine requirement | Activation must exist and `decision.engine_id == "shadow-proposals"`. Missing → `activation_missing`. Present but other engine → `wrong_engine`. Invalid JSON/config → `activation_invalid`. |
+| Engine build | Catalog `create_shadow_proposals_engine(ShadowProposalsConfig(**activation.engine_config))` (defaults for omitted keys). |
 
 ##### Replay input contract (single path — frozen)
 
@@ -389,15 +444,48 @@ perception and does **not** rebuild memory through a staged memory engine.
 | Rule | Exact behavior |
 | --- | --- |
 | State reconstruction | For each frame, call `ShadowProposalsEngine.run_cycle` with that frame's recorded observation and memory only |
-| Memory | If frame includes a `memory` object, deserialize with `MemorySnapshot` APIs; if absent or null, pass `memory=None` (unavailable / missing_input path) |
+| Memory | If frame includes a `memory` object, **strict-validate** then construct `MemorySnapshot`; if key absent or JSON `null`, pass `memory=None` (unavailable / missing_input path) |
 | Perception | Never invoked |
-| Activation | Load vehicle decision activation (`shadow-proposals` required). Build engine via catalog factory + activation `engine_config`. Exit 2 if missing/wrong engine/invalid config |
 | Fresh engine per pass | Each full apply pass constructs a new engine instance; no process-global residual state |
 | Frame order | Strict array order in `sequence.json`; do not reorder by timestamp |
 | Duplicate `frame_id` | Reject run (`run_invalid`) |
-| Malformed frame | Reject run (`run_invalid`); do not skip |
+| Malformed frame | Reject run (`run_invalid`); do not skip; do not coerce/drop entries |
 | Timestamp | Use each frame's `timestamp_ms` as recorded; no wall-clock injection into cycle logic |
 | Host application | Always pass `host_application=None` on offline apply (unavailable envelope inside authority) |
+
+##### Strict pre-validation (before coercive constructors)
+
+`Observation.from_dict` / `MemorySnapshot.from_dict` **silently drop** non-object
+things/signals/records. Apply must **not** call those constructors until the
+payload passes a strict check that rejects droppable malformation.
+
+**Observation** (when not null): must be a `dict` with:
+
+| Check | Rule |
+| --- | --- |
+| `schema` | if present, exact observation schema id from PR #74 / repo constant; if absent, allow only when remaining fields still pass all checks below |
+| `observation_id` | non-empty string |
+| `things` | if present: `list`/`tuple`; **every** element is a `dict` (zero non-dicts) |
+| `signals` | if present: `list`/`tuple`; **every** element is a `dict` |
+| `summary` | if present: `str` or list/tuple of values coercible only if already strings or the list contains only strings — reject non-list/non-str types |
+| `sensor_snapshot` / `artifacts` / `metadata` | if present: `dict` |
+
+Any violation → `run_invalid` (do not call `Observation.from_dict`).
+
+**Memory** (when not null): must be a `dict` with:
+
+| Check | Rule |
+| --- | --- |
+| `schema` | if present, exact `memory_snapshot` schema id used by PR #74 / M005 |
+| `bounds` | required `dict` |
+| `records` | if present: `list`/`tuple`; **every** element is a `dict` (zero non-dicts). Length after validation must equal input length (no drops). |
+| `summary` | if present: `list`/`tuple` of strings only (or empty) |
+| `health` / `memory_id` / `epoch_id` | strings when present |
+
+Any violation → `run_invalid` (do not call `MemorySnapshot.from_dict`).
+
+After strict checks pass, construct via the normal APIs. Round-trip optional:
+if `to_dict` record/thing counts differ from input counts, treat as `run_invalid`.
 
 ##### Run directory layout
 
@@ -405,9 +493,19 @@ perception and does **not** rebuild memory through a staged memory engine.
 
 ```text
 <dir>/
-  sequence.json          # required
-  # optional image assets referenced only by --record HTML; not required for digest
+  sequence.json                 # required
+  frames/                       # optional images for --record HTML only
+    <frame_id>.png              # optional; exact name = frame_id + ".png"
 ```
+
+Image addressing (when present):
+
+| Rule | Exact |
+| --- | --- |
+| Path | Only `{from_run}/frames/<frame_id>.png` (no absolute paths, no `..`, no frame field URL) |
+| Association | Image for a frame is present iff that file exists; HTML references the relative path `frames/<frame_id>.png` when the file exists |
+| Digest | Image presence/absence does **not** affect digest bytes |
+| Escape | Any symlink or path outside `<dir>` → `run_invalid` if resolved during `--record` |
 
 `sequence.json` top-level object:
 
@@ -415,6 +513,7 @@ perception and does **not** rebuild memory through a staged memory engine.
 | --- | --- | --- |
 | `schema` | string | exact `automa_decision_apply_sequence_v0` |
 | `frames` | array | 1..MAX_FRAMES entries |
+| `vehicle_id` | string | optional; if present must equal `--id` |
 
 Each frame object:
 
@@ -423,9 +522,9 @@ Each frame object:
 | `frame_id` | string | yes | ASCII id grammar |
 | `frame_index` | int | yes | non-negative safe int |
 | `timestamp_ms` | int | yes | safe int |
-| `observation` | object \| null | yes | Observation dict or null |
-| `observation_error` | string \| null | no | when set, string error for source builder |
-| `memory` | object \| null | no | MemorySnapshot dict; omit/null → unavailable |
+| `observation` | object \| null | yes | null or strict-validated Observation dict |
+| `observation_error` | string \| null | no | when set, non-empty string for source builder |
+| `memory` | object \| null | no | omit/null → unavailable; else strict-validated MemorySnapshot dict |
 
 ##### Resource bounds (fail closed)
 
@@ -440,14 +539,15 @@ Each frame object:
 | Key | Type | Rule |
 | --- | --- | --- |
 | `schema` | string | `vehicle_decision_apply_result_v0` |
-| `vehicle_id` | string | |
+| `vehicle_id` | string | exact `--id` value |
 | `from_run` | string | display path |
 | `frame_count` | int | |
 | `engine_id` | string | `shadow-proposals` |
-| `activation` | string | display path |
+| `activation` | string | display path of the activation loaded for `--id` |
 | `digest` | object | `vehicle_decision_apply_digest_v0` (below) |
-| `deterministic` | bool | true when second pass digest bytes match |
-| `second_pass_digest_sha256` | string \| null | present when verify-twice runs |
+| `digest_sha256` | string | hex SHA-256 of `canonical_json_utf8(digest)` (first pass) |
+| `deterministic` | bool | true when second-pass `canonical_json_utf8(digest)` equals first pass byte-for-byte |
+| `second_pass_digest_sha256` | string \| null | hex SHA-256 of second-pass digest bytes when verify-twice runs |
 | `recorded` | bool | |
 | `record_dir` | string \| null | |
 
@@ -468,20 +568,33 @@ Each digest frame entry:
 | `cycle_reason` | string | |
 | `plan_status` | string \| null | `selected` \| `idle` \| null |
 | `selected_proposal_id` | string \| null | |
-| `candidates` | array | `{plugin_id, lifecycle, reason, confidence}` only (compact) |
+| `candidates` | array | `{plugin_id, lifecycle, reason, confidence}` only (compact; no source_refs in digest) |
 | `proposed` | object \| null | `{steering, throttle}` or null |
 | `proposed_applied` | bool | always `false` |
 | `authorized_output` | object | idle dict with `shadow-only-idle` |
 
-**Byte-identical determinism:** two consecutive apply passes on the same
-`--from-run` and activation produce digests where
-`canonical_json_bytes(digest)` is equal. Default human output prints a short
-summary plus a hex sha256 of those digest bytes. `--json` prints the full
-result object. **No files written by default.**
+**Byte-identical determinism (exact):**
+
+1. Build digest object for pass A and pass B (fresh engine each pass).
+2. `bytes_a = canonical_json_utf8(digest_a)` and `bytes_b = canonical_json_utf8(digest_b)`.
+3. Success requires `bytes_a == bytes_b` (full byte equality, **not**
+   `canonical_json_bytes` length equality).
+4. Report `digest_sha256 = sha256(bytes_a).hexdigest()`.
+5. On mismatch: exit 2 `apply_non_deterministic` and include both hashes in
+   details when `--json`.
+
+Default human output prints a short summary plus `digest_sha256`. `--json`
+prints the full result object. **No files written by default.**
 
 ##### `--record` artifact layout
 
-When `--record` is set, create a new directory (fail if exists):
+When `--record` is set:
+
+| Item | Rule |
+| --- | --- |
+| Output root | `Path(os.environ.get("AUTOMA_DECISION_APPLY_OUTPUT_ROOT", ROOT / "lab" / "runs" / "decision-apply"))` |
+| Directory name | `record_dir = output_root / f"{vehicle_id}-{utc_compact_timestamp}-{short_nonce}"` (ASCII-safe vehicle id). **Fail if exists** (`exist_ok=False`). |
+| Temp build | Write under `record_dir` with `.partial` suffix or sibling temp name; rename to final `record_dir` only when complete and under byte budget |
 
 ```text
 <record_dir>/
@@ -490,27 +603,40 @@ When `--record` is set, create a new directory (fail if exists):
   digest.json
   frames/
     <frame_id>.html    # one exact-frame HTML per input frame
+  # optional copies of source images when present in from-run:
+  source_frames/
+    <frame_id>.png     # only when {from_run}/frames/<frame_id>.png existed
 ```
 
 | Artifact | Rule |
 | --- | --- |
-| `manifest.json` | schema `decision_exact_frame_review_v0` manifest: bounds, frame list, paths, `proposed_applied=false` note |
+| `manifest.json` | schema `decision_exact_frame_review_v0`: bounds, frame list with per-frame `html` path and optional `source_image` relative path, `proposed_applied=false` note |
 | `result.json` | copy of `vehicle_decision_apply_result_v0` with `recorded=true` |
 | `digest.json` | the digest object |
-| `frames/*.html` | combined view template per frame; must include correlated fields from **Combined view** |
+| `frames/<frame_id>.html` | combined view template; **must** include selected candidate `source_refs` (see Combined view item 3b) |
 
-Atomicity/cleanup: write into a temp directory name, finalize with rename when
-complete and under byte budget; on any failure or oversize, remove the partial
-tree (strict delete; exit 2 if cleanup also fails, mentioning both errors).
+Atomicity/cleanup: on any failure or oversize, remove the partial tree (strict
+delete; exit 2 if cleanup also fails, mentioning both errors).
 
 #### Combined view (`decision-combined-v0`)
 
 One correlated explanation per `frame_id` (stream human screen and `--record`
 HTML share the same field set):
 
-1. Observation / camera plate (or explicit unavailable).
+1. Observation / camera plate: show linked image when
+   `frames/<frame_id>.png` (stream/live path) or record `source_frames/<frame_id>.png`
+   exists; else explicit unavailable.
 2. Retained evidence with provenance ids (from memory summary / source).
 3. Proposal list: plugin, lifecycle, freshness, confidence, reason, command.
+3b. **`source_refs` (required for acceptance when plan status is `selected`):**
+    render the **selected** candidate's full `source_refs` array from
+    `cycle.plan.candidates[selected]` (same objects as PR #74). Also list
+    each candidate's `source_refs` in the proposal list. HTML must contain a
+    dedicated section `source_refs` whose serialized entries match the selected
+    proposal (or empty only when the selected proposal has empty refs — which
+    fails the adversarial acceptance row below when status is selected and
+    product evidence expects refs). Stream human view shows the same selected
+    refs line.
 4. Selection: `selected_proposal_id` or idle; contribution `plugin_id`.
 5. Authority: `proposed` vs `authorized_output` idle; **`proposed_applied=false`**
    emphasized; `host_application` status shown as reported/unavailable — **never**
@@ -518,7 +644,8 @@ HTML share the same field set):
 6. Non-claims line: no object identity; shadow-only; not navigation certification.
 
 Consumes PR #74 serialized objects (`cycle` / plan / authority); no second
-proposal schema.
+proposal schema. Compact digests may omit `source_refs`; stream
+`plan_summary.candidates[].source_refs` and `--record` HTML **must not**.
 
 ### Ownership
 
@@ -541,13 +668,18 @@ proposal schema.
 | Stage `shadow-proposals` then `info --json` | Complete contract; authority shadow-only; adapter engine_spec |
 | `AutonomyManager` load of staged `shadow-proposals` | Succeeds (adapter `reset`/`describe_schema`); no `EngineLoadError` |
 | Automation cycle with fixture/shadow adapter | Publishes atomic `latest_decision.json` with full cycle + summaries |
-| Stream after publish | Latest-frame replacement; `proposed_applied=false`; no `applied_control` key |
+| Stream after publish | Latest-frame replacement; generation fields present; `proposed_applied=false`; no `applied_control` key |
 | Stream while engine is `idle` | exit 2 `wrong_engine` |
+| Stream after worker stop / restage / age > max | exit 2 `latest_frame_stale` |
+| Adapter step invalid frame_id after a good frame | `last_cycle_result is None`; prior frame not republished as new |
 | Stream/apply with empty or unavailable memory | Fail-closed inactive or missing_input; idle plan; `proposed_applied=false` |
-| Apply twice on same run dir | Identical `canonical_json_bytes(digest)` |
+| Apply without `--id` | exit 2 `missing_vehicle_id` |
+| Apply with idle activation | exit 2 `wrong_engine` |
+| Apply twice same `--id` + `--from-run` | `canonical_json_utf8` digests equal; matching sha256 |
 | Apply without `--record` | No review artifact files |
-| Apply with `--record` | Exact-frame HTML; correlated fields; partial tree cleaned on failure |
+| Apply with `--record` | Exact-frame HTML under fixed output root; selected `source_refs` rendered; partial tree cleaned on failure |
 | Apply oversize sequence / record | exit 2; no successful partial record left behind |
+| Apply memory records containing a non-object entry | `run_invalid` (no silent drop) |
 | Invalid engine config | Activation rejected |
 | Stream without activation | exit 2; remediation text |
 | Privilege keys in constructed sources used by surfaces | Rejected (reuse/extend PR #74 source tests) |
@@ -562,16 +694,24 @@ proposal schema.
 | `info` without activation | Exit 2; point to update |
 | `info` omits authority or view template | Fail acceptance |
 | Stream while engine is `idle` | Exit 2 `wrong_engine` only |
+| Stream with valid schema but dead worker / old `run_id` / old `activated_at_ms` | Exit 2 `latest_frame_stale` |
+| Valid frame then invalid frame_id step | No publish of stale prior `last_cycle_result` |
 | Nonzero proposed steering | Stream/view/digest show nonzero **proposed** and idle **authorized_output**; `proposed_applied=false`; no `applied_control` key |
 | Host application unavailable | `host_application` unavailable envelope; still no invented applied zeros field |
 | Memory unavailable on apply frame | missing_input / idle or inactive plan; `proposed_applied=false` |
 | Fresh center-only + retained side (fixture) | inactive (PR #74); no retained fallback |
+| Apply without `--id` | `missing_vehicle_id` |
+| Apply `--id` with non-shadow activation | `wrong_engine` |
+| Sequence `vehicle_id` ≠ `--id` | `run_invalid` |
 | Duplicate `frame_id` in sequence | `run_invalid` |
+| Observation `things` contains a non-dict | `run_invalid` |
+| Memory `records` contains a non-dict | `run_invalid` |
 | Apply frames > MAX_FRAMES | `run_bounds_exceeded` |
-| Double apply same `--from-run` | Byte-identical digests |
+| Double apply same inputs | `canonical_json_utf8` byte-identical digests (not length-only) |
+| Same-length different digests | Must **not** count as deterministic |
 | Apply default disk behavior | No review artifacts |
 | `--record` then force oversize | Partial dir removed; exit 2 |
-| `--record` selected frame missing source_refs when plan selected | Fail acceptance |
+| `--record` HTML for selected plan missing selected `source_refs` section | Fail acceptance |
 | Alternate default plugin without proposal change | Out of scope / reject |
 | Live Chase/Pi package as acceptance for this PR | Out of scope (next frontier) |
 
@@ -615,14 +755,16 @@ proposal schema.
 - Combined decision view HTML (or equivalent) asset
 - Deterministic CLI + adapter tests
 - Offline fixture run directory(ies) for apply/stream tests as needed
+- `canonical_json_utf8` helper (bytes) next to existing size helper if not already present
 
 ### Modify
 
 - `cli/automa_cli/decision.py` — register `shadow-proposals`, richer info, stream,
-  apply, record; shared frame builder
-- `cli/automa_cli/automation.py` — load adapter via existing activation; publish
-  atomic `latest_decision.json` from `last_cycle_result`
+  apply (`--id` required), record; shared frame builder; strict apply pre-validation
+- `cli/automa_cli/automation.py` — load adapter; clear/invalidates latest frame on
+  start; publish only when gate matches; include generation identity
 - `cli/automa_cli/app.py` / `vehicles.py` — wire subcommands if not already present
+- `autonomy/decision/memory.py` (or shared util) — add `canonical_json_utf8` if created there
 - `implementations/decision/catalog.py` — only if a non-behavioral export is
   required (no policy change)
 - Milestone `plan.md` / `plan.html` only at implementation handoff transitions
@@ -655,20 +797,27 @@ Must prove:
 1. Stage `shadow-proposals`; reject unknown engines / invalid config; activation
    `engine_spec` is the adapter class.
 2. `AutonomyManager` successfully loads the staged adapter (no `EngineLoadError`).
-3. Adapter `step` returns idle `AutonomyControl` with reason `shadow-only-idle`
-   and exposes `last_cycle_result` with PR #74 cycle schema.
+3. Adapter `step` clears `last_cycle_result` first; success returns idle control
+   with reason `shadow-only-idle` and a matching cycle result; invalid frame_id
+   leaves `last_cycle_result is None` (no stale republish).
 4. Info human + `--json` completeness (inputs, plugins, selector, authority,
    view).
-5. Apply digest determinism (double run identical `canonical_json_bytes`).
-6. Apply default writes nothing; `--record` produces exact-frame HTML with
-   correlated fields and `proposed_applied=false`; oversize/failure cleans up.
-7. Stream/latest-frame payload fields present on a fixture cycle; **no**
-   `applied_control` key; `authorized_output` idle; `host_application` preserved.
-8. Stream with non-shadow activation exits 2 `wrong_engine`.
-9. Privileged-origin keys cannot appear in constructed decision sources used by
-   the surface (reuse/extend PR #74 tests as needed).
-10. No test enables applied non-idle control for `shadow-proposals`.
-11. Apply bounds: too many frames / oversize sequence refuse closed.
+5. Apply requires `--id`; wrong engine → `wrong_engine`; missing id →
+   `missing_vehicle_id`.
+6. Apply digest determinism: double run with equal `canonical_json_utf8` bytes
+   and matching sha256; length-only equality is **not** used.
+7. Apply default writes nothing; `--record` writes under the frozen output root
+   with exact-frame HTML including selected `source_refs`; oversize/failure
+   cleans up.
+8. Stream/latest-frame payload includes generation fields; **no**
+   `applied_control` key; freshness gates reject stale/dead-worker/restage.
+9. Stream with non-shadow activation exits 2 `wrong_engine`.
+10. Strict apply pre-validation rejects non-dict observation things/signals and
+    non-dict memory records (`run_invalid`).
+11. Privileged-origin keys cannot appear in constructed decision sources used by
+    the surface (reuse/extend PR #74 tests as needed).
+12. No test enables applied non-idle control for `shadow-proposals`.
+13. Apply bounds: too many frames / oversize sequence refuse closed.
 
 ### Live / external
 
@@ -696,11 +845,11 @@ Post-merge implementation success template (merge-time identity filled by
   "schema": "milestone_handoff_template_v1",
   "outcome": "advance",
   "result": "Accepted",
-  "durable_evidence": "Automa decision stage/info/apply/stream/view for shadow-proposals; AutonomyManager adapter over run_cycle; atomic latest_decision publication; deterministic offline apply digests; combined decision view; opt-in --record exact-frame HTML; proposed_applied=false and authorized idle output in PR #{pr}",
+  "durable_evidence": "Automa decision stage/info/apply/stream/view for shadow-proposals; AutonomyManager adapter over run_cycle with no stale last_cycle_result; generation-scoped latest_decision publication; --id apply with canonical_json_utf8 digest equality; strict apply pre-validation; combined decision view with source_refs; opt-in --record exact-frame HTML; proposed_applied=false and authorized idle output in PR #{pr}",
   "criterion_updates": {
     "M006-05": {
       "status": "Met",
-      "evidence": "Decision stage/info/apply/stream/view with concise default, --json, adapter-backed automation publication, deterministic apply, latest-frame stream, combined view, opt-in --record HTML, no default disk writes, no invented applied_control in PR #{pr}"
+      "evidence": "Decision stage/info/apply/stream/view with concise default, --json, adapter-backed automation publication, byte-equal apply digests, freshness-gated latest-frame stream, combined view with source_refs, opt-in --record HTML, no default disk writes, no invented applied_control in PR #{pr}"
     }
   },
   "risk_remove": [],

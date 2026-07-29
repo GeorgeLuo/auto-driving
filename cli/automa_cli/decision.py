@@ -8,6 +8,7 @@ import json
 import os
 import secrets
 import shutil
+import stat as stat_mod
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -452,6 +453,17 @@ def _read_surface_activation(
         ) from exc
 
     if decoded.engine_id == ENGINE_ID:
+        if decoded.engine_spec != ADAPTER_ENGINE_SPEC:
+            raise DecisionSurfaceError(
+                "activation_invalid",
+                f"shadow-proposals engine_spec must be {ADAPTER_ENGINE_SPEC!r}; "
+                f"got {decoded.engine_spec!r}.",
+                vehicle_id=vehicle_id,
+                details={
+                    "expected_engine_spec": ADAPTER_ENGINE_SPEC,
+                    "got_engine_spec": decoded.engine_spec,
+                },
+            )
         try:
             validate_shadow_engine_config(decoded.engine_config)
         except DecisionSurfaceError as exc:
@@ -2796,18 +2808,18 @@ def _write_apply_record(
     output_root: Path,
 ) -> Path:
     output_root = Path(output_root)
-    output_root.mkdir(parents=True, exist_ok=True)
     stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
     nonce = secrets.token_hex(3)
     final_dir = output_root / f"{safe_path_part(vehicle_id)}-{stamp}-{nonce}"
     partial_dir = output_root / f".{safe_path_part(vehicle_id)}-{stamp}-{nonce}.partial"
-    if final_dir.exists() or partial_dir.exists():
-        raise DecisionSurfaceError(
-            "record_write_failed",
-            f"Record directory already exists: {display_path(final_dir)}",
-            vehicle_id=vehicle_id,
-        )
     try:
+        output_root.mkdir(parents=True, exist_ok=True)
+        if final_dir.exists() or partial_dir.exists():
+            raise DecisionSurfaceError(
+                "record_write_failed",
+                f"Record directory already exists: {display_path(final_dir)}",
+                vehicle_id=vehicle_id,
+            )
         partial_dir.mkdir(parents=True, exist_ok=False)
         frames_dir = partial_dir / "frames"
         source_frames_dir = partial_dir / "source_frames"
@@ -2836,7 +2848,11 @@ def _write_apply_record(
             html_image_rel = None
             src = from_run_dir / "frames" / f"{frame_id}.png"
             source_frames_root = from_run_dir / "frames"
-            if source_frames_root.is_symlink() or src.is_symlink():
+            if (
+                from_run_dir.is_symlink()
+                or source_frames_root.is_symlink()
+                or src.is_symlink()
+            ):
                 raise DecisionSurfaceError(
                     "run_invalid",
                     f"Source image path must not use symlinks: {src}",
@@ -2963,6 +2979,11 @@ def render_decision_exact_frame_html(
     source = cycle.get("source") if isinstance(cycle.get("source"), dict) else None
     plan_summary = _plan_summary(plan)
     selected_id = plan_summary.get("selected_proposal_id")
+    contribution_plugins = [
+        item.get("plugin_id")
+        for item in plan_summary.get("contributions") or []
+        if isinstance(item, dict)
+    ]
     selected_refs: list[Any] = []
     for cand in plan_summary.get("candidates") or []:
         if isinstance(cand, dict) and cand.get("proposal_id") == selected_id:
@@ -3027,6 +3048,9 @@ def render_decision_exact_frame_html(
     <h2>Selection</h2>
     <p>status={esc(plan_summary.get('status'))}
        selected_proposal_id={esc(selected_id)}</p>
+    <p>contribution_plugins={esc(
+        ", ".join(str(item) for item in contribution_plugins) or "(none)"
+    )}</p>
   </section>
   <section id="source_refs">
     <h2>source_refs</h2>
@@ -3049,13 +3073,18 @@ def render_decision_exact_frame_html(
 
 
 def _directory_byte_size(path: Path) -> int:
+    """Measure every record artifact node; fail closed on any lstat error."""
+
     total = 0
-    for root, _dirs, files in os.walk(path):
-        for name in files:
-            try:
-                total += (Path(root) / name).stat().st_size
-            except OSError:
-                continue
+    for artifact in path.rglob("*"):
+        try:
+            measured = artifact.lstat()
+        except OSError as exc:
+            raise OSError(
+                f"could not measure record artifact {artifact}: {exc}"
+            ) from exc
+        if stat_mod.S_ISREG(measured.st_mode) or stat_mod.S_ISLNK(measured.st_mode):
+            total += measured.st_size
     return total
 
 

@@ -927,6 +927,13 @@ class ShadowDecisionSurfaceTests(unittest.TestCase):
                 **payload,
                 "decision": {
                     **payload["decision"],
+                    "engine_spec": "autonomy.runtime.engine:IdleAutonomyEngine",
+                },
+            },
+            lambda payload: {
+                **payload,
+                "decision": {
+                    **payload["decision"],
                     "engine_config": {
                         **payload["decision"]["engine_config"],
                         "steer_magnitude": 0.0,
@@ -938,8 +945,9 @@ class ShadowDecisionSurfaceTests(unittest.TestCase):
             with self.subTest(mutate=mutate):
                 self._stage()
                 payload = json.loads(activation_path.read_text())
+                mutated_activation = mutate(payload)
                 activation_path.write_text(
-                    json.dumps(mutate(payload)),
+                    json.dumps(mutated_activation),
                     encoding="utf-8",
                 )
                 info = get_vehicle_decision_info(
@@ -956,12 +964,27 @@ class ShadowDecisionSurfaceTests(unittest.TestCase):
                     from_run=ACTIVE_RUN,
                     json_output=True,
                 )
+                published = publish_shadow_decision_frame(
+                    cycle_result=self._sample_cycle(),
+                    context_frame_id="frame_001",
+                    vehicle_id="chase-sim-chaser",
+                    vehicle_runtime_dir=self.runtime_root / "chase-sim-chaser",
+                    run_id="invalid-activation",
+                    worker_pid=1,
+                    activation=(
+                        mutated_activation
+                        if isinstance(mutated_activation, dict)
+                        else None
+                    ),
+                    staged_engine_id=ENGINE_ID,
+                )
                 for result in (info, stream, applied):
                     self.assertEqual(result.exit_code, 2, result.message)
                     self.assertEqual(
                         json.loads(result.message)["error"],
                         "activation_invalid",
                     )
+                self.assertFalse(published)
 
     def test_stream_wrong_engine_cli(self) -> None:
         self._stage(engine_id="idle")
@@ -1257,6 +1280,26 @@ class ShadowDecisionSurfaceTests(unittest.TestCase):
             self.assertIn("source_refs", html_text)
             self.assertIn("proposed_applied=false", html_text)
             self.assertIn("memory_record", html_text)
+            self.assertIn(
+                "contribution_plugins=avoid_recent_obstruction",
+                html_text,
+            )
+
+            before_idle = set(out_root.iterdir())
+            idle_recorded = apply_vehicle_decision(
+                vehicle_id="chase-sim-chaser",
+                from_run=NO_MEM_RUN,
+                json_output=True,
+                record=True,
+                output_root=out_root,
+            )
+            self.assertEqual(idle_recorded.exit_code, 0, idle_recorded.message)
+            idle_dir = next(iter(set(out_root.iterdir()) - before_idle))
+            idle_html = next((idle_dir / "frames").glob("*.html")).read_text(
+                encoding="utf-8"
+            )
+            self.assertIn("status=idle", idle_html)
+            self.assertIn("contribution_plugins=(none)", idle_html)
 
     def test_apply_record_source_image_paths_and_symlink_rejection(self) -> None:
         self._stage()
@@ -1308,6 +1351,29 @@ class ShadowDecisionSurfaceTests(unittest.TestCase):
             self.assertEqual(json.loads(rejected.message)["error"], "run_invalid")
             self.assertEqual(list(Path(out).iterdir()), [])
 
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as out:
+            temp_root = Path(tmp)
+            real_run = temp_root / "real-run"
+            shutil.copytree(ACTIVE_RUN, real_run)
+            source_frames = real_run / "frames"
+            source_frames.mkdir()
+            (source_frames / "frame_001.png").write_bytes(b"fixture")
+            linked_run = temp_root / "linked-run"
+            linked_run.symlink_to(real_run, target_is_directory=True)
+            rejected_root = apply_vehicle_decision(
+                vehicle_id="chase-sim-chaser",
+                from_run=linked_run,
+                json_output=True,
+                record=True,
+                output_root=Path(out),
+            )
+            self.assertEqual(rejected_root.exit_code, 2)
+            self.assertEqual(
+                json.loads(rejected_root.message)["error"],
+                "run_invalid",
+            )
+            self.assertEqual(list(Path(out).iterdir()), [])
+
     def test_apply_cli_json(self) -> None:
         self._stage()
         missing_id = run_automa(
@@ -1339,6 +1405,33 @@ class ShadowDecisionSurfaceTests(unittest.TestCase):
         payload = json.loads(result.stdout)
         self.assertEqual(payload["schema"], "vehicle_decision_apply_result_v0")
         self.assertEqual(payload["engine_id"], ENGINE_ID)
+
+    def test_apply_record_root_setup_failure_uses_stable_cli_error(self) -> None:
+        self._stage()
+        with tempfile.TemporaryDirectory() as tmp:
+            output_root = Path(tmp) / "record-root-is-file"
+            output_root.write_text("not a directory", encoding="utf-8")
+            result = run_automa(
+                "vehicles",
+                "decision",
+                "apply",
+                "--id",
+                "chase-sim-chaser",
+                "--from-run",
+                str(ACTIVE_RUN),
+                "--record",
+                "--json",
+                runtime_root=self.runtime_root,
+                extra_env={
+                    "AUTOMA_DECISION_APPLY_OUTPUT_ROOT": str(output_root),
+                },
+                check=False,
+            )
+            self.assertEqual(result.returncode, 2)
+            self.assertEqual(result.stderr, "")
+            payload = json.loads(result.stdout)
+            self.assertEqual(payload["schema"], "vehicle_decision_error_v0")
+            self.assertEqual(payload["error"], "record_write_failed")
 
     def test_apply_no_memory_frame(self) -> None:
         self._stage()
@@ -1465,6 +1558,34 @@ class ShadowDecisionSurfaceTests(unittest.TestCase):
             self.assertEqual(payload["error"], "record_bounds_exceeded")
             self.assertIn("Record artifacts are", payload["details"]["original_error"])
             self.assertTrue(payload["details"]["cleanup_errors"])
+
+    def test_apply_record_measurement_failure_cleans_partial(self) -> None:
+        self._stage()
+        real_lstat = Path.lstat
+
+        def flaky_lstat(path: Path, *args, **kwargs):
+            if path.name == "result.json":
+                raise OSError("injected measurement failure")
+            return real_lstat(path, *args, **kwargs)
+
+        with tempfile.TemporaryDirectory() as out:
+            out_root = Path(out)
+            with patch.object(Path, "lstat", new=flaky_lstat):
+                result = apply_vehicle_decision(
+                    vehicle_id="chase-sim-chaser",
+                    from_run=ACTIVE_RUN,
+                    json_output=True,
+                    record=True,
+                    output_root=out_root,
+                )
+            self.assertEqual(result.exit_code, 2)
+            payload = json.loads(result.message)
+            self.assertEqual(payload["error"], "record_write_failed")
+            self.assertIn(
+                "could not measure record artifact",
+                payload["details"]["original_error"],
+            )
+            self.assertEqual(list(out_root.iterdir()), [])
 
     # --- strict decode regressions ------------------------------------
 

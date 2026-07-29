@@ -357,19 +357,40 @@ Each published/read frame object:
 **Do not include** an `applied_control` key. Actual host application is only
 `cycle.authority.host_application` / `authority_summary.host_application`.
 
-**Stream acceptance (all required or exit 2):**
+**Stream acceptance — production predicate (single, no test-only branch):**
 
-| Check | Failure code |
-| --- | --- |
-| File exists and parses as object with `schema=vehicle_decision_stream_frame_v0` | `latest_frame_missing` / `latest_frame_invalid` |
-| Vehicle activation present and `engine_id == shadow-proposals` | `activation_missing` / `wrong_engine` |
-| Frame `activation_activated_at_ms` equals current activation `activated_at_ms` and `activation_engine_id` / `engine_id` are `shadow-proposals` | `latest_frame_stale` |
-| Automation `state.json` exists; `state.run_id == frame.run_id`; if `state.status == "running"`, `state.pid` is a live process **or** (for fixture tests only) `state.pid == frame.worker_pid` with `status` in `{"running","completed"}` and age ok | `latest_frame_stale` |
-| `now_ms - published_at_ms ≤ AUTOMA_DECISION_STREAM_MAX_AGE_MS` (default 30000) | `latest_frame_stale` |
-| `frame_id == cycle.frame_id` and summaries consistent with cycle | `latest_frame_invalid` |
+Implement as one pure helper, e.g.
+`accept_decision_stream_frame(frame, *, activation, automation_state, now_ms, is_pid_alive) -> None`
+that raises a typed error mapped to the codes below. **Production** always passes
+`is_pid_alive = real process liveness` (e.g. `os.kill(pid, 0)` / platform
+equivalent). There is **no** production path that skips PID liveness or accepts
+`status != "running"`.
 
-`--once` succeeds only when all acceptance checks pass. Continuous stream redraws
-on success and surfaces the last error on failure without inventing a frame.
+| # | Check (all required) | Failure code |
+| --- | --- | --- |
+| 1 | File exists and parses as object with `schema=vehicle_decision_stream_frame_v0` | `latest_frame_missing` / `latest_frame_invalid` |
+| 2 | Vehicle activation present and `engine_id == shadow-proposals` | `activation_missing` / `wrong_engine` |
+| 3 | `frame.activation_activated_at_ms == activation.activated_at_ms` and `frame.activation_engine_id == frame.engine_id == "shadow-proposals"` | `latest_frame_stale` |
+| 4 | `automation_state` exists as object | `latest_frame_stale` |
+| 5 | `automation_state.run_id == frame.run_id` | `latest_frame_stale` |
+| 6 | `automation_state.status == "running"` (**only** this status; `completed` / `stopped` / `error` / absent → fail) | `latest_frame_stale` |
+| 7 | `automation_state.pid` is non-bool `int` and `automation_state.pid == frame.worker_pid` | `latest_frame_stale` |
+| 8 | `is_pid_alive(automation_state.pid)` is true | `latest_frame_stale` |
+| 9 | `now_ms - frame.published_at_ms ≤ AUTOMA_DECISION_STREAM_MAX_AGE_MS` (default 30000); both ints | `latest_frame_stale` |
+| 10 | `frame.frame_id == frame.cycle.frame_id` and summaries consistent with cycle | `latest_frame_invalid` |
+
+**Fixture / unit-test seam (outside the predicate body):** tests call the same
+`accept_decision_stream_frame` helper and inject `is_pid_alive` (e.g. always-true
+for a chosen fixture pid, or always-false to prove dead-worker rejection). Tests
+must still supply `status="running"` and matching `run_id`/`pid` when asserting
+acceptance. Tests for dead worker set `is_pid_alive → False`. Tests for
+completed/stopped use real production-shaped state with `status != "running"`
+and expect `latest_frame_stale` **without** relying on any production bypass.
+CLI `stream decision` never injects a permissive liveness function.
+
+`--once` succeeds only when the production predicate passes. Continuous stream
+redraws on success and surfaces the last error on failure without inventing a
+frame.
 
 `observation_summary` (no privileged handles):
 
@@ -444,7 +465,8 @@ perception and does **not** rebuild memory through a staged memory engine.
 | Rule | Exact behavior |
 | --- | --- |
 | State reconstruction | For each frame, call `ShadowProposalsEngine.run_cycle` with that frame's recorded observation and memory only |
-| Memory | If frame includes a `memory` object, **strict-validate** then construct `MemorySnapshot`; if key absent or JSON `null`, pass `memory=None` (unavailable / missing_input path) |
+| Memory | If frame includes a `memory` object, decode via **single strict apply decoder** below; if key absent or JSON `null`, pass `memory=None` (unavailable / missing_input path) |
+| Observation | If `observation` is JSON `null`, pass `observation=None` (with optional `observation_error`); else decode via the same strict boundary |
 | Perception | Never invoked |
 | Fresh engine per pass | Each full apply pass constructs a new engine instance; no process-global residual state |
 | Frame order | Strict array order in `sequence.json`; do not reorder by timestamp |
@@ -453,39 +475,78 @@ perception and does **not** rebuild memory through a staged memory engine.
 | Timestamp | Use each frame's `timestamp_ms` as recorded; no wall-clock injection into cycle logic |
 | Host application | Always pass `host_application=None` on offline apply (unavailable envelope inside authority) |
 
-##### Strict pre-validation (before coercive constructors)
+##### Single strict apply-decode boundary (replaces field laundry lists)
 
-`Observation.from_dict` / `MemorySnapshot.from_dict` **silently drop** non-object
-things/signals/records. Apply must **not** call those constructors until the
-payload passes a strict check that rejects droppable malformation.
+Repository `Observation.from_dict` / `MemorySnapshot.from_dict` (and nested
+provenance/record helpers) are **intentionally coercive**: they coerce scalar
+types (`int("123")`, `float("0.8")`, `str(7)`), drop non-object list entries, and
+normalize bad nested shapes (e.g. non-object `location` → `None`). Apply must
+**not** treat a successful `from_dict` as proof the recording was well-typed.
 
-**Observation** (when not null): must be a `dict` with:
+Freeze **one** owning boundary for apply (name exact in implementation tests):
 
-| Check | Rule |
+| Helper | Role |
 | --- | --- |
-| `schema` | if present, exact observation schema id from PR #74 / repo constant; if absent, allow only when remaining fields still pass all checks below |
-| `observation_id` | non-empty string |
-| `things` | if present: `list`/`tuple`; **every** element is a `dict` (zero non-dicts) |
-| `signals` | if present: `list`/`tuple`; **every** element is a `dict` |
-| `summary` | if present: `str` or list/tuple of values coercible only if already strings or the list contains only strings — reject non-list/non-str types |
-| `sensor_snapshot` / `artifacts` / `metadata` | if present: `dict` |
+| `strict_decode_apply_observation(payload: object) -> Observation` | Only legal way apply turns JSON into `Observation` |
+| `strict_decode_apply_memory(payload: object) -> MemorySnapshot` | Only legal way apply turns JSON into `MemorySnapshot` |
 
-Any violation → `run_invalid` (do not call `Observation.from_dict`).
+Both live under the apply owner (`cli/automa_cli/decision.py` or a focused sibling
+module). Direct `from_dict` on apply inputs is forbidden outside these helpers.
 
-**Memory** (when not null): must be a `dict` with:
+**Algorithm (identical structure for observation and memory):**
 
-| Check | Rule |
+1. **Type gate:** `payload` must be a `dict` (JSON object). Else `run_invalid`.
+2. **Known keys only:** every key in `payload` must be a key that the type's
+   `to_dict()` is allowed to emit (the dataclass/public export key set for
+   `Observation` / `MemorySnapshot` / nested `RetainedEvidence` /
+   `MemoryProvenance` / `MemoryBounds` / location dict). Unknown keys →
+   `run_invalid`.
+3. **Construct:** call the existing `from_dict` (or nested constructors) only
+   inside this helper.
+4. **Lossless canonical round-trip (required, not optional):**
+   - `exported = constructed.to_dict()` (and nested `to_dict` for records).
+   - Require **deep exact JSON agreement** between `payload` and `exported` for
+     every path present in `payload`:
+     - same container structure (dict keys, list lengths — no dropped entries);
+     - same scalar JSON types (`type(input) is type(exported)` for leaves:
+       `int`≠`str`, `float`≠`int`, `bool` is not `int`);
+     - same values (`==`);
+     - string artifact values remain strings (reject int/float artifact values
+       even if `from_dict` would `str(...)` them);
+     - numeric fields such as `created_at_ms`, `observed_at_ms`,
+       `bounds.max_records`, `confidence` must already be JSON numbers of the
+       exact type `to_dict` emits (no string numerics).
+   - Equivalent formulation implementers may use: after construction,
+     `canonical_json_utf8(_project(exported, payload)) == canonical_json_utf8(payload)`
+     where `_project` keeps only paths that exist in `payload` **and** deep type
+     identity is checked before encoding (encoding alone is insufficient if both
+     sides were pre-coerced).
+5. On any failure in steps 1–4: raise/map to `run_invalid`; do not return a
+   partially coerced object to `run_cycle`.
+
+**Nested coverage (must be inside the same helpers, not a second ad-hoc list):**
+observation `things` / `signals` / `artifacts` / `metadata` / `summary` /
+`sensor_snapshot` / timestamps / schema; memory `bounds` / `records` /
+each record's `provenance`, `location`, `properties`, `confidence`, and
+identifier strings. Any coercion or drop the repository constructors would
+perform must fail the lossless step.
+
+**Regressions required (not only non-dict list entries):**
+
+| Input malformation | Expected |
 | --- | --- |
-| `schema` | if present, exact `memory_snapshot` schema id used by PR #74 / M005 |
-| `bounds` | required `dict` |
-| `records` | if present: `list`/`tuple`; **every** element is a `dict` (zero non-dicts). Length after validation must equal input length (no drops). |
-| `summary` | if present: `list`/`tuple` of strings only (or empty) |
-| `health` / `memory_id` / `epoch_id` | strings when present |
+| `created_at_ms: "123"` (string) | `run_invalid` |
+| `artifacts: {"k": 7}` (non-string value) | `run_invalid` |
+| `bounds.max_records: "2"` | `run_invalid` |
+| `records[0].confidence: "0.8"` | `run_invalid` |
+| provenance timestamp string | `run_invalid` |
+| `records[0].location` non-object | `run_invalid` |
+| `things` / `records` containing a non-dict | `run_invalid` |
+| Unknown top-level key on observation/memory | `run_invalid` |
+| Well-typed fixture that `to_dict` round-trips | accepted; digest stable |
 
-Any violation → `run_invalid` (do not call `MemorySnapshot.from_dict`).
-
-After strict checks pass, construct via the normal APIs. Round-trip optional:
-if `to_dict` record/thing counts differ from input counts, treat as `run_invalid`.
+Do **not** expand a partial top-level field checklist as the acceptance boundary;
+the lossless helper is the sole contract.
 
 ##### Run directory layout
 
@@ -671,6 +732,8 @@ proposal schema. Compact digests may omit `source_refs`; stream
 | Stream after publish | Latest-frame replacement; generation fields present; `proposed_applied=false`; no `applied_control` key |
 | Stream while engine is `idle` | exit 2 `wrong_engine` |
 | Stream after worker stop / restage / age > max | exit 2 `latest_frame_stale` |
+| Stream with `status=completed` even if pid matches and age ok | exit 2 `latest_frame_stale` |
+| Stream with dead worker (`is_pid_alive` false) | exit 2 `latest_frame_stale` |
 | Adapter step invalid frame_id after a good frame | `last_cycle_result is None`; prior frame not republished as new |
 | Stream/apply with empty or unavailable memory | Fail-closed inactive or missing_input; idle plan; `proposed_applied=false` |
 | Apply without `--id` | exit 2 `missing_vehicle_id` |
@@ -695,6 +758,7 @@ proposal schema. Compact digests may omit `source_refs`; stream
 | `info` omits authority or view template | Fail acceptance |
 | Stream while engine is `idle` | Exit 2 `wrong_engine` only |
 | Stream with valid schema but dead worker / old `run_id` / old `activated_at_ms` | Exit 2 `latest_frame_stale` |
+| Stream with `status=completed` (schema-valid frame, matching pid) | Exit 2 `latest_frame_stale` (no completed acceptance) |
 | Valid frame then invalid frame_id step | No publish of stale prior `last_cycle_result` |
 | Nonzero proposed steering | Stream/view/digest show nonzero **proposed** and idle **authorized_output**; `proposed_applied=false`; no `applied_control` key |
 | Host application unavailable | `host_application` unavailable envelope; still no invented applied zeros field |
@@ -704,8 +768,11 @@ proposal schema. Compact digests may omit `source_refs`; stream
 | Apply `--id` with non-shadow activation | `wrong_engine` |
 | Sequence `vehicle_id` ≠ `--id` | `run_invalid` |
 | Duplicate `frame_id` in sequence | `run_invalid` |
-| Observation `things` contains a non-dict | `run_invalid` |
-| Memory `records` contains a non-dict | `run_invalid` |
+| Observation `things` contains a non-dict | `run_invalid` (lossless decode) |
+| Memory `records` contains a non-dict | `run_invalid` (lossless decode) |
+| String numeric `created_at_ms` / `confidence` / bounds | `run_invalid` (no scalar coercion) |
+| Non-string observation artifact value | `run_invalid` |
+| Non-object record `location` | `run_invalid` |
 | Apply frames > MAX_FRAMES | `run_bounds_exceeded` |
 | Double apply same inputs | `canonical_json_utf8` byte-identical digests (not length-only) |
 | Same-length different digests | Must **not** count as deterministic |
@@ -759,8 +826,10 @@ proposal schema. Compact digests may omit `source_refs`; stream
 
 ### Modify
 
-- `cli/automa_cli/decision.py` — register `shadow-proposals`, richer info, stream,
-  apply (`--id` required), record; shared frame builder; strict apply pre-validation
+- `cli/automa_cli/decision.py` — register `shadow-proposals`, richer info, stream
+  acceptance helper (`is_pid_alive` inject), apply (`--id` required), record;
+  shared frame builder; `strict_decode_apply_observation` /
+  `strict_decode_apply_memory` lossless boundary
 - `cli/automa_cli/automation.py` — load adapter; clear/invalidates latest frame on
   start; publish only when gate matches; include generation identity
 - `cli/automa_cli/app.py` / `vehicles.py` — wire subcommands if not already present
@@ -810,10 +879,13 @@ Must prove:
    with exact-frame HTML including selected `source_refs`; oversize/failure
    cleans up.
 8. Stream/latest-frame payload includes generation fields; **no**
-   `applied_control` key; freshness gates reject stale/dead-worker/restage.
+   `applied_control` key; production acceptance rejects dead worker,
+   `status!=running`, restage, and age overflow via one predicate (injected
+   `is_pid_alive` only in tests).
 9. Stream with non-shadow activation exits 2 `wrong_engine`.
-10. Strict apply pre-validation rejects non-dict observation things/signals and
-    non-dict memory records (`run_invalid`).
+10. Strict apply decode boundary rejects scalar coercion and nested shape loss
+    (string timestamps/confidence, non-string artifacts, non-object location,
+    non-dict list entries) via lossless round-trip — not a partial field list.
 11. Privileged-origin keys cannot appear in constructed decision sources used by
     the surface (reuse/extend PR #74 tests as needed).
 12. No test enables applied non-idle control for `shadow-proposals`.

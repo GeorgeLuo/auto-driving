@@ -69,7 +69,7 @@ for simulator and physical vehicles.
 
 **Automa shadow decision surfaces**
 
-- Workflow state: ready_for_proposal
+- Workflow state: proposal_in_review
 - Proposal branch: `m006/shadow-decision-surfaces-proposal`
 - Implementation branch: `m006/shadow-decision-surfaces`
 - Proposal path: `docs/milestones/006-decision-facing-perception-readiness/proposals/shadow-decision-surfaces.md`
@@ -107,6 +107,7 @@ for simulator and physical vehicles.
 | Cross-environment shadow proposal evidence | ready_for_proposal | Promoted after implementation PR #74. |
 | Cross-environment shadow proposal evidence | ready_for_proposal | Plan revision: queue Milestone closeout (M006-08) as next-frontier candidate so the evidence unit Expected Handoff can advance. |
 | Automa shadow decision surfaces | ready_for_proposal | Plan revision: split oversized combined surfaces+live frontier; current is M006-05 deterministic Automa surfaces; next is M006-06–M006-07 cross-environment evidence; close PR #76. |
+| Automa shadow decision surfaces | proposal_in_review | Started m006/shadow-decision-surfaces-proposal. |
 
 ## Accepted Review Units
 

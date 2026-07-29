@@ -376,7 +376,7 @@ equivalent). There is **no** production path that skips PID liveness or accepts
 | 6 | `automation_state.status == "running"` (**only** this status; `completed` / `stopped` / `error` / absent → fail) | `latest_frame_stale` |
 | 7 | `automation_state.pid` is non-bool `int` and `automation_state.pid == frame.worker_pid` | `latest_frame_stale` |
 | 8 | `is_pid_alive(automation_state.pid)` is true | `latest_frame_stale` |
-| 9 | `now_ms - frame.published_at_ms ≤ AUTOMA_DECISION_STREAM_MAX_AGE_MS` (default 30000); both ints | `latest_frame_stale` |
+| 9 | `now_ms` and `frame.published_at_ms` are non-bool `int`; let `age = now_ms - published_at_ms`; require **`0 ≤ age ≤ AUTOMA_DECISION_STREAM_MAX_AGE_MS`** where the configured ceiling is a positive int (default 30000). Future timestamps (`age < 0`) and over-age (`age > MAX`) both fail | `latest_frame_stale` |
 | 10 | `frame.frame_id == frame.cycle.frame_id` and summaries consistent with cycle | `latest_frame_invalid` |
 
 **Fixture / unit-test seam (outside the predicate body):** tests call the same
@@ -475,78 +475,82 @@ perception and does **not** rebuild memory through a staged memory engine.
 | Timestamp | Use each frame's `timestamp_ms` as recorded; no wall-clock injection into cycle logic |
 | Host application | Always pass `host_application=None` on offline apply (unavailable envelope inside authority) |
 
-##### Single strict apply-decode boundary (replaces field laundry lists)
+##### Single strict apply-decode boundary (complete export equality)
 
 Repository `Observation.from_dict` / `MemorySnapshot.from_dict` (and nested
-provenance/record helpers) are **intentionally coercive**: they coerce scalar
-types (`int("123")`, `float("0.8")`, `str(7)`), drop non-object list entries, and
-normalize bad nested shapes (e.g. non-object `location` → `None`). Apply must
-**not** treat a successful `from_dict` as proof the recording was well-typed.
+helpers) are **intentionally coercive** and also **fill omitted fields** with
+defaults (`created_at_ms=0`, empty containers, default schema/bounds fields).
+Apply must not trust a successful `from_dict` alone, and must not use a
+**projected** comparison that only checks keys present in the input (that path
+accepts incomplete recordings).
 
-Freeze **one** owning boundary for apply (name exact in implementation tests):
+Freeze **one** owning boundary (names exact in implementation tests):
 
 | Helper | Role |
 | --- | --- |
 | `strict_decode_apply_observation(payload: object) -> Observation` | Only legal way apply turns JSON into `Observation` |
 | `strict_decode_apply_memory(payload: object) -> MemorySnapshot` | Only legal way apply turns JSON into `MemorySnapshot` |
 
-Both live under the apply owner (`cli/automa_cli/decision.py` or a focused sibling
-module). Direct `from_dict` on apply inputs is forbidden outside these helpers.
+Both live under the apply owner (`cli/automa_cli/decision.py` or a focused sibling).
+Direct `from_dict` on apply inputs is forbidden outside these helpers.
 
-**Algorithm (identical structure for observation and memory):**
+**Recordings are full public `to_dict()` exports.** Partial objects are illegal.
 
-1. **Type gate:** `payload` must be a `dict` (JSON object). Else `run_invalid`.
-2. **Known keys only:** every key in `payload` must be a key that the type's
-   `to_dict()` is allowed to emit (the dataclass/public export key set for
-   `Observation` / `MemorySnapshot` / nested `RetainedEvidence` /
-   `MemoryProvenance` / `MemoryBounds` / location dict). Unknown keys →
-   `run_invalid`.
-3. **Construct:** call the existing `from_dict` (or nested constructors) only
-   inside this helper.
-4. **Lossless canonical round-trip (required, not optional):**
-   - `exported = constructed.to_dict()` (and nested `to_dict` for records).
-   - Require **deep exact JSON agreement** between `payload` and `exported` for
-     every path present in `payload`:
-     - same container structure (dict keys, list lengths — no dropped entries);
-     - same scalar JSON types (`type(input) is type(exported)` for leaves:
-       `int`≠`str`, `float`≠`int`, `bool` is not `int`);
-     - same values (`==`);
-     - string artifact values remain strings (reject int/float artifact values
-       even if `from_dict` would `str(...)` them);
-     - numeric fields such as `created_at_ms`, `observed_at_ms`,
-       `bounds.max_records`, `confidence` must already be JSON numbers of the
-       exact type `to_dict` emits (no string numerics).
-   - Equivalent formulation implementers may use: after construction,
-     `canonical_json_utf8(_project(exported, payload)) == canonical_json_utf8(payload)`
-     where `_project` keeps only paths that exist in `payload` **and** deep type
-     identity is checked before encoding (encoding alone is insufficient if both
-     sides were pre-coerced).
-5. On any failure in steps 1–4: raise/map to `run_invalid`; do not return a
-   partially coerced object to `run_cycle`.
+**Exact top-level key sets (all keys required; values may be `null` only where
+the export type allows `None`):**
 
-**Nested coverage (must be inside the same helpers, not a second ad-hoc list):**
-observation `things` / `signals` / `artifacts` / `metadata` / `summary` /
-`sensor_snapshot` / timestamps / schema; memory `bounds` / `records` /
-each record's `provenance`, `location`, `properties`, `confidence`, and
-identifier strings. Any coercion or drop the repository constructors would
-perform must fail the lossless step.
+| Type | Required keys (exact set; no extras, no omissions) |
+| --- | --- |
+| `Observation` | `schema`, `observation_id`, `created_at_ms`, `sensor_snapshot`, `perception_schema`, `perception_plugin_id`, `summary`, `things`, `signals`, `artifacts`, `metadata` |
+| `MemorySnapshot` | `schema`, `memory_id`, `epoch_id`, `health`, `bounds`, `created_at_ms`, `record_count`, `records`, `summary`, `implementation_id`, `error`, `metadata` |
+| `MemoryBounds` (nested) | `max_records`, `max_age_ms`, `eviction_policy`, `max_property_bytes`, `max_serialized_bytes` |
+| `RetainedEvidence` (each record) | `record_id`, `kind`, `label`, `confidence`, `provenance`, `location`, `properties` |
+| `MemoryProvenance` | `observation_id`, `evidence_id`, `coordinate_frame`, `observed_at_ms`, `updated_at_ms`, `source_plugin_id`, `frame_id` |
+| `ViewLocation` (when `location` is not null) | `frame`, `zone`, `bbox_xyxy_norm`, `polygon_xy_norm` (complete export; no partial location) |
 
-**Regressions required (not only non-dict list entries):**
+Schema string constants: observation `decision_observation_v1`; memory
+`decision_memory_snapshot_v0`. `record_count` must equal `len(records)`.
+
+**Algorithm (observation and memory share this structure):**
+
+1. **Type gate:** `payload` must be a `dict`. Else `run_invalid`.
+2. **Exact key set:** `set(payload.keys())` must equal the required key set for
+   that type (table above). Missing or unknown keys → `run_invalid` **before**
+   construction. Nested objects in the table are checked the same way when
+   present (and `location` is either JSON `null` or a full location object).
+3. **Construct:** call existing `from_dict` only inside this helper.
+4. **Full canonical export equality (not projection):**
+   - `exported = constructed.to_dict()`.
+   - Make both sides JSON-canonical sequences: recursively convert tuples →
+     lists (and only JSON types) so `canonical_json_utf8` can encode them.
+   - Require **`canonical_json_utf8(payload) == canonical_json_utf8(exported)`**
+     (full byte equality of the complete objects).
+   - This rejects: scalar coercion, dropped list entries, constructor-filled
+     defaults for omitted fields, and any other normalization.
+5. On any failure: `run_invalid`; never return a coerced/partial object to
+   `run_cycle`.
+
+Do **not** implement acceptance as `_project(exported, payload)` or “keys
+present in input only.” Do **not** replace this with another partial field
+checklist; the complete export equality **is** the boundary.
+
+**Regressions required:**
 
 | Input malformation | Expected |
 | --- | --- |
+| Observation with only `observation_id` (missing timestamp/schema/containers) | `run_invalid` |
+| Memory missing `created_at_ms` / `schema` / full `bounds` fields | `run_invalid` |
+| Memory `bounds` omitting `max_serialized_bytes` (constructor default) | `run_invalid` |
 | `created_at_ms: "123"` (string) | `run_invalid` |
-| `artifacts: {"k": 7}` (non-string value) | `run_invalid` |
+| `artifacts: {"k": 7}` | `run_invalid` |
 | `bounds.max_records: "2"` | `run_invalid` |
 | `records[0].confidence: "0.8"` | `run_invalid` |
 | provenance timestamp string | `run_invalid` |
-| `records[0].location` non-object | `run_invalid` |
+| `records[0].location` non-object non-null | `run_invalid` |
 | `things` / `records` containing a non-dict | `run_invalid` |
-| Unknown top-level key on observation/memory | `run_invalid` |
-| Well-typed fixture that `to_dict` round-trips | accepted; digest stable |
-
-Do **not** expand a partial top-level field checklist as the acceptance boundary;
-the lossless helper is the sole contract.
+| Extra unknown top-level key | `run_invalid` |
+| `record_count` ≠ `len(records)` | `run_invalid` |
+| Complete `to_dict()`-shaped fixture | accepted; digest stable |
 
 ##### Run directory layout
 
@@ -734,6 +738,7 @@ proposal schema. Compact digests may omit `source_refs`; stream
 | Stream after worker stop / restage / age > max | exit 2 `latest_frame_stale` |
 | Stream with `status=completed` even if pid matches and age ok | exit 2 `latest_frame_stale` |
 | Stream with dead worker (`is_pid_alive` false) | exit 2 `latest_frame_stale` |
+| Stream with `published_at_ms` in the future (`age < 0`) | exit 2 `latest_frame_stale` |
 | Adapter step invalid frame_id after a good frame | `last_cycle_result is None`; prior frame not republished as new |
 | Stream/apply with empty or unavailable memory | Fail-closed inactive or missing_input; idle plan; `proposed_applied=false` |
 | Apply without `--id` | exit 2 `missing_vehicle_id` |
@@ -759,6 +764,7 @@ proposal schema. Compact digests may omit `source_refs`; stream
 | Stream while engine is `idle` | Exit 2 `wrong_engine` only |
 | Stream with valid schema but dead worker / old `run_id` / old `activated_at_ms` | Exit 2 `latest_frame_stale` |
 | Stream with `status=completed` (schema-valid frame, matching pid) | Exit 2 `latest_frame_stale` (no completed acceptance) |
+| Stream with future `published_at_ms` | Exit 2 `latest_frame_stale` |
 | Valid frame then invalid frame_id step | No publish of stale prior `last_cycle_result` |
 | Nonzero proposed steering | Stream/view/digest show nonzero **proposed** and idle **authorized_output**; `proposed_applied=false`; no `applied_control` key |
 | Host application unavailable | `host_application` unavailable envelope; still no invented applied zeros field |
@@ -771,6 +777,8 @@ proposal schema. Compact digests may omit `source_refs`; stream
 | Observation `things` contains a non-dict | `run_invalid` (lossless decode) |
 | Memory `records` contains a non-dict | `run_invalid` (lossless decode) |
 | String numeric `created_at_ms` / `confidence` / bounds | `run_invalid` (no scalar coercion) |
+| Observation missing required keys (e.g. only `observation_id`) | `run_invalid` (no constructor defaults) |
+| Memory missing `created_at_ms` / incomplete bounds export | `run_invalid` |
 | Non-string observation artifact value | `run_invalid` |
 | Non-object record `location` | `run_invalid` |
 | Apply frames > MAX_FRAMES | `run_bounds_exceeded` |
@@ -880,12 +888,12 @@ Must prove:
    cleans up.
 8. Stream/latest-frame payload includes generation fields; **no**
    `applied_control` key; production acceptance rejects dead worker,
-   `status!=running`, restage, and age overflow via one predicate (injected
-   `is_pid_alive` only in tests).
+   `status!=running`, restage, over-age, and **future** `published_at_ms`
+   via `0 ≤ age ≤ MAX` (injected `is_pid_alive` only in tests).
 9. Stream with non-shadow activation exits 2 `wrong_engine`.
-10. Strict apply decode boundary rejects scalar coercion and nested shape loss
-    (string timestamps/confidence, non-string artifacts, non-object location,
-    non-dict list entries) via lossless round-trip — not a partial field list.
+10. Strict apply decode requires complete `to_dict()` key sets and full
+    `canonical_json_utf8` equality with the export (rejects omitted fields
+    filled by constructors, scalar coercion, and nested shape loss).
 11. Privileged-origin keys cannot appear in constructed decision sources used by
     the surface (reuse/extend PR #74 tests as needed).
 12. No test enables applied non-idle control for `shadow-proposals`.

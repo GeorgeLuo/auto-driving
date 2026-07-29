@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="1ba9a849407390a126434f5f45427fafcf63ed523b583c76df853e87a9521bd3">
+  <meta name="source-sha256" content="6c8e15e33f12a64375d954000f4df90bc582c262dd4ba99ced208b7a9bfc56cf">
   <base target="_blank">
   <title>Milestone plan — 006-decision-facing-perception-readiness</title>
   <style>
@@ -283,10 +283,17 @@ for simulator and physical vehicles.</p>
 <li>Milestone-level non-goal: Changing proposal semantics during evidence collection, selecting another proposal, applying movement, using privileged simulator state, or claiming physical navigation readiness</li>
 </ul>
 <h3>Next-Frontier Candidate</h3>
-<p><strong>None</strong></p>
+<p><strong>Milestone closeout</strong></p>
 <ul>
-<li>Reason: Cross-environment shadow proposal evidence is promoted from the frozen next-candidate slot.</li>
-<li>Revisit when: Evidence frontier completes M006-05–M006-07 or closeout decides residual work.</li>
+<li>Proposal branch: <code>m006/closeout-proposal</code></li>
+<li>Implementation branch: <code>m006/closeout</code></li>
+<li>Proposal path: <code>docs/milestones/006-decision-facing-perception-readiness/proposals/closeout.md</code></li>
+<li>Review kind: Milestone closeout</li>
+<li>Review question: Is milestone 006 complete as a whole—every exit criterion Met, completion usage supported, residual risk stated—and what later movement or prediction work, if any, is justified?</li>
+<li>Acceptance owner: Closeout judgment docs, completed ledger/navigation updates, and the post-merge mechanical terminal plan handoff for M006-08</li>
+<li>Exit criteria affected: M006-08</li>
+<li>Prerequisite: Cross-environment shadow proposal evidence accepted with Automa surfaces and tracked replay/Chase/Pi packages</li>
+<li>Non-goals: New decision policy, perception retune, applied movement, or reopening PR #74 foundation contracts inside closeout</li>
 </ul>
 <h2>Workflow History</h2>
 <table>
@@ -332,6 +339,11 @@ for simulator and physical vehicles.</p>
 <td>Cross-environment shadow proposal evidence</td>
 <td>ready_for_proposal</td>
 <td>Promoted after implementation PR #74.</td>
+</tr>
+<tr>
+<td>Cross-environment shadow proposal evidence</td>
+<td>ready_for_proposal</td>
+<td>Plan revision: queue Milestone closeout (M006-08) as next-frontier candidate so the evidence unit Expected Handoff can advance.</td>
 </tr>
 </tbody>
 </table>

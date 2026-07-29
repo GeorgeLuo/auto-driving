@@ -4,8 +4,12 @@ from __future__ import annotations
 
 import json
 import os
+import io
+import re
+import shutil
 import tempfile
 import unittest
+from copy import deepcopy
 from pathlib import Path
 from unittest.mock import patch
 
@@ -30,10 +34,12 @@ from cli.automa_cli.decision import (
     apply_vehicle_decision,
     build_decision_stream_frame,
     get_vehicle_decision_info,
+    _format_stream_frame,
     latest_decision_path,
     publish_shadow_decision_frame,
     strict_decode_apply_memory,
     strict_decode_apply_observation,
+    stream_vehicle_decision,
     update_vehicle_decision,
     write_latest_decision_frame,
 )
@@ -258,8 +264,13 @@ class ShadowDecisionSurfaceTests(unittest.TestCase):
             published_at_ms=5000,
         )
         activation = {
+            "schema": "automa_decision_activation_v0",
             "activated_at_ms": 1000,
-            "decision": {"engine_id": ENGINE_ID},
+            "decision": {
+                "engine_id": ENGINE_ID,
+                "engine_spec": ADAPTER_ENGINE_SPEC,
+                "engine_config": dict(DECISION_ENGINES[ENGINE_ID]["engine_config"]),
+            },
         }
         state = {"run_id": "run-1", "status": "running", "pid": 42}
 
@@ -275,7 +286,10 @@ class ShadowDecisionSurfaceTests(unittest.TestCase):
         with self.assertRaises(Exception) as ctx:
             accept_decision_stream_frame(
                 frame,
-                activation={"activated_at_ms": 1000, "decision": {"engine_id": "idle"}},
+                activation={
+                    "activated_at_ms": 1000,
+                    "decision": {"engine_id": "idle", "engine_config": {}},
+                },
                 automation_state=state,
                 now_ms=6000,
                 is_pid_alive=lambda pid: True,
@@ -370,6 +384,69 @@ class ShadowDecisionSurfaceTests(unittest.TestCase):
                 is_pid_alive=lambda pid: True,
             )
         self.assertEqual(ctx.exception.error, "latest_frame_invalid")
+
+        # Runner-owned selector contract: selected must be the actual active
+        # winner, idle cannot hide an active candidate, and candidates must
+        # match the activation enabled-plugin set.
+        from cli.automa_cli.decision import _authority_summary, _plan_summary
+
+        def _selector_error(mutator) -> str:
+            mutated = deepcopy(frame)
+            mutator(mutated)
+            cycle_mut = mutated["cycle"]
+            mutated["plan_summary"] = _plan_summary(cycle_mut["plan"])
+            mutated["authority_summary"] = _authority_summary(
+                cycle_mut["authority"], cycle_mut
+            )
+            with self.assertRaises(Exception) as raised:
+                accept_decision_stream_frame(
+                    mutated,
+                    activation=activation,
+                    automation_state=state,
+                    now_ms=6000,
+                    is_pid_alive=lambda pid: True,
+                )
+            return raised.exception.error
+
+        def selected_inactive(mutated):
+            candidate = mutated["cycle"]["plan"]["candidates"][0]
+            candidate.update(
+                {
+                    "lifecycle": "inactive",
+                    "freshness": "none",
+                    "available": False,
+                    "command": None,
+                    "source_refs": [],
+                }
+            )
+            mutated["cycle"]["authority"]["proposed"] = None
+            mutated["cycle"]["authority"]["proposed_equals_authorized"] = True
+
+        self.assertEqual(
+            _selector_error(selected_inactive),
+            "latest_frame_invalid",
+        )
+
+        def idle_with_active(mutated):
+            plan_mut = mutated["cycle"]["plan"]
+            plan_mut["status"] = "idle"
+            plan_mut["selected_proposal_id"] = None
+            plan_mut["contributions"] = []
+            mutated["cycle"]["authority"]["proposed"] = None
+            mutated["cycle"]["authority"]["proposed_equals_authorized"] = True
+
+        self.assertEqual(_selector_error(idle_with_active), "latest_frame_invalid")
+
+        def ghost_plugin(mutated):
+            candidate = mutated["cycle"]["plan"]["candidates"][0]
+            candidate["plugin_id"] = "ghost"
+            candidate["proposal_id"] = "ghost:frame_001"
+            contribution = mutated["cycle"]["plan"]["contributions"][0]
+            contribution["plugin_id"] = "ghost"
+            contribution["proposal_id"] = "ghost:frame_001"
+            mutated["cycle"]["plan"]["selected_proposal_id"] = "ghost:frame_001"
+
+        self.assertEqual(_selector_error(ghost_plugin), "latest_frame_invalid")
 
         # envelope: bool worker_pid must not match int pid via truthiness
         bool_pid = dict(frame)
@@ -706,6 +783,186 @@ class ShadowDecisionSurfaceTests(unittest.TestCase):
         self.assertEqual(stream_payload["schema"], "vehicle_decision_stream_frame_v0")
         self.assertNotIn("applied_control", stream_payload)
 
+    def test_continuous_json_emits_one_object_per_refresh_line(self) -> None:
+        self._stage()
+        cycle = self._sample_cycle()
+        vehicle_runtime = self.runtime_root / "chase-sim-chaser"
+        activation_path = (
+            vehicle_runtime / "bundle" / "runtime" / "decision" / "active.json"
+        )
+        activation = json.loads(activation_path.read_text())
+        now_ms = int(__import__("time").time() * 1000)
+        frame = build_decision_stream_frame(
+            cycle,
+            vehicle_id="chase-sim-chaser",
+            run_id="run-lines",
+            worker_pid=os.getpid(),
+            activation_engine_id=ENGINE_ID,
+            activation_activated_at_ms=activation["activated_at_ms"],
+            published_at_ms=now_ms,
+        )
+        vehicle_runtime_dir = self.runtime_root / "chase-sim-chaser"
+        write_latest_decision_frame(latest_decision_path(vehicle_runtime_dir), frame)
+        state_path = (
+            vehicle_runtime_dir
+            / "bundle"
+            / "runtime"
+            / "automation"
+            / "state.json"
+        )
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        state_path.write_text(
+            json.dumps(
+                {
+                    "run_id": "run-lines",
+                    "status": "running",
+                    "pid": os.getpid(),
+                }
+            ),
+            encoding="utf-8",
+        )
+        output = io.StringIO()
+        with patch(
+            "cli.automa_cli.decision.time.sleep",
+            side_effect=[None, KeyboardInterrupt],
+        ):
+            result = stream_vehicle_decision(
+                vehicle_id="chase-sim-chaser",
+                refresh_s=0.05,
+                json_output=True,
+                output=output,
+            )
+        self.assertEqual(result.exit_code, 130)
+        lines = output.getvalue().splitlines()
+        self.assertEqual(len(lines), 2)
+        for line in lines:
+            self.assertEqual(
+                json.loads(line)["schema"],
+                "vehicle_decision_stream_frame_v0",
+            )
+
+        latest_decision_path(vehicle_runtime_dir).unlink()
+        error_output = io.StringIO()
+        with patch(
+            "cli.automa_cli.decision.time.sleep",
+            side_effect=[None, KeyboardInterrupt],
+        ):
+            error_result = stream_vehicle_decision(
+                vehicle_id="chase-sim-chaser",
+                refresh_s=0.05,
+                json_output=True,
+                output=error_output,
+            )
+        self.assertEqual(error_result.exit_code, 130)
+        error_lines = error_output.getvalue().splitlines()
+        self.assertEqual(len(error_lines), 2)
+        for line in error_lines:
+            payload = json.loads(line)
+            self.assertEqual(payload["schema"], "vehicle_decision_error_v0")
+            self.assertEqual(payload["error"], "latest_frame_missing")
+
+    def test_human_stream_renders_combined_selected_and_idle_fields(self) -> None:
+        selected = build_decision_stream_frame(
+            self._sample_cycle(),
+            vehicle_id="chase-sim-chaser",
+            run_id="run-human",
+            worker_pid=1,
+            activation_engine_id=ENGINE_ID,
+            activation_activated_at_ms=1000,
+            published_at_ms=1000,
+        )
+        selected_text = _format_stream_frame(selected)
+        for expected in (
+            "Observation image: unavailable",
+            "Retained: record_id=",
+            "Candidate: plugin=avoid_recent_obstruction",
+            "lifecycle=fresh",
+            "freshness=fresh",
+            "confidence=0.8",
+            "reason=steer_away_left_obstruction",
+            "source_refs=",
+            "Selected contribution plugins: avoid_recent_obstruction",
+            "proposed_applied=false",
+            "Non-claims:",
+        ):
+            self.assertIn(expected, selected_text)
+
+        engine = create_shadow_proposals_engine()
+        no_memory_sequence = json.loads((NO_MEM_RUN / "sequence.json").read_text())
+        raw = no_memory_sequence["frames"][0]
+        idle_cycle, _ = engine.run_cycle(
+            frame_id=raw["frame_id"],
+            frame_index=raw["frame_index"],
+            timestamp_ms=raw["timestamp_ms"],
+            observation=strict_decode_apply_observation(raw["observation"]),
+            memory=None,
+        )
+        idle = build_decision_stream_frame(
+            idle_cycle,
+            vehicle_id="chase-sim-chaser",
+            run_id="run-human",
+            worker_pid=1,
+            activation_engine_id=ENGINE_ID,
+            activation_activated_at_ms=1000,
+            published_at_ms=1000,
+        )
+        idle_text = _format_stream_frame(idle)
+        self.assertIn("Plan: status=idle selected=None", idle_text)
+        self.assertIn("Selected contribution plugins: (none)", idle_text)
+        self.assertIn("Candidate: plugin=avoid_recent_obstruction", idle_text)
+
+    def test_invalid_activation_rejected_by_info_stream_and_apply(self) -> None:
+        activation_path = (
+            self.runtime_root
+            / "chase-sim-chaser"
+            / "bundle"
+            / "runtime"
+            / "decision"
+            / "active.json"
+        )
+        mutations = (
+            lambda payload: {**payload, "schema": "bogus_activation_v0"},
+            lambda _payload: ["not", "an", "object"],
+            lambda payload: {
+                **payload,
+                "decision": {
+                    **payload["decision"],
+                    "engine_config": {
+                        **payload["decision"]["engine_config"],
+                        "steer_magnitude": 0.0,
+                    },
+                },
+            },
+        )
+        for mutate in mutations:
+            with self.subTest(mutate=mutate):
+                self._stage()
+                payload = json.loads(activation_path.read_text())
+                activation_path.write_text(
+                    json.dumps(mutate(payload)),
+                    encoding="utf-8",
+                )
+                info = get_vehicle_decision_info(
+                    vehicle_id="chase-sim-chaser",
+                    json_output=True,
+                )
+                stream = stream_vehicle_decision(
+                    vehicle_id="chase-sim-chaser",
+                    once=True,
+                    json_output=True,
+                )
+                applied = apply_vehicle_decision(
+                    vehicle_id="chase-sim-chaser",
+                    from_run=ACTIVE_RUN,
+                    json_output=True,
+                )
+                for result in (info, stream, applied):
+                    self.assertEqual(result.exit_code, 2, result.message)
+                    self.assertEqual(
+                        json.loads(result.message)["error"],
+                        "activation_invalid",
+                    )
+
     def test_stream_wrong_engine_cli(self) -> None:
         self._stage(engine_id="idle")
         cli = run_automa(
@@ -1001,8 +1258,72 @@ class ShadowDecisionSurfaceTests(unittest.TestCase):
             self.assertIn("proposed_applied=false", html_text)
             self.assertIn("memory_record", html_text)
 
+    def test_apply_record_source_image_paths_and_symlink_rejection(self) -> None:
+        self._stage()
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as out:
+            run_dir = Path(tmp) / "run"
+            shutil.copytree(ACTIVE_RUN, run_dir)
+            source_frames = run_dir / "frames"
+            source_frames.mkdir()
+            source_image = source_frames / "frame_001.png"
+            source_image.write_bytes(b"\x89PNG\r\n\x1a\nfixture")
+
+            recorded = apply_vehicle_decision(
+                vehicle_id="chase-sim-chaser",
+                from_run=run_dir,
+                json_output=True,
+                record=True,
+                output_root=Path(out),
+            )
+            self.assertEqual(recorded.exit_code, 0, recorded.message)
+            record_dir = next(Path(out).iterdir())
+            manifest = json.loads((record_dir / "manifest.json").read_text())
+            self.assertEqual(
+                manifest["frames"][0]["source_image"],
+                "source_frames/frame_001.png",
+            )
+            html_path = record_dir / manifest["frames"][0]["html"]
+            html_text = html_path.read_text(encoding="utf-8")
+            match = re.search(r'<img src="([^"]+)"', html_text)
+            self.assertIsNotNone(match)
+            self.assertEqual(match.group(1), "../source_frames/frame_001.png")
+            self.assertTrue((html_path.parent / match.group(1)).resolve().is_file())
+
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as out:
+            run_dir = Path(tmp) / "run"
+            shutil.copytree(ACTIVE_RUN, run_dir)
+            source_frames = run_dir / "frames"
+            source_frames.mkdir()
+            sibling = source_frames / "sibling.png"
+            sibling.write_bytes(b"fixture")
+            (source_frames / "frame_001.png").symlink_to(sibling.name)
+            rejected = apply_vehicle_decision(
+                vehicle_id="chase-sim-chaser",
+                from_run=run_dir,
+                json_output=True,
+                record=True,
+                output_root=Path(out),
+            )
+            self.assertEqual(rejected.exit_code, 2)
+            self.assertEqual(json.loads(rejected.message)["error"], "run_invalid")
+            self.assertEqual(list(Path(out).iterdir()), [])
+
     def test_apply_cli_json(self) -> None:
         self._stage()
+        missing_id = run_automa(
+            "vehicles",
+            "decision",
+            "apply",
+            "--from-run",
+            str(ACTIVE_RUN),
+            "--json",
+            runtime_root=self.runtime_root,
+            check=False,
+        )
+        self.assertEqual(missing_id.returncode, 2)
+        self.assertEqual(json.loads(missing_id.stdout)["error"], "missing_vehicle_id")
+        self.assertEqual(missing_id.stderr, "")
+
         result = run_automa(
             "vehicles",
             "decision",
@@ -1086,6 +1407,64 @@ class ShadowDecisionSurfaceTests(unittest.TestCase):
             # no leftover partial or final dirs
             leftovers = list(out_root.iterdir()) if out_root.exists() else []
             self.assertEqual(leftovers, [])
+
+    def test_apply_record_result_failure_occurs_before_final_rename(self) -> None:
+        self._stage()
+        original_write_text = Path.write_text
+        observed_final_dirs: list[Path] = []
+
+        def fail_result(path: Path, data: str, *args, **kwargs):
+            if path.name == "result.json":
+                observed_final_dirs.extend(
+                    item
+                    for item in path.parent.parent.iterdir()
+                    if item.is_dir() and not item.name.endswith(".partial")
+                )
+                raise OSError("injected result write failure")
+            return original_write_text(path, data, *args, **kwargs)
+
+        with tempfile.TemporaryDirectory() as out:
+            out_root = Path(out)
+            with patch.object(Path, "write_text", new=fail_result):
+                result = apply_vehicle_decision(
+                    vehicle_id="chase-sim-chaser",
+                    from_run=ACTIVE_RUN,
+                    json_output=True,
+                    record=True,
+                    output_root=out_root,
+                )
+            self.assertEqual(result.exit_code, 2)
+            self.assertEqual(json.loads(result.message)["error"], "record_write_failed")
+            self.assertEqual(observed_final_dirs, [])
+            self.assertEqual(list(out_root.iterdir()), [])
+
+    def test_apply_record_cleanup_failure_preserves_both_errors(self) -> None:
+        self._stage()
+        with tempfile.TemporaryDirectory() as out:
+            out_root = Path(out)
+            with (
+                patch.object(
+                    self._decision_mod,
+                    "DECISION_APPLY_MAX_RECORD_BYTES",
+                    50,
+                ),
+                patch(
+                    "cli.automa_cli.decision._remove_tree_strict",
+                    side_effect=OSError("injected cleanup failure"),
+                ),
+            ):
+                result = apply_vehicle_decision(
+                    vehicle_id="chase-sim-chaser",
+                    from_run=ACTIVE_RUN,
+                    json_output=True,
+                    record=True,
+                    output_root=out_root,
+                )
+            self.assertEqual(result.exit_code, 2)
+            payload = json.loads(result.message)
+            self.assertEqual(payload["error"], "record_bounds_exceeded")
+            self.assertIn("Record artifacts are", payload["details"]["original_error"])
+            self.assertTrue(payload["details"]["cleanup_errors"])
 
     # --- strict decode regressions ------------------------------------
 

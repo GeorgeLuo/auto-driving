@@ -23,7 +23,7 @@ from autonomy.decision import (
     ShadowProposalsConfig,
     canonical_json_utf8,
 )
-from autonomy.decision.action_plan import ActionPlan, PlanContribution
+from autonomy.decision.action_plan import ActionPlan, PlanContribution, select_action_plan
 from autonomy.decision.action_proposal import (
     PROPOSED_VEHICLE_COMMAND_SCHEMA,
     ActionProposal,
@@ -433,6 +433,37 @@ def validate_shadow_engine_config(engine_config: dict[str, Any]) -> ShadowPropos
     return cfg
 
 
+def _read_surface_activation(
+    activation_path: Path,
+    *,
+    vehicle_id: str,
+) -> dict[str, Any]:
+    """Canonical activation read for every operator-facing decision surface."""
+
+    try:
+        decoded = read_decision_activation(activation_path)
+    except FileNotFoundError:
+        raise
+    except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
+        raise DecisionSurfaceError(
+            "activation_invalid",
+            f"Invalid decision activation {display_path(activation_path)}: {exc}",
+            vehicle_id=vehicle_id,
+        ) from exc
+
+    if decoded.engine_id == ENGINE_ID:
+        try:
+            validate_shadow_engine_config(decoded.engine_config)
+        except DecisionSurfaceError as exc:
+            raise DecisionSurfaceError(
+                "activation_invalid",
+                exc.message_text,
+                vehicle_id=vehicle_id,
+                details=exc.details,
+            ) from exc
+    return decoded.payload
+
+
 def update_vehicle_decision(
     *,
     vehicle_id: str,
@@ -580,13 +611,11 @@ def get_vehicle_decision_info(*, vehicle_id: str, json_output: bool = False) -> 
         return _error_result(exc, json_output=json_output)
 
     try:
-        activation = json.loads(activation_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        err = DecisionSurfaceError(
-            "activation_invalid",
-            f"Could not parse decision activation {display_path(activation_path)}: {exc}",
+        activation = _read_surface_activation(
+            activation_path,
             vehicle_id=vehicle_id,
         )
+    except DecisionSurfaceError as err:
         return _error_result(err, json_output=json_output)
 
     decision = activation.get("decision")
@@ -914,7 +943,7 @@ def accept_decision_stream_frame(
             "latest_frame_invalid",
             "Latest decision frame is not a JSON object.",
         )
-    _require_stream_frame_envelope(frame)
+    reconstructed_cycle = _require_stream_frame_envelope(frame)
 
     if not isinstance(activation, dict):
         raise DecisionSurfaceError(
@@ -934,6 +963,21 @@ def accept_decision_stream_frame(
             f"stream decision requires engine_id={ENGINE_ID!r}; got {engine_id!r}. "
             "Run: ./cli/automa vehicles update decision --id <vehicle> --engine shadow-proposals",
         )
+    engine_config = decision.get("engine_config")
+    if not isinstance(engine_config, dict):
+        raise DecisionSurfaceError(
+            "activation_invalid",
+            "Decision activation engine_config must be an object.",
+        )
+    try:
+        shadow_config = validate_shadow_engine_config(engine_config)
+    except DecisionSurfaceError as exc:
+        raise DecisionSurfaceError(
+            "activation_invalid",
+            exc.message_text,
+            details=exc.details,
+        ) from exc
+    _require_runner_plan_alignment(reconstructed_cycle, shadow_config)
 
     activated_at = activation.get("activated_at_ms")
     if type(activated_at) is not int:
@@ -1039,7 +1083,9 @@ def _require_exact_keys(
         )
 
 
-def _require_stream_frame_envelope(frame: dict[str, Any]) -> None:
+def _require_stream_frame_envelope(
+    frame: dict[str, Any],
+) -> ShadowDecisionCycleResult:
     """Validate exact vehicle_decision_stream_frame_v0 + nested cycle export."""
 
     if "applied_control" in frame:
@@ -1104,6 +1150,7 @@ def _require_stream_frame_envelope(frame: dict[str, Any]) -> None:
         )
     reconstructed = _require_exact_cycle_export(cycle)
     _require_aggregate_cycle_alignment(frame, reconstructed)
+    return reconstructed
 
 
 def _require_observation_summary(payload: object) -> None:
@@ -1753,6 +1800,60 @@ def _require_aggregate_cycle_alignment(
         ) from exc
 
 
+def _require_runner_plan_alignment(
+    cycle: ShadowDecisionCycleResult,
+    config: ShadowProposalsConfig,
+) -> None:
+    """Enforce runner-owned candidate membership and selector output."""
+
+    if cycle.status == "engine_error":
+        if cycle.plan is not None:
+            raise DecisionSurfaceError(
+                "latest_frame_invalid",
+                "engine_error cycle must not include an action plan.",
+                details={"field": "cycle.plan"},
+            )
+        return
+
+    plan = cycle.plan
+    if plan is None:
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            "ok cycle must include an action plan.",
+            details={"field": "cycle.plan"},
+        )
+    expected_plugins = tuple(sorted(config.enabled_plugins))
+    actual_plugins = tuple(candidate.plugin_id for candidate in plan.candidates)
+    if actual_plugins != expected_plugins:
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            "cycle.plan candidates must match activation enabled_plugins exactly.",
+            details={
+                "field": "cycle.plan.candidates",
+                "expected_plugins": list(expected_plugins),
+                "got_plugins": list(actual_plugins),
+            },
+        )
+    try:
+        expected = select_action_plan(
+            frame_id=plan.frame_id,
+            timestamp_ms=plan.timestamp_ms,
+            candidates=plan.candidates,
+            metadata=plan.to_dict()["metadata"],
+        )
+    except (TypeError, ValueError) as exc:
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            f"cycle.plan failed deterministic selector validation: {exc}",
+            details={"field": "cycle.plan"},
+        ) from exc
+    _require_canonical_export_equal(
+        plan.to_dict(),
+        expected.to_dict(),
+        field="cycle.plan.selector_result",
+    )
+
+
 def _require_stream_summaries_match_cycle(
     frame: dict[str, Any],
     cycle: dict[str, Any],
@@ -1846,12 +1947,21 @@ def load_live_decision_activation(vehicle_runtime_dir: Path | str) -> dict[str, 
     try:
         bundle = controller_bundle_paths(Path(vehicle_runtime_dir))
         activation_path = Path(bundle["decision_runtime_dir"]) / "active.json"
-        if not activation_path.exists():
-            return None
-        payload = json.loads(activation_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        vehicle_id = Path(vehicle_runtime_dir).name
+        payload = _read_surface_activation(
+            activation_path,
+            vehicle_id=vehicle_id,
+        )
+    except (
+        FileNotFoundError,
+        OSError,
+        json.JSONDecodeError,
+        TypeError,
+        ValueError,
+        DecisionSurfaceError,
+    ):
         return None
-    return payload if isinstance(payload, dict) else None
+    return payload
 
 
 def publish_shadow_decision_frame(
@@ -1950,21 +2060,10 @@ def stream_vehicle_decision(
                 ),
                 vehicle_id=vehicle_id,
             )
-        try:
-            payload = json.loads(activation_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError as exc:
-            raise DecisionSurfaceError(
-                "activation_invalid",
-                f"Could not parse decision activation: {exc}",
-                vehicle_id=vehicle_id,
-            ) from exc
-        if not isinstance(payload, dict):
-            raise DecisionSurfaceError(
-                "activation_invalid",
-                "Decision activation is not a JSON object.",
-                vehicle_id=vehicle_id,
-            )
-        return payload
+        return _read_surface_activation(
+            activation_path,
+            vehicle_id=vehicle_id,
+        )
 
     def _load_state() -> dict[str, Any] | None:
         if not state_path.exists():
@@ -2044,11 +2143,7 @@ def stream_vehicle_decision(
             try:
                 frame = _accept_once()
                 last_error = None
-                text = (
-                    json.dumps(frame, indent=2, sort_keys=True)
-                    if json_output
-                    else _format_stream_frame(frame)
-                )
+                text = json.dumps(frame, sort_keys=True) if json_output else _format_stream_frame(frame)
                 if stream is not None:
                     if not no_clear and not json_output:
                         stream.write("\033[2J\033[H")
@@ -2070,7 +2165,6 @@ def stream_vehicle_decision(
                                 vehicle_id=vehicle_id,
                                 details=exc.details,
                             ),
-                            indent=2,
                             sort_keys=True,
                         )
                         + "\n"
@@ -2098,17 +2192,55 @@ def _format_stream_frame(frame: dict[str, Any]) -> str:
     lines = [
         f"Decision stream: {frame.get('vehicle_id')} frame={frame.get('frame_id')}",
         f"Engine: {frame.get('engine_id')}  run={frame.get('run_id')}  pid={frame.get('worker_pid')}",
-        f"Observation: {obs.get('status')}  memory: {mem.get('status')} "
+        f"Observation: status={obs.get('status')} frame_id={obs.get('frame_id')} "
+        f"reason={obs.get('reason')}",
+        "Observation image: unavailable (no image path published in stream frame)",
+        f"Memory: status={mem.get('status')} health={mem.get('health')} "
         f"records={mem.get('record_count')}",
         f"Plan: status={plan.get('status')} selected={plan.get('selected_proposal_id')}",
     ]
+    records = mem.get("records") if isinstance(mem.get("records"), list) else []
+    if records:
+        for record in records:
+            lines.append(
+                "Retained: "
+                f"record_id={record.get('record_id')} kind={record.get('kind')} "
+                f"confidence={record.get('confidence')} frame_id={record.get('frame_id')} "
+                f"observation_id={record.get('observation_id')}"
+            )
+    else:
+        lines.append("Retained: (none)")
+
     selected_refs: list[Any] = []
     for cand in plan.get("candidates") or []:
         if not isinstance(cand, dict):
             continue
+        lines.append(
+            "Candidate: "
+            f"plugin={cand.get('plugin_id')} proposal={cand.get('proposal_id')} "
+            f"lifecycle={cand.get('lifecycle')} freshness={cand.get('freshness')} "
+            f"confidence={cand.get('confidence')} reason={cand.get('reason')} "
+            f"command={json.dumps(cand.get('command'), sort_keys=True)} "
+            f"source_refs={json.dumps(cand.get('source_refs') or [], sort_keys=True)}"
+        )
         if cand.get("proposal_id") == plan.get("selected_proposal_id"):
             selected_refs = cand.get("source_refs") or []
-            break
+    if not plan.get("candidates"):
+        lines.append("Candidate: (none)")
+    contributions = (
+        plan.get("contributions")
+        if isinstance(plan.get("contributions"), list)
+        else []
+    )
+    contribution_plugins = [
+        item.get("plugin_id")
+        for item in contributions
+        if isinstance(item, dict)
+    ]
+    lines.append(
+        "Selected contribution plugins: "
+        + (", ".join(str(item) for item in contribution_plugins) or "(none)")
+    )
     lines.append(f"Selected source_refs: {json.dumps(selected_refs, sort_keys=True)}")
     lines.append(
         f"Authority: proposed={proposed} authorized={authority.get('authorized_output')} "
@@ -2414,15 +2546,11 @@ def _apply_vehicle_decision_body(
             ),
             vehicle_id=vehicle_id,
         )
-    try:
-        activation = json.loads(activation_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        raise DecisionSurfaceError(
-            "activation_invalid",
-            f"Could not parse decision activation: {exc}",
-            vehicle_id=vehicle_id,
-        ) from exc
-    decision = activation.get("decision") if isinstance(activation, dict) else None
+    activation = _read_surface_activation(
+        activation_path,
+        vehicle_id=vehicle_id,
+    )
+    decision = activation.get("decision")
     if not isinstance(decision, dict):
         raise DecisionSurfaceError(
             "activation_invalid",
@@ -2435,11 +2563,13 @@ def _apply_vehicle_decision_body(
             f"decision apply requires engine_id={ENGINE_ID!r}; got {decision.get('engine_id')!r}.",
             vehicle_id=vehicle_id,
         )
-    engine_config = (
-        decision.get("engine_config")
-        if isinstance(decision.get("engine_config"), dict)
-        else {}
-    )
+    engine_config = decision.get("engine_config")
+    if not isinstance(engine_config, dict):
+        raise DecisionSurfaceError(
+            "activation_invalid",
+            "Decision activation engine_config must be an object.",
+            vehicle_id=vehicle_id,
+        )
     try:
         cfg = validate_shadow_engine_config(dict(engine_config))
     except DecisionSurfaceError as exc:
@@ -2702,11 +2832,26 @@ def _write_apply_record(
         for frame, cycle_result in zip(frames, cycle_results):
             frame_id = frame["frame_id"]
             html_name = f"{frame_id}.html"
-            source_image_rel = None
+            manifest_image_rel = None
+            html_image_rel = None
             src = from_run_dir / "frames" / f"{frame_id}.png"
+            source_frames_root = from_run_dir / "frames"
+            if source_frames_root.is_symlink() or src.is_symlink():
+                raise DecisionSurfaceError(
+                    "run_invalid",
+                    f"Source image path must not use symlinks: {src}",
+                    vehicle_id=vehicle_id,
+                )
             if src.is_file():
                 resolved = src.resolve()
-                base = (from_run_dir / "frames").resolve()
+                base = source_frames_root.resolve()
+                run_root = from_run_dir.resolve()
+                if base.parent != run_root:
+                    raise DecisionSurfaceError(
+                        "run_invalid",
+                        f"Source frames directory escapes from-run directory: {source_frames_root}",
+                        vehicle_id=vehicle_id,
+                    )
                 if resolved.parent != base:
                     raise DecisionSurfaceError(
                         "run_invalid",
@@ -2715,19 +2860,20 @@ def _write_apply_record(
                     )
                 dest = source_frames_dir / f"{frame_id}.png"
                 shutil.copyfile(resolved, dest)
-                source_image_rel = f"source_frames/{frame_id}.png"
+                manifest_image_rel = f"source_frames/{frame_id}.png"
+                html_image_rel = f"../source_frames/{frame_id}.png"
             html_body = render_decision_exact_frame_html(
                 vehicle_id=vehicle_id,
                 frame_id=frame_id,
                 cycle_result=cycle_result,
-                source_image_rel=source_image_rel,
+                source_image_rel=html_image_rel,
             )
             (frames_dir / html_name).write_text(html_body, encoding="utf-8")
             frame_entries.append(
                 {
                     "frame_id": frame_id,
                     "html": f"frames/{html_name}",
-                    "source_image": source_image_rel,
+                    "source_image": manifest_image_rel,
                 }
             )
 
@@ -2753,6 +2899,13 @@ def _write_apply_record(
             encoding="utf-8",
         )
 
+        recorded_payload = dict(payload)
+        recorded_payload["recorded"] = True
+        recorded_payload["record_dir"] = display_path(final_dir)
+        (partial_dir / "result.json").write_text(
+            json.dumps(recorded_payload, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
         total = _directory_byte_size(partial_dir)
         if total > DECISION_APPLY_MAX_RECORD_BYTES:
             raise DecisionSurfaceError(
@@ -2761,36 +2914,39 @@ def _write_apply_record(
                 vehicle_id=vehicle_id,
             )
 
+        # Publication is the final operation: readers never observe a partial tree.
         partial_dir.rename(final_dir)
-        recorded_payload = dict(payload)
-        recorded_payload["recorded"] = True
-        recorded_payload["record_dir"] = display_path(final_dir)
-        (final_dir / "result.json").write_text(
-            json.dumps(recorded_payload, indent=2, sort_keys=True),
-            encoding="utf-8",
-        )
-        total = _directory_byte_size(final_dir)
-        if total > DECISION_APPLY_MAX_RECORD_BYTES:
-            _remove_tree_strict(final_dir)
-            raise DecisionSurfaceError(
-                "record_bounds_exceeded",
-                f"Record artifacts are {total} bytes; max is {DECISION_APPLY_MAX_RECORD_BYTES}.",
-                vehicle_id=vehicle_id,
-            )
         return final_dir
-    except DecisionSurfaceError:
-        _remove_tree_strict(partial_dir)
-        if final_dir.exists():
-            _remove_tree_strict(final_dir)
+    except DecisionSurfaceError as exc:
+        cleanup_errors = _cleanup_record_paths(partial_dir, final_dir)
+        if cleanup_errors:
+            raise DecisionSurfaceError(
+                exc.error,
+                f"{exc.message_text} Cleanup also failed: {'; '.join(cleanup_errors)}",
+                vehicle_id=vehicle_id,
+                details={
+                    **exc.details,
+                    "original_error": exc.message_text,
+                    "cleanup_errors": cleanup_errors,
+                },
+            ) from exc
         raise
     except Exception as exc:  # noqa: BLE001
-        _remove_tree_strict(partial_dir)
-        if final_dir.exists():
-            _remove_tree_strict(final_dir)
+        cleanup_errors = _cleanup_record_paths(partial_dir, final_dir)
+        cleanup_text = (
+            f" Cleanup also failed: {'; '.join(cleanup_errors)}"
+            if cleanup_errors
+            else ""
+        )
         raise DecisionSurfaceError(
             "record_write_failed",
-            f"Could not write decision apply record: {type(exc).__name__}: {exc}",
+            f"Could not write decision apply record: {type(exc).__name__}: {exc}."
+            f"{cleanup_text}",
             vehicle_id=vehicle_id,
+            details={
+                "original_error": f"{type(exc).__name__}: {exc}",
+                "cleanup_errors": cleanup_errors,
+            },
         ) from exc
 
 
@@ -2906,6 +3062,16 @@ def _directory_byte_size(path: Path) -> int:
 def _remove_tree_strict(path: Path) -> None:
     if path.exists():
         shutil.rmtree(path)
+
+
+def _cleanup_record_paths(*paths: Path) -> list[str]:
+    errors: list[str] = []
+    for path in paths:
+        try:
+            _remove_tree_strict(path)
+        except Exception as exc:  # noqa: BLE001 - preserve both failure causes
+            errors.append(f"{display_path(path)}: {type(exc).__name__}: {exc}")
+    return errors
 
 
 # ---------------------------------------------------------------------------

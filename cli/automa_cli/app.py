@@ -483,7 +483,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     decision_apply.add_argument(
         "--id",
-        required=True,
+        required=False,
         dest="vehicle_id",
         help="Vehicle id used to resolve the staged decision activation.",
     )

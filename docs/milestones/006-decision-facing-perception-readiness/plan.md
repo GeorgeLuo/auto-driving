@@ -82,10 +82,17 @@ for simulator and physical vehicles.
 
 ### Next-Frontier Candidate
 
-**None**
+**Milestone closeout**
 
-- Reason: Cross-environment shadow proposal evidence is promoted from the frozen next-candidate slot.
-- Revisit when: Evidence frontier completes M006-05–M006-07 or closeout decides residual work.
+- Proposal branch: `m006/closeout-proposal`
+- Implementation branch: `m006/closeout`
+- Proposal path: `docs/milestones/006-decision-facing-perception-readiness/proposals/closeout.md`
+- Review kind: Milestone closeout
+- Review question: Is milestone 006 complete as a whole—every exit criterion Met, completion usage supported, residual risk stated—and what later movement or prediction work, if any, is justified?
+- Acceptance owner: Closeout judgment docs, completed ledger/navigation updates, and the post-merge mechanical terminal plan handoff for M006-08
+- Exit criteria affected: M006-08
+- Prerequisite: Cross-environment shadow proposal evidence accepted with Automa surfaces and tracked replay/Chase/Pi packages
+- Non-goals: New decision policy, perception retune, applied movement, or reopening PR #74 foundation contracts inside closeout
 
 ## Workflow History
 
@@ -98,6 +105,7 @@ for simulator and physical vehicles.
 | Modular shadow action proposal foundation | implementation_in_review | Started m006/shadow-proposals. |
 | Modular shadow action proposal foundation | accepted | Implementation PR #74 merged at 7830cb0c509eb6c601bf74f707d8caeca177ed8d. |
 | Cross-environment shadow proposal evidence | ready_for_proposal | Promoted after implementation PR #74. |
+| Cross-environment shadow proposal evidence | ready_for_proposal | Plan revision: queue Milestone closeout (M006-08) as next-frontier candidate so the evidence unit Expected Handoff can advance. |
 
 ## Accepted Review Units
 

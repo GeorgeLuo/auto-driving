@@ -205,6 +205,54 @@ class DecisionDataSourceTests(unittest.TestCase):
         # Peer still sees original frozen capabilities, not a mutated mapping.
         self.assertEqual(seen[0], seen[1])
 
+    def test_ready_envelope_rejects_live_handles(self) -> None:
+        class LiveClient:
+            pass
+
+        with self.assertRaises(TypeError):
+            ready_envelope(LiveClient(), updated_at_ms=1)
+
+        # Cycle must not return ok with a non-replayable source.
+        from implementations.decision.catalog import create_shadow_proposals_engine
+
+        with self.assertRaises(TypeError):
+            create_shadow_proposals_engine().run_cycle(
+                frame_id="f",
+                frame_index=0,
+                timestamp_ms=1,
+                capabilities=ready_envelope(LiveClient(), updated_at_ms=1),
+            )
+
+    def test_rejects_evaluator_and_map_metadata(self) -> None:
+        from autonomy.decision.memory import canonical_json_bytes
+
+        with self.assertRaises(ValueError):
+            build_decision_data_source(
+                frame_id="f",
+                frame_index=0,
+                timestamp_ms=1,
+                metadata={"evaluator": {"ground_truth": "privileged"}},
+            )
+        with self.assertRaises(ValueError):
+            build_decision_data_source(
+                frame_id="f",
+                frame_index=0,
+                timestamp_ms=1,
+                metadata={"map": {"lanes": []}},
+            )
+        with self.assertRaises(ValueError):
+            build_decision_data_source(
+                frame_id="f",
+                frame_index=0,
+                timestamp_ms=1,
+                metadata={"nested": {"reference_decision": 1}},
+            )
+        # Legal sources remain serializable end-to-end.
+        source = build_decision_data_source(
+            frame_id="f", frame_index=0, timestamp_ms=1
+        )
+        canonical_json_bytes(source.to_dict())
+
 
 if __name__ == "__main__":
     unittest.main()

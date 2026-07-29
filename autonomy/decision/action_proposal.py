@@ -257,13 +257,22 @@ class ActionProposal:
                     f"lifecycle {self.lifecycle} requires command=null"
                 )
 
-        assumptions = tuple(str(item) for item in self.assumptions)
+        if type(self.assumptions) not in (list, tuple):
+            raise TypeError("assumptions must be a list or tuple of strings")
+        for item in self.assumptions:
+            if type(item) is not str:
+                raise TypeError(
+                    f"assumptions items must be strings; got {type(item).__name__}"
+                )
+        assumptions = tuple(self.assumptions)
         if len(assumptions) > MAX_ASSUMPTIONS:
             raise ValueError(f"assumptions exceed {MAX_ASSUMPTIONS}")
         for item in assumptions:
             require_code_point_len(item, field_name="assumption", max_len=MAX_ASSUMPTION)
         object.__setattr__(self, "assumptions", assumptions)
 
+        if type(self.source_refs) not in (list, tuple):
+            raise TypeError("source_refs must be a list or tuple of SourceRef")
         refs = tuple(self.source_refs)
         if len(refs) > MAX_SOURCE_REFS:
             raise ValueError(f"source_refs exceed {MAX_SOURCE_REFS}")
@@ -320,11 +329,16 @@ class ActionProposal:
             if isinstance(command_data, dict)
             else None
         )
-        refs = tuple(
-            SourceRef.from_dict(item)
-            for item in (data.get("source_refs") or ())
-            if isinstance(item, dict)
-        )
+        raw_refs = data.get("source_refs")
+        if raw_refs is None:
+            refs: tuple[SourceRef, ...] = ()
+        elif type(raw_refs) not in (list, tuple):
+            raise TypeError("source_refs must be a list or tuple")
+        else:
+            for item in raw_refs:
+                if not isinstance(item, dict):
+                    raise TypeError("source_refs items must be objects")
+            refs = tuple(SourceRef.from_dict(item) for item in raw_refs)
         raw_metadata = data.get("metadata")
         if raw_metadata is None:
             metadata: dict[str, Any] = {}
@@ -332,6 +346,13 @@ class ActionProposal:
             raise TypeError("metadata must be a dict (JSON object)")
         else:
             metadata = deepcopy(raw_metadata)
+        raw_assumptions = data.get("assumptions")
+        if raw_assumptions is None:
+            assumptions: tuple[str, ...] = ()
+        elif type(raw_assumptions) not in (list, tuple):
+            raise TypeError("assumptions must be a list or tuple of strings")
+        else:
+            assumptions = tuple(raw_assumptions)
         return cls(
             plugin_id=str(data.get("plugin_id") or ""),
             frame_id=str(data.get("frame_id") or ""),
@@ -340,7 +361,7 @@ class ActionProposal:
             confidence=float(data.get("confidence") or 0.0),
             reason=str(data.get("reason") or ""),
             command=command,
-            assumptions=tuple(str(item) for item in (data.get("assumptions") or ())),
+            assumptions=assumptions,
             source_refs=refs,
             # Preserve raw available; constructor rejects non-bool types.
             available=data["available"] if "available" in data else False,

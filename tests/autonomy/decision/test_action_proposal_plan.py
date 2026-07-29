@@ -712,6 +712,92 @@ class RunnerBoundaryTests(unittest.TestCase):
                 metadata=[["x", 1]],  # type: ignore[arg-type]
             )
 
+    def test_assumptions_and_source_refs_require_list_or_tuple(self) -> None:
+        with self.assertRaises(TypeError):
+            ActionProposal(
+                plugin_id="avoid_recent_obstruction",
+                frame_id="frame_001",
+                lifecycle="inactive",
+                freshness="none",
+                confidence=0.0,
+                reason="none",
+                command=None,
+                assumptions={"alpha", "beta", "gamma"},  # type: ignore[arg-type]
+                available=False,
+            )
+        with self.assertRaises(TypeError):
+            ActionProposal(
+                plugin_id="avoid_recent_obstruction",
+                frame_id="frame_001",
+                lifecycle="inactive",
+                freshness="none",
+                confidence=0.0,
+                reason="none",
+                command=None,
+                assumptions="shadow_only",  # type: ignore[arg-type]
+                available=False,
+            )
+        with self.assertRaises(TypeError):
+            ActionProposal(
+                plugin_id="avoid_recent_obstruction",
+                frame_id="frame_001",
+                lifecycle="inactive",
+                freshness="none",
+                confidence=0.0,
+                reason="none",
+                command=None,
+                assumptions=(item for item in ("a", "b")),  # type: ignore[arg-type]
+                available=False,
+            )
+        with self.assertRaises(TypeError):
+            ActionProposal(
+                plugin_id="avoid_recent_obstruction",
+                frame_id="frame_001",
+                lifecycle="stale",
+                freshness="stale",
+                confidence=0.0,
+                reason="stale",
+                command=None,
+                source_refs={SourceRef(kind="memory_record", id="r")},  # type: ignore[arg-type]
+                available=False,
+            )
+        with self.assertRaises(TypeError):
+            ActionProposal.from_dict(
+                {
+                    "plugin_id": "avoid_recent_obstruction",
+                    "frame_id": "frame_001",
+                    "lifecycle": "inactive",
+                    "freshness": "none",
+                    "confidence": 0.0,
+                    "reason": "none",
+                    "command": None,
+                    "assumptions": {"alpha", "beta"},
+                    "source_refs": [],
+                    "available": False,
+                    "metadata": {},
+                    "proposal_id": "avoid_recent_obstruction:frame_001",
+                    "schema": "action_proposal_v0",
+                }
+            )
+        with self.assertRaises(TypeError):
+            ActionProposal.from_dict(
+                {
+                    "plugin_id": "avoid_recent_obstruction",
+                    "frame_id": "frame_001",
+                    "lifecycle": "inactive",
+                    "freshness": "none",
+                    "confidence": 0.0,
+                    "reason": "none",
+                    "command": None,
+                    "assumptions": [],
+                    "source_refs": "not-an-array",
+                    "available": False,
+                    "metadata": {},
+                    "proposal_id": "avoid_recent_obstruction:frame_001",
+                    "schema": "action_proposal_v0",
+                }
+            )
+
     def test_authority_proposed_is_detached_from_selected_command(self) -> None:
         from autonomy.decision.decision_data import DecisionDataSource
 

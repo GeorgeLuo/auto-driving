@@ -26,15 +26,10 @@ BASE_ASSUMPTIONS = (
 )
 
 
-def _lateral_side(record: RetainedEvidence) -> str | None:
+def _bbox_mid_x(record: RetainedEvidence) -> float | None:
     location = record.location
     if location is None:
         return None
-    zone = (location.zone or "").lower()
-    if zone == "left":
-        return "left"
-    if zone == "right":
-        return "right"
     bbox = location.bbox_xyxy_norm
     if bbox is None or len(bbox) != 4:
         return None
@@ -44,6 +39,41 @@ def _lateral_side(record: RetainedEvidence) -> str | None:
         return None
     if not math.isfinite(mid_x):
         return None
+    return mid_x
+
+
+def _has_lateral_cue(record: RetainedEvidence) -> bool:
+    """True when exact left/right zone or a finite bbox mid_x under center/missing zone."""
+
+    location = record.location
+    if location is None:
+        return False
+    zone = location.zone
+    # Exact case-sensitive zone match only.
+    if zone == "left" or zone == "right":
+        return True
+    # Bbox mid_x is a cue only for missing zone or exact "center".
+    if zone not in (None, "", "center"):
+        return False
+    return _bbox_mid_x(record) is not None
+
+
+def _lateral_side(record: RetainedEvidence) -> str | None:
+    """Resolved side for command emission; center-band cue yields None (try next)."""
+
+    location = record.location
+    if location is None:
+        return None
+    zone = location.zone
+    if zone == "left":
+        return "left"
+    if zone == "right":
+        return "right"
+    if zone not in (None, "", "center"):
+        return None
+    mid_x = _bbox_mid_x(record)
+    if mid_x is None:
+        return None
     if mid_x < 0.45:
         return "left"
     if mid_x > 0.55:
@@ -51,15 +81,23 @@ def _lateral_side(record: RetainedEvidence) -> str | None:
     return None
 
 
-def _is_accepted_kind_image_located(
+def _is_image_located_accepted_kind(
     record: RetainedEvidence, *, accepted_kinds: set[str]
 ) -> bool:
-    """Accepted kind with image location (may still lack lateral side / be center)."""
-
     if record.kind not in accepted_kinds:
         return False
     location = record.location
     return location is not None and location.frame == "image"
+
+
+def _is_accepted_obstruction_candidate(
+    record: RetainedEvidence, *, accepted_kinds: set[str]
+) -> bool:
+    """Accepted kind, image location, and a qualifying lateral cue (exact policy)."""
+
+    if not _is_image_located_accepted_kind(record, accepted_kinds=accepted_kinds):
+        return False
+    return _has_lateral_cue(record)
 
 
 def _freshness_class(
@@ -163,13 +201,20 @@ def propose(
 
     kinds = set(accepted_kinds)
     accepted_kind_records = [r for r in snapshot.records if r.kind in kinds]
-    structural = [
+    image_located = [
         r
         for r in accepted_kind_records
-        if _is_accepted_kind_image_located(r, accepted_kinds=kinds)
+        if _is_image_located_accepted_kind(r, accepted_kinds=kinds)
+    ]
+    # Lateral cue is part of candidate admission — no-cue records never enter
+    # freshness / future-dated classification.
+    candidates = [
+        r
+        for r in image_located
+        if _is_accepted_obstruction_candidate(r, accepted_kinds=kinds)
     ]
 
-    if accepted_kind_records and not structural:
+    if accepted_kind_records and not image_located:
         # Accepted kinds present but none image-located.
         return ActionProposal(
             plugin_id=PLUGIN_ID,
@@ -183,11 +228,11 @@ def propose(
             available=False,
         )
 
-    if not structural:
+    if not candidates:
         return _inactive(source, "no_accepted_obstruction_evidence")
 
     classified: list[tuple[str, RetainedEvidence]] = []
-    for record in structural:
+    for record in candidates:
         cls = _freshness_class(
             record,
             now=source.timestamp_ms,

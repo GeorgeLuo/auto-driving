@@ -216,7 +216,7 @@ class AvoidRecentObstructionTests(unittest.TestCase):
         self.assertEqual(p.lifecycle, "inactive")
 
     def test_fresh_center_does_not_fall_back_to_retained_side(self) -> None:
-        # Fresh pool exists (center only). Must not fall back to older retained left.
+        # Fresh pool exists (center-band cue only). Must not fall back to older retained left.
         fresh_center = _record(
             zone="center",
             bbox=(0.45, 0.0, 0.55, 1.0),
@@ -237,6 +237,60 @@ class AvoidRecentObstructionTests(unittest.TestCase):
         )
         self.assertEqual(p.lifecycle, "inactive")
         self.assertIsNone(p.command)
+
+    def test_uppercase_zone_is_not_exact_lateral_cue(self) -> None:
+        p = propose(
+            _source(
+                (
+                    _record(
+                        zone="LEFT",
+                        bbox=None,
+                        frame_id="frame_001",
+                        updated_at_ms=1000,
+                    ),
+                ),
+                now=1000,
+                frame="frame_001",
+            )
+        )
+        self.assertEqual(p.lifecycle, "inactive")
+        self.assertIsNone(p.command)
+
+    def test_center_without_bbox_never_enters_freshness(self) -> None:
+        # No lateral cue → not an accepted candidate; do not emit stale/future paths.
+        stale = propose(
+            _source(
+                (
+                    _record(
+                        zone="center",
+                        bbox=None,
+                        frame_id="old",
+                        updated_at_ms=0,
+                    ),
+                ),
+                now=5000,
+                frame="current",
+            )
+        )
+        self.assertEqual(stale.lifecycle, "inactive")
+        self.assertIsNone(stale.command)
+
+        future = propose(
+            _source(
+                (
+                    _record(
+                        zone="center",
+                        bbox=None,
+                        frame_id="old",
+                        updated_at_ms=5000,
+                    ),
+                ),
+                now=1000,
+                frame="current",
+            )
+        )
+        self.assertEqual(future.lifecycle, "inactive")
+        self.assertNotEqual(future.reason, "future_dated_provenance")
 
     def test_ready_malformed_capabilities_error(self) -> None:
         from autonomy.decision.decision_data import ready_envelope

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, Literal
@@ -26,6 +27,60 @@ ComponentStatus = Literal["ready", "unavailable", "error"]
 COMPONENT_STATUSES = frozenset({"ready", "unavailable", "error"})
 MAX_ENVELOPE_REASON = 240
 MAX_SOURCE_METADATA_BYTES = 2048
+# Privileged / parallel channels forbidden on DecisionDataSource.metadata.
+FORBIDDEN_SOURCE_METADATA_KEYS = frozenset(
+    {
+        "evaluator",
+        "map",
+        "reference_decision",
+        "ground_truth",
+        "debug_truth",
+        "privileged",
+    }
+)
+
+
+def _is_json_primitive(value: object) -> bool:
+    if value is None or isinstance(value, str):
+        return True
+    if type(value) is bool:
+        return True
+    if type(value) is int:
+        return True
+    if type(value) is float:
+        return math.isfinite(value)
+    return False
+
+
+def _reject_forbidden_metadata_keys(value: object, *, path: str = "metadata") -> None:
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if type(key) is str and key in FORBIDDEN_SOURCE_METADATA_KEYS:
+                raise ValueError(
+                    f"DecisionDataSource forbids privileged metadata key {key!r} at {path}"
+                )
+            _reject_forbidden_metadata_keys(item, path=f"{path}.{key}")
+        return
+    if isinstance(value, (list, tuple)):
+        for index, item in enumerate(value):
+            _reject_forbidden_metadata_keys(item, path=f"{path}[{index}]")
+
+
+def _normalize_ready_envelope_value(value: object) -> object:
+    """Accept only typed domain objects or strict JSON; reject live handles."""
+
+    if isinstance(value, MemorySnapshot):
+        return detach_memory_snapshot(value)
+    if isinstance(value, Observation):
+        return Observation.from_dict(value.to_dict())
+    if isinstance(value, (dict, list, tuple)):
+        return deep_freeze(value)
+    if _is_json_primitive(value):
+        return value
+    raise TypeError(
+        "ready envelope value must be MemorySnapshot, Observation, or strict JSON; "
+        f"got {type(value).__name__}"
+    )
 
 
 @dataclass(frozen=True)
@@ -54,16 +109,7 @@ class ComponentEnvelope:
                 raise ValueError("ready envelope reason must be empty")
             if self.value is None:
                 raise ValueError("ready envelope requires a value")
-            # Freeze nested JSON-like payloads; leave typed domain objects as-is
-            # after detaching known snapshot/observation types.
-            value = self.value
-            if isinstance(value, MemorySnapshot):
-                value = detach_memory_snapshot(value)
-            elif isinstance(value, Observation):
-                value = Observation.from_dict(value.to_dict())
-            elif isinstance(value, (dict, list, tuple, set)):
-                value = deep_freeze(value)
-            object.__setattr__(self, "value", value)
+            object.__setattr__(self, "value", _normalize_ready_envelope_value(self.value))
         else:
             if self.value is not None:
                 raise ValueError(f"{self.status} envelope value must be null")
@@ -223,6 +269,7 @@ class DecisionDataSource:
                 raise TypeError(f"{name} must be ComponentEnvelope")
         if type(self.metadata) is not dict:
             raise TypeError("metadata must be a dict (JSON object)")
+        _reject_forbidden_metadata_keys(self.metadata)
         metadata = deep_freeze(self.metadata)
         meta_bytes = canonical_json_bytes(frozen_mapping_to_dict(metadata))
         if meta_bytes > MAX_SOURCE_METADATA_BYTES:
@@ -230,6 +277,13 @@ class DecisionDataSource:
                 f"DecisionDataSource metadata exceeds {MAX_SOURCE_METADATA_BYTES} bytes"
             )
         object.__setattr__(self, "metadata", metadata)
+        # Prove the final source representation is replayable JSON before plugins run.
+        try:
+            canonical_json_bytes(self.to_dict())
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"DecisionDataSource must be strictly JSON-serializable: {exc}"
+            ) from exc
 
     def to_dict(self) -> dict[str, Any]:
         return {

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import re
 from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, Literal
@@ -27,9 +28,8 @@ ComponentStatus = Literal["ready", "unavailable", "error"]
 COMPONENT_STATUSES = frozenset({"ready", "unavailable", "error"})
 MAX_ENVELOPE_REASON = 240
 MAX_SOURCE_METADATA_BYTES = 2048
-# Privileged / parallel channels forbidden anywhere in the decision source tree.
-# Matching is case-sensitive on the raw key and on hyphen/underscore normalized form.
-FORBIDDEN_CHANNEL_KEYS = frozenset(
+# Canonical privilege origins (after case/camel/hyphen normalization).
+FORBIDDEN_CHANNEL_ORIGINS = frozenset(
     {
         "evaluator",
         "map",
@@ -37,27 +37,25 @@ FORBIDDEN_CHANNEL_KEYS = frozenset(
         "ground_truth",
         "debug_truth",
         "privileged",
-        "reference-decision",
-        "ground-truth",
-        "debug-truth",
     }
 )
-_FORBIDDEN_CHANNEL_NORMALIZED = frozenset(
-    key.replace("-", "_") for key in FORBIDDEN_CHANNEL_KEYS
+CAPABILITY_ALLOWED_KEYS = frozenset(
+    {
+        "max_abs_steering",
+        "max_abs_throttle",
+        "allows_reverse",
+        "coordinate_frame",
+    }
 )
-CAPABILITY_REQUIRED_KEYS = (
-    "max_abs_steering",
-    "max_abs_throttle",
-    "allows_reverse",
-    "coordinate_frame",
-)
-PRIOR_HOST_REQUIRED_KEYS = (
-    "steering",
-    "throttle",
-    "confidence",
-    "reason",
-    "applied",
-    "source",
+PRIOR_HOST_ALLOWED_KEYS = frozenset(
+    {
+        "steering",
+        "throttle",
+        "confidence",
+        "reason",
+        "applied",
+        "source",
+    }
 )
 
 
@@ -73,12 +71,19 @@ def _is_json_primitive(value: object) -> bool:
     return False
 
 
+def _canonical_channel_origin(key: str) -> str:
+    """Normalize object keys to a privilege-origin id (case/camel/hyphen/underscore)."""
+
+    # ReferenceDecision -> Reference_Decision; already_snake stays stable.
+    spaced = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", key)
+    spaced = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", spaced)
+    return spaced.replace("-", "_").lower()
+
+
 def _is_forbidden_channel_key(key: object) -> bool:
     if type(key) is not str:
         return False
-    if key in FORBIDDEN_CHANNEL_KEYS:
-        return True
-    return key.replace("-", "_") in _FORBIDDEN_CHANNEL_NORMALIZED
+    return _canonical_channel_origin(key) in FORBIDDEN_CHANNEL_ORIGINS
 
 
 def _reject_forbidden_channel_keys(value: object, *, path: str) -> None:
@@ -104,95 +109,145 @@ def _plain_mapping(value: object) -> dict[str, Any]:
     return plain
 
 
-def _require_finite_unit_float(value: object, *, field_name: str) -> float:
-    try:
-        number = float(value)  # type: ignore[arg-type]
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"{field_name} must be a finite float in [0, 1]") from exc
-    if not math.isfinite(number) or not (0.0 <= number <= 1.0):
+def _require_exact_json_number(value: object, *, field_name: str) -> float:
+    """Require a JSON number (int/float), rejecting bool and string coercions."""
+
+    # bool is a subclass of int — must reject before int acceptance.
+    if type(value) is bool:
+        raise ValueError(f"{field_name} must be a JSON number, not bool")
+    if type(value) is int:
+        return float(value)
+    if type(value) is float:
+        if not math.isfinite(value):
+            raise ValueError(f"{field_name} must be a finite JSON number")
+        return value
+    raise ValueError(
+        f"{field_name} must be a JSON number (int or float); got {type(value).__name__}"
+    )
+
+
+def _require_exact_unit_float(value: object, *, field_name: str) -> float:
+    number = _require_exact_json_number(value, field_name=field_name)
+    if not (0.0 <= number <= 1.0):
         raise ValueError(f"{field_name} must be a finite float in [0, 1]")
     return number
 
 
-def _validate_capabilities_payload(value: object, *, path: str) -> None:
+def _canonical_capabilities_payload(value: object, *, path: str) -> object:
+    """Validate, canonicalize types, and freeze the capabilities mapping."""
+
     payload = _plain_mapping(value)
-    missing = [key for key in CAPABILITY_REQUIRED_KEYS if key not in payload]
+    unknown = sorted(set(payload) - CAPABILITY_ALLOWED_KEYS)
+    if unknown:
+        raise ValueError(
+            f"{path} capabilities has unsupported keys: {', '.join(unknown)}"
+        )
+    missing = [key for key in sorted(CAPABILITY_ALLOWED_KEYS) if key not in payload]
     if missing:
         raise ValueError(
             f"{path} capabilities missing required keys: {', '.join(missing)}"
         )
-    _require_finite_unit_float(
-        payload["max_abs_steering"], field_name=f"{path}.max_abs_steering"
-    )
-    _require_finite_unit_float(
-        payload["max_abs_throttle"], field_name=f"{path}.max_abs_throttle"
-    )
     if type(payload["allows_reverse"]) is not bool:
         raise ValueError(f"{path}.allows_reverse must be a bool")
     if type(payload["coordinate_frame"]) is not str or not payload["coordinate_frame"]:
         raise ValueError(f"{path}.coordinate_frame must be a non-empty string")
+    canonical = {
+        "max_abs_steering": _require_exact_unit_float(
+            payload["max_abs_steering"], field_name=f"{path}.max_abs_steering"
+        ),
+        "max_abs_throttle": _require_exact_unit_float(
+            payload["max_abs_throttle"], field_name=f"{path}.max_abs_throttle"
+        ),
+        "allows_reverse": payload["allows_reverse"],
+        "coordinate_frame": payload["coordinate_frame"],
+    }
+    return deep_freeze(canonical)
 
 
-def _validate_bundle_payload(
+def _canonical_bundle_payload(
     value: object, *, path: str, schema_key: str
-) -> None:
+) -> object:
     payload = _plain_mapping(value)
     schema = payload.get(schema_key)
     if type(schema) is not str or not schema:
         raise ValueError(f"{path} requires non-empty string {schema_key!r}")
+    _reject_forbidden_channel_keys(payload, path=path)
+    return deep_freeze(payload)
 
 
-def _validate_prior_host_payload(value: object, *, path: str) -> None:
+def _canonical_prior_host_payload(value: object, *, path: str) -> object:
     payload = _plain_mapping(value)
-    missing = [key for key in PRIOR_HOST_REQUIRED_KEYS if key not in payload]
+    unknown = sorted(set(payload) - PRIOR_HOST_ALLOWED_KEYS)
+    if unknown:
+        raise ValueError(
+            f"{path} prior_host_applied_command has unsupported keys: "
+            f"{', '.join(unknown)}"
+        )
+    missing = [key for key in sorted(PRIOR_HOST_ALLOWED_KEYS) if key not in payload]
     if missing:
         raise ValueError(
             f"{path} prior_host_applied_command missing required keys: "
             f"{', '.join(missing)}"
         )
-    for field_name in ("steering", "throttle", "confidence"):
-        try:
-            number = float(payload[field_name])
-        except (TypeError, ValueError) as exc:
-            raise ValueError(f"{path}.{field_name} must be numeric") from exc
-        if not math.isfinite(number):
-            raise ValueError(f"{path}.{field_name} must be finite")
     if type(payload["reason"]) is not str:
         raise ValueError(f"{path}.reason must be a string")
-    # Host-reported applied command only — never engine-authorized output.
     if payload["applied"] is not True:
         raise ValueError(f"{path}.applied must be true for host-reported commands")
     if payload["source"] != "host":
         raise ValueError(f"{path}.source must be 'host'")
+    canonical = {
+        "steering": _require_exact_json_number(
+            payload["steering"], field_name=f"{path}.steering"
+        ),
+        "throttle": _require_exact_json_number(
+            payload["throttle"], field_name=f"{path}.throttle"
+        ),
+        "confidence": _require_exact_json_number(
+            payload["confidence"], field_name=f"{path}.confidence"
+        ),
+        "reason": payload["reason"],
+        "applied": True,
+        "source": "host",
+    }
+    return deep_freeze(canonical)
 
 
-def _validate_ready_component(name: str, envelope: "ComponentEnvelope") -> None:
-    """Enforce declared typed payload families for each ready component."""
+def _canonical_observation_payload(value: object, *, path: str) -> Observation:
+    if isinstance(value, Observation):
+        # Detach via dict round-trip for immutability.
+        return Observation.from_dict(value.to_dict())
+    try:
+        plain = _plain_mapping(value)
+    except TypeError as exc:
+        raise TypeError(
+            f"{path} must be Observation or detached observation dict"
+        ) from exc
+    return Observation.from_dict(plain)
+
+
+def _canonicalize_ready_component(name: str, envelope: "ComponentEnvelope") -> object:
+    """Return the stored ready payload after exact-type / schema enforcement."""
 
     value = envelope.value
     path = f"{name}.value"
     if name == "observation":
-        if not isinstance(value, Observation):
-            raise TypeError(f"{path} must be Observation when ready")
-        return
+        return _canonical_observation_payload(value, path=path)
     if name == "memory":
         if not isinstance(value, MemorySnapshot):
             raise TypeError(f"{path} must be MemorySnapshot when ready")
-        return
+        return value
     if name == "patterns":
-        _validate_bundle_payload(value, path=path, schema_key="pattern_bundle_schema")
-        return
+        return _canonical_bundle_payload(
+            value, path=path, schema_key="pattern_bundle_schema"
+        )
     if name == "projections":
-        _validate_bundle_payload(
+        return _canonical_bundle_payload(
             value, path=path, schema_key="projection_bundle_schema"
         )
-        return
     if name == "capabilities":
-        _validate_capabilities_payload(value, path=path)
-        return
+        return _canonical_capabilities_payload(value, path=path)
     if name == "prior_host_applied_command":
-        _validate_prior_host_payload(value, path=path)
-        return
+        return _canonical_prior_host_payload(value, path=path)
     raise ValueError(f"unknown decision component {name!r}")
 
 
@@ -398,7 +453,12 @@ class DecisionDataSource:
             if not isinstance(envelope, ComponentEnvelope):
                 raise TypeError(f"{name} must be ComponentEnvelope")
             if envelope.status == "ready":
-                _validate_ready_component(name, envelope)
+                # Store the canonical payload plugins will consume (exact types).
+                object.__setattr__(
+                    envelope,
+                    "value",
+                    _canonicalize_ready_component(name, envelope),
+                )
         if type(self.metadata) is not dict:
             raise TypeError("metadata must be a dict (JSON object)")
         _reject_forbidden_channel_keys(self.metadata, path="metadata")
@@ -419,6 +479,22 @@ class DecisionDataSource:
                 f"DecisionDataSource must be strictly JSON-serializable: {exc}"
             ) from exc
         _reject_forbidden_channel_keys(plain, path="DecisionDataSource")
+        # Final-type assertions on constrained JSON components.
+        caps = plain["capabilities"]
+        if caps["status"] == "ready":
+            for field_name in ("max_abs_steering", "max_abs_throttle"):
+                if type(caps["value"][field_name]) is not float:
+                    raise ValueError(
+                        f"capabilities.value.{field_name} must serialize as float"
+                    )
+        prior = plain["prior_host_applied_command"]
+        if prior["status"] == "ready":
+            for field_name in ("steering", "throttle", "confidence"):
+                if type(prior["value"][field_name]) is not float:
+                    raise ValueError(
+                        f"prior_host_applied_command.value.{field_name} "
+                        "must serialize as float"
+                    )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -443,7 +519,7 @@ def build_decision_data_source(
     frame_index: int,
     timestamp_ms: int,
     observation: Observation | None = None,
-    observation_configured: bool = True,
+    observation_configured: bool = False,
     observation_error: str | None = None,
     memory: MemorySnapshot | None = None,
     patterns: ComponentEnvelope | None = None,
@@ -452,7 +528,13 @@ def build_decision_data_source(
     prior_host_applied_command: ComponentEnvelope | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> DecisionDataSource:
-    """Build a frozen DecisionDataSource for one cycle."""
+    """Build a frozen DecisionDataSource for one cycle.
+
+    Default observation mapping is unconfigured (``observation_not_configured``)
+    when no observation is supplied, matching the optional observe stage for
+    this unit. Callers that expect a frame but failed to capture must pass
+    ``observation_configured=True`` or an ``observation_error``.
+    """
 
     return DecisionDataSource(
         frame_id=frame_id,
@@ -460,7 +542,7 @@ def build_decision_data_source(
         timestamp_ms=timestamp_ms,
         observation=observation_envelope_from_value(
             observation,
-            configured=observation_configured,
+            configured=observation_configured if observation is None else True,
             error=observation_error,
             updated_at_ms=timestamp_ms,
         ),

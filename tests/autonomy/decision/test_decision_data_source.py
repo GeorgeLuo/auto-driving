@@ -129,6 +129,9 @@ class DecisionDataSourceTests(unittest.TestCase):
             source.prior_host_applied_command.reason,
             "host_did_not_report_applied_command",
         )
+        # Default observe stage is unconfigured for this unit.
+        self.assertEqual(source.observation.status, "unavailable")
+        self.assertEqual(source.observation.reason, "observation_not_configured")
 
     def test_rejects_bad_frame_id(self) -> None:
         with self.assertRaises(ValueError):
@@ -278,6 +281,23 @@ class DecisionDataSourceTests(unittest.TestCase):
                     updated_at_ms=1,
                 ),
             )
+        # Case/camel privileged aliases rejected on final source tree.
+        with self.assertRaises(ValueError):
+            build_decision_data_source(
+                frame_id="f",
+                frame_index=0,
+                timestamp_ms=1,
+                capabilities=ready_envelope(
+                    {
+                        "max_abs_steering": 1.0,
+                        "max_abs_throttle": 1.0,
+                        "allows_reverse": True,
+                        "coordinate_frame": "image",
+                        "Evaluator": {"ReferenceDecision": "steer-left"},
+                    },
+                    updated_at_ms=1,
+                ),
+            )
         # Incomplete capabilities (missing required keys).
         with self.assertRaises(ValueError):
             build_decision_data_source(
@@ -286,6 +306,22 @@ class DecisionDataSourceTests(unittest.TestCase):
                 timestamp_ms=1,
                 capabilities=ready_envelope(
                     {"max_abs_steering": 1.0}, updated_at_ms=1
+                ),
+            )
+        # Coerced string/bool numerics rejected (not retained as wrong types).
+        with self.assertRaises(ValueError):
+            build_decision_data_source(
+                frame_id="f",
+                frame_index=0,
+                timestamp_ms=1,
+                capabilities=ready_envelope(
+                    {
+                        "max_abs_steering": "0.5",
+                        "max_abs_throttle": True,
+                        "allows_reverse": True,
+                        "coordinate_frame": "image",
+                    },
+                    updated_at_ms=1,
                 ),
             )
         # Patterns ready without required schema key.
@@ -314,6 +350,23 @@ class DecisionDataSourceTests(unittest.TestCase):
                     updated_at_ms=1,
                 ),
             )
+        with self.assertRaises(ValueError):
+            build_decision_data_source(
+                frame_id="f",
+                frame_index=0,
+                timestamp_ms=1,
+                prior_host_applied_command=ready_envelope(
+                    {
+                        "steering": "0.1",
+                        "throttle": False,
+                        "confidence": "1.0",
+                        "reason": "user",
+                        "applied": True,
+                        "source": "host",
+                    },
+                    updated_at_ms=1,
+                ),
+            )
         # Non-mapping ready capabilities rejected at source, not plugin.
         with self.assertRaises((TypeError, ValueError)):
             build_decision_data_source(
@@ -322,7 +375,7 @@ class DecisionDataSourceTests(unittest.TestCase):
                 timestamp_ms=1,
                 capabilities=ready_envelope("not-a-dict", updated_at_ms=1),
             )
-        # Valid ready prior host payload accepted.
+        # Valid ready prior host payload accepted with exact float serialization.
         source = build_decision_data_source(
             frame_id="f",
             frame_index=0,
@@ -345,6 +398,73 @@ class DecisionDataSourceTests(unittest.TestCase):
         )
         self.assertEqual(source.prior_host_applied_command.status, "ready")
         self.assertEqual(source.patterns.status, "ready")
+        prior = source.to_dict()["prior_host_applied_command"]["value"]
+        self.assertIs(type(prior["steering"]), float)
+        self.assertIs(type(prior["throttle"]), float)
+        self.assertIs(type(prior["confidence"]), float)
+        caps = source.to_dict()["capabilities"]["value"]
+        self.assertIs(type(caps["max_abs_steering"]), float)
+        self.assertIs(type(caps["max_abs_throttle"]), float)
+
+    def test_ready_observation_accepts_detached_dict(self) -> None:
+        from autonomy.decision.observation import Observation
+
+        obs = Observation(
+            observation_id="obs-1",
+            created_at_ms=1,
+            sensor_snapshot={},
+            summary=(),
+            things=(),
+            signals=(),
+        )
+        source = build_decision_data_source(
+            frame_id="f",
+            frame_index=0,
+            timestamp_ms=1,
+            observation=None,
+            # Ready detached dict through envelope constructor.
+        )
+        # Direct envelope path with detached dict.
+        from autonomy.decision.decision_data import DecisionDataSource, unavailable_envelope
+
+        ready = ready_envelope(obs.to_dict(), updated_at_ms=1)
+        source = DecisionDataSource(
+            frame_id="f",
+            frame_index=0,
+            timestamp_ms=1,
+            observation=ready,
+            memory=unavailable_envelope("memory_not_provided"),
+            patterns=unavailable_envelope("stage_not_configured"),
+            projections=unavailable_envelope("stage_not_configured"),
+            capabilities=ready_envelope(
+                {
+                    "max_abs_steering": 1.0,
+                    "max_abs_throttle": 1.0,
+                    "allows_reverse": True,
+                    "coordinate_frame": "image",
+                }
+            ),
+            prior_host_applied_command=unavailable_envelope(
+                "host_did_not_report_applied_command"
+            ),
+        )
+        self.assertEqual(source.observation.status, "ready")
+        self.assertIsInstance(source.observation.value, Observation)
+        self.assertEqual(source.observation.value.observation_id, "obs-1")
+
+    def test_runner_default_observation_not_configured(self) -> None:
+        from implementations.decision.catalog import create_shadow_proposals_engine
+
+        result, control = create_shadow_proposals_engine().run_cycle(
+            frame_id="f", frame_index=0, timestamp_ms=1
+        )
+        self.assertEqual(result.status, "ok")
+        assert result.source is not None
+        self.assertEqual(result.source.observation.status, "unavailable")
+        self.assertEqual(
+            result.source.observation.reason, "observation_not_configured"
+        )
+        self.assertEqual(control.steering, 0.0)
 
 
 if __name__ == "__main__":

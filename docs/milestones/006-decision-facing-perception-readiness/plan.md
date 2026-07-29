@@ -69,10 +69,11 @@ for simulator and physical vehicles.
 
 **Automa shadow decision surfaces**
 
-- Workflow state: proposal_in_review
+- Workflow state: ready_for_implementation
 - Proposal branch: `m006/shadow-decision-surfaces-proposal`
 - Implementation branch: `m006/shadow-decision-surfaces`
 - Proposal path: `docs/milestones/006-decision-facing-perception-readiness/proposals/shadow-decision-surfaces.md`
+- Accepted proposal: [#79](https://github.com/GeorgeLuo/auto-driving/pull/79) at `b9c1af61be8837ee6832fd2e33c706aa4ee84b44`
 - Review kind: Behavioral feature slice
 - Review question: Can Automa stage, inspect, replay, and stream the accepted `shadow-proposals` decision path with concise default output, complete `--json` output, deterministic offline replay, latest-frame replacement, one combined frame/evidence/proposal/authority view, and an opt-in exact-frame HTML artifact with no default disk writes while applied control remains zero?
 - Acceptance owner: Automa decision stage/info/apply/stream/view surfaces and deterministic offline replay against the PR #74 shadow engine
@@ -108,6 +109,7 @@ for simulator and physical vehicles.
 | Cross-environment shadow proposal evidence | ready_for_proposal | Plan revision: queue Milestone closeout (M006-08) as next-frontier candidate so the evidence unit Expected Handoff can advance. |
 | Automa shadow decision surfaces | ready_for_proposal | Plan revision: split oversized combined surfaces+live frontier; current is M006-05 deterministic Automa surfaces; next is M006-06–M006-07 cross-environment evidence; close PR #76. |
 | Automa shadow decision surfaces | proposal_in_review | Started m006/shadow-decision-surfaces-proposal. |
+| Automa shadow decision surfaces | ready_for_implementation | Proposal PR #79 accepted at b9c1af61be8837ee6832fd2e33c706aa4ee84b44. |
 
 ## Accepted Review Units
 

@@ -1,7 +1,8 @@
 # Documentation Guide
 
 This directory separates current reference material, future-facing synthesis,
-and milestone history. Read this file first when starting work.
+agent operating guidance, and milestone history. Use the selective reading
+order below instead of loading the full process contract for every task.
 
 ## Active Milestone
 
@@ -26,19 +27,25 @@ Closeout: [004 closeout](milestones/004-physical-perception-parity/closeout.md).
 
 ## Reading Order
 
-1. Shared [planning and delivery contract](milestones/README.md)
-   ([rendered](milestones/planning-contract.html)).
+1. Short default [agent surface](guidance/agent-surface.md).
 2. Active milestone plan when one is listed above.
-3. [completed.md](milestones/completed.md) for durable closed-work context.
-4. Relevant documents under `reference/` for current system behavior.
-5. `synthesis/` for research evidence—not backlog commitments.
+3. Only the role- or task-specific files selected by the agent surface.
+4. Full [planning and delivery contract](milestones/README.md)
+   ([rendered](milestones/planning-contract.html)) when resolving ambiguity,
+   changing workflow, or directed there by a guidance file.
+5. [completed.md](milestones/completed.md) for durable closed-work context.
+6. Relevant documents under `reference/` for current system behavior.
+7. `synthesis/` for research evidence, not backlog commitments.
 
 Do not treat closed milestone plans as current architecture.
+The active milestone plan, not this navigation page, owns current workflow and
+frontier state.
 
 ## Structure
 
 | Path | Role |
 | --- | --- |
+| `guidance/` | Short, derived agent operating surface and role preambles |
 | `reference/` | Living architecture and contracts |
 | `synthesis/` | Research evidence without commitment |
 | `milestones/README.md` | Canonical planning and PR delivery contract |

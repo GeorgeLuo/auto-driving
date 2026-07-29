@@ -45,7 +45,7 @@ frontier state.
 
 | Path | Role |
 | --- | --- |
-| `guidance/` | Short, derived agent operating surface and role preambles |
+| `guidance/` | Short, derived agent operating surface and role guidance |
 | `reference/` | Living architecture and contracts |
 | `synthesis/` | Research evidence without commitment |
 | `milestones/README.md` | Canonical planning and PR delivery contract |

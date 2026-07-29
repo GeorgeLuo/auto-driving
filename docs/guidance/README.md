@@ -20,8 +20,8 @@ context loading without replacing the full contract.
 | [repair-cycle.md](repair-cycle.md) | Addressing findings or re-reviewing repairs |
 | [validation.md](validation.md) | Planning, running, or reporting validation |
 | [adversarial-matrix.md](adversarial-matrix.md) | Universal claims, boundary audits, and fresh adversarial review |
-| [preambles/implementer.md](preambles/implementer.md) | Stable implementer conversation preamble |
-| [preambles/planner-reviewer.md](preambles/planner-reviewer.md) | Stable planner/reviewer conversation preamble |
+| [roles/meta-manager.md](roles/meta-manager.md) | Planning, review, workflow, handoff, and closeout operations |
+| [roles/implementer.md](roles/implementer.md) | Proposal authoring, implementation, and repair operations |
 
 ## Maintenance
 
@@ -29,6 +29,8 @@ context loading without replacing the full contract.
 - Summarize existing contract rules; do not create new ones here.
 - Keep milestone, branch, PR, finding, and validation state out of this
   directory.
+- Keep automatic operation routing in the root `AGENTS.md` entrypoint and this
+  directory; do not require conversation preambles.
 - Link to the relevant contract section when a summary cannot preserve an
   important condition.
 - Review this surface when the contract changes, removing stale or duplicated

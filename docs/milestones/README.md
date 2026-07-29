@@ -837,15 +837,18 @@ directly.
 loading. It exists to reduce repeated context cost; this contract remains the
 single source of truth.
 
-Agents should normally load `docs/guidance/agent-surface.md`, then only the
-role- or task-specific guidance it selects. Load this full contract when a
-guidance file directs it, when workflow meaning is ambiguous, or when changing
-the workflow itself.
+For repository-aware agents, root `AGENTS.md` is the automatic entrypoint. It
+routes each requested operation through `docs/guidance/agent-surface.md`, then
+only the selected role- or task-specific guidance. Load this full contract when
+a guidance file directs it, when workflow meaning is ambiguous, or when
+changing the workflow itself.
 
 Guidance files may summarize or route to this contract. They must not introduce
 new process rules, carry current milestone state, or override this contract. If
-the two conflict, this contract wins. Long-running conversations should retain
-current work state and findings, not act as the durable store for process rules.
+the two conflict, this contract wins. Operation classification does not
+authorize a workflow phase transition. Long-running conversations should
+retain current work state and findings, not act as the durable store for
+process rules.
 
 ## Non-Goals Of This Contract
 

@@ -69,7 +69,7 @@ for simulator and physical vehicles.
 
 **Cross-environment shadow proposal evidence**
 
-- Workflow state: ready_for_proposal
+- Workflow state: proposal_in_review
 - Proposal branch: `m006/shadow-proposal-evidence-proposal`
 - Implementation branch: `m006/shadow-proposal-evidence`
 - Proposal path: `docs/milestones/006-decision-facing-perception-readiness/proposals/shadow-proposal-evidence.md`
@@ -106,6 +106,7 @@ for simulator and physical vehicles.
 | Modular shadow action proposal foundation | accepted | Implementation PR #74 merged at 7830cb0c509eb6c601bf74f707d8caeca177ed8d. |
 | Cross-environment shadow proposal evidence | ready_for_proposal | Promoted after implementation PR #74. |
 | Cross-environment shadow proposal evidence | ready_for_proposal | Plan revision: queue Milestone closeout (M006-08) as next-frontier candidate so the evidence unit Expected Handoff can advance. |
+| Cross-environment shadow proposal evidence | proposal_in_review | Started m006/shadow-proposal-evidence-proposal. |
 
 ## Accepted Review Units
 

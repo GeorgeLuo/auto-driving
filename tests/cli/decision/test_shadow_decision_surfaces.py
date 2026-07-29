@@ -412,6 +412,85 @@ class ShadowDecisionSurfaceTests(unittest.TestCase):
             )
         self.assertEqual(ctx.exception.error, "latest_frame_invalid")
 
+        # forbidden applied_control / arbitrary top-level extra key
+        for extra_key in ("applied_control", "extra_top_level"):
+            extra = dict(frame)
+            extra[extra_key] = {"steering": 0.0, "throttle": 0.0}
+            with self.assertRaises(Exception) as ctx:
+                accept_decision_stream_frame(
+                    extra,
+                    activation=activation,
+                    automation_state=state,
+                    now_ms=6000,
+                    is_pid_alive=lambda pid: True,
+                )
+            self.assertEqual(ctx.exception.error, "latest_frame_invalid")
+
+        # arbitrary cycle key / omitted required nullable source
+        cycle_extra = dict(frame)
+        cycle_extra["cycle"] = dict(frame["cycle"])
+        cycle_extra["cycle"]["extra_cycle_key"] = True
+        with self.assertRaises(Exception) as ctx:
+            accept_decision_stream_frame(
+                cycle_extra,
+                activation=activation,
+                automation_state=state,
+                now_ms=6000,
+                is_pid_alive=lambda pid: True,
+            )
+        self.assertEqual(ctx.exception.error, "latest_frame_invalid")
+
+        cycle_no_source = dict(frame)
+        cycle_no_source["cycle"] = dict(frame["cycle"])
+        del cycle_no_source["cycle"]["source"]
+        # rebuild summaries as if source were absent so only omission is tested
+        from cli.automa_cli.decision import (
+            _authority_summary,
+            _memory_summary,
+            _observation_summary,
+            _plan_summary,
+        )
+
+        cycle_no_source["observation_summary"] = _observation_summary(None)
+        cycle_no_source["memory_summary"] = _memory_summary(None)
+        cycle_no_source["plan_summary"] = _plan_summary(
+            cycle_no_source["cycle"].get("plan")
+            if isinstance(cycle_no_source["cycle"].get("plan"), dict)
+            else None
+        )
+        cycle_no_source["authority_summary"] = _authority_summary(
+            cycle_no_source["cycle"].get("authority")
+            if isinstance(cycle_no_source["cycle"].get("authority"), dict)
+            else {},
+            cycle_no_source["cycle"],
+        )
+        with self.assertRaises(Exception) as ctx:
+            accept_decision_stream_frame(
+                cycle_no_source,
+                activation=activation,
+                automation_state=state,
+                now_ms=6000,
+                is_pid_alive=lambda pid: True,
+            )
+        self.assertEqual(ctx.exception.error, "latest_frame_invalid")
+
+        # invalid PR #74 frame-id grammar
+        bad_id = dict(frame)
+        bad_id["frame_id"] = "bad frame!"
+        bad_id["cycle"] = dict(frame["cycle"])
+        bad_id["cycle"]["frame_id"] = "bad frame!"
+        # keep summaries consistent with cycle frame_id field only via plan rebuild
+        # (frame_id grammar fails before summary compare)
+        with self.assertRaises(Exception) as ctx:
+            accept_decision_stream_frame(
+                bad_id,
+                activation=activation,
+                automation_state=state,
+                now_ms=6000,
+                is_pid_alive=lambda pid: True,
+            )
+        self.assertEqual(ctx.exception.error, "latest_frame_invalid")
+
     def test_publish_and_stream_once_cli(self) -> None:
         self._stage()
         cycle = self._sample_cycle()
@@ -544,10 +623,24 @@ class ShadowDecisionSurfaceTests(unittest.TestCase):
             payload = json.loads(frame_path.read_text())
             self.assertNotEqual(payload.get("schema"), "vehicle_decision_stream_frame_v0")
 
-        # Restage back to shadow (new generation) allows publish with new activated_at.
+        # Restage to a new shadow generation B: worker still holding A must not
+        # publish a cycle labeled as B.
         self._stage()
         activation_b = json.loads(activation_path.read_text())
         self.assertNotEqual(activation_b["activated_at_ms"], activated_a)
+        self.assertFalse(
+            publish_shadow_decision_frame(
+                cycle_result=cycle,
+                context_frame_id="frame_001",
+                vehicle_id="chase-sim-chaser",
+                vehicle_runtime_dir=vehicle_runtime,
+                run_id="run-b",
+                worker_pid=1,
+                activation=activation_a,  # generation-A worker capture
+                staged_engine_id=ENGINE_ID,
+            )
+        )
+        # Only a worker that reloads with generation B may publish under B.
         self.assertTrue(
             publish_shadow_decision_frame(
                 cycle_result=cycle,
@@ -556,7 +649,7 @@ class ShadowDecisionSurfaceTests(unittest.TestCase):
                 vehicle_runtime_dir=vehicle_runtime,
                 run_id="run-b",
                 worker_pid=1,
-                activation=activation_a,  # stale capture deliberately ignored
+                activation=activation_b,
                 staged_engine_id=ENGINE_ID,
             )
         )

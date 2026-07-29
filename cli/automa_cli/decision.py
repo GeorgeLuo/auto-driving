@@ -16,6 +16,7 @@ from typing import Any, Callable, TextIO
 from autonomy.decision import (
     ACTION_PLAN_SCHEMA,
     ACTION_PROPOSAL_SCHEMA,
+    DECISION_DATA_SOURCE_SCHEMA,
     SHADOW_AUTHORITY_RESULT_SCHEMA,
     SHADOW_DECISION_CYCLE_RESULT_SCHEMA,
     SELECTOR_ID,
@@ -72,6 +73,127 @@ ERROR_SCHEMA = "vehicle_decision_error_v0"
 EXACT_FRAME_REVIEW_SCHEMA = "decision_exact_frame_review_v0"
 COMBINED_VIEW_ID = "decision-combined-v0"
 LATEST_DECISION_FILENAME = "latest_decision.json"
+
+STREAM_FRAME_EXACT_KEYS = frozenset(
+    {
+        "schema",
+        "vehicle_id",
+        "engine_id",
+        "run_id",
+        "worker_pid",
+        "activation_engine_id",
+        "activation_activated_at_ms",
+        "published_at_ms",
+        "frame_id",
+        "frame_index",
+        "timestamp_ms",
+        "cycle",
+        "observation_summary",
+        "memory_summary",
+        "plan_summary",
+        "authority_summary",
+        "view",
+    }
+)
+CYCLE_EXACT_KEYS = frozenset(
+    {"schema", "frame_id", "status", "reason", "source", "plan", "authority"}
+)
+AUTHORITY_EXACT_KEYS = frozenset(
+    {
+        "schema",
+        "frame_id",
+        "proposed",
+        "authorized_output",
+        "proposed_applied",
+        "host_application",
+        "proposed_equals_authorized",
+        "cycle_status",
+        "cycle_reason",
+        "authority_mode",
+        "drive_mode_gate",
+    }
+)
+PLAN_EXACT_KEYS = frozenset(
+    {
+        "schema",
+        "plan_id",
+        "frame_id",
+        "timestamp_ms",
+        "status",
+        "selected_proposal_id",
+        "contributions",
+        "candidates",
+        "selector_id",
+        "metadata",
+    }
+)
+SOURCE_EXACT_KEYS = frozenset(
+    {
+        "schema",
+        "source_id",
+        "frame_id",
+        "frame_index",
+        "timestamp_ms",
+        "observation",
+        "memory",
+        "patterns",
+        "projections",
+        "capabilities",
+        "prior_host_applied_command",
+        "metadata",
+    }
+)
+ENVELOPE_EXACT_KEYS = frozenset({"status", "value", "reason", "updated_at_ms"})
+PROPOSAL_EXACT_KEYS = frozenset(
+    {
+        "schema",
+        "proposal_id",
+        "plugin_id",
+        "frame_id",
+        "lifecycle",
+        "freshness",
+        "confidence",
+        "reason",
+        "command",
+        "assumptions",
+        "source_refs",
+        "available",
+        "metadata",
+    }
+)
+CONTRIBUTION_EXACT_KEYS = frozenset({"proposal_id", "plugin_id", "weight", "role"})
+SOURCE_REF_EXACT_KEYS = frozenset(
+    {"kind", "id", "frame_id", "observation_id", "plugin_id", "note"}
+)
+OBS_SUMMARY_EXACT_KEYS = frozenset({"status", "frame_id", "reason"})
+MEM_SUMMARY_EXACT_KEYS = frozenset({"status", "health", "record_count", "records"})
+PLAN_SUMMARY_EXACT_KEYS = frozenset(
+    {"status", "selected_proposal_id", "candidates", "contributions"}
+)
+PLAN_SUMMARY_CAND_EXACT_KEYS = frozenset(
+    {
+        "proposal_id",
+        "plugin_id",
+        "lifecycle",
+        "freshness",
+        "confidence",
+        "reason",
+        "command",
+        "source_refs",
+    }
+)
+AUTHORITY_SUMMARY_EXACT_KEYS = frozenset(
+    {
+        "proposed",
+        "authorized_output",
+        "proposed_applied",
+        "host_application",
+        "proposed_equals_authorized",
+        "cycle_status",
+        "cycle_reason",
+    }
+)
+VIEW_EXACT_KEYS = frozenset({"view_id", "applied_false_emphasized"})
 
 OBSERVATION_REQUIRED_KEYS = frozenset(
     {
@@ -881,28 +1003,58 @@ def _require_non_bool_int(value: object, *, field: str) -> int:
     return value
 
 
-def _require_stream_frame_envelope(frame: dict[str, Any]) -> None:
-    """Validate exact vehicle_decision_stream_frame_v0 envelope types."""
+def _require_exact_keys(
+    payload: dict[str, Any],
+    exact: frozenset[str],
+    *,
+    field: str,
+) -> None:
+    keys = set(payload.keys())
+    if keys != set(exact):
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            f"{field} key set is not exact export.",
+            details={
+                "field": field,
+                "expected": sorted(exact),
+                "got": sorted(keys),
+                "extra": sorted(keys - set(exact)),
+                "missing": sorted(set(exact) - keys),
+            },
+        )
 
+
+def _require_stream_frame_envelope(frame: dict[str, Any]) -> None:
+    """Validate exact vehicle_decision_stream_frame_v0 + nested cycle export."""
+
+    if "applied_control" in frame:
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            "Latest decision frame must not include applied_control.",
+            details={"field": "applied_control"},
+        )
     if frame.get("schema") != STREAM_FRAME_SCHEMA:
         raise DecisionSurfaceError(
             "latest_frame_invalid",
             f"Latest decision frame schema must be {STREAM_FRAME_SCHEMA!r}.",
         )
-    required_strings = (
-        "vehicle_id",
-        "engine_id",
-        "run_id",
-        "activation_engine_id",
-        "frame_id",
-    )
-    for key in required_strings:
+    _require_exact_keys(frame, STREAM_FRAME_EXACT_KEYS, field="stream_frame")
+
+    for key in ("vehicle_id", "engine_id", "run_id", "activation_engine_id"):
         if type(frame.get(key)) is not str or not str(frame.get(key)):
             raise DecisionSurfaceError(
                 "latest_frame_invalid",
                 f"Latest decision frame {key} must be a non-empty string.",
                 details={"field": key},
             )
+    try:
+        require_ascii_id(frame["frame_id"], field_name="frame_id")
+    except ValueError as exc:
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            f"Latest decision frame frame_id is not a valid ASCII id: {exc}",
+            details={"field": "frame_id"},
+        ) from exc
     _require_non_bool_int(frame.get("worker_pid"), field="worker_pid")
     _require_non_bool_int(
         frame.get("activation_activated_at_ms"),
@@ -912,65 +1064,285 @@ def _require_stream_frame_envelope(frame: dict[str, Any]) -> None:
     _require_non_bool_int(frame.get("frame_index"), field="frame_index")
     _require_non_bool_int(frame.get("timestamp_ms"), field="timestamp_ms")
 
-    for key in (
-        "observation_summary",
-        "memory_summary",
-        "plan_summary",
-        "authority_summary",
-        "view",
-    ):
-        if not isinstance(frame.get(key), dict):
-            raise DecisionSurfaceError(
-                "latest_frame_invalid",
-                f"Latest decision frame {key} must be an object.",
-                details={"field": key},
-            )
+    _require_observation_summary(frame["observation_summary"])
+    _require_memory_summary(frame["memory_summary"])
+    _require_plan_summary_envelope(frame["plan_summary"])
+    _require_authority_summary(frame["authority_summary"])
+    view = frame["view"]
+    if not isinstance(view, dict):
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            "view must be an object.",
+        )
+    _require_exact_keys(view, VIEW_EXACT_KEYS, field="view")
+    if view.get("view_id") != COMBINED_VIEW_ID or view.get("applied_false_emphasized") is not True:
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            "view must be decision-combined-v0 with applied_false_emphasized=true.",
+        )
 
-    cycle = frame.get("cycle")
+    cycle = frame["cycle"]
     if not isinstance(cycle, dict):
         raise DecisionSurfaceError(
             "latest_frame_invalid",
             "Latest decision frame cycle must be an object.",
         )
+    _require_exact_cycle_export(cycle)
+
+
+def _require_observation_summary(payload: object) -> None:
+    if not isinstance(payload, dict):
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            "observation_summary must be an object.",
+        )
+    _require_exact_keys(payload, OBS_SUMMARY_EXACT_KEYS, field="observation_summary")
+
+
+def _require_memory_summary(payload: object) -> None:
+    if not isinstance(payload, dict):
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            "memory_summary must be an object.",
+        )
+    _require_exact_keys(payload, MEM_SUMMARY_EXACT_KEYS, field="memory_summary")
+    records = payload.get("records")
+    if not isinstance(records, list):
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            "memory_summary.records must be a list.",
+        )
+
+
+def _require_plan_summary_envelope(payload: object) -> None:
+    if not isinstance(payload, dict):
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            "plan_summary must be an object.",
+        )
+    _require_exact_keys(payload, PLAN_SUMMARY_EXACT_KEYS, field="plan_summary")
+    candidates = payload.get("candidates")
+    if not isinstance(candidates, list):
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            "plan_summary.candidates must be a list.",
+        )
+    for index, cand in enumerate(candidates):
+        if not isinstance(cand, dict):
+            raise DecisionSurfaceError(
+                "latest_frame_invalid",
+                f"plan_summary.candidates[{index}] must be an object.",
+            )
+        _require_exact_keys(
+            cand,
+            PLAN_SUMMARY_CAND_EXACT_KEYS,
+            field=f"plan_summary.candidates[{index}]",
+        )
+    contributions = payload.get("contributions")
+    if not isinstance(contributions, list):
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            "plan_summary.contributions must be a list.",
+        )
+
+
+def _require_authority_summary(payload: object) -> None:
+    if not isinstance(payload, dict):
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            "authority_summary must be an object.",
+        )
+    _require_exact_keys(payload, AUTHORITY_SUMMARY_EXACT_KEYS, field="authority_summary")
+    if payload.get("proposed_applied") is not False:
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            "authority_summary.proposed_applied must be false.",
+        )
+    if "applied_control" in payload:
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            "authority_summary must not include applied_control.",
+        )
+
+
+def _require_exact_cycle_export(cycle: dict[str, Any]) -> None:
+    """Require complete ShadowDecisionCycleResult.to_dict() export shape."""
+
+    _require_exact_keys(cycle, CYCLE_EXACT_KEYS, field="cycle")
     if cycle.get("schema") != SHADOW_DECISION_CYCLE_RESULT_SCHEMA:
         raise DecisionSurfaceError(
             "latest_frame_invalid",
             f"cycle.schema must be {SHADOW_DECISION_CYCLE_RESULT_SCHEMA!r}.",
             details={"field": "cycle.schema"},
         )
-    for key in ("frame_id", "status", "reason", "authority"):
-        if key not in cycle:
-            raise DecisionSurfaceError(
-                "latest_frame_invalid",
-                f"cycle is missing required key {key!r}.",
-                details={"field": f"cycle.{key}"},
-            )
-    if type(cycle.get("frame_id")) is not str or not cycle.get("frame_id"):
+    try:
+        require_ascii_id(cycle["frame_id"], field_name="frame_id")
+    except (TypeError, ValueError, KeyError) as exc:
         raise DecisionSurfaceError(
             "latest_frame_invalid",
-            "cycle.frame_id must be a non-empty string.",
-        )
+            f"cycle.frame_id is not a valid ASCII id: {exc}",
+            details={"field": "cycle.frame_id"},
+        ) from exc
     if cycle.get("status") not in {"ok", "engine_error"}:
         raise DecisionSurfaceError(
             "latest_frame_invalid",
             "cycle.status must be ok or engine_error.",
         )
-    if not isinstance(cycle.get("authority"), dict):
+    if type(cycle.get("reason")) is not str:
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            "cycle.reason must be a string.",
+        )
+
+    authority = cycle.get("authority")
+    if not isinstance(authority, dict):
         raise DecisionSurfaceError(
             "latest_frame_invalid",
             "cycle.authority must be an object.",
         )
-    # source/plan may be null on engine_error paths; when present must be objects.
-    if cycle.get("source") is not None and not isinstance(cycle.get("source"), dict):
+    _require_exact_keys(authority, AUTHORITY_EXACT_KEYS, field="cycle.authority")
+    if authority.get("schema") != SHADOW_AUTHORITY_RESULT_SCHEMA:
         raise DecisionSurfaceError(
             "latest_frame_invalid",
-            "cycle.source must be an object or null.",
+            f"cycle.authority.schema must be {SHADOW_AUTHORITY_RESULT_SCHEMA!r}.",
         )
-    if cycle.get("plan") is not None and not isinstance(cycle.get("plan"), dict):
+    if authority.get("proposed_applied") is not False:
         raise DecisionSurfaceError(
             "latest_frame_invalid",
-            "cycle.plan must be an object or null.",
+            "cycle.authority.proposed_applied must be false.",
         )
+    if "applied_control" in authority:
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            "cycle.authority must not include applied_control.",
+        )
+    host = authority.get("host_application")
+    if not isinstance(host, dict):
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            "cycle.authority.host_application must be an object.",
+        )
+    _require_exact_keys(host, ENVELOPE_EXACT_KEYS, field="cycle.authority.host_application")
+
+    source = cycle.get("source")
+    if source is not None:
+        if not isinstance(source, dict):
+            raise DecisionSurfaceError(
+                "latest_frame_invalid",
+                "cycle.source must be an object or null.",
+            )
+        _require_exact_keys(source, SOURCE_EXACT_KEYS, field="cycle.source")
+        if source.get("schema") != DECISION_DATA_SOURCE_SCHEMA:
+            raise DecisionSurfaceError(
+                "latest_frame_invalid",
+                f"cycle.source.schema must be {DECISION_DATA_SOURCE_SCHEMA!r}.",
+            )
+        for env_key in (
+            "observation",
+            "memory",
+            "patterns",
+            "projections",
+            "capabilities",
+            "prior_host_applied_command",
+        ):
+            env = source.get(env_key)
+            if not isinstance(env, dict):
+                raise DecisionSurfaceError(
+                    "latest_frame_invalid",
+                    f"cycle.source.{env_key} must be an object.",
+                )
+            _require_exact_keys(env, ENVELOPE_EXACT_KEYS, field=f"cycle.source.{env_key}")
+
+    plan = cycle.get("plan")
+    if plan is not None:
+        if not isinstance(plan, dict):
+            raise DecisionSurfaceError(
+                "latest_frame_invalid",
+                "cycle.plan must be an object or null.",
+            )
+        _require_exact_keys(plan, PLAN_EXACT_KEYS, field="cycle.plan")
+        if plan.get("schema") != ACTION_PLAN_SCHEMA:
+            raise DecisionSurfaceError(
+                "latest_frame_invalid",
+                f"cycle.plan.schema must be {ACTION_PLAN_SCHEMA!r}.",
+            )
+        candidates = plan.get("candidates")
+        if not isinstance(candidates, list):
+            raise DecisionSurfaceError(
+                "latest_frame_invalid",
+                "cycle.plan.candidates must be a list.",
+            )
+        for index, cand in enumerate(candidates):
+            if not isinstance(cand, dict):
+                raise DecisionSurfaceError(
+                    "latest_frame_invalid",
+                    f"cycle.plan.candidates[{index}] must be an object.",
+                )
+            _require_exact_keys(
+                cand,
+                PROPOSAL_EXACT_KEYS,
+                field=f"cycle.plan.candidates[{index}]",
+            )
+            if cand.get("schema") != ACTION_PROPOSAL_SCHEMA:
+                raise DecisionSurfaceError(
+                    "latest_frame_invalid",
+                    f"cycle.plan.candidates[{index}].schema must be "
+                    f"{ACTION_PROPOSAL_SCHEMA!r}.",
+                )
+            refs = cand.get("source_refs")
+            if not isinstance(refs, list):
+                raise DecisionSurfaceError(
+                    "latest_frame_invalid",
+                    f"cycle.plan.candidates[{index}].source_refs must be a list.",
+                )
+            for ref_i, ref in enumerate(refs):
+                if not isinstance(ref, dict):
+                    raise DecisionSurfaceError(
+                        "latest_frame_invalid",
+                        f"cycle.plan.candidates[{index}].source_refs[{ref_i}] "
+                        "must be an object.",
+                    )
+                _require_exact_keys(
+                    ref,
+                    SOURCE_REF_EXACT_KEYS,
+                    field=f"cycle.plan.candidates[{index}].source_refs[{ref_i}]",
+                )
+        contributions = plan.get("contributions")
+        if not isinstance(contributions, list):
+            raise DecisionSurfaceError(
+                "latest_frame_invalid",
+                "cycle.plan.contributions must be a list.",
+            )
+        for index, contrib in enumerate(contributions):
+            if not isinstance(contrib, dict):
+                raise DecisionSurfaceError(
+                    "latest_frame_invalid",
+                    f"cycle.plan.contributions[{index}] must be an object.",
+                )
+            _require_exact_keys(
+                contrib,
+                CONTRIBUTION_EXACT_KEYS,
+                field=f"cycle.plan.contributions[{index}]",
+            )
+
+    # status/plan/source structural matrix (ok requires plan; engine_error forbids plan)
+    if cycle.get("status") == "ok":
+        if plan is None:
+            raise DecisionSurfaceError(
+                "latest_frame_invalid",
+                "ok cycle requires plan object.",
+            )
+        if cycle.get("reason") != "":
+            raise DecisionSurfaceError(
+                "latest_frame_invalid",
+                "ok cycle.reason must be empty.",
+            )
+    else:
+        if plan is not None:
+            raise DecisionSurfaceError(
+                "latest_frame_invalid",
+                "engine_error cycle requires plan=null.",
+            )
 
 
 def _require_stream_summaries_match_cycle(
@@ -1087,17 +1459,25 @@ def publish_shadow_decision_frame(
 ) -> bool:
     """Publish generation-scoped latest frame. Returns True when written.
 
-    Always re-reads the live staged activation from disk so a restage while the
-    worker is running cannot republish a prior generation after invalidation.
-    The optional ``activation`` / ``staged_engine_id`` arguments are retained for
-    call-site clarity but are not trusted over the live activation file.
+    The worker must pass the activation generation under which its engine was
+    constructed. Live on-disk activation is re-read and must still match that
+    generation (engine_id + activated_at_ms). Restage while running leaves the
+    invalidated latest file untouched until the worker reloads/restarts.
     """
 
-    del activation  # never trust a startup-captured activation for generation
     if cycle_result is None:
         return False
     if staged_engine_id is not None and staged_engine_id != ENGINE_ID:
         return False
+    if not isinstance(activation, dict):
+        return False
+    worker_decision = activation.get("decision")
+    if not isinstance(worker_decision, dict) or worker_decision.get("engine_id") != ENGINE_ID:
+        return False
+    worker_activated_at = activation.get("activated_at_ms")
+    if type(worker_activated_at) is not int:
+        return False
+
     frame_id = getattr(cycle_result, "frame_id", None)
     if frame_id is None and isinstance(cycle_result, dict):
         frame_id = cycle_result.get("frame_id")
@@ -1107,19 +1487,25 @@ def publish_shadow_decision_frame(
     live = load_live_decision_activation(vehicle_runtime_dir)
     if live is None:
         return False
-    decision = live.get("decision")
-    if not isinstance(decision, dict) or decision.get("engine_id") != ENGINE_ID:
+    live_decision = live.get("decision")
+    if not isinstance(live_decision, dict) or live_decision.get("engine_id") != ENGINE_ID:
         return False
-    activated_at = live.get("activated_at_ms")
-    if type(activated_at) is not int:
+    live_activated_at = live.get("activated_at_ms")
+    if type(live_activated_at) is not int:
         return False
+    # Refuse to relabel a generation-A worker cycle as generation B.
+    if live_activated_at != worker_activated_at:
+        return False
+    if live_decision.get("engine_id") != worker_decision.get("engine_id"):
+        return False
+
     frame = build_decision_stream_frame(
         cycle_result,
         vehicle_id=vehicle_id,
         run_id=run_id,
         worker_pid=worker_pid,
         activation_engine_id=ENGINE_ID,
-        activation_activated_at_ms=activated_at,
+        activation_activated_at_ms=worker_activated_at,
     )
     write_latest_decision_frame(latest_decision_path(vehicle_runtime_dir), frame)
     return True

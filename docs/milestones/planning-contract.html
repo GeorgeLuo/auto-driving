@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="a952491d39a1321ead1011ae7403f286ccb6b29f934672dfbab253bf1c435391">
+  <meta name="source-sha256" content="bdc3c5836d01426f571e70934ecc57a9bc8c926ee8d4fa29a775975c551a0919">
   <base target="_blank">
   <title>Milestone Planning And Delivery Contract</title>
   <style>
@@ -933,6 +933,21 @@ active unless the decision log records an explicit parallel exception.</p>
 <p>Active plans should link this contract (Markdown and/or rendered HTML). Do not
 copy its rules into individual plans. Do not edit <code>planning-contract.html</code>
 directly.</p>
+<h2>Selective Agent Operating Surface</h2>
+<p><code>docs/guidance/</code> is a short, derived operating surface for selective agent
+loading. It exists to reduce repeated context cost; this contract remains the
+single source of truth.</p>
+<p>For repository-aware agents, root <code>AGENTS.md</code> is the automatic entrypoint. It
+routes each requested operation through <code>docs/guidance/agent-surface.md</code>, then
+only the selected role- or task-specific guidance. Load this full contract when
+a guidance file directs it, when workflow meaning is ambiguous, or when
+changing the workflow itself.</p>
+<p>Guidance files may summarize or route to this contract. They must not introduce
+new process rules, carry current milestone state, or override this contract. If
+the two conflict, this contract wins. Operation classification does not
+authorize a workflow phase transition. Long-running conversations should
+retain current work state and findings, not act as the durable store for
+process rules.</p>
 <h2>Non-Goals Of This Contract</h2>
 <p>This contract does not:</p>
 <ul>

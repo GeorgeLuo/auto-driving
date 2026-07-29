@@ -247,11 +247,104 @@ class DecisionDataSourceTests(unittest.TestCase):
                 timestamp_ms=1,
                 metadata={"nested": {"reference_decision": 1}},
             )
+        with self.assertRaises(ValueError):
+            build_decision_data_source(
+                frame_id="f",
+                frame_index=0,
+                timestamp_ms=1,
+                metadata={"reference-decision": {"x": 1}},
+            )
         # Legal sources remain serializable end-to-end.
         source = build_decision_data_source(
             frame_id="f", frame_index=0, timestamp_ms=1
         )
         canonical_json_bytes(source.to_dict())
+
+    def test_ready_component_shapes_and_forbidden_channels(self) -> None:
+        # Privileged channel nested inside capabilities payload.
+        with self.assertRaises(ValueError):
+            build_decision_data_source(
+                frame_id="f",
+                frame_index=0,
+                timestamp_ms=1,
+                capabilities=ready_envelope(
+                    {
+                        "max_abs_steering": 1.0,
+                        "max_abs_throttle": 1.0,
+                        "allows_reverse": True,
+                        "coordinate_frame": "image",
+                        "evaluator": {"reference_decision": True},
+                    },
+                    updated_at_ms=1,
+                ),
+            )
+        # Incomplete capabilities (missing required keys).
+        with self.assertRaises(ValueError):
+            build_decision_data_source(
+                frame_id="f",
+                frame_index=0,
+                timestamp_ms=1,
+                capabilities=ready_envelope(
+                    {"max_abs_steering": 1.0}, updated_at_ms=1
+                ),
+            )
+        # Patterns ready without required schema key.
+        with self.assertRaises(ValueError):
+            build_decision_data_source(
+                frame_id="f",
+                frame_index=0,
+                timestamp_ms=1,
+                patterns=ready_envelope({"items": []}, updated_at_ms=1),
+            )
+        # Prior host applied must be host-reported applied=true.
+        with self.assertRaises(ValueError):
+            build_decision_data_source(
+                frame_id="f",
+                frame_index=0,
+                timestamp_ms=1,
+                prior_host_applied_command=ready_envelope(
+                    {
+                        "steering": 0.0,
+                        "throttle": 0.0,
+                        "confidence": 1.0,
+                        "reason": "idle",
+                        "applied": False,
+                        "source": "engine",
+                    },
+                    updated_at_ms=1,
+                ),
+            )
+        # Non-mapping ready capabilities rejected at source, not plugin.
+        with self.assertRaises((TypeError, ValueError)):
+            build_decision_data_source(
+                frame_id="f",
+                frame_index=0,
+                timestamp_ms=1,
+                capabilities=ready_envelope("not-a-dict", updated_at_ms=1),
+            )
+        # Valid ready prior host payload accepted.
+        source = build_decision_data_source(
+            frame_id="f",
+            frame_index=0,
+            timestamp_ms=1,
+            prior_host_applied_command=ready_envelope(
+                {
+                    "steering": 0.1,
+                    "throttle": 0.0,
+                    "confidence": 1.0,
+                    "reason": "user",
+                    "applied": True,
+                    "source": "host",
+                },
+                updated_at_ms=1,
+            ),
+            patterns=ready_envelope(
+                {"pattern_bundle_schema": "patterns_v0", "items": []},
+                updated_at_ms=1,
+            ),
+        )
+        self.assertEqual(source.prior_host_applied_command.status, "ready")
+        self.assertEqual(source.patterns.status, "ready")
 
 
 if __name__ == "__main__":

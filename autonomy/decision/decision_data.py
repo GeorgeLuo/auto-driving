@@ -27,8 +27,9 @@ ComponentStatus = Literal["ready", "unavailable", "error"]
 COMPONENT_STATUSES = frozenset({"ready", "unavailable", "error"})
 MAX_ENVELOPE_REASON = 240
 MAX_SOURCE_METADATA_BYTES = 2048
-# Privileged / parallel channels forbidden on DecisionDataSource.metadata.
-FORBIDDEN_SOURCE_METADATA_KEYS = frozenset(
+# Privileged / parallel channels forbidden anywhere in the decision source tree.
+# Matching is case-sensitive on the raw key and on hyphen/underscore normalized form.
+FORBIDDEN_CHANNEL_KEYS = frozenset(
     {
         "evaluator",
         "map",
@@ -36,7 +37,27 @@ FORBIDDEN_SOURCE_METADATA_KEYS = frozenset(
         "ground_truth",
         "debug_truth",
         "privileged",
+        "reference-decision",
+        "ground-truth",
+        "debug-truth",
     }
+)
+_FORBIDDEN_CHANNEL_NORMALIZED = frozenset(
+    key.replace("-", "_") for key in FORBIDDEN_CHANNEL_KEYS
+)
+CAPABILITY_REQUIRED_KEYS = (
+    "max_abs_steering",
+    "max_abs_throttle",
+    "allows_reverse",
+    "coordinate_frame",
+)
+PRIOR_HOST_REQUIRED_KEYS = (
+    "steering",
+    "throttle",
+    "confidence",
+    "reason",
+    "applied",
+    "source",
 )
 
 
@@ -52,18 +73,127 @@ def _is_json_primitive(value: object) -> bool:
     return False
 
 
-def _reject_forbidden_metadata_keys(value: object, *, path: str = "metadata") -> None:
+def _is_forbidden_channel_key(key: object) -> bool:
+    if type(key) is not str:
+        return False
+    if key in FORBIDDEN_CHANNEL_KEYS:
+        return True
+    return key.replace("-", "_") in _FORBIDDEN_CHANNEL_NORMALIZED
+
+
+def _reject_forbidden_channel_keys(value: object, *, path: str) -> None:
+    """Reject privileged channel keys anywhere in a JSON-like tree."""
+
     if isinstance(value, dict):
         for key, item in value.items():
-            if type(key) is str and key in FORBIDDEN_SOURCE_METADATA_KEYS:
+            if _is_forbidden_channel_key(key):
                 raise ValueError(
-                    f"DecisionDataSource forbids privileged metadata key {key!r} at {path}"
+                    f"DecisionDataSource forbids privileged key {key!r} at {path}"
                 )
-            _reject_forbidden_metadata_keys(item, path=f"{path}.{key}")
+            _reject_forbidden_channel_keys(item, path=f"{path}.{key}")
         return
     if isinstance(value, (list, tuple)):
         for index, item in enumerate(value):
-            _reject_forbidden_metadata_keys(item, path=f"{path}[{index}]")
+            _reject_forbidden_channel_keys(item, path=f"{path}[{index}]")
+
+
+def _plain_mapping(value: object) -> dict[str, Any]:
+    plain = frozen_mapping_to_dict(value)
+    if not isinstance(plain, dict):
+        raise TypeError(f"expected JSON object mapping; got {type(value).__name__}")
+    return plain
+
+
+def _require_finite_unit_float(value: object, *, field_name: str) -> float:
+    try:
+        number = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{field_name} must be a finite float in [0, 1]") from exc
+    if not math.isfinite(number) or not (0.0 <= number <= 1.0):
+        raise ValueError(f"{field_name} must be a finite float in [0, 1]")
+    return number
+
+
+def _validate_capabilities_payload(value: object, *, path: str) -> None:
+    payload = _plain_mapping(value)
+    missing = [key for key in CAPABILITY_REQUIRED_KEYS if key not in payload]
+    if missing:
+        raise ValueError(
+            f"{path} capabilities missing required keys: {', '.join(missing)}"
+        )
+    _require_finite_unit_float(
+        payload["max_abs_steering"], field_name=f"{path}.max_abs_steering"
+    )
+    _require_finite_unit_float(
+        payload["max_abs_throttle"], field_name=f"{path}.max_abs_throttle"
+    )
+    if type(payload["allows_reverse"]) is not bool:
+        raise ValueError(f"{path}.allows_reverse must be a bool")
+    if type(payload["coordinate_frame"]) is not str or not payload["coordinate_frame"]:
+        raise ValueError(f"{path}.coordinate_frame must be a non-empty string")
+
+
+def _validate_bundle_payload(
+    value: object, *, path: str, schema_key: str
+) -> None:
+    payload = _plain_mapping(value)
+    schema = payload.get(schema_key)
+    if type(schema) is not str or not schema:
+        raise ValueError(f"{path} requires non-empty string {schema_key!r}")
+
+
+def _validate_prior_host_payload(value: object, *, path: str) -> None:
+    payload = _plain_mapping(value)
+    missing = [key for key in PRIOR_HOST_REQUIRED_KEYS if key not in payload]
+    if missing:
+        raise ValueError(
+            f"{path} prior_host_applied_command missing required keys: "
+            f"{', '.join(missing)}"
+        )
+    for field_name in ("steering", "throttle", "confidence"):
+        try:
+            number = float(payload[field_name])
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{path}.{field_name} must be numeric") from exc
+        if not math.isfinite(number):
+            raise ValueError(f"{path}.{field_name} must be finite")
+    if type(payload["reason"]) is not str:
+        raise ValueError(f"{path}.reason must be a string")
+    # Host-reported applied command only — never engine-authorized output.
+    if payload["applied"] is not True:
+        raise ValueError(f"{path}.applied must be true for host-reported commands")
+    if payload["source"] != "host":
+        raise ValueError(f"{path}.source must be 'host'")
+
+
+def _validate_ready_component(name: str, envelope: "ComponentEnvelope") -> None:
+    """Enforce declared typed payload families for each ready component."""
+
+    value = envelope.value
+    path = f"{name}.value"
+    if name == "observation":
+        if not isinstance(value, Observation):
+            raise TypeError(f"{path} must be Observation when ready")
+        return
+    if name == "memory":
+        if not isinstance(value, MemorySnapshot):
+            raise TypeError(f"{path} must be MemorySnapshot when ready")
+        return
+    if name == "patterns":
+        _validate_bundle_payload(value, path=path, schema_key="pattern_bundle_schema")
+        return
+    if name == "projections":
+        _validate_bundle_payload(
+            value, path=path, schema_key="projection_bundle_schema"
+        )
+        return
+    if name == "capabilities":
+        _validate_capabilities_payload(value, path=path)
+        return
+    if name == "prior_host_applied_command":
+        _validate_prior_host_payload(value, path=path)
+        return
+    raise ValueError(f"unknown decision component {name!r}")
 
 
 def _normalize_ready_envelope_value(value: object) -> object:
@@ -267,9 +397,11 @@ class DecisionDataSource:
             envelope = getattr(self, name)
             if not isinstance(envelope, ComponentEnvelope):
                 raise TypeError(f"{name} must be ComponentEnvelope")
+            if envelope.status == "ready":
+                _validate_ready_component(name, envelope)
         if type(self.metadata) is not dict:
             raise TypeError("metadata must be a dict (JSON object)")
-        _reject_forbidden_metadata_keys(self.metadata)
+        _reject_forbidden_channel_keys(self.metadata, path="metadata")
         metadata = deep_freeze(self.metadata)
         meta_bytes = canonical_json_bytes(frozen_mapping_to_dict(metadata))
         if meta_bytes > MAX_SOURCE_METADATA_BYTES:
@@ -277,13 +409,16 @@ class DecisionDataSource:
                 f"DecisionDataSource metadata exceeds {MAX_SOURCE_METADATA_BYTES} bytes"
             )
         object.__setattr__(self, "metadata", metadata)
-        # Prove the final source representation is replayable JSON before plugins run.
+        # Prove the final source representation is replayable JSON before plugins run,
+        # and reject privileged channels anywhere in the serialized tree.
         try:
-            canonical_json_bytes(self.to_dict())
+            plain = self.to_dict()
+            canonical_json_bytes(plain)
         except (TypeError, ValueError) as exc:
             raise ValueError(
                 f"DecisionDataSource must be strictly JSON-serializable: {exc}"
             ) from exc
+        _reject_forbidden_channel_keys(plain, path="DecisionDataSource")
 
     def to_dict(self) -> dict[str, Any]:
         return {

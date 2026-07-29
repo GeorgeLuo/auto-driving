@@ -292,7 +292,7 @@ class AvoidRecentObstructionTests(unittest.TestCase):
         self.assertEqual(future.lifecycle, "inactive")
         self.assertNotEqual(future.reason, "future_dated_provenance")
 
-    def test_ready_malformed_capabilities_error(self) -> None:
+    def test_ready_malformed_capabilities_rejected_at_source(self) -> None:
         from autonomy.decision.decision_data import ready_envelope
 
         snap = MemorySnapshot(
@@ -304,16 +304,25 @@ class AvoidRecentObstructionTests(unittest.TestCase):
             records=(_record(),),
             implementation_id="bounded_evidence",
         )
-        source = build_decision_data_source(
-            frame_id="frame_001",
-            frame_index=0,
-            timestamp_ms=1000,
-            memory=snap,
-            capabilities=ready_envelope("not-a-dict", updated_at_ms=1000),
-        )
-        p = propose(source)
-        self.assertEqual(p.lifecycle, "error")
-        self.assertEqual(p.reason, "invalid_capabilities")
+        # Non-mapping / incomplete ready capabilities fail source construction.
+        with self.assertRaises((TypeError, ValueError)):
+            build_decision_data_source(
+                frame_id="frame_001",
+                frame_index=0,
+                timestamp_ms=1000,
+                memory=snap,
+                capabilities=ready_envelope("not-a-dict", updated_at_ms=1000),
+            )
+        with self.assertRaises(ValueError):
+            build_decision_data_source(
+                frame_id="frame_001",
+                frame_index=0,
+                timestamp_ms=1000,
+                memory=snap,
+                capabilities=ready_envelope(
+                    {"max_abs_steering": 1.0}, updated_at_ms=1000
+                ),
+            )
 
     def test_capabilities_unavailable_uses_configured_magnitude(self) -> None:
         from autonomy.decision.decision_data import unavailable_envelope
@@ -357,22 +366,94 @@ class AvoidRecentObstructionTests(unittest.TestCase):
             records=(_record(),),
             implementation_id="bounded_evidence",
         )
-        # NaN cannot enter a ready envelope (strict JSON freeze rejects it first).
-        for bad_max in (0, -0.1, 1.5, "high", None):
+        # Out-of-range / non-numeric fields rejected at source construction.
+        for bad_max in (-0.1, 1.5, "high", None):
             with self.subTest(max_abs_steering=bad_max):
                 caps = default_capabilities()
                 caps["max_abs_steering"] = bad_max
-                source = build_decision_data_source(
-                    frame_id="frame_001",
-                    frame_index=0,
-                    timestamp_ms=1000,
-                    memory=snap,
-                    capabilities=ready_envelope(caps, updated_at_ms=1000),
-                )
-                p = propose(source)
-                self.assertEqual(p.lifecycle, "error")
-                self.assertEqual(p.reason, "invalid_capabilities")
-                self.assertIsNone(p.command)
+                with self.assertRaises((TypeError, ValueError)):
+                    build_decision_data_source(
+                        frame_id="frame_001",
+                        frame_index=0,
+                        timestamp_ms=1000,
+                        memory=snap,
+                        capabilities=ready_envelope(caps, updated_at_ms=1000),
+                    )
+        # Zero is legal at source ([0,1]) but not usable for active magnitude.
+        caps = default_capabilities()
+        caps["max_abs_steering"] = 0.0
+        source = build_decision_data_source(
+            frame_id="frame_001",
+            frame_index=0,
+            timestamp_ms=1000,
+            memory=snap,
+            capabilities=ready_envelope(caps, updated_at_ms=1000),
+        )
+        p = propose(source)
+        self.assertEqual(p.lifecycle, "error")
+        self.assertEqual(p.reason, "invalid_capabilities")
+        self.assertIsNone(p.command)
+
+    def test_missing_zone_bbox_only_is_active(self) -> None:
+        """Omitted zone becomes ViewLocation 'unknown'; bbox mid_x still steers."""
+
+        from autonomy.decision.memory import (
+            MemoryBounds,
+            MemoryProvenance,
+            MemorySnapshot,
+            RetainedEvidence,
+        )
+        from autonomy.perception import ViewLocation
+
+        location = ViewLocation.from_dict(
+            {
+                "frame": "image",
+                # zone omitted → canonical "unknown"
+                "bbox_xyxy_norm": [0.0, 0.0, 0.2, 0.5],
+            }
+        )
+        self.assertEqual(location.zone, "unknown")
+        record = RetainedEvidence(
+            record_id="thing:1:bbox",
+            kind="obstacle",
+            label="obstacle",
+            confidence=0.8,
+            provenance=MemoryProvenance(
+                observation_id="obs",
+                evidence_id="ev",
+                coordinate_frame="image",
+                observed_at_ms=1000,
+                updated_at_ms=1000,
+                source_plugin_id="src",
+                frame_id="frame_001",
+            ),
+            location=location,
+            properties={},
+        )
+        # Round-trip through DecisionDataSource (memory detach) like production.
+        snap = MemorySnapshot(
+            memory_id="m",
+            epoch_id="e",
+            health="healthy",
+            bounds=MemoryBounds(max_records=16, max_age_ms=10_000),
+            created_at_ms=1000,
+            records=(record,),
+            implementation_id="bounded_evidence",
+        )
+        source = build_decision_data_source(
+            frame_id="frame_001",
+            frame_index=0,
+            timestamp_ms=1000,
+            memory=snap,
+        )
+        # Detached memory must preserve canonical unknown zone.
+        assert isinstance(source.memory.value, MemorySnapshot)
+        detached_zone = source.memory.value.records[0].location.zone
+        self.assertEqual(detached_zone, "unknown")
+        p = propose(source)
+        self.assertEqual(p.lifecycle, "fresh")
+        assert p.command is not None
+        self.assertAlmostEqual(p.command.steering, 0.35)
 
 
 if __name__ == "__main__":

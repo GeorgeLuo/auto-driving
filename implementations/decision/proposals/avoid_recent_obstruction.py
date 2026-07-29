@@ -42,8 +42,13 @@ def _bbox_mid_x(record: RetainedEvidence) -> float | None:
     return mid_x
 
 
+# Zones that mean "no explicit left/right" so bbox mid_x may supply the cue.
+# "unknown" is ViewLocation.from_dict's canonical missing-zone value.
+_BBOX_FALLBACK_ZONES = frozenset({None, "", "center", "unknown"})
+
+
 def _has_lateral_cue(record: RetainedEvidence) -> bool:
-    """True when exact left/right zone or a finite bbox mid_x under center/missing zone."""
+    """True when exact left/right zone or a finite bbox mid_x under missing/center zone."""
 
     location = record.location
     if location is None:
@@ -52,8 +57,8 @@ def _has_lateral_cue(record: RetainedEvidence) -> bool:
     # Exact case-sensitive zone match only.
     if zone == "left" or zone == "right":
         return True
-    # Bbox mid_x is a cue only for missing zone or exact "center".
-    if zone not in (None, "", "center"):
+    # Bbox mid_x is a cue only for missing / unknown / exact "center".
+    if zone not in _BBOX_FALLBACK_ZONES:
         return False
     return _bbox_mid_x(record) is not None
 
@@ -69,7 +74,7 @@ def _lateral_side(record: RetainedEvidence) -> str | None:
         return "left"
     if zone == "right":
         return "right"
-    if zone not in (None, "", "center"):
+    if zone not in _BBOX_FALLBACK_ZONES:
         return None
     mid_x = _bbox_mid_x(record)
     if mid_x is None:

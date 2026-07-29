@@ -777,11 +777,7 @@ def accept_decision_stream_frame(
             "latest_frame_invalid",
             "Latest decision frame is not a JSON object.",
         )
-    if frame.get("schema") != STREAM_FRAME_SCHEMA:
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            f"Latest decision frame schema must be {STREAM_FRAME_SCHEMA!r}.",
-        )
+    _require_stream_frame_envelope(frame)
 
     if not isinstance(activation, dict):
         raise DecisionSurfaceError(
@@ -835,7 +831,8 @@ def accept_decision_stream_frame(
             "stream decision requires status='running'.",
         )
     state_pid = automation_state.get("pid")
-    if type(state_pid) is not int or state_pid != frame.get("worker_pid"):
+    frame_pid = frame.get("worker_pid")
+    if type(state_pid) is not int or type(frame_pid) is not int or state_pid != frame_pid:
         raise DecisionSurfaceError(
             "latest_frame_stale",
             "Latest decision frame worker_pid does not match automation state pid.",
@@ -872,6 +869,108 @@ def accept_decision_stream_frame(
             "frame_id must equal cycle.frame_id.",
         )
     _require_stream_summaries_match_cycle(frame, cycle)
+
+
+def _require_non_bool_int(value: object, *, field: str) -> int:
+    if type(value) is not int:
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            f"Latest decision frame {field} must be a non-bool int.",
+            details={"field": field},
+        )
+    return value
+
+
+def _require_stream_frame_envelope(frame: dict[str, Any]) -> None:
+    """Validate exact vehicle_decision_stream_frame_v0 envelope types."""
+
+    if frame.get("schema") != STREAM_FRAME_SCHEMA:
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            f"Latest decision frame schema must be {STREAM_FRAME_SCHEMA!r}.",
+        )
+    required_strings = (
+        "vehicle_id",
+        "engine_id",
+        "run_id",
+        "activation_engine_id",
+        "frame_id",
+    )
+    for key in required_strings:
+        if type(frame.get(key)) is not str or not str(frame.get(key)):
+            raise DecisionSurfaceError(
+                "latest_frame_invalid",
+                f"Latest decision frame {key} must be a non-empty string.",
+                details={"field": key},
+            )
+    _require_non_bool_int(frame.get("worker_pid"), field="worker_pid")
+    _require_non_bool_int(
+        frame.get("activation_activated_at_ms"),
+        field="activation_activated_at_ms",
+    )
+    _require_non_bool_int(frame.get("published_at_ms"), field="published_at_ms")
+    _require_non_bool_int(frame.get("frame_index"), field="frame_index")
+    _require_non_bool_int(frame.get("timestamp_ms"), field="timestamp_ms")
+
+    for key in (
+        "observation_summary",
+        "memory_summary",
+        "plan_summary",
+        "authority_summary",
+        "view",
+    ):
+        if not isinstance(frame.get(key), dict):
+            raise DecisionSurfaceError(
+                "latest_frame_invalid",
+                f"Latest decision frame {key} must be an object.",
+                details={"field": key},
+            )
+
+    cycle = frame.get("cycle")
+    if not isinstance(cycle, dict):
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            "Latest decision frame cycle must be an object.",
+        )
+    if cycle.get("schema") != SHADOW_DECISION_CYCLE_RESULT_SCHEMA:
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            f"cycle.schema must be {SHADOW_DECISION_CYCLE_RESULT_SCHEMA!r}.",
+            details={"field": "cycle.schema"},
+        )
+    for key in ("frame_id", "status", "reason", "authority"):
+        if key not in cycle:
+            raise DecisionSurfaceError(
+                "latest_frame_invalid",
+                f"cycle is missing required key {key!r}.",
+                details={"field": f"cycle.{key}"},
+            )
+    if type(cycle.get("frame_id")) is not str or not cycle.get("frame_id"):
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            "cycle.frame_id must be a non-empty string.",
+        )
+    if cycle.get("status") not in {"ok", "engine_error"}:
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            "cycle.status must be ok or engine_error.",
+        )
+    if not isinstance(cycle.get("authority"), dict):
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            "cycle.authority must be an object.",
+        )
+    # source/plan may be null on engine_error paths; when present must be objects.
+    if cycle.get("source") is not None and not isinstance(cycle.get("source"), dict):
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            "cycle.source must be an object or null.",
+        )
+    if cycle.get("plan") is not None and not isinstance(cycle.get("plan"), dict):
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            "cycle.plan must be an object or null.",
+        )
 
 
 def _require_stream_summaries_match_cycle(
@@ -961,6 +1060,20 @@ def invalidate_latest_decision_frame(vehicle_runtime_dir: Path | str) -> None:
             pass
 
 
+def load_live_decision_activation(vehicle_runtime_dir: Path | str) -> dict[str, Any] | None:
+    """Read the current on-disk decision activation, or None if unusable."""
+
+    try:
+        bundle = controller_bundle_paths(Path(vehicle_runtime_dir))
+        activation_path = Path(bundle["decision_runtime_dir"]) / "active.json"
+        if not activation_path.exists():
+            return None
+        payload = json.loads(activation_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
 def publish_shadow_decision_frame(
     *,
     cycle_result: Any | None,
@@ -969,24 +1082,35 @@ def publish_shadow_decision_frame(
     vehicle_runtime_dir: Path | str,
     run_id: str,
     worker_pid: int,
-    activation: dict[str, Any],
-    staged_engine_id: str,
+    activation: dict[str, Any] | None = None,
+    staged_engine_id: str | None = None,
 ) -> bool:
-    """Publish generation-scoped latest frame. Returns True when written."""
+    """Publish generation-scoped latest frame. Returns True when written.
 
-    if staged_engine_id != ENGINE_ID:
-        return False
+    Always re-reads the live staged activation from disk so a restage while the
+    worker is running cannot republish a prior generation after invalidation.
+    The optional ``activation`` / ``staged_engine_id`` arguments are retained for
+    call-site clarity but are not trusted over the live activation file.
+    """
+
+    del activation  # never trust a startup-captured activation for generation
     if cycle_result is None:
+        return False
+    if staged_engine_id is not None and staged_engine_id != ENGINE_ID:
         return False
     frame_id = getattr(cycle_result, "frame_id", None)
     if frame_id is None and isinstance(cycle_result, dict):
         frame_id = cycle_result.get("frame_id")
     if frame_id != context_frame_id:
         return False
-    decision = activation.get("decision") if isinstance(activation, dict) else None
+
+    live = load_live_decision_activation(vehicle_runtime_dir)
+    if live is None:
+        return False
+    decision = live.get("decision")
     if not isinstance(decision, dict) or decision.get("engine_id") != ENGINE_ID:
         return False
-    activated_at = activation.get("activated_at_ms")
+    activated_at = live.get("activated_at_ms")
     if type(activated_at) is not int:
         return False
     frame = build_decision_stream_frame(

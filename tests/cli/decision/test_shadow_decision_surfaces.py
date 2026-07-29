@@ -21,6 +21,7 @@ from autonomy.decision.observation import Observation
 from autonomy.decision.shadow_authority import AUTHORIZED_IDLE_REASON
 from autonomy.perception import ViewLocation
 from autonomy.runtime.manager import AutonomyManager
+from cli.automa_cli.automation import _record_decision_publish_skip
 from cli.automa_cli.decision import (
     ADAPTER_ENGINE_SPEC,
     DECISION_ENGINES,
@@ -29,12 +30,14 @@ from cli.automa_cli.decision import (
     apply_vehicle_decision,
     build_decision_stream_frame,
     get_vehicle_decision_info,
+    latest_decision_path,
     publish_shadow_decision_frame,
     strict_decode_apply_memory,
     strict_decode_apply_observation,
     update_vehicle_decision,
     write_latest_decision_frame,
 )
+import threading
 from implementations.decision.catalog import create_shadow_proposals_engine
 from implementations.decision.shadow_adapter import ShadowProposalsAutonomyEngine
 from tests.support.cli_runner import run_automa
@@ -368,6 +371,47 @@ class ShadowDecisionSurfaceTests(unittest.TestCase):
             )
         self.assertEqual(ctx.exception.error, "latest_frame_invalid")
 
+        # envelope: bool worker_pid must not match int pid via truthiness
+        bool_pid = dict(frame)
+        bool_pid["worker_pid"] = True
+        with self.assertRaises(Exception) as ctx:
+            accept_decision_stream_frame(
+                bool_pid,
+                activation=activation,
+                automation_state={"run_id": "run-1", "status": "running", "pid": 1},
+                now_ms=6000,
+                is_pid_alive=lambda pid: True,
+            )
+        self.assertEqual(ctx.exception.error, "latest_frame_invalid")
+
+        # envelope: vehicle_id / run_id must be non-empty strings
+        for key, value in (("vehicle_id", None), ("run_id", None), ("frame_index", "x")):
+            bad = dict(frame)
+            bad[key] = value
+            with self.assertRaises(Exception) as ctx:
+                accept_decision_stream_frame(
+                    bad,
+                    activation=activation,
+                    automation_state=state,
+                    now_ms=6000,
+                    is_pid_alive=lambda pid: True,
+                )
+            self.assertEqual(ctx.exception.error, "latest_frame_invalid")
+
+        # envelope: cycle.schema must be exact shadow_decision_cycle_result_v0
+        bad_cycle = dict(frame)
+        bad_cycle["cycle"] = dict(frame["cycle"])
+        bad_cycle["cycle"]["schema"] = "bogus_cycle_v0"
+        with self.assertRaises(Exception) as ctx:
+            accept_decision_stream_frame(
+                bad_cycle,
+                activation=activation,
+                automation_state=state,
+                now_ms=6000,
+                is_pid_alive=lambda pid: True,
+            )
+        self.assertEqual(ctx.exception.error, "latest_frame_invalid")
+
     def test_publish_and_stream_once_cli(self) -> None:
         self._stage()
         cycle = self._sample_cycle()
@@ -442,6 +486,112 @@ class ShadowDecisionSurfaceTests(unittest.TestCase):
         self.assertEqual(cli.returncode, 2)
         payload = json.loads(cli.stdout)
         self.assertEqual(payload["error"], "wrong_engine")
+
+    def test_publish_rechecks_live_activation_after_restage(self) -> None:
+        """Restage while a worker is 'running' must not republish an old generation."""
+
+        self._stage()
+        cycle = self._sample_cycle()
+        vehicle_runtime = self.runtime_root / "chase-sim-chaser"
+        activation_path = (
+            vehicle_runtime / "bundle" / "runtime" / "decision" / "active.json"
+        )
+        activation_a = json.loads(activation_path.read_text())
+        activated_a = activation_a["activated_at_ms"]
+        self.assertTrue(
+            publish_shadow_decision_frame(
+                cycle_result=cycle,
+                context_frame_id="frame_001",
+                vehicle_id="chase-sim-chaser",
+                vehicle_runtime_dir=vehicle_runtime,
+                run_id="run-a",
+                worker_pid=1,
+                activation=activation_a,
+                staged_engine_id=ENGINE_ID,
+            )
+        )
+        frame_path = latest_decision_path(vehicle_runtime)
+        self.assertTrue(frame_path.exists())
+        first = json.loads(frame_path.read_text())
+        self.assertEqual(first["activation_activated_at_ms"], activated_a)
+
+        # Restage to idle invalidates latest and changes live activation.
+        idle = update_vehicle_decision(
+            vehicle_id="chase-sim-chaser",
+            engine_id="idle",
+            json_output=True,
+        )
+        self.assertEqual(idle.exit_code, 0, idle.message)
+        self.assertFalse(frame_path.exists() or (
+            frame_path.exists()
+            and json.loads(frame_path.read_text()).get("schema")
+            == "vehicle_decision_stream_frame_v0"
+        ))
+
+        # Startup-captured shadow activation must not allow republish after restage.
+        republished = publish_shadow_decision_frame(
+            cycle_result=cycle,
+            context_frame_id="frame_001",
+            vehicle_id="chase-sim-chaser",
+            vehicle_runtime_dir=vehicle_runtime,
+            run_id="run-a",
+            worker_pid=1,
+            activation=activation_a,
+            staged_engine_id=ENGINE_ID,
+        )
+        self.assertFalse(republished)
+        if frame_path.exists():
+            payload = json.loads(frame_path.read_text())
+            self.assertNotEqual(payload.get("schema"), "vehicle_decision_stream_frame_v0")
+
+        # Restage back to shadow (new generation) allows publish with new activated_at.
+        self._stage()
+        activation_b = json.loads(activation_path.read_text())
+        self.assertNotEqual(activation_b["activated_at_ms"], activated_a)
+        self.assertTrue(
+            publish_shadow_decision_frame(
+                cycle_result=cycle,
+                context_frame_id="frame_001",
+                vehicle_id="chase-sim-chaser",
+                vehicle_runtime_dir=vehicle_runtime,
+                run_id="run-b",
+                worker_pid=1,
+                activation=activation_a,  # stale capture deliberately ignored
+                staged_engine_id=ENGINE_ID,
+            )
+        )
+        second = json.loads(frame_path.read_text())
+        self.assertEqual(
+            second["activation_activated_at_ms"],
+            activation_b["activated_at_ms"],
+        )
+
+    def test_publish_skip_counter_write_failure_is_non_fatal(self) -> None:
+        state: dict = {
+            "decision": {
+                "engine_id": ENGINE_ID,
+                "latest_frame_publish_skips": 0,
+                "latest_frame_publish_skip_reason": None,
+            }
+        }
+        lock = threading.Lock()
+        # Unwritable path: parent does not exist and cannot be created if we
+        # force _write_json to raise.
+        bad_path = Path("/nonexistent-automa-root-zzz/state.json")
+
+        def boom(*_args, **_kwargs):
+            raise OSError("disk full")
+
+        with patch("cli.automa_cli.automation._write_json", side_effect=boom):
+            # Must not raise even when persistence fails.
+            _record_decision_publish_skip(
+                state, bad_path, lock, reason="unit-test-write-fail"
+            )
+        self.assertEqual(state["decision"]["latest_frame_publish_skips"], 1)
+        self.assertEqual(
+            state["decision"]["latest_frame_publish_skip_reason"],
+            "unit-test-write-fail",
+        )
 
     def test_no_stale_republish_after_bad_step(self) -> None:
         self._stage()

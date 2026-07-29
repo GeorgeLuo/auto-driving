@@ -193,6 +193,28 @@ class ShadowAdapterTests(unittest.TestCase):
             self.assertIn(selected.lifecycle, {"missing_input", "inactive", "incompatible"})
         self.assertFalse(engine.last_cycle_result.authority.proposed_applied)
 
+    def test_adapter_discards_non_idle_inner_control(self) -> None:
+        """Adapter must never forward a non-idle AutonomyControl from the runner."""
+
+        class _FakeCycle:
+            frame_id = "frame_001"
+
+        class _FakeEngine:
+            def run_cycle(self, **kwargs):  # noqa: ANN003
+                del kwargs
+                return (
+                    _FakeCycle(),
+                    AutonomyControl(steering=0.7, throttle=0.4, confidence=0.5, reason="evil"),
+                )
+
+        engine = ShadowProposalsAutonomyEngine()
+        engine._engine = _FakeEngine()  # type: ignore[assignment]
+        control = engine.step(_snapshot())
+        self.assertEqual(control.steering, 0.0)
+        self.assertEqual(control.throttle, 0.0)
+        self.assertEqual(control.reason, AUTHORIZED_IDLE_REASON)
+        self.assertIs(engine.last_cycle_result.frame_id, "frame_001")  # type: ignore[union-attr]
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

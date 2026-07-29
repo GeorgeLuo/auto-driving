@@ -411,6 +411,7 @@ def run_vehicle_automation(
         cycle_result = cycle_host.run(context)
         # Publish generation-scoped shadow decision frame when gates pass.
         # Non-fatal: log/count skips; never invent a partial shadow frame.
+        # Live activation is re-read inside publish_shadow_decision_frame.
         try:
             engine = cycle_host.manager.engine
             last_cycle = getattr(engine, "last_cycle_result", None)
@@ -424,26 +425,38 @@ def run_vehicle_automation(
                 activation=decision_activation,
                 staged_engine_id=str(decision_config.get("engine_id") or ""),
             )
-            if not published and str(decision_config.get("engine_id") or "") == "shadow-proposals":
+            if (
+                not published
+                and str(decision_config.get("engine_id") or "") == "shadow-proposals"
+            ):
+                # Count for workers that staged shadow at start (including after
+                # restage invalidation where live activation no longer matches).
                 reason = (
                     "gate_rejected"
                     if last_cycle is None
                     else "gate_rejected_frame_or_activation_mismatch"
                 )
-                _record_decision_publish_skip(state, state_path, state_lock, reason=reason)
+                _record_decision_publish_skip(
+                    state, state_path, state_lock, reason=reason
+                )
                 if verbose:
                     _emit(
                         output,
-                        f"{context.frame_id}: decision latest-frame publish skipped ({reason})",
+                        f"{context.frame_id}: decision latest-frame publish "
+                        f"skipped ({reason})",
                     )
         except Exception as exc:  # noqa: BLE001 - non-fatal publish skip
             reason = f"{type(exc).__name__}: {exc}"
+            # Counter persistence must never re-raise into the cycle path.
             _record_decision_publish_skip(state, state_path, state_lock, reason=reason)
             if verbose:
-                _emit(
-                    output,
-                    f"{context.frame_id}: decision latest-frame publish skip: {reason}",
-                )
+                try:
+                    _emit(
+                        output,
+                        f"{context.frame_id}: decision latest-frame publish skip: {reason}",
+                    )
+                except Exception:  # noqa: BLE001 - logging is best-effort
+                    pass
         perception = cycle_result.perception
         perception_completed_at_ms = _timestamp_ms()
         if perception is None:
@@ -1822,19 +1835,31 @@ def _record_decision_publish_skip(
     *,
     reason: str,
 ) -> None:
-    """Count/log a non-fatal shadow latest-frame publish skip (proposal contract)."""
+    """Count a non-fatal shadow latest-frame publish skip (never raises).
 
-    with state_lock:
-        decision = state.get("decision")
-        if not isinstance(decision, dict):
-            decision = {}
-            state["decision"] = decision
-        decision["latest_frame_publish_skips"] = int(
-            decision.get("latest_frame_publish_skips") or 0
-        ) + 1
-        decision["latest_frame_publish_skip_reason"] = reason[:MAX_STATUS_REASON_CHARS]
-        state["updated_at_ms"] = _timestamp_ms()
-        _write_json(state_path, state)
+    State persistence is best-effort. In-memory counters are updated first so a
+    later successful state write still reflects the skip even if an intermediate
+    disk write fails. Disk failures are swallowed so publish observability cannot
+    fail the automation cycle path.
+    """
+
+    try:
+        with state_lock:
+            decision = state.get("decision")
+            if not isinstance(decision, dict):
+                decision = {}
+                state["decision"] = decision
+            decision["latest_frame_publish_skips"] = int(
+                decision.get("latest_frame_publish_skips") or 0
+            ) + 1
+            decision["latest_frame_publish_skip_reason"] = reason[:MAX_STATUS_REASON_CHARS]
+            state["updated_at_ms"] = _timestamp_ms()
+            try:
+                _write_json(state_path, state)
+            except Exception:  # noqa: BLE001 - disk observability is best-effort
+                pass
+    except Exception:  # noqa: BLE001 - counter path must never raise
+        pass
 
 
 def _stop_perception_view(view_server: PerceptionViewServer | None) -> dict[str, Any]:

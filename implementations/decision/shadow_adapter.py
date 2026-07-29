@@ -126,9 +126,10 @@ class ShadowProposalsAutonomyEngine:
             )
 
         self.last_cycle_result = cycle_result
-        # Always authorized idle; proposed intent lives only on last_cycle_result.
-        if isinstance(control, AutonomyControl):
-            return control
+        # Always authorized idle at the adapter boundary. Discard any inner control
+        # (including a non-idle fake/faulty runner return). Proposed intent lives
+        # only on last_cycle_result.
+        del control
         return authorized_idle_control()
 
     def _map_snapshot(self, snapshot: AutonomySnapshot) -> dict[str, Any]:

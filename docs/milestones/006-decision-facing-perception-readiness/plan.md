@@ -5,7 +5,7 @@
 | Status | Active |
 | Milestone branch | `milestone/006-decision-facing-perception-readiness` |
 | Cumulative PR | [#70](https://github.com/GeorgeLuo/auto-driving/pull/70) (draft until whole-milestone closeout) |
-| Current frontier | Modular shadow action proposal foundation |
+| Current frontier | Cross-environment shadow proposal evidence |
 | Started | 2026-07-28 |
 | Action policy | Proposals may contain movement intent; applied vehicle control remains zero for the entire milestone |
 
@@ -54,10 +54,10 @@ for simulator and physical vehicles.
 
 | ID | Criterion | Status | Evidence / remaining gap |
 | --- | --- | --- | --- |
-| M006-01 | One immutable, cycle-aligned decision-data contract exposes current observation, retained memory, pattern outputs, projection outputs, vehicle capabilities, timing, and prior applied-action context with explicit unavailable/error states and no evaluator data | Unmet | First frontier |
-| M006-02 | Independent proposal plugins consume only the decision-data contract and emit a bounded, serializable proposal containing identity, lifecycle status, confidence, reason, one canonical proposed command, freshness, assumptions, and exact evidence/pattern/projection references | Unmet | First frontier |
-| M006-03 | One deterministic selector/mixer consumes the complete proposal set and emits an inspectable action plan with selected proposal or contributions, while a separate runtime authority result proves proposed and applied control cannot be confused | Unmet | First frontier |
-| M006-04 | One packaged `avoid_recent_obstruction` proposal demonstrates left/right active steering, retained-fresh continuity, stale-to-inactive fallback, incompatible input, missing input, and plugin-error behavior without claiming navigation safety or semantic identity | Unmet | First frontier |
+| M006-01 | One immutable, cycle-aligned decision-data contract exposes current observation, retained memory, pattern outputs, projection outputs, vehicle capabilities, timing, and prior applied-action context with explicit unavailable/error states and no evaluator data | Met | Immutable DecisionDataSource with observation/memory/patterns/projections/capabilities/prior_host_applied_command envelopes in PR #74 |
+| M006-02 | Independent proposal plugins consume only the decision-data contract and emit a bounded, serializable proposal containing identity, lifecycle status, confidence, reason, one canonical proposed command, freshness, assumptions, and exact evidence/pattern/projection references | Met | Bounded ActionProposal schema with lifecycle/freshness matrix, ProposedVehicleCommand, assumptions, source_refs; one candidate per enabled plugin in PR #74 |
+| M006-03 | One deterministic selector/mixer consumes the complete proposal set and emits an inspectable action plan with selected proposal or contributions, while a separate runtime authority result proves proposed and applied control cannot be confused | Met | deterministic_first_active ActionPlan; ShadowAuthorityResult proposed vs authorized_output vs proposed_applied=false vs host_application; cycle ok/engine_error envelope in PR #74 |
+| M006-04 | One packaged `avoid_recent_obstruction` proposal demonstrates left/right active steering, retained-fresh continuity, stale-to-inactive fallback, incompatible input, missing input, and plugin-error behavior without claiming navigation safety or semantic identity | Met | avoid_recent_obstruction fresh-before-stale selection and lifecycle matrix including obstruction_evidence kind in PR #74 |
 | M006-05 | Automa can stage, inspect, replay, and stream the decision path with concise default output, complete `--json` output, deterministic replay, latest-frame replacement, a combined frame/evidence/proposal/authority view, an opt-in exact-frame HTML artifact, and no default disk writes | Unmet | Requires accepted foundation |
 | M006-06 | Tracked Chase and physical evidence exercise the same proposal contract and combined review view, showing exact source provenance, freshness transitions, proposal selection, proposed movement intent, and zero applied control | Unmet | Cross-environment evidence frontier |
 | M006-07 | Chase evaluator/shadow state remains outside controller inputs, and PiRacer remains in user mode with zero pilot output throughout all milestone evidence | Unmet | Cross-environment evidence frontier |
@@ -67,25 +67,9 @@ for simulator and physical vehicles.
 
 ### Current Frontier
 
-**Modular shadow action proposal foundation**
-
-- Workflow state: implementation_in_review
-- PR: [#74](https://github.com/GeorgeLuo/auto-driving/pull/74)
-- Proposal branch: `m006/shadow-proposals-proposal`
-- Implementation branch: `m006/shadow-proposals`
-- Proposal path: `docs/milestones/006-decision-facing-perception-readiness/proposals/shadow-proposals.md`
-- Accepted proposal: [#73](https://github.com/GeorgeLuo/auto-driving/pull/73) at `7a585fc5eab8028b7454ad0040575cf4120c8e92`
-- Review kind: Behavioral feature slice
-- Review question: Can independent action-proposal plugins consume one immutable, cycle-aligned decision data source and produce attributable, replayable action plans while runtime authority guarantees that no proposed command is applied?
-- Acceptance owner: Decision-data source, proposal/plan contracts, proposal runner, deterministic selector, shadow-authority result, and the `avoid_recent_obstruction` reference implementation
-- Exit criteria affected: M006-01, M006-02, M006-03, M006-04
-- Prerequisite: Milestone 005 closed at `milestone-005`; bounded evidence memory, exact provenance, replay, and idle Chase/Pi host paths remain available
-- Milestone-level non-goal: Applied movement, new perception logic, prediction algorithms, semantic identity, metric geometry, complex mixing, evaluator input, or more than one reference proposal
-
-### Next-Frontier Candidate
-
 **Cross-environment shadow proposal evidence**
 
+- Workflow state: ready_for_proposal
 - Proposal branch: `m006/shadow-proposal-evidence-proposal`
 - Implementation branch: `m006/shadow-proposal-evidence`
 - Proposal path: `docs/milestones/006-decision-facing-perception-readiness/proposals/shadow-proposal-evidence.md`
@@ -94,7 +78,14 @@ for simulator and physical vehicles.
 - Acceptance owner: Automa decision stage/info/apply/stream/view surfaces and tracked exact-frame Chase/Pi shadow evidence
 - Exit criteria affected: M006-05, M006-06, M006-07
 - Prerequisite: Modular shadow action proposal foundation accepted with replayable proposal and authority schemas
-- Non-goals: Changing proposal semantics during evidence collection, selecting another proposal, applying movement, using privileged simulator state, or claiming physical navigation readiness
+- Milestone-level non-goal: Changing proposal semantics during evidence collection, selecting another proposal, applying movement, using privileged simulator state, or claiming physical navigation readiness
+
+### Next-Frontier Candidate
+
+**None**
+
+- Reason: Cross-environment shadow proposal evidence is promoted from the frozen next-candidate slot.
+- Revisit when: Evidence frontier completes M006-05–M006-07 or closeout decides residual work.
 
 ## Workflow History
 
@@ -105,22 +96,22 @@ for simulator and physical vehicles.
 | Modular shadow action proposal foundation | proposal_in_review | Started m006/shadow-proposals-proposal. |
 | Modular shadow action proposal foundation | ready_for_implementation | Proposal PR #73 accepted at 7a585fc5eab8028b7454ad0040575cf4120c8e92. |
 | Modular shadow action proposal foundation | implementation_in_review | Started m006/shadow-proposals. |
+| Modular shadow action proposal foundation | accepted | Implementation PR #74 merged at 7830cb0c509eb6c601bf74f707d8caeca177ed8d. |
+| Cross-environment shadow proposal evidence | ready_for_proposal | Promoted after implementation PR #74. |
 
 ## Accepted Review Units
 
 | PR | Accepted review question | Result | Exit criteria | Durable evidence |
 | --- | --- | --- | --- | --- |
+| #74 | Can independent action-proposal plugins consume one immutable, cycle-aligned decision data source and produce attributable, replayable action plans while runtime authority guarantees that no proposed command is applied? | Accepted | M006-01, M006-02, M006-03, M006-04 | DecisionDataSource, ActionProposal/Plan, ShadowAuthorityResult (proposed_applied=false), ShadowDecisionCycleResult, and avoid_recent_obstruction matrix in PR #74 |
 
 ## Open Risks And Unverified Assumptions
 
 | Risk or assumption | Consequence | Resolution path |
 | --- | --- | --- |
-| A shared decision-data source could degrade into an untyped mutable bag | Proposal dependencies and stage ownership would become implicit and order-sensitive | Require an immutable typed contract, stable component keys, explicit unavailable/error values, and mutation tests |
 | Recurring evidence IDs do not establish physical-object identity | A proposal could steer toward a different object that reused a detector slot | Carry exact provenance and freshness, state the no-identity limit, and keep all milestone output shadow-only |
 | Current bounded memory keeps the newest recurring record rather than a trajectory | Memory alone cannot support motion inference or validate long-horizon predictions | Prove latest-evidence proposal use now; retain pattern/projection slots and defer bounded temporal state to a reviewed later milestone |
 | Apparent image motion combines object motion with vehicle self-motion | A later projection could attribute commanded camera motion to a perceived object | Include prior applied-action context in the source contract and require future prediction work to condition on it |
-| `VehicleAction` and `AutonomyControl` currently express direction/throttle differently | Proposal implementations could accumulate runtime-specific adapters or contradictory command semantics | The first proposal must select one canonical proposed-command contract and isolate runtime conversion without compatibility branches |
-| A mixer interface could invite premature consensus machinery | Framework complexity would grow before one proposal proves the data path | Implement one deterministic selector, keep contribution provenance, and explicitly defer Chase-style consensus |
 | Packaged physical perception may not emit stable evidence for every placement | A structurally correct proposal may be inactive on narrow physical scenes | Use existing supported evidence, show active and fail-closed states honestly, and do not tune perception inside this milestone |
 | Simulator success could be mistaken for physical readiness | Exact synthetic state and clean rendering do not represent carpet, optics, latency, or slip | Use Chase for contract/replay checks and require separate stationary Pi evidence without movement claims |
 

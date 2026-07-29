@@ -871,6 +871,45 @@ def accept_decision_stream_frame(
             "latest_frame_invalid",
             "frame_id must equal cycle.frame_id.",
         )
+    _require_stream_summaries_match_cycle(frame, cycle)
+
+
+def _require_stream_summaries_match_cycle(
+    frame: dict[str, Any],
+    cycle: dict[str, Any],
+) -> None:
+    """Rebuild summaries from cycle and require canonical equality (check #10)."""
+
+    plan = cycle.get("plan") if isinstance(cycle.get("plan"), dict) else None
+    authority = cycle.get("authority") if isinstance(cycle.get("authority"), dict) else {}
+    source = cycle.get("source") if isinstance(cycle.get("source"), dict) else None
+    expected = {
+        "observation_summary": _observation_summary(source),
+        "memory_summary": _memory_summary(source),
+        "plan_summary": _plan_summary(plan),
+        "authority_summary": _authority_summary(authority, cycle),
+        "view": {
+            "view_id": COMBINED_VIEW_ID,
+            "applied_false_emphasized": True,
+        },
+    }
+    for key, rebuilt in expected.items():
+        actual = frame.get(key)
+        try:
+            if canonical_json_utf8(_json_ready(actual)) != canonical_json_utf8(
+                _json_ready(rebuilt)
+            ):
+                raise DecisionSurfaceError(
+                    "latest_frame_invalid",
+                    f"Latest decision frame {key} is not consistent with cycle.",
+                    details={"field": key},
+                )
+        except ValueError as exc:
+            raise DecisionSurfaceError(
+                "latest_frame_invalid",
+                f"Latest decision frame {key} is not strictly JSON-serializable: {exc}",
+                details={"field": key},
+            ) from exc
 
 
 def is_pid_alive(pid: int) -> bool:

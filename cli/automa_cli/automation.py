@@ -262,6 +262,8 @@ def run_vehicle_automation(
             "engine_id": decision_config.get("engine_id"),
             "engine_spec": decision_config["engine_spec"],
             "engine_config": decision_config["engine_config"],
+            "latest_frame_publish_skips": 0,
+            "latest_frame_publish_skip_reason": None,
         },
         "memory": (
             {
@@ -408,10 +410,11 @@ def run_vehicle_automation(
         perception_started_at_ms = _timestamp_ms()
         cycle_result = cycle_host.run(context)
         # Publish generation-scoped shadow decision frame when gates pass.
+        # Non-fatal: log/count skips; never invent a partial shadow frame.
         try:
             engine = cycle_host.manager.engine
             last_cycle = getattr(engine, "last_cycle_result", None)
-            publish_shadow_decision_frame(
+            published = publish_shadow_decision_frame(
                 cycle_result=last_cycle,
                 context_frame_id=context.frame_id,
                 vehicle_id=vehicle_id,
@@ -421,8 +424,26 @@ def run_vehicle_automation(
                 activation=decision_activation,
                 staged_engine_id=str(decision_config.get("engine_id") or ""),
             )
-        except Exception:  # noqa: BLE001 - non-fatal publish skip
-            pass
+            if not published and str(decision_config.get("engine_id") or "") == "shadow-proposals":
+                reason = (
+                    "gate_rejected"
+                    if last_cycle is None
+                    else "gate_rejected_frame_or_activation_mismatch"
+                )
+                _record_decision_publish_skip(state, state_path, state_lock, reason=reason)
+                if verbose:
+                    _emit(
+                        output,
+                        f"{context.frame_id}: decision latest-frame publish skipped ({reason})",
+                    )
+        except Exception as exc:  # noqa: BLE001 - non-fatal publish skip
+            reason = f"{type(exc).__name__}: {exc}"
+            _record_decision_publish_skip(state, state_path, state_lock, reason=reason)
+            if verbose:
+                _emit(
+                    output,
+                    f"{context.frame_id}: decision latest-frame publish skip: {reason}",
+                )
         perception = cycle_result.perception
         perception_completed_at_ms = _timestamp_ms()
         if perception is None:
@@ -1792,6 +1813,28 @@ def _write_json(path: Path, payload: Any) -> None:
     temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
     temporary.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
     temporary.replace(path)
+
+
+def _record_decision_publish_skip(
+    state: dict[str, Any],
+    state_path: Path,
+    state_lock: threading.Lock,
+    *,
+    reason: str,
+) -> None:
+    """Count/log a non-fatal shadow latest-frame publish skip (proposal contract)."""
+
+    with state_lock:
+        decision = state.get("decision")
+        if not isinstance(decision, dict):
+            decision = {}
+            state["decision"] = decision
+        decision["latest_frame_publish_skips"] = int(
+            decision.get("latest_frame_publish_skips") or 0
+        ) + 1
+        decision["latest_frame_publish_skip_reason"] = reason[:MAX_STATUS_REASON_CHARS]
+        state["updated_at_ms"] = _timestamp_ms()
+        _write_json(state_path, state)
 
 
 def _stop_perception_view(view_server: PerceptionViewServer | None) -> dict[str, Any]:

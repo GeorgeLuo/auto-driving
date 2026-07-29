@@ -339,6 +339,35 @@ class ShadowDecisionSurfaceTests(unittest.TestCase):
             )
         self.assertEqual(ctx.exception.error, "latest_frame_stale")
 
+        # generation / activated_at_ms mismatch (restage)
+        with self.assertRaises(Exception) as ctx:
+            accept_decision_stream_frame(
+                frame,
+                activation={**activation, "activated_at_ms": 9999},
+                automation_state=state,
+                now_ms=6000,
+                is_pid_alive=lambda pid: True,
+            )
+        self.assertEqual(ctx.exception.error, "latest_frame_stale")
+
+        # tampered plan_summary must not pass check #10
+        tampered = dict(frame)
+        tampered["plan_summary"] = {
+            "status": "selected",
+            "selected_proposal_id": "liar",
+            "candidates": [],
+            "contributions": [],
+        }
+        with self.assertRaises(Exception) as ctx:
+            accept_decision_stream_frame(
+                tampered,
+                activation=activation,
+                automation_state=state,
+                now_ms=6000,
+                is_pid_alive=lambda pid: True,
+            )
+        self.assertEqual(ctx.exception.error, "latest_frame_invalid")
+
     def test_publish_and_stream_once_cli(self) -> None:
         self._stage()
         cycle = self._sample_cycle()

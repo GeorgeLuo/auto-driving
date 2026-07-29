@@ -197,7 +197,6 @@ class DecisionDataSourceTests(unittest.TestCase):
         engine = ShadowProposalsEngine(
             config=ShadowProposalsConfig(
                 enabled_plugins=("a", "b"),
-                known_plugins=frozenset({"a", "b"}),
             ),
             plugins={"a": plugin_a, "b": plugin_b},
         )

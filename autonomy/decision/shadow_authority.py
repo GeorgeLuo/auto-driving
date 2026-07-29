@@ -196,9 +196,15 @@ def build_authority(
     host_application: ComponentEnvelope | None = None,
     drive_mode_gate: str = "unknown",
 ) -> ShadowAuthorityResult:
+    # Detach proposed command so authority does not alias plan candidate storage.
+    detached_proposed: ProposedVehicleCommand | None = None
+    if proposed is not None:
+        if not isinstance(proposed, ProposedVehicleCommand):
+            raise TypeError("proposed must be ProposedVehicleCommand or None")
+        detached_proposed = ProposedVehicleCommand.from_dict(proposed.to_dict())
     return ShadowAuthorityResult(
         frame_id=frame_id,
-        proposed=proposed,
+        proposed=detached_proposed,
         cycle_status=cycle_status,
         cycle_reason=cycle_reason,
         host_application=host_application

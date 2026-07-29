@@ -221,7 +221,9 @@ class DecisionDataSource:
             envelope = getattr(self, name)
             if not isinstance(envelope, ComponentEnvelope):
                 raise TypeError(f"{name} must be ComponentEnvelope")
-        metadata = deep_freeze(dict(self.metadata))
+        if type(self.metadata) is not dict:
+            raise TypeError("metadata must be a dict (JSON object)")
+        metadata = deep_freeze(self.metadata)
         meta_bytes = canonical_json_bytes(frozen_mapping_to_dict(metadata))
         if meta_bytes > MAX_SOURCE_METADATA_BYTES:
             raise ValueError(
@@ -284,7 +286,7 @@ def build_decision_data_source(
         or unavailable_envelope(
             "host_did_not_report_applied_command", updated_at_ms=timestamp_ms
         ),
-        metadata=dict(metadata or {}),
+        metadata={} if metadata is None else metadata,
     )
 
 

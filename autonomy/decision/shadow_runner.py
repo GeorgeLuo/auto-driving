@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import math
 from copy import deepcopy
-from dataclasses import dataclass, field
-from typing import Any, Callable, Protocol, Sequence
+from dataclasses import dataclass
+from typing import Any, Callable, Protocol
 
 from autonomy.decision.action_plan import select_action_plan
 from autonomy.decision.action_proposal import (
     MAX_PROPOSAL_BYTES,
     ActionProposal,
+    ProposedVehicleCommand,
     synthetic_error_proposal,
 )
 from autonomy.decision.decision_data import (
@@ -48,15 +50,17 @@ class ProposalPlugin(Protocol):
 
 @dataclass(frozen=True)
 class ShadowProposalsConfig:
+    """Activation config. Catalog membership is owned by the engine factory / plugins map."""
+
     enabled_plugins: tuple[str, ...] = DEFAULT_ENABLED_PLUGINS
     accepted_kinds: tuple[str, ...] = DEFAULT_ACCEPTED_KINDS
     retained_max_age_ms: int = DEFAULT_RETAINED_MAX_AGE_MS
     steer_magnitude: float = DEFAULT_STEER_MAGNITUDE
-    known_plugins: frozenset[str] = field(
-        default_factory=lambda: frozenset(DEFAULT_ENABLED_PLUGINS)
-    )
 
     def __post_init__(self) -> None:
+        # Require real sequences of ids — reject str (char-iter) and other coercible shapes.
+        if type(self.enabled_plugins) not in (list, tuple):
+            raise ValueError("enabled_plugins must be a list or tuple of plugin ids")
         plugins = tuple(self.enabled_plugins)
         if not 1 <= len(plugins) <= 4:
             raise ValueError("enabled_plugins must contain 1..4 entries")
@@ -64,8 +68,8 @@ class ShadowProposalsConfig:
             raise ValueError("enabled_plugins must be unique")
         for plugin_id in plugins:
             require_ascii_id(plugin_id, field_name="plugin_id")
-            if plugin_id not in self.known_plugins:
-                raise ValueError(f"unknown plugin_id {plugin_id!r}")
+        if type(self.accepted_kinds) not in (list, tuple):
+            raise ValueError("accepted_kinds must be a list or tuple of kind ids")
         kinds = tuple(self.accepted_kinds)
         if not kinds or len(kinds) > 8:
             raise ValueError("accepted_kinds must contain 1..8 entries")
@@ -83,7 +87,7 @@ class ShadowProposalsConfig:
             magnitude = float(self.steer_magnitude)
         except (TypeError, ValueError) as exc:
             raise ValueError("steer_magnitude must be numeric") from exc
-        if not (0.0 < magnitude <= 1.0):
+        if not math.isfinite(magnitude) or not (0.0 < magnitude <= 1.0):
             raise ValueError("steer_magnitude must satisfy 0 < value <= 1")
         object.__setattr__(self, "steer_magnitude", magnitude)
         object.__setattr__(self, "enabled_plugins", plugins)
@@ -154,6 +158,14 @@ class ShadowProposalsEngine:
 
     config: ShadowProposalsConfig
     plugins: dict[str, Callable[[DecisionDataSource], ActionProposal]]
+
+    def __post_init__(self) -> None:
+        # Activation membership is the plugins map (catalog), not a self-declared set.
+        if not isinstance(self.plugins, dict):
+            raise TypeError("plugins must be a dict of plugin_id -> callable")
+        for plugin_id in self.config.enabled_plugins:
+            if plugin_id not in self.plugins:
+                raise ValueError(f"unknown plugin_id {plugin_id!r}")
 
     @classmethod
     def create(
@@ -272,7 +284,10 @@ class ShadowProposalsEngine:
             except Exception:
                 return fail("action_plan_invariant_violated", source=source)
             selected = plan.selected_candidate()
-            proposed = selected.command if selected is not None else None
+            # Authority owns a detached copy of the selected command (not an alias).
+            proposed: ProposedVehicleCommand | None = None
+            if selected is not None and selected.command is not None:
+                proposed = ProposedVehicleCommand.from_dict(selected.command.to_dict())
             authority = build_authority(
                 frame_id=frame_id,
                 cycle_status="ok",

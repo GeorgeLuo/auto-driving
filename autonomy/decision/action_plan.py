@@ -113,7 +113,9 @@ class ActionPlan:
                 raise ValueError("contribution must be weight=1.0 role=selected")
         object.__setattr__(self, "contributions", contributions)
 
-        metadata = deep_freeze(dict(self.metadata))
+        if type(self.metadata) is not dict:
+            raise TypeError("metadata must be a dict (JSON object)")
+        metadata = deep_freeze(self.metadata)
         meta_plain = frozen_mapping_to_dict(metadata)
         if canonical_json_bytes(meta_plain) > MAX_PLAN_METADATA_BYTES:
             raise ValueError(
@@ -172,6 +174,7 @@ def select_action_plan(
         and item.command is not None
         and item.proposal_id.endswith(f":{frame_id}")
     ]
+    plan_metadata: dict[str, Any] = {} if metadata is None else metadata
     if not active:
         return ActionPlan(
             frame_id=frame_id,
@@ -180,7 +183,7 @@ def select_action_plan(
             candidates=tuple(candidates_list),
             selected_proposal_id=None,
             contributions=(),
-            metadata=dict(metadata or {}),
+            metadata=plan_metadata,
         )
     active.sort(key=lambda item: (-item.confidence, item.plugin_id))
     selected = active[0]
@@ -198,5 +201,5 @@ def select_action_plan(
                 role="selected",
             ),
         ),
-        metadata=dict(metadata or {}),
+        metadata=plan_metadata,
     )

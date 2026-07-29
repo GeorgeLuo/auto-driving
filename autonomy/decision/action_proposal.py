@@ -236,7 +236,12 @@ class ActionProposal:
                 f"lifecycle {self.lifecycle} requires freshness {allowed_freshness}; "
                 f"got {self.freshness}"
             )
-        if bool(self.available) != available:
+        # Exact boolean only — reject truthy/falsey coercions such as "false".
+        if type(self.available) is not bool:
+            raise ValueError(
+                f"available must be a bool; got {type(self.available).__name__}"
+            )
+        if self.available != available:
             raise ValueError(
                 f"lifecycle {self.lifecycle} requires available={available}"
             )
@@ -271,7 +276,9 @@ class ActionProposal:
                 raise TypeError("source_refs must contain SourceRef")
         object.__setattr__(self, "source_refs", refs)
 
-        metadata = deep_freeze(dict(self.metadata))
+        if type(self.metadata) is not dict:
+            raise TypeError("metadata must be a dict (JSON object)")
+        metadata = deep_freeze(self.metadata)
         meta_plain = frozen_mapping_to_dict(metadata)
         if canonical_json_bytes(meta_plain) > MAX_PROPOSAL_METADATA_BYTES:
             raise ValueError(
@@ -318,6 +325,13 @@ class ActionProposal:
             for item in (data.get("source_refs") or ())
             if isinstance(item, dict)
         )
+        raw_metadata = data.get("metadata")
+        if raw_metadata is None:
+            metadata: dict[str, Any] = {}
+        elif type(raw_metadata) is not dict:
+            raise TypeError("metadata must be a dict (JSON object)")
+        else:
+            metadata = deepcopy(raw_metadata)
         return cls(
             plugin_id=str(data.get("plugin_id") or ""),
             frame_id=str(data.get("frame_id") or ""),
@@ -328,8 +342,9 @@ class ActionProposal:
             command=command,
             assumptions=tuple(str(item) for item in (data.get("assumptions") or ())),
             source_refs=refs,
-            available=bool(data.get("available")),
-            metadata=deepcopy(dict(data.get("metadata") or {})),
+            # Preserve raw available; constructor rejects non-bool types.
+            available=data["available"] if "available" in data else False,
+            metadata=metadata,
             proposal_id=str(data.get("proposal_id") or ""),
             schema=str(data.get("schema") or ACTION_PROPOSAL_SCHEMA),
         )

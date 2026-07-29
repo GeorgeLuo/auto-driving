@@ -130,7 +130,6 @@ class RunnerBoundaryTests(unittest.TestCase):
         engine = ShadowProposalsEngine(
             config=ShadowProposalsConfig(
                 enabled_plugins=("avoid_recent_obstruction",),
-                known_plugins=frozenset({"avoid_recent_obstruction"}),
             ),
             plugins={"avoid_recent_obstruction": bad_plugin},
         )
@@ -153,12 +152,14 @@ class RunnerBoundaryTests(unittest.TestCase):
             ShadowProposalsConfig(enabled_plugins=())
 
     def test_max_legal_plan_builds(self) -> None:
-        # Four *exact* 4096-byte proposals with max frame_id and max timestamp.
-        plugins = ["p0", "p1", "p2", "p3"]
+        # Four *exact* 4096-byte proposals with max 64-char plugin ids, max
+        # frame_id, max timestamp, and exact 1024-byte plan metadata.
+        plugins = [f"p{i}" + ("x" * 62) for i in range(4)]
+        self.assertTrue(all(len(plugin_id) == 64 for plugin_id in plugins))
         frame = "f" * 64
         candidates = []
         reason = "r" * 240
-        assumptions = tuple(("a" + ("b" * 62)) for _ in range(8))
+        assumptions = tuple(("a" + ("b" * 62)) for _ in range(5))
         refs = tuple(
             SourceRef(
                 kind="memory_record",
@@ -187,9 +188,8 @@ class RunnerBoundaryTests(unittest.TestCase):
             )
 
         for plugin_id in plugins:
-            # size0 is ~3975 with id_len=120 and 8 refs; pad metadata to 4096.
             exact = None
-            for pad in range(0, 200):
+            for pad in range(0, 300):
                 try:
                     prop = build(plugin_id, pad)
                 except ValueError:
@@ -203,18 +203,30 @@ class RunnerBoundaryTests(unittest.TestCase):
             )
             assert exact is not None
             self.assertEqual(canonical_json_bytes(exact.to_dict()), 4096)
+            self.assertEqual(len(exact.plugin_id), 64)
             candidates.append(exact)
+
+        plan_metadata = None
+        for pad in range(0, 1200):
+            meta = {"pad": "m" * pad}
+            if canonical_json_bytes(meta) == 1024:
+                plan_metadata = meta
+                break
+        self.assertIsNotNone(plan_metadata)
+        assert plan_metadata is not None
+        self.assertEqual(canonical_json_bytes(plan_metadata), 1024)
 
         plan = select_action_plan(
             frame_id=frame,
             timestamp_ms=9_007_199_254_740_991,
             candidates=candidates,
-            metadata={"pad": "m" * 50},
+            metadata=plan_metadata,
         )
         size = canonical_json_bytes(plan.to_dict())
         self.assertLessEqual(size, 24_576)
         self.assertEqual(plan.status, "selected")
         self.assertTrue(plan.selected_proposal_id.endswith(":" + frame))
+        self.assertEqual(canonical_json_bytes(plan.to_dict()["metadata"]), 1024)
 
     def test_metadata_frozen_after_construction(self) -> None:
         prop = _active_proposal()
@@ -360,19 +372,29 @@ class RunnerBoundaryTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             ShadowProposalsConfig(steer_magnitude=1.1)
         with self.assertRaises(ValueError):
-            ShadowProposalsConfig(
-                enabled_plugins=("a", "a"),
-                known_plugins=frozenset({"a"}),
-            )
+            ShadowProposalsConfig(steer_magnitude=0)
         with self.assertRaises(ValueError):
-            ShadowProposalsConfig(
-                enabled_plugins=("missing",),
-                known_plugins=frozenset({"a"}),
-            )
+            ShadowProposalsConfig(steer_magnitude=float("nan"))
+        with self.assertRaises(ValueError):
+            ShadowProposalsConfig(enabled_plugins=("a", "a"))
         with self.assertRaises(ValueError):
             ShadowProposalsConfig(
                 enabled_plugins=("a", "b", "c", "d", "e"),
-                known_plugins=frozenset({"a", "b", "c", "d", "e"}),
+            )
+        # String is not a list of ids (would otherwise char-iterate).
+        with self.assertRaises(ValueError):
+            ShadowProposalsConfig(accepted_kinds="obstacle")  # type: ignore[arg-type]
+        with self.assertRaises(ValueError):
+            ShadowProposalsConfig(enabled_plugins="avoid_recent_obstruction")  # type: ignore[arg-type]
+        # Unknown id rejects at production catalog activation, not via self-declared known set.
+        with self.assertRaises(ValueError):
+            create_shadow_proposals_engine(
+                ShadowProposalsConfig(enabled_plugins=("ghost",))
+            )
+        with self.assertRaises(ValueError):
+            ShadowProposalsEngine(
+                config=ShadowProposalsConfig(enabled_plugins=("ghost",)),
+                plugins={},
             )
 
     def test_plugin_none_wrong_id_and_exception(self) -> None:
@@ -396,7 +418,6 @@ class RunnerBoundaryTests(unittest.TestCase):
                 engine = ShadowProposalsEngine(
                     config=ShadowProposalsConfig(
                         enabled_plugins=("avoid_recent_obstruction",),
-                        known_plugins=frozenset({"avoid_recent_obstruction"}),
                     ),
                     plugins={"avoid_recent_obstruction": plugin_fn},
                 )
@@ -520,7 +541,6 @@ class RunnerBoundaryTests(unittest.TestCase):
         engine = ShadowProposalsEngine(
             config=ShadowProposalsConfig(
                 enabled_plugins=("avoid_recent_obstruction",),
-                known_plugins=frozenset({"avoid_recent_obstruction"}),
             ),
             plugins={"avoid_recent_obstruction": corrupt},
         )
@@ -577,7 +597,6 @@ class RunnerBoundaryTests(unittest.TestCase):
         engine = ShadowProposalsEngine(
             config=ShadowProposalsConfig(
                 enabled_plugins=("avoid_recent_obstruction",),
-                known_plugins=frozenset({"avoid_recent_obstruction"}),
             ),
             plugins={"avoid_recent_obstruction": corrupt_matrix},
         )
@@ -587,6 +606,140 @@ class RunnerBoundaryTests(unittest.TestCase):
         self.assertEqual(result.status, "engine_error")
         self.assertEqual(result.reason, "action_proposal_matrix_violated")
         self.assertIsNone(result.plan)
+
+    def test_available_must_be_exact_bool(self) -> None:
+        with self.assertRaises(ValueError):
+            ActionProposal(
+                plugin_id="avoid_recent_obstruction",
+                frame_id="frame_001",
+                lifecycle="fresh",
+                freshness="fresh",
+                confidence=0.5,
+                reason="x",
+                command=ProposedVehicleCommand(
+                    steering=0.2, throttle=0.0, gear="hold"
+                ),
+                source_refs=(SourceRef(kind="memory_record", id="r"),),
+                available="false",  # type: ignore[arg-type]
+            )
+        with self.assertRaises(ValueError):
+            ActionProposal.from_dict(
+                {
+                    "plugin_id": "avoid_recent_obstruction",
+                    "frame_id": "frame_001",
+                    "lifecycle": "fresh",
+                    "freshness": "fresh",
+                    "confidence": 0.5,
+                    "reason": "x",
+                    "command": {
+                        "schema": "proposed_vehicle_command_v0",
+                        "steering": 0.2,
+                        "throttle": 0.0,
+                        "gear": "hold",
+                        "normalized": True,
+                    },
+                    "assumptions": [],
+                    "source_refs": [
+                        {
+                            "kind": "memory_record",
+                            "id": "r",
+                            "frame_id": None,
+                            "observation_id": None,
+                            "plugin_id": None,
+                            "note": "",
+                        }
+                    ],
+                    "available": "false",
+                    "metadata": {},
+                    "proposal_id": "avoid_recent_obstruction:frame_001",
+                    "schema": "action_proposal_v0",
+                }
+            )
+
+    def test_runner_rejects_non_bool_available_after_construction(self) -> None:
+        from autonomy.decision.decision_data import DecisionDataSource
+
+        def bad_available(source: DecisionDataSource) -> ActionProposal:
+            proposal = _active_proposal(frame_id=source.frame_id)
+            object.__setattr__(proposal, "available", "false")  # type: ignore[arg-type]
+            return proposal
+
+        engine = ShadowProposalsEngine(
+            config=ShadowProposalsConfig(
+                enabled_plugins=("avoid_recent_obstruction",),
+            ),
+            plugins={"avoid_recent_obstruction": bad_available},
+        )
+        result, control = engine.run_cycle(
+            frame_id="frame_001", frame_index=0, timestamp_ms=1
+        )
+        self.assertEqual(result.status, "engine_error")
+        self.assertEqual(result.reason, "action_proposal_matrix_violated")
+        self.assertIsNone(result.plan)
+        self.assertEqual(control.steering, 0.0)
+
+    def test_metadata_rejects_array_of_pairs(self) -> None:
+        with self.assertRaises(TypeError):
+            ActionProposal(
+                plugin_id="avoid_recent_obstruction",
+                frame_id="frame_001",
+                lifecycle="inactive",
+                freshness="none",
+                confidence=0.0,
+                reason="noop",
+                command=None,
+                available=False,
+                metadata=[["x", 1]],  # type: ignore[arg-type]
+            )
+        from autonomy.decision.action_plan import ActionPlan
+        from autonomy.decision.decision_data import build_decision_data_source
+
+        with self.assertRaises(TypeError):
+            ActionPlan(
+                frame_id="frame_001",
+                timestamp_ms=1,
+                status="idle",
+                candidates=(_active_proposal(),),
+                selected_proposal_id=None,
+                contributions=(),
+                metadata=[["x", 1]],  # type: ignore[arg-type]
+            )
+        with self.assertRaises(TypeError):
+            build_decision_data_source(
+                frame_id="frame_001",
+                frame_index=0,
+                timestamp_ms=1,
+                metadata=[["x", 1]],  # type: ignore[arg-type]
+            )
+
+    def test_authority_proposed_is_detached_from_selected_command(self) -> None:
+        from autonomy.decision.decision_data import DecisionDataSource
+
+        def active(source: DecisionDataSource) -> ActionProposal:
+            return _active_proposal(frame_id=source.frame_id, steering=0.35)
+
+        engine = ShadowProposalsEngine(
+            config=ShadowProposalsConfig(
+                enabled_plugins=("avoid_recent_obstruction",),
+            ),
+            plugins={"avoid_recent_obstruction": active},
+        )
+        result, control = engine.run_cycle(
+            frame_id="frame_001", frame_index=0, timestamp_ms=1
+        )
+        self.assertEqual(result.status, "ok")
+        assert result.plan is not None
+        selected = result.plan.selected_candidate()
+        assert selected is not None
+        assert selected.command is not None
+        assert result.authority.proposed is not None
+        self.assertIsNot(result.authority.proposed, selected.command)
+        self.assertEqual(
+            result.authority.proposed.to_dict(), selected.command.to_dict()
+        )
+        self.assertEqual(control.steering, 0.0)
+        self.assertFalse(result.authority.proposed_applied)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -288,6 +288,38 @@ class AvoidRecentObstructionTests(unittest.TestCase):
         self.assertAlmostEqual(p.command.steering, 0.4)
         self.assertIn("capabilities_not_ready", p.assumptions)
 
+    def test_ready_capabilities_invalid_max_abs_steering(self) -> None:
+        from autonomy.decision.decision_data import (
+            default_capabilities,
+            ready_envelope,
+        )
+
+        snap = MemorySnapshot(
+            memory_id="m",
+            epoch_id="e",
+            health="healthy",
+            bounds=_bounds(),
+            created_at_ms=1000,
+            records=(_record(),),
+            implementation_id="bounded_evidence",
+        )
+        # NaN cannot enter a ready envelope (strict JSON freeze rejects it first).
+        for bad_max in (0, -0.1, 1.5, "high", None):
+            with self.subTest(max_abs_steering=bad_max):
+                caps = default_capabilities()
+                caps["max_abs_steering"] = bad_max
+                source = build_decision_data_source(
+                    frame_id="frame_001",
+                    frame_index=0,
+                    timestamp_ms=1000,
+                    memory=snap,
+                    capabilities=ready_envelope(caps, updated_at_ms=1000),
+                )
+                p = propose(source)
+                self.assertEqual(p.lifecycle, "error")
+                self.assertEqual(p.reason, "invalid_capabilities")
+                self.assertIsNone(p.command)
+
 
 if __name__ == "__main__":
     unittest.main()

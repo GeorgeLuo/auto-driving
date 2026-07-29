@@ -323,15 +323,15 @@ def detach_memory_snapshot(snapshot: "MemorySnapshot") -> "MemorySnapshot":
     return MemorySnapshot.from_dict(snapshot.to_dict())
 
 
-def canonical_json_bytes(value: Any) -> int:
-    """UTF-8 byte length of strict canonical JSON.
+def canonical_json_utf8(value: Any) -> bytes:
+    """UTF-8 bytes of strict canonical JSON (sorted keys, compact separators).
 
-    Rejects non-JSON types and non-finite numbers. Callers must not retain values
-    that cannot be measured with this path.
+    Rejects non-JSON types and non-finite numbers. Use this for digests and
+    equality; use ``canonical_json_bytes`` only for size ceilings.
     """
 
     try:
-        encoded = json.dumps(
+        return json.dumps(
             value,
             sort_keys=True,
             separators=(",", ":"),
@@ -341,7 +341,16 @@ def canonical_json_bytes(value: Any) -> int:
         raise ValueError(
             f"value is not strictly JSON-serializable: {type(exc).__name__}: {exc}"
         ) from exc
-    return len(encoded)
+
+
+def canonical_json_bytes(value: Any) -> int:
+    """UTF-8 byte length of strict canonical JSON.
+
+    Rejects non-JSON types and non-finite numbers. Callers must not retain values
+    that cannot be measured with this path. Equal lengths are not equal content.
+    """
+
+    return len(canonical_json_utf8(value))
 
 
 def ensure_strict_json_value(value: Any) -> Any:

@@ -34,7 +34,11 @@ from implementations.vehicle.chase_sim.frame_identity import (
 from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWebSocketError
 
 from .bundles import controller_bundle_paths
-from .decision import load_decision_activation
+from .decision import (
+    invalidate_latest_decision_frame,
+    load_decision_activation,
+    publish_shadow_decision_frame,
+)
 from .paths import display_path, safe_path_part
 from .perception import (
     _close_mapper,
@@ -203,6 +207,9 @@ def run_vehicle_automation(
     latest_json_path = automation_dir / "latest_perception.json"
     latest_text_path = automation_dir / "latest_perception.txt"
     latest_front_camera_path = frames_dir / f"latest_{FRONT_CAMERA_SENSOR_ID}.png"
+    vehicle_runtime_dir = RUNTIME_ROOT / safe_path_part(vehicle_id)
+    # Stale latest_decision.json from prior workers must not remain stream-valid.
+    invalidate_latest_decision_frame(vehicle_runtime_dir)
     if run_dir is not None:
         run_dir.mkdir(parents=True, exist_ok=True)
     else:
@@ -400,6 +407,22 @@ def run_vehicle_automation(
         cycle_started_at_ms = _timestamp_ms()
         perception_started_at_ms = _timestamp_ms()
         cycle_result = cycle_host.run(context)
+        # Publish generation-scoped shadow decision frame when gates pass.
+        try:
+            engine = cycle_host.manager.engine
+            last_cycle = getattr(engine, "last_cycle_result", None)
+            publish_shadow_decision_frame(
+                cycle_result=last_cycle,
+                context_frame_id=context.frame_id,
+                vehicle_id=vehicle_id,
+                vehicle_runtime_dir=vehicle_runtime_dir,
+                run_id=str(state.get("run_id") or run_id),
+                worker_pid=int(state.get("pid") or os.getpid()),
+                activation=decision_activation,
+                staged_engine_id=str(decision_config.get("engine_id") or ""),
+            )
+        except Exception:  # noqa: BLE001 - non-fatal publish skip
+            pass
         perception = cycle_result.perception
         perception_completed_at_ms = _timestamp_ms()
         if perception is None:

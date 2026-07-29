@@ -39,13 +39,11 @@ FORBIDDEN_CHANNEL_ORIGINS = frozenset(
         "privileged",
     }
 )
-CAPABILITY_ALLOWED_KEYS = frozenset(
-    {
-        "max_abs_steering",
-        "max_abs_throttle",
-        "allows_reverse",
-        "coordinate_frame",
-    }
+CAPABILITY_REQUIRED_KEYS = (
+    "max_abs_steering",
+    "max_abs_throttle",
+    "allows_reverse",
+    "coordinate_frame",
 )
 PRIOR_HOST_ALLOWED_KEYS = frozenset(
     {
@@ -81,9 +79,28 @@ def _canonical_channel_origin(key: str) -> str:
 
 
 def _is_forbidden_channel_key(key: object) -> bool:
+    """True when a key carries a privileged origin, including compound names.
+
+    ``EvaluatorOutput`` / ``MapPrivileged`` / ``DebugTruthPayload`` normalize to
+    multi-token snake_case forms; any contiguous token sequence that matches a
+    forbidden origin is rejected (not only exact whole-key equality).
+    """
+
     if type(key) is not str:
         return False
-    return _canonical_channel_origin(key) in FORBIDDEN_CHANNEL_ORIGINS
+    origin = _canonical_channel_origin(key)
+    if origin in FORBIDDEN_CHANNEL_ORIGINS:
+        return True
+    tokens = [part for part in origin.split("_") if part]
+    for forbidden in FORBIDDEN_CHANNEL_ORIGINS:
+        forbidden_tokens = forbidden.split("_")
+        width = len(forbidden_tokens)
+        if width == 0 or width > len(tokens):
+            continue
+        for index in range(0, len(tokens) - width + 1):
+            if tokens[index : index + width] == forbidden_tokens:
+                return True
+    return False
 
 
 def _reject_forbidden_channel_keys(value: object, *, path: str) -> None:
@@ -134,33 +151,33 @@ def _require_exact_unit_float(value: object, *, field_name: str) -> float:
 
 
 def _canonical_capabilities_payload(value: object, *, path: str) -> object:
-    """Validate, canonicalize types, and freeze the capabilities mapping."""
+    """Validate required fields, preserve safe extras, freeze the mapping.
+
+    The accepted schema requires *at least* the four core capability fields;
+    additional strict-JSON, non-privileged keys are retained for host extensions.
+    """
 
     payload = _plain_mapping(value)
-    unknown = sorted(set(payload) - CAPABILITY_ALLOWED_KEYS)
-    if unknown:
-        raise ValueError(
-            f"{path} capabilities has unsupported keys: {', '.join(unknown)}"
-        )
-    missing = [key for key in sorted(CAPABILITY_ALLOWED_KEYS) if key not in payload]
+    missing = [key for key in CAPABILITY_REQUIRED_KEYS if key not in payload]
     if missing:
         raise ValueError(
             f"{path} capabilities missing required keys: {', '.join(missing)}"
         )
+    _reject_forbidden_channel_keys(payload, path=path)
     if type(payload["allows_reverse"]) is not bool:
         raise ValueError(f"{path}.allows_reverse must be a bool")
     if type(payload["coordinate_frame"]) is not str or not payload["coordinate_frame"]:
         raise ValueError(f"{path}.coordinate_frame must be a non-empty string")
-    canonical = {
-        "max_abs_steering": _require_exact_unit_float(
-            payload["max_abs_steering"], field_name=f"{path}.max_abs_steering"
-        ),
-        "max_abs_throttle": _require_exact_unit_float(
-            payload["max_abs_throttle"], field_name=f"{path}.max_abs_throttle"
-        ),
-        "allows_reverse": payload["allows_reverse"],
-        "coordinate_frame": payload["coordinate_frame"],
-    }
+    # Preserve extras; overwrite required fields with exact JSON number types.
+    canonical = dict(payload)
+    canonical["max_abs_steering"] = _require_exact_unit_float(
+        payload["max_abs_steering"], field_name=f"{path}.max_abs_steering"
+    )
+    canonical["max_abs_throttle"] = _require_exact_unit_float(
+        payload["max_abs_throttle"], field_name=f"{path}.max_abs_throttle"
+    )
+    canonical["allows_reverse"] = payload["allows_reverse"]
+    canonical["coordinate_frame"] = payload["coordinate_frame"]
     return deep_freeze(canonical)
 
 
@@ -214,14 +231,16 @@ def _canonical_prior_host_payload(value: object, *, path: str) -> object:
 
 def _canonical_observation_payload(value: object, *, path: str) -> Observation:
     if isinstance(value, Observation):
-        # Detach via dict round-trip for immutability.
-        return Observation.from_dict(value.to_dict())
-    try:
-        plain = _plain_mapping(value)
-    except TypeError as exc:
-        raise TypeError(
-            f"{path} must be Observation or detached observation dict"
-        ) from exc
+        plain = value.to_dict()
+    else:
+        try:
+            plain = _plain_mapping(value)
+        except TypeError as exc:
+            raise TypeError(
+                f"{path} must be Observation or detached observation dict"
+            ) from exc
+    # Privilege scan before rehydrate so compound keys never enter the source.
+    _reject_forbidden_channel_keys(plain, path=path)
     return Observation.from_dict(plain)
 
 
@@ -371,7 +390,7 @@ def memory_envelope_from_snapshot(
 
 
 def observation_envelope_from_value(
-    observation: Observation | None,
+    observation: Observation | dict[str, Any] | None,
     *,
     configured: bool = True,
     error: str | None = None,
@@ -385,9 +404,14 @@ def observation_envelope_from_value(
                 "observation_not_configured", updated_at_ms=updated_at_ms
             )
         return unavailable_envelope("observation_missing", updated_at_ms=updated_at_ms)
-    if not isinstance(observation, Observation):
-        raise TypeError("observation envelope requires Observation or None")
-    return ready_envelope(observation, updated_at_ms=updated_at_ms)
+    if isinstance(observation, Observation):
+        return ready_envelope(observation, updated_at_ms=updated_at_ms)
+    if isinstance(observation, dict):
+        # Detached observation mapping; DecisionDataSource rehydrates + privilege-scans.
+        return ready_envelope(observation, updated_at_ms=updated_at_ms)
+    raise TypeError(
+        "observation envelope requires Observation, detached observation dict, or None"
+    )
 
 
 def default_capabilities(
@@ -518,7 +542,7 @@ def build_decision_data_source(
     frame_id: str,
     frame_index: int,
     timestamp_ms: int,
-    observation: Observation | None = None,
+    observation: Observation | dict[str, Any] | None = None,
     observation_configured: bool = False,
     observation_error: str | None = None,
     memory: MemorySnapshot | None = None,

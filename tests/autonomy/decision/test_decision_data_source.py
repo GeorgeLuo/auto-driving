@@ -466,6 +466,98 @@ class DecisionDataSourceTests(unittest.TestCase):
         )
         self.assertEqual(control.steering, 0.0)
 
+    def test_compound_privileged_origin_keys_rejected(self) -> None:
+        from autonomy.decision.observation import Observation
+
+        obs = Observation(
+            observation_id="o",
+            created_at_ms=1,
+            sensor_snapshot={},
+            metadata={"EvaluatorOutput": {"direction": "left"}},
+        )
+        with self.assertRaises(ValueError):
+            build_decision_data_source(
+                frame_id="f", frame_index=0, timestamp_ms=1, observation=obs
+            )
+        for bad_key in (
+            "MapPrivileged",
+            "DebugTruthPayload",
+            "ReferenceDecisionV2",
+            "evaluator_output",
+        ):
+            with self.subTest(key=bad_key):
+                with self.assertRaises(ValueError):
+                    build_decision_data_source(
+                        frame_id="f",
+                        frame_index=0,
+                        timestamp_ms=1,
+                        patterns=ready_envelope(
+                            {
+                                "pattern_bundle_schema": "patterns_v0",
+                                bad_key: {"x": 1},
+                            },
+                            updated_at_ms=1,
+                        ),
+                    )
+
+    def test_capabilities_preserve_safe_extension_fields(self) -> None:
+        source = build_decision_data_source(
+            frame_id="f",
+            frame_index=0,
+            timestamp_ms=1,
+            capabilities=ready_envelope(
+                {
+                    "max_abs_steering": 1.0,
+                    "max_abs_throttle": 1.0,
+                    "allows_reverse": True,
+                    "coordinate_frame": "image",
+                    "wheelbase_m": 0.31,
+                },
+                updated_at_ms=1,
+            ),
+        )
+        caps = source.to_dict()["capabilities"]["value"]
+        self.assertEqual(caps["wheelbase_m"], 0.31)
+        self.assertIs(type(caps["max_abs_steering"]), float)
+
+    def test_runner_observation_dict_and_error_paths(self) -> None:
+        from autonomy.decision.observation import Observation
+        from implementations.decision.catalog import create_shadow_proposals_engine
+
+        engine = create_shadow_proposals_engine()
+        obs = Observation(
+            observation_id="obs-runner",
+            created_at_ms=1,
+            sensor_snapshot={},
+        )
+        result, control = engine.run_cycle(
+            frame_id="f",
+            frame_index=0,
+            timestamp_ms=1,
+            observation=obs.to_dict(),
+        )
+        self.assertEqual(result.status, "ok")
+        assert result.source is not None
+        self.assertEqual(result.source.observation.status, "ready")
+        self.assertIsInstance(result.source.observation.value, Observation)
+        self.assertEqual(
+            result.source.observation.value.observation_id, "obs-runner"
+        )
+        self.assertEqual(control.steering, 0.0)
+
+        err_result, err_control = engine.run_cycle(
+            frame_id="f",
+            frame_index=0,
+            timestamp_ms=1,
+            observation_error="camera_failed",
+        )
+        self.assertEqual(err_result.status, "ok")
+        assert err_result.source is not None
+        self.assertEqual(err_result.source.observation.status, "error")
+        self.assertEqual(err_result.source.observation.reason, "camera_failed")
+        self.assertIsNone(err_result.source.observation.value)
+        self.assertEqual(err_control.steering, 0.0)
+
 
 if __name__ == "__main__":
     unittest.main()

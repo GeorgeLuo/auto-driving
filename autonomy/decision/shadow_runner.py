@@ -184,7 +184,8 @@ class ShadowProposalsEngine:
         frame_id: str,
         frame_index: int,
         timestamp_ms: int,
-        observation: Observation | None = None,
+        observation: Observation | dict[str, Any] | None = None,
+        observation_error: str | None = None,
         memory: MemorySnapshot | None = None,
         host_application: ComponentEnvelope | None = None,
         prior_host_applied_command: ComponentEnvelope | None = None,
@@ -222,12 +223,23 @@ class ShadowProposalsEngine:
                 drive_mode_gate=gate,
             )
 
+        # Observation: None → unconfigured; dict/Observation → ready; error → error.
+        if observation is not None and not isinstance(
+            observation, (Observation, dict)
+        ):
+            return fail("decision_data_source_invalid", source=None)
+        if observation_error is not None and type(observation_error) is not str:
+            return fail("decision_data_source_invalid", source=None)
+
         try:
             source = build_decision_data_source(
                 frame_id=frame_id,
                 frame_index=frame_index,
                 timestamp_ms=timestamp_ms,
                 observation=observation,
+                observation_error=observation_error,
+                # Absent + no error ⇒ stage not configured for this unit.
+                observation_configured=False,
                 memory=memory,
                 capabilities=capabilities
                 or ready_envelope(default_capabilities(), updated_at_ms=timestamp_ms),

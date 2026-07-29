@@ -23,12 +23,24 @@ from autonomy.decision import (
     ShadowProposalsConfig,
     canonical_json_utf8,
 )
+from autonomy.decision.action_plan import ActionPlan, PlanContribution
+from autonomy.decision.action_proposal import (
+    PROPOSED_VEHICLE_COMMAND_SCHEMA,
+    ActionProposal,
+    ProposedVehicleCommand,
+)
+from autonomy.decision.decision_data import ComponentEnvelope, DecisionDataSource
 from autonomy.decision.memory import (
     MEMORY_SNAPSHOT_SCHEMA,
     MemorySnapshot,
 )
 from autonomy.decision.observation import OBSERVATION_SCHEMA, Observation
-from autonomy.decision.shadow_authority import AUTHORIZED_IDLE_REASON, authorized_idle_output
+from autonomy.decision.shadow_authority import (
+    AUTHORIZED_IDLE_REASON,
+    ShadowAuthorityResult,
+    ShadowDecisionCycleResult,
+    authorized_idle_output,
+)
 from autonomy.decision.shadow_ids import require_ascii_id, require_safe_int
 from autonomy.decision.shadow_runner import (
     DEFAULT_ACCEPTED_KINDS,
@@ -164,6 +176,9 @@ PROPOSAL_EXACT_KEYS = frozenset(
 CONTRIBUTION_EXACT_KEYS = frozenset({"proposal_id", "plugin_id", "weight", "role"})
 SOURCE_REF_EXACT_KEYS = frozenset(
     {"kind", "id", "frame_id", "observation_id", "plugin_id", "note"}
+)
+COMMAND_EXACT_KEYS = frozenset(
+    {"schema", "steering", "throttle", "gear", "normalized"}
 )
 OBS_SUMMARY_EXACT_KEYS = frozenset({"status", "frame_id", "reason"})
 MEM_SUMMARY_EXACT_KEYS = frozenset({"status", "health", "record_count", "records"})
@@ -1165,8 +1180,402 @@ def _require_authority_summary(payload: object) -> None:
         )
 
 
+def _require_canonical_export_equal(
+    payload: object,
+    exported: object,
+    *,
+    field: str,
+) -> None:
+    try:
+        if canonical_json_utf8(_json_ready(payload)) != canonical_json_utf8(
+            _json_ready(exported)
+        ):
+            raise DecisionSurfaceError(
+                "latest_frame_invalid",
+                f"{field} is not a complete lossless typed export.",
+                details={"field": field},
+            )
+    except ValueError as exc:
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            f"{field} is not strictly JSON-serializable: {exc}",
+            details={"field": field},
+        ) from exc
+
+
+def _strict_decode_command(payload: object, *, field: str) -> ProposedVehicleCommand:
+    if not isinstance(payload, dict):
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            f"{field} must be a ProposedVehicleCommand object.",
+            details={"field": field},
+        )
+    _require_exact_keys(payload, COMMAND_EXACT_KEYS, field=field)
+    if payload.get("schema") != PROPOSED_VEHICLE_COMMAND_SCHEMA:
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            f"{field}.schema must be {PROPOSED_VEHICLE_COMMAND_SCHEMA!r}.",
+            details={"field": field},
+        )
+    try:
+        command = ProposedVehicleCommand.from_dict(payload)
+    except (TypeError, ValueError) as exc:
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            f"{field} failed ProposedVehicleCommand construction: {exc}",
+            details={"field": field},
+        ) from exc
+    _require_canonical_export_equal(payload, command.to_dict(), field=field)
+    return command
+
+
+def _strict_decode_envelope(payload: object, *, field: str) -> ComponentEnvelope:
+    if not isinstance(payload, dict):
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            f"{field} must be a ComponentEnvelope object.",
+            details={"field": field},
+        )
+    _require_exact_keys(payload, ENVELOPE_EXACT_KEYS, field=field)
+    try:
+        envelope = ComponentEnvelope(
+            status=payload["status"],
+            value=payload.get("value"),
+            reason=payload.get("reason") or "",
+            updated_at_ms=payload.get("updated_at_ms") or 0,
+        )
+    except (TypeError, ValueError) as exc:
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            f"{field} failed ComponentEnvelope construction: {exc}",
+            details={"field": field},
+        ) from exc
+    _require_canonical_export_equal(payload, envelope.to_dict(), field=field)
+    return envelope
+
+
+def _strict_decode_proposal(payload: object, *, field: str) -> ActionProposal:
+    if not isinstance(payload, dict):
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            f"{field} must be an ActionProposal object.",
+            details={"field": field},
+        )
+    _require_exact_keys(payload, PROPOSAL_EXACT_KEYS, field=field)
+    if payload.get("schema") != ACTION_PROPOSAL_SCHEMA:
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            f"{field}.schema must be {ACTION_PROPOSAL_SCHEMA!r}.",
+            details={"field": field},
+        )
+    command = payload.get("command")
+    if command is not None:
+        _strict_decode_command(command, field=f"{field}.command")
+    refs = payload.get("source_refs")
+    if not isinstance(refs, list):
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            f"{field}.source_refs must be a list.",
+            details={"field": field},
+        )
+    for index, ref in enumerate(refs):
+        if not isinstance(ref, dict):
+            raise DecisionSurfaceError(
+                "latest_frame_invalid",
+                f"{field}.source_refs[{index}] must be an object.",
+            )
+        _require_exact_keys(
+            ref,
+            SOURCE_REF_EXACT_KEYS,
+            field=f"{field}.source_refs[{index}]",
+        )
+    try:
+        proposal = ActionProposal.from_dict(payload)
+    except (TypeError, ValueError) as exc:
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            f"{field} failed ActionProposal construction: {exc}",
+            details={"field": field},
+        ) from exc
+    _require_canonical_export_equal(payload, proposal.to_dict(), field=field)
+    return proposal
+
+
+def _strict_decode_plan(payload: object, *, field: str) -> ActionPlan:
+    if not isinstance(payload, dict):
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            f"{field} must be an ActionPlan object.",
+            details={"field": field},
+        )
+    _require_exact_keys(payload, PLAN_EXACT_KEYS, field=field)
+    if payload.get("schema") != ACTION_PLAN_SCHEMA:
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            f"{field}.schema must be {ACTION_PLAN_SCHEMA!r}.",
+            details={"field": field},
+        )
+    candidates_raw = payload.get("candidates")
+    if not isinstance(candidates_raw, list):
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            f"{field}.candidates must be a list.",
+        )
+    candidates = tuple(
+        _strict_decode_proposal(item, field=f"{field}.candidates[{index}]")
+        for index, item in enumerate(candidates_raw)
+    )
+    contributions_raw = payload.get("contributions")
+    if not isinstance(contributions_raw, list):
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            f"{field}.contributions must be a list.",
+        )
+    contributions: list[PlanContribution] = []
+    for index, item in enumerate(contributions_raw):
+        if not isinstance(item, dict):
+            raise DecisionSurfaceError(
+                "latest_frame_invalid",
+                f"{field}.contributions[{index}] must be an object.",
+            )
+        _require_exact_keys(
+            item,
+            CONTRIBUTION_EXACT_KEYS,
+            field=f"{field}.contributions[{index}]",
+        )
+        contributions.append(
+            PlanContribution(
+                proposal_id=str(item["proposal_id"]),
+                plugin_id=str(item["plugin_id"]),
+                weight=float(item["weight"]),
+                role=str(item["role"]),
+            )
+        )
+    try:
+        plan = ActionPlan(
+            frame_id=str(payload["frame_id"]),
+            timestamp_ms=payload["timestamp_ms"],
+            status=str(payload["status"]),
+            candidates=candidates,
+            selected_proposal_id=payload.get("selected_proposal_id"),
+            contributions=tuple(contributions),
+            selector_id=str(payload.get("selector_id") or SELECTOR_ID),
+            metadata=dict(payload.get("metadata") or {}),
+            plan_id=str(payload.get("plan_id") or ""),
+            schema=str(payload.get("schema") or ACTION_PLAN_SCHEMA),
+        )
+    except (TypeError, ValueError) as exc:
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            f"{field} failed ActionPlan construction: {exc}",
+            details={"field": field},
+        ) from exc
+    _require_canonical_export_equal(payload, plan.to_dict(), field=field)
+    return plan
+
+
+def _strict_decode_authority(payload: object, *, field: str) -> ShadowAuthorityResult:
+    if not isinstance(payload, dict):
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            f"{field} must be a ShadowAuthorityResult object.",
+            details={"field": field},
+        )
+    _require_exact_keys(payload, AUTHORITY_EXACT_KEYS, field=field)
+    if payload.get("schema") != SHADOW_AUTHORITY_RESULT_SCHEMA:
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            f"{field}.schema must be {SHADOW_AUTHORITY_RESULT_SCHEMA!r}.",
+            details={"field": field},
+        )
+    if payload.get("proposed_applied") is not False:
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            f"{field}.proposed_applied must be false.",
+            details={"field": field},
+        )
+    if "applied_control" in payload:
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            f"{field} must not include applied_control.",
+            details={"field": field},
+        )
+    # authorized_output must be the exact idle command before reconstruction.
+    _require_canonical_export_equal(
+        payload.get("authorized_output"),
+        authorized_idle_output(),
+        field=f"{field}.authorized_output",
+    )
+    proposed_payload = payload.get("proposed")
+    proposed: ProposedVehicleCommand | None
+    if proposed_payload is None:
+        proposed = None
+    else:
+        proposed = _strict_decode_command(
+            proposed_payload, field=f"{field}.proposed"
+        )
+    host = _strict_decode_envelope(
+        payload.get("host_application"),
+        field=f"{field}.host_application",
+    )
+    try:
+        authority = ShadowAuthorityResult(
+            frame_id=str(payload["frame_id"]),
+            proposed=proposed,
+            cycle_status=str(payload["cycle_status"]),
+            cycle_reason=str(payload.get("cycle_reason") or ""),
+            host_application=host,
+            drive_mode_gate=str(payload.get("drive_mode_gate") or "unknown"),
+            authority_mode=str(payload.get("authority_mode") or ""),
+            proposed_applied=False,
+            schema=str(payload.get("schema") or SHADOW_AUTHORITY_RESULT_SCHEMA),
+        )
+    except (TypeError, ValueError) as exc:
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            f"{field} failed ShadowAuthorityResult construction: {exc}",
+            details={"field": field},
+        ) from exc
+    _require_canonical_export_equal(payload, authority.to_dict(), field=field)
+    return authority
+
+
+def _strict_decode_source_envelope(
+    payload: object,
+    *,
+    component: str,
+    field: str,
+) -> ComponentEnvelope:
+    """Decode one source envelope, hydrating observation/memory typed values."""
+
+    if not isinstance(payload, dict):
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            f"{field} must be a ComponentEnvelope object.",
+            details={"field": field},
+        )
+    _require_exact_keys(payload, ENVELOPE_EXACT_KEYS, field=field)
+    status = payload.get("status")
+    value = payload.get("value")
+    reason = payload.get("reason") or ""
+    updated_at_ms = payload.get("updated_at_ms") or 0
+    if status == "ready":
+        if component == "observation":
+            if not isinstance(value, dict):
+                raise DecisionSurfaceError(
+                    "latest_frame_invalid",
+                    f"{field}.value must be an Observation export object when ready.",
+                    details={"field": field},
+                )
+            try:
+                typed = Observation.from_dict(value)
+            except (TypeError, ValueError) as exc:
+                raise DecisionSurfaceError(
+                    "latest_frame_invalid",
+                    f"{field}.value failed Observation construction: {exc}",
+                    details={"field": field},
+                ) from exc
+            _require_canonical_export_equal(
+                value, typed.to_dict(), field=f"{field}.value"
+            )
+            value = typed
+        elif component == "memory":
+            if not isinstance(value, dict):
+                raise DecisionSurfaceError(
+                    "latest_frame_invalid",
+                    f"{field}.value must be a MemorySnapshot export object when ready.",
+                    details={"field": field},
+                )
+            try:
+                typed = MemorySnapshot.from_dict(value)
+            except (TypeError, ValueError) as exc:
+                raise DecisionSurfaceError(
+                    "latest_frame_invalid",
+                    f"{field}.value failed MemorySnapshot construction: {exc}",
+                    details={"field": field},
+                ) from exc
+            _require_canonical_export_equal(
+                value, typed.to_dict(), field=f"{field}.value"
+            )
+            value = typed
+    try:
+        envelope = ComponentEnvelope(
+            status=status,
+            value=value,
+            reason=reason,
+            updated_at_ms=updated_at_ms,
+        )
+    except (TypeError, ValueError) as exc:
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            f"{field} failed ComponentEnvelope construction: {exc}",
+            details={"field": field},
+        ) from exc
+    # Compare against the original export shape (dict values, not typed objects).
+    _require_canonical_export_equal(payload, envelope.to_dict(), field=field)
+    return envelope
+
+
+def _strict_decode_source(payload: object, *, field: str) -> DecisionDataSource:
+    if not isinstance(payload, dict):
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            f"{field} must be a DecisionDataSource object.",
+            details={"field": field},
+        )
+    _require_exact_keys(payload, SOURCE_EXACT_KEYS, field=field)
+    if payload.get("schema") != DECISION_DATA_SOURCE_SCHEMA:
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            f"{field}.schema must be {DECISION_DATA_SOURCE_SCHEMA!r}.",
+            details={"field": field},
+        )
+    envelopes: dict[str, ComponentEnvelope] = {}
+    for env_key in (
+        "observation",
+        "memory",
+        "patterns",
+        "projections",
+        "capabilities",
+        "prior_host_applied_command",
+    ):
+        envelopes[env_key] = _strict_decode_source_envelope(
+            payload.get(env_key),
+            component=env_key,
+            field=f"{field}.{env_key}",
+        )
+    try:
+        source = DecisionDataSource(
+            frame_id=str(payload["frame_id"]),
+            frame_index=payload["frame_index"],
+            timestamp_ms=payload["timestamp_ms"],
+            observation=envelopes["observation"],
+            memory=envelopes["memory"],
+            patterns=envelopes["patterns"],
+            projections=envelopes["projections"],
+            capabilities=envelopes["capabilities"],
+            prior_host_applied_command=envelopes["prior_host_applied_command"],
+            metadata=dict(payload.get("metadata") or {}),
+            schema=str(payload.get("schema") or DECISION_DATA_SOURCE_SCHEMA),
+            source_id=str(payload.get("source_id") or ""),
+        )
+    except (TypeError, ValueError) as exc:
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            f"{field} failed DecisionDataSource construction: {exc}",
+            details={"field": field},
+        ) from exc
+    _require_canonical_export_equal(payload, source.to_dict(), field=field)
+    return source
+
+
 def _require_exact_cycle_export(cycle: dict[str, Any]) -> None:
-    """Require complete ShadowDecisionCycleResult.to_dict() export shape."""
+    """Strict reconstruction + full canonical export equality for the cycle.
+
+    One owning boundary: reconstruct typed PR #74 objects (authority, plan,
+    proposals/commands, source) and require lossless ``to_dict()`` equality.
+    Adjacent nested authority/command/mode tampering is rejected as a class.
+    """
 
     _require_exact_keys(cycle, CYCLE_EXACT_KEYS, field="cycle")
     if cycle.get("schema") != SHADOW_DECISION_CYCLE_RESULT_SCHEMA:
@@ -1175,14 +1584,6 @@ def _require_exact_cycle_export(cycle: dict[str, Any]) -> None:
             f"cycle.schema must be {SHADOW_DECISION_CYCLE_RESULT_SCHEMA!r}.",
             details={"field": "cycle.schema"},
         )
-    try:
-        require_ascii_id(cycle["frame_id"], field_name="frame_id")
-    except (TypeError, ValueError, KeyError) as exc:
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            f"cycle.frame_id is not a valid ASCII id: {exc}",
-            details={"field": "cycle.frame_id"},
-        ) from exc
     if cycle.get("status") not in {"ok", "engine_error"}:
         raise DecisionSurfaceError(
             "latest_frame_invalid",
@@ -1194,155 +1595,37 @@ def _require_exact_cycle_export(cycle: dict[str, Any]) -> None:
             "cycle.reason must be a string.",
         )
 
-    authority = cycle.get("authority")
-    if not isinstance(authority, dict):
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            "cycle.authority must be an object.",
-        )
-    _require_exact_keys(authority, AUTHORITY_EXACT_KEYS, field="cycle.authority")
-    if authority.get("schema") != SHADOW_AUTHORITY_RESULT_SCHEMA:
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            f"cycle.authority.schema must be {SHADOW_AUTHORITY_RESULT_SCHEMA!r}.",
-        )
-    if authority.get("proposed_applied") is not False:
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            "cycle.authority.proposed_applied must be false.",
-        )
-    if "applied_control" in authority:
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            "cycle.authority must not include applied_control.",
-        )
-    host = authority.get("host_application")
-    if not isinstance(host, dict):
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            "cycle.authority.host_application must be an object.",
-        )
-    _require_exact_keys(host, ENVELOPE_EXACT_KEYS, field="cycle.authority.host_application")
-
-    source = cycle.get("source")
-    if source is not None:
-        if not isinstance(source, dict):
-            raise DecisionSurfaceError(
-                "latest_frame_invalid",
-                "cycle.source must be an object or null.",
-            )
-        _require_exact_keys(source, SOURCE_EXACT_KEYS, field="cycle.source")
-        if source.get("schema") != DECISION_DATA_SOURCE_SCHEMA:
-            raise DecisionSurfaceError(
-                "latest_frame_invalid",
-                f"cycle.source.schema must be {DECISION_DATA_SOURCE_SCHEMA!r}.",
-            )
-        for env_key in (
-            "observation",
-            "memory",
-            "patterns",
-            "projections",
-            "capabilities",
-            "prior_host_applied_command",
-        ):
-            env = source.get(env_key)
-            if not isinstance(env, dict):
-                raise DecisionSurfaceError(
-                    "latest_frame_invalid",
-                    f"cycle.source.{env_key} must be an object.",
-                )
-            _require_exact_keys(env, ENVELOPE_EXACT_KEYS, field=f"cycle.source.{env_key}")
-
-    plan = cycle.get("plan")
-    if plan is not None:
-        if not isinstance(plan, dict):
-            raise DecisionSurfaceError(
-                "latest_frame_invalid",
-                "cycle.plan must be an object or null.",
-            )
-        _require_exact_keys(plan, PLAN_EXACT_KEYS, field="cycle.plan")
-        if plan.get("schema") != ACTION_PLAN_SCHEMA:
-            raise DecisionSurfaceError(
-                "latest_frame_invalid",
-                f"cycle.plan.schema must be {ACTION_PLAN_SCHEMA!r}.",
-            )
-        candidates = plan.get("candidates")
-        if not isinstance(candidates, list):
-            raise DecisionSurfaceError(
-                "latest_frame_invalid",
-                "cycle.plan.candidates must be a list.",
-            )
-        for index, cand in enumerate(candidates):
-            if not isinstance(cand, dict):
-                raise DecisionSurfaceError(
-                    "latest_frame_invalid",
-                    f"cycle.plan.candidates[{index}] must be an object.",
-                )
-            _require_exact_keys(
-                cand,
-                PROPOSAL_EXACT_KEYS,
-                field=f"cycle.plan.candidates[{index}]",
-            )
-            if cand.get("schema") != ACTION_PROPOSAL_SCHEMA:
-                raise DecisionSurfaceError(
-                    "latest_frame_invalid",
-                    f"cycle.plan.candidates[{index}].schema must be "
-                    f"{ACTION_PROPOSAL_SCHEMA!r}.",
-                )
-            refs = cand.get("source_refs")
-            if not isinstance(refs, list):
-                raise DecisionSurfaceError(
-                    "latest_frame_invalid",
-                    f"cycle.plan.candidates[{index}].source_refs must be a list.",
-                )
-            for ref_i, ref in enumerate(refs):
-                if not isinstance(ref, dict):
-                    raise DecisionSurfaceError(
-                        "latest_frame_invalid",
-                        f"cycle.plan.candidates[{index}].source_refs[{ref_i}] "
-                        "must be an object.",
-                    )
-                _require_exact_keys(
-                    ref,
-                    SOURCE_REF_EXACT_KEYS,
-                    field=f"cycle.plan.candidates[{index}].source_refs[{ref_i}]",
-                )
-        contributions = plan.get("contributions")
-        if not isinstance(contributions, list):
-            raise DecisionSurfaceError(
-                "latest_frame_invalid",
-                "cycle.plan.contributions must be a list.",
-            )
-        for index, contrib in enumerate(contributions):
-            if not isinstance(contrib, dict):
-                raise DecisionSurfaceError(
-                    "latest_frame_invalid",
-                    f"cycle.plan.contributions[{index}] must be an object.",
-                )
-            _require_exact_keys(
-                contrib,
-                CONTRIBUTION_EXACT_KEYS,
-                field=f"cycle.plan.contributions[{index}]",
-            )
-
-    # status/plan/source structural matrix (ok requires plan; engine_error forbids plan)
-    if cycle.get("status") == "ok":
-        if plan is None:
-            raise DecisionSurfaceError(
-                "latest_frame_invalid",
-                "ok cycle requires plan object.",
-            )
-        if cycle.get("reason") != "":
-            raise DecisionSurfaceError(
-                "latest_frame_invalid",
-                "ok cycle.reason must be empty.",
-            )
+    authority = _strict_decode_authority(cycle.get("authority"), field="cycle.authority")
+    plan_payload = cycle.get("plan")
+    plan: ActionPlan | None
+    if plan_payload is None:
+        plan = None
     else:
-        if plan is not None:
-            raise DecisionSurfaceError(
-                "latest_frame_invalid",
-                "engine_error cycle requires plan=null.",
-            )
+        plan = _strict_decode_plan(plan_payload, field="cycle.plan")
+    source_payload = cycle.get("source")
+    source: DecisionDataSource | None
+    if source_payload is None:
+        source = None
+    else:
+        source = _strict_decode_source(source_payload, field="cycle.source")
+
+    try:
+        reconstructed = ShadowDecisionCycleResult(
+            frame_id=str(cycle["frame_id"]),
+            status=str(cycle["status"]),
+            reason=str(cycle.get("reason") or ""),
+            source=source,
+            plan=plan,
+            authority=authority,
+            schema=str(cycle.get("schema") or SHADOW_DECISION_CYCLE_RESULT_SCHEMA),
+        )
+    except (TypeError, ValueError) as exc:
+        raise DecisionSurfaceError(
+            "latest_frame_invalid",
+            f"cycle failed ShadowDecisionCycleResult construction: {exc}",
+            details={"field": "cycle"},
+        ) from exc
+    _require_canonical_export_equal(cycle, reconstructed.to_dict(), field="cycle")
 
 
 def _require_stream_summaries_match_cycle(

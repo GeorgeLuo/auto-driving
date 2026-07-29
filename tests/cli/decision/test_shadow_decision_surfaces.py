@@ -491,6 +491,87 @@ class ShadowDecisionSurfaceTests(unittest.TestCase):
             )
         self.assertEqual(ctx.exception.error, "latest_frame_invalid")
 
+        # Nested authority/command semantics (consistent summary+cycle tamper rejected)
+        from cli.automa_cli.decision import (
+            _authority_summary,
+            _memory_summary,
+            _observation_summary,
+            _plan_summary,
+        )
+
+        def _accept_with_cycle(mutated_cycle: dict) -> str:
+            mutated = dict(frame)
+            mutated["cycle"] = mutated_cycle
+            plan = (
+                mutated_cycle.get("plan")
+                if isinstance(mutated_cycle.get("plan"), dict)
+                else None
+            )
+            authority = (
+                mutated_cycle.get("authority")
+                if isinstance(mutated_cycle.get("authority"), dict)
+                else {}
+            )
+            source = (
+                mutated_cycle.get("source")
+                if isinstance(mutated_cycle.get("source"), dict)
+                else None
+            )
+            mutated["observation_summary"] = _observation_summary(source)
+            mutated["memory_summary"] = _memory_summary(source)
+            mutated["plan_summary"] = _plan_summary(plan)
+            mutated["authority_summary"] = _authority_summary(authority, mutated_cycle)
+            with self.assertRaises(Exception) as raised:
+                accept_decision_stream_frame(
+                    mutated,
+                    activation=activation,
+                    automation_state=state,
+                    now_ms=6000,
+                    is_pid_alive=lambda pid: True,
+                )
+            return raised.exception.error
+
+        # (1) non-idle authorized_output in cycle + matching summary
+        non_idle = dict(frame["cycle"])
+        non_idle["authority"] = dict(frame["cycle"]["authority"])
+        non_idle["authority"]["authorized_output"] = dict(
+            frame["cycle"]["authority"]["authorized_output"]
+        )
+        non_idle["authority"]["authorized_output"]["steering"] = 0.9
+        self.assertEqual(_accept_with_cycle(non_idle), "latest_frame_invalid")
+
+        # (2) live authority_mode
+        live_mode = dict(frame["cycle"])
+        live_mode["authority"] = dict(frame["cycle"]["authority"])
+        live_mode["authority"]["authority_mode"] = "live_control"
+        self.assertEqual(_accept_with_cycle(live_mode), "latest_frame_invalid")
+
+        # (3) extra key on candidate command
+        cmd_extra = dict(frame["cycle"])
+        cmd_extra["plan"] = dict(frame["cycle"]["plan"])
+        cmd_extra["plan"]["candidates"] = [
+            dict(c) for c in frame["cycle"]["plan"]["candidates"]
+        ]
+        cmd0 = dict(cmd_extra["plan"]["candidates"][0])
+        command = dict(cmd0["command"])
+        command["extra_cmd_key"] = True
+        cmd0["command"] = command
+        cmd_extra["plan"]["candidates"][0] = cmd0
+        self.assertEqual(_accept_with_cycle(cmd_extra), "latest_frame_invalid")
+
+        # (4) bogus candidate command schema
+        cmd_schema = dict(frame["cycle"])
+        cmd_schema["plan"] = dict(frame["cycle"]["plan"])
+        cmd_schema["plan"]["candidates"] = [
+            dict(c) for c in frame["cycle"]["plan"]["candidates"]
+        ]
+        cmd0b = dict(cmd_schema["plan"]["candidates"][0])
+        command_b = dict(cmd0b["command"])
+        command_b["schema"] = "bogus"
+        cmd0b["command"] = command_b
+        cmd_schema["plan"]["candidates"][0] = cmd0b
+        self.assertEqual(_accept_with_cycle(cmd_schema), "latest_frame_invalid")
+
     def test_publish_and_stream_once_cli(self) -> None:
         self._stage()
         cycle = self._sample_cycle()

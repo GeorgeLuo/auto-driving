@@ -5,7 +5,7 @@
 | Status | Active |
 | Milestone branch | `milestone/006-decision-facing-perception-readiness` |
 | Cumulative PR | [#70](https://github.com/GeorgeLuo/auto-driving/pull/70) (draft until whole-milestone closeout) |
-| Current frontier | Cross-environment shadow proposal evidence |
+| Current frontier | Automa shadow decision surfaces |
 | Started | 2026-07-28 |
 | Action policy | Proposals may contain movement intent; applied vehicle control remains zero for the entire milestone |
 
@@ -58,41 +58,41 @@ for simulator and physical vehicles.
 | M006-02 | Independent proposal plugins consume only the decision-data contract and emit a bounded, serializable proposal containing identity, lifecycle status, confidence, reason, one canonical proposed command, freshness, assumptions, and exact evidence/pattern/projection references | Met | Bounded ActionProposal schema with lifecycle/freshness matrix, ProposedVehicleCommand, assumptions, source_refs; one candidate per enabled plugin in PR #74 |
 | M006-03 | One deterministic selector/mixer consumes the complete proposal set and emits an inspectable action plan with selected proposal or contributions, while a separate runtime authority result proves proposed and applied control cannot be confused | Met | deterministic_first_active ActionPlan; ShadowAuthorityResult proposed vs authorized_output vs proposed_applied=false vs host_application; cycle ok/engine_error envelope in PR #74 |
 | M006-04 | One packaged `avoid_recent_obstruction` proposal demonstrates left/right active steering, retained-fresh continuity, stale-to-inactive fallback, incompatible input, missing input, and plugin-error behavior without claiming navigation safety or semantic identity | Met | avoid_recent_obstruction fresh-before-stale selection and lifecycle matrix including obstruction_evidence kind in PR #74 |
-| M006-05 | Automa can stage, inspect, replay, and stream the decision path with concise default output, complete `--json` output, deterministic replay, latest-frame replacement, a combined frame/evidence/proposal/authority view, an opt-in exact-frame HTML artifact, and no default disk writes | Unmet | Requires accepted foundation |
-| M006-06 | Tracked Chase and physical evidence exercise the same proposal contract and combined review view, showing exact source provenance, freshness transitions, proposal selection, proposed movement intent, and zero applied control | Unmet | Cross-environment evidence frontier |
-| M006-07 | Chase evaluator/shadow state remains outside controller inputs, and PiRacer remains in user mode with zero pilot output throughout all milestone evidence | Unmet | Cross-environment evidence frontier |
+| M006-05 | Automa can stage, inspect, replay, and stream the decision path with concise default output, complete `--json` output, deterministic replay, latest-frame replacement, a combined frame/evidence/proposal/authority view, an opt-in exact-frame HTML artifact, and no default disk writes | Unmet | Current frontier: Automa shadow decision surfaces |
+| M006-06 | Tracked Chase and physical evidence exercise the same proposal contract and combined review view, showing exact source provenance, freshness transitions, proposal selection, proposed movement intent, and zero applied control | Unmet | Next-frontier: cross-environment evidence (after surfaces) |
+| M006-07 | Chase evaluator/shadow state remains outside controller inputs, and PiRacer remains in user mode with zero pilot output throughout all milestone evidence | Unmet | Next-frontier: cross-environment evidence (after surfaces) |
 | M006-08 | Closeout states whether the evidence justifies a later bounded movement or prediction milestone and preserves unresolved perception, identity, self-motion, command-model, and safety limits | Unmet | Closeout only |
 
 ## Current Delivery
 
 ### Current Frontier
 
-**Cross-environment shadow proposal evidence**
+**Automa shadow decision surfaces**
 
 - Workflow state: ready_for_proposal
+- Proposal branch: `m006/shadow-decision-surfaces-proposal`
+- Implementation branch: `m006/shadow-decision-surfaces`
+- Proposal path: `docs/milestones/006-decision-facing-perception-readiness/proposals/shadow-decision-surfaces.md`
+- Review kind: Behavioral feature slice
+- Review question: Can Automa stage, inspect, replay, and stream the accepted `shadow-proposals` decision path with concise default output, complete `--json` output, deterministic offline replay, latest-frame replacement, one combined frame/evidence/proposal/authority view, and an opt-in exact-frame HTML artifact with no default disk writes while applied control remains zero?
+- Acceptance owner: Automa decision stage/info/apply/stream/view surfaces and deterministic offline replay against the PR #74 shadow engine
+- Exit criteria affected: M006-05
+- Prerequisite: Modular shadow action proposal foundation accepted (PR #74) with importable schemas and `avoid_recent_obstruction`
+- Milestone-level non-goal: Live Chase/Pi evidence packages, changing proposal semantics, selecting another policy, applying movement, using privileged simulator state, or claiming physical navigation readiness
+
+### Next-Frontier Candidate
+
+**Cross-environment shadow proposal evidence**
+
 - Proposal branch: `m006/shadow-proposal-evidence-proposal`
 - Implementation branch: `m006/shadow-proposal-evidence`
 - Proposal path: `docs/milestones/006-decision-facing-perception-readiness/proposals/shadow-proposal-evidence.md`
 - Review kind: Live or external evidence
-- Review question: Does the staged `avoid_recent_obstruction` proposal produce deterministic, provenance-complete shadow action plans and one correlated visual explanation through the same operator workflow on recorded replay, Chase, and PiRacer inputs while applied control remains zero?
-- Acceptance owner: Automa decision stage/info/apply/stream/view surfaces and tracked exact-frame Chase/Pi shadow evidence
-- Exit criteria affected: M006-05, M006-06, M006-07
-- Prerequisite: Modular shadow action proposal foundation accepted with replayable proposal and authority schemas
-- Milestone-level non-goal: Changing proposal semantics during evidence collection, selecting another proposal, applying movement, using privileged simulator state, or claiming physical navigation readiness
-
-### Next-Frontier Candidate
-
-**Milestone closeout**
-
-- Proposal branch: `m006/closeout-proposal`
-- Implementation branch: `m006/closeout`
-- Proposal path: `docs/milestones/006-decision-facing-perception-readiness/proposals/closeout.md`
-- Review kind: Milestone closeout
-- Review question: Is milestone 006 complete as a whole—every exit criterion Met, completion usage supported, residual risk stated—and what later movement or prediction work, if any, is justified?
-- Acceptance owner: Closeout judgment docs, completed ledger/navigation updates, and the post-merge mechanical terminal plan handoff for M006-08
-- Exit criteria affected: M006-08
-- Prerequisite: Cross-environment shadow proposal evidence accepted with Automa surfaces and tracked replay/Chase/Pi packages
-- Non-goals: New decision policy, perception retune, applied movement, or reopening PR #74 foundation contracts inside closeout
+- Review question: Does the staged `avoid_recent_obstruction` path produce provenance-complete shadow action plans and the same correlated visual explanation on Chase and stationary PiRacer inputs while applied control remains zero and privileged simulator state stays outside controller inputs?
+- Acceptance owner: Tracked exact-frame Chase and stationary PiRacer shadow evidence packages using the accepted Automa decision surfaces
+- Exit criteria affected: M006-06, M006-07
+- Prerequisite: Automa shadow decision surfaces accepted (M006-05) with stage/info/apply/stream/view and deterministic replay
+- Non-goals: Re-implementing operator surfaces, changing PR #74 proposal policy, perception retune, applied movement, or navigation claims
 
 ## Workflow History
 
@@ -106,6 +106,7 @@ for simulator and physical vehicles.
 | Modular shadow action proposal foundation | accepted | Implementation PR #74 merged at 7830cb0c509eb6c601bf74f707d8caeca177ed8d. |
 | Cross-environment shadow proposal evidence | ready_for_proposal | Promoted after implementation PR #74. |
 | Cross-environment shadow proposal evidence | ready_for_proposal | Plan revision: queue Milestone closeout (M006-08) as next-frontier candidate so the evidence unit Expected Handoff can advance. |
+| Automa shadow decision surfaces | ready_for_proposal | Plan revision: split oversized combined surfaces+live frontier; current is M006-05 deterministic Automa surfaces; next is M006-06–M006-07 cross-environment evidence; close PR #76. |
 
 ## Accepted Review Units
 

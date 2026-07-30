@@ -1,0 +1,393 @@
+# Proposal: Simulator-to-perception CLI journey
+
+| Field | Value |
+| --- | --- |
+| Milestone | 007 CLI Operator Usability |
+| Frontier | Simulator-to-perception CLI journey |
+| Proposal branch | `m007/simulator-perception-cli-proposal` |
+| Implementation branch | `m007/simulator-perception-cli` |
+| Exit criteria | M007-01, M007-02, M007-03, M007-04 |
+
+## Review Question
+
+Can a Chase operator move from a local Metrics UI URL to a healthy
+observation-only perception browser view through discoverable Automa commands
+that distinguish every runtime layer and return exact, bounded recovery when
+the frontend, capture contract, worker, or view is unavailable?
+
+This proposal is ready for implementation only if the operator journey can be
+implemented without weakening sensor frame identity, admitting evaluator-only
+data into controller inputs, applying vehicle movement, redesigning unrelated
+CLI groups, requiring a live simulator in default CI, or silently treating a
+deployed bundle, discoverable vehicle, running worker, and healthy view as the
+same state.
+
+## Reproduced Operator Failures
+
+The proposal is grounded in one live session on 2026-07-29:
+
+1. `vehicles active` initially reported the WebSocket server reachable but the
+   visibly open frontend disconnected, with no direct recovery URL or command.
+2. The term “active” was naturally read as an enabled Automa worker even though
+   it meant only that the simulator vehicle endpoint and front camera were
+   discoverable.
+3. `info perception` reported a stale loopback URL as connection refused while
+   the simulator vehicle remained active; the worker had stopped days earlier.
+4. `automation run --observe-only` and the normal control-taking form both
+   failed before their first frame with the collapsed error
+   `invalid identity or control reference`.
+5. A direct live atomic evaluation capture proved that the image,
+   `contractVersion`, actor, simulation epoch, and frame index were valid while
+   the optional `evaluator.reference` object was absent.
+6. Deterministic fixtures assumed `evaluator.reference` was always present, the
+   live smoke was opt-in, and neither simulator readiness nor vehicle discovery
+   exercised the automation capture contract.
+
+The current payload is therefore usable for sensor-only observation but not for
+shadow-reference scoring. Those are separate capabilities and must be reported
+as such.
+
+## Proposed Contract
+
+### One operator state vocabulary
+
+Automa owns these distinct states and exact meanings:
+
+| Layer | State | Meaning |
+| --- | --- | --- |
+| `simulator_server` | `reachable` / `unreachable` | The Metrics UI HTTP/WS service answers. |
+| `simulator_frontend` | `connected` / `disconnected` | A browser frontend is registered with the server. |
+| `chase_game` | `ready` / `wrong_game` / `unavailable` | Play debug reports `gameId=chase`. |
+| `vehicle` | `discoverable` / `undiscoverable` | Chase exposes a front-camera-capable vehicle endpoint. |
+| `automation_deployment` | `deployed` / `not_deployed` / `invalid` | A local bundle and activation contract exist. |
+| `automation_worker` | `running` / `stopped` / `error` | The recorded PID and state agree with real process liveness. |
+| `perception_view` | `available` / `unavailable` / `stale` | The loopback health endpoint responds for the current worker generation. |
+| `evaluator_reference` | `available` / `unavailable` / `invalid` | Optional scoring-only reference for the captured frame; never a sensor input. |
+
+“Active” may remain as a compatibility command name, but help and output must
+say **discoverable vehicle**, not imply deployment or worker liveness. No
+surface may describe a stopped worker as active merely because its bundle or
+last state file exists.
+
+### Aggregate status surface
+
+Add:
+
+```sh
+./cli/automa vehicles status
+./cli/automa vehicles status --id chase-sim-chaser
+./cli/automa vehicles status --chase-url http://localhost:5050
+./cli/automa vehicles status --id chase-sim-chaser --json
+```
+
+Rules:
+
+- `--chase-url` accepts `http`, `https`, `ws`, or `wss`. HTTP(S) input is
+  normalized to the same origin at `/ws/control`; an explicit non-root WS path
+  is preserved. The default remains `http://localhost:5050`.
+- Existing `CHASE_UI_WS_URL` and `--chase-ws-url` remain supported. Conflicting
+  explicit values exit 2 rather than choosing silently.
+- Without `--id`, status lists discoverable vehicles and locally deployed
+  automation ids, then reports the aggregate layer state for each known id.
+- With `--id`, output is one concise state card followed by exactly one
+  `Next action:` line when any required layer is not ready.
+- Human output uses the vocabulary above. JSON uses schema
+  `automa_vehicle_status_v1` with required keys `vehicle_id`, `endpoint`,
+  `layers`, `capture`, `next_action`, and `checked_at_ms`.
+- `layers` contains every state above except `evaluator_reference`, which lives
+  under `capture` because it is frame-scoped.
+- `next_action` is either `null` or an object with `reason`, `command`, and
+  `expected_state`. The command must be directly runnable from repository root.
+- `vehicles active` remains read-only and backward compatible, but its human
+  heading becomes `Discoverable vehicles`; `--json` retains existing schema and
+  keys for compatibility while its help defines the narrower meaning.
+
+The aggregate surface reads state only. It never starts a simulator, launches a
+browser, changes control source, or starts/stops a worker.
+
+### Supported primary journey
+
+The documented path is:
+
+```sh
+./cli/automa simulators ensure --scenario chaser-depth-obstacles
+./cli/automa vehicles status --chase-url http://localhost:5050
+./cli/automa vehicles automation run \
+  --id chase-sim-chaser \
+  --observe-only \
+  --frames 0 \
+  --open-view
+./cli/automa vehicles status --id chase-sim-chaser
+```
+
+`automation run --open-view` contract:
+
+- `--open-view` is explicit; automation without the flag never launches a
+  browser.
+- The worker remains observation-only when `--observe-only` is present and
+  reports `control_source=simulator`, `action_policy=observe_only`, and
+  `control_application=not_applied`.
+- Startup succeeds only after the first camera frame, first completed
+  perception result, and view health check all match the same worker
+  generation.
+- On success, output always prints the view URL. Browser launch is attempted
+  only after view health succeeds.
+- Browser launch failure is a warning with the URL and manual `open` recovery;
+  it does not stop an otherwise healthy worker or falsify view health.
+- If a matching worker is already running, `--open-view` validates and opens
+  that worker’s current view rather than spawning a duplicate.
+- `info perception` and `automation status` use the same view-generation and
+  worker-liveness predicate as `vehicles status`.
+
+### Sensor identity and evaluator-reference separation
+
+Split the current all-or-nothing atomic-capture validation into two contracts.
+
+**Required sensor capture**
+
+- `contractVersion == 1`
+- nonempty `captureId`
+- `actorId == "chaser"`
+- `playback.advanced is false`
+- `frameIdentity.gameId == "chase"`
+- nonempty `frameIdentity.simulationEpoch`
+- nonnegative integral `frameIdentity.frameIndex`
+- valid image dimensions and decodable image data
+
+Any required sensor-capture failure remains fatal. The error must name the
+first failed path, such as `frameIdentity.simulationEpoch` or
+`sensor.image.dataUrl`, with code `capture_identity_invalid` or
+`capture_image_invalid`.
+
+**Optional evaluator reference**
+
+- `evaluator.classification == "non-sensor"`
+- `evaluator.reference.kind == "actor-control-reference"`
+- valid scenario, source, phase, action frame index, input, and action
+- `actionFrameIndex <= frameIdentity.frameIndex`
+
+When `evaluator.reference` is absent and required sensor capture is valid:
+
+- sensor capture and observation-only perception proceed;
+- `last_capture_shadow_reference` is `None`;
+- capture metadata records
+  `evaluator_reference={status:"unavailable", reason:"reference_missing"}`;
+- perception, observation, memory, and decision inputs receive no evaluator
+  shadow/reference payload;
+- any reference-dependent scoring or alignment surface fails closed with
+  `evaluator_reference_unavailable`, naming the required procedure;
+- absence is not rewritten as an empty or synthetic actor-control reference.
+
+When the reference exists but is malformed, sensor-only perception still
+proceeds with `status="invalid"` and exact field diagnostics, while
+reference-dependent scoring fails closed. Required frame identity and image
+errors always abort the worker.
+
+This separation is owned by the Chase adapter boundary. CLI code consumes its
+structured capability result; it must not duplicate the validation rules.
+
+### Error and recovery envelope
+
+New or updated M007 human/JSON errors use these stable categories:
+
+| Code | Owning layer | Required recovery |
+| --- | --- | --- |
+| `simulator_unreachable` | `simulator_server` | `./cli/automa simulators ensure --scenario chaser-depth-obstacles` |
+| `frontend_disconnected` | `simulator_frontend` | Open/reload the exact HTTP URL, then rerun status |
+| `wrong_game` | `chase_game` | Select Play/Chase through `simulators ensure` |
+| `front_view_unavailable` | `vehicle` | Reload Play and rerun status |
+| `automation_not_deployed` | `automation_deployment` | Name the applicable staging command; never suggest `automation run` alone |
+| `worker_stopped` | `automation_worker` | Print the observation-only run command |
+| `worker_start_failed` | `automation_worker` | Preserve the exact nested capture/process code and path |
+| `capture_identity_invalid` | capture | Name the failing required identity field |
+| `capture_image_invalid` | capture | Name the failing image field |
+| `evaluator_reference_unavailable` | capture/reference | State sensor view is still usable; name only the blocked reference-dependent procedure |
+| `view_unavailable` / `view_stale` | `perception_view` | Distinguish current worker failure from a stale recorded URL |
+
+JSON errors use a shared object with required keys `schema`, `error`, `layer`,
+`message`, `details`, `recovery`, and `exit_code`. Existing command-specific
+schema ids may wrap or extend this object, but the human and machine categories
+must agree.
+
+No caught validation exception may be collapsed to the current generic message
+`invalid identity or control reference`.
+
+### Timeout semantics
+
+- A user-facing `--timeout-s N` is one wall-clock deadline for that command’s
+  remote operation, not a fresh `N` seconds for each sequential WebSocket
+  phase.
+- Every nested phase receives only the remaining budget.
+- Local file reads and formatting do not consume a separate network timeout.
+- Human timeout errors name the last incomplete layer and elapsed time.
+- JSON status includes `timeout_s`, `elapsed_ms`, and per-phase
+  `duration_ms` diagnostics.
+- The default may remain one second for read-only discovery only when tests
+  prove a ready local frontend completes reliably. Automation startup keeps its
+  existing explicit startup budget but reports capture and view phases
+  separately.
+- Retries are bounded by the same deadline and never hide a malformed
+  contract.
+
+## Adversarial Matrix
+
+| Case | Required result |
+| --- | --- |
+| HTTP URL `http://localhost:5050` | Normalize to `ws://localhost:5050/ws/control`; display both operator and resolved endpoints |
+| Explicit WS URL with path | Preserve it exactly |
+| Conflicting `--chase-url` and `--chase-ws-url` | Exit 2 with no probe |
+| Server down | `simulator_unreachable`; one ensure recovery |
+| Server up, browser visibly open but role not registered | `frontend_disconnected`; exact reload URL; no vehicle/worker implication |
+| Frontend connected to non-Chase game | `wrong_game` |
+| Chase ready, no local bundle | Vehicle `discoverable`; deployment `not_deployed`; worker/view unavailable |
+| Bundle deployed, stopped worker, stale view record | Deployment `deployed`; worker `stopped`; view `stale`; observation-only run recovery |
+| State says running but PID is dead or generation differs | Worker `error`; view `stale`; never `available` |
+| Valid frame/image, missing evaluator reference | Worker and perception view start; reference status `unavailable` |
+| Valid frame/image, malformed evaluator reference | Sensor view starts; reference status `invalid`; reference-dependent operation fails |
+| Missing epoch, wrong actor, future/invalid frame identity | Worker fails with exact identity field; no view reported healthy |
+| Invalid image dimensions or encoding | Worker fails `capture_image_invalid` |
+| Slow frontend across three protocol phases | Total wall time respects one command deadline |
+| Browser launcher unavailable | Worker/view remain healthy; warning and manual URL |
+| Repeated `automation run --open-view` | No duplicate worker; current-generation view opens |
+| Human versus `--json` | Same layer states, error category, and recovery |
+
+## External Assumptions And Unverified Limits
+
+- Metrics UI owns `/ws/control`, Play registration, and atomic evaluation
+  capture. This repository can validate the consumed contract but cannot make
+  that external server continuously available.
+- Browser launching is supported only on the local operator host and remains
+  explicit/non-fatal.
+- PiRacer discovery, deployment, and its local perception view are not changed
+  by this frontier.
+- The proposal makes no claim that missing evaluator reference is acceptable
+  for shadow scoring. It is acceptable only for sensor-only observation and
+  perception.
+- Long-duration memory growth, remote views, authentication, non-idle control,
+  and simulator performance are not evaluated here.
+
+## File Impact
+
+### Create
+
+- `docs/reference/cli-simulator-perception-journey.md` — durable operator
+  state model, supported commands, and recovery table
+- focused deterministic tests for aggregate status, URL normalization,
+  operation deadlines, startup/view generation, and reference-less capture
+
+### Modify
+
+- `cli/automa_cli/app.py` — register `vehicles status`, `--chase-url`, and
+  `automation run --open-view`
+- `cli/automa_cli/vehicles.py` — aggregate layer snapshot, compatibility
+  wording for `active`, URL normalization, shared deadline
+- `cli/automa_cli/automation.py` — startup phase diagnostics, existing-worker
+  open-view behavior, exact adapter errors
+- `cli/automa_cli/perception.py` / `perception_view.py` — shared worker/view
+  generation predicate and actionable unavailable state
+- `cli/automa_cli/simulators.py` — expose shared endpoint/recovery facts without
+  duplicating Chase capture validation
+- `implementations/vehicle/chase_sim/frame_identity.py` — separate required
+  sensor identity from optional evaluator reference
+- `implementations/vehicle/chase_sim/car.py` — allow valid sensor-only capture,
+  publish structured reference capability, preserve fail-closed identity/image
+- `implementations/vehicle/chase_sim/metrics_ws.py` — operation-deadline support
+  if required by the shared owner
+- `tests/live/chase_simulator/test_automation_smoke.py` — define the bounded
+  observation-only first-frame/view contract for the later live evidence unit
+- `README.md` and `docs/README.md` — current command journey and reference link
+- milestone `plan.md` / generated `plan.html` only for workflow transitions
+
+### Remove
+
+- None
+
+Implementation may consolidate helpers differently when one existing module is
+the clearer owner, but it may not add another state vocabulary, URL normalizer,
+capture validator, or view-liveness predicate.
+
+## Validation Plan
+
+### Deterministic
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 tests/run.py
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest \
+  tests.implementations.vehicle.test_chase_frame_identity \
+  tests.live.chase_simulator.test_automation_smoke \
+  -v
+python3 docs/render_markdown.py --check
+git diff --check
+```
+
+Focused tests must prove every adversarial row without a live browser. The live
+smoke module remains skipped in the default suite; its command definition and
+assertions are deterministic review surface, while executing it and accepting
+tracked evidence belongs to the next frontier.
+
+### Proposal validation
+
+```sh
+python3 docs/milestones/workflow.py validate-pr \
+  --base-ref milestone/007-cli-operator-usability \
+  --head-ref m007/simulator-perception-cli-proposal \
+  --base-sha <merge-base> \
+  --head-sha <head>
+```
+
+### Live / external
+
+Not required for implementation acceptance. The next frontier executes the
+accepted bounded live procedure against the current local Metrics UI and
+records whether the external contract conforms.
+
+## Expected Handoff
+
+Post-merge implementation success template:
+
+```json
+{
+  "schema": "milestone_handoff_template_v1",
+  "outcome": "advance",
+  "result": "Accepted",
+  "durable_evidence": "Chase simulator-to-perception CLI journey with aggregate layer status, HTTP/WS normalization, observation-only first-frame view startup, exact capture/reference diagnostics, operation-level deadlines, current help and durable operator documentation in PR #{pr}",
+  "criterion_updates": {
+    "M007-01": {
+      "status": "Met",
+      "evidence": "Consistent simulator, vehicle, deployment, worker, view, and evaluator-reference state vocabulary in human and JSON CLI surfaces in PR #{pr}"
+    },
+    "M007-02": {
+      "status": "Met",
+      "evidence": "Local HTTP URL normalization, supported Chase preparation/discovery, and exact frontend/game/camera recovery in PR #{pr}"
+    },
+    "M007-03": {
+      "status": "Met",
+      "evidence": "Observation-only sensor/perception startup separated from optional evaluator reference with fail-closed reference-dependent operations in PR #{pr}"
+    },
+    "M007-04": {
+      "status": "Met",
+      "evidence": "Bounded operation deadlines, stable actionable error categories, open-view workflow, help, README, and durable operator guide in PR #{pr}"
+    }
+  },
+  "risk_remove": [
+    "Existing “active” terminology is naturally read as “automation running”"
+  ],
+  "risk_upsert": [],
+  "next_frontier": {
+    "state": "none",
+    "reason": "Live CLI operator acceptance is promoted from the frozen next-candidate slot after M007-01 through M007-04.",
+    "revisit_when": "The live acceptance unit records current Metrics UI conformance or returns a product finding to the accepted implementation boundary."
+  }
+}
+```
+
+### Sequence after this proposal merges
+
+1. Accept and merge this proposal PR into
+   `milestone/007-cli-operator-usability`.
+2. Run `workflow.py accept-proposal`; verify
+   `ready_for_implementation`.
+3. Start `m007/simulator-perception-cli` and implement only this contract.
+4. Review and repair the implementation in its own PR.
+5. On implementation acceptance, promote **Live CLI operator acceptance** and
+   keep its live judgment in a separate review unit.

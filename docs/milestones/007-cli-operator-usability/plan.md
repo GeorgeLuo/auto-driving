@@ -61,7 +61,7 @@ Automa command.
 
 **Simulator-to-perception CLI journey**
 
-- Workflow state: ready_for_proposal
+- Workflow state: proposal_in_review
 - Proposal branch: `m007/simulator-perception-cli-proposal`
 - Implementation branch: `m007/simulator-perception-cli`
 - Proposal path: `docs/milestones/007-cli-operator-usability/proposals/simulator-perception-cli.md`
@@ -70,7 +70,7 @@ Automa command.
 - Acceptance owner: Automa simulator preparation, vehicle discovery, automation preflight/run/status, and perception-view operator surfaces over the Chase sensor-capture boundary
 - Exit criteria affected: M007-01, M007-02, M007-03, M007-04
 - Prerequisite: Milestone 005 mainline CLI and Chase adapter; no dependency on paused Milestone 006 implementation PR #80
-- Non-goals: Broad CLI redesign, decision/memory feature work, PiRacer parity, remote view hosting, applied movement, or live acceptance evidence in the deterministic implementation unit
+- Milestone-level non-goal: Broad CLI redesign, decision/memory feature work, PiRacer parity, remote view hosting, applied movement, or live acceptance evidence in the deterministic implementation unit
 
 ### Next-Frontier Candidate
 
@@ -91,6 +91,7 @@ Automa command.
 | Frontier | State | Evidence |
 | --- | --- | --- |
 | Simulator-to-perception CLI journey | ready_for_proposal | Activated as an operator-approved ad-hoc usability milestone while M006 implementation PR #80 is paused; separate branch and review-unit topology prevent scope leakage. |
+| Simulator-to-perception CLI journey | proposal_in_review | Started m007/simulator-perception-cli-proposal. |
 
 ## Accepted Review Units
 

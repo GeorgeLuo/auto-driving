@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="3c2b9edc19ef90cfa7535876cd74345187e34c6c3a020febb289994fdb5dd274">
+  <meta name="source-sha256" content="590b6de2295de807530fe760ac3cee680c12f4285cfd21a144aa81adb85e9847">
   <base target="_blank">
   <title>Milestone plan — 007-cli-operator-usability</title>
   <style>
@@ -102,9 +102,11 @@
 <p>Make the existing Automa CLI usable for one complete Chase operator journey:
 start with a local simulator URL, determine which layer is available, establish
 an observation-only automation worker, and open a frame-correlated browser view
-of camera, observation, and perception output. Each failure must identify the
-failed boundary and a concrete recovery action without requiring knowledge of
-internal WebSocket paths, runtime files, or process topology.</p>
+of camera, observation, and perception output without selecting a scenario,
+changing playback/control/input state, or otherwise commandeering the current
+simulator session. Each failure must identify the failed boundary and a
+concrete recovery or external capability request without requiring knowledge
+of internal WebSocket paths, runtime files, or process topology.</p>
 <h2>Completion Usage</h2>
 <table>
 <thead>
@@ -119,9 +121,9 @@ internal WebSocket paths, runtime files, or process topology.</p>
 <tbody>
 <tr>
 <td>Primary demonstration</td>
-<td>Metrics UI intended at <code>http://localhost:5050</code>, with the Chase frontend either ready or recoverable; no pre-existing Automa bundle or worker is required</td>
-<td>Run the exact command sequence below to prepare Chase, inspect state, stage packaged perception, start observation-only automation, open and inspect its perception view, then stop the worker</td>
-<td>The browser shows a current camera frame and frame-matched observation/perception output; CLI output distinguishes simulator, vehicle, deployment, worker, and view state; no movement is applied; cleanup leaves no worker running</td>
+<td>Metrics UI intended at <code>http://localhost:5050</code> already exposes a Chase-compatible vehicle and front camera in any scenario/control/playback state; no pre-existing Automa bundle or worker is required</td>
+<td>Run the exact command sequence below to passively inspect the current vehicle, stage packaged perception, start observation-only automation, open and inspect its perception view, then stop the worker</td>
+<td>The browser shows a current camera frame and frame-matched observation/perception output; CLI output distinguishes simulator, vehicle, deployment, worker, and view state; scenario, playback, control source, and input remain unchanged; cleanup leaves no worker running</td>
 <td>M007-01, M007-02, M007-03, M007-04</td>
 </tr>
 <tr>
@@ -133,26 +135,23 @@ internal WebSocket paths, runtime files, or process topology.</p>
 </tr>
 <tr>
 <td>Recover a failed startup</td>
-<td>Chase is reachable but frontend, scenario, capture contract, automation process, or perception view is not ready</td>
-<td>Follow the exact recovery command emitted by the failing CLI surface, then retry</td>
-<td>Recovery reaches the next state or fails at a newly named boundary without a generic timeout or collapsed “invalid identity or control reference” message</td>
+<td>Chase is reachable but frontend, passive capture capability, capture contract, automation process, or perception view is not ready</td>
+<td>Follow the exact recovery emitted by the failing CLI surface, then retry; simulator reconfiguration remains an explicit opt-in rather than a hidden recovery</td>
+<td>Recovery reaches the next state or names the missing external simulator capability and minimal requested change without a generic timeout, silent scenario selection, or collapsed “invalid identity or control reference” message</td>
 <td>M007-02, M007-03, M007-04</td>
 </tr>
 <tr>
 <td>Validate the live journey</td>
 <td>Current local Metrics UI and simulator deployment</td>
 <td>Run the bounded live CLI acceptance procedure</td>
-<td>One processed frame, a healthy loopback view, observation-only authority, and the expected human/JSON state are recorded without default history writes</td>
+<td>One processed frame, a healthy loopback view, observation-only authority, preserved scenario/playback/control/input state, and the expected human/JSON state are recorded without default history writes</td>
 <td>M007-05</td>
 </tr>
 </tbody>
 </table>
 <h3>Primary Demonstration Command Sequence</h3>
 <p>Run from the repository root:</p>
-<pre><code class="language-sh"># Prepare the supported Chase frontend and scenario.
-./cli/automa simulators ensure --scenario chaser-depth-obstacles
-
-# Discover the vehicle and inspect every operator-visible layer.
+<pre><code class="language-sh"># Passively discover the currently exposed vehicle and inspect every layer.
 ./cli/automa vehicles status --chase-url http://localhost:5050
 
 # Idempotently stage the packaged perception path and safe idle decision bundle.
@@ -180,6 +179,12 @@ control. The final status must report the same deployment, a stopped worker,
 and no available current-generation view. Browser inspection between those
 checks must show a current camera frame and frame-matched observation and
 perception output.</p>
+<p>No simulator preparation command is part of the primary demonstration. Status,
+staging, observation-only automation, and cleanup must not select a scenario,
+change playback, take control, or send an idle/control input. If the current
+Metrics UI cannot expose a passive camera capture, the CLI must report that
+external capability gap and the minimal requested simulator change rather than
+calling <code>simulators ensure</code> or mutating the session implicitly.</p>
 <p>Command names and flags are frozen by the accepted proposal. The milestone
 outcome is the bounded operator journey above, not a general redesign of every
 Automa command.</p>
@@ -193,7 +198,7 @@ Automa command.</p>
 </thead>
 <tbody>
 <tr>
-<td>Chase simulator preparation, vehicle discovery, automation deployment/worker state, and perception-view availability as distinct operator states</td>
+<td>Passive attachment to a currently exposed Chase-compatible vehicle, plus explicit simulator preparation as an operator-chosen recovery</td>
 <td>Redesigning unrelated perception experiments, decision surfaces, memory workflows, Pi deployment, or the entire command hierarchy</td>
 </tr>
 <tr>
@@ -201,11 +206,11 @@ Automa command.</p>
 <td>A new interactive TUI, desktop application, or general service manager</td>
 </tr>
 <tr>
-<td>HTTP/WS endpoint normalization and actionable frontend/scenario recovery</td>
+<td>HTTP/WS endpoint normalization, passive-capability reporting, and actionable frontend recovery without hidden reconfiguration</td>
 <td>Supporting arbitrary remote browser authentication, public view hosting, or non-loopback view access</td>
 </tr>
 <tr>
-<td>Observation-only camera/perception startup when evaluator-only reference data is unavailable</td>
+<td>Observation-only camera/perception startup that preserves simulator scenario, playback, control source, and input when evaluator-only reference data is unavailable</td>
 <td>Weakening camera frame identity, allowing privileged evaluator data into controller inputs, or claiming shadow-evaluation evidence when its reference is absent</td>
 </tr>
 <tr>
@@ -419,6 +424,11 @@ Automa command.</p>
 <td>2026-07-30</td>
 <td>Make adjacent journey commands consume shared readiness gates</td>
 <td>A command must verify the postcondition it names and use the same layer checks and compatible deadline as the next command's preflight so a stable sequence cannot contradict itself</td>
+</tr>
+<tr>
+<td>2026-07-30</td>
+<td>Make passive attachment the primary simulator journey</td>
+<td>Observation must latch onto the currently exposed vehicle without scenario selection, playback changes, control takeover, or input injection; missing simulator support is an explicit external change request, never a hidden workaround</td>
 </tr>
 </tbody>
 </table>

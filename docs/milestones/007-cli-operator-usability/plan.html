@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="61f58bbf40614e3267d48c03dc00067b3e5ca1d5ae4b1ea5b250112af15ab248">
+  <meta name="source-sha256" content="3c2b9edc19ef90cfa7535876cd74345187e34c6c3a020febb289994fdb5dd274">
   <base target="_blank">
   <title>Milestone plan — 007-cli-operator-usability</title>
   <style>
@@ -414,6 +414,11 @@ Automa command.</p>
 <td>2026-07-30</td>
 <td>Audit help and documentation through every level of the bounded journey</td>
 <td>Operators should be able to descend from root help to a runnable leaf command without encountering stale terminology, missing flags, or examples that disagree with emitted recovery</td>
+</tr>
+<tr>
+<td>2026-07-30</td>
+<td>Make adjacent journey commands consume shared readiness gates</td>
+<td>A command must verify the postcondition it names and use the same layer checks and compatible deadline as the next command's preflight so a stable sequence cannot contradict itself</td>
 </tr>
 </tbody>
 </table>

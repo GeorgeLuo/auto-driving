@@ -42,6 +42,13 @@ The proposal is grounded in one live session on 2026-07-29:
 6. Deterministic fixtures assumed `evaluator.reference` was always present, the
    live smoke was opt-in, and neither simulator readiness nor vehicle discovery
    exercised the automation capture contract.
+7. A code-path audit found that adjacent commands currently use different
+   readiness mechanisms and default budgets: `simulators ensure` uses SimEval
+   UI verification and stability checks, discovery uses independent Metrics UI
+   WebSocket state/debug/front-view calls, automation then repeats discovery
+   before using atomic evaluation capture, and view status uses a separate
+   short HTTP health probe. An earlier success can therefore be weaker than the
+   next command's preflight even when both describe the same operator layer.
 
 The current payload is therefore usable for sensor-only observation but not for
 shadow-reference scoring. Those are separate capabilities and must be reported
@@ -93,7 +100,7 @@ Rules:
   `Next action:` line when any required layer is not ready.
 - Human output uses the vocabulary above. JSON uses schema
   `automa_vehicle_status_v1` with required keys `vehicle_id`, `endpoint`,
-  `layers`, `capture`, `next_action`, and `checked_at_ms`.
+  `layers`, `capture`, `readiness`, `next_action`, and `checked_at_ms`.
 - `layers` contains every state above except `evaluator_reference`, which lives
   under `capture` because it is frame-scoped.
 - `next_action` is either `null` or an object with `reason`, `command`, and
@@ -317,11 +324,65 @@ No caught validation exception may be collapsed to the current generic message
 - Retries are bounded by the same deadline and never hide a malformed
   contract.
 
+### Sequential readiness and shared gates
+
+An operator-facing success must prove the postcondition it names and must not
+advertise a next command using a weaker readiness check than that next command
+will enforce. Related commands consume the same structured gate results from
+the owning boundary instead of independently translating transport success
+into readiness.
+
+The bounded journey has these canonical gates:
+
+| Gate | Required proof | Shared consumers |
+| --- | --- | --- |
+| `chase_environment` | Metrics UI server registered, frontend connected, Chase selected, and front-camera query available under one deadline | Final `simulators ensure` acceptance, `vehicles active`, `vehicles status`, automation preflight |
+| `sensor_capture` | Atomic evaluation image and required sensor identity validate; evaluator reference remains a separate capability | Final `simulators ensure` acceptance, targeted `vehicles status`, observation-only automation preflight/run |
+| `automation_deployment` | Activation manifests resolve to the staged release and required mapper/idle-decision configuration is loadable | `update perception` postcondition, status, automation run |
+| `automation_worker` | PID, state, authority, and generation agree | Automation run/status/stop and aggregate status |
+| `perception_view` | Loopback health belongs to the live worker generation and reports a current correlated publication | Automation run/status, info perception, aggregate status |
+
+SimEval may remain the configuration mechanism used to launch and select the
+frontend, but `simulators ensure` may report `usable: true` only after the same
+canonical `chase_environment` gate used by vehicle status passes. A legacy
+front-view probe may not stand in for the atomic `sensor_capture` gate when the
+next command requires atomic capture.
+
+Every primary-journey result includes a structured `readiness` object with
+required keys `schema`, `status`, `ready_for`, `checked_at_ms`, `gates`,
+and `blocking_layer`. `status` is `ready`, `blocked`, or `unknown`; `ready_for`
+names the next primary-journey operation whose non-mutating prerequisites were
+checked. The existing top-level `next_action` remains the one recovery owner
+and must agree with `readiness`. Human output prints the equivalent `Ready for:`
+or `Not ready for:` line and never labels a successfully formatted snapshot as
+operationally successful.
+
+The expected sequence is:
+
+| Completed command | Verified next readiness |
+| --- | --- |
+| `simulators ensure` | Canonical environment and sensor capture are ready for targeted status |
+| `vehicles status --chase-url http://localhost:5050` | The reported next action is ready: stage deployment when absent, otherwise run observation-only automation |
+| `update perception` | Deployment validates and the current environment/capture gates are ready for observation-only automation |
+| `automation run --observe-only --open-view` | Worker authority, first processed frame, and current-generation view are ready for inspection |
+| Post-start `vehicles status` | The same worker/view gates remain ready for inspection and cleanup |
+| `automation stop` | Worker is stopped and no current-generation view remains available |
+
+Each command re-evaluates the gates it depends on; a prior result is evidence,
+not an unbounded cache lease. With stable deterministic fixtures, adjacent
+commands must agree and the complete sequence must not fail because one command
+used a different check or shorter default gate budget. If external state
+changes between commands, the later command fails at the changed gate with its
+current timestamp and recovery, not with a generic timeout. One shared default
+Chase readiness budget is used by adjacent commands, and an explicit timeout is
+still one wall-clock deadline with remaining budget passed to every gate.
+
 ## Ownership
 
 | Contract | Owning boundary |
 | --- | --- |
 | Operator layer vocabulary and aggregate status payload | `cli/automa_cli/vehicles.py`; all other CLI surfaces consume the same layer/result types |
+| Sequential readiness snapshot and gate composition | One shared CLI readiness owner beside `cli/automa_cli/vehicles.py`; simulator, status, update, and automation surfaces consume it |
 | HTTP/WS Chase URL normalization | One helper beside Chase defaults or vehicle discovery; simulator and status commands import it rather than reimplementing it |
 | Required sensor identity and optional evaluator-reference validation | `implementations/vehicle/chase_sim/frame_identity.py` and `car.py` |
 | Automation startup phases and exact nested failure propagation | `cli/automa_cli/automation.py` |
@@ -378,6 +439,11 @@ accept a URL merely because a record file exists.
 | Leaf help for each primary-journey command | Show every required flag at its owner with runtime-accurate meaning and safety/default semantics |
 | `vehicles active` versus `vehicles status` help | Define endpoint discoverability separately from deployment, worker, and view state at parent and leaf levels |
 | README, durable guide, help, or emitted recovery drifts | Deterministic checks reject missing parser paths, stale vocabulary, mismatched flags, or non-runnable recovery commands |
+| Stable environment across `ensure` then targeted `status` | Both consume the same environment/capture gates and agree; the second command cannot time out because of a shorter or different readiness probe |
+| Stable status reports ready for observation-only run | Automation preflight consumes the same environment, capture, and deployment gates and proceeds past those prerequisites |
+| Status snapshot was collected but a required gate is blocked | Output says `Not ready for`, names the blocking layer and recovery, and never presents collection success as operational readiness |
+| External frontend or simulation generation changes between commands | The later command rechecks and reports the changed owning gate with fresh evidence; no stale success or generic timeout |
+| Shared gate is consumed by multiple command groups | Equivalent state, error code, timing semantics, and recovery appear everywhere; no command-specific duplicate probe defines a weaker success |
 
 ## External Assumptions
 
@@ -415,13 +481,15 @@ accept a URL merely because a record file exists.
 - focused deterministic tests for aggregate status, URL normalization,
   operation deadlines, startup/view generation, reference-less capture, and
   the bounded cross-level help/documentation contract
+- deterministic stable-sequence and between-step state-change fixtures for
+  shared readiness gates
 
 ### Modify
 
 - `cli/automa_cli/app.py` — register `vehicles status`, `--chase-url`, and
   `automation run --open-view`
 - `cli/automa_cli/vehicles.py` — aggregate layer snapshot, compatibility
-  wording for `active`, URL normalization, shared deadline
+  wording for `active`, URL normalization, shared readiness gates and deadline
 - `cli/automa_cli/automation.py` — startup phase diagnostics, existing-worker
   open-view behavior, exact adapter errors
 - `cli/automa_cli/perception.py` / `perception_view.py` — shared worker/view
@@ -495,11 +563,11 @@ Post-merge implementation success template:
   "schema": "milestone_handoff_template_v1",
   "outcome": "advance",
   "result": "Accepted",
-  "durable_evidence": "Chase simulator-to-perception CLI journey with aggregate layer status, HTTP/WS normalization, observation-only first-frame view startup, exact capture/reference diagnostics, operation-level deadlines, cross-level help audit, and durable operator documentation in PR #{pr}",
+  "durable_evidence": "Chase simulator-to-perception CLI journey with aggregate layer status, shared sequential-readiness gates, HTTP/WS normalization, observation-only first-frame view startup, exact capture/reference diagnostics, operation-level deadlines, cross-level help audit, and durable operator documentation in PR #{pr}",
   "criterion_updates": {
     "M007-01": {
       "status": "Met",
-      "evidence": "Consistent simulator, vehicle, deployment, worker, view, and evaluator-reference state vocabulary in human and JSON CLI surfaces in PR #{pr}"
+      "evidence": "Consistent simulator, vehicle, deployment, worker, view, and evaluator-reference state vocabulary plus shared next-step readiness gates in human and JSON CLI surfaces in PR #{pr}"
     },
     "M007-02": {
       "status": "Met",
@@ -511,7 +579,7 @@ Post-merge implementation success template:
     },
     "M007-04": {
       "status": "Met",
-      "evidence": "Bounded operation deadlines, stable actionable error categories, open-view workflow, parser-valid cross-level help and recovery, README, and durable operator guide in PR #{pr}"
+      "evidence": "Bounded shared readiness deadlines, stable actionable error categories, cross-command gate agreement, open-view workflow, parser-valid cross-level help and recovery, README, and durable operator guide in PR #{pr}"
     }
   },
   "risk_remove": [

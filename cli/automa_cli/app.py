@@ -16,8 +16,10 @@ from .automation import (
 )
 from .deploy import update_vehicle_autonomy, update_vehicle_core
 from .decision import (
+    apply_vehicle_decision,
     available_decision_engine_ids,
     get_vehicle_decision_info,
+    stream_vehicle_decision,
     update_vehicle_decision,
 )
 from .lab_plugins import list_perception_candidates, setup_perception_candidate
@@ -419,6 +421,92 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print machine-readable live memory snapshots (one JSON object per refresh).",
     )
     memory_stream.set_defaults(handler=_handle_vehicles_stream_memory)
+
+    decision_stream = stream_commands.add_parser(
+        "decision",
+        help="Show the latest shadow decision frame (generation-scoped latest replacement).",
+        description=(
+            "Read automation/latest_decision.json for the staged shadow-proposals engine. "
+            "Accepts only generation-matched frames from a running live worker within the "
+            "configured max age. No history is written. Use --once for a single accepted frame."
+        ),
+    )
+    decision_stream.add_argument(
+        "--id",
+        required=True,
+        dest="vehicle_id",
+        help="Vehicle id from `automa vehicles active`.",
+    )
+    decision_stream.add_argument(
+        "--refresh-s",
+        type=float,
+        default=0.5,
+        help="Refresh cadence for the replacing terminal view.",
+    )
+    decision_stream.add_argument(
+        "--once",
+        action="store_true",
+        help="Accept one frame and exit.",
+    )
+    decision_stream.add_argument(
+        "--no-clear",
+        action="store_true",
+        help="Do not clear the terminal before each render.",
+    )
+    decision_stream.add_argument(
+        "--json",
+        action="store_true",
+        help="Print machine-readable decision stream frames (one JSON object per refresh).",
+    )
+    decision_stream.set_defaults(handler=_handle_vehicles_stream_decision)
+
+    decision_control = vehicle_commands.add_parser(
+        "decision",
+        help="Operate vehicle decision (offline apply/replay; stage via update decision).",
+    )
+    decision_control.set_defaults(handler=_handle_vehicles_decision_help)
+    decision_control_commands = decision_control.add_subparsers(dest="decision_command")
+    decision_help = decision_control_commands.add_parser(
+        "help",
+        help="Show decision-level commands.",
+    )
+    decision_help.set_defaults(handler=_handle_vehicles_decision_help)
+    decision_apply = decision_control_commands.add_parser(
+        "apply",
+        help="Replay a recorded decision sequence through staged shadow-proposals offline.",
+        description=(
+            "Feed a recorded observation+memory sequence through the vehicle's staged "
+            "shadow-proposals activation. Requires --id. Reports a deterministic digest "
+            "(canonical_json_utf8 byte equality across two passes). Writes no files unless "
+            "--record is passed for exact-frame HTML under lab/runs/decision-apply/."
+        ),
+    )
+    decision_apply.add_argument(
+        "--id",
+        required=False,
+        dest="vehicle_id",
+        help="Vehicle id used to resolve the staged decision activation.",
+    )
+    decision_apply.add_argument(
+        "--from-run",
+        required=True,
+        dest="from_run",
+        help="Directory containing sequence.json (schema automa_decision_apply_sequence_v0).",
+    )
+    decision_apply.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the full machine-readable apply result (includes digest).",
+    )
+    decision_apply.add_argument(
+        "--record",
+        action="store_true",
+        help=(
+            "Opt-in: write a bounded exact-frame review directory with HTML, digest, and "
+            "manifest. Disabled by default."
+        ),
+    )
+    decision_apply.set_defaults(handler=_handle_vehicles_decision_apply)
 
     memory_control = vehicle_commands.add_parser(
         "memory",
@@ -1378,6 +1466,7 @@ def _handle_vehicles_help(args: argparse.Namespace) -> int:
                 "- operation    run bounded vehicle checks and setup tasks",
                 "- info         inspect locally staged controller configuration",
                 "- memory       operate memory (reset, replay, lifecycle check)",
+                "- decision     offline decision apply/replay (stage via update decision)",
                 "- perception   run and configure vehicle perception",
                 "- stream       read rolling local automation outputs",
                 "- help         show this summary",
@@ -1637,6 +1726,53 @@ def _handle_vehicles_stream_memory(args: argparse.Namespace) -> int:
         no_clear=args.no_clear,
         json_output=args.json,
         output=sys.stdout,
+    )
+    if result.message:
+        print(result.message)
+    return result.exit_code
+
+
+def _handle_vehicles_stream_decision(args: argparse.Namespace) -> int:
+    result = stream_vehicle_decision(
+        vehicle_id=args.vehicle_id,
+        refresh_s=args.refresh_s,
+        once=args.once,
+        no_clear=args.no_clear,
+        json_output=args.json,
+        output=sys.stdout,
+    )
+    if result.message:
+        print(result.message)
+    return result.exit_code
+
+
+def _handle_vehicles_decision_help(args: argparse.Namespace) -> int:
+    print(
+        "\n".join(
+            [
+                "automa vehicles decision commands",
+                "",
+                "- apply   offline replay of a recorded sequence; digest; optional --record",
+                "- help    show this summary",
+                "",
+                "Stage an engine with:  ./cli/automa vehicles update decision --id <vehicle> --engine shadow-proposals",
+                "Inspect contract with: ./cli/automa vehicles info decision --id <vehicle>",
+                "Stream latest frame:   ./cli/automa vehicles stream decision --id <vehicle>",
+                "",
+                "Detailed help:",
+                "- ./cli/automa vehicles decision <command> --help",
+            ]
+        )
+    )
+    return 0
+
+
+def _handle_vehicles_decision_apply(args: argparse.Namespace) -> int:
+    result = apply_vehicle_decision(
+        vehicle_id=args.vehicle_id,
+        from_run=args.from_run,
+        json_output=args.json,
+        record=args.record,
     )
     if result.message:
         print(result.message)

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="c7a220490afe69643d1476db66cafd2b67aeb204ea9d80e172b92360d5336907">
+  <meta name="source-sha256" content="2f28e8869587de33ed5bb72a650e3273570fc72cfdd6e14202a17b1f0efe3f81">
   <base target="_blank">
   <title>Milestone plan — 007-cli-operator-usability</title>
   <style>
@@ -119,9 +119,9 @@ internal WebSocket paths, runtime files, or process topology.</p>
 <tbody>
 <tr>
 <td>Primary demonstration</td>
-<td>Metrics UI intended at <code>http://localhost:5050</code>, with the Chase frontend either ready or recoverable</td>
-<td>Use documented Automa commands to prepare Chase, discover <code>chase-sim-chaser</code>, start observation-only automation, and open its perception view</td>
-<td>The browser shows a current camera frame and frame-matched observation/perception output; CLI output distinguishes simulator, vehicle, deployment, worker, and view state; no movement is applied</td>
+<td>Metrics UI intended at <code>http://localhost:5050</code>, with the Chase frontend either ready or recoverable; no pre-existing Automa bundle or worker is required</td>
+<td>Run the exact command sequence below to prepare Chase, inspect state, stage packaged perception, start observation-only automation, open and inspect its perception view, then stop the worker</td>
+<td>The browser shows a current camera frame and frame-matched observation/perception output; CLI output distinguishes simulator, vehicle, deployment, worker, and view state; no movement is applied; cleanup leaves no worker running</td>
 <td>M007-01, M007-02, M007-03, M007-04</td>
 </tr>
 <tr>
@@ -147,6 +147,39 @@ internal WebSocket paths, runtime files, or process topology.</p>
 </tr>
 </tbody>
 </table>
+<h3>Primary Demonstration Command Sequence</h3>
+<p>Run from the repository root:</p>
+<pre><code class="language-sh"># Prepare the supported Chase frontend and scenario.
+./cli/automa simulators ensure --scenario chaser-depth-obstacles
+
+# Discover the vehicle and inspect every operator-visible layer.
+./cli/automa vehicles status --chase-url http://localhost:5050
+
+# Idempotently stage the packaged perception path and safe idle decision bundle.
+./cli/automa vehicles update perception \
+  --id chase-sim-chaser \
+  --algorithm lightweight_observer
+
+# Start observation-only inference and open the healthy browser view.
+./cli/automa vehicles automation run \
+  --id chase-sim-chaser \
+  --observe-only \
+  --frames 0 \
+  --open-view
+
+# Gate the running state after inspecting the opened frame/perception view.
+./cli/automa vehicles status --id chase-sim-chaser
+
+# Bounded cleanup: leave no automation worker running.
+./cli/automa vehicles automation stop --id chase-sim-chaser
+./cli/automa vehicles status --id chase-sim-chaser
+</code></pre>
+<p>The first post-start status must report a deployed bundle, running
+observation-only worker, available current-generation view, and no applied
+control. The final status must report the same deployment, a stopped worker,
+and no available current-generation view. Browser inspection between those
+checks must show a current camera frame and frame-matched observation and
+perception output.</p>
 <p>Command names and flags are frozen by the accepted proposal. The milestone
 outcome is the bounded operator journey above, not a general redesign of every
 Automa command.</p>

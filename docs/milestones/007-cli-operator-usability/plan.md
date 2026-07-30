@@ -24,10 +24,48 @@ internal WebSocket paths, runtime files, or process topology.
 
 | Workflow | Starting state | Execution | Success signal | Criteria |
 | --- | --- | --- | --- | --- |
-| Primary demonstration | Metrics UI intended at `http://localhost:5050`, with the Chase frontend either ready or recoverable | Use documented Automa commands to prepare Chase, discover `chase-sim-chaser`, start observation-only automation, and open its perception view | The browser shows a current camera frame and frame-matched observation/perception output; CLI output distinguishes simulator, vehicle, deployment, worker, and view state; no movement is applied | M007-01, M007-02, M007-03, M007-04 |
+| Primary demonstration | Metrics UI intended at `http://localhost:5050`, with the Chase frontend either ready or recoverable; no pre-existing Automa bundle or worker is required | Run the exact command sequence below to prepare Chase, inspect state, stage packaged perception, start observation-only automation, open and inspect its perception view, then stop the worker | The browser shows a current camera frame and frame-matched observation/perception output; CLI output distinguishes simulator, vehicle, deployment, worker, and view state; no movement is applied; cleanup leaves no worker running | M007-01, M007-02, M007-03, M007-04 |
 | Inspect current operator state | Any combination of online/offline simulator, connected/disconnected frontend, deployed/undeployed bundle, running/stopped worker, and available/unavailable view | Run the documented status/discovery commands in human or `--json` form | Every layer has one unambiguous state, ownership boundary, and next action; “active” never implies a running automation worker | M007-01, M007-04 |
 | Recover a failed startup | Chase is reachable but frontend, scenario, capture contract, automation process, or perception view is not ready | Follow the exact recovery command emitted by the failing CLI surface, then retry | Recovery reaches the next state or fails at a newly named boundary without a generic timeout or collapsed “invalid identity or control reference” message | M007-02, M007-03, M007-04 |
 | Validate the live journey | Current local Metrics UI and simulator deployment | Run the bounded live CLI acceptance procedure | One processed frame, a healthy loopback view, observation-only authority, and the expected human/JSON state are recorded without default history writes | M007-05 |
+
+### Primary Demonstration Command Sequence
+
+Run from the repository root:
+
+```sh
+# Prepare the supported Chase frontend and scenario.
+./cli/automa simulators ensure --scenario chaser-depth-obstacles
+
+# Discover the vehicle and inspect every operator-visible layer.
+./cli/automa vehicles status --chase-url http://localhost:5050
+
+# Idempotently stage the packaged perception path and safe idle decision bundle.
+./cli/automa vehicles update perception \
+  --id chase-sim-chaser \
+  --algorithm lightweight_observer
+
+# Start observation-only inference and open the healthy browser view.
+./cli/automa vehicles automation run \
+  --id chase-sim-chaser \
+  --observe-only \
+  --frames 0 \
+  --open-view
+
+# Gate the running state after inspecting the opened frame/perception view.
+./cli/automa vehicles status --id chase-sim-chaser
+
+# Bounded cleanup: leave no automation worker running.
+./cli/automa vehicles automation stop --id chase-sim-chaser
+./cli/automa vehicles status --id chase-sim-chaser
+```
+
+The first post-start status must report a deployed bundle, running
+observation-only worker, available current-generation view, and no applied
+control. The final status must report the same deployment, a stopped worker,
+and no available current-generation view. Browser inspection between those
+checks must show a current camera frame and frame-matched observation and
+perception output.
 
 Command names and flags are frozen by the accepted proposal. The milestone
 outcome is the bounded operator journey above, not a general redesign of every

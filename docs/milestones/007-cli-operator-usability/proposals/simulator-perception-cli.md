@@ -112,11 +112,16 @@ The documented path is:
 ```sh
 ./cli/automa simulators ensure --scenario chaser-depth-obstacles
 ./cli/automa vehicles status --chase-url http://localhost:5050
+./cli/automa vehicles update perception \
+  --id chase-sim-chaser \
+  --algorithm lightweight_observer
 ./cli/automa vehicles automation run \
   --id chase-sim-chaser \
   --observe-only \
   --frames 0 \
   --open-view
+./cli/automa vehicles status --id chase-sim-chaser
+./cli/automa vehicles automation stop --id chase-sim-chaser
 ./cli/automa vehicles status --id chase-sim-chaser
 ```
 
@@ -138,6 +143,18 @@ The documented path is:
   that worker’s current view rather than spawning a duplicate.
 - `info perception` and `automation status` use the same view-generation and
   worker-liveness predicate as `vehicles status`.
+- `--frames 0` is intentionally paired with the explicit `automation stop`
+  cleanup in the primary demonstration; acceptance does not leave a worker
+  running.
+- The first status after `automation run` must report deployment `deployed`,
+  worker `running`, view `available`, and observation-only/no-applied-control
+  authority. The final status after `automation stop` must report deployment
+  `deployed`, worker `stopped`, and no available current-generation view.
+
+`update perception` in this sequence is idempotent and removes any hidden
+precondition that a compatible local bundle already exists. It stages the
+packaged `lightweight_observer` path and the existing safe idle decision
+activation; it does not start the worker or apply movement.
 
 ### Sensor identity and evaluator-reference separation
 

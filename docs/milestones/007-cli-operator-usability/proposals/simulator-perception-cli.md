@@ -229,6 +229,40 @@ No caught validation exception may be collapsed to the current generic message
 - Retries are bounded by the same deadline and never hide a malformed
   contract.
 
+## Ownership
+
+| Contract | Owning boundary |
+| --- | --- |
+| Operator layer vocabulary and aggregate status payload | `cli/automa_cli/vehicles.py`; all other CLI surfaces consume the same layer/result types |
+| HTTP/WS Chase URL normalization | One helper beside Chase defaults or vehicle discovery; simulator and status commands import it rather than reimplementing it |
+| Required sensor identity and optional evaluator-reference validation | `implementations/vehicle/chase_sim/frame_identity.py` and `car.py` |
+| Automation startup phases and exact nested failure propagation | `cli/automa_cli/automation.py` |
+| Worker-generation and view-health acceptance | One predicate owned by `cli/automa_cli/perception_view.py` and reused by status/info/automation |
+| Explicit browser launch | CLI process/browser helper invoked only by `automation run --open-view` after view health succeeds |
+| Durable operator behavior | `docs/reference/cli-simulator-perception-journey.md` |
+
+The Chase adapter owns capture truth. CLI surfaces may format its structured
+result but must not infer missing reference fields or repeat capture validation.
+The view predicate owns current-generation health; status commands must not
+accept a URL merely because a record file exists.
+
+## Affected Paths
+
+- Simulator preparation: `cli/automa_cli/simulators.py`
+- Vehicle discovery and aggregate status:
+  `cli/automa_cli/vehicles.py`, `cli/automa_cli/app.py`
+- Automation lifecycle and view publication:
+  `cli/automa_cli/automation.py`, `cli/automa_cli/perception.py`,
+  `cli/automa_cli/perception_view.py`
+- Chase protocol/adapter boundary:
+  `implementations/vehicle/chase_sim/defaults.py`,
+  `implementations/vehicle/chase_sim/metrics_ws.py`,
+  `implementations/vehicle/chase_sim/frame_identity.py`,
+  `implementations/vehicle/chase_sim/car.py`
+- Deterministic and opt-in live definitions under `tests/cli/`,
+  `tests/implementations/vehicle/`, and `tests/live/chase_simulator/`
+- `README.md`, `docs/README.md`, and the new durable operator reference
+
 ## Adversarial Matrix
 
 | Case | Required result |
@@ -251,7 +285,7 @@ No caught validation exception may be collapsed to the current generic message
 | Repeated `automation run --open-view` | No duplicate worker; current-generation view opens |
 | Human versus `--json` | Same layer states, error category, and recovery |
 
-## External Assumptions And Unverified Limits
+## External Assumptions
 
 - Metrics UI owns `/ws/control`, Play registration, and atomic evaluation
   capture. This repository can validate the consumed contract but cannot make
@@ -265,6 +299,18 @@ No caught validation exception may be collapsed to the current generic message
   perception.
 - Long-duration memory growth, remote views, authentication, non-idle control,
   and simulator performance are not evaluated here.
+
+## Non-Goals
+
+- Broad CLI hierarchy redesign or renaming/removal of compatibility commands
+- Decision, memory, perception-algorithm, or PiRacer feature work
+- Remote/public perception-view hosting or browser authentication
+- Applying movement or changing the idle/observation-only safety boundary
+- Treating missing/malformed sensor identity or image data as usable
+- Synthesizing evaluator references or admitting evaluator shadow data to
+  perception, observation, memory, or decision inputs
+- Live acceptance evidence in the deterministic implementation review unit
+- Long-duration soak, performance, or memory-growth qualification
 
 ## File Impact
 

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="bdc3c5836d01426f571e70934ecc57a9bc8c926ee8d4fa29a775975c551a0919">
+  <meta name="source-sha256" content="9d9414472e1f9cdeb883f5987a5b8df806e449333cccfceda8f464cbb8ff81aa">
   <base target="_blank">
   <title>Milestone Planning And Delivery Contract</title>
   <style>
@@ -768,6 +768,44 @@ reports how the accepted contract was enforced and validated.</p>
    presenting them as observed.</li>
 <li>Perform one fresh adversarial pass after a repair before re-review.</li>
 </ol>
+<h3>Externally Owned Capability Gaps</h3>
+<p>Treat a separately owned repository as an available contract owner, not as an
+unchangeable black box. Metrics UI is the primary simulator example for this
+repository.</p>
+<p>When an operator journey is blocked or made situational by an external
+capability:</p>
+<ol>
+<li>inspect the installed and documented interface and record concrete version,
+   command, protocol, or response evidence;</li>
+<li>identify whether the clean enforcement boundary belongs locally or in the
+   external repository;</li>
+<li>prefer the smallest owner-level capability, flag, query, or structured
+   failure contract over UI automation, undocumented state scraping, implicit
+   reconfiguration, duplicated protocol logic, or a permissive local fallback;</li>
+<li>state the external gap, its consequence, and whether the current review
+   question can still be accepted without it;</li>
+<li>surface an external feature request as an explicit option instead of
+   silently treating the dependency as fixed; and</li>
+<li>link an authorized external issue from the relevant proposal, PR, evidence,
+   or unresolved-risk record.</li>
+</ol>
+<p>Creating or updating an issue changes external state. Do it only when the
+operator explicitly authorizes the write or an accepted workflow step
+specifically includes external issue creation. Read-only repository and issue
+inspection may be used to resolve ownership and avoid duplicates.</p>
+<p>An external request should be independently actionable. Include:</p>
+<ul>
+<li>the blocked user or operator journey;</li>
+<li>observed interface and version evidence;</li>
+<li>the minimum requested contract and acceptable equivalent outcomes;</li>
+<li>required safety and state-preservation behavior;</li>
+<li>structured unsupported or failure behavior;</li>
+<li>a bounded acceptance test; and</li>
+<li>links back to the consuming proposal or implementation.</li>
+</ul>
+<p>If a small external flag or response field would remove a substantial local
+workaround, say so directly. Do not conceal the option merely because the
+dependency lives in another repository.</p>
 <h3>Review Finding Format</h3>
 <pre><code class="language-markdown">[P1] &lt;Concise finding title&gt;
 

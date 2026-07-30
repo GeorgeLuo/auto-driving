@@ -628,6 +628,48 @@ Before requesting review:
    presenting them as observed.
 5. Perform one fresh adversarial pass after a repair before re-review.
 
+### Externally Owned Capability Gaps
+
+Treat a separately owned repository as an available contract owner, not as an
+unchangeable black box. Metrics UI is the primary simulator example for this
+repository.
+
+When an operator journey is blocked or made situational by an external
+capability:
+
+1. inspect the installed and documented interface and record concrete version,
+   command, protocol, or response evidence;
+2. identify whether the clean enforcement boundary belongs locally or in the
+   external repository;
+3. prefer the smallest owner-level capability, flag, query, or structured
+   failure contract over UI automation, undocumented state scraping, implicit
+   reconfiguration, duplicated protocol logic, or a permissive local fallback;
+4. state the external gap, its consequence, and whether the current review
+   question can still be accepted without it;
+5. surface an external feature request as an explicit option instead of
+   silently treating the dependency as fixed; and
+6. link an authorized external issue from the relevant proposal, PR, evidence,
+   or unresolved-risk record.
+
+Creating or updating an issue changes external state. Do it only when the
+operator explicitly authorizes the write or an accepted workflow step
+specifically includes external issue creation. Read-only repository and issue
+inspection may be used to resolve ownership and avoid duplicates.
+
+An external request should be independently actionable. Include:
+
+- the blocked user or operator journey;
+- observed interface and version evidence;
+- the minimum requested contract and acceptable equivalent outcomes;
+- required safety and state-preservation behavior;
+- structured unsupported or failure behavior;
+- a bounded acceptance test; and
+- links back to the consuming proposal or implementation.
+
+If a small external flag or response field would remove a substantial local
+workaround, say so directly. Do not conceal the option merely because the
+dependency lives in another repository.
+
 ### Review Finding Format
 
 ```markdown

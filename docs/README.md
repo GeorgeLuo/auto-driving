@@ -19,6 +19,9 @@ Detailed exit criteria, workflow state, and risks live only in the milestone
 plan. This milestone is a narrow operator-usability chain; it does not absorb
 or re-scope Milestone 006 or its paused implementation PR.
 
+Current operator reference:
+[Chase simulator-to-perception CLI journey](reference/cli-simulator-perception-journey.md).
+
 ## Immediate Pre-Plan (Not Active)
 
 **None.**

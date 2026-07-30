@@ -3,14 +3,26 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import math
 import os
 import socket
+import ssl
 import struct
 import time
 import uuid
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlparse
+
+
+PASSIVE_SESSION_FIELDS = (
+    "game_id",
+    "scenario_id",
+    "simulation_epoch",
+    "playback",
+    "control_source",
+    "control_input",
+)
 
 
 class MetricsUiWebSocketError(RuntimeError):
@@ -56,15 +68,28 @@ class _WebSocketConnection:
 
     def connect(self) -> None:
         parsed = urlparse(self.url)
-        if parsed.scheme != "ws":
-            raise MetricsUiWebSocketError(f"Only ws:// URLs are supported, got {self.url!r}")
+        if parsed.scheme not in {"ws", "wss"}:
+            raise MetricsUiWebSocketError(
+                f"Only ws:// or wss:// URLs are supported, got {self.url!r}"
+            )
         host = parsed.hostname or "localhost"
-        port = parsed.port or 80
+        port = parsed.port or (443 if parsed.scheme == "wss" else 80)
         path = parsed.path or "/"
         if parsed.query:
             path = f"{path}?{parsed.query}"
 
-        sock = socket.create_connection((host, port), timeout=self.timeout_s)
+        raw_sock = socket.create_connection((host, port), timeout=self.timeout_s)
+        if parsed.scheme == "wss":
+            try:
+                sock = ssl.create_default_context().wrap_socket(
+                    raw_sock,
+                    server_hostname=host,
+                )
+            except Exception:
+                raw_sock.close()
+                raise
+        else:
+            sock = raw_sock
         sock.settimeout(self.timeout_s)
         key = base64.b64encode(os.urandom(16)).decode("ascii")
         host_header = f"{host}:{port}" if parsed.port else host
@@ -200,10 +225,20 @@ class MetricsUiWsClient:
     ) -> MetricsUiCommandResponse:
         request_id = str(message.get("request_id") or self._next_request_id(message.get("type")))
         command = {**message, "request_id": request_id}
-        deadline = time.monotonic() + float(timeout_s or self.timeout_s)
+        operation_timeout = self.timeout_s if timeout_s is None else float(timeout_s)
+        if not math.isfinite(operation_timeout) or operation_timeout <= 0:
+            raise MetricsUiWebSocketError(
+                "Metrics UI command timeout must be finite and greater than zero"
+            )
+        deadline = time.monotonic() + operation_timeout
         ack: dict[str, Any] | None = None
 
-        with _WebSocketConnection(self.url, timeout_s=self.timeout_s) as ws:
+        connect_timeout = min(self.timeout_s, deadline - time.monotonic())
+        if connect_timeout <= 0:
+            raise MetricsUiWebSocketError(
+                f"Timed out before connecting for {command['type']}"
+            )
+        with _WebSocketConnection(self.url, timeout_s=connect_timeout) as ws:
             ws.send_json({"type": "register", "role": "agent"})
             self._wait_for_registration(ws, deadline)
             ws.send_json(command)
@@ -331,3 +366,158 @@ class MetricsUiWsClient:
                 return
             if response.get("type") == "error":
                 raise MetricsUiWebSocketError(str(response.get("error") or "Registration failed"))
+
+
+def build_chase_session_fingerprint(
+    *,
+    state: dict[str, Any],
+    debug: dict[str, Any],
+) -> dict[str, Any]:
+    """Build the documented read-only Chase session fields used for preservation."""
+
+    sidebar = _play_sidebar_values(state)
+    playback_source = state.get("playback")
+    playback_source = playback_source if isinstance(playback_source, dict) else {}
+    playback = {
+        key: playback_source.get(key)
+        for key in ("isPlaying", "playbackRate", "rate")
+        if key in playback_source
+    }
+    control_input_source = _first_dict(
+        _nested_get(debug, ("actions", "chaserInput")),
+        _nested_get(debug, ("actors", "chaser", "input")),
+    )
+    control_input = _bounded_input(control_input_source)
+    control_source = _first_nonempty(
+        sidebar.get("chaser-control-source"),
+        _nested_get(debug, ("actions", "chaserInput", "source")),
+        _nested_get(debug, ("actions", "chaserAction", "source")),
+        _nested_get(debug, ("actors", "chaser", "action", "source")),
+    )
+    fingerprint = {
+        "game_id": _first_nonempty(debug.get("gameId"), state.get("gameId")),
+        "scenario_id": _first_nonempty(
+            sidebar.get("scenario-select"),
+            debug.get("scenarioId"),
+        ),
+        "simulation_epoch": _first_nonempty(
+            debug.get("simulationEpoch"),
+            _nested_get(debug, ("frameIdentity", "simulationEpoch")),
+        ),
+        "playback": playback or None,
+        "control_source": control_source,
+        "control_input": control_input,
+    }
+    unknown_fields = [
+        field_name
+        for field_name in PASSIVE_SESSION_FIELDS
+        if fingerprint.get(field_name) is None
+    ]
+    return {
+        "schema": "chase_session_fingerprint_v1",
+        **fingerprint,
+        "unknown_fields": unknown_fields,
+    }
+
+
+def compare_chase_session_fingerprints(
+    before: dict[str, Any],
+    after: dict[str, Any],
+) -> dict[str, Any]:
+    unknown = sorted(
+        {
+            *(
+                str(item)
+                for item in before.get("unknown_fields", [])
+                if isinstance(item, str)
+            ),
+            *(
+                str(item)
+                for item in after.get("unknown_fields", [])
+                if isinstance(item, str)
+            ),
+        }
+    )
+    changed = [
+        field_name
+        for field_name in PASSIVE_SESSION_FIELDS
+        if before.get(field_name) != after.get(field_name)
+    ]
+    return {
+        "preserved": not unknown and not changed,
+        "unknown_fields": unknown,
+        "changed_fields": changed,
+        "before": before,
+        "after": after,
+    }
+
+
+def _play_sidebar_values(state: dict[str, Any]) -> dict[str, Any]:
+    values: dict[str, Any] = {}
+    sections = state.get("playSidebarSections")
+    if not isinstance(sections, list):
+        return values
+    for section in sections:
+        if not isinstance(section, dict):
+            continue
+        rows = section.get("rows")
+        if not isinstance(rows, list):
+            continue
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            row_id = row.get("id")
+            if isinstance(row_id, str) and "value" in row:
+                values[row_id] = row.get("value")
+    return values
+
+
+def _nested_get(record: dict[str, Any], path: tuple[str, ...]) -> Any:
+    value: Any = record
+    for key in path:
+        if not isinstance(value, dict):
+            return None
+        value = value.get(key)
+    return value
+
+
+def _first_nonempty(*values: Any) -> str | None:
+    for value in values:
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _first_dict(*values: Any) -> dict[str, Any] | None:
+    return next((value for value in values if isinstance(value, dict)), None)
+
+
+def _bounded_input(value: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    source = _first_nonempty(value.get("source"))
+    steering = value.get("steering")
+    if (
+        source is None
+        or isinstance(steering, bool)
+        or not isinstance(steering, (int, float))
+        or not math.isfinite(float(steering))
+    ):
+        return None
+    motion = _first_nonempty(value.get("motion"))
+    forward = value.get("forward")
+    reverse = value.get("reverse")
+    if motion is None and (
+        not isinstance(forward, bool) or not isinstance(reverse, bool)
+    ):
+        return None
+    result: dict[str, Any] = {
+        "source": source,
+        "steering": float(steering),
+    }
+    if motion is not None:
+        result["motion"] = motion
+    if isinstance(forward, bool) and isinstance(reverse, bool):
+        result["forward"] = forward
+        result["reverse"] = reverse
+    return result

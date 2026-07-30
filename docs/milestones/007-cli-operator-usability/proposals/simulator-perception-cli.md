@@ -182,6 +182,51 @@ The external Metrics UI may be reviewed here for correct launch, integration,
 and recovery behavior, but redesigning that external frontend is not owned by
 this proposal.
 
+### Help and documentation hierarchy
+
+The primary journey must be discoverable from the CLI itself by descending one
+command level at a time. The required audit is bounded to these surfaces:
+
+```text
+./cli/automa help
+├── ./cli/automa simulators help
+│   └── ./cli/automa simulators ensure --help
+└── ./cli/automa vehicles help
+    ├── ./cli/automa vehicles active --help
+    ├── ./cli/automa vehicles status --help
+    ├── ./cli/automa vehicles update help
+    │   └── ./cli/automa vehicles update perception --help
+    └── ./cli/automa vehicles automation help
+        ├── ./cli/automa vehicles automation run --help
+        └── ./cli/automa vehicles automation stop --help
+```
+
+The audit must prove:
+
+- root and group help enumerate the correct immediate children, explain when
+  to descend, and do not leak leaf-only flags into parent summaries;
+- calling a command group without a child and calling its explicit `help`
+  command expose the same current navigation;
+- `vehicles help`, `active --help`, and `status --help` distinguish a
+  discoverable vehicle from deployment, worker, and view state;
+- leaf help exposes the exact primary-journey flags at their owning command:
+  `--scenario`, `--chase-url`, `--algorithm`, `--id`, `--observe-only`,
+  `--frames`, and `--open-view`, with the same meanings and defaults used at
+  runtime;
+- help text preserves the observation-only/no-applied-control boundary and
+  never requires an operator to derive `/ws/control`, inspect runtime files, or
+  infer process topology;
+- every command printed as `Next action:` or error recovery is accepted by the
+  parser and agrees with the durable operator guide;
+- the root `README.md`, documentation index, durable operator guide, and
+  milestone primary sequence use the same command names, state vocabulary, and
+  group-`help`/leaf-`--help` navigation pattern.
+
+Deterministic tests exercise both the human help hierarchy and parser
+acceptance of documented and emitted commands without starting a simulator,
+worker, or browser. This is not an audit or redesign of unrelated Automa
+commands.
+
 ### Sensor identity and evaluator-reference separation
 
 Split the current all-or-nothing atomic-capture validation into two contracts.
@@ -282,6 +327,7 @@ No caught validation exception may be collapsed to the current generic message
 | Automation startup phases and exact nested failure propagation | `cli/automa_cli/automation.py` |
 | Worker-generation and view-health acceptance | One predicate owned by `cli/automa_cli/perception_view.py` and reused by status/info/automation |
 | Explicit browser launch | CLI process/browser helper invoked only by `automation run --open-view` after view health succeeds |
+| Bounded help hierarchy and command examples | `cli/automa_cli/app.py`, `tests/cli/help/`, and `docs/reference/cli-simulator-perception-journey.md` |
 | Durable operator behavior | `docs/reference/cli-simulator-perception-journey.md` |
 
 The Chase adapter owns capture truth. CLI surfaces may format its structured
@@ -304,6 +350,7 @@ accept a URL merely because a record file exists.
   `implementations/vehicle/chase_sim/car.py`
 - Deterministic and opt-in live definitions under `tests/cli/`,
   `tests/implementations/vehicle/`, and `tests/live/chase_simulator/`
+- Cross-level help and documented-command coverage under `tests/cli/help/`
 - `README.md`, `docs/README.md`, and the new durable operator reference
 
 ## Adversarial Matrix
@@ -327,6 +374,10 @@ accept a URL merely because a record file exists.
 | Browser launcher unavailable | Worker/view remain healthy; warning and manual URL |
 | Repeated `automation run --open-view` | No duplicate worker; current-generation view opens |
 | Human versus `--json` | Same layer states, error category, and recovery |
+| Root or group help before the operator knows a leaf command | Show only the correct next level, current state meanings, and how to descend |
+| Leaf help for each primary-journey command | Show every required flag at its owner with runtime-accurate meaning and safety/default semantics |
+| `vehicles active` versus `vehicles status` help | Define endpoint discoverability separately from deployment, worker, and view state at parent and leaf levels |
+| README, durable guide, help, or emitted recovery drifts | Deterministic checks reject missing parser paths, stale vocabulary, mismatched flags, or non-runnable recovery commands |
 
 ## External Assumptions
 
@@ -362,7 +413,8 @@ accept a URL merely because a record file exists.
 - `docs/reference/cli-simulator-perception-journey.md` — durable operator
   state model, supported commands, and recovery table
 - focused deterministic tests for aggregate status, URL normalization,
-  operation deadlines, startup/view generation, and reference-less capture
+  operation deadlines, startup/view generation, reference-less capture, and
+  the bounded cross-level help/documentation contract
 
 ### Modify
 
@@ -384,7 +436,10 @@ accept a URL merely because a record file exists.
   if required by the shared owner
 - `tests/live/chase_simulator/test_automation_smoke.py` — define the bounded
   observation-only first-frame/view contract for the later live evidence unit
-- `README.md` and `docs/README.md` — current command journey and reference link
+- `tests/cli/help/test_help.py` — audit parent/child navigation, state
+  vocabulary, leaf flags, and parser-valid documented/recovery commands
+- `README.md` and `docs/README.md` — current command journey, navigation
+  pattern, and reference link
 - milestone `plan.md` / generated `plan.html` only for workflow transitions
 
 ### Remove
@@ -402,6 +457,7 @@ capture validator, or view-liveness predicate.
 ```sh
 PYTHONDONTWRITEBYTECODE=1 python3 tests/run.py
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest \
+  tests.cli.help.test_help \
   tests.implementations.vehicle.test_chase_frame_identity \
   tests.live.chase_simulator.test_automation_smoke \
   -v
@@ -439,7 +495,7 @@ Post-merge implementation success template:
   "schema": "milestone_handoff_template_v1",
   "outcome": "advance",
   "result": "Accepted",
-  "durable_evidence": "Chase simulator-to-perception CLI journey with aggregate layer status, HTTP/WS normalization, observation-only first-frame view startup, exact capture/reference diagnostics, operation-level deadlines, current help and durable operator documentation in PR #{pr}",
+  "durable_evidence": "Chase simulator-to-perception CLI journey with aggregate layer status, HTTP/WS normalization, observation-only first-frame view startup, exact capture/reference diagnostics, operation-level deadlines, cross-level help audit, and durable operator documentation in PR #{pr}",
   "criterion_updates": {
     "M007-01": {
       "status": "Met",
@@ -455,7 +511,7 @@ Post-merge implementation success template:
     },
     "M007-04": {
       "status": "Met",
-      "evidence": "Bounded operation deadlines, stable actionable error categories, open-view workflow, help, README, and durable operator guide in PR #{pr}"
+      "evidence": "Bounded operation deadlines, stable actionable error categories, open-view workflow, parser-valid cross-level help and recovery, README, and durable operator guide in PR #{pr}"
     }
   },
   "risk_remove": [

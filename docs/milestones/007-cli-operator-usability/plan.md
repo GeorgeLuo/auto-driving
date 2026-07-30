@@ -79,7 +79,7 @@ Automa command.
 | Human-readable defaults and complete machine-readable output for the bounded journey | A new interactive TUI, desktop application, or general service manager |
 | HTTP/WS endpoint normalization and actionable frontend/scenario recovery | Supporting arbitrary remote browser authentication, public view hosting, or non-loopback view access |
 | Observation-only camera/perception startup when evaluator-only reference data is unavailable | Weakening camera frame identity, allowing privileged evaluator data into controller inputs, or claiming shadow-evaluation evidence when its reference is absent |
-| Exact startup diagnostics, bounded timeout semantics, and current operator documentation | Hiding external contract drift with retries, indefinite waits, or permissive malformed-capture acceptance |
+| Exact startup diagnostics, bounded timeout semantics, and a cross-level help/documentation audit for the bounded journey | Hiding external contract drift with retries, indefinite waits, or permissive malformed-capture acceptance |
 | Deterministic tests plus one opt-in live acceptance unit against the current simulator contract | Making a browser or live simulator mandatory for the default deterministic test suite |
 
 ## Exit Criteria
@@ -89,7 +89,7 @@ Automa command.
 | M007-01 | Automa exposes and documents one consistent operator state model that distinguishes simulator availability, simulator frontend readiness, vehicle discoverability, local automation deployment, worker liveness, and perception-view availability in concise human output and complete `--json` output | Unmet | First frontier |
 | M007-02 | An operator starting from `http://localhost:5050` can prepare the supported Chase scenario and discover `chase-sim-chaser` without manually deriving `/ws/control`; disconnected, stale, wrong-game, and unavailable-camera states name the failed boundary and exact recovery | Unmet | First frontier |
 | M007-03 | Observation-only automation can publish a current camera/perception browser view when sensor image and frame identity are valid even if evaluator-only control reference data is unavailable; workflows that require that reference fail closed with an explicit missing-reference status | Unmet | First frontier; current reproduction aborts the whole worker |
-| M007-04 | Startup, status, and view commands use bounded operation-level timeout semantics, preserve stable human/JSON error categories, and provide current help/README examples for the complete journey and its recovery paths | Unmet | First frontier |
+| M007-04 | Startup, status, and view commands use bounded operation-level timeout semantics, preserve stable human/JSON error categories, and carry current commands, state meanings, flags, examples, and recovery patterns consistently through every help level and durable document used by the bounded journey | Unmet | First frontier |
 | M007-05 | A tracked live acceptance unit against the current local Metrics UI contract proves one observation-only processed frame, healthy loopback view, exact layer states, no applied movement, and no default recording; contract drift fails rather than skipping | Unmet | Next frontier after deterministic surfaces |
 | M007-06 | Closeout confirms the primary demonstration, reconciles durable CLI documentation, and records any remaining external simulator, PiRacer, remote-view, or non-idle-control limits | Unmet | Closeout only |
 
@@ -155,6 +155,7 @@ Automa command.
 | 2026-07-29 | Bound the first journey to local Chase and observation-only perception | This closes the reproduced usability failure without importing Pi deployment, remote hosting, decision work, or movement authority |
 | 2026-07-29 | Treat evaluator control reference as optional for sensor-only perception and mandatory only for reference-dependent evidence | Camera/frame identity and evaluator scoring are different trust boundaries and should not make each other falsely unavailable |
 | 2026-07-30 | Use reviewer-driven usability loops without freezing exact presentation | Behavioral, recovery, and safety invariants remain reviewable while visual and usage feedback can repair the active journey in its current PR; later revisions to accepted surfaces use a new frontier instead of rewriting history |
+| 2026-07-30 | Audit help and documentation through every level of the bounded journey | Operators should be able to descend from root help to a runnable leaf command without encountering stale terminology, missing flags, or examples that disagree with emitted recovery |
 
 ## Closeout
 

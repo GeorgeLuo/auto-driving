@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="74e6f6a969f33ee3f5ed8bd4330973514d0951f50954a005b169eb0ecb76a794">
+  <meta name="source-sha256" content="96b61b130f92b2922dc61b019c2435c4ca0deea634d23efc0e813094bf45bdab">
   <base target="_blank">
   <title>Milestone plan — 007-cli-operator-usability</title>
   <style>
@@ -209,7 +209,7 @@ Automa command.</p>
 <td>Weakening camera frame identity, allowing privileged evaluator data into controller inputs, or claiming shadow-evaluation evidence when its reference is absent</td>
 </tr>
 <tr>
-<td>Exact startup diagnostics, bounded timeout semantics, and current operator documentation</td>
+<td>Exact startup diagnostics, bounded timeout semantics, and a cross-level help/documentation audit for the bounded journey</td>
 <td>Hiding external contract drift with retries, indefinite waits, or permissive malformed-capture acceptance</td>
 </tr>
 <tr>
@@ -249,7 +249,7 @@ Automa command.</p>
 </tr>
 <tr>
 <td>M007-04</td>
-<td>Startup, status, and view commands use bounded operation-level timeout semantics, preserve stable human/JSON error categories, and provide current help/README examples for the complete journey and its recovery paths</td>
+<td>Startup, status, and view commands use bounded operation-level timeout semantics, preserve stable human/JSON error categories, and carry current commands, state meanings, flags, examples, and recovery patterns consistently through every help level and durable document used by the bounded journey</td>
 <td>Unmet</td>
 <td>First frontier</td>
 </tr>
@@ -409,6 +409,11 @@ Automa command.</p>
 <td>2026-07-30</td>
 <td>Use reviewer-driven usability loops without freezing exact presentation</td>
 <td>Behavioral, recovery, and safety invariants remain reviewable while visual and usage feedback can repair the active journey in its current PR; later revisions to accepted surfaces use a new frontier instead of rewriting history</td>
+</tr>
+<tr>
+<td>2026-07-30</td>
+<td>Audit help and documentation through every level of the bounded journey</td>
+<td>Operators should be able to descend from root help to a runnable leaf command without encountering stale terminology, missing flags, or examples that disagree with emitted recovery</td>
 </tr>
 </tbody>
 </table>

@@ -533,7 +533,9 @@ accept a URL merely because a record file exists.
 - The installed interface's `play_game_query` and
   `playback.advanced=false` are evidence for read-only capture, not permission
   to infer unadvertised actor support or session preservation. Missing proof is
-  surfaced as an external capability request.
+  surfaced as an external capability request. The minimum passive-observation
+  contract is tracked in
+  [metrics-ui#150](https://github.com/GeorgeLuo/metrics-ui/issues/150).
 - Browser launching is supported only on the local operator host and remains
   explicit/non-fatal.
 - PiRacer discovery, deployment, and its local perception view are not changed

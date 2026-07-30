@@ -105,10 +105,11 @@ Automa command.
 
 **Simulator-to-perception CLI journey**
 
-- Workflow state: proposal_in_review
+- Workflow state: ready_for_implementation
 - Proposal branch: `m007/simulator-perception-cli-proposal`
 - Implementation branch: `m007/simulator-perception-cli`
 - Proposal path: `docs/milestones/007-cli-operator-usability/proposals/simulator-perception-cli.md`
+- Accepted proposal: [#82](https://github.com/GeorgeLuo/auto-driving/pull/82) at `70d7419e3fc8bcd8e8483c16c8d061c04f86a0a9`
 - Review kind: Behavioral feature slice
 - Review question: Can a Chase operator move from a local Metrics UI URL to a healthy observation-only perception browser view through discoverable Automa commands that distinguish every runtime layer and return exact, bounded recovery when the frontend, capture contract, worker, or view is unavailable?
 - Acceptance owner: Automa simulator preparation, vehicle discovery, automation preflight/run/status, and perception-view operator surfaces over the Chase sensor-capture boundary
@@ -136,6 +137,7 @@ Automa command.
 | --- | --- | --- |
 | Simulator-to-perception CLI journey | ready_for_proposal | Activated as an operator-approved ad-hoc usability milestone while M006 implementation PR #80 is paused; separate branch and review-unit topology prevent scope leakage. |
 | Simulator-to-perception CLI journey | proposal_in_review | Started m007/simulator-perception-cli-proposal. |
+| Simulator-to-perception CLI journey | ready_for_implementation | Proposal PR #82 accepted at 70d7419e3fc8bcd8e8483c16c8d061c04f86a0a9. |
 
 ## Accepted Review Units
 

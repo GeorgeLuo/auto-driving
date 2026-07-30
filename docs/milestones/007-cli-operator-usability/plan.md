@@ -154,6 +154,7 @@ Automa command.
 | 2026-07-29 | Keep proposal and implementation in separate PRs while using one conversation and reviewer | Conversation continuity is useful, but proposal acceptance must remain an explicit merge receipt before implementation starts |
 | 2026-07-29 | Bound the first journey to local Chase and observation-only perception | This closes the reproduced usability failure without importing Pi deployment, remote hosting, decision work, or movement authority |
 | 2026-07-29 | Treat evaluator control reference as optional for sensor-only perception and mandatory only for reference-dependent evidence | Camera/frame identity and evaluator scoring are different trust boundaries and should not make each other falsely unavailable |
+| 2026-07-30 | Use reviewer-driven usability loops without freezing exact presentation | Behavioral, recovery, and safety invariants remain reviewable while visual and usage feedback can repair the active journey in its current PR; later revisions to accepted surfaces use a new frontier instead of rewriting history |
 
 ## Closeout
 

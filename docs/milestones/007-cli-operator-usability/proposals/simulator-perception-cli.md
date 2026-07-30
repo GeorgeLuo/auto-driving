@@ -156,6 +156,32 @@ precondition that a compatible local bundle already exists. It stages the
 packaged `lightweight_observer` path and the existing safe idle decision
 activation; it does not start the worker or apply movement.
 
+### Reviewer-driven usability loop
+
+This proposal freezes the command sequence, operator-state meanings, required
+content, recovery semantics, and observation-only safety boundary. It
+deliberately does not freeze the exact layout, visual styling, or incidental
+copy of the Automa-owned CLI and perception-view surfaces before the reviewer
+can exercise them.
+
+During proposal and implementation review, the reviewer may run the supported
+journey and provide visual or usage feedback. A finding stays in the current
+review unit when it asks whether the same journey is discoverable, truthful,
+and usable within the ownership and non-goals above. The implementation must
+repair that failure class in the same PR and reconcile affected tests and
+operator documentation. Qualitative live review may guide those repairs even
+though formal tracked live acceptance remains the next frontier.
+
+After a review unit is accepted, later feedback may intentionally revisit one
+of its surfaces through a new frontier. The earlier proposal and ledger remain
+the historical acceptance receipt; the later proposal names the behavior being
+revised and its new review question. A materially different command journey,
+another frontend, new authority, or work outside this repository's ownership
+also requires a new frontier rather than silently broadening the active one.
+The external Metrics UI may be reviewed here for correct launch, integration,
+and recovery behavior, but redesigning that external frontend is not owned by
+this proposal.
+
 ### Sensor identity and evaluator-reference separation
 
 Split the current all-or-nothing atomic-capture validation into two contracts.

@@ -12,7 +12,7 @@ order below instead of loading the full process contract for every task.
 | --- | --- |
 | Status | Active (ad-hoc usability milestone) |
 | Plan | [plan.html](milestones/007-cli-operator-usability/plan.html) · [plan.md](milestones/007-cli-operator-usability/plan.md) |
-| Cumulative PR | TBD |
+| Cumulative PR | [#81](https://github.com/GeorgeLuo/auto-driving/pull/81) (draft) |
 | Current frontier | Simulator-to-perception CLI journey |
 
 Detailed exit criteria, workflow state, and risks live only in the milestone

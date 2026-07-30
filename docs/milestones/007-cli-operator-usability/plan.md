@@ -4,7 +4,7 @@
 | --- | --- |
 | Status | Active |
 | Milestone branch | `milestone/007-cli-operator-usability` |
-| Cumulative PR | TBD |
+| Cumulative PR | [#81](https://github.com/GeorgeLuo/auto-driving/pull/81) (draft until whole-milestone closeout) |
 | Current frontier | Simulator-to-perception CLI journey |
 | Started | 2026-07-29 |
 | Action policy | Observation-only; no applied vehicle movement |

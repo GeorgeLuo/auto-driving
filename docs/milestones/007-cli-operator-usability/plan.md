@@ -65,6 +65,7 @@ Automa command.
 - Proposal branch: `m007/simulator-perception-cli-proposal`
 - Implementation branch: `m007/simulator-perception-cli`
 - Proposal path: `docs/milestones/007-cli-operator-usability/proposals/simulator-perception-cli.md`
+- Proposal PR: [#82](https://github.com/GeorgeLuo/auto-driving/pull/82) (draft)
 - Review kind: Behavioral feature slice
 - Review question: Can a Chase operator move from a local Metrics UI URL to a healthy observation-only perception browser view through discoverable Automa commands that distinguish every runtime layer and return exact, bounded recovery when the frontend, capture contract, worker, or view is unavailable?
 - Acceptance owner: Automa simulator preparation, vehicle discovery, automation preflight/run/status, and perception-view operator surfaces over the Chase sensor-capture boundary

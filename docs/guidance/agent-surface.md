@@ -49,6 +49,20 @@ closeout work is permitted.
 
 Do not preload every role or task guidance file.
 
+## External Capability Gaps
+
+When work depends on a separately owned repository—especially Metrics UI—do
+not silently work around a missing capability or assume the dependency cannot
+change. Inspect the available interface, identify the owning boundary, and
+surface the smallest external flag, query, capability, or structured failure
+contract that would unblock the operator journey. With explicit operator
+authorization, create or update the external issue and link it from the current
+proposal, PR, evidence, or risk record.
+
+Follow the canonical
+[externally owned capability gap contract](../milestones/README.md#externally-owned-capability-gaps)
+for required evidence, issue content, authorization, and non-hacky boundaries.
+
 ## Conversation State
 
 Use long-running conversations for immediate continuity only. Preserve a short

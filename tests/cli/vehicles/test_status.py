@@ -4,6 +4,7 @@ import json
 import unittest
 from unittest.mock import patch
 
+from cli.automa_cli.app import _vehicle_status_exit_code
 from cli.automa_cli.vehicles import (
     Candidate,
     ProbeResult,
@@ -272,6 +273,99 @@ class VehicleStatusTests(unittest.TestCase):
         self.assertIn("control_application=not_applied", human)
         self.assertIn("Ready for: inspect perception and stop automation", human)
         self.assertNotIn("Next action:", human)
+
+    def test_aggregate_separates_non_chase_local_deployments(self) -> None:
+        candidate = Candidate(
+            "chase-sim",
+            "ws://localhost:5050/ws/control",
+            "cli",
+        )
+        probe = ProbeResult(
+            active=True,
+            candidate=candidate,
+            vehicle=_passive_vehicle(),
+        )
+        deployments = [
+            {
+                "vehicle_id": "chase-sim-chaser",
+                "deployed": True,
+                "bundle_root": "runtime/vehicles/chase-sim-chaser/bundle",
+            },
+            {
+                "vehicle_id": "piracer",
+                "deployed": True,
+                "bundle_root": "runtime/vehicles/piracer/bundle",
+            },
+        ]
+        with patch(
+            "cli.automa_cli.vehicles._probe_chase_sim",
+            return_value=probe,
+        ), patch(
+            "cli.automa_cli.automation._collect_automation_status",
+            return_value=deployments,
+        ):
+            payload = get_vehicle_status()
+
+        self.assertEqual(
+            [card["vehicle_id"] for card in payload["vehicles"]],
+            ["chase-sim-chaser"],
+        )
+        self.assertEqual(
+            payload["other_local_deployments"],
+            [
+                {
+                    "vehicle_id": "piracer",
+                    "inspection_command": (
+                        "./cli/automa vehicles automation status --id piracer"
+                    ),
+                }
+            ],
+        )
+        human = format_vehicle_status(payload)
+        self.assertIn("Known Chase vehicles: 1", human)
+        self.assertIn("Other local deployments: 1", human)
+        self.assertNotIn("Vehicle: piracer", human)
+
+    def test_external_recovery_is_human_text_and_failed_gate_exits_nonzero(self) -> None:
+        candidate = Candidate(
+            "chase-sim",
+            "ws://localhost:5050/ws/control",
+            "cli",
+        )
+        probe = ProbeResult(
+            active=False,
+            candidate=candidate,
+            error="frontend disconnected",
+            diagnostics={
+                "ws_server": True,
+                "frontend_connected": False,
+                "error_code": "frontend_disconnected",
+            },
+        )
+        with patch(
+            "cli.automa_cli.vehicles._probe_chase_sim",
+            return_value=probe,
+        ), patch(
+            "cli.automa_cli.automation._collect_automation_status",
+            return_value=[],
+        ):
+            payload = get_vehicle_status(vehicle_id="chase-sim-chaser")
+
+        human = format_vehicle_status(payload)
+        next_line = next(
+            line for line in human.splitlines() if line.startswith("Next action:")
+        )
+        self.assertIn("Open or reload http://localhost:5050/", next_line)
+        self.assertNotIn('{"', next_line)
+        self.assertEqual(_vehicle_status_exit_code(payload), 1)
+
+        payload["next_action"] = {
+            "reason": "automation_not_deployed",
+            "command": "./cli/automa vehicles update perception",
+            "external_change": None,
+            "expected_state": "automation_deployment=deployed",
+        }
+        self.assertEqual(_vehicle_status_exit_code(payload), 0)
 
     def test_active_json_schema_remains_compatible_while_human_copy_is_narrower(self) -> None:
         result = run_automa(

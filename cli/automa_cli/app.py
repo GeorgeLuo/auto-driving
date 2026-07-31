@@ -1662,6 +1662,26 @@ def _handle_vehicles_status(args: argparse.Namespace) -> int:
         print(json.dumps(payload, indent=2, sort_keys=True))
     else:
         print(format_vehicle_status(payload))
+    return _vehicle_status_exit_code(payload)
+
+
+def _vehicle_status_exit_code(payload: dict[str, Any]) -> int:
+    cards = payload.get("vehicles")
+    status_cards = (
+        [card for card in cards if isinstance(card, dict)]
+        if isinstance(cards, list)
+        else [payload]
+    )
+    normal_next_steps = {
+        "automation_not_deployed",
+        "worker_stopped",
+    }
+    for card in status_cards:
+        next_action = card.get("next_action")
+        if not isinstance(next_action, dict):
+            continue
+        if str(next_action.get("reason")) not in normal_next_steps:
+            return 1
     return 0
 
 

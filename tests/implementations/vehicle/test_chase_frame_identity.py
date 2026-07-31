@@ -8,6 +8,8 @@ from unittest import mock
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReadRequest
 from implementations.vehicle.chase_sim.car import (
     CHASE_ATOMIC_EVALUATION_QUERY,
+    CHASE_PASSIVE_CAMERA_ID,
+    ChasePassiveCaptureError,
     ChaseSimCar,
 )
 from implementations.vehicle.chase_sim.frame_identity import (
@@ -133,6 +135,50 @@ def _session_debug(
             }
         },
     }
+
+
+def _with_passive_receipt(
+    capture: dict,
+    *,
+    control_input: dict | None = None,
+) -> dict:
+    identity = capture["frameIdentity"]
+    fingerprint = {
+        "gameId": identity["gameId"],
+        "scenarioId": "chaser-depth-obstacles",
+        "simulationEpoch": identity["simulationEpoch"],
+        "playback": {
+            "frameIndex": identity["frameIndex"],
+            "phase": "running",
+            "pendingAction": False,
+        },
+        "controlSource": "programmatic",
+        "controlInput": control_input,
+        "actorId": capture["actorId"],
+        "cameraId": CHASE_PASSIVE_CAMERA_ID,
+    }
+    capture["passiveObservation"] = {
+        "supported": True,
+        "queryId": CHASE_ATOMIC_EVALUATION_QUERY,
+        "actorId": capture["actorId"],
+        "cameraId": CHASE_PASSIVE_CAMERA_ID,
+        "preservedFields": [
+            "gameId",
+            "scenarioId",
+            "simulationEpoch",
+            "playback",
+            "controlSource",
+            "controlInput",
+            "actorId",
+            "cameraId",
+        ],
+        "preservation": {
+            "preserved": True,
+            "before": fingerprint,
+            "after": dict(fingerprint),
+        },
+    }
+    return capture
 
 
 class ChaseFrameIdentityTests(unittest.TestCase):
@@ -272,7 +318,12 @@ class ChaseFrameIdentityTests(unittest.TestCase):
 
         query.assert_called_once_with(
             CHASE_ATOMIC_EVALUATION_QUERY,
-            {"actorId": "chaser", "width": 640, "height": 480},
+            {
+                "actorId": "chaser",
+                "cameraId": CHASE_PASSIVE_CAMERA_ID,
+                "width": 640,
+                "height": 480,
+            },
             timeout_s=mock.ANY,
         )
         self.assertEqual(get_state.call_count, 2)
@@ -397,7 +448,7 @@ class ChaseFrameIdentityTests(unittest.TestCase):
         def query(query_id: str, payload: dict, *, timeout_s: float) -> dict:
             calls.append(f"play_game_query:{query_id}")
             timeouts.append(timeout_s)
-            return _atomic_capture()
+            return _with_passive_receipt(_atomic_capture())
 
         with mock.patch.object(car.client, "get_state", side_effect=state), mock.patch.object(
             car.client,
@@ -416,7 +467,7 @@ class ChaseFrameIdentityTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "available")
         self.assertFalse(result["mutation_attempted"])
-        self.assertEqual(len(timeouts), 5)
+        self.assertEqual(len(timeouts), 3)
         self.assertTrue(
             all(
                 timeouts[index] >= timeouts[index + 1]
@@ -431,9 +482,97 @@ class ChaseFrameIdentityTests(unittest.TestCase):
                 "get_state",
                 "get_play_debug",
                 f"play_game_query:{CHASE_ATOMIC_EVALUATION_QUERY}",
-                "get_state",
-                "get_play_debug",
             ],
+        )
+        self.assertEqual(
+            result["environment"]["simulation_epoch"],
+            "chase-run:test",
+        )
+        self.assertIsNone(result["environment"]["control_input"])
+        self.assertEqual(
+            result["passive_observation"]["camera_id"],
+            CHASE_PASSIVE_CAMERA_ID,
+        )
+
+    def test_passive_capture_rejects_invalid_declared_receipt(self) -> None:
+        car = ChaseSimCar(ws_url="ws://example.test/ws", timeout_s=0.5)
+        capture = _with_passive_receipt(_atomic_capture())
+        capture["passiveObservation"]["preservation"]["after"][
+            "simulationEpoch"
+        ] = "chase-run:other"
+        with mock.patch.object(
+            car.client,
+            "get_state",
+            return_value=_session_state(),
+        ), mock.patch.object(
+            car.client,
+            "get_play_debug",
+            return_value=_session_debug(),
+        ), mock.patch.object(
+            car.client,
+            "play_game_query",
+            return_value=capture,
+        ):
+            result = car.inspect_passive_capture()
+
+        self.assertEqual(result["status"], "unavailable")
+        self.assertEqual(result["code"], "simulator_state_changed")
+        self.assertIn(
+            "simulation_epoch",
+            result["session_preservation"]["changed_fields"],
+        )
+
+    def test_passive_capture_rejects_incomplete_nested_receipt_fields(self) -> None:
+        car = ChaseSimCar(ws_url="ws://example.test/ws", timeout_s=0.5)
+        capture = _with_passive_receipt(_atomic_capture())
+        for side in ("before", "after"):
+            fingerprint = capture["passiveObservation"]["preservation"][side]
+            fingerprint["playback"] = {"frameIndex": 12}
+            fingerprint["controlInput"] = {"source": "programmatic"}
+
+        with mock.patch.object(
+            car.client,
+            "get_state",
+            return_value=_session_state(),
+        ), mock.patch.object(
+            car.client,
+            "get_play_debug",
+            return_value=_session_debug(),
+        ), mock.patch.object(
+            car.client,
+            "play_game_query",
+            return_value=capture,
+        ):
+            result = car.inspect_passive_capture()
+
+        self.assertEqual(result["status"], "unsupported")
+        self.assertEqual(result["code"], "simulator_capability_missing")
+        self.assertIn("playback", result["session_preservation"]["unknown_fields"])
+        self.assertIn(
+            "control_input",
+            result["session_preservation"]["unknown_fields"],
+        )
+
+    def test_structured_missing_frontend_error_is_not_server_unreachable(self) -> None:
+        car = ChaseSimCar(ws_url="ws://example.test/ws", timeout_s=0.5)
+        with mock.patch.object(
+            car.client,
+            "get_state",
+            side_effect=MetricsUiWebSocketError(
+                "Frontend not connected",
+                code="frontend_not_connected",
+                details={
+                    "code": "frontend_not_connected",
+                    "command": "get_state",
+                },
+            ),
+        ), self.assertRaises(ChasePassiveCaptureError) as raised:
+            car.inspect_passive_capture()
+
+        self.assertEqual(raised.exception.code, "frontend_disconnected")
+        self.assertEqual(
+            raised.exception.details["protocol_error"]["command"],
+            "get_state",
         )
 
     def test_passive_capture_fails_closed_when_session_changes(self) -> None:

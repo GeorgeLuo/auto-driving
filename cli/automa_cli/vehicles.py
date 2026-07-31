@@ -225,16 +225,40 @@ def get_vehicle_status(
         vehicle_id=vehicle_id,
         view_timeout_s=remaining if remaining >= 0.05 else 0.0,
     )
-    deployed_by_id = {
+    all_deployed_by_id = {
         str(item.get("vehicle_id")): item
         for item in automation
         if isinstance(item, dict) and item.get("vehicle_id")
     }
+    deployed_by_id = {
+        deployed_id: item
+        for deployed_id, item in all_deployed_by_id.items()
+        if _is_chase_vehicle_id(deployed_id)
+    }
+    other_local_deployments = [
+        {
+            "vehicle_id": deployed_id,
+            "inspection_command": (
+                "./cli/automa vehicles automation status "
+                f"--id {deployed_id}"
+            ),
+        }
+        for deployed_id in sorted(set(all_deployed_by_id) - set(deployed_by_id))
+    ]
     discoverable_by_id = {
         str(item.get("vehicle_id")): item
         for item in discovery.get("vehicles", [])
         if isinstance(item, dict) and item.get("vehicle_id")
     }
+    if (
+        vehicle_id is not None
+        and vehicle_id in all_deployed_by_id
+        and vehicle_id not in deployed_by_id
+    ):
+        raise ValueError(
+            f"{vehicle_id!r} is a non-Chase local deployment; inspect it with "
+            f"`./cli/automa vehicles automation status --id {vehicle_id}`"
+        )
     known_ids = set(discoverable_by_id) | set(deployed_by_id)
     if vehicle_id is not None:
         known_ids = {vehicle_id}
@@ -304,6 +328,7 @@ def get_vehicle_status(
         "timeout_s": operation_timeout,
         "elapsed_ms": int((time.monotonic() - started) * 1000),
         "vehicles": cards,
+        "other_local_deployments": other_local_deployments,
     }
 
 
@@ -312,12 +337,26 @@ def format_vehicle_status(payload: dict[str, Any]) -> str:
 
     cards = payload.get("vehicles")
     if isinstance(cards, list):
-        lines = [f"Known vehicles: {len(cards)}"]
+        lines = [f"Known Chase vehicles: {len(cards)}"]
         for card in cards:
             if isinstance(card, dict):
                 lines.extend(["", *_format_vehicle_status_card(card)])
+        other = payload.get("other_local_deployments")
+        if isinstance(other, list) and other:
+            lines.extend(["", f"Other local deployments: {len(other)}"])
+            for deployment in other:
+                if not isinstance(deployment, dict):
+                    continue
+                lines.append(
+                    f"- {deployment.get('vehicle_id', 'unknown')}: "
+                    f"{deployment.get('inspection_command', 'inspection unavailable')}"
+                )
         return "\n".join(lines)
     return "\n".join(_format_vehicle_status_card(payload))
+
+
+def _is_chase_vehicle_id(vehicle_id: str) -> bool:
+    return vehicle_id == "chase-sim-chaser" or vehicle_id.startswith("chase-sim-")
 
 
 def _build_vehicle_status_card(
@@ -769,13 +808,31 @@ def _format_vehicle_status_card(card: dict[str, Any]) -> list[str]:
         recovery = next_action.get("command")
         if recovery is None:
             external = next_action.get("external_change")
-            recovery = (
-                json.dumps(external, sort_keys=True)
-                if isinstance(external, dict)
-                else str(external)
-            )
+            recovery = _format_external_status_recovery(external)
         lines.append(f"Next action: {recovery}")
     return lines
+
+
+def _format_external_status_recovery(external: Any) -> str:
+    if not isinstance(external, dict):
+        return str(external)
+    change = external.get("change")
+    then = external.get("then")
+    if change and then:
+        return f"{change}; then run `{then}`"
+    component = str(external.get("component") or "External component")
+    missing = external.get("missing_capability")
+    failing_path = external.get("failing_path")
+    minimum = external.get("minimum_contract")
+    if missing:
+        summary = f"{component} must expose {missing}"
+    elif failing_path:
+        summary = f"{component} must repair {failing_path}"
+    else:
+        summary = f"{component} change required"
+    if minimum:
+        summary += f": {minimum}"
+    return summary
 
 
 def _format_vehicle(index: int, vehicle: dict[str, Any]) -> list[str]:

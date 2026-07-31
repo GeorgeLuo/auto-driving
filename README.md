@@ -95,7 +95,7 @@ The command groups intentionally distinguish different kinds of state:
 | Command | Reads or changes |
 |---|---|
 | `vehicles active` | Probes discoverable PiCar and Chase endpoints; does not imply deployment, worker, or view state. |
-| `vehicles status` | Reads the complete simulator, vehicle, deployment, worker, capture, and view state without changing it. |
+| `vehicles status` | Reads the complete Chase simulator, vehicle, deployment, worker, capture, and view state without changing it; other local deployments are listed separately with their inspection command. |
 | `vehicles update perception` | Packages code and stages a vehicle perception activation locally. |
 | `vehicles update decision` | Packages code and stages a decision activation locally. |
 | `vehicles update memory` | Packages code and stages a vehicle memory activation locally (default `bounded_evidence`). |

@@ -80,10 +80,22 @@ It does not imply a deployed bundle, running worker, or healthy browser view.
 Its JSON remains `automa_vehicle_discovery_v0`; aggregate status JSON is
 `automa_vehicle_status_v1`.
 
+Aggregate status evaluates Chase cards only. Other local deployments, such as
+PiRacer, are listed separately with their `vehicles automation status` command
+instead of being assigned Chase simulator, camera, or frontend state.
+
 An absent or malformed evaluator reference does not block camera perception.
 It is excluded from perception, observation, memory, and decision inputs.
 Reference-dependent scoring remains unavailable until a valid reference is
 present.
+
+When Metrics UI returns `protocol.passiveObservation` and an atomic
+`passiveObservation.preservation` receipt, Automa validates the advertised
+actor, camera, preserved fields, equal before/after fingerprints, and matching
+sensor identity. The receipt is authoritative because it is produced inside
+the same frontend query as the camera capture. Older payloads fall back to
+separate read-only state/debug checks and remain fail-closed when required
+fields are unavailable.
 
 ## Timeout Semantics
 
@@ -93,10 +105,11 @@ receive only the remaining time; the budget is not restarted for each phase.
 JSON includes `timeout_s`, total `elapsed_ms`, and per-phase `duration_ms`
 diagnostics. A timeout names the last incomplete phase and layer.
 
-The shared default is five seconds. A disconnected frontend commonly consumes
-most of that budget because the WebSocket server is reachable and Automa waits
-for the frontend-owned response until the deadline. This is different from an
-immediate connection refusal and is reported as `frontend_disconnected`.
+The shared default is five seconds. A server-reported
+`frontend_not_connected` response fails immediately as
+`frontend_disconnected`. A stale registered frontend socket that no longer
+answers can still consume the remaining budget before Automa can distinguish
+it from a slow frontend.
 
 ## Recovery
 
@@ -114,6 +127,11 @@ blocked. Run the command as printed, or perform the named external change.
 | Worker stopped | Run the printed observation-only `automation run --open-view` command |
 | View stale/unavailable | Use the printed worker recovery; a recorded URL is not treated as healthy |
 
+Status exits nonzero for failed simulator, capture, worker-error, and view-error
+gates. Normal lifecycle next steps—an undeployed bundle or an intentionally
+stopped worker—remain successful status reads and print the command that
+advances the journey.
+
 Simulator preparation is deliberately outside passive attachment:
 
 ```sh
@@ -124,8 +142,10 @@ That command may launch a browser, select Play, and select a scenario. Status,
 staging, observation-only automation, viewing, and cleanup never invoke it
 implicitly.
 
-Metrics UI's minimum passive-observation capability request is tracked in
-[metrics-ui#150](https://github.com/GeorgeLuo/metrics-ui/issues/150). When that
-external contract is insufficient, Automa reports
+Metrics UI's passive-observation capability request is tracked in
+[metrics-ui#150](https://github.com/GeorgeLuo/metrics-ui/issues/150), with the
+protocol implementation under review in
+[metrics-ui#151](https://github.com/GeorgeLuo/metrics-ui/pull/151). When the
+running external contract is insufficient, Automa reports
 `simulator_capability_missing` with protocol evidence and the minimum requested
 change instead of silently selecting a scenario or taking control.

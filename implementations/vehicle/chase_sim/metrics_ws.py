@@ -28,6 +28,17 @@ PASSIVE_SESSION_FIELDS = (
 class MetricsUiWebSocketError(RuntimeError):
     """Raised when the Metrics UI WebSocket control channel fails."""
 
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str | None = None,
+        details: dict[str, Any] | None = None,
+    ):
+        self.code = code
+        self.details = details or {}
+        super().__init__(message)
+
 
 def _read_exact(sock: socket.socket, count: int) -> bytes:
     chunks: list[bytes] = []
@@ -253,7 +264,20 @@ class MetricsUiWsClient:
                 if response.get("request_id") not in (request_id, None):
                     continue
                 if response.get("type") == "error":
-                    raise MetricsUiWebSocketError(str(response.get("error") or "Metrics UI error"))
+                    payload = (
+                        response.get("payload")
+                        if isinstance(response.get("payload"), dict)
+                        else {}
+                    )
+                    raise MetricsUiWebSocketError(
+                        str(response.get("error") or "Metrics UI error"),
+                        code=(
+                            str(payload.get("code"))
+                            if payload.get("code")
+                            else None
+                        ),
+                        details=payload,
+                    )
                 if response.get("type") == "ack":
                     ack = response
                     if wait_for_frontend_ack:
@@ -365,7 +389,20 @@ class MetricsUiWsClient:
             if response.get("type") == "ack" and response.get("payload") == "registered as agent":
                 return
             if response.get("type") == "error":
-                raise MetricsUiWebSocketError(str(response.get("error") or "Registration failed"))
+                payload = (
+                    response.get("payload")
+                    if isinstance(response.get("payload"), dict)
+                    else {}
+                )
+                raise MetricsUiWebSocketError(
+                    str(response.get("error") or "Registration failed"),
+                    code=(
+                        str(payload.get("code"))
+                        if payload.get("code")
+                        else None
+                    ),
+                    details=payload,
+                )
 
 
 def build_chase_session_fingerprint(

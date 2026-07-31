@@ -221,6 +221,20 @@ def _debug() -> dict:
 
 
 def _atomic_capture() -> dict:
+    fingerprint = {
+        "gameId": "chase",
+        "scenarioId": "fixture-scenario",
+        "simulationEpoch": "fixture-epoch",
+        "playback": {
+            "frameIndex": 12,
+            "phase": "running",
+            "pendingAction": False,
+        },
+        "controlSource": "programmatic",
+        "controlInput": None,
+        "actorId": "chaser",
+        "cameraId": "front_camera",
+    }
     return {
         "contractVersion": 1,
         "captureId": "fixture-capture-12",
@@ -241,5 +255,26 @@ def _atomic_capture() -> dict:
         },
         "evaluator": {
             "classification": "non-sensor",
+        },
+        "passiveObservation": {
+            "supported": True,
+            "queryId": "atomic-evaluation-capture",
+            "actorId": "chaser",
+            "cameraId": "front_camera",
+            "preservedFields": [
+                "gameId",
+                "scenarioId",
+                "simulationEpoch",
+                "playback",
+                "controlSource",
+                "controlInput",
+                "actorId",
+                "cameraId",
+            ],
+            "preservation": {
+                "preserved": True,
+                "before": fingerprint,
+                "after": dict(fingerprint),
+            },
         },
     }

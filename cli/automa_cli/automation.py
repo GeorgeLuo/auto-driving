@@ -1891,10 +1891,19 @@ def _collect_automation_status(
             or state_pid == process_pid
         )
         run_id = state.get("run_id") if isinstance(state.get("run_id"), str) else None
-        view_probe_timeout_s = (
-            0.25 if view_timeout_s is None else min(0.25, max(0.0, view_timeout_s))
-        )
-        if view_timeout_s is not None and view_timeout_s <= 0:
+        # view_timeout_s is the remaining command budget for all view probes
+        # and warm-up sleeps. When unset (internal callers), allow a short
+        # default window so post-start status can wait for correlation.
+        if view_timeout_s is None:
+            view_budget_s = 1.0
+        else:
+            view_budget_s = max(0.0, float(view_timeout_s))
+        view_deadline = time.monotonic() + view_budget_s
+
+        def _remaining_view_budget() -> float:
+            return max(0.0, view_deadline - time.monotonic())
+
+        if view_budget_s <= 0:
             published_view = {
                 "schema": "automa_perception_view_v1",
                 "available": False,
@@ -1906,9 +1915,10 @@ def _collect_automation_status(
                 ),
             }
         else:
+            first_probe_timeout_s = min(0.25, _remaining_view_budget())
             published_view = get_perception_view_status(
                 automation_dir,
-                timeout_s=view_probe_timeout_s,
+                timeout_s=first_probe_timeout_s,
                 expected_run_id=run_id,
                 expected_worker_pid=pid if isinstance(pid, int) else None,
             )
@@ -1931,20 +1941,26 @@ def _collect_automation_status(
             )
             # Live workers publish camera then perception asynchronously. Status
             # must not fail the frontier gate by sampling the gap between those
-            # publishes; poll briefly for a correlated current view.
+            # publishes; poll briefly for a correlated current view — always
+            # capped by the remaining command budget.
             if (
                 worker_status == "running"
                 and pid_alive
                 and not published_view.get("available")
                 and published_view.get("status") in {None, "warming", "unavailable"}
-                and (view_timeout_s is None or view_timeout_s > 0)
+                and _remaining_view_budget() > 0
             ):
-                deadline = time.monotonic() + 1.0
-                while time.monotonic() < deadline:
-                    time.sleep(0.1)
+                while _remaining_view_budget() > 0:
+                    sleep_s = min(0.1, _remaining_view_budget())
+                    if sleep_s <= 0:
+                        break
+                    time.sleep(sleep_s)
+                    probe_timeout_s = min(0.25, _remaining_view_budget())
+                    if probe_timeout_s <= 0:
+                        break
                     published_view = get_perception_view_status(
                         automation_dir,
-                        timeout_s=view_probe_timeout_s,
+                        timeout_s=probe_timeout_s,
                         expected_run_id=run_id,
                         expected_worker_pid=pid if isinstance(pid, int) else None,
                     )

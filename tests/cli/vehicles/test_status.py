@@ -359,6 +359,71 @@ class VehicleStatusTests(unittest.TestCase):
         self.assertNotIn('{"', next_line)
         self.assertEqual(_vehicle_status_exit_code(payload), 1)
 
+    def test_mid_capture_frontend_delivery_failure_recovers_with_browser_reload(
+        self,
+    ) -> None:
+        """frontend_unresponsive during sensor_capture must not become a capability hint."""
+
+        from implementations.vehicle.chase_sim.car import ChasePassiveCaptureError
+
+        candidate = Candidate(
+            "chase-sim",
+            "ws://localhost:5050/ws/control",
+            "cli",
+        )
+
+        def _raise_frontend_unresponsive(*_args, **_kwargs):
+            raise ChasePassiveCaptureError(
+                code="frontend_disconnected",
+                message="Passive capture could not complete sensor_capture",
+                details={
+                    "incomplete_phase": "sensor_capture",
+                    "protocol_code": "frontend_unresponsive",
+                    "protocol_error": {
+                        "code": "frontend_unresponsive",
+                        "command": "play_game_query",
+                    },
+                    "phases": {
+                        "state_before": {"status": "complete", "duration_ms": 1},
+                        "debug_before": {"status": "complete", "duration_ms": 1},
+                    },
+                },
+            )
+
+        with patch(
+            "cli.automa_cli.vehicles.ChaseSimCar.inspect_passive_capture",
+            side_effect=_raise_frontend_unresponsive,
+        ):
+            from cli.automa_cli.vehicles import _probe_chase_sim
+
+            probe = _probe_chase_sim(candidate, timeout_s=1.0)
+
+        self.assertFalse(probe.active)
+        self.assertFalse(probe.diagnostics["frontend_connected"])
+        self.assertEqual(probe.diagnostics["error_code"], "frontend_disconnected")
+        self.assertIn("Open or reload", probe.error or "")
+        self.assertNotIn("atomic-evaluation-capture", probe.error or "")
+
+        with patch(
+            "cli.automa_cli.vehicles._probe_chase_sim",
+            return_value=probe,
+        ), patch(
+            "cli.automa_cli.automation._collect_automation_status",
+            return_value=[],
+        ):
+            payload = get_vehicle_status(
+                vehicle_id="chase-sim-chaser",
+                chase_url="http://localhost:5050",
+            )
+
+        self.assertEqual(payload["layers"]["simulator_frontend"]["state"], "disconnected")
+        self.assertEqual(payload["readiness"]["blocking_layer"], "simulator_frontend")
+        self.assertIn("Open or reload", payload["next_action"]["external_change"]["change"])
+        self.assertNotIn(
+            "atomic-evaluation-capture",
+            json.dumps(payload["next_action"]),
+        )
+
         payload["next_action"] = {
             "reason": "automation_not_deployed",
             "command": "./cli/automa vehicles update perception",

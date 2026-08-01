@@ -245,6 +245,15 @@ class ChaseFrameIdentityTests(unittest.TestCase):
         self.assertEqual(raised.exception.code, "capture_image_invalid")
         self.assertEqual(raised.exception.path, "sensor.image.dataUrl")
 
+        # Valid base64 that is not image bytes must fail at the sensor boundary.
+        non_image = _atomic_capture()
+        non_image["sensor"]["image"]["dataUrl"] = "data:image/png;base64,aGVsbG8="
+        with self.assertRaises(ChaseCaptureValidationError) as raised:
+            validate_chase_sensor_capture(non_image)
+        self.assertEqual(raised.exception.code, "capture_image_invalid")
+        self.assertEqual(raised.exception.path, "sensor.image.dataUrl")
+        self.assertIn("not a valid image", raised.exception.detail)
+
     def test_alignment_requires_epoch_and_strictly_increasing_frames(self) -> None:
         shadow = build_chase_shadow_reference(_atomic_capture(frame_index=7))
         assert shadow is not None
@@ -574,6 +583,57 @@ class ChaseFrameIdentityTests(unittest.TestCase):
             raised.exception.details["protocol_error"]["command"],
             "get_state",
         )
+        self.assertEqual(
+            raised.exception.details["protocol_code"],
+            "frontend_not_connected",
+        )
+        self.assertEqual(raised.exception.to_dict()["layer"], "simulator_frontend")
+
+    def test_frontend_delivery_failures_during_sensor_capture_map_to_frontend_layer(
+        self,
+    ) -> None:
+        """Absent, unresponsive, and mid-request disconnect stay on simulator_frontend."""
+
+        for protocol_code in (
+            "frontend_not_connected",
+            "frontend_unresponsive",
+            "frontend_disconnected",
+        ):
+            with self.subTest(protocol_code=protocol_code):
+                car = ChaseSimCar(ws_url="ws://example.test/ws", timeout_s=0.5)
+                with mock.patch.object(
+                    car.client,
+                    "get_state",
+                    return_value=_session_state(),
+                ), mock.patch.object(
+                    car.client,
+                    "get_play_debug",
+                    return_value=_session_debug(),
+                ), mock.patch.object(
+                    car.client,
+                    "play_game_query",
+                    side_effect=MetricsUiWebSocketError(
+                        f"frontend delivery failed: {protocol_code}",
+                        code=protocol_code,
+                        details={"code": protocol_code, "command": "play_game_query"},
+                    ),
+                ), self.assertRaises(ChasePassiveCaptureError) as raised:
+                    car.inspect_passive_capture()
+
+                exc = raised.exception
+                self.assertEqual(exc.code, "frontend_disconnected")
+                self.assertEqual(exc.to_dict()["layer"], "simulator_frontend")
+                self.assertEqual(exc.details["protocol_code"], protocol_code)
+                self.assertEqual(
+                    exc.details["protocol_error"]["code"],
+                    protocol_code,
+                )
+                self.assertEqual(exc.details["incomplete_phase"], "sensor_capture")
+                self.assertIn("reload", exc.details["minimum_external_change"].lower())
+                self.assertNotIn(
+                    "atomic-evaluation-capture",
+                    exc.details["minimum_external_change"],
+                )
 
     def test_passive_capture_fails_closed_when_session_changes(self) -> None:
         car = ChaseSimCar(ws_url="ws://example.test/ws", timeout_s=0.5)

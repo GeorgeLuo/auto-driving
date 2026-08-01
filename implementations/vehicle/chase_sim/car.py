@@ -36,6 +36,17 @@ CHASE_SET_CHASER_INPUT = "set-chaser-input"
 CHASE_SET_CHASER_CONTROL_SOURCE = "set-chaser-control-source"
 CHASE_ATOMIC_EVALUATION_QUERY = "atomic-evaluation-capture"
 CHASE_PASSIVE_CAMERA_ID = "front_camera"
+# Metrics UI delivery failures: absent frontend, hung frontend, or mid-request drop.
+# Automa normalizes them to frontend_disconnected so status/recovery stay on
+# simulator_frontend (reload browser), while the precise protocol code is kept
+# in error details.
+FRONTEND_DELIVERY_PROTOCOL_CODES = frozenset(
+    {
+        "frontend_not_connected",
+        "frontend_unresponsive",
+        "frontend_disconnected",
+    }
+)
 CHASE_PASSIVE_PRESERVED_FIELDS = (
     "gameId",
     "scenarioId",
@@ -951,12 +962,33 @@ class ChaseSimCar(CarInterface):
             raise
         except (MetricsUiWebSocketError, OSError, TimeoutError, ValueError) as exc:
             elapsed_ms = int((time.monotonic() - phase_started) * 1000)
-            effective_error_code = (
-                "frontend_disconnected"
-                if isinstance(exc, MetricsUiWebSocketError)
-                and exc.code == "frontend_not_connected"
-                else error_code
+            protocol_code = (
+                exc.code
+                if isinstance(exc, MetricsUiWebSocketError) and isinstance(exc.code, str)
+                else None
             )
+            is_frontend_delivery = protocol_code in FRONTEND_DELIVERY_PROTOCOL_CODES
+            effective_error_code = (
+                "frontend_disconnected" if is_frontend_delivery else error_code
+            )
+            protocol_error = (
+                dict(exc.details)
+                if isinstance(exc, MetricsUiWebSocketError)
+                and isinstance(exc.details, dict)
+                else {}
+            )
+            if protocol_code and "code" not in protocol_error:
+                protocol_error["code"] = protocol_code
+            if is_frontend_delivery:
+                minimum_external_change = (
+                    "Open or reload the Metrics UI browser frontend at the exact "
+                    "HTTP origin, then rerun status."
+                )
+            else:
+                minimum_external_change = (
+                    "Metrics UI must expose atomic-evaluation-capture and the "
+                    "required session fingerprint fields without mutation."
+                )
             raise ChasePassiveCaptureError(
                 code=effective_error_code,
                 message=(
@@ -967,15 +999,9 @@ class ChaseSimCar(CarInterface):
                     "incomplete_phase": name,
                     "elapsed_ms": elapsed_ms,
                     "protocol_evidence": str(exc),
-                    "protocol_error": (
-                        exc.details
-                        if isinstance(exc, MetricsUiWebSocketError)
-                        else None
-                    ),
-                    "minimum_external_change": (
-                        "Metrics UI must expose atomic-evaluation-capture and the "
-                        "required session fingerprint fields without mutation."
-                    ),
+                    "protocol_code": protocol_code,
+                    "protocol_error": protocol_error or None,
+                    "minimum_external_change": minimum_external_change,
                     "mutation_attempted": False,
                     "phases": phases,
                 },

@@ -1173,15 +1173,22 @@ def _probe_chase_sim(candidate: Candidate, *, timeout_s: float) -> ProbeResult:
             if isinstance(exc.details.get("phases"), dict)
             else {}
         )
+        # Frontend delivery failures (absent / unresponsive / mid-request drop)
+        # always block at simulator_frontend even if an earlier phase completed.
+        frontend_delivery_failure = exc.code == "frontend_disconnected"
         diagnostics.update(
             {
                 "ws_server": exc.code != "simulator_unreachable",
                 "frontend_connected": (
-                    "debug_before" in completed
-                    or exc.code not in {"simulator_unreachable", "frontend_disconnected"}
+                    not frontend_delivery_failure
+                    and exc.code != "simulator_unreachable"
+                    and "debug_before" in completed
                 ),
-                "chase_loaded": exc.code
-                not in {"simulator_unreachable", "frontend_disconnected", "wrong_game"},
+                "chase_loaded": (
+                    not frontend_delivery_failure
+                    and exc.code
+                    not in {"simulator_unreachable", "frontend_disconnected", "wrong_game"}
+                ),
                 "error_code": exc.code,
                 "error_details": exc.details,
                 "elapsed_ms": int((time.monotonic() - started) * 1000),

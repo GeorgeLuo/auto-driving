@@ -11,8 +11,11 @@ from __future__ import annotations
 import base64
 import binascii
 import math
+from io import BytesIO
 from typing import Any
 from urllib.parse import unquote_to_bytes
+
+from PIL import Image
 
 
 class ChaseCaptureValidationError(ValueError):
@@ -538,20 +541,29 @@ def _validate_data_url(data_url: str) -> None:
                 "sensor.image.dataUrl",
                 f"invalid URL-encoded payload: {exc}",
             )
-        if not decoded:
+    else:
+        try:
+            decoded = base64.b64decode(payload, validate=True)
+        except (ValueError, binascii.Error) as exc:
             _capture_error(
                 "capture_image_invalid",
                 "sensor.image.dataUrl",
-                "decoded payload is empty",
+                f"invalid base64 payload: {exc}",
             )
-        return
-    try:
-        base64.b64decode(payload, validate=True)
-    except (ValueError, binascii.Error) as exc:
+    if not decoded:
         _capture_error(
             "capture_image_invalid",
             "sensor.image.dataUrl",
-            f"invalid base64 payload: {exc}",
+            "decoded payload is empty",
+        )
+    try:
+        with Image.open(BytesIO(decoded)) as image:
+            image.load()
+    except Exception as exc:  # Pillow raises many format-specific errors
+        _capture_error(
+            "capture_image_invalid",
+            "sensor.image.dataUrl",
+            f"decoded payload is not a valid image: {exc}",
         )
 
 

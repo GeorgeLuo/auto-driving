@@ -40,7 +40,11 @@ class ChaseCaptureValidationError(ValueError):
 
 
 def coerce_simulator_frame_index(value: Any) -> int | None:
-    """Return a non-negative int frame index, or None when absent/invalid."""
+    """Return a non-negative int frame index, or None when absent/invalid.
+
+    Tolerant helper for local/serialized metadata (snapshots, files, memory).
+    Untrusted Metrics UI wire fields must use require_protocol_frame_index.
+    """
 
     if isinstance(value, bool):
         return None
@@ -55,6 +59,18 @@ def coerce_simulator_frame_index(value: Any) -> int | None:
             return None
         return parsed if parsed >= 0 else None
     return None
+
+
+def require_protocol_frame_index(value: Any) -> int | None:
+    """Return a type-strict non-negative JSON integer, or None when invalid.
+
+    Used at the untrusted capture/evaluator wire boundary. Rejects booleans,
+    numeric strings, and floats so protocol drift is not silently normalized.
+    """
+
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        return None
+    return value
 
 
 def format_chase_frame_id(frame_index: int) -> str:
@@ -149,7 +165,7 @@ def validate_chase_sensor_capture(
             "frameIdentity.simulationEpoch",
             "expected a non-empty string",
         )
-    frame_index = coerce_simulator_frame_index(identity.get("frameIndex"))
+    frame_index = require_protocol_frame_index(identity.get("frameIndex"))
     if frame_index is None:
         _capture_error(
             "capture_identity_invalid",
@@ -282,7 +298,7 @@ def evaluate_chase_evaluator_reference(
             "evaluator.reference.phase",
             "expected a non-empty string",
         )
-    action_frame_index = coerce_simulator_frame_index(reference.get("actionFrameIndex"))
+    action_frame_index = require_protocol_frame_index(reference.get("actionFrameIndex"))
     if action_frame_index is None:
         return _evaluator_invalid(
             "evaluator.reference.actionFrameIndex",

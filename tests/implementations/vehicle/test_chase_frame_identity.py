@@ -230,6 +230,45 @@ class ChaseFrameIdentityTests(unittest.TestCase):
         self.assertEqual(evaluator["status"], "invalid")
         self.assertEqual(evaluator["path"], "evaluator.reference.actionFrameIndex")
 
+    def test_protocol_frame_indexes_are_type_strict_on_the_wire(self) -> None:
+        """Wire fields reject string/bool coercion; JSON integers remain valid."""
+
+        # Valid JSON integer still accepted.
+        sensor = validate_chase_sensor_capture(_atomic_capture(frame_index=42))
+        self.assertEqual(sensor["simulator_frame_index"], 42)
+        evaluator = evaluate_chase_evaluator_reference(
+            _atomic_capture(frame_index=42, action_frame_index=42),
+            sensor=sensor,
+        )
+        self.assertEqual(evaluator["status"], "available")
+        self.assertEqual(evaluator["reference"]["action_frame_index"], 42)
+
+        for bad_value in ("42", True, 42.0, -1, None):
+            with self.subTest(field="frameIdentity.frameIndex", bad_value=bad_value):
+                capture = _atomic_capture()
+                capture["frameIdentity"]["frameIndex"] = bad_value
+                with self.assertRaises(ChaseCaptureValidationError) as raised:
+                    validate_chase_sensor_capture(capture)
+                self.assertEqual(raised.exception.code, "capture_identity_invalid")
+                self.assertEqual(raised.exception.path, "frameIdentity.frameIndex")
+
+            with self.subTest(
+                field="evaluator.reference.actionFrameIndex",
+                bad_value=bad_value,
+            ):
+                capture = _atomic_capture(frame_index=42, action_frame_index=42)
+                capture["evaluator"]["reference"]["actionFrameIndex"] = bad_value
+                result = evaluate_chase_evaluator_reference(
+                    capture,
+                    sensor=validate_chase_sensor_capture(capture),
+                )
+                self.assertEqual(result["status"], "invalid")
+                self.assertEqual(
+                    result["path"],
+                    "evaluator.reference.actionFrameIndex",
+                )
+                self.assertIsNone(result["reference"])
+
     def test_required_capture_diagnostics_name_exact_first_path(self) -> None:
         missing_epoch = _atomic_capture()
         missing_epoch["frameIdentity"].pop("simulationEpoch")

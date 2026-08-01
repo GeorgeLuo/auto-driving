@@ -1057,17 +1057,31 @@ class ChaseSimCar(CarInterface):
         height = int(sensor["image"]["height"])
 
         byte_count = 0
-        if isinstance(image.get("svg"), str) and path.suffix.lower() == ".svg":
-            path.write_text(image["svg"], encoding="utf-8")
-            content_type = "image/svg+xml"
-        elif isinstance(image.get("dataUrl"), str):
+        suffix = path.suffix.lower()
+        if isinstance(image.get("dataUrl"), str) and image["dataUrl"]:
             content_type, data = _decode_data_url(image["dataUrl"])
             byte_count = len(data)
             path.write_bytes(data)
+        elif isinstance(image.get("svg"), str) and image["svg"].strip():
+            # Validated captures require raster dataUrl; keep a structured error
+            # if an unvalidated/legacy payload still reaches the write path.
+            raise ChaseCaptureValidationError(
+                code="capture_image_invalid",
+                path="sensor.image.svg",
+                message=(
+                    "SVG-only captures are not accepted for "
+                    f"{suffix or 'the requested output'}; provide a decodable "
+                    "raster dataUrl compatible with the worker .png output"
+                ),
+            )
         else:
-            raise ValueError(
-                "Chase atomic evaluation capture has no image encoding compatible "
-                f"with {path.suffix or 'the requested output'}"
+            raise ChaseCaptureValidationError(
+                code="capture_image_invalid",
+                path="sensor.image.dataUrl",
+                message=(
+                    "Chase atomic evaluation capture has no raster image encoding "
+                    f"compatible with {suffix or 'the requested output'}"
+                ),
             )
         if byte_count == 0 and path.exists():
             byte_count = path.stat().st_size

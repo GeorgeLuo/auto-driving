@@ -1862,6 +1862,29 @@ def _collect_automation_status(
     else:
         candidates = []
 
+    # One wall-clock budget for every runtime's view probes and warm-up sleeps.
+    # Aggregate status without --id must not restart the full timeout per card.
+    if view_timeout_s is None:
+        view_budget_s = 1.0
+    else:
+        view_budget_s = max(0.0, float(view_timeout_s))
+    view_deadline = time.monotonic() + view_budget_s
+
+    def _remaining_view_budget() -> float:
+        return max(0.0, view_deadline - time.monotonic())
+
+    def _exhausted_view_status() -> dict[str, Any]:
+        return {
+            "schema": "automa_perception_view_v1",
+            "available": False,
+            "status": "unavailable",
+            "url": None,
+            "reason": (
+                "command deadline was exhausted before current-generation "
+                "view health could be checked"
+            ),
+        }
+
     statuses = []
     for vehicle_runtime_dir in candidates:
         vehicle_name = vehicle_runtime_dir.name
@@ -1891,31 +1914,11 @@ def _collect_automation_status(
             or state_pid == process_pid
         )
         run_id = state.get("run_id") if isinstance(state.get("run_id"), str) else None
-        # view_timeout_s is the remaining command budget for all view probes
-        # and warm-up sleeps. When unset (internal callers), allow a short
-        # default window so post-start status can wait for correlation.
-        if view_timeout_s is None:
-            view_budget_s = 1.0
+        remaining_view_budget = _remaining_view_budget()
+        if remaining_view_budget <= 0:
+            published_view = _exhausted_view_status()
         else:
-            view_budget_s = max(0.0, float(view_timeout_s))
-        view_deadline = time.monotonic() + view_budget_s
-
-        def _remaining_view_budget() -> float:
-            return max(0.0, view_deadline - time.monotonic())
-
-        if view_budget_s <= 0:
-            published_view = {
-                "schema": "automa_perception_view_v1",
-                "available": False,
-                "status": "unavailable",
-                "url": None,
-                "reason": (
-                    "command deadline was exhausted before current-generation "
-                    "view health could be checked"
-                ),
-            }
-        else:
-            first_probe_timeout_s = min(0.25, _remaining_view_budget())
+            first_probe_timeout_s = min(0.25, remaining_view_budget)
             published_view = get_perception_view_status(
                 automation_dir,
                 timeout_s=first_probe_timeout_s,

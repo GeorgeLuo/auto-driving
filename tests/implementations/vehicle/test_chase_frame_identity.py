@@ -254,6 +254,61 @@ class ChaseFrameIdentityTests(unittest.TestCase):
         self.assertEqual(raised.exception.path, "sensor.image.dataUrl")
         self.assertIn("not a valid image", raised.exception.detail)
 
+        # SVG-only (valid or garbage) is not consumable by the worker .png path.
+        valid_svg = _atomic_capture()
+        valid_svg["sensor"]["image"].pop("dataUrl", None)
+        valid_svg["sensor"]["image"]["svg"] = (
+            '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1">'
+            '<rect width="1" height="1"/></svg>'
+        )
+        with self.assertRaises(ChaseCaptureValidationError) as raised:
+            validate_chase_sensor_capture(valid_svg)
+        self.assertEqual(raised.exception.code, "capture_image_invalid")
+        self.assertEqual(raised.exception.path, "sensor.image.svg")
+        self.assertIn("SVG-only", raised.exception.detail)
+
+        malformed_svg = _atomic_capture()
+        malformed_svg["sensor"]["image"].pop("dataUrl", None)
+        malformed_svg["sensor"]["image"]["svg"] = "not-actually-svg"
+        with self.assertRaises(ChaseCaptureValidationError) as raised:
+            validate_chase_sensor_capture(malformed_svg)
+        self.assertEqual(raised.exception.code, "capture_image_invalid")
+        self.assertEqual(raised.exception.path, "sensor.image.svg")
+
+    def test_png_worker_path_rejects_svg_only_capture_payload(self) -> None:
+        """Worker write path for .png must raise capture_image_invalid, not ValueError."""
+
+        car = ChaseSimCar(ws_url="ws://example.test/ws", timeout_s=0.5)
+        svg_only = {
+            "dataUrl": None,
+            "svg": (
+                '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1">'
+                '<rect width="1" height="1"/></svg>'
+            ),
+        }
+        with mock.patch.object(
+            car,
+            "inspect_passive_capture",
+            return_value={
+                "status": "available",
+                "sensor": {
+                    "capture_id": "cap-1",
+                    "simulation_epoch": "chase-run:test",
+                    "simulator_frame_index": 7,
+                    "image": {"width": 1, "height": 1},
+                },
+                "image": svg_only,
+                "evaluator_reference": {"status": "unavailable", "reason": "reference_missing"},
+                "session_preservation": {"preserved": True},
+            },
+        ), tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "frame.png"
+            with self.assertRaises(ChaseCaptureValidationError) as raised:
+                car._capture_front_camera(path, endpoint="atomic-evaluation-capture")
+        self.assertEqual(raised.exception.code, "capture_image_invalid")
+        self.assertEqual(raised.exception.path, "sensor.image.svg")
+        self.assertIn(".png", raised.exception.detail)
+
     def test_alignment_requires_epoch_and_strictly_increasing_frames(self) -> None:
         shadow = build_chase_shadow_reference(_atomic_capture(frame_index=7))
         assert shadow is not None

@@ -184,12 +184,21 @@ def validate_chase_sensor_capture(
         _validate_data_url(data_url)
         encoding = "data_url"
     elif isinstance(svg, str) and svg.strip():
-        encoding = "svg"
+        # Metrics UI may advertise SVG as a fallback image type, but Automa's
+        # observation worker always requests a raster path (typically .png).
+        # Accepting SVG-only here deferred a generic write-path ValueError; fail
+        # closed at the sensor boundary with an exact path instead.
+        _capture_error(
+            "capture_image_invalid",
+            "sensor.image.svg",
+            "SVG-only captures are not accepted; provide a decodable raster "
+            "dataUrl compatible with the worker .png output",
+        )
     else:
         _capture_error(
             "capture_image_invalid",
             "sensor.image.dataUrl",
-            "expected a decodable data URL or non-empty SVG",
+            "expected a decodable raster data URL",
         )
 
     return {

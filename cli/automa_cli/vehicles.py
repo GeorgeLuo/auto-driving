@@ -429,10 +429,12 @@ def _build_vehicle_status_card(
             else {}
         )
         process_status = process.get("status")
-        if process.get("running"):
-            worker_state = "running"
-        elif process_status in {"error", "stale"}:
+        # Prefer explicit error over a still-running PID bit so post-ready
+        # failures are not masked as a healthy worker.
+        if process_status in {"error", "stale"}:
             worker_state = "error"
+        elif process.get("running"):
+            worker_state = "running"
         else:
             worker_state = "stopped"
         view_details = (
@@ -440,10 +442,18 @@ def _build_vehicle_status_card(
             if isinstance(automation.get("published_view"), dict)
             else {}
         )
+        view_status = view_details.get("status")
+        # available | unavailable | stale — do not treat "warming" as stale.
         if view_details.get("available") and worker_state == "running":
             view_state = "available"
-        elif view_details.get("url") or view_details.get("status") == "stale":
+        elif view_status == "stale":
             view_state = "stale"
+        elif view_status == "warming":
+            view_state = "unavailable"
+        elif view_details.get("url") and worker_state != "running":
+            view_state = "stale"
+        elif view_details.get("url"):
+            view_state = "unavailable"
         else:
             view_state = "unavailable"
         worker_details = {
@@ -723,6 +733,25 @@ def _vehicle_next_action(
             "inspect perception",
         )
     if layers["perception_view"]["state"] != "available":
+        view_details = (
+            layers["perception_view"].get("details")
+            if isinstance(layers["perception_view"].get("details"), dict)
+            else {}
+        )
+        # Live worker still publishing: re-check status rather than restart.
+        if (
+            layers["automation_worker"]["state"] == "running"
+            and view_details.get("status") == "warming"
+        ):
+            return (
+                action(
+                    "view_warming",
+                    command=f"./cli/automa vehicles status --id {vehicle_id}",
+                    expected_state="perception_view=available",
+                ),
+                "perception_view",
+                "inspect perception",
+            )
         return (
             action(
                 "view_stale"

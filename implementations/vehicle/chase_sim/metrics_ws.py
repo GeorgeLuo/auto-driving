@@ -460,28 +460,38 @@ def build_chase_session_fingerprint(
 def compare_chase_session_fingerprints(
     before: dict[str, Any],
     after: dict[str, Any],
+    *,
+    field_names: tuple[str, ...] | None = None,
 ) -> dict[str, Any]:
+    """Compare session fingerprints.
+
+    When field_names is set (observe-only continuous runs), only those fields
+    are compared so playback/input may advance as observed state.
+    """
+
+    compared_fields = field_names or PASSIVE_SESSION_FIELDS
     unknown = sorted(
         {
             *(
                 str(item)
                 for item in before.get("unknown_fields", [])
-                if isinstance(item, str)
+                if isinstance(item, str) and item in compared_fields
             ),
             *(
                 str(item)
                 for item in after.get("unknown_fields", [])
-                if isinstance(item, str)
+                if isinstance(item, str) and item in compared_fields
             ),
         }
     )
     changed = [
         field_name
-        for field_name in PASSIVE_SESSION_FIELDS
+        for field_name in compared_fields
         if before.get(field_name) != after.get(field_name)
     ]
     return {
         "preserved": not unknown and not changed,
+        "compared_fields": list(compared_fields),
         "unknown_fields": unknown,
         "changed_fields": changed,
         "before": before,

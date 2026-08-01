@@ -65,6 +65,18 @@ ROOT = Path(__file__).resolve().parents[2]
 RUNTIME_ROOT = Path(os.environ.get("AUTOMA_RUNTIME_ROOT", ROOT / "runtime" / "vehicles"))
 AUTOMA_EXECUTABLE = ROOT / "cli" / "automa"
 MAX_STATUS_REASON_CHARS = 240
+# Observe-only continuous runs allow playback/input to evolve; identity and
+# control authority must stay fixed until stop.
+PASSIVE_RUN_STABLE_FIELDS = (
+    "game_id",
+    "scenario_id",
+    "simulation_epoch",
+    "control_source",
+)
+PASSIVE_RUN_DYNAMIC_FIELDS = (
+    "playback",
+    "control_input",
+)
 
 
 @dataclass(frozen=True)
@@ -769,6 +781,10 @@ def run_vehicle_automation(
                     session_receipt = compare_chase_session_fingerprints(
                         passive_session_initial,
                         after_fingerprint,
+                        field_names=PASSIVE_RUN_STABLE_FIELDS,
+                    )
+                    session_receipt["dynamic_fields_allowed"] = list(
+                        PASSIVE_RUN_DYNAMIC_FIELDS
                     )
                     state["passive_session"] = session_receipt
                     if not session_receipt.get("preserved"):
@@ -779,8 +795,8 @@ def run_vehicle_automation(
                                 else "simulator_capability_missing"
                             ),
                             message=(
-                                "The simulator session changed during "
-                                "observation-only automation."
+                                "The simulator identity or control authority "
+                                "changed during observation-only automation."
                             ),
                             details={
                                 "session_preservation": session_receipt,
@@ -1875,6 +1891,9 @@ def _collect_automation_status(
             or state_pid == process_pid
         )
         run_id = state.get("run_id") if isinstance(state.get("run_id"), str) else None
+        view_probe_timeout_s = (
+            0.25 if view_timeout_s is None else min(0.25, max(0.0, view_timeout_s))
+        )
         if view_timeout_s is not None and view_timeout_s <= 0:
             published_view = {
                 "schema": "automa_perception_view_v1",
@@ -1889,9 +1908,7 @@ def _collect_automation_status(
         else:
             published_view = get_perception_view_status(
                 automation_dir,
-                timeout_s=0.25
-                if view_timeout_s is None
-                else min(0.25, view_timeout_s),
+                timeout_s=view_probe_timeout_s,
                 expected_run_id=run_id,
                 expected_worker_pid=pid if isinstance(pid, int) else None,
             )
@@ -1912,6 +1929,27 @@ def _collect_automation_status(
                 pid=pid,
                 state=state,
             )
+            # Live workers publish camera then perception asynchronously. Status
+            # must not fail the frontier gate by sampling the gap between those
+            # publishes; poll briefly for a correlated current view.
+            if (
+                worker_status == "running"
+                and pid_alive
+                and not published_view.get("available")
+                and published_view.get("status") in {None, "warming", "unavailable"}
+                and (view_timeout_s is None or view_timeout_s > 0)
+            ):
+                deadline = time.monotonic() + 1.0
+                while time.monotonic() < deadline:
+                    time.sleep(0.1)
+                    published_view = get_perception_view_status(
+                        automation_dir,
+                        timeout_s=view_probe_timeout_s,
+                        expected_run_id=run_id,
+                        expected_worker_pid=pid if isinstance(pid, int) else None,
+                    )
+                    if published_view.get("available"):
+                        break
         worker_recovery = (
             f"./cli/automa vehicles automation restart --id {vehicle_name}"
             if worker_status in {"error", "stale"}

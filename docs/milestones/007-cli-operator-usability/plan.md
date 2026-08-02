@@ -105,7 +105,7 @@ Automa command.
 
 **Simulator-to-perception CLI journey**
 
-- Workflow state: ready_for_implementation
+- Workflow state: implementation_in_review
 - Proposal branch: `m007/simulator-perception-cli-proposal`
 - Implementation branch: `m007/simulator-perception-cli`
 - Proposal path: `docs/milestones/007-cli-operator-usability/proposals/simulator-perception-cli.md`
@@ -138,6 +138,7 @@ Automa command.
 | Simulator-to-perception CLI journey | ready_for_proposal | Activated as an operator-approved ad-hoc usability milestone while M006 implementation PR #80 is paused; separate branch and review-unit topology prevent scope leakage. |
 | Simulator-to-perception CLI journey | proposal_in_review | Started m007/simulator-perception-cli-proposal. |
 | Simulator-to-perception CLI journey | ready_for_implementation | Proposal PR #82 accepted at 70d7419e3fc8bcd8e8483c16c8d061c04f86a0a9. |
+| Simulator-to-perception CLI journey | implementation_in_review | Started m007/simulator-perception-cli. |
 
 ## Accepted Review Units
 

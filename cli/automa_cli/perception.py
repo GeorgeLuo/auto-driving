@@ -43,7 +43,14 @@ from .physical_observation import (
     physical_view_status,
     picar_base_url,
 )
-from .vehicles import discover_active_vehicles, find_vehicle_by_id, format_active_vehicles_snapshot
+from .vehicles import (
+    DEFAULT_CHASE_READINESS_TIMEOUT_S,
+    READINESS_SCHEMA,
+    discover_active_vehicles,
+    find_vehicle_by_id,
+    format_active_vehicles_snapshot,
+    get_vehicle_status,
+)
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -136,14 +143,19 @@ def get_vehicle_perception_info(
     json_output: bool = False,
     timeout_s: float = 3.0,
 ) -> CommandResult:
-    live = _resolve_live_vehicle(vehicle_id, timeout_s=timeout_s)
-    live_vehicle = live.get("vehicle") if isinstance(live.get("vehicle"), dict) else None
-    live_provider = live_vehicle.get("provider") if live_vehicle is not None else None
-
     vehicle_runtime_dir = RUNTIME_ROOT / safe_path_part(vehicle_id)
     bundle = controller_bundle_paths(vehicle_runtime_dir)
     manifest_path = Path(bundle["perception_runtime_dir"]) / "active.json"
     has_local_activation = manifest_path.exists()
+    live: dict[str, Any] = {}
+    live_vehicle: dict[str, Any] | None = None
+    live_provider = None
+    if not has_local_activation:
+        live = _resolve_live_vehicle(vehicle_id, timeout_s=timeout_s)
+        live_vehicle = (
+            live.get("vehicle") if isinstance(live.get("vehicle"), dict) else None
+        )
+        live_provider = live_vehicle.get("provider") if live_vehicle is not None else None
 
     if not has_local_activation and live_provider != "picar":
         return CommandResult(
@@ -426,7 +438,7 @@ def update_vehicle_perception(
     vehicle_id: str,
     algorithm: str | None = None,
     candidate_id: str | None = None,
-    timeout_s: float = 1.0,
+    timeout_s: float = DEFAULT_CHASE_READINESS_TIMEOUT_S,
     restart: bool = False,
     dry_run: bool = False,
     json_output: bool = False,
@@ -610,17 +622,120 @@ def update_vehicle_perception(
         sample_paths=sample_paths,
         restart=restart,
     )
-    if json_output:
-        return CommandResult(0, json.dumps(payload, indent=2, sort_keys=True))
-    return CommandResult(
-        0,
-        _success_message(
+    readiness = None
+    next_action = None
+    readiness_exit_code = 0
+    if provider == "chase-sim" and not restart and candidate_id is None:
+        connection = (
+            vehicle.get("connection")
+            if isinstance(vehicle.get("connection"), dict)
+            else {}
+        )
+        ws_url = (
+            connection.get("ws_url")
+            if isinstance(connection.get("ws_url"), str)
+            else None
+        )
+        status = get_vehicle_status(
             vehicle_id=vehicle_id,
-            algorithm=activation_name,
-            bundle_root=Path(bundle["root_dir"]),
-            manifest_path=manifest_path,
-            sample_paths=sample_paths,
+            chase_ws_url=ws_url,
+            timeout_s=timeout_s,
+        )
+        readiness, next_action = _automation_run_readiness(status)
+        payload["readiness"] = readiness
+        payload["next_action"] = next_action
+        if readiness["status"] != "ready":
+            readiness_exit_code = 2
+    if json_output:
+        return CommandResult(
+            readiness_exit_code,
+            json.dumps(payload, indent=2, sort_keys=True),
+        )
+    message = _success_message(
+        vehicle_id=vehicle_id,
+        algorithm=activation_name,
+        bundle_root=Path(bundle["root_dir"]),
+        manifest_path=manifest_path,
+        sample_paths=sample_paths,
+    )
+    if readiness is not None:
+        label = "Ready for" if readiness["status"] == "ready" else "Not ready for"
+        message += f"\n{label}: {readiness['ready_for']}"
+        if isinstance(next_action, dict):
+            recovery = next_action.get("command")
+            if recovery is None:
+                recovery = json.dumps(next_action.get("external_change"), sort_keys=True)
+            message += f"\nNext action: {recovery}"
+    return CommandResult(
+        readiness_exit_code,
+        message,
+    )
+
+
+def _automation_run_readiness(
+    status: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    layers = status.get("layers") if isinstance(status.get("layers"), dict) else {}
+    required = (
+        "simulator_server",
+        "simulator_frontend",
+        "chase_game",
+        "vehicle",
+        "passive_capture",
+        "automation_deployment",
+    )
+    expected = {
+        "simulator_server": "reachable",
+        "simulator_frontend": "connected",
+        "chase_game": "ready",
+        "vehicle": "discoverable",
+        "passive_capture": "available",
+        "automation_deployment": "deployed",
+    }
+    blocking_layer = next(
+        (
+            name
+            for name in required
+            if not isinstance(layers.get(name), dict)
+            or layers[name].get("state") != expected[name]
         ),
+        None,
+    )
+    ready = blocking_layer is None
+    if ready:
+        vehicle_id = str(status.get("vehicle_id") or "chase-sim-chaser")
+        next_action = {
+            "reason": "worker_stopped",
+            "command": (
+                "./cli/automa vehicles automation run "
+                f"--id {vehicle_id} --observe-only --frames 0 --open-view"
+            ),
+            "external_change": None,
+            "expected_state": "automation_worker=running, perception_view=available",
+        }
+    else:
+        next_action = (
+            status.get("next_action")
+            if isinstance(status.get("next_action"), dict)
+            else None
+        )
+    return (
+        {
+            "schema": READINESS_SCHEMA,
+            "status": "ready" if ready else "blocked",
+            "ready_for": "observation-only automation",
+            "checked_at_ms": status.get("checked_at_ms"),
+            "gates": {
+                name: (
+                    status.get("readiness", {}).get("gates", {}).get(name)
+                    if isinstance(status.get("readiness"), dict)
+                    else None
+                )
+                for name in required
+            },
+            "blocking_layer": blocking_layer,
+        },
+        next_action,
     )
 
 
@@ -1273,7 +1388,12 @@ def _perception_view_with_automation_status(
         "state_path": display_path(automation_dir / "state.json"),
         "error": state.get("error") if isinstance(state.get("error"), str) else None,
     }
-    view = get_perception_view_status(automation_dir)
+    run_id = state.get("run_id") if isinstance(state.get("run_id"), str) else None
+    view = get_perception_view_status(
+        automation_dir,
+        expected_run_id=run_id,
+        expected_worker_pid=pid if isinstance(pid, int) else None,
+    )
     if view.get("available"):
         return view, runtime
     if status in {"launching", "starting"}:

@@ -1,8 +1,14 @@
 from __future__ import annotations
 
+import shlex
 import unittest
+from pathlib import Path
 
+from cli.automa_cli.app import build_parser
 from tests.support.cli_runner import run_automa
+
+
+ROOT = Path(__file__).resolve().parents[3]
 
 
 class HelpCommandTests(unittest.TestCase):
@@ -19,6 +25,7 @@ class HelpCommandTests(unittest.TestCase):
         result = run_automa("vehicles")
 
         self.assertIn("- active", result.stdout)
+        self.assertIn("- status", result.stdout)
         self.assertIn("- update", result.stdout)
         self.assertIn("- automation", result.stdout)
         self.assertIn("- perception", result.stdout)
@@ -32,6 +39,18 @@ class HelpCommandTests(unittest.TestCase):
         self.assertIn("- run", result.stdout)
         self.assertIn("- status", result.stdout)
         self.assertNotIn("--interval-s", result.stdout)
+
+    def test_group_without_child_matches_explicit_help(self) -> None:
+        for command in (
+            ("vehicles",),
+            ("vehicles", "update"),
+            ("vehicles", "automation"),
+            ("simulators",),
+        ):
+            with self.subTest(command=command):
+                implicit = run_automa(*command)
+                explicit = run_automa(*command, "help")
+                self.assertEqual(implicit.stdout, explicit.stdout)
 
     def test_perception_help_shows_only_perception_level_commands(self) -> None:
         result = run_automa("vehicles", "perception", "help")
@@ -65,7 +84,7 @@ class HelpCommandTests(unittest.TestCase):
         operation = run_automa("vehicles", "operation", "help")
 
         self.assertIn("manage locally deployed automation workers", vehicles.stdout)
-        self.assertIn("show locally deployed automation state", automation.stdout)
+        self.assertIn("show locally deployed worker and view state", automation.stdout)
         self.assertIn("send bounded pulses and verify camera changes", operation.stdout)
 
     def test_info_and_perception_help_identify_local_staged_state(self) -> None:
@@ -81,10 +100,63 @@ class HelpCommandTests(unittest.TestCase):
         perception = run_automa("vehicles", "update", "perception", "--help")
         decision = run_automa("vehicles", "update", "decision", "--help")
 
-        self.assertIn("Stage a perception algorithm in a vehicle's local controller bundle", perception.stdout)
+        self.assertIn("Idempotently stage a perception algorithm", perception.stdout)
         self.assertIn("--candidate", perception.stdout)
         self.assertIn("local simulator only", perception.stdout)
         self.assertIn("Stage a decision engine in the local controller bundle", decision.stdout)
+
+    def test_primary_journey_leaf_help_owns_every_required_flag(self) -> None:
+        active = run_automa("vehicles", "active", "--help")
+        status = run_automa("vehicles", "status", "--help")
+        update = run_automa("vehicles", "update", "perception", "--help")
+        run = run_automa("vehicles", "automation", "run", "--help")
+        stop = run_automa("vehicles", "automation", "stop", "--help")
+        ensure = run_automa("simulators", "ensure", "--help")
+
+        self.assertIn("Discoverable does not mean", active.stdout)
+        self.assertIn("--chase-url", status.stdout)
+        self.assertIn("CHASE_UI_WS_URL", status.stdout)
+        self.assertIn("without starting a simulator", status.stdout)
+        self.assertIn("--algorithm", update.stdout)
+        self.assertIn("--id", update.stdout)
+        for flag in ("--id", "--observe-only", "--frames", "--open-view"):
+            self.assertIn(flag, run.stdout)
+        self.assertIn("without changing scenario, playback", run.stdout)
+        self.assertIn("control source, input, or applying vehicle control", run.stdout)
+        self.assertIn("--id", stop.stdout)
+        self.assertIn("--scenario", ensure.stdout)
+        self.assertIn("This command changes", ensure.stdout)
+        self.assertIn("simulator configuration", ensure.stdout)
+
+    def test_durable_primary_sequence_is_parser_valid_and_matches_readme(self) -> None:
+        guide = (
+            ROOT / "docs" / "reference" / "cli-simulator-perception-journey.md"
+        ).read_text(encoding="utf-8")
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        commands = (
+            "./cli/automa vehicles status --chase-url http://localhost:5050",
+            "./cli/automa vehicles update perception --id chase-sim-chaser "
+            "--algorithm lightweight_observer",
+            "./cli/automa vehicles automation run --id chase-sim-chaser "
+            "--observe-only --frames 0 --open-view",
+            "./cli/automa vehicles status --id chase-sim-chaser",
+            "./cli/automa vehicles automation stop --id chase-sim-chaser",
+        )
+        parser = build_parser()
+        normalized_guide = " ".join(guide.replace("\\\n", " ").split())
+        for command in commands:
+            with self.subTest(command=command):
+                self.assertIn(command, normalized_guide)
+                parser.parse_args(shlex.split(command.removeprefix("./cli/automa ")))
+        for phrase in (
+            "vehicles status",
+            "lightweight_observer",
+            "--observe-only",
+            "--open-view",
+            "automation stop",
+        ):
+            self.assertIn(phrase, guide)
+            self.assertIn(phrase, readme)
 
     def test_simulators_help_shows_only_simulator_level_commands(self) -> None:
         result = run_automa("simulators")

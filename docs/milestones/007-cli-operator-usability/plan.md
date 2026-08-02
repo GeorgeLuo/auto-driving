@@ -105,7 +105,7 @@ Automa command.
 
 **Live CLI operator acceptance**
 
-- Workflow state: ready_for_proposal
+- Workflow state: proposal_in_review
 - Proposal branch: `m007/live-cli-acceptance-proposal`
 - Implementation branch: `m007/live-cli-acceptance`
 - Proposal path: `docs/milestones/007-cli-operator-usability/proposals/live-cli-acceptance.md`
@@ -141,6 +141,7 @@ Automa command.
 | Simulator-to-perception CLI journey | accepted | Implementation PR #84 merged at 6c6a4dc14a8d94770e737cff4f0e6a4f5aa7ae89. |
 | Live CLI operator acceptance | ready_for_proposal | Promoted after implementation PR #84. |
 | Live CLI operator acceptance | ready_for_proposal | Plan revision: queued milestone closeout as the reviewed successor to successful live acceptance; live scope and acceptance ownership are unchanged. |
+| Live CLI operator acceptance | proposal_in_review | Started m007/live-cli-acceptance-proposal. |
 
 ## Accepted Review Units
 

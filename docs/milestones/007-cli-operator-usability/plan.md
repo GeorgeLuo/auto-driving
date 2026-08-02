@@ -118,10 +118,17 @@ Automa command.
 
 ### Next-Frontier Candidate
 
-**None**
+**Milestone 007 closeout**
 
-- Reason: Live CLI operator acceptance is promoted from the frozen next-candidate slot after M007-01 through M007-04.
-- Revisit when: The live acceptance unit records current Metrics UI conformance or returns a product finding to the accepted implementation boundary.
+- Proposal branch: `m007/closeout-proposal`
+- Implementation branch: `m007/closeout`
+- Proposal path: `docs/milestones/007-cli-operator-usability/proposals/closeout.md`
+- Review kind: Milestone closeout
+- Review question: Does the accepted M007 implementation plus tracked live operator evidence prove the primary CLI journey, reconcile the durable operator documentation, and state every remaining external or deferred limit clearly enough to close the milestone?
+- Acceptance owner: Whole-milestone judgment in `closeout.md`, the accepted-review-unit ledger, exit criteria, and residual-risk record
+- Exit criteria affected: M007-06
+- Prerequisite: M007-01 through M007-05 are `Met`, including accepted current-Metrics-UI live evidence
+- Milestone-level non-goal: Product repair, a live acceptance rerun, new CLI behavior, PiRacer parity, remote-view hosting, non-idle control, or cross-milestone activation
 
 ## Workflow History
 
@@ -133,6 +140,7 @@ Automa command.
 | Simulator-to-perception CLI journey | implementation_in_review | Started m007/simulator-perception-cli. |
 | Simulator-to-perception CLI journey | accepted | Implementation PR #84 merged at 6c6a4dc14a8d94770e737cff4f0e6a4f5aa7ae89. |
 | Live CLI operator acceptance | ready_for_proposal | Promoted after implementation PR #84. |
+| Live CLI operator acceptance | ready_for_proposal | Plan revision: queued milestone closeout as the reviewed successor to successful live acceptance; live scope and acceptance ownership are unchanged. |
 
 ## Accepted Review Units
 

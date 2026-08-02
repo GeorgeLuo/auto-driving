@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="ffb9b23680b6f8d985f29f93fa2fe040ac5c616f78f31e1f747761c0eae14bba">
+  <meta name="source-sha256" content="c93cd314026d32442e68e8c69ec708c5376aa1f3193b8c47072493837a2c9442">
   <base target="_blank">
   <title>Milestone plan — 007-cli-operator-usability</title>
   <style>
@@ -85,7 +85,7 @@
 </tr>
 <tr>
 <td>Current frontier</td>
-<td>Simulator-to-perception CLI journey</td>
+<td>Live CLI operator acceptance</td>
 </tr>
 <tr>
 <td>Started</td>
@@ -237,26 +237,26 @@ Automa command.</p>
 <tr>
 <td>M007-01</td>
 <td>Automa exposes and documents one consistent operator state model that distinguishes simulator availability, simulator frontend readiness, vehicle discoverability, local automation deployment, worker liveness, and perception-view availability in concise human output and complete <code>--json</code> output</td>
-<td>Unmet</td>
-<td>First frontier</td>
+<td>Met</td>
+<td>Consistent simulator, vehicle, deployment, worker, view, and evaluator-reference state vocabulary plus shared next-step readiness gates in human and JSON CLI surfaces in PR #84</td>
 </tr>
 <tr>
 <td>M007-02</td>
 <td>An operator starting from <code>http://localhost:5050</code> can prepare the supported Chase scenario and discover <code>chase-sim-chaser</code> without manually deriving <code>/ws/control</code>; disconnected, stale, wrong-game, and unavailable-camera states name the failed boundary and exact recovery</td>
-<td>Unmet</td>
-<td>First frontier</td>
+<td>Met</td>
+<td>Local HTTP URL normalization, passive Chase discovery, explicit-only configured preparation, and exact frontend/game/camera/capability recovery in PR #84</td>
 </tr>
 <tr>
 <td>M007-03</td>
 <td>Observation-only automation can publish a current camera/perception browser view when sensor image and frame identity are valid even if evaluator-only control reference data is unavailable; workflows that require that reference fail closed with an explicit missing-reference status</td>
-<td>Unmet</td>
-<td>First frontier; current reproduction aborts the whole worker</td>
+<td>Met</td>
+<td>Passive observation-only sensor/perception startup preserves scenario/playback/control/input state, separates optional evaluator reference, and keeps reference-dependent operations fail-closed in PR #84</td>
 </tr>
 <tr>
 <td>M007-04</td>
 <td>Startup, status, and view commands use bounded operation-level timeout semantics, preserve stable human/JSON error categories, and provide current help/README examples for the complete journey and its recovery paths</td>
-<td>Unmet</td>
-<td>First frontier</td>
+<td>Met</td>
+<td>Bounded shared readiness deadlines, stable actionable error categories, cross-command gate agreement, open-view workflow, parser-valid cross-level help and recovery, README, and durable operator guide in PR #84</td>
 </tr>
 <tr>
 <td>M007-05</td>
@@ -274,23 +274,9 @@ Automa command.</p>
 </table>
 <h2>Current Delivery</h2>
 <h3>Current Frontier</h3>
-<p><strong>Simulator-to-perception CLI journey</strong></p>
-<ul>
-<li>Workflow state: implementation_in_review</li>
-<li>Proposal branch: <code>m007/simulator-perception-cli-proposal</code></li>
-<li>Implementation branch: <code>m007/simulator-perception-cli</code></li>
-<li>Proposal path: <code>docs/milestones/007-cli-operator-usability/proposals/simulator-perception-cli.md</code></li>
-<li>Accepted proposal: <a href="https://github.com/GeorgeLuo/auto-driving/pull/82">#82</a> at <code>70d7419e3fc8bcd8e8483c16c8d061c04f86a0a9</code></li>
-<li>Review kind: Behavioral feature slice</li>
-<li>Review question: Can a Chase operator move from a local Metrics UI URL to a healthy observation-only perception browser view through discoverable Automa commands that distinguish every runtime layer and return exact, bounded recovery when the frontend, capture contract, worker, or view is unavailable?</li>
-<li>Acceptance owner: Automa simulator preparation, vehicle discovery, automation preflight/run/status, and perception-view operator surfaces over the Chase sensor-capture boundary</li>
-<li>Exit criteria affected: M007-01, M007-02, M007-03, M007-04</li>
-<li>Prerequisite: Milestone 005 mainline CLI and Chase adapter; no dependency on paused Milestone 006 implementation PR #80</li>
-<li>Milestone-level non-goal: Broad CLI redesign, decision/memory feature work, PiRacer parity, remote view hosting, applied movement, or live acceptance evidence in the deterministic implementation unit</li>
-</ul>
-<h3>Next-Frontier Candidate</h3>
 <p><strong>Live CLI operator acceptance</strong></p>
 <ul>
+<li>Workflow state: ready_for_proposal</li>
 <li>Proposal branch: <code>m007/live-cli-acceptance-proposal</code></li>
 <li>Implementation branch: <code>m007/live-cli-acceptance</code></li>
 <li>Proposal path: <code>docs/milestones/007-cli-operator-usability/proposals/live-cli-acceptance.md</code></li>
@@ -299,7 +285,13 @@ Automa command.</p>
 <li>Acceptance owner: Bounded live Chase operator procedure and tracked machine/human acceptance evidence</li>
 <li>Exit criteria affected: M007-05</li>
 <li>Prerequisite: Simulator-to-perception CLI journey accepted with deterministic contract coverage</li>
-<li>Non-goals: Product repair, PiRacer evidence, long-duration soak testing, performance qualification, non-idle control, or milestone closeout</li>
+<li>Milestone-level non-goal: Product repair, PiRacer evidence, long-duration soak testing, performance qualification, non-idle control, or milestone closeout</li>
+</ul>
+<h3>Next-Frontier Candidate</h3>
+<p><strong>None</strong></p>
+<ul>
+<li>Reason: Live CLI operator acceptance is promoted from the frozen next-candidate slot after M007-01 through M007-04.</li>
+<li>Revisit when: The live acceptance unit records current Metrics UI conformance or returns a product finding to the accepted implementation boundary.</li>
 </ul>
 <h2>Workflow History</h2>
 <table>
@@ -331,6 +323,16 @@ Automa command.</p>
 <td>implementation_in_review</td>
 <td>Started m007/simulator-perception-cli.</td>
 </tr>
+<tr>
+<td>Simulator-to-perception CLI journey</td>
+<td>accepted</td>
+<td>Implementation PR #84 merged at 6c6a4dc14a8d94770e737cff4f0e6a4f5aa7ae89.</td>
+</tr>
+<tr>
+<td>Live CLI operator acceptance</td>
+<td>ready_for_proposal</td>
+<td>Promoted after implementation PR #84.</td>
+</tr>
 </tbody>
 </table>
 <h2>Accepted Review Units</h2>
@@ -346,11 +348,11 @@ Automa command.</p>
 </thead>
 <tbody>
 <tr>
-<td></td>
-<td></td>
-<td></td>
-<td></td>
-<td></td>
+<td>#84</td>
+<td>Can a Chase operator move from a local Metrics UI URL to a healthy observation-only perception browser view through discoverable Automa commands that distinguish every runtime layer and return exact, bounded recovery when the frontend, capture contract, worker, or view is unavailable?</td>
+<td>Accepted</td>
+<td>M007-01, M007-02, M007-03, M007-04</td>
+<td>Passive Chase simulator-to-perception CLI journey with aggregate layer status, shared sequential-readiness gates, HTTP/WS normalization, observation-only first-frame view startup, simulator-state preservation, exact capture/reference diagnostics, operation-level deadlines, cross-level help audit, and durable operator documentation in PR #84</td>
 </tr>
 </tbody>
 </table>
@@ -373,11 +375,6 @@ Automa command.</p>
 <td>A browser tab can be visibly open before its Play WebSocket role is registered</td>
 <td>A one-second probe can report a false unavailable state with no useful recovery</td>
 <td>Distinguish server/frontend/game/camera states and use one bounded operation deadline with exact recovery</td>
-</tr>
-<tr>
-<td>Existing “active” terminology is naturally read as “automation running”</td>
-<td>Operators can misdiagnose a stopped worker or stale view as a healthy Automa vehicle</td>
-<td>Define the state vocabulary once and make every relevant human/JSON surface use it consistently</td>
 </tr>
 <tr>
 <td>Evaluator reference data is useful for scoring but is not sensor input</td>

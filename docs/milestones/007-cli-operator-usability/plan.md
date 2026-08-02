@@ -5,7 +5,7 @@
 | Status | Active |
 | Milestone branch | `milestone/007-cli-operator-usability` |
 | Cumulative PR | [#81](https://github.com/GeorgeLuo/auto-driving/pull/81) (draft until whole-milestone closeout) |
-| Current frontier | Simulator-to-perception CLI journey |
+| Current frontier | Live CLI operator acceptance |
 | Started | 2026-07-29 |
 | Action policy | Observation-only; no applied vehicle movement |
 
@@ -92,10 +92,10 @@ Automa command.
 
 | ID | Criterion | Status | Evidence / remaining gap |
 | --- | --- | --- | --- |
-| M007-01 | Automa exposes and documents one consistent operator state model that distinguishes simulator availability, simulator frontend readiness, vehicle discoverability, local automation deployment, worker liveness, and perception-view availability in concise human output and complete `--json` output | Unmet | First frontier |
-| M007-02 | An operator starting from `http://localhost:5050` can prepare the supported Chase scenario and discover `chase-sim-chaser` without manually deriving `/ws/control`; disconnected, stale, wrong-game, and unavailable-camera states name the failed boundary and exact recovery | Unmet | First frontier |
-| M007-03 | Observation-only automation can publish a current camera/perception browser view when sensor image and frame identity are valid even if evaluator-only control reference data is unavailable; workflows that require that reference fail closed with an explicit missing-reference status | Unmet | First frontier; current reproduction aborts the whole worker |
-| M007-04 | Startup, status, and view commands use bounded operation-level timeout semantics, preserve stable human/JSON error categories, and provide current help/README examples for the complete journey and its recovery paths | Unmet | First frontier |
+| M007-01 | Automa exposes and documents one consistent operator state model that distinguishes simulator availability, simulator frontend readiness, vehicle discoverability, local automation deployment, worker liveness, and perception-view availability in concise human output and complete `--json` output | Met | Consistent simulator, vehicle, deployment, worker, view, and evaluator-reference state vocabulary plus shared next-step readiness gates in human and JSON CLI surfaces in PR #84 |
+| M007-02 | An operator starting from `http://localhost:5050` can prepare the supported Chase scenario and discover `chase-sim-chaser` without manually deriving `/ws/control`; disconnected, stale, wrong-game, and unavailable-camera states name the failed boundary and exact recovery | Met | Local HTTP URL normalization, passive Chase discovery, explicit-only configured preparation, and exact frontend/game/camera/capability recovery in PR #84 |
+| M007-03 | Observation-only automation can publish a current camera/perception browser view when sensor image and frame identity are valid even if evaluator-only control reference data is unavailable; workflows that require that reference fail closed with an explicit missing-reference status | Met | Passive observation-only sensor/perception startup preserves scenario/playback/control/input state, separates optional evaluator reference, and keeps reference-dependent operations fail-closed in PR #84 |
+| M007-04 | Startup, status, and view commands use bounded operation-level timeout semantics, preserve stable human/JSON error categories, and provide current help/README examples for the complete journey and its recovery paths | Met | Bounded shared readiness deadlines, stable actionable error categories, cross-command gate agreement, open-view workflow, parser-valid cross-level help and recovery, README, and durable operator guide in PR #84 |
 | M007-05 | A tracked live acceptance unit against the current local Metrics UI contract proves one observation-only processed frame, healthy loopback view, exact layer states, no applied movement, and no default recording; contract drift fails rather than skipping | Unmet | Next frontier after deterministic surfaces |
 | M007-06 | Closeout confirms the primary demonstration, reconciles durable CLI documentation, and records any remaining external simulator, PiRacer, remote-view, or non-idle-control limits | Unmet | Closeout only |
 
@@ -103,24 +103,9 @@ Automa command.
 
 ### Current Frontier
 
-**Simulator-to-perception CLI journey**
-
-- Workflow state: implementation_in_review
-- Proposal branch: `m007/simulator-perception-cli-proposal`
-- Implementation branch: `m007/simulator-perception-cli`
-- Proposal path: `docs/milestones/007-cli-operator-usability/proposals/simulator-perception-cli.md`
-- Accepted proposal: [#82](https://github.com/GeorgeLuo/auto-driving/pull/82) at `70d7419e3fc8bcd8e8483c16c8d061c04f86a0a9`
-- Review kind: Behavioral feature slice
-- Review question: Can a Chase operator move from a local Metrics UI URL to a healthy observation-only perception browser view through discoverable Automa commands that distinguish every runtime layer and return exact, bounded recovery when the frontend, capture contract, worker, or view is unavailable?
-- Acceptance owner: Automa simulator preparation, vehicle discovery, automation preflight/run/status, and perception-view operator surfaces over the Chase sensor-capture boundary
-- Exit criteria affected: M007-01, M007-02, M007-03, M007-04
-- Prerequisite: Milestone 005 mainline CLI and Chase adapter; no dependency on paused Milestone 006 implementation PR #80
-- Milestone-level non-goal: Broad CLI redesign, decision/memory feature work, PiRacer parity, remote view hosting, applied movement, or live acceptance evidence in the deterministic implementation unit
-
-### Next-Frontier Candidate
-
 **Live CLI operator acceptance**
 
+- Workflow state: ready_for_proposal
 - Proposal branch: `m007/live-cli-acceptance-proposal`
 - Implementation branch: `m007/live-cli-acceptance`
 - Proposal path: `docs/milestones/007-cli-operator-usability/proposals/live-cli-acceptance.md`
@@ -129,7 +114,14 @@ Automa command.
 - Acceptance owner: Bounded live Chase operator procedure and tracked machine/human acceptance evidence
 - Exit criteria affected: M007-05
 - Prerequisite: Simulator-to-perception CLI journey accepted with deterministic contract coverage
-- Non-goals: Product repair, PiRacer evidence, long-duration soak testing, performance qualification, non-idle control, or milestone closeout
+- Milestone-level non-goal: Product repair, PiRacer evidence, long-duration soak testing, performance qualification, non-idle control, or milestone closeout
+
+### Next-Frontier Candidate
+
+**None**
+
+- Reason: Live CLI operator acceptance is promoted from the frozen next-candidate slot after M007-01 through M007-04.
+- Revisit when: The live acceptance unit records current Metrics UI conformance or returns a product finding to the accepted implementation boundary.
 
 ## Workflow History
 
@@ -139,11 +131,14 @@ Automa command.
 | Simulator-to-perception CLI journey | proposal_in_review | Started m007/simulator-perception-cli-proposal. |
 | Simulator-to-perception CLI journey | ready_for_implementation | Proposal PR #82 accepted at 70d7419e3fc8bcd8e8483c16c8d061c04f86a0a9. |
 | Simulator-to-perception CLI journey | implementation_in_review | Started m007/simulator-perception-cli. |
+| Simulator-to-perception CLI journey | accepted | Implementation PR #84 merged at 6c6a4dc14a8d94770e737cff4f0e6a4f5aa7ae89. |
+| Live CLI operator acceptance | ready_for_proposal | Promoted after implementation PR #84. |
 
 ## Accepted Review Units
 
 | PR | Accepted review question | Result | Exit criteria | Durable evidence |
 | --- | --- | --- | --- | --- |
+| #84 | Can a Chase operator move from a local Metrics UI URL to a healthy observation-only perception browser view through discoverable Automa commands that distinguish every runtime layer and return exact, bounded recovery when the frontend, capture contract, worker, or view is unavailable? | Accepted | M007-01, M007-02, M007-03, M007-04 | Passive Chase simulator-to-perception CLI journey with aggregate layer status, shared sequential-readiness gates, HTTP/WS normalization, observation-only first-frame view startup, simulator-state preservation, exact capture/reference diagnostics, operation-level deadlines, cross-level help audit, and durable operator documentation in PR #84 |
 
 ## Open Risks And Unverified Assumptions
 
@@ -151,7 +146,6 @@ Automa command.
 | --- | --- | --- |
 | Metrics UI may evolve independently of this repository | Unit fixtures can remain green while live atomic-capture payloads drift | Freeze the consumed sensor/reference distinction, add reference-less fixtures, and require a non-skipping opt-in live contract unit |
 | A browser tab can be visibly open before its Play WebSocket role is registered | A one-second probe can report a false unavailable state with no useful recovery | Distinguish server/frontend/game/camera states and use one bounded operation deadline with exact recovery |
-| Existing “active” terminology is naturally read as “automation running” | Operators can misdiagnose a stopped worker or stale view as a healthy Automa vehicle | Define the state vocabulary once and make every relevant human/JSON surface use it consistently |
 | Evaluator reference data is useful for scoring but is not sensor input | Requiring it for camera capture prevents legitimate observation-only perception; accepting malformed identity would weaken correlation | Validate sensor identity independently, model evaluator reference as optional/unavailable, and keep reference-required scoring fail-closed |
 | Browser opening is platform-dependent | An otherwise healthy worker could be reported failed because the OS cannot launch a browser | Keep view health authoritative; browser launch is explicit and reports its own non-fatal result and URL |
 

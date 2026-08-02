@@ -259,8 +259,8 @@ The classifications have these consequences:
   or layout defects may be nonblocking only when the operator can still execute
   and correctly interpret the frozen journey.
 - An `enhancement_candidate` is a new preference or capability outside the
-  accepted journey. It is preserved for closeout or a later proposal but does
-  not expand this PR.
+  accepted journey. It is preserved for the later CLI audit/disposition or
+  another proposal but does not expand this PR.
 - An `environment_blocker` means the declared starting environment was not
   available or identifiable. It yields `incomplete`, not a pass or a product
   verdict, unless the evidence proves a specific external contract failure.
@@ -280,7 +280,8 @@ retroactively produce a pass.
 If the maintainer chooses to merge a conclusive findings unit before repair,
 the normal successful handoff is not used. An exceptional reviewed `block`
 receipt records result `Findings`, keeps M007-05 non-Met with the evidence PR,
-does not promote closeout, and names the evidence required to reactivate work.
+does not promote the next frontier, and names the evidence required to
+reactivate work.
 The repair scope is derived and reviewed separately; this proposal does not
 pre-authorize it.
 
@@ -338,7 +339,7 @@ state, and loopback view implementation.
 | Operator mistypes a command | Preserve the attempt, classify it as operator input, and rerun only the intended step |
 | External checkout is dirty but its diff is not identified | Mark the session incomplete; do not claim a reproducible contract |
 | Product defect suggests an obvious one-line fix | Record the finding and owning boundary; do not edit product code in this PR |
-| New feature idea is useful but outside M007-05 | Record an enhancement candidate and defer scope judgment to closeout or a later proposal |
+| New feature idea is useful but outside M007-05 | Record an enhancement candidate and defer scope judgment to the later CLI audit/disposition or another proposal |
 | Session cannot complete before operator leaves | Stop the worker, mark `incomplete`, and retain no partial acceptance claim |
 
 ## External Assumptions
@@ -370,6 +371,8 @@ state, and loopback view implementation.
   stress, multi-browser, or cross-platform qualification.
 - Recording frame history with `--record` or committing full runtime output.
 - Re-proving every deterministic failure and timeout matrix.
+- CLI journey-coverage instrumentation, full CLI-leaf inventory, or capability
+  disposition; those belong to the reviewed successor frontier chain.
 - Milestone closeout or activation of another milestone.
 
 ## File Impact
@@ -460,16 +463,16 @@ Post-merge successful evidence template:
   "risk_upsert": [],
   "next_frontier": {
     "state": "none",
-    "reason": "Milestone 007 closeout is promoted after successful tracked live CLI operator acceptance.",
-    "revisit_when": "Closeout reconciles the whole-milestone evidence and records remaining external and deferred limits."
+    "reason": "CLI journey coverage foundation is promoted after successful tracked live CLI operator acceptance.",
+    "revisit_when": "The coverage frontier proposes reproducible per-command and multi-command journey attribution before the full CLI-leaf audit."
   }
 }
 ```
 
 This template applies only to a `pass` result with no unresolved
 acceptance-blocking finding. A conclusive findings PR uses a separately
-reviewed exceptional block receipt and does not promote closeout or mark
-M007-05 `Met`. An incomplete session has no handoff.
+reviewed exceptional block receipt and does not promote the next frontier or
+mark M007-05 `Met`. An incomplete session has no handoff.
 
 ### Sequence after this proposal merges
 
@@ -483,6 +486,6 @@ M007-05 `Met`. An incomplete session has no handoff.
    into committed findings, and perform unconditional cleanup.
 5. Accept the evidence PR only as a complete pass or a conclusive findings
    unit. Product repair remains separate.
-6. On a pass, complete the normal handoff and promote **Milestone 007
-   closeout**. On findings, stop before closeout and review the next repair or
-   reactivation decision explicitly.
+6. On a pass, complete the normal handoff and promote **CLI journey coverage
+   foundation**. On findings, stop before that promotion and review the next
+   repair or reactivation decision explicitly.

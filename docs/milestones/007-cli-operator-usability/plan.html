@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="76aa64232356656e4d8c52cc0fe199a6b3af88c05cfa545ce1b5afbea1303329">
+  <meta name="source-sha256" content="457d80e6792547d88038f9ea954b9fd0c6e4574b4b97932729ad52381b6b9e86">
   <base target="_blank">
   <title>Milestone plan — 007-cli-operator-usability</title>
   <style>
@@ -99,14 +99,17 @@
 </table>
 <p>Shared planning contract: <a href="../README.md">README.md</a> · <a href="../planning-contract.html">planning-contract.html</a></p>
 <h2>Objective</h2>
-<p>Make the existing Automa CLI usable for one complete Chase operator journey:
-start with a local simulator URL, determine which layer is available, establish
-an observation-only automation worker, and open a frame-correlated browser view
-of camera, observation, and perception output without selecting a scenario,
-changing playback/control/input state, or otherwise commandeering the current
-simulator session. Each failure must identify the failed boundary and a
-concrete recovery or external capability request without requiring knowledge
-of internal WebSocket paths, runtime files, or process topology.</p>
+<p>Make the Automa CLI a dependable and inspectable product surface. First, make
+one complete Chase operator journey usable from a local simulator URL through
+an observation-only, frame-correlated browser view without commandeering the
+current simulator session. Then measure which owned source branches named CLI
+commands and realistic multi-command journeys actually execute, audit every CLI
+leaf into an explicit usage pattern, and classify production capabilities those
+journeys do not reach so later work can expose, retain, or remove them through
+evidence rather than accumulation. Failures must identify the owning boundary
+without requiring knowledge of internal WebSocket paths, runtime files, or
+process topology; coverage remains an investigative signal rather than a claim
+that executed code is correct or unexecuted code is dead.</p>
 <h2>Completion Usage</h2>
 <table>
 <thead>
@@ -147,6 +150,27 @@ of internal WebSocket paths, runtime files, or process topology.</p>
 <td>One processed frame, a healthy loopback view, observation-only authority, preserved scenario/playback/control/input state, and the expected human/JSON state are recorded without default history writes</td>
 <td>M007-05</td>
 </tr>
+<tr>
+<td>Trace source use by CLI journey</td>
+<td>Clean repository state with the existing branch-aware owned-Python coverage configuration</td>
+<td>Record named CLI commands and multi-command journeys with stable contexts, combine foreground and Python subprocess/background-worker data, and compare the result with a measured CLI bootstrap/import baseline</td>
+<td>A reproducible report attributes executed statements and branches to command/journey contexts, separates shared import/bootstrap cost from command-specific behavior, preserves source revision and command identity, and imposes no aggregate percentage gate</td>
+<td>M007-07</td>
+</tr>
+<tr>
+<td>Audit the complete CLI surface</td>
+<td>Parser/help surface and journey-coverage collector accepted</td>
+<td>Enumerate every public CLI leaf and map it to realistic operator/developer usage patterns, prerequisites, side effects, safety class, expected output, owning boundary, and deterministic or live validation</td>
+<td>Every leaf is assigned to at least one named realistic pattern or explicitly classified unsupported/deprecated; hazardous or external leaves are documented without being run unsafely</td>
+<td>M007-08</td>
+</tr>
+<tr>
+<td>Disposition code outside CLI journeys</td>
+<td>Accepted leaf inventory, realistic usage patterns, aggregate journey coverage, and existing deterministic-test coverage</td>
+<td>Group unexecuted owned source regions by capability and owner, then review CLI reachability, other entrypoints, tests, dynamic loading, and platform constraints</td>
+<td>Every uncovered capability group is flagged as a candidate to expose through CLI, retain as non-CLI with an explicit owner/reason, or remove; no feature or deletion is authorized solely by a coverage percentage</td>
+<td>M007-09</td>
+</tr>
 </tbody>
 </table>
 <h3>Primary Demonstration Command Sequence</h3>
@@ -185,9 +209,10 @@ change playback, take control, or send an idle/control input. If the current
 Metrics UI cannot expose a passive camera capture, the CLI must report that
 external capability gap and the minimal requested simulator change rather than
 calling <code>simulators ensure</code> or mutating the session implicitly.</p>
-<p>Command names and flags are frozen by the accepted proposal. The milestone
-outcome is the bounded operator journey above, not a general redesign of every
-Automa command.</p>
+<p>Command names and flags in the primary demonstration are frozen by the accepted
+proposal. The later full-surface audit inventories the existing CLI and its
+source reachability before proposing redesign, new exposure, or deletion; it
+does not retroactively widen the accepted primary journey.</p>
 <h2>Scope Boundaries</h2>
 <table>
 <thead>
@@ -199,7 +224,7 @@ Automa command.</p>
 <tbody>
 <tr>
 <td>Passive attachment to a currently exposed Chase-compatible vehicle, plus explicit simulator preparation as an operator-chosen recovery</td>
-<td>Redesigning unrelated perception experiments, decision surfaces, memory workflows, Pi deployment, or the entire command hierarchy</td>
+<td>Redesigning unrelated perception, decision, memory, Pi, or command-hierarchy behavior before reachability and usage evidence is reviewed</td>
 </tr>
 <tr>
 <td>Human-readable defaults and complete machine-readable output for the bounded journey</td>
@@ -220,6 +245,18 @@ Automa command.</p>
 <tr>
 <td>Deterministic tests plus one opt-in live acceptance unit against the current simulator contract</td>
 <td>Making a browser or live simulator mandatory for the default deterministic test suite</td>
+</tr>
+<tr>
+<td>Branch-aware, subprocess-complete owned-Python coverage attributed to named CLI command and journey contexts</td>
+<td>Treating import-time execution as feature use, measuring Metrics UI JavaScript in the Python report, or setting an arbitrary repository-wide coverage gate</td>
+</tr>
+<tr>
+<td>Complete CLI-leaf inventory and realistic usage-pattern catalog, including prerequisites and side-effect/safety classification</td>
+<td>Executing hardware-, movement-, destructive-, or external-state commands merely to increase coverage</td>
+</tr>
+<tr>
+<td>Capability-level review of owned source not reached by declared CLI journeys</td>
+<td>Automatically deleting uncovered code, exposing every internal primitive, or pre-authorizing feature/removal changes before separate review</td>
 </tr>
 </tbody>
 </table>
@@ -262,13 +299,31 @@ Automa command.</p>
 <td>M007-05</td>
 <td>A tracked live acceptance unit against the current local Metrics UI contract proves one observation-only processed frame, healthy loopback view, exact layer states, no applied movement, and no default recording; contract drift fails rather than skipping</td>
 <td>Unmet</td>
-<td>Next frontier after deterministic surfaces</td>
+<td>Current live evidence frontier</td>
 </tr>
 <tr>
 <td>M007-06</td>
-<td>Closeout confirms the primary demonstration, reconciles durable CLI documentation, and records any remaining external simulator, PiRacer, remote-view, or non-idle-control limits</td>
+<td>Closeout confirms the primary demonstration, reconciles durable CLI documentation, records the accepted journey-coverage and full-leaf audit outcomes, and states every retained/unexposed capability and remaining external simulator, PiRacer, remote-view, or non-idle-control limit</td>
 <td>Unmet</td>
-<td>Closeout only</td>
+<td>Closeout only after M007-01 through M007-05 and M007-07 through M007-09</td>
+</tr>
+<tr>
+<td>M007-07</td>
+<td>A reproducible CLI journey-coverage collector attributes owned-Python statement and branch execution to named commands and multi-command journeys across foreground and Python subprocess/background-worker boundaries, separates bootstrap/import footprint from command-specific behavior, records exact source/command identity, and remains informational</td>
+<td>Unmet</td>
+<td>Next instrumentation frontier after live acceptance</td>
+</tr>
+<tr>
+<td>M007-08</td>
+<td>A complete generated-and-reviewed inventory maps every public CLI leaf to realistic usage patterns, prerequisites, side effects, safety class, output contract, owning boundary, and deterministic/live validation status without requiring unsafe execution</td>
+<td>Unmet</td>
+<td>Follows the accepted coverage collector</td>
+</tr>
+<tr>
+<td>M007-09</td>
+<td>Owned production code not reached by the declared CLI journey set is grouped by capability and reconciled with tests, other entrypoints, dynamic/platform paths, and ownership; every group is flagged to expose through CLI, retain with explicit reason, or remove through separately reviewed work</td>
+<td>Unmet</td>
+<td>Follows the accepted CLI-leaf and usage-pattern audit</td>
 </tr>
 </tbody>
 </table>
@@ -288,17 +343,17 @@ Automa command.</p>
 <li>Milestone-level non-goal: Product repair, PiRacer evidence, long-duration soak testing, performance qualification, non-idle control, or milestone closeout</li>
 </ul>
 <h3>Next-Frontier Candidate</h3>
-<p><strong>Milestone 007 closeout</strong></p>
+<p><strong>CLI journey coverage foundation</strong></p>
 <ul>
-<li>Proposal branch: <code>m007/closeout-proposal</code></li>
-<li>Implementation branch: <code>m007/closeout</code></li>
-<li>Proposal path: <code>docs/milestones/007-cli-operator-usability/proposals/closeout.md</code></li>
-<li>Review kind: Milestone closeout</li>
-<li>Review question: Does the accepted M007 implementation plus tracked live operator evidence prove the primary CLI journey, reconcile the durable operator documentation, and state every remaining external or deferred limit clearly enough to close the milestone?</li>
-<li>Acceptance owner: Whole-milestone judgment in <code>closeout.md</code>, the accepted-review-unit ledger, exit criteria, and residual-risk record</li>
-<li>Exit criteria affected: M007-06</li>
-<li>Prerequisite: M007-01 through M007-05 are <code>Met</code>, including accepted current-Metrics-UI live evidence</li>
-<li>Milestone-level non-goal: Product repair, a live acceptance rerun, new CLI behavior, PiRacer parity, remote-view hosting, non-idle control, or cross-milestone activation</li>
+<li>Proposal branch: <code>m007/cli-journey-coverage-proposal</code></li>
+<li>Implementation branch: <code>m007/cli-journey-coverage</code></li>
+<li>Proposal path: <code>docs/milestones/007-cli-operator-usability/proposals/cli-journey-coverage.md</code></li>
+<li>Review kind: Deterministic invariant closure</li>
+<li>Review question: Can a developer record reproducible branch-aware owned-Python coverage for named CLI commands and multi-command journeys across foreground and Python subprocess/background-worker execution while separating bootstrap/import footprint from command-specific behavior and avoiding false correctness or dead-code claims?</li>
+<li>Acceptance owner: Coverage session collector, command/context manifest, bootstrap subtraction, and versioned journey-coverage report schema built on <code>.coveragerc</code></li>
+<li>Exit criteria affected: M007-07</li>
+<li>Prerequisite: M007-05 is <code>Met</code> and the existing subprocess-aware owned-code coverage baseline remains available</li>
+<li>Milestone-level non-goal: Exhaustive CLI-leaf audit, capability disposition, product deletion, new CLI features, Metrics UI JavaScript coverage, a numeric coverage gate, or a live simulator requirement</li>
 </ul>
 <h2>Workflow History</h2>
 <table>
@@ -344,6 +399,11 @@ Automa command.</p>
 <td>Live CLI operator acceptance</td>
 <td>ready_for_proposal</td>
 <td>Plan revision: queued milestone closeout as the reviewed successor to successful live acceptance; live scope and acceptance ownership are unchanged.</td>
+</tr>
+<tr>
+<td>Live CLI operator acceptance</td>
+<td>ready_for_proposal</td>
+<td>Plan revision: expanded M007 through CLI journey coverage, complete leaf/usage-pattern audit, and evidence-based disposition of unexposed code; replaced premature closeout with the coverage foundation while preserving the live acceptance contract.</td>
 </tr>
 <tr>
 <td>Live CLI operator acceptance</td>
@@ -403,6 +463,21 @@ Automa command.</p>
 <td>An otherwise healthy worker could be reported failed because the OS cannot launch a browser</td>
 <td>Keep view health authoritative; browser launch is explicit and reports its own non-fatal result and URL</td>
 </tr>
+<tr>
+<td>Eager CLI imports execute shared module top levels before a leaf handler runs</td>
+<td>Naive per-command coverage overstates feature use and makes unrelated modules look journey-owned</td>
+<td>Record a bootstrap/help context, preserve per-command contexts, and report shared/bootstrap execution separately from command-specific lines and branches</td>
+</tr>
+<tr>
+<td>Coverage absence is not proof that code is dead</td>
+<td>Hardware paths, dynamic plugins, libraries, and non-CLI entrypoints could be removed or exposed incorrectly</td>
+<td>Reconcile uncovered regions with tests, entrypoints, dynamic loading, platform constraints, and an explicit owner before disposition</td>
+</tr>
+<tr>
+<td>Running every CLI leaf can be unsafe or environment-dependent</td>
+<td>A coverage target could encourage movement, destructive operations, hardware access, or misleading skips</td>
+<td>Inventory every leaf, but execute only declared safe patterns; record prerequisites and non-executed live/hazardous classifications explicitly</td>
+</tr>
 </tbody>
 </table>
 <h2>Milestone Decisions</h2>
@@ -455,6 +530,21 @@ Automa command.</p>
 <td>Make passive attachment the primary simulator journey</td>
 <td>Observation must latch onto the currently exposed vehicle without scenario selection, playback changes, control takeover, or input injection; missing simulator support is an explicit external change request, never a hidden workaround</td>
 </tr>
+<tr>
+<td>2026-08-02</td>
+<td>Extend M007 from one accepted journey into measured CLI product-surface stewardship before adding more features</td>
+<td>Per-command and realistic-journey reachability can expose import tax, unused capability, missing CLI exposure, and accidental growth before another feature layer compounds it</td>
+</tr>
+<tr>
+<td>2026-08-02</td>
+<td>Separate coverage instrumentation, full leaf/usage audit, and capability disposition into sequential frontiers</td>
+<td>Each has a different acceptance owner and review question; instrumentation must be trustworthy before its results drive inventory or expose/retain/remove decisions</td>
+</tr>
+<tr>
+<td>2026-08-02</td>
+<td>Keep coverage informational and require capability-level ownership before removal or exposure</td>
+<td>Executed code is not necessarily correct, unexecuted code is not necessarily dead, and aggregate percentages cannot substitute for behavior, safety, dynamic-path, or product judgments</td>
+</tr>
 </tbody>
 </table>
 <h2>Closeout</h2>
@@ -465,8 +555,14 @@ Automa command.</p>
 <li>a completed-milestone ledger entry;</li>
 <li>a durable operator guide for the supported simulator-to-perception journey;</li>
 <li>tracked live acceptance evidence against the current Metrics UI contract;</li>
+<li>a reproducible named-command and realistic-journey owned-source coverage
+  report that separates CLI bootstrap/import execution from behavior;</li>
+<li>a complete CLI-leaf and realistic-usage-pattern inventory;</li>
+<li>an owned capability disposition record for code outside declared CLI
+  journeys, with any exposure or removal work linked as separate review units;</li>
 <li>a residual-risk statement covering external contract drift, PiRacer parity,
-  browser launch, remote views, and movement authority.</li>
+  browser launch, remote views, movement authority, dynamic/platform-only paths,
+  and the limits of coverage as a code-value signal.</li>
 </ul>
   </main>
 </body>

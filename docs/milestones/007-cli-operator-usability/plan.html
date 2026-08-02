@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="c93cd314026d32442e68e8c69ec708c5376aa1f3193b8c47072493837a2c9442">
+  <meta name="source-sha256" content="b81ea61831b235680d9a4f1ccd84894e00c4b6739b613078de8110453fcd6c4f">
   <base target="_blank">
   <title>Milestone plan — 007-cli-operator-usability</title>
   <style>
@@ -288,10 +288,17 @@ Automa command.</p>
 <li>Milestone-level non-goal: Product repair, PiRacer evidence, long-duration soak testing, performance qualification, non-idle control, or milestone closeout</li>
 </ul>
 <h3>Next-Frontier Candidate</h3>
-<p><strong>None</strong></p>
+<p><strong>Milestone 007 closeout</strong></p>
 <ul>
-<li>Reason: Live CLI operator acceptance is promoted from the frozen next-candidate slot after M007-01 through M007-04.</li>
-<li>Revisit when: The live acceptance unit records current Metrics UI conformance or returns a product finding to the accepted implementation boundary.</li>
+<li>Proposal branch: <code>m007/closeout-proposal</code></li>
+<li>Implementation branch: <code>m007/closeout</code></li>
+<li>Proposal path: <code>docs/milestones/007-cli-operator-usability/proposals/closeout.md</code></li>
+<li>Review kind: Milestone closeout</li>
+<li>Review question: Does the accepted M007 implementation plus tracked live operator evidence prove the primary CLI journey, reconcile the durable operator documentation, and state every remaining external or deferred limit clearly enough to close the milestone?</li>
+<li>Acceptance owner: Whole-milestone judgment in <code>closeout.md</code>, the accepted-review-unit ledger, exit criteria, and residual-risk record</li>
+<li>Exit criteria affected: M007-06</li>
+<li>Prerequisite: M007-01 through M007-05 are <code>Met</code>, including accepted current-Metrics-UI live evidence</li>
+<li>Milestone-level non-goal: Product repair, a live acceptance rerun, new CLI behavior, PiRacer parity, remote-view hosting, non-idle control, or cross-milestone activation</li>
 </ul>
 <h2>Workflow History</h2>
 <table>
@@ -332,6 +339,11 @@ Automa command.</p>
 <td>Live CLI operator acceptance</td>
 <td>ready_for_proposal</td>
 <td>Promoted after implementation PR #84.</td>
+</tr>
+<tr>
+<td>Live CLI operator acceptance</td>
+<td>ready_for_proposal</td>
+<td>Plan revision: queued milestone closeout as the reviewed successor to successful live acceptance; live scope and acceptance ownership are unchanged.</td>
 </tr>
 </tbody>
 </table>

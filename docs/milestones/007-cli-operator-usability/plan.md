@@ -118,7 +118,7 @@ does not retroactively widen the accepted primary journey.
 
 **Live CLI operator acceptance**
 
-- Workflow state: ready_for_implementation
+- Workflow state: implementation_in_review
 - Proposal branch: `m007/live-cli-acceptance-proposal`
 - Implementation branch: `m007/live-cli-acceptance`
 - Proposal path: `docs/milestones/007-cli-operator-usability/proposals/live-cli-acceptance.md`
@@ -158,6 +158,7 @@ does not retroactively widen the accepted primary journey.
 | Live CLI operator acceptance | ready_for_proposal | Plan revision: expanded M007 through CLI journey coverage, complete leaf/usage-pattern audit, and evidence-based disposition of unexposed code; replaced premature closeout with the coverage foundation while preserving the live acceptance contract. |
 | Live CLI operator acceptance | proposal_in_review | Started m007/live-cli-acceptance-proposal. |
 | Live CLI operator acceptance | ready_for_implementation | Proposal PR #86 accepted at cdb9e55f94293823dc5aae8e02356d16eed4eea2. |
+| Live CLI operator acceptance | implementation_in_review | Started m007/live-cli-acceptance. |
 
 ## Accepted Review Units
 

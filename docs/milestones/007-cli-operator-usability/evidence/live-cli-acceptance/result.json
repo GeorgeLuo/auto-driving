@@ -1,0 +1,79 @@
+{
+  "schema": "m007_live_cli_acceptance_v1",
+  "result": "incomplete",
+  "incomplete_reason": "The tracked operator session has not started.",
+  "timestamps": {
+    "started_at_utc": null,
+    "ended_at_utc": null,
+    "local_timezone": null
+  },
+  "environment": {
+    "operating_system": null,
+    "browser": {
+      "name": null,
+      "version": null
+    },
+    "metrics_ui_origin": null
+  },
+  "repositories": {
+    "auto_driving": {
+      "commit": null,
+      "branch": "m007/live-cli-acceptance",
+      "worktree_state": null,
+      "diff_identity": null
+    },
+    "metrics_ui": {
+      "commit": null,
+      "branch_or_pr": null,
+      "worktree_state": null,
+      "diff_identity": null
+    }
+  },
+  "baseline": {
+    "frontend_visibly_open": null,
+    "game": null,
+    "vehicle_id": "chase-sim-chaser",
+    "camera": null,
+    "existing_worker_state": null,
+    "precondition_cleanup": null,
+    "existing_run_directories": null
+  },
+  "ordered_command_outcomes": [],
+  "layer_snapshots": {
+    "initial": null,
+    "running": null,
+    "stopped": null
+  },
+  "session_fingerprint": {
+    "baseline": null,
+    "final": null,
+    "preserved": null
+  },
+  "frame_correlation": {
+    "camera_frame_id": null,
+    "perception_frame_id": null,
+    "overlay_status": null,
+    "current": null
+  },
+  "authority": {
+    "action_policy": null,
+    "control_application": null,
+    "movement_applied": null
+  },
+  "recording": {
+    "requested": false,
+    "worker_reports_recording": null,
+    "before_run_directories": null,
+    "after_run_directories": null,
+    "new_run_directories": null
+  },
+  "cleanup": {
+    "attempted": false,
+    "stop_exit_code": null,
+    "worker_stopped": null,
+    "current_generation_view_unavailable": null,
+    "repository_owned_process_remaining": null
+  },
+  "findings": [],
+  "artifacts": []
+}

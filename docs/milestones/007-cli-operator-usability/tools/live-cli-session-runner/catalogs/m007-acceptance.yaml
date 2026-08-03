@@ -29,6 +29,10 @@ gates:
     required: true
   - id: authority
     required: true
+  - id: correlation
+    required: true
+  - id: default_recording
+    required: true
   - id: cleanup
     required: true
 steps:
@@ -40,7 +44,7 @@ steps:
     visual_required: true
     visual_prompt: "Chrome Metrics UI shows Chase with a connected frontend tab?"
     required_for_verdict: true
-    gate_ids: [initial_layers]
+    gate_ids: []
 
   - id: help-top
     kind: command
@@ -90,6 +94,7 @@ steps:
     visual_required: false
     required_for_verdict: true
     gate_ids: [initial_layers]
+    machine_validators: [initial_layers]
     expect_exit: 0
 
   - id: update-perception
@@ -132,7 +137,8 @@ steps:
     visual_required: true
     visual_prompt: "Metrics UI still healthy and Automa view still current after status?"
     required_for_verdict: true
-    gate_ids: [running_layers, authority, human_view]
+    gate_ids: [running_layers, authority, human_view, correlation]
+    machine_validators: [running_layers, authority, view_correlation]
     expect_exit: 0
 
   - id: automation-stop
@@ -159,5 +165,6 @@ steps:
     primary_cue: "worker stopped; perception_view stale or unavailable; next action reprints run"
     visual_required: false
     required_for_verdict: true
-    gate_ids: [cleanup]
+    gate_ids: [cleanup, default_recording]
+    machine_validators: [stopped_layers, default_recording]
     expect_exit: 0

@@ -86,7 +86,8 @@ session-dir/
   baseline.json
   catalog.json
   catalog-source.txt
-  result.json              # live_cli_session_result_v0
+  result.json              # live_cli_session_result_v0 (no self-digest)
+  digests.json             # detached hashes of all final files except itself
   findings.json
   findings.jsonl           # one finding object per line for agents
   human-notes.md
@@ -137,8 +138,8 @@ Agents should prefer `findings.jsonl` + `result.json` over re-parsing multi-mega
 
 For each step the runner prints the primary cue, then asks:
 
-1. Visual / step result: pass / fail / skip  
-2. Optional notes  
+1. Visual / step result: pass / fail / skip
+2. Optional notes
 3. Optional finding (severity + summary)
 
 Rules of thumb (from the live acceptance discussion):
@@ -157,10 +158,24 @@ Rules of thumb (from the live acceptance discussion):
 
 Recommended flow:
 
-1. Review and land the runner in isolation.  
-2. Run `m007-acceptance` interactively with Chrome up.  
-3. Commit the session directory (or copy fields into the formal evidence scaffold) on the evidence PR.  
+1. Review and land the runner in isolation.
+2. Run `m007-acceptance` interactively with Chrome up.
+3. Commit the session directory (or copy fields into the formal evidence scaffold) on the evidence PR.
 4. Use exploratory `findings.jsonl` to author the next proposal.
+
+## Acceptance pass constraints
+
+An acceptance catalog can return `pass` only when all of the following hold:
+
+- execution mode is **interactive live** (not `--dry-run`, not `--non-interactive`)
+- required machine validators pass on captured status/view JSON
+- interactive human visual confirmation was recorded
+- `--browser-name`, `--browser-version`, and `--metrics-ui-repo` are provided
+- `browser-view.png` is present in the session directory (copy via `--browser-view`)
+- cleanup proves the worker is stopped
+
+Dry-run and non-interactive sessions are capture helpers only; they resolve to
+`incomplete` for acceptance catalogs even if every auto-visual is `pass`.
 
 ## Non-interactive mode
 

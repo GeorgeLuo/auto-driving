@@ -118,10 +118,11 @@ does not retroactively widen the accepted primary journey.
 
 **Live CLI operator acceptance**
 
-- Workflow state: proposal_in_review
+- Workflow state: ready_for_implementation
 - Proposal branch: `m007/live-cli-acceptance-proposal`
 - Implementation branch: `m007/live-cli-acceptance`
 - Proposal path: `docs/milestones/007-cli-operator-usability/proposals/live-cli-acceptance.md`
+- Accepted proposal: [#86](https://github.com/GeorgeLuo/auto-driving/pull/86) at `cdb9e55f94293823dc5aae8e02356d16eed4eea2`
 - Review kind: Live or external evidence
 - Review question: Does the accepted simulator-to-perception CLI journey work end to end against the current local Metrics UI deployment with one processed observation-only frame, a healthy browser view, truthful layer states, no applied movement, and no default recording?
 - Acceptance owner: Bounded live Chase operator procedure and tracked machine/human acceptance evidence
@@ -156,6 +157,7 @@ does not retroactively widen the accepted primary journey.
 | Live CLI operator acceptance | ready_for_proposal | Plan revision: queued milestone closeout as the reviewed successor to successful live acceptance; live scope and acceptance ownership are unchanged. |
 | Live CLI operator acceptance | ready_for_proposal | Plan revision: expanded M007 through CLI journey coverage, complete leaf/usage-pattern audit, and evidence-based disposition of unexposed code; replaced premature closeout with the coverage foundation while preserving the live acceptance contract. |
 | Live CLI operator acceptance | proposal_in_review | Started m007/live-cli-acceptance-proposal. |
+| Live CLI operator acceptance | ready_for_implementation | Proposal PR #86 accepted at cdb9e55f94293823dc5aae8e02356d16eed4eea2. |
 
 ## Accepted Review Units
 

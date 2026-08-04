@@ -166,5 +166,5 @@ steps:
     visual_required: false
     required_for_verdict: true
     gate_ids: [cleanup, default_recording]
-    machine_validators: [stopped_layers, default_recording]
+    machine_validators: [stopped_layers, default_recording, preservation]
     expect_exit: 0

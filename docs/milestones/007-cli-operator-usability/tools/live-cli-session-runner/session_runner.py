@@ -139,12 +139,13 @@ def _git_identity(repo: Path) -> dict[str, Any]:
     dirty = bool(status)
     diff_identity = None
     if dirty:
-        # Stable identity for dirty trees: hash of porcelain + shortstat.
-        shortstat = run(["git", "diff", "--shortstat"])
-        material = (status + "\n" + shortstat).encode("utf-8")
+        # Exact patch identity for dirty trees (not just shortstat).
+        patch = run(["git", "diff", "HEAD"])
+        material = (status + "\n" + patch).encode("utf-8")
         diff_identity = hashlib.sha256(material).hexdigest()
     return {
-        "path": str(repo),
+        # Never store absolute local paths in reviewable artifacts.
+        "path": repo.name,
         "commit": commit,
         "branch": branch,
         "worktree_state": "dirty" if dirty else "clean",
@@ -195,11 +196,24 @@ def _list_run_directories(repo_root: Path, vehicle_id: str) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
+_SESSION_FIELDS = (
+    "game_id",
+    "scenario_id",
+    "simulation_epoch",
+    "playback",
+    "control_source",
+    "control_input",
+)
+
+
 def extract_vehicle_status(
     status: Mapping[str, Any],
     vehicle_id: str,
 ) -> dict[str, Any] | None:
-    """Return one automa_vehicle_status_v1 card from targeted or aggregate JSON."""
+    """Return one automa_vehicle_status_v1 card from targeted or aggregate JSON.
+
+    Never substitutes a differently-id'd card when the requested id is absent.
+    """
 
     vehicles = status.get("vehicles")
     if isinstance(vehicles, list):
@@ -210,12 +224,17 @@ def extract_vehicle_status(
         ]
         if len(matches) == 1:
             return matches[0]
-        if not matches and len(vehicles) == 1 and isinstance(vehicles[0], dict):
-            return vehicles[0]
+        return None
 
     layers = status.get("layers")
     if isinstance(layers, dict) and layers:
-        # Targeted status documents place layers at the top level.
+        # Targeted status: require schema/vehicle identity when present.
+        schema = status.get("schema")
+        status_vehicle = status.get("vehicle_id")
+        if schema is not None and schema != "automa_vehicle_status_v1":
+            return None
+        if status_vehicle is not None and str(status_vehicle) != vehicle_id:
+            return None
         return dict(status)
     return None
 
@@ -264,38 +283,57 @@ def extract_session_fingerprint(
     status: Mapping[str, Any],
     vehicle_id: str,
 ) -> dict[str, Any] | None:
-    """Stable protected session fields used for preservation checks."""
+    """Fingerprint from layers.passive_capture (mirrors live-smoke predicate)."""
 
-    authority = _authority(status, vehicle_id)
-    passive = authority.get("passive_capture")
+    card = extract_vehicle_status(status, vehicle_id)
+    if card is None:
+        return None
+    layers = card.get("layers")
+    if not isinstance(layers, dict):
+        return None
+    passive = layers.get("passive_capture")
     if not isinstance(passive, dict):
-        passive = {}
-    session = passive.get("session_preservation") or authority.get("passive_session")
-    if not isinstance(session, dict):
-        # Fall back to environment snapshot when present.
-        environment = passive.get("environment")
-        if isinstance(environment, dict):
-            return {
-                "game_id": environment.get("game_id"),
-                "scenario_id": environment.get("scenario_id"),
-                "simulation_epoch": environment.get("simulation_epoch"),
-                "control_source": environment.get("control_source"),
-            }
         return None
-    before = session.get("before") if isinstance(session.get("before"), dict) else {}
-    after = session.get("after") if isinstance(session.get("after"), dict) else {}
-    # Prefer after when present; else before.
-    source = after or before
-    if not source:
+    if passive.get("state") != "available":
         return None
-    return {
-        "game_id": source.get("game_id"),
-        "scenario_id": source.get("scenario_id"),
-        "simulation_epoch": source.get("simulation_epoch"),
-        "control_source": source.get("control_source"),
-        "preserved": session.get("preserved"),
-        "changed_fields": session.get("changed_fields"),
-    }
+    if passive.get("mutation_attempted") is not False:
+        return None
+    preservation = passive.get("session_preservation")
+    if not isinstance(preservation, dict):
+        return None
+    if preservation.get("preserved") is not True:
+        return None
+    if preservation.get("changed_fields") not in ([], None):
+        # empty list required when present
+        if preservation.get("changed_fields"):
+            return None
+    if preservation.get("unknown_fields") not in ([], None):
+        if preservation.get("unknown_fields"):
+            return None
+    before = preservation.get("before")
+    after = preservation.get("after")
+    if not isinstance(before, dict) or not isinstance(after, dict):
+        return None
+    fingerprint: dict[str, Any] = {}
+    for field_name in _SESSION_FIELDS:
+        if field_name not in before or field_name not in after:
+            return None
+        if before[field_name] is None and field_name not in {"control_input"}:
+            # control_input may be null; other protected fields must be present.
+            if field_name != "control_input":
+                return None
+        if before[field_name] != after[field_name]:
+            return None
+        fingerprint[field_name] = before[field_name]
+    # Require non-null core identity fields.
+    for field_name in ("game_id", "scenario_id", "simulation_epoch", "control_source"):
+        if fingerprint.get(field_name) in (None, ""):
+            return None
+    fingerprint["preserved"] = True
+    fingerprint["changed_fields"] = list(preservation.get("changed_fields") or [])
+    fingerprint["unknown_fields"] = list(preservation.get("unknown_fields") or [])
+    fingerprint["mutation_attempted"] = False
+    return fingerprint
 
 
 def validate_initial_layers(
@@ -375,24 +413,29 @@ def validate_authority(
     *,
     vehicle_id: str,
 ) -> tuple[bool, str]:
+    card = extract_vehicle_status(status, vehicle_id)
+    if card is None:
+        return False, f"no vehicle status card for {vehicle_id!r}"
+    if card.get("schema") not in {None, "automa_vehicle_status_v1"}:
+        return False, f"unexpected status schema {card.get('schema')!r}"
     authority = _authority(status, vehicle_id)
     if not authority:
         return False, "authority object missing"
     policy = authority.get("action_policy")
     application = authority.get("control_application")
-    control = authority.get("last_frame")
-    applied = None
-    if isinstance(control, dict):
-        ctrl = control.get("control")
-        if isinstance(ctrl, dict):
-            applied = ctrl.get("applied")
+    last_frame = authority.get("last_frame")
+    if not isinstance(last_frame, dict):
+        return False, "authority.last_frame missing"
+    ctrl = last_frame.get("control")
+    if not isinstance(ctrl, dict):
+        return False, "authority.last_frame.control missing"
+    applied = ctrl.get("applied")
     if policy != "observe_only":
         return False, f"action_policy={policy!r}"
     if application != "not_applied":
         return False, f"control_application={application!r}"
-    if applied is True:
-        return False, "last_frame.control.applied is true"
-    # Fail closed: recording must be explicit false.
+    if applied is not False:
+        return False, f"last_frame.control.applied={applied!r} (want false)"
     if authority.get("recording") is not False:
         return False, f"recording={authority.get('recording')!r} (want false)"
     return True, "observe_only / not_applied / recording=false"
@@ -409,8 +452,8 @@ def validate_view_latest(payload: Mapping[str, Any] | None) -> tuple[bool, str]:
     frame = payload.get("frame")
     overlay = payload.get("overlay")
     perception = payload.get("perception")
-    cycle = payload.get("cycle") if isinstance(payload.get("cycle"), dict) else {}
-    control = payload.get("control") if isinstance(payload.get("control"), dict) else {}
+    cycle = payload.get("cycle")
+    control = payload.get("control")
 
     if not isinstance(frame, dict) or not frame.get("frame_id"):
         return False, "frame.frame_id missing"
@@ -425,12 +468,16 @@ def validate_view_latest(payload: Mapping[str, Any] | None) -> tuple[bool, str]:
         )
     if not isinstance(perception, dict) or not perception:
         return False, "perception result absent"
+    if not isinstance(cycle, dict):
+        return False, "cycle object missing"
     if cycle.get("action_policy") != "observe_only":
         return False, f"cycle.action_policy={cycle.get('action_policy')!r}"
     if cycle.get("control_application") != "not_applied":
         return False, f"cycle.control_application={cycle.get('control_application')!r}"
-    if control.get("applied") is True:
-        return False, "control.applied is true"
+    if not isinstance(control, dict):
+        return False, "control object missing"
+    if control.get("applied") is not False:
+        return False, f"control.applied={control.get('applied')!r} (want false)"
     return True, f"current correlated overlay for {frame.get('frame_id')}"
 
 
@@ -451,20 +498,50 @@ def validate_preservation(
         return False, "baseline fingerprint missing"
     if not isinstance(current, dict) or not current:
         return False, "current fingerprint missing"
-    for key in ("game_id", "scenario_id", "simulation_epoch", "control_source"):
+    if baseline.get("preserved") is not True or current.get("preserved") is not True:
+        return False, "preserved is not True on baseline/current fingerprints"
+    for key in _SESSION_FIELDS:
+        if key not in baseline or key not in current:
+            return False, f"fingerprint missing field {key!r}"
         if baseline.get(key) != current.get(key):
             return False, f"{key} changed: {baseline.get(key)!r} -> {current.get(key)!r}"
-    if current.get("preserved") is False:
-        return False, f"session reports preserved=false changed={current.get('changed_fields')!r}"
+    for key in ("game_id", "scenario_id", "simulation_epoch", "control_source"):
+        if baseline.get(key) in (None, ""):
+            return False, f"baseline {key} is empty"
     return True, "protected session fields preserved"
 
 
-def validate_browser_view_image(path: Path) -> tuple[bool, str]:
+def validate_browser_view_image(
+    path: Path,
+    *,
+    not_before_unix: float | None = None,
+    require_not_before: bool = False,
+) -> tuple[bool, str, dict[str, Any]]:
+    """Validate a browser screenshot file.
+
+    ``not_before_unix`` is the earliest acceptable source mtime (typically when
+    the view became machine-healthy). When ``require_not_before`` is true, a
+    missing floor fails closed so pre-session or unbound images cannot pass.
+    """
+
+    meta: dict[str, Any] = {}
     if not path.is_file():
-        return False, f"browser-view.png missing at {path}"
+        return False, f"browser-view.png missing at {path}", meta
     size = path.stat().st_size
+    mtime = path.stat().st_mtime
+    meta["source_size_bytes"] = size
+    meta["source_mtime_unix"] = mtime
+    meta["source_sha256"] = _sha256_file(path)
     if size <= 0:
-        return False, "browser-view.png is empty"
+        return False, "browser-view.png is empty", meta
+    if require_not_before and not_before_unix is None:
+        return False, "browser-view.png rejected: view-health floor not established", meta
+    if not_before_unix is not None and mtime + 1.0 < not_before_unix:
+        return (
+            False,
+            f"browser-view.png mtime {mtime} predates view-health time {not_before_unix}",
+            meta,
+        )
     try:
         from PIL import Image
 
@@ -472,10 +549,44 @@ def validate_browser_view_image(path: Path) -> tuple[bool, str]:
             image.load()
             width, height = image.size
     except Exception as exc:  # noqa: BLE001
-        return False, f"browser-view.png is not a decodable image: {exc}"
+        return False, f"browser-view.png is not a decodable image: {exc}", meta
     if width < 1 or height < 1:
-        return False, "browser-view.png has invalid dimensions"
-    return True, f"browser-view.png ok ({width}x{height}, {size} bytes)"
+        return False, "browser-view.png has invalid dimensions", meta
+    meta["width_px"] = width
+    meta["height_px"] = height
+    return True, f"browser-view.png ok ({width}x{height}, {size} bytes)", meta
+
+
+def _bind_browser_view_image(
+    import_path: Path,
+    target: Path,
+    *,
+    not_before_unix: float | None,
+) -> tuple[bool, str, dict[str, Any]]:
+    """Validate source image against the health floor and copy preserving mtime.
+
+    The copy keeps the source modification time so later acceptance checks cannot
+    treat a replayed pre-session PNG as freshly captured after ``write_bytes``.
+    """
+
+    ok, summary, meta = validate_browser_view_image(
+        import_path,
+        not_before_unix=not_before_unix,
+        require_not_before=True,
+    )
+    if not ok:
+        if target.is_file():
+            try:
+                target.unlink()
+            except OSError:
+                pass
+        return ok, summary, meta
+    target.write_bytes(import_path.read_bytes())
+    source_mtime = float(meta["source_mtime_unix"])
+    os.utime(target, (source_mtime, source_mtime))
+    meta["bound_path"] = target.name
+    meta["bound_mtime_unix"] = target.stat().st_mtime
+    return True, summary, meta
 
 
 # ---------------------------------------------------------------------------
@@ -567,6 +678,8 @@ class CommandOutcome:
     elapsed_ms: int
     stdout_path: str
     stderr_path: str
+    started_at_utc: str
+    ended_at_utc: str
 
 
 def _run_command(
@@ -582,6 +695,7 @@ def _run_command(
     step_dir.mkdir(parents=True, exist_ok=True)
     stdout_path = step_dir / f"cmd-{index:02d}.stdout.txt"
     stderr_path = step_dir / f"cmd-{index:02d}.stderr.txt"
+    wall_started = _utc_now()
     started = time.monotonic()
     try:
         completed = subprocess.run(
@@ -603,6 +717,7 @@ def _run_command(
         exit_code = 127
         stdout = ""
         stderr = f"{type(exc).__name__}: {exc}\n"
+    wall_ended = _utc_now()
     elapsed_ms = int((time.monotonic() - started) * 1000)
     red_out = _redact(stdout, cwd)
     red_err = _redact(stderr, cwd)
@@ -610,7 +725,9 @@ def _run_command(
     _write_text(stderr_path, red_err)
     _append_text(
         transcript_path,
-        f"$ {_format_command(argv)}\n{red_out}{red_err}exit={exit_code} elapsed_ms={elapsed_ms}\n",
+        f"$ {_format_command(argv)}\n{red_out}{red_err}"
+        f"exit={exit_code} elapsed_ms={elapsed_ms} "
+        f"started={_iso(wall_started)} ended={_iso(wall_ended)}\n",
     )
     return CommandOutcome(
         argv=list(argv),
@@ -619,6 +736,8 @@ def _run_command(
         elapsed_ms=elapsed_ms,
         stdout_path=str(stdout_path.relative_to(session_dir)),
         stderr_path=str(stderr_path.relative_to(session_dir)),
+        started_at_utc=_iso(wall_started),
+        ended_at_utc=_iso(wall_ended),
     )
 
 
@@ -646,6 +765,7 @@ class SessionState:
     baseline_fingerprint: dict[str, Any] | None = None
     latest_fingerprint: dict[str, Any] | None = None
     browser_view_meta: dict[str, Any] | None = None
+    view_healthy_at_unix: float | None = None
     interactive_human_confirmation: bool = False
     dry_run: bool = False
     non_interactive: bool = False
@@ -777,7 +897,36 @@ def _derive_verdict(state: SessionState) -> tuple[str, str | None]:
             if auto.get("worktree_state") == "dirty" and not auto.get("diff_identity"):
                 return "incomplete", "Dirty auto-driving worktree lacks diff_identity."
         view_path = state.session_dir / "browser-view.png"
-        ok_img, img_summary = validate_browser_view_image(view_path)
+        # Prefer provenance recorded at the human-view gate; fall back to file
+        # mtime only when meta is absent (still require a view-health floor).
+        meta_path = state.session_dir / "browser-view-meta.json"
+        floor = state.view_healthy_at_unix
+        if meta_path.is_file():
+            try:
+                recorded = json.loads(meta_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                recorded = {}
+            if recorded.get("ok") is not True:
+                return (
+                    "incomplete",
+                    "Acceptance pass requires browser-view.png bound after view health.",
+                )
+            source_mtime = recorded.get("source_mtime_unix")
+            if floor is None:
+                return (
+                    "incomplete",
+                    "Acceptance pass requires view-health floor before screenshot binding.",
+                )
+            if not isinstance(source_mtime, (int, float)) or source_mtime + 1.0 < floor:
+                return (
+                    "incomplete",
+                    "Acceptance pass requires browser-view source mtime after view health.",
+                )
+        ok_img, img_summary, _meta = validate_browser_view_image(
+            view_path,
+            not_before_unix=floor,
+            require_not_before=True,
+        )
         if not ok_img:
             return "incomplete", f"Acceptance pass requires valid browser-view.png ({img_summary})."
 
@@ -905,12 +1054,20 @@ def _enforce_cleanup(
         cleanup["error"] = f"{type(exc).__name__}: {exc}"
         cleanup["worker_stopped"] = False
 
-    if (
-        cleanup.get("worker_stopped") is not True
-        or cleanup.get("pid_alive") is True
-        or cleanup.get("stop_exit_code") not in {None, 0}
-        or cleanup.get("final_status_exit_code") not in {None, 0}
-    ):
+    # Once startup may have created a worker, unknown process identity cannot pass.
+    if state.worker_may_exist and not state.dry_run:
+        if cleanup.get("stop_exit_code") != 0 or cleanup.get("final_status_exit_code") != 0:
+            cleanup["worker_stopped"] = False
+        if cleanup.get("pid") is None or cleanup.get("pid_alive") is None:
+            cleanup["worker_stopped"] = False
+            cleanup["error"] = (
+                cleanup.get("error")
+                or "cleanup cannot prove process liveness without a known PID"
+            )
+        if cleanup.get("pid_alive") is True:
+            cleanup["worker_stopped"] = False
+
+    if cleanup.get("worker_stopped") is not True:
         _record_finding(
             state,
             step_id="_cleanup",
@@ -1093,6 +1250,8 @@ def run_session(
                         "elapsed_ms": outcome.elapsed_ms,
                         "stdout_path": outcome.stdout_path,
                         "stderr_path": outcome.stderr_path,
+                        "started_at_utc": outcome.started_at_utc,
+                        "ended_at_utc": outcome.ended_at_utc,
                     }
                     command_outcomes.append(payload)
                     # Print a short excerpt for the operator only.
@@ -1127,12 +1286,20 @@ def run_session(
                         timeout_s=command_timeout_s,
                         transcript_path=transcript_path,
                     )
+                    if outcome.exit_code != 0:
+                        step_status = "fail"
+                        machine_ok = False
+                        validator_notes.append(
+                            f"JSON capture exit={outcome.exit_code}"
+                        )
                     command_outcomes.append(
                         {
                             "argv": outcome.argv,
                             "command": outcome.command,
                             "exit_code": outcome.exit_code,
                             "elapsed_ms": outcome.elapsed_ms,
+                            "started_at_utc": outcome.started_at_utc,
+                            "ended_at_utc": outcome.ended_at_utc,
                             "stdout_path": outcome.stdout_path,
                             "stderr_path": outcome.stderr_path,
                             "captures_to": json_name,
@@ -1193,10 +1360,13 @@ def run_session(
                     view_path = session_dir / "view-publication.json"
                     if name in {"initial_layers"}:
                         status_path = session_dir / "initial-status.json"
-                    elif name in {"running_layers", "authority", "preservation"}:
+                    elif name in {"running_layers", "authority"}:
                         status_path = session_dir / "running-status.json"
                     elif name in {"stopped_layers"}:
                         status_path = session_dir / "stopped-status.json"
+                    elif name == "preservation":
+                        # Fingerprints already updated from the latest JSON capture.
+                        status_path = None
                     if name == "default_recording":
                         state.recording_after = _list_run_directories(
                             repo_root, variables["vehicle_id"]
@@ -1215,6 +1385,8 @@ def run_session(
                     if not ok:
                         machine_ok = False
                         step_status = "fail"
+                    elif name == "view_correlation":
+                        state.view_healthy_at_unix = time.time()
 
             if validator_notes:
                 machine_summary = "; ".join(validator_notes) or machine_summary
@@ -1244,21 +1416,48 @@ def run_session(
                         import_path = Path(offered).expanduser()
                 if import_path is not None and import_path.is_file():
                     target = session_dir / "browser-view.png"
-                    target.write_bytes(import_path.read_bytes())
-                    ok_img, img_summary = validate_browser_view_image(target)
+                    # Bind only after view_correlation established the floor;
+                    # early human_view steps may still collect notes without
+                    # labeling a pre-session PNG as acceptance evidence.
+                    if state.view_healthy_at_unix is None:
+                        ok_img = False
+                        img_summary = (
+                            "browser-view.png not bound yet: view health not proven"
+                        )
+                        source_meta: dict[str, Any] = {
+                            "source_sha256": _sha256_file(import_path),
+                            "source_mtime_unix": import_path.stat().st_mtime,
+                        }
+                        if target.is_file():
+                            try:
+                                target.unlink()
+                            except OSError:
+                                pass
+                    else:
+                        ok_img, img_summary, source_meta = _bind_browser_view_image(
+                            import_path,
+                            target,
+                            not_before_unix=state.view_healthy_at_unix,
+                        )
                     state.browser_view_meta = {
-                        "imported_from": str(import_path),
-                        "captured_at_utc": _iso(_utc_now()),
+                        # Redact absolute paths from reviewable evidence.
+                        "imported_from": _redact(str(import_path), repo_root),
+                        "imported_at_utc": _iso(_utc_now()),
+                        "source_mtime_unix": source_meta.get("source_mtime_unix"),
+                        "source_sha256": source_meta.get("source_sha256"),
+                        "view_healthy_at_unix": state.view_healthy_at_unix,
                         "step_id": step_id,
                         "validation": img_summary,
                         "ok": ok_img,
                     }
                     _write_json(session_dir / "browser-view-meta.json", state.browser_view_meta)
-                    if not ok_img:
+                    # Only fail the step when this gate already proved view
+                    # health (or judgment claims pass without any bound image).
+                    if not ok_img and state.view_healthy_at_unix is not None:
                         machine_ok = False
                         step_status = "fail"
                         validator_notes.append(img_summary)
-                elif judgment.visual == "pass":
+                elif judgment.visual == "pass" and state.view_healthy_at_unix is not None:
                     machine_ok = False
                     step_status = "fail"
                     validator_notes.append(
@@ -1354,6 +1553,9 @@ def run_session(
                 },
                 "gate_ids": gate_ids,
                 "required_for_verdict": bool(step.get("required_for_verdict")),
+                "browser_view": state.browser_view_meta
+                if step.get("visual_required") and "human_view" in gate_ids
+                else None,
             }
             _write_json(step_dir / "envelope.json", envelope)
             state.steps.append(envelope)

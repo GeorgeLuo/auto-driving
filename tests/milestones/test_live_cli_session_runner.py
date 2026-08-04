@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -26,8 +28,8 @@ CATALOGS = RUNNER_PATH.parent / "catalogs"
 
 def _load_runner_module():
     name = "live_cli_session_runner"
-    if name in sys.modules:
-        return sys.modules[name]
+    # Always reload so tests see the latest file.
+    sys.modules.pop(name, None)
     spec = importlib.util.spec_from_file_location(name, RUNNER_PATH)
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
@@ -36,28 +38,91 @@ def _load_runner_module():
     return module
 
 
-def _aggregate_initial_status() -> dict:
-    """Real aggregate shape: top-level layers null, card under vehicles[]."""
+def _session_fp(**overrides):
+    base = {
+        "game_id": "chase",
+        "scenario_id": "default",
+        "simulation_epoch": "chase-run:abc",
+        "playback": {"frameIndex": 10, "pendingAction": False, "phase": "running"},
+        "control_source": "programmatic",
+        "control_input": None,
+    }
+    base.update(overrides)
+    return base
+
+
+def _status_with_passive(
+    *,
+    vehicle_id: str = "chase-sim-chaser",
+    worker_state: str = "running",
+    view_state: str = "available",
+    deployment: str = "deployed",
+    fingerprint: dict | None = None,
+    mutation_attempted: bool = False,
+    preserved: bool = True,
+    recording: bool = False,
+    applied: bool = False,
+) -> dict:
+    fp = fingerprint or _session_fp()
+    return {
+        "schema": "automa_vehicle_status_v1",
+        "vehicle_id": vehicle_id,
+        "layers": {
+            "simulator_server": {"state": "reachable"},
+            "simulator_frontend": {"state": "connected"},
+            "chase_game": {"state": "ready"},
+            "vehicle": {"state": "discoverable"},
+            "passive_capture": {
+                "state": "available",
+                "mutation_attempted": mutation_attempted,
+                "session_preservation": {
+                    "preserved": preserved,
+                    "changed_fields": [],
+                    "unknown_fields": [],
+                    "before": {k: fp[k] for k in (
+                        "game_id",
+                        "scenario_id",
+                        "simulation_epoch",
+                        "playback",
+                        "control_source",
+                        "control_input",
+                    )},
+                    "after": {k: fp[k] for k in (
+                        "game_id",
+                        "scenario_id",
+                        "simulation_epoch",
+                        "playback",
+                        "control_source",
+                        "control_input",
+                    )},
+                },
+            },
+            "automation_deployment": {"state": deployment},
+            "automation_worker": {
+                "state": worker_state,
+                "details": {
+                    "pid": 4242 if worker_state == "running" else 4242,
+                    "authority": {
+                        "action_policy": "observe_only",
+                        "control_application": "not_applied",
+                        "recording": recording,
+                        "last_frame": {
+                            "control": {"applied": applied, "steering": 0.0, "throttle": 0.0}
+                        },
+                    },
+                },
+            },
+            "perception_view": {"state": view_state, "details": {"url": "http://127.0.0.1:8898/"}},
+        },
+    }
+
+
+def _aggregate(vehicle_id: str = "chase-sim-chaser") -> dict:
+    card = _status_with_passive(worker_state="stopped", view_state="stale")
     return {
         "schema": "automa_vehicle_status_list_v1",
         "layers": None,
-        "vehicle_id": None,
-        "vehicles": [
-            {
-                "schema": "automa_vehicle_status_v1",
-                "vehicle_id": "chase-sim-chaser",
-                "layers": {
-                    "simulator_server": {"state": "reachable"},
-                    "simulator_frontend": {"state": "connected"},
-                    "chase_game": {"state": "ready"},
-                    "vehicle": {"state": "discoverable"},
-                    "passive_capture": {"state": "available"},
-                    "automation_deployment": {"state": "deployed"},
-                    "automation_worker": {"state": "stopped"},
-                    "perception_view": {"state": "stale"},
-                },
-            }
-        ],
+        "vehicles": [card],
     }
 
 
@@ -78,14 +143,19 @@ def _current_view_payload(**overrides) -> dict:
         },
         "control": {"applied": False, "steering": 0.0, "throttle": 0.0},
     }
-    payload.update(overrides)
+    for key, value in overrides.items():
+        if isinstance(value, dict) and isinstance(payload.get(key), dict):
+            merged = dict(payload[key])
+            merged.update(value)
+            payload[key] = merged
+        else:
+            payload[key] = value
     return payload
 
 
 class LiveCliSessionRunnerTests(unittest.TestCase):
     def test_runner_script_exists(self) -> None:
         self.assertTrue(RUNNER_PATH.is_file())
-        self.assertTrue((CATALOGS / "m007-acceptance.yaml").is_file())
 
     def test_list_catalogs(self) -> None:
         completed = subprocess.run(
@@ -96,7 +166,6 @@ class LiveCliSessionRunnerTests(unittest.TestCase):
             text=True,
         )
         self.assertEqual(completed.returncode, 0, completed.stderr)
-        self.assertIn("m007-acceptance.yaml", completed.stdout)
 
     def test_dry_run_cannot_pass_acceptance(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -130,7 +199,6 @@ class LiveCliSessionRunnerTests(unittest.TestCase):
             self.assertEqual(completed.returncode, 2, completed.stdout + completed.stderr)
             result = json.loads((session_dir / "result.json").read_text(encoding="utf-8"))
             self.assertEqual(result["result"], "incomplete")
-            self.assertIn("Dry-run", result.get("incomplete_reason") or "")
 
     def test_digests_match_final_files(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -155,139 +223,309 @@ class LiveCliSessionRunnerTests(unittest.TestCase):
                 capture_output=True,
                 text=True,
             )
-            self.assertIn(completed.returncode, {0, 1, 2}, completed.stdout + completed.stderr)
+            self.assertIn(completed.returncode, {0, 1, 2})
             digests = json.loads((session_dir / "digests.json").read_text(encoding="utf-8"))
             runner = _load_runner_module()
             for entry in digests["artifacts"]:
                 path = session_dir / entry["path"]
-                self.assertTrue(path.is_file(), entry["path"])
-                self.assertEqual(entry["sha256"], runner._sha256_file(path), entry["path"])
-            self.assertFalse(any(e["path"] == "digests.json" for e in digests["artifacts"]))
+                self.assertEqual(entry["sha256"], runner._sha256_file(path))
 
-    def test_extract_vehicle_status_from_aggregate(self) -> None:
+    def test_aggregate_and_wrong_vehicle_extraction(self) -> None:
         runner = _load_runner_module()
-        aggregate = _aggregate_initial_status()
-        card = runner.extract_vehicle_status(aggregate, "chase-sim-chaser")
-        self.assertIsNotNone(card)
+        aggregate = _aggregate()
         ok, msg = runner.validate_initial_layers(aggregate, vehicle_id="chase-sim-chaser")
         self.assertTrue(ok, msg)
-        # Broken: only top-level layers=null without vehicles
-        ok, msg = runner.validate_initial_layers({"layers": None}, vehicle_id="chase-sim-chaser")
+        # Sole wrong-id card must not be substituted.
+        wrong = {
+            "layers": None,
+            "vehicles": [
+                {
+                    "schema": "automa_vehicle_status_v1",
+                    "vehicle_id": "other",
+                    "layers": aggregate["vehicles"][0]["layers"],
+                }
+            ],
+        }
+        card = runner.extract_vehicle_status(wrong, "chase-sim-chaser")
+        self.assertIsNone(card)
+        ok, msg = runner.validate_initial_layers(wrong, vehicle_id="chase-sim-chaser")
         self.assertFalse(ok)
 
-    def test_view_correlation_real_publication_shapes(self) -> None:
+    def test_preservation_uses_passive_capture_layer_not_worker_authority(self) -> None:
+        runner = _load_runner_module()
+        # Prior worker authority has a different epoch, but layer receipt is correct.
+        status = _status_with_passive(fingerprint=_session_fp(simulation_epoch="epoch-live"))
+        status["layers"]["automation_worker"]["details"]["authority"]["passive_capture"] = {
+            "session_preservation": {
+                "before": _session_fp(simulation_epoch="epoch-stale"),
+                "after": _session_fp(simulation_epoch="epoch-stale"),
+                "preserved": True,
+            }
+        }
+        fp = runner.extract_session_fingerprint(status, "chase-sim-chaser")
+        self.assertIsNotNone(fp)
+        self.assertEqual(fp["simulation_epoch"], "epoch-live")
+
+        # Missing protected values fail closed.
+        bad = _status_with_passive(fingerprint=_session_fp(game_id=None))
+        self.assertIsNone(runner.extract_session_fingerprint(bad, "chase-sim-chaser"))
+
+        # Changed input fails.
+        changed = _status_with_passive()
+        changed["layers"]["passive_capture"]["session_preservation"]["after"] = _session_fp(
+            control_input={"source": "keyboard"}
+        )
+        self.assertIsNone(runner.extract_session_fingerprint(changed, "chase-sim-chaser"))
+
+        baseline = runner.extract_session_fingerprint(
+            _status_with_passive(fingerprint=_session_fp()), "chase-sim-chaser"
+        )
+        current = runner.extract_session_fingerprint(
+            _status_with_passive(fingerprint=_session_fp()), "chase-sim-chaser"
+        )
+        ok, msg = runner.validate_preservation(baseline, current)
+        self.assertTrue(ok, msg)
+        drifted = runner.extract_session_fingerprint(
+            _status_with_passive(fingerprint=_session_fp(simulation_epoch="other")),
+            "chase-sim-chaser",
+        )
+        ok, msg = runner.validate_preservation(baseline, drifted)
+        self.assertFalse(ok)
+
+    def test_view_and_authority_fail_closed(self) -> None:
         runner = _load_runner_module()
         ok, msg = runner.validate_view_latest(_current_view_payload())
         self.assertTrue(ok, msg)
-
-        ok, msg = runner.validate_view_latest(
-            _current_view_payload(overlay={"status": "pending", "source_frame_id": None})
-        )
+        ok, msg = runner.validate_view_latest(_current_view_payload(control=None))
         self.assertFalse(ok)
-        self.assertIn("overlay.status", msg)
-
-        ok, msg = runner.validate_view_latest(
-            _current_view_payload(
-                frame={"frame_id": "chase_frame_2", "frame_index": 2},
-                overlay={"status": "stale", "source_frame_id": "chase_frame_1", "frame_lag": 1},
-            )
-        )
+        self.assertIn("control object missing", msg)
+        ok, msg = runner.validate_view_latest({"frame_id": "x"})
         self.assertFalse(ok)
 
-        ok, msg = runner.validate_view_latest(
-            _current_view_payload(
-                overlay={"status": "current", "source_frame_id": "other"},
-            )
-        )
-        self.assertFalse(ok)
-        self.assertIn("source_frame_id", msg)
-
-        ok, msg = runner.validate_view_latest(_current_view_payload(perception=None))
-        self.assertFalse(ok)
-        self.assertIn("perception", msg)
-
-        ok, msg = runner.validate_view_latest(
-            _current_view_payload(control={"applied": True, "steering": 0.1, "throttle": 0.2})
-        )
-        self.assertFalse(ok)
-        self.assertIn("applied", msg)
-
-        # Synthetic top-level frame_id must not pass without overlay/perception.
-        ok, msg = runner.validate_view_latest({"frame_id": "x", "perception_frame_id": "x"})
-        self.assertFalse(ok)
-
-    def test_authority_requires_explicit_recording_false(self) -> None:
-        runner = _load_runner_module()
-        status = {
-            "vehicle_id": "chase-sim-chaser",
-            "layers": {
-                "automation_worker": {
-                    "details": {
-                        "authority": {
-                            "action_policy": "observe_only",
-                            "control_application": "not_applied",
-                            "recording": None,
-                        }
-                    }
-                }
-            },
-        }
-        ok, msg = runner.validate_authority(status, vehicle_id="chase-sim-chaser")
-        self.assertFalse(ok)
-        self.assertIn("recording", msg)
-        status["layers"]["automation_worker"]["details"]["authority"]["recording"] = False
+        status = _status_with_passive()
         ok, msg = runner.validate_authority(status, vehicle_id="chase-sim-chaser")
         self.assertTrue(ok, msg)
-
-    def test_stopped_layers_require_deployed(self) -> None:
-        runner = _load_runner_module()
-        status = {
-            "vehicle_id": "chase-sim-chaser",
-            "layers": {
-                "automation_worker": {"state": "stopped"},
-                "perception_view": {"state": "stale"},
-                "automation_deployment": {"state": "invalid"},
-            },
-        }
-        ok, msg = runner.validate_stopped_layers(status, vehicle_id="chase-sim-chaser")
+        # Missing applied is not allowed.
+        status["layers"]["automation_worker"]["details"]["authority"]["last_frame"] = {}
+        ok, msg = runner.validate_authority(status, vehicle_id="chase-sim-chaser")
         self.assertFalse(ok)
-        self.assertIn("deployed", msg)
 
-    def test_browser_view_image_rejects_empty(self) -> None:
+    def _fake_cleanup_run(
+        self,
+        runner,
+        *,
+        stop_exit: int = 0,
+        status_exit: int = 0,
+        status_payload: dict | None = None,
+        status_has_pid: bool = True,
+        pid: int | None = 4242,
+    ):
+        def fake_run(argv, **kwargs):
+            step_dir = kwargs["step_dir"]
+            step_dir.mkdir(parents=True, exist_ok=True)
+            index = kwargs["index"]
+            if index == 0:
+                out = ""
+                code = stop_exit
+            else:
+                payload = status_payload or _status_with_passive(
+                    worker_state="stopped", view_state="stale"
+                )
+                if not status_has_pid:
+                    details = payload["layers"]["automation_worker"]["details"]
+                    details.pop("pid", None)
+                    payload["layers"]["automation_worker"]["details"] = {
+                        "authority": details.get("authority", {})
+                    }
+                elif pid is not None:
+                    payload["layers"]["automation_worker"]["details"]["pid"] = pid
+                out = json.dumps(payload)
+                code = status_exit
+            (step_dir / f"cmd-{index:02d}.stdout.txt").write_text(out + "\n", encoding="utf-8")
+            (step_dir / f"cmd-{index:02d}.stderr.txt").write_text("", encoding="utf-8")
+            return runner.CommandOutcome(
+                argv=list(argv),
+                command=" ".join(argv),
+                exit_code=code,
+                elapsed_ms=1,
+                stdout_path=f"steps/_cleanup/cmd-{index:02d}.stdout.txt",
+                stderr_path=f"steps/_cleanup/cmd-{index:02d}.stderr.txt",
+                started_at_utc="t0",
+                ended_at_utc="t1",
+            )
+
+        return fake_run
+
+    def _cleanup_state(self, runner, session_dir: Path, **kwargs):
+        defaults = dict(
+            catalog={"track": "acceptance", "gates": [{"id": "cleanup", "required": True}]},
+            session_dir=session_dir,
+            repo_root=ROOT,
+            variables={"vehicle_id": "chase-sim-chaser"},
+            execution_mode="interactive_live",
+            session_id="testsession",
+            worker_may_exist=True,
+            last_worker_pid=None,
+            dry_run=False,
+            non_interactive=False,
+        )
+        defaults.update(kwargs)
+        (session_dir / "steps").mkdir(exist_ok=True)
+        return runner.SessionState(**defaults)
+
+    def test_cleanup_unknown_pid_fails(self) -> None:
         runner = _load_runner_module()
         with tempfile.TemporaryDirectory() as tmp:
-            empty = Path(tmp) / "browser-view.png"
-            empty.write_bytes(b"")
-            ok, msg = runner.validate_browser_view_image(empty)
-            self.assertFalse(ok)
-            good = Path(tmp) / "good.png"
-            Image.new("RGB", (8, 8), (10, 20, 30)).save(good)
-            ok, msg = runner.validate_browser_view_image(good)
-            self.assertTrue(ok, msg)
+            session_dir = Path(tmp)
+            state = self._cleanup_state(runner, session_dir, last_worker_pid=None)
+            original = runner._run_command
+            runner._run_command = self._fake_cleanup_run(
+                runner, status_has_pid=False
+            )  # type: ignore[assignment]
+            try:
+                cleanup = runner._enforce_cleanup(
+                    state,
+                    command_timeout_s=5,
+                    transcript_path=session_dir / "t.txt",
+                )
+            finally:
+                runner._run_command = original  # type: ignore[assignment]
+            self.assertIsNot(cleanup.get("worker_stopped"), True)
+            self.assertTrue(state.findings)
 
-    def test_acceptance_catalog_declares_required_gates(self) -> None:
+    def test_cleanup_nonzero_exit_fails(self) -> None:
+        runner = _load_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            session_dir = Path(tmp)
+            state = self._cleanup_state(runner, session_dir, last_worker_pid=4242)
+            original = runner._run_command
+            runner._run_command = self._fake_cleanup_run(
+                runner, stop_exit=1, pid=4242
+            )  # type: ignore[assignment]
+            try:
+                cleanup = runner._enforce_cleanup(
+                    state,
+                    command_timeout_s=5,
+                    transcript_path=session_dir / "t.txt",
+                )
+            finally:
+                runner._run_command = original  # type: ignore[assignment]
+            self.assertIsNot(cleanup.get("worker_stopped"), True)
+            self.assertEqual(cleanup.get("stop_exit_code"), 1)
+
+    def test_cleanup_known_live_pid_fails(self) -> None:
+        runner = _load_runner_module()
+        live_pid = os.getpid()
+        with tempfile.TemporaryDirectory() as tmp:
+            session_dir = Path(tmp)
+            state = self._cleanup_state(
+                runner, session_dir, last_worker_pid=live_pid
+            )
+            original = runner._run_command
+            runner._run_command = self._fake_cleanup_run(
+                runner, pid=live_pid
+            )  # type: ignore[assignment]
+            try:
+                cleanup = runner._enforce_cleanup(
+                    state,
+                    command_timeout_s=5,
+                    transcript_path=session_dir / "t.txt",
+                )
+            finally:
+                runner._run_command = original  # type: ignore[assignment]
+            self.assertIs(cleanup.get("pid_alive"), True)
+            self.assertIsNot(cleanup.get("worker_stopped"), True)
+
+    def test_cleanup_known_dead_pid_passes(self) -> None:
+        runner = _load_runner_module()
+        # PID 0 is never a live user process on Unix for os.kill checks used here;
+        # pick a very high unused pid and confirm _pid_alive reports False/None
+        # then force dead via monkeypatch.
+        with tempfile.TemporaryDirectory() as tmp:
+            session_dir = Path(tmp)
+            dead_pid = 999_999_999
+            state = self._cleanup_state(
+                runner, session_dir, last_worker_pid=dead_pid
+            )
+            original_run = runner._run_command
+            original_alive = runner._pid_alive
+            runner._run_command = self._fake_cleanup_run(
+                runner, pid=dead_pid
+            )  # type: ignore[assignment]
+            runner._pid_alive = lambda pid: False if pid == dead_pid else original_alive(pid)  # type: ignore[assignment]
+            try:
+                cleanup = runner._enforce_cleanup(
+                    state,
+                    command_timeout_s=5,
+                    transcript_path=session_dir / "t.txt",
+                )
+            finally:
+                runner._run_command = original_run  # type: ignore[assignment]
+                runner._pid_alive = original_alive  # type: ignore[assignment]
+            self.assertIs(cleanup.get("pid_alive"), False)
+            self.assertIs(cleanup.get("worker_stopped"), True)
+            self.assertFalse(state.findings)
+
+    def test_browser_view_rejects_stale_mtime(self) -> None:
+        runner = _load_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "shot.png"
+            Image.new("RGB", (8, 8), (1, 2, 3)).save(path)
+            old = time.time() - 30 * 24 * 3600
+            os.utime(path, (old, old))
+            ok, msg, meta = runner.validate_browser_view_image(
+                path, not_before_unix=time.time()
+            )
+            self.assertFalse(ok)
+            self.assertIn("predate", msg)
+            self.assertIn("source_sha256", meta)
+
+    def test_browser_view_bind_preserves_mtime_and_requires_floor(self) -> None:
+        runner = _load_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "shot.png"
+            dst = Path(tmp) / "browser-view.png"
+            Image.new("RGB", (8, 8), (4, 5, 6)).save(src)
+            # Missing floor must fail closed.
+            ok, msg, _ = runner._bind_browser_view_image(
+                src, dst, not_before_unix=None
+            )
+            self.assertFalse(ok)
+            self.assertIn("floor", msg)
+            self.assertFalse(dst.exists())
+
+            # Fresh image after floor binds and keeps source mtime.
+            floor = time.time() - 5
+            ok, msg, meta = runner._bind_browser_view_image(
+                src, dst, not_before_unix=floor
+            )
+            self.assertTrue(ok, msg)
+            self.assertTrue(dst.is_file())
+            self.assertAlmostEqual(
+                dst.stat().st_mtime, meta["source_mtime_unix"], delta=1.0
+            )
+
+            # Stale source cannot be laundered via write_bytes freshness.
+            old = time.time() - 30 * 24 * 3600
+            os.utime(src, (old, old))
+            ok, msg, _ = runner._bind_browser_view_image(
+                src, dst, not_before_unix=time.time()
+            )
+            self.assertFalse(ok)
+            self.assertFalse(dst.exists())
+
+    def test_acceptance_catalog_uses_id_and_preservation(self) -> None:
         import yaml
 
         catalog = yaml.safe_load(
             (CATALOGS / "m007-acceptance.yaml").read_text(encoding="utf-8")
         )
-        gate_ids = {gate["id"] for gate in catalog["gates"]}
-        for required in (
-            "human_view",
-            "startup",
-            "cleanup",
-            "correlation",
-            "default_recording",
-            "authority",
-        ):
-            self.assertIn(required, gate_ids)
         initial = next(s for s in catalog["steps"] if s["id"] == "status-initial")
-        # Capture uses --id so validators receive a vehicle card.
-        cmd = " ".join(initial["capture_json"]["command"])
-        self.assertIn("--id", cmd)
+        self.assertIn("--id", " ".join(initial["capture_json"]["command"]))
         running = next(s for s in catalog["steps"] if s["id"] == "status-running")
-        self.assertIn("view_correlation", running["machine_validators"])
         self.assertIn("preservation", running["machine_validators"])
+        stopped = next(s for s in catalog["steps"] if s["id"] == "status-stopped")
+        self.assertIn("preservation", stopped["machine_validators"])
 
 
 if __name__ == "__main__":

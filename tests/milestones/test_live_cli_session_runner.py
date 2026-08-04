@@ -1142,8 +1142,18 @@ class LiveCliSessionRunnerTests(unittest.TestCase):
 
             original_run = runner._run_command
             original_pre = runner._run_precondition_cleanup
+            original_load = runner._load_pinned_acceptance_catalog
+            original_canon = runner._is_canonical_acceptance_catalog
+            # Treat fixture as canonical so refusal-for-noncanonical does not mask the
+            # precondition short-circuit under test.
             runner._run_command = fake_run  # type: ignore[assignment]
             runner._run_precondition_cleanup = fake_precondition  # type: ignore[assignment]
+            runner._load_pinned_acceptance_catalog = (  # type: ignore[assignment]
+                lambda path=None: catalog
+            )
+            runner._is_canonical_acceptance_catalog = (  # type: ignore[assignment]
+                lambda path, cat: (True, "test fixture")
+            )
             try:
                 result = runner.run_session(
                     catalog=catalog,
@@ -1160,11 +1170,13 @@ class LiveCliSessionRunnerTests(unittest.TestCase):
                     dry_run=False,
                     browser_view_path=None,
                     operator="test",
-                    catalog_path=None,
+                    catalog_path=CATALOGS / "m007-acceptance.yaml",
                 )
             finally:
                 runner._run_command = original_run  # type: ignore[assignment]
                 runner._run_precondition_cleanup = original_pre  # type: ignore[assignment]
+                runner._load_pinned_acceptance_catalog = original_load  # type: ignore[assignment]
+                runner._is_canonical_acceptance_catalog = original_canon  # type: ignore[assignment]
 
             executed = result.get("ordered_step_outcomes") or []
             statuses = {s["id"]: s["status"] for s in executed}
@@ -1306,8 +1318,16 @@ class LiveCliSessionRunnerTests(unittest.TestCase):
 
             original_run = runner._run_command
             original_pre = runner._run_precondition_cleanup
+            original_load = runner._load_pinned_acceptance_catalog
+            original_canon = runner._is_canonical_acceptance_catalog
             runner._run_command = fake_run  # type: ignore[assignment]
             runner._run_precondition_cleanup = fake_precondition  # type: ignore[assignment]
+            runner._load_pinned_acceptance_catalog = (  # type: ignore[assignment]
+                lambda path=None: catalog
+            )
+            runner._is_canonical_acceptance_catalog = (  # type: ignore[assignment]
+                lambda path, cat: (True, "test fixture")
+            )
             try:
                 result = runner.run_session(
                     catalog=catalog,
@@ -1324,11 +1344,13 @@ class LiveCliSessionRunnerTests(unittest.TestCase):
                     dry_run=False,
                     browser_view_path=None,
                     operator="test",
-                    catalog_path=None,
+                    catalog_path=CATALOGS / "m007-acceptance.yaml",
                 )
             finally:
                 runner._run_command = original_run  # type: ignore[assignment]
                 runner._run_precondition_cleanup = original_pre  # type: ignore[assignment]
+                runner._load_pinned_acceptance_catalog = original_load  # type: ignore[assignment]
+                runner._is_canonical_acceptance_catalog = original_canon  # type: ignore[assignment]
 
             statuses = {
                 s["id"]: s["status"] for s in (result.get("ordered_step_outcomes") or [])
@@ -1342,6 +1364,347 @@ class LiveCliSessionRunnerTests(unittest.TestCase):
                         "automation" in argv and "run" in argv,
                         f"automation run must not execute: {argv}",
                     )
+
+    def test_noncanonical_acceptance_executes_no_commands(self) -> None:
+        """Altered acceptance catalog must not run any CLI — including non-observe-only run."""
+        runner = _load_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            session_dir = Path(tmp) / "session"
+            catalog = {
+                "schema": "live_cli_session_catalog_v0",
+                "id": "fake-acceptance",
+                "track": "acceptance",
+                "vehicle_id": VEHICLE,
+                "gates": [
+                    {"id": "initial_layers", "required": True},
+                    {"id": "staging", "required": True},
+                    {"id": "startup", "required": True},
+                ],
+                "steps": [
+                    {
+                        "id": "prereq-a",
+                        "kind": "command",
+                        "safety": "read",
+                        "commands": [["true"]],
+                        "gate_ids": ["initial_layers"],
+                        "required_for_verdict": True,
+                        "visual_required": False,
+                        "expect_exit": 0,
+                    },
+                    {
+                        "id": "prereq-b",
+                        "kind": "command",
+                        "safety": "local_write",
+                        "commands": [["true"]],
+                        "gate_ids": ["staging"],
+                        "required_for_verdict": True,
+                        "visual_required": False,
+                        "expect_exit": 0,
+                    },
+                    {
+                        "id": "automation-run",
+                        "kind": "command",
+                        "safety": "live_mutation",
+                        "commands": [
+                            [
+                                "./cli/automa",
+                                "vehicles",
+                                "automation",
+                                "run",
+                                "--id",
+                                VEHICLE,
+                                "--frames",
+                                "0",
+                            ]
+                        ],
+                        "gate_ids": ["startup"],
+                        "required_for_verdict": True,
+                        "visual_required": False,
+                        "expect_exit": 0,
+                    },
+                ],
+            }
+            calls: list[list[str]] = []
+
+            def fake_run(argv, **kwargs):
+                calls.append(list(argv))
+                step_dir = kwargs["step_dir"]
+                step_dir.mkdir(parents=True, exist_ok=True)
+                index = kwargs["index"]
+                (step_dir / f"cmd-{index:02d}.stdout.txt").write_text("", encoding="utf-8")
+                (step_dir / f"cmd-{index:02d}.stderr.txt").write_text("", encoding="utf-8")
+                return runner.CommandOutcome(
+                    argv=list(argv),
+                    command=" ".join(argv),
+                    exit_code=0,
+                    elapsed_ms=1,
+                    stdout_path=f"steps/x/cmd-{index:02d}.stdout.txt",
+                    stderr_path=f"steps/x/cmd-{index:02d}.stderr.txt",
+                    started_at_utc="t0",
+                    ended_at_utc="t1",
+                )
+
+            original = runner._run_command
+            runner._run_command = fake_run  # type: ignore[assignment]
+            try:
+                result = runner.run_session(
+                    catalog=catalog,
+                    session_dir=session_dir,
+                    repo_root=ROOT,
+                    metrics_ui_origin="http://localhost:5050",
+                    metrics_ui_repo=None,
+                    browser_name="Chrome",
+                    browser_version="1",
+                    prompt=lambda _m: "pass",
+                    non_interactive=True,
+                    auto_visual="pass",
+                    command_timeout_s=5,
+                    dry_run=False,
+                    browser_view_path=None,
+                    operator="test",
+                    catalog_path=None,
+                )
+            finally:
+                runner._run_command = original  # type: ignore[assignment]
+
+            self.assertEqual(calls, [], f"expected no CLI; got {calls}")
+            self.assertEqual(result.get("result"), "incomplete")
+            self.assertFalse(result.get("ordered_step_outcomes"))
+
+    def test_failed_staging_blocks_automation_run(self) -> None:
+        runner = _load_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            session_dir = Path(tmp) / "session"
+            catalog = {
+                "schema": "live_cli_session_catalog_v0",
+                "id": "orch-staging",
+                "track": "acceptance",
+                "vehicle_id": VEHICLE,
+                "gates": [
+                    {"id": "initial_layers", "required": True},
+                    {"id": "staging", "required": True},
+                    {"id": "startup", "required": True},
+                ],
+                "steps": [
+                    {
+                        "id": "status-initial",
+                        "kind": "command",
+                        "safety": "read",
+                        "commands": [["./cli/automa", "vehicles", "status"]],
+                        "gate_ids": ["initial_layers"],
+                        "required_for_verdict": True,
+                        "visual_required": False,
+                        "expect_exit": 0,
+                    },
+                    {
+                        "id": "update-perception",
+                        "kind": "command",
+                        "safety": "local_write",
+                        "commands": [["./cli/automa", "vehicles", "update", "perception"]],
+                        "gate_ids": ["staging"],
+                        "required_for_verdict": True,
+                        "visual_required": False,
+                        "expect_exit": 0,
+                    },
+                    {
+                        "id": "automation-run",
+                        "kind": "command",
+                        "safety": "live_mutation",
+                        "commands": [
+                            [
+                                "./cli/automa",
+                                "vehicles",
+                                "automation",
+                                "run",
+                                "--observe-only",
+                            ]
+                        ],
+                        "gate_ids": ["startup"],
+                        "required_for_verdict": True,
+                        "visual_required": False,
+                        "expect_exit": 0,
+                    },
+                ],
+            }
+
+            def fake_run(argv, **kwargs):
+                step_dir = kwargs["step_dir"]
+                step_dir.mkdir(parents=True, exist_ok=True)
+                index = kwargs["index"]
+                (step_dir / f"cmd-{index:02d}.stdout.txt").write_text(
+                    "ok\n", encoding="utf-8"
+                )
+                (step_dir / f"cmd-{index:02d}.stderr.txt").write_text("", encoding="utf-8")
+                code = 1 if "update" in argv else 0
+                return runner.CommandOutcome(
+                    argv=list(argv),
+                    command=" ".join(argv),
+                    exit_code=code,
+                    elapsed_ms=1,
+                    stdout_path=f"steps/x/cmd-{index:02d}.stdout.txt",
+                    stderr_path=f"steps/x/cmd-{index:02d}.stderr.txt",
+                    started_at_utc="t0",
+                    ended_at_utc="t1",
+                )
+
+            original_run = runner._run_command
+            original_pre = runner._run_precondition_cleanup
+            original_load = runner._load_pinned_acceptance_catalog
+            original_canon = runner._is_canonical_acceptance_catalog
+            runner._run_command = fake_run  # type: ignore[assignment]
+            runner._run_precondition_cleanup = (  # type: ignore[assignment]
+                lambda state, **kwargs: {"ok": True, "error": None, "attempted": False}
+            )
+            runner._load_pinned_acceptance_catalog = (  # type: ignore[assignment]
+                lambda path=None: catalog
+            )
+            runner._is_canonical_acceptance_catalog = (  # type: ignore[assignment]
+                lambda path, cat: (True, "test fixture")
+            )
+            try:
+                result = runner.run_session(
+                    catalog=catalog,
+                    session_dir=session_dir,
+                    repo_root=ROOT,
+                    metrics_ui_origin="http://localhost:5050",
+                    metrics_ui_repo=None,
+                    browser_name="Chrome",
+                    browser_version="1",
+                    prompt=lambda _m: "skip",
+                    non_interactive=True,
+                    auto_visual="skip",
+                    command_timeout_s=5,
+                    dry_run=False,
+                    browser_view_path=None,
+                    operator="test",
+                    catalog_path=CATALOGS / "m007-acceptance.yaml",
+                )
+            finally:
+                runner._run_command = original_run  # type: ignore[assignment]
+                runner._run_precondition_cleanup = original_pre  # type: ignore[assignment]
+                runner._load_pinned_acceptance_catalog = original_load  # type: ignore[assignment]
+                runner._is_canonical_acceptance_catalog = original_canon  # type: ignore[assignment]
+
+            statuses = {
+                s["id"]: s["status"] for s in (result.get("ordered_step_outcomes") or [])
+            }
+            self.assertEqual(statuses.get("update-perception"), "fail")
+            self.assertEqual(statuses.get("automation-run"), "blocked")
+            for step in result.get("ordered_step_outcomes") or []:
+                for cmd in step.get("commands") or []:
+                    argv = cmd.get("argv") or []
+                    self.assertFalse("automation" in argv and "run" in argv)
+
+    def test_canonical_catalog_command_order_smoke(self) -> None:
+        """Pinned catalog executes primary sequence argv order under command doubles."""
+        import yaml
+
+        runner = _load_runner_module()
+        catalog = yaml.safe_load(
+            (CATALOGS / "m007-acceptance.yaml").read_text(encoding="utf-8")
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            session_dir = Path(tmp) / "session"
+            seen: list[list[str]] = []
+
+            def fake_run(argv, **kwargs):
+                seen.append(list(argv))
+                step_dir = kwargs["step_dir"]
+                sess = kwargs["session_dir"]
+                step_dir.mkdir(parents=True, exist_ok=True)
+                index = kwargs["index"]
+                out = ""
+                # Provide minimal JSON for status --json captures.
+                if "--json" in argv:
+                    worker = "stopped"
+                    view = "stale"
+                    if any(a == "run" for a in argv):
+                        worker, view = "running", "available"
+                    payload = _status_with_passive(
+                        worker_state=worker,
+                        view_state=view,
+                        pid=4242,
+                        recording=False,
+                        applied=False,
+                    )
+                    out = json.dumps(payload)
+                stdout = step_dir / f"cmd-{index:02d}.stdout.txt"
+                stderr = step_dir / f"cmd-{index:02d}.stderr.txt"
+                stdout.write_text(out + "\n", encoding="utf-8")
+                stderr.write_text("", encoding="utf-8")
+                return runner.CommandOutcome(
+                    argv=list(argv),
+                    command=" ".join(argv),
+                    exit_code=0,
+                    elapsed_ms=1,
+                    stdout_path=str(stdout.relative_to(sess)),
+                    stderr_path=str(stderr.relative_to(sess)),
+                    started_at_utc="t0",
+                    ended_at_utc="t1",
+                )
+
+            original_run = runner._run_command
+            original_pre = runner._run_precondition_cleanup
+            original_view = runner._capture_view_latest
+            runner._run_command = fake_run  # type: ignore[assignment]
+            runner._run_precondition_cleanup = (  # type: ignore[assignment]
+                lambda state, **kwargs: {
+                    "ok": True,
+                    "error": None,
+                    "attempted": False,
+                    "needed": False,
+                }
+            )
+            runner._capture_view_latest = (  # type: ignore[assignment]
+                lambda session_dir, running_status, vehicle_id: {
+                    "url": "http://127.0.0.1:1/api/latest",
+                    "path": "view-publication.json",
+                    "http_status": 200,
+                    "summary": "ok",
+                    "vehicle_id": vehicle_id,
+                }
+            )
+            try:
+                result = runner.run_session(
+                    catalog=catalog,
+                    session_dir=session_dir,
+                    repo_root=ROOT,
+                    metrics_ui_origin="http://localhost:5050",
+                    metrics_ui_repo=ROOT,
+                    browser_name="Chrome",
+                    browser_version="1",
+                    prompt=lambda _m: "skip",
+                    non_interactive=True,
+                    auto_visual="skip",
+                    command_timeout_s=5,
+                    dry_run=False,
+                    browser_view_path=None,
+                    operator="test",
+                    catalog_path=CATALOGS / "m007-acceptance.yaml",
+                )
+            finally:
+                runner._run_command = original_run  # type: ignore[assignment]
+                runner._run_precondition_cleanup = original_pre  # type: ignore[assignment]
+                runner._capture_view_latest = original_view  # type: ignore[assignment]
+
+            # Primary human surfaces appear in order.
+            joined = [" ".join(a) for a in seen]
+            self.assertTrue(
+                any("vehicles status" in j and "--chase-url" in j for j in joined),
+                joined,
+            )
+            self.assertTrue(any("update perception" in j for j in joined), joined)
+            run_lines = [
+                j
+                for j in joined
+                if "automation run" in j and "--help" not in j
+            ]
+            self.assertTrue(run_lines, joined)
+            self.assertTrue(all("--observe-only" in j for j in run_lines), run_lines)
+            self.assertTrue(any("automation stop" in j for j in joined), joined)
+            self.assertNotEqual(result.get("result"), "pass")  # non-interactive
+            self.assertTrue((session_dir / "result.json").is_file())
+            self.assertTrue((session_dir / "digests.json").is_file())
 
 
 if __name__ == "__main__":

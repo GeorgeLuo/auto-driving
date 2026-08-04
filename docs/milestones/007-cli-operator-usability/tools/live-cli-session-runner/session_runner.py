@@ -1951,6 +1951,8 @@ def _live_mutation_prerequisites_met(state: SessionState) -> tuple[bool, str]:
         return True, "non-acceptance track"
     if state.dry_run:
         return True, "dry-run"
+    if not state.canonical_acceptance:
+        return False, "noncanonical acceptance catalog cannot execute live mutation"
     pre = state.precondition_cleanup
     if not isinstance(pre, dict) or pre.get("ok") is not True:
         return False, "precondition_cleanup not proven ok"
@@ -2139,583 +2141,634 @@ def run_session(
 
     cleanup_info: dict[str, Any] = {"attempted": False, "needed": False}
 
+    # Formal acceptance: never execute any CLI from a noncanonical catalog.
+    # Verdict already fails closed; this is the safety owner (execution order).
+    refuse_acceptance_execution = (
+        catalog.get("track") == "acceptance" and not canonical and not dry_run
+    )
+
     try:
-        # Acceptance: stop any pre-existing worker before the catalog baseline.
-        if catalog.get("track") == "acceptance" and not dry_run:
-            print()
-            print("=" * 72)
-            print("PRECONDITION: ensure no pre-existing automation worker")
-            print("=" * 72)
-            state.precondition_cleanup = _run_precondition_cleanup(
-                state,
-                command_timeout_s=command_timeout_s,
-                transcript_path=transcript_path,
-                metrics_ui_origin=variables["metrics_ui_origin"],
+        if refuse_acceptance_execution:
+            state.safety_blocked = True
+            state.safety_block_reason = (
+                f"noncanonical acceptance catalog: {canonical_reason}"
             )
+            state.precondition_cleanup = {
+                "ok": False,
+                "attempted": False,
+                "needed": False,
+                "skipped": "noncanonical_acceptance_catalog",
+                "error": state.safety_block_reason,
+            }
             baseline["precondition_cleanup"] = state.precondition_cleanup
-            # Keep disk and in-memory baseline identical for final result.json.
             _write_json(session_dir / "baseline.json", baseline)
             _write_json(
                 session_dir / "precondition-cleanup.json",
                 state.precondition_cleanup,
             )
-            if state.precondition_cleanup.get("ok") is not True:
-                state.safety_blocked = True
-                state.safety_block_reason = (
-                    f"precondition failed: {state.precondition_cleanup.get('error')}"
-                )
-                _record_finding(
-                    state,
-                    step_id="_precondition_cleanup",
-                    classification="acceptance_blocker",
-                    severity="P1",
-                    summary="Precondition cleanup failed before acceptance baseline",
-                    human_notes=str(state.precondition_cleanup.get("error")),
-                    evidence=["steps/_precondition_cleanup/", "precondition-cleanup.json"],
-                )
-
-        for step in catalog.get("steps") or []:
-            if not isinstance(step, dict):
-                continue
-            step_id = str(step.get("id") or f"step-{len(state.steps)+1}")
+            _record_finding(
+                state,
+                step_id="_catalog_bind",
+                classification="acceptance_blocker",
+                severity="P1",
+                summary="Noncanonical acceptance catalog refused before any command",
+                human_notes=canonical_reason,
+                evidence=["baseline.json", "precondition-cleanup.json"],
+            )
+            notes_lines.extend(
+                [
+                    "## catalog bind failed",
+                    "",
+                    f"- reason: {canonical_reason}",
+                    "- action: no catalog commands executed",
+                    "",
+                ]
+            )
             print()
             print("=" * 72)
-            print(f"STEP {step_id}  ({step.get('kind') or 'command'})")
-            print(f"Question: {step.get('question') or ''}")
-            print(f"Safety: {step.get('safety') or 'unspecified'}")
-            if step.get("note"):
-                print(f"Note: {step['note']}")
+            print("REFUSED: noncanonical acceptance catalog — no commands executed")
+            print(canonical_reason)
             print("=" * 72)
-
-            requires = step.get("requires_prompt")
-            if isinstance(requires, str) and requires:
-                if non_interactive and state.variables.get(requires):
-                    pass
-                elif non_interactive:
-                    raise SystemExit(f"Non-interactive session missing required variable {requires!r}")
-                else:
-                    help_text = step.get("requires_prompt_help") or requires
-                    state.variables[requires] = prompt(f"{help_text}: ").strip()
-
-            step_dir = session_dir / "steps" / step_id
-            step_dir.mkdir(parents=True, exist_ok=True)
-            command_outcomes: list[dict[str, Any]] = []
-            step_status = "ok"
-            machine_summary = ""
-            machine_ok = True
-            validator_notes: list[str] = []
-
-            # Hard safety: never execute live_mutation when prerequisites failed.
-            if (
-                not dry_run
-                and step.get("safety") == "live_mutation"
-                and step.get("kind") != "baseline"
-            ):
-                prereq_ok, prereq_reason = _live_mutation_prerequisites_met(state)
-                if not prereq_ok:
-                    step_status = "blocked"
-                    machine_ok = False
-                    machine_summary = f"blocked before live mutation: {prereq_reason}"
-                    validator_notes.append(machine_summary)
-                    print(f"  BLOCKED: {prereq_reason}")
-                    state.safety_blocked = True
-                    state.safety_block_reason = prereq_reason
-                    judgment = _prompt_judgment(
-                        step=step,
-                        prompt=prompt,
-                        non_interactive=True,
-                        auto_visual="skip",
-                    )
-                    gate_ids = [str(g) for g in (step.get("gate_ids") or [])]
-                    if gate_ids:
-                        _apply_gate(
-                            state,
-                            gate_ids,
-                            status="fail",
-                            summary=machine_summary,
-                            evidence=[f"steps/{step_id}/envelope.json"],
-                        )
-                    if step.get("required_for_verdict"):
-                        _record_finding(
-                            state,
-                            step_id=step_id,
-                            classification="acceptance_blocker"
-                            if catalog.get("track") == "acceptance"
-                            else "environment_blocker",
-                            severity="P1",
-                            summary=machine_summary,
-                            human_notes=prereq_reason,
-                            evidence=[f"steps/{step_id}/envelope.json"],
-                        )
-                    envelope = {
-                        "id": step_id,
-                        "kind": step.get("kind"),
-                        "question": step.get("question"),
-                        "safety": step.get("safety"),
-                        "primary_cue": step.get("primary_cue"),
-                        "status": step_status,
-                        "machine_summary": machine_summary,
-                        "machine_ok": False,
-                        "commands": [],
-                        "human": {
-                            "visual": judgment.visual,
-                            "notes": judgment.notes,
-                            "finding_requested": False,
-                            "interactive": False,
-                        },
-                        "gate_ids": gate_ids,
-                        "required_for_verdict": bool(step.get("required_for_verdict")),
-                        "blocked_reason": prereq_reason,
-                    }
-                    _write_json(step_dir / "envelope.json", envelope)
-                    state.steps.append(envelope)
-                    notes_lines.extend(
-                        [
-                            f"## {step_id}",
-                            "",
-                            f"- status: `{step_status}`",
-                            f"- blocked: {prereq_reason}",
-                            "",
-                        ]
-                    )
-                    continue
-
-            if dry_run:
-                machine_summary = "dry-run: commands not executed"
-                for index, argv in enumerate(step.get("commands") or []):
-                    if not isinstance(argv, list):
-                        continue
-                    rendered = _substitute_argv(argv, state.variables)
-                    print(f"  dry-run: {_format_command(rendered)}")
-                    command_outcomes.append(
-                        {
-                            "argv": rendered,
-                            "command": _format_command(rendered),
-                            "exit_code": 0,
-                            "elapsed_ms": 0,
-                            "dry_run": True,
-                        }
-                    )
-            elif step.get("kind") == "baseline":
-                machine_summary = (
-                    f"origin={variables['metrics_ui_origin']}; "
-                    f"auto_driving={auto_driving.get('commit')}; "
-                    f"worktree={auto_driving.get('worktree_state')}"
+        else:
+            # Acceptance: stop any pre-existing worker before the catalog baseline.
+            if catalog.get("track") == "acceptance" and not dry_run:
+                print()
+                print("=" * 72)
+                print("PRECONDITION: ensure no pre-existing automation worker")
+                print("=" * 72)
+                state.precondition_cleanup = _run_precondition_cleanup(
+                    state,
+                    command_timeout_s=command_timeout_s,
+                    transcript_path=transcript_path,
+                    metrics_ui_origin=variables["metrics_ui_origin"],
                 )
-                print(machine_summary)
-            else:
-                allow_nonzero = bool(step.get("allow_nonzero_exit"))
-                expect_exit = step.get("expect_exit")
-                for index, argv in enumerate(step.get("commands") or []):
-                    if not isinstance(argv, list):
-                        continue
-                    rendered = _substitute_argv(argv, state.variables)
-                    state.executed_commands.append(list(rendered))
-                    print(f"\n$ {_format_command(rendered)}")
-                    outcome = _run_command(
-                        rendered,
-                        cwd=repo_root,
-                        session_dir=session_dir,
-                        step_dir=step_dir,
-                        index=index,
-                        timeout_s=command_timeout_s,
-                        transcript_path=transcript_path,
+                baseline["precondition_cleanup"] = state.precondition_cleanup
+                # Keep disk and in-memory baseline identical for final result.json.
+                _write_json(session_dir / "baseline.json", baseline)
+                _write_json(
+                    session_dir / "precondition-cleanup.json",
+                    state.precondition_cleanup,
+                )
+                if state.precondition_cleanup.get("ok") is not True:
+                    state.safety_blocked = True
+                    state.safety_block_reason = (
+                        f"precondition failed: {state.precondition_cleanup.get('error')}"
                     )
-                    payload = {
-                        "argv": outcome.argv,
-                        "command": outcome.command,
-                        "exit_code": outcome.exit_code,
-                        "elapsed_ms": outcome.elapsed_ms,
-                        "stdout_path": outcome.stdout_path,
-                        "stderr_path": outcome.stderr_path,
-                        "started_at_utc": outcome.started_at_utc,
-                        "ended_at_utc": outcome.ended_at_utc,
-                    }
-                    command_outcomes.append(payload)
-                    # Print a short excerpt for the operator only.
-                    excerpt = (step_dir / f"cmd-{index:02d}.stdout.txt").read_text(encoding="utf-8")[:1200]
-                    print(excerpt)
-                    print(f"exit={outcome.exit_code} elapsed_ms={outcome.elapsed_ms}")
-                    if "automation" in rendered and "run" in rendered:
-                        # partial or full startup still needs cleanup attempt
-                        state.worker_may_exist = True
-                        state.automation_run_seen = True
-                    if expect_exit is not None and outcome.exit_code != int(expect_exit) and not allow_nonzero:
-                        step_status = "fail"
-                        machine_ok = False
-                    elif outcome.exit_code != 0 and not allow_nonzero and expect_exit is None:
-                        step_status = "fail"
-                        machine_ok = False
+                    _record_finding(
+                        state,
+                        step_id="_precondition_cleanup",
+                        classification="acceptance_blocker",
+                        severity="P1",
+                        summary="Precondition cleanup failed before acceptance baseline",
+                        human_notes=str(state.precondition_cleanup.get("error")),
+                        evidence=[
+                            "steps/_precondition_cleanup/",
+                            "precondition-cleanup.json",
+                        ],
+                    )
 
-                # JSON capture as a first-class command outcome
-                capture = step.get("capture_json")
-                if isinstance(capture, dict) and isinstance(capture.get("command"), list):
-                    rendered = _substitute_argv(capture["command"], state.variables)
-                    state.executed_commands.append(list(rendered))
-                    json_name = str(capture.get("path") or f"{step_id}.json")
-                    json_out = session_dir / json_name
-                    print(f"\n$ {_format_command(rendered)}  > {json_name}")
-                    outcome = _run_command(
-                        rendered,
-                        cwd=repo_root,
-                        session_dir=session_dir,
-                        step_dir=step_dir,
-                        index=len(command_outcomes),
-                        timeout_s=command_timeout_s,
-                        transcript_path=transcript_path,
-                    )
-                    if outcome.exit_code != 0:
-                        step_status = "fail"
+            for step in catalog.get("steps") or []:
+                if not isinstance(step, dict):
+                    continue
+                step_id = str(step.get("id") or f"step-{len(state.steps)+1}")
+                print()
+                print("=" * 72)
+                print(f"STEP {step_id}  ({step.get('kind') or 'command'})")
+                print(f"Question: {step.get('question') or ''}")
+                print(f"Safety: {step.get('safety') or 'unspecified'}")
+                if step.get("note"):
+                    print(f"Note: {step['note']}")
+                print("=" * 72)
+
+                requires = step.get("requires_prompt")
+                if isinstance(requires, str) and requires:
+                    if non_interactive and state.variables.get(requires):
+                        pass
+                    elif non_interactive:
+                        raise SystemExit(f"Non-interactive session missing required variable {requires!r}")
+                    else:
+                        help_text = step.get("requires_prompt_help") or requires
+                        state.variables[requires] = prompt(f"{help_text}: ").strip()
+
+                step_dir = session_dir / "steps" / step_id
+                step_dir.mkdir(parents=True, exist_ok=True)
+                command_outcomes: list[dict[str, Any]] = []
+                step_status = "ok"
+                machine_summary = ""
+                machine_ok = True
+                validator_notes: list[str] = []
+
+                # Hard safety: never execute live_mutation when prerequisites failed.
+                if (
+                    not dry_run
+                    and step.get("safety") == "live_mutation"
+                    and step.get("kind") != "baseline"
+                ):
+                    prereq_ok, prereq_reason = _live_mutation_prerequisites_met(state)
+                    if not prereq_ok:
+                        step_status = "blocked"
                         machine_ok = False
-                        validator_notes.append(
-                            f"JSON capture exit={outcome.exit_code}"
+                        machine_summary = f"blocked before live mutation: {prereq_reason}"
+                        validator_notes.append(machine_summary)
+                        print(f"  BLOCKED: {prereq_reason}")
+                        state.safety_blocked = True
+                        state.safety_block_reason = prereq_reason
+                        judgment = _prompt_judgment(
+                            step=step,
+                            prompt=prompt,
+                            non_interactive=True,
+                            auto_visual="skip",
                         )
-                    command_outcomes.append(
-                        {
+                        gate_ids = [str(g) for g in (step.get("gate_ids") or [])]
+                        if gate_ids:
+                            _apply_gate(
+                                state,
+                                gate_ids,
+                                status="fail",
+                                summary=machine_summary,
+                                evidence=[f"steps/{step_id}/envelope.json"],
+                            )
+                        if step.get("required_for_verdict"):
+                            _record_finding(
+                                state,
+                                step_id=step_id,
+                                classification="acceptance_blocker"
+                                if catalog.get("track") == "acceptance"
+                                else "environment_blocker",
+                                severity="P1",
+                                summary=machine_summary,
+                                human_notes=prereq_reason,
+                                evidence=[f"steps/{step_id}/envelope.json"],
+                            )
+                        envelope = {
+                            "id": step_id,
+                            "kind": step.get("kind"),
+                            "question": step.get("question"),
+                            "safety": step.get("safety"),
+                            "primary_cue": step.get("primary_cue"),
+                            "status": step_status,
+                            "machine_summary": machine_summary,
+                            "machine_ok": False,
+                            "commands": [],
+                            "human": {
+                                "visual": judgment.visual,
+                                "notes": judgment.notes,
+                                "finding_requested": False,
+                                "interactive": False,
+                            },
+                            "gate_ids": gate_ids,
+                            "required_for_verdict": bool(step.get("required_for_verdict")),
+                            "blocked_reason": prereq_reason,
+                        }
+                        _write_json(step_dir / "envelope.json", envelope)
+                        state.steps.append(envelope)
+                        notes_lines.extend(
+                            [
+                                f"## {step_id}",
+                                "",
+                                f"- status: `{step_status}`",
+                                f"- blocked: {prereq_reason}",
+                                "",
+                            ]
+                        )
+                        continue
+
+                if dry_run:
+                    machine_summary = "dry-run: commands not executed"
+                    for index, argv in enumerate(step.get("commands") or []):
+                        if not isinstance(argv, list):
+                            continue
+                        rendered = _substitute_argv(argv, state.variables)
+                        print(f"  dry-run: {_format_command(rendered)}")
+                        command_outcomes.append(
+                            {
+                                "argv": rendered,
+                                "command": _format_command(rendered),
+                                "exit_code": 0,
+                                "elapsed_ms": 0,
+                                "dry_run": True,
+                            }
+                        )
+                elif step.get("kind") == "baseline":
+                    machine_summary = (
+                        f"origin={variables['metrics_ui_origin']}; "
+                        f"auto_driving={auto_driving.get('commit')}; "
+                        f"worktree={auto_driving.get('worktree_state')}"
+                    )
+                    print(machine_summary)
+                else:
+                    allow_nonzero = bool(step.get("allow_nonzero_exit"))
+                    expect_exit = step.get("expect_exit")
+                    for index, argv in enumerate(step.get("commands") or []):
+                        if not isinstance(argv, list):
+                            continue
+                        rendered = _substitute_argv(argv, state.variables)
+                        state.executed_commands.append(list(rendered))
+                        print(f"\n$ {_format_command(rendered)}")
+                        outcome = _run_command(
+                            rendered,
+                            cwd=repo_root,
+                            session_dir=session_dir,
+                            step_dir=step_dir,
+                            index=index,
+                            timeout_s=command_timeout_s,
+                            transcript_path=transcript_path,
+                        )
+                        payload = {
                             "argv": outcome.argv,
                             "command": outcome.command,
                             "exit_code": outcome.exit_code,
                             "elapsed_ms": outcome.elapsed_ms,
-                            "started_at_utc": outcome.started_at_utc,
-                            "ended_at_utc": outcome.ended_at_utc,
                             "stdout_path": outcome.stdout_path,
                             "stderr_path": outcome.stderr_path,
-                            "captures_to": json_name,
+                            "started_at_utc": outcome.started_at_utc,
+                            "ended_at_utc": outcome.ended_at_utc,
                         }
-                    )
-                    raw = (session_dir / outcome.stdout_path).read_text(encoding="utf-8")
-                    try:
-                        parsed = json.loads(raw)
-                        _write_json(json_out, parsed)
-                        # Extract worker pid if present
-                        details = _worker_details(parsed, variables["vehicle_id"])
-                        pid = details.get("pid")
-                        _note_worker_pid(state, pid, source=step_id)
-                        if (
-                            isinstance(pid, int)
-                            and _layer_state(
-                                parsed, "automation_worker", variables["vehicle_id"]
-                            )
-                            == "running"
-                        ):
+                        command_outcomes.append(payload)
+                        # Print a short excerpt for the operator only.
+                        excerpt = (step_dir / f"cmd-{index:02d}.stdout.txt").read_text(encoding="utf-8")[:1200]
+                        print(excerpt)
+                        print(f"exit={outcome.exit_code} elapsed_ms={outcome.elapsed_ms}")
+                        if "automation" in rendered and "run" in rendered:
+                            # partial or full startup still needs cleanup attempt
                             state.worker_may_exist = True
-                        # Bind fingerprint to this exact capture, including None.
-                        fingerprint = extract_session_fingerprint(
-                            parsed, variables["vehicle_id"]
+                            state.automation_run_seen = True
+                        if expect_exit is not None and outcome.exit_code != int(expect_exit) and not allow_nonzero:
+                            step_status = "fail"
+                            machine_ok = False
+                        elif outcome.exit_code != 0 and not allow_nonzero and expect_exit is None:
+                            step_status = "fail"
+                            machine_ok = False
+
+                    # JSON capture as a first-class command outcome
+                    capture = step.get("capture_json")
+                    if isinstance(capture, dict) and isinstance(capture.get("command"), list):
+                        rendered = _substitute_argv(capture["command"], state.variables)
+                        state.executed_commands.append(list(rendered))
+                        json_name = str(capture.get("path") or f"{step_id}.json")
+                        json_out = session_dir / json_name
+                        print(f"\n$ {_format_command(rendered)}  > {json_name}")
+                        outcome = _run_command(
+                            rendered,
+                            cwd=repo_root,
+                            session_dir=session_dir,
+                            step_dir=step_dir,
+                            index=len(command_outcomes),
+                            timeout_s=command_timeout_s,
+                            transcript_path=transcript_path,
                         )
-                        state.latest_fingerprint = fingerprint
-                        state.capture_fingerprints[json_name] = fingerprint
-                        if fingerprint is not None:
-                            if state.baseline_fingerprint is None and step_id.startswith(
-                                "status-initial"
+                        if outcome.exit_code != 0:
+                            step_status = "fail"
+                            machine_ok = False
+                            validator_notes.append(
+                                f"JSON capture exit={outcome.exit_code}"
+                            )
+                        command_outcomes.append(
+                            {
+                                "argv": outcome.argv,
+                                "command": outcome.command,
+                                "exit_code": outcome.exit_code,
+                                "elapsed_ms": outcome.elapsed_ms,
+                                "started_at_utc": outcome.started_at_utc,
+                                "ended_at_utc": outcome.ended_at_utc,
+                                "stdout_path": outcome.stdout_path,
+                                "stderr_path": outcome.stderr_path,
+                                "captures_to": json_name,
+                            }
+                        )
+                        raw = (session_dir / outcome.stdout_path).read_text(encoding="utf-8")
+                        try:
+                            parsed = json.loads(raw)
+                            _write_json(json_out, parsed)
+                            # Extract worker pid if present
+                            details = _worker_details(parsed, variables["vehicle_id"])
+                            pid = details.get("pid")
+                            _note_worker_pid(state, pid, source=step_id)
+                            if (
+                                isinstance(pid, int)
+                                and _layer_state(
+                                    parsed, "automation_worker", variables["vehicle_id"]
+                                )
+                                == "running"
                             ):
-                                state.baseline_fingerprint = fingerprint
+                                state.worker_may_exist = True
+                            # Bind fingerprint to this exact capture, including None.
+                            fingerprint = extract_session_fingerprint(
+                                parsed, variables["vehicle_id"]
+                            )
+                            state.latest_fingerprint = fingerprint
+                            state.capture_fingerprints[json_name] = fingerprint
+                            if fingerprint is not None:
+                                if state.baseline_fingerprint is None and step_id.startswith(
+                                    "status-initial"
+                                ):
+                                    state.baseline_fingerprint = fingerprint
+                                    _write_json(
+                                        session_dir / "session-fingerprint-baseline.json",
+                                        fingerprint,
+                                    )
+                                    # Record proposal-required visible session values.
+                                    baseline_path = session_dir / "baseline.json"
+                                    if baseline_path.is_file():
+                                        baseline_doc = json.loads(
+                                            baseline_path.read_text(encoding="utf-8")
+                                        )
+                                        session_visible = {
+                                            "game_id": fingerprint.get("game_id"),
+                                            "scenario_id": fingerprint.get("scenario_id"),
+                                            "simulation_epoch": fingerprint.get(
+                                                "simulation_epoch"
+                                            ),
+                                            "playback": fingerprint.get("playback"),
+                                            "control_source": fingerprint.get(
+                                                "control_source"
+                                            ),
+                                            "control_input": fingerprint.get(
+                                                "control_input"
+                                            ),
+                                        }
+                                        baseline_doc["session_visible"] = session_visible
+                                        # Keep in-memory baseline (and final result) in sync.
+                                        baseline["session_visible"] = session_visible
+                                        _write_json(baseline_path, baseline_doc)
                                 _write_json(
-                                    session_dir / "session-fingerprint-baseline.json",
+                                    session_dir / "session-fingerprint-latest.json",
                                     fingerprint,
                                 )
-                                # Record proposal-required visible session values.
-                                baseline_path = session_dir / "baseline.json"
-                                if baseline_path.is_file():
-                                    baseline_doc = json.loads(
-                                        baseline_path.read_text(encoding="utf-8")
-                                    )
-                                    session_visible = {
-                                        "game_id": fingerprint.get("game_id"),
-                                        "scenario_id": fingerprint.get("scenario_id"),
-                                        "simulation_epoch": fingerprint.get(
-                                            "simulation_epoch"
-                                        ),
-                                        "playback": fingerprint.get("playback"),
-                                        "control_source": fingerprint.get(
-                                            "control_source"
-                                        ),
-                                        "control_input": fingerprint.get(
-                                            "control_input"
-                                        ),
-                                    }
-                                    baseline_doc["session_visible"] = session_visible
-                                    # Keep in-memory baseline (and final result) in sync.
-                                    baseline["session_visible"] = session_visible
-                                    _write_json(baseline_path, baseline_doc)
-                            _write_json(
-                                session_dir / "session-fingerprint-latest.json",
-                                fingerprint,
-                            )
-                        else:
-                            _write_json(
-                                session_dir / "session-fingerprint-latest.json",
-                                {
-                                    "error": "extraction_failed",
-                                    "capture": json_name,
-                                    "step_id": step_id,
-                                },
-                            )
-                    except json.JSONDecodeError as exc:
-                        step_status = "fail"
-                        machine_ok = False
-                        validator_notes.append(f"JSON capture invalid: {exc}")
-                        _write_text(json_out.with_suffix(json_out.suffix + ".raw.txt"), raw)
-
-                    if step.get("capture_view_latest") and json_out.is_file():
-                        try:
-                            view_meta = _capture_view_latest(
-                                session_dir,
-                                json_out,
-                                vehicle_id=variables["vehicle_id"],
-                            )
-                        except Exception as exc:  # noqa: BLE001
-                            view_meta = {
-                                "error": f"{type(exc).__name__}: {exc}",
-                            }
-                        if not view_meta or view_meta.get("error"):
-                            machine_ok = False
+                            else:
+                                _write_json(
+                                    session_dir / "session-fingerprint-latest.json",
+                                    {
+                                        "error": "extraction_failed",
+                                        "capture": json_name,
+                                        "step_id": step_id,
+                                    },
+                                )
+                        except json.JSONDecodeError as exc:
                             step_status = "fail"
-                            validator_notes.append(
-                                f"view_latest: failed ({view_meta})"
-                            )
-                        else:
-                            validator_notes.append(
-                                f"view_latest: {view_meta.get('summary') or 'ok'}"
-                            )
-
-                # Machine validators declared on the step
-                for validator in step.get("machine_validators") or []:
-                    name = str(validator)
-                    status_path = None
-                    view_path = session_dir / "view-publication.json"
-                    if name in {"initial_layers"}:
-                        status_path = session_dir / "initial-status.json"
-                    elif name in {"staged_layers"}:
-                        status_path = session_dir / "staged-status.json"
-                    elif name in {"running_layers", "authority"}:
-                        status_path = session_dir / "running-status.json"
-                    elif name in {"stopped_layers"}:
-                        status_path = session_dir / "stopped-status.json"
-                    elif name == "preservation":
-                        # Fingerprints already updated from the latest JSON capture.
-                        status_path = None
-                    if name == "default_recording":
-                        state.recording_after = _list_run_directories(
-                            repo_root, variables["vehicle_id"]
-                        )
-                    ok, summary = _run_machine_validator(
-                        name,
-                        vehicle_id=variables["vehicle_id"],
-                        status_path=status_path,
-                        view_path=view_path if view_path.is_file() else None,
-                        before_runs=state.recording_before,
-                        after_runs=state.recording_after,
-                        baseline_fingerprint=state.baseline_fingerprint,
-                        current_fingerprint=state.latest_fingerprint,
-                        perception_algorithm=variables["perception_algorithm"],
-                    )
-                    validator_notes.append(f"{name}: {summary}")
-                    if not ok:
-                        machine_ok = False
-                        step_status = "fail"
-                    elif name == "view_correlation":
-                        state.view_healthy_at_unix = time.time()
-                    elif name == "running_layers" and ok:
-                        # Startup must not reuse a pre-existing worker PID.
-                        running_pid = state.last_worker_pid
-                        if (
-                            isinstance(running_pid, int)
-                            and running_pid in state.pre_existing_worker_pids
-                        ):
                             machine_ok = False
-                            step_status = "fail"
-                            validator_notes.append(
-                                f"running_layers: worker pid {running_pid} is "
-                                "pre-existing (not created by this session's run)"
-                            )
+                            validator_notes.append(f"JSON capture invalid: {exc}")
+                            _write_text(json_out.with_suffix(json_out.suffix + ".raw.txt"), raw)
 
-            judgment = _prompt_judgment(
-                step=step,
-                prompt=prompt,
-                non_interactive=non_interactive,
-                auto_visual=auto_visual,
-            )
-            if judgment.interactive and judgment.visual in {"pass", "fail"}:
-                state.interactive_human_confirmation = True
-
-            # Bind browser screenshot to the human-view gate after inspection.
-            if (
-                step.get("visual_required")
-                and "human_view" in (step.get("gate_ids") or [])
-                and not dry_run
-            ):
-                import_path = browser_view_path
-                if not non_interactive:
-                    offered = prompt(
-                        "Path to cropped browser-view.png for this inspection "
-                        "(Enter to use --browser-view if provided): "
-                    ).strip()
-                    if offered:
-                        import_path = Path(offered).expanduser()
-                if import_path is not None and import_path.is_file():
-                    target = session_dir / "browser-view.png"
-                    # Bind only after view_correlation established the floor;
-                    # early human_view steps may still collect notes without
-                    # labeling a pre-session PNG as acceptance evidence.
-                    if state.view_healthy_at_unix is None:
-                        ok_img = False
-                        img_summary = (
-                            "browser-view.png not bound yet: view health not proven"
-                        )
-                        source_meta: dict[str, Any] = {
-                            "source_sha256": _sha256_file(import_path),
-                            "source_mtime_unix": import_path.stat().st_mtime,
-                        }
-                        if target.is_file():
+                        if step.get("capture_view_latest") and json_out.is_file():
                             try:
-                                target.unlink()
-                            except OSError:
-                                pass
-                    else:
-                        ok_img, img_summary, source_meta = _bind_browser_view_image(
-                            import_path,
-                            target,
-                            not_before_unix=state.view_healthy_at_unix,
+                                view_meta = _capture_view_latest(
+                                    session_dir,
+                                    json_out,
+                                    vehicle_id=variables["vehicle_id"],
+                                )
+                            except Exception as exc:  # noqa: BLE001
+                                view_meta = {
+                                    "error": f"{type(exc).__name__}: {exc}",
+                                }
+                            if not view_meta or view_meta.get("error"):
+                                machine_ok = False
+                                step_status = "fail"
+                                validator_notes.append(
+                                    f"view_latest: failed ({view_meta})"
+                                )
+                            else:
+                                validator_notes.append(
+                                    f"view_latest: {view_meta.get('summary') or 'ok'}"
+                                )
+
+                    # Machine validators declared on the step
+                    for validator in step.get("machine_validators") or []:
+                        name = str(validator)
+                        status_path = None
+                        view_path = session_dir / "view-publication.json"
+                        if name in {"initial_layers"}:
+                            status_path = session_dir / "initial-status.json"
+                        elif name in {"staged_layers"}:
+                            status_path = session_dir / "staged-status.json"
+                        elif name in {"running_layers", "authority"}:
+                            status_path = session_dir / "running-status.json"
+                        elif name in {"stopped_layers"}:
+                            status_path = session_dir / "stopped-status.json"
+                        elif name == "preservation":
+                            # Fingerprints already updated from the latest JSON capture.
+                            status_path = None
+                        if name == "default_recording":
+                            state.recording_after = _list_run_directories(
+                                repo_root, variables["vehicle_id"]
+                            )
+                        ok, summary = _run_machine_validator(
+                            name,
+                            vehicle_id=variables["vehicle_id"],
+                            status_path=status_path,
+                            view_path=view_path if view_path.is_file() else None,
+                            before_runs=state.recording_before,
+                            after_runs=state.recording_after,
+                            baseline_fingerprint=state.baseline_fingerprint,
+                            current_fingerprint=state.latest_fingerprint,
+                            perception_algorithm=variables["perception_algorithm"],
                         )
-                    state.browser_view_meta = {
-                        # Redact absolute paths from reviewable evidence.
-                        "imported_from": _redact_path(import_path, repo_root),
-                        "imported_at_utc": _iso(_utc_now()),
-                        "source_mtime_unix": source_meta.get("source_mtime_unix"),
-                        "source_sha256": source_meta.get("source_sha256"),
-                        "view_healthy_at_unix": state.view_healthy_at_unix,
-                        "step_id": step_id,
-                        "validation": img_summary,
-                        "ok": ok_img,
-                    }
-                    _write_json(session_dir / "browser-view-meta.json", state.browser_view_meta)
-                    # Only fail the step when this gate already proved view
-                    # health (or judgment claims pass without any bound image).
-                    if not ok_img and state.view_healthy_at_unix is not None:
+                        validator_notes.append(f"{name}: {summary}")
+                        if not ok:
+                            machine_ok = False
+                            step_status = "fail"
+                        elif name == "view_correlation":
+                            state.view_healthy_at_unix = time.time()
+                        elif name == "running_layers" and ok:
+                            # Startup must not reuse a pre-existing worker PID.
+                            running_pid = state.last_worker_pid
+                            if (
+                                isinstance(running_pid, int)
+                                and running_pid in state.pre_existing_worker_pids
+                            ):
+                                machine_ok = False
+                                step_status = "fail"
+                                validator_notes.append(
+                                    f"running_layers: worker pid {running_pid} is "
+                                    "pre-existing (not created by this session's run)"
+                                )
+
+                judgment = _prompt_judgment(
+                    step=step,
+                    prompt=prompt,
+                    non_interactive=non_interactive,
+                    auto_visual=auto_visual,
+                )
+                if judgment.interactive and judgment.visual in {"pass", "fail"}:
+                    state.interactive_human_confirmation = True
+
+                # Bind browser screenshot to the human-view gate after inspection.
+                if (
+                    step.get("visual_required")
+                    and "human_view" in (step.get("gate_ids") or [])
+                    and not dry_run
+                ):
+                    import_path = browser_view_path
+                    if not non_interactive:
+                        offered = prompt(
+                            "Path to cropped browser-view.png for this inspection "
+                            "(Enter to use --browser-view if provided): "
+                        ).strip()
+                        if offered:
+                            import_path = Path(offered).expanduser()
+                    if import_path is not None and import_path.is_file():
+                        target = session_dir / "browser-view.png"
+                        # Bind only after view_correlation established the floor;
+                        # early human_view steps may still collect notes without
+                        # labeling a pre-session PNG as acceptance evidence.
+                        if state.view_healthy_at_unix is None:
+                            ok_img = False
+                            img_summary = (
+                                "browser-view.png not bound yet: view health not proven"
+                            )
+                            source_meta: dict[str, Any] = {
+                                "source_sha256": _sha256_file(import_path),
+                                "source_mtime_unix": import_path.stat().st_mtime,
+                            }
+                            if target.is_file():
+                                try:
+                                    target.unlink()
+                                except OSError:
+                                    pass
+                        else:
+                            ok_img, img_summary, source_meta = _bind_browser_view_image(
+                                import_path,
+                                target,
+                                not_before_unix=state.view_healthy_at_unix,
+                            )
+                        state.browser_view_meta = {
+                            # Redact absolute paths from reviewable evidence.
+                            "imported_from": _redact_path(import_path, repo_root),
+                            "imported_at_utc": _iso(_utc_now()),
+                            "source_mtime_unix": source_meta.get("source_mtime_unix"),
+                            "source_sha256": source_meta.get("source_sha256"),
+                            "view_healthy_at_unix": state.view_healthy_at_unix,
+                            "step_id": step_id,
+                            "validation": img_summary,
+                            "ok": ok_img,
+                        }
+                        _write_json(session_dir / "browser-view-meta.json", state.browser_view_meta)
+                        # Only fail the step when this gate already proved view
+                        # health (or judgment claims pass without any bound image).
+                        if not ok_img and state.view_healthy_at_unix is not None:
+                            machine_ok = False
+                            step_status = "fail"
+                            validator_notes.append(f"browser_view: {img_summary}")
+                    elif judgment.visual == "pass" and state.view_healthy_at_unix is not None:
                         machine_ok = False
                         step_status = "fail"
-                        validator_notes.append(f"browser_view: {img_summary}")
-                elif judgment.visual == "pass" and state.view_healthy_at_unix is not None:
-                    machine_ok = False
+                        validator_notes.append(
+                            "browser_view: browser-view.png not provided at human-view gate"
+                        )
+
+                # Single join of validator notes after all machine + screenshot checks.
+                if validator_notes:
+                    machine_summary = "; ".join(validator_notes)
+
+                if judgment.visual == "fail":
                     step_status = "fail"
-                    validator_notes.append(
-                        "browser_view: browser-view.png not provided at human-view gate"
+                elif judgment.visual == "skip" and step.get("required_for_verdict"):
+                    step_status = "skip"
+                elif step_status == "ok" and judgment.visual in {"pass", "n/a"} and machine_ok:
+                    step_status = "pass"
+                elif not machine_ok:
+                    step_status = "fail"
+
+                evidence_refs = [f"steps/{step_id}/envelope.json"]
+                for outcome in command_outcomes:
+                    if outcome.get("stdout_path"):
+                        evidence_refs.append(str(outcome["stdout_path"]))
+
+                if judgment.finding:
+                    _record_finding(
+                        state,
+                        step_id=step_id,
+                        classification=(
+                            "acceptance_blocker"
+                            if catalog.get("track") == "acceptance" and judgment.visual == "fail"
+                            else "usability_defect"
+                        ),
+                        severity=judgment.finding_severity or "P3",
+                        summary=judgment.finding_summary or "operator-reported finding",
+                        human_notes=judgment.notes,
+                        evidence=evidence_refs,
+                        repro=[o.get("command", "") for o in command_outcomes if o.get("command")],
                     )
 
-            # Single join of validator notes after all machine + screenshot checks.
-            if validator_notes:
-                machine_summary = "; ".join(validator_notes)
+                gate_ids = [str(g) for g in (step.get("gate_ids") or [])]
+                if gate_ids:
+                    if step_status == "pass":
+                        _apply_gate(
+                            state,
+                            gate_ids,
+                            status="pass",
+                            summary=judgment.notes or machine_summary or step.get("primary_cue") or step_id,
+                            evidence=evidence_refs,
+                        )
+                    elif step_status == "skip":
+                        _apply_gate(
+                            state,
+                            gate_ids,
+                            status="skip",
+                            summary=judgment.notes or "operator skipped",
+                            evidence=evidence_refs,
+                        )
+                    else:
+                        _apply_gate(
+                            state,
+                            gate_ids,
+                            status="fail",
+                            summary=judgment.notes or machine_summary or "step failed",
+                            evidence=evidence_refs,
+                        )
+                        # Durable finding for required gate failure
+                        if step.get("required_for_verdict"):
+                            _record_finding(
+                                state,
+                                step_id=step_id,
+                                classification="acceptance_blocker"
+                                if catalog.get("track") == "acceptance"
+                                else "usability_defect",
+                                severity="P1" if catalog.get("track") == "acceptance" else "P2",
+                                summary=machine_summary or f"Required step {step_id} failed",
+                                human_notes=judgment.notes,
+                                evidence=evidence_refs,
+                                repro=[o.get("command", "") for o in command_outcomes if o.get("command")],
+                            )
 
-            if judgment.visual == "fail":
-                step_status = "fail"
-            elif judgment.visual == "skip" and step.get("required_for_verdict"):
-                step_status = "skip"
-            elif step_status == "ok" and judgment.visual in {"pass", "n/a"} and machine_ok:
-                step_status = "pass"
-            elif not machine_ok:
-                step_status = "fail"
-
-            evidence_refs = [f"steps/{step_id}/envelope.json"]
-            for outcome in command_outcomes:
-                if outcome.get("stdout_path"):
-                    evidence_refs.append(str(outcome["stdout_path"]))
-
-            if judgment.finding:
-                _record_finding(
-                    state,
-                    step_id=step_id,
-                    classification=(
-                        "acceptance_blocker"
-                        if catalog.get("track") == "acceptance" and judgment.visual == "fail"
-                        else "usability_defect"
-                    ),
-                    severity=judgment.finding_severity or "P3",
-                    summary=judgment.finding_summary or "operator-reported finding",
-                    human_notes=judgment.notes,
-                    evidence=evidence_refs,
-                    repro=[o.get("command", "") for o in command_outcomes if o.get("command")],
+                envelope = {
+                    "id": step_id,
+                    "kind": step.get("kind"),
+                    "question": step.get("question"),
+                    "safety": step.get("safety"),
+                    "primary_cue": step.get("primary_cue"),
+                    "status": step_status,
+                    "machine_summary": machine_summary,
+                    "machine_ok": machine_ok,
+                    "commands": command_outcomes,
+                    "human": {
+                        "visual": judgment.visual,
+                        "notes": judgment.notes,
+                        "finding_requested": judgment.finding,
+                        "interactive": judgment.interactive,
+                    },
+                    "gate_ids": gate_ids,
+                    "required_for_verdict": bool(step.get("required_for_verdict")),
+                    "browser_view": state.browser_view_meta
+                    if step.get("visual_required") and "human_view" in gate_ids
+                    else None,
+                }
+                _write_json(step_dir / "envelope.json", envelope)
+                state.steps.append(envelope)
+                notes_lines.extend(
+                    [
+                        f"## {step_id}",
+                        "",
+                        f"- status: `{step_status}`",
+                        f"- visual: `{judgment.visual}`",
+                        f"- notes: {judgment.notes or '(none)'}",
+                        f"- machine: {machine_summary or '(none)'}",
+                        "",
+                    ]
                 )
 
-            gate_ids = [str(g) for g in (step.get("gate_ids") or [])]
-            if gate_ids:
-                if step_status == "pass":
-                    _apply_gate(
-                        state,
-                        gate_ids,
-                        status="pass",
-                        summary=judgment.notes or machine_summary or step.get("primary_cue") or step_id,
-                        evidence=evidence_refs,
-                    )
-                elif step_status == "skip":
-                    _apply_gate(
-                        state,
-                        gate_ids,
-                        status="skip",
-                        summary=judgment.notes or "operator skipped",
-                        evidence=evidence_refs,
-                    )
-                else:
-                    _apply_gate(
-                        state,
-                        gate_ids,
-                        status="fail",
-                        summary=judgment.notes or machine_summary or "step failed",
-                        evidence=evidence_refs,
-                    )
-                    # Durable finding for required gate failure
-                    if step.get("required_for_verdict"):
-                        _record_finding(
-                            state,
-                            step_id=step_id,
-                            classification="acceptance_blocker"
-                            if catalog.get("track") == "acceptance"
-                            else "usability_defect",
-                            severity="P1" if catalog.get("track") == "acceptance" else "P2",
-                            summary=machine_summary or f"Required step {step_id} failed",
-                            human_notes=judgment.notes,
-                            evidence=evidence_refs,
-                            repro=[o.get("command", "") for o in command_outcomes if o.get("command")],
-                        )
-
-            envelope = {
-                "id": step_id,
-                "kind": step.get("kind"),
-                "question": step.get("question"),
-                "safety": step.get("safety"),
-                "primary_cue": step.get("primary_cue"),
-                "status": step_status,
-                "machine_summary": machine_summary,
-                "machine_ok": machine_ok,
-                "commands": command_outcomes,
-                "human": {
-                    "visual": judgment.visual,
-                    "notes": judgment.notes,
-                    "finding_requested": judgment.finding,
-                    "interactive": judgment.interactive,
-                },
-                "gate_ids": gate_ids,
-                "required_for_verdict": bool(step.get("required_for_verdict")),
-                "browser_view": state.browser_view_meta
-                if step.get("visual_required") and "human_view" in gate_ids
-                else None,
-            }
-            _write_json(step_dir / "envelope.json", envelope)
-            state.steps.append(envelope)
-            notes_lines.extend(
-                [
-                    f"## {step_id}",
-                    "",
-                    f"- status: `{step_status}`",
-                    f"- visual: `{judgment.visual}`",
-                    f"- notes: {judgment.notes or '(none)'}",
-                    f"- machine: {machine_summary or '(none)'}",
-                    "",
-                ]
-            )
-
-            if step_id == "automation-run" and step_status in {"pass", "fail", "ok"}:
-                state.worker_may_exist = True
+                if step_id == "automation-run" and step_status in {"pass", "fail", "ok"}:
+                    state.worker_may_exist = True
 
     except KeyboardInterrupt:
         _record_finding(

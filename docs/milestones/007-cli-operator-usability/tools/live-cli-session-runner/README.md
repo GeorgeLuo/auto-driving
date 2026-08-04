@@ -188,7 +188,9 @@ An acceptance catalog can return `pass` only when all of the following hold:
   to deep-equal the bundled catalog **and** that file's SHA-256 to match the
   reviewed source constant `PINNED_ACCEPTANCE_CATALOG_DIGEST` (update the
   constant in the same commit when intentionally changing the catalog). Pre-start
-  on-disk edits and in-memory mutations both fail closed
+  on-disk edits and in-memory mutations both fail closed. A noncanonical
+  `track: acceptance` catalog is **refused before any CLI command** (including
+  precondition and help), not only marked incomplete after the fact
 - **safety short-circuit**: `live_mutation` steps (e.g. `automation run`) are
   **not executed** unless precondition, `initial_layers`, and `staging` have
   already passed; blocked steps leave durable findings without starting a worker

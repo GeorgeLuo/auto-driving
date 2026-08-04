@@ -701,11 +701,241 @@ class LiveCliSessionRunnerTests(unittest.TestCase):
             (CATALOGS / "m007-acceptance.yaml").read_text(encoding="utf-8")
         )
         initial = next(s for s in catalog["steps"] if s["id"] == "status-initial")
+        # Frozen primary command is aggregate; targeted JSON is supplemental.
+        primary = " ".join(initial["commands"][0])
+        self.assertNotIn("--id", primary)
+        self.assertIn("--chase-url", primary)
         self.assertIn("--id", " ".join(initial["capture_json"]["command"]))
+        update = next(s for s in catalog["steps"] if s["id"] == "update-perception")
+        self.assertIn("staged_layers", update["machine_validators"])
+        self.assertEqual(update["capture_json"]["path"], "staged-status.json")
         running = next(s for s in catalog["steps"] if s["id"] == "status-running")
         self.assertIn("preservation", running["machine_validators"])
         stopped = next(s for s in catalog["steps"] if s["id"] == "status-stopped")
         self.assertIn("preservation", stopped["machine_validators"])
+        runner = _load_runner_module()
+        ok, reason = runner._is_canonical_acceptance_catalog(
+            CATALOGS / "m007-acceptance.yaml", catalog
+        )
+        self.assertTrue(ok, reason)
+
+    def test_fake_acceptance_catalog_cannot_pass(self) -> None:
+        runner = _load_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            session_dir = Path(tmp)
+            (session_dir / "steps").mkdir()
+            Image.new("RGB", (8, 8), (1, 2, 3)).save(session_dir / "browser-view.png")
+            floor = time.time() - 1
+            os.utime(session_dir / "browser-view.png", (floor + 2, floor + 2))
+            baseline = {
+                "operator": "op",
+                "browser": {"name": "Chrome", "version": "1"},
+                "repositories": {
+                    "auto_driving": {
+                        "commit": "a",
+                        "worktree_state": "clean",
+                    },
+                    "metrics_ui": {
+                        "commit": "b",
+                        "worktree_state": "clean",
+                    },
+                },
+                "session_visible": {"game_id": "chase"},
+                "precondition_cleanup": {"ok": True},
+            }
+            (session_dir / "baseline.json").write_text(
+                json.dumps(baseline), encoding="utf-8"
+            )
+            (session_dir / "browser-view-meta.json").write_text(
+                json.dumps(
+                    {
+                        "ok": True,
+                        "source_mtime_unix": floor + 2,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            state = runner.SessionState(
+                catalog={
+                    "schema": "live_cli_session_catalog_v0",
+                    "id": "fake",
+                    "track": "acceptance",
+                    "gates": [],
+                },
+                session_dir=session_dir,
+                repo_root=ROOT,
+                variables={"vehicle_id": VEHICLE},
+                execution_mode="interactive_live",
+                session_id="x",
+                interactive_human_confirmation=True,
+                dry_run=False,
+                non_interactive=False,
+                canonical_acceptance=False,
+                view_healthy_at_unix=floor,
+            )
+            result, reason = runner._derive_verdict(state)
+            self.assertEqual(result, "incomplete")
+            self.assertIn("bundled", reason.lower())
+
+    def test_view_capture_passes_vehicle_id(self) -> None:
+        runner = _load_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            session_dir = Path(tmp)
+            status = _status_with_passive()
+            status_path = session_dir / "running-status.json"
+            status_path.write_text(json.dumps(status), encoding="utf-8")
+
+            class _Resp:
+                def read(self):
+                    return json.dumps(
+                        _current_view_payload()
+                    ).encode("utf-8")
+
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, *args):
+                    return False
+
+            import urllib.request
+
+            original = urllib.request.urlopen
+            urllib.request.urlopen = lambda *a, **k: _Resp()  # type: ignore[assignment]
+            try:
+                meta = runner._capture_view_latest(
+                    session_dir, status_path, vehicle_id=VEHICLE
+                )
+            finally:
+                urllib.request.urlopen = original  # type: ignore[assignment]
+            self.assertNotIn("error", meta, meta)
+            self.assertTrue((session_dir / "view-publication.json").is_file())
+
+    def test_precondition_nonzero_and_missing_worker_fail(self) -> None:
+        runner = _load_runner_module()
+        # Missing automation_worker is not a healthy baseline.
+        card = _status_with_passive(worker_state="stopped", view_state="stale")
+        del card["layers"]["automation_worker"]
+        ok, msg = runner.validate_initial_layers(card, vehicle_id=VEHICLE)
+        self.assertFalse(ok)
+        self.assertIn("stopped", msg)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            session_dir = Path(tmp)
+            state = runner.SessionState(
+                catalog={"track": "acceptance"},
+                session_dir=session_dir,
+                repo_root=ROOT,
+                variables={"vehicle_id": VEHICLE},
+                execution_mode="interactive_live",
+                session_id="pre",
+                dry_run=False,
+                non_interactive=False,
+            )
+            (session_dir / "steps").mkdir()
+
+            def fake_run(argv, **kwargs):
+                step_dir = kwargs["step_dir"]
+                step_dir.mkdir(parents=True, exist_ok=True)
+                index = kwargs["index"]
+                # Nonzero status with stopped-shaped body must still fail.
+                payload = _status_with_passive(
+                    worker_state="stopped", view_state="stale", pid=111
+                )
+                (step_dir / f"cmd-{index:02d}.stdout.txt").write_text(
+                    json.dumps(payload) + "\n", encoding="utf-8"
+                )
+                (step_dir / f"cmd-{index:02d}.stderr.txt").write_text("", encoding="utf-8")
+                return runner.CommandOutcome(
+                    argv=list(argv),
+                    command=" ".join(argv),
+                    exit_code=1,
+                    elapsed_ms=1,
+                    stdout_path=f"steps/_precondition_cleanup/cmd-{index:02d}.stdout.txt",
+                    stderr_path=f"steps/_precondition_cleanup/cmd-{index:02d}.stderr.txt",
+                    started_at_utc="t0",
+                    ended_at_utc="t1",
+                )
+
+            original = runner._run_command
+            runner._run_command = fake_run  # type: ignore[assignment]
+            try:
+                record = runner._run_precondition_cleanup(
+                    state,
+                    command_timeout_s=5,
+                    transcript_path=session_dir / "t.txt",
+                    metrics_ui_origin="http://localhost:5050",
+                )
+            finally:
+                runner._run_command = original  # type: ignore[assignment]
+            self.assertIsNot(record.get("ok"), True)
+            self.assertIn("exit=1", str(record.get("error")))
+
+    def test_dirty_metrics_ui_without_reviewable_diff_incomplete(self) -> None:
+        runner = _load_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            session_dir = Path(tmp)
+            (session_dir / "steps").mkdir()
+            Image.new("RGB", (8, 8), (9, 9, 9)).save(session_dir / "browser-view.png")
+            floor = time.time() - 1
+            os.utime(session_dir / "browser-view.png", (floor + 2, floor + 2))
+            baseline = {
+                "operator": "op",
+                "browser": {"name": "Chrome", "version": "1"},
+                "repositories": {
+                    "auto_driving": {"commit": "a", "worktree_state": "clean"},
+                    "metrics_ui": {
+                        "commit": "b",
+                        "worktree_state": "dirty",
+                        "diff_identity": "unreviewable-hash",
+                        "untracked_files": [],
+                    },
+                },
+                "session_visible": {"game_id": "chase"},
+                "precondition_cleanup": {"ok": True},
+            }
+            (session_dir / "baseline.json").write_text(
+                json.dumps(baseline), encoding="utf-8"
+            )
+            (session_dir / "browser-view-meta.json").write_text(
+                json.dumps({"ok": True, "source_mtime_unix": floor + 2}),
+                encoding="utf-8",
+            )
+            state = runner.SessionState(
+                catalog={
+                    "id": "m007-acceptance",
+                    "track": "acceptance",
+                    "gates": [
+                        {"id": g, "required": True}
+                        for g in runner.CANONICAL_ACCEPTANCE_GATES
+                    ],
+                },
+                session_dir=session_dir,
+                repo_root=ROOT,
+                variables={"vehicle_id": VEHICLE},
+                execution_mode="interactive_live",
+                session_id="dirty",
+                interactive_human_confirmation=True,
+                dry_run=False,
+                non_interactive=False,
+                canonical_acceptance=True,
+                view_healthy_at_unix=floor,
+            )
+            for gate in runner.CANONICAL_ACCEPTANCE_GATES:
+                state.gate_results[gate] = {
+                    "id": gate,
+                    "status": "pass",
+                    "summary": "ok",
+                    "evidence": [],
+                }
+            result, reason = runner._derive_verdict(state)
+            self.assertEqual(result, "incomplete")
+            self.assertIn("metrics-ui", reason.lower())
+
+    def test_redact_path_collapses_foreign_absolute(self) -> None:
+        runner = _load_runner_module()
+        redacted = runner._redact_path("/var/tmp/secret/shot.png", ROOT)
+        self.assertEqual(redacted, "<path>/shot.png")
+        self.assertNotIn("/var/tmp", redacted)
 
 
 if __name__ == "__main__":

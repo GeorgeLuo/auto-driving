@@ -184,8 +184,15 @@ An acceptance catalog can return `pass` only when all of the following hold:
 - dirty worktrees include `diff_identity` (tracked patch + untracked content hashes)
   and `auto-driving-worktree.diff` when auto-driving is dirty
 - baseline records `session_visible` protected fields from the initial fingerprint
-- **precondition cleanup**: any pre-existing running worker is stopped and recorded
-  before the acceptance baseline; initial layers require worker not running
+- **canonical catalog only**: formal `pass` requires the byte-identical bundled
+  `m007-acceptance.yaml` (id, gates, step validators, and frozen aggregate
+  `status --chase-url` primary command). Modified `track: acceptance` catalogs
+  cannot pass
+- **precondition cleanup**: zero-exit targeted status with exact identity; any
+  pre-existing running worker is stopped; `automation_worker` must be explicit
+  `stopped` and known PIDs dead before the baseline
+- **staging**: post-`update perception` targeted status must show worker still
+  stopped (`staged_layers`)
 - **preservation**: each JSON capture binds its own fingerprint (including failed
   extraction as `None`); within a receipt, all six fields match before/after;
   across commands, stable projection compares game/scenario/epoch, control
@@ -197,6 +204,8 @@ An acceptance catalog can return `pass` only when all of the following hold:
   health floor; source mtime must postdate that floor (preserved on copy); import
   paths are redacted
 - **cleanup** proves every observed worker PID is dead (not only the final status PID)
+- dirty auto-driving / Metrics UI checkouts need a reviewable patch snapshot
+  and/or `--*-linked-pr`
 
 Dry-run and non-interactive sessions are capture helpers only; they resolve to
 `incomplete` for acceptance catalogs even if every auto-visual is `pass`.

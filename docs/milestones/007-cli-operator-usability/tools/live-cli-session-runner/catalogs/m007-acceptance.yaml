@@ -84,8 +84,9 @@ steps:
     kind: command
     question: Does initial status show a ready passive Chase attachment?
     safety: read
+    # Frozen primary human command is aggregate (no --id); targeted JSON is supplemental.
     commands:
-      - ["./cli/automa", "vehicles", "status", "--id", "{vehicle_id}", "--chase-url", "{metrics_ui_origin}"]
+      - ["./cli/automa", "vehicles", "status", "--chase-url", "{metrics_ui_origin}"]
     capture_json:
       path: initial-status.json
       command:
@@ -103,10 +104,14 @@ steps:
     safety: local_write
     commands:
       - ["./cli/automa", "vehicles", "update", "perception", "--id", "{vehicle_id}", "--algorithm", "{perception_algorithm}"]
+    capture_json:
+      path: staged-status.json
+      command: ["./cli/automa", "vehicles", "status", "--id", "{vehicle_id}", "--json"]
     primary_cue: "Ready for: observation-only automation (worker not started)"
     visual_required: false
     required_for_verdict: true
     gate_ids: [staging]
+    machine_validators: [staged_layers]
     expect_exit: 0
 
   - id: automation-run

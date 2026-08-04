@@ -81,6 +81,101 @@ def _redact(text: str, repo_root: Path) -> str:
     return text.replace(root, "<repo>").replace(home, "<home>")
 
 
+def _redact_path(path: str | Path, repo_root: Path) -> str:
+    """Redact absolute local paths from reviewable artifacts."""
+
+    text = _redact(str(path), repo_root)
+    # Collapse remaining absolute paths (outside repo/home) to basename.
+    if text.startswith("/") or (len(text) > 2 and text[1] == ":"):
+        return f"<path>/{Path(text).name}"
+    return text
+
+
+# Canonical acceptance catalog: only this byte-identical content may pass.
+CANONICAL_ACCEPTANCE_ID = "m007-acceptance"
+CANONICAL_ACCEPTANCE_PATH = CATALOGS_DIR / "m007-acceptance.yaml"
+CANONICAL_ACCEPTANCE_GATES = (
+    "help_discoverability",
+    "initial_layers",
+    "staging",
+    "startup",
+    "running_layers",
+    "human_view",
+    "authority",
+    "correlation",
+    "default_recording",
+    "cleanup",
+)
+CANONICAL_ACCEPTANCE_STEP_VALIDATORS = {
+    "status-initial": ("initial_layers",),
+    "update-perception": ("staged_layers",),
+    "status-running": ("running_layers", "authority", "view_correlation", "preservation"),
+    "status-stopped": ("stopped_layers", "default_recording", "preservation"),
+}
+
+
+def _catalog_bytes_digest(path: Path) -> str | None:
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError:
+        return None
+
+
+def _is_canonical_acceptance_catalog(path: Path, catalog: Mapping[str, Any]) -> tuple[bool, str]:
+    """Formal acceptance pass is bound to the bundled catalog identity."""
+
+    if catalog.get("id") != CANONICAL_ACCEPTANCE_ID:
+        return False, f"catalog id {catalog.get('id')!r} is not {CANONICAL_ACCEPTANCE_ID!r}"
+    if catalog.get("track") != "acceptance":
+        return False, f"catalog track {catalog.get('track')!r} is not 'acceptance'"
+    if str(catalog.get("vehicle_id") or "") != "chase-sim-chaser":
+        return False, f"vehicle_id {catalog.get('vehicle_id')!r} is not chase-sim-chaser"
+    gates = [
+        str(g.get("id"))
+        for g in (catalog.get("gates") or [])
+        if isinstance(g, dict) and g.get("id")
+    ]
+    if tuple(gates) != CANONICAL_ACCEPTANCE_GATES:
+        return False, f"acceptance gates mismatch: {gates}"
+    for gate in catalog.get("gates") or []:
+        if isinstance(gate, dict) and gate.get("id") in CANONICAL_ACCEPTANCE_GATES:
+            if gate.get("required") is not True:
+                return False, f"gate {gate.get('id')!r} must be required"
+    steps_by_id = {
+        str(s.get("id")): s
+        for s in (catalog.get("steps") or [])
+        if isinstance(s, dict) and s.get("id")
+    }
+    for step_id, validators in CANONICAL_ACCEPTANCE_STEP_VALIDATORS.items():
+        step = steps_by_id.get(step_id)
+        if step is None:
+            return False, f"missing required acceptance step {step_id!r}"
+        declared = tuple(str(v) for v in (step.get("machine_validators") or []))
+        if declared != validators:
+            return False, f"step {step_id!r} validators {declared} != {validators}"
+    # Byte-identical to the reviewed bundled catalog (blocks modified copies).
+    bundled = _catalog_bytes_digest(CANONICAL_ACCEPTANCE_PATH)
+    current = _catalog_bytes_digest(path)
+    if not bundled or not current or bundled != current:
+        return (
+            False,
+            "catalog bytes are not identical to the bundled m007-acceptance.yaml",
+        )
+    # Primary human status-initial command must be the frozen aggregate surface.
+    initial = steps_by_id.get("status-initial") or {}
+    commands = initial.get("commands") or []
+    if not commands or not isinstance(commands[0], list):
+        return False, "status-initial missing primary command"
+    primary = [str(p) for p in commands[0]]
+    if "--id" in primary:
+        return False, "status-initial primary command must be aggregate (no --id)"
+    if primary[:3] != ["./cli/automa", "vehicles", "status"]:
+        return False, "status-initial primary command must be vehicles status"
+    if "--chase-url" not in primary:
+        return False, "status-initial primary command must include --chase-url"
+    return True, "canonical acceptance catalog"
+
+
 def _load_yaml(path: Path) -> dict[str, Any]:
     try:
         import yaml  # type: ignore
@@ -416,19 +511,50 @@ def validate_initial_layers(
         got = _layer_state(card, layer)
         if got != want:
             missing.append(f"{layer}={got!r} (want {want!r})")
-    # Baseline must not start on a pre-existing running worker.
+    # Baseline requires an explicit stopped worker (missing layer is not proof).
     worker = _layer_state(card, "automation_worker")
-    if worker == "running":
-        missing.append(
-            "automation_worker='running' (want stopped before acceptance baseline)"
-        )
-    elif worker not in {"stopped", None}:
-        # absent layer is unusual; require explicit stopped when present
-        if worker is not None:
-            missing.append(f"automation_worker={worker!r} (want stopped)")
+    if worker != "stopped":
+        missing.append(f"automation_worker={worker!r} (want stopped)")
     if missing:
         return False, "; ".join(missing)
     return True, "initial layers healthy"
+
+
+def validate_staged_layers(
+    status: Mapping[str, Any],
+    *,
+    vehicle_id: str,
+    perception_algorithm: str = "lightweight_observer",
+) -> tuple[bool, str]:
+    """Post-update staging: worker remains stopped; deployment is staged."""
+
+    card = extract_vehicle_status(status, vehicle_id)
+    if card is None:
+        return False, f"no vehicle status card for {vehicle_id!r}"
+    problems = []
+    worker = _layer_state(card, "automation_worker")
+    if worker != "stopped":
+        problems.append(f"automation_worker={worker!r} (want stopped after staging)")
+    deployment = _layer_state(card, "automation_deployment")
+    if deployment != "deployed":
+        problems.append(f"automation_deployment={deployment!r} (want deployed)")
+    # Prefer explicit packaged algorithm when status exposes it.
+    layers = card.get("layers") if isinstance(card.get("layers"), dict) else {}
+    deployment_entry = layers.get("automation_deployment") if isinstance(layers, dict) else {}
+    details = (
+        deployment_entry.get("details")
+        if isinstance(deployment_entry, dict)
+        else {}
+    )
+    if isinstance(details, dict):
+        algorithm = details.get("algorithm") or details.get("perception_algorithm")
+        if algorithm is not None and str(algorithm) != perception_algorithm:
+            problems.append(
+                f"staged algorithm={algorithm!r} (want {perception_algorithm!r})"
+            )
+    if problems:
+        return False, "; ".join(problems)
+    return True, "staging left worker stopped with deployed perception"
 
 
 def validate_running_layers(
@@ -869,6 +995,10 @@ class SessionState:
     non_interactive: bool = False
     operator: str | None = None
     precondition_cleanup: dict[str, Any] | None = None
+    canonical_acceptance: bool = False
+    auto_driving_linked_pr: str | None = None
+    metrics_ui_linked_pr: str | None = None
+    catalog_source_path: str | None = None
 
 
 def _note_worker_pid(state: SessionState, pid: Any, *, source: str) -> None:
@@ -948,12 +1078,22 @@ def _run_machine_validator(
     after_runs: Sequence[str] | None = None,
     baseline_fingerprint: Mapping[str, Any] | None = None,
     current_fingerprint: Mapping[str, Any] | None = None,
+    perception_algorithm: str = "lightweight_observer",
 ) -> tuple[bool, str]:
     if name == "initial_layers":
         if status_path is None or not status_path.is_file():
             return False, "initial-status.json missing"
         status = json.loads(status_path.read_text(encoding="utf-8"))
         return validate_initial_layers(status, vehicle_id=vehicle_id)
+    if name == "staged_layers":
+        if status_path is None or not status_path.is_file():
+            return False, "staged-status.json missing"
+        status = json.loads(status_path.read_text(encoding="utf-8"))
+        return validate_staged_layers(
+            status,
+            vehicle_id=vehicle_id,
+            perception_algorithm=perception_algorithm,
+        )
     if name == "running_layers":
         if status_path is None or not status_path.is_file():
             return False, "running-status.json missing"
@@ -984,9 +1124,72 @@ def _run_machine_validator(
     return False, f"unknown validator {name!r}"
 
 
+def _repo_reviewable(
+    identity: Mapping[str, Any] | None,
+    *,
+    session_dir: Path,
+    label: str,
+    linked_pr: str | None,
+) -> tuple[bool, str]:
+    """Dirty checkouts need a reviewable patch and/or linked PR."""
+
+    if not isinstance(identity, Mapping):
+        return False, f"{label} identity missing"
+    if identity.get("worktree_state") != "dirty":
+        return True, f"{label} clean"
+    if linked_pr or identity.get("linked_pr"):
+        return True, f"{label} dirty with linked PR"
+    if not identity.get("diff_identity"):
+        return False, f"Dirty {label} worktree lacks diff_identity"
+    diff_path = session_dir / f"{label}-worktree.diff"
+    if not diff_path.is_file():
+        return False, f"Dirty {label} worktree lacks captured diff artifact"
+    patch = diff_path.read_text(encoding="utf-8", errors="replace")
+    untracked = list(identity.get("untracked_files") or [])
+    if untracked:
+        review_meta_path = session_dir / f"{label}-worktree-review.json"
+        snap_dir = session_dir / f"{label}-untracked"
+        if not snap_dir.is_dir() or not review_meta_path.is_file():
+            return (
+                False,
+                f"Dirty {label} has untracked files without a reviewable snapshot "
+                f"or linked PR: {untracked[:5]}",
+            )
+        try:
+            review_meta = json.loads(review_meta_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return False, f"Dirty {label} worktree review metadata is not JSON"
+        skipped = list(review_meta.get("untracked_skipped") or [])
+        if skipped:
+            return (
+                False,
+                f"Dirty {label} has untracked files that could not be snapshotted "
+                f"(use --{label}-linked-pr or clean tree): {skipped[:3]}",
+            )
+        captured = set(review_meta.get("untracked_captured") or [])
+        missing = [name for name in untracked if name not in captured]
+        if missing:
+            return (
+                False,
+                f"Dirty {label} untracked file not snapshotted: {missing[:5]}",
+            )
+    if not patch.strip() and not untracked:
+        return False, f"Dirty {label} has empty reviewable diff"
+    if not patch.strip() and untracked:
+        # Snapshot-only dirty tree is acceptable when all untracked files were captured.
+        return True, f"{label} dirty via untracked snapshot"
+    return True, f"{label} dirty with reviewable patch"
+
+
 def _derive_verdict(state: SessionState) -> tuple[str, str | None]:
     track = state.catalog.get("track")
     if track == "acceptance":
+        if not state.canonical_acceptance:
+            return (
+                "incomplete",
+                "Formal acceptance pass requires the byte-identical bundled "
+                "m007-acceptance catalog with the frozen gate/validator matrix.",
+            )
         if state.dry_run:
             return "incomplete", "Dry-run cannot produce an acceptance pass."
         if state.non_interactive:
@@ -1007,20 +1210,33 @@ def _derive_verdict(state: SessionState) -> tuple[str, str | None]:
             if not isinstance(metrics, dict) or not metrics.get("commit"):
                 return "incomplete", "Acceptance pass requires --metrics-ui-repo identity."
             auto = repos.get("auto_driving") or {}
-            if auto.get("worktree_state") == "dirty" and not auto.get("diff_identity"):
-                return "incomplete", "Dirty auto-driving worktree lacks diff_identity."
-            if auto.get("worktree_state") == "dirty" and not (
-                state.session_dir / "auto-driving-worktree.diff"
-            ).is_file():
-                return "incomplete", "Dirty auto-driving worktree lacks captured diff artifact."
+            ok_auto, auto_msg = _repo_reviewable(
+                auto,
+                session_dir=state.session_dir,
+                label="auto-driving",
+                linked_pr=state.auto_driving_linked_pr,
+            )
+            if not ok_auto:
+                return "incomplete", auto_msg
+            ok_metrics, metrics_msg = _repo_reviewable(
+                metrics,
+                session_dir=state.session_dir,
+                label="metrics-ui",
+                linked_pr=state.metrics_ui_linked_pr,
+            )
+            if not ok_metrics:
+                return "incomplete", metrics_msg
             if not baseline.get("session_visible"):
                 return (
                     "incomplete",
                     "Acceptance pass requires recorded session-visible fingerprint values.",
                 )
             pre = baseline.get("precondition_cleanup") or {}
-            if pre.get("error"):
-                return "findings", "Precondition cleanup failed before baseline."
+            if pre.get("error") or pre.get("ok") is not True:
+                return (
+                    "findings" if pre.get("error") else "incomplete",
+                    "Precondition cleanup did not prove a stopped baseline worker.",
+                )
         view_path = state.session_dir / "browser-view.png"
         # Prefer provenance recorded at the human-view gate; fall back to file
         # mtime only when meta is absent (still require a view-health floor).
@@ -1248,6 +1464,15 @@ def _enforce_cleanup(
     return cleanup
 
 
+def _pids_all_dead(pids: Sequence[int]) -> tuple[bool, dict[str, bool | None]]:
+    liveness = {str(pid): _pid_alive(pid) for pid in pids}
+    ok = bool(pids) and all(flag is False for flag in liveness.values())
+    if not pids:
+        # No known PID is fine when worker is stopped and never observed.
+        return True, {}
+    return ok, liveness
+
+
 def _run_precondition_cleanup(
     state: SessionState,
     *,
@@ -1259,6 +1484,9 @@ def _run_precondition_cleanup(
 
     Does not count as the acceptance stop. Records receipts under
     steps/_precondition_cleanup/ and pre-baseline-status.json.
+
+    Requires zero exit, exact targeted status identity, and explicit
+    ``automation_worker=stopped`` before the acceptance sequence proceeds.
     """
 
     vehicle = state.variables["vehicle_id"]
@@ -1266,15 +1494,23 @@ def _run_precondition_cleanup(
     record: dict[str, Any] = {
         "attempted": False,
         "needed": False,
+        "ok": False,
         "worker_state_before": None,
         "stop_exit_code": None,
         "status_exit_code": None,
         "worker_state_after": None,
         "pids_before": [],
+        "pid_liveness": {},
         "error": None,
     }
     if state.dry_run:
         record["skipped"] = "dry_run"
+        record["ok"] = True
+        return record
+
+    def _fail(message: str) -> dict[str, Any]:
+        record["error"] = message
+        record["ok"] = False
         return record
 
     try:
@@ -1297,24 +1533,52 @@ def _run_precondition_cleanup(
             transcript_path=transcript_path,
         )
         record["status_exit_code"] = status_out.exit_code
+        if status_out.exit_code != 0:
+            return _fail(f"precondition status exit={status_out.exit_code}")
         raw = (step_dir / "cmd-00.stdout.txt").read_text(encoding="utf-8")
-        payload = json.loads(raw)
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            return _fail(f"precondition status not JSON: {exc}")
         _write_json(state.session_dir / "pre-baseline-status.json", payload)
-        worker_state = _layer_state(payload, "automation_worker", vehicle)
+        card = extract_vehicle_status(payload, vehicle)
+        if card is None:
+            return _fail(
+                "precondition status missing exact automa_vehicle_status_v1 card "
+                f"for {vehicle!r}"
+            )
+        worker_state = _layer_state(card, "automation_worker")
         record["worker_state_before"] = worker_state
         details = _worker_details(payload, vehicle)
         pre_pid = details.get("pid")
         _note_worker_pid(state, pre_pid, source="pre-baseline")
-        if isinstance(pre_pid, int) and pre_pid > 0:
-            record["pids_before"] = [pre_pid]
-        deployment = _layer_state(payload, "automation_deployment", vehicle)
-        view = _layer_state(payload, "perception_view", vehicle)
+        pids_before = sorted(state.pre_existing_worker_pids)
+        record["pids_before"] = pids_before
+        deployment = _layer_state(card, "automation_deployment")
+        view = _layer_state(card, "perception_view")
         record["deployment_before"] = deployment
         record["view_before"] = view
-        if worker_state != "running":
+
+        if worker_state == "stopped":
             record["needed"] = False
-            record["worker_state_after"] = worker_state
+            record["worker_state_after"] = "stopped"
+            # Pre-existing PID from a prior run must be dead if known.
+            if pids_before:
+                ok_dead, liveness = _pids_all_dead(pids_before)
+                record["pid_liveness"] = liveness
+                if not ok_dead:
+                    return _fail(
+                        f"pre-existing worker PID still live/unknown before baseline: {liveness}"
+                    )
+            record["ok"] = True
             return record
+
+        if worker_state != "running":
+            return _fail(
+                f"precondition automation_worker={worker_state!r} "
+                "(want explicit stopped or running)"
+            )
+
         record["needed"] = True
         record["attempted"] = True
         state.worker_may_exist = True
@@ -1328,6 +1592,8 @@ def _run_precondition_cleanup(
             transcript_path=transcript_path,
         )
         record["stop_exit_code"] = stop.exit_code
+        if stop.exit_code != 0:
+            return _fail(f"precondition stop exit={stop.exit_code}")
         after_out = _run_command(
             [
                 "./cli/automa",
@@ -1347,24 +1613,125 @@ def _run_precondition_cleanup(
             transcript_path=transcript_path,
         )
         record["status_after_exit_code"] = after_out.exit_code
+        if after_out.exit_code != 0:
+            return _fail(f"precondition post-stop status exit={after_out.exit_code}")
         after_raw = (step_dir / "cmd-02.stdout.txt").read_text(encoding="utf-8")
-        after_payload = json.loads(after_raw)
+        try:
+            after_payload = json.loads(after_raw)
+        except json.JSONDecodeError as exc:
+            return _fail(f"precondition post-stop status not JSON: {exc}")
         _write_json(state.session_dir / "pre-baseline-status-after-stop.json", after_payload)
-        record["worker_state_after"] = _layer_state(
-            after_payload, "automation_worker", vehicle
-        )
+        after_card = extract_vehicle_status(after_payload, vehicle)
+        if after_card is None:
+            return _fail("precondition post-stop status missing exact vehicle card")
+        after_state = _layer_state(after_card, "automation_worker")
+        record["worker_state_after"] = after_state
         _note_worker_pid(
             state,
             _worker_details(after_payload, vehicle).get("pid"),
             source="pre-baseline-after-stop",
         )
-        if record["worker_state_after"] == "running":
-            record["error"] = "precondition stop left automation_worker running"
-        elif stop.exit_code != 0:
-            record["error"] = f"precondition stop exit={stop.exit_code}"
+        if after_state != "stopped":
+            return _fail(
+                f"precondition stop left automation_worker={after_state!r} (want stopped)"
+            )
+        all_pids = sorted(state.pre_existing_worker_pids | state.observed_worker_pids)
+        if all_pids:
+            ok_dead, liveness = _pids_all_dead(all_pids)
+            record["pid_liveness"] = liveness
+            if not ok_dead:
+                return _fail(
+                    f"precondition PIDs still live/unknown after stop: {liveness}"
+                )
+        record["ok"] = True
+        return record
     except Exception as exc:  # noqa: BLE001
-        record["error"] = f"{type(exc).__name__}: {exc}"
-    return record
+        return _fail(f"{type(exc).__name__}: {exc}")
+
+
+def _capture_worktree_reviewables(
+    repo: Path,
+    session_dir: Path,
+    *,
+    label: str,
+    max_untracked_bytes: int = 256 * 1024,
+) -> dict[str, Any]:
+    """Write reviewable dirty-tree materials for a repository checkout."""
+
+    info: dict[str, Any] = {
+        "label": label,
+        "diff_path": None,
+        "untracked_snapshot_dir": None,
+        "untracked_captured": [],
+        "untracked_skipped": [],
+    }
+    try:
+        patch = subprocess.run(
+            ["git", "diff", "HEAD"],
+            cwd=repo,
+            check=False,
+            capture_output=True,
+            text=True,
+        ).stdout
+        cached = subprocess.run(
+            ["git", "diff", "--cached"],
+            cwd=repo,
+            check=False,
+            capture_output=True,
+            text=True,
+        ).stdout
+        combined = ""
+        if patch:
+            combined += patch
+        if cached:
+            combined += ("\n" if combined else "") + "# staged\n" + cached
+        diff_name = f"{label}-worktree.diff"
+        _write_text(session_dir / diff_name, combined)
+        info["diff_path"] = diff_name
+        untracked = subprocess.run(
+            ["git", "ls-files", "--others", "--exclude-standard"],
+            cwd=repo,
+            check=False,
+            capture_output=True,
+            text=True,
+        ).stdout
+        names = [line for line in untracked.splitlines() if line]
+        if names:
+            snap = session_dir / f"{label}-untracked"
+            snap.mkdir(parents=True, exist_ok=True)
+            info["untracked_snapshot_dir"] = f"{label}-untracked"
+            for rel in names:
+                src = repo / rel
+                # Flatten to a safe basename path under the snapshot dir.
+                dest = snap / rel.replace("/", "__")
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                if not src.is_file():
+                    info["untracked_skipped"].append({"path": rel, "reason": "not_a_file"})
+                    continue
+                size = src.stat().st_size
+                if size > max_untracked_bytes:
+                    info["untracked_skipped"].append(
+                        {"path": rel, "reason": f"too_large:{size}"}
+                    )
+                    continue
+                try:
+                    data = src.read_bytes()
+                    # Skip likely-binary payloads from reviewable text snapshots.
+                    if b"\x00" in data[:1024]:
+                        info["untracked_skipped"].append(
+                            {"path": rel, "reason": "binary"}
+                        )
+                        continue
+                    dest.write_bytes(data)
+                    info["untracked_captured"].append(rel)
+                except OSError as exc:
+                    info["untracked_skipped"].append(
+                        {"path": rel, "reason": str(exc)}
+                    )
+    except OSError as exc:
+        info["error"] = str(exc)
+    _write_json(session_dir / f"{label}-worktree-review.json", info)
+    return info
 
 
 def run_session(
@@ -1383,6 +1750,9 @@ def run_session(
     dry_run: bool,
     browser_view_path: Path | None,
     operator: str | None = None,
+    catalog_path: Path | None = None,
+    auto_driving_linked_pr: str | None = None,
+    metrics_ui_linked_pr: str | None = None,
 ) -> dict[str, Any]:
     session_dir.mkdir(parents=True, exist_ok=True)
     if (session_dir / "result.json").exists() or (session_dir / "steps").exists() and any(
@@ -1413,6 +1783,13 @@ def run_session(
         "src_dir": "",
     }
 
+    canonical = False
+    canonical_reason = "catalog path not provided"
+    if catalog_path is not None:
+        canonical, canonical_reason = _is_canonical_acceptance_catalog(
+            catalog_path, catalog
+        )
+
     state = SessionState(
         catalog=catalog,
         session_dir=session_dir,
@@ -1423,25 +1800,34 @@ def run_session(
         dry_run=dry_run,
         non_interactive=non_interactive,
         operator=operator,
+        canonical_acceptance=canonical,
+        auto_driving_linked_pr=auto_driving_linked_pr,
+        metrics_ui_linked_pr=metrics_ui_linked_pr,
+        catalog_source_path=_redact_path(catalog_path, repo_root)
+        if catalog_path is not None
+        else None,
     )
 
     auto_driving = _git_identity(repo_root)
+    if auto_driving_linked_pr:
+        auto_driving = dict(auto_driving)
+        auto_driving["linked_pr"] = auto_driving_linked_pr
     metrics_ui = _git_identity(metrics_ui_repo) if metrics_ui_repo else None
+    if metrics_ui is not None and metrics_ui_linked_pr:
+        metrics_ui = dict(metrics_ui)
+        metrics_ui["linked_pr"] = metrics_ui_linked_pr
     state.recording_before = _list_run_directories(repo_root, variables["vehicle_id"])
 
-    # Write tracked dirty patch for reviewability when the tree is dirty.
+    worktree_meta: dict[str, Any] = {}
     if auto_driving.get("worktree_state") == "dirty":
-        try:
-            patch = subprocess.run(
-                ["git", "diff", "HEAD"],
-                cwd=repo_root,
-                check=False,
-                capture_output=True,
-                text=True,
-            ).stdout
-            _write_text(session_dir / "auto-driving-worktree.diff", patch or "")
-        except OSError:
-            pass
+        worktree_meta["auto-driving"] = _capture_worktree_reviewables(
+            repo_root, session_dir, label="auto-driving"
+        )
+    if metrics_ui_repo is not None and isinstance(metrics_ui, dict):
+        if metrics_ui.get("worktree_state") == "dirty":
+            worktree_meta["metrics-ui"] = _capture_worktree_reviewables(
+                metrics_ui_repo, session_dir, label="metrics-ui"
+            )
 
     baseline = {
         "recorded_at_utc": _iso(started),
@@ -1456,6 +1842,10 @@ def run_session(
         "recording_before": state.recording_before,
         "session_visible": None,
         "precondition_cleanup": None,
+        "canonical_acceptance": canonical,
+        "canonical_acceptance_reason": canonical_reason,
+        "catalog_source": state.catalog_source_path,
+        "worktree_reviewables": worktree_meta,
         "worktree_diff_path": (
             "auto-driving-worktree.diff"
             if auto_driving.get("worktree_state") == "dirty"
@@ -1489,6 +1879,7 @@ def run_session(
                 metrics_ui_origin=variables["metrics_ui_origin"],
             )
             baseline["precondition_cleanup"] = state.precondition_cleanup
+            # Keep disk and in-memory baseline identical for final result.json.
             _write_json(session_dir / "baseline.json", baseline)
             _write_json(
                 session_dir / "precondition-cleanup.json",
@@ -1674,7 +2065,7 @@ def run_session(
                                     baseline_doc = json.loads(
                                         baseline_path.read_text(encoding="utf-8")
                                     )
-                                    baseline_doc["session_visible"] = {
+                                    session_visible = {
                                         "game_id": fingerprint.get("game_id"),
                                         "scenario_id": fingerprint.get("scenario_id"),
                                         "simulation_epoch": fingerprint.get(
@@ -1688,6 +2079,9 @@ def run_session(
                                             "control_input"
                                         ),
                                     }
+                                    baseline_doc["session_visible"] = session_visible
+                                    # Keep in-memory baseline (and final result) in sync.
+                                    baseline["session_visible"] = session_visible
                                     _write_json(baseline_path, baseline_doc)
                             _write_json(
                                 session_dir / "session-fingerprint-latest.json",
@@ -1709,15 +2103,26 @@ def run_session(
                         _write_text(json_out.with_suffix(json_out.suffix + ".raw.txt"), raw)
 
                     if step.get("capture_view_latest") and json_out.is_file():
-                        view_meta = _capture_view_latest(session_dir, json_out)
+                        try:
+                            view_meta = _capture_view_latest(
+                                session_dir,
+                                json_out,
+                                vehicle_id=variables["vehicle_id"],
+                            )
+                        except Exception as exc:  # noqa: BLE001
+                            view_meta = {
+                                "error": f"{type(exc).__name__}: {exc}",
+                            }
                         if not view_meta or view_meta.get("error"):
                             machine_ok = False
                             step_status = "fail"
                             validator_notes.append(
-                                f"view latest failed: {view_meta}"
+                                f"view_latest: failed ({view_meta})"
                             )
                         else:
-                            validator_notes.append(f"view_latest={view_meta}")
+                            validator_notes.append(
+                                f"view_latest: {view_meta.get('summary') or 'ok'}"
+                            )
 
                 # Machine validators declared on the step
                 for validator in step.get("machine_validators") or []:
@@ -1726,6 +2131,8 @@ def run_session(
                     view_path = session_dir / "view-publication.json"
                     if name in {"initial_layers"}:
                         status_path = session_dir / "initial-status.json"
+                    elif name in {"staged_layers"}:
+                        status_path = session_dir / "staged-status.json"
                     elif name in {"running_layers", "authority"}:
                         status_path = session_dir / "running-status.json"
                     elif name in {"stopped_layers"}:
@@ -1746,6 +2153,7 @@ def run_session(
                         after_runs=state.recording_after,
                         baseline_fingerprint=state.baseline_fingerprint,
                         current_fingerprint=state.latest_fingerprint,
+                        perception_algorithm=variables["perception_algorithm"],
                     )
                     validator_notes.append(f"{name}: {summary}")
                     if not ok:
@@ -1766,9 +2174,6 @@ def run_session(
                                 f"running_layers: worker pid {running_pid} is "
                                 "pre-existing (not created by this session's run)"
                             )
-
-            if validator_notes:
-                machine_summary = "; ".join(validator_notes) or machine_summary
 
             judgment = _prompt_judgment(
                 step=step,
@@ -1820,7 +2225,7 @@ def run_session(
                         )
                     state.browser_view_meta = {
                         # Redact absolute paths from reviewable evidence.
-                        "imported_from": _redact(str(import_path), repo_root),
+                        "imported_from": _redact_path(import_path, repo_root),
                         "imported_at_utc": _iso(_utc_now()),
                         "source_mtime_unix": source_meta.get("source_mtime_unix"),
                         "source_sha256": source_meta.get("source_sha256"),
@@ -1835,13 +2240,17 @@ def run_session(
                     if not ok_img and state.view_healthy_at_unix is not None:
                         machine_ok = False
                         step_status = "fail"
-                        validator_notes.append(img_summary)
+                        validator_notes.append(f"browser_view: {img_summary}")
                 elif judgment.visual == "pass" and state.view_healthy_at_unix is not None:
                     machine_ok = False
                     step_status = "fail"
                     validator_notes.append(
-                        "browser-view.png not provided at human-view gate"
+                        "browser_view: browser-view.png not provided at human-view gate"
                     )
+
+            # Single join of validator notes after all machine + screenshot checks.
+            if validator_notes:
+                machine_summary = "; ".join(validator_notes)
 
             if judgment.visual == "fail":
                 step_status = "fail"
@@ -1964,6 +2373,23 @@ def run_session(
             evidence=[],
         )
         notes_lines.append("## interrupted\n\n- KeyboardInterrupt\n")
+    except Exception as exc:  # noqa: BLE001
+        # Convert unexpected failures into durable incomplete/findings evidence.
+        # Cleanup still runs in finally; result.json is always written below.
+        _record_finding(
+            state,
+            step_id="_session",
+            classification="acceptance_blocker"
+            if catalog.get("track") == "acceptance"
+            else "environment_blocker",
+            severity="P1",
+            summary=f"Session aborted: {type(exc).__name__}: {exc}",
+            human_notes=str(exc),
+            evidence=[],
+        )
+        notes_lines.append(
+            f"## aborted\n\n- {type(exc).__name__}: {exc}\n"
+        )
     finally:
         cleanup_info = _enforce_cleanup(
             state,
@@ -2061,13 +2487,25 @@ def run_session(
     return result
 
 
-def _capture_view_latest(session_dir: Path, running_status: Path) -> dict[str, Any] | None:
+def _capture_view_latest(
+    session_dir: Path,
+    running_status: Path,
+    *,
+    vehicle_id: str,
+) -> dict[str, Any]:
     try:
         status = json.loads(running_status.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return {"error": "running status unreadable"}
-    vehicle_id = str(status.get("vehicle_id") or "chase-sim-chaser")
-    card = extract_vehicle_status(status, vehicle_id) or status
+    expected_vehicle = vehicle_id
+    card = extract_vehicle_status(status, expected_vehicle)
+    if card is None:
+        return {
+            "error": (
+                f"running status missing exact {STATUS_SCHEMA} card for "
+                f"{expected_vehicle!r}"
+            )
+        }
     layers = card.get("layers") if isinstance(card, dict) else {}
     view = (layers or {}).get("perception_view") if isinstance(layers, dict) else {}
     details = (view or {}).get("details") if isinstance(view, dict) else {}
@@ -2088,10 +2526,16 @@ def _capture_view_latest(session_dir: Path, running_status: Path) -> dict[str, A
         return {"url": latest_url, "error": str(exc)}
     out_path = session_dir / "view-publication.json"
     _write_json(out_path, payload)
-    ok, summary = validate_view_latest(payload)
+    ok, summary = validate_view_latest(payload, vehicle_id=expected_vehicle)
     if not ok:
         return {"url": latest_url, "path": out_path.name, "error": summary}
-    return {"url": latest_url, "path": out_path.name, "http_status": 200, "summary": summary}
+    return {
+        "url": latest_url,
+        "path": out_path.name,
+        "http_status": 200,
+        "summary": summary,
+        "vehicle_id": expected_vehicle,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -2119,6 +2563,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--operator",
         default=None,
         help="Named operator for the session (required for acceptance pass).",
+    )
+    parser.add_argument(
+        "--auto-driving-linked-pr",
+        default=None,
+        help="Linked PR for a dirty auto-driving worktree (alternative to captured patch).",
+    )
+    parser.add_argument(
+        "--metrics-ui-linked-pr",
+        default=None,
+        help="Linked PR for a dirty Metrics UI worktree (alternative to captured patch).",
     )
     parser.add_argument(
         "--browser-view",
@@ -2176,7 +2630,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"Session directory is not empty: {session_dir}", file=sys.stderr)
         return 2
 
-    _write_text(session_dir / "catalog-source.txt", str(catalog_path))
+    _write_text(session_dir / "catalog-source.txt", _redact_path(catalog_path, repo_root))
     _write_json(session_dir / "catalog.json", catalog)
 
     result = run_session(
@@ -2194,6 +2648,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         dry_run=bool(args.dry_run),
         browser_view_path=args.browser_view.expanduser().resolve() if args.browser_view else None,
         operator=args.operator,
+        catalog_path=catalog_path,
+        auto_driving_linked_pr=args.auto_driving_linked_pr,
+        metrics_ui_linked_pr=args.metrics_ui_linked_pr,
     )
     if result.get("result") in {"pass", "complete"}:
         return 0

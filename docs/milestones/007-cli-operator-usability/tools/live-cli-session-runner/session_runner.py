@@ -195,8 +195,39 @@ def _list_run_directories(repo_root: Path, vehicle_id: str) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-def _layer_state(status: Mapping[str, Any], layer: str) -> str | None:
+def extract_vehicle_status(
+    status: Mapping[str, Any],
+    vehicle_id: str,
+) -> dict[str, Any] | None:
+    """Return one automa_vehicle_status_v1 card from targeted or aggregate JSON."""
+
+    vehicles = status.get("vehicles")
+    if isinstance(vehicles, list):
+        matches = [
+            item
+            for item in vehicles
+            if isinstance(item, dict) and str(item.get("vehicle_id")) == vehicle_id
+        ]
+        if len(matches) == 1:
+            return matches[0]
+        if not matches and len(vehicles) == 1 and isinstance(vehicles[0], dict):
+            return vehicles[0]
+
     layers = status.get("layers")
+    if isinstance(layers, dict) and layers:
+        # Targeted status documents place layers at the top level.
+        return dict(status)
+    return None
+
+
+def _layer_state(status: Mapping[str, Any], layer: str, vehicle_id: str | None = None) -> str | None:
+    card: Mapping[str, Any] = status
+    if vehicle_id is not None:
+        extracted = extract_vehicle_status(status, vehicle_id)
+        if extracted is None:
+            return None
+        card = extracted
+    layers = card.get("layers")
     if not isinstance(layers, dict):
         return None
     entry = layers.get(layer)
@@ -206,8 +237,14 @@ def _layer_state(status: Mapping[str, Any], layer: str) -> str | None:
     return str(state) if state is not None else None
 
 
-def _worker_details(status: Mapping[str, Any]) -> dict[str, Any]:
-    layers = status.get("layers")
+def _worker_details(status: Mapping[str, Any], vehicle_id: str | None = None) -> dict[str, Any]:
+    card: Mapping[str, Any] = status
+    if vehicle_id is not None:
+        extracted = extract_vehicle_status(status, vehicle_id)
+        if extracted is None:
+            return {}
+        card = extracted
+    layers = card.get("layers")
     if not isinstance(layers, dict):
         return {}
     worker = layers.get("automation_worker")
@@ -217,13 +254,58 @@ def _worker_details(status: Mapping[str, Any]) -> dict[str, Any]:
     return details if isinstance(details, dict) else {}
 
 
-def _authority(status: Mapping[str, Any]) -> dict[str, Any]:
-    details = _worker_details(status)
+def _authority(status: Mapping[str, Any], vehicle_id: str | None = None) -> dict[str, Any]:
+    details = _worker_details(status, vehicle_id)
     authority = details.get("authority")
     return authority if isinstance(authority, dict) else {}
 
 
-def validate_initial_layers(status: Mapping[str, Any]) -> tuple[bool, str]:
+def extract_session_fingerprint(
+    status: Mapping[str, Any],
+    vehicle_id: str,
+) -> dict[str, Any] | None:
+    """Stable protected session fields used for preservation checks."""
+
+    authority = _authority(status, vehicle_id)
+    passive = authority.get("passive_capture")
+    if not isinstance(passive, dict):
+        passive = {}
+    session = passive.get("session_preservation") or authority.get("passive_session")
+    if not isinstance(session, dict):
+        # Fall back to environment snapshot when present.
+        environment = passive.get("environment")
+        if isinstance(environment, dict):
+            return {
+                "game_id": environment.get("game_id"),
+                "scenario_id": environment.get("scenario_id"),
+                "simulation_epoch": environment.get("simulation_epoch"),
+                "control_source": environment.get("control_source"),
+            }
+        return None
+    before = session.get("before") if isinstance(session.get("before"), dict) else {}
+    after = session.get("after") if isinstance(session.get("after"), dict) else {}
+    # Prefer after when present; else before.
+    source = after or before
+    if not source:
+        return None
+    return {
+        "game_id": source.get("game_id"),
+        "scenario_id": source.get("scenario_id"),
+        "simulation_epoch": source.get("simulation_epoch"),
+        "control_source": source.get("control_source"),
+        "preserved": session.get("preserved"),
+        "changed_fields": session.get("changed_fields"),
+    }
+
+
+def validate_initial_layers(
+    status: Mapping[str, Any],
+    *,
+    vehicle_id: str,
+) -> tuple[bool, str]:
+    card = extract_vehicle_status(status, vehicle_id)
+    if card is None:
+        return False, f"no vehicle status card for {vehicle_id!r} (aggregate or targeted)"
     expected = {
         "simulator_server": "reachable",
         "simulator_frontend": "connected",
@@ -233,7 +315,7 @@ def validate_initial_layers(status: Mapping[str, Any]) -> tuple[bool, str]:
     }
     missing = []
     for layer, want in expected.items():
-        got = _layer_state(status, layer)
+        got = _layer_state(card, layer)
         if got != want:
             missing.append(f"{layer}={got!r} (want {want!r})")
     if missing:
@@ -241,7 +323,14 @@ def validate_initial_layers(status: Mapping[str, Any]) -> tuple[bool, str]:
     return True, "initial layers healthy"
 
 
-def validate_running_layers(status: Mapping[str, Any]) -> tuple[bool, str]:
+def validate_running_layers(
+    status: Mapping[str, Any],
+    *,
+    vehicle_id: str,
+) -> tuple[bool, str]:
+    card = extract_vehicle_status(status, vehicle_id)
+    if card is None:
+        return False, f"no vehicle status card for {vehicle_id!r}"
     expected = {
         "automation_deployment": "deployed",
         "automation_worker": "running",
@@ -250,7 +339,7 @@ def validate_running_layers(status: Mapping[str, Any]) -> tuple[bool, str]:
     }
     missing = []
     for layer, want in expected.items():
-        got = _layer_state(status, layer)
+        got = _layer_state(card, layer)
         if got != want:
             missing.append(f"{layer}={got!r} (want {want!r})")
     if missing:
@@ -258,24 +347,37 @@ def validate_running_layers(status: Mapping[str, Any]) -> tuple[bool, str]:
     return True, "running layers healthy"
 
 
-def validate_stopped_layers(status: Mapping[str, Any]) -> tuple[bool, str]:
-    worker = _layer_state(status, "automation_worker")
-    view = _layer_state(status, "perception_view")
-    deployment = _layer_state(status, "automation_deployment")
+def validate_stopped_layers(
+    status: Mapping[str, Any],
+    *,
+    vehicle_id: str,
+) -> tuple[bool, str]:
+    card = extract_vehicle_status(status, vehicle_id)
+    if card is None:
+        return False, f"no vehicle status card for {vehicle_id!r}"
+    worker = _layer_state(card, "automation_worker")
+    view = _layer_state(card, "perception_view")
+    deployment = _layer_state(card, "automation_deployment")
     problems = []
     if worker != "stopped":
         problems.append(f"automation_worker={worker!r}")
     if view not in {"stale", "unavailable"}:
         problems.append(f"perception_view={view!r}")
-    if deployment not in {"deployed", "invalid"}:  # staged remains deployed
-        problems.append(f"automation_deployment={deployment!r}")
+    if deployment != "deployed":
+        problems.append(f"automation_deployment={deployment!r} (want deployed)")
     if problems:
         return False, "; ".join(problems)
     return True, "stopped layers healthy"
 
 
-def validate_authority(status: Mapping[str, Any]) -> tuple[bool, str]:
-    authority = _authority(status)
+def validate_authority(
+    status: Mapping[str, Any],
+    *,
+    vehicle_id: str,
+) -> tuple[bool, str]:
+    authority = _authority(status, vehicle_id)
+    if not authority:
+        return False, "authority object missing"
     policy = authority.get("action_policy")
     application = authority.get("control_application")
     control = authority.get("last_frame")
@@ -284,57 +386,52 @@ def validate_authority(status: Mapping[str, Any]) -> tuple[bool, str]:
         ctrl = control.get("control")
         if isinstance(ctrl, dict):
             applied = ctrl.get("applied")
-    # Prefer explicit authority fields; fall back to nested control.applied.
     if policy != "observe_only":
         return False, f"action_policy={policy!r}"
     if application != "not_applied":
         return False, f"control_application={application!r}"
     if applied is True:
         return False, "last_frame.control.applied is true"
-    recording = authority.get("recording")
-    if recording is True:
-        return False, "authority.recording is true"
-    return True, "observe_only / not_applied"
+    # Fail closed: recording must be explicit false.
+    if authority.get("recording") is not False:
+        return False, f"recording={authority.get('recording')!r} (want false)"
+    return True, "observe_only / not_applied / recording=false"
 
 
 def validate_view_latest(payload: Mapping[str, Any] | None) -> tuple[bool, str]:
+    """Validate real Automa perception-view /api/latest publication."""
+
     if not isinstance(payload, dict):
         return False, "view /api/latest missing or not an object"
-    # Accept a few common shapes.
-    frame_id = (
-        payload.get("frame_id")
-        or payload.get("latest_frame_id")
-        or payload.get("camera_frame_id")
-    )
-    perception_frame_id = (
-        payload.get("perception_frame_id")
-        or payload.get("latest_perception_frame_id")
-        or frame_id
-    )
     if payload.get("error"):
         return False, f"view fetch error: {payload.get('error')}"
-    # Nested publication styles
-    if frame_id is None and isinstance(payload.get("frame"), dict):
-        frame_id = payload["frame"].get("frame_id")
-    if perception_frame_id is None and isinstance(payload.get("perception"), dict):
-        perception_frame_id = payload["perception"].get("frame_id")
-    if not frame_id or not perception_frame_id:
-        # Some servers embed ids under health/status keys.
-        status = payload.get("status")
-        if isinstance(status, dict):
-            frame_id = frame_id or status.get("frame_id") or status.get("latest_frame_id")
-            perception_frame_id = (
-                perception_frame_id
-                or status.get("perception_frame_id")
-                or status.get("latest_perception_frame_id")
-            )
-    if not frame_id or not perception_frame_id:
-        return False, "view payload lacks camera/perception frame ids"
-    if str(frame_id) != str(perception_frame_id):
-        return False, f"frame ids disagree: camera={frame_id!r} perception={perception_frame_id!r}"
-    if not str(frame_id).strip():
-        return False, "frame id empty"
-    return True, f"correlated frame_id={frame_id}"
+
+    frame = payload.get("frame")
+    overlay = payload.get("overlay")
+    perception = payload.get("perception")
+    cycle = payload.get("cycle") if isinstance(payload.get("cycle"), dict) else {}
+    control = payload.get("control") if isinstance(payload.get("control"), dict) else {}
+
+    if not isinstance(frame, dict) or not frame.get("frame_id"):
+        return False, "frame.frame_id missing"
+    if not isinstance(overlay, dict):
+        return False, "overlay object missing"
+    if overlay.get("status") != "current":
+        return False, f"overlay.status={overlay.get('status')!r} (want current)"
+    if overlay.get("source_frame_id") != frame.get("frame_id"):
+        return False, (
+            f"overlay.source_frame_id={overlay.get('source_frame_id')!r} "
+            f"!= frame.frame_id={frame.get('frame_id')!r}"
+        )
+    if not isinstance(perception, dict) or not perception:
+        return False, "perception result absent"
+    if cycle.get("action_policy") != "observe_only":
+        return False, f"cycle.action_policy={cycle.get('action_policy')!r}"
+    if cycle.get("control_application") != "not_applied":
+        return False, f"cycle.control_application={cycle.get('control_application')!r}"
+    if control.get("applied") is True:
+        return False, "control.applied is true"
+    return True, f"current correlated overlay for {frame.get('frame_id')}"
 
 
 def validate_recording_scan(
@@ -344,6 +441,41 @@ def validate_recording_scan(
     if new:
         return False, f"new automation run directories: {new}"
     return True, "no new automation run directories"
+
+
+def validate_preservation(
+    baseline: Mapping[str, Any] | None,
+    current: Mapping[str, Any] | None,
+) -> tuple[bool, str]:
+    if not isinstance(baseline, dict) or not baseline:
+        return False, "baseline fingerprint missing"
+    if not isinstance(current, dict) or not current:
+        return False, "current fingerprint missing"
+    for key in ("game_id", "scenario_id", "simulation_epoch", "control_source"):
+        if baseline.get(key) != current.get(key):
+            return False, f"{key} changed: {baseline.get(key)!r} -> {current.get(key)!r}"
+    if current.get("preserved") is False:
+        return False, f"session reports preserved=false changed={current.get('changed_fields')!r}"
+    return True, "protected session fields preserved"
+
+
+def validate_browser_view_image(path: Path) -> tuple[bool, str]:
+    if not path.is_file():
+        return False, f"browser-view.png missing at {path}"
+    size = path.stat().st_size
+    if size <= 0:
+        return False, "browser-view.png is empty"
+    try:
+        from PIL import Image
+
+        with Image.open(path) as image:
+            image.load()
+            width, height = image.size
+    except Exception as exc:  # noqa: BLE001
+        return False, f"browser-view.png is not a decodable image: {exc}"
+    if width < 1 or height < 1:
+        return False, "browser-view.png has invalid dimensions"
+    return True, f"browser-view.png ok ({width}x{height}, {size} bytes)"
 
 
 # ---------------------------------------------------------------------------
@@ -511,6 +643,9 @@ class SessionState:
     last_worker_pid: int | None = None
     recording_before: list[str] = field(default_factory=list)
     recording_after: list[str] = field(default_factory=list)
+    baseline_fingerprint: dict[str, Any] | None = None
+    latest_fingerprint: dict[str, Any] | None = None
+    browser_view_meta: dict[str, Any] | None = None
     interactive_human_confirmation: bool = False
     dry_run: bool = False
     non_interactive: bool = False
@@ -574,31 +709,35 @@ def _apply_gate(
 
 def _run_machine_validator(
     name: str,
+    *,
+    vehicle_id: str,
     status_path: Path | None = None,
     view_path: Path | None = None,
     before_runs: Sequence[str] | None = None,
     after_runs: Sequence[str] | None = None,
+    baseline_fingerprint: Mapping[str, Any] | None = None,
+    current_fingerprint: Mapping[str, Any] | None = None,
 ) -> tuple[bool, str]:
     if name == "initial_layers":
         if status_path is None or not status_path.is_file():
             return False, "initial-status.json missing"
         status = json.loads(status_path.read_text(encoding="utf-8"))
-        return validate_initial_layers(status)
+        return validate_initial_layers(status, vehicle_id=vehicle_id)
     if name == "running_layers":
         if status_path is None or not status_path.is_file():
             return False, "running-status.json missing"
         status = json.loads(status_path.read_text(encoding="utf-8"))
-        return validate_running_layers(status)
+        return validate_running_layers(status, vehicle_id=vehicle_id)
     if name == "stopped_layers":
         if status_path is None or not status_path.is_file():
             return False, "stopped-status.json missing"
         status = json.loads(status_path.read_text(encoding="utf-8"))
-        return validate_stopped_layers(status)
+        return validate_stopped_layers(status, vehicle_id=vehicle_id)
     if name == "authority":
         if status_path is None or not status_path.is_file():
             return False, "status json missing for authority"
         status = json.loads(status_path.read_text(encoding="utf-8"))
-        return validate_authority(status)
+        return validate_authority(status, vehicle_id=vehicle_id)
     if name == "view_correlation":
         if view_path is None or not view_path.is_file():
             return False, "view-publication.json missing"
@@ -609,6 +748,8 @@ def _run_machine_validator(
         return validate_view_latest(payload)
     if name == "default_recording":
         return validate_recording_scan(before_runs or [], after_runs or [])
+    if name == "preservation":
+        return validate_preservation(baseline_fingerprint, current_fingerprint)
     return False, f"unknown validator {name!r}"
 
 
@@ -635,10 +776,10 @@ def _derive_verdict(state: SessionState) -> tuple[str, str | None]:
             auto = repos.get("auto_driving") or {}
             if auto.get("worktree_state") == "dirty" and not auto.get("diff_identity"):
                 return "incomplete", "Dirty auto-driving worktree lacks diff_identity."
-        # Screenshot optional path check if catalog requires it
-        if not (state.session_dir / "browser-view.png").is_file():
-            # Require explicit path or file for pass
-            return "incomplete", "Acceptance pass requires browser-view.png in the session directory."
+        view_path = state.session_dir / "browser-view.png"
+        ok_img, img_summary = validate_browser_view_image(view_path)
+        if not ok_img:
+            return "incomplete", f"Acceptance pass requires valid browser-view.png ({img_summary})."
 
         required_gates = {
             str(gate["id"]): gate
@@ -734,19 +875,29 @@ def _enforce_cleanup(
             transcript_path=transcript_path,
         )
         cleanup["final_status_exit_code"] = status_out.exit_code
+        if stop.exit_code != 0 or status_out.exit_code != 0:
+            cleanup["error"] = (
+                f"nonzero cleanup exits stop={stop.exit_code} status={status_out.exit_code}"
+            )
+            cleanup["worker_stopped"] = False
         status_path = state.session_dir / "cleanup-status.json"
         raw = (step_dir / "cmd-01.stdout.txt").read_text(encoding="utf-8")
         try:
             payload = json.loads(raw)
             _write_json(status_path, payload)
-            ok, summary = validate_stopped_layers(payload)
-            cleanup["worker_stopped"] = ok
+            ok, summary = validate_stopped_layers(payload, vehicle_id=vehicle)
             cleanup["stopped_layers_summary"] = summary
-            details = _worker_details(payload)
+            if cleanup.get("worker_stopped") is not False:
+                cleanup["worker_stopped"] = ok
+            details = _worker_details(payload, vehicle)
             pid = details.get("pid")
-            if isinstance(pid, int):
-                cleanup["pid"] = pid
-                cleanup["pid_alive"] = _pid_alive(pid)
+            if not isinstance(pid, int):
+                pid = state.last_worker_pid
+            cleanup["pid"] = pid
+            cleanup["pid_alive"] = _pid_alive(pid)
+            if cleanup.get("pid_alive") is None and isinstance(state.last_worker_pid, int):
+                cleanup["pid"] = state.last_worker_pid
+                cleanup["pid_alive"] = _pid_alive(state.last_worker_pid)
         except json.JSONDecodeError as exc:
             cleanup["error"] = f"cleanup status not JSON: {exc}"
             cleanup["worker_stopped"] = False
@@ -754,7 +905,12 @@ def _enforce_cleanup(
         cleanup["error"] = f"{type(exc).__name__}: {exc}"
         cleanup["worker_stopped"] = False
 
-    if cleanup.get("worker_stopped") is not True or cleanup.get("pid_alive") is True:
+    if (
+        cleanup.get("worker_stopped") is not True
+        or cleanup.get("pid_alive") is True
+        or cleanup.get("stop_exit_code") not in {None, 0}
+        or cleanup.get("final_status_exit_code") not in {None, 0}
+    ):
         _record_finding(
             state,
             step_id="_cleanup",
@@ -847,10 +1003,6 @@ def run_session(
         "recording_before": state.recording_before,
     }
     _write_json(session_dir / "baseline.json", baseline)
-    if browser_view_path is not None and browser_view_path.is_file():
-        target = session_dir / "browser-view.png"
-        target.write_bytes(browser_view_path.read_bytes())
-
     notes_lines = [
         f"# Session notes — {catalog.get('id')}",
         "",
@@ -991,12 +1143,32 @@ def run_session(
                         parsed = json.loads(raw)
                         _write_json(json_out, parsed)
                         # Extract worker pid if present
-                        details = _worker_details(parsed)
+                        details = _worker_details(parsed, variables["vehicle_id"])
                         pid = details.get("pid")
                         if isinstance(pid, int):
                             state.last_worker_pid = pid
-                            if _layer_state(parsed, "automation_worker") == "running":
+                            if (
+                                _layer_state(parsed, "automation_worker", variables["vehicle_id"])
+                                == "running"
+                            ):
                                 state.worker_may_exist = True
+                        fingerprint = extract_session_fingerprint(
+                            parsed, variables["vehicle_id"]
+                        )
+                        if fingerprint is not None:
+                            if state.baseline_fingerprint is None and step_id.startswith(
+                                "status-initial"
+                            ):
+                                state.baseline_fingerprint = fingerprint
+                                _write_json(
+                                    session_dir / "session-fingerprint-baseline.json",
+                                    fingerprint,
+                                )
+                            state.latest_fingerprint = fingerprint
+                            _write_json(
+                                session_dir / "session-fingerprint-latest.json",
+                                fingerprint,
+                            )
                     except json.JSONDecodeError as exc:
                         step_status = "fail"
                         machine_ok = False
@@ -1021,7 +1193,7 @@ def run_session(
                     view_path = session_dir / "view-publication.json"
                     if name in {"initial_layers"}:
                         status_path = session_dir / "initial-status.json"
-                    elif name in {"running_layers", "authority"}:
+                    elif name in {"running_layers", "authority", "preservation"}:
                         status_path = session_dir / "running-status.json"
                     elif name in {"stopped_layers"}:
                         status_path = session_dir / "stopped-status.json"
@@ -1031,10 +1203,13 @@ def run_session(
                         )
                     ok, summary = _run_machine_validator(
                         name,
+                        vehicle_id=variables["vehicle_id"],
                         status_path=status_path,
                         view_path=view_path if view_path.is_file() else None,
                         before_runs=state.recording_before,
                         after_runs=state.recording_after,
+                        baseline_fingerprint=state.baseline_fingerprint,
+                        current_fingerprint=state.latest_fingerprint,
                     )
                     validator_notes.append(f"{name}: {summary}")
                     if not ok:
@@ -1052,6 +1227,43 @@ def run_session(
             )
             if judgment.interactive and judgment.visual in {"pass", "fail"}:
                 state.interactive_human_confirmation = True
+
+            # Bind browser screenshot to the human-view gate after inspection.
+            if (
+                step.get("visual_required")
+                and "human_view" in (step.get("gate_ids") or [])
+                and not dry_run
+            ):
+                import_path = browser_view_path
+                if not non_interactive:
+                    offered = prompt(
+                        "Path to cropped browser-view.png for this inspection "
+                        "(Enter to use --browser-view if provided): "
+                    ).strip()
+                    if offered:
+                        import_path = Path(offered).expanduser()
+                if import_path is not None and import_path.is_file():
+                    target = session_dir / "browser-view.png"
+                    target.write_bytes(import_path.read_bytes())
+                    ok_img, img_summary = validate_browser_view_image(target)
+                    state.browser_view_meta = {
+                        "imported_from": str(import_path),
+                        "captured_at_utc": _iso(_utc_now()),
+                        "step_id": step_id,
+                        "validation": img_summary,
+                        "ok": ok_img,
+                    }
+                    _write_json(session_dir / "browser-view-meta.json", state.browser_view_meta)
+                    if not ok_img:
+                        machine_ok = False
+                        step_status = "fail"
+                        validator_notes.append(img_summary)
+                elif judgment.visual == "pass":
+                    machine_ok = False
+                    step_status = "fail"
+                    validator_notes.append(
+                        "browser-view.png not provided at human-view gate"
+                    )
 
             if judgment.visual == "fail":
                 step_status = "fail"
@@ -1244,6 +1456,11 @@ def run_session(
             "after": state.recording_after,
             "new": sorted(set(state.recording_after) - set(state.recording_before)),
         },
+        "session_fingerprint": {
+            "baseline": state.baseline_fingerprint,
+            "latest": state.latest_fingerprint,
+        },
+        "browser_view": state.browser_view_meta,
         "artifact_manifest": "digests.json",
         "variables": {k: v for k, v in state.variables.items() if k != "src_dir" or v},
     }
@@ -1268,7 +1485,11 @@ def _capture_view_latest(session_dir: Path, running_status: Path) -> dict[str, A
         status = json.loads(running_status.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return {"error": "running status unreadable"}
-    details = ((_worker := (status.get("layers") or {}).get("perception_view") or {}).get("details") or {})
+    vehicle_id = str(status.get("vehicle_id") or "chase-sim-chaser")
+    card = extract_vehicle_status(status, vehicle_id) or status
+    layers = card.get("layers") if isinstance(card, dict) else {}
+    view = (layers or {}).get("perception_view") if isinstance(layers, dict) else {}
+    details = (view or {}).get("details") if isinstance(view, dict) else {}
     if not isinstance(details, dict):
         details = {}
     url = details.get("url")

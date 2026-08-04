@@ -85,11 +85,11 @@ steps:
     question: Does initial status show a ready passive Chase attachment?
     safety: read
     commands:
-      - ["./cli/automa", "vehicles", "status", "--chase-url", "{metrics_ui_origin}"]
+      - ["./cli/automa", "vehicles", "status", "--id", "{vehicle_id}", "--chase-url", "{metrics_ui_origin}"]
     capture_json:
       path: initial-status.json
       command:
-        ["./cli/automa", "vehicles", "status", "--chase-url", "{metrics_ui_origin}", "--json"]
+        ["./cli/automa", "vehicles", "status", "--id", "{vehicle_id}", "--chase-url", "{metrics_ui_origin}", "--json"]
     primary_cue: "Next action points at observe-only automation run"
     visual_required: false
     required_for_verdict: true
@@ -138,7 +138,7 @@ steps:
     visual_prompt: "Metrics UI still healthy and Automa view still current after status?"
     required_for_verdict: true
     gate_ids: [running_layers, authority, human_view, correlation]
-    machine_validators: [running_layers, authority, view_correlation]
+    machine_validators: [running_layers, authority, view_correlation, preservation]
     expect_exit: 0
 
   - id: automation-stop

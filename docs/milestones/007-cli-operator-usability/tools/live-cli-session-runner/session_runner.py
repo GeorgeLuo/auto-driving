@@ -125,44 +125,154 @@ def _catalog_bytes_digest(path: Path) -> str | None:
         return None
 
 
-def _pinned_acceptance_bytes() -> bytes | None:
-    try:
-        return CANONICAL_ACCEPTANCE_PATH.read_bytes()
-    except OSError:
-        return None
-
-
-# Independent pin of the reviewed catalog file at import time.
-_PINNED_ACCEPTANCE_BYTES = _pinned_acceptance_bytes()
+# Reviewed digest of catalogs/m007-acceptance.yaml. Update this constant in the
+# same commit that intentionally changes the bundled acceptance catalog.
+# Independent of runtime file reads: an on-disk edit before process start must
+# not become the new expected pin.
 PINNED_ACCEPTANCE_CATALOG_DIGEST = (
-    hashlib.sha256(_PINNED_ACCEPTANCE_BYTES).hexdigest()
-    if _PINNED_ACCEPTANCE_BYTES is not None
-    else ""
+    "df6cd2ba50241371de0558a00d7f00aa11d9d6b7a49ac419d7b812fed880092c"
+)
+
+_GITHUB_PR_URL_RE = re.compile(
+    r"^https://github\.com/(?P<owner>[A-Za-z0-9_.-]+)/(?P<repo>[A-Za-z0-9_.-]+)"
+    r"/pull/(?P<number>\d{1,7})/?$"
+)
+_GITHUB_PR_NUMBER_RE = re.compile(r"^#?(?P<number>\d{1,7})$")
+_GITHUB_REMOTE_RE = re.compile(
+    r"(?:github\.com[:/])(?P<owner>[A-Za-z0-9_.-]+)/(?P<repo>[A-Za-z0-9_.-]+?)(?:\.git)?$"
 )
 
 
-def _valid_linked_pr(value: str | None) -> bool:
-    """Accept only a real GitHub PR URL or numeric PR reference — not free text."""
+def _parse_github_pr_ref(value: str | None) -> dict[str, Any] | None:
+    """Parse a GitHub PR URL or bare number. Bare numbers need a repo remote."""
 
     if not isinstance(value, str):
-        return False
+        return None
     text = value.strip()
     if not text:
-        return False
-    if re.fullmatch(r"#?\d{1,7}", text):
-        return True
-    if re.fullmatch(
-        r"https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/pull/\d{1,7}/?",
-        text,
-    ):
-        return True
-    return False
+        return None
+    match = _GITHUB_PR_URL_RE.fullmatch(text)
+    if match:
+        return {
+            "owner": match.group("owner"),
+            "repo": match.group("repo"),
+            "number": int(match.group("number")),
+            "url": text.rstrip("/"),
+            "kind": "url",
+        }
+    match = _GITHUB_PR_NUMBER_RE.fullmatch(text)
+    if match:
+        return {
+            "owner": None,
+            "repo": None,
+            "number": int(match.group("number")),
+            "url": None,
+            "kind": "number",
+        }
+    return None
 
 
-def _load_pinned_acceptance_catalog() -> dict[str, Any] | None:
-    """Return the catalog mapping re-parsed from pinned bundled bytes."""
+def _valid_linked_pr(value: str | None) -> bool:
+    """Syntax check only; provenance binding is in ``_repo_reviewable``."""
 
-    raw = _PINNED_ACCEPTANCE_BYTES
+    return _parse_github_pr_ref(value) is not None
+
+
+def _github_remote_identity(repo: Path | None) -> dict[str, str] | None:
+    if repo is None or not repo.is_dir():
+        return None
+    try:
+        completed = subprocess.run(
+            ["git", "remote", "get-url", "origin"],
+            cwd=repo,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        return None
+    if completed.returncode != 0:
+        return None
+    url = (completed.stdout or "").strip()
+    match = _GITHUB_REMOTE_RE.search(url)
+    if not match:
+        return None
+    return {"owner": match.group("owner"), "repo": match.group("repo"), "remote": url}
+
+
+def _linked_pr_bound_to_checkout(
+    linked_pr: str | None,
+    *,
+    repo: Path | None,
+    identity: Mapping[str, Any],
+) -> tuple[bool, str, dict[str, Any] | None]:
+    """Require linked PR to name the same GitHub owner/repo as the checkout origin."""
+
+    parsed = _parse_github_pr_ref(linked_pr)
+    if parsed is None:
+        return False, f"linked_pr={linked_pr!r} is not a valid GitHub PR reference", None
+    remote = _github_remote_identity(repo)
+    if remote is None:
+        # Fall back to identity fields if present.
+        owner = identity.get("github_owner")
+        name = identity.get("github_repo") or identity.get("path")
+        if isinstance(owner, str) and isinstance(name, str):
+            remote = {"owner": owner, "repo": name, "remote": ""}
+        else:
+            return (
+                False,
+                "cannot bind linked PR without a GitHub origin remote on the checkout",
+                None,
+            )
+    if parsed["kind"] == "number":
+        parsed = {
+            **parsed,
+            "owner": remote["owner"],
+            "repo": remote["repo"],
+            "url": (
+                f"https://github.com/{remote['owner']}/{remote['repo']}"
+                f"/pull/{parsed['number']}"
+            ),
+        }
+    if parsed["owner"] != remote["owner"] or parsed["repo"] != remote["repo"]:
+        return (
+            False,
+            (
+                f"linked PR {parsed['owner']}/{parsed['repo']}#{parsed['number']} "
+                f"does not match checkout origin {remote['owner']}/{remote['repo']}"
+            ),
+            None,
+        )
+    bound = {
+        "owner": parsed["owner"],
+        "repo": parsed["repo"],
+        "number": parsed["number"],
+        "url": parsed["url"],
+        "checkout_commit": identity.get("commit"),
+        "checkout_branch": identity.get("branch"),
+        "origin": remote.get("remote"),
+    }
+    return True, "linked PR bound to checkout origin", bound
+
+
+def _load_catalog_bytes_if_pinned(path: Path | None = None) -> bytes | None:
+    """Return catalog file bytes only when they match the reviewed digest constant."""
+
+    target = path if path is not None else CANONICAL_ACCEPTANCE_PATH
+    try:
+        raw = target.read_bytes()
+    except OSError:
+        return None
+    digest = hashlib.sha256(raw).hexdigest()
+    if digest != PINNED_ACCEPTANCE_CATALOG_DIGEST:
+        return None
+    return raw
+
+
+def _load_pinned_acceptance_catalog(path: Path | None = None) -> dict[str, Any] | None:
+    """Re-parse catalog bytes only after they match the independent digest pin."""
+
+    raw = _load_catalog_bytes_if_pinned(path)
     if raw is None:
         return None
     try:
@@ -177,25 +287,34 @@ def _load_pinned_acceptance_catalog() -> dict[str, Any] | None:
 def _is_canonical_acceptance_catalog(
     path: Path | None, catalog: Mapping[str, Any]
 ) -> tuple[bool, str]:
-    """Formal acceptance requires the executed mapping match the pinned catalog.
+    """Formal acceptance requires executed mapping == reviewed pinned catalog.
 
-    The file path digest is compared to the import-time pin (not path-vs-itself),
-    and the *parsed mapping that will execute* must deep-equal a re-parse of those
-    pinned bytes. In-memory mutations of the catalog therefore fail closed.
+    The reviewed digest is a source constant. On-disk edits before process start
+    change the file digest and fail closed unless the constant is intentionally
+    updated in the same reviewable change.
     """
 
-    if not PINNED_ACCEPTANCE_CATALOG_DIGEST or _PINNED_ACCEPTANCE_BYTES is None:
-        return False, "pinned acceptance catalog is unavailable"
-    pinned = _load_pinned_acceptance_catalog()
-    if pinned is None:
-        return False, "pinned acceptance catalog could not be parsed"
+    if not PINNED_ACCEPTANCE_CATALOG_DIGEST:
+        return False, "pinned acceptance catalog digest constant is empty"
+    # Always evaluate the bundled path against the independent constant.
+    bundled_digest = _catalog_bytes_digest(CANONICAL_ACCEPTANCE_PATH)
+    if bundled_digest != PINNED_ACCEPTANCE_CATALOG_DIGEST:
+        return (
+            False,
+            "bundled m007-acceptance.yaml digest does not match the reviewed "
+            f"PINNED_ACCEPTANCE_CATALOG_DIGEST constant ({bundled_digest})",
+        )
     if path is not None:
         path_digest = _catalog_bytes_digest(path)
         if path_digest != PINNED_ACCEPTANCE_CATALOG_DIGEST:
             return (
                 False,
-                "catalog file digest does not match the pinned bundled m007-acceptance.yaml",
+                "catalog file digest does not match the reviewed "
+                "PINNED_ACCEPTANCE_CATALOG_DIGEST constant",
             )
+    pinned = _load_pinned_acceptance_catalog(CANONICAL_ACCEPTANCE_PATH)
+    if pinned is None:
+        return False, "pinned acceptance catalog could not be parsed after digest check"
     # Bind the mapping that run_session will execute, not only the path on disk.
     if _stable_json(catalog) != _stable_json(pinned):
         return (
@@ -303,16 +422,8 @@ def _path_under(path: Path, root: Path) -> str | None:
         return None
 
 
-def _git_identity(
-    repo: Path,
-    *,
-    exclude_under: Path | None = None,
-) -> dict[str, Any]:
-    """Record pre-session repository identity.
-
-    ``exclude_under`` drops paths beneath a session evidence directory so the
-    runner does not report its own artifacts as dirty source changes.
-    """
+def _git_identity(repo: Path) -> dict[str, Any]:
+    """Record pre-session repository identity (before any session artifacts)."""
 
     def run(args: list[str]) -> str:
         try:
@@ -323,40 +434,10 @@ def _git_identity(
             return ""
         return completed.stdout.strip() if completed.returncode == 0 else ""
 
-    exclude_exact: str | None = None
-    if exclude_under is not None:
-        rel = _path_under(exclude_under, repo)
-        if rel is not None:
-            exclude_exact = rel.rstrip("/")
-
-    def _status_path(entry: str) -> str:
-        # porcelain: "XY path" or "XY orig -> path"; ls-files: bare relative path.
-        path_part = entry
-        if len(entry) >= 3 and entry[2] in {" ", "\t"}:
-            path_part = entry[3:]
-        if " -> " in path_part:
-            path_part = path_part.split(" -> ", 1)[-1]
-        path_part = path_part.strip()
-        if path_part.startswith('"') and path_part.endswith('"'):
-            path_part = path_part[1:-1]
-        return path_part
-
-    def _excluded(entry: str) -> bool:
-        if not exclude_exact:
-            return False
-        path_part = _status_path(entry).rstrip("/")
-        if path_part == exclude_exact or path_part.startswith(exclude_exact + "/"):
-            return True
-        # git status collapses untracked trees ("?? evidence/") when the only
-        # content is under the session directory; treat pure ancestors as excluded.
-        if exclude_exact.startswith(path_part + "/"):
-            return True
-        return False
-
     status_lines = [
         line
         for line in (run(["git", "status", "--porcelain"]) or "").splitlines()
-        if line and not _excluded(line)
+        if line
     ]
     status = "\n".join(status_lines)
     commit = run(["git", "rev-parse", "HEAD"]) or None
@@ -366,15 +447,11 @@ def _git_identity(
     untracked_names: list[str] = []
     untracked_hashes: dict[str, str] = {}
     if dirty:
-        # Tracked patch only for identity material; untracked listed but not copied.
+        # Tracked patch for identity material; untracked listed but never copied.
         patch = run(["git", "diff", "HEAD"])
         cached = run(["git", "diff", "--cached"])
         untracked_raw = run(["git", "ls-files", "--others", "--exclude-standard"])
-        untracked_names = [
-            line
-            for line in untracked_raw.splitlines()
-            if line and not _excluded(line)
-        ]
+        untracked_names = [line for line in untracked_raw.splitlines() if line]
         parts = [status, patch, cached]
         for rel in untracked_names:
             path = repo / rel
@@ -400,7 +477,6 @@ def _git_identity(
         "status_porcelain": status_lines,
         "untracked_files": untracked_names,
         "untracked_sha256": untracked_hashes,
-        "excluded_session_prefix": exclude_exact,
     }
 
 
@@ -1142,6 +1218,7 @@ class SessionState:
     safety_blocked: bool = False
     safety_block_reason: str | None = None
     executed_commands: list[list[str]] = field(default_factory=list)
+    metrics_ui_repo_path: Path | None = None
 
 
 def _note_worker_pid(state: SessionState, pid: Any, *, source: str) -> None:
@@ -1273,39 +1350,62 @@ def _repo_reviewable(
     session_dir: Path,
     label: str,
     linked_pr: str | None,
+    repo: Path | None = None,
 ) -> tuple[bool, str]:
-    """Dirty checkouts need a reviewable tracked patch and/or a real linked PR.
+    """Dirty checkouts need a reviewable tracked patch and/or a bound linked PR.
 
-    Untracked content is never auto-copied into evidence (symlink/secret risk).
-    Presence of untracked files therefore requires a valid linked PR, not a
-    free-text token.
+    Untracked content is never auto-copied and never accepted via linked PR alone:
+    formal acceptance requires a clean tree or an exact tracked-diff artifact for
+    the dirty bytes. A linked PR must name the same GitHub owner/repo as the
+    checkout origin; free-text or unrelated-repo URLs fail closed.
     """
 
     if not isinstance(identity, Mapping):
         return False, f"{label} identity missing"
     if identity.get("worktree_state") != "dirty":
         return True, f"{label} clean"
-    pr_value = linked_pr or identity.get("linked_pr")
-    if pr_value is not None and not _valid_linked_pr(
-        str(pr_value) if pr_value is not None else None
-    ):
-        return (
-            False,
-            f"Dirty {label} linked_pr={pr_value!r} is not a valid GitHub PR "
-            "URL or numeric reference",
-        )
-    if _valid_linked_pr(str(pr_value) if pr_value is not None else None):
-        return True, f"{label} dirty with valid linked PR"
-    if not identity.get("diff_identity"):
-        return False, f"Dirty {label} worktree lacks diff_identity"
+
     untracked = list(identity.get("untracked_files") or [])
     if untracked:
         return (
             False,
-            f"Dirty {label} has untracked files; use a clean checkout or a "
-            f"valid --{label}-linked-pr (untracked content is not auto-copied): "
-            f"{untracked[:5]}",
+            f"Dirty {label} has untracked files; formal acceptance requires a "
+            f"clean checkout (untracked content is not auto-copied and cannot "
+            f"be blessed by a linked PR alone): {untracked[:5]}",
         )
+
+    pr_value = linked_pr or identity.get("linked_pr")
+    if pr_value is not None:
+        pr_text = str(pr_value)
+        ok_bound, bound_msg, bound = _linked_pr_bound_to_checkout(
+            pr_text, repo=repo, identity=identity
+        )
+        if not ok_bound:
+            return False, f"Dirty {label}: {bound_msg}"
+        # Bound PR may accompany tracked dirty trees only when a reviewable
+        # tracked patch is also present (exact local dirty bytes).
+        diff_path = session_dir / f"{label}-worktree.diff"
+        if not diff_path.is_file():
+            return (
+                False,
+                f"Dirty {label} has a bound linked PR but no captured tracked "
+                "diff artifact for the local dirty bytes",
+            )
+        patch = diff_path.read_text(encoding="utf-8", errors="replace")
+        if not patch.strip():
+            return (
+                False,
+                f"Dirty {label} has a bound linked PR but empty tracked diff; "
+                "use a clean checkout on the PR head instead",
+            )
+        return (
+            True,
+            f"{label} dirty with bound linked PR and reviewable tracked patch "
+            f"({bound.get('url') if bound else pr_text})",
+        )
+
+    if not identity.get("diff_identity"):
+        return False, f"Dirty {label} worktree lacks diff_identity"
     diff_path = session_dir / f"{label}-worktree.diff"
     if not diff_path.is_file():
         return False, f"Dirty {label} worktree lacks captured diff artifact"
@@ -1349,14 +1449,20 @@ def _derive_verdict(state: SessionState) -> tuple[str, str | None]:
                 session_dir=state.session_dir,
                 label="auto-driving",
                 linked_pr=state.auto_driving_linked_pr,
+                repo=state.repo_root,
             )
             if not ok_auto:
                 return "incomplete", auto_msg
+            metrics_repo_path = None
+            if isinstance(metrics, dict) and metrics.get("path"):
+                # Path is basename only in identity; use optional absolute from state.
+                metrics_repo_path = getattr(state, "metrics_ui_repo_path", None)
             ok_metrics, metrics_msg = _repo_reviewable(
                 metrics,
                 session_dir=state.session_dir,
                 label="metrics-ui",
                 linked_pr=state.metrics_ui_linked_pr,
+                repo=metrics_repo_path,
             )
             if not ok_metrics:
                 return "incomplete", metrics_msg
@@ -1788,13 +1894,10 @@ def _capture_worktree_reviewables(
     session_dir: Path,
     *,
     label: str,
-    exclude_under: Path | None = None,
 ) -> dict[str, Any]:
     """Write reviewable *tracked* dirty-tree patch for a repository checkout.
 
-    Untracked files are listed by name only and never copied into the session
-    (avoids symlink follow and secret disclosure). Untracked dirty trees must
-    use a valid linked PR or a clean checkout.
+    Untracked files are listed by name only and never copied into the session.
     """
 
     info: dict[str, Any] = {
@@ -1824,12 +1927,6 @@ def _capture_worktree_reviewables(
             combined += patch
         if cached:
             combined += ("\n" if combined else "") + "# staged\n" + cached
-        # Drop patch hunks that only touch the session evidence directory.
-        if exclude_under is not None:
-            rel = _path_under(exclude_under, repo)
-            if rel:
-                # Keep full patch; identity exclusion already handled separately.
-                pass
         diff_name = f"{label}-worktree.diff"
         _write_text(session_dir / diff_name, combined)
         info["diff_path"] = diff_name
@@ -1840,16 +1937,7 @@ def _capture_worktree_reviewables(
             capture_output=True,
             text=True,
         ).stdout
-        names = []
-        for line in untracked.splitlines():
-            if not line:
-                continue
-            if exclude_under is not None:
-                rel = _path_under(exclude_under, repo)
-                if rel and (line == rel or line.startswith(rel.rstrip("/") + "/")):
-                    continue
-            names.append(line)
-        info["untracked_listed"] = names
+        info["untracked_listed"] = [line for line in untracked.splitlines() if line]
     except OSError as exc:
         info["error"] = str(exc)
     _write_json(session_dir / f"{label}-worktree-review.json", info)
@@ -1916,15 +2004,24 @@ def run_session(
 
     # Capture repository identities BEFORE any session artifacts exist so a
     # session_dir under the checkout cannot manufacture dirty state.
-    auto_driving = _git_identity(repo_root, exclude_under=session_dir)
+    # Do not exclude the future session directory: identity is pre-session, so
+    # any pre-existing sibling dirt must still be reported.
+    auto_driving = _git_identity(repo_root)
+    remote_ad = _github_remote_identity(repo_root)
+    if remote_ad:
+        auto_driving = dict(auto_driving)
+        auto_driving["github_owner"] = remote_ad["owner"]
+        auto_driving["github_repo"] = remote_ad["repo"]
     if auto_driving_linked_pr:
         auto_driving = dict(auto_driving)
         auto_driving["linked_pr"] = auto_driving_linked_pr
-    metrics_ui = (
-        _git_identity(metrics_ui_repo, exclude_under=session_dir)
-        if metrics_ui_repo
-        else None
-    )
+    metrics_ui = _git_identity(metrics_ui_repo) if metrics_ui_repo else None
+    if metrics_ui is not None and metrics_ui_repo is not None:
+        remote_mu = _github_remote_identity(metrics_ui_repo)
+        if remote_mu:
+            metrics_ui = dict(metrics_ui)
+            metrics_ui["github_owner"] = remote_mu["owner"]
+            metrics_ui["github_repo"] = remote_mu["repo"]
     if metrics_ui is not None and metrics_ui_linked_pr:
         metrics_ui = dict(metrics_ui)
         metrics_ui["linked_pr"] = metrics_ui_linked_pr
@@ -1936,7 +2033,7 @@ def run_session(
     canonical_reason = "catalog path not provided"
     executed_catalog = catalog
     if catalog.get("track") == "acceptance":
-        pinned = _load_pinned_acceptance_catalog()
+        pinned = _load_pinned_acceptance_catalog(CANONICAL_ACCEPTANCE_PATH)
         if pinned is not None and catalog_path is not None:
             # Prefer path+mapping equality against pin; if equal, execute pin.
             ok_bind, bind_reason = _is_canonical_acceptance_catalog(
@@ -1988,6 +2085,7 @@ def run_session(
         if catalog_path is not None
         else None,
         recording_before=recording_before,
+        metrics_ui_repo_path=metrics_ui_repo,
     )
 
     worktree_meta: dict[str, Any] = {}
@@ -1996,7 +2094,6 @@ def run_session(
             repo_root,
             session_dir,
             label="auto-driving",
-            exclude_under=session_dir,
         )
     if metrics_ui_repo is not None and isinstance(metrics_ui, dict):
         if metrics_ui.get("worktree_state") == "dirty":
@@ -2004,7 +2101,6 @@ def run_session(
                 metrics_ui_repo,
                 session_dir,
                 label="metrics-ui",
-                exclude_under=session_dir,
             )
 
     baseline = {

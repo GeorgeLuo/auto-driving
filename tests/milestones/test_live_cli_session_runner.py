@@ -948,19 +948,56 @@ class LiveCliSessionRunnerTests(unittest.TestCase):
         )
         with tempfile.TemporaryDirectory() as tmp:
             session_dir = Path(tmp)
+            (session_dir / "metrics-ui-worktree.diff").write_text(
+                "diff --git a/x b/x\n", encoding="utf-8"
+            )
+            # Free-text PR still fails.
             ok, msg = runner._repo_reviewable(
                 {
                     "worktree_state": "dirty",
                     "diff_identity": "abc",
                     "untracked_files": [],
                     "linked_pr": "x",
+                    "commit": "deadbeef",
                 },
                 session_dir=session_dir,
                 label="metrics-ui",
                 linked_pr="x",
+                repo=ROOT,
             )
             self.assertFalse(ok)
-            self.assertIn("not a valid", msg)
+            # Untracked cannot be blessed by any PR.
+            ok, msg = runner._repo_reviewable(
+                {
+                    "worktree_state": "dirty",
+                    "diff_identity": "abc",
+                    "untracked_files": ["runtime_override.py"],
+                    "commit": "deadbeef",
+                },
+                session_dir=session_dir,
+                label="metrics-ui",
+                linked_pr="https://github.com/unrelated/example/pull/1",
+                repo=ROOT,
+            )
+            self.assertFalse(ok)
+            self.assertIn("untracked", msg.lower())
+            # Unrelated repository PR fails even for tracked-only dirty.
+            ok, msg = runner._repo_reviewable(
+                {
+                    "worktree_state": "dirty",
+                    "diff_identity": "abc",
+                    "untracked_files": [],
+                    "commit": "deadbeef",
+                    "github_owner": "GeorgeLuo",
+                    "github_repo": "auto-driving",
+                },
+                session_dir=session_dir,
+                label="metrics-ui",
+                linked_pr="https://github.com/unrelated/example/pull/1",
+                repo=ROOT,
+            )
+            self.assertFalse(ok)
+            self.assertIn("does not match", msg)
 
     def test_in_memory_catalog_mutation_not_canonical(self) -> None:
         import copy
@@ -980,6 +1017,30 @@ class LiveCliSessionRunnerTests(unittest.TestCase):
         ok, reason = runner._is_canonical_acceptance_catalog(path, mutated)
         self.assertFalse(ok)
         self.assertIn("does not match", reason)
+
+    def test_pinned_digest_is_independent_constant(self) -> None:
+        runner = _load_runner_module()
+        # Constant must be a literal reviewed pin, not empty / import-only hash.
+        self.assertEqual(len(runner.PINNED_ACCEPTANCE_CATALOG_DIGEST), 64)
+        path = CATALOGS / "m007-acceptance.yaml"
+        self.assertEqual(
+            runner._catalog_bytes_digest(path),
+            runner.PINNED_ACCEPTANCE_CATALOG_DIGEST,
+        )
+        # On-disk content that does not match the constant fails closed.
+        with tempfile.TemporaryDirectory() as tmp:
+            fake = Path(tmp) / "m007-acceptance.yaml"
+            original = path.read_bytes()
+            # Guaranteed content change before process-style digest check.
+            fake.write_bytes(original + b"\n# local-edit-before-import\n")
+            edited_digest = runner._catalog_bytes_digest(fake)
+            self.assertNotEqual(edited_digest, runner.PINNED_ACCEPTANCE_CATALOG_DIGEST)
+            import yaml
+
+            catalog = yaml.safe_load(path.read_text(encoding="utf-8"))
+            ok, reason = runner._is_canonical_acceptance_catalog(fake, catalog)
+            self.assertFalse(ok)
+            self.assertIn("digest", reason.lower())
 
     def test_failed_precondition_blocks_automation_run(self) -> None:
         """Orchestration: live_mutation must not run after failed safety prereqs."""
@@ -1120,8 +1181,8 @@ class LiveCliSessionRunnerTests(unittest.TestCase):
                 )
             self.assertNotEqual(result.get("result"), "pass")
 
-    def test_identity_captured_before_session_artifacts(self) -> None:
-        """Session dir under repo must not self-dirty pre-session identity."""
+    def test_pre_session_identity_reports_sibling_dirt(self) -> None:
+        """Pre-session identity must not hide unrelated dirt under evidence/."""
         runner = _load_runner_module()
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp) / "repo"
@@ -1149,16 +1210,138 @@ class LiveCliSessionRunnerTests(unittest.TestCase):
                 check=True,
                 capture_output=True,
             )
-            session_dir = repo / "evidence" / "session"
-            # Identity with exclude must stay clean even if session files exist.
-            session_dir.mkdir(parents=True)
-            (session_dir / "transcripts").mkdir()
-            (session_dir / "transcripts" / "cli-transcript.txt").write_text(
-                "noise\n", encoding="utf-8"
+            # Sibling untracked file under evidence/ — not session artifacts.
+            (repo / "evidence").mkdir()
+            (repo / "evidence" / "unrelated.txt").write_text("dirty\n", encoding="utf-8")
+            identity = runner._git_identity(repo)
+            self.assertEqual(identity.get("worktree_state"), "dirty")
+            # Collapsed or expanded path must still mark dirty (not false clean).
+            self.assertTrue(
+                identity.get("untracked_files")
+                or identity.get("status_porcelain")
             )
-            identity = runner._git_identity(repo, exclude_under=session_dir)
-            self.assertEqual(identity.get("worktree_state"), "clean")
-            self.assertEqual(identity.get("untracked_files"), [])
+
+    def test_failed_initial_blocks_automation_run(self) -> None:
+        """Orchestration: failed initial_layers blocks live_mutation."""
+        runner = _load_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            session_dir = Path(tmp) / "session"
+            catalog = {
+                "schema": "live_cli_session_catalog_v0",
+                "id": "orch-initial",
+                "track": "acceptance",
+                "vehicle_id": VEHICLE,
+                "gates": [
+                    {"id": "initial_layers", "required": True},
+                    {"id": "staging", "required": True},
+                    {"id": "startup", "required": True},
+                ],
+                "steps": [
+                    {
+                        "id": "status-initial",
+                        "kind": "command",
+                        "safety": "read",
+                        "commands": [["./cli/automa", "vehicles", "status"]],
+                        "gate_ids": ["initial_layers"],
+                        "required_for_verdict": True,
+                        "visual_required": False,
+                        "expect_exit": 0,
+                    },
+                    {
+                        "id": "update-perception",
+                        "kind": "command",
+                        "safety": "local_write",
+                        "commands": [["./cli/automa", "vehicles", "update", "perception"]],
+                        "gate_ids": ["staging"],
+                        "required_for_verdict": True,
+                        "visual_required": False,
+                        "expect_exit": 0,
+                    },
+                    {
+                        "id": "automation-run",
+                        "kind": "command",
+                        "safety": "live_mutation",
+                        "commands": [
+                            [
+                                "./cli/automa",
+                                "vehicles",
+                                "automation",
+                                "run",
+                                "--observe-only",
+                            ]
+                        ],
+                        "gate_ids": ["startup"],
+                        "required_for_verdict": True,
+                        "visual_required": False,
+                        "expect_exit": 0,
+                    },
+                ],
+            }
+
+            def fake_run(argv, **kwargs):
+                step_dir = kwargs["step_dir"]
+                step_dir.mkdir(parents=True, exist_ok=True)
+                index = kwargs["index"]
+                (step_dir / f"cmd-{index:02d}.stdout.txt").write_text(
+                    "ok\n", encoding="utf-8"
+                )
+                (step_dir / f"cmd-{index:02d}.stderr.txt").write_text("", encoding="utf-8")
+                # Fail only the initial status human command; allow others if reached.
+                code = 1 if "status" in argv and "automation" not in argv else 0
+                if "update" in argv:
+                    code = 0
+                return runner.CommandOutcome(
+                    argv=list(argv),
+                    command=" ".join(argv),
+                    exit_code=code,
+                    elapsed_ms=1,
+                    stdout_path=f"steps/x/cmd-{index:02d}.stdout.txt",
+                    stderr_path=f"steps/x/cmd-{index:02d}.stderr.txt",
+                    started_at_utc="t0",
+                    ended_at_utc="t1",
+                )
+
+            def fake_precondition(state, **kwargs):
+                return {"ok": True, "error": None, "attempted": False}
+
+            original_run = runner._run_command
+            original_pre = runner._run_precondition_cleanup
+            runner._run_command = fake_run  # type: ignore[assignment]
+            runner._run_precondition_cleanup = fake_precondition  # type: ignore[assignment]
+            try:
+                result = runner.run_session(
+                    catalog=catalog,
+                    session_dir=session_dir,
+                    repo_root=ROOT,
+                    metrics_ui_origin="http://localhost:5050",
+                    metrics_ui_repo=None,
+                    browser_name="Chrome",
+                    browser_version="1",
+                    prompt=lambda _m: "skip",
+                    non_interactive=True,
+                    auto_visual="skip",
+                    command_timeout_s=5,
+                    dry_run=False,
+                    browser_view_path=None,
+                    operator="test",
+                    catalog_path=None,
+                )
+            finally:
+                runner._run_command = original_run  # type: ignore[assignment]
+                runner._run_precondition_cleanup = original_pre  # type: ignore[assignment]
+
+            statuses = {
+                s["id"]: s["status"] for s in (result.get("ordered_step_outcomes") or [])
+            }
+            self.assertEqual(statuses.get("status-initial"), "fail")
+            self.assertEqual(statuses.get("automation-run"), "blocked")
+            for step in result.get("ordered_step_outcomes") or []:
+                for cmd in step.get("commands") or []:
+                    argv = cmd.get("argv") or []
+                    self.assertFalse(
+                        "automation" in argv and "run" in argv,
+                        f"automation run must not execute: {argv}",
+                    )
 
 
 if __name__ == "__main__":

@@ -185,13 +185,15 @@ An acceptance catalog can return `pass` only when all of the following hold:
   and `auto-driving-worktree.diff` when auto-driving is dirty
 - baseline records `session_visible` protected fields from the initial fingerprint
 - **canonical catalog only**: formal `pass` requires the executed catalog mapping
-  to deep-equal the import-time pinned bundled `m007-acceptance.yaml` (not just
-  the path). In-memory or on-disk mutations of run/stop/gates fail closed
+  to deep-equal the bundled catalog **and** that file's SHA-256 to match the
+  reviewed source constant `PINNED_ACCEPTANCE_CATALOG_DIGEST` (update the
+  constant in the same commit when intentionally changing the catalog). Pre-start
+  on-disk edits and in-memory mutations both fail closed
 - **safety short-circuit**: `live_mutation` steps (e.g. `automation run`) are
   **not executed** unless precondition, `initial_layers`, and `staging` have
   already passed; blocked steps leave durable findings without starting a worker
-- **pre-session identity**: repository dirty state is measured before any session
-  artifacts are written, and the session directory is excluded from identity
+- **pre-session identity**: repository dirty state is measured **before** any
+  session artifacts are written (no session-dir exclusion on that measurement)
 - **precondition cleanup**: zero-exit targeted status with exact identity; any
   pre-existing running worker is stopped; `automation_worker` must be explicit
   `stopped` and known PIDs dead before the baseline
@@ -208,11 +210,11 @@ An acceptance catalog can return `pass` only when all of the following hold:
   health floor; source mtime must postdate that floor (preserved on copy); import
   paths are redacted
 - **cleanup** proves every observed worker PID is dead (not only the final status PID)
-- dirty auto-driving / Metrics UI checkouts need a **non-empty tracked patch**
-  and/or a **valid** GitHub PR URL/`#N` (`--auto-driving-linked-pr` /
-  `--metrics-ui-linked-pr`). Untracked files are listed only — never auto-copied
-  into evidence (symlink/secret risk); untracked dirty trees require a valid PR
-  or a clean checkout
+- dirty auto-driving / Metrics UI checkouts need a **non-empty tracked patch**.
+  A linked PR (`--auto-driving-linked-pr` / `--metrics-ui-linked-pr`) must be a
+  real GitHub PR URL or `#N` **for that checkout's origin owner/repo** and still
+  requires a tracked patch for local dirty bytes. Untracked files are listed
+  only, never auto-copied, and **cannot** be blessed by a linked PR alone
 
 Dry-run and non-interactive sessions are capture helpers only; they resolve to
 `incomplete` for acceptance catalogs even if every auto-visual is `pass`.

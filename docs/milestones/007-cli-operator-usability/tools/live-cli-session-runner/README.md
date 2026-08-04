@@ -38,6 +38,8 @@ python3 docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner
   --metrics-ui-repo /path/to/Stream-Metrics-UI \
   --browser-name Chrome \
   --browser-version "…paste from chrome://version…" \
+  --operator "your-name" \
+  --browser-view /path/to/cropped-browser-view.png \
   --session-dir docs/milestones/007-cli-operator-usability/evidence/live-cli-acceptance/session-$(date +%Y%m%d-%H%M%S)
 ```
 
@@ -83,7 +85,7 @@ Each step may include:
 
 ```text
 session-dir/
-  baseline.json
+  baseline.json            # operator, browser, repos, session_visible, precondition
   catalog.json
   catalog-source.txt
   result.json              # live_cli_session_result_v0 (no self-digest)
@@ -91,16 +93,23 @@ session-dir/
   findings.json
   findings.jsonl           # one finding object per line for agents
   human-notes.md
-  digests.json
-  transcripts/cli-transcript.txt
-  initial-status.json      # when captured
-  running-status.json
-  stopped-status.json
-  view-publication.json    # pure JSON /api/latest when captured
+  transcripts/cli-transcript.txt   # ordered commands with started/ended timestamps
+  pre-baseline-status.json         # worker/deployment/view before baseline
+  precondition-cleanup.json        # recorded if an earlier worker was stopped
+  session-fingerprint-baseline.json
+  session-fingerprint-latest.json
+  session-fingerprint-cleanup.json
+  initial-status.json / running-status.json / stopped-status.json / cleanup-status.json
+  view-publication.json    # pure JSON /api/latest (schema automa_perception_publication_v1)
+  browser-view.png         # bound only after view_correlation health floor
+  browser-view-meta.json   # source mtime/sha, floor, redacted import path
+  auto-driving-worktree.diff  # when auto-driving worktree is dirty
   steps/<step-id>/
-    envelope.json
+    envelope.json          # commands include started_at_utc / ended_at_utc
     cmd-00.stdout.txt
     cmd-00.stderr.txt
+  steps/_precondition_cleanup/   # when needed
+  steps/_cleanup/                # final stop + status
 ```
 
 ### Result verdict rules
@@ -168,11 +177,26 @@ Recommended flow:
 An acceptance catalog can return `pass` only when all of the following hold:
 
 - execution mode is **interactive live** (not `--dry-run`, not `--non-interactive`)
+- named `--operator` is recorded
 - required machine validators pass on captured status/view JSON
 - interactive human visual confirmation was recorded
 - `--browser-name`, `--browser-version`, and `--metrics-ui-repo` are provided
-- `browser-view.png` is present in the session directory (copy via `--browser-view`)
-- cleanup proves the worker is stopped
+- dirty worktrees include `diff_identity` (tracked patch + untracked content hashes)
+  and `auto-driving-worktree.diff` when auto-driving is dirty
+- baseline records `session_visible` protected fields from the initial fingerprint
+- **precondition cleanup**: any pre-existing running worker is stopped and recorded
+  before the acceptance baseline; initial layers require worker not running
+- **preservation**: each JSON capture binds its own fingerprint (including failed
+  extraction as `None`); within a receipt, all six fields match before/after;
+  across commands, stable projection compares game/scenario/epoch, control
+  source/input, and playback mode (`phase`/`pendingAction`) — natural
+  `frameIndex` advancement is allowed; cleanup status is also preservation-checked
+- **view identity**: `/api/latest` must use `automa_perception_publication_v1` and
+  the expected vehicle id
+- **browser-view.png** is bound only after `view_correlation` establishes the
+  health floor; source mtime must postdate that floor (preserved on copy); import
+  paths are redacted
+- **cleanup** proves every observed worker PID is dead (not only the final status PID)
 
 Dry-run and non-interactive sessions are capture helpers only; they resolve to
 `incomplete` for acceptance catalogs even if every auto-visual is `pass`.

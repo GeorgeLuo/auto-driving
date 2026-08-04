@@ -24,6 +24,7 @@ RUNNER_PATH = (
     / "session_runner.py"
 )
 CATALOGS = RUNNER_PATH.parent / "catalogs"
+VEHICLE = "chase-sim-chaser"
 
 
 def _load_runner_module():
@@ -53,7 +54,7 @@ def _session_fp(**overrides):
 
 def _status_with_passive(
     *,
-    vehicle_id: str = "chase-sim-chaser",
+    vehicle_id: str = VEHICLE,
     worker_state: str = "running",
     view_state: str = "available",
     deployment: str = "deployed",
@@ -62,9 +63,14 @@ def _status_with_passive(
     preserved: bool = True,
     recording: bool = False,
     applied: bool = False,
+    changed_fields: list | None = None,
+    unknown_fields: list | None = None,
+    pid: int | None = 4242,
+    omit_schema: bool = False,
+    omit_vehicle_id: bool = False,
 ) -> dict:
     fp = fingerprint or _session_fp()
-    return {
+    payload = {
         "schema": "automa_vehicle_status_v1",
         "vehicle_id": vehicle_id,
         "layers": {
@@ -77,48 +83,66 @@ def _status_with_passive(
                 "mutation_attempted": mutation_attempted,
                 "session_preservation": {
                     "preserved": preserved,
-                    "changed_fields": [],
-                    "unknown_fields": [],
-                    "before": {k: fp[k] for k in (
-                        "game_id",
-                        "scenario_id",
-                        "simulation_epoch",
-                        "playback",
-                        "control_source",
-                        "control_input",
-                    )},
-                    "after": {k: fp[k] for k in (
-                        "game_id",
-                        "scenario_id",
-                        "simulation_epoch",
-                        "playback",
-                        "control_source",
-                        "control_input",
-                    )},
+                    "changed_fields": [] if changed_fields is None else changed_fields,
+                    "unknown_fields": [] if unknown_fields is None else unknown_fields,
+                    "before": {
+                        k: fp[k]
+                        for k in (
+                            "game_id",
+                            "scenario_id",
+                            "simulation_epoch",
+                            "playback",
+                            "control_source",
+                            "control_input",
+                        )
+                    },
+                    "after": {
+                        k: fp[k]
+                        for k in (
+                            "game_id",
+                            "scenario_id",
+                            "simulation_epoch",
+                            "playback",
+                            "control_source",
+                            "control_input",
+                        )
+                    },
                 },
             },
             "automation_deployment": {"state": deployment},
             "automation_worker": {
                 "state": worker_state,
                 "details": {
-                    "pid": 4242 if worker_state == "running" else 4242,
+                    "pid": pid,
                     "authority": {
                         "action_policy": "observe_only",
                         "control_application": "not_applied",
                         "recording": recording,
                         "last_frame": {
-                            "control": {"applied": applied, "steering": 0.0, "throttle": 0.0}
+                            "control": {
+                                "applied": applied,
+                                "steering": 0.0,
+                                "throttle": 0.0,
+                            }
                         },
                     },
                 },
             },
-            "perception_view": {"state": view_state, "details": {"url": "http://127.0.0.1:8898/"}},
+            "perception_view": {
+                "state": view_state,
+                "details": {"url": "http://127.0.0.1:8898/"},
+            },
         },
     }
+    if omit_schema:
+        del payload["schema"]
+    if omit_vehicle_id:
+        del payload["vehicle_id"]
+    return payload
 
 
-def _aggregate(vehicle_id: str = "chase-sim-chaser") -> dict:
-    card = _status_with_passive(worker_state="stopped", view_state="stale")
+def _aggregate(vehicle_id: str = VEHICLE) -> dict:
+    card = _status_with_passive(worker_state="stopped", view_state="stale", pid=1111)
     return {
         "schema": "automa_vehicle_status_list_v1",
         "layers": None,
@@ -128,8 +152,8 @@ def _aggregate(vehicle_id: str = "chase-sim-chaser") -> dict:
 
 def _current_view_payload(**overrides) -> dict:
     payload = {
-        "schema": "automa_perception_view_publication_v1",
-        "vehicle_id": "chase-sim-chaser",
+        "schema": "automa_perception_publication_v1",
+        "vehicle_id": VEHICLE,
         "frame": {"frame_id": "chase_frame_1", "frame_index": 1},
         "overlay": {
             "status": "current",
@@ -190,6 +214,8 @@ class LiveCliSessionRunnerTests(unittest.TestCase):
                     "999",
                     "--metrics-ui-repo",
                     str(ROOT),
+                    "--operator",
+                    "test-operator",
                 ],
                 cwd=ROOT,
                 check=False,
@@ -233,7 +259,7 @@ class LiveCliSessionRunnerTests(unittest.TestCase):
     def test_aggregate_and_wrong_vehicle_extraction(self) -> None:
         runner = _load_runner_module()
         aggregate = _aggregate()
-        ok, msg = runner.validate_initial_layers(aggregate, vehicle_id="chase-sim-chaser")
+        ok, msg = runner.validate_initial_layers(aggregate, vehicle_id=VEHICLE)
         self.assertTrue(ok, msg)
         # Sole wrong-id card must not be substituted.
         wrong = {
@@ -246,68 +272,167 @@ class LiveCliSessionRunnerTests(unittest.TestCase):
                 }
             ],
         }
-        card = runner.extract_vehicle_status(wrong, "chase-sim-chaser")
+        card = runner.extract_vehicle_status(wrong, VEHICLE)
         self.assertIsNone(card)
-        ok, msg = runner.validate_initial_layers(wrong, vehicle_id="chase-sim-chaser")
+        ok, msg = runner.validate_initial_layers(wrong, vehicle_id=VEHICLE)
         self.assertFalse(ok)
-
-    def test_preservation_uses_passive_capture_layer_not_worker_authority(self) -> None:
-        runner = _load_runner_module()
-        # Prior worker authority has a different epoch, but layer receipt is correct.
-        status = _status_with_passive(fingerprint=_session_fp(simulation_epoch="epoch-live"))
-        status["layers"]["automation_worker"]["details"]["authority"]["passive_capture"] = {
-            "session_preservation": {
-                "before": _session_fp(simulation_epoch="epoch-stale"),
-                "after": _session_fp(simulation_epoch="epoch-stale"),
-                "preserved": True,
-            }
+        # Aggregate card missing schema is rejected.
+        no_schema = {
+            "layers": None,
+            "vehicles": [
+                {
+                    "vehicle_id": VEHICLE,
+                    "layers": aggregate["vehicles"][0]["layers"],
+                }
+            ],
         }
-        fp = runner.extract_session_fingerprint(status, "chase-sim-chaser")
-        self.assertIsNotNone(fp)
-        self.assertEqual(fp["simulation_epoch"], "epoch-live")
+        self.assertIsNone(runner.extract_vehicle_status(no_schema, VEHICLE))
 
-        # Missing protected values fail closed.
-        bad = _status_with_passive(fingerprint=_session_fp(game_id=None))
-        self.assertIsNone(runner.extract_session_fingerprint(bad, "chase-sim-chaser"))
-
-        # Changed input fails.
-        changed = _status_with_passive()
-        changed["layers"]["passive_capture"]["session_preservation"]["after"] = _session_fp(
-            control_input={"source": "keyboard"}
+    def test_status_identity_required(self) -> None:
+        runner = _load_runner_module()
+        self.assertIsNone(
+            runner.extract_vehicle_status(
+                _status_with_passive(omit_schema=True), VEHICLE
+            )
         )
-        self.assertIsNone(runner.extract_session_fingerprint(changed, "chase-sim-chaser"))
-
-        baseline = runner.extract_session_fingerprint(
-            _status_with_passive(fingerprint=_session_fp()), "chase-sim-chaser"
+        self.assertIsNone(
+            runner.extract_vehicle_status(
+                _status_with_passive(omit_vehicle_id=True), VEHICLE
+            )
         )
-        current = runner.extract_session_fingerprint(
-            _status_with_passive(fingerprint=_session_fp()), "chase-sim-chaser"
+        self.assertIsNone(
+            runner.extract_vehicle_status(
+                _status_with_passive(vehicle_id="other"), VEHICLE
+            )
         )
-        ok, msg = runner.validate_preservation(baseline, current)
-        self.assertTrue(ok, msg)
-        drifted = runner.extract_session_fingerprint(
-            _status_with_passive(fingerprint=_session_fp(simulation_epoch="other")),
-            "chase-sim-chaser",
-        )
-        ok, msg = runner.validate_preservation(baseline, drifted)
+        # Initial baseline rejects a still-running worker.
+        running = _status_with_passive(worker_state="running")
+        ok, msg = runner.validate_initial_layers(running, vehicle_id=VEHICLE)
         self.assertFalse(ok)
+        self.assertIn("running", msg)
+
+    def test_preservation_stable_projection_and_stale_latest(self) -> None:
+        runner = _load_runner_module()
+        # Real capture shape: frameIndex advances across commands; mode stays fixed.
+        initial = runner.extract_session_fingerprint(
+            _status_with_passive(
+                worker_state="stopped",
+                view_state="stale",
+                fingerprint=_session_fp(playback={
+                    "frameIndex": 168465,
+                    "pendingAction": False,
+                    "phase": "running",
+                }),
+            ),
+            VEHICLE,
+        )
+        running = runner.extract_session_fingerprint(
+            _status_with_passive(
+                fingerprint=_session_fp(playback={
+                    "frameIndex": 168775,
+                    "pendingAction": False,
+                    "phase": "running",
+                }),
+            ),
+            VEHICLE,
+        )
+        stopped = runner.extract_session_fingerprint(
+            _status_with_passive(
+                worker_state="stopped",
+                view_state="stale",
+                fingerprint=_session_fp(playback={
+                    "frameIndex": 169257,
+                    "pendingAction": False,
+                    "phase": "running",
+                }),
+            ),
+            VEHICLE,
+        )
+        self.assertIsNotNone(initial)
+        self.assertIsNotNone(running)
+        self.assertIsNotNone(stopped)
+        ok, msg = runner.validate_preservation(initial, running)
+        self.assertTrue(ok, msg)
+        ok, msg = runner.validate_preservation(initial, stopped)
+        self.assertTrue(ok, msg)
+
+        # Mode/authority change fails.
+        mode_change = runner.extract_session_fingerprint(
+            _status_with_passive(
+                fingerprint=_session_fp(playback={
+                    "frameIndex": 169257,
+                    "pendingAction": True,
+                    "phase": "running",
+                }),
+            ),
+            VEHICLE,
+        )
+        ok, msg = runner.validate_preservation(initial, mode_change)
+        self.assertFalse(ok)
+
+        # Missing changed_fields/unknown_fields fail extraction (not normalized).
+        missing_keys = _status_with_passive()
+        del missing_keys["layers"]["passive_capture"]["session_preservation"][
+            "changed_fields"
+        ]
+        self.assertIsNone(runner.extract_session_fingerprint(missing_keys, VEHICLE))
+
+        # Invalid current must not pass when compared as None against baseline.
+        ok, msg = runner.validate_preservation(initial, None)
+        self.assertFalse(ok)
+        self.assertIn("current fingerprint missing", msg)
+
+        # Control-source drift within a receipt fails extraction.
+        drifted = _status_with_passive()
+        drifted["layers"]["passive_capture"]["session_preservation"]["after"] = (
+            _session_fp(control_source="keyboard")
+        )
+        self.assertIsNone(runner.extract_session_fingerprint(drifted, VEHICLE))
 
     def test_view_and_authority_fail_closed(self) -> None:
         runner = _load_runner_module()
-        ok, msg = runner.validate_view_latest(_current_view_payload())
+        ok, msg = runner.validate_view_latest(
+            _current_view_payload(), vehicle_id=VEHICLE
+        )
         self.assertTrue(ok, msg)
-        ok, msg = runner.validate_view_latest(_current_view_payload(control=None))
+        ok, msg = runner.validate_view_latest(
+            _current_view_payload(control=None), vehicle_id=VEHICLE
+        )
         self.assertFalse(ok)
         self.assertIn("control object missing", msg)
-        ok, msg = runner.validate_view_latest({"frame_id": "x"})
+        ok, msg = runner.validate_view_latest({"frame_id": "x"}, vehicle_id=VEHICLE)
+        self.assertFalse(ok)
+        # Wrong product schema / vehicle identity fail closed.
+        ok, msg = runner.validate_view_latest(
+            _current_view_payload(schema="automa_perception_view_publication_v1"),
+            vehicle_id=VEHICLE,
+        )
+        self.assertFalse(ok)
+        self.assertIn("schema", msg)
+        ok, msg = runner.validate_view_latest(
+            _current_view_payload(vehicle_id="other"), vehicle_id=VEHICLE
+        )
+        self.assertFalse(ok)
+        ok, msg = runner.validate_view_latest(
+            {
+                "frame": {"frame_id": "x"},
+                "overlay": {"status": "current", "source_frame_id": "x"},
+                "perception": {"things": []},
+                "cycle": {
+                    "action_policy": "observe_only",
+                    "control_application": "not_applied",
+                },
+                "control": {"applied": False},
+            },
+            vehicle_id=VEHICLE,
+        )
         self.assertFalse(ok)
 
         status = _status_with_passive()
-        ok, msg = runner.validate_authority(status, vehicle_id="chase-sim-chaser")
+        ok, msg = runner.validate_authority(status, vehicle_id=VEHICLE)
         self.assertTrue(ok, msg)
-        # Missing applied is not allowed.
         status["layers"]["automation_worker"]["details"]["authority"]["last_frame"] = {}
-        ok, msg = runner.validate_authority(status, vehicle_id="chase-sim-chaser")
+        ok, msg = runner.validate_authority(status, vehicle_id=VEHICLE)
         self.assertFalse(ok)
 
     def _fake_cleanup_run(
@@ -329,7 +454,7 @@ class LiveCliSessionRunnerTests(unittest.TestCase):
                 code = stop_exit
             else:
                 payload = status_payload or _status_with_passive(
-                    worker_state="stopped", view_state="stale"
+                    worker_state="stopped", view_state="stale", pid=pid
                 )
                 if not status_has_pid:
                     details = payload["layers"]["automation_worker"]["details"]
@@ -341,7 +466,9 @@ class LiveCliSessionRunnerTests(unittest.TestCase):
                     payload["layers"]["automation_worker"]["details"]["pid"] = pid
                 out = json.dumps(payload)
                 code = status_exit
-            (step_dir / f"cmd-{index:02d}.stdout.txt").write_text(out + "\n", encoding="utf-8")
+            (step_dir / f"cmd-{index:02d}.stdout.txt").write_text(
+                out + "\n", encoding="utf-8"
+            )
             (step_dir / f"cmd-{index:02d}.stderr.txt").write_text("", encoding="utf-8")
             return runner.CommandOutcome(
                 argv=list(argv),
@@ -357,17 +484,32 @@ class LiveCliSessionRunnerTests(unittest.TestCase):
         return fake_run
 
     def _cleanup_state(self, runner, session_dir: Path, **kwargs):
+        last = kwargs.get("last_worker_pid")
+        observed = set(kwargs.pop("observed_worker_pids", set()))
+        if isinstance(last, int) and last > 0:
+            observed.add(last)
+        baseline = kwargs.pop("baseline_fingerprint", None)
+        if baseline is None:
+            baseline = runner.extract_session_fingerprint(
+                _status_with_passive(worker_state="stopped", view_state="stale"),
+                VEHICLE,
+            )
         defaults = dict(
-            catalog={"track": "acceptance", "gates": [{"id": "cleanup", "required": True}]},
+            catalog={
+                "track": "acceptance",
+                "gates": [{"id": "cleanup", "required": True}],
+            },
             session_dir=session_dir,
             repo_root=ROOT,
-            variables={"vehicle_id": "chase-sim-chaser"},
+            variables={"vehicle_id": VEHICLE},
             execution_mode="interactive_live",
             session_id="testsession",
             worker_may_exist=True,
-            last_worker_pid=None,
+            last_worker_pid=last,
+            observed_worker_pids=observed,
             dry_run=False,
             non_interactive=False,
+            baseline_fingerprint=baseline,
         )
         defaults.update(kwargs)
         (session_dir / "steps").mkdir(exist_ok=True)
@@ -377,10 +519,12 @@ class LiveCliSessionRunnerTests(unittest.TestCase):
         runner = _load_runner_module()
         with tempfile.TemporaryDirectory() as tmp:
             session_dir = Path(tmp)
-            state = self._cleanup_state(runner, session_dir, last_worker_pid=None)
+            state = self._cleanup_state(
+                runner, session_dir, last_worker_pid=None, observed_worker_pids=set()
+            )
             original = runner._run_command
             runner._run_command = self._fake_cleanup_run(
-                runner, status_has_pid=False
+                runner, status_has_pid=False, pid=None
             )  # type: ignore[assignment]
             try:
                 cleanup = runner._enforce_cleanup(
@@ -438,9 +582,6 @@ class LiveCliSessionRunnerTests(unittest.TestCase):
 
     def test_cleanup_known_dead_pid_passes(self) -> None:
         runner = _load_runner_module()
-        # PID 0 is never a live user process on Unix for os.kill checks used here;
-        # pick a very high unused pid and confirm _pid_alive reports False/None
-        # then force dead via monkeypatch.
         with tempfile.TemporaryDirectory() as tmp:
             session_dir = Path(tmp)
             dead_pid = 999_999_999
@@ -452,7 +593,9 @@ class LiveCliSessionRunnerTests(unittest.TestCase):
             runner._run_command = self._fake_cleanup_run(
                 runner, pid=dead_pid
             )  # type: ignore[assignment]
-            runner._pid_alive = lambda pid: False if pid == dead_pid else original_alive(pid)  # type: ignore[assignment]
+            runner._pid_alive = (
+                lambda pid: False if pid == dead_pid else original_alive(pid)
+            )  # type: ignore[assignment]
             try:
                 cleanup = runner._enforce_cleanup(
                     state,
@@ -465,6 +608,46 @@ class LiveCliSessionRunnerTests(unittest.TestCase):
             self.assertIs(cleanup.get("pid_alive"), False)
             self.assertIs(cleanup.get("worker_stopped"), True)
             self.assertFalse(state.findings)
+            self.assertTrue(cleanup.get("preservation", {}).get("ok"))
+
+    def test_cleanup_requires_all_observed_pids_dead(self) -> None:
+        runner = _load_runner_module()
+        live_pid = os.getpid()
+        dead_status_pid = 999_999_998
+        with tempfile.TemporaryDirectory() as tmp:
+            session_dir = Path(tmp)
+            state = self._cleanup_state(
+                runner,
+                session_dir,
+                last_worker_pid=live_pid,
+                observed_worker_pids={live_pid},
+            )
+            original_run = runner._run_command
+            original_alive = runner._pid_alive
+
+            def alive(pid):
+                if pid == live_pid:
+                    return True
+                if pid == dead_status_pid:
+                    return False
+                return original_alive(pid)
+
+            runner._run_command = self._fake_cleanup_run(
+                runner, pid=dead_status_pid
+            )  # type: ignore[assignment]
+            runner._pid_alive = alive  # type: ignore[assignment]
+            try:
+                cleanup = runner._enforce_cleanup(
+                    state,
+                    command_timeout_s=5,
+                    transcript_path=session_dir / "t.txt",
+                )
+            finally:
+                runner._run_command = original_run  # type: ignore[assignment]
+                runner._pid_alive = original_alive  # type: ignore[assignment]
+            # Status PID dead is not enough when last-known startup PID is live.
+            self.assertIn(live_pid, cleanup.get("pids") or [])
+            self.assertIsNot(cleanup.get("worker_stopped"), True)
 
     def test_browser_view_rejects_stale_mtime(self) -> None:
         runner = _load_runner_module()
@@ -486,7 +669,6 @@ class LiveCliSessionRunnerTests(unittest.TestCase):
             src = Path(tmp) / "shot.png"
             dst = Path(tmp) / "browser-view.png"
             Image.new("RGB", (8, 8), (4, 5, 6)).save(src)
-            # Missing floor must fail closed.
             ok, msg, _ = runner._bind_browser_view_image(
                 src, dst, not_before_unix=None
             )
@@ -494,7 +676,6 @@ class LiveCliSessionRunnerTests(unittest.TestCase):
             self.assertIn("floor", msg)
             self.assertFalse(dst.exists())
 
-            # Fresh image after floor binds and keeps source mtime.
             floor = time.time() - 5
             ok, msg, meta = runner._bind_browser_view_image(
                 src, dst, not_before_unix=floor
@@ -505,7 +686,6 @@ class LiveCliSessionRunnerTests(unittest.TestCase):
                 dst.stat().st_mtime, meta["source_mtime_unix"], delta=1.0
             )
 
-            # Stale source cannot be laundered via write_bytes freshness.
             old = time.time() - 30 * 24 * 3600
             os.utime(src, (old, old))
             ok, msg, _ = runner._bind_browser_view_image(

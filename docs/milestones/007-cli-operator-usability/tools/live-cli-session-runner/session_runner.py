@@ -138,10 +138,23 @@ def _git_identity(repo: Path) -> dict[str, Any]:
     branch = run(["git", "branch", "--show-current"]) or None
     dirty = bool(status)
     diff_identity = None
+    untracked_names: list[str] = []
+    untracked_hashes: dict[str, str] = {}
     if dirty:
-        # Exact patch identity for dirty trees (not just shortstat).
+        # Tracked patch + untracked file contents (name-only status is not enough).
         patch = run(["git", "diff", "HEAD"])
-        material = (status + "\n" + patch).encode("utf-8")
+        untracked_raw = run(["git", "ls-files", "--others", "--exclude-standard"])
+        untracked_names = [line for line in untracked_raw.splitlines() if line]
+        parts = [status, patch]
+        for rel in untracked_names:
+            path = repo / rel
+            if path.is_file():
+                digest = _sha256_file(path)
+                untracked_hashes[rel] = digest
+                parts.append(f"untracked:{rel}:{digest}")
+            else:
+                parts.append(f"untracked:{rel}:missing")
+        material = "\n".join(parts).encode("utf-8")
         diff_identity = hashlib.sha256(material).hexdigest()
     return {
         # Never store absolute local paths in reviewable artifacts.
@@ -151,6 +164,8 @@ def _git_identity(repo: Path) -> dict[str, Any]:
         "worktree_state": "dirty" if dirty else "clean",
         "diff_identity": diff_identity,
         "status_porcelain": status.splitlines() if status else [],
+        "untracked_files": untracked_names,
+        "untracked_sha256": untracked_hashes,
     }
 
 
@@ -196,11 +211,26 @@ def _list_run_directories(repo_root: Path, vehicle_id: str) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
+STATUS_SCHEMA = "automa_vehicle_status_v1"
+PUBLICATION_SCHEMA = "automa_perception_publication_v1"
+
+# Within one capture receipt, every protected field must match before/after.
 _SESSION_FIELDS = (
     "game_id",
     "scenario_id",
     "simulation_epoch",
     "playback",
+    "control_source",
+    "control_input",
+)
+
+# Across commands, natural frameIndex advancement is allowed; mode/authority is not.
+# Mirrors observe-only continuous-run stable identity while treating control_input
+# as operator-visible protected state (proposal: distinguish sim time from mutation).
+_CROSS_COMMAND_STABLE_SCALAR_FIELDS = (
+    "game_id",
+    "scenario_id",
+    "simulation_epoch",
     "control_source",
     "control_input",
 )
@@ -212,7 +242,8 @@ def extract_vehicle_status(
 ) -> dict[str, Any] | None:
     """Return one automa_vehicle_status_v1 card from targeted or aggregate JSON.
 
-    Never substitutes a differently-id'd card when the requested id is absent.
+    Requires exact schema and vehicle identity. Never substitutes a differently
+    id'd card when the requested id is absent.
     """
 
     vehicles = status.get("vehicles")
@@ -220,7 +251,9 @@ def extract_vehicle_status(
         matches = [
             item
             for item in vehicles
-            if isinstance(item, dict) and str(item.get("vehicle_id")) == vehicle_id
+            if isinstance(item, dict)
+            and item.get("schema") == STATUS_SCHEMA
+            and str(item.get("vehicle_id")) == vehicle_id
         ]
         if len(matches) == 1:
             return matches[0]
@@ -228,12 +261,9 @@ def extract_vehicle_status(
 
     layers = status.get("layers")
     if isinstance(layers, dict) and layers:
-        # Targeted status: require schema/vehicle identity when present.
-        schema = status.get("schema")
-        status_vehicle = status.get("vehicle_id")
-        if schema is not None and schema != "automa_vehicle_status_v1":
+        if status.get("schema") != STATUS_SCHEMA:
             return None
-        if status_vehicle is not None and str(status_vehicle) != vehicle_id:
+        if str(status.get("vehicle_id")) != vehicle_id:
             return None
         return dict(status)
     return None
@@ -279,11 +309,43 @@ def _authority(status: Mapping[str, Any], vehicle_id: str | None = None) -> dict
     return authority if isinstance(authority, dict) else {}
 
 
+def _playback_mode(playback: Any) -> dict[str, Any] | None:
+    """Stable playback projection: mode/authority, not elapsed frameIndex."""
+
+    if not isinstance(playback, dict):
+        return None
+    return {
+        "phase": playback.get("phase"),
+        "pendingAction": playback.get("pendingAction"),
+    }
+
+
+def stable_session_projection(fingerprint: Mapping[str, Any]) -> dict[str, Any] | None:
+    """Cross-command stable projection of a within-receipt fingerprint."""
+
+    if not isinstance(fingerprint, Mapping):
+        return None
+    projection: dict[str, Any] = {}
+    for field_name in _CROSS_COMMAND_STABLE_SCALAR_FIELDS:
+        if field_name not in fingerprint:
+            return None
+        projection[field_name] = fingerprint[field_name]
+    mode = _playback_mode(fingerprint.get("playback"))
+    if mode is None:
+        return None
+    projection["playback_mode"] = mode
+    return projection
+
+
 def extract_session_fingerprint(
     status: Mapping[str, Any],
     vehicle_id: str,
 ) -> dict[str, Any] | None:
-    """Fingerprint from layers.passive_capture (mirrors live-smoke predicate)."""
+    """Fingerprint from layers.passive_capture (mirrors live-smoke predicate).
+
+    Within one receipt, all six session fields must match before/after exactly.
+    Cross-command comparison uses :func:`stable_session_projection`.
+    """
 
     card = extract_vehicle_status(status, vehicle_id)
     if card is None:
@@ -303,13 +365,11 @@ def extract_session_fingerprint(
         return None
     if preservation.get("preserved") is not True:
         return None
-    if preservation.get("changed_fields") not in ([], None):
-        # empty list required when present
-        if preservation.get("changed_fields"):
-            return None
-    if preservation.get("unknown_fields") not in ([], None):
-        if preservation.get("unknown_fields"):
-            return None
+    # Fail closed: keys must be present and exactly empty lists.
+    if preservation.get("changed_fields") != []:
+        return None
+    if preservation.get("unknown_fields") != []:
+        return None
     before = preservation.get("before")
     after = preservation.get("after")
     if not isinstance(before, dict) or not isinstance(after, dict):
@@ -318,21 +378,21 @@ def extract_session_fingerprint(
     for field_name in _SESSION_FIELDS:
         if field_name not in before or field_name not in after:
             return None
-        if before[field_name] is None and field_name not in {"control_input"}:
-            # control_input may be null; other protected fields must be present.
-            if field_name != "control_input":
-                return None
+        if field_name != "control_input" and before[field_name] is None:
+            return None
         if before[field_name] != after[field_name]:
             return None
         fingerprint[field_name] = before[field_name]
-    # Require non-null core identity fields.
     for field_name in ("game_id", "scenario_id", "simulation_epoch", "control_source"):
         if fingerprint.get(field_name) in (None, ""):
             return None
+    if not isinstance(fingerprint.get("playback"), dict):
+        return None
     fingerprint["preserved"] = True
-    fingerprint["changed_fields"] = list(preservation.get("changed_fields") or [])
-    fingerprint["unknown_fields"] = list(preservation.get("unknown_fields") or [])
+    fingerprint["changed_fields"] = []
+    fingerprint["unknown_fields"] = []
     fingerprint["mutation_attempted"] = False
+    fingerprint["stable_projection"] = stable_session_projection(fingerprint)
     return fingerprint
 
 
@@ -356,6 +416,16 @@ def validate_initial_layers(
         got = _layer_state(card, layer)
         if got != want:
             missing.append(f"{layer}={got!r} (want {want!r})")
+    # Baseline must not start on a pre-existing running worker.
+    worker = _layer_state(card, "automation_worker")
+    if worker == "running":
+        missing.append(
+            "automation_worker='running' (want stopped before acceptance baseline)"
+        )
+    elif worker not in {"stopped", None}:
+        # absent layer is unusual; require explicit stopped when present
+        if worker is not None:
+            missing.append(f"automation_worker={worker!r} (want stopped)")
     if missing:
         return False, "; ".join(missing)
     return True, "initial layers healthy"
@@ -416,7 +486,7 @@ def validate_authority(
     card = extract_vehicle_status(status, vehicle_id)
     if card is None:
         return False, f"no vehicle status card for {vehicle_id!r}"
-    if card.get("schema") not in {None, "automa_vehicle_status_v1"}:
+    if card.get("schema") != STATUS_SCHEMA:
         return False, f"unexpected status schema {card.get('schema')!r}"
     authority = _authority(status, vehicle_id)
     if not authority:
@@ -441,13 +511,21 @@ def validate_authority(
     return True, "observe_only / not_applied / recording=false"
 
 
-def validate_view_latest(payload: Mapping[str, Any] | None) -> tuple[bool, str]:
+def validate_view_latest(
+    payload: Mapping[str, Any] | None,
+    *,
+    vehicle_id: str,
+) -> tuple[bool, str]:
     """Validate real Automa perception-view /api/latest publication."""
 
     if not isinstance(payload, dict):
         return False, "view /api/latest missing or not an object"
     if payload.get("error"):
         return False, f"view fetch error: {payload.get('error')}"
+    if payload.get("schema") != PUBLICATION_SCHEMA:
+        return False, f"schema={payload.get('schema')!r} (want {PUBLICATION_SCHEMA!r})"
+    if str(payload.get("vehicle_id")) != vehicle_id:
+        return False, f"vehicle_id={payload.get('vehicle_id')!r} (want {vehicle_id!r})"
 
     frame = payload.get("frame")
     overlay = payload.get("overlay")
@@ -494,21 +572,36 @@ def validate_preservation(
     baseline: Mapping[str, Any] | None,
     current: Mapping[str, Any] | None,
 ) -> tuple[bool, str]:
+    """Cross-command stability via stable projection (not full playback equality).
+
+    Each argument must already be a successful within-receipt extraction
+    (exact before/after for all six fields). Comparing a missing/current-None
+    extraction to a prior fingerprint must fail closed.
+    """
+
     if not isinstance(baseline, dict) or not baseline:
         return False, "baseline fingerprint missing"
     if not isinstance(current, dict) or not current:
         return False, "current fingerprint missing"
     if baseline.get("preserved") is not True or current.get("preserved") is not True:
         return False, "preserved is not True on baseline/current fingerprints"
-    for key in _SESSION_FIELDS:
-        if key not in baseline or key not in current:
-            return False, f"fingerprint missing field {key!r}"
-        if baseline.get(key) != current.get(key):
-            return False, f"{key} changed: {baseline.get(key)!r} -> {current.get(key)!r}"
+    if baseline.get("changed_fields") != [] or current.get("changed_fields") != []:
+        return False, "changed_fields must be exactly [] on both fingerprints"
+    if baseline.get("unknown_fields") != [] or current.get("unknown_fields") != []:
+        return False, "unknown_fields must be exactly [] on both fingerprints"
+    base_proj = baseline.get("stable_projection") or stable_session_projection(baseline)
+    cur_proj = current.get("stable_projection") or stable_session_projection(current)
+    if not isinstance(base_proj, dict) or not isinstance(cur_proj, dict):
+        return False, "stable projection missing"
+    for key in list(_CROSS_COMMAND_STABLE_SCALAR_FIELDS) + ["playback_mode"]:
+        if key not in base_proj or key not in cur_proj:
+            return False, f"stable projection missing {key!r}"
+        if base_proj.get(key) != cur_proj.get(key):
+            return False, f"{key} changed: {base_proj.get(key)!r} -> {cur_proj.get(key)!r}"
     for key in ("game_id", "scenario_id", "simulation_epoch", "control_source"):
         if baseline.get(key) in (None, ""):
             return False, f"baseline {key} is empty"
-    return True, "protected session fields preserved"
+    return True, "protected session fields preserved (stable projection)"
 
 
 def validate_browser_view_image(
@@ -760,15 +853,33 @@ class SessionState:
     finding_counter: int = 0
     worker_may_exist: bool = False
     last_worker_pid: int | None = None
+    observed_worker_pids: set[int] = field(default_factory=set)
+    pre_existing_worker_pids: set[int] = field(default_factory=set)
+    session_owned_worker_pids: set[int] = field(default_factory=set)
+    automation_run_seen: bool = False
     recording_before: list[str] = field(default_factory=list)
     recording_after: list[str] = field(default_factory=list)
     baseline_fingerprint: dict[str, Any] | None = None
     latest_fingerprint: dict[str, Any] | None = None
+    capture_fingerprints: dict[str, Any] = field(default_factory=dict)
     browser_view_meta: dict[str, Any] | None = None
     view_healthy_at_unix: float | None = None
     interactive_human_confirmation: bool = False
     dry_run: bool = False
     non_interactive: bool = False
+    operator: str | None = None
+    precondition_cleanup: dict[str, Any] | None = None
+
+
+def _note_worker_pid(state: SessionState, pid: Any, *, source: str) -> None:
+    if not isinstance(pid, int) or pid <= 0:
+        return
+    state.observed_worker_pids.add(pid)
+    state.last_worker_pid = pid
+    if state.automation_run_seen:
+        state.session_owned_worker_pids.add(pid)
+    else:
+        state.pre_existing_worker_pids.add(pid)
 
 
 def _next_finding_id(state: SessionState) -> str:
@@ -865,7 +976,7 @@ def _run_machine_validator(
             payload = json.loads(view_path.read_text(encoding="utf-8"))
         except json.JSONDecodeError as exc:
             return False, f"view-publication.json is not JSON: {exc}"
-        return validate_view_latest(payload)
+        return validate_view_latest(payload, vehicle_id=vehicle_id)
     if name == "default_recording":
         return validate_recording_scan(before_runs or [], after_runs or [])
     if name == "preservation":
@@ -886,6 +997,8 @@ def _derive_verdict(state: SessionState) -> tuple[str, str | None]:
         baseline_path = state.session_dir / "baseline.json"
         if baseline_path.is_file():
             baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+            if not baseline.get("operator"):
+                return "incomplete", "Acceptance pass requires --operator identity."
             browser = baseline.get("browser") or {}
             if not browser.get("name") or not browser.get("version"):
                 return "incomplete", "Acceptance pass requires browser name and version."
@@ -896,6 +1009,18 @@ def _derive_verdict(state: SessionState) -> tuple[str, str | None]:
             auto = repos.get("auto_driving") or {}
             if auto.get("worktree_state") == "dirty" and not auto.get("diff_identity"):
                 return "incomplete", "Dirty auto-driving worktree lacks diff_identity."
+            if auto.get("worktree_state") == "dirty" and not (
+                state.session_dir / "auto-driving-worktree.diff"
+            ).is_file():
+                return "incomplete", "Dirty auto-driving worktree lacks captured diff artifact."
+            if not baseline.get("session_visible"):
+                return (
+                    "incomplete",
+                    "Acceptance pass requires recorded session-visible fingerprint values.",
+                )
+            pre = baseline.get("precondition_cleanup") or {}
+            if pre.get("error"):
+                return "findings", "Precondition cleanup failed before baseline."
         view_path = state.session_dir / "browser-view.png"
         # Prefer provenance recorded at the human-view gate; fall back to file
         # mtime only when meta is absent (still require a view-health floor).
@@ -986,7 +1111,10 @@ def _enforce_cleanup(
         "final_status_exit_code": None,
         "worker_stopped": None,
         "pid_alive": None,
+        "pids": [],
+        "pid_liveness": {},
         "error": None,
+        "preservation": None,
     }
     if not state.worker_may_exist or state.dry_run:
         cleanup["worker_stopped"] = True
@@ -1039,14 +1167,30 @@ def _enforce_cleanup(
             if cleanup.get("worker_stopped") is not False:
                 cleanup["worker_stopped"] = ok
             details = _worker_details(payload, vehicle)
-            pid = details.get("pid")
-            if not isinstance(pid, int):
-                pid = state.last_worker_pid
-            cleanup["pid"] = pid
-            cleanup["pid_alive"] = _pid_alive(pid)
-            if cleanup.get("pid_alive") is None and isinstance(state.last_worker_pid, int):
-                cleanup["pid"] = state.last_worker_pid
-                cleanup["pid_alive"] = _pid_alive(state.last_worker_pid)
+            final_pid = details.get("pid")
+            _note_worker_pid(state, final_pid, source="cleanup-status")
+            # Bind fingerprint for this exact capture (including None).
+            fingerprint = extract_session_fingerprint(payload, vehicle)
+            state.latest_fingerprint = fingerprint
+            state.capture_fingerprints["cleanup-status"] = fingerprint
+            if fingerprint is not None:
+                _write_json(
+                    state.session_dir / "session-fingerprint-cleanup.json",
+                    fingerprint,
+                )
+            else:
+                _write_json(
+                    state.session_dir / "session-fingerprint-cleanup.json",
+                    {"error": "extraction_failed", "capture": "cleanup-status"},
+                )
+            ok_pres, pres_summary = validate_preservation(
+                state.baseline_fingerprint, fingerprint
+            )
+            cleanup["preservation"] = {"ok": ok_pres, "summary": pres_summary}
+            if not ok_pres:
+                cleanup["error"] = cleanup.get("error") or f"cleanup preservation: {pres_summary}"
+                # Do not claim full cleanup success when terminal receipt drifts.
+                cleanup["worker_stopped"] = False
         except json.JSONDecodeError as exc:
             cleanup["error"] = f"cleanup status not JSON: {exc}"
             cleanup["worker_stopped"] = False
@@ -1054,18 +1198,34 @@ def _enforce_cleanup(
         cleanup["error"] = f"{type(exc).__name__}: {exc}"
         cleanup["worker_stopped"] = False
 
-    # Once startup may have created a worker, unknown process identity cannot pass.
+    # Every distinct PID observed in the session must be proven dead.
     if state.worker_may_exist and not state.dry_run:
         if cleanup.get("stop_exit_code") != 0 or cleanup.get("final_status_exit_code") != 0:
             cleanup["worker_stopped"] = False
-        if cleanup.get("pid") is None or cleanup.get("pid_alive") is None:
+        pids = sorted(state.observed_worker_pids)
+        cleanup["pids"] = pids
+        liveness = {str(pid): _pid_alive(pid) for pid in pids}
+        cleanup["pid_liveness"] = liveness
+        cleanup["pid"] = state.last_worker_pid
+        if not pids:
             cleanup["worker_stopped"] = False
+            cleanup["pid_alive"] = None
             cleanup["error"] = (
                 cleanup.get("error")
                 or "cleanup cannot prove process liveness without a known PID"
             )
-        if cleanup.get("pid_alive") is True:
-            cleanup["worker_stopped"] = False
+        else:
+            # True or unknown liveness fails; only explicit False passes.
+            alive_flags = list(liveness.values())
+            cleanup["pid_alive"] = any(flag is True for flag in alive_flags) or (
+                None if any(flag is None for flag in alive_flags) else False
+            )
+            if any(flag is not False for flag in alive_flags):
+                cleanup["worker_stopped"] = False
+                cleanup["error"] = (
+                    cleanup.get("error")
+                    or f"one or more observed worker PIDs still live/unknown: {liveness}"
+                )
 
     if cleanup.get("worker_stopped") is not True:
         _record_finding(
@@ -1088,6 +1248,125 @@ def _enforce_cleanup(
     return cleanup
 
 
+def _run_precondition_cleanup(
+    state: SessionState,
+    *,
+    command_timeout_s: float | None,
+    transcript_path: Path,
+    metrics_ui_origin: str,
+) -> dict[str, Any]:
+    """Stop any pre-existing worker before the acceptance baseline.
+
+    Does not count as the acceptance stop. Records receipts under
+    steps/_precondition_cleanup/ and pre-baseline-status.json.
+    """
+
+    vehicle = state.variables["vehicle_id"]
+    step_dir = state.session_dir / "steps" / "_precondition_cleanup"
+    record: dict[str, Any] = {
+        "attempted": False,
+        "needed": False,
+        "worker_state_before": None,
+        "stop_exit_code": None,
+        "status_exit_code": None,
+        "worker_state_after": None,
+        "pids_before": [],
+        "error": None,
+    }
+    if state.dry_run:
+        record["skipped"] = "dry_run"
+        return record
+
+    try:
+        status_out = _run_command(
+            [
+                "./cli/automa",
+                "vehicles",
+                "status",
+                "--id",
+                vehicle,
+                "--chase-url",
+                metrics_ui_origin,
+                "--json",
+            ],
+            cwd=state.repo_root,
+            session_dir=state.session_dir,
+            step_dir=step_dir,
+            index=0,
+            timeout_s=command_timeout_s,
+            transcript_path=transcript_path,
+        )
+        record["status_exit_code"] = status_out.exit_code
+        raw = (step_dir / "cmd-00.stdout.txt").read_text(encoding="utf-8")
+        payload = json.loads(raw)
+        _write_json(state.session_dir / "pre-baseline-status.json", payload)
+        worker_state = _layer_state(payload, "automation_worker", vehicle)
+        record["worker_state_before"] = worker_state
+        details = _worker_details(payload, vehicle)
+        pre_pid = details.get("pid")
+        _note_worker_pid(state, pre_pid, source="pre-baseline")
+        if isinstance(pre_pid, int) and pre_pid > 0:
+            record["pids_before"] = [pre_pid]
+        deployment = _layer_state(payload, "automation_deployment", vehicle)
+        view = _layer_state(payload, "perception_view", vehicle)
+        record["deployment_before"] = deployment
+        record["view_before"] = view
+        if worker_state != "running":
+            record["needed"] = False
+            record["worker_state_after"] = worker_state
+            return record
+        record["needed"] = True
+        record["attempted"] = True
+        state.worker_may_exist = True
+        stop = _run_command(
+            ["./cli/automa", "vehicles", "automation", "stop", "--id", vehicle],
+            cwd=state.repo_root,
+            session_dir=state.session_dir,
+            step_dir=step_dir,
+            index=1,
+            timeout_s=command_timeout_s,
+            transcript_path=transcript_path,
+        )
+        record["stop_exit_code"] = stop.exit_code
+        after_out = _run_command(
+            [
+                "./cli/automa",
+                "vehicles",
+                "status",
+                "--id",
+                vehicle,
+                "--chase-url",
+                metrics_ui_origin,
+                "--json",
+            ],
+            cwd=state.repo_root,
+            session_dir=state.session_dir,
+            step_dir=step_dir,
+            index=2,
+            timeout_s=command_timeout_s,
+            transcript_path=transcript_path,
+        )
+        record["status_after_exit_code"] = after_out.exit_code
+        after_raw = (step_dir / "cmd-02.stdout.txt").read_text(encoding="utf-8")
+        after_payload = json.loads(after_raw)
+        _write_json(state.session_dir / "pre-baseline-status-after-stop.json", after_payload)
+        record["worker_state_after"] = _layer_state(
+            after_payload, "automation_worker", vehicle
+        )
+        _note_worker_pid(
+            state,
+            _worker_details(after_payload, vehicle).get("pid"),
+            source="pre-baseline-after-stop",
+        )
+        if record["worker_state_after"] == "running":
+            record["error"] = "precondition stop left automation_worker running"
+        elif stop.exit_code != 0:
+            record["error"] = f"precondition stop exit={stop.exit_code}"
+    except Exception as exc:  # noqa: BLE001
+        record["error"] = f"{type(exc).__name__}: {exc}"
+    return record
+
+
 def run_session(
     *,
     catalog: dict[str, Any],
@@ -1103,6 +1382,7 @@ def run_session(
     command_timeout_s: float | None,
     dry_run: bool,
     browser_view_path: Path | None,
+    operator: str | None = None,
 ) -> dict[str, Any]:
     session_dir.mkdir(parents=True, exist_ok=True)
     if (session_dir / "result.json").exists() or (session_dir / "steps").exists() and any(
@@ -1142,22 +1422,45 @@ def run_session(
         session_id=session_id,
         dry_run=dry_run,
         non_interactive=non_interactive,
+        operator=operator,
     )
 
     auto_driving = _git_identity(repo_root)
     metrics_ui = _git_identity(metrics_ui_repo) if metrics_ui_repo else None
     state.recording_before = _list_run_directories(repo_root, variables["vehicle_id"])
 
+    # Write tracked dirty patch for reviewability when the tree is dirty.
+    if auto_driving.get("worktree_state") == "dirty":
+        try:
+            patch = subprocess.run(
+                ["git", "diff", "HEAD"],
+                cwd=repo_root,
+                check=False,
+                capture_output=True,
+                text=True,
+            ).stdout
+            _write_text(session_dir / "auto-driving-worktree.diff", patch or "")
+        except OSError:
+            pass
+
     baseline = {
         "recorded_at_utc": _iso(started),
         "operating_system": platform.platform(),
         "python": sys.version.split()[0],
+        "operator": operator,
         "browser": {"name": browser_name, "version": browser_version},
         "metrics_ui_origin": variables["metrics_ui_origin"],
         "repositories": {"auto_driving": auto_driving, "metrics_ui": metrics_ui},
         "vehicle_id": variables["vehicle_id"],
         "execution_mode": execution_mode,
         "recording_before": state.recording_before,
+        "session_visible": None,
+        "precondition_cleanup": None,
+        "worktree_diff_path": (
+            "auto-driving-worktree.diff"
+            if auto_driving.get("worktree_state") == "dirty"
+            else None
+        ),
     }
     _write_json(session_dir / "baseline.json", baseline)
     notes_lines = [
@@ -1166,12 +1469,42 @@ def run_session(
         f"- started_at_utc: `{_iso(started)}`",
         f"- execution_mode: `{execution_mode}`",
         f"- track: `{catalog.get('track')}`",
+        f"- operator: `{operator or '(unset)'}`",
         "",
     ]
 
     cleanup_info: dict[str, Any] = {"attempted": False, "needed": False}
 
     try:
+        # Acceptance: stop any pre-existing worker before the catalog baseline.
+        if catalog.get("track") == "acceptance" and not dry_run:
+            print()
+            print("=" * 72)
+            print("PRECONDITION: ensure no pre-existing automation worker")
+            print("=" * 72)
+            state.precondition_cleanup = _run_precondition_cleanup(
+                state,
+                command_timeout_s=command_timeout_s,
+                transcript_path=transcript_path,
+                metrics_ui_origin=variables["metrics_ui_origin"],
+            )
+            baseline["precondition_cleanup"] = state.precondition_cleanup
+            _write_json(session_dir / "baseline.json", baseline)
+            _write_json(
+                session_dir / "precondition-cleanup.json",
+                state.precondition_cleanup,
+            )
+            if state.precondition_cleanup.get("error"):
+                _record_finding(
+                    state,
+                    step_id="_precondition_cleanup",
+                    classification="acceptance_blocker",
+                    severity="P1",
+                    summary="Precondition cleanup failed before acceptance baseline",
+                    human_notes=str(state.precondition_cleanup.get("error")),
+                    evidence=["steps/_precondition_cleanup/", "precondition-cleanup.json"],
+                )
+
         for step in catalog.get("steps") or []:
             if not isinstance(step, dict):
                 continue
@@ -1258,11 +1591,10 @@ def run_session(
                     excerpt = (step_dir / f"cmd-{index:02d}.stdout.txt").read_text(encoding="utf-8")[:1200]
                     print(excerpt)
                     print(f"exit={outcome.exit_code} elapsed_ms={outcome.elapsed_ms}")
-                    if "automation" in rendered and "run" in rendered and outcome.exit_code == 0:
+                    if "automation" in rendered and "run" in rendered:
+                        # partial or full startup still needs cleanup attempt
                         state.worker_may_exist = True
-                    if "automation" in rendered and "run" in rendered and outcome.exit_code != 0:
-                        # partial startup still needs cleanup attempt
-                        state.worker_may_exist = True
+                        state.automation_run_seen = True
                     if expect_exit is not None and outcome.exit_code != int(expect_exit) and not allow_nonzero:
                         step_status = "fail"
                         machine_ok = False
@@ -1312,16 +1644,21 @@ def run_session(
                         # Extract worker pid if present
                         details = _worker_details(parsed, variables["vehicle_id"])
                         pid = details.get("pid")
-                        if isinstance(pid, int):
-                            state.last_worker_pid = pid
-                            if (
-                                _layer_state(parsed, "automation_worker", variables["vehicle_id"])
-                                == "running"
-                            ):
-                                state.worker_may_exist = True
+                        _note_worker_pid(state, pid, source=step_id)
+                        if (
+                            isinstance(pid, int)
+                            and _layer_state(
+                                parsed, "automation_worker", variables["vehicle_id"]
+                            )
+                            == "running"
+                        ):
+                            state.worker_may_exist = True
+                        # Bind fingerprint to this exact capture, including None.
                         fingerprint = extract_session_fingerprint(
                             parsed, variables["vehicle_id"]
                         )
+                        state.latest_fingerprint = fingerprint
+                        state.capture_fingerprints[json_name] = fingerprint
                         if fingerprint is not None:
                             if state.baseline_fingerprint is None and step_id.startswith(
                                 "status-initial"
@@ -1331,10 +1668,39 @@ def run_session(
                                     session_dir / "session-fingerprint-baseline.json",
                                     fingerprint,
                                 )
-                            state.latest_fingerprint = fingerprint
+                                # Record proposal-required visible session values.
+                                baseline_path = session_dir / "baseline.json"
+                                if baseline_path.is_file():
+                                    baseline_doc = json.loads(
+                                        baseline_path.read_text(encoding="utf-8")
+                                    )
+                                    baseline_doc["session_visible"] = {
+                                        "game_id": fingerprint.get("game_id"),
+                                        "scenario_id": fingerprint.get("scenario_id"),
+                                        "simulation_epoch": fingerprint.get(
+                                            "simulation_epoch"
+                                        ),
+                                        "playback": fingerprint.get("playback"),
+                                        "control_source": fingerprint.get(
+                                            "control_source"
+                                        ),
+                                        "control_input": fingerprint.get(
+                                            "control_input"
+                                        ),
+                                    }
+                                    _write_json(baseline_path, baseline_doc)
                             _write_json(
                                 session_dir / "session-fingerprint-latest.json",
                                 fingerprint,
+                            )
+                        else:
+                            _write_json(
+                                session_dir / "session-fingerprint-latest.json",
+                                {
+                                    "error": "extraction_failed",
+                                    "capture": json_name,
+                                    "step_id": step_id,
+                                },
                             )
                     except json.JSONDecodeError as exc:
                         step_status = "fail"
@@ -1387,6 +1753,19 @@ def run_session(
                         step_status = "fail"
                     elif name == "view_correlation":
                         state.view_healthy_at_unix = time.time()
+                    elif name == "running_layers" and ok:
+                        # Startup must not reuse a pre-existing worker PID.
+                        running_pid = state.last_worker_pid
+                        if (
+                            isinstance(running_pid, int)
+                            and running_pid in state.pre_existing_worker_pids
+                        ):
+                            machine_ok = False
+                            step_status = "fail"
+                            validator_notes.append(
+                                f"running_layers: worker pid {running_pid} is "
+                                "pre-existing (not created by this session's run)"
+                            )
 
             if validator_notes:
                 machine_summary = "; ".join(validator_notes) or machine_summary
@@ -1737,10 +2116,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--browser-name", default=None)
     parser.add_argument("--browser-version", default=None)
     parser.add_argument(
+        "--operator",
+        default=None,
+        help="Named operator for the session (required for acceptance pass).",
+    )
+    parser.add_argument(
         "--browser-view",
         type=Path,
         default=None,
-        help="Path to a cropped browser-view.png to copy into the session (required for acceptance pass).",
+        help=(
+            "Path to a cropped browser-view.png. Bound only after view_correlation "
+            "establishes the health floor; source mtime must postdate that floor."
+        ),
     )
     parser.add_argument("--non-interactive", action="store_true")
     parser.add_argument(
@@ -1806,6 +2193,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         command_timeout_s=args.timeout_s,
         dry_run=bool(args.dry_run),
         browser_view_path=args.browser_view.expanduser().resolve() if args.browser_view else None,
+        operator=args.operator,
     )
     if result.get("result") in {"pass", "complete"}:
         return 0

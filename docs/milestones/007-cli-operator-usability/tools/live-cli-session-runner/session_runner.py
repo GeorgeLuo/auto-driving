@@ -91,7 +91,7 @@ def _redact_path(path: str | Path, repo_root: Path) -> str:
     return text
 
 
-# Canonical acceptance catalog: only this byte-identical content may pass.
+# Canonical acceptance catalog: only the pinned bundled content may pass.
 CANONICAL_ACCEPTANCE_ID = "m007-acceptance"
 CANONICAL_ACCEPTANCE_PATH = CATALOGS_DIR / "m007-acceptance.yaml"
 CANONICAL_ACCEPTANCE_GATES = (
@@ -114,6 +114,10 @@ CANONICAL_ACCEPTANCE_STEP_VALIDATORS = {
 }
 
 
+def _stable_json(value: Any) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
+
+
 def _catalog_bytes_digest(path: Path) -> str | None:
     try:
         return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -121,9 +125,83 @@ def _catalog_bytes_digest(path: Path) -> str | None:
         return None
 
 
-def _is_canonical_acceptance_catalog(path: Path, catalog: Mapping[str, Any]) -> tuple[bool, str]:
-    """Formal acceptance pass is bound to the bundled catalog identity."""
+def _pinned_acceptance_bytes() -> bytes | None:
+    try:
+        return CANONICAL_ACCEPTANCE_PATH.read_bytes()
+    except OSError:
+        return None
 
+
+# Independent pin of the reviewed catalog file at import time.
+_PINNED_ACCEPTANCE_BYTES = _pinned_acceptance_bytes()
+PINNED_ACCEPTANCE_CATALOG_DIGEST = (
+    hashlib.sha256(_PINNED_ACCEPTANCE_BYTES).hexdigest()
+    if _PINNED_ACCEPTANCE_BYTES is not None
+    else ""
+)
+
+
+def _valid_linked_pr(value: str | None) -> bool:
+    """Accept only a real GitHub PR URL or numeric PR reference — not free text."""
+
+    if not isinstance(value, str):
+        return False
+    text = value.strip()
+    if not text:
+        return False
+    if re.fullmatch(r"#?\d{1,7}", text):
+        return True
+    if re.fullmatch(
+        r"https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/pull/\d{1,7}/?",
+        text,
+    ):
+        return True
+    return False
+
+
+def _load_pinned_acceptance_catalog() -> dict[str, Any] | None:
+    """Return the catalog mapping re-parsed from pinned bundled bytes."""
+
+    raw = _PINNED_ACCEPTANCE_BYTES
+    if raw is None:
+        return None
+    try:
+        import yaml  # type: ignore
+
+        data = yaml.safe_load(raw.decode("utf-8"))
+    except Exception:  # noqa: BLE001
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _is_canonical_acceptance_catalog(
+    path: Path | None, catalog: Mapping[str, Any]
+) -> tuple[bool, str]:
+    """Formal acceptance requires the executed mapping match the pinned catalog.
+
+    The file path digest is compared to the import-time pin (not path-vs-itself),
+    and the *parsed mapping that will execute* must deep-equal a re-parse of those
+    pinned bytes. In-memory mutations of the catalog therefore fail closed.
+    """
+
+    if not PINNED_ACCEPTANCE_CATALOG_DIGEST or _PINNED_ACCEPTANCE_BYTES is None:
+        return False, "pinned acceptance catalog is unavailable"
+    pinned = _load_pinned_acceptance_catalog()
+    if pinned is None:
+        return False, "pinned acceptance catalog could not be parsed"
+    if path is not None:
+        path_digest = _catalog_bytes_digest(path)
+        if path_digest != PINNED_ACCEPTANCE_CATALOG_DIGEST:
+            return (
+                False,
+                "catalog file digest does not match the pinned bundled m007-acceptance.yaml",
+            )
+    # Bind the mapping that run_session will execute, not only the path on disk.
+    if _stable_json(catalog) != _stable_json(pinned):
+        return (
+            False,
+            "parsed catalog mapping does not match the pinned acceptance catalog content",
+        )
     if catalog.get("id") != CANONICAL_ACCEPTANCE_ID:
         return False, f"catalog id {catalog.get('id')!r} is not {CANONICAL_ACCEPTANCE_ID!r}"
     if catalog.get("track") != "acceptance":
@@ -137,10 +215,6 @@ def _is_canonical_acceptance_catalog(path: Path, catalog: Mapping[str, Any]) -> 
     ]
     if tuple(gates) != CANONICAL_ACCEPTANCE_GATES:
         return False, f"acceptance gates mismatch: {gates}"
-    for gate in catalog.get("gates") or []:
-        if isinstance(gate, dict) and gate.get("id") in CANONICAL_ACCEPTANCE_GATES:
-            if gate.get("required") is not True:
-                return False, f"gate {gate.get('id')!r} must be required"
     steps_by_id = {
         str(s.get("id")): s
         for s in (catalog.get("steps") or [])
@@ -153,15 +227,19 @@ def _is_canonical_acceptance_catalog(path: Path, catalog: Mapping[str, Any]) -> 
         declared = tuple(str(v) for v in (step.get("machine_validators") or []))
         if declared != validators:
             return False, f"step {step_id!r} validators {declared} != {validators}"
-    # Byte-identical to the reviewed bundled catalog (blocks modified copies).
-    bundled = _catalog_bytes_digest(CANONICAL_ACCEPTANCE_PATH)
-    current = _catalog_bytes_digest(path)
-    if not bundled or not current or bundled != current:
-        return (
-            False,
-            "catalog bytes are not identical to the bundled m007-acceptance.yaml",
-        )
-    # Primary human status-initial command must be the frozen aggregate surface.
+    run_step = steps_by_id.get("automation-run") or {}
+    run_cmds = run_step.get("commands") or []
+    if not run_cmds or not isinstance(run_cmds[0], list):
+        return False, "automation-run missing primary command"
+    run_argv = [str(p) for p in run_cmds[0]]
+    if "--observe-only" not in run_argv:
+        return False, "automation-run must include --observe-only"
+    if "run" not in run_argv:
+        return False, "automation-run must invoke automation run"
+    stop_step = steps_by_id.get("automation-stop") or {}
+    stop_cmds = stop_step.get("commands") or []
+    if not stop_cmds or "stop" not in [str(p) for p in stop_cmds[0]]:
+        return False, "automation-stop must invoke automation stop"
     initial = steps_by_id.get("status-initial") or {}
     commands = initial.get("commands") or []
     if not commands or not isinstance(commands[0], list):
@@ -218,7 +296,24 @@ def _substitute_argv(argv: Sequence[str], variables: Mapping[str, str]) -> list[
     return [_substitute(str(part), variables) for part in argv]
 
 
-def _git_identity(repo: Path) -> dict[str, Any]:
+def _path_under(path: Path, root: Path) -> str | None:
+    try:
+        return str(path.resolve().relative_to(root.resolve()))
+    except (OSError, ValueError):
+        return None
+
+
+def _git_identity(
+    repo: Path,
+    *,
+    exclude_under: Path | None = None,
+) -> dict[str, Any]:
+    """Record pre-session repository identity.
+
+    ``exclude_under`` drops paths beneath a session evidence directory so the
+    runner does not report its own artifacts as dirty source changes.
+    """
+
     def run(args: list[str]) -> str:
         try:
             completed = subprocess.run(
@@ -228,7 +323,42 @@ def _git_identity(repo: Path) -> dict[str, Any]:
             return ""
         return completed.stdout.strip() if completed.returncode == 0 else ""
 
-    status = run(["git", "status", "--porcelain"])
+    exclude_exact: str | None = None
+    if exclude_under is not None:
+        rel = _path_under(exclude_under, repo)
+        if rel is not None:
+            exclude_exact = rel.rstrip("/")
+
+    def _status_path(entry: str) -> str:
+        # porcelain: "XY path" or "XY orig -> path"; ls-files: bare relative path.
+        path_part = entry
+        if len(entry) >= 3 and entry[2] in {" ", "\t"}:
+            path_part = entry[3:]
+        if " -> " in path_part:
+            path_part = path_part.split(" -> ", 1)[-1]
+        path_part = path_part.strip()
+        if path_part.startswith('"') and path_part.endswith('"'):
+            path_part = path_part[1:-1]
+        return path_part
+
+    def _excluded(entry: str) -> bool:
+        if not exclude_exact:
+            return False
+        path_part = _status_path(entry).rstrip("/")
+        if path_part == exclude_exact or path_part.startswith(exclude_exact + "/"):
+            return True
+        # git status collapses untracked trees ("?? evidence/") when the only
+        # content is under the session directory; treat pure ancestors as excluded.
+        if exclude_exact.startswith(path_part + "/"):
+            return True
+        return False
+
+    status_lines = [
+        line
+        for line in (run(["git", "status", "--porcelain"]) or "").splitlines()
+        if line and not _excluded(line)
+    ]
+    status = "\n".join(status_lines)
     commit = run(["git", "rev-parse", "HEAD"]) or None
     branch = run(["git", "branch", "--show-current"]) or None
     dirty = bool(status)
@@ -236,13 +366,22 @@ def _git_identity(repo: Path) -> dict[str, Any]:
     untracked_names: list[str] = []
     untracked_hashes: dict[str, str] = {}
     if dirty:
-        # Tracked patch + untracked file contents (name-only status is not enough).
+        # Tracked patch only for identity material; untracked listed but not copied.
         patch = run(["git", "diff", "HEAD"])
+        cached = run(["git", "diff", "--cached"])
         untracked_raw = run(["git", "ls-files", "--others", "--exclude-standard"])
-        untracked_names = [line for line in untracked_raw.splitlines() if line]
-        parts = [status, patch]
+        untracked_names = [
+            line
+            for line in untracked_raw.splitlines()
+            if line and not _excluded(line)
+        ]
+        parts = [status, patch, cached]
         for rel in untracked_names:
             path = repo / rel
+            # Never follow symlinks for identity hashing.
+            if path.is_symlink():
+                parts.append(f"untracked-symlink:{rel}")
+                continue
             if path.is_file():
                 digest = _sha256_file(path)
                 untracked_hashes[rel] = digest
@@ -258,9 +397,10 @@ def _git_identity(repo: Path) -> dict[str, Any]:
         "branch": branch,
         "worktree_state": "dirty" if dirty else "clean",
         "diff_identity": diff_identity,
-        "status_porcelain": status.splitlines() if status else [],
+        "status_porcelain": status_lines,
         "untracked_files": untracked_names,
         "untracked_sha256": untracked_hashes,
+        "excluded_session_prefix": exclude_exact,
     }
 
 
@@ -999,6 +1139,9 @@ class SessionState:
     auto_driving_linked_pr: str | None = None
     metrics_ui_linked_pr: str | None = None
     catalog_source_path: str | None = None
+    safety_blocked: bool = False
+    safety_block_reason: str | None = None
+    executed_commands: list[list[str]] = field(default_factory=list)
 
 
 def _note_worker_pid(state: SessionState, pid: Any, *, source: str) -> None:
@@ -1131,54 +1274,45 @@ def _repo_reviewable(
     label: str,
     linked_pr: str | None,
 ) -> tuple[bool, str]:
-    """Dirty checkouts need a reviewable patch and/or linked PR."""
+    """Dirty checkouts need a reviewable tracked patch and/or a real linked PR.
+
+    Untracked content is never auto-copied into evidence (symlink/secret risk).
+    Presence of untracked files therefore requires a valid linked PR, not a
+    free-text token.
+    """
 
     if not isinstance(identity, Mapping):
         return False, f"{label} identity missing"
     if identity.get("worktree_state") != "dirty":
         return True, f"{label} clean"
-    if linked_pr or identity.get("linked_pr"):
-        return True, f"{label} dirty with linked PR"
+    pr_value = linked_pr or identity.get("linked_pr")
+    if pr_value is not None and not _valid_linked_pr(
+        str(pr_value) if pr_value is not None else None
+    ):
+        return (
+            False,
+            f"Dirty {label} linked_pr={pr_value!r} is not a valid GitHub PR "
+            "URL or numeric reference",
+        )
+    if _valid_linked_pr(str(pr_value) if pr_value is not None else None):
+        return True, f"{label} dirty with valid linked PR"
     if not identity.get("diff_identity"):
         return False, f"Dirty {label} worktree lacks diff_identity"
+    untracked = list(identity.get("untracked_files") or [])
+    if untracked:
+        return (
+            False,
+            f"Dirty {label} has untracked files; use a clean checkout or a "
+            f"valid --{label}-linked-pr (untracked content is not auto-copied): "
+            f"{untracked[:5]}",
+        )
     diff_path = session_dir / f"{label}-worktree.diff"
     if not diff_path.is_file():
         return False, f"Dirty {label} worktree lacks captured diff artifact"
     patch = diff_path.read_text(encoding="utf-8", errors="replace")
-    untracked = list(identity.get("untracked_files") or [])
-    if untracked:
-        review_meta_path = session_dir / f"{label}-worktree-review.json"
-        snap_dir = session_dir / f"{label}-untracked"
-        if not snap_dir.is_dir() or not review_meta_path.is_file():
-            return (
-                False,
-                f"Dirty {label} has untracked files without a reviewable snapshot "
-                f"or linked PR: {untracked[:5]}",
-            )
-        try:
-            review_meta = json.loads(review_meta_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            return False, f"Dirty {label} worktree review metadata is not JSON"
-        skipped = list(review_meta.get("untracked_skipped") or [])
-        if skipped:
-            return (
-                False,
-                f"Dirty {label} has untracked files that could not be snapshotted "
-                f"(use --{label}-linked-pr or clean tree): {skipped[:3]}",
-            )
-        captured = set(review_meta.get("untracked_captured") or [])
-        missing = [name for name in untracked if name not in captured]
-        if missing:
-            return (
-                False,
-                f"Dirty {label} untracked file not snapshotted: {missing[:5]}",
-            )
-    if not patch.strip() and not untracked:
-        return False, f"Dirty {label} has empty reviewable diff"
-    if not patch.strip() and untracked:
-        # Snapshot-only dirty tree is acceptable when all untracked files were captured.
-        return True, f"{label} dirty via untracked snapshot"
-    return True, f"{label} dirty with reviewable patch"
+    if not patch.strip():
+        return False, f"Dirty {label} has empty reviewable tracked diff"
+    return True, f"{label} dirty with reviewable tracked patch"
 
 
 def _derive_verdict(state: SessionState) -> tuple[str, str | None]:
@@ -1654,16 +1788,21 @@ def _capture_worktree_reviewables(
     session_dir: Path,
     *,
     label: str,
-    max_untracked_bytes: int = 256 * 1024,
+    exclude_under: Path | None = None,
 ) -> dict[str, Any]:
-    """Write reviewable dirty-tree materials for a repository checkout."""
+    """Write reviewable *tracked* dirty-tree patch for a repository checkout.
+
+    Untracked files are listed by name only and never copied into the session
+    (avoids symlink follow and secret disclosure). Untracked dirty trees must
+    use a valid linked PR or a clean checkout.
+    """
 
     info: dict[str, Any] = {
         "label": label,
         "diff_path": None,
-        "untracked_snapshot_dir": None,
-        "untracked_captured": [],
-        "untracked_skipped": [],
+        "untracked_listed": [],
+        "untracked_copied": False,
+        "policy": "tracked_diff_only_no_untracked_copy",
     }
     try:
         patch = subprocess.run(
@@ -1685,6 +1824,12 @@ def _capture_worktree_reviewables(
             combined += patch
         if cached:
             combined += ("\n" if combined else "") + "# staged\n" + cached
+        # Drop patch hunks that only touch the session evidence directory.
+        if exclude_under is not None:
+            rel = _path_under(exclude_under, repo)
+            if rel:
+                # Keep full patch; identity exclusion already handled separately.
+                pass
         diff_name = f"{label}-worktree.diff"
         _write_text(session_dir / diff_name, combined)
         info["diff_path"] = diff_name
@@ -1695,43 +1840,41 @@ def _capture_worktree_reviewables(
             capture_output=True,
             text=True,
         ).stdout
-        names = [line for line in untracked.splitlines() if line]
-        if names:
-            snap = session_dir / f"{label}-untracked"
-            snap.mkdir(parents=True, exist_ok=True)
-            info["untracked_snapshot_dir"] = f"{label}-untracked"
-            for rel in names:
-                src = repo / rel
-                # Flatten to a safe basename path under the snapshot dir.
-                dest = snap / rel.replace("/", "__")
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                if not src.is_file():
-                    info["untracked_skipped"].append({"path": rel, "reason": "not_a_file"})
+        names = []
+        for line in untracked.splitlines():
+            if not line:
+                continue
+            if exclude_under is not None:
+                rel = _path_under(exclude_under, repo)
+                if rel and (line == rel or line.startswith(rel.rstrip("/") + "/")):
                     continue
-                size = src.stat().st_size
-                if size > max_untracked_bytes:
-                    info["untracked_skipped"].append(
-                        {"path": rel, "reason": f"too_large:{size}"}
-                    )
-                    continue
-                try:
-                    data = src.read_bytes()
-                    # Skip likely-binary payloads from reviewable text snapshots.
-                    if b"\x00" in data[:1024]:
-                        info["untracked_skipped"].append(
-                            {"path": rel, "reason": "binary"}
-                        )
-                        continue
-                    dest.write_bytes(data)
-                    info["untracked_captured"].append(rel)
-                except OSError as exc:
-                    info["untracked_skipped"].append(
-                        {"path": rel, "reason": str(exc)}
-                    )
+            names.append(line)
+        info["untracked_listed"] = names
     except OSError as exc:
         info["error"] = str(exc)
     _write_json(session_dir / f"{label}-worktree-review.json", info)
     return info
+
+
+def _live_mutation_prerequisites_met(state: SessionState) -> tuple[bool, str]:
+    """Acceptance live mutations require precondition + initial + staging pass."""
+
+    if state.catalog.get("track") != "acceptance":
+        return True, "non-acceptance track"
+    if state.dry_run:
+        return True, "dry-run"
+    pre = state.precondition_cleanup
+    if not isinstance(pre, dict) or pre.get("ok") is not True:
+        return False, "precondition_cleanup not proven ok"
+    initial = state.gate_results.get("initial_layers") or {}
+    if initial.get("status") != "pass":
+        return False, "initial_layers gate has not passed"
+    staging = state.gate_results.get("staging") or {}
+    if staging.get("status") != "pass":
+        return False, "staging gate has not passed"
+    if state.safety_blocked:
+        return False, state.safety_block_reason or "safety blocked"
+    return True, "prerequisites met"
 
 
 def run_session(
@@ -1754,18 +1897,6 @@ def run_session(
     auto_driving_linked_pr: str | None = None,
     metrics_ui_linked_pr: str | None = None,
 ) -> dict[str, Any]:
-    session_dir.mkdir(parents=True, exist_ok=True)
-    if (session_dir / "result.json").exists() or (session_dir / "steps").exists() and any(
-        (session_dir / "steps").iterdir()
-    ):
-        raise SystemExit(
-            f"Session directory already has results (refusing to mix evidence): {session_dir}"
-        )
-    (session_dir / "steps").mkdir(exist_ok=True)
-    (session_dir / "transcripts").mkdir(exist_ok=True)
-    transcript_path = session_dir / "transcripts" / "cli-transcript.txt"
-    _write_text(transcript_path, "")
-
     started = _utc_now()
     session_id = started.strftime("%Y%m%d%H%M%S")
     if dry_run:
@@ -1783,15 +1914,65 @@ def run_session(
         "src_dir": "",
     }
 
+    # Capture repository identities BEFORE any session artifacts exist so a
+    # session_dir under the checkout cannot manufacture dirty state.
+    auto_driving = _git_identity(repo_root, exclude_under=session_dir)
+    if auto_driving_linked_pr:
+        auto_driving = dict(auto_driving)
+        auto_driving["linked_pr"] = auto_driving_linked_pr
+    metrics_ui = (
+        _git_identity(metrics_ui_repo, exclude_under=session_dir)
+        if metrics_ui_repo
+        else None
+    )
+    if metrics_ui is not None and metrics_ui_linked_pr:
+        metrics_ui = dict(metrics_ui)
+        metrics_ui["linked_pr"] = metrics_ui_linked_pr
+    recording_before = _list_run_directories(repo_root, variables["vehicle_id"])
+
+    # Bind executed catalog: for acceptance, re-parse pinned bytes so in-memory
+    # mutations of a loaded mapping cannot change what runs.
     canonical = False
     canonical_reason = "catalog path not provided"
-    if catalog_path is not None:
+    executed_catalog = catalog
+    if catalog.get("track") == "acceptance":
+        pinned = _load_pinned_acceptance_catalog()
+        if pinned is not None and catalog_path is not None:
+            # Prefer path+mapping equality against pin; if equal, execute pin.
+            ok_bind, bind_reason = _is_canonical_acceptance_catalog(
+                catalog_path, catalog
+            )
+            if ok_bind:
+                executed_catalog = pinned
+                catalog = pinned
+                canonical = True
+                canonical_reason = bind_reason
+            else:
+                canonical = False
+                canonical_reason = bind_reason
+        else:
+            canonical, canonical_reason = _is_canonical_acceptance_catalog(
+                catalog_path, catalog
+            )
+    elif catalog_path is not None:
         canonical, canonical_reason = _is_canonical_acceptance_catalog(
             catalog_path, catalog
         )
 
+    session_dir.mkdir(parents=True, exist_ok=True)
+    if (session_dir / "result.json").exists() or (session_dir / "steps").exists() and any(
+        (session_dir / "steps").iterdir()
+    ):
+        raise SystemExit(
+            f"Session directory already has results (refusing to mix evidence): {session_dir}"
+        )
+    (session_dir / "steps").mkdir(exist_ok=True)
+    (session_dir / "transcripts").mkdir(exist_ok=True)
+    transcript_path = session_dir / "transcripts" / "cli-transcript.txt"
+    _write_text(transcript_path, "")
+
     state = SessionState(
-        catalog=catalog,
+        catalog=executed_catalog,
         session_dir=session_dir,
         repo_root=repo_root,
         variables=variables,
@@ -1806,27 +1987,24 @@ def run_session(
         catalog_source_path=_redact_path(catalog_path, repo_root)
         if catalog_path is not None
         else None,
+        recording_before=recording_before,
     )
-
-    auto_driving = _git_identity(repo_root)
-    if auto_driving_linked_pr:
-        auto_driving = dict(auto_driving)
-        auto_driving["linked_pr"] = auto_driving_linked_pr
-    metrics_ui = _git_identity(metrics_ui_repo) if metrics_ui_repo else None
-    if metrics_ui is not None and metrics_ui_linked_pr:
-        metrics_ui = dict(metrics_ui)
-        metrics_ui["linked_pr"] = metrics_ui_linked_pr
-    state.recording_before = _list_run_directories(repo_root, variables["vehicle_id"])
 
     worktree_meta: dict[str, Any] = {}
     if auto_driving.get("worktree_state") == "dirty":
         worktree_meta["auto-driving"] = _capture_worktree_reviewables(
-            repo_root, session_dir, label="auto-driving"
+            repo_root,
+            session_dir,
+            label="auto-driving",
+            exclude_under=session_dir,
         )
     if metrics_ui_repo is not None and isinstance(metrics_ui, dict):
         if metrics_ui.get("worktree_state") == "dirty":
             worktree_meta["metrics-ui"] = _capture_worktree_reviewables(
-                metrics_ui_repo, session_dir, label="metrics-ui"
+                metrics_ui_repo,
+                session_dir,
+                label="metrics-ui",
+                exclude_under=session_dir,
             )
 
     baseline = {
@@ -1885,7 +2063,11 @@ def run_session(
                 session_dir / "precondition-cleanup.json",
                 state.precondition_cleanup,
             )
-            if state.precondition_cleanup.get("error"):
+            if state.precondition_cleanup.get("ok") is not True:
+                state.safety_blocked = True
+                state.safety_block_reason = (
+                    f"precondition failed: {state.precondition_cleanup.get('error')}"
+                )
                 _record_finding(
                     state,
                     step_id="_precondition_cleanup",
@@ -1927,6 +2109,81 @@ def run_session(
             machine_ok = True
             validator_notes: list[str] = []
 
+            # Hard safety: never execute live_mutation when prerequisites failed.
+            if (
+                not dry_run
+                and step.get("safety") == "live_mutation"
+                and step.get("kind") != "baseline"
+            ):
+                prereq_ok, prereq_reason = _live_mutation_prerequisites_met(state)
+                if not prereq_ok:
+                    step_status = "blocked"
+                    machine_ok = False
+                    machine_summary = f"blocked before live mutation: {prereq_reason}"
+                    validator_notes.append(machine_summary)
+                    print(f"  BLOCKED: {prereq_reason}")
+                    state.safety_blocked = True
+                    state.safety_block_reason = prereq_reason
+                    judgment = _prompt_judgment(
+                        step=step,
+                        prompt=prompt,
+                        non_interactive=True,
+                        auto_visual="skip",
+                    )
+                    gate_ids = [str(g) for g in (step.get("gate_ids") or [])]
+                    if gate_ids:
+                        _apply_gate(
+                            state,
+                            gate_ids,
+                            status="fail",
+                            summary=machine_summary,
+                            evidence=[f"steps/{step_id}/envelope.json"],
+                        )
+                    if step.get("required_for_verdict"):
+                        _record_finding(
+                            state,
+                            step_id=step_id,
+                            classification="acceptance_blocker"
+                            if catalog.get("track") == "acceptance"
+                            else "environment_blocker",
+                            severity="P1",
+                            summary=machine_summary,
+                            human_notes=prereq_reason,
+                            evidence=[f"steps/{step_id}/envelope.json"],
+                        )
+                    envelope = {
+                        "id": step_id,
+                        "kind": step.get("kind"),
+                        "question": step.get("question"),
+                        "safety": step.get("safety"),
+                        "primary_cue": step.get("primary_cue"),
+                        "status": step_status,
+                        "machine_summary": machine_summary,
+                        "machine_ok": False,
+                        "commands": [],
+                        "human": {
+                            "visual": judgment.visual,
+                            "notes": judgment.notes,
+                            "finding_requested": False,
+                            "interactive": False,
+                        },
+                        "gate_ids": gate_ids,
+                        "required_for_verdict": bool(step.get("required_for_verdict")),
+                        "blocked_reason": prereq_reason,
+                    }
+                    _write_json(step_dir / "envelope.json", envelope)
+                    state.steps.append(envelope)
+                    notes_lines.extend(
+                        [
+                            f"## {step_id}",
+                            "",
+                            f"- status: `{step_status}`",
+                            f"- blocked: {prereq_reason}",
+                            "",
+                        ]
+                    )
+                    continue
+
             if dry_run:
                 machine_summary = "dry-run: commands not executed"
                 for index, argv in enumerate(step.get("commands") or []):
@@ -1957,6 +2214,7 @@ def run_session(
                     if not isinstance(argv, list):
                         continue
                     rendered = _substitute_argv(argv, state.variables)
+                    state.executed_commands.append(list(rendered))
                     print(f"\n$ {_format_command(rendered)}")
                     outcome = _run_command(
                         rendered,
@@ -1997,6 +2255,7 @@ def run_session(
                 capture = step.get("capture_json")
                 if isinstance(capture, dict) and isinstance(capture.get("command"), list):
                     rendered = _substitute_argv(capture["command"], state.variables)
+                    state.executed_commands.append(list(rendered))
                     json_name = str(capture.get("path") or f"{step_id}.json")
                     json_out = session_dir / json_name
                     print(f"\n$ {_format_command(rendered)}  > {json_name}")

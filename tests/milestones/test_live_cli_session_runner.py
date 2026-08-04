@@ -937,6 +937,229 @@ class LiveCliSessionRunnerTests(unittest.TestCase):
         self.assertEqual(redacted, "<path>/shot.png")
         self.assertNotIn("/var/tmp", redacted)
 
+    def test_linked_pr_must_be_real_reference(self) -> None:
+        runner = _load_runner_module()
+        self.assertFalse(runner._valid_linked_pr("x"))
+        self.assertFalse(runner._valid_linked_pr("not-a-pr"))
+        self.assertTrue(runner._valid_linked_pr("#92"))
+        self.assertTrue(runner._valid_linked_pr("92"))
+        self.assertTrue(
+            runner._valid_linked_pr("https://github.com/GeorgeLuo/auto-driving/pull/92")
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            session_dir = Path(tmp)
+            ok, msg = runner._repo_reviewable(
+                {
+                    "worktree_state": "dirty",
+                    "diff_identity": "abc",
+                    "untracked_files": [],
+                    "linked_pr": "x",
+                },
+                session_dir=session_dir,
+                label="metrics-ui",
+                linked_pr="x",
+            )
+            self.assertFalse(ok)
+            self.assertIn("not a valid", msg)
+
+    def test_in_memory_catalog_mutation_not_canonical(self) -> None:
+        import copy
+        import yaml
+
+        runner = _load_runner_module()
+        path = CATALOGS / "m007-acceptance.yaml"
+        catalog = yaml.safe_load(path.read_text(encoding="utf-8"))
+        ok, reason = runner._is_canonical_acceptance_catalog(path, catalog)
+        self.assertTrue(ok, reason)
+        mutated = copy.deepcopy(catalog)
+        for step in mutated["steps"]:
+            if step.get("id") == "automation-run":
+                step["commands"][0] = [
+                    p for p in step["commands"][0] if p != "--observe-only"
+                ]
+        ok, reason = runner._is_canonical_acceptance_catalog(path, mutated)
+        self.assertFalse(ok)
+        self.assertIn("does not match", reason)
+
+    def test_failed_precondition_blocks_automation_run(self) -> None:
+        """Orchestration: live_mutation must not run after failed safety prereqs."""
+        runner = _load_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            session_dir = Path(tmp) / "session"
+            catalog = {
+                "schema": "live_cli_session_catalog_v0",
+                "id": "orch-test",
+                "track": "acceptance",
+                "vehicle_id": VEHICLE,
+                "gates": [
+                    {"id": "initial_layers", "required": True},
+                    {"id": "staging", "required": True},
+                    {"id": "startup", "required": True},
+                    {"id": "cleanup", "required": True},
+                ],
+                "steps": [
+                    {
+                        "id": "status-initial",
+                        "kind": "command",
+                        "safety": "read",
+                        "commands": [
+                            ["./cli/automa", "vehicles", "status", "--chase-url", "http://localhost:5050"]
+                        ],
+                        "gate_ids": ["initial_layers"],
+                        "required_for_verdict": True,
+                        "visual_required": False,
+                        "expect_exit": 0,
+                    },
+                    {
+                        "id": "update-perception",
+                        "kind": "command",
+                        "safety": "local_write",
+                        "commands": [
+                            [
+                                "./cli/automa",
+                                "vehicles",
+                                "update",
+                                "perception",
+                                "--id",
+                                VEHICLE,
+                                "--algorithm",
+                                "lightweight_observer",
+                            ]
+                        ],
+                        "gate_ids": ["staging"],
+                        "required_for_verdict": True,
+                        "visual_required": False,
+                        "expect_exit": 0,
+                    },
+                    {
+                        "id": "automation-run",
+                        "kind": "command",
+                        "safety": "live_mutation",
+                        "commands": [
+                            [
+                                "./cli/automa",
+                                "vehicles",
+                                "automation",
+                                "run",
+                                "--id",
+                                VEHICLE,
+                                "--observe-only",
+                                "--frames",
+                                "0",
+                                "--open-view",
+                            ]
+                        ],
+                        "gate_ids": ["startup"],
+                        "required_for_verdict": True,
+                        "visual_required": False,
+                        "expect_exit": 0,
+                    },
+                ],
+            }
+
+            def fake_run(argv, **kwargs):
+                step_dir = kwargs["step_dir"]
+                step_dir.mkdir(parents=True, exist_ok=True)
+                index = kwargs["index"]
+                (step_dir / f"cmd-{index:02d}.stdout.txt").write_text(
+                    "ok\n", encoding="utf-8"
+                )
+                (step_dir / f"cmd-{index:02d}.stderr.txt").write_text("", encoding="utf-8")
+                return runner.CommandOutcome(
+                    argv=list(argv),
+                    command=" ".join(argv),
+                    exit_code=1,
+                    elapsed_ms=1,
+                    stdout_path=f"steps/x/cmd-{index:02d}.stdout.txt",
+                    stderr_path=f"steps/x/cmd-{index:02d}.stderr.txt",
+                    started_at_utc="t0",
+                    ended_at_utc="t1",
+                )
+
+            def fake_precondition(state, **kwargs):
+                return {"ok": False, "error": "unproven baseline", "attempted": False}
+
+            original_run = runner._run_command
+            original_pre = runner._run_precondition_cleanup
+            runner._run_command = fake_run  # type: ignore[assignment]
+            runner._run_precondition_cleanup = fake_precondition  # type: ignore[assignment]
+            try:
+                result = runner.run_session(
+                    catalog=catalog,
+                    session_dir=session_dir,
+                    repo_root=ROOT,
+                    metrics_ui_origin="http://localhost:5050",
+                    metrics_ui_repo=None,
+                    browser_name="Chrome",
+                    browser_version="1",
+                    prompt=lambda _m: "skip",
+                    non_interactive=True,
+                    auto_visual="skip",
+                    command_timeout_s=5,
+                    dry_run=False,
+                    browser_view_path=None,
+                    operator="test",
+                    catalog_path=None,
+                )
+            finally:
+                runner._run_command = original_run  # type: ignore[assignment]
+                runner._run_precondition_cleanup = original_pre  # type: ignore[assignment]
+
+            executed = result.get("ordered_step_outcomes") or []
+            statuses = {s["id"]: s["status"] for s in executed}
+            self.assertEqual(statuses.get("automation-run"), "blocked")
+            # Ensure no automation run argv was executed.
+            all_cmds = []
+            for step in executed:
+                for cmd in step.get("commands") or []:
+                    all_cmds.append(cmd.get("argv") or [])
+            for argv in all_cmds:
+                self.assertFalse(
+                    "automation" in argv and "run" in argv,
+                    f"automation run should not execute: {argv}",
+                )
+            self.assertNotEqual(result.get("result"), "pass")
+
+    def test_identity_captured_before_session_artifacts(self) -> None:
+        """Session dir under repo must not self-dirty pre-session identity."""
+        runner = _load_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            repo.mkdir()
+            subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+            subprocess.run(
+                ["git", "config", "user.email", "t@example.com"],
+                cwd=repo,
+                check=True,
+                capture_output=True,
+            )
+            subprocess.run(
+                ["git", "config", "user.name", "t"],
+                cwd=repo,
+                check=True,
+                capture_output=True,
+            )
+            (repo / "cli").mkdir()
+            (repo / "cli" / "automa").write_text("#!/bin/sh\n", encoding="utf-8")
+            (repo / "README").write_text("x\n", encoding="utf-8")
+            subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True)
+            subprocess.run(
+                ["git", "commit", "-m", "init"],
+                cwd=repo,
+                check=True,
+                capture_output=True,
+            )
+            session_dir = repo / "evidence" / "session"
+            # Identity with exclude must stay clean even if session files exist.
+            session_dir.mkdir(parents=True)
+            (session_dir / "transcripts").mkdir()
+            (session_dir / "transcripts" / "cli-transcript.txt").write_text(
+                "noise\n", encoding="utf-8"
+            )
+            identity = runner._git_identity(repo, exclude_under=session_dir)
+            self.assertEqual(identity.get("worktree_state"), "clean")
+            self.assertEqual(identity.get("untracked_files"), [])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

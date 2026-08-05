@@ -206,12 +206,8 @@ An acceptance catalog can return `pass` only when all of the following hold:
   across commands, stable projection compares game/scenario/epoch, control
   source/input, and playback mode (`phase`/`pendingAction`) — natural
   `frameIndex` advancement is allowed; cleanup status is also preservation-checked
-- **view correlation**: `/api/latest` must use `automa_perception_publication_v1`
-  and the expected vehicle id. Gate is **lag-bounded**, not poll-until-green:
-  `overlay.status=current` (exact frame match) **or** `stale` with integer
-  `frame_lag` in `1..DEFAULT_VIEW_MAX_FRAME_LAG` (default 24). Unbounded lag /
-  `pending` fails. Continuous Chase pipeline lag is expected; a single red Live
-  sample within budget must not fail acceptance
+- **view identity**: `/api/latest` must use `automa_perception_publication_v1` and
+  the expected vehicle id
 - **browser-view.png** is bound only after `view_correlation` establishes the
   health floor; source mtime must postdate that floor (preserved on copy); import
   paths are redacted

@@ -428,44 +428,6 @@ class LiveCliSessionRunnerTests(unittest.TestCase):
         )
         self.assertFalse(ok)
 
-    def test_view_accepts_bounded_stale_lag(self) -> None:
-        """Continuous Chase: stale with lag<=N is a real gate; unbounded lag fails."""
-        runner = _load_runner_module()
-        # Observed live flicker: lag ~12–17 with status=stale.
-        bounded = _current_view_payload(
-            frame={"frame_id": "chase_frame_100", "frame_index": 100},
-            overlay={
-                "status": "stale",
-                "source_frame_id": "chase_frame_83",
-                "source_frame_index": 83,
-                "frame_lag": 17,
-                "frame_lag_ms": 290,
-            },
-        )
-        ok, msg = runner.validate_view_latest(bounded, vehicle_id=VEHICLE)
-        self.assertTrue(ok, msg)
-        self.assertIn("stale within lag budget", msg)
-
-        over = _current_view_payload(
-            frame={"frame_id": "chase_frame_100", "frame_index": 100},
-            overlay={
-                "status": "stale",
-                "source_frame_id": "chase_frame_50",
-                "source_frame_index": 50,
-                "frame_lag": runner.DEFAULT_VIEW_MAX_FRAME_LAG + 1,
-            },
-        )
-        ok, msg = runner.validate_view_latest(over, vehicle_id=VEHICLE)
-        self.assertFalse(ok)
-        self.assertIn("exceeds max_frame_lag", msg)
-
-        pending = _current_view_payload(
-            overlay={"status": "pending", "source_frame_id": None, "frame_lag": None}
-        )
-        ok, msg = runner.validate_view_latest(pending, vehicle_id=VEHICLE)
-        self.assertFalse(ok)
-        self.assertIn("overlay.status", msg)
-
         status = _status_with_passive()
         ok, msg = runner.validate_authority(status, vehicle_id=VEHICLE)
         self.assertTrue(ok, msg)

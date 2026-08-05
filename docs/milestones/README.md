@@ -250,6 +250,11 @@ Each frontier has two independently reviewed branches:
   plan transition, and generated plan HTML;
 - `m<number>/<frontier>` implements only the accepted proposal.
 
+If evidence shows that an accepted proposal is materially wrong before its
+implementation is accepted, an optional `m<number>/amend-<slug>` branch may add
+a proposal amendment. It is a contract review unit, not a third implementation
+branch.
+
 Both branches:
 
 - start from the updated milestone branch at their permitted workflow state;
@@ -357,8 +362,9 @@ next-frontier slot containing zero or one candidate.
 implementation branches, proposal path, review kind, one review question,
 enforcement or acceptance owner, affected exit criteria, prerequisite, and
 concise milestone-level non-goal. Record the accepted proposal PR and merge
-commit before implementation starts. Add the active PR only for the phase
-currently under review.
+commit before implementation starts. Record each accepted additive proposal
+amendment with its artifact path, PR, and merge commit. Add the active PR only
+for the phase currently under review.
 
 When populated, the **next-frontier candidate** is a pre-implementation
 acceptance contract. It is valid only when it records at least:
@@ -487,13 +493,15 @@ paths and tests.
 
 ### Proposal And Implementation Are Separate
 
-Every frontier moves through these states in order:
+Every frontier moves through these states in order, with an optional amendment
+loop after proposal acceptance:
 
 | Workflow state | Meaning | Permitted work |
 | --- | --- | --- |
 | `ready_for_proposal` | The bounded frontier is ready to hand to a proposal author | Start the proposal branch, or review a necessary pre-proposal plan revision |
 | `proposal_in_review` | A proposal is being authored or reviewed | Proposal document and plan transition only |
-| `ready_for_implementation` | The proposal PR merged and its exact commit is recorded | Start only the implementation branch |
+| `ready_for_implementation` | The proposal PR and any amendments merged and their exact commits are recorded | Start the implementation branch, or start a bounded proposal amendment when established evidence requires one |
+| `proposal_amendment_in_review` | New evidence requires a bounded correction to the accepted proposal | Additive amendment document and plan transition only; implementation remains blocked |
 | `implementation_in_review` | Accepted scope is being implemented or reviewed | Product, test, and documentation changes described by the accepted proposal |
 
 The expected collaboration is explicit:
@@ -520,6 +528,27 @@ criterion, append one Workflow History row whose evidence begins
 `Plan revision:`, and do not add a proposal, tests, or product code. The merged
 revision returns to the normal `ready_for_proposal` handoff; it does not count
 as proposal acceptance or authorize implementation.
+
+If the accepted proposal is later shown to be materially insufficient, amend
+it before implementation acceptance instead of rewriting history or knowingly
+shipping the same gap into another frontier. Existing evidence of a
+deterministic failure is sufficient to justify amendment review; do not require
+a redundant live run merely to reproduce a condition already established. Use
+`m<number>/amend-<slug>` and a new document under the frontier's `proposals/`
+directory. The amendment PR may change only that new artifact, canonical
+`plan.md`, and generated `plan.html`. It must preserve the original accepted
+proposal, prior amendments, exit-criterion state, accepted ledger, risks, and
+queued frontier.
+
+An amendment document starts with `# Proposal Amendment:` and records Review
+Question, Reason For Amendment, Contract Delta, Ownership, Affected Paths,
+Adversarial Matrix, External Assumptions, Non-Goals, File Impact, and Validation
+Plan. It narrows or corrects the implementation contract; it cannot replace the
+proposal's reviewed Expected Handoff. After merge, record the amendment PR,
+exact merge commit, and artifact path, then return the frontier to
+`ready_for_implementation`. Amendments are cumulative and immutable. The
+implementation PR must link and reconcile the original proposal plus every
+accepted amendment, and CI rejects changes to any of those artifacts.
 
 Each proposal lives at the current frontier’s declared `proposal path` and uses
 `.github/PULL_REQUEST_TEMPLATE/proposal.md`. It records the review question,
@@ -628,6 +657,48 @@ Before requesting review:
    presenting them as observed.
 5. Perform one fresh adversarial pass after a repair before re-review.
 
+### Externally Owned Capability Gaps
+
+Treat a separately owned repository as an available contract owner, not as an
+unchangeable black box. Metrics UI is the primary simulator example for this
+repository.
+
+When an operator journey is blocked or made situational by an external
+capability:
+
+1. inspect the installed and documented interface and record concrete version,
+   command, protocol, or response evidence;
+2. identify whether the clean enforcement boundary belongs locally or in the
+   external repository;
+3. prefer the smallest owner-level capability, flag, query, or structured
+   failure contract over UI automation, undocumented state scraping, implicit
+   reconfiguration, duplicated protocol logic, or a permissive local fallback;
+4. state the external gap, its consequence, and whether the current review
+   question can still be accepted without it;
+5. surface an external feature request as an explicit option instead of
+   silently treating the dependency as fixed; and
+6. link an authorized external issue from the relevant proposal, PR, evidence,
+   or unresolved-risk record.
+
+Creating or updating an issue changes external state. Do it only when the
+operator explicitly authorizes the write or an accepted workflow step
+specifically includes external issue creation. Read-only repository and issue
+inspection may be used to resolve ownership and avoid duplicates.
+
+An external request should be independently actionable. Include:
+
+- the blocked user or operator journey;
+- observed interface and version evidence;
+- the minimum requested contract and acceptable equivalent outcomes;
+- required safety and state-preservation behavior;
+- structured unsupported or failure behavior;
+- a bounded acceptance test; and
+- links back to the consuming proposal or implementation.
+
+If a small external flag or response field would remove a substantial local
+workaround, say so directly. Do not conceal the option merely because the
+dependency lives in another repository.
+
 ### Review Finding Format
 
 ```markdown
@@ -728,8 +799,26 @@ python3 docs/milestones/workflow.py accept-proposal \
   --pr <proposal-pr-number>
 ```
 
-Inspect and commit the resulting plan and HTML transition. Only when status
-reports `ready_for_implementation` may the implementation branch start:
+Inspect and commit the resulting plan and HTML transition. If known evidence
+requires a bounded contract correction, start an additive amendment instead:
+
+```sh
+python3 docs/milestones/workflow.py start-proposal-amendment \
+  --plan docs/milestones/<number>-<slug>/plan.md \
+  --branch m<number>/amend-<slug> \
+  --path docs/milestones/<number>-<slug>/proposals/<slug>-amendment.md
+```
+
+After that contract-only PR merges, record its exact acceptance receipt:
+
+```sh
+python3 docs/milestones/workflow.py accept-proposal-amendment \
+  --plan docs/milestones/<number>-<slug>/plan.md \
+  --pr <amendment-pr-number>
+```
+
+Only when status reports `ready_for_implementation` may the implementation
+branch start:
 
 ```sh
 python3 docs/milestones/workflow.py start-implementation \
@@ -774,8 +863,11 @@ accepted ledger and risks, promotes the reviewed next candidate to
 
 CI runs `workflow.py validate-pr` on every PR targeting a milestone branch. A
 proposal PR may change only its declared proposal document, canonical plan, and
-generated plan HTML. An implementation PR is rejected unless its base records
-an accepted proposal; it may not modify that proposal or the frozen frontier.
+generated plan HTML. A proposal amendment PR has the same contract-only
+boundary and must add a new artifact without modifying accepted proposal
+history. An implementation PR is rejected unless its base records an accepted
+proposal; it may not modify that proposal, an accepted amendment, or the frozen
+frontier.
 `docs/render_markdown.py` invokes the same plan validator, so hand-edited state
 that omits required fields or history is rejected.
 

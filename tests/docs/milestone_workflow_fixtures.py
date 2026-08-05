@@ -11,6 +11,11 @@ PROPOSAL_RELATIVE = (
 )
 PROPOSAL_BRANCH = "m900/evidence-policy-proposal"
 IMPLEMENTATION_BRANCH = "m900/evidence-policy"
+PROPOSAL_AMENDMENT_BRANCH = "m900/amend-evidence-policy-lag"
+PROPOSAL_AMENDMENT_RELATIVE = (
+    "docs/milestones/900-workflow-fixture/proposals/"
+    "evidence-policy-lag-amendment.md"
+)
 NEXT_PROPOSAL_BRANCH = "m900/closeout-proposal"
 NEXT_IMPLEMENTATION_BRANCH = "m900/closeout"
 CURRENT_FRONTIER = "Evidence policy"
@@ -210,6 +215,53 @@ Unit and replay tests.
 ```json
 {template}
 ```
+"""
+
+
+def proposal_amendment_text() -> str:
+    return """# Proposal Amendment: Evidence policy lag tolerance
+
+## Review Question
+
+Is bounded lag accepted without weakening attributable evidence?
+
+## Reason For Amendment
+
+Live observation proved that exact-current correlation rejects known-good lag.
+
+## Contract Delta
+
+Accept current or bounded-stale observations with an explicit lag value.
+
+## Ownership
+
+The evidence validator owns the bounded-lag decision.
+
+## Affected Paths
+
+Live validation and operator-visible diagnostics.
+
+## Adversarial Matrix
+
+| Case | Expected |
+| --- | --- |
+| Beyond bound | Reject with observed lag |
+
+## External Assumptions
+
+Sequence identifiers are monotonic within one run.
+
+## Non-Goals
+
+Unbounded eventual consistency.
+
+## File Impact
+
+Validator, focused tests, and command catalog expectations.
+
+## Validation Plan
+
+Exercise current, bounded-stale, beyond-bound, and malformed observations.
 """
 
 

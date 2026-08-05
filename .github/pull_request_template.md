@@ -13,6 +13,7 @@
 - Proposal PR:
 - Proposal merge commit:
 - Proposal artifact:
+- Accepted amendment PR(s), merge commit(s), and artifact(s): None
 
 ## Review Kind
 

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="9d9414472e1f9cdeb883f5987a5b8df806e449333cccfceda8f464cbb8ff81aa">
+  <meta name="source-sha256" content="6bda9d40471ef03cbda6a312fe57e24384a6558ee9611abc6be139511abfa5ce">
   <base target="_blank">
   <title>Milestone Planning And Delivery Contract</title>
   <style>
@@ -301,6 +301,10 @@ evidence, reference updates, and closeout.</p>
   plan transition, and generated plan HTML;</li>
 <li><code>m&lt;number&gt;/&lt;frontier&gt;</code> implements only the accepted proposal.</li>
 </ul>
+<p>If evidence shows that an accepted proposal is materially wrong before its
+implementation is accepted, an optional <code>m&lt;number&gt;/amend-&lt;slug&gt;</code> branch may add
+a proposal amendment. It is a contract review unit, not a third implementation
+branch.</p>
 <p>Both branches:</p>
 <ul>
 <li>start from the updated milestone branch at their permitted workflow state;</li>
@@ -442,8 +446,9 @@ next-frontier slot containing zero or one candidate.</p>
 implementation branches, proposal path, review kind, one review question,
 enforcement or acceptance owner, affected exit criteria, prerequisite, and
 concise milestone-level non-goal. Record the accepted proposal PR and merge
-commit before implementation starts. Add the active PR only for the phase
-currently under review.</p>
+commit before implementation starts. Record each accepted additive proposal
+amendment with its artifact path, PR, and merge commit. Add the active PR only
+for the phase currently under review.</p>
 <p>When populated, the <strong>next-frontier candidate</strong> is a pre-implementation
 acceptance contract. It is valid only when it records at least:</p>
 <ul>
@@ -601,7 +606,8 @@ paths and tests.</p>
 </tbody>
 </table>
 <h3>Proposal And Implementation Are Separate</h3>
-<p>Every frontier moves through these states in order:</p>
+<p>Every frontier moves through these states in order, with an optional amendment
+loop after proposal acceptance:</p>
 <table>
 <thead>
 <tr>
@@ -623,8 +629,13 @@ paths and tests.</p>
 </tr>
 <tr>
 <td><code>ready_for_implementation</code></td>
-<td>The proposal PR merged and its exact commit is recorded</td>
-<td>Start only the implementation branch</td>
+<td>The proposal PR and any amendments merged and their exact commits are recorded</td>
+<td>Start the implementation branch, or start a bounded proposal amendment when established evidence requires one</td>
+</tr>
+<tr>
+<td><code>proposal_amendment_in_review</code></td>
+<td>New evidence requires a bounded correction to the accepted proposal</td>
+<td>Additive amendment document and plan transition only; implementation remains blocked</td>
 </tr>
 <tr>
 <td><code>implementation_in_review</code></td>
@@ -656,6 +667,25 @@ criterion, append one Workflow History row whose evidence begins
 <code>Plan revision:</code>, and do not add a proposal, tests, or product code. The merged
 revision returns to the normal <code>ready_for_proposal</code> handoff; it does not count
 as proposal acceptance or authorize implementation.</p>
+<p>If the accepted proposal is later shown to be materially insufficient, amend
+it before implementation acceptance instead of rewriting history or knowingly
+shipping the same gap into another frontier. Existing evidence of a
+deterministic failure is sufficient to justify amendment review; do not require
+a redundant live run merely to reproduce a condition already established. Use
+<code>m&lt;number&gt;/amend-&lt;slug&gt;</code> and a new document under the frontier's <code>proposals/</code>
+directory. The amendment PR may change only that new artifact, canonical
+<code>plan.md</code>, and generated <code>plan.html</code>. It must preserve the original accepted
+proposal, prior amendments, exit-criterion state, accepted ledger, risks, and
+queued frontier.</p>
+<p>An amendment document starts with <code># Proposal Amendment:</code> and records Review
+Question, Reason For Amendment, Contract Delta, Ownership, Affected Paths,
+Adversarial Matrix, External Assumptions, Non-Goals, File Impact, and Validation
+Plan. It narrows or corrects the implementation contract; it cannot replace the
+proposal's reviewed Expected Handoff. After merge, record the amendment PR,
+exact merge commit, and artifact path, then return the frontier to
+<code>ready_for_implementation</code>. Amendments are cumulative and immutable. The
+implementation PR must link and reconcile the original proposal plus every
+accepted amendment, and CI rejects changes to any of those artifacts.</p>
 <p>Each proposal lives at the current frontier’s declared <code>proposal path</code> and uses
 <code>.github/PULL_REQUEST_TEMPLATE/proposal.md</code>. It records the review question,
 proposed contract, owner, affected paths, adversarial matrix, assumptions,
@@ -884,8 +914,20 @@ the maintainer updates the clean milestone branch and records acceptance:</p>
   --plan docs/milestones/&lt;number&gt;-&lt;slug&gt;/plan.md \
   --pr &lt;proposal-pr-number&gt;
 </code></pre>
-<p>Inspect and commit the resulting plan and HTML transition. Only when status
-reports <code>ready_for_implementation</code> may the implementation branch start:</p>
+<p>Inspect and commit the resulting plan and HTML transition. If known evidence
+requires a bounded contract correction, start an additive amendment instead:</p>
+<pre><code class="language-sh">python3 docs/milestones/workflow.py start-proposal-amendment \
+  --plan docs/milestones/&lt;number&gt;-&lt;slug&gt;/plan.md \
+  --branch m&lt;number&gt;/amend-&lt;slug&gt; \
+  --path docs/milestones/&lt;number&gt;-&lt;slug&gt;/proposals/&lt;slug&gt;-amendment.md
+</code></pre>
+<p>After that contract-only PR merges, record its exact acceptance receipt:</p>
+<pre><code class="language-sh">python3 docs/milestones/workflow.py accept-proposal-amendment \
+  --plan docs/milestones/&lt;number&gt;-&lt;slug&gt;/plan.md \
+  --pr &lt;amendment-pr-number&gt;
+</code></pre>
+<p>Only when status reports <code>ready_for_implementation</code> may the implementation
+branch start:</p>
 <pre><code class="language-sh">python3 docs/milestones/workflow.py start-implementation \
   --plan docs/milestones/&lt;number&gt;-&lt;slug&gt;/plan.md \
   --branch m&lt;number&gt;/&lt;frontier&gt;
@@ -922,8 +964,11 @@ accepted ledger and risks, promotes the reviewed next candidate to
 <code>ready_for_proposal</code>, records workflow history, and regenerates HTML.</p>
 <p>CI runs <code>workflow.py validate-pr</code> on every PR targeting a milestone branch. A
 proposal PR may change only its declared proposal document, canonical plan, and
-generated plan HTML. An implementation PR is rejected unless its base records
-an accepted proposal; it may not modify that proposal or the frozen frontier.
+generated plan HTML. A proposal amendment PR has the same contract-only
+boundary and must add a new artifact without modifying accepted proposal
+history. An implementation PR is rejected unless its base records an accepted
+proposal; it may not modify that proposal, an accepted amendment, or the frozen
+frontier.
 <code>docs/render_markdown.py</code> invokes the same plan validator, so hand-edited state
 that omits required fields or history is rejected.</p>
 <p>The machine cannot prove which model authored a phase, that a reviewer

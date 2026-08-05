@@ -8,9 +8,13 @@ from pathlib import Path
 from docs.milestones.workflow import (
     PlanContractError,
     accept_proposal,
+    accept_proposal_amendment,
     start_implementation_branch,
+    start_proposal_amendment_branch,
+    validate_merged_proposal_amendment_metadata,
     validate_merged_proposal_metadata,
     validate_plan_text,
+    validate_proposal_amendment_text,
     validate_proposal_text,
     validate_review_unit_transition,
     validate_review_unit_git_diff,
@@ -21,8 +25,11 @@ from tests.docs.milestone_workflow_fixtures import (
     IMPLEMENTATION_BRANCH,
     MILESTONE_BRANCH,
     PLAN_RELATIVE,
+    PROPOSAL_AMENDMENT_BRANCH,
+    PROPOSAL_AMENDMENT_RELATIVE,
     PROPOSAL_BRANCH,
     PROPOSAL_RELATIVE,
+    proposal_amendment_text,
     proposal_text,
     ready_plan_text,
 )
@@ -73,6 +80,55 @@ def _revise_plan(text: str) -> str:
     )
 
 
+def _accepted_plan() -> str:
+    return accept_proposal(
+        _move_to_review(ready_plan_text()),
+        proposal_pr=60,
+        merge_commit="a" * 40,
+        proposal_url="https://example.invalid/60",
+    )
+
+
+def _move_to_amendment_review(
+    text: str,
+    *,
+    branch: str = PROPOSAL_AMENDMENT_BRANCH,
+    path: str = PROPOSAL_AMENDMENT_RELATIVE,
+) -> str:
+    state = validate_plan_text(text)
+    accepted = state.current.fields["accepted proposal"]
+    updated = text.replace(
+        "- Workflow state: ready_for_implementation\n",
+        "- Workflow state: proposal_amendment_in_review\n",
+        1,
+    )
+    if state.current.fields.get("proposal amendment branch"):
+        old_branch = state.current.fields["proposal amendment branch"]
+        old_path = state.current.fields["proposal amendment path"]
+        updated = updated.replace(
+            f"- Proposal amendment branch: {old_branch}\n",
+            f"- Proposal amendment branch: `{branch}`\n",
+            1,
+        ).replace(
+            f"- Proposal amendment path: {old_path}\n",
+            f"- Proposal amendment path: `{path}`\n",
+            1,
+        )
+    else:
+        updated = updated.replace(
+            f"- Accepted proposal: {accepted}\n",
+            f"- Accepted proposal: {accepted}\n"
+            f"- Proposal amendment branch: `{branch}`\n"
+            f"- Proposal amendment path: `{path}`\n",
+            1,
+        )
+    return updated.replace(
+        "\n\n## Accepted Review Units",
+        f"\n| {CURRENT_FRONTIER} | proposal_amendment_in_review | "
+        "Proposal amendment branch started. |"
+        "\n\n## Accepted Review Units",
+        1,
+    )
 class ProposalDocumentTests(unittest.TestCase):
     def test_required_proposal_shape_is_accepted(self) -> None:
         validate_proposal_text(proposal_text())
@@ -87,6 +143,18 @@ class ProposalDocumentTests(unittest.TestCase):
         with self.assertRaisesRegex(PlanContractError, "Expected Handoff"):
             validate_proposal_text(
                 proposal_text().replace("## Expected Handoff", "## Later State")
+            )
+
+    def test_required_proposal_amendment_shape_is_accepted(self) -> None:
+        validate_proposal_amendment_text(proposal_amendment_text())
+
+    def test_proposal_amendment_requires_contract_delta(self) -> None:
+        with self.assertRaisesRegex(PlanContractError, "Contract Delta"):
+            validate_proposal_amendment_text(
+                proposal_amendment_text().replace(
+                    "## Contract Delta",
+                    "## Revised Idea",
+                )
             )
 
 
@@ -386,6 +454,139 @@ class ReviewUnitTransitionTests(unittest.TestCase):
                 proposal_text=proposal_text(),
             )
 
+    def test_proposal_amendment_is_additive_contract_only(self) -> None:
+        accepted = _accepted_plan()
+        amendment_head = _move_to_amendment_review(accepted)
+
+        transition = validate_review_unit_transition(
+            accepted,
+            amendment_head,
+            plan_path=PLAN_RELATIVE,
+            changed_paths={
+                PLAN_RELATIVE,
+                str(Path(PLAN_RELATIVE).with_suffix(".html")),
+                PROPOSAL_AMENDMENT_RELATIVE,
+            },
+            head_branch=PROPOSAL_AMENDMENT_BRANCH,
+            proposal_amendment_text=proposal_amendment_text(),
+        )
+
+        self.assertEqual(transition, "proposal_amendment")
+
+    def test_proposal_amendment_cannot_rewrite_accepted_proposal(self) -> None:
+        accepted = _accepted_plan()
+        amendment_head = _move_to_amendment_review(accepted)
+
+        with self.assertRaisesRegex(PlanContractError, "non-contract changes"):
+            validate_review_unit_transition(
+                accepted,
+                amendment_head,
+                plan_path=PLAN_RELATIVE,
+                changed_paths={
+                    PLAN_RELATIVE,
+                    PROPOSAL_RELATIVE,
+                    PROPOSAL_AMENDMENT_RELATIVE,
+                },
+                head_branch=PROPOSAL_AMENDMENT_BRANCH,
+                proposal_amendment_text=proposal_amendment_text(),
+            )
+
+    def test_accepted_amendment_unlocks_implementation(self) -> None:
+        amendment_review = _move_to_amendment_review(_accepted_plan())
+        accepted = accept_proposal_amendment(
+            amendment_review,
+            amendment_pr=61,
+            merge_commit="b" * 40,
+            amendment_url="https://example.invalid/61",
+        )
+        state = validate_plan_text(accepted)
+        self.assertEqual(
+            state.current.fields["workflow state"],
+            "ready_for_implementation",
+        )
+        self.assertIn("#61", state.current.fields["accepted proposal amendments"])
+        self.assertIn(
+            PROPOSAL_AMENDMENT_RELATIVE,
+            state.current.fields["accepted proposal amendments"],
+        )
+
+        implementation_head = _move_to_review(accepted, implementation=True)
+        transition = validate_review_unit_transition(
+            accepted,
+            implementation_head,
+            plan_path=PLAN_RELATIVE,
+            changed_paths={
+                PLAN_RELATIVE,
+                "implementations/memory/bounded_evidence.py",
+            },
+            head_branch=IMPLEMENTATION_BRANCH,
+        )
+        self.assertEqual(transition, "implementation")
+
+    def test_implementation_cannot_modify_accepted_amendment(self) -> None:
+        amendment_review = _move_to_amendment_review(_accepted_plan())
+        accepted = accept_proposal_amendment(
+            amendment_review,
+            amendment_pr=61,
+            merge_commit="b" * 40,
+            amendment_url="https://example.invalid/61",
+        )
+        implementation_head = _move_to_review(accepted, implementation=True)
+
+        with self.assertRaisesRegex(
+            PlanContractError,
+            "cannot modify the accepted proposal or its amendments",
+        ):
+            validate_review_unit_transition(
+                accepted,
+                implementation_head,
+                plan_path=PLAN_RELATIVE,
+                changed_paths={PLAN_RELATIVE, PROPOSAL_AMENDMENT_RELATIVE},
+                head_branch=IMPLEMENTATION_BRANCH,
+            )
+
+    def test_proposal_amendments_are_cumulative(self) -> None:
+        first_review = _move_to_amendment_review(_accepted_plan())
+        first_accepted = accept_proposal_amendment(
+            first_review,
+            amendment_pr=61,
+            merge_commit="b" * 40,
+            amendment_url="https://example.invalid/61",
+        )
+        second_branch = "m900/amend-evidence-policy-timeout"
+        second_path = (
+            "docs/milestones/900-workflow-fixture/proposals/"
+            "evidence-policy-timeout-amendment.md"
+        )
+        second_review = _move_to_amendment_review(
+            first_accepted,
+            branch=second_branch,
+            path=second_path,
+        )
+        transition = validate_review_unit_transition(
+            first_accepted,
+            second_review,
+            plan_path=PLAN_RELATIVE,
+            changed_paths={PLAN_RELATIVE, second_path},
+            head_branch=second_branch,
+            proposal_amendment_text=proposal_amendment_text(),
+        )
+        self.assertEqual(transition, "proposal_amendment")
+
+        second_accepted = accept_proposal_amendment(
+            second_review,
+            amendment_pr=62,
+            merge_commit="c" * 40,
+            amendment_url="https://example.invalid/62",
+        )
+        receipts = validate_plan_text(second_accepted).current.fields[
+            "accepted proposal amendments"
+        ]
+        self.assertIn("#61", receipts)
+        self.assertIn("#62", receipts)
+        self.assertIn(PROPOSAL_AMENDMENT_RELATIVE, receipts)
+        self.assertIn(second_path, receipts)
+
     def test_implementation_requires_accepted_proposal(self) -> None:
         premature = _move_to_review(self.base, implementation=True)
         with self.assertRaises(PlanContractError):
@@ -522,6 +723,54 @@ class ProposalAcceptanceMetadataTests(unittest.TestCase):
             )
 
 
+class ProposalAmendmentAcceptanceMetadataTests(unittest.TestCase):
+    def setUp(self) -> None:
+        amendment_plan = _move_to_amendment_review(_accepted_plan())
+        self.state = validate_plan_text(amendment_plan)
+        self.allowed = {
+            PLAN_RELATIVE,
+            str(Path(PLAN_RELATIVE).with_suffix(".html")),
+            PROPOSAL_AMENDMENT_RELATIVE,
+        }
+
+    def _payload(self) -> dict[str, object]:
+        return {
+            "state": "MERGED",
+            "baseRefName": MILESTONE_BRANCH,
+            "headRefName": PROPOSAL_AMENDMENT_BRANCH,
+            "mergeCommit": {"oid": "b" * 40},
+            "url": "https://example.invalid/61",
+            "files": [
+                {"path": PLAN_RELATIVE},
+                {"path": str(Path(PLAN_RELATIVE).with_suffix(".html"))},
+                {"path": PROPOSAL_AMENDMENT_RELATIVE},
+            ],
+        }
+
+    def test_merged_amendment_records_exact_commit(self) -> None:
+        commit, url = validate_merged_proposal_amendment_metadata(
+            self._payload(),
+            self.state,
+            amendment_pr=61,
+            allowed_paths=self.allowed,
+        )
+        self.assertEqual(commit, "b" * 40)
+        self.assertEqual(url, "https://example.invalid/61")
+
+    def test_merged_amendment_rejects_code_changes(self) -> None:
+        payload = self._payload()
+        payload["files"].append(
+            {"path": "implementations/memory/bounded_evidence.py"}
+        )
+        with self.assertRaisesRegex(PlanContractError, "non-contract changes"):
+            validate_merged_proposal_amendment_metadata(
+                payload,
+                self.state,
+                amendment_pr=61,
+                allowed_paths=self.allowed,
+            )
+
+
 class ReviewUnitGitDiffTests(unittest.TestCase):
     def _git(self, root: Path, *args: str) -> str:
         result = subprocess.run(
@@ -629,6 +878,101 @@ class ReviewUnitGitDiffTests(unittest.TestCase):
             )
 
             self.assertEqual(transition, "plan_revision")
+
+    def test_git_diff_gate_recognizes_proposal_amendment(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            plan = root / PLAN_RELATIVE
+            plan.parent.mkdir(parents=True)
+            plan.write_text(_accepted_plan(), encoding="utf-8")
+            plan_html = plan.with_suffix(".html")
+            plan_html.write_text("accepted", encoding="utf-8")
+            self._git(root, "init", "-b", MILESTONE_BRANCH)
+            self._git(root, "add", ".")
+            self._git(
+                root,
+                "-c",
+                "user.name=Milestone Test",
+                "-c",
+                "user.email=milestone@example.invalid",
+                "commit",
+                "-m",
+                "accept proposal",
+            )
+            base_sha = self._git(root, "rev-parse", "HEAD")
+            self._git(root, "switch", "-c", PROPOSAL_AMENDMENT_BRANCH)
+            plan.write_text(
+                _move_to_amendment_review(plan.read_text(encoding="utf-8")),
+                encoding="utf-8",
+            )
+            plan_html.write_text("amendment review", encoding="utf-8")
+            amendment = root / PROPOSAL_AMENDMENT_RELATIVE
+            amendment.parent.mkdir(parents=True, exist_ok=True)
+            amendment.write_text(proposal_amendment_text(), encoding="utf-8")
+            self._git(root, "add", ".")
+            self._git(
+                root,
+                "-c",
+                "user.name=Milestone Test",
+                "-c",
+                "user.email=milestone@example.invalid",
+                "commit",
+                "-m",
+                "amend accepted proposal",
+            )
+            head_sha = self._git(root, "rev-parse", "HEAD")
+
+            transition = validate_review_unit_git_diff(
+                base_ref=MILESTONE_BRANCH,
+                head_ref=PROPOSAL_AMENDMENT_BRANCH,
+                base_sha=base_sha,
+                head_sha=head_sha,
+                repo_root=root,
+            )
+
+            self.assertEqual(transition, "proposal_amendment")
+
+    def test_proposal_amendment_branch_starts_after_proposal_acceptance(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            plan = root / PLAN_RELATIVE
+            plan.parent.mkdir(parents=True)
+            accepted = _accepted_plan()
+            plan.write_text(accepted, encoding="utf-8")
+            self._git(root, "init", "-b", MILESTONE_BRANCH)
+            self._git(root, "add", ".")
+            self._git(
+                root,
+                "-c",
+                "user.name=Milestone Test",
+                "-c",
+                "user.email=milestone@example.invalid",
+                "commit",
+                "-m",
+                "accept proposal",
+            )
+
+            start_proposal_amendment_branch(
+                plan,
+                validate_plan_text(accepted),
+                PROPOSAL_AMENDMENT_BRANCH,
+                PROPOSAL_AMENDMENT_RELATIVE,
+                repo_root=root,
+            )
+
+            self.assertEqual(
+                self._git(root, "branch", "--show-current"),
+                PROPOSAL_AMENDMENT_BRANCH,
+            )
+            transitioned = validate_plan_text(plan.read_text(encoding="utf-8"))
+            self.assertEqual(
+                transitioned.current.fields["workflow state"],
+                "proposal_amendment_in_review",
+            )
+            self.assertEqual(
+                transitioned.current.fields["proposal amendment path"],
+                f"`{PROPOSAL_AMENDMENT_RELATIVE}`",
+            )
 
     def test_implementation_branch_starts_only_after_proposal_acceptance(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

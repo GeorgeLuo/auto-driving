@@ -18,6 +18,9 @@ PR_TEMPLATE = ROOT / ".github" / "pull_request_template.md"
 PROPOSAL_PR_TEMPLATE = (
     ROOT / ".github" / "PULL_REQUEST_TEMPLATE" / "proposal.md"
 )
+PROPOSAL_AMENDMENT_PR_TEMPLATE = (
+    ROOT / ".github" / "PULL_REQUEST_TEMPLATE" / "proposal-amendment.md"
+)
 MILESTONE_PR_TEMPLATE = ROOT / ".github" / "PULL_REQUEST_TEMPLATE" / "milestone.md"
 
 
@@ -192,6 +195,13 @@ class MilestonePlanningTests(unittest.TestCase):
         self.assertIn("No product or runtime implementation changed", text)
         self.assertIn("Proposal artifact", text)
 
+    def test_proposal_amendment_template_preserves_accepted_contract(self) -> None:
+        self.assertTrue(PROPOSAL_AMENDMENT_PR_TEMPLATE.is_file())
+        text = PROPOSAL_AMENDMENT_PR_TEMPLATE.read_text(encoding="utf-8")
+        self.assertIn("## Evidence Requiring Amendment", text)
+        self.assertIn("No accepted proposal or prior amendment was modified", text)
+        self.assertIn("No product or runtime implementation changed", text)
+
     def test_cumulative_milestone_pr_template_targets_main_topology(self) -> None:
         self.assertTrue(MILESTONE_PR_TEMPLATE.is_file())
         text = MILESTONE_PR_TEMPLATE.read_text(encoding="utf-8")
@@ -228,6 +238,14 @@ class MilestonePlanningTests(unittest.TestCase):
         self.assertIn("handoff --receipt <path>", text)
         self.assertIn("docs/milestones/workflow.py start-proposal", text)
         self.assertIn("docs/milestones/workflow.py accept-proposal", text)
+        self.assertIn(
+            "docs/milestones/workflow.py start-proposal-amendment",
+            text,
+        )
+        self.assertIn(
+            "docs/milestones/workflow.py accept-proposal-amendment",
+            text,
+        )
         self.assertIn("docs/milestones/workflow.py start-implementation", text)
         self.assertIn("merge commit that is not already an ancestor", normalized)
         self.assertIn("promotes the reviewed next candidate", normalized)

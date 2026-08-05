@@ -605,6 +605,31 @@ class LiveCliSessionRunnerTests(unittest.TestCase):
         self.assertEqual(evidence["result_age_ms"], -1)
         self.assertEqual(len(evidence["diagnostic_findings"]), 2)
 
+        huge_integer = 10**400
+        payload = _stale_view_payload(17)
+        payload["overlay"]["frame_lag_ms"] = huge_integer
+        evidence = runner._view_correlation_evidence(
+            payload,
+            vehicle_id=VEHICLE,
+            max_frame_lag=MAX_FRAME_LAG,
+        )
+        self.assertEqual(evidence["verdict"], "pass", evidence)
+        self.assertEqual(evidence["frame_lag_ms"], huge_integer)
+        self.assertEqual(evidence["diagnostic_findings"], [])
+
+        for malformed in (-huge_integer, True, float("inf"), float("nan"), "1"):
+            with self.subTest(malformed=repr(malformed)):
+                payload = _stale_view_payload(17)
+                payload["overlay"]["frame_lag_ms"] = malformed
+                evidence = runner._view_correlation_evidence(
+                    payload,
+                    vehicle_id=VEHICLE,
+                    max_frame_lag=MAX_FRAME_LAG,
+                )
+                self.assertEqual(evidence["verdict"], "pass", evidence)
+                self.assertEqual(len(evidence["diagnostic_findings"]), 1)
+                self.assertIn("overlay.frame_lag_ms", evidence["diagnostic_findings"][0])
+
     def test_view_correlation_preserves_independent_blockers(self) -> None:
         runner = _load_runner_module()
         cases = (

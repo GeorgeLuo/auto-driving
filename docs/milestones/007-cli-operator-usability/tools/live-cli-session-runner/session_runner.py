@@ -909,9 +909,13 @@ def _view_correlation_evidence(
         ("overlay.frame_lag_ms", frame_lag_ms),
         ("overlay.result_age_ms", result_age_ms),
     ):
-        if value is not None and (
-            type(value) not in {int, float} or not math.isfinite(value) or value < 0
-        ):
+        if type(value) is int:
+            valid_timing = value >= 0
+        elif type(value) is float:
+            valid_timing = math.isfinite(value) and value >= 0
+        else:
+            valid_timing = value is None
+        if not valid_timing:
             diagnostic_findings.append(
                 f"{name}={value!r} is not a finite nonnegative number"
             )

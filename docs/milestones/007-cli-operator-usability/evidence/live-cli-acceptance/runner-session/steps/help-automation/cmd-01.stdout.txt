@@ -1,0 +1,31 @@
+usage: automa vehicles automation run [-h] --id VEHICLE_ID
+                                      [--timeout-s TIMEOUT_S]
+                                      [--interval-s INTERVAL_S]
+                                      [--frames FRAMES] [--observe-only]
+                                      [--open-view] [--record] [--verbose]
+                                      [--log]
+
+Start the automation worker. Success requires one camera frame, its completed
+perception result, and a healthy current-generation loopback view.
+
+options:
+  -h, --help            show this help message and exit
+  --id VEHICLE_ID       Discoverable vehicle id from `automa vehicles status`.
+  --timeout-s TIMEOUT_S
+                        One wall-clock Chase readiness deadline in seconds
+                        (default: 5).
+  --interval-s INTERVAL_S
+                        Target delay between camera captures. Slow perception
+                        skips superseded frames.
+  --frames FRAMES       Number of camera frames to capture. 0 means run until
+                        Ctrl-C.
+  --observe-only        Passively observe without changing scenario, playback,
+                        control source, input, or applying vehicle control.
+  --open-view           Open the loopback perception browser only after the
+                        first correlated camera/perception publication is
+                        healthy.
+  --record              Save per-frame images and perception artifacts under a
+                        timestamped run directory.
+  --verbose             Print every-frame worker detail when output is
+                        connected.
+  --log                 Persist background worker output to automation.log.

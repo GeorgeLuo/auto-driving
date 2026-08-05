@@ -1,0 +1,41 @@
+{
+  "browser_view": null,
+  "commands": [
+    {
+      "argv": [
+        "./cli/automa",
+        "vehicles",
+        "automation",
+        "stop",
+        "--id",
+        "chase-sim-chaser"
+      ],
+      "command": "./cli/automa vehicles automation stop --id chase-sim-chaser",
+      "elapsed_ms": 685,
+      "ended_at_utc": "2026-08-05T23:49:40.588522Z",
+      "exit_code": 0,
+      "started_at_utc": "2026-08-05T23:49:39.903199Z",
+      "stderr_path": "steps/automation-stop/cmd-00.stderr.txt",
+      "stdout_path": "steps/automation-stop/cmd-00.stdout.txt"
+    }
+  ],
+  "gate_ids": [
+    "cleanup"
+  ],
+  "human": {
+    "finding_requested": false,
+    "interactive": true,
+    "notes": "",
+    "visual": "pass"
+  },
+  "id": "automation-stop",
+  "kind": "command",
+  "machine_evidence": {},
+  "machine_ok": true,
+  "machine_summary": "",
+  "primary_cue": "Automation stopped; Ready for: inspect stopped deployment",
+  "question": "Does stop leave deployment staged without a current view?",
+  "required_for_verdict": true,
+  "safety": "live_mutation",
+  "status": "pass"
+}

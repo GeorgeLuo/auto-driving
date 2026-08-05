@@ -1,0 +1,5 @@
+Updated perception: chase-sim-chaser -> lightweight_observer
+Bundle: runtime/vehicles/chase-sim-chaser/bundle
+Activation: runtime/vehicles/chase-sim-chaser/bundle/runtime/perception/active.json
+Ready for: observation-only automation
+Next action: ./cli/automa vehicles automation run --id chase-sim-chaser --observe-only --frames 0 --open-view

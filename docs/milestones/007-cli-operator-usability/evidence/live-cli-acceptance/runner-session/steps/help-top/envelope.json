@@ -1,0 +1,37 @@
+{
+  "browser_view": null,
+  "commands": [
+    {
+      "argv": [
+        "./cli/automa",
+        "help"
+      ],
+      "command": "./cli/automa help",
+      "elapsed_ms": 464,
+      "ended_at_utc": "2026-08-05T23:48:05.649638Z",
+      "exit_code": 0,
+      "started_at_utc": "2026-08-05T23:48:05.184924Z",
+      "stderr_path": "steps/help-top/cmd-00.stderr.txt",
+      "stdout_path": "steps/help-top/cmd-00.stdout.txt"
+    }
+  ],
+  "gate_ids": [
+    "help_discoverability"
+  ],
+  "human": {
+    "finding_requested": false,
+    "interactive": true,
+    "notes": "",
+    "visual": "pass"
+  },
+  "id": "help-top",
+  "kind": "command",
+  "machine_evidence": {},
+  "machine_ok": true,
+  "machine_summary": "",
+  "primary_cue": "vehicles command is listed without implementation jargon",
+  "question": "Can a regular operator discover the vehicles group from top-level help?",
+  "required_for_verdict": true,
+  "safety": "read",
+  "status": "pass"
+}

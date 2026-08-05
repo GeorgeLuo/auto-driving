@@ -1,0 +1,10 @@
+{
+  "imported_at_utc": "2026-08-05T23:49:39.902345Z",
+  "imported_from": "<home>/Desktop/browser-view2.png",
+  "ok": true,
+  "source_mtime_unix": 1785973770.56421,
+  "source_sha256": "45ce25f9f58ae3d159be23ad0e6cec4359b3454935d61b613a039d784004d624",
+  "step_id": "status-running",
+  "validation": "browser-view.png ok (1582x1382, 504298 bytes)",
+  "view_healthy_at_unix": 1785973751.590605
+}

@@ -39,6 +39,7 @@ WORKFLOW_STATES = {
     "ready_for_proposal",
     "proposal_in_review",
     "ready_for_implementation",
+    "proposal_amendment_in_review",
     "implementation_in_review",
 }
 PROPOSAL_REQUIRED_HEADINGS = (
@@ -52,6 +53,18 @@ PROPOSAL_REQUIRED_HEADINGS = (
     "## File Impact",
     "## Validation Plan",
     "## Expected Handoff",
+)
+PROPOSAL_AMENDMENT_REQUIRED_HEADINGS = (
+    "## Review Question",
+    "## Reason For Amendment",
+    "## Contract Delta",
+    "## Ownership",
+    "## Affected Paths",
+    "## Adversarial Matrix",
+    "## External Assumptions",
+    "## Non-Goals",
+    "## File Impact",
+    "## Validation Plan",
 )
 HANDOFF_TEMPLATE_SCHEMA = "milestone_handoff_template_v1"
 EXAMPLE_RECEIPT: dict[str, Any] = {
@@ -278,7 +291,14 @@ def _frontier_branch(frontier: Frontier, *, heading: str, field: str) -> str:
 
 
 def _frontier_proposal_path(frontier: Frontier, *, heading: str) -> str:
-    raw_value = frontier.fields["proposal path"]
+    return _proposal_document_path(
+        frontier.fields["proposal path"],
+        heading=heading,
+        field="proposal path",
+    )
+
+
+def _proposal_document_path(raw_value: str, *, heading: str, field: str) -> str:
     quoted = re.search(r"`([^`]+)`", raw_value)
     path = quoted.group(1) if quoted else raw_value.split(maxsplit=1)[0]
     if (
@@ -289,8 +309,28 @@ def _frontier_proposal_path(frontier: Frontier, *, heading: str) -> str:
         is None
     ):
         raise PlanContractError(
-            f"{heading} proposal path must be "
+            f"{heading} {field} must be "
             "docs/milestones/<number>-<slug>/proposals/<name>.md"
+        )
+    return path
+
+
+def _frontier_proposal_amendment_path(
+    frontier: Frontier,
+    *,
+    heading: str,
+) -> str:
+    raw_value = frontier.fields.get("proposal amendment path")
+    if not raw_value:
+        raise PlanContractError(f"{heading} is missing 'proposal amendment path'")
+    path = _proposal_document_path(
+        raw_value,
+        heading=heading,
+        field="proposal amendment path",
+    )
+    if not path.endswith("-amendment.md"):
+        raise PlanContractError(
+            f"{heading} proposal amendment path must end with '-amendment.md'"
         )
     return path
 
@@ -306,6 +346,48 @@ def _accepted_proposal(frontier: Frontier, *, heading: str) -> tuple[int, str] |
             f"{heading} accepted proposal must identify a PR and merge commit"
         )
     return int(pr_match.group(1)), sha_match.group(1)
+
+
+def _accepted_proposal_amendments(
+    frontier: Frontier,
+    *,
+    heading: str,
+) -> tuple[tuple[int, str, str], ...]:
+    raw_value = frontier.fields.get("accepted proposal amendments")
+    if not raw_value:
+        return ()
+    records: list[tuple[int, str, str]] = []
+    for raw_record in raw_value.split("; "):
+        match = re.fullmatch(
+            r"\[#(\d+)\]\([^)]+\) at `([0-9a-f]{7,40})` "
+            r"\(`([^`]+)`\)",
+            raw_record,
+        )
+        if match is None:
+            raise PlanContractError(
+                f"{heading} accepted proposal amendments must identify each "
+                "PR, merge commit, and amendment path"
+            )
+        path = _proposal_document_path(
+            f"`{match.group(3)}`",
+            heading=heading,
+            field="accepted proposal amendment path",
+        )
+        if not path.endswith("-amendment.md"):
+            raise PlanContractError(
+                f"{heading} accepted proposal amendment path must end with "
+                "'-amendment.md'"
+            )
+        records.append((int(match.group(1)), match.group(2), path))
+    if len({record[0] for record in records}) != len(records):
+        raise PlanContractError(
+            f"{heading} accepted proposal amendments contain a duplicate PR"
+        )
+    if len({record[2] for record in records}) != len(records):
+        raise PlanContractError(
+            f"{heading} accepted proposal amendments contain a duplicate path"
+        )
+    return tuple(records)
 
 
 def validate_plan_text(text: str) -> PlanState:
@@ -414,14 +496,62 @@ def validate_plan_text(text: str) -> PlanState:
             current,
             heading="Current Frontier",
         )
+        accepted_amendments = _accepted_proposal_amendments(
+            current,
+            heading="Current Frontier",
+        )
         if workflow_state in {"ready_for_proposal", "proposal_in_review"}:
             if accepted_proposal is not None:
                 raise PlanContractError(
                     f"{workflow_state} cannot already identify an accepted proposal"
                 )
+            if accepted_amendments:
+                raise PlanContractError(
+                    f"{workflow_state} cannot identify accepted proposal amendments"
+                )
         elif accepted_proposal is None:
             raise PlanContractError(
                 f"{workflow_state} requires an accepted proposal PR and merge commit"
+            )
+        amendment_branch_value = current.fields.get("proposal amendment branch")
+        amendment_path_value = current.fields.get("proposal amendment path")
+        if bool(amendment_branch_value) != bool(amendment_path_value):
+            raise PlanContractError(
+                "Current Frontier must contain both proposal amendment branch and path"
+            )
+        if amendment_branch_value:
+            amendment_branch = _frontier_branch(
+                current,
+                heading="Current Frontier",
+                field="proposal amendment branch",
+            )
+            if not re.fullmatch(
+                rf"m{re.escape(milestone_number)}/amend-[a-z0-9][a-z0-9-]*",
+                amendment_branch,
+            ):
+                raise PlanContractError(
+                    "Current Frontier proposal amendment branch must match "
+                    f"m{milestone_number}/amend-<slug>"
+                )
+            amendment_path = _frontier_proposal_amendment_path(
+                current,
+                heading="Current Frontier",
+            )
+            accepted_amendment_paths = {
+                record[2] for record in accepted_amendments
+            }
+            if workflow_state == "proposal_amendment_in_review":
+                if amendment_path in accepted_amendment_paths:
+                    raise PlanContractError(
+                        "proposal amendment review must use a new additive artifact"
+                    )
+            elif amendment_path not in accepted_amendment_paths:
+                raise PlanContractError(
+                    f"{workflow_state} proposal amendment path lacks an acceptance receipt"
+                )
+        elif workflow_state == "proposal_amendment_in_review":
+            raise PlanContractError(
+                "proposal_amendment_in_review requires an amendment branch and path"
             )
         if workflow_state.startswith("ready_for_") and current.fields.get("pr"):
             raise PlanContractError(
@@ -515,11 +645,15 @@ def validate_plan_text(text: str) -> PlanState:
         raise PlanContractError("Workflow History table has an unexpected header")
     allowed_history_states = WORKFLOW_STATES | {"accepted"}
     prior_history_row: tuple[str, str, str] | None = None
-    expected_transition = {
-        "ready_for_proposal": "proposal_in_review",
-        "proposal_in_review": "ready_for_implementation",
-        "ready_for_implementation": "implementation_in_review",
-        "implementation_in_review": "accepted",
+    expected_transitions = {
+        "ready_for_proposal": {"proposal_in_review"},
+        "proposal_in_review": {"ready_for_implementation"},
+        "ready_for_implementation": {
+            "proposal_amendment_in_review",
+            "implementation_in_review",
+        },
+        "proposal_amendment_in_review": {"ready_for_implementation"},
+        "implementation_in_review": {"accepted"},
     }
     for history_frontier, history_state, history_evidence in workflow_history.rows:
         if not history_frontier or not history_evidence:
@@ -545,7 +679,8 @@ def validate_plan_text(text: str) -> PlanState:
                 )
                 if (
                     not is_plan_revision
-                    and expected_transition.get(prior_state) != history_state
+                    and history_state
+                    not in expected_transitions.get(prior_state, set())
                 ):
                     raise PlanContractError(
                         "Workflow History has an invalid same-frontier transition "
@@ -638,6 +773,26 @@ def validate_plan_path(path: Path) -> PlanState:
                 f"{heading} proposal path must be inside "
                 f"{expected_proposal_parent.relative_to(repo_root)}"
             )
+        if heading != "Current Frontier":
+            continue
+        amendment_paths = [
+            record[2]
+            for record in _accepted_proposal_amendments(
+                frontier,
+                heading=heading,
+            )
+        ]
+        if frontier.fields.get("proposal amendment path"):
+            amendment_paths.append(
+                _frontier_proposal_amendment_path(frontier, heading=heading)
+            )
+        for amendment_relative in amendment_paths:
+            amendment_path = repo_root / amendment_relative
+            if amendment_path.parent.resolve() != expected_proposal_parent.resolve():
+                raise PlanContractError(
+                    f"{heading} proposal amendment path must be inside "
+                    f"{expected_proposal_parent.relative_to(repo_root)}"
+                )
     return state
 
 
@@ -733,6 +888,9 @@ def _frontier_body(frontier: Frontier, *, current: bool) -> list[str]:
         ("implementation branch", "Implementation branch"),
         ("proposal path", "Proposal path"),
         ("accepted proposal", "Accepted proposal"),
+        ("proposal amendment branch", "Proposal amendment branch"),
+        ("proposal amendment path", "Proposal amendment path"),
+        ("accepted proposal amendments", "Accepted proposal amendments"),
         ("paused implementation", "Paused implementation"),
         ("review kind", "Review kind"),
         ("review question", "Review question"),
@@ -1110,6 +1268,7 @@ def _replace_current_frontier_state(
     evidence: str,
     accepted_proposal: str | None = None,
     opened_branch_field: str | None = None,
+    field_updates: dict[str, str] | None = None,
 ) -> str:
     state = validate_plan_text(text)
     if state.status != "Active" or state.current.is_empty:
@@ -1131,6 +1290,8 @@ def _replace_current_frontier_state(
         fields[opened_branch_field] = f"`{opened_branch}`"
     if accepted_proposal is not None:
         fields["accepted proposal"] = accepted_proposal
+    if field_updates:
+        fields.update(field_updates)
     updated = _replace_frontier(
         text,
         "### Current Frontier",
@@ -1262,6 +1423,107 @@ def start_implementation_branch(
     )
 
 
+def start_proposal_amendment_branch(
+    plan: Path,
+    state: PlanState,
+    requested_branch: str,
+    requested_path: str,
+    *,
+    repo_root: Path = ROOT,
+) -> str:
+    repo_root = repo_root.resolve()
+    relative_plan = _validate_plan_location(plan, repo_root=repo_root)
+    if state.status != "Active" or state.current.is_empty:
+        raise PlanContractError(
+            "proposal amendment start requires an active current frontier"
+        )
+    if _workflow_state(state.current) != "ready_for_implementation":
+        raise PlanContractError(
+            "proposal amendment start requires ready_for_implementation"
+        )
+    if state.current.fields.get("pr"):
+        raise PlanContractError(
+            "current frontier already has a PR; complete its handoff before amending"
+        )
+    if re.fullmatch(
+        rf"m{re.escape(state.milestone_number)}/amend-[a-z0-9][a-z0-9-]*",
+        requested_branch,
+    ) is None:
+        raise PlanContractError(
+            "proposal amendment branch must match "
+            f"m{state.milestone_number}/amend-<slug>"
+        )
+    amendment_path = _proposal_document_path(
+        requested_path,
+        heading="Current Frontier",
+        field="proposal amendment path",
+    )
+    if not amendment_path.endswith("-amendment.md"):
+        raise PlanContractError(
+            "proposal amendment path must end with '-amendment.md'"
+        )
+    expected_parent = relative_plan.parent / "proposals"
+    if Path(amendment_path).parent != expected_parent:
+        raise PlanContractError(
+            f"proposal amendment path must be inside {expected_parent}"
+        )
+    proposal_path = _frontier_proposal_path(
+        state.current,
+        heading="Current Frontier",
+    )
+    accepted_paths = {
+        record[2]
+        for record in _accepted_proposal_amendments(
+            state.current,
+            heading="Current Frontier",
+        )
+    }
+    if amendment_path == proposal_path or amendment_path in accepted_paths:
+        raise PlanContractError(
+            "proposal amendment must use a new additive artifact path"
+        )
+
+    current_branch = _run_git(
+        ["branch", "--show-current"],
+        cwd=repo_root,
+    ).stdout.strip()
+    if current_branch != state.milestone_branch:
+        raise PlanContractError(
+            f"proposal amendment start must run on {state.milestone_branch!r}, "
+            f"currently {current_branch!r}"
+        )
+    if _run_git(["status", "--porcelain"], cwd=repo_root).stdout.strip():
+        raise PlanContractError("proposal amendment start requires a clean worktree")
+    existing_refs = _run_git(
+        ["for-each-ref", "--format=%(refname)", "refs/heads", "refs/remotes"],
+        cwd=repo_root,
+    ).stdout.splitlines()
+    if any(
+        ref == f"refs/heads/{requested_branch}"
+        or (
+            ref.startswith("refs/remotes/")
+            and ref.endswith(f"/{requested_branch}")
+        )
+        for ref in existing_refs
+    ):
+        raise PlanContractError(f"branch already exists: {requested_branch}")
+
+    _run_git(["switch", "-c", requested_branch], cwd=repo_root)
+    original = plan.read_text(encoding="utf-8")
+    updated = _replace_current_frontier_state(
+        original,
+        expected_state="ready_for_implementation",
+        new_state="proposal_amendment_in_review",
+        evidence=f"Started proposal amendment {requested_branch}.",
+        field_updates={
+            "proposal amendment branch": f"`{requested_branch}`",
+            "proposal amendment path": f"`{amendment_path}`",
+        },
+    )
+    plan.write_text(updated, encoding="utf-8")
+    return updated
+
+
 def validate_proposal_text(text: str) -> None:
     if not text.startswith("# Proposal:"):
         raise PlanContractError("proposal must start with '# Proposal:'")
@@ -1269,6 +1531,16 @@ def validate_proposal_text(text: str) -> None:
         if heading not in text:
             raise PlanContractError(f"proposal is missing {heading}")
     load_handoff_template(text)
+
+
+def validate_proposal_amendment_text(text: str) -> None:
+    if not text.startswith("# Proposal Amendment:"):
+        raise PlanContractError(
+            "proposal amendment must start with '# Proposal Amendment:'"
+        )
+    for heading in PROPOSAL_AMENDMENT_REQUIRED_HEADINGS:
+        if heading not in text:
+            raise PlanContractError(f"proposal amendment is missing {heading}")
 
 
 def load_handoff_template(proposal_text: str) -> dict[str, Any]:
@@ -1491,6 +1763,114 @@ def accept_proposal(
     )
 
 
+def proposal_amendment_allowed_paths(
+    plan: Path,
+    state: PlanState,
+    *,
+    repo_root: Path = ROOT,
+) -> set[str]:
+    plan_relative = _validate_plan_location(
+        plan,
+        repo_root=repo_root.resolve(),
+    ).as_posix()
+    html_relative = str(Path(plan_relative).with_suffix(".html"))
+    amendment_relative = _frontier_proposal_amendment_path(
+        state.current,
+        heading="Current Frontier",
+    )
+    return {plan_relative, html_relative, amendment_relative}
+
+
+def validate_merged_proposal_amendment_metadata(
+    payload: dict[str, Any],
+    state: PlanState,
+    *,
+    amendment_pr: int,
+    allowed_paths: set[str],
+) -> tuple[str, str]:
+    if _workflow_state(state.current) != "proposal_amendment_in_review":
+        raise PlanContractError(
+            "proposal amendment acceptance requires workflow state "
+            "proposal_amendment_in_review"
+        )
+    if payload.get("state") != "MERGED":
+        raise PlanContractError(f"proposal amendment PR #{amendment_pr} is not merged")
+    if payload.get("baseRefName") != state.milestone_branch:
+        raise PlanContractError(
+            f"proposal amendment PR #{amendment_pr} did not target "
+            f"{state.milestone_branch}"
+        )
+    expected_head = _frontier_branch(
+        state.current,
+        heading="Current Frontier",
+        field="proposal amendment branch",
+    )
+    if payload.get("headRefName") != expected_head:
+        raise PlanContractError(
+            f"proposal amendment PR #{amendment_pr} did not use {expected_head}"
+        )
+    merge_commit = payload.get("mergeCommit")
+    merge_oid = merge_commit.get("oid") if isinstance(merge_commit, dict) else None
+    if not isinstance(merge_oid, str) or re.fullmatch(r"[0-9a-f]{40}", merge_oid) is None:
+        raise PlanContractError(
+            f"proposal amendment PR #{amendment_pr} has no full merge commit"
+        )
+    files = payload.get("files")
+    if not isinstance(files, list):
+        raise PlanContractError(
+            f"proposal amendment PR #{amendment_pr} did not expose its changed files"
+        )
+    changed = {
+        item.get("path")
+        for item in files
+        if isinstance(item, dict) and isinstance(item.get("path"), str)
+    }
+    unexpected = changed - allowed_paths
+    if unexpected:
+        raise PlanContractError(
+            "proposal amendment PR contains non-contract changes: "
+            + ", ".join(sorted(unexpected))
+        )
+    amendment_path = _frontier_proposal_amendment_path(
+        state.current,
+        heading="Current Frontier",
+    )
+    if amendment_path not in changed:
+        raise PlanContractError(
+            f"proposal amendment PR must create {amendment_path}"
+        )
+    return merge_oid, str(payload.get("url") or f"PR #{amendment_pr}")
+
+
+def accept_proposal_amendment(
+    text: str,
+    *,
+    amendment_pr: int,
+    merge_commit: str,
+    amendment_url: str,
+) -> str:
+    state = validate_plan_text(text)
+    amendment_path = _frontier_proposal_amendment_path(
+        state.current,
+        heading="Current Frontier",
+    )
+    receipt = (
+        f"[#{amendment_pr}]({amendment_url}) at `{merge_commit}` "
+        f"(`{amendment_path}`)"
+    )
+    existing = state.current.fields.get("accepted proposal amendments")
+    accepted = f"{existing}; {receipt}" if existing else receipt
+    return _replace_current_frontier_state(
+        text,
+        expected_state="proposal_amendment_in_review",
+        new_state="ready_for_implementation",
+        evidence=(
+            f"Proposal amendment PR #{amendment_pr} accepted at {merge_commit}."
+        ),
+        field_updates={"accepted proposal amendments": accepted},
+    )
+
+
 def _is_plan_revision_branch(milestone_number: str, branch: str) -> bool:
     return (
         re.fullmatch(
@@ -1604,6 +1984,7 @@ def validate_review_unit_transition(
     changed_paths: set[str],
     head_branch: str,
     proposal_text: str | None = None,
+    proposal_amendment_text: str | None = None,
 ) -> str:
     base = validate_plan_text(base_text)
     head = validate_plan_text(head_text)
@@ -1623,6 +2004,10 @@ def validate_review_unit_transition(
         raise PlanContractError("review-unit PR cannot change the queued frontier")
     base_state = _workflow_state(base.current)
     head_state = _workflow_state(head.current)
+    is_proposal_amendment = (
+        base_state == "ready_for_implementation"
+        and head_state == "proposal_amendment_in_review"
+    )
     opened_branch_field = {
         ("ready_for_proposal", "proposal_in_review"): "proposal branch",
         (
@@ -1633,6 +2018,10 @@ def validate_review_unit_transition(
     mutable_fields = {"workflow state", "pr"}
     if opened_branch_field is not None:
         mutable_fields.add(opened_branch_field)
+    if is_proposal_amendment:
+        mutable_fields.update(
+            {"proposal amendment branch", "proposal amendment path"}
+        )
     for field in (
         set(base.current.fields) | set(head.current.fields)
     ) - mutable_fields:
@@ -1712,11 +2101,61 @@ def validate_review_unit_transition(
         validate_proposal_text(proposal_text)
         validate_handoff_template_against_plan(proposal_text, head_text)
         transition_kind = "proposal"
+    elif is_proposal_amendment:
+        amendment_branch = _frontier_branch(
+            head.current,
+            heading="Current Frontier",
+            field="proposal amendment branch",
+        )
+        if head.current.fields["proposal amendment branch"] != f"`{amendment_branch}`":
+            raise PlanContractError(
+                "opened proposal amendment branch must be the canonical branch name"
+            )
+        if head_branch != amendment_branch:
+            raise PlanContractError(
+                f"proposal amendment PR must use {amendment_branch}, not {head_branch}"
+            )
+        amendment_path = _frontier_proposal_amendment_path(
+            head.current,
+            heading="Current Frontier",
+        )
+        if head.current.fields["proposal amendment path"] != f"`{amendment_path}`":
+            raise PlanContractError(
+                "proposal amendment path must be the canonical artifact path"
+            )
+        accepted_amendment_paths = {
+            record[2]
+            for record in _accepted_proposal_amendments(
+                base.current,
+                heading="Current Frontier",
+            )
+        }
+        if amendment_path == proposal_path or amendment_path in accepted_amendment_paths:
+            raise PlanContractError(
+                "proposal amendment PR must create a new additive amendment artifact"
+            )
+        plan_html = str(Path(plan_path).with_suffix(".html"))
+        allowed_paths = {plan_path, plan_html, amendment_path}
+        unexpected = changed_paths - allowed_paths
+        if unexpected:
+            raise PlanContractError(
+                "proposal amendment PR contains non-contract changes: "
+                + ", ".join(sorted(unexpected))
+            )
+        if (
+            amendment_path not in changed_paths
+            or proposal_amendment_text is None
+        ):
+            raise PlanContractError(
+                f"proposal amendment PR must provide {amendment_path}"
+            )
+        validate_proposal_amendment_text(proposal_amendment_text)
+        transition_kind = "proposal_amendment"
     elif base_state == "ready_for_implementation":
         if head_state != "implementation_in_review":
             raise PlanContractError(
-                "implementation PR must transition ready_for_implementation "
-                "to implementation_in_review"
+                "ready_for_implementation must transition to either "
+                "proposal_amendment_in_review or implementation_in_review"
             )
         expected_branch = _frontier_branch(
             base.current,
@@ -1734,9 +2173,22 @@ def validate_review_unit_transition(
             raise PlanContractError(
                 "implementation PR cannot replace its accepted proposal"
             )
-        if proposal_path in changed_paths:
+        protected_proposal_paths = {
+            proposal_path,
+            *(
+                record[2]
+                for record in _accepted_proposal_amendments(
+                    base.current,
+                    heading="Current Frontier",
+                )
+            ),
+        }
+        changed_proposal_paths = protected_proposal_paths & changed_paths
+        if changed_proposal_paths:
             raise PlanContractError(
-                "implementation PR cannot modify the accepted proposal"
+                "implementation PR cannot modify the accepted proposal or its "
+                "amendments: "
+                + ", ".join(sorted(changed_proposal_paths))
             )
         transition_kind = "implementation"
     else:
@@ -1807,7 +2259,9 @@ def validate_review_unit_git_diff(
         ).stdout.splitlines()
     )
     base = validate_plan_text(base_text)
+    head = validate_plan_text(head_text)
     proposal_text: str | None = None
+    proposal_amendment_text: str | None = None
     if (
         _workflow_state(base.current) == "ready_for_proposal"
         and not _is_plan_revision_branch(base.milestone_number, head_ref)
@@ -1821,6 +2275,19 @@ def validate_review_unit_git_diff(
             proposal_path,
             repo_root=repo_root,
         )
+    if (
+        _workflow_state(base.current) == "ready_for_implementation"
+        and _workflow_state(head.current) == "proposal_amendment_in_review"
+    ):
+        amendment_path = _frontier_proposal_amendment_path(
+            head.current,
+            heading="Current Frontier",
+        )
+        proposal_amendment_text = _git_text_at(
+            head_sha,
+            amendment_path,
+            repo_root=repo_root,
+        )
     return validate_review_unit_transition(
         base_text,
         head_text,
@@ -1828,6 +2295,7 @@ def validate_review_unit_git_diff(
         changed_paths=changed_paths,
         head_branch=head_ref,
         proposal_text=proposal_text,
+        proposal_amendment_text=proposal_amendment_text,
     )
 
 
@@ -1850,8 +2318,12 @@ def _workflow_status_payload(plan: Path, state: PlanState) -> dict[str, Any]:
         "proposal_in_review": (
             "Review and finalize the proposal. Implementation remains blocked."
         ),
+        "proposal_amendment_in_review": (
+            "Review the additive proposal amendment. Implementation remains blocked."
+        ),
         "ready_for_implementation": (
-            "Hand the accepted proposal to the implementer."
+            "Hand the accepted contract to the implementer, or start an additive "
+            "proposal amendment when established evidence requires correction."
         ),
         "implementation_in_review": (
             "Review the implementation against the accepted proposal."
@@ -1877,6 +2349,15 @@ def _workflow_status_payload(plan: Path, state: PlanState) -> dict[str, Any]:
             heading="Current Frontier",
         ),
         "accepted_proposal": state.current.fields.get("accepted proposal"),
+        "proposal_amendment_branch": state.current.fields.get(
+            "proposal amendment branch"
+        ),
+        "proposal_amendment_path": state.current.fields.get(
+            "proposal amendment path"
+        ),
+        "accepted_proposal_amendments": state.current.fields.get(
+            "accepted proposal amendments"
+        ),
         "next_action": next_actions[workflow_state],
         "plan": str(plan),
         "history": [
@@ -2193,6 +2674,115 @@ def _cmd_accept_proposal(plan: Path, proposal_pr: int) -> int:
     return 0
 
 
+def _cmd_start_proposal_amendment(
+    plan: Path,
+    branch: str,
+    amendment_path: str,
+) -> int:
+    plan = plan.resolve()
+    state = validate_plan_path(plan)
+    start_proposal_amendment_branch(
+        plan,
+        state,
+        branch,
+        amendment_path,
+    )
+    _render_docs()
+    print(f"Proposal amendment branch started: {branch}")
+    print(f"Frontier: {state.current.name}")
+    print(
+        "Next: author only the additive amendment and planning transition; "
+        "the accepted proposal and implementation remain frozen."
+    )
+    return 0
+
+
+def _cmd_accept_proposal_amendment(plan: Path, amendment_pr: int) -> int:
+    plan = plan.resolve()
+    original = plan.read_text(encoding="utf-8")
+    state = validate_plan_text(original)
+    repo_root = ROOT.resolve()
+    _validate_plan_location(plan, repo_root=repo_root)
+    branch = _run_git(["branch", "--show-current"], cwd=repo_root).stdout.strip()
+    if branch != state.milestone_branch:
+        raise PlanContractError(
+            "proposal amendment acceptance must run on "
+            f"{state.milestone_branch!r}, currently {branch!r}"
+        )
+    if _run_git(["status", "--porcelain"], cwd=repo_root).stdout.strip():
+        raise PlanContractError(
+            "proposal amendment acceptance requires a clean worktree"
+        )
+    try:
+        result = subprocess.run(
+            [
+                "gh",
+                "pr",
+                "view",
+                str(amendment_pr),
+                "--json",
+                "state,mergeCommit,baseRefName,headRefName,files,url",
+            ],
+            cwd=repo_root,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError as exc:
+        raise PlanContractError(
+            "GitHub CLI `gh` is required for proposal amendment acceptance"
+        ) from exc
+    except subprocess.CalledProcessError as exc:
+        detail = exc.stderr.strip() or exc.stdout.strip() or str(exc)
+        raise PlanContractError(
+            f"cannot verify proposal amendment PR on GitHub: {detail}"
+        ) from exc
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise PlanContractError(
+            "GitHub CLI returned invalid proposal amendment metadata"
+        ) from exc
+    if not isinstance(payload, dict):
+        raise PlanContractError(
+            "GitHub CLI returned invalid proposal amendment metadata"
+        )
+    merge_commit, amendment_url = validate_merged_proposal_amendment_metadata(
+        payload,
+        state,
+        amendment_pr=amendment_pr,
+        allowed_paths=proposal_amendment_allowed_paths(plan, state),
+    )
+    ancestor = _run_git(
+        ["merge-base", "--is-ancestor", merge_commit, "HEAD"],
+        cwd=repo_root,
+        check=False,
+    )
+    if ancestor.returncode != 0:
+        raise PlanContractError(
+            f"proposal amendment merge commit {merge_commit} is not an ancestor of HEAD"
+        )
+    amendment_path = repo_root / _frontier_proposal_amendment_path(
+        state.current,
+        heading="Current Frontier",
+    )
+    validate_proposal_amendment_text(amendment_path.read_text(encoding="utf-8"))
+    updated = accept_proposal_amendment(
+        original,
+        amendment_pr=amendment_pr,
+        merge_commit=merge_commit,
+        amendment_url=amendment_url,
+    )
+    _write_plan_and_render(plan, original, updated)
+    print(f"Accepted proposal amendment PR #{amendment_pr} for {state.current.name}.")
+    print("Workflow state: ready_for_implementation")
+    print(
+        "Next: hand the accepted proposal plus amendments to the implementer, "
+        "then use start-implementation."
+    )
+    return 0
+
+
 def _cmd_start_implementation(plan: Path, branch: str) -> int:
     plan = plan.resolve()
     state = validate_plan_path(plan)
@@ -2201,7 +2791,15 @@ def _cmd_start_implementation(plan: Path, branch: str) -> int:
     print(f"Implementation branch started: {branch}")
     print(f"Frontier: {state.current.name}")
     print("Accepted proposal: " + state.current.fields["accepted proposal"])
-    print("Next: implement only the accepted proposal, then open the implementation PR.")
+    if state.current.fields.get("accepted proposal amendments"):
+        print(
+            "Accepted proposal amendments: "
+            + state.current.fields["accepted proposal amendments"]
+        )
+    print(
+        "Next: implement only the accepted proposal and amendments, then open "
+        "the implementation PR."
+    )
     return 0
 
 
@@ -2219,6 +2817,11 @@ def _cmd_status(plan: Path, *, as_json: bool) -> int:
         print(f"Proposal: {payload['proposal_path']}")
     if payload.get("accepted_proposal"):
         print(f"Accepted proposal: {payload['accepted_proposal']}")
+    if payload.get("accepted_proposal_amendments"):
+        print(
+            "Accepted proposal amendments: "
+            + payload["accepted_proposal_amendments"]
+        )
     print(f"Next: {payload['next_action']}")
     return 0
 
@@ -2293,6 +2896,21 @@ def main() -> int:
     proposal_accept_parser.add_argument("--plan", required=True, type=Path)
     proposal_accept_parser.add_argument("--pr", required=True, type=int)
 
+    amendment_start_parser = subparsers.add_parser(
+        "start-proposal-amendment",
+        help="create an additive amendment branch for an accepted proposal",
+    )
+    amendment_start_parser.add_argument("--plan", required=True, type=Path)
+    amendment_start_parser.add_argument("--branch", required=True)
+    amendment_start_parser.add_argument("--path", required=True)
+
+    amendment_accept_parser = subparsers.add_parser(
+        "accept-proposal-amendment",
+        help="record a merged proposal amendment and restore implementation readiness",
+    )
+    amendment_accept_parser.add_argument("--plan", required=True, type=Path)
+    amendment_accept_parser.add_argument("--pr", required=True, type=int)
+
     implementation_start_parser = subparsers.add_parser(
         "start-implementation",
         help="create the implementation branch after proposal acceptance",
@@ -2302,7 +2920,7 @@ def main() -> int:
 
     validate_pr_parser = subparsers.add_parser(
         "validate-pr",
-        help="validate a proposal or implementation PR transition",
+        help="validate a proposal, amendment, or implementation PR transition",
     )
     validate_pr_parser.add_argument("--base-ref", required=True)
     validate_pr_parser.add_argument("--head-ref", required=True)
@@ -2327,6 +2945,14 @@ def main() -> int:
             return _cmd_start_proposal(args.plan, args.branch)
         if args.command == "accept-proposal":
             return _cmd_accept_proposal(args.plan, args.pr)
+        if args.command == "start-proposal-amendment":
+            return _cmd_start_proposal_amendment(
+                args.plan,
+                args.branch,
+                args.path,
+            )
+        if args.command == "accept-proposal-amendment":
+            return _cmd_accept_proposal_amendment(args.plan, args.pr)
         if args.command == "start-implementation":
             return _cmd_start_implementation(args.plan, args.branch)
         if args.command == "complete-implementation":

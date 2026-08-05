@@ -160,17 +160,27 @@ single bounded screenshot that proves:
 
 - a nonblank current front-camera image is visible;
 - perception/observation content is rendered and intelligible;
-- the displayed frame and perception publication are current and correlated;
-- the view identifies `chase-sim-chaser` and the current overlay source; and
+- the displayed frame and perception publication are correlated under the
+  lag-bounded machine rule (exact `current` match or proven lag within budget);
+- the view identifies `chase-sim-chaser` and the overlay source; and
 - no visual state contradicts the separately captured observation-only,
   no-applied-control, and recording-off machine evidence.
 
 Also capture the view's `/api/latest` publication while the worker is running.
-Its frame id must equal the overlay source frame id, overlay status must be
-`current`, and cycle authority must report `action_policy=observe_only` and
-`control_application=not_applied`. The screenshot supplies human display
-evidence; `/api/latest` supplies machine correlation evidence. Neither alone
-is sufficient.
+Cycle authority must report `action_policy=observe_only` and
+`control_application=not_applied`. Correlation of camera and perception must
+satisfy the **lag-bounded** rule in Machine acceptance gates (exact `current`
+match, or `stale` with proven frame lag within the accepted budget). The
+screenshot supplies human display evidence; `/api/latest` supplies machine
+correlation evidence. Neither alone is sufficient.
+
+Under continuous Chase, the product may publish a newer camera frame before
+the previous perception result is ready (pipeline lag, typically tens to low
+hundreds of milliseconds). That appears in the UI as Live green/red flicker
+and as `overlay.status=stale` with a positive `frame_lag`. Bounded lag is
+expected continuous-sim behavior; it is not by itself evidence that the view
+is blank or that control was applied. Unbounded lag, missing perception, or
+authority violations remain findings.
 
 The Metrics UI remains open throughout. Opening the Automa view normally puts
 the Metrics UI tab in the background, so the running targeted status is an
@@ -178,9 +188,9 @@ explicit background-tab probe: simulator frontend, Chase game, vehicle, and
 passive capture must remain healthy. The operator then returns to Metrics UI
 and confirms that the visible scenario, playback mode, control source, and
 input were not changed by Automa. A background-only
-`frontend_unresponsive`, disconnected frontend, blank view, stale overlay, or
-misleading display is a product/external-contract finding, not an acceptable
-fallback.
+`frontend_unresponsive`, disconnected frontend, blank view, lag **above** the
+accepted budget, or misleading display is a product/external-contract finding,
+not an acceptable fallback.
 
 Browser-launch failure is classified separately from view health. If the CLI
 reports a healthy view plus its URL but the operating system cannot open it,
@@ -198,7 +208,7 @@ The captured machine evidence must establish all of the following:
 | Staging | `update perception` exits zero, identifies the packaged `lightweight_observer`, and reports the next runnable automation command without starting a worker |
 | Startup | `automation run` exits zero only after at least one camera frame, its perception result, and a current-generation healthy loopback view |
 | Running layers | Deployment `deployed`, worker `running`, view `available`, passive capture available, and human/JSON meanings agree |
-| Correlation | View `/api/latest` reports the same nonempty current frame id for camera and perception, with current overlay status |
+| Correlation | View `/api/latest` reports lag-bounded camera/perception correlation: either (a) `overlay.status=current` and `frame.frame_id == overlay.source_frame_id`, or (b) `overlay.status=stale` with nonempty source frame id, typed camera and source frame indexes, derived lag `(frame.frame_index − overlay.source_frame_index)` equal to claimed `overlay.frame_lag`, and that lag in `1..MAX_FRAME_LAG` (accepted default **24**). `pending`, missing indexes, inconsistent claimed lag, or lag above budget fails. Poll-until-green is diagnostic only, not the pass criterion. `MAX_FRAME_LAG` is part of the reviewed acceptance surface (catalog/pin), not a free implementer constant |
 | Authority | Worker and view report observation-only action policy and no applied control; the required session fingerprint remains equal to baseline |
 | Default recording | `--record` is absent, worker state reports recording false, and the before/after history-directory listing contains no new run |
 | Cleanup | Stop exits zero; final status reports worker `stopped`, no available current-generation view, deployment still staged, preserved authority/session state, and no Automa worker process remains |
@@ -328,7 +338,9 @@ state, and loopback view implementation.
 | Metrics UI is visible but its registered frontend stops answering when backgrounded | Record the exact `frontend_unresponsive` or disconnect evidence; do not foreground it merely to claim a pass |
 | Startup prints a URL before correlated camera/perception health | Record an acceptance blocker even if the page later recovers |
 | Browser launcher fails but the printed loopback URL is healthy | Inspect manually, retain launch warning, and judge view health separately |
-| Screenshot looks healthy but `/api/latest` reports stale or mismatched frame ids | Machine correlation wins; record an acceptance blocker |
+| Screenshot looks healthy but `/api/latest` reports lag above budget, pending overlay, or unproven/inconsistent frame indexes | Machine correlation wins; record an acceptance blocker |
+| Screenshot looks healthy and `/api/latest` reports stale with proven lag within budget | Machine correlation may pass under the lag-bounded gate; do not require exact `current` alone under continuous Chase |
+| Claimed `frame_lag` does not equal derived index difference, or indexes are missing | Fail closed; do not trust a self-reported lag integer alone |
 | JSON is healthy but the rendered image is blank, unreadable, or misleading | Human display evidence wins; record an acceptance blocker |
 | Evaluator reference is absent while sensor identity is valid | Observation-only perception may pass; do not claim reference-dependent scoring |
 | CLI changes scenario, playback mode, control source, or input | Record an acceptance blocker and stop; do not normalize the mutation |
@@ -456,7 +468,7 @@ Post-merge successful evidence template:
   "criterion_updates": {
     "M007-05": {
       "status": "Met",
-      "evidence": "Tracked live acceptance in PR #{pr} proves one current correlated camera/perception frame, healthy loopback rendering, truthful layer states, observation-only no-applied-control authority, protected-state preservation, no default run history, and stopped-worker cleanup against exact recorded auto-driving and Metrics UI commits"
+      "evidence": "Tracked live acceptance in PR #{pr} proves lag-bounded correlated camera/perception publication (exact current or proven frame lag within the accepted MAX_FRAME_LAG), healthy loopback rendering, truthful layer states, observation-only no-applied-control authority, protected-state preservation, no default run history, and stopped-worker cleanup against exact recorded auto-driving and Metrics UI commits"
     }
   },
   "risk_remove": [],

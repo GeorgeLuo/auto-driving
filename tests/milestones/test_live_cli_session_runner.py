@@ -25,6 +25,7 @@ RUNNER_PATH = (
 )
 CATALOGS = RUNNER_PATH.parent / "catalogs"
 VEHICLE = "chase-sim-chaser"
+MAX_FRAME_LAG = 24
 
 
 def _load_runner_module():
@@ -177,9 +178,47 @@ def _current_view_payload(**overrides) -> dict:
     return payload
 
 
+def _stale_view_payload(
+    lag: int,
+    *,
+    current_index: int = 100,
+    claimed_lag=None,
+) -> dict:
+    if claimed_lag is None:
+        claimed_lag = lag
+    payload = _current_view_payload()
+    payload["frame"] = {
+        "frame_id": f"chase_frame_{current_index}",
+        "frame_index": current_index,
+    }
+    payload["overlay"] = {
+        "status": "stale",
+        "source_frame_id": f"chase_frame_{current_index - lag}",
+        "source_frame_index": current_index - lag,
+        "frame_lag": claimed_lag,
+        "frame_lag_ms": 8.5,
+        "result_age_ms": 11.0,
+    }
+    return payload
+
+
 class LiveCliSessionRunnerTests(unittest.TestCase):
     def test_runner_script_exists(self) -> None:
         self.assertTrue(RUNNER_PATH.is_file())
+
+    def test_machine_only_mode_has_gateable_exit_contract(self) -> None:
+        runner = _load_runner_module()
+        args = runner.build_parser().parse_args(["--machine-only"])
+        self.assertTrue(args.machine_only)
+        for verdict, expected in (("pass", 0), ("fail", 1), ("not_run", 2)):
+            with self.subTest(verdict=verdict):
+                self.assertEqual(
+                    runner._result_exit_code(
+                        {"result": "incomplete", "machine_preflight": {"verdict": verdict}},
+                        machine_only=True,
+                    ),
+                    expected,
+                )
 
     def test_list_catalogs(self) -> None:
         completed = subprocess.run(
@@ -392,25 +431,36 @@ class LiveCliSessionRunnerTests(unittest.TestCase):
     def test_view_and_authority_fail_closed(self) -> None:
         runner = _load_runner_module()
         ok, msg = runner.validate_view_latest(
-            _current_view_payload(), vehicle_id=VEHICLE
+            _current_view_payload(),
+            vehicle_id=VEHICLE,
+            max_frame_lag=MAX_FRAME_LAG,
         )
         self.assertTrue(ok, msg)
         ok, msg = runner.validate_view_latest(
-            _current_view_payload(control=None), vehicle_id=VEHICLE
+            _current_view_payload(control=None),
+            vehicle_id=VEHICLE,
+            max_frame_lag=MAX_FRAME_LAG,
         )
         self.assertFalse(ok)
         self.assertIn("control object missing", msg)
-        ok, msg = runner.validate_view_latest({"frame_id": "x"}, vehicle_id=VEHICLE)
+        ok, msg = runner.validate_view_latest(
+            {"frame_id": "x"},
+            vehicle_id=VEHICLE,
+            max_frame_lag=MAX_FRAME_LAG,
+        )
         self.assertFalse(ok)
         # Wrong product schema / vehicle identity fail closed.
         ok, msg = runner.validate_view_latest(
             _current_view_payload(schema="automa_perception_view_publication_v1"),
             vehicle_id=VEHICLE,
+            max_frame_lag=MAX_FRAME_LAG,
         )
         self.assertFalse(ok)
         self.assertIn("schema", msg)
         ok, msg = runner.validate_view_latest(
-            _current_view_payload(vehicle_id="other"), vehicle_id=VEHICLE
+            _current_view_payload(vehicle_id="other"),
+            vehicle_id=VEHICLE,
+            max_frame_lag=MAX_FRAME_LAG,
         )
         self.assertFalse(ok)
         ok, msg = runner.validate_view_latest(
@@ -425,6 +475,7 @@ class LiveCliSessionRunnerTests(unittest.TestCase):
                 "control": {"applied": False},
             },
             vehicle_id=VEHICLE,
+            max_frame_lag=MAX_FRAME_LAG,
         )
         self.assertFalse(ok)
 
@@ -434,6 +485,169 @@ class LiveCliSessionRunnerTests(unittest.TestCase):
         status["layers"]["automation_worker"]["details"]["authority"]["last_frame"] = {}
         ok, msg = runner.validate_authority(status, vehicle_id=VEHICLE)
         self.assertFalse(ok)
+
+    def test_view_correlation_accepts_current_and_bounded_stale(self) -> None:
+        runner = _load_runner_module()
+
+        current = _current_view_payload()
+        del current["overlay"]["frame_lag"]
+        evidence = runner._view_correlation_evidence(
+            current,
+            vehicle_id=VEHICLE,
+            max_frame_lag=MAX_FRAME_LAG,
+        )
+        self.assertEqual(evidence["verdict"], "pass", evidence)
+        self.assertEqual(evidence["mode"], "current")
+        self.assertEqual(evidence["derived_frame_lag"], 0)
+        self.assertIn("mode=current derived_lag=0 bound=24", evidence["summary"])
+
+        for lag in (1, 12, 17, 24):
+            with self.subTest(lag=lag):
+                evidence = runner._view_correlation_evidence(
+                    _stale_view_payload(lag),
+                    vehicle_id=VEHICLE,
+                    max_frame_lag=MAX_FRAME_LAG,
+                )
+                self.assertEqual(evidence["verdict"], "pass", evidence)
+                self.assertEqual(evidence["mode"], "bounded_stale")
+                self.assertEqual(evidence["claimed_frame_lag"], lag)
+                self.assertEqual(evidence["derived_frame_lag"], lag)
+                self.assertEqual(evidence["max_frame_lag"], MAX_FRAME_LAG)
+                self.assertIn(
+                    f"mode=bounded_stale derived_lag={lag} bound=24",
+                    evidence["summary"],
+                )
+
+    def test_view_correlation_rejects_unproven_or_over_budget_lag(self) -> None:
+        runner = _load_runner_module()
+
+        cases = []
+        over_budget = _stale_view_payload(25)
+        cases.append(("over_budget", over_budget, "derived_lag=25 > max_frame_lag=24"))
+
+        mismatch = _stale_view_payload(12, claimed_lag=11)
+        cases.append(("claimed_mismatch", mismatch, "claimed_lag=11 != derived_lag=12"))
+
+        reverse = _stale_view_payload(1)
+        reverse["overlay"]["source_frame_index"] = 101
+        reverse["overlay"]["frame_lag"] = -1
+        cases.append(("reverse", reverse, "reverse or zero lineage"))
+
+        pending = _stale_view_payload(1)
+        pending["overlay"]["status"] = "pending"
+        cases.append(("pending", pending, "overlay.status='pending'"))
+
+        unknown = _stale_view_payload(1)
+        unknown["overlay"]["status"] = "caught_up"
+        cases.append(("unknown", unknown, "overlay.status='caught_up'"))
+
+        current_mismatch = _current_view_payload(
+            overlay={"source_frame_id": "different", "frame_lag": 0}
+        )
+        cases.append(("current_ids", current_mismatch, "current ids conflict"))
+
+        current_nonzero = _current_view_payload(overlay={"frame_lag": 1})
+        cases.append(("current_lag", current_nonzero, "must be integer 0"))
+
+        missing_current_id = _stale_view_payload(1)
+        missing_current_id["frame"]["frame_id"] = ""
+        cases.append(("current_id_missing", missing_current_id, "frame.frame_id"))
+
+        missing_source_id = _stale_view_payload(1)
+        missing_source_id["overlay"]["source_frame_id"] = None
+        cases.append(
+            ("source_id_missing", missing_source_id, "overlay.source_frame_id")
+        )
+
+        for name, payload, reason in cases:
+            with self.subTest(name=name):
+                evidence = runner._view_correlation_evidence(
+                    payload,
+                    vehicle_id=VEHICLE,
+                    max_frame_lag=MAX_FRAME_LAG,
+                )
+                self.assertEqual(evidence["verdict"], "fail", evidence)
+                self.assertIn(reason, evidence["summary"])
+
+    def test_view_correlation_requires_type_strict_indexes_and_lag(self) -> None:
+        runner = _load_runner_module()
+        fields = (
+            ("frame", "frame_index", "frame.frame_index"),
+            ("overlay", "source_frame_index", "overlay.source_frame_index"),
+            ("overlay", "frame_lag", "overlay.frame_lag"),
+        )
+        for container, field, label in fields:
+            for malformed in (True, 1.0, "1", None):
+                with self.subTest(field=label, value=repr(malformed)):
+                    payload = _stale_view_payload(1)
+                    payload[container][field] = malformed
+                    evidence = runner._view_correlation_evidence(
+                        payload,
+                        vehicle_id=VEHICLE,
+                        max_frame_lag=MAX_FRAME_LAG,
+                    )
+                    self.assertEqual(evidence["verdict"], "fail", evidence)
+                    self.assertIn(label, evidence["summary"])
+                    self.assertIn("must be an integer", evidence["summary"])
+
+    def test_view_correlation_preserves_timing_as_diagnostic_evidence(self) -> None:
+        runner = _load_runner_module()
+        payload = _stale_view_payload(17)
+        payload["overlay"]["frame_lag_ms"] = "fast"
+        payload["overlay"]["result_age_ms"] = -1
+        evidence = runner._view_correlation_evidence(
+            payload,
+            vehicle_id=VEHICLE,
+            max_frame_lag=MAX_FRAME_LAG,
+        )
+        self.assertEqual(evidence["verdict"], "pass", evidence)
+        self.assertEqual(evidence["frame_lag_ms"], "fast")
+        self.assertEqual(evidence["result_age_ms"], -1)
+        self.assertEqual(len(evidence["diagnostic_findings"]), 2)
+
+    def test_view_correlation_preserves_independent_blockers(self) -> None:
+        runner = _load_runner_module()
+        cases = (
+            ("perception", None, "perception result absent"),
+            (
+                "cycle",
+                {"action_policy": "apply_controls"},
+                "cycle.action_policy",
+            ),
+            ("control", {"applied": True}, "control.applied=True"),
+        )
+        for field, value, reason in cases:
+            with self.subTest(field=field):
+                payload = _stale_view_payload(12)
+                payload[field] = value
+                evidence = runner._view_correlation_evidence(
+                    payload,
+                    vehicle_id=VEHICLE,
+                    max_frame_lag=MAX_FRAME_LAG,
+                )
+                self.assertEqual(evidence["verdict"], "fail", evidence)
+                self.assertIn(reason, evidence["summary"])
+
+    def test_machine_failure_wins_over_skipped_or_passing_visual_check(self) -> None:
+        runner = _load_runner_module()
+        for visual in ("skip", "pass"):
+            with self.subTest(visual=visual):
+                status = runner._finalize_step_status(
+                    "ok",
+                    machine_ok=False,
+                    visual=visual,
+                    required_for_verdict=True,
+                )
+                self.assertEqual(status, "fail")
+        self.assertEqual(
+            runner._finalize_step_status(
+                "ok",
+                machine_ok=True,
+                visual="skip",
+                required_for_verdict=True,
+            ),
+            "skip",
+        )
 
     def _fake_cleanup_run(
         self,
@@ -700,6 +914,10 @@ class LiveCliSessionRunnerTests(unittest.TestCase):
         catalog = yaml.safe_load(
             (CATALOGS / "m007-acceptance.yaml").read_text(encoding="utf-8")
         )
+        self.assertEqual(
+            catalog["acceptance_contract"]["correlation"]["max_frame_lag"],
+            MAX_FRAME_LAG,
+        )
         initial = next(s for s in catalog["steps"] if s["id"] == "status-initial")
         # Frozen primary command is aggregate; targeted JSON is supplemental.
         primary = " ".join(initial["commands"][0])
@@ -803,7 +1021,10 @@ class LiveCliSessionRunnerTests(unittest.TestCase):
             urllib.request.urlopen = lambda *a, **k: _Resp()  # type: ignore[assignment]
             try:
                 meta = runner._capture_view_latest(
-                    session_dir, status_path, vehicle_id=VEHICLE
+                    session_dir,
+                    status_path,
+                    vehicle_id=VEHICLE,
+                    max_frame_lag=MAX_FRAME_LAG,
                 )
             finally:
                 urllib.request.urlopen = original  # type: ignore[assignment]
@@ -1017,6 +1238,22 @@ class LiveCliSessionRunnerTests(unittest.TestCase):
         ok, reason = runner._is_canonical_acceptance_catalog(path, mutated)
         self.assertFalse(ok)
         self.assertIn("does not match", reason)
+
+        threshold_mutation = copy.deepcopy(catalog)
+        threshold_mutation["acceptance_contract"]["correlation"][
+            "max_frame_lag"
+        ] = 25
+        ok, reason = runner._is_canonical_acceptance_catalog(
+            path, threshold_mutation
+        )
+        self.assertFalse(ok)
+        self.assertIn("does not match", reason)
+
+        invalid_threshold = copy.deepcopy(catalog)
+        invalid_threshold["acceptance_contract"]["correlation"][
+            "max_frame_lag"
+        ] = True
+        self.assertIsNone(runner._catalog_max_frame_lag(invalid_threshold))
 
     def test_pinned_digest_is_independent_constant(self) -> None:
         runner = _load_runner_module()
@@ -1618,7 +1855,7 @@ class LiveCliSessionRunnerTests(unittest.TestCase):
                 if "--json" in argv:
                     worker = "stopped"
                     view = "stale"
-                    if any(a == "run" for a in argv):
+                    if step_dir.name == "status-running":
                         worker, view = "running", "available"
                     payload = _status_with_passive(
                         worker_state=worker,
@@ -1655,15 +1892,32 @@ class LiveCliSessionRunnerTests(unittest.TestCase):
                     "needed": False,
                 }
             )
-            runner._capture_view_latest = (  # type: ignore[assignment]
-                lambda session_dir, running_status, vehicle_id: {
+            def fake_view(
+                session_dir,
+                running_status,
+                *,
+                vehicle_id,
+                max_frame_lag,
+            ):
+                payload = _stale_view_payload(17)
+                (session_dir / "view-publication.json").write_text(
+                    json.dumps(payload), encoding="utf-8"
+                )
+                evidence = runner._view_correlation_evidence(
+                    payload,
+                    vehicle_id=vehicle_id,
+                    max_frame_lag=max_frame_lag,
+                )
+                return {
                     "url": "http://127.0.0.1:1/api/latest",
                     "path": "view-publication.json",
                     "http_status": 200,
-                    "summary": "ok",
+                    "summary": evidence["summary"],
+                    "correlation": evidence,
                     "vehicle_id": vehicle_id,
                 }
-            )
+
+            runner._capture_view_latest = fake_view  # type: ignore[assignment]
             try:
                 result = runner.run_session(
                     catalog=catalog,
@@ -1681,6 +1935,7 @@ class LiveCliSessionRunnerTests(unittest.TestCase):
                     browser_view_path=None,
                     operator="test",
                     catalog_path=CATALOGS / "m007-acceptance.yaml",
+                    machine_only=True,
                 )
             finally:
                 runner._run_command = original_run  # type: ignore[assignment]
@@ -1703,6 +1958,23 @@ class LiveCliSessionRunnerTests(unittest.TestCase):
             self.assertTrue(all("--observe-only" in j for j in run_lines), run_lines)
             self.assertTrue(any("automation stop" in j for j in joined), joined)
             self.assertNotEqual(result.get("result"), "pass")  # non-interactive
+            self.assertEqual(result.get("execution_mode"), "machine_only_live")
+            self.assertEqual(
+                result["machine_preflight"]["verdict"],
+                "pass",
+                result["machine_preflight"],
+            )
+            correlation = result.get("view_correlation") or {}
+            self.assertEqual(correlation.get("verdict"), "pass", correlation)
+            self.assertEqual(correlation.get("mode"), "bounded_stale")
+            self.assertEqual(correlation.get("derived_frame_lag"), 17)
+            self.assertEqual(correlation.get("max_frame_lag"), MAX_FRAME_LAG)
+            correlation_gate = next(
+                gate for gate in result["gates"] if gate["id"] == "correlation"
+            )
+            self.assertEqual(
+                correlation_gate["details"]["derived_frame_lag"], 17
+            )
             self.assertTrue((session_dir / "result.json").is_file())
             self.assertTrue((session_dir / "digests.json").is_file())
 

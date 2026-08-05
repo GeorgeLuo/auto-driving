@@ -66,6 +66,8 @@ Top-level fields:
 
 - `id`, `track` (`acceptance` \| `exploratory`), `title`, `description`
 - `vehicle_id`, `metrics_ui_origin`, `perception_algorithm`
+- `acceptance_contract.correlation.max_frame_lag` — reviewed frame-count bound
+  for the pinned acceptance catalog (currently `24`)
 - `gates` — required gate ids for acceptance verdicts
 - `steps[]` — ordered operator steps
 
@@ -208,9 +210,19 @@ An acceptance catalog can return `pass` only when all of the following hold:
   `frameIndex` advancement is allowed; cleanup status is also preservation-checked
 - **view identity**: `/api/latest` must use `automa_perception_publication_v1` and
   the expected vehicle id
+- **view correlation**: one captured publication must be exact-current (equal
+  nonempty ids and absent/integer-zero claimed lag) or proven bounded-stale.
+  Bounded-stale requires strict integer current/source indexes, a claimed lag
+  equal to their independently derived difference, and derived lag in the
+  pinned inclusive range `1..24`. `result.json`, the correlation gate details,
+  and the status-running envelope retain ids, indexes, claimed/derived lag,
+  bound, mode, timing diagnostics, and verdict. Pass/fail summaries expose
+  `mode`, `derived_lag`, `bound`, and the exact reason; malformed timing remains
+  a finding rather than an unreviewed wall-clock gate
 - **browser-view.png** is bound only after `view_correlation` establishes the
-  health floor; source mtime must postdate that floor (preserved on copy); import
-  paths are redacted
+  exact-current or proven bounded-stale health floor; source mtime must postdate
+  that floor (preserved on copy); a blank or misleading image still fails the
+  independent human gate, and import paths are redacted
 - **cleanup** proves every observed worker PID is dead (not only the final status PID)
 - dirty auto-driving / Metrics UI checkouts need a **non-empty tracked patch**.
   A linked PR (`--auto-driving-linked-pr` / `--metrics-ui-linked-pr`) must be a
@@ -221,12 +233,43 @@ An acceptance catalog can return `pass` only when all of the following hold:
 Dry-run and non-interactive sessions are capture helpers only; they resolve to
 `incomplete` for acceptance catalogs even if every auto-visual is `pass`.
 
-## Non-interactive mode
+## Machine-only preflight and non-interactive mode
 
-For tests and CI smoke:
+Run the real sequence without human prompts to catch deterministic CLI, layer,
+authority, preservation, and view-correlation failures before formal acceptance:
+
+```sh
+python3 docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/session_runner.py \
+  --catalog docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/catalogs/m007-acceptance.yaml \
+  --metrics-ui-origin http://localhost:5050 \
+  --machine-only \
+  --operator machine-preflight \
+  --session-dir /tmp/m007-machine-preflight
+```
+
+This executes the live commands and cleanup. A machine failure remains a failed
+step/gate even though its human visual check is skipped, making issues such as
+unproven or over-budget correlation visible in `result.json`. If every machine
+gate is green, the overall acceptance result is still `incomplete` because the
+independent visual judgment has not happened. `--machine-only` exits `0` only
+for `machine_preflight.verdict=pass`, exits `1` for a machine failure, and exits
+`2` when the preflight could not run. Proceed to the interactive acceptance
+command only after the machine-only command exits `0`; otherwise repair or
+amend the methodology first.
+
+For a PR that changes this runner or the pinned acceptance catalog, a
+machine-only pass at the candidate commit is a manual pre-merge readiness
+condition. Record the commit and session artifact/verdict on the PR. A failed or
+unrun preflight leaves the PR not ready; it does not justify escalating to the
+human acceptance session. The human session remains a later, independent #88
+step after the runner change is merged.
+
+For a no-command tests/CI smoke:
 
 ```sh
 python3 …/session_runner.py --catalog …/m007-acceptance.yaml --dry-run --non-interactive --auto-visual skip
 ```
 
-`--non-interactive` without `--dry-run` will execute real commands and auto-apply `--auto-visual` (default `skip`), which makes acceptance catalogs resolve to `incomplete` unless every visual gate is auto-passed deliberately.
+`--non-interactive` always prevents a formal acceptance `pass`, even when
+`--auto-visual pass` is supplied. Only an interactive session can provide the
+human portion of the M007-05 verdict.

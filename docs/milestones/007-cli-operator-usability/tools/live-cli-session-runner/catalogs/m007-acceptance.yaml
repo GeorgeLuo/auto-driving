@@ -10,6 +10,9 @@ description: >
 vehicle_id: chase-sim-chaser
 metrics_ui_origin: http://localhost:5050
 perception_algorithm: lightweight_observer
+acceptance_contract:
+  correlation:
+    max_frame_lag: 24
 safety:
   movement: never
   record_default: false
@@ -116,13 +119,13 @@ steps:
 
   - id: automation-run
     kind: command
-    question: Does observe-only run reach a correlated perception view?
+    question: Does observe-only run reach a lag-bounded correlated perception view?
     safety: live_mutation
     commands:
       - ["./cli/automa", "vehicles", "automation", "run", "--id", "{vehicle_id}", "--observe-only", "--frames", "0", "--open-view"]
     primary_cue: "Ready for: inspect perception and stop automation; Browser opened"
     visual_required: true
-    visual_prompt: "Automa view is nonblank with a current overlay (not a dead/stale panel)?"
+    visual_prompt: "Automa view is nonblank and intelligible with a current or proven bounded-stale overlay (not dead/pending)?"
     open_url_from_stdout: true
     required_for_verdict: true
     gate_ids: [startup, human_view]
@@ -140,7 +143,7 @@ steps:
     capture_view_latest: true
     primary_cue: "worker running; perception_view available; observe_only / not_applied"
     visual_required: true
-    visual_prompt: "Metrics UI still healthy and Automa view still current after status?"
+    visual_prompt: "Metrics UI still healthy and Automa view still current or proven bounded-stale after status?"
     required_for_verdict: true
     gate_ids: [running_layers, authority, human_view, correlation]
     machine_validators: [running_layers, authority, view_correlation, preservation]

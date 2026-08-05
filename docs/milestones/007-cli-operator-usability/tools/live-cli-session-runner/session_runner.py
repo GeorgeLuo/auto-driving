@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import platform
 import re
@@ -130,7 +131,7 @@ def _catalog_bytes_digest(path: Path) -> str | None:
 # Independent of runtime file reads: an on-disk edit before process start must
 # not become the new expected pin.
 PINNED_ACCEPTANCE_CATALOG_DIGEST = (
-    "df6cd2ba50241371de0558a00d7f00aa11d9d6b7a49ac419d7b812fed880092c"
+    "c1cbc12e95c211c9e473077babac7a9ac448061d398deff783e1d33216a634f4"
 )
 
 _GITHUB_PR_URL_RE = re.compile(
@@ -284,6 +285,17 @@ def _load_pinned_acceptance_catalog(path: Path | None = None) -> dict[str, Any] 
     return data if isinstance(data, dict) else None
 
 
+def _catalog_max_frame_lag(catalog: Mapping[str, Any]) -> int | None:
+    """Read the reviewed correlation bound from the acceptance surface."""
+
+    contract = catalog.get("acceptance_contract")
+    correlation = contract.get("correlation") if isinstance(contract, Mapping) else None
+    value = correlation.get("max_frame_lag") if isinstance(correlation, Mapping) else None
+    if type(value) is not int or value < 1:  # bool is intentionally rejected
+        return None
+    return value
+
+
 def _is_canonical_acceptance_catalog(
     path: Path | None, catalog: Mapping[str, Any]
 ) -> tuple[bool, str]:
@@ -327,6 +339,8 @@ def _is_canonical_acceptance_catalog(
         return False, f"catalog track {catalog.get('track')!r} is not 'acceptance'"
     if str(catalog.get("vehicle_id") or "") != "chase-sim-chaser":
         return False, f"vehicle_id {catalog.get('vehicle_id')!r} is not chase-sim-chaser"
+    if _catalog_max_frame_lag(catalog) is None:
+        return False, "acceptance_contract.correlation.max_frame_lag must be a positive integer"
     gates = [
         str(g.get("id"))
         for g in (catalog.get("gates") or [])
@@ -853,52 +867,197 @@ def validate_authority(
     return True, "observe_only / not_applied / recording=false"
 
 
+def _view_correlation_evidence(
+    payload: Mapping[str, Any] | None,
+    *,
+    vehicle_id: str,
+    max_frame_lag: int,
+) -> dict[str, Any]:
+    """Return a fail-closed, reviewable verdict for one captured publication."""
+
+    frame = payload.get("frame") if isinstance(payload, Mapping) else None
+    overlay = payload.get("overlay") if isinstance(payload, Mapping) else None
+    frame_map = frame if isinstance(frame, Mapping) else {}
+    overlay_map = overlay if isinstance(overlay, Mapping) else {}
+    current_id = frame_map.get("frame_id")
+    source_id = overlay_map.get("source_frame_id")
+    current_index = frame_map.get("frame_index")
+    source_index = overlay_map.get("source_frame_index")
+    claimed_lag = overlay_map.get("frame_lag")
+    status = overlay_map.get("status")
+    frame_lag_ms = overlay_map.get("frame_lag_ms")
+    result_age_ms = overlay_map.get("result_age_ms")
+
+    evidence: dict[str, Any] = {
+        "current_frame_id": current_id,
+        "source_frame_id": source_id,
+        "current_frame_index": current_index,
+        "source_frame_index": source_index,
+        "claimed_frame_lag": claimed_lag,
+        "derived_frame_lag": None,
+        "max_frame_lag": max_frame_lag,
+        "frame_lag_ms": frame_lag_ms,
+        "result_age_ms": result_age_ms,
+        "mode": "invalid",
+        "verdict": "fail",
+        "reason": "not evaluated",
+        "diagnostic_findings": [],
+    }
+
+    diagnostic_findings: list[str] = []
+    for name, value in (
+        ("overlay.frame_lag_ms", frame_lag_ms),
+        ("overlay.result_age_ms", result_age_ms),
+    ):
+        if value is not None and (
+            type(value) not in {int, float} or not math.isfinite(value) or value < 0
+        ):
+            diagnostic_findings.append(
+                f"{name}={value!r} is not a finite nonnegative number"
+            )
+    evidence["diagnostic_findings"] = diagnostic_findings
+
+    def finish(ok: bool, reason: str, *, mode: str | None = None) -> dict[str, Any]:
+        if mode is not None:
+            evidence["mode"] = mode
+        evidence["verdict"] = "pass" if ok else "fail"
+        evidence["reason"] = reason
+        lag = evidence["derived_frame_lag"]
+        lag_text = "unknown" if lag is None else str(lag)
+        evidence["summary"] = (
+            f"mode={evidence['mode']} derived_lag={lag_text} "
+            f"bound={max_frame_lag}: {reason}"
+        )
+        return evidence
+
+    if type(max_frame_lag) is not int or max_frame_lag < 1:
+        return finish(False, f"max_frame_lag={max_frame_lag!r} is not a positive integer")
+    if not isinstance(payload, dict):
+        return finish(False, "view /api/latest missing or not an object")
+    if payload.get("error"):
+        return finish(False, f"view fetch error: {payload.get('error')}")
+    if payload.get("schema") != PUBLICATION_SCHEMA:
+        return finish(
+            False,
+            f"schema={payload.get('schema')!r} (want {PUBLICATION_SCHEMA!r})",
+        )
+    if str(payload.get("vehicle_id")) != vehicle_id:
+        return finish(
+            False,
+            f"vehicle_id={payload.get('vehicle_id')!r} (want {vehicle_id!r})",
+        )
+    if not isinstance(frame, dict):
+        return finish(False, "frame object missing")
+    if not isinstance(current_id, str) or not current_id.strip():
+        return finish(False, f"frame.frame_id={current_id!r} is not a nonempty string")
+    if not isinstance(overlay, dict):
+        return finish(False, "overlay object missing")
+    if not isinstance(source_id, str) or not source_id.strip():
+        return finish(
+            False,
+            f"overlay.source_frame_id={source_id!r} is not a nonempty string",
+        )
+
+    if status == "current":
+        evidence["derived_frame_lag"] = 0
+        if source_id != current_id:
+            return finish(
+                False,
+                f"current ids conflict: source={source_id!r} current={current_id!r}",
+                mode="current",
+            )
+        if "frame_lag" in overlay and (type(claimed_lag) is not int or claimed_lag != 0):
+            return finish(
+                False,
+                f"overlay.frame_lag={claimed_lag!r} must be integer 0 for current",
+                mode="current",
+            )
+        mode = "current"
+    elif status == "stale":
+        mode = "bounded_stale"
+        evidence["mode"] = mode
+        for name, value in (
+            ("frame.frame_index", current_index),
+            ("overlay.source_frame_index", source_index),
+            ("overlay.frame_lag", claimed_lag),
+        ):
+            if type(value) is not int:
+                return finish(
+                    False,
+                    f"{name}={value!r} must be an integer, got {type(value).__name__}",
+                    mode=mode,
+                )
+        derived_lag = current_index - source_index
+        evidence["derived_frame_lag"] = derived_lag
+        if derived_lag <= 0:
+            return finish(
+                False,
+                f"reverse or zero lineage: current_index={current_index} "
+                f"source_index={source_index} derived_lag={derived_lag}",
+                mode=mode,
+            )
+        if claimed_lag != derived_lag:
+            return finish(
+                False,
+                f"claimed_lag={claimed_lag} != derived_lag={derived_lag}",
+                mode=mode,
+            )
+        if derived_lag > max_frame_lag:
+            return finish(
+                False,
+                f"derived_lag={derived_lag} > max_frame_lag={max_frame_lag}",
+                mode=mode,
+            )
+    else:
+        return finish(
+            False,
+            f"overlay.status={status!r} (want current or stale)",
+        )
+
+    perception = payload.get("perception")
+    cycle = payload.get("cycle")
+    control = payload.get("control")
+    if not isinstance(perception, dict) or not perception:
+        return finish(False, "perception result absent", mode=mode)
+    if not isinstance(cycle, dict):
+        return finish(False, "cycle object missing", mode=mode)
+    if cycle.get("action_policy") != "observe_only":
+        return finish(
+            False,
+            f"cycle.action_policy={cycle.get('action_policy')!r}",
+            mode=mode,
+        )
+    if cycle.get("control_application") != "not_applied":
+        return finish(
+            False,
+            f"cycle.control_application={cycle.get('control_application')!r}",
+            mode=mode,
+        )
+    if not isinstance(control, dict):
+        return finish(False, "control object missing", mode=mode)
+    if control.get("applied") is not False:
+        return finish(
+            False,
+            f"control.applied={control.get('applied')!r} (want false)",
+            mode=mode,
+        )
+    return finish(True, "correlation proven", mode=mode)
+
+
 def validate_view_latest(
     payload: Mapping[str, Any] | None,
     *,
     vehicle_id: str,
+    max_frame_lag: int,
 ) -> tuple[bool, str]:
-    """Validate real Automa perception-view /api/latest publication."""
+    """Validate one real Automa perception-view /api/latest publication."""
 
-    if not isinstance(payload, dict):
-        return False, "view /api/latest missing or not an object"
-    if payload.get("error"):
-        return False, f"view fetch error: {payload.get('error')}"
-    if payload.get("schema") != PUBLICATION_SCHEMA:
-        return False, f"schema={payload.get('schema')!r} (want {PUBLICATION_SCHEMA!r})"
-    if str(payload.get("vehicle_id")) != vehicle_id:
-        return False, f"vehicle_id={payload.get('vehicle_id')!r} (want {vehicle_id!r})"
-
-    frame = payload.get("frame")
-    overlay = payload.get("overlay")
-    perception = payload.get("perception")
-    cycle = payload.get("cycle")
-    control = payload.get("control")
-
-    if not isinstance(frame, dict) or not frame.get("frame_id"):
-        return False, "frame.frame_id missing"
-    if not isinstance(overlay, dict):
-        return False, "overlay object missing"
-    if overlay.get("status") != "current":
-        return False, f"overlay.status={overlay.get('status')!r} (want current)"
-    if overlay.get("source_frame_id") != frame.get("frame_id"):
-        return False, (
-            f"overlay.source_frame_id={overlay.get('source_frame_id')!r} "
-            f"!= frame.frame_id={frame.get('frame_id')!r}"
-        )
-    if not isinstance(perception, dict) or not perception:
-        return False, "perception result absent"
-    if not isinstance(cycle, dict):
-        return False, "cycle object missing"
-    if cycle.get("action_policy") != "observe_only":
-        return False, f"cycle.action_policy={cycle.get('action_policy')!r}"
-    if cycle.get("control_application") != "not_applied":
-        return False, f"cycle.control_application={cycle.get('control_application')!r}"
-    if not isinstance(control, dict):
-        return False, "control object missing"
-    if control.get("applied") is not False:
-        return False, f"control.applied={control.get('applied')!r} (want false)"
-    return True, f"current correlated overlay for {frame.get('frame_id')}"
+    evidence = _view_correlation_evidence(
+        payload,
+        vehicle_id=vehicle_id,
+        max_frame_lag=max_frame_lag,
+    )
+    return evidence["verdict"] == "pass", str(evidence["summary"])
 
 
 def validate_recording_scan(
@@ -1037,6 +1196,24 @@ class HumanJudgment:
     finding_severity: str | None = None
     finding_summary: str | None = None
     interactive: bool = True
+
+
+def _finalize_step_status(
+    step_status: str,
+    *,
+    machine_ok: bool,
+    visual: str,
+    required_for_verdict: bool,
+) -> str:
+    """Combine evidence without allowing a visual skip to hide machine failure."""
+
+    if visual == "fail" or not machine_ok:
+        return "fail"
+    if visual == "skip" and required_for_verdict:
+        return "skip"
+    if step_status == "ok" and visual in {"pass", "n/a"}:
+        return "pass"
+    return step_status
 
 
 def _prompt_judgment(
@@ -1205,6 +1382,7 @@ class SessionState:
     latest_fingerprint: dict[str, Any] | None = None
     capture_fingerprints: dict[str, Any] = field(default_factory=dict)
     browser_view_meta: dict[str, Any] | None = None
+    view_correlation: dict[str, Any] | None = None
     view_healthy_at_unix: float | None = None
     interactive_human_confirmation: bool = False
     dry_run: bool = False
@@ -1299,49 +1477,60 @@ def _run_machine_validator(
     baseline_fingerprint: Mapping[str, Any] | None = None,
     current_fingerprint: Mapping[str, Any] | None = None,
     perception_algorithm: str = "lightweight_observer",
-) -> tuple[bool, str]:
+    max_frame_lag: int | None = None,
+) -> tuple[bool, str, dict[str, Any] | None]:
+    def plain(result: tuple[bool, str]) -> tuple[bool, str, None]:
+        return result[0], result[1], None
+
     if name == "initial_layers":
         if status_path is None or not status_path.is_file():
-            return False, "initial-status.json missing"
+            return False, "initial-status.json missing", None
         status = json.loads(status_path.read_text(encoding="utf-8"))
-        return validate_initial_layers(status, vehicle_id=vehicle_id)
+        return plain(validate_initial_layers(status, vehicle_id=vehicle_id))
     if name == "staged_layers":
         if status_path is None or not status_path.is_file():
-            return False, "staged-status.json missing"
+            return False, "staged-status.json missing", None
         status = json.loads(status_path.read_text(encoding="utf-8"))
-        return validate_staged_layers(
-            status,
-            vehicle_id=vehicle_id,
-            perception_algorithm=perception_algorithm,
+        return plain(
+            validate_staged_layers(
+                status,
+                vehicle_id=vehicle_id,
+                perception_algorithm=perception_algorithm,
+            )
         )
     if name == "running_layers":
         if status_path is None or not status_path.is_file():
-            return False, "running-status.json missing"
+            return False, "running-status.json missing", None
         status = json.loads(status_path.read_text(encoding="utf-8"))
-        return validate_running_layers(status, vehicle_id=vehicle_id)
+        return plain(validate_running_layers(status, vehicle_id=vehicle_id))
     if name == "stopped_layers":
         if status_path is None or not status_path.is_file():
-            return False, "stopped-status.json missing"
+            return False, "stopped-status.json missing", None
         status = json.loads(status_path.read_text(encoding="utf-8"))
-        return validate_stopped_layers(status, vehicle_id=vehicle_id)
+        return plain(validate_stopped_layers(status, vehicle_id=vehicle_id))
     if name == "authority":
         if status_path is None or not status_path.is_file():
-            return False, "status json missing for authority"
+            return False, "status json missing for authority", None
         status = json.loads(status_path.read_text(encoding="utf-8"))
-        return validate_authority(status, vehicle_id=vehicle_id)
+        return plain(validate_authority(status, vehicle_id=vehicle_id))
     if name == "view_correlation":
         if view_path is None or not view_path.is_file():
-            return False, "view-publication.json missing"
+            return False, "view-publication.json missing", None
         try:
             payload = json.loads(view_path.read_text(encoding="utf-8"))
         except json.JSONDecodeError as exc:
-            return False, f"view-publication.json is not JSON: {exc}"
-        return validate_view_latest(payload, vehicle_id=vehicle_id)
+            return False, f"view-publication.json is not JSON: {exc}", None
+        evidence = _view_correlation_evidence(
+            payload,
+            vehicle_id=vehicle_id,
+            max_frame_lag=max_frame_lag if max_frame_lag is not None else 0,
+        )
+        return evidence["verdict"] == "pass", str(evidence["summary"]), evidence
     if name == "default_recording":
-        return validate_recording_scan(before_runs or [], after_runs or [])
+        return plain(validate_recording_scan(before_runs or [], after_runs or []))
     if name == "preservation":
-        return validate_preservation(baseline_fingerprint, current_fingerprint)
-    return False, f"unknown validator {name!r}"
+        return plain(validate_preservation(baseline_fingerprint, current_fingerprint))
+    return False, f"unknown validator {name!r}", None
 
 
 def _repo_reviewable(
@@ -1413,6 +1602,83 @@ def _repo_reviewable(
     if not patch.strip():
         return False, f"Dirty {label} has empty reviewable tracked diff"
     return True, f"{label} dirty with reviewable tracked patch"
+
+
+def _derive_machine_preflight(
+    state: SessionState,
+    cleanup: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Summarize deterministic sequence health independently of human judgment."""
+
+    if state.dry_run:
+        return {
+            "verdict": "not_run",
+            "summary": "dry-run did not execute the machine sequence",
+            "failures": [],
+            "evaluated_steps": [],
+        }
+
+    evaluated_steps: list[str] = []
+    failures: list[dict[str, str]] = []
+    for step in state.steps:
+        if not step.get("required_for_verdict"):
+            continue
+        step_id = str(step.get("id") or "unknown")
+        evaluated_steps.append(step_id)
+        if step.get("machine_ok") is not True:
+            reason = str(step.get("machine_summary") or "")
+            if not reason:
+                failed_commands = [
+                    command
+                    for command in (step.get("commands") or [])
+                    if command.get("exit_code") != 0
+                ]
+                reason = "; ".join(
+                    f"exit={command.get('exit_code')} {command.get('command') or ''}".strip()
+                    for command in failed_commands
+                )
+            failures.append(
+                {
+                    "step_id": step_id,
+                    "reason": reason or f"machine status={step.get('status')!r}",
+                }
+            )
+
+    if cleanup.get("worker_stopped") is not True:
+        failures.append(
+            {
+                "step_id": "_cleanup",
+                "reason": str(cleanup.get("error") or "cleanup not proven"),
+            }
+        )
+    if state.safety_blocked and not failures:
+        failures.append(
+            {
+                "step_id": "_catalog_bind" if not state.steps else "_safety",
+                "reason": str(state.safety_block_reason or "safety prerequisite blocked"),
+            }
+        )
+
+    if failures:
+        return {
+            "verdict": "fail",
+            "summary": f"{len(failures)} machine failure(s)",
+            "failures": failures,
+            "evaluated_steps": evaluated_steps,
+        }
+    if not evaluated_steps:
+        return {
+            "verdict": "not_run",
+            "summary": "no required machine steps were evaluated",
+            "failures": [],
+            "evaluated_steps": [],
+        }
+    return {
+        "verdict": "pass",
+        "summary": f"{len(evaluated_steps)} required step(s) machine-green",
+        "failures": [],
+        "evaluated_steps": evaluated_steps,
+    }
 
 
 def _derive_verdict(state: SessionState) -> tuple[str, str | None]:
@@ -1986,11 +2252,14 @@ def run_session(
     catalog_path: Path | None = None,
     auto_driving_linked_pr: str | None = None,
     metrics_ui_linked_pr: str | None = None,
+    machine_only: bool = False,
 ) -> dict[str, Any]:
     started = _utc_now()
     session_id = started.strftime("%Y%m%d%H%M%S")
     if dry_run:
         execution_mode = "dry_run"
+    elif machine_only:
+        execution_mode = "machine_only_live"
     elif non_interactive:
         execution_mode = "non_interactive_live"
     else:
@@ -2516,6 +2785,9 @@ def run_session(
                                     session_dir,
                                     json_out,
                                     vehicle_id=variables["vehicle_id"],
+                                    max_frame_lag=(
+                                        _catalog_max_frame_lag(catalog) or 0
+                                    ),
                                 )
                             except Exception as exc:  # noqa: BLE001
                                 view_meta = {
@@ -2552,7 +2824,7 @@ def run_session(
                             state.recording_after = _list_run_directories(
                                 repo_root, variables["vehicle_id"]
                             )
-                        ok, summary = _run_machine_validator(
+                        ok, summary, machine_evidence = _run_machine_validator(
                             name,
                             vehicle_id=variables["vehicle_id"],
                             status_path=status_path,
@@ -2562,8 +2834,24 @@ def run_session(
                             baseline_fingerprint=state.baseline_fingerprint,
                             current_fingerprint=state.latest_fingerprint,
                             perception_algorithm=variables["perception_algorithm"],
+                            max_frame_lag=_catalog_max_frame_lag(catalog),
                         )
                         validator_notes.append(f"{name}: {summary}")
+                        if name == "view_correlation" and machine_evidence is not None:
+                            state.view_correlation = machine_evidence
+                            for issue in machine_evidence.get("diagnostic_findings") or []:
+                                _record_finding(
+                                    state,
+                                    step_id=step_id,
+                                    classification="usability_defect",
+                                    severity="P3",
+                                    summary=f"Malformed view timing diagnostic: {issue}",
+                                    human_notes=(
+                                        "Timing is diagnostic only for M007; the frame-count "
+                                        "correlation verdict remains authoritative."
+                                    ),
+                                    evidence=["view-publication.json"],
+                                )
                         if not ok:
                             machine_ok = False
                             step_status = "fail"
@@ -2660,19 +2948,21 @@ def run_session(
                 if validator_notes:
                     machine_summary = "; ".join(validator_notes)
 
-                if judgment.visual == "fail":
-                    step_status = "fail"
-                elif judgment.visual == "skip" and step.get("required_for_verdict"):
-                    step_status = "skip"
-                elif step_status == "ok" and judgment.visual in {"pass", "n/a"} and machine_ok:
-                    step_status = "pass"
-                elif not machine_ok:
-                    step_status = "fail"
+                step_status = _finalize_step_status(
+                    step_status,
+                    machine_ok=machine_ok,
+                    visual=judgment.visual,
+                    required_for_verdict=bool(step.get("required_for_verdict")),
+                )
 
                 evidence_refs = [f"steps/{step_id}/envelope.json"]
                 for outcome in command_outcomes:
                     if outcome.get("stdout_path"):
                         evidence_refs.append(str(outcome["stdout_path"]))
+                if step.get("capture_view_latest") and (
+                    session_dir / "view-publication.json"
+                ).is_file():
+                    evidence_refs.append("view-publication.json")
 
                 if judgment.finding:
                     _record_finding(
@@ -2730,6 +3020,10 @@ def run_session(
                                 evidence=evidence_refs,
                                 repro=[o.get("command", "") for o in command_outcomes if o.get("command")],
                             )
+                    if "correlation" in gate_ids and state.view_correlation is not None:
+                        correlation_gate = state.gate_results.get("correlation")
+                        if correlation_gate is not None:
+                            correlation_gate["details"] = state.view_correlation
 
                 envelope = {
                     "id": step_id,
@@ -2740,6 +3034,11 @@ def run_session(
                     "status": step_status,
                     "machine_summary": machine_summary,
                     "machine_ok": machine_ok,
+                    "machine_evidence": (
+                        {"view_correlation": state.view_correlation}
+                        if "view_correlation" in (step.get("machine_validators") or [])
+                        else {}
+                    ),
                     "commands": command_outcomes,
                     "human": {
                         "visual": judgment.visual,
@@ -2845,16 +3144,19 @@ def run_session(
         for finding in state.findings:
             handle.write(json.dumps(finding, sort_keys=True) + "\n")
 
+    machine_preflight = _derive_machine_preflight(state, cleanup_info)
     result = {
         "schema": SCHEMA,
         "result": result_status,
         "incomplete_reason": incomplete_reason,
         "execution_mode": execution_mode,
+        "machine_preflight": machine_preflight,
         "interactive_human_confirmation": state.interactive_human_confirmation,
         "catalog": {
             "id": catalog.get("id"),
             "track": catalog.get("track"),
             "title": catalog.get("title"),
+            "max_frame_lag": _catalog_max_frame_lag(catalog),
         },
         "timestamps": {
             "started_at_utc": _iso(started),
@@ -2876,6 +3178,7 @@ def run_session(
             "latest": state.latest_fingerprint,
         },
         "browser_view": state.browser_view_meta,
+        "view_correlation": state.view_correlation,
         "artifact_manifest": "digests.json",
         "variables": {k: v for k, v in state.variables.items() if k != "src_dir" or v},
     }
@@ -2886,6 +3189,9 @@ def run_session(
     print()
     print("=" * 72)
     print(f"SESSION COMPLETE: {result_status}")
+    print(f"MACHINE PREFLIGHT: {str(machine_preflight['verdict']).upper()}")
+    for failure in machine_preflight["failures"]:
+        print(f"- {failure['step_id']}: {failure['reason']}")
     if incomplete_reason:
         print(incomplete_reason)
     print(f"Session directory: {session_dir}")
@@ -2900,6 +3206,7 @@ def _capture_view_latest(
     running_status: Path,
     *,
     vehicle_id: str,
+    max_frame_lag: int,
 ) -> dict[str, Any]:
     try:
         status = json.loads(running_status.read_text(encoding="utf-8"))
@@ -2934,14 +3241,26 @@ def _capture_view_latest(
         return {"url": latest_url, "error": str(exc)}
     out_path = session_dir / "view-publication.json"
     _write_json(out_path, payload)
-    ok, summary = validate_view_latest(payload, vehicle_id=expected_vehicle)
+    evidence = _view_correlation_evidence(
+        payload,
+        vehicle_id=expected_vehicle,
+        max_frame_lag=max_frame_lag,
+    )
+    ok = evidence["verdict"] == "pass"
+    summary = str(evidence["summary"])
     if not ok:
-        return {"url": latest_url, "path": out_path.name, "error": summary}
+        return {
+            "url": latest_url,
+            "path": out_path.name,
+            "error": summary,
+            "correlation": evidence,
+        }
     return {
         "url": latest_url,
         "path": out_path.name,
         "http_status": 200,
         "summary": summary,
+        "correlation": evidence,
         "vehicle_id": expected_vehicle,
     }
 
@@ -2993,6 +3312,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--non-interactive", action="store_true")
     parser.add_argument(
+        "--machine-only",
+        action="store_true",
+        help=(
+            "Execute the live sequence without human prompts; exit 0 only when "
+            "machine_preflight passes (formal acceptance remains incomplete)."
+        ),
+    )
+    parser.add_argument(
         "--auto-visual",
         choices=["pass", "fail", "skip", "n/a"],
         default="skip",
@@ -3004,9 +3331,27 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _result_exit_code(result: Mapping[str, Any], *, machine_only: bool) -> int:
+    if machine_only:
+        machine_verdict = (result.get("machine_preflight") or {}).get("verdict")
+        if machine_verdict == "pass":
+            return 0
+        if machine_verdict == "fail":
+            return 1
+        return 2
+    if result.get("result") in {"pass", "complete"}:
+        return 0
+    if result.get("result") == "findings":
+        return 1
+    return 2
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    if args.machine_only and args.dry_run:
+        parser.error("--machine-only executes the live sequence and cannot use --dry-run")
 
     if args.list_catalogs:
         for path in sorted(CATALOGS_DIR.glob("*")):
@@ -3050,8 +3395,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         browser_name=args.browser_name,
         browser_version=args.browser_version,
         prompt=_default_prompt,
-        non_interactive=bool(args.non_interactive or args.dry_run),
-        auto_visual=args.auto_visual if args.non_interactive or args.dry_run else None,
+        non_interactive=bool(args.machine_only or args.non_interactive or args.dry_run),
+        auto_visual=(
+            "skip"
+            if args.machine_only
+            else args.auto_visual if args.non_interactive or args.dry_run else None
+        ),
         command_timeout_s=args.timeout_s,
         dry_run=bool(args.dry_run),
         browser_view_path=args.browser_view.expanduser().resolve() if args.browser_view else None,
@@ -3059,12 +3408,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         catalog_path=catalog_path,
         auto_driving_linked_pr=args.auto_driving_linked_pr,
         metrics_ui_linked_pr=args.metrics_ui_linked_pr,
+        machine_only=bool(args.machine_only),
     )
-    if result.get("result") in {"pass", "complete"}:
-        return 0
-    if result.get("result") == "findings":
-        return 1
-    return 2
+    return _result_exit_code(result, machine_only=bool(args.machine_only))
 
 
 if __name__ == "__main__":

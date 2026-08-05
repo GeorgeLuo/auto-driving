@@ -853,12 +853,30 @@ def validate_authority(
     return True, "observe_only / not_applied / recording=false"
 
 
+# Continuous Chase publishes new camera frames while perception (~80ms+) finishes.
+# Product overlay.status is "current" only on exact frame-id match; otherwise
+# "stale" with frame_lag. Acceptance treats bounded lag as a real gate (not
+# poll-until-green): pipeline lag is expected; unbounded lag is not.
+DEFAULT_VIEW_MAX_FRAME_LAG = 24
+
+
 def validate_view_latest(
     payload: Mapping[str, Any] | None,
     *,
     vehicle_id: str,
+    max_frame_lag: int = DEFAULT_VIEW_MAX_FRAME_LAG,
 ) -> tuple[bool, str]:
-    """Validate real Automa perception-view /api/latest publication."""
+    """Validate real Automa perception-view /api/latest publication.
+
+    Gate is lag-bounded correlation, not a single-shot poll for status=current:
+
+    - ``current``: overlay.source_frame_id must equal frame.frame_id (lag 0).
+    - ``stale``: require a non-empty source_frame_id and integer frame_lag in
+      ``[1, max_frame_lag]`` (observed live flicker often 12–17 under Chase).
+    - ``pending`` / missing perception / lag above threshold: fail closed.
+
+    Polling can diagnose Live green/red; the pass criterion is this lag bound.
+    """
 
     if not isinstance(payload, dict):
         return False, "view /api/latest missing or not an object"
@@ -879,12 +897,42 @@ def validate_view_latest(
         return False, "frame.frame_id missing"
     if not isinstance(overlay, dict):
         return False, "overlay object missing"
-    if overlay.get("status") != "current":
-        return False, f"overlay.status={overlay.get('status')!r} (want current)"
-    if overlay.get("source_frame_id") != frame.get("frame_id"):
+    status = overlay.get("status")
+    source_frame_id = overlay.get("source_frame_id")
+    frame_lag = overlay.get("frame_lag")
+    if status == "current":
+        if source_frame_id != frame.get("frame_id"):
+            return False, (
+                f"overlay.status=current but source_frame_id={source_frame_id!r} "
+                f"!= frame.frame_id={frame.get('frame_id')!r}"
+            )
+        correlation = f"current (exact match) for {frame.get('frame_id')}"
+    elif status == "stale":
+        # Real continuous-chase gate: perception trails camera by a few frames.
+        if not source_frame_id:
+            return False, "overlay.status=stale but source_frame_id missing"
+        if source_frame_id == frame.get("frame_id"):
+            return False, (
+                "overlay.status=stale but source_frame_id matches frame "
+                "(inconsistent publication)"
+            )
+        if not isinstance(frame_lag, int) or isinstance(frame_lag, bool):
+            return False, f"overlay.frame_lag={frame_lag!r} (want int lag for stale)"
+        if frame_lag < 1:
+            return False, f"overlay.frame_lag={frame_lag} (want >= 1 when stale)"
+        if frame_lag > max_frame_lag:
+            return False, (
+                f"overlay.frame_lag={frame_lag} exceeds max_frame_lag={max_frame_lag} "
+                f"(camera={frame.get('frame_id')!r} overlay_source={source_frame_id!r})"
+            )
+        correlation = (
+            f"stale within lag budget ({frame_lag}<={max_frame_lag}) "
+            f"camera={frame.get('frame_id')} source={source_frame_id}"
+        )
+    else:
         return False, (
-            f"overlay.source_frame_id={overlay.get('source_frame_id')!r} "
-            f"!= frame.frame_id={frame.get('frame_id')!r}"
+            f"overlay.status={status!r} (want current, or stale with "
+            f"frame_lag in 1..{max_frame_lag})"
         )
     if not isinstance(perception, dict) or not perception:
         return False, "perception result absent"
@@ -898,7 +946,7 @@ def validate_view_latest(
         return False, "control object missing"
     if control.get("applied") is not False:
         return False, f"control.applied={control.get('applied')!r} (want false)"
-    return True, f"current correlated overlay for {frame.get('frame_id')}"
+    return True, correlation
 
 
 def validate_recording_scan(

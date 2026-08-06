@@ -719,7 +719,7 @@
   "artifacts": [
     {
       "path": "README.md",
-      "sha256": "56efbba4ee2ed2cd22e6fdd7974e060a216a4a31f6e2d33a024376305cb85acf"
+      "sha256": "0dd023e1f3cbad565854410807ccbf637a73be336d840a07cb7a93cecddff8cd"
     },
     {
       "path": "help-transcript.txt",
@@ -755,7 +755,7 @@
     },
     {
       "path": "exploratory-findings.md",
-      "sha256": "2909cc8aa918842161a2221bb220afd176de3956babd41fc2be57fdf7ae47252"
+      "sha256": "b946f1c3bdcf6f7bc23c043e8bfd528ea33caae105b931effe5f618255a817b5"
     },
     {
       "path": "runner-session/result.json",
@@ -775,11 +775,12 @@
     "affects_acceptance_result": false,
     "source": "https://github.com/GeorgeLuo/auto-driving/pull/88#issuecomment-5171399199",
     "ledger": "exploratory-findings.md",
-    "summary": "Confirmed exploratory gaps from the 2026-08-03 PR observation session; outside the frozen six-command M007-05 journey; deferred to later leaf-audit/product units.",
+    "summary": "Confirmed exploratory observations from the 2026-08-03 PR session; outside the frozen six-command M007-05 journey (acceptance_blocker false for all). Classified individually under the #86 taxonomy: four usability_defect items and one enhancement_candidate; deferred to later leaf-audit/product units.",
     "items": [
       {
         "id": "M007-LIVE-001",
-        "classification": "enhancement_candidate",
+        "classification": "usability_defect",
+        "classification_rationale": "Existing apply artifact identity fails under sequential use: sibling run directories overwrite. This is a defect of the current surface, not a request for new capability.",
         "severity": "P2",
         "surface": "vehicles perception apply --record",
         "observation": "Second-granularity apply run ids can collide and overwrite sibling artifact directories.",
@@ -788,7 +789,8 @@
       },
       {
         "id": "M007-LIVE-002",
-        "classification": "enhancement_candidate",
+        "classification": "usability_defect",
+        "classification_rationale": "Existing readiness inventory contradicts execution: marks a candidate ready then fails on model path resolution. Misleading existing output.",
         "severity": "P2",
         "surface": "vehicles perception candidates / compare",
         "observation": "candidates marks fastsam ready while compare fails on models/FastSAM-s.pt path resolution.",
@@ -797,7 +799,8 @@
       },
       {
         "id": "M007-LIVE-003",
-        "classification": "enhancement_candidate",
+        "classification": "usability_defect",
+        "classification_rationale": "Existing human failure path dumps a full multi-frame JSON blob after the table. Malformed operator-facing failure presentation.",
         "severity": "P3",
         "surface": "vehicles perception compare human failure output",
         "observation": "Failed candidate dumps full multi-frame JSON into human output.",
@@ -807,6 +810,7 @@
       {
         "id": "M007-LIVE-004",
         "classification": "enhancement_candidate",
+        "classification_rationale": "A consolidated multi-algorithm comparison page / auto-open review is an additive preference beyond per-run review.html already written.",
         "severity": "P3",
         "surface": "perception apply/compare review artifacts",
         "observation": "Per-run review.html only; not auto-opened; no consolidated comparison page.",
@@ -815,7 +819,8 @@
       },
       {
         "id": "M007-LIVE-005",
-        "classification": "enhancement_candidate",
+        "classification": "usability_defect",
+        "classification_rationale": "Existing --json perception-run surface buries the review path in a large dump, making the machine report operator-hostile as a scan surface (human non-JSON form exists separately).",
         "severity": "P3",
         "surface": "vehicles perception run --json",
         "observation": "JSON-primary surface buries review path; operator-hostile as default scan path.",

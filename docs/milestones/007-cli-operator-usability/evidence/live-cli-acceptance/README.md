@@ -146,15 +146,16 @@ journey, or environment blockers.
 ### Exploratory observations (non-gating)
 
 Confirmed earlier on this PR and retained for later work — **outside** the
-M007-05 pass gate:
+M007-05 pass gate. Classification follows the #86 taxonomy (defect vs
+enhancement) independently of gating:
 
-| ID | Severity | One-line observation | Disposition |
-| --- | --- | --- | --- |
-| `M007-LIVE-001` | P2 | `perception apply` second-granularity run ids can collide | Confirmed; deferred |
-| `M007-LIVE-002` | P2 | `perception candidates` ready ≠ compare model path | Confirmed; deferred |
-| `M007-LIVE-003` | P3 | Failed compare dumps full JSON into human output | Confirmed; deferred |
-| `M007-LIVE-004` | P3 | No consolidated multi-engine review / auto-open | Confirmed; deferred |
-| `M007-LIVE-005` | P3 | `perception run --json` buries review path | Confirmed; deferred |
+| ID | Classification | Severity | One-line observation | Disposition |
+| --- | --- | --- | --- | --- |
+| `M007-LIVE-001` | `usability_defect` | P2 | Apply run-id collision overwrites sibling artifacts | Confirmed; deferred (non-gating) |
+| `M007-LIVE-002` | `usability_defect` | P2 | Candidates “ready” ≠ compare model path | Confirmed; deferred (non-gating) |
+| `M007-LIVE-003` | `usability_defect` | P3 | Failed compare dumps full JSON on human surface | Confirmed; deferred (non-gating) |
+| `M007-LIVE-004` | `enhancement_candidate` | P3 | Want consolidated multi-engine review / open-review | Confirmed; deferred (non-gating) |
+| `M007-LIVE-005` | `usability_defect` | P3 | `perception run --json` buries review path | Confirmed; deferred (non-gating) |
 
 Full fields (classification, reproduction, owner, recheck): [
 `exploratory-findings.md`](exploratory-findings.md). Source:

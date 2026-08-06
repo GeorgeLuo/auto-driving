@@ -84,4 +84,3 @@ options:
   --verbose             Print every-frame worker detail when output is
                         connected.
   --log                 Persist background worker output to automation.log.
-

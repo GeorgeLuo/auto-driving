@@ -719,11 +719,11 @@
   "artifacts": [
     {
       "path": "README.md",
-      "sha256": "2f44211fb8462de5da993963206a55a52e9a2d33721b598f947d2f7c886d4032"
+      "sha256": "56efbba4ee2ed2cd22e6fdd7974e060a216a4a31f6e2d33a024376305cb85acf"
     },
     {
       "path": "help-transcript.txt",
-      "sha256": "13222386e7cd0fe44ec0527f4c876b295e19d3d452c2299051cc99d84c5a10d7"
+      "sha256": "299cc58326a00f891621ae848bbc85122b4a03238709db85761a5ebaa6f1aa2f"
     },
     {
       "path": "cli-transcript.txt",
@@ -754,6 +754,10 @@
       "sha256": "e7679359434c6da06c168337b0b9fdcb2f39156bfaf8426e67bd555eef307951"
     },
     {
+      "path": "exploratory-findings.md",
+      "sha256": "2909cc8aa918842161a2221bb220afd176de3956babd41fc2be57fdf7ae47252"
+    },
+    {
       "path": "runner-session/result.json",
       "sha256": "da18331bc99f9638c05ffffde9480b127a1e69a2761441d563b0d489ff54f81a"
     },
@@ -765,5 +769,59 @@
       "path": "runner-session/human-notes.md",
       "sha256": "266c20921100f1344e48f6d88cf2aa171690c249ef8a71fd59eb774990339628"
     }
-  ]
+  ],
+  "exploratory_findings": {
+    "gating": false,
+    "affects_acceptance_result": false,
+    "source": "https://github.com/GeorgeLuo/auto-driving/pull/88#issuecomment-5171399199",
+    "ledger": "exploratory-findings.md",
+    "summary": "Confirmed exploratory gaps from the 2026-08-03 PR observation session; outside the frozen six-command M007-05 journey; deferred to later leaf-audit/product units.",
+    "items": [
+      {
+        "id": "M007-LIVE-001",
+        "classification": "enhancement_candidate",
+        "severity": "P2",
+        "surface": "vehicles perception apply --record",
+        "observation": "Second-granularity apply run ids can collide and overwrite sibling artifact directories.",
+        "disposition": "confirmed_deferred",
+        "acceptance_blocker": false
+      },
+      {
+        "id": "M007-LIVE-002",
+        "classification": "enhancement_candidate",
+        "severity": "P2",
+        "surface": "vehicles perception candidates / compare",
+        "observation": "candidates marks fastsam ready while compare fails on models/FastSAM-s.pt path resolution.",
+        "disposition": "confirmed_deferred",
+        "acceptance_blocker": false
+      },
+      {
+        "id": "M007-LIVE-003",
+        "classification": "enhancement_candidate",
+        "severity": "P3",
+        "surface": "vehicles perception compare human failure output",
+        "observation": "Failed candidate dumps full multi-frame JSON into human output.",
+        "disposition": "confirmed_deferred",
+        "acceptance_blocker": false
+      },
+      {
+        "id": "M007-LIVE-004",
+        "classification": "enhancement_candidate",
+        "severity": "P3",
+        "surface": "perception apply/compare review artifacts",
+        "observation": "Per-run review.html only; not auto-opened; no consolidated comparison page.",
+        "disposition": "confirmed_deferred",
+        "acceptance_blocker": false
+      },
+      {
+        "id": "M007-LIVE-005",
+        "classification": "enhancement_candidate",
+        "severity": "P3",
+        "surface": "vehicles perception run --json",
+        "observation": "JSON-primary surface buries review path; operator-hostile as default scan path.",
+        "disposition": "confirmed_deferred",
+        "acceptance_blocker": false
+      }
+    ]
+  }
 }

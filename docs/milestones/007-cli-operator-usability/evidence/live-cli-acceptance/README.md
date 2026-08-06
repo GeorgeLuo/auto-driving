@@ -12,7 +12,10 @@ Accepted contract: [live CLI operator acceptance proposal](../../proposals/live-
 `pass` — interactive live acceptance against the pinned `m007-acceptance`
 catalog with human visual confirmation, bound browser-view evidence, proven
 bounded-stale view correlation, observation-only authority, no default
-recording, and clean worker cleanup. No findings were recorded.
+recording, and clean worker cleanup. **No acceptance findings** were recorded.
+Earlier exploratory PR observations `M007-LIVE-001..005` are reconciled in the
+non-gating [exploratory finding ledger](exploratory-findings.md) and do not
+affect this verdict.
 
 ## Environment receipt
 
@@ -67,7 +70,8 @@ recording, and clean worker cleanup. No findings were recorded.
 - [x] Confirm no default recording directory was created.
 - [x] Confirm terminal worker and view cleanup.
 - [x] Reconcile every PR observation into the ledger or mark it
-  `not_reproduced` with the attempted recheck.
+  `not_reproduced` with the attempted recheck (acceptance findings empty;
+  exploratory `M007-LIVE-001..005` in [exploratory-findings.md](exploratory-findings.md)).
 - [x] Replace the incomplete result with one internally consistent `pass` or
   `findings` session and verify artifact digests.
 
@@ -127,13 +131,34 @@ Proven **bounded_stale** correlation under the accepted amendment bound:
 | `browser-view.png` | Present; bound after view health floor |
 | `browser-view-meta.json` | Present; import metadata and health floor |
 | `runner-session/` | Full HITL runner session (`live_cli_session_result_v0`) with digests and step envelopes |
+| `exploratory-findings.md` | Non-gating ledger reconciling PR exploratory observations `M007-LIVE-001..005` |
 
 SHA-256 digests for these artifacts are listed in `result.json` under `artifacts`.
 
 ## Finding ledger
 
-No findings were recorded. Confirmed findings would use stable `M007-LIVE-###`
-identifiers.
+### Acceptance findings (M007-05 gate)
+
+None. Formal `result.json` → `findings` is empty. The interactive acceptance
+session recorded no acceptance blockers, usability defects on the frozen
+journey, or environment blockers.
+
+### Exploratory observations (non-gating)
+
+Confirmed earlier on this PR and retained for later work — **outside** the
+M007-05 pass gate:
+
+| ID | Severity | One-line observation | Disposition |
+| --- | --- | --- | --- |
+| `M007-LIVE-001` | P2 | `perception apply` second-granularity run ids can collide | Confirmed; deferred |
+| `M007-LIVE-002` | P2 | `perception candidates` ready ≠ compare model path | Confirmed; deferred |
+| `M007-LIVE-003` | P3 | Failed compare dumps full JSON into human output | Confirmed; deferred |
+| `M007-LIVE-004` | P3 | No consolidated multi-engine review / auto-open | Confirmed; deferred |
+| `M007-LIVE-005` | P3 | `perception run --json` buries review path | Confirmed; deferred |
+
+Full fields (classification, reproduction, owner, recheck): [
+`exploratory-findings.md`](exploratory-findings.md). Source:
+[PR comment](https://github.com/GeorgeLuo/auto-driving/pull/88#issuecomment-5171399199).
 
 ## Operator notes
 

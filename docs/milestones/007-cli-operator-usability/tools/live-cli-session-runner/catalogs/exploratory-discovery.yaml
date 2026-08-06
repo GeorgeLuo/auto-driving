@@ -1,0 +1,90 @@
+# Exploratory discovery catalog (not M007-05 acceptance).
+# Findings inform a later proposal; they never alone produce an acceptance pass.
+schema: live_cli_session_catalog_v0
+id: exploratory-discovery
+track: exploratory
+title: Observation-only perception and memory discovery
+description: >
+  Bounded follow-on scenarios after acceptance. Label results as exploratory.
+  No movement. Prefer human-facing CLI over raw JSON.
+vehicle_id: chase-sim-chaser
+metrics_ui_origin: http://localhost:5050
+perception_algorithm: lightweight_observer
+safety:
+  movement: never
+  record_default: false
+  observe_only: true
+gates: []
+steps:
+  - id: candidates
+    kind: command
+    question: Are lab candidates listed with trustworthy readiness?
+    safety: read
+    commands:
+      - ["./cli/automa", "vehicles", "perception", "candidates"]
+    primary_cue: "each candidate shows ready or an explicit setup command"
+    visual_required: false
+    required_for_verdict: false
+
+  - id: capture-once
+    kind: command
+    question: Can we capture a short recorded sequence without taking control?
+    safety: live_mutation
+    commands:
+      - ["./cli/automa", "vehicles", "perception", "run", "--id", "{vehicle_id}", "--frames", "8", "--interval-s", "0.25", "--record"]
+    primary_cue: "human summary reports frames and a review/run path"
+    visual_required: false
+    required_for_verdict: false
+    note: "Record the printed run directory as SRC for later steps."
+    expect_exit: 0
+
+  - id: apply-lightweight
+    kind: command
+    question: Does apply produce a compact human summary for lightweight_observer?
+    safety: local_write
+    commands:
+      - ["./cli/automa", "vehicles", "perception", "apply", "{src_dir}", "--algorithm", "lightweight_observer", "--record"]
+    primary_cue: "compact latency/evidence summary and review path"
+    visual_required: false
+    required_for_verdict: false
+    requires_prompt: src_dir
+    requires_prompt_help: "Path to the recorded perception-run directory from capture-once"
+    expect_exit: 0
+
+  - id: apply-visual
+    kind: command
+    question: Does apply work for visual_observer on the same frames?
+    safety: local_write
+    commands:
+      - ["./cli/automa", "vehicles", "perception", "apply", "{src_dir}", "--algorithm", "visual_observer", "--record"]
+    primary_cue: "compact summary; distinct run directory from apply-lightweight"
+    visual_required: false
+    required_for_verdict: false
+    requires_prompt: src_dir
+    expect_exit: 0
+
+  - id: compare-candidates
+    kind: command
+    question: Does compare give a scannable multi-candidate table?
+    safety: local_write
+    commands:
+      - ["./cli/automa", "vehicles", "perception", "compare", "{src_dir}", "--record"]
+    primary_cue: "table of candidates; failures are one-line reasons not multi-frame JSON dumps"
+    visual_required: false
+    required_for_verdict: false
+    requires_prompt: src_dir
+    allow_nonzero_exit: true
+
+  - id: memory-check
+    kind: command
+    question: Does real perception become bounded attributable memory?
+    safety: live_mutation
+    commands:
+      - ["./cli/automa", "vehicles", "update", "memory", "--id", "{vehicle_id}", "--implementation", "bounded_evidence"]
+      - ["./cli/automa", "vehicles", "automation", "run", "--id", "{vehicle_id}", "--observe-only", "--frames", "5"]
+      - ["./cli/automa", "vehicles", "memory", "check", "--id", "{vehicle_id}", "--record"]
+      - ["./cli/automa", "vehicles", "automation", "stop", "--id", "{vehicle_id}"]
+    primary_cue: "Memory check: … PASS/FAIL with phase results"
+    visual_required: false
+    required_for_verdict: false
+    expect_exit: 0

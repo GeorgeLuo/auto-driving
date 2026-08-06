@@ -1,0 +1,178 @@
+# M007-05 live CLI operator acceptance catalog.
+# Human-in-the-loop: machine runs commands; human confirms visual gates.
+schema: live_cli_session_catalog_v0
+id: m007-acceptance
+track: acceptance
+title: M007 live CLI operator acceptance
+description: >
+  Contracted primary Chase journey. Only this catalog may produce a
+  m007_live_cli_acceptance_v1 pass for the live acceptance frontier.
+vehicle_id: chase-sim-chaser
+metrics_ui_origin: http://localhost:5050
+perception_algorithm: lightweight_observer
+acceptance_contract:
+  correlation:
+    max_frame_lag: 24
+safety:
+  movement: never
+  record_default: false
+  observe_only: true
+gates:
+  - id: help_discoverability
+    required: true
+  - id: initial_layers
+    required: true
+  - id: staging
+    required: true
+  - id: startup
+    required: true
+  - id: running_layers
+    required: true
+  - id: human_view
+    required: true
+  - id: authority
+    required: true
+  - id: correlation
+    required: true
+  - id: default_recording
+    required: true
+  - id: cleanup
+    required: true
+steps:
+  - id: baseline
+    kind: baseline
+    question: Is the starting environment identifiable and safe to exercise?
+    safety: read
+    primary_cue: "Metrics UI open in Chrome; Chase visible; no unwanted Automa worker"
+    visual_required: true
+    visual_prompt: "Chrome Metrics UI shows Chase with a connected frontend tab?"
+    required_for_verdict: true
+    gate_ids: []
+
+  - id: help-top
+    kind: command
+    question: Can a regular operator discover the vehicles group from top-level help?
+    safety: read
+    commands:
+      - ["./cli/automa", "help"]
+    primary_cue: "vehicles command is listed without implementation jargon"
+    visual_required: false
+    required_for_verdict: true
+    gate_ids: [help_discoverability]
+
+  - id: help-vehicles
+    kind: command
+    question: Can the operator find status, update, and automation from vehicles help?
+    safety: read
+    commands:
+      - ["./cli/automa", "vehicles", "help"]
+    primary_cue: "status, update, and automation are listed"
+    visual_required: false
+    required_for_verdict: true
+    gate_ids: [help_discoverability]
+
+  - id: help-automation
+    kind: command
+    question: Can the operator find run/stop and the observe-only path?
+    safety: read
+    commands:
+      - ["./cli/automa", "vehicles", "automation", "help"]
+      - ["./cli/automa", "vehicles", "automation", "run", "--help"]
+    primary_cue: "--observe-only and --open-view appear on run --help"
+    visual_required: false
+    required_for_verdict: true
+    gate_ids: [help_discoverability]
+
+  - id: status-initial
+    kind: command
+    question: Does initial status show a ready passive Chase attachment?
+    safety: read
+    # Frozen primary human command is aggregate (no --id); targeted JSON is supplemental.
+    commands:
+      - ["./cli/automa", "vehicles", "status", "--chase-url", "{metrics_ui_origin}"]
+    capture_json:
+      path: initial-status.json
+      command:
+        ["./cli/automa", "vehicles", "status", "--id", "{vehicle_id}", "--chase-url", "{metrics_ui_origin}", "--json"]
+    primary_cue: "Next action points at observe-only automation run"
+    visual_required: false
+    required_for_verdict: true
+    gate_ids: [initial_layers]
+    machine_validators: [initial_layers]
+    expect_exit: 0
+
+  - id: update-perception
+    kind: command
+    question: Does staging lightweight_observer leave the worker stopped?
+    safety: local_write
+    commands:
+      - ["./cli/automa", "vehicles", "update", "perception", "--id", "{vehicle_id}", "--algorithm", "{perception_algorithm}"]
+    capture_json:
+      path: staged-status.json
+      command: ["./cli/automa", "vehicles", "status", "--id", "{vehicle_id}", "--json"]
+    primary_cue: "Ready for: observation-only automation (worker not started)"
+    visual_required: false
+    required_for_verdict: true
+    gate_ids: [staging]
+    machine_validators: [staged_layers]
+    expect_exit: 0
+
+  - id: automation-run
+    kind: command
+    question: Does observe-only run reach a lag-bounded correlated perception view?
+    safety: live_mutation
+    commands:
+      - ["./cli/automa", "vehicles", "automation", "run", "--id", "{vehicle_id}", "--observe-only", "--frames", "0", "--open-view"]
+    primary_cue: "Ready for: inspect perception and stop automation; Browser opened"
+    visual_required: true
+    visual_prompt: "Automa view is nonblank and intelligible with a current or proven bounded-stale overlay (not dead/pending)?"
+    open_url_from_stdout: true
+    required_for_verdict: true
+    gate_ids: [startup, human_view]
+    expect_exit: 0
+
+  - id: status-running
+    kind: command
+    question: Do running layers and authority match observation-only health?
+    safety: read
+    commands:
+      - ["./cli/automa", "vehicles", "status", "--id", "{vehicle_id}"]
+    capture_json:
+      path: running-status.json
+      command: ["./cli/automa", "vehicles", "status", "--id", "{vehicle_id}", "--json"]
+    capture_view_latest: true
+    primary_cue: "worker running; perception_view available; observe_only / not_applied"
+    visual_required: true
+    visual_prompt: "Metrics UI still healthy and Automa view still current or proven bounded-stale after status?"
+    required_for_verdict: true
+    gate_ids: [running_layers, authority, human_view, correlation]
+    machine_validators: [running_layers, authority, view_correlation, preservation]
+    expect_exit: 0
+
+  - id: automation-stop
+    kind: command
+    question: Does stop leave deployment staged without a current view?
+    safety: live_mutation
+    commands:
+      - ["./cli/automa", "vehicles", "automation", "stop", "--id", "{vehicle_id}"]
+    primary_cue: "Automation stopped; Ready for: inspect stopped deployment"
+    visual_required: false
+    required_for_verdict: true
+    gate_ids: [cleanup]
+    expect_exit: 0
+
+  - id: status-stopped
+    kind: command
+    question: Does final status report stopped worker and stale/unavailable view?
+    safety: read
+    commands:
+      - ["./cli/automa", "vehicles", "status", "--id", "{vehicle_id}"]
+    capture_json:
+      path: stopped-status.json
+      command: ["./cli/automa", "vehicles", "status", "--id", "{vehicle_id}", "--json"]
+    primary_cue: "worker stopped; perception_view stale or unavailable; next action reprints run"
+    visual_required: false
+    required_for_verdict: true
+    gate_ids: [cleanup, default_recording]
+    machine_validators: [stopped_layers, default_recording, preservation]
+    expect_exit: 0

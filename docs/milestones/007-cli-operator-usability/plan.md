@@ -118,7 +118,7 @@ does not retroactively widen the accepted primary journey.
 
 **Live CLI operator acceptance**
 
-- Workflow state: ready_for_implementation
+- Workflow state: implementation_in_review
 - Proposal branch: `m007/live-cli-acceptance-proposal`
 - Implementation branch: `m007/live-cli-acceptance`
 - Proposal path: `docs/milestones/007-cli-operator-usability/proposals/live-cli-acceptance.md`
@@ -163,6 +163,7 @@ does not retroactively widen the accepted primary journey.
 | Live CLI operator acceptance | ready_for_implementation | Proposal PR #86 accepted at cdb9e55f94293823dc5aae8e02356d16eed4eea2. |
 | Live CLI operator acceptance | proposal_amendment_in_review | Started proposal amendment m007/amend-live-cli-acceptance-correlation. |
 | Live CLI operator acceptance | ready_for_implementation | Proposal amendment PR #94 accepted at 012a63963a55692279e74eba069edf7a76f35f6e. |
+| Live CLI operator acceptance | implementation_in_review | Started m007/live-cli-acceptance. |
 
 ## Accepted Review Units
 

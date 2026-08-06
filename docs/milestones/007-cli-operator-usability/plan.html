@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="c12d4c0f9f92468921e307487190a325acd8c6019b4d434cbfdf198f30565d75">
+  <meta name="source-sha256" content="766a3170b02a5c7bb2846b7f3b7a29d00af2dce1486b9ae8cce9dafe237c8480">
   <base target="_blank">
   <title>Milestone plan — 007-cli-operator-usability</title>
   <style>
@@ -85,7 +85,7 @@
 </tr>
 <tr>
 <td>Current frontier</td>
-<td>Live CLI operator acceptance</td>
+<td>CLI journey coverage foundation</td>
 </tr>
 <tr>
 <td>Started</td>
@@ -298,8 +298,8 @@ does not retroactively widen the accepted primary journey.</p>
 <tr>
 <td>M007-05</td>
 <td>A tracked live acceptance unit against the current local Metrics UI contract proves one observation-only processed frame, healthy loopback view, exact layer states, no applied movement, and no default recording; contract drift fails rather than skipping</td>
-<td>Unmet</td>
-<td>Current live evidence frontier</td>
+<td>Met</td>
+<td>Tracked live acceptance in PR #88 proves one current correlated camera/perception frame, healthy loopback rendering, truthful layer states, observation-only no-applied-control authority, protected-state preservation, no default run history, and stopped-worker cleanup against exact recorded auto-driving and Metrics UI commits</td>
 </tr>
 <tr>
 <td>M007-06</td>
@@ -329,26 +329,9 @@ does not retroactively widen the accepted primary journey.</p>
 </table>
 <h2>Current Delivery</h2>
 <h3>Current Frontier</h3>
-<p><strong>Live CLI operator acceptance</strong></p>
-<ul>
-<li>Workflow state: implementation_in_review</li>
-<li>Proposal branch: <code>m007/live-cli-acceptance-proposal</code></li>
-<li>Implementation branch: <code>m007/live-cli-acceptance</code></li>
-<li>Proposal path: <code>docs/milestones/007-cli-operator-usability/proposals/live-cli-acceptance.md</code></li>
-<li>Accepted proposal: <a href="https://github.com/GeorgeLuo/auto-driving/pull/86">#86</a> at <code>cdb9e55f94293823dc5aae8e02356d16eed4eea2</code></li>
-<li>Proposal amendment branch: <code>m007/amend-live-cli-acceptance-correlation</code></li>
-<li>Proposal amendment path: <code>docs/milestones/007-cli-operator-usability/proposals/live-cli-acceptance-correlation-amendment.md</code></li>
-<li>Accepted proposal amendments: <a href="https://github.com/GeorgeLuo/auto-driving/pull/94">#94</a> at <code>012a63963a55692279e74eba069edf7a76f35f6e</code> (<code>docs/milestones/007-cli-operator-usability/proposals/live-cli-acceptance-correlation-amendment.md</code>)</li>
-<li>Review kind: Live or external evidence</li>
-<li>Review question: Does the accepted simulator-to-perception CLI journey work end to end against the current local Metrics UI deployment with one processed observation-only frame, a healthy browser view, truthful layer states, no applied movement, and no default recording?</li>
-<li>Acceptance owner: Bounded live Chase operator procedure and tracked machine/human acceptance evidence</li>
-<li>Exit criteria affected: M007-05</li>
-<li>Prerequisite: Simulator-to-perception CLI journey accepted with deterministic contract coverage</li>
-<li>Milestone-level non-goal: Product repair, PiRacer evidence, long-duration soak testing, performance qualification, non-idle control, or milestone closeout</li>
-</ul>
-<h3>Next-Frontier Candidate</h3>
 <p><strong>CLI journey coverage foundation</strong></p>
 <ul>
+<li>Workflow state: ready_for_proposal</li>
 <li>Proposal branch: <code>m007/cli-journey-coverage-proposal</code></li>
 <li>Implementation branch: <code>m007/cli-journey-coverage</code></li>
 <li>Proposal path: <code>docs/milestones/007-cli-operator-usability/proposals/cli-journey-coverage.md</code></li>
@@ -358,6 +341,12 @@ does not retroactively widen the accepted primary journey.</p>
 <li>Exit criteria affected: M007-07</li>
 <li>Prerequisite: M007-05 is <code>Met</code> and the existing subprocess-aware owned-code coverage baseline remains available</li>
 <li>Milestone-level non-goal: Exhaustive CLI-leaf audit, capability disposition, product deletion, new CLI features, Metrics UI JavaScript coverage, a numeric coverage gate, or a live simulator requirement</li>
+</ul>
+<h3>Next-Frontier Candidate</h3>
+<p><strong>None</strong></p>
+<ul>
+<li>Reason: CLI journey coverage foundation is promoted after successful tracked live CLI operator acceptance.</li>
+<li>Revisit when: The coverage frontier proposes reproducible per-command and multi-command journey attribution before the full CLI-leaf audit.</li>
 </ul>
 <h2>Workflow History</h2>
 <table>
@@ -434,6 +423,16 @@ does not retroactively widen the accepted primary journey.</p>
 <td>implementation_in_review</td>
 <td>Started m007/live-cli-acceptance.</td>
 </tr>
+<tr>
+<td>Live CLI operator acceptance</td>
+<td>accepted</td>
+<td>Implementation PR #88 merged at 3b6ca82dbd5e1a0793b5f534bacb6c84b7cba123.</td>
+</tr>
+<tr>
+<td>CLI journey coverage foundation</td>
+<td>ready_for_proposal</td>
+<td>Promoted after implementation PR #88.</td>
+</tr>
 </tbody>
 </table>
 <h2>Accepted Review Units</h2>
@@ -454,6 +453,13 @@ does not retroactively widen the accepted primary journey.</p>
 <td>Accepted</td>
 <td>M007-01, M007-02, M007-03, M007-04</td>
 <td>Passive Chase simulator-to-perception CLI journey with aggregate layer status, shared sequential-readiness gates, HTTP/WS normalization, observation-only first-frame view startup, simulator-state preservation, exact capture/reference diagnostics, operation-level deadlines, cross-level help audit, and durable operator documentation in PR #84</td>
+</tr>
+<tr>
+<td>#88</td>
+<td>Does the accepted simulator-to-perception CLI journey work end to end against the current local Metrics UI deployment with one processed observation-only frame, a healthy browser view, truthful layer states, no applied movement, and no default recording?</td>
+<td>Accepted</td>
+<td>M007-05</td>
+<td>User-led live CLI operator acceptance against the recorded current Metrics UI commit, with help and flow audit, human/JSON transcript, correlated browser publication, observation-only authority, unchanged protected simulator state, no default recording, terminal cleanup, and tracked evidence in PR #88</td>
 </tr>
 </tbody>
 </table>

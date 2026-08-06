@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="766a3170b02a5c7bb2846b7f3b7a29d00af2dce1486b9ae8cce9dafe237c8480">
+  <meta name="source-sha256" content="ea6136752f4097e99686c3123560362ac166bfc70094b047252c25174db56fb3">
   <base target="_blank">
   <title>Milestone plan — 007-cli-operator-usability</title>
   <style>
@@ -85,7 +85,7 @@
 </tr>
 <tr>
 <td>Current frontier</td>
-<td>CLI journey coverage foundation</td>
+<td>Realistic CLI scenario continuity</td>
 </tr>
 <tr>
 <td>Started</td>
@@ -102,14 +102,19 @@
 <p>Make the Automa CLI a dependable and inspectable product surface. First, make
 one complete Chase operator journey usable from a local simulator URL through
 an observation-only, frame-correlated browser view without commandeering the
-current simulator session. Then measure which owned source branches named CLI
-commands and realistic multi-command journeys actually execute, audit every CLI
-leaf into an explicit usage pattern, and classify production capabilities those
-journeys do not reach so later work can expose, retain, or remove them through
-evidence rather than accumulation. Failures must identify the owning boundary
-without requiring knowledge of internal WebSocket paths, runtime files, or
-process topology; coverage remains an investigative signal rather than a claim
-that executed code is correct or unexecuted code is dead.</p>
+current simulator session. After that primary journey is live-accepted, declare
+and exercise additional safe realistic multi-command sequences on the
+repository-owned session runner (machine-first, then human visual confirmation
+where required), repair only the product or operator-facing defects those
+sequences prove, and refine CLI/view cues needed for judgment. Then measure
+which owned source branches named CLI commands and realistic multi-command
+journeys actually execute, audit every CLI leaf into an explicit usage pattern,
+and classify production capabilities those journeys do not reach so later work
+can expose, retain, or remove them through evidence rather than accumulation.
+Failures must identify the owning boundary without requiring knowledge of
+internal WebSocket paths, runtime files, or process topology; coverage remains
+an investigative signal rather than a claim that executed code is correct or
+unexecuted code is dead.</p>
 <h2>Completion Usage</h2>
 <table>
 <thead>
@@ -149,6 +154,13 @@ that executed code is correct or unexecuted code is dead.</p>
 <td>Run the bounded live CLI acceptance procedure</td>
 <td>One processed frame, a healthy loopback view, observation-only authority, preserved scenario/playback/control/input state, and the expected human/JSON state are recorded without default history writes</td>
 <td>M007-05</td>
+</tr>
+<tr>
+<td>Exercise realistic multi-command scenarios</td>
+<td>Primary six-step journey accepted; live CLI session runner available; Metrics UI Chase session ready for observation-only work</td>
+<td>Declare named runner catalogs for safe sequences beyond the primary journey, run each machine-only first, elevate machine-green sequences to human visual confirmation, and apply only the targeted product or CLI-output repairs those runs prove necessary</td>
+<td>Reviewed catalogs, machine and HITL session artifacts, finding disposition with owners, and required product/UI repairs land without unsafe leaves or large new feature programs</td>
+<td>M007-10</td>
 </tr>
 <tr>
 <td>Trace source use by CLI journey</td>
@@ -210,9 +222,11 @@ Metrics UI cannot expose a passive camera capture, the CLI must report that
 external capability gap and the minimal requested simulator change rather than
 calling <code>simulators ensure</code> or mutating the session implicitly.</p>
 <p>Command names and flags in the primary demonstration are frozen by the accepted
-proposal. The later full-surface audit inventories the existing CLI and its
-source reachability before proposing redesign, new exposure, or deletion; it
-does not retroactively widen the accepted primary journey.</p>
+proposal. Realistic multi-command scenarios beyond that primary path are added
+only through the scenario-continuity unit and later audit, not by rewriting the
+accepted six-step evidence. The later full-surface audit inventories the existing
+CLI and its source reachability before proposing redesign, new exposure, or
+deletion; it does not retroactively widen the accepted primary journey.</p>
 <h2>Scope Boundaries</h2>
 <table>
 <thead>
@@ -245,6 +259,10 @@ does not retroactively widen the accepted primary journey.</p>
 <tr>
 <td>Deterministic tests plus one opt-in live acceptance unit against the current simulator contract</td>
 <td>Making a browser or live simulator mandatory for the default deterministic test suite</td>
+</tr>
+<tr>
+<td>Named safe realistic CLI sequences on the live session runner, machine-first then HITL, with targeted product or operator-facing repairs those sequences force</td>
+<td>Large new experiment/feature programs (for example same-frame matrices or transactional live trials), Metrics UI product redesign owned outside this repository, hardware/movement/destructive leaves run merely for coverage, or a full leaf inventory before declared scenarios exist</td>
 </tr>
 <tr>
 <td>Branch-aware, subprocess-complete owned-Python coverage attributed to named CLI command and journey contexts</td>
@@ -305,19 +323,19 @@ does not retroactively widen the accepted primary journey.</p>
 <td>M007-06</td>
 <td>Closeout confirms the primary demonstration, reconciles durable CLI documentation, records the accepted journey-coverage and full-leaf audit outcomes, and states every retained/unexposed capability and remaining external simulator, PiRacer, remote-view, or non-idle-control limit</td>
 <td>Unmet</td>
-<td>Closeout only after M007-01 through M007-05 and M007-07 through M007-09</td>
+<td>Closeout only after M007-01 through M007-05 and M007-07 through M007-10</td>
 </tr>
 <tr>
 <td>M007-07</td>
 <td>A reproducible CLI journey-coverage collector attributes owned-Python statement and branch execution to named commands and multi-command journeys across foreground and Python subprocess/background-worker boundaries, separates bootstrap/import footprint from command-specific behavior, records exact source/command identity, and remains informational</td>
 <td>Unmet</td>
-<td>Next instrumentation frontier after live acceptance</td>
+<td>Instrumentation frontier after realistic scenario continuity declares the journeys coverage will attribute</td>
 </tr>
 <tr>
 <td>M007-08</td>
 <td>A complete generated-and-reviewed inventory maps every public CLI leaf to realistic usage patterns, prerequisites, side effects, safety class, output contract, owning boundary, and deterministic/live validation status without requiring unsafe execution</td>
 <td>Unmet</td>
-<td>Follows the accepted coverage collector</td>
+<td>Follows declared scenario catalogs and the accepted coverage collector; machine-first/HITL evidence for realistic patterns is required, not optional commentary</td>
 </tr>
 <tr>
 <td>M007-09</td>
@@ -325,13 +343,32 @@ does not retroactively widen the accepted primary journey.</p>
 <td>Unmet</td>
 <td>Follows the accepted CLI-leaf and usage-pattern audit</td>
 </tr>
+<tr>
+<td>M007-10</td>
+<td>Named safe realistic multi-command CLI sequences beyond the primary six-step journey are declared as session-runner catalogs, executed machine-first, human-confirmed where visual judgment is required, and paired with durable finding disposition plus only the targeted product or operator-facing repairs those sequences prove</td>
+<td>Unmet</td>
+<td>Current continuity frontier after live acceptance; reuses the live CLI session runner rather than inventing a second evidence system</td>
+</tr>
 </tbody>
 </table>
 <h2>Current Delivery</h2>
 <h3>Current Frontier</h3>
-<p><strong>CLI journey coverage foundation</strong></p>
+<p><strong>Realistic CLI scenario continuity</strong></p>
 <ul>
 <li>Workflow state: ready_for_proposal</li>
+<li>Proposal branch: <code>m007/scenario-continuity-proposal</code></li>
+<li>Implementation branch: <code>m007/scenario-continuity</code></li>
+<li>Proposal path: <code>docs/milestones/007-cli-operator-usability/proposals/cli-scenario-continuity.md</code></li>
+<li>Review kind: Live or external evidence</li>
+<li>Review question: After the primary six-step journey is live-accepted, can the repository-owned live CLI session runner declare and execute a reviewed set of safe realistic multi-command sequences beyond that journey—machine-first, then human visual confirmation where required—while recording durable findings with owners and applying only the targeted product or operator-facing repairs those sequences prove necessary?</li>
+<li>Acceptance owner: Session-runner catalogs and evidence for named realistic sequences, machine-first/HITL procedure, finding disposition, and the bounded product or CLI-output repairs those sequences force (including disposition of #88 exploratory defects that block safe sequence execution)</li>
+<li>Exit criteria affected: M007-10</li>
+<li>Prerequisite: M007-05 is <code>Met</code>; live CLI session runner and pinned acceptance catalog remain available; observation-only Chase Metrics UI session is available for declared live sequences</li>
+<li>Milestone-level non-goal: Full CLI-leaf inventory (M007-08), coverage collector (M007-07), capability disposition (M007-09), large new feature programs such as same-frame experiment matrices or transactional live trials (#90/#91), Metrics UI product redesign owned outside this repository, movement/hardware/destructive execution, or reopening the accepted M007-05 six-step evidence</li>
+</ul>
+<h3>Next-Frontier Candidate</h3>
+<p><strong>CLI journey coverage foundation</strong></p>
+<ul>
 <li>Proposal branch: <code>m007/cli-journey-coverage-proposal</code></li>
 <li>Implementation branch: <code>m007/cli-journey-coverage</code></li>
 <li>Proposal path: <code>docs/milestones/007-cli-operator-usability/proposals/cli-journey-coverage.md</code></li>
@@ -339,14 +376,8 @@ does not retroactively widen the accepted primary journey.</p>
 <li>Review question: Can a developer record reproducible branch-aware owned-Python coverage for named CLI commands and multi-command journeys across foreground and Python subprocess/background-worker execution while separating bootstrap/import footprint from command-specific behavior and avoiding false correctness or dead-code claims?</li>
 <li>Acceptance owner: Coverage session collector, command/context manifest, bootstrap subtraction, and versioned journey-coverage report schema built on <code>.coveragerc</code></li>
 <li>Exit criteria affected: M007-07</li>
-<li>Prerequisite: M007-05 is <code>Met</code> and the existing subprocess-aware owned-code coverage baseline remains available</li>
-<li>Milestone-level non-goal: Exhaustive CLI-leaf audit, capability disposition, product deletion, new CLI features, Metrics UI JavaScript coverage, a numeric coverage gate, or a live simulator requirement</li>
-</ul>
-<h3>Next-Frontier Candidate</h3>
-<p><strong>None</strong></p>
-<ul>
-<li>Reason: CLI journey coverage foundation is promoted after successful tracked live CLI operator acceptance.</li>
-<li>Revisit when: The coverage frontier proposes reproducible per-command and multi-command journey attribution before the full CLI-leaf audit.</li>
+<li>Prerequisite: M007-10 is <code>Met</code> so the journeys coverage attributes are the declared realistic sequences plus the primary journey; existing subprocess-aware owned-code coverage baseline remains available</li>
+<li>Milestone-level non-goal: Exhaustive CLI-leaf audit, capability disposition, product deletion, new CLI features, Metrics UI JavaScript coverage, a numeric coverage gate, or redefining realistic sequences (that ownership stays with M007-10)</li>
 </ul>
 <h2>Workflow History</h2>
 <table>
@@ -433,6 +464,11 @@ does not retroactively widen the accepted primary journey.</p>
 <td>ready_for_proposal</td>
 <td>Promoted after implementation PR #88.</td>
 </tr>
+<tr>
+<td>Realistic CLI scenario continuity</td>
+<td>ready_for_proposal</td>
+<td>Plan revision: insert post-acceptance continuity for named realistic multi-command sequences on the live session runner (machine-first/HITL, targeted product/UI repairs, M007-10) before coverage instrumentation; requeue CLI journey coverage foundation as the next candidate.</td>
+</tr>
 </tbody>
 </table>
 <h2>Accepted Review Units</h2>
@@ -508,6 +544,16 @@ does not retroactively widen the accepted primary journey.</p>
 <td>A coverage target could encourage movement, destructive operations, hardware access, or misleading skips</td>
 <td>Inventory every leaf, but execute only declared safe patterns; record prerequisites and non-executed live/hazardous classifications explicitly</td>
 </tr>
+<tr>
+<td>Jumping from primary-journey live acceptance to coverage without declared realistic sequences</td>
+<td>The session runner freezes as a one-off for the six-step path; exploratory defects and multi-command operator scenarios become an unowned backlog</td>
+<td>Keep realistic scenario continuity (M007-10) current until catalogs, machine-first/HITL evidence, and forced product repairs are accepted; only then run coverage against those declared journeys</td>
+</tr>
+<tr>
+<td>Confirmed exploratory product defects from PR #88 remain deferred without owners</td>
+<td>Safe multi-apply and honest readiness cues stay broken while process work advances</td>
+<td>Scenario continuity must dispose #89 / M007-LIVE-001..005 (repair, external-issue, or explicit non-blocking deferral with owner) rather than re-parking them under later audit</td>
+</tr>
 </tbody>
 </table>
 <h2>Milestone Decisions</h2>
@@ -575,6 +621,16 @@ does not retroactively widen the accepted primary journey.</p>
 <td>Keep coverage informational and require capability-level ownership before removal or exposure</td>
 <td>Executed code is not necessarily correct, unexecuted code is not necessarily dead, and aggregate percentages cannot substitute for behavior, safety, dynamic-path, or product judgments</td>
 </tr>
+<tr>
+<td>2026-08-06</td>
+<td>Insert realistic CLI scenario continuity after live acceptance and before coverage instrumentation</td>
+<td>PR #88 delivered the primary six-step pass and the live session runner; the meta program still needs named sequences beyond that journey, machine-first/HITL evidence, UI/product repairs those sequences force, and owned disposition of exploratory defects before measuring source reachability</td>
+</tr>
+<tr>
+<td>2026-08-06</td>
+<td>Reuse the live CLI session runner as the continuity evidence system</td>
+<td>Do not invent a second harness; expand catalogs and procedure on the accepted runner, keep large feature programs (#90/#91) and full leaf audit out of the continuity unit</td>
+</tr>
 </tbody>
 </table>
 <h2>Closeout</h2>
@@ -585,6 +641,9 @@ does not retroactively widen the accepted primary journey.</p>
 <li>a completed-milestone ledger entry;</li>
 <li>a durable operator guide for the supported simulator-to-perception journey;</li>
 <li>tracked live acceptance evidence against the current Metrics UI contract;</li>
+<li>declared realistic multi-command scenario catalogs with machine-first and
+  HITL evidence beyond the primary six-step journey, plus disposition of the
+  product defects those sequences force;</li>
 <li>a reproducible named-command and realistic-journey owned-source coverage
   report that separates CLI bootstrap/import execution from behavior;</li>
 <li>a complete CLI-leaf and realistic-usage-pattern inventory;</li>

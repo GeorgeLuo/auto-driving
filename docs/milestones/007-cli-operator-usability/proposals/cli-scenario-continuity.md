@@ -103,23 +103,28 @@ precondition stop, or live mutation**:
 For `continuity.live_config_swap`, “unconditional cleanup/restoration” means a
 **transaction**, not only “stop the worker in `finally`”:
 
-1. **Snapshot** the original staged activation / plugin configuration (content
-   and/or content hash) and whether a worker was running, before mutation.
+1. **Snapshot restorable state before mutation.** Capture the full prior staged
+   activation / plugin configuration as **recoverable bytes** (or an immutable
+   recoverable source identity that can recreate those exact bytes), plus a
+   verification hash of that payload, plus whether a worker was running. A
+   hash-only snapshot **without** restorable bytes/source is rejected: do not
+   mutate. Snapshot failure prevents any trial mutation.
 2. Apply the trial restage/plugin change only under observation-only authority.
-3. Start (or restart) and reach the family’s primary confirmation (healthy view
-   / readiness cue as declared).
-4. **Always restore** the snapshotted activation after success, command failure,
-   timeout, or interruption (operator abort / runner signal), then stop any
-   trial worker generation.
-5. **Verify** the restored activation matches the snapshot (exact content or
-   hash) and that no repository-owned automation worker remains running for the
-   vehicle.
+3. Start (or restart) and reach the family’s **complete** primary confirmation
+   (healthy view / readiness cue as declared for the family minimum contract).
+4. **Always restore** from the restorable snapshot after success, command
+   failure, timeout, or interruption (operator abort / runner signal), then stop
+   any trial worker generation.
+5. **Verify** the restored activation matches the snapshot verification hash
+   (and/or byte equality) and that no repository-owned automation worker remains
+   running for the vehicle.
 6. A restore or verification failure is an **acceptance blocker**: the sequence
-   and overall continuity result cannot be `pass`.
+   family aggregate and overall continuity result cannot be `pass`.
 
 Focused tests must cover success restore, command-failure restore, timeout/
-interruption restore, and restore-failure → non-pass. The runner’s existing
-worker-stop cleanup alone does not satisfy this contract.
+interruption restore, restore-failure → non-pass, and
+**hash-only/non-restorable snapshot rejection** (no mutation). The runner’s
+existing worker-stop cleanup alone does not satisfy this contract.
 
 ### Confirmation standard (every declared sequence)
 
@@ -175,15 +180,56 @@ For `continuity.offline_perception`:
 6. **Findings:** confirmed discrepancies use stable ids with classification,
    severity, owner, disposition.
 7. **Repairs:** only surfaces in **Bounded repair set** (strict). See below.
-8. **Evidence binding:** commit catalogs, session artifacts, digests, README
-   ledger, and any repair diffs. Bind machine and HITL results to the exact
-   final product commit, runner commit/bytes, and catalog digest(s). Any
-   **behavioral** change to product, runner, or catalog after a session
-   invalidates that session for a `pass` claim and requires machine-first and
-   HITL rerun. Packaging-only evidence edits (redaction, path normalize) must be
-   explicitly audited and must not alter verdict fields.
+8. **Evidence binding + finalizer:** see **Evidence freshness finalizer** below.
+   Commit catalogs, session artifacts, digests, README ledger, and any repair
+   diffs only after the finalizer accepts the binding (or after a required
+   rerun).
 
 Incomplete environment → `incomplete`, not a false pass.
+
+### Required-family aggregation (overall `pass`)
+
+Per-sequence statuses roll up to a **family aggregate** per stable family ID.
+
+| Rule | Contract |
+| --- | --- |
+| Overall `pass` | Every **required** family aggregate is exactly `passed` (not `partial`, not `blocked`, not missing). Safety preflight passed. Evidence finalizer passed. |
+| Family aggregate `passed` | At least one sequence for that family completed the **entire minimum ownership contract** for the family (including US-04 restore verification when applicable), with machine-first green and HITL green when visual confirmation is declared. |
+| Sequence `partial` | Allowed only as an intermediate or failed attempt. It does **not** make the family aggregate `passed`. Another sequence for the same family must fully satisfy the minimum contract, or the family aggregate is not `passed`. |
+| Overall outcome if any required family aggregate is not `passed` | `findings` (sequences ran, family incomplete or blocked with ledger) or `incomplete` (refused/abandoned)—never overall `pass`. |
+
+“Does not leave the family unrepresented” is **not** an executable pass rule and
+is not used. A US-04 sequence that stops before healthy-view confirmation or
+without verified restore cannot contribute a `passed` family aggregate.
+
+### Evidence freshness finalizer (mechanically fail closed)
+
+Implementation must provide a **deterministic evidence finalizer/validator**
+that runs before any overall `pass` claim is accepted (in the runner and/or a
+committed validator used by review):
+
+1. Read recorded identities from the session/result: auto-driving product commit
+   and/or owned product tree digest covering behavioral CLI/runtime surfaces
+   touched by the catalogs; session-runner source digest; continuity catalog
+   content digests; and, when any sequence used visual confirmation, the exact
+   Metrics UI identity (commit and clean/dirty + named diff or linked PR when
+   dirty).
+2. Recompute the same identities from the **final implementation tree** under
+   review (the PR head to be merged).
+3. **Refuse `pass`** if any recorded identity/digest mismatches the final tree,
+   or if required identity fields are missing.
+4. A mismatch on behavior-bearing surfaces (product CLI/runtime, runner,
+   catalog, or Metrics UI identity used for visual confirmation) requires a
+   full machine-first rerun and applicable HITL for affected sequences—not an
+   advisory note.
+5. Packaging-only edits inside the evidence directory (redaction, path
+   normalize) may be re-finalized without rerun only when they do not change
+   verdict, family aggregates, digests of product/runner/catalog, or confirmation
+   outcomes; the finalizer still rechecks those immutable fields.
+
+A concrete bypass—run machine/HITL, then change `session_runner.py`, a bounded
+CLI repair, or a catalog, then package the old passing result—must fail the
+finalizer and a dedicated **stale-result regression test**.
 
 ### Bounded repair set (strict)
 
@@ -232,16 +278,17 @@ Minimum contents:
 | Path | Contract |
 | --- | --- |
 | `README.md` | Environment receipt, family/sequence ledger by stable family ID, confirmation results, repair list, findings, product/runner/catalog digests, verdict, link to #88 catalog |
-| `result.json` | Machine-readable continuity result: required-family set, per-sequence `family_id`, machine vs human, source lineage, safety preflight receipt, restore verification for US-04, digests, findings, repairs applied (only bounded set) |
+| `result.json` | Machine-readable continuity result: required-family set, per-sequence `family_id` and status, **per-family aggregates**, machine vs human, source lineage, safety preflight receipt, US-04 restorable snapshot metadata + restore verification, recorded product/runner/catalog/Metrics UI identities, finalizer receipt, digests, findings, repairs applied (only bounded set) |
 | Runner session dir(s) | Full session-runner outputs for machine-only and HITL runs |
 | Catalogs as committed | Exact YAML/JSON catalogs executed with content digests under `tools/live-cli-session-runner/catalogs/` |
 | Repair notes | Map of applied code changes to finding ids / issue numbers; empty or N/A if no repairs |
 
-`result.json` records `pass`, `findings`, or `incomplete`. A pass requires every
-**required** family ID to be `passed` or an explicitly allowed `partial` with
-owner that does not leave the family unrepresented, plus successful safety
-preflight and successful US-04 restore verification when that family ran. A thin
-catalog pass is forbidden.
+`result.json` records `pass`, `findings`, or `incomplete`. An overall `pass`
+requires: successful safety preflight; every **required family aggregate**
+exactly `passed` (see aggregation rules); successful US-04 restore verification
+when that family ran; and a **passing evidence freshness finalizer** against the
+final implementation tree. A thin catalog pass or partial-only required family
+is forbidden.
 
 ### Relation to the session runner
 
@@ -255,9 +302,9 @@ catalog pass is forbidden.
 
 | Outcome | Meaning |
 | --- | --- |
-| `pass` | Required family IDs represented; safety preflight passed; machine-first complete; HITL complete where required; confirmation standard held; US-04 restore verified when applicable; findings disposed; only bounded-table repairs applied; evidence bound to final product/runner/catalog digests |
-| `findings` | Representative sequences ran under safety preflight; blocking product issues remain with ledger; M007-10 not Met until repaired (bounded set or amendment) and re-run, or exceptional block reviewed |
-| `incomplete` | Environment/identity/session abandoned, or catalog refused at safety preflight without a complete evidence claim; no Met claim |
+| `pass` | Safety preflight passed; every required family aggregate is `passed`; machine-first and required HITL complete; confirmation standard held; US-04 restorable snapshot + restore verified when applicable; findings disposed; only bounded-table repairs applied; evidence freshness finalizer passes against final product/runner/catalog/Metrics UI identities |
+| `findings` | Sequences ran under safety preflight but a required family aggregate is not `passed`, or blocking product issues remain; M007-10 not Met until repaired (bounded set or amendment) and re-run, or exceptional block reviewed |
+| `incomplete` | Environment/identity/session abandoned, catalog refused at safety preflight, finalizer refuse without a completed family proof, or similar; no Met claim |
 
 ## Ownership
 
@@ -292,9 +339,12 @@ catalog pass is forbidden.
 | Machine-green only; skip HITL where visual primary confirmation is declared | Fail closed / incomplete |
 | Primary confirmation is only a record path or JSON blob | Fail closed: confirmation standard violated |
 | US-04 “cleanup” is only worker stop without activation restore/verify | Fail closed: restore transaction not satisfied |
+| US-04 snapshot is hash-only / non-restorable | Fail closed before mutation; covered by focused tests |
 | Restore fails but result claims `pass` | Fail closed: acceptance blocker |
+| Required family aggregate is only `partial` but overall claims `pass` | Fail closed: aggregation rule |
 | Offline apply/compare uses different capture than recorded lineage | Fail closed: source lineage broken |
-| Claim `pass` after product/runner/catalog behavioral change without rerun | Fail closed: evidence freshness violated |
+| Claim `pass` after product/runner/catalog/Metrics UI identity change without rerun | Fail closed: evidence finalizer mismatch + stale-result regression test |
+| Finalizer is advisory / “where practical” only | Fail review: finalizer must refuse `pass` on mismatch |
 | Implement #90/#91 as “required” under repair authority | Out of scope; separate proposal |
 | Repair outside bounded table without proposal amendment | Fail review; disposition only, or amendment first |
 | Re-run only US-02 and claim continuity | Fail closed: US-01/02 are not the M007-10 gate |
@@ -363,12 +413,16 @@ Deterministic (required):
   (adversarial unit tests; no live unsafe execution).
 - **Family validation:** required family IDs present; reject missing, duplicate,
   or help/status-only mislabeled families; commands parser-valid.
-- **US-04 restore:** success, failure, timeout/interruption, and restore-failure
-  → non-pass cases in focused tests.
+- **US-04 restore:** success, failure, timeout/interruption, restore-failure →
+  non-pass, and **hash-only/non-restorable snapshot rejection** (no mutation).
 - **Confirmation schema:** path/JSON-only primary confirmation rejected.
-- **Evidence binding fields:** product/runner/catalog digests recorded; tests
-  for “behavioral change invalidates prior session claim” as a documented
-  gate (mechanical check where practical).
+- **Family aggregation:** overall `pass` requires every required family
+  aggregate `passed`; a lone `partial` sequence cannot yield overall `pass`.
+- **Evidence freshness finalizer:** deterministic comparison of recorded
+  product/runner/catalog digests and Metrics UI identity (when visual) to the
+  final tree; refuse `pass` on mismatch; **stale-result regression test**
+  (session artifacts from commit A, tree at commit B with runner/CLI/catalog
+  change → finalizer fails).
 - Focused tests for each **applied** bounded-table repair only.
 - Full default suite green.
 
@@ -377,13 +431,16 @@ External / live:
 1. Safety preflight accepts the committed continuity catalog.
 2. Machine-first run of every required family sequence.
 3. HITL for sequences with visual primary confirmation.
-4. Verify US-04 restore (activation match + worker stopped).
-5. Commit evidence with family ledger, lineage, and digests.
-6. Confirm no thin-catalog pass; list repairs only from the bounded table.
+4. Verify US-04 restorable snapshot + restore (activation match + worker stopped).
+5. Run evidence freshness finalizer against the final implementation head.
+6. Commit evidence with family aggregates, lineage, identities, and finalizer
+   receipt.
+7. Confirm no thin-catalog or partial-only required-family pass; list repairs
+   only from the bounded table.
 
-Reviewers verify required family IDs, safety preflight, confirmation standard,
-US-04 transaction, evidence freshness binding, bounded repairs only, and
-handoff readiness for coverage.
+Reviewers verify required family aggregates, safety preflight, confirmation
+standard, US-04 restorable transaction, finalizer refuse-on-mismatch, bounded
+repairs only, and handoff readiness for coverage.
 
 ## Expected Handoff
 
@@ -394,11 +451,11 @@ Post-merge successful implementation template:
   "schema": "milestone_handoff_template_v1",
   "outcome": "advance",
   "result": "Accepted",
-  "durable_evidence": "Realistic CLI scenario continuity in PR #{pr}: required family IDs continuity.offline_perception, continuity.live_config_swap, and continuity.memory_lifecycle declared on the live session runner with fail-closed safety preflight; machine-first then conditional HITL with human-scannable confirmations; US-04 transactional restore verified; evidence bound to product/runner/catalog digests; durable finding disposition; repairs limited to the proposal bounded table; tracked under docs/milestones/007-cli-operator-usability/evidence/cli-scenario-continuity/",
+  "durable_evidence": "Realistic CLI scenario continuity in PR #{pr}: required family aggregates continuity.offline_perception, continuity.live_config_swap, and continuity.memory_lifecycle each passed on the live session runner with fail-closed safety preflight; machine-first then conditional HITL with human-scannable confirmations; US-04 restorable snapshot and restore verified; evidence freshness finalizer matched final product/runner/catalog/Metrics UI identities; durable finding disposition; repairs limited to the proposal bounded table; tracked under docs/milestones/007-cli-operator-usability/evidence/cli-scenario-continuity/",
   "criterion_updates": {
     "M007-10": {
       "status": "Met",
-      "evidence": "PR #{pr} executes required continuity family IDs with safety preflight, machine-first/HITL confirmations, US-04 restore verification, source lineage for offline perception, evidence freshness binding, and only bounded-table repairs"
+      "evidence": "PR #{pr} passes required family aggregates with safety preflight, machine-first/HITL confirmations, US-04 restorable restore verification, offline source lineage, deterministic evidence freshness finalizer, and only bounded-table repairs"
     }
   },
   "risk_remove": [

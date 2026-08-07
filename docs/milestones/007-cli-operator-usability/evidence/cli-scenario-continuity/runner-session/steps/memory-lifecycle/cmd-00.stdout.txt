@@ -1,0 +1,3 @@
+Updated memory: chase-sim-chaser -> bounded_evidence
+Implementation: implementations.memory.bounded_evidence:BoundedEvidenceLedger
+Activation: runtime/vehicles/chase-sim-chaser/bundle/runtime/memory/active.json

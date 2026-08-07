@@ -1,0 +1,42 @@
+{
+  "browser_view": null,
+  "commands": [
+    {
+      "argv": [
+        "./cli/automa",
+        "vehicles",
+        "perception",
+        "apply",
+        "/Users/gluo/Projects/auto-driving/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260806-225842-681213-1ebeb5b8",
+        "--algorithm",
+        "sim_debug",
+        "--record"
+      ],
+      "command": "./cli/automa vehicles perception apply /Users/gluo/Projects/auto-driving/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260806-225842-681213-1ebeb5b8 --algorithm sim_debug --record",
+      "elapsed_ms": 570,
+      "ended_at_utc": "2026-08-07T05:58:50.880625Z",
+      "exit_code": 0,
+      "started_at_utc": "2026-08-07T05:58:50.310458Z",
+      "stderr_path": "steps/offline-apply-b/cmd-00.stderr.txt",
+      "stdout_path": "steps/offline-apply-b/cmd-00.stdout.txt"
+    }
+  ],
+  "family_id": "continuity.offline_perception",
+  "gate_ids": [],
+  "human": {
+    "finding_requested": false,
+    "interactive": false,
+    "notes": "non-interactive session",
+    "visual": "pass"
+  },
+  "id": "offline-apply-b",
+  "kind": "command",
+  "machine_evidence": {},
+  "machine_ok": true,
+  "machine_summary": "",
+  "primary_cue": "distinct run id from offline-apply-a; no overwrite",
+  "question": "Does a second apply in the same second keep a distinct exclusive record directory?",
+  "required_for_verdict": true,
+  "safety": "local_write",
+  "status": "pass"
+}

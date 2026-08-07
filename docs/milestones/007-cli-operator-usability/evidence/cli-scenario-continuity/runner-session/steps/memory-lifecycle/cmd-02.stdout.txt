@@ -1,0 +1,24 @@
+Memory check (present → dropout → expiry → reset)
+vehicle: chase-sim-chaser
+implementation: bounded_evidence
+activation: ephemeral-check:bounded_evidence(max_age_ms=1000)
+provider: chase-sim
+movement: never commanded
+
+phase: present
+  PASS  keys=2  health=healthy  reason=retained at least one thing key from present observations
+phase: dropout
+  PASS  keys=2  health=healthy  reason=retained present keys through empty dropout frames
+phase: expiry
+  PASS  keys=0  health=empty  reason=tracked lifecycle keys expired from live/offline memory
+phase: reset
+  PASS  keys=0  health=empty  reason=reset produced a new empty epoch
+record: lab/runs/memory-check/chase-sim-chaser-20260806-225910
+provenance extract: lab/runs/memory-check/chase-sim-chaser-20260806-225910/provenance_extract.html
+Memory check: chase-sim-chaser  PASS
+Implementation: bounded_evidence
+Activation: ephemeral-check:bounded_evidence(max_age_ms=1000)
+Phases: present=ok, dropout=ok, expiry=ok, reset=ok
+Movement: never commanded
+Record: lab/runs/memory-check/chase-sim-chaser-20260806-225910
+Provenance extract: lab/runs/memory-check/chase-sim-chaser-20260806-225910/provenance_extract.html

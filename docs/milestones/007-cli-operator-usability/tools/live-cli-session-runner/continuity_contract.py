@@ -246,29 +246,55 @@ def validate_continuity_families(
     return True, "family validation ok", {"by_family": by_family, "required": list(REQUIRED_FAMILY_IDS)}
 
 
+def _normalize_step_status(status: str) -> str:
+    value = (status or "incomplete").strip().lower()
+    if value in {"pass", "passed", "ok"}:
+        return "passed"
+    if value in {"fail", "failed", "error"}:
+        return "fail"
+    if value in {"partial"}:
+        return "partial"
+    if value in {"blocked"}:
+        return "blocked"
+    if value in {"finding", "findings"}:
+        return "finding"
+    if value in {"skip", "skipped"}:
+        return "skip"
+    return value or "incomplete"
+
+
 def aggregate_family_status(
     sequences: Sequence[Mapping[str, Any]],
 ) -> dict[str, str]:
     """Roll per-sequence status into per-family aggregates.
 
     A family is `passed` only if at least one sequence for that family has
-    status `passed`. Partial alone never yields family `passed`.
+    status `passed`/`pass`/`ok`. Partial alone never yields family `passed`.
+    Machine-only visual skips do not count as family `passed` (HITL still required).
     """
 
     aggregates: dict[str, str] = {}
     by_family: dict[str, list[str]] = {}
+    hitl_pending: dict[str, bool] = {}
     for seq in sequences:
         fid = str(seq.get("family_id") or "")
-        status = str(seq.get("status") or "incomplete")
+        if not fid:
+            continue
+        status = _normalize_step_status(str(seq.get("status") or "incomplete"))
+        # Visual skip under machine-only leaves family HITL-pending.
+        if status == "skip" and seq.get("visual_required"):
+            hitl_pending[fid] = True
+            status = "partial"
         by_family.setdefault(fid, []).append(status)
 
     for fid, statuses in by_family.items():
-        if "passed" in statuses:
-            aggregates[fid] = "passed"
-        elif "finding" in statuses:
-            aggregates[fid] = "finding"
-        elif "partial" in statuses:
+        if "fail" in statuses or "finding" in statuses:
+            aggregates[fid] = "finding" if "finding" in statuses else "fail"
+        elif hitl_pending.get(fid) or "partial" in statuses:
+            # HITL still required or incomplete family contract.
             aggregates[fid] = "partial"
+        elif "passed" in statuses:
+            aggregates[fid] = "passed"
         elif "blocked" in statuses:
             aggregates[fid] = "blocked"
         else:

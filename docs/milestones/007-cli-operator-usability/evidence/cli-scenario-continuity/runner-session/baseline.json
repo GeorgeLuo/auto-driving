@@ -1,0 +1,61 @@
+{
+  "browser": {
+    "name": null,
+    "version": null
+  },
+  "canonical_acceptance": false,
+  "canonical_acceptance_reason": "catalog file digest does not match the reviewed PINNED_ACCEPTANCE_CATALOG_DIGEST constant",
+  "catalog_source": "<repo>/docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/catalogs/m007-continuity.yaml",
+  "execution_mode": "machine_only_live",
+  "metrics_ui_origin": "http://localhost:5050",
+  "operating_system": "macOS-26.5.1-arm64-arm-64bit",
+  "operator": "machine-preflight",
+  "precondition_cleanup": null,
+  "python": "3.11.7",
+  "recorded_at_utc": "2026-08-07T05:58:31.596690Z",
+  "recording_before": [
+    "automation-20260630-214835",
+    "automation-20260630-214933"
+  ],
+  "repositories": {
+    "auto_driving": {
+      "branch": "m007/scenario-continuity",
+      "commit": "e7fe76fe2af0fbed3fd14fc33116eec9e22821ae",
+      "diff_identity": "c5593c8145318e4ea66b1f5fef0039ecb68072cee0a293b6dc891bf194bbfbd3",
+      "github_owner": "GeorgeLuo",
+      "github_repo": "auto-driving",
+      "path": "auto-driving",
+      "status_porcelain": [
+        "M docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/catalogs/m007-continuity.yaml",
+        " M docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/continuity_contract.py",
+        " M docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/session_runner.py",
+        " M tests/milestones/test_continuity_contract.py"
+      ],
+      "untracked_files": [],
+      "untracked_sha256": {},
+      "worktree_state": "dirty"
+    },
+    "metrics_ui": {
+      "branch": null,
+      "commit": null,
+      "diff_identity": null,
+      "path": "Stream-Metrics-UI",
+      "status_porcelain": [],
+      "untracked_files": [],
+      "untracked_sha256": {},
+      "worktree_state": "clean"
+    }
+  },
+  "session_visible": null,
+  "vehicle_id": "chase-sim-chaser",
+  "worktree_diff_path": "auto-driving-worktree.diff",
+  "worktree_reviewables": {
+    "auto-driving": {
+      "diff_path": "auto-driving-worktree.diff",
+      "label": "auto-driving",
+      "policy": "tracked_diff_only_no_untracked_copy",
+      "untracked_copied": false,
+      "untracked_listed": []
+    }
+  }
+}

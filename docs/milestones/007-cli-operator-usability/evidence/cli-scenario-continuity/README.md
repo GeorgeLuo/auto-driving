@@ -1,37 +1,51 @@
 # Realistic CLI scenario continuity evidence
 
-Status: **Draft — continuity session not completed.** This scaffold makes no
-M007-10 acceptance claim.
+Status: **Machine-first complete; HITL pending for live-config visual step.**
 
 Accepted contract:
 [cli-scenario-continuity.md](../../proposals/cli-scenario-continuity.md)
 ([PR #99](https://github.com/GeorgeLuo/auto-driving/pull/99)).
 
-## Required families
+## Session
 
-| Family ID | Minimum contract |
+| Field | Value |
 | --- | --- |
-| `continuity.offline_perception` | Capture once + apply/compare with lineage |
-| `continuity.live_config_swap` | Restage, observe-only view, transactional restore |
-| `continuity.memory_lifecycle` | Concise memory check PASS/FAIL + cleanup |
+| Mode | `machine_only_live` |
+| Catalog | `m007-continuity` (track `continuity`) |
+| Machine preflight | **pass** (6 required steps machine-green) |
+| US-04 snapshot/restore | **ok** (restorable bytes + verify) |
+| Finalizer | **ok** (product/runner/catalog digests match at session time) |
+| Overall M007-10 pass | **not yet** — `continuity.live_config_swap` aggregate is `partial` until interactive visual confirmation of `live-swap-stage` |
 
-## Procedure (summary)
+## Family ledger
 
-1. Continuity safety preflight + family validation (fail closed before CLI).
-2. Machine-first catalog run (`m007-continuity.yaml`).
-3. HITL where visual primary confirmation is declared.
-4. Evidence freshness finalizer against final product/runner/catalog bytes.
-5. Overall `pass` only if every required **family aggregate** is `passed`.
+| Family ID | Aggregate | Notes |
+| --- | --- | --- |
+| `continuity.offline_perception` | **passed** | Capture + two exclusive applies (same `src_dir` lineage) |
+| `continuity.live_config_swap` | **partial** | Machine commands green; visual HITL still required on stage step |
+| `continuity.memory_lifecycle` | **passed** | Memory check PASS (present/dropout/expiry/reset) + stop |
 
-## Artifact ledger
+## Confirmation standard
 
-| Artifact | State |
+- Offline/memory: concise CLI verdicts (`Memory check: … PASS`, apply review path first).
+- Live swap visual: primary cue is Automa view nonblank with perception overlay — **operator HITL required**.
+- Raw JSON/path is never the sole human success signal.
+
+## Artifacts
+
+| Path | Role |
 | --- | --- |
-| `result.json` | Present; incomplete scaffold until session finishes |
-| Continuity session dir | Pending live run |
-| Catalog digests | Pending |
-| Bounded repairs | See implementation PR |
+| `result.json` | Formal continuity result (incomplete until HITL) |
+| `runner-session/` | Full machine-only session (commands, digests, US-04 receipts) |
+| `runner-session/continuity-preflight.json` | Safety + family preflight |
+| `runner-session/us04-activation-*.json` | Restorable snapshot meta + restore verify |
+
+## Remaining for M007-10 Met
+
+1. Interactive HITL pass on `live-swap-stage` visual prompt (same catalog / product head).
+2. Re-run finalizer after any behavioral product/runner/catalog change.
+3. Optional: LIVE-002 candidates readiness fix if compare family is expanded.
 
 ## Verdict
 
-`incomplete` — tracked continuity session has not finished.
+`incomplete` — machine-first contract exercised for all required families; live-config visual HITL outstanding.

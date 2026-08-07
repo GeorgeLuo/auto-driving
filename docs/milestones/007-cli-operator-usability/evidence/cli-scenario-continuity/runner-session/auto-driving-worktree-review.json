@@ -1,0 +1,7 @@
+{
+  "diff_path": "auto-driving-worktree.diff",
+  "label": "auto-driving",
+  "policy": "tracked_diff_only_no_untracked_copy",
+  "untracked_copied": false,
+  "untracked_listed": []
+}

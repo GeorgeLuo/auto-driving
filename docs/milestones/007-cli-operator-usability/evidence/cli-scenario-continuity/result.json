@@ -1,15 +1,104 @@
 {
   "schema": "m007_cli_scenario_continuity_v0",
   "result": "incomplete",
-  "incomplete_reason": "The tracked continuity session has not finished.",
+  "incomplete_reason": "Machine-first continuity session is green for all required steps; required family continuity.live_config_swap remains partial until interactive HITL confirms the visual primary cue on live-swap-stage. US-04 restorable snapshot/restore verified. Offline perception and memory lifecycle family aggregates are passed.",
   "required_family_ids": [
     "continuity.offline_perception",
     "continuity.live_config_swap",
     "continuity.memory_lifecycle"
   ],
-  "family_aggregates": {},
+  "family_aggregates": {
+    "continuity.live_config_swap": "partial",
+    "continuity.memory_lifecycle": "passed",
+    "continuity.offline_perception": "passed"
+  },
+  "machine_preflight": {
+    "evaluated_steps": [
+      "offline-capture",
+      "offline-apply-a",
+      "offline-apply-b",
+      "live-swap-stage",
+      "live-swap-stop",
+      "memory-lifecycle"
+    ],
+    "failures": [],
+    "summary": "6 required step(s) machine-green",
+    "verdict": "pass"
+  },
+  "finalizer": {
+    "ok": true,
+    "reason": "evidence freshness finalizer ok"
+  },
+  "overall_pass_allowed": false,
+  "overall_pass_reason": "required family continuity.live_config_swap aggregate is 'partial'",
+  "us04_restore": {
+    "error": null,
+    "ok": true,
+    "path": "<repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception/active.json",
+    "sha256": "553ded840274daa6257ebeb55ff7415527892a4f056e6161ddac11de8bcd9cfa"
+  },
+  "session": {
+    "path": "runner-session",
+    "result": "incomplete",
+    "execution_mode": "machine_only_live",
+    "catalog": {
+      "id": "m007-continuity",
+      "max_frame_lag": null,
+      "title": "M007 realistic CLI scenario continuity",
+      "track": "continuity"
+    },
+    "timestamps": {
+      "ended_at_utc": "2026-08-07T05:59:12.702251Z",
+      "local_timezone": [
+        "PST",
+        "PDT"
+      ],
+      "started_at_utc": "2026-08-07T05:58:31.596690Z"
+    }
+  },
   "findings": [],
-  "repairs_applied": [],
-  "finalizer": null,
-  "artifacts": []
+  "repairs_applied": [
+    {
+      "id": "M007-LIVE-001",
+      "surface": "perception apply run-id",
+      "status": "implemented"
+    },
+    {
+      "id": "M007-LIVE-003",
+      "surface": "compare failure one-line",
+      "status": "implemented"
+    },
+    {
+      "id": "M007-LIVE-005",
+      "surface": "experiment human review path first",
+      "status": "implemented"
+    },
+    {
+      "id": "M007-LIVE-002",
+      "surface": "candidates ready vs path",
+      "status": "not_in_this_session"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "README.md",
+      "sha256": "dca821636f7b5cc76d26b9c48533443ed8e9f134fc3bb8ad408f05eddd2cfe2a"
+    },
+    {
+      "path": "runner-session/result.json",
+      "sha256": "1dcb118534f9428c57e3f94f15fde0dad24550fa7d4272014b9cf727a8919150"
+    },
+    {
+      "path": "runner-session/continuity-preflight.json",
+      "sha256": "6aa6556a7336aeab789499b60d2d8c7a1fe9f08ba62dc897a905612e5552031d"
+    },
+    {
+      "path": "runner-session/us04-activation-restore.json",
+      "sha256": "fbdb4cc71a056002743ae157a5c953a235a9109830f88d6fcce068c94dca1122"
+    },
+    {
+      "path": "runner-session/human-notes.md",
+      "sha256": "b7e5d319d3f54eaf0182db23cfbc16188a1c9877c1046eb5da955eaea834c239"
+    }
+  ]
 }

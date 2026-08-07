@@ -206,6 +206,25 @@ class ContinuityFamilyTests(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("offline_perception", reason)
 
+    def test_visual_skip_keeps_family_partial_even_if_sibling_pass(self) -> None:
+        aggregates = cc.aggregate_family_status(
+            [
+                {
+                    "family_id": "continuity.live_config_swap",
+                    "status": "skip",
+                    "visual_required": True,
+                    "machine_ok": True,
+                },
+                {
+                    "family_id": "continuity.live_config_swap",
+                    "status": "pass",
+                    "visual_required": False,
+                    "machine_ok": True,
+                },
+            ]
+        )
+        self.assertEqual(aggregates["continuity.live_config_swap"], "partial")
+
     def test_passed_when_all_required_passed(self) -> None:
         aggregates = {
             "continuity.offline_perception": "passed",

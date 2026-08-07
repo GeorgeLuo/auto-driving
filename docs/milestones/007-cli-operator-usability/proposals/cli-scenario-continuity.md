@@ -30,36 +30,107 @@ US-01/US-02 as the acceptance gate.
 
 ### Acceptance breadth (frozen families)
 
-The implementation must declare runner catalogs (or catalog extensions) that
-cover these **representative families** from the #88 prospective usage-sequence
-catalog
-([comment](https://github.com/GeorgeLuo/auto-driving/pull/88#issuecomment-5169077892)):
+The implementation must declare runner catalogs that cover these families from
+the #88 prospective usage-sequence catalog
+([comment](https://github.com/GeorgeLuo/auto-driving/pull/88#issuecomment-5169077892)).
 
-| Family | #88 ids (class) | Minimum ownership |
-| --- | --- | --- |
-| Offline perception feedback | US-03-class | Capture-once then apply and/or compare on the same frames with a compact human comparison surface |
-| Live configuration / plugin swap with restoration | US-04-class | Observation-only restage or plugin change, restart to a healthy view, restore prior activation; full transactional trial UX (#91) is not required |
-| Perception → memory lifecycle | US-05-class and US-08-class | Memory check or equivalent concise PASS/FAIL; reset/repopulation with human-scannable key/epoch confirmation where applicable |
-| Optional stress families | US-06, US-07, US-09-class | Ablation, temporal backpressure, deterministic replay — include when prerequisites are available; otherwise record `blocked` / `partial` with owner and reason |
-| Out of gate | US-01, US-02 | Already owned by M007-05; not re-proven for M007-10 |
-| Deferred | US-10-class | Physical-check qualification when labeled input is unavailable |
+**Stable family IDs** (required in every catalog step/sequence mapping and in
+`result.json`):
 
-A thin help/status-only catalog that never exercises perception/memory feedback
-loops **cannot** satisfy M007-10 even if it is multi-command and machine-green.
+| Family ID | #88 class | Required? | Minimum ownership |
+| --- | --- | --- | --- |
+| `continuity.offline_perception` | US-03-class | **Required** | Capture-once then apply and/or compare on the **same** captured input with a compact human comparison surface and preserved source lineage |
+| `continuity.live_config_swap` | US-04-class | **Required** | Observation-only restage or plugin change, restart to a healthy view, then **transactional restore** of the prior activation (see below). Full #91 product UX is not required |
+| `continuity.memory_lifecycle` | US-05 and US-08-class | **Required** | Memory check or equivalent concise PASS/FAIL; reset/repopulation with human-scannable key/epoch confirmation where the sequence mutates memory |
+| `continuity.plugin_ablation` | US-06-class | Optional | Include when prerequisites allow; else `blocked`/`partial` with owner |
+| `continuity.temporal_backpressure` | US-07-class | Optional | Include when prerequisites allow; else `blocked`/`partial` with owner |
+| `continuity.memory_replay` | US-09-class | Optional | Include when prerequisites allow; else `blocked`/`partial` with owner |
+| — | US-01, US-02 | Out of gate | Already owned by M007-05; not re-proven for M007-10 |
+| — | US-10-class | Deferred | Physical-check qualification when labeled input is unavailable |
 
-Partial or blocked family outcomes are allowed only when the proposal’s
-evidence records an explicit owner, reason, and whether a product repair,
-external dependency, or later feature unit owns the gap. Silent omission is a
-failure.
+**Required-family set** for a `pass`:
+
+```text
+continuity.offline_perception
+continuity.live_config_swap
+continuity.memory_lifecycle
+```
+
+A catalog or result that omits a required family ID, duplicates/aliases a family
+ID onto help/status-only steps, or labels a thin help/status multi-command set
+as a required family **fails closed** before or at machine-first evaluation.
+Silent omission is a failure.
+
+### Continuity-track command safety (fail closed before execution)
+
+The current runner’s general schema check and catalog-declared `safety` labels
+are **not** sufficient for this track. Continuity catalogs may not trust free-form
+argv plus a self-asserted safety enum.
+
+Implementation must add an **executable preflight owner** for track
+`continuity` (name may match the catalog track field; must not be the pinned
+`acceptance` / M007-05 identity) that runs **before any CLI command,
+precondition stop, or live mutation**:
+
+1. Parse every command argv against the real public CLI parser (or equivalent
+   structural allowlist derived from the registered parser).
+2. **Derive** safety class from argv/flags (not solely from the catalog’s
+   `safety` field). If the catalog label disagrees with the derived class,
+   reject the entire catalog.
+3. Allow only an **explicit continuity allowlist** of command paths and flag
+   combinations needed for the frozen families (status, update perception,
+   automation run/stop with observation-only constraints, perception
+   run/apply/compare/candidates as used by the families, memory check/reset/
+   replay as used by the families, and similar read-only discovery already
+   public). Exact allowlist entries are implementation detail; the contract is
+   fail-closed membership.
+4. **Reject the entire catalog** (no partial run) if any step includes:
+   - movement or operation pulses (for example `operation startup-check`
+     without an exclusive dry-run that never sends pulses—if not clearly
+     dry-only, reject);
+   - hardware / Pi deploy leaves (`update core`, `update autonomy`, …);
+   - destructive or environment-mutating leaves outside the allowlist;
+   - `simulators ensure` or other simulator reconfiguration;
+   - unknown commands or unregistered flags;
+   - flags that apply control, take non-observe-only authority, or enable
+     default history recording when the family does not explicitly allow
+     `--record` for offline perception artifacts.
+5. Do **not** execute an unsafe live reproduction to “prove” rejection;
+   deterministic adversarial tests own that proof.
+
+### US-04 restoration as a transaction
+
+For `continuity.live_config_swap`, “unconditional cleanup/restoration” means a
+**transaction**, not only “stop the worker in `finally`”:
+
+1. **Snapshot** the original staged activation / plugin configuration (content
+   and/or content hash) and whether a worker was running, before mutation.
+2. Apply the trial restage/plugin change only under observation-only authority.
+3. Start (or restart) and reach the family’s primary confirmation (healthy view
+   / readiness cue as declared).
+4. **Always restore** the snapshotted activation after success, command failure,
+   timeout, or interruption (operator abort / runner signal), then stop any
+   trial worker generation.
+5. **Verify** the restored activation matches the snapshot (exact content or
+   hash) and that no repository-owned automation worker remains running for the
+   vehicle.
+6. A restore or verification failure is an **acceptance blocker**: the sequence
+   and overall continuity result cannot be `pass`.
+
+Focused tests must cover success restore, command-failure restore, timeout/
+interruption restore, and restore-failure → non-pass. The runner’s existing
+worker-stop cleanup alone does not satisfy this contract.
 
 ### Confirmation standard (every declared sequence)
 
 Each declared sequence must record:
 
+- stable `family_id` from the table above;
 - operator question and prerequisites;
 - exact current public commands (human-first argv);
-- safety class and side effects;
-- unconditional cleanup / restoration steps;
+- derived safety class and side effects;
+- unconditional cleanup / restoration steps (transactional for
+  `continuity.live_config_swap`);
 - **one primary human-scannable confirmation**: either a concise CLI verdict
   (for example `PASS`/`FAIL`, `Ready for:`, `Deterministic: yes`,
   `Keys: N -> 0`) or a launched frontend / generated review surface;
@@ -77,30 +148,47 @@ Operator-facing rules:
 5. Cleanup and restored staged configuration are part of the visible outcome
    when the sequence mutates staging or a worker.
 
+### Source lineage (offline perception family)
+
+For `continuity.offline_perception`:
+
+- Capture (or select) one immutable ordered input set and record its identity
+  (path + content digest / provenance).
+- Apply and compare must consume **that same** input identity.
+- Evidence must preserve lineage so a pass cannot mix frames from different
+  captures or untracked directories.
+
 ### Execution procedure
 
 1. **Declare** sequences in session-runner YAML/JSON catalogs under the existing
-   live CLI session runner tools directory (new continuity catalog(s) and/or
-   reviewed extensions; do not invent a second harness).
-2. **Machine-first:** run each required sequence non-interactively / machine-only
+   live CLI session runner tools directory (new `continuity` track catalog(s);
+   do not invent a second harness). Catalogs must not use the pinned
+   `m007-acceptance` / M007-05 identity.
+2. **Preflight:** run continuity-track safety allowlist validation; on failure,
+   write a refused result and stop—no CLI execution.
+3. **Family validation:** ensure required family IDs are present, not
+   help/status-only mislabeled, and commands are parser-valid.
+4. **Machine-first:** run each required sequence non-interactively / machine-only
    where the runner supports it, and record machine verdicts.
-3. **HITL elevation:** only machine-green sequences that declare visual judgment
+5. **HITL elevation:** only machine-green sequences that declare visual judgment
    require interactive human pass/fail on the primary confirmation surface.
-4. **Findings:** confirmed discrepancies use stable `M007-LIVE-###` (or
-   continuity-specific) ids with classification, severity, owner, disposition.
-5. **Repairs (bounded):** product or CLI-output changes are allowed only for
-   surfaces listed under **Bounded repair set** below, or for defects the
-   declared sequences newly prove that remain within non-goals (no #90/#91
-   feature delivery). Material defects outside the bound get durable disposition
-   and, when they change the contract, a proposal amendment or separate unit.
-6. **Evidence PR:** commit catalogs, session artifacts, digests, README ledger,
-   and any repair diffs in the implementation unit. Incomplete environment →
-   `incomplete`, not a false pass.
+6. **Findings:** confirmed discrepancies use stable ids with classification,
+   severity, owner, disposition.
+7. **Repairs:** only surfaces in **Bounded repair set** (strict). See below.
+8. **Evidence binding:** commit catalogs, session artifacts, digests, README
+   ledger, and any repair diffs. Bind machine and HITL results to the exact
+   final product commit, runner commit/bytes, and catalog digest(s). Any
+   **behavioral** change to product, runner, or catalog after a session
+   invalidates that session for a `pass` claim and requires machine-first and
+   HITL rerun. Packaging-only evidence edits (redaction, path normalize) must be
+   explicitly audited and must not alter verdict fields.
 
-### Bounded repair set
+Incomplete environment → `incomplete`, not a false pass.
 
-The proposal authorizes implementation to repair or harden only what blocks
-safe execution or human-scannable confirmation of the frozen families:
+### Bounded repair set (strict)
+
+The proposal authorizes implementation to repair or harden **only** the
+surfaces and intents in this table:
 
 | Source | Surface | Intent |
 | --- | --- | --- |
@@ -109,24 +197,33 @@ safe execution or human-scannable confirmation of the frozen families:
 | M007-LIVE-003 | `perception compare` human failure output | One-line structured failure; full detail in JSON/verbose |
 | M007-LIVE-005 | `perception run` human vs `--json` surfaces | Compact human default; review path prominent |
 | M007-LIVE-004 (partial) | review path discoverability | May launch or print a single clear review path; **must not** require a new consolidated multi-engine product (#90) |
-| Sequence-forced CLI output | Concise verdict lines for memory check / reset / replay | Only as needed for the confirmation standard |
+| Sequence-forced CLI output | Concise verdict lines for memory check / reset / replay | Only as needed for the confirmation standard on allowlisted memory leaves |
+
+There is **no** open-ended authority for “defects sequences newly prove.” Newly
+discovered defects outside this table:
+
+1. receive durable disposition in the evidence ledger (owner, classification);
+2. if repair is desired **in this unit**, require a **reviewed proposal
+   amendment** that adds the surface to this table;
+3. otherwise remain deferred to a separate review unit.
 
 **Not authorized as required deliverables:** #90 same-frame experiment matrices,
 #91 transactional live trials as a full feature, Metrics UI product redesign
 (#93), movement/hardware leaves, coverage collector, full leaf inventory.
 
-### Environment and safety
+### Environment and baseline
 
 - Observation-only action policy; no applied vehicle movement.
 - Metrics UI Chase already available; no hidden `simulators ensure` as part of
   a “pass.”
-- Precondition stop of stray Automa workers before baseline.
+- Precondition stop of stray Automa workers before baseline (after continuity
+  safety preflight has accepted the catalog).
 - Record exact `auto-driving` and `metrics-ui` identities (clean or named diff).
 - Redact local absolute paths, secrets, and unrelated browser content.
 
 ### Evidence artifacts (implementation-owned)
 
-Tracked under a new evidence directory, for example:
+Tracked under:
 
 `docs/milestones/007-cli-operator-usability/evidence/cli-scenario-continuity/`
 
@@ -134,41 +231,42 @@ Minimum contents:
 
 | Path | Contract |
 | --- | --- |
-| `README.md` | Environment receipt, family/sequence ledger, confirmation results, repair list, findings, verdict, link to #88 catalog |
-| `result.json` | Machine-readable continuity result: per-sequence status, machine vs human, digests, findings, repairs applied |
+| `README.md` | Environment receipt, family/sequence ledger by stable family ID, confirmation results, repair list, findings, product/runner/catalog digests, verdict, link to #88 catalog |
+| `result.json` | Machine-readable continuity result: required-family set, per-sequence `family_id`, machine vs human, source lineage, safety preflight receipt, restore verification for US-04, digests, findings, repairs applied (only bounded set) |
 | Runner session dir(s) | Full session-runner outputs for machine-only and HITL runs |
-| Catalogs as committed | The exact YAML/JSON catalogs executed (or digests + pinned path under `tools/live-cli-session-runner/catalogs/`) |
-| Repair notes | Map of applied code changes to finding ids / issue numbers |
+| Catalogs as committed | Exact YAML/JSON catalogs executed with content digests under `tools/live-cli-session-runner/catalogs/` |
+| Repair notes | Map of applied code changes to finding ids / issue numbers; empty or N/A if no repairs |
 
 `result.json` records `pass`, `findings`, or `incomplete`. A pass requires every
-**required** family to be `passed` or an explicitly allowed `partial` with
-owner that does not leave the family unrepresented. A thin catalog pass is
-forbidden.
+**required** family ID to be `passed` or an explicitly allowed `partial` with
+owner that does not leave the family unrepresented, plus successful safety
+preflight and successful US-04 restore verification when that family ran. A thin
+catalog pass is forbidden.
 
 ### Relation to the session runner
 
 - Keep `m007-acceptance` / pinned acceptance catalog immutable for M007-05
   posterity unless a separate amendment is reviewed.
-- Continuity catalogs are a distinct track (`exploratory` or a new
-  `continuity` track if the runner needs one) so they cannot claim M007-05.
+- Continuity catalogs use a distinct track (recommended name: `continuity`) so
+  they cannot claim M007-05 and so safety preflight can target them.
 - Prefer extending the existing runner over parallel tooling.
 
 ### Success / failure outcomes
 
 | Outcome | Meaning |
 | --- | --- |
-| `pass` | Required families represented; machine-first complete; HITL complete where required; confirmation standard held; findings disposed; only bounded repairs applied; digests consistent |
-| `findings` | Representative sequences ran; blocking product issues remain with ledger; M007-10 not Met until repaired and re-run or exceptional block reviewed |
-| `incomplete` | Environment/identity/session abandoned; no Met claim |
+| `pass` | Required family IDs represented; safety preflight passed; machine-first complete; HITL complete where required; confirmation standard held; US-04 restore verified when applicable; findings disposed; only bounded-table repairs applied; evidence bound to final product/runner/catalog digests |
+| `findings` | Representative sequences ran under safety preflight; blocking product issues remain with ledger; M007-10 not Met until repaired (bounded set or amendment) and re-run, or exceptional block reviewed |
+| `incomplete` | Environment/identity/session abandoned, or catalog refused at safety preflight without a complete evidence claim; no Met claim |
 
 ## Ownership
 
 | Boundary | Owner in this unit |
 | --- | --- |
-| Catalog declaration and runner procedure | Continuity implementation + session runner |
+| Catalog declaration, safety preflight, family validation | Continuity implementation + session runner |
 | Human visual / scannable confirmation | Named operator in the evidence receipt |
-| Machine gates and digests | Session runner + result schema |
-| Bounded product/CLI-output repairs | Automa CLI ownership for listed surfaces |
+| Machine gates, digests, evidence freshness binding | Session runner + result schema |
+| Bounded product/CLI-output repairs | Automa CLI ownership for **listed table surfaces only** |
 | Metrics UI product redesign | Out of unit (#93 external) |
 | Large experiment features | Out of unit (#90/#91) |
 | Milestone transition | Reviewed successful handoff template |
@@ -177,26 +275,31 @@ forbidden.
 
 | Path / surface | Role |
 | --- | --- |
-| `docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/` | Catalogs, optional runner extensions for multi-sequence continuity |
+| `docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/` | Continuity catalogs; safety preflight; family/confirmation/restore hooks |
 | `docs/milestones/007-cli-operator-usability/evidence/cli-scenario-continuity/` | Tracked evidence |
-| `cli/automa_cli/` (bounded) | Apply run-id, candidates readiness, compare/run human output as listed |
-| `tests/` (focused) | Deterministic tests for catalog load, confirmation schema, and authorized repairs |
+| `cli/automa_cli/` (bounded table only) | Apply run-id, candidates readiness, compare/run human output, memory verdict lines as listed |
+| `tests/` (focused) | Safety preflight adversarial tests; family validation; restore transaction; confirmation schema; authorized repairs only |
 | `docs/milestones/007-cli-operator-usability/plan.md` / `plan.html` | Workflow transitions only |
 
 ## Adversarial Matrix
 
 | Attempted bypass | Required response |
 | --- | --- |
-| Help/status-only multi-command catalog claims M007-10 | Fail closed: unrepresentative set |
+| Help/status-only multi-command catalog claims M007-10 | Fail closed: unrepresentative set / missing required family IDs |
+| Required family ID missing, duplicated, or aliased onto help/status steps | Fail closed at family validation |
+| Catalog `safety: read` but argv is movement, hardware, or mutation | Fail closed at safety preflight before any command |
+| Movement / hardware leaf, `simulators ensure`, unknown command, unsafe flag | Fail closed at safety preflight; covered by deterministic tests—not live unsafe runs |
 | Machine-green only; skip HITL where visual primary confirmation is declared | Fail closed / incomplete |
 | Primary confirmation is only a record path or JSON blob | Fail closed: confirmation standard violated |
+| US-04 “cleanup” is only worker stop without activation restore/verify | Fail closed: restore transaction not satisfied |
+| Restore fails but result claims `pass` | Fail closed: acceptance blocker |
+| Offline apply/compare uses different capture than recorded lineage | Fail closed: source lineage broken |
+| Claim `pass` after product/runner/catalog behavioral change without rerun | Fail closed: evidence freshness violated |
 | Implement #90/#91 as “required” under repair authority | Out of scope; separate proposal |
+| Repair outside bounded table without proposal amendment | Fail review; disposition only, or amendment first |
 | Re-run only US-02 and claim continuity | Fail closed: US-01/02 are not the M007-10 gate |
-| Omit US-03/04/05/08-class without blocked+owner record | Fail closed: silent omission |
-| Product repair outside bounded set without amendment | Fail review; disposition + amendment if material |
 | Dirty metrics-ui without named identity | `incomplete` |
 | Skip cleanup / leave worker running | Acceptance blocker finding |
-| Use movement or hardware leaves to “cover” families | Forbidden |
 
 ## External Assumptions
 
@@ -207,7 +310,7 @@ forbidden.
 - Operator can run machine-only then interactive sessions on a developer
   machine with Chrome (or recorded browser identity).
 - Lab candidate model paths and apply recording behave as exercised in #88
-  unless repaired under the bounded set.
+  unless repaired under the bounded table.
 
 ## Non-Goals
 
@@ -218,9 +321,12 @@ forbidden.
 - Metrics UI redesign (#93) as a required deliverable.
 - Same-frame experiment matrices (#90) or full transactional live trials (#91)
   as required deliverables.
-- Movement, destructive, or hardware-dependent leaves.
+- Movement, destructive, or hardware-dependent leaves (including as
+  “exploratory” catalog content).
+- Open-ended product repair beyond the bounded table without amendment.
 - Numeric coverage gates or treating unexecuted code as dead.
-- Satisfying M007-10 without human-scannable confirmations.
+- Satisfying M007-10 without human-scannable confirmations or without required
+  family IDs.
 
 ## File Impact
 
@@ -228,11 +334,11 @@ forbidden.
 | --- | --- |
 | `docs/milestones/007-cli-operator-usability/proposals/cli-scenario-continuity.md` | This proposal (proposal PR only) |
 | `docs/milestones/007-cli-operator-usability/plan.md` / `plan.html` | Workflow transitions |
-| `docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/catalogs/*` | Continuity catalog(s) |
-| `docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/session_runner.py` | Only if multi-sequence / confirmation fields need small extensions |
+| `docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/catalogs/*` | Continuity catalog(s) with family IDs |
+| `docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/session_runner.py` | Continuity safety preflight, family validation, restore hooks, evidence binding |
 | `docs/milestones/007-cli-operator-usability/evidence/cli-scenario-continuity/**` | Evidence package |
-| `cli/automa_cli/perception_runs.py` and related CLI surfaces | Bounded repairs (#89 / LIVE-001, etc.) |
-| `tests/milestones/` or `tests/cli/` | Focused tests for catalogs and authorized repairs |
+| `cli/automa_cli/…` | **Only** bounded-table surfaces |
+| `tests/milestones/` or `tests/cli/` | Safety/family/restore/repair tests listed in Validation Plan |
 
 No product implementation lands in the **proposal** PR.
 
@@ -248,26 +354,36 @@ No product implementation lands in the **proposal** PR.
 
 ### Implementation PR (after accept-proposal)
 
-Deterministic:
+Deterministic (required):
 
-- Continuity catalogs parse and are refused if they claim the pinned acceptance
-  M007-05 identity.
-- Result schema tests: confirmation fields present; path/JSON-only primary
-  confirmation rejected.
-- Focused tests for each applied bounded repair (e.g. unique apply run ids under
-  frozen clock; readiness vs resolve path).
+- Continuity catalogs parse; refuse pinned acceptance / M007-05 identity.
+- **Safety preflight:** reject entire catalog before any command for
+  safety-label mismatch, movement/hardware leaves, `simulators ensure`,
+  disallowed update/mutation leaves, unsafe flags, and unknown commands
+  (adversarial unit tests; no live unsafe execution).
+- **Family validation:** required family IDs present; reject missing, duplicate,
+  or help/status-only mislabeled families; commands parser-valid.
+- **US-04 restore:** success, failure, timeout/interruption, and restore-failure
+  → non-pass cases in focused tests.
+- **Confirmation schema:** path/JSON-only primary confirmation rejected.
+- **Evidence binding fields:** product/runner/catalog digests recorded; tests
+  for “behavioral change invalidates prior session claim” as a documented
+  gate (mechanical check where practical).
+- Focused tests for each **applied** bounded-table repair only.
 - Full default suite green.
 
 External / live:
 
-1. Machine-first run of every required family sequence.
-2. HITL for sequences with visual primary confirmation.
-3. Commit evidence directory with digests and family ledger.
-4. Confirm no thin-catalog pass; cleanup unconditional.
-5. List applied repairs mapped to finding/issue ids.
+1. Safety preflight accepts the committed continuity catalog.
+2. Machine-first run of every required family sequence.
+3. HITL for sequences with visual primary confirmation.
+4. Verify US-04 restore (activation match + worker stopped).
+5. Commit evidence with family ledger, lineage, and digests.
+6. Confirm no thin-catalog pass; list repairs only from the bounded table.
 
-Reviewers verify representative families, confirmation standard, machine-first
-ordering, bounded repairs only, and handoff readiness for coverage.
+Reviewers verify required family IDs, safety preflight, confirmation standard,
+US-04 transaction, evidence freshness binding, bounded repairs only, and
+handoff readiness for coverage.
 
 ## Expected Handoff
 
@@ -278,11 +394,11 @@ Post-merge successful implementation template:
   "schema": "milestone_handoff_template_v1",
   "outcome": "advance",
   "result": "Accepted",
-  "durable_evidence": "Realistic CLI scenario continuity in PR #{pr}: representative #88 catalog families declared on the live session runner, machine-first then conditional HITL with human-scannable confirmations, durable finding disposition, bounded product/CLI-output repairs only, and tracked evidence under docs/milestones/007-cli-operator-usability/evidence/cli-scenario-continuity/",
+  "durable_evidence": "Realistic CLI scenario continuity in PR #{pr}: required family IDs continuity.offline_perception, continuity.live_config_swap, and continuity.memory_lifecycle declared on the live session runner with fail-closed safety preflight; machine-first then conditional HITL with human-scannable confirmations; US-04 transactional restore verified; evidence bound to product/runner/catalog digests; durable finding disposition; repairs limited to the proposal bounded table; tracked under docs/milestones/007-cli-operator-usability/evidence/cli-scenario-continuity/",
   "criterion_updates": {
     "M007-10": {
       "status": "Met",
-      "evidence": "PR #{pr} declares and executes representative sequences beyond the primary six-step journey (US-03/04/05/08-class and allowed optional families), enforces machine-first and one human-scannable confirmation per sequence, disposes findings with owners, and applies only proposal-bounded repairs"
+      "evidence": "PR #{pr} executes required continuity family IDs with safety preflight, machine-first/HITL confirmations, US-04 restore verification, source lineage for offline perception, evidence freshness binding, and only bounded-table repairs"
     }
   },
   "risk_remove": [
@@ -309,8 +425,9 @@ session has no handoff.
    `milestone/007-cli-operator-usability`.
 2. Run `workflow.py accept-proposal`; verify `ready_for_implementation` and the
    exact proposal merge commit.
-3. Start `m007/scenario-continuity` and implement catalogs, runner needs,
-   bounded repairs, tests, and evidence scaffold.
+3. Start `m007/scenario-continuity` and implement catalogs, safety preflight,
+   family validation, US-04 restore, evidence binding, bounded-table repairs,
+   tests, and evidence scaffold.
 4. Run machine-first then HITL; commit evidence; dispose findings.
 5. Accept the implementation PR only as complete pass or conclusive findings.
 6. On pass, complete the normal handoff and promote **CLI journey coverage

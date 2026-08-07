@@ -19,7 +19,7 @@ plugins:
 - floor-plane-v0: ok=4; median 697.044 ms
 - frame-observation-v0: ok=4; median 6.965 ms
 exit=0 elapsed_ms=15511 started=2026-08-07T05:58:31.834408Z ended=2026-08-07T05:58:47.345042Z
-$ ./cli/automa vehicles perception apply /Users/gluo/Projects/auto-driving/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260806-225842-681213-1ebeb5b8 --algorithm lightweight_observer --record
+$ ./cli/automa vehicles perception apply <repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260806-225842-681213-1ebeb5b8 --algorithm lightweight_observer --record
 Perception experiment
 ---------------------
 review: runtime/perception-applies/apply-perception-chase-sim-chaser-20260806-225842-681213-1ebeb5b8-20260806-225847-933990-c50affea/review.html
@@ -38,7 +38,7 @@ plugins:
 - floor-plane-v0: ok=4; median 590.790 ms
 - frame-observation-v0: ok=4; median 6.314 ms
 exit=0 elapsed_ms=2962 started=2026-08-07T05:58:47.347212Z ended=2026-08-07T05:58:50.309367Z
-$ ./cli/automa vehicles perception apply /Users/gluo/Projects/auto-driving/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260806-225842-681213-1ebeb5b8 --algorithm sim_debug --record
+$ ./cli/automa vehicles perception apply <repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260806-225842-681213-1ebeb5b8 --algorithm sim_debug --record
 Perception experiment
 ---------------------
 review: runtime/perception-applies/apply-perception-chase-sim-chaser-20260806-225842-681213-1ebeb5b8-20260806-225850-753394-b90fe40c/review.html

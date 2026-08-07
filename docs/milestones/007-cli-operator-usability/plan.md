@@ -128,10 +128,11 @@ deletion; it does not retroactively widen the accepted primary journey.
 
 **Realistic CLI scenario continuity**
 
-- Workflow state: proposal_in_review
+- Workflow state: ready_for_implementation
 - Proposal branch: `m007/scenario-continuity-proposal`
 - Implementation branch: `m007/scenario-continuity`
 - Proposal path: `docs/milestones/007-cli-operator-usability/proposals/cli-scenario-continuity.md`
+- Accepted proposal: [#99](https://github.com/GeorgeLuo/auto-driving/pull/99) at `7fd92683fc424addd1549bed81ef707e5259937d`
 - Review kind: Live or external evidence
 - Review question: After the primary six-step journey is live-accepted, can the repository-owned live CLI session runner declare and execute representative safe multi-command sequences beyond that journey—anchored to the #88 candidate catalog families (offline perception feedback / US-03-class; live configuration or plugin swap with restoration / US-04-class; perception→memory lifecycle / US-05 and US-08-class; and, when prerequisites allow, ablation, temporal backpressure, and deterministic replay / US-06, US-07, US-09-class)—with machine-first execution, one primary human-scannable confirmation per sequence, durable findings with owners, and only the bounded product or operator-facing repairs those sequences prove necessary?
 - Acceptance owner: Session-runner catalogs and evidence for the frozen representative families; the #88 confirmation standard (operator question, real current commands, prerequisites, safety/side effects, unconditional cleanup/restoration, and one primary human confirmation that is a concise CLI verdict or a launched frontend/generated review surface—never raw JSON or a record path alone); machine-first then HITL only for machine-green sequences that declare visual judgment; disposition of #88 exploratory defects that block safe execution; and proposal-bounded product or CLI-output repairs (new material defects outside that bound get durable owner/disposition and, when material, a proposal amendment or separate review unit)
@@ -174,6 +175,7 @@ deletion; it does not retroactively widen the accepted primary journey.
 | CLI journey coverage foundation | ready_for_proposal | Promoted after implementation PR #88. |
 | Realistic CLI scenario continuity | ready_for_proposal | Plan revision: insert post-acceptance continuity for named realistic multi-command sequences on the live session runner (machine-first/HITL, targeted product/UI repairs, M007-10) before coverage instrumentation; requeue CLI journey coverage foundation as the next candidate; freeze representative #88 catalog families and the human-scannable confirmation standard so a thin nonvisual catalog cannot satisfy M007-10. |
 | Realistic CLI scenario continuity | proposal_in_review | Started m007/scenario-continuity-proposal. |
+| Realistic CLI scenario continuity | ready_for_implementation | Proposal PR #99 accepted at 7fd92683fc424addd1549bed81ef707e5259937d. |
 
 ## Accepted Review Units
 

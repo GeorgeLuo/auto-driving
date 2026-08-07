@@ -1,0 +1,15 @@
+{
+  "schema": "m007_cli_scenario_continuity_v0",
+  "result": "incomplete",
+  "incomplete_reason": "The tracked continuity session has not finished.",
+  "required_family_ids": [
+    "continuity.offline_perception",
+    "continuity.live_config_swap",
+    "continuity.memory_lifecycle"
+  ],
+  "family_aggregates": {},
+  "findings": [],
+  "repairs_applied": [],
+  "finalizer": null,
+  "artifacts": []
+}

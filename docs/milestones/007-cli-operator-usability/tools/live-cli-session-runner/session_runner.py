@@ -27,6 +27,25 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
+import importlib.util
+
+_CONTINUITY_PATH = Path(__file__).resolve().parent / "continuity_contract.py"
+_CONTINUITY_SPEC = importlib.util.spec_from_file_location(
+    "live_cli_continuity_contract",
+    _CONTINUITY_PATH,
+)
+assert _CONTINUITY_SPEC is not None and _CONTINUITY_SPEC.loader is not None
+_continuity = importlib.util.module_from_spec(_CONTINUITY_SPEC)
+_CONTINUITY_SPEC.loader.exec_module(_continuity)
+CONTINUITY_TRACK = _continuity.CONTINUITY_TRACK
+REQUIRED_FAMILY_IDS = _continuity.REQUIRED_FAMILY_IDS
+aggregate_family_status = _continuity.aggregate_family_status
+collect_identity_bundle = _continuity.collect_identity_bundle
+finalize_evidence_freshness = _continuity.finalize_evidence_freshness
+overall_pass_allowed = _continuity.overall_pass_allowed
+validate_continuity_families = _continuity.validate_continuity_families
+validate_continuity_safety_preflight = _continuity.validate_continuity_safety_preflight
+
 
 SCHEMA = "live_cli_session_result_v0"
 FINDING_SCHEMA = "live_cli_session_finding_v0"
@@ -2420,6 +2439,68 @@ def run_session(
         catalog.get("track") == "acceptance" and not canonical and not dry_run
     )
 
+    # Continuity track: argv-derived safety + required families before any CLI.
+    continuity_preflight: dict[str, Any] | None = None
+    refuse_continuity_execution = False
+    if catalog.get("track") == CONTINUITY_TRACK and not dry_run:
+        safety_ok, safety_reason, safety_findings = validate_continuity_safety_preflight(
+            catalog
+        )
+        family_ok, family_reason, family_meta = validate_continuity_families(catalog)
+        continuity_preflight = {
+            "schema": "continuity_preflight_v0",
+            "safety_ok": safety_ok,
+            "safety_reason": safety_reason,
+            "family_ok": family_ok,
+            "family_reason": family_reason,
+            "family_meta": family_meta,
+            "safety_findings": safety_findings,
+            "required_family_ids": list(REQUIRED_FAMILY_IDS),
+        }
+        _write_json(session_dir / "continuity-preflight.json", continuity_preflight)
+        if not safety_ok or not family_ok:
+            refuse_continuity_execution = True
+            reason = safety_reason if not safety_ok else family_reason
+            state.safety_blocked = True
+            state.safety_block_reason = f"continuity preflight refused: {reason}"
+            state.precondition_cleanup = {
+                "ok": False,
+                "attempted": False,
+                "needed": False,
+                "skipped": "continuity_preflight",
+                "error": state.safety_block_reason,
+            }
+            baseline["precondition_cleanup"] = state.precondition_cleanup
+            baseline["continuity_preflight"] = continuity_preflight
+            _write_json(session_dir / "baseline.json", baseline)
+            _write_json(
+                session_dir / "precondition-cleanup.json",
+                state.precondition_cleanup,
+            )
+            _record_finding(
+                state,
+                step_id="_continuity_preflight",
+                classification="acceptance_blocker",
+                severity="P1",
+                summary="Continuity catalog refused before any command",
+                human_notes=reason,
+                evidence=["continuity-preflight.json", "baseline.json"],
+            )
+            notes_lines.extend(
+                [
+                    "## continuity preflight failed",
+                    "",
+                    f"- reason: {reason}",
+                    "- action: no catalog commands executed",
+                    "",
+                ]
+            )
+            print()
+            print("=" * 72)
+            print("REFUSED: continuity preflight — no commands executed")
+            print(reason)
+            print("=" * 72)
+
     try:
         if refuse_acceptance_execution:
             state.safety_blocked = True
@@ -2462,6 +2543,8 @@ def run_session(
             print("REFUSED: noncanonical acceptance catalog — no commands executed")
             print(canonical_reason)
             print("=" * 72)
+        elif refuse_continuity_execution:
+            pass  # findings and notes already recorded above
         else:
             # Acceptance: stop any pre-existing worker before the catalog baseline.
             if catalog.get("track") == "acceptance" and not dry_run:
@@ -3186,6 +3269,78 @@ def run_session(
         "artifact_manifest": "digests.json",
         "variables": {k: v for k, v in state.variables.items() if k != "src_dir" or v},
     }
+
+    if catalog.get("track") == CONTINUITY_TRACK:
+        sequences = []
+        for step in state.steps:
+            if not isinstance(step, dict):
+                continue
+            sequences.append(
+                {
+                    "family_id": step.get("family_id")
+                    or (step.get("machine_evidence") or {}).get("family_id"),
+                    "status": step.get("status"),
+                    "id": step.get("id"),
+                }
+            )
+        # Prefer catalog family_id on steps when present in original catalog
+        catalog_steps = {
+            str(s.get("id")): s
+            for s in (catalog.get("steps") or [])
+            if isinstance(s, dict) and s.get("id") is not None
+        }
+        for seq in sequences:
+            cat_step = catalog_steps.get(str(seq.get("id")))
+            if cat_step and cat_step.get("family_id"):
+                seq["family_id"] = cat_step.get("family_id")
+        family_aggregates = aggregate_family_status(sequences)
+        identity_recorded = collect_identity_bundle(
+            repo_root=repo_root,
+            catalog_path=catalog_path
+            if catalog_path is not None
+            else CATALOGS_DIR / "m007-continuity.yaml",
+            metrics_ui={
+                "commit": (metrics_ui or {}).get("commit") if metrics_ui else None,
+                "worktree_state": (metrics_ui or {}).get("worktree_state")
+                if metrics_ui
+                else None,
+            },
+        )
+        identity_current = collect_identity_bundle(
+            repo_root=repo_root,
+            catalog_path=catalog_path
+            if catalog_path is not None
+            else CATALOGS_DIR / "m007-continuity.yaml",
+            metrics_ui=identity_recorded.get("metrics_ui"),
+        )
+        finalizer_ok, finalizer_reason = finalize_evidence_freshness(
+            identity_recorded,
+            identity_current,
+        )
+        safety_ok = bool(
+            continuity_preflight and continuity_preflight.get("safety_ok") and continuity_preflight.get("family_ok")
+        )
+        if refuse_continuity_execution:
+            safety_ok = False
+        pass_ok, pass_reason = overall_pass_allowed(
+            family_aggregates=family_aggregates,
+            safety_preflight_ok=safety_ok,
+            finalizer_ok=finalizer_ok,
+        )
+        result["continuity"] = {
+            "preflight": continuity_preflight,
+            "family_aggregates": family_aggregates,
+            "required_family_ids": list(REQUIRED_FAMILY_IDS),
+            "identity_recorded": identity_recorded,
+            "identity_current": identity_current,
+            "finalizer": {"ok": finalizer_ok, "reason": finalizer_reason},
+            "overall_pass_allowed": pass_ok,
+            "overall_pass_reason": pass_reason,
+        }
+        if result_status == "pass" and not pass_ok:
+            result["result"] = "findings" if state.steps else "incomplete"
+            result["incomplete_reason"] = pass_reason
+
     # Write immutable result first, then detached digests that include it.
     _write_json(session_dir / "result.json", result)
     digests = _write_digests(session_dir)

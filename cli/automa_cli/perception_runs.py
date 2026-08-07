@@ -264,6 +264,14 @@ def apply_perception_experiment(
 
     run_id = _run_id("apply", source_name)
     record_dir = record_root / run_id if record else None
+    if record_dir is not None:
+        try:
+            record_dir.mkdir(parents=True, exist_ok=False)
+        except FileExistsError:
+            return CommandResult(
+                2,
+                f"Apply record directory already exists (refusing overwrite): {record_dir}",
+            )
     workspace = _workspace_context(record_dir, prefix="automa_apply_")
     mapper_context: AbstractContextManager[Any] = (
         mapper if isinstance(mapper, LabPerceptionMapper) else nullcontext(mapper)
@@ -379,7 +387,19 @@ def compare_perception_candidates(
             candidate_id=candidate.candidate_id,
         )
         if result.exit_code != 0:
-            failures.append({"candidate": candidate.candidate_id, "error": result.message})
+            # Keep human comparison scannable: one-line root cause, not full JSON dumps.
+            err = result.message.strip().splitlines()[0] if result.message else "unknown error"
+            if len(err) > 200:
+                err = err[:197] + "..."
+            if err.startswith("{"):
+                err = f"candidate execution failed (exit {result.exit_code})"
+            failures.append(
+                {
+                    "candidate": candidate.candidate_id,
+                    "error": err,
+                    "exit_code": result.exit_code,
+                }
+            )
             continue
         report = json.loads(result.message)
         summary = report["summary"]
@@ -555,11 +575,16 @@ def _format_report(report: dict[str, Any]) -> str:
     summary = report["summary"]
     source = report["source"]
     source_label = source.get("vehicle_id") or source.get("path") or source.get("kind")
+    # Lead with human-scannable identity: review path and outcome before details.
     lines = [
         "Perception experiment",
         "---------------------",
-        f"source: {source_label}",
     ]
+    if report.get("review"):
+        lines.append(f"review: {report['review']}")
+    if report.get("run_dir"):
+        lines.append(f"run: {report['run_dir']}")
+    lines.append(f"source: {source_label}")
     if source.get("selection"):
         lines.append(f"selection: {source['selection']}")
     lines.extend(
@@ -577,10 +602,6 @@ def _format_report(report: dict[str, Any]) -> str:
             f"recording: {'on' if report['recording'] else 'off'}",
         ]
     )
-    if report.get("run_dir"):
-        lines.append(f"run: {report['run_dir']}")
-    if report.get("review"):
-        lines.append(f"review: {report['review']}")
     lines.append("plugins:")
     for plugin_id, plugin in summary["plugins"].items():
         lines.append(
@@ -689,8 +710,14 @@ def _read_json(path: Path) -> dict[str, Any]:
 
 
 def _run_id(kind: str, source: str) -> str:
+    """Collision-resistant run identity (same-second and concurrent-safe)."""
+
+    import uuid
+
     timestamp = time.strftime("%Y%m%d-%H%M%S")
-    return f"{kind}-{safe_path_part(source)}-{timestamp}"
+    # Microseconds + short uuid so sequential applies in the same second never collide.
+    stamp = f"{timestamp}-{int(time.time() * 1_000_000) % 1_000_000:06d}-{uuid.uuid4().hex[:8]}"
+    return f"{kind}-{safe_path_part(source)}-{stamp}"
 
 
 def _runtime_metrics(mapper: Any) -> dict[str, Any]:

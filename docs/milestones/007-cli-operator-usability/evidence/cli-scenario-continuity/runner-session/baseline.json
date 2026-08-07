@@ -10,9 +10,26 @@
   "metrics_ui_origin": "http://localhost:5050",
   "operating_system": "macOS-26.5.1-arm64-arm-64bit",
   "operator": "machine-preflight",
-  "precondition_cleanup": null,
+  "precondition_cleanup": {
+    "attempted": false,
+    "deployment_before": "deployed",
+    "error": null,
+    "needed": false,
+    "ok": true,
+    "pid_liveness": {
+      "64321": false
+    },
+    "pids_before": [
+      64321
+    ],
+    "status_exit_code": 0,
+    "stop_exit_code": null,
+    "view_before": "stale",
+    "worker_state_after": "stopped",
+    "worker_state_before": "stopped"
+  },
   "python": "3.11.7",
-  "recorded_at_utc": "2026-08-07T05:58:31.596690Z",
+  "recorded_at_utc": "2026-08-07T06:22:19.651178Z",
   "recording_before": [
     "automation-20260630-214835",
     "automation-20260630-214933"
@@ -20,13 +37,13 @@
   "repositories": {
     "auto_driving": {
       "branch": "m007/scenario-continuity",
-      "commit": "e7fe76fe2af0fbed3fd14fc33116eec9e22821ae",
-      "diff_identity": "c5593c8145318e4ea66b1f5fef0039ecb68072cee0a293b6dc891bf194bbfbd3",
+      "commit": "094e5a9d1c2d057fe35bda076b4ca7f65bf5d8bc",
+      "diff_identity": "7f7e801db184d88d92a904c148e19707719cc2b9d5b7486e22b99e6ac426f3f7",
       "github_owner": "GeorgeLuo",
       "github_repo": "auto-driving",
       "path": "auto-driving",
       "status_porcelain": [
-        "M docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/catalogs/m007-continuity.yaml",
+        "M cli/automa_cli/perception_runs.py",
         " M docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/continuity_contract.py",
         " M docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/session_runner.py",
         " M tests/milestones/test_continuity_contract.py"
@@ -35,16 +52,7 @@
       "untracked_sha256": {},
       "worktree_state": "dirty"
     },
-    "metrics_ui": {
-      "branch": null,
-      "commit": null,
-      "diff_identity": null,
-      "path": "Stream-Metrics-UI",
-      "status_porcelain": [],
-      "untracked_files": [],
-      "untracked_sha256": {},
-      "worktree_state": "clean"
-    }
+    "metrics_ui": null
   },
   "session_visible": null,
   "vehicle_id": "chase-sim-chaser",

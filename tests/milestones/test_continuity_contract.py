@@ -135,6 +135,22 @@ class ContinuitySafetyTests(unittest.TestCase):
         )
         self.assertTrue(ok, reason)
 
+    def test_rejects_unregistered_flags(self) -> None:
+        ok, reason = cc.argv_allowed(
+            [
+                "./cli/automa",
+                "vehicles",
+                "automation",
+                "run",
+                "--id",
+                "x",
+                "--observe-only",
+                "--definitely-not-real",
+            ]
+        )
+        self.assertFalse(ok, reason)
+        self.assertIn("unregistered", reason)
+
 
 class ContinuityFamilyTests(unittest.TestCase):
     def test_missing_required_family(self) -> None:
@@ -276,6 +292,42 @@ class ContinuityRestoreAndFinalizerTests(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("catalog_sha256", reason)
 
+    def test_finalizer_refuses_missing_digests(self) -> None:
+        ok, reason = cc.finalize_evidence_freshness(
+            {
+                "catalog_sha256": None,
+                "runner_sha256": "bbb",
+                "continuity_contract_sha256": "ccc",
+                "product_sha256": {"cli/x.py": "ddd"},
+            },
+            {
+                "catalog_sha256": "aaa",
+                "runner_sha256": "bbb",
+                "continuity_contract_sha256": "ccc",
+                "product_sha256": {"cli/x.py": "ddd"},
+            },
+        )
+        self.assertFalse(ok)
+        self.assertIn("missing", reason)
+
+    def test_finalizer_refuses_empty_product_set(self) -> None:
+        ok, reason = cc.finalize_evidence_freshness(
+            {
+                "catalog_sha256": "aaa",
+                "runner_sha256": "bbb",
+                "continuity_contract_sha256": "ccc",
+                "product_sha256": {},
+            },
+            {
+                "catalog_sha256": "aaa",
+                "runner_sha256": "bbb",
+                "continuity_contract_sha256": "ccc",
+                "product_sha256": {},
+            },
+        )
+        self.assertFalse(ok)
+        self.assertIn("product_sha256", reason)
+
     def test_finalizer_ok_when_identical(self) -> None:
         bundle = {
             "catalog_sha256": "aaa",
@@ -283,9 +335,30 @@ class ContinuityRestoreAndFinalizerTests(unittest.TestCase):
             "continuity_contract_sha256": "ccc",
             "product_sha256": {"cli/x.py": "ddd"},
             "metrics_ui": {"commit": "abc", "worktree_state": "clean"},
+            "metrics_ui_required": True,
         }
         ok, reason = cc.finalize_evidence_freshness(bundle, bundle)
         self.assertTrue(ok, reason)
+
+    def test_staged_snapshot_roundtrip(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            vehicle = "v1"
+            base = root / "runtime" / "vehicles" / vehicle / "bundle" / "runtime"
+            for name in ("perception", "decision", "memory"):
+                path = base / name / "active.json"
+                path.parent.mkdir(parents=True)
+                path.write_text(f'{{"k":"{name}"}}\n', encoding="utf-8")
+            snap = cc.snapshot_staged_state(root, vehicle)
+            self.assertTrue(cc.snapshot_is_restorable(snap), snap)
+            # mutate
+            (base / "perception" / "active.json").write_text('{"k":"mutated"}\n', encoding="utf-8")
+            restored = cc.restore_activation(snap)
+            self.assertTrue(restored["ok"], restored)
+            self.assertEqual(
+                (base / "perception" / "active.json").read_text(encoding="utf-8"),
+                '{"k":"perception"}\n',
+            )
 
 
 class RunIdCollisionTests(unittest.TestCase):

@@ -46,8 +46,10 @@ overall_pass_allowed = _continuity.overall_pass_allowed
 validate_continuity_families = _continuity.validate_continuity_families
 validate_continuity_safety_preflight = _continuity.validate_continuity_safety_preflight
 snapshot_activation = _continuity.snapshot_activation
+snapshot_staged_state = _continuity.snapshot_staged_state
 restore_activation = _continuity.restore_activation
 snapshot_is_restorable = _continuity.snapshot_is_restorable
+derive_continuity_verdict = _continuity.derive_continuity_verdict
 
 
 SCHEMA = "live_cli_session_result_v0"
@@ -535,6 +537,40 @@ def _pid_alive(pid: int | None) -> bool | None:
     except OSError:
         return None
     return True
+
+
+def _bind_src_dir_from_capture_stdout(
+    stdout_text: str, *, repo_root: Path
+) -> Path | None:
+    """Parse exact recorded run path from perception run human/json output."""
+
+    candidates: list[Path] = []
+    for line in stdout_text.splitlines():
+        line = line.strip()
+        for prefix in ("run:", "run_dir:", "record:", "Record:"):
+            if line.lower().startswith(prefix.lower()):
+                raw = line.split(":", 1)[1].strip()
+                path = Path(raw)
+                if not path.is_absolute():
+                    path = (repo_root / path).resolve()
+                if path.is_dir():
+                    candidates.append(path)
+        # bare path line containing perception-runs
+        if "perception-runs" in line and not line.startswith("$"):
+            # may be JSON "run_dir": "..."
+            m = re.search(r'(/[^\s"]*perception-runs/[^\s"]+)', line)
+            if m:
+                path = Path(m.group(1))
+                if path.is_dir():
+                    candidates.append(path)
+            else:
+                raw = line.strip().strip(",\"'")
+                path = Path(raw)
+                if not path.is_absolute():
+                    path = (repo_root / path).resolve()
+                if path.is_dir() and "perception-runs" in str(path):
+                    candidates.append(path)
+    return candidates[-1] if candidates else None
 
 
 def _latest_perception_run_dir(repo_root: Path, vehicle_id: str) -> Path | None:
@@ -2479,6 +2515,10 @@ def run_session(
     ]
 
     cleanup_info: dict[str, Any] = {"attempted": False, "needed": False}
+    continuity_restore: dict[str, Any] | None = None
+    continuity_restore_done = False
+    continuity_identity_at_start: dict[str, Any] | None = None
+    last_swap_step_id: str | None = None
 
     # Formal acceptance: never execute any CLI from a noncanonical catalog.
     # Verdict already fails closed; this is the safety owner (execution order).
@@ -2593,8 +2633,8 @@ def run_session(
         elif refuse_continuity_execution:
             pass  # findings and notes already recorded above
         else:
-            # Acceptance: stop any pre-existing worker before the catalog baseline.
-            if catalog.get("track") == "acceptance" and not dry_run:
+            # Stop any pre-existing worker before acceptance or continuity catalogs.
+            if catalog.get("track") in {"acceptance", CONTINUITY_TRACK} and not dry_run:
                 print()
                 print("=" * 72)
                 print("PRECONDITION: ensure no pre-existing automation worker")
@@ -2622,7 +2662,7 @@ def run_session(
                         step_id="_precondition_cleanup",
                         classification="acceptance_blocker",
                         severity="P1",
-                        summary="Precondition cleanup failed before acceptance baseline",
+                        summary="Precondition cleanup failed before catalog baseline",
                         human_notes=str(state.precondition_cleanup.get("error")),
                         evidence=[
                             "steps/_precondition_cleanup/",
@@ -2630,12 +2670,29 @@ def run_session(
                         ],
                     )
 
-            continuity_restore: dict[str, Any] | None = None
             continuity_swap_family = "continuity.live_config_swap"
+            if catalog.get("track") == CONTINUITY_TRACK and catalog_path is not None:
+                continuity_identity_at_start = collect_identity_bundle(
+                    repo_root=repo_root,
+                    catalog_path=catalog_path,
+                    metrics_ui={
+                        "commit": (metrics_ui or {}).get("commit") if metrics_ui else None,
+                        "worktree_state": (metrics_ui or {}).get("worktree_state")
+                        if metrics_ui
+                        else None,
+                        "branch": (metrics_ui or {}).get("branch") if metrics_ui else None,
+                    },
+                )
+                # Visual confirmations require a named Metrics UI identity.
+                if continuity_identity_at_start is not None:
+                    continuity_identity_at_start["metrics_ui_required"] = True
+                    _write_json(
+                        session_dir / "continuity-identity-at-start.json",
+                        continuity_identity_at_start,
+                    )
             catalog_step_list = [
                 s for s in (catalog.get("steps") or []) if isinstance(s, dict)
             ]
-            last_swap_step_id = None
             for s in catalog_step_list:
                 if s.get("family_id") == continuity_swap_family:
                     last_swap_step_id = str(s.get("id") or "")
@@ -2656,17 +2713,14 @@ def run_session(
                     print(f"Note: {step['note']}")
                 print("=" * 72)
 
-                # US-04: snapshot restorable activation before first swap-family mutation.
+                # US-04: snapshot full staged activations before first swap mutation.
                 if (
                     catalog.get("track") == CONTINUITY_TRACK
                     and family_id == continuity_swap_family
                     and continuity_restore is None
                     and not dry_run
                 ):
-                    act_path = _perception_activation_path(
-                        repo_root, variables["vehicle_id"]
-                    )
-                    snap = snapshot_activation(act_path)
+                    snap = snapshot_staged_state(repo_root, variables["vehicle_id"])
                     if not snapshot_is_restorable(snap):
                         step_status = "fail"
                         machine_ok = False
@@ -2704,22 +2758,26 @@ def run_session(
                         _write_json(step_dir / "envelope.json", envelope)
                         state.steps.append(envelope)
                         continue
-                    # Persist restorable snapshot for restore (bytes in session only).
-                    continuity_restore = {
-                        "path": snap["path"],
-                        "sha256": snap["sha256"],
-                        "restorable_bytes": snap["restorable_bytes"],
-                        "ok": True,
-                    }
+                    continuity_restore = snap
+                    meta_files = {}
+                    for name, file_snap in (snap.get("files") or {}).items():
+                        if not isinstance(file_snap, dict):
+                            continue
+                        meta_files[name] = {
+                            "path": _redact_path(str(file_snap.get("path") or ""), repo_root),
+                            "sha256": file_snap.get("sha256"),
+                            "restorable": snapshot_is_restorable(file_snap),
+                            "existed": file_snap.get("existed"),
+                        }
                     _write_json(
                         session_dir / "us04-activation-snapshot-meta.json",
-                        {
-                            "path": _redact_path(snap["path"], repo_root),
-                            "sha256": snap["sha256"],
-                            "restorable": True,
-                        },
+                        {"restorable": True, "files": meta_files},
                     )
-                    print(f"  US-04 snapshot ok sha256={snap['sha256'][:12]}…")
+                    perc = (snap.get("files") or {}).get("perception") or {}
+                    print(
+                        f"  US-04 staged snapshot ok perception="
+                        f"{str(perc.get('sha256') or '')[:12]}…"
+                    )
 
                 requires = step.get("requires_prompt")
                 if isinstance(requires, str) and requires:
@@ -2882,7 +2940,7 @@ def run_session(
                         elif outcome.exit_code != 0 and not allow_nonzero and expect_exit is None:
                             step_status = "fail"
                             machine_ok = False
-                        # Continuity: capture-once → bind newest perception-run as src_dir.
+                        # Continuity: bind exact capture run from stdout (not global mtime).
                         if (
                             catalog.get("track") == CONTINUITY_TRACK
                             and outcome.exit_code == 0
@@ -2890,10 +2948,35 @@ def run_session(
                             and "run" in rendered
                             and "--record" in rendered
                         ):
-                            latest = _latest_perception_run_dir(repo_root, variables["vehicle_id"])
-                            if latest is not None:
-                                state.variables["src_dir"] = str(latest)
-                                print(f"  continuity: src_dir={latest}")
+                            stdout_text = (
+                                step_dir / f"cmd-{index:02d}.stdout.txt"
+                            ).read_text(encoding="utf-8")
+                            bound = _bind_src_dir_from_capture_stdout(
+                                stdout_text, repo_root=repo_root
+                            )
+                            if bound is None:
+                                # Fallback only if stdout lacks path (still digest later).
+                                bound = _latest_perception_run_dir(
+                                    repo_root, variables["vehicle_id"]
+                                )
+                            if bound is not None:
+                                state.variables["src_dir"] = str(bound)
+                                lineage = {
+                                    "src_dir": str(bound),
+                                    "src_dir_redacted": _redact_path(bound, repo_root),
+                                    "manifest_sha256": None,
+                                }
+                                manifest = bound / "run.json"
+                                if manifest.is_file():
+                                    lineage["manifest_sha256"] = _sha256_file(manifest)
+                                _write_json(
+                                    session_dir / "offline-source-lineage.json",
+                                    lineage,
+                                )
+                                print(
+                                    f"  continuity: src_dir={bound} "
+                                    f"manifest={lineage.get('manifest_sha256')}"
+                                )
 
                     # JSON capture as a first-class command outcome
                     capture = step.get("capture_json")
@@ -3296,60 +3379,6 @@ def run_session(
                 if step_id == "automation-run" and step_status in {"pass", "fail", "ok"}:
                     state.worker_may_exist = True
 
-                # US-04: restore after last live_config_swap family step.
-                if (
-                    catalog.get("track") == CONTINUITY_TRACK
-                    and continuity_restore is not None
-                    and step_id == last_swap_step_id
-                    and not dry_run
-                ):
-                    restore_result = restore_activation(continuity_restore)
-                    _write_json(
-                        session_dir / "us04-activation-restore.json",
-                        {
-                            "ok": restore_result.get("ok"),
-                            "error": restore_result.get("error"),
-                            "sha256": restore_result.get("sha256"),
-                            "path": _redact_path(
-                                str(restore_result.get("path") or continuity_restore.get("path") or ""),
-                                repo_root,
-                            ),
-                        },
-                    )
-                    if restore_result.get("ok") is not True:
-                        step_status = "fail"
-                        machine_ok = False
-                        machine_summary = (
-                            f"US-04 restore failed: {restore_result.get('error')}"
-                        )
-                        _record_finding(
-                            state,
-                            step_id=step_id,
-                            classification="acceptance_blocker",
-                            severity="P1",
-                            summary=machine_summary,
-                            human_notes=str(restore_result.get("error")),
-                            evidence=["us04-activation-restore.json"],
-                        )
-                        # Patch last envelope status if already written
-                        if state.steps and state.steps[-1].get("id") == step_id:
-                            state.steps[-1]["status"] = "fail"
-                            state.steps[-1]["machine_ok"] = False
-                            state.steps[-1]["machine_summary"] = (
-                                (state.steps[-1].get("machine_summary") or "")
-                                + "; "
-                                + machine_summary
-                            ).strip("; ")
-                            _write_json(
-                                session_dir / "steps" / step_id / "envelope.json",
-                                state.steps[-1],
-                            )
-                        print(f"  FAIL: {machine_summary}")
-                    else:
-                        print(
-                            f"  US-04 restore ok sha256={str(restore_result.get('sha256') or '')[:12]}…"
-                        )
-
     except KeyboardInterrupt:
         _record_finding(
             state,
@@ -3379,6 +3408,56 @@ def run_session(
             f"## aborted\n\n- {type(exc).__name__}: {exc}\n"
         )
     finally:
+        # US-04: always restore staged state if a snapshot was taken (any exit path).
+        if (
+            catalog.get("track") == CONTINUITY_TRACK
+            and continuity_restore is not None
+            and not continuity_restore_done
+            and not dry_run
+        ):
+            try:
+                restore_result = restore_activation(continuity_restore)
+                continuity_restore_done = True
+                _write_json(
+                    session_dir / "us04-activation-restore.json",
+                    {
+                        "ok": restore_result.get("ok"),
+                        "error": restore_result.get("error"),
+                        "results": restore_result.get("results"),
+                        "path": _redact_path(
+                            str(
+                                ((restore_result.get("results") or {}).get("perception") or {}).get(
+                                    "path"
+                                )
+                                or ""
+                            ),
+                            repo_root,
+                        ),
+                    },
+                )
+                if restore_result.get("ok") is not True:
+                    _record_finding(
+                        state,
+                        step_id="_us04_restore",
+                        classification="acceptance_blocker",
+                        severity="P1",
+                        summary=f"US-04 restore failed: {restore_result.get('error')}",
+                        human_notes=str(restore_result.get("error")),
+                        evidence=["us04-activation-restore.json"],
+                    )
+                    print(f"  FAIL: US-04 restore failed: {restore_result.get('error')}")
+                else:
+                    print("  US-04 staged-state restore ok (finally)")
+            except Exception as restore_exc:  # noqa: BLE001
+                _record_finding(
+                    state,
+                    step_id="_us04_restore",
+                    classification="acceptance_blocker",
+                    severity="P1",
+                    summary=f"US-04 restore exception: {type(restore_exc).__name__}: {restore_exc}",
+                    human_notes=str(restore_exc),
+                    evidence=[],
+                )
         cleanup_info = _enforce_cleanup(
             state,
             command_timeout_s=command_timeout_s,
@@ -3471,10 +3550,17 @@ def run_session(
             for s in (catalog.get("steps") or [])
             if isinstance(s, dict) and s.get("id") is not None
         }
+        hitl_needed = False
+        hitl_done = True
         for step in state.steps:
             if not isinstance(step, dict):
                 continue
             cat_step = catalog_steps.get(str(step.get("id"))) or {}
+            visual_required = bool(
+                step.get("visual_required")
+                if step.get("visual_required") is not None
+                else cat_step.get("visual_required")
+            )
             sequences.append(
                 {
                     "family_id": step.get("family_id")
@@ -3482,16 +3568,21 @@ def run_session(
                     or (step.get("machine_evidence") or {}).get("family_id"),
                     "status": step.get("status"),
                     "id": step.get("id"),
-                    "visual_required": bool(
-                        step.get("visual_required")
-                        if step.get("visual_required") is not None
-                        else cat_step.get("visual_required")
-                    ),
+                    "visual_required": visual_required,
                     "machine_ok": step.get("machine_ok"),
                 }
             )
+            if visual_required and step.get("required_for_verdict"):
+                hitl_needed = True
+                human = step.get("human") or {}
+                # Interactive pass/fail counts as HITL complete; skip is not.
+                if not (
+                    human.get("interactive")
+                    and human.get("visual") in {"pass", "fail"}
+                ):
+                    hitl_done = False
         family_aggregates = aggregate_family_status(sequences)
-        identity_recorded = collect_identity_bundle(
+        identity_recorded = continuity_identity_at_start or collect_identity_bundle(
             repo_root=repo_root,
             catalog_path=catalog_path
             if catalog_path is not None
@@ -3503,27 +3594,72 @@ def run_session(
                 else None,
             },
         )
+        # Metrics UI git identity is required only when visual HITL is complete
+        # (operator claimed a visual pass/fail against that deployment).
+        metrics_required = bool(hitl_needed and hitl_done)
+        if isinstance(identity_recorded, dict):
+            identity_recorded = dict(identity_recorded)
+            identity_recorded["metrics_ui_required"] = metrics_required
+            if metrics_ui is not None:
+                identity_recorded["metrics_ui"] = {
+                    "commit": metrics_ui.get("commit"),
+                    "worktree_state": metrics_ui.get("worktree_state"),
+                    "branch": metrics_ui.get("branch"),
+                    "path": metrics_ui.get("path"),
+                }
         identity_current = collect_identity_bundle(
             repo_root=repo_root,
             catalog_path=catalog_path
             if catalog_path is not None
             else CATALOGS_DIR / "m007-continuity.yaml",
-            metrics_ui=identity_recorded.get("metrics_ui"),
+            metrics_ui={
+                "commit": (metrics_ui or {}).get("commit") if metrics_ui else None,
+                "worktree_state": (metrics_ui or {}).get("worktree_state")
+                if metrics_ui
+                else None,
+                "branch": (metrics_ui or {}).get("branch") if metrics_ui else None,
+                "path": (metrics_ui or {}).get("path") if metrics_ui else None,
+            },
         )
+        if isinstance(identity_current, dict):
+            identity_current = dict(identity_current)
+            identity_current["metrics_ui_required"] = metrics_required
         finalizer_ok, finalizer_reason = finalize_evidence_freshness(
             identity_recorded,
             identity_current,
         )
         safety_ok = bool(
-            continuity_preflight and continuity_preflight.get("safety_ok") and continuity_preflight.get("family_ok")
+            continuity_preflight
+            and continuity_preflight.get("safety_ok")
+            and continuity_preflight.get("family_ok")
         )
         if refuse_continuity_execution:
             safety_ok = False
-        pass_ok, pass_reason = overall_pass_allowed(
-            family_aggregates=family_aggregates,
+        restore_ok: bool | None = None
+        restore_path = session_dir / "us04-activation-restore.json"
+        if restore_path.is_file():
+            try:
+                restore_doc = json.loads(restore_path.read_text(encoding="utf-8"))
+                restore_ok = bool(restore_doc.get("ok"))
+            except (OSError, json.JSONDecodeError):
+                restore_ok = False
+        elif continuity_restore is not None:
+            restore_ok = False
+        cleanup_ok = cleanup_info.get("worker_stopped") is True
+        hitl_complete = (not hitl_needed) or hitl_done
+        verdict, verdict_reason = derive_continuity_verdict(
             safety_preflight_ok=safety_ok,
+            family_aggregates=family_aggregates,
+            restore_ok=restore_ok,
+            cleanup_ok=cleanup_ok,
             finalizer_ok=finalizer_ok,
+            findings=state.findings,
+            hitl_complete=hitl_complete,
         )
+        result["result"] = verdict
+        result["incomplete_reason"] = verdict_reason
+        result_status = verdict
+        incomplete_reason = verdict_reason
         result["continuity"] = {
             "preflight": continuity_preflight,
             "family_aggregates": family_aggregates,
@@ -3531,12 +3667,11 @@ def run_session(
             "identity_recorded": identity_recorded,
             "identity_current": identity_current,
             "finalizer": {"ok": finalizer_ok, "reason": finalizer_reason},
-            "overall_pass_allowed": pass_ok,
-            "overall_pass_reason": pass_reason,
+            "restore_ok": restore_ok,
+            "hitl_complete": hitl_complete,
+            "verdict": verdict,
+            "verdict_reason": verdict_reason,
         }
-        if result_status == "pass" and not pass_ok:
-            result["result"] = "findings" if state.steps else "incomplete"
-            result["incomplete_reason"] = pass_reason
 
     # Write immutable result first, then detached digests that include it.
     _write_json(session_dir / "result.json", result)

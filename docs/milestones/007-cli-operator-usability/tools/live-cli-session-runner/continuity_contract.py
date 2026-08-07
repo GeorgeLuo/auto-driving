@@ -117,6 +117,53 @@ def derive_safety_class(argv: Sequence[str]) -> str:
     return "unknown"
 
 
+def _parse_argv_against_cli(rest: Sequence[str]) -> tuple[bool, str]:
+    """Reject unknown flags/values using the real public CLI parser."""
+
+    import sys
+
+    try:
+        # Ensure repo root is importable when runner is launched as a script path.
+        repo_candidates = [
+            Path.cwd(),
+            Path(__file__).resolve().parents[5],
+        ]
+        for root in repo_candidates:
+            if (root / "cli" / "automa_cli" / "app.py").is_file():
+                root_s = str(root.resolve())
+                if root_s not in sys.path:
+                    sys.path.insert(0, root_s)
+                break
+        from cli.automa_cli.app import build_parser
+    except Exception as exc:  # noqa: BLE001
+        return False, f"cannot load CLI parser: {type(exc).__name__}: {exc}"
+
+    # Substitute continuity placeholders with harmless tokens for structural parse.
+    normalized: list[str] = []
+    for part in rest:
+        if part.startswith("{") and part.endswith("}"):
+            if "url" in part:
+                normalized.append("http://localhost:5050")
+            elif "dir" in part or "src" in part or "path" in part:
+                normalized.append("/tmp/continuity-placeholder")
+            else:
+                normalized.append("continuity-placeholder")
+        else:
+            normalized.append(part)
+
+    parser = build_parser()
+    try:
+        # parse_known_args does not SystemExit on unknown; collect unknowns.
+        _ns, unknown = parser.parse_known_args(list(normalized))
+    except SystemExit as exc:
+        return False, f"CLI parser rejected argv: {exc}"
+    except Exception as exc:  # noqa: BLE001
+        return False, f"CLI parser error: {type(exc).__name__}: {exc}"
+    if unknown:
+        return False, f"unregistered flags/args: {unknown}"
+    return True, "parser-valid"
+
+
 def argv_allowed(argv: Sequence[str]) -> tuple[bool, str]:
     rest = _normalize_argv(argv)
     if not rest:
@@ -130,7 +177,10 @@ def argv_allowed(argv: Sequence[str]) -> tuple[bool, str]:
         if len(rest) >= len(prefix) and tuple(rest[: len(prefix)]) == prefix:
             if rest[:3] == ["vehicles", "automation", "run"] and "--observe-only" not in rest:
                 return False, "automation run requires --observe-only"
-            return True, "allowlisted"
+            ok_parse, parse_reason = _parse_argv_against_cli(rest)
+            if not ok_parse:
+                return False, parse_reason
+            return True, "allowlisted+parser-valid"
     return False, f"not on continuity allowlist: {' '.join(rest[:5])}"
 
 
@@ -205,10 +255,37 @@ def _step_commands_help_status_only(step: Mapping[str, Any]) -> bool:
     return True
 
 
+# Minimum command topology per required family (any matching command must appear).
+_FAMILY_REQUIRED_COMMAND_MARKERS: dict[str, tuple[tuple[str, ...], ...]] = {
+    "continuity.offline_perception": (
+        ("vehicles", "perception", "run"),
+        ("vehicles", "perception", "apply"),
+    ),
+    "continuity.live_config_swap": (
+        ("vehicles", "update", "perception"),
+        ("vehicles", "automation", "run"),
+        ("vehicles", "automation", "stop"),
+    ),
+    "continuity.memory_lifecycle": (
+        ("vehicles", "memory", "check"),
+    ),
+}
+
+
+def _step_has_marker(step: Mapping[str, Any], marker: tuple[str, ...]) -> bool:
+    for raw in step.get("commands") or []:
+        if not isinstance(raw, (list, tuple)):
+            continue
+        rest = _normalize_argv([str(x) for x in raw])
+        if len(rest) >= len(marker) and tuple(rest[: len(marker)]) == marker:
+            return True
+    return False
+
+
 def validate_continuity_families(
     catalog: Mapping[str, Any],
 ) -> tuple[bool, str, dict[str, Any]]:
-    """Ensure required family IDs are present and not help/status-only mislabeled."""
+    """Ensure required family IDs, topology, and no help/status-only mislabels."""
 
     steps = catalog.get("steps")
     if not isinstance(steps, list):
@@ -216,6 +293,7 @@ def validate_continuity_families(
 
     by_family: dict[str, list[str]] = {fid: [] for fid in ALL_FAMILY_IDS}
     unknown: list[str] = []
+    family_steps: dict[str, list[dict[str, Any]]] = {fid: [] for fid in ALL_FAMILY_IDS}
 
     for step in steps:
         if not isinstance(step, dict):
@@ -229,6 +307,7 @@ def validate_continuity_families(
             unknown.append(family_id)
             continue
         by_family[family_id].append(step_id)
+        family_steps[family_id].append(step)
         if family_id in REQUIRED_FAMILY_IDS and _step_commands_help_status_only(step):
             return (
                 False,
@@ -242,6 +321,33 @@ def validate_continuity_families(
     missing = [fid for fid in REQUIRED_FAMILY_IDS if not by_family.get(fid)]
     if missing:
         return False, f"missing required family_id coverage: {missing}", {"by_family": by_family}
+
+    # Topology: each required family must include its marker commands.
+    for fid, markers in _FAMILY_REQUIRED_COMMAND_MARKERS.items():
+        steps_for = family_steps.get(fid) or []
+        for marker in markers:
+            if not any(_step_has_marker(step, marker) for step in steps_for):
+                return (
+                    False,
+                    f"family {fid} missing required command topology {marker}",
+                    {"by_family": by_family},
+                )
+
+    # A single step must not claim multiple required families via duplicate ids.
+    # (Already one family_id per step; ensure offline apply is not labeled memory.)
+    for fid, steps_for in family_steps.items():
+        if fid not in REQUIRED_FAMILY_IDS:
+            continue
+        for step in steps_for:
+            for other_fid, other_markers in _FAMILY_REQUIRED_COMMAND_MARKERS.items():
+                if other_fid == fid:
+                    continue
+                # Forbid mislabel: memory family must not be pure perception apply-only.
+                if fid == "continuity.memory_lifecycle":
+                    if any(_step_has_marker(step, ("vehicles", "perception", "apply")) for step in steps_for) and not any(
+                        _step_has_marker(step, ("vehicles", "memory", "check")) for step in steps_for
+                    ):
+                        return False, "memory family mislabeled without memory check", {"by_family": by_family}
 
     return True, "family validation ok", {"by_family": by_family, "required": list(REQUIRED_FAMILY_IDS)}
 
@@ -318,11 +424,17 @@ def overall_pass_allowed(
     return True, "required family aggregates passed"
 
 
-def snapshot_activation(path: Path) -> dict[str, Any]:
-    """Capture restorable activation bytes + verification hash.
+def activation_paths(repo_root: Path, vehicle_id: str) -> dict[str, Path]:
+    base = repo_root / "runtime" / "vehicles" / vehicle_id / "bundle" / "runtime"
+    return {
+        "perception": base / "perception" / "active.json",
+        "decision": base / "decision" / "active.json",
+        "memory": base / "memory" / "active.json",
+    }
 
-    Hash-only snapshots are rejected by callers that require restorable_bytes.
-    """
+
+def snapshot_activation(path: Path) -> dict[str, Any]:
+    """Capture restorable activation bytes + verification hash for one file."""
 
     if not path.is_file():
         return {
@@ -331,6 +443,7 @@ def snapshot_activation(path: Path) -> dict[str, Any]:
             "restorable_bytes": None,
             "sha256": None,
             "path": str(path),
+            "existed": False,
         }
     raw = path.read_bytes()
     return {
@@ -340,17 +453,70 @@ def snapshot_activation(path: Path) -> dict[str, Any]:
         "sha256": hashlib.sha256(raw).hexdigest(),
         "path": str(path),
         "encoding": "utf-8",
+        "existed": True,
+    }
+
+
+def snapshot_staged_state(repo_root: Path, vehicle_id: str) -> dict[str, Any]:
+    """Snapshot perception/decision/memory activations as a restorable bundle."""
+
+    files: dict[str, Any] = {}
+    ok = True
+    errors: list[str] = []
+    for name, path in activation_paths(repo_root, vehicle_id).items():
+        snap = snapshot_activation(path)
+        files[name] = snap
+        # Perception must exist and be restorable; decision/memory may be absent.
+        if name == "perception" and not snapshot_is_restorable(snap):
+            ok = False
+            errors.append(str(snap.get("error") or f"{name} not restorable"))
+        elif snap.get("existed") and not snapshot_is_restorable(snap):
+            ok = False
+            errors.append(str(snap.get("error") or f"{name} not restorable"))
+    return {
+        "ok": ok,
+        "error": None if ok else "; ".join(errors),
+        "files": files,
+        "vehicle_id": vehicle_id,
     }
 
 
 def snapshot_is_restorable(snapshot: Mapping[str, Any]) -> bool:
     if snapshot.get("ok") is not True:
         return False
+    # Bundle form
+    if "files" in snapshot:
+        files = snapshot.get("files") or {}
+        if not isinstance(files, dict) or not files:
+            return False
+        perception = files.get("perception") or {}
+        return snapshot_is_restorable(perception)
     body = snapshot.get("restorable_bytes")
     return isinstance(body, str) and len(body) > 0 and isinstance(snapshot.get("sha256"), str)
 
 
 def restore_activation(snapshot: Mapping[str, Any], *, path: Path | None = None) -> dict[str, Any]:
+    """Restore one file or a full staged-state bundle."""
+
+    if "files" in snapshot:
+        if not snapshot_is_restorable(snapshot):
+            return {"ok": False, "error": "bundle snapshot not restorable"}
+        results: dict[str, Any] = {}
+        for name, file_snap in (snapshot.get("files") or {}).items():
+            if not isinstance(file_snap, dict):
+                continue
+            if file_snap.get("existed") is False or not snapshot_is_restorable(file_snap):
+                # Absent optional files stay absent.
+                if name != "perception" and file_snap.get("existed") is False:
+                    results[name] = {"ok": True, "skipped": "did_not_exist"}
+                    continue
+                return {"ok": False, "error": f"{name} not restorable", "results": results}
+            one = restore_activation(file_snap)
+            results[name] = one
+            if one.get("ok") is not True:
+                return {"ok": False, "error": f"{name}: {one.get('error')}", "results": results}
+        return {"ok": True, "error": None, "results": results}
+
     if not snapshot_is_restorable(snapshot):
         return {"ok": False, "error": "snapshot is not restorable (need restorable_bytes)"}
     target = Path(path or snapshot["path"])
@@ -392,6 +558,10 @@ def collect_identity_bundle(
     defaults = [
         repo_root / "cli/automa_cli/perception_runs.py",
         repo_root / "cli/automa_cli/lab_plugins.py",
+        repo_root / "cli/automa_cli/memory_check.py",
+        repo_root / "cli/automa_cli/perception.py",
+        repo_root / "cli/automa_cli/memory.py",
+        repo_root / "cli/automa_cli/app.py",
     ]
     paths = list(product_paths) if product_paths is not None else defaults
     product: dict[str, str | None] = {}
@@ -417,21 +587,76 @@ def finalize_evidence_freshness(
     recorded: Mapping[str, Any],
     current: Mapping[str, Any],
 ) -> tuple[bool, str]:
-    """Compare recorded identities to final tree identities; refuse pass on mismatch."""
+    """Compare recorded identities to final tree identities; refuse pass on mismatch.
+
+    Missing/None digests always fail. Empty product set fails. Metrics UI identity
+    is required when ``metrics_ui_required`` is true on the recorded bundle.
+    """
 
     for key in ("catalog_sha256", "runner_sha256", "continuity_contract_sha256"):
-        if recorded.get(key) != current.get(key):
-            return False, f"mismatch {key}: recorded={recorded.get(key)!r} current={current.get(key)!r}"
-    rec_prod = recorded.get("product_sha256") or {}
-    cur_prod = current.get("product_sha256") or {}
-    if not isinstance(rec_prod, dict) or not isinstance(cur_prod, dict):
-        return False, "product_sha256 missing or invalid"
+        rec = recorded.get(key)
+        cur = current.get(key)
+        if not isinstance(rec, str) or not rec:
+            return False, f"recorded {key} missing"
+        if not isinstance(cur, str) or not cur:
+            return False, f"current {key} missing"
+        if rec != cur:
+            return False, f"mismatch {key}: recorded={rec!r} current={cur!r}"
+    rec_prod = recorded.get("product_sha256")
+    cur_prod = current.get("product_sha256")
+    if not isinstance(rec_prod, dict) or not rec_prod:
+        return False, "recorded product_sha256 missing or empty"
+    if not isinstance(cur_prod, dict) or not cur_prod:
+        return False, "current product_sha256 missing or empty"
     for path, digest in rec_prod.items():
+        if not isinstance(digest, str) or not digest:
+            return False, f"recorded product digest missing for {path}"
         if cur_prod.get(path) != digest:
             return False, f"product mismatch {path}"
-    rec_mui = recorded.get("metrics_ui")
-    cur_mui = current.get("metrics_ui")
-    if rec_mui is not None or cur_mui is not None:
+    if recorded.get("metrics_ui_required"):
+        rec_mui = recorded.get("metrics_ui")
+        cur_mui = current.get("metrics_ui")
+        if not isinstance(rec_mui, dict) or not rec_mui.get("commit"):
+            return False, "recorded metrics_ui identity missing"
         if rec_mui != cur_mui:
             return False, "metrics_ui identity mismatch"
     return True, "evidence freshness finalizer ok"
+
+
+def derive_continuity_verdict(
+    *,
+    safety_preflight_ok: bool,
+    family_aggregates: Mapping[str, str],
+    restore_ok: bool | None,
+    cleanup_ok: bool,
+    finalizer_ok: bool,
+    findings: Sequence[Mapping[str, Any]],
+    hitl_complete: bool,
+) -> tuple[str, str | None]:
+    """Single authoritative pass|findings|incomplete for continuity track."""
+
+    if not safety_preflight_ok:
+        return "incomplete", "continuity safety/family preflight failed"
+    if not cleanup_ok:
+        return "findings", "cleanup not proven"
+    if restore_ok is False:
+        return "findings", "US-04 staged-state restore failed"
+    if not finalizer_ok:
+        return "incomplete", "evidence freshness finalizer refused pass"
+    for fid in REQUIRED_FAMILY_IDS:
+        agg = family_aggregates.get(fid)
+        if agg == "partial":
+            return "incomplete", f"required family {fid} still partial (often HITL pending)"
+        if agg != "passed":
+            return "findings", f"required family {fid} aggregate is {agg!r}"
+    blockers = [
+        f
+        for f in findings
+        if isinstance(f, dict)
+        and f.get("classification") in {"acceptance_blocker", "environment_blocker"}
+    ]
+    if blockers:
+        return "findings", f"{len(blockers)} blocking finding(s) remain"
+    if not hitl_complete:
+        return "incomplete", "required visual HITL not completed"
+    return "pass", None

@@ -387,16 +387,18 @@ def compare_perception_candidates(
             candidate_id=candidate.candidate_id,
         )
         if result.exit_code != 0:
-            # Keep human comparison scannable: one-line root cause, not full JSON dumps.
-            err = result.message.strip().splitlines()[0] if result.message else "unknown error"
-            if len(err) > 200:
-                err = err[:197] + "..."
-            if err.startswith("{"):
-                err = f"candidate execution failed (exit {result.exit_code})"
+            # Human table stays one-line; JSON retains full structured/raw detail.
+            raw = result.message or ""
+            human_err = raw.strip().splitlines()[0] if raw.strip() else "unknown error"
+            if len(human_err) > 200:
+                human_err = human_err[:197] + "..."
+            if human_err.startswith("{"):
+                human_err = f"candidate execution failed (exit {result.exit_code})"
             failures.append(
                 {
                     "candidate": candidate.candidate_id,
-                    "error": err,
+                    "error": human_err,
+                    "error_detail": raw,
                     "exit_code": result.exit_code,
                 }
             )
@@ -637,6 +639,7 @@ def _format_comparison(payload: dict[str, Any]) -> str:
             lines.append(f"  review: {item['review']}")
     for failure in payload["failures"]:
         lines.append(f"- {failure['candidate']} failed: {failure['error']}")
+        # Full detail stays in JSON (error_detail); keep human table compact.
     lines.append(f"recording: {'on' if payload['recording'] else 'off'}")
     return "\n".join(lines)
 

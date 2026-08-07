@@ -13,10 +13,10 @@
         "bounded_evidence"
       ],
       "command": "./cli/automa vehicles update memory --id chase-sim-chaser --implementation bounded_evidence",
-      "elapsed_ms": 621,
-      "ended_at_utc": "2026-08-07T05:58:57.725348Z",
+      "elapsed_ms": 512,
+      "ended_at_utc": "2026-08-07T06:22:46.107270Z",
       "exit_code": 0,
-      "started_at_utc": "2026-08-07T05:58:57.104008Z",
+      "started_at_utc": "2026-08-07T06:22:45.594931Z",
       "stderr_path": "steps/memory-lifecycle/cmd-00.stderr.txt",
       "stdout_path": "steps/memory-lifecycle/cmd-00.stdout.txt"
     },
@@ -33,10 +33,10 @@
         "5"
       ],
       "command": "./cli/automa vehicles automation run --id chase-sim-chaser --observe-only --frames 5",
-      "elapsed_ms": 2025,
-      "ended_at_utc": "2026-08-07T05:58:59.751943Z",
+      "elapsed_ms": 1559,
+      "ended_at_utc": "2026-08-07T06:22:47.667995Z",
       "exit_code": 0,
-      "started_at_utc": "2026-08-07T05:58:57.726345Z",
+      "started_at_utc": "2026-08-07T06:22:46.108129Z",
       "stderr_path": "steps/memory-lifecycle/cmd-01.stderr.txt",
       "stdout_path": "steps/memory-lifecycle/cmd-01.stdout.txt"
     },
@@ -51,10 +51,10 @@
         "--record"
       ],
       "command": "./cli/automa vehicles memory check --id chase-sim-chaser --record",
-      "elapsed_ms": 11257,
-      "ended_at_utc": "2026-08-07T05:59:11.011737Z",
+      "elapsed_ms": 10940,
+      "ended_at_utc": "2026-08-07T06:22:58.609888Z",
       "exit_code": 0,
-      "started_at_utc": "2026-08-07T05:58:59.754589Z",
+      "started_at_utc": "2026-08-07T06:22:47.669017Z",
       "stderr_path": "steps/memory-lifecycle/cmd-02.stderr.txt",
       "stdout_path": "steps/memory-lifecycle/cmd-02.stdout.txt"
     },
@@ -68,10 +68,10 @@
         "chase-sim-chaser"
       ],
       "command": "./cli/automa vehicles automation stop --id chase-sim-chaser",
-      "elapsed_ms": 495,
-      "ended_at_utc": "2026-08-07T05:59:11.508560Z",
+      "elapsed_ms": 592,
+      "ended_at_utc": "2026-08-07T06:22:59.202930Z",
       "exit_code": 0,
-      "started_at_utc": "2026-08-07T05:59:11.012789Z",
+      "started_at_utc": "2026-08-07T06:22:58.610897Z",
       "stderr_path": "steps/memory-lifecycle/cmd-03.stderr.txt",
       "stdout_path": "steps/memory-lifecycle/cmd-03.stdout.txt"
     }

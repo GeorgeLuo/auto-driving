@@ -1,0 +1,21 @@
+{
+  "catalog_path": "<repo>/docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/catalogs/m007-continuity.yaml",
+  "catalog_sha256": "c3ef8cccfc1a3dcdab6efdaefaf0b8f79fb5638327360e87e0d6686f71042fcb",
+  "continuity_contract_sha256": "a781d4c5758561ddc2c885930995cfdabc1be3f62a88d7ae7c4f1d1649f51eab",
+  "metrics_ui": {
+    "branch": null,
+    "commit": null,
+    "worktree_state": null
+  },
+  "metrics_ui_required": true,
+  "product_sha256": {
+    "cli/automa_cli/app.py": "32d76546dd59815202bc71c33f2115683b179adc06d0c7d36849636767e63b89",
+    "cli/automa_cli/lab_plugins.py": "d184aa866c10c330037f901a1176871c7021ac30e0a787088082d677a35224b9",
+    "cli/automa_cli/memory.py": "d278e1dd79262302a17c0f181887b90b7660cac7a0189bd02fb587420fd54844",
+    "cli/automa_cli/memory_check.py": "6109cab6b1bf079ba72c87f20cab7af35e838dd3ac7fb94c8b1ca4a2743d11b2",
+    "cli/automa_cli/perception.py": "f0eb3977a262e5ece6a1bfc0e2ec856ed9704e971ec3e46296ade90d17c824d0",
+    "cli/automa_cli/perception_runs.py": "ecd0e8fc008e6f1b97cb462fa09c263ae0388d3c9f0e3a9c64e8d620d2d091fc"
+  },
+  "runner_sha256": "60e81a20bb2f926d18cd591013930661cc5b5a44525f3ad40f018e2228f316c1",
+  "schema": "continuity_identity_bundle_v0"
+}

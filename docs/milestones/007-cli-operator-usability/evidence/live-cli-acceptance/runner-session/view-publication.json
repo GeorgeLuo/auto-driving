@@ -1,0 +1,920 @@
+{
+  "control": {
+    "applied": false,
+    "confidence": 1.0,
+    "metadata": {
+      "has_memory": true,
+      "has_observation": true,
+      "has_perception": true,
+      "has_sensor_snapshot": true,
+      "mode": "observe_only"
+    },
+    "reason": "stable-idle-engine",
+    "steering": 0.0,
+    "throttle": 0.0
+  },
+  "cycle": {
+    "action_policy": "observe_only",
+    "control_application": "not_applied",
+    "control_source": "programmatic",
+    "cycle_duration_ms": 96,
+    "perception_duration_ms": 96
+  },
+  "engine": {
+    "components": {},
+    "engine": "autonomy.runtime.engine:IdleAutonomyEngine",
+    "engine_config": {},
+    "engine_schema": {
+      "engine_id": "idle",
+      "engine_spec": "autonomy.runtime.engine:IdleAutonomyEngine",
+      "inputs": [
+        "sensor_snapshot",
+        "perception",
+        "observation",
+        "memory",
+        "cycle",
+        "mode",
+        "user_steering",
+        "user_throttle"
+      ],
+      "output": {
+        "movement": "always idle",
+        "type": "AutonomyControl"
+      },
+      "purpose": "Safe default that always holds position.",
+      "schema": "autonomy_engine_schema_v0",
+      "stages": {
+        "action": "hold_position",
+        "memory": "inspectable_snapshot",
+        "patterns": null,
+        "projections": null
+      }
+    },
+    "error_count": 0,
+    "last_control": {
+      "confidence": 1.0,
+      "metadata": {
+        "has_memory": true,
+        "has_observation": true,
+        "has_perception": true,
+        "has_sensor_snapshot": true,
+        "mode": "observe_only"
+      },
+      "reason": "stable-idle-engine",
+      "steering": 0.0,
+      "throttle": 0.0
+    },
+    "last_error": null,
+    "last_step_at_ms": 1785973751187,
+    "loaded_at_ms": 1785973713072,
+    "step_count": 148
+  },
+  "frame": {
+    "captured_at_ms": 1785973751521,
+    "content_type": "image/png",
+    "frame_id": "chase_frame_391992",
+    "frame_index": 391992,
+    "height_px": 480,
+    "published_at_ms": 1785973751522,
+    "url": "/frame?v=chase_frame_391992",
+    "width_px": 640
+  },
+  "generated_at_ms": 1785973751587,
+  "memory": {
+    "bounds": {
+      "eviction_policy": "oldest_first",
+      "max_age_ms": 10000,
+      "max_property_bytes": 4096,
+      "max_records": 32,
+      "max_serialized_bytes": 262144
+    },
+    "created_at_ms": 1785973750731,
+    "epoch_id": "epoch-2",
+    "error": null,
+    "health": "healthy",
+    "implementation_id": "bounded_evidence",
+    "memory_id": "memory-chase_frame_391977",
+    "metadata": {
+      "capacity_eviction_count": 0,
+      "claims_identity": false,
+      "conflict_count": 0,
+      "conflict_policy": "bounded_evidence_structural_v1",
+      "last_update_conflict_count": 0,
+      "observation_id": "chase_frame_391977",
+      "policy": "bounded_evidence_recency"
+    },
+    "record_count": 8,
+    "records": [
+      {
+        "confidence": 1.0,
+        "kind": "signal",
+        "label": "floor_visible",
+        "location": null,
+        "properties": {
+          "floor_fraction_roi": 0.79211,
+          "value": true
+        },
+        "provenance": {
+          "coordinate_frame": "observation",
+          "evidence_id": "floor_visible",
+          "frame_id": "chase_frame_391977",
+          "observation_id": "chase_frame_391977",
+          "observed_at_ms": 1785973751186,
+          "source_plugin_id": "floor-plane-v0",
+          "updated_at_ms": 1785973750731
+        },
+        "record_id": "signal:1:14:floor-plane-v0:13:floor_visible"
+      },
+      {
+        "confidence": 1.0,
+        "kind": "signal",
+        "label": "floor_boundary_available",
+        "location": null,
+        "properties": {
+          "boundary_count": 1,
+          "hit_fraction_columns": 0.45781,
+          "value": true
+        },
+        "provenance": {
+          "coordinate_frame": "observation",
+          "evidence_id": "floor_boundary_available",
+          "frame_id": "chase_frame_391977",
+          "observation_id": "chase_frame_391977",
+          "observed_at_ms": 1785973751186,
+          "source_plugin_id": "floor-plane-v0",
+          "updated_at_ms": 1785973750731
+        },
+        "record_id": "signal:1:14:floor-plane-v0:24:floor_boundary_available"
+      },
+      {
+        "confidence": 1.0,
+        "kind": "signal",
+        "label": "front_camera_available",
+        "location": null,
+        "properties": {
+          "value": true
+        },
+        "provenance": {
+          "coordinate_frame": "observation",
+          "evidence_id": "front_camera_available",
+          "frame_id": "chase_frame_391977",
+          "observation_id": "chase_frame_391977",
+          "observed_at_ms": 1785973751186,
+          "source_plugin_id": "frame-observation-v0",
+          "updated_at_ms": 1785973750731
+        },
+        "record_id": "signal:1:20:frame-observation-v0:22:front_camera_available"
+      },
+      {
+        "confidence": 1.0,
+        "kind": "surface",
+        "label": "traversable floor estimate",
+        "location": {
+          "bbox_xyxy_norm": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ],
+          "frame": "topdown_fov",
+          "polygon_xy_norm": null,
+          "zone": "visible_floor"
+        },
+        "properties": {
+          "boundary_hit_fraction_columns": 0.45781,
+          "evidence": "color_floor_model",
+          "floor_fraction_roi": 0.79211,
+          "occupied_fraction_roi": 0.20789
+        },
+        "provenance": {
+          "coordinate_frame": "topdown_fov",
+          "evidence_id": "traversable_floor",
+          "frame_id": "chase_frame_391977",
+          "observation_id": "chase_frame_391977",
+          "observed_at_ms": 1785973751186,
+          "source_plugin_id": "floor-plane-v0",
+          "updated_at_ms": 1785973750731
+        },
+        "record_id": "thing:1:14:floor-plane-v0:17:traversable_floor"
+      },
+      {
+        "confidence": 1.0,
+        "kind": "floor_boundary",
+        "label": "first sustained non-floor boundary after visible floor",
+        "location": {
+          "bbox_xyxy_norm": [
+            0.2676,
+            0.5157,
+            0.7246,
+            0.5324
+          ],
+          "frame": "image",
+          "polygon_xy_norm": null,
+          "zone": "mid_center"
+        },
+        "properties": {
+          "evidence": "first_non_floor_after_visible_floor",
+          "floor_fraction_roi": 0.79211,
+          "hit_pixel_count": 1481,
+          "width_fraction": 0.45781
+        },
+        "provenance": {
+          "coordinate_frame": "image",
+          "evidence_id": "floor_boundary_000",
+          "frame_id": "chase_frame_391977",
+          "observation_id": "chase_frame_391977",
+          "observed_at_ms": 1785973751186,
+          "source_plugin_id": "floor-plane-v0",
+          "updated_at_ms": 1785973750731
+        },
+        "record_id": "thing:1:14:floor-plane-v0:18:floor_boundary_000"
+      },
+      {
+        "confidence": 1.0,
+        "kind": "sensor_frame",
+        "label": "front camera frame",
+        "location": {
+          "bbox_xyxy_norm": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ],
+          "frame": "image",
+          "polygon_xy_norm": null,
+          "zone": "full_frame"
+        },
+        "properties": {
+          "brightness_mean": 104.949,
+          "contrast_std": 110.292,
+          "height_px": 480,
+          "width_px": 640
+        },
+        "provenance": {
+          "coordinate_frame": "image",
+          "evidence_id": "front_camera_frame",
+          "frame_id": "chase_frame_391977",
+          "observation_id": "chase_frame_391977",
+          "observed_at_ms": 1785973751186,
+          "source_plugin_id": "frame-observation-v0",
+          "updated_at_ms": 1785973750731
+        },
+        "record_id": "thing:1:20:frame-observation-v0:18:front_camera_frame"
+      },
+      {
+        "confidence": 1.0,
+        "kind": "floor_boundary",
+        "label": "first sustained non-floor boundary after visible floor",
+        "location": {
+          "bbox_xyxy_norm": [
+            0.4366,
+            0.5616,
+            0.5853,
+            0.6096
+          ],
+          "frame": "image",
+          "polygon_xy_norm": null,
+          "zone": "mid_center"
+        },
+        "properties": {
+          "evidence": "first_non_floor_after_visible_floor",
+          "floor_fraction_roi": 0.82127,
+          "hit_pixel_count": 596,
+          "width_fraction": 0.15
+        },
+        "provenance": {
+          "coordinate_frame": "image",
+          "evidence_id": "floor_boundary_001",
+          "frame_id": "chase_frame_391899",
+          "observation_id": "chase_frame_391899",
+          "observed_at_ms": 1785973749925,
+          "source_plugin_id": "floor-plane-v0",
+          "updated_at_ms": 1785973749529
+        },
+        "record_id": "thing:1:14:floor-plane-v0:18:floor_boundary_001"
+      },
+      {
+        "confidence": 1.0,
+        "kind": "floor_boundary",
+        "label": "first sustained non-floor boundary after visible floor",
+        "location": {
+          "bbox_xyxy_norm": [
+            0.5806,
+            0.4426,
+            0.687,
+            0.453
+          ],
+          "frame": "image",
+          "polygon_xy_norm": null,
+          "zone": "mid_right"
+        },
+        "properties": {
+          "evidence": "first_non_floor_after_visible_floor",
+          "floor_fraction_roi": 0.82127,
+          "hit_pixel_count": 353,
+          "width_fraction": 0.10781
+        },
+        "provenance": {
+          "coordinate_frame": "image",
+          "evidence_id": "floor_boundary_002",
+          "frame_id": "chase_frame_391899",
+          "observation_id": "chase_frame_391899",
+          "observed_at_ms": 1785973749925,
+          "source_plugin_id": "floor-plane-v0",
+          "updated_at_ms": 1785973749529
+        },
+        "record_id": "thing:1:14:floor-plane-v0:18:floor_boundary_002"
+      }
+    ],
+    "schema": "decision_memory_snapshot_v0",
+    "summary": [
+      "retained_count=8",
+      "epoch_id=epoch-2",
+      "kinds=floor_boundary,sensor_frame,signal,surface",
+      "policy=bounded_evidence_recency"
+    ]
+  },
+  "observation": {
+    "artifacts": {},
+    "created_at_ms": 1785973751186,
+    "metadata": {
+      "limits": [
+        "floor color is seeded independently from each current frame",
+        "boundaries may be objects, walls, shadows, or floor-color discontinuities",
+        "topdown_fov is approximate and uncalibrated"
+      ],
+      "source": "default_observe_stage"
+    },
+    "observation_id": "chase_frame_391977",
+    "perception_plugin_id": "autonomy.perception.plugin-runner-v0",
+    "perception_schema": "perception_text_v2",
+    "schema": "decision_observation_v1",
+    "sensor_snapshot": {
+      "completed_at_ms": 1785973751090,
+      "metadata": {
+        "evaluator_reference": {
+          "status": "available"
+        },
+        "frame_id": "chase_frame_391977",
+        "passive_capture": {
+          "mutation_attempted": false,
+          "status": "available"
+        },
+        "simulation_epoch": "chase-run:bbbab2ec-9f73-4d68-9ca1-f578348061ae",
+        "simulator_frame_index": 391977,
+        "vehicle": {
+          "can_capture_frame": true,
+          "can_capture_highres": false,
+          "can_reverse": true,
+          "notes": [
+            "Applies normalized RC-car-like actions to Chase via Metrics UI WS.",
+            "Chase WS control uses fixed scenario speed; throttle magnitude is represented by pulse duration.",
+            "Use prepare_for_external_control() before running an external decision model."
+          ],
+          "sensors": {
+            "front_camera": {
+              "available": true,
+              "default_endpoint": "atomic-evaluation-capture",
+              "physical_limitations": [
+                "simulated low-mounted forward-facing view",
+                "no map/debug state exposed through the vehicle interface"
+              ],
+              "pose": "simulated_fixed_front",
+              "sensor_kind": "camera"
+            }
+          },
+          "steering_range": [
+            -1.0,
+            1.0
+          ],
+          "throttle_range": [
+            0.0,
+            1.0
+          ],
+          "vehicle_id": "chase-sim-chaser",
+          "vehicle_kind": "chase-sim-ws"
+        }
+      },
+      "read_id": "chase_frame_391977",
+      "readings": {
+        "front_camera": {
+          "captured_at_ms": 1785973751090,
+          "has_value": false,
+          "metadata": {
+            "bytes": 146285,
+            "capture_id": "chase:evaluation:chase-run%3Abbbab2ec-9f73-4d68-9ca1-f578348061ae:chaser:391977",
+            "captured_at_ms": 1785973751090,
+            "content_type": "image/png",
+            "endpoint": "atomic-evaluation-capture",
+            "evaluator_reference": {
+              "status": "available"
+            },
+            "frame_id": "chase_frame_391977",
+            "frame_index": 391977,
+            "height": 480,
+            "identity_pairing": "atomic_evaluation_capture",
+            "passive_capture": {
+              "mutation_attempted": false,
+              "session_preservation": {
+                "after": {
+                  "actor_id": "chaser",
+                  "camera_id": "front_camera",
+                  "control_input": null,
+                  "control_source": "programmatic",
+                  "game_id": "chase",
+                  "playback": {
+                    "frameIndex": 391977,
+                    "pendingAction": false,
+                    "phase": "running"
+                  },
+                  "scenario_id": "default",
+                  "schema": "chase_session_fingerprint_v1",
+                  "simulation_epoch": "chase-run:bbbab2ec-9f73-4d68-9ca1-f578348061ae",
+                  "unknown_fields": []
+                },
+                "before": {
+                  "actor_id": "chaser",
+                  "camera_id": "front_camera",
+                  "control_input": null,
+                  "control_source": "programmatic",
+                  "game_id": "chase",
+                  "playback": {
+                    "frameIndex": 391977,
+                    "pendingAction": false,
+                    "phase": "running"
+                  },
+                  "scenario_id": "default",
+                  "schema": "chase_session_fingerprint_v1",
+                  "simulation_epoch": "chase-run:bbbab2ec-9f73-4d68-9ca1-f578348061ae",
+                  "unknown_fields": []
+                },
+                "changed_fields": [],
+                "preserved": true,
+                "unknown_fields": []
+              },
+              "status": "available"
+            },
+            "path": "<repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/latest/frames/capture_000147_front_camera.png",
+            "requested_endpoint": "atomic-evaluation-capture",
+            "simulation_epoch": "chase-run:bbbab2ec-9f73-4d68-9ca1-f578348061ae",
+            "simulator_frame_index": 391977,
+            "width": 640
+          },
+          "path": "<repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/latest/frames/chase_frame_391977_front_camera.png",
+          "sensor_id": "front_camera",
+          "sensor_kind": "camera"
+        }
+      },
+      "request": {
+        "front_camera_endpoint": "atomic-evaluation-capture",
+        "image_extension": "png",
+        "output_dir": "<repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/latest/frames",
+        "read_id": "capture_000147",
+        "requested_sensors": [
+          "front_camera"
+        ]
+      },
+      "started_at_ms": 1785973750731
+    },
+    "signals": [
+      {
+        "confidence": 1.0,
+        "properties": {},
+        "signal_id": "front_camera_available",
+        "source_plugin_id": "frame-observation-v0",
+        "value": true
+      },
+      {
+        "confidence": 1.0,
+        "properties": {
+          "floor_fraction_roi": 0.79211
+        },
+        "signal_id": "floor_visible",
+        "source_plugin_id": "floor-plane-v0",
+        "value": true
+      },
+      {
+        "confidence": 1.0,
+        "properties": {
+          "boundary_count": 1,
+          "hit_fraction_columns": 0.45781
+        },
+        "signal_id": "floor_boundary_available",
+        "source_plugin_id": "floor-plane-v0",
+        "value": true
+      }
+    ],
+    "summary": [
+      "schema=perception_text_v2",
+      "plugin=autonomy.perception.plugin-runner-v0",
+      "plugins=frame,floor_plane",
+      "plugin_run id=frame-observation-v0 status=ok duration_ms=15.981 signals=1 things=1 artifacts=0",
+      "signal id=front_camera_available plugin=frame-observation-v0 value=true confidence=1.000",
+      "thing id=front_camera_frame plugin=frame-observation-v0 kind=sensor_frame zone=full_frame frame=image bbox_xyxy_norm=0.0000,0.0000,1.0000,1.0000 confidence=1.000 brightness_mean=104.949 contrast_std=110.292 height_px=480 width_px=640",
+      "plugin_run id=floor-plane-v0 status=ok duration_ms=78.324 signals=2 things=2 artifacts=0",
+      "signal id=floor_visible plugin=floor-plane-v0 value=true confidence=1.000 floor_fraction_roi=0.79211",
+      "signal id=floor_boundary_available plugin=floor-plane-v0 value=true confidence=1.000 boundary_count=1 hit_fraction_columns=0.45781",
+      "thing id=traversable_floor plugin=floor-plane-v0 kind=surface zone=visible_floor frame=topdown_fov bbox_xyxy_norm=0.0000,0.0000,1.0000,1.0000 confidence=1.000 boundary_hit_fraction_columns=0.45781 evidence=color_floor_model floor_fraction_roi=0.79211 occupied_fraction_roi=0.20789",
+      "thing id=floor_boundary_000 plugin=floor-plane-v0 kind=floor_boundary zone=mid_center frame=image bbox_xyxy_norm=0.2676,0.5157,0.7246,0.5324 confidence=1.000 evidence=first_non_floor_after_visible_floor floor_fraction_roi=0.79211 hit_pixel_count=1481 width_fraction=0.45781"
+    ],
+    "things": [
+      {
+        "confidence": 1.0,
+        "kind": "sensor_frame",
+        "label": "front camera frame",
+        "location": {
+          "bbox_xyxy_norm": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ],
+          "frame": "image",
+          "polygon_xy_norm": null,
+          "zone": "full_frame"
+        },
+        "properties": {
+          "brightness_mean": 104.949,
+          "contrast_std": 110.292,
+          "height_px": 480,
+          "width_px": 640
+        },
+        "source_plugin_id": "frame-observation-v0",
+        "thing_id": "front_camera_frame"
+      },
+      {
+        "confidence": 1.0,
+        "kind": "surface",
+        "label": "traversable floor estimate",
+        "location": {
+          "bbox_xyxy_norm": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ],
+          "frame": "topdown_fov",
+          "polygon_xy_norm": null,
+          "zone": "visible_floor"
+        },
+        "properties": {
+          "boundary_hit_fraction_columns": 0.45781,
+          "evidence": "color_floor_model",
+          "floor_fraction_roi": 0.79211,
+          "occupied_fraction_roi": 0.20789
+        },
+        "source_plugin_id": "floor-plane-v0",
+        "thing_id": "traversable_floor"
+      },
+      {
+        "confidence": 1.0,
+        "kind": "floor_boundary",
+        "label": "first sustained non-floor boundary after visible floor",
+        "location": {
+          "bbox_xyxy_norm": [
+            0.2676,
+            0.5157,
+            0.7246,
+            0.5324
+          ],
+          "frame": "image",
+          "polygon_xy_norm": null,
+          "zone": "mid_center"
+        },
+        "properties": {
+          "evidence": "first_non_floor_after_visible_floor",
+          "floor_fraction_roi": 0.79211,
+          "hit_pixel_count": 1481,
+          "width_fraction": 0.45781
+        },
+        "source_plugin_id": "floor-plane-v0",
+        "thing_id": "floor_boundary_000"
+      }
+    ]
+  },
+  "overlay": {
+    "frame_lag": 15,
+    "frame_lag_ms": 431,
+    "perception_completed_at_ms": 1785973751187,
+    "result_age_ms": 400,
+    "source_captured_at_ms": 1785973751090,
+    "source_frame_id": "chase_frame_391977",
+    "source_frame_index": 391977,
+    "status": "stale"
+  },
+  "perception": {
+    "artifacts": {},
+    "limits": [
+      "floor color is seeded independently from each current frame",
+      "boundaries may be objects, walls, shadows, or floor-color discontinuities",
+      "topdown_fov is approximate and uncalibrated"
+    ],
+    "lines": [
+      "schema=perception_text_v2",
+      "plugin=autonomy.perception.plugin-runner-v0",
+      "plugins=frame,floor_plane",
+      "plugin_run id=frame-observation-v0 status=ok duration_ms=15.981 signals=1 things=1 artifacts=0",
+      "signal id=front_camera_available plugin=frame-observation-v0 value=true confidence=1.000",
+      "thing id=front_camera_frame plugin=frame-observation-v0 kind=sensor_frame zone=full_frame frame=image bbox_xyxy_norm=0.0000,0.0000,1.0000,1.0000 confidence=1.000 brightness_mean=104.949 contrast_std=110.292 height_px=480 width_px=640",
+      "plugin_run id=floor-plane-v0 status=ok duration_ms=78.324 signals=2 things=2 artifacts=0",
+      "signal id=floor_visible plugin=floor-plane-v0 value=true confidence=1.000 floor_fraction_roi=0.79211",
+      "signal id=floor_boundary_available plugin=floor-plane-v0 value=true confidence=1.000 boundary_count=1 hit_fraction_columns=0.45781",
+      "thing id=traversable_floor plugin=floor-plane-v0 kind=surface zone=visible_floor frame=topdown_fov bbox_xyxy_norm=0.0000,0.0000,1.0000,1.0000 confidence=1.000 boundary_hit_fraction_columns=0.45781 evidence=color_floor_model floor_fraction_roi=0.79211 occupied_fraction_roi=0.20789",
+      "thing id=floor_boundary_000 plugin=floor-plane-v0 kind=floor_boundary zone=mid_center frame=image bbox_xyxy_norm=0.2676,0.5157,0.7246,0.5324 confidence=1.000 evidence=first_non_floor_after_visible_floor floor_fraction_roi=0.79211 hit_pixel_count=1481 width_fraction=0.45781"
+    ],
+    "measurements": {
+      "floor-plane-v0": {
+        "boundaries": [
+          {
+            "bbox_xyxy_norm": [
+              0.2676,
+              0.5157,
+              0.7246,
+              0.5324
+            ],
+            "confidence": 1.0,
+            "hit_pixel_count": 1481,
+            "width_fraction": 0.45781
+          }
+        ],
+        "boundary_hit_fraction_columns": 0.45781,
+        "floor_fraction_roi": 0.79211,
+        "image_height_px": 480,
+        "image_width_px": 640,
+        "occupied_fraction_roi": 0.20789
+      },
+      "frame-observation-v0": {
+        "brightness_mean": 104.949,
+        "change_from_previous": null,
+        "contrast_std": 110.292,
+        "image_height_px": 480,
+        "image_width_px": 640,
+        "rgb_mean": [
+          107.31,
+          104.949,
+          99.083
+        ],
+        "rgb_std": [
+          112.773,
+          110.291,
+          104.127
+        ]
+      }
+    },
+    "plugin_id": "autonomy.perception.plugin-runner-v0",
+    "plugin_runs": [
+      {
+        "artifact_count": 0,
+        "duration_ms": 15.981,
+        "error": null,
+        "plugin_id": "frame-observation-v0",
+        "signal_count": 1,
+        "status": "ok",
+        "thing_count": 1
+      },
+      {
+        "artifact_count": 0,
+        "duration_ms": 78.324,
+        "error": null,
+        "plugin_id": "floor-plane-v0",
+        "signal_count": 2,
+        "status": "ok",
+        "thing_count": 2
+      }
+    ],
+    "schema": "perception_text_v2",
+    "signals": [
+      {
+        "confidence": 1.0,
+        "properties": {},
+        "signal_id": "front_camera_available",
+        "source_plugin_id": "frame-observation-v0",
+        "value": true
+      },
+      {
+        "confidence": 1.0,
+        "properties": {
+          "floor_fraction_roi": 0.79211
+        },
+        "signal_id": "floor_visible",
+        "source_plugin_id": "floor-plane-v0",
+        "value": true
+      },
+      {
+        "confidence": 1.0,
+        "properties": {
+          "boundary_count": 1,
+          "hit_fraction_columns": 0.45781
+        },
+        "signal_id": "floor_boundary_available",
+        "source_plugin_id": "floor-plane-v0",
+        "value": true
+      }
+    ],
+    "status": "ok",
+    "text": "schema=perception_text_v2\nplugin=autonomy.perception.plugin-runner-v0\nplugins=frame,floor_plane\nplugin_run id=frame-observation-v0 status=ok duration_ms=15.981 signals=1 things=1 artifacts=0\nsignal id=front_camera_available plugin=frame-observation-v0 value=true confidence=1.000\nthing id=front_camera_frame plugin=frame-observation-v0 kind=sensor_frame zone=full_frame frame=image bbox_xyxy_norm=0.0000,0.0000,1.0000,1.0000 confidence=1.000 brightness_mean=104.949 contrast_std=110.292 height_px=480 width_px=640\nplugin_run id=floor-plane-v0 status=ok duration_ms=78.324 signals=2 things=2 artifacts=0\nsignal id=floor_visible plugin=floor-plane-v0 value=true confidence=1.000 floor_fraction_roi=0.79211\nsignal id=floor_boundary_available plugin=floor-plane-v0 value=true confidence=1.000 boundary_count=1 hit_fraction_columns=0.45781\nthing id=traversable_floor plugin=floor-plane-v0 kind=surface zone=visible_floor frame=topdown_fov bbox_xyxy_norm=0.0000,0.0000,1.0000,1.0000 confidence=1.000 boundary_hit_fraction_columns=0.45781 evidence=color_floor_model floor_fraction_roi=0.79211 occupied_fraction_roi=0.20789\nthing id=floor_boundary_000 plugin=floor-plane-v0 kind=floor_boundary zone=mid_center frame=image bbox_xyxy_norm=0.2676,0.5157,0.7246,0.5324 confidence=1.000 evidence=first_non_floor_after_visible_floor floor_fraction_roi=0.79211 hit_pixel_count=1481 width_fraction=0.45781",
+    "things": [
+      {
+        "confidence": 1.0,
+        "kind": "sensor_frame",
+        "label": "front camera frame",
+        "location": {
+          "bbox_xyxy_norm": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ],
+          "frame": "image",
+          "polygon_xy_norm": null,
+          "zone": "full_frame"
+        },
+        "properties": {
+          "brightness_mean": 104.949,
+          "contrast_std": 110.292,
+          "height_px": 480,
+          "width_px": 640
+        },
+        "source_plugin_id": "frame-observation-v0",
+        "thing_id": "front_camera_frame"
+      },
+      {
+        "confidence": 1.0,
+        "kind": "surface",
+        "label": "traversable floor estimate",
+        "location": {
+          "bbox_xyxy_norm": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ],
+          "frame": "topdown_fov",
+          "polygon_xy_norm": null,
+          "zone": "visible_floor"
+        },
+        "properties": {
+          "boundary_hit_fraction_columns": 0.45781,
+          "evidence": "color_floor_model",
+          "floor_fraction_roi": 0.79211,
+          "occupied_fraction_roi": 0.20789
+        },
+        "source_plugin_id": "floor-plane-v0",
+        "thing_id": "traversable_floor"
+      },
+      {
+        "confidence": 1.0,
+        "kind": "floor_boundary",
+        "label": "first sustained non-floor boundary after visible floor",
+        "location": {
+          "bbox_xyxy_norm": [
+            0.2676,
+            0.5157,
+            0.7246,
+            0.5324
+          ],
+          "frame": "image",
+          "polygon_xy_norm": null,
+          "zone": "mid_center"
+        },
+        "properties": {
+          "evidence": "first_non_floor_after_visible_floor",
+          "floor_fraction_roi": 0.79211,
+          "hit_pixel_count": 1481,
+          "width_fraction": 0.45781
+        },
+        "source_plugin_id": "floor-plane-v0",
+        "thing_id": "floor_boundary_000"
+      }
+    ]
+  },
+  "schema": "automa_perception_publication_v1",
+  "sensor_snapshot": {
+    "completed_at_ms": 1785973751090,
+    "metadata": {
+      "evaluator_reference": {
+        "status": "available"
+      },
+      "frame_id": "chase_frame_391977",
+      "passive_capture": {
+        "mutation_attempted": false,
+        "status": "available"
+      },
+      "simulation_epoch": "chase-run:bbbab2ec-9f73-4d68-9ca1-f578348061ae",
+      "simulator_frame_index": 391977,
+      "vehicle": {
+        "can_capture_frame": true,
+        "can_capture_highres": false,
+        "can_reverse": true,
+        "notes": [
+          "Applies normalized RC-car-like actions to Chase via Metrics UI WS.",
+          "Chase WS control uses fixed scenario speed; throttle magnitude is represented by pulse duration.",
+          "Use prepare_for_external_control() before running an external decision model."
+        ],
+        "sensors": {
+          "front_camera": {
+            "available": true,
+            "default_endpoint": "atomic-evaluation-capture",
+            "physical_limitations": [
+              "simulated low-mounted forward-facing view",
+              "no map/debug state exposed through the vehicle interface"
+            ],
+            "pose": "simulated_fixed_front",
+            "sensor_kind": "camera"
+          }
+        },
+        "steering_range": [
+          -1.0,
+          1.0
+        ],
+        "throttle_range": [
+          0.0,
+          1.0
+        ],
+        "vehicle_id": "chase-sim-chaser",
+        "vehicle_kind": "chase-sim-ws"
+      }
+    },
+    "read_id": "chase_frame_391977",
+    "readings": {
+      "front_camera": {
+        "captured_at_ms": 1785973751090,
+        "has_value": false,
+        "metadata": {
+          "bytes": 146285,
+          "capture_id": "chase:evaluation:chase-run%3Abbbab2ec-9f73-4d68-9ca1-f578348061ae:chaser:391977",
+          "captured_at_ms": 1785973751090,
+          "content_type": "image/png",
+          "endpoint": "atomic-evaluation-capture",
+          "evaluator_reference": {
+            "status": "available"
+          },
+          "frame_id": "chase_frame_391977",
+          "frame_index": 391977,
+          "height": 480,
+          "identity_pairing": "atomic_evaluation_capture",
+          "passive_capture": {
+            "mutation_attempted": false,
+            "session_preservation": {
+              "after": {
+                "actor_id": "chaser",
+                "camera_id": "front_camera",
+                "control_input": null,
+                "control_source": "programmatic",
+                "game_id": "chase",
+                "playback": {
+                  "frameIndex": 391977,
+                  "pendingAction": false,
+                  "phase": "running"
+                },
+                "scenario_id": "default",
+                "schema": "chase_session_fingerprint_v1",
+                "simulation_epoch": "chase-run:bbbab2ec-9f73-4d68-9ca1-f578348061ae",
+                "unknown_fields": []
+              },
+              "before": {
+                "actor_id": "chaser",
+                "camera_id": "front_camera",
+                "control_input": null,
+                "control_source": "programmatic",
+                "game_id": "chase",
+                "playback": {
+                  "frameIndex": 391977,
+                  "pendingAction": false,
+                  "phase": "running"
+                },
+                "scenario_id": "default",
+                "schema": "chase_session_fingerprint_v1",
+                "simulation_epoch": "chase-run:bbbab2ec-9f73-4d68-9ca1-f578348061ae",
+                "unknown_fields": []
+              },
+              "changed_fields": [],
+              "preserved": true,
+              "unknown_fields": []
+            },
+            "status": "available"
+          },
+          "path": "<repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/latest/frames/capture_000147_front_camera.png",
+          "requested_endpoint": "atomic-evaluation-capture",
+          "simulation_epoch": "chase-run:bbbab2ec-9f73-4d68-9ca1-f578348061ae",
+          "simulator_frame_index": 391977,
+          "width": 640
+        },
+        "path": "<repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/latest/frames/chase_frame_391977_front_camera.png",
+        "sensor_id": "front_camera",
+        "sensor_kind": "camera"
+      }
+    },
+    "request": {
+      "front_camera_endpoint": "atomic-evaluation-capture",
+      "image_extension": "png",
+      "output_dir": "<repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/latest/frames",
+      "read_id": "capture_000147",
+      "requested_sensors": [
+        "front_camera"
+      ]
+    },
+    "started_at_ms": 1785973750731
+  },
+  "vehicle_id": "chase-sim-chaser"
+}

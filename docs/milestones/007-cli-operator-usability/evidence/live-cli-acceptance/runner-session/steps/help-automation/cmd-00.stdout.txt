@@ -1,0 +1,10 @@
+automa vehicles automation commands
+
+- run       start a worker and verify camera + perception + current view
+- status    show locally deployed worker and view state
+- restart   stop and start the automation worker
+- stop      stop the worker; keep its deployment staged
+- help      show this summary
+
+Detailed help:
+- ./cli/automa vehicles automation <command> --help

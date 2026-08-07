@@ -1,0 +1,55 @@
+{
+  "browser_view": null,
+  "commands": [
+    {
+      "argv": [
+        "./cli/automa",
+        "vehicles",
+        "automation",
+        "help"
+      ],
+      "command": "./cli/automa vehicles automation help",
+      "elapsed_ms": 477,
+      "ended_at_utc": "2026-08-05T23:48:14.544995Z",
+      "exit_code": 0,
+      "started_at_utc": "2026-08-05T23:48:14.067989Z",
+      "stderr_path": "steps/help-automation/cmd-00.stderr.txt",
+      "stdout_path": "steps/help-automation/cmd-00.stdout.txt"
+    },
+    {
+      "argv": [
+        "./cli/automa",
+        "vehicles",
+        "automation",
+        "run",
+        "--help"
+      ],
+      "command": "./cli/automa vehicles automation run --help",
+      "elapsed_ms": 450,
+      "ended_at_utc": "2026-08-05T23:48:14.996200Z",
+      "exit_code": 0,
+      "started_at_utc": "2026-08-05T23:48:14.545827Z",
+      "stderr_path": "steps/help-automation/cmd-01.stderr.txt",
+      "stdout_path": "steps/help-automation/cmd-01.stdout.txt"
+    }
+  ],
+  "gate_ids": [
+    "help_discoverability"
+  ],
+  "human": {
+    "finding_requested": false,
+    "interactive": true,
+    "notes": "",
+    "visual": "pass"
+  },
+  "id": "help-automation",
+  "kind": "command",
+  "machine_evidence": {},
+  "machine_ok": true,
+  "machine_summary": "",
+  "primary_cue": "--observe-only and --open-view appear on run --help",
+  "question": "Can the operator find run/stop and the observe-only path?",
+  "required_for_verdict": true,
+  "safety": "read",
+  "status": "pass"
+}

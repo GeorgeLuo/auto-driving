@@ -1,0 +1,832 @@
+{
+  "schema": "m007_live_cli_acceptance_v1",
+  "result": "pass",
+  "incomplete_reason": null,
+  "timestamps": {
+    "ended_at_utc": "2026-08-05T23:49:50.502903Z",
+    "local_timezone": [
+      "PST",
+      "PDT"
+    ],
+    "started_at_utc": "2026-08-05T23:47:54.250402Z"
+  },
+  "environment": {
+    "operating_system": "macOS-26.5.1-arm64-arm-64bit",
+    "browser": {
+      "name": "Chrome",
+      "version": "150.0.7871.188"
+    },
+    "metrics_ui_origin": "http://localhost:5050",
+    "operator": "gluo",
+    "python": "3.11.7",
+    "execution_mode": "interactive_live",
+    "local_timezone": [
+      "PST",
+      "PDT"
+    ]
+  },
+  "repositories": {
+    "auto_driving": {
+      "commit": "caf335797b71df1323736a2054934b7c211418b0",
+      "branch": "m007/live-cli-acceptance",
+      "worktree_state": "clean",
+      "diff_identity": null,
+      "github_owner": "GeorgeLuo",
+      "github_repo": "auto-driving"
+    },
+    "metrics_ui": {
+      "commit": "722e070fdc9f4ee89d13f947bf3996e62dcb2783",
+      "branch_or_pr": "m002/04-passive-observation",
+      "worktree_state": "clean",
+      "diff_identity": null,
+      "github_owner": "GeorgeLuo",
+      "github_repo": "metrics-ui"
+    }
+  },
+  "baseline": {
+    "frontend_visibly_open": true,
+    "game": "chase",
+    "vehicle_id": "chase-sim-chaser",
+    "camera": "front_camera",
+    "scenario_id": "default",
+    "control_source": "programmatic",
+    "playback": {
+      "frameIndex": 388928,
+      "pendingAction": false,
+      "phase": "running"
+    },
+    "simulation_epoch": "chase-run:bbbab2ec-9f73-4d68-9ca1-f578348061ae",
+    "existing_worker_state": "stopped",
+    "precondition_cleanup": {
+      "attempted": false,
+      "deployment_before": "deployed",
+      "error": null,
+      "needed": false,
+      "ok": true,
+      "pid_liveness": {
+        "47071": false
+      },
+      "pids_before": [
+        47071
+      ],
+      "status_exit_code": 0,
+      "stop_exit_code": null,
+      "view_before": "stale",
+      "worker_state_after": "stopped",
+      "worker_state_before": "stopped"
+    },
+    "existing_run_directories": [
+      "automation-20260630-214835",
+      "automation-20260630-214933"
+    ],
+    "canonical_acceptance": true,
+    "canonical_acceptance_reason": "canonical acceptance catalog",
+    "catalog_source": "<repo>/docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/catalogs/m007-acceptance.yaml"
+  },
+  "ordered_command_outcomes": [
+    {
+      "step_id": "help-top",
+      "command": "./cli/automa help",
+      "exit_code": 0,
+      "elapsed_ms": 464,
+      "started_at_utc": "2026-08-05T23:48:05.184924Z",
+      "ended_at_utc": "2026-08-05T23:48:05.649638Z",
+      "stdout_path": "steps/help-top/cmd-00.stdout.txt",
+      "stderr_path": "steps/help-top/cmd-00.stderr.txt",
+      "captures_to": null,
+      "step_status": "pass",
+      "visual": "pass",
+      "machine_ok": true,
+      "machine_summary": null,
+      "gate_ids": [
+        "help_discoverability"
+      ]
+    },
+    {
+      "step_id": "help-vehicles",
+      "command": "./cli/automa vehicles help",
+      "exit_code": 0,
+      "elapsed_ms": 462,
+      "started_at_utc": "2026-08-05T23:48:09.637472Z",
+      "ended_at_utc": "2026-08-05T23:48:10.100035Z",
+      "stdout_path": "steps/help-vehicles/cmd-00.stdout.txt",
+      "stderr_path": "steps/help-vehicles/cmd-00.stderr.txt",
+      "captures_to": null,
+      "step_status": "pass",
+      "visual": "pass",
+      "machine_ok": true,
+      "machine_summary": null,
+      "gate_ids": [
+        "help_discoverability"
+      ]
+    },
+    {
+      "step_id": "help-automation",
+      "command": "./cli/automa vehicles automation help",
+      "exit_code": 0,
+      "elapsed_ms": 477,
+      "started_at_utc": "2026-08-05T23:48:14.067989Z",
+      "ended_at_utc": "2026-08-05T23:48:14.544995Z",
+      "stdout_path": "steps/help-automation/cmd-00.stdout.txt",
+      "stderr_path": "steps/help-automation/cmd-00.stderr.txt",
+      "captures_to": null,
+      "step_status": "pass",
+      "visual": "pass",
+      "machine_ok": true,
+      "machine_summary": null,
+      "gate_ids": [
+        "help_discoverability"
+      ]
+    },
+    {
+      "step_id": "help-automation",
+      "command": "./cli/automa vehicles automation run --help",
+      "exit_code": 0,
+      "elapsed_ms": 450,
+      "started_at_utc": "2026-08-05T23:48:14.545827Z",
+      "ended_at_utc": "2026-08-05T23:48:14.996200Z",
+      "stdout_path": "steps/help-automation/cmd-01.stdout.txt",
+      "stderr_path": "steps/help-automation/cmd-01.stderr.txt",
+      "captures_to": null,
+      "step_status": "pass",
+      "visual": "pass",
+      "machine_ok": true,
+      "machine_summary": null,
+      "gate_ids": [
+        "help_discoverability"
+      ]
+    },
+    {
+      "step_id": "status-initial",
+      "command": "./cli/automa vehicles status --chase-url http://localhost:5050",
+      "exit_code": 0,
+      "elapsed_ms": 717,
+      "started_at_utc": "2026-08-05T23:48:18.933007Z",
+      "ended_at_utc": "2026-08-05T23:48:19.650571Z",
+      "stdout_path": "steps/status-initial/cmd-00.stdout.txt",
+      "stderr_path": "steps/status-initial/cmd-00.stderr.txt",
+      "captures_to": null,
+      "step_status": "pass",
+      "visual": "pass",
+      "machine_ok": true,
+      "machine_summary": "initial_layers: initial layers healthy",
+      "gate_ids": [
+        "initial_layers"
+      ]
+    },
+    {
+      "step_id": "status-initial",
+      "command": "./cli/automa vehicles status --id chase-sim-chaser --chase-url http://localhost:5050 --json",
+      "exit_code": 0,
+      "elapsed_ms": 648,
+      "started_at_utc": "2026-08-05T23:48:19.651413Z",
+      "ended_at_utc": "2026-08-05T23:48:20.299401Z",
+      "stdout_path": "steps/status-initial/cmd-01.stdout.txt",
+      "stderr_path": "steps/status-initial/cmd-01.stderr.txt",
+      "captures_to": "initial-status.json",
+      "step_status": "pass",
+      "visual": "pass",
+      "machine_ok": true,
+      "machine_summary": "initial_layers: initial layers healthy",
+      "gate_ids": [
+        "initial_layers"
+      ]
+    },
+    {
+      "step_id": "update-perception",
+      "command": "./cli/automa vehicles update perception --id chase-sim-chaser --algorithm lightweight_observer",
+      "exit_code": 0,
+      "elapsed_ms": 883,
+      "started_at_utc": "2026-08-05T23:48:25.886607Z",
+      "ended_at_utc": "2026-08-05T23:48:26.769722Z",
+      "stdout_path": "steps/update-perception/cmd-00.stdout.txt",
+      "stderr_path": "steps/update-perception/cmd-00.stderr.txt",
+      "captures_to": null,
+      "step_status": "pass",
+      "visual": "pass",
+      "machine_ok": true,
+      "machine_summary": "staged_layers: staging left worker stopped with deployed perception",
+      "gate_ids": [
+        "staging"
+      ]
+    },
+    {
+      "step_id": "update-perception",
+      "command": "./cli/automa vehicles status --id chase-sim-chaser --json",
+      "exit_code": 0,
+      "elapsed_ms": 756,
+      "started_at_utc": "2026-08-05T23:48:26.770563Z",
+      "ended_at_utc": "2026-08-05T23:48:27.526959Z",
+      "stdout_path": "steps/update-perception/cmd-01.stdout.txt",
+      "stderr_path": "steps/update-perception/cmd-01.stderr.txt",
+      "captures_to": "staged-status.json",
+      "step_status": "pass",
+      "visual": "pass",
+      "machine_ok": true,
+      "machine_summary": "staged_layers: staging left worker stopped with deployed perception",
+      "gate_ids": [
+        "staging"
+      ]
+    },
+    {
+      "step_id": "automation-run",
+      "command": "./cli/automa vehicles automation run --id chase-sim-chaser --observe-only --frames 0 --open-view",
+      "exit_code": 0,
+      "elapsed_ms": 1681,
+      "started_at_utc": "2026-08-05T23:48:31.988073Z",
+      "ended_at_utc": "2026-08-05T23:48:33.669803Z",
+      "stdout_path": "steps/automation-run/cmd-00.stdout.txt",
+      "stderr_path": "steps/automation-run/cmd-00.stderr.txt",
+      "captures_to": null,
+      "step_status": "pass",
+      "visual": "pass",
+      "machine_ok": true,
+      "machine_summary": null,
+      "gate_ids": [
+        "startup",
+        "human_view"
+      ]
+    },
+    {
+      "step_id": "status-running",
+      "command": "./cli/automa vehicles status --id chase-sim-chaser",
+      "exit_code": 0,
+      "elapsed_ms": 1105,
+      "started_at_utc": "2026-08-05T23:49:09.642776Z",
+      "ended_at_utc": "2026-08-05T23:49:10.748254Z",
+      "stdout_path": "steps/status-running/cmd-00.stdout.txt",
+      "stderr_path": "steps/status-running/cmd-00.stderr.txt",
+      "captures_to": null,
+      "step_status": "pass",
+      "visual": "pass",
+      "machine_ok": true,
+      "machine_summary": "view_latest: mode=bounded_stale derived_lag=15 bound=24: correlation proven; running_layers: running layers healthy; authority: observe_only / not_applied / recording=false; view_correlation: mode=bounded_stale derived_lag=15 bound=24: correlation proven; preservation: protected session fields preserved (stable projection)",
+      "gate_ids": [
+        "running_layers",
+        "authority",
+        "human_view",
+        "correlation"
+      ]
+    },
+    {
+      "step_id": "status-running",
+      "command": "./cli/automa vehicles status --id chase-sim-chaser --json",
+      "exit_code": 0,
+      "elapsed_ms": 794,
+      "started_at_utc": "2026-08-05T23:49:10.749514Z",
+      "ended_at_utc": "2026-08-05T23:49:11.543831Z",
+      "stdout_path": "steps/status-running/cmd-01.stdout.txt",
+      "stderr_path": "steps/status-running/cmd-01.stderr.txt",
+      "captures_to": "running-status.json",
+      "step_status": "pass",
+      "visual": "pass",
+      "machine_ok": true,
+      "machine_summary": "view_latest: mode=bounded_stale derived_lag=15 bound=24: correlation proven; running_layers: running layers healthy; authority: observe_only / not_applied / recording=false; view_correlation: mode=bounded_stale derived_lag=15 bound=24: correlation proven; preservation: protected session fields preserved (stable projection)",
+      "gate_ids": [
+        "running_layers",
+        "authority",
+        "human_view",
+        "correlation"
+      ]
+    },
+    {
+      "step_id": "automation-stop",
+      "command": "./cli/automa vehicles automation stop --id chase-sim-chaser",
+      "exit_code": 0,
+      "elapsed_ms": 685,
+      "started_at_utc": "2026-08-05T23:49:39.903199Z",
+      "ended_at_utc": "2026-08-05T23:49:40.588522Z",
+      "stdout_path": "steps/automation-stop/cmd-00.stdout.txt",
+      "stderr_path": "steps/automation-stop/cmd-00.stderr.txt",
+      "captures_to": null,
+      "step_status": "pass",
+      "visual": "pass",
+      "machine_ok": true,
+      "machine_summary": null,
+      "gate_ids": [
+        "cleanup"
+      ]
+    },
+    {
+      "step_id": "status-stopped",
+      "command": "./cli/automa vehicles status --id chase-sim-chaser",
+      "exit_code": 0,
+      "elapsed_ms": 760,
+      "started_at_utc": "2026-08-05T23:49:43.866777Z",
+      "ended_at_utc": "2026-08-05T23:49:44.627234Z",
+      "stdout_path": "steps/status-stopped/cmd-00.stdout.txt",
+      "stderr_path": "steps/status-stopped/cmd-00.stderr.txt",
+      "captures_to": null,
+      "step_status": "pass",
+      "visual": "pass",
+      "machine_ok": true,
+      "machine_summary": "stopped_layers: stopped layers healthy; default_recording: no new automation run directories; preservation: protected session fields preserved (stable projection)",
+      "gate_ids": [
+        "cleanup",
+        "default_recording"
+      ]
+    },
+    {
+      "step_id": "status-stopped",
+      "command": "./cli/automa vehicles status --id chase-sim-chaser --json",
+      "exit_code": 0,
+      "elapsed_ms": 655,
+      "started_at_utc": "2026-08-05T23:49:44.628096Z",
+      "ended_at_utc": "2026-08-05T23:49:45.283078Z",
+      "stdout_path": "steps/status-stopped/cmd-01.stdout.txt",
+      "stderr_path": "steps/status-stopped/cmd-01.stderr.txt",
+      "captures_to": "stopped-status.json",
+      "step_status": "pass",
+      "visual": "pass",
+      "machine_ok": true,
+      "machine_summary": "stopped_layers: stopped layers healthy; default_recording: no new automation run directories; preservation: protected session fields preserved (stable projection)",
+      "gate_ids": [
+        "cleanup",
+        "default_recording"
+      ]
+    }
+  ],
+  "layer_snapshots": {
+    "initial": {
+      "schema": "automa_vehicle_status_v1",
+      "vehicle_id": "chase-sim-chaser",
+      "checked_at_ms": 1785973700269,
+      "layers": {
+        "automation_deployment": "deployed",
+        "automation_worker": "stopped",
+        "chase_game": "ready",
+        "passive_capture": "available",
+        "perception_view": "stale",
+        "simulator_frontend": "connected",
+        "simulator_server": "reachable",
+        "vehicle": "discoverable"
+      },
+      "readiness": {
+        "blocking_layer": "automation_worker",
+        "checked_at_ms": 1785973700269,
+        "gates": {
+          "automation_deployment": {
+            "status": "ready"
+          },
+          "automation_worker": {
+            "status": "blocked"
+          },
+          "chase_game": {
+            "status": "ready"
+          },
+          "passive_capture": {
+            "status": "ready"
+          },
+          "perception_view": {
+            "status": "blocked"
+          },
+          "simulator_frontend": {
+            "status": "ready"
+          },
+          "simulator_server": {
+            "status": "ready"
+          },
+          "vehicle": {
+            "status": "ready"
+          }
+        },
+        "ready_for": "inspect perception",
+        "schema": "automa_cli_readiness_v1",
+        "status": "blocked"
+      },
+      "next_action": {
+        "command": "./cli/automa vehicles automation run --id chase-sim-chaser --observe-only --frames 0 --open-view",
+        "expected_state": "automation_worker=running, perception_view=available",
+        "external_change": null,
+        "reason": "worker_stopped"
+      },
+      "artifact": "initial-status.json"
+    },
+    "running": {
+      "schema": "automa_vehicle_status_v1",
+      "vehicle_id": "chase-sim-chaser",
+      "checked_at_ms": 1785973751505,
+      "layers": {
+        "automation_deployment": "deployed",
+        "automation_worker": "running",
+        "chase_game": "ready",
+        "passive_capture": "available",
+        "perception_view": "available",
+        "simulator_frontend": "connected",
+        "simulator_server": "reachable",
+        "vehicle": "discoverable"
+      },
+      "readiness": {
+        "blocking_layer": null,
+        "checked_at_ms": 1785973751505,
+        "gates": {
+          "automation_deployment": {
+            "status": "ready"
+          },
+          "automation_worker": {
+            "status": "ready"
+          },
+          "chase_game": {
+            "status": "ready"
+          },
+          "passive_capture": {
+            "status": "ready"
+          },
+          "perception_view": {
+            "status": "ready"
+          },
+          "simulator_frontend": {
+            "status": "ready"
+          },
+          "simulator_server": {
+            "status": "ready"
+          },
+          "vehicle": {
+            "status": "ready"
+          }
+        },
+        "ready_for": "inspect perception and stop automation",
+        "schema": "automa_cli_readiness_v1",
+        "status": "ready"
+      },
+      "next_action": null,
+      "artifact": "running-status.json"
+    },
+    "stopped": {
+      "schema": "automa_vehicle_status_v1",
+      "vehicle_id": "chase-sim-chaser",
+      "checked_at_ms": 1785973785255,
+      "layers": {
+        "automation_deployment": "deployed",
+        "automation_worker": "stopped",
+        "chase_game": "ready",
+        "passive_capture": "available",
+        "perception_view": "stale",
+        "simulator_frontend": "connected",
+        "simulator_server": "reachable",
+        "vehicle": "discoverable"
+      },
+      "readiness": {
+        "blocking_layer": "automation_worker",
+        "checked_at_ms": 1785973785255,
+        "gates": {
+          "automation_deployment": {
+            "status": "ready"
+          },
+          "automation_worker": {
+            "status": "blocked"
+          },
+          "chase_game": {
+            "status": "ready"
+          },
+          "passive_capture": {
+            "status": "ready"
+          },
+          "perception_view": {
+            "status": "blocked"
+          },
+          "simulator_frontend": {
+            "status": "ready"
+          },
+          "simulator_server": {
+            "status": "ready"
+          },
+          "vehicle": {
+            "status": "ready"
+          }
+        },
+        "ready_for": "inspect perception",
+        "schema": "automa_cli_readiness_v1",
+        "status": "blocked"
+      },
+      "next_action": {
+        "command": "./cli/automa vehicles automation run --id chase-sim-chaser --observe-only --frames 0 --open-view",
+        "expected_state": "automation_worker=running, perception_view=available",
+        "external_change": null,
+        "reason": "worker_stopped"
+      },
+      "artifact": "stopped-status.json"
+    }
+  },
+  "session_fingerprint": {
+    "baseline": {
+      "changed_fields": [],
+      "control_input": null,
+      "control_source": "programmatic",
+      "game_id": "chase",
+      "mutation_attempted": false,
+      "playback": {
+        "frameIndex": 388928,
+        "pendingAction": false,
+        "phase": "running"
+      },
+      "preserved": true,
+      "scenario_id": "default",
+      "simulation_epoch": "chase-run:bbbab2ec-9f73-4d68-9ca1-f578348061ae",
+      "stable_projection": {
+        "control_input": null,
+        "control_source": "programmatic",
+        "game_id": "chase",
+        "playback_mode": {
+          "pendingAction": false,
+          "phase": "running"
+        },
+        "scenario_id": "default",
+        "simulation_epoch": "chase-run:bbbab2ec-9f73-4d68-9ca1-f578348061ae"
+      },
+      "unknown_fields": []
+    },
+    "final": {
+      "changed_fields": [],
+      "control_input": null,
+      "control_source": "programmatic",
+      "game_id": "chase",
+      "mutation_attempted": false,
+      "playback": {
+        "frameIndex": 394340,
+        "pendingAction": false,
+        "phase": "running"
+      },
+      "preserved": true,
+      "scenario_id": "default",
+      "simulation_epoch": "chase-run:bbbab2ec-9f73-4d68-9ca1-f578348061ae",
+      "stable_projection": {
+        "control_input": null,
+        "control_source": "programmatic",
+        "game_id": "chase",
+        "playback_mode": {
+          "pendingAction": false,
+          "phase": "running"
+        },
+        "scenario_id": "default",
+        "simulation_epoch": "chase-run:bbbab2ec-9f73-4d68-9ca1-f578348061ae"
+      },
+      "unknown_fields": []
+    },
+    "preserved": true
+  },
+  "frame_correlation": {
+    "camera_frame_id": "chase_frame_391992",
+    "perception_frame_id": "chase_frame_391977",
+    "overlay_status": "stale",
+    "current": false,
+    "mode": "bounded_stale",
+    "claimed_frame_lag": 15,
+    "derived_frame_lag": 15,
+    "max_frame_lag": 24,
+    "current_frame_index": 391992,
+    "source_frame_index": 391977,
+    "frame_lag_ms": 431,
+    "result_age_ms": 400,
+    "summary": "mode=bounded_stale derived_lag=15 bound=24: correlation proven",
+    "verdict": "pass"
+  },
+  "authority": {
+    "action_policy": "observe_only",
+    "control_application": "not_applied",
+    "movement_applied": false,
+    "recording": false,
+    "frames_processed": 148
+  },
+  "recording": {
+    "requested": false,
+    "worker_reports_recording": false,
+    "before_run_directories": [
+      "automation-20260630-214835",
+      "automation-20260630-214933"
+    ],
+    "after_run_directories": [
+      "automation-20260630-214835",
+      "automation-20260630-214933"
+    ],
+    "new_run_directories": []
+  },
+  "cleanup": {
+    "attempted": true,
+    "stop_exit_code": 0,
+    "worker_stopped": true,
+    "current_generation_view_unavailable": true,
+    "repository_owned_process_remaining": false,
+    "pids": [
+      47071,
+      47195
+    ],
+    "pid_liveness": {
+      "47071": false,
+      "47195": false
+    },
+    "final_status_exit_code": 0,
+    "preservation": {
+      "ok": true,
+      "summary": "protected session fields preserved (stable projection)"
+    },
+    "stopped_layers_summary": "stopped layers healthy"
+  },
+  "findings": [],
+  "gates": [
+    {
+      "id": "help_discoverability",
+      "status": "pass",
+      "summary": "vehicles command is listed without implementation jargon"
+    },
+    {
+      "id": "initial_layers",
+      "status": "pass",
+      "summary": "initial_layers: initial layers healthy"
+    },
+    {
+      "id": "staging",
+      "status": "pass",
+      "summary": "staged_layers: staging left worker stopped with deployed perception"
+    },
+    {
+      "id": "startup",
+      "status": "pass",
+      "summary": "Ready for: inspect perception and stop automation; Browser opened"
+    },
+    {
+      "id": "running_layers",
+      "status": "pass",
+      "summary": "view_latest: mode=bounded_stale derived_lag=15 bound=24: correlation proven; running_layers: running layers healthy; authority: observe_only / not_applied / recording=false; view_correlation: mode=bounded_stale derived_lag=15 bound=24: correlation proven; preservation: protected session fields preserved (stable projection)"
+    },
+    {
+      "id": "human_view",
+      "status": "pass",
+      "summary": "Ready for: inspect perception and stop automation; Browser opened"
+    },
+    {
+      "id": "authority",
+      "status": "pass",
+      "summary": "view_latest: mode=bounded_stale derived_lag=15 bound=24: correlation proven; running_layers: running layers healthy; authority: observe_only / not_applied / recording=false; view_correlation: mode=bounded_stale derived_lag=15 bound=24: correlation proven; preservation: protected session fields preserved (stable projection)"
+    },
+    {
+      "id": "correlation",
+      "status": "pass",
+      "summary": "view_latest: mode=bounded_stale derived_lag=15 bound=24: correlation proven; running_layers: running layers healthy; authority: observe_only / not_applied / recording=false; view_correlation: mode=bounded_stale derived_lag=15 bound=24: correlation proven; preservation: protected session fields preserved (stable projection)"
+    },
+    {
+      "id": "default_recording",
+      "status": "pass",
+      "summary": "stopped_layers: stopped layers healthy; default_recording: no new automation run directories; preservation: protected session fields preserved (stable projection)"
+    },
+    {
+      "id": "cleanup",
+      "status": "pass",
+      "summary": "Automation stopped; Ready for: inspect stopped deployment"
+    }
+  ],
+  "browser_view": {
+    "imported_at_utc": "2026-08-05T23:49:39.902345Z",
+    "imported_from": "<home>/Desktop/browser-view2.png",
+    "ok": true,
+    "source_mtime_unix": 1785973770.56421,
+    "source_sha256": "45ce25f9f58ae3d159be23ad0e6cec4359b3454935d61b613a039d784004d624",
+    "step_id": "status-running",
+    "validation": "browser-view.png ok (1582x1382, 504298 bytes)",
+    "view_healthy_at_unix": 1785973751.590605
+  },
+  "interactive_human_confirmation": true,
+  "machine_preflight": {
+    "evaluated_steps": [
+      "baseline",
+      "help-top",
+      "help-vehicles",
+      "help-automation",
+      "status-initial",
+      "update-perception",
+      "automation-run",
+      "status-running",
+      "automation-stop",
+      "status-stopped"
+    ],
+    "failures": [],
+    "summary": "10 required step(s) machine-green",
+    "verdict": "pass"
+  },
+  "session_runner": {
+    "schema": "live_cli_session_result_v0",
+    "catalog": {
+      "id": "m007-acceptance",
+      "max_frame_lag": 24,
+      "title": "M007 live CLI operator acceptance",
+      "track": "acceptance"
+    },
+    "session_dir": "runner-session",
+    "session_result": "runner-session/result.json",
+    "digests": "runner-session/digests.json",
+    "human_notes": "runner-session/human-notes.md"
+  },
+  "artifacts": [
+    {
+      "path": "README.md",
+      "sha256": "0dd023e1f3cbad565854410807ccbf637a73be336d840a07cb7a93cecddff8cd"
+    },
+    {
+      "path": "help-transcript.txt",
+      "sha256": "299cc58326a00f891621ae848bbc85122b4a03238709db85761a5ebaa6f1aa2f"
+    },
+    {
+      "path": "cli-transcript.txt",
+      "sha256": "1b7801d7db360d5a38f2a2edf7676b61abd11d2a1e4bcea5a9d14155e8e652ce"
+    },
+    {
+      "path": "initial-status.json",
+      "sha256": "a320935da67b9be9ec997aa09c79699a9fda69ea4a9a1dbadef4e1e217f561e1"
+    },
+    {
+      "path": "running-status.json",
+      "sha256": "f504282958931619f7c59581b82fa74c691d8ea1f7dcf84aa0231de0fbc58d3c"
+    },
+    {
+      "path": "stopped-status.json",
+      "sha256": "20206a79670fa49222e4370351da79b0ae69a1f49f956c2c5ea0e94a47fcd931"
+    },
+    {
+      "path": "view-publication.json",
+      "sha256": "239235dc4c48dd6af4e466eba23fe963f136e948e42eaa5e74f12bf6f2db244c"
+    },
+    {
+      "path": "browser-view.png",
+      "sha256": "45ce25f9f58ae3d159be23ad0e6cec4359b3454935d61b613a039d784004d624"
+    },
+    {
+      "path": "browser-view-meta.json",
+      "sha256": "e7679359434c6da06c168337b0b9fdcb2f39156bfaf8426e67bd555eef307951"
+    },
+    {
+      "path": "exploratory-findings.md",
+      "sha256": "b946f1c3bdcf6f7bc23c043e8bfd528ea33caae105b931effe5f618255a817b5"
+    },
+    {
+      "path": "runner-session/result.json",
+      "sha256": "da18331bc99f9638c05ffffde9480b127a1e69a2761441d563b0d489ff54f81a"
+    },
+    {
+      "path": "runner-session/digests.json",
+      "sha256": "7c585807bdce6954c604ad4ce833dbc43db7bc2d3cf2d84f8bb76df2c7e72cbb"
+    },
+    {
+      "path": "runner-session/human-notes.md",
+      "sha256": "266c20921100f1344e48f6d88cf2aa171690c249ef8a71fd59eb774990339628"
+    }
+  ],
+  "exploratory_findings": {
+    "gating": false,
+    "affects_acceptance_result": false,
+    "source": "https://github.com/GeorgeLuo/auto-driving/pull/88#issuecomment-5171399199",
+    "ledger": "exploratory-findings.md",
+    "summary": "Confirmed exploratory observations from the 2026-08-03 PR session; outside the frozen six-command M007-05 journey (acceptance_blocker false for all). Classified individually under the #86 taxonomy: four usability_defect items and one enhancement_candidate; deferred to later leaf-audit/product units.",
+    "items": [
+      {
+        "id": "M007-LIVE-001",
+        "classification": "usability_defect",
+        "classification_rationale": "Existing apply artifact identity fails under sequential use: sibling run directories overwrite. This is a defect of the current surface, not a request for new capability.",
+        "severity": "P2",
+        "surface": "vehicles perception apply --record",
+        "observation": "Second-granularity apply run ids can collide and overwrite sibling artifact directories.",
+        "disposition": "confirmed_deferred",
+        "acceptance_blocker": false
+      },
+      {
+        "id": "M007-LIVE-002",
+        "classification": "usability_defect",
+        "classification_rationale": "Existing readiness inventory contradicts execution: marks a candidate ready then fails on model path resolution. Misleading existing output.",
+        "severity": "P2",
+        "surface": "vehicles perception candidates / compare",
+        "observation": "candidates marks fastsam ready while compare fails on models/FastSAM-s.pt path resolution.",
+        "disposition": "confirmed_deferred",
+        "acceptance_blocker": false
+      },
+      {
+        "id": "M007-LIVE-003",
+        "classification": "usability_defect",
+        "classification_rationale": "Existing human failure path dumps a full multi-frame JSON blob after the table. Malformed operator-facing failure presentation.",
+        "severity": "P3",
+        "surface": "vehicles perception compare human failure output",
+        "observation": "Failed candidate dumps full multi-frame JSON into human output.",
+        "disposition": "confirmed_deferred",
+        "acceptance_blocker": false
+      },
+      {
+        "id": "M007-LIVE-004",
+        "classification": "enhancement_candidate",
+        "classification_rationale": "A consolidated multi-algorithm comparison page / auto-open review is an additive preference beyond per-run review.html already written.",
+        "severity": "P3",
+        "surface": "perception apply/compare review artifacts",
+        "observation": "Per-run review.html only; not auto-opened; no consolidated comparison page.",
+        "disposition": "confirmed_deferred",
+        "acceptance_blocker": false
+      },
+      {
+        "id": "M007-LIVE-005",
+        "classification": "usability_defect",
+        "classification_rationale": "Existing --json perception-run surface buries the review path in a large dump, making the machine report operator-hostile as a scan surface (human non-JSON form exists separately).",
+        "severity": "P3",
+        "surface": "vehicles perception run --json",
+        "observation": "JSON-primary surface buries review path; operator-hostile as default scan path.",
+        "disposition": "confirmed_deferred",
+        "acceptance_blocker": false
+      }
+    ]
+  }
+}

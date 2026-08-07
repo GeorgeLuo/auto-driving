@@ -1,0 +1,14 @@
+Automa is the control desk for the vehicles and simulators in this workspace.
+It helps you find what is reachable, stage controller choices locally, and deploy code to a physical vehicle.
+It can start and stop automation runs without making you remember where the runtime files live.
+It also gives you one place to inspect the latest perception output and the controller behavior staged for each vehicle.
+Use it when you want to move from editing local code to running that code against a real or simulated vehicle.
+The sections below only show the next command level; each command has its own help for details.
+
+- help       Show this command summary.
+- vehicles   Discover vehicles, stage bundles, and inspect each runtime layer.
+- simulators Explicitly prepare or inspect simulator environments.
+
+Detailed help:
+- ./cli/automa --help
+- ./cli/automa <command> help

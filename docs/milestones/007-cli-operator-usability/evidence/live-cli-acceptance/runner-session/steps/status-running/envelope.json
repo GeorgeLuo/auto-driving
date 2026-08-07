@@ -1,0 +1,87 @@
+{
+  "browser_view": {
+    "imported_at_utc": "2026-08-05T23:49:39.902345Z",
+    "imported_from": "<home>/Desktop/browser-view2.png",
+    "ok": true,
+    "source_mtime_unix": 1785973770.56421,
+    "source_sha256": "45ce25f9f58ae3d159be23ad0e6cec4359b3454935d61b613a039d784004d624",
+    "step_id": "status-running",
+    "validation": "browser-view.png ok (1582x1382, 504298 bytes)",
+    "view_healthy_at_unix": 1785973751.590605
+  },
+  "commands": [
+    {
+      "argv": [
+        "./cli/automa",
+        "vehicles",
+        "status",
+        "--id",
+        "chase-sim-chaser"
+      ],
+      "command": "./cli/automa vehicles status --id chase-sim-chaser",
+      "elapsed_ms": 1105,
+      "ended_at_utc": "2026-08-05T23:49:10.748254Z",
+      "exit_code": 0,
+      "started_at_utc": "2026-08-05T23:49:09.642776Z",
+      "stderr_path": "steps/status-running/cmd-00.stderr.txt",
+      "stdout_path": "steps/status-running/cmd-00.stdout.txt"
+    },
+    {
+      "argv": [
+        "./cli/automa",
+        "vehicles",
+        "status",
+        "--id",
+        "chase-sim-chaser",
+        "--json"
+      ],
+      "captures_to": "running-status.json",
+      "command": "./cli/automa vehicles status --id chase-sim-chaser --json",
+      "elapsed_ms": 794,
+      "ended_at_utc": "2026-08-05T23:49:11.543831Z",
+      "exit_code": 0,
+      "started_at_utc": "2026-08-05T23:49:10.749514Z",
+      "stderr_path": "steps/status-running/cmd-01.stderr.txt",
+      "stdout_path": "steps/status-running/cmd-01.stdout.txt"
+    }
+  ],
+  "gate_ids": [
+    "running_layers",
+    "authority",
+    "human_view",
+    "correlation"
+  ],
+  "human": {
+    "finding_requested": false,
+    "interactive": true,
+    "notes": "",
+    "visual": "pass"
+  },
+  "id": "status-running",
+  "kind": "command",
+  "machine_evidence": {
+    "view_correlation": {
+      "claimed_frame_lag": 15,
+      "current_frame_id": "chase_frame_391992",
+      "current_frame_index": 391992,
+      "derived_frame_lag": 15,
+      "diagnostic_findings": [],
+      "frame_lag_ms": 431,
+      "max_frame_lag": 24,
+      "mode": "bounded_stale",
+      "reason": "correlation proven",
+      "result_age_ms": 400,
+      "source_frame_id": "chase_frame_391977",
+      "source_frame_index": 391977,
+      "summary": "mode=bounded_stale derived_lag=15 bound=24: correlation proven",
+      "verdict": "pass"
+    }
+  },
+  "machine_ok": true,
+  "machine_summary": "view_latest: mode=bounded_stale derived_lag=15 bound=24: correlation proven; running_layers: running layers healthy; authority: observe_only / not_applied / recording=false; view_correlation: mode=bounded_stale derived_lag=15 bound=24: correlation proven; preservation: protected session fields preserved (stable projection)",
+  "primary_cue": "worker running; perception_view available; observe_only / not_applied",
+  "question": "Do running layers and authority match observation-only health?",
+  "required_for_verdict": true,
+  "safety": "read",
+  "status": "pass"
+}

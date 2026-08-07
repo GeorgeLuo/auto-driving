@@ -1,0 +1,18 @@
+{
+  "attempted": false,
+  "deployment_before": "deployed",
+  "error": null,
+  "needed": false,
+  "ok": true,
+  "pid_liveness": {
+    "47071": false
+  },
+  "pids_before": [
+    47071
+  ],
+  "status_exit_code": 0,
+  "stop_exit_code": null,
+  "view_before": "stale",
+  "worker_state_after": "stopped",
+  "worker_state_before": "stopped"
+}

@@ -1,0 +1,61 @@
+{
+  "browser_view": null,
+  "commands": [
+    {
+      "argv": [
+        "./cli/automa",
+        "vehicles",
+        "update",
+        "perception",
+        "--id",
+        "chase-sim-chaser",
+        "--algorithm",
+        "lightweight_observer"
+      ],
+      "command": "./cli/automa vehicles update perception --id chase-sim-chaser --algorithm lightweight_observer",
+      "elapsed_ms": 883,
+      "ended_at_utc": "2026-08-05T23:48:26.769722Z",
+      "exit_code": 0,
+      "started_at_utc": "2026-08-05T23:48:25.886607Z",
+      "stderr_path": "steps/update-perception/cmd-00.stderr.txt",
+      "stdout_path": "steps/update-perception/cmd-00.stdout.txt"
+    },
+    {
+      "argv": [
+        "./cli/automa",
+        "vehicles",
+        "status",
+        "--id",
+        "chase-sim-chaser",
+        "--json"
+      ],
+      "captures_to": "staged-status.json",
+      "command": "./cli/automa vehicles status --id chase-sim-chaser --json",
+      "elapsed_ms": 756,
+      "ended_at_utc": "2026-08-05T23:48:27.526959Z",
+      "exit_code": 0,
+      "started_at_utc": "2026-08-05T23:48:26.770563Z",
+      "stderr_path": "steps/update-perception/cmd-01.stderr.txt",
+      "stdout_path": "steps/update-perception/cmd-01.stdout.txt"
+    }
+  ],
+  "gate_ids": [
+    "staging"
+  ],
+  "human": {
+    "finding_requested": false,
+    "interactive": true,
+    "notes": "",
+    "visual": "pass"
+  },
+  "id": "update-perception",
+  "kind": "command",
+  "machine_evidence": {},
+  "machine_ok": true,
+  "machine_summary": "staged_layers: staging left worker stopped with deployed perception",
+  "primary_cue": "Ready for: observation-only automation (worker not started)",
+  "question": "Does staging lightweight_observer leave the worker stopped?",
+  "required_for_verdict": true,
+  "safety": "local_write",
+  "status": "pass"
+}

@@ -6,16 +6,25 @@ order below instead of loading the full process contract for every task.
 
 ## Active Milestone
 
-**None.** Milestone 005 is closed. Its whole-milestone review is
-[PR #68](https://github.com/GeorgeLuo/auto-driving/pull/68).
+**Milestone 007 — CLI Operator Usability**
+
+| Field | Value |
+| --- | --- |
+| Status | Active (ad-hoc usability milestone) |
+| Plan | [plan.html](milestones/007-cli-operator-usability/plan.html) · [plan.md](milestones/007-cli-operator-usability/plan.md) |
+| Cumulative PR | [#81](https://github.com/GeorgeLuo/auto-driving/pull/81) (draft) |
+| Current frontier | Simulator-to-perception CLI journey |
+
+Detailed exit criteria, workflow state, and risks live only in the milestone
+plan. This milestone is a narrow operator-usability chain; it does not absorb
+or re-scope Milestone 006 or its paused implementation PR.
+
+Current operator reference:
+[Chase simulator-to-perception CLI journey](reference/cli-simulator-perception-journey.md).
 
 ## Immediate Pre-Plan (Not Active)
 
-**Milestone 006 — Decision-Facing Perception Readiness**
-
-- Plan: [plan.html](milestones/006-decision-facing-perception-readiness/plan.html)
-- Status: pre-plan; activation selected by the 005 closeout but not yet Active
-- Do not implement 006 until its own activation step completes
+**None.**
 
 ## Recently Closed
 

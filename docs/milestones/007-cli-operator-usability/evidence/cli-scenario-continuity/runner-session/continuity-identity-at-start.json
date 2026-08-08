@@ -1,7 +1,7 @@
 {
   "catalog_path": "<repo>/docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/catalogs/m007-continuity.yaml",
   "catalog_sha256": "c3ef8cccfc1a3dcdab6efdaefaf0b8f79fb5638327360e87e0d6686f71042fcb",
-  "continuity_contract_sha256": "ccaa67b42398603162e2a280b9486ab16d032ed4b5ba3ed463b4fc6ecbe9fc90",
+  "continuity_contract_sha256": "c4afb44f925926af1641df10c169b8d8db7959a97a2e2a506b9efa74831009fc",
   "metrics_ui": {
     "branch": null,
     "commit": null,

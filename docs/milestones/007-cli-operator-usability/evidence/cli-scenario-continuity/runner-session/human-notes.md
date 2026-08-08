@@ -1,6 +1,6 @@
 # Session notes — m007-continuity
 
-- started_at_utc: `2026-08-08T19:20:02.421756Z`
+- started_at_utc: `2026-08-08T19:37:11.074700Z`
 - execution_mode: `machine_only_live`
 - track: `continuity`
 - operator: `machine-preflight`
@@ -52,4 +52,4 @@
 - result: `incomplete`
 - reason: required family continuity.live_config_swap still partial (often HITL pending)
 - findings: 0
-- cleanup: {'attempted': True, 'needed': True, 'stop_exit_code': 0, 'final_status_exit_code': 0, 'worker_stopped': True, 'pid_alive': False, 'pids': [79352, 80101], 'pid_liveness': {'79352': False, '80101': False}, 'error': None, 'preservation': {'ok': True, 'summary': 'continuity track: baseline fingerprint not required'}, 'stopped_layers_summary': 'stopped layers healthy', 'pid': 80101}
+- cleanup: {'attempted': True, 'needed': True, 'stop_exit_code': 0, 'final_status_exit_code': 0, 'worker_stopped': True, 'pid_alive': False, 'pids': [80101, 81747], 'pid_liveness': {'80101': False, '81747': False}, 'error': None, 'preservation': {'ok': True, 'summary': 'continuity track: baseline fingerprint not required'}, 'stopped_layers_summary': 'stopped layers healthy', 'pid': 81747}

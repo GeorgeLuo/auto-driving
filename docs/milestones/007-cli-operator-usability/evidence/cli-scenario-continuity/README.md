@@ -1,6 +1,6 @@
 # Realistic CLI scenario continuity evidence
 
-Status: **Machine-first complete; shared git-identity wiring closed; HITL pending.**
+Status: **Machine-first complete after untracked Git-material identity + CI gate; HITL pending.**
 
 Accepted contract: [cli-scenario-continuity.md](../../proposals/cli-scenario-continuity.md) (PR #99).
 
@@ -12,8 +12,8 @@ Accepted contract: [cli-scenario-continuity.md](../../proposals/cli-scenario-con
 | Machine preflight | **pass** |
 | Continuity verdict | **incomplete** (live_config_swap partial — visual HITL pending) |
 | US-04 restore | **ok** (snapshot meta `staged_trees` + restore compare) |
-| Finalizer | **ok** |
-| Behavior head | `74a4a4a` |
+| Finalizer | **ok** (dirty identity includes symlink targets + exec modes) |
+| Behavior head | `c2aca34` |
 
 ## Family ledger
 
@@ -23,9 +23,12 @@ Accepted contract: [cli-scenario-continuity.md](../../proposals/cli-scenario-con
 | `continuity.live_config_swap` | **partial** | HITL visual still required |
 | `continuity.memory_lifecycle` | **passed** | Memory check PASS |
 
-## Latest repair
+## Latest re-review repairs
 
-`_git_identity` now **delegates** to shared `collect_git_identity` (no inline duplicate).
+1. Untracked dirty identity binds symlink **targets** (mode 120000) and file **exec modes** (100644/100755)
+2. US-04 interrupt matrix mutates then interrupts; asserts exact activation/tree rollback
+3. `tests/milestones/` package + `tests/run.py` discovery so GitHub check runs the matrix
+4. PR validation counts reconciled to **90** milestone tests
 
 ## Remaining for Met
 

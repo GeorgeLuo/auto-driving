@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -28,6 +29,116 @@ def _base_catalog(steps: list[dict]) -> dict:
     }
 
 
+def _full_topology_catalog(*, visual: bool = True, offline_record: bool = True) -> dict:
+    """Minimal catalog that satisfies full family topology when well-formed."""
+
+    offline_run = [
+        "./cli/automa",
+        "vehicles",
+        "perception",
+        "run",
+        "--id",
+        "x",
+        "--frames",
+        "2",
+    ]
+    if offline_record:
+        offline_run.append("--record")
+    return _base_catalog(
+        [
+            {
+                "id": "offline-capture",
+                "family_id": "continuity.offline_perception",
+                "safety": "local_write",
+                "required_for_verdict": True,
+                "primary_cue": "human summary leads with review path and frame counts",
+                "commands": [offline_run],
+            },
+            {
+                "id": "offline-apply",
+                "family_id": "continuity.offline_perception",
+                "safety": "local_write",
+                "required_for_verdict": True,
+                "primary_cue": "review path first; exclusive apply run directory",
+                "commands": [
+                    [
+                        "./cli/automa",
+                        "vehicles",
+                        "perception",
+                        "apply",
+                        "{src_dir}",
+                        "--algorithm",
+                        "lightweight_observer",
+                        "--record",
+                    ]
+                ],
+            },
+            {
+                "id": "live-swap-stage",
+                "family_id": "continuity.live_config_swap",
+                "safety": "live_mutation",
+                "required_for_verdict": True,
+                "visual_required": visual,
+                "visual_prompt": "Automa view nonblank after restage?",
+                "primary_cue": "Ready for: inspect perception; worker running; observe_only",
+                "commands": [
+                    [
+                        "./cli/automa",
+                        "vehicles",
+                        "update",
+                        "perception",
+                        "--id",
+                        "x",
+                        "--algorithm",
+                        "lightweight_observer",
+                    ],
+                    [
+                        "./cli/automa",
+                        "vehicles",
+                        "automation",
+                        "run",
+                        "--id",
+                        "x",
+                        "--observe-only",
+                        "--frames",
+                        "0",
+                        "--open-view",
+                    ],
+                ],
+            },
+            {
+                "id": "live-swap-stop",
+                "family_id": "continuity.live_config_swap",
+                "safety": "live_mutation",
+                "required_for_verdict": True,
+                "visual_required": False,
+                "primary_cue": "worker stopped; activation restored",
+                "commands": [
+                    ["./cli/automa", "vehicles", "automation", "stop", "--id", "x"],
+                ],
+            },
+            {
+                "id": "memory-lifecycle",
+                "family_id": "continuity.memory_lifecycle",
+                "safety": "live_mutation",
+                "required_for_verdict": True,
+                "primary_cue": "Memory check: ... PASS (present/dropout/expiry/reset)",
+                "commands": [
+                    [
+                        "./cli/automa",
+                        "vehicles",
+                        "memory",
+                        "check",
+                        "--id",
+                        "x",
+                        "--record",
+                    ]
+                ],
+            },
+        ]
+    )
+
+
 class ContinuitySafetyTests(unittest.TestCase):
     def test_rejects_movement_leaf(self) -> None:
         catalog = _base_catalog(
@@ -38,30 +149,6 @@ class ContinuitySafetyTests(unittest.TestCase):
                     "safety": "read",
                     "commands": [
                         ["./cli/automa", "vehicles", "operation", "startup-check", "--id", "x"]
-                    ],
-                },
-                {
-                    "id": "ok1",
-                    "family_id": "continuity.live_config_swap",
-                    "safety": "live_mutation",
-                    "commands": [
-                        [
-                            "./cli/automa",
-                            "vehicles",
-                            "automation",
-                            "run",
-                            "--id",
-                            "x",
-                            "--observe-only",
-                        ]
-                    ],
-                },
-                {
-                    "id": "ok2",
-                    "family_id": "continuity.memory_lifecycle",
-                    "safety": "live_mutation",
-                    "commands": [
-                        ["./cli/automa", "vehicles", "memory", "check", "--id", "x"]
                     ],
                 },
             ]
@@ -79,29 +166,6 @@ class ContinuitySafetyTests(unittest.TestCase):
                     "safety": "local_write",
                     "commands": [
                         ["./cli/automa", "simulators", "ensure", "--scenario", "x"]
-                    ],
-                },
-                {
-                    "id": "ok1",
-                    "family_id": "continuity.live_config_swap",
-                    "safety": "live_mutation",
-                    "commands": [
-                        [
-                            "./cli/automa",
-                            "vehicles",
-                            "automation",
-                            "stop",
-                            "--id",
-                            "x",
-                        ]
-                    ],
-                },
-                {
-                    "id": "ok2",
-                    "family_id": "continuity.memory_lifecycle",
-                    "safety": "live_mutation",
-                    "commands": [
-                        ["./cli/automa", "vehicles", "memory", "reset", "--id", "x"]
                     ],
                 },
             ]
@@ -149,7 +213,41 @@ class ContinuitySafetyTests(unittest.TestCase):
             ]
         )
         self.assertFalse(ok, reason)
-        self.assertIn("unregistered", reason)
+        self.assertTrue("unregistered" in reason or "allowlist" in reason, reason)
+
+    def test_rejects_automation_record_even_if_parser_valid(self) -> None:
+        ok, reason = cc.argv_allowed(
+            [
+                "./cli/automa",
+                "vehicles",
+                "automation",
+                "run",
+                "--id",
+                "x",
+                "--observe-only",
+                "--record",
+            ]
+        )
+        self.assertFalse(ok, reason)
+        self.assertTrue(
+            "record" in reason.lower() or "forbidden" in reason.lower() or "allowlist" in reason,
+            reason,
+        )
+
+    def test_rejects_verbose_ok_but_log_forbidden_on_automation(self) -> None:
+        ok, reason = cc.argv_allowed(
+            [
+                "./cli/automa",
+                "vehicles",
+                "automation",
+                "run",
+                "--id",
+                "x",
+                "--observe-only",
+                "--log",
+            ]
+        )
+        self.assertFalse(ok, reason)
 
 
 class ContinuityFamilyTests(unittest.TestCase):
@@ -159,8 +257,18 @@ class ContinuityFamilyTests(unittest.TestCase):
                 {
                     "id": "a",
                     "family_id": "continuity.offline_perception",
+                    "required_for_verdict": True,
+                    "primary_cue": "review path first",
                     "commands": [
-                        ["./cli/automa", "vehicles", "perception", "run", "--id", "x"]
+                        [
+                            "./cli/automa",
+                            "vehicles",
+                            "perception",
+                            "run",
+                            "--id",
+                            "x",
+                            "--record",
+                        ]
                     ],
                 }
             ]
@@ -170,40 +278,62 @@ class ContinuityFamilyTests(unittest.TestCase):
         self.assertIn("missing required", reason)
 
     def test_help_only_required_family_rejected(self) -> None:
-        catalog = _base_catalog(
-            [
-                {
-                    "id": "a",
-                    "family_id": "continuity.offline_perception",
-                    "commands": [["./cli/automa", "help"]],
-                },
-                {
-                    "id": "b",
-                    "family_id": "continuity.live_config_swap",
-                    "commands": [
-                        [
-                            "./cli/automa",
-                            "vehicles",
-                            "automation",
-                            "run",
-                            "--observe-only",
-                            "--id",
-                            "x",
-                        ]
-                    ],
-                },
-                {
-                    "id": "c",
-                    "family_id": "continuity.memory_lifecycle",
-                    "commands": [
-                        ["./cli/automa", "vehicles", "memory", "check", "--id", "x"]
-                    ],
-                },
-            ]
-        )
+        catalog = _full_topology_catalog()
+        catalog["steps"][0]["commands"] = [["./cli/automa", "help"]]
         ok, reason, _ = cc.validate_continuity_families(catalog)
         self.assertFalse(ok)
         self.assertIn("help/status-only", reason)
+
+    def test_thin_offline_without_record_rejected(self) -> None:
+        catalog = _full_topology_catalog(offline_record=False)
+        ok, reason, _ = cc.validate_continuity_families(catalog)
+        self.assertFalse(ok, reason)
+        self.assertIn("recorded", reason)
+
+    def test_thin_offline_hardcoded_tmp_rejected(self) -> None:
+        catalog = _full_topology_catalog()
+        catalog["steps"][1]["commands"] = [
+            [
+                "./cli/automa",
+                "vehicles",
+                "perception",
+                "apply",
+                "/tmp/some-run",
+                "--algorithm",
+                "lightweight_observer",
+                "--record",
+            ]
+        ]
+        ok, reason, _ = cc.validate_continuity_families(catalog)
+        self.assertFalse(ok, reason)
+        self.assertTrue("src_dir" in reason or "/tmp" in reason, reason)
+
+    def test_live_without_visual_required_rejected(self) -> None:
+        catalog = _full_topology_catalog(visual=False)
+        ok, reason, _ = cc.validate_continuity_families(catalog)
+        self.assertFalse(ok, reason)
+        self.assertIn("visual_required", reason)
+
+    def test_duplicate_step_ids_rejected(self) -> None:
+        catalog = _full_topology_catalog()
+        catalog["steps"][1]["id"] = catalog["steps"][0]["id"]
+        ok, reason, _ = cc.validate_continuity_families(catalog)
+        self.assertFalse(ok, reason)
+        self.assertIn("duplicate", reason)
+
+    def test_path_only_primary_cue_rejected(self) -> None:
+        catalog = _full_topology_catalog()
+        catalog["steps"][0]["primary_cue"] = "/tmp/only/a/path.json"
+        ok, reason, _ = cc.validate_continuity_families(catalog)
+        self.assertFalse(ok, reason)
+        self.assertIn("primary_cue", reason)
+
+    def test_well_formed_topology_accepted(self) -> None:
+        catalog = _full_topology_catalog()
+        ok, reason, _ = cc.validate_continuity_families(catalog)
+        self.assertTrue(ok, reason)
+        ok_s, reason_s, _ = cc.validate_continuity_safety_preflight(catalog)
+        self.assertTrue(ok_s, reason_s)
 
     def test_partial_does_not_pass_family(self) -> None:
         aggregates = cc.aggregate_family_status(
@@ -262,6 +392,7 @@ class ContinuityRestoreAndFinalizerTests(unittest.TestCase):
             "restorable_bytes": None,
             "sha256": "abc",
             "path": "/tmp/x",
+            "existed": True,
         }
         self.assertFalse(cc.snapshot_is_restorable(snap))
         result = cc.restore_activation(snap)
@@ -277,6 +408,59 @@ class ContinuityRestoreAndFinalizerTests(unittest.TestCase):
             restored = cc.restore_activation(snap)
             self.assertTrue(restored["ok"], restored)
             self.assertEqual(path.read_text(encoding="utf-8"), '{"schema":"test","v":1}\n')
+
+    def test_absent_optional_removes_trial_created_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            vehicle = "v1"
+            base = root / "runtime" / "vehicles" / vehicle / "bundle" / "runtime"
+            perc = base / "perception" / "active.json"
+            perc.parent.mkdir(parents=True)
+            perc.write_text('{"k":"perception"}\n', encoding="utf-8")
+            mem = base / "memory" / "active.json"
+            # snapshot while memory absent
+            snap = cc.snapshot_staged_state(root, vehicle)
+            self.assertTrue(cc.snapshot_is_restorable(snap), snap)
+            self.assertFalse((snap["files"]["memory"]).get("existed"))
+            # trial creates memory activation
+            mem.parent.mkdir(parents=True, exist_ok=True)
+            mem.write_text('{"k":"trial"}\n', encoding="utf-8")
+            restored = cc.restore_activation(snap)
+            self.assertTrue(restored["ok"], restored)
+            self.assertFalse(mem.is_file(), "trial memory activation must be removed")
+
+    def test_staged_snapshot_restores_bundle_trees(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            vehicle = "v1"
+            bundle = root / "runtime" / "vehicles" / vehicle / "bundle"
+            runtime = bundle / "runtime"
+            for name in ("perception", "decision", "memory"):
+                path = runtime / name / "active.json"
+                path.parent.mkdir(parents=True)
+                path.write_text(f'{{"k":"{name}"}}\n', encoding="utf-8")
+            auto = bundle / "autonomy" / "pkg.py"
+            auto.parent.mkdir(parents=True)
+            auto.write_text("prior = 1\n", encoding="utf-8")
+            impl = bundle / "implementations" / "x.py"
+            impl.parent.mkdir(parents=True)
+            impl.write_text("prior_impl = 1\n", encoding="utf-8")
+            (bundle / "bundle-manifest.json").write_text('{"tree":"prior"}\n', encoding="utf-8")
+            cache = root / "cache"
+            snap = cc.snapshot_staged_state(root, vehicle, cache_dir=cache)
+            self.assertTrue(cc.snapshot_is_restorable(snap), snap)
+            # trial mutates trees and activations
+            auto.write_text("prior = 2\n", encoding="utf-8")
+            impl.write_text("prior_impl = 2\n", encoding="utf-8")
+            (runtime / "perception" / "active.json").write_text('{"k":"mut"}\n', encoding="utf-8")
+            restored = cc.restore_activation(snap)
+            self.assertTrue(restored["ok"], restored)
+            self.assertEqual(auto.read_text(encoding="utf-8"), "prior = 1\n")
+            self.assertEqual(impl.read_text(encoding="utf-8"), "prior_impl = 1\n")
+            self.assertEqual(
+                (runtime / "perception" / "active.json").read_text(encoding="utf-8"),
+                '{"k":"perception"}\n',
+            )
 
     def test_finalizer_refuses_stale_catalog_digest(self) -> None:
         recorded = {
@@ -340,25 +524,151 @@ class ContinuityRestoreAndFinalizerTests(unittest.TestCase):
         ok, reason = cc.finalize_evidence_freshness(bundle, bundle)
         self.assertTrue(ok, reason)
 
-    def test_staged_snapshot_roundtrip(self) -> None:
+    def test_stale_session_against_tree_fails(self) -> None:
+        """session-A / tree-B: mutating a product file invalidates recorded identity."""
+
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            vehicle = "v1"
-            base = root / "runtime" / "vehicles" / vehicle / "bundle" / "runtime"
-            for name in ("perception", "decision", "memory"):
-                path = base / name / "active.json"
-                path.parent.mkdir(parents=True)
-                path.write_text(f'{{"k":"{name}"}}\n', encoding="utf-8")
-            snap = cc.snapshot_staged_state(root, vehicle)
-            self.assertTrue(cc.snapshot_is_restorable(snap), snap)
-            # mutate
-            (base / "perception" / "active.json").write_text('{"k":"mutated"}\n', encoding="utf-8")
-            restored = cc.restore_activation(snap)
-            self.assertTrue(restored["ok"], restored)
-            self.assertEqual(
-                (base / "perception" / "active.json").read_text(encoding="utf-8"),
-                '{"k":"perception"}\n',
+            # minimal product surface + catalog + runner copies
+            for rel in cc.DEFAULT_PRODUCT_RELATIVE_PATHS:
+                p = root / rel
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text(f"# {rel}\n", encoding="utf-8")
+            cat = (
+                root
+                / "docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/catalogs"
             )
+            cat.mkdir(parents=True)
+            catalog_path = cat / "m007-continuity.yaml"
+            catalog_path.write_text("id: m007-continuity\n", encoding="utf-8")
+            runner = (
+                root
+                / "docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/session_runner.py"
+            )
+            runner.parent.mkdir(parents=True, exist_ok=True)
+            runner.write_text("# runner\n", encoding="utf-8")
+            continuity = runner.parent / "continuity_contract.py"
+            continuity.write_text("# contract\n", encoding="utf-8")
+
+            recorded = cc.collect_identity_bundle(
+                repo_root=root, catalog_path=catalog_path
+            )
+            recorded["metrics_ui_required"] = False
+            session = root / "session"
+            session.mkdir()
+            (session / "result.json").write_text(
+                json.dumps(
+                    {
+                        "result": "incomplete",
+                        "continuity": {"identity_recorded": recorded},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            # mutate one product file (tree B)
+            (root / "cli/automa_cli/automation.py").write_text("# mutated\n", encoding="utf-8")
+            out = cc.validate_session_against_tree(
+                session, repo_root=root, catalog_path=catalog_path
+            )
+            self.assertFalse(out["ok"], out)
+            self.assertIn("mismatch", out["reason"].lower() + out.get("reason", ""))
+
+    def test_session_against_tree_ok_when_unchanged(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for rel in cc.DEFAULT_PRODUCT_RELATIVE_PATHS:
+                p = root / rel
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text(f"# {rel}\n", encoding="utf-8")
+            cat = (
+                root
+                / "docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/catalogs"
+            )
+            cat.mkdir(parents=True)
+            catalog_path = cat / "m007-continuity.yaml"
+            catalog_path.write_text("id: m007-continuity\n", encoding="utf-8")
+            runner = (
+                root
+                / "docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/session_runner.py"
+            )
+            runner.parent.mkdir(parents=True, exist_ok=True)
+            runner.write_text("# runner\n", encoding="utf-8")
+            (runner.parent / "continuity_contract.py").write_text("# c\n", encoding="utf-8")
+            recorded = cc.collect_identity_bundle(
+                repo_root=root, catalog_path=catalog_path
+            )
+            recorded["metrics_ui_required"] = False
+            session = root / "session"
+            session.mkdir()
+            (session / "result.json").write_text(
+                json.dumps(
+                    {
+                        "result": "incomplete",
+                        "continuity": {"identity_recorded": recorded},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            out = cc.validate_session_against_tree(
+                session, repo_root=root, catalog_path=catalog_path
+            )
+            self.assertTrue(out["ok"], out)
+
+
+class ContinuityLineageTests(unittest.TestCase):
+    def test_capture_and_verify_content_lineage(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "run"
+            frames = src / "frames"
+            frames.mkdir(parents=True)
+            f0 = frames / "frame_000000.png"
+            f1 = frames / "frame_000001.png"
+            f0.write_bytes(b"\x89PNG-frame0")
+            f1.write_bytes(b"\x89PNG-frame1")
+            run = {
+                "frames": [
+                    {"frame_id": "frame_000000", "image_path": str(f0)},
+                    {"frame_id": "frame_000001", "image_path": str(f1)},
+                ]
+            }
+            (src / "run.json").write_text(json.dumps(run), encoding="utf-8")
+            lineage = cc.capture_source_lineage(src)
+            self.assertTrue(lineage["ok"], lineage)
+            self.assertEqual(lineage["frame_count"], 2)
+            ok, reason = cc.verify_source_lineage(src, lineage)
+            self.assertTrue(ok, reason)
+            # mutation of ordered input fails verify
+            f0.write_bytes(b"\x89PNG-MUTATED")
+            ok2, reason2 = cc.verify_source_lineage(src, lineage)
+            self.assertFalse(ok2)
+            self.assertIn("mismatch", reason2)
+
+    def test_missing_run_json_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "run"
+            src.mkdir()
+            lineage = cc.capture_source_lineage(src)
+            self.assertFalse(lineage["ok"])
+            self.assertIn("run.json", str(lineage.get("error")))
+
+
+class ContinuityVerdictTests(unittest.TestCase):
+    def test_hitl_incomplete_not_pass(self) -> None:
+        verdict, reason = cc.derive_continuity_verdict(
+            safety_preflight_ok=True,
+            family_aggregates={
+                "continuity.offline_perception": "passed",
+                "continuity.live_config_swap": "partial",
+                "continuity.memory_lifecycle": "passed",
+            },
+            restore_ok=True,
+            cleanup_ok=True,
+            finalizer_ok=True,
+            findings=[],
+            hitl_complete=False,
+        )
+        self.assertEqual(verdict, "incomplete")
+        self.assertIn("partial", reason or "")
 
 
 class RunIdCollisionTests(unittest.TestCase):
@@ -367,6 +677,18 @@ class RunIdCollisionTests(unittest.TestCase):
 
         ids = {_run_id("apply", "same-source") for _ in range(20)}
         self.assertEqual(len(ids), 20)
+
+
+class CompareErrorDetailTests(unittest.TestCase):
+    def test_compare_failures_keep_error_detail_field(self) -> None:
+        # Structural contract: compare failure dicts include error_detail key in source.
+        src = (
+            Path(__file__).resolve().parents[2]
+            / "cli/automa_cli/perception_runs.py"
+        )
+        text = src.read_text(encoding="utf-8")
+        self.assertIn('"error_detail": raw', text)
+        self.assertIn("Human table stays one-line", text)
 
 
 if __name__ == "__main__":

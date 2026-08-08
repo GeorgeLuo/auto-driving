@@ -1442,8 +1442,10 @@ class LiveCliSessionRunnerTests(unittest.TestCase):
 
             executed = result.get("ordered_step_outcomes") or []
             statuses = {s["id"]: s["status"] for s in executed}
-            self.assertEqual(statuses.get("automation-run"), "blocked")
-            # Ensure no automation run argv was executed.
+            # Fail-stop: precondition failure refuses the catalog (no step execution).
+            # Stronger than per-step blocked — live_mutation never reaches the loop.
+            self.assertNotIn("automation-run", statuses)
+            self.assertEqual(executed, [], f"catalog should not run after precondition fail: {statuses}")
             all_cmds = []
             for step in executed:
                 for cmd in step.get("commands") or []:
@@ -1454,6 +1456,15 @@ class LiveCliSessionRunnerTests(unittest.TestCase):
                     f"automation run should not execute: {argv}",
                 )
             self.assertNotEqual(result.get("result"), "pass")
+            findings = result.get("findings") or []
+            self.assertTrue(
+                any(
+                    f.get("step_id") == "_precondition_cleanup"
+                    for f in findings
+                    if isinstance(f, dict)
+                ),
+                findings,
+            )
 
     def test_pre_session_identity_reports_sibling_dirt(self) -> None:
         """Pre-session identity must not hide unrelated dirt under evidence/."""

@@ -50,6 +50,9 @@ snapshot_staged_state = _continuity.snapshot_staged_state
 restore_activation = _continuity.restore_activation
 snapshot_is_restorable = _continuity.snapshot_is_restorable
 derive_continuity_verdict = _continuity.derive_continuity_verdict
+capture_source_lineage = _continuity.capture_source_lineage
+verify_source_lineage = _continuity.verify_source_lineage
+validate_session_against_tree = _continuity.validate_session_against_tree
 
 
 SCHEMA = "live_cli_session_result_v0"
@@ -1905,12 +1908,18 @@ def _derive_verdict(state: SessionState) -> tuple[str, str | None]:
 
 
 def _write_digests(session_dir: Path) -> list[dict[str, str]]:
-    """Write digests.json for all files except digests.json itself."""
+    """Write digests.json for all files except digests.json itself.
+
+    Excludes the US-04 staged cache tree (local restorable bytes, not review evidence).
+    """
     artifacts: list[dict[str, str]] = []
     for path in sorted(session_dir.rglob("*")):
         if not path.is_file():
             continue
         if path.name == "digests.json":
+            continue
+        rel = path.relative_to(session_dir).as_posix()
+        if rel == "us04-staged-cache" or rel.startswith("us04-staged-cache/"):
             continue
         artifacts.append(
             {"path": str(path.relative_to(session_dir)), "sha256": _sha256_file(path)}
@@ -2317,12 +2326,20 @@ def _capture_worktree_reviewables(
 
 
 def _live_mutation_prerequisites_met(state: SessionState) -> tuple[bool, str]:
-    """Acceptance live mutations require precondition + initial + staging pass."""
+    """Live mutations require proven precondition; acceptance also needs staging gates."""
 
-    if state.catalog.get("track") != "acceptance":
-        return True, "non-acceptance track"
+    track = state.catalog.get("track")
     if state.dry_run:
         return True, "dry-run"
+    if track == CONTINUITY_TRACK:
+        pre = state.precondition_cleanup
+        if not isinstance(pre, dict) or pre.get("ok") is not True:
+            return False, "continuity precondition_cleanup not proven ok"
+        if state.safety_blocked:
+            return False, state.safety_block_reason or "continuity safety blocked"
+        return True, "continuity precondition ok"
+    if track != "acceptance":
+        return True, "non-acceptance track"
     if not state.canonical_acceptance:
         return False, "noncanonical acceptance catalog cannot execute live mutation"
     pre = state.precondition_cleanup
@@ -2669,8 +2686,27 @@ def run_session(
                             "precondition-cleanup.json",
                         ],
                     )
+                    notes_lines.extend(
+                        [
+                            "## precondition failed",
+                            "",
+                            f"- error: `{state.precondition_cleanup.get('error')}`",
+                            "- action: catalog steps not executed",
+                            "",
+                        ]
+                    )
+                    print()
+                    print("=" * 72)
+                    print("REFUSED: precondition cleanup failed — no catalog commands")
+                    print(state.precondition_cleanup.get("error"))
+                    print("=" * 72)
 
             continuity_swap_family = "continuity.live_config_swap"
+            precondition_blocks_catalog = (
+                state.safety_blocked
+                and state.precondition_cleanup is not None
+                and state.precondition_cleanup.get("ok") is not True
+            )
             if catalog.get("track") == CONTINUITY_TRACK and catalog_path is not None:
                 continuity_identity_at_start = collect_identity_bundle(
                     repo_root=repo_root,
@@ -2683,9 +2719,9 @@ def run_session(
                         "branch": (metrics_ui or {}).get("branch") if metrics_ui else None,
                     },
                 )
-                # Visual confirmations require a named Metrics UI identity.
+                # metrics_ui_required is decided at finalizer time (only when visual HITL complete).
                 if continuity_identity_at_start is not None:
-                    continuity_identity_at_start["metrics_ui_required"] = True
+                    continuity_identity_at_start["metrics_ui_required"] = False
                     _write_json(
                         session_dir / "continuity-identity-at-start.json",
                         continuity_identity_at_start,
@@ -2697,7 +2733,10 @@ def run_session(
                 if s.get("family_id") == continuity_swap_family:
                     last_swap_step_id = str(s.get("id") or "")
 
-            for step in catalog.get("steps") or []:
+            if precondition_blocks_catalog:
+                catalog_step_list = []  # fail-stop: do not mutate after failed precondition
+
+            for step in catalog_step_list:
                 if not isinstance(step, dict):
                     continue
                 step_id = str(step.get("id") or f"step-{len(state.steps)+1}")
@@ -2720,7 +2759,12 @@ def run_session(
                     and continuity_restore is None
                     and not dry_run
                 ):
-                    snap = snapshot_staged_state(repo_root, variables["vehicle_id"])
+                    us04_cache = session_dir / "us04-staged-cache"
+                    snap = snapshot_staged_state(
+                        repo_root,
+                        variables["vehicle_id"],
+                        cache_dir=us04_cache,
+                    )
                     if not snapshot_is_restorable(snap):
                         step_status = "fail"
                         machine_ok = False
@@ -2798,12 +2842,12 @@ def run_session(
                 validator_notes: list[str] = []
 
                 # Hard safety: acceptance live_mutation requires precondition/staging.
-                # Continuity track uses its own preflight allowlist instead.
+                # Continuity live_mutation also requires proven precondition cleanup.
                 if (
                     not dry_run
                     and step.get("safety") == "live_mutation"
                     and step.get("kind") != "baseline"
-                    and catalog.get("track") == "acceptance"
+                    and catalog.get("track") in {"acceptance", CONTINUITY_TRACK}
                 ):
                     prereq_ok, prereq_reason = _live_mutation_prerequisites_met(state)
                     if not prereq_ok:
@@ -2940,7 +2984,7 @@ def run_session(
                         elif outcome.exit_code != 0 and not allow_nonzero and expect_exit is None:
                             step_status = "fail"
                             machine_ok = False
-                        # Continuity: bind exact capture run from stdout (not global mtime).
+                        # Continuity: bind exact capture run from stdout; content lineage required.
                         if (
                             catalog.get("track") == CONTINUITY_TRACK
                             and outcome.exit_code == 0
@@ -2955,28 +2999,83 @@ def run_session(
                                 stdout_text, repo_root=repo_root
                             )
                             if bound is None:
-                                # Fallback only if stdout lacks path (still digest later).
-                                bound = _latest_perception_run_dir(
-                                    repo_root, variables["vehicle_id"]
-                                )
-                            if bound is not None:
-                                state.variables["src_dir"] = str(bound)
-                                lineage = {
-                                    "src_dir": str(bound),
-                                    "src_dir_redacted": _redact_path(bound, repo_root),
-                                    "manifest_sha256": None,
-                                }
-                                manifest = bound / "run.json"
-                                if manifest.is_file():
-                                    lineage["manifest_sha256"] = _sha256_file(manifest)
-                                _write_json(
-                                    session_dir / "offline-source-lineage.json",
-                                    lineage,
+                                step_status = "fail"
+                                machine_ok = False
+                                validator_notes.append(
+                                    "offline capture: exact run path missing from stdout "
+                                    "(mtime fallback disabled)"
                                 )
                                 print(
-                                    f"  continuity: src_dir={bound} "
-                                    f"manifest={lineage.get('manifest_sha256')}"
+                                    "  FAIL: continuity requires exact capture path in stdout"
                                 )
+                            else:
+                                lineage = capture_source_lineage(bound)
+                                if lineage.get("ok") is not True:
+                                    step_status = "fail"
+                                    machine_ok = False
+                                    validator_notes.append(
+                                        f"offline capture lineage failed: {lineage.get('error')}"
+                                    )
+                                    print(
+                                        f"  FAIL: content lineage: {lineage.get('error')}"
+                                    )
+                                else:
+                                    state.variables["src_dir"] = str(bound)
+                                    lineage_out = {
+                                        "ok": True,
+                                        "src_dir": str(bound),
+                                        "src_dir_redacted": _redact_path(bound, repo_root),
+                                        "manifest_sha256": lineage.get("manifest_sha256"),
+                                        "ordered_input_sha256": lineage.get(
+                                            "ordered_input_sha256"
+                                        ),
+                                        "frame_count": lineage.get("frame_count"),
+                                        "frames": lineage.get("frames"),
+                                        "schema": lineage.get("schema"),
+                                    }
+                                    _write_json(
+                                        session_dir / "offline-source-lineage.json",
+                                        lineage_out,
+                                    )
+                                    print(
+                                        f"  continuity: src_dir={bound} "
+                                        f"ordered_input={str(lineage.get('ordered_input_sha256') or '')[:12]}…"
+                                    )
+                        # Continuity: re-verify content lineage before/after apply.
+                        if (
+                            catalog.get("track") == CONTINUITY_TRACK
+                            and outcome.exit_code == 0
+                            and "perception" in rendered
+                            and "apply" in rendered
+                        ):
+                            lineage_path = session_dir / "offline-source-lineage.json"
+                            src = state.variables.get("src_dir")
+                            if not lineage_path.is_file() or not src:
+                                step_status = "fail"
+                                machine_ok = False
+                                validator_notes.append(
+                                    "offline apply: missing bound content lineage"
+                                )
+                                print("  FAIL: apply without content-bound lineage")
+                            else:
+                                try:
+                                    expected = json.loads(
+                                        lineage_path.read_text(encoding="utf-8")
+                                    )
+                                except (OSError, json.JSONDecodeError) as exc:
+                                    expected = {"ok": False, "error": str(exc)}
+                                ok_lin, lin_reason = verify_source_lineage(
+                                    Path(str(src)), expected
+                                )
+                                if not ok_lin:
+                                    step_status = "fail"
+                                    machine_ok = False
+                                    validator_notes.append(
+                                        f"offline apply lineage mismatch: {lin_reason}"
+                                    )
+                                    print(f"  FAIL: lineage: {lin_reason}")
+                                else:
+                                    print(f"  continuity: lineage verified ({lin_reason})")
 
                     # JSON capture as a first-class command outcome
                     capture = step.get("capture_json")
@@ -3418,12 +3517,24 @@ def run_session(
             try:
                 restore_result = restore_activation(continuity_restore)
                 continuity_restore_done = True
+                redacted_results = restore_result.get("results") or {}
+                if isinstance(redacted_results, dict):
+                    cleaned = {}
+                    for k, v in redacted_results.items():
+                        if isinstance(v, dict):
+                            vv = dict(v)
+                            if "path" in vv:
+                                vv["path"] = _redact_path(str(vv.get("path") or ""), repo_root)
+                            cleaned[k] = vv
+                        else:
+                            cleaned[k] = v
+                    redacted_results = cleaned
                 _write_json(
                     session_dir / "us04-activation-restore.json",
                     {
                         "ok": restore_result.get("ok"),
                         "error": restore_result.get("error"),
-                        "results": restore_result.get("results"),
+                        "results": redacted_results,
                         "path": _redact_path(
                             str(
                                 ((restore_result.get("results") or {}).get("perception") or {}).get(
@@ -3466,7 +3577,6 @@ def run_session(
         state.recording_after = _list_run_directories(repo_root, variables["vehicle_id"])
 
     ended = _utc_now()
-    result_status, incomplete_reason = _derive_verdict(state)
 
     gates_list = []
     declared = state.catalog.get("gates") or []
@@ -3487,62 +3597,11 @@ def run_session(
     else:
         gates_list = list(state.gate_results.values())
 
-    notes_lines.extend(
-        [
-            "## Verdict",
-            "",
-            f"- result: `{result_status}`",
-            f"- reason: {incomplete_reason or '(none)'}",
-            f"- findings: {len(state.findings)}",
-            f"- cleanup: {cleanup_info}",
-            "",
-        ]
-    )
-    _write_text(session_dir / "human-notes.md", "\n".join(notes_lines))
-    _write_json(session_dir / "findings.json", state.findings)
-    with (session_dir / "findings.jsonl").open("w", encoding="utf-8") as handle:
-        for finding in state.findings:
-            handle.write(json.dumps(finding, sort_keys=True) + "\n")
-
     machine_preflight = _derive_machine_preflight(state, cleanup_info)
-    result = {
-        "schema": SCHEMA,
-        "result": result_status,
-        "incomplete_reason": incomplete_reason,
-        "execution_mode": execution_mode,
-        "machine_preflight": machine_preflight,
-        "interactive_human_confirmation": state.interactive_human_confirmation,
-        "catalog": {
-            "id": catalog.get("id"),
-            "track": catalog.get("track"),
-            "title": catalog.get("title"),
-            "max_frame_lag": _catalog_max_frame_lag(catalog),
-        },
-        "timestamps": {
-            "started_at_utc": _iso(started),
-            "ended_at_utc": _iso(ended),
-            "local_timezone": list(time.tzname),
-        },
-        "baseline": baseline,
-        "gates": gates_list,
-        "ordered_step_outcomes": state.steps,
-        "findings": state.findings,
-        "cleanup": cleanup_info,
-        "recording": {
-            "before": state.recording_before,
-            "after": state.recording_after,
-            "new": sorted(set(state.recording_after) - set(state.recording_before)),
-        },
-        "session_fingerprint": {
-            "baseline": state.baseline_fingerprint,
-            "latest": state.latest_fingerprint,
-        },
-        "browser_view": state.browser_view_meta,
-        "view_correlation": state.view_correlation,
-        "artifact_manifest": "digests.json",
-        "variables": {k: v for k, v in state.variables.items() if k != "src_dir" or v},
-    }
 
+    # Continuity track: compute the single authoritative verdict BEFORE any human
+    # or machine representation is written (prevents complete vs pass leakage).
+    continuity_block: dict[str, Any] | None = None
     if catalog.get("track") == CONTINUITY_TRACK:
         sequences = []
         catalog_steps = {
@@ -3575,7 +3634,6 @@ def run_session(
             if visual_required and step.get("required_for_verdict"):
                 hitl_needed = True
                 human = step.get("human") or {}
-                # Interactive pass/fail counts as HITL complete; skip is not.
                 if not (
                     human.get("interactive")
                     and human.get("visual") in {"pass", "fail"}
@@ -3594,8 +3652,6 @@ def run_session(
                 else None,
             },
         )
-        # Metrics UI git identity is required only when visual HITL is complete
-        # (operator claimed a visual pass/fail against that deployment).
         metrics_required = bool(hitl_needed and hitl_done)
         if isinstance(identity_recorded, dict):
             identity_recorded = dict(identity_recorded)
@@ -3656,11 +3712,9 @@ def run_session(
             findings=state.findings,
             hitl_complete=hitl_complete,
         )
-        result["result"] = verdict
-        result["incomplete_reason"] = verdict_reason
         result_status = verdict
         incomplete_reason = verdict_reason
-        result["continuity"] = {
+        continuity_block = {
             "preflight": continuity_preflight,
             "family_aggregates": family_aggregates,
             "required_family_ids": list(REQUIRED_FAMILY_IDS),
@@ -3672,6 +3726,65 @@ def run_session(
             "verdict": verdict,
             "verdict_reason": verdict_reason,
         }
+    else:
+        result_status, incomplete_reason = _derive_verdict(state)
+
+    notes_lines.extend(
+        [
+            "## Verdict",
+            "",
+            f"- result: `{result_status}`",
+            f"- reason: {incomplete_reason or '(none)'}",
+            f"- findings: {len(state.findings)}",
+            f"- cleanup: {cleanup_info}",
+            "",
+        ]
+    )
+    _write_text(session_dir / "human-notes.md", "\n".join(notes_lines))
+    _write_json(session_dir / "findings.json", state.findings)
+    with (session_dir / "findings.jsonl").open("w", encoding="utf-8") as handle:
+        for finding in state.findings:
+            handle.write(json.dumps(finding, sort_keys=True) + "\n")
+
+    result = {
+        "schema": SCHEMA,
+        "result": result_status,
+        "incomplete_reason": incomplete_reason,
+        "execution_mode": execution_mode,
+        "machine_preflight": machine_preflight,
+        "interactive_human_confirmation": state.interactive_human_confirmation,
+        "catalog": {
+            "id": catalog.get("id"),
+            "track": catalog.get("track"),
+            "title": catalog.get("title"),
+            "max_frame_lag": _catalog_max_frame_lag(catalog),
+        },
+        "timestamps": {
+            "started_at_utc": _iso(started),
+            "ended_at_utc": _iso(ended),
+            "local_timezone": list(time.tzname),
+        },
+        "baseline": baseline,
+        "gates": gates_list,
+        "ordered_step_outcomes": state.steps,
+        "findings": state.findings,
+        "cleanup": cleanup_info,
+        "recording": {
+            "before": state.recording_before,
+            "after": state.recording_after,
+            "new": sorted(set(state.recording_after) - set(state.recording_before)),
+        },
+        "session_fingerprint": {
+            "baseline": state.baseline_fingerprint,
+            "latest": state.latest_fingerprint,
+        },
+        "browser_view": state.browser_view_meta,
+        "view_correlation": state.view_correlation,
+        "artifact_manifest": "digests.json",
+        "variables": {k: v for k, v in state.variables.items() if k != "src_dir" or v},
+    }
+    if continuity_block is not None:
+        result["continuity"] = continuity_block
 
     # Write immutable result first, then detached digests that include it.
     _write_json(session_dir / "result.json", result)

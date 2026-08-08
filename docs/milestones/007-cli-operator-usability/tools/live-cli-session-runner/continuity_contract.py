@@ -1185,53 +1185,79 @@ def finalize_evidence_freshness(
         if rec_mui.get("worktree_state") != cur_mui.get("worktree_state"):
             return False, "metrics_ui worktree_state mismatch"
         if rec_mui.get("worktree_state") == "dirty":
-            if (rec_mui.get("diff_identity") or rec_mui.get("named_diff")) != (
-                cur_mui.get("diff_identity") or cur_mui.get("named_diff")
-            ) and rec_mui.get("linked_pr") != cur_mui.get("linked_pr"):
-                # Require either matching named diff material or matching linked PR.
-                if rec_mui.get("diff_identity") != cur_mui.get("diff_identity") and rec_mui.get(
-                    "linked_pr"
-                ) != cur_mui.get("linked_pr"):
-                    return False, "dirty metrics_ui reviewable identity mismatch"
+            # Exact dirty material identity is required. linked_pr is additional
+            # reviewability metadata, not a nullable escape hatch for mismatched diffs.
+            rec_diff = rec_mui.get("diff_identity") or rec_mui.get("named_diff")
+            cur_diff = cur_mui.get("diff_identity") or cur_mui.get("named_diff")
+            if not isinstance(rec_diff, str) or not rec_diff:
+                return False, "recorded dirty metrics_ui missing diff_identity/named_diff"
+            if not isinstance(cur_diff, str) or not cur_diff:
+                return False, "current dirty metrics_ui missing diff_identity/named_diff"
+            if rec_diff != cur_diff:
+                return False, "dirty metrics_ui diff_identity mismatch"
+            rec_pr = rec_mui.get("linked_pr")
+            cur_pr = cur_mui.get("linked_pr")
+            if rec_pr is not None or cur_pr is not None:
+                if rec_pr != cur_pr:
+                    return False, "dirty metrics_ui linked_pr mismatch"
     return True, "evidence freshness finalizer ok"
 
 
 
 def collect_git_identity(repo: Path) -> dict[str, Any] | None:
-    """Collect commit/branch/worktree identity for a git checkout (Metrics UI post-hoc)."""
+    """Shared Git identity algorithm for session recording and post-hoc finalization.
+
+    Dirty material hashes status, tracked diffs, and **untracked file contents**
+    (not names alone) so changed untracked bytes invalidate the identity.
+    """
 
     import subprocess
 
     repo = Path(repo)
-    if not (repo / ".git").exists() and not (repo / ".git").is_file():
-        # also allow worktrees where .git is a file
-        completed = subprocess.run(
-            ["git", "-C", str(repo), "rev-parse", "--is-inside-work-tree"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if completed.returncode != 0:
-            return None
+    completed = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "--is-inside-work-tree"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        return None
 
     def run(args: list[str]) -> str:
-        completed = subprocess.run(
-            args, cwd=repo, check=False, capture_output=True, text=True
-        )
-        return completed.stdout.strip() if completed.returncode == 0 else ""
+        try:
+            done = subprocess.run(args, cwd=repo, check=False, capture_output=True, text=True)
+        except OSError:
+            return ""
+        return done.stdout.strip() if done.returncode == 0 else ""
 
-    status_lines = [line for line in (run(["git", "status", "--porcelain"]) or "").splitlines() if line]
-    dirty = bool(status_lines)
+    status_lines = [
+        line for line in (run(["git", "status", "--porcelain"]) or "").splitlines() if line
+    ]
+    status = "\n".join(status_lines)
     commit = run(["git", "rev-parse", "HEAD"]) or None
     branch = run(["git", "branch", "--show-current"]) or None
+    dirty = bool(status)
     diff_identity = None
+    untracked_names: list[str] = []
+    untracked_hashes: dict[str, str] = {}
     if dirty:
         patch = run(["git", "diff", "HEAD"])
         cached = run(["git", "diff", "--cached"])
-        untracked = run(["git", "ls-files", "--others", "--exclude-standard"])
-        material = "\n".join(
-            ["\n".join(status_lines), patch, cached, untracked]
-        ).encode("utf-8")
+        untracked_raw = run(["git", "ls-files", "--others", "--exclude-standard"])
+        untracked_names = [line for line in untracked_raw.splitlines() if line]
+        parts = [status, patch, cached]
+        for rel in untracked_names:
+            path = repo / rel
+            if path.is_symlink():
+                parts.append(f"untracked-symlink:{rel}")
+                continue
+            if path.is_file():
+                digest = hashlib.sha256(path.read_bytes()).hexdigest()
+                untracked_hashes[rel] = digest
+                parts.append(f"untracked:{rel}:{digest}")
+            else:
+                parts.append(f"untracked:{rel}:missing")
+        material = "\n".join(parts).encode("utf-8")
         diff_identity = hashlib.sha256(material).hexdigest()
     return {
         "path": repo.name,
@@ -1240,6 +1266,8 @@ def collect_git_identity(repo: Path) -> dict[str, Any] | None:
         "worktree_state": "dirty" if dirty else "clean",
         "diff_identity": diff_identity,
         "status_porcelain": status_lines,
+        "untracked_files": untracked_names,
+        "untracked_sha256": untracked_hashes,
     }
 
 def validate_session_against_tree(

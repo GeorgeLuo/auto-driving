@@ -50,6 +50,7 @@ snapshot_staged_state = _continuity.snapshot_staged_state
 restore_activation = _continuity.restore_activation
 snapshot_is_restorable = _continuity.snapshot_is_restorable
 derive_continuity_verdict = _continuity.derive_continuity_verdict
+collect_git_identity = _continuity.collect_git_identity
 capture_source_lineage = _continuity.capture_source_lineage
 verify_source_lineage = _continuity.verify_source_lineage
 validate_session_against_tree = _continuity.validate_session_against_tree
@@ -2818,9 +2819,26 @@ def run_session(
                             "restorable": snapshot_is_restorable(file_snap),
                             "existed": file_snap.get("existed"),
                         }
+                    staged_meta: dict[str, Any] = {}
+                    for tree_name, meta in (snap.get("staged_trees") or {}).items():
+                        if not isinstance(meta, dict):
+                            continue
+                        staged_meta[tree_name] = {
+                            "existed": meta.get("existed"),
+                            "file_count": meta.get("file_count"),
+                            "tree_sha256": meta.get("tree_sha256"),
+                            # durable expected digest only (not full file path map)
+                        }
+                    snapshot_meta_doc = {
+                        "schema": "continuity_us04_snapshot_meta_v1",
+                        "restorable": True,
+                        "files": meta_files,
+                        "staged_trees": staged_meta,
+                        "cache_dir": "us04-staged-cache",
+                    }
                     _write_json(
                         session_dir / "us04-activation-snapshot-meta.json",
-                        {"restorable": True, "files": meta_files},
+                        snapshot_meta_doc,
                     )
                     perc = (snap.get("files") or {}).get("perception") or {}
                     print(
@@ -3563,7 +3581,81 @@ def run_session(
                     )
                     print(f"  FAIL: US-04 restore failed: {restore_result.get('error')}")
                 else:
-                    print("  US-04 staged-state restore ok (finally)")
+                    # Mechanically compare restore receipt to durable snapshot meta digests.
+                    meta_path = session_dir / "us04-activation-snapshot-meta.json"
+                    compare_ok = True
+                    compare_reason = "snapshot meta vs restore ok"
+                    if meta_path.is_file():
+                        try:
+                            meta_doc = json.loads(meta_path.read_text(encoding="utf-8"))
+                        except (OSError, json.JSONDecodeError) as exc:
+                            compare_ok = False
+                            compare_reason = f"snapshot meta unreadable: {exc}"
+                        else:
+                            expected_trees = meta_doc.get("staged_trees") or {}
+                            results = restore_result.get("results") or {}
+                            for tree_name, exp in expected_trees.items():
+                                if not isinstance(exp, dict):
+                                    continue
+                                key = f"tree:{tree_name}"
+                                got = results.get(key) or {}
+                                if exp.get("existed"):
+                                    if got.get("tree_sha256") != exp.get("tree_sha256"):
+                                        compare_ok = False
+                                        compare_reason = (
+                                            f"restore tree digest mismatch for {tree_name}"
+                                        )
+                                        break
+                                    if got.get("verified") is not True:
+                                        compare_ok = False
+                                        compare_reason = (
+                                            f"restore tree {tree_name} not verified"
+                                        )
+                                        break
+                                else:
+                                    # Absent at snapshot: trial tree must be gone / removed.
+                                    if got.get("ok") is not True:
+                                        compare_ok = False
+                                        compare_reason = (
+                                            f"absent tree {tree_name} not restored cleanly"
+                                        )
+                                        break
+                    else:
+                        compare_ok = False
+                        compare_reason = "missing us04-activation-snapshot-meta.json"
+                    _write_json(
+                        session_dir / "us04-snapshot-restore-compare.json",
+                        {"ok": compare_ok, "reason": compare_reason},
+                    )
+                    if not compare_ok:
+                        restore_result = dict(restore_result)
+                        restore_result["ok"] = False
+                        restore_result["error"] = compare_reason
+                        # rewrite restore receipt with failure
+                        _write_json(
+                            session_dir / "us04-activation-restore.json",
+                            {
+                                "ok": False,
+                                "error": compare_reason,
+                                "results": restore_result.get("results"),
+                            },
+                        )
+                        _record_finding(
+                            state,
+                            step_id="_us04_restore",
+                            classification="acceptance_blocker",
+                            severity="P1",
+                            summary=f"US-04 snapshot/restore compare failed: {compare_reason}",
+                            human_notes=compare_reason,
+                            evidence=[
+                                "us04-activation-restore.json",
+                                "us04-activation-snapshot-meta.json",
+                                "us04-snapshot-restore-compare.json",
+                            ],
+                        )
+                        print(f"  FAIL: US-04 compare: {compare_reason}")
+                    else:
+                        print("  US-04 staged-state restore ok (finally)")
             except Exception as restore_exc:  # noqa: BLE001
                 _record_finding(
                     state,

@@ -928,3 +928,118 @@ class FinalizerRequiredKeysAndMetricsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DirtyMetricsUiIdentityRegressionTests(unittest.TestCase):
+    def test_dirty_a_to_b_without_linked_pr_fails(self) -> None:
+        product = _full_product_map("p")
+        rec = {
+            "catalog_sha256": "a",
+            "runner_sha256": "b",
+            "continuity_contract_sha256": "c",
+            "product_sha256": product,
+            "metrics_ui_required": True,
+            "metrics_ui": {
+                "commit": "SAME",
+                "worktree_state": "dirty",
+                "diff_identity": "DIFF-A",
+                "linked_pr": None,
+            },
+        }
+        cur = {
+            "catalog_sha256": "a",
+            "runner_sha256": "b",
+            "continuity_contract_sha256": "c",
+            "product_sha256": product,
+            "metrics_ui_required": True,
+            "metrics_ui": {
+                "commit": "SAME",
+                "worktree_state": "dirty",
+                "diff_identity": "DIFF-B",
+                "linked_pr": None,
+            },
+        }
+        ok, reason = cc.finalize_evidence_freshness(rec, cur)
+        self.assertFalse(ok, reason)
+        self.assertIn("diff_identity", reason)
+
+    def test_unchanged_dirty_round_trip_ok(self) -> None:
+        product = _full_product_map("p")
+        bundle = {
+            "catalog_sha256": "a",
+            "runner_sha256": "b",
+            "continuity_contract_sha256": "c",
+            "product_sha256": product,
+            "metrics_ui_required": True,
+            "metrics_ui": {
+                "commit": "SAME",
+                "worktree_state": "dirty",
+                "diff_identity": "DIFF-STABLE",
+                "linked_pr": None,
+            },
+        }
+        ok, reason = cc.finalize_evidence_freshness(bundle, bundle)
+        self.assertTrue(ok, reason)
+
+    def test_collect_git_identity_binds_untracked_bytes(self) -> None:
+        import subprocess
+
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+            subprocess.run(
+                ["git", "config", "user.email", "t@example.com"],
+                cwd=repo,
+                check=True,
+                capture_output=True,
+            )
+            subprocess.run(
+                ["git", "config", "user.name", "t"],
+                cwd=repo,
+                check=True,
+                capture_output=True,
+            )
+            (repo / "README").write_text("x\n", encoding="utf-8")
+            subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True)
+            subprocess.run(
+                ["git", "commit", "-m", "init"],
+                cwd=repo,
+                check=True,
+                capture_output=True,
+            )
+            untracked = repo / "untracked.txt"
+            untracked.write_text("A\n", encoding="utf-8")
+            id_a = cc.collect_git_identity(repo)
+            self.assertIsNotNone(id_a)
+            assert id_a is not None
+            self.assertEqual(id_a.get("worktree_state"), "dirty")
+            self.assertTrue(id_a.get("diff_identity"))
+            untracked.write_text("B\n", encoding="utf-8")
+            id_b = cc.collect_git_identity(repo)
+            assert id_b is not None
+            self.assertNotEqual(
+                id_a.get("diff_identity"),
+                id_b.get("diff_identity"),
+                "changed untracked bytes must change diff_identity",
+            )
+            # Round-trip finalize with collected identities
+            product = _full_product_map("p")
+            rec = {
+                "catalog_sha256": "a",
+                "runner_sha256": "b",
+                "continuity_contract_sha256": "c",
+                "product_sha256": product,
+                "metrics_ui_required": True,
+                "metrics_ui": id_a,
+            }
+            cur = {
+                "catalog_sha256": "a",
+                "runner_sha256": "b",
+                "continuity_contract_sha256": "c",
+                "product_sha256": product,
+                "metrics_ui_required": True,
+                "metrics_ui": id_b,
+            }
+            ok, reason = cc.finalize_evidence_freshness(rec, cur)
+            self.assertFalse(ok)
+            self.assertIn("diff_identity", reason)

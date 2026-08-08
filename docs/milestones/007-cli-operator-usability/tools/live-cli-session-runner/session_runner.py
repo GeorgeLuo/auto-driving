@@ -465,61 +465,25 @@ def _path_under(path: Path, root: Path) -> str | None:
 
 
 def _git_identity(repo: Path) -> dict[str, Any]:
-    """Record pre-session repository identity (before any session artifacts)."""
+    """Record pre-session repository identity via the shared continuity algorithm.
 
-    def run(args: list[str]) -> str:
-        try:
-            completed = subprocess.run(
-                args, cwd=repo, check=False, capture_output=True, text=True
-            )
-        except OSError:
-            return ""
-        return completed.stdout.strip() if completed.returncode == 0 else ""
+    Must match ``collect_git_identity`` / post-hoc ``finalize-session`` exactly so
+    dirty Metrics UI and auto-driving identities cannot diverge by collector.
+    """
 
-    status_lines = [
-        line
-        for line in (run(["git", "status", "--porcelain"]) or "").splitlines()
-        if line
-    ]
-    status = "\n".join(status_lines)
-    commit = run(["git", "rev-parse", "HEAD"]) or None
-    branch = run(["git", "branch", "--show-current"]) or None
-    dirty = bool(status)
-    diff_identity = None
-    untracked_names: list[str] = []
-    untracked_hashes: dict[str, str] = {}
-    if dirty:
-        # Tracked patch for identity material; untracked listed but never copied.
-        patch = run(["git", "diff", "HEAD"])
-        cached = run(["git", "diff", "--cached"])
-        untracked_raw = run(["git", "ls-files", "--others", "--exclude-standard"])
-        untracked_names = [line for line in untracked_raw.splitlines() if line]
-        parts = [status, patch, cached]
-        for rel in untracked_names:
-            path = repo / rel
-            # Never follow symlinks for identity hashing.
-            if path.is_symlink():
-                parts.append(f"untracked-symlink:{rel}")
-                continue
-            if path.is_file():
-                digest = _sha256_file(path)
-                untracked_hashes[rel] = digest
-                parts.append(f"untracked:{rel}:{digest}")
-            else:
-                parts.append(f"untracked:{rel}:missing")
-        material = "\n".join(parts).encode("utf-8")
-        diff_identity = hashlib.sha256(material).hexdigest()
-    return {
-        # Never store absolute local paths in reviewable artifacts.
-        "path": repo.name,
-        "commit": commit,
-        "branch": branch,
-        "worktree_state": "dirty" if dirty else "clean",
-        "diff_identity": diff_identity,
-        "status_porcelain": status_lines,
-        "untracked_files": untracked_names,
-        "untracked_sha256": untracked_hashes,
-    }
+    identity = collect_git_identity(repo)
+    if identity is None:
+        return {
+            "path": repo.name,
+            "commit": None,
+            "branch": None,
+            "worktree_state": "unknown",
+            "diff_identity": None,
+            "status_porcelain": [],
+            "untracked_files": [],
+            "untracked_sha256": {},
+        }
+    return identity
 
 
 def _default_prompt(message: str) -> str:

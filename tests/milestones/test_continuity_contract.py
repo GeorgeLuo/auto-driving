@@ -1043,3 +1043,79 @@ class DirtyMetricsUiIdentityRegressionTests(unittest.TestCase):
             ok, reason = cc.finalize_evidence_freshness(rec, cur)
             self.assertFalse(ok)
             self.assertIn("diff_identity", reason)
+
+
+class SharedGitIdentityCollectorTests(unittest.TestCase):
+    """Session recording and post-hoc finalization must share one identity algorithm."""
+
+    def test_session_runner_git_identity_delegates_to_collect_git_identity(self) -> None:
+        import importlib.util
+
+        runner_path = (
+            Path(__file__).resolve().parents[2]
+            / "docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/session_runner.py"
+        )
+        # Source-level: _git_identity must call collect_git_identity, not reimplement.
+        src = runner_path.read_text(encoding="utf-8")
+        self.assertIn("identity = collect_git_identity(repo)", src)
+        # Body must not re-hash untracked files inline.
+        body = src.split("def _git_identity", 1)[1].split("\ndef ", 1)[0]
+        self.assertNotIn("untracked-symlink", body)
+        self.assertNotIn("git status --porcelain", body)
+
+    def test_record_and_posthoc_collectors_match_on_dirty_tree(self) -> None:
+        import importlib.util
+        import subprocess
+
+        runner_path = (
+            Path(__file__).resolve().parents[2]
+            / "docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/session_runner.py"
+        )
+        name = "live_cli_session_runner_identity"
+        import sys
+
+        sys.modules.pop(name, None)
+        spec = importlib.util.spec_from_file_location(name, runner_path)
+        assert spec and spec.loader
+        runner = importlib.util.module_from_spec(spec)
+        sys.modules[name] = runner
+        spec.loader.exec_module(runner)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+            subprocess.run(
+                ["git", "config", "user.email", "t@example.com"],
+                cwd=repo,
+                check=True,
+                capture_output=True,
+            )
+            subprocess.run(
+                ["git", "config", "user.name", "t"],
+                cwd=repo,
+                check=True,
+                capture_output=True,
+            )
+            (repo / "README").write_text("base\n", encoding="utf-8")
+            subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True)
+            subprocess.run(
+                ["git", "commit", "-m", "init"],
+                cwd=repo,
+                check=True,
+                capture_output=True,
+            )
+            (repo / "dirty.txt").write_text("A\n", encoding="utf-8")
+            recorded = runner._git_identity(repo)
+            posthoc = cc.collect_git_identity(repo)
+            self.assertIsNotNone(posthoc)
+            assert posthoc is not None
+            self.assertEqual(recorded.get("diff_identity"), posthoc.get("diff_identity"))
+            self.assertEqual(recorded.get("commit"), posthoc.get("commit"))
+            self.assertEqual(recorded.get("worktree_state"), "dirty")
+            # Change untracked bytes — both collectors must move together.
+            (repo / "dirty.txt").write_text("B\n", encoding="utf-8")
+            recorded_b = runner._git_identity(repo)
+            posthoc_b = cc.collect_git_identity(repo)
+            assert posthoc_b is not None
+            self.assertEqual(recorded_b.get("diff_identity"), posthoc_b.get("diff_identity"))
+            self.assertNotEqual(recorded.get("diff_identity"), recorded_b.get("diff_identity"))

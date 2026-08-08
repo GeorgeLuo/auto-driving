@@ -186,6 +186,21 @@ DEFAULT_PRODUCT_RELATIVE_PATHS: tuple[str, ...] = (
     "cli/automa_cli/streaming.py",
 )
 
+# Workspace trees loaded by the continuity catalog command surface.
+DEFAULT_PRODUCT_TREE_ROOTS: tuple[str, ...] = (
+    "autonomy",
+    "implementations",
+)
+
+
+def required_product_keys() -> frozenset[str]:
+    """Exact product identity keys the finalizer requires on recorded and current bundles."""
+
+    keys = set(DEFAULT_PRODUCT_RELATIVE_PATHS)
+    for tree in DEFAULT_PRODUCT_TREE_ROOTS:
+        keys.add(f"{tree}/")
+    return frozenset(keys)
+
 
 def _normalize_argv(argv: Sequence[str]) -> list[str]:
     parts = [str(x) for x in argv]
@@ -724,10 +739,26 @@ def _dir_file_digests(root: Path) -> dict[str, str]:
     if not root.is_dir():
         return digests
     for path in sorted(root.rglob("*")):
-        if path.is_file():
-            rel = path.relative_to(root).as_posix()
-            digests[rel] = hashlib.sha256(path.read_bytes()).hexdigest()
+        if not path.is_file():
+            continue
+        if "__pycache__" in path.parts or path.suffix in {".pyc", ".pyo"}:
+            continue
+        rel = path.relative_to(root).as_posix()
+        digests[rel] = hashlib.sha256(path.read_bytes()).hexdigest()
     return digests
+
+
+def _tree_sha256_from_digests(digests: Mapping[str, str]) -> str:
+    material = "\n".join(f"{k}:{v}" for k, v in sorted(digests.items())).encode("utf-8")
+    return hashlib.sha256(material).hexdigest()
+
+
+def tree_content_sha256(root: Path) -> str | None:
+    """Content-addressed digest of a directory tree (None if path is not a directory)."""
+
+    if not root.is_dir():
+        return None
+    return _tree_sha256_from_digests(_dir_file_digests(root))
 
 
 def _copy_tree(src: Path, dst: Path) -> None:
@@ -780,13 +811,12 @@ def snapshot_staged_state(
             if src.is_dir():
                 _copy_tree(src, dst)
                 digests = _dir_file_digests(dst)
-                tree_hash = hashlib.sha256(
-                    "\n".join(f"{k}:{v}" for k, v in sorted(digests.items())).encode()
-                ).hexdigest()
+                tree_hash = _tree_sha256_from_digests(digests)
                 staged_trees[tree_name] = {
                     "cache_relative": tree_name,
                     "file_count": len(digests),
                     "tree_sha256": tree_hash,
+                    "file_digests": digests,
                     "existed": True,
                 }
             else:
@@ -794,6 +824,7 @@ def snapshot_staged_state(
                     "cache_relative": tree_name,
                     "file_count": 0,
                     "tree_sha256": None,
+                    "file_digests": {},
                     "existed": False,
                 }
         if manifest_path.is_file():
@@ -843,8 +874,6 @@ def restore_activation(snapshot: Mapping[str, Any], *, path: Path | None = None)
         staged_trees = snapshot.get("staged_trees") or {}
         if cache_dir_raw and staged_trees:
             cache_dir = Path(str(cache_dir_raw))
-            vehicle_id = str(snapshot.get("vehicle_id") or "")
-            # Infer repo root from perception path if present.
             perc = (snapshot.get("files") or {}).get("perception") or {}
             perc_path = Path(str(perc.get("path") or ""))
             # .../runtime/vehicles/<id>/bundle/runtime/perception/active.json
@@ -854,14 +883,59 @@ def restore_activation(snapshot: Mapping[str, Any], *, path: Path | None = None)
                 bundle = None
             if bundle is not None and bundle.name == "bundle":
                 for tree_name, meta in staged_trees.items():
-                    if not isinstance(meta, dict) or not meta.get("existed"):
+                    if not isinstance(meta, dict):
                         continue
-                    src = cache_dir / tree_name
                     dst = bundle / tree_name
+                    if not meta.get("existed"):
+                        # Absence is restorable: remove trial-created tree if present.
+                        if dst.exists():
+                            try:
+                                if dst.is_dir():
+                                    shutil.rmtree(dst)
+                                else:
+                                    dst.unlink()
+                            except OSError as exc:
+                                return {
+                                    "ok": False,
+                                    "error": f"failed to remove trial tree {tree_name}: {exc}",
+                                    "results": results,
+                                }
+                            results[f"tree:{tree_name}"] = {
+                                "ok": True,
+                                "removed_trial_tree": True,
+                                "path": str(dst),
+                            }
+                        else:
+                            results[f"tree:{tree_name}"] = {
+                                "ok": True,
+                                "skipped": "did_not_exist",
+                                "removed_trial_tree": False,
+                            }
+                        continue
+
+                    expected_hash = meta.get("tree_sha256")
+                    if not isinstance(expected_hash, str) or not expected_hash:
+                        return {
+                            "ok": False,
+                            "error": f"staged tree {tree_name} missing tree_sha256",
+                            "results": results,
+                        }
+                    src = cache_dir / tree_name
                     if not src.is_dir():
                         return {
                             "ok": False,
                             "error": f"staged tree cache missing: {tree_name}",
+                            "results": results,
+                        }
+                    # Verify cache integrity before installing (fail closed on corruption).
+                    cache_hash = tree_content_sha256(src)
+                    if cache_hash != expected_hash:
+                        return {
+                            "ok": False,
+                            "error": (
+                                f"staged tree cache corrupted for {tree_name}: "
+                                f"expected={expected_hash} cache={cache_hash}"
+                            ),
                             "results": results,
                         }
                     try:
@@ -872,17 +946,43 @@ def restore_activation(snapshot: Mapping[str, Any], *, path: Path | None = None)
                             "error": f"restore tree {tree_name}: {exc}",
                             "results": results,
                         }
+                    actual_hash = tree_content_sha256(dst)
+                    if actual_hash != expected_hash:
+                        return {
+                            "ok": False,
+                            "error": (
+                                f"restored tree verification failed for {tree_name}: "
+                                f"expected={expected_hash} actual={actual_hash}"
+                            ),
+                            "results": results,
+                        }
                     results[f"tree:{tree_name}"] = {
                         "ok": True,
                         "path": str(dst),
-                        "tree_sha256": meta.get("tree_sha256"),
+                        "tree_sha256": actual_hash,
+                        "verified": True,
                     }
-                # restore bundle-manifest from cache if present
+                # restore bundle-manifest from cache if present and verify
                 cached_manifest = cache_dir / "bundle-manifest.json"
+                manifest_snap = (snapshot.get("files") or {}).get("bundle_manifest") or {}
                 if cached_manifest.is_file():
                     target_manifest = bundle / "bundle-manifest.json"
-                    target_manifest.write_bytes(cached_manifest.read_bytes())
-                    results["tree:bundle_manifest"] = {"ok": True, "path": str(target_manifest)}
+                    body = cached_manifest.read_bytes()
+                    target_manifest.write_bytes(body)
+                    actual = hashlib.sha256(body).hexdigest()
+                    expected = manifest_snap.get("sha256")
+                    if isinstance(expected, str) and expected and actual != expected:
+                        return {
+                            "ok": False,
+                            "error": "restored bundle-manifest hash mismatch",
+                            "results": results,
+                        }
+                    results["tree:bundle_manifest"] = {
+                        "ok": True,
+                        "path": str(target_manifest),
+                        "sha256": actual,
+                        "verified": True,
+                    }
 
         for name, file_snap in (snapshot.get("files") or {}).items():
             if not isinstance(file_snap, dict):
@@ -975,8 +1075,10 @@ def collect_identity_bundle(
     )
     if product_paths is not None:
         paths = list(product_paths)
+        include_default_trees = False
     else:
         paths = [repo_root / rel for rel in DEFAULT_PRODUCT_RELATIVE_PATHS]
+        include_default_trees = True
     product: dict[str, str | None] = {}
     for path in paths:
         try:
@@ -984,6 +1086,10 @@ def collect_identity_bundle(
         except ValueError:
             rel = str(path)
         product[rel] = tree_file_digest(path)
+    if include_default_trees:
+        for tree in DEFAULT_PRODUCT_TREE_ROOTS:
+            root = repo_root / tree
+            product[f"{tree}/"] = tree_content_sha256(root)
 
     return {
         "schema": "continuity_identity_bundle_v0",
@@ -992,8 +1098,39 @@ def collect_identity_bundle(
         "runner_sha256": tree_file_digest(runner),
         "continuity_contract_sha256": tree_file_digest(continuity),
         "product_sha256": product,
-        "metrics_ui": dict(metrics_ui) if metrics_ui else None,
+        "metrics_ui": normalize_metrics_ui_identity(metrics_ui),
     }
+
+
+def normalize_metrics_ui_identity(metrics_ui: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(metrics_ui, dict) or not metrics_ui:
+        return None
+    return {
+        "commit": metrics_ui.get("commit"),
+        "worktree_state": metrics_ui.get("worktree_state"),
+        "branch": metrics_ui.get("branch"),
+        "diff_identity": metrics_ui.get("diff_identity"),
+        "linked_pr": metrics_ui.get("linked_pr"),
+        "named_diff": metrics_ui.get("named_diff"),
+        "path": metrics_ui.get("path"),
+    }
+
+
+def metrics_ui_identity_acceptable(metrics_ui: Mapping[str, Any] | None) -> tuple[bool, str]:
+    """Dirty Metrics UI must carry a named reviewable identity (diff hash or linked PR)."""
+
+    if not isinstance(metrics_ui, dict):
+        return False, "metrics_ui identity missing"
+    if not metrics_ui.get("commit"):
+        return False, "metrics_ui commit missing"
+    if metrics_ui.get("worktree_state") == "dirty":
+        if not (
+            metrics_ui.get("diff_identity")
+            or metrics_ui.get("linked_pr")
+            or metrics_ui.get("named_diff")
+        ):
+            return False, "dirty metrics_ui lacks named diff/linked_pr identity"
+    return True, "ok"
 
 
 def finalize_evidence_freshness(
@@ -1017,20 +1154,93 @@ def finalize_evidence_freshness(
         return False, "recorded product_sha256 missing or empty"
     if not isinstance(cur_prod, dict) or not cur_prod:
         return False, "current product_sha256 missing or empty"
+    required = required_product_keys()
+    rec_keys = set(rec_prod.keys())
+    cur_keys = set(cur_prod.keys())
+    missing_required = sorted(required - rec_keys)
+    if missing_required:
+        return False, f"recorded product_sha256 missing required keys: {missing_required}"
+    if rec_keys != cur_keys:
+        return (
+            False,
+            f"product key set mismatch recorded={sorted(rec_keys)} current={sorted(cur_keys)}",
+        )
     for path, digest in rec_prod.items():
         if not isinstance(digest, str) or not digest:
             return False, f"recorded product digest missing for {path}"
         if cur_prod.get(path) != digest:
             return False, f"product mismatch {path}"
     if recorded.get("metrics_ui_required"):
-        rec_mui = recorded.get("metrics_ui")
-        cur_mui = current.get("metrics_ui")
-        if not isinstance(rec_mui, dict) or not rec_mui.get("commit"):
-            return False, "recorded metrics_ui identity missing"
-        if rec_mui != cur_mui:
-            return False, "metrics_ui identity mismatch"
+        rec_mui = normalize_metrics_ui_identity(recorded.get("metrics_ui"))
+        cur_mui = normalize_metrics_ui_identity(current.get("metrics_ui"))
+        ok_rec, reason_rec = metrics_ui_identity_acceptable(rec_mui)
+        if not ok_rec:
+            return False, f"recorded {reason_rec}"
+        ok_cur, reason_cur = metrics_ui_identity_acceptable(cur_mui)
+        if not ok_cur:
+            return False, f"current {reason_cur}"
+        # Independent current identity must match recorded commit (+ dirty material).
+        if rec_mui.get("commit") != cur_mui.get("commit"):
+            return False, "metrics_ui commit mismatch"
+        if rec_mui.get("worktree_state") != cur_mui.get("worktree_state"):
+            return False, "metrics_ui worktree_state mismatch"
+        if rec_mui.get("worktree_state") == "dirty":
+            if (rec_mui.get("diff_identity") or rec_mui.get("named_diff")) != (
+                cur_mui.get("diff_identity") or cur_mui.get("named_diff")
+            ) and rec_mui.get("linked_pr") != cur_mui.get("linked_pr"):
+                # Require either matching named diff material or matching linked PR.
+                if rec_mui.get("diff_identity") != cur_mui.get("diff_identity") and rec_mui.get(
+                    "linked_pr"
+                ) != cur_mui.get("linked_pr"):
+                    return False, "dirty metrics_ui reviewable identity mismatch"
     return True, "evidence freshness finalizer ok"
 
+
+
+def collect_git_identity(repo: Path) -> dict[str, Any] | None:
+    """Collect commit/branch/worktree identity for a git checkout (Metrics UI post-hoc)."""
+
+    import subprocess
+
+    repo = Path(repo)
+    if not (repo / ".git").exists() and not (repo / ".git").is_file():
+        # also allow worktrees where .git is a file
+        completed = subprocess.run(
+            ["git", "-C", str(repo), "rev-parse", "--is-inside-work-tree"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if completed.returncode != 0:
+            return None
+
+    def run(args: list[str]) -> str:
+        completed = subprocess.run(
+            args, cwd=repo, check=False, capture_output=True, text=True
+        )
+        return completed.stdout.strip() if completed.returncode == 0 else ""
+
+    status_lines = [line for line in (run(["git", "status", "--porcelain"]) or "").splitlines() if line]
+    dirty = bool(status_lines)
+    commit = run(["git", "rev-parse", "HEAD"]) or None
+    branch = run(["git", "branch", "--show-current"]) or None
+    diff_identity = None
+    if dirty:
+        patch = run(["git", "diff", "HEAD"])
+        cached = run(["git", "diff", "--cached"])
+        untracked = run(["git", "ls-files", "--others", "--exclude-standard"])
+        material = "\n".join(
+            ["\n".join(status_lines), patch, cached, untracked]
+        ).encode("utf-8")
+        diff_identity = hashlib.sha256(material).hexdigest()
+    return {
+        "path": repo.name,
+        "commit": commit,
+        "branch": branch,
+        "worktree_state": "dirty" if dirty else "clean",
+        "diff_identity": diff_identity,
+        "status_porcelain": status_lines,
+    }
 
 def validate_session_against_tree(
     session_dir: Path,
@@ -1038,6 +1248,7 @@ def validate_session_against_tree(
     repo_root: Path,
     catalog_path: Path | None = None,
     metrics_ui: Mapping[str, Any] | None = None,
+    metrics_ui_repo: Path | None = None,
 ) -> dict[str, Any]:
     """Post-hoc finalizer: load an existing session and recheck identity vs current tree.
 
@@ -1090,12 +1301,29 @@ def validate_session_against_tree(
     if cat is None or not Path(cat).is_file():
         return {"ok": False, "reason": "catalog path for finalizer not found", "finalizer": None}
 
+    # Never reuse recorded Metrics UI as "current" — that certifies stale UI identity.
+    # Callers must supply metrics_ui or metrics_ui_repo for independent collection.
+    current_mui = metrics_ui
+    if current_mui is None and metrics_ui_repo is not None:
+        current_mui = collect_git_identity(Path(metrics_ui_repo))
+    if recorded.get("metrics_ui_required") and current_mui is None:
+        return {
+            "ok": False,
+            "reason": (
+                "metrics_ui_required but no current Metrics UI identity supplied "
+                "(pass metrics_ui= or metrics_ui_repo= / --metrics-ui-repo)"
+            ),
+            "finalizer": None,
+            "recorded": recorded,
+            "current": None,
+            "session_result": result.get("result") if isinstance(result, dict) else None,
+        }
+
     current = collect_identity_bundle(
         repo_root=repo_root,
         catalog_path=Path(cat),
-        metrics_ui=metrics_ui if metrics_ui is not None else recorded.get("metrics_ui"),
+        metrics_ui=current_mui,
     )
-    # Preserve metrics_ui_required from recorded for comparison rules.
     if recorded.get("metrics_ui_required"):
         current = dict(current)
         current["metrics_ui_required"] = True
@@ -1239,12 +1467,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     fin.add_argument("session_dir", type=Path)
     fin.add_argument("--repo-root", type=Path, default=Path.cwd())
     fin.add_argument("--catalog", type=Path, default=None)
+    fin.add_argument(
+        "--metrics-ui-repo",
+        type=Path,
+        default=None,
+        help="Path to Metrics UI checkout for independent post-hoc identity collection",
+    )
     args = parser.parse_args(list(argv) if argv is not None else None)
     if args.cmd == "finalize-session":
         out = validate_session_against_tree(
             args.session_dir,
             repo_root=args.repo_root,
             catalog_path=args.catalog,
+            metrics_ui_repo=args.metrics_ui_repo,
         )
         print(json.dumps(out, indent=2, sort_keys=True))
         return 0 if out.get("ok") else 2

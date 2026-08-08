@@ -2717,6 +2717,11 @@ def run_session(
                         if metrics_ui
                         else None,
                         "branch": (metrics_ui or {}).get("branch") if metrics_ui else None,
+                        "diff_identity": (metrics_ui or {}).get("diff_identity")
+                        if metrics_ui
+                        else None,
+                        "linked_pr": (metrics_ui or {}).get("linked_pr") if metrics_ui else None,
+                        "path": (metrics_ui or {}).get("path") if metrics_ui else None,
                     },
                 )
                 # metrics_ui_required is decided at finalizer time (only when visual HITL complete).
@@ -3650,6 +3655,12 @@ def run_session(
                 "worktree_state": (metrics_ui or {}).get("worktree_state")
                 if metrics_ui
                 else None,
+                "branch": (metrics_ui or {}).get("branch") if metrics_ui else None,
+                "diff_identity": (metrics_ui or {}).get("diff_identity")
+                if metrics_ui
+                else None,
+                "linked_pr": (metrics_ui or {}).get("linked_pr") if metrics_ui else None,
+                "path": (metrics_ui or {}).get("path") if metrics_ui else None,
             },
         )
         metrics_required = bool(hitl_needed and hitl_done)
@@ -3662,6 +3673,9 @@ def run_session(
                     "worktree_state": metrics_ui.get("worktree_state"),
                     "branch": metrics_ui.get("branch"),
                     "path": metrics_ui.get("path"),
+                    "diff_identity": metrics_ui.get("diff_identity"),
+                    "linked_pr": metrics_ui.get("linked_pr"),
+                    "named_diff": metrics_ui.get("named_diff"),
                 }
         identity_current = collect_identity_bundle(
             repo_root=repo_root,
@@ -3675,6 +3689,11 @@ def run_session(
                 else None,
                 "branch": (metrics_ui or {}).get("branch") if metrics_ui else None,
                 "path": (metrics_ui or {}).get("path") if metrics_ui else None,
+                "diff_identity": (metrics_ui or {}).get("diff_identity")
+                if metrics_ui
+                else None,
+                "linked_pr": (metrics_ui or {}).get("linked_pr") if metrics_ui else None,
+                "named_diff": (metrics_ui or {}).get("named_diff") if metrics_ui else None,
             },
         )
         if isinstance(identity_current, dict):

@@ -2017,3 +2017,509 @@ class LiveCliSessionRunnerTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+
+class ContinuityRunnerUs04TransactionTests(unittest.TestCase):
+    """Session-runner level US-04 restore matrix (not pure helper only)."""
+
+    def _vehicle_repo(self, root: Path) -> Path:
+        vehicle = VEHICLE
+        bundle = root / "runtime" / "vehicles" / vehicle / "bundle"
+        for name in ("perception", "decision", "memory"):
+            p = bundle / "runtime" / name / "active.json"
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(f'{{"schema":"test","k":"{name}"}}\n', encoding="utf-8")
+        (bundle / "autonomy").mkdir(parents=True, exist_ok=True)
+        (bundle / "autonomy" / "prior.py").write_text("prior=1\n", encoding="utf-8")
+        (bundle / "implementations").mkdir(parents=True, exist_ok=True)
+        (bundle / "implementations" / "prior.py").write_text("prior_impl=1\n", encoding="utf-8")
+        (bundle / "bundle-manifest.json").write_text('{"tree":"prior"}\n', encoding="utf-8")
+        # Minimal product surface for identity collection
+        for rel in (
+            "cli/automa_cli/app.py",
+            "cli/automa_cli/automation.py",
+            "cli/automa_cli/vehicles.py",
+            "cli/automa_cli/perception.py",
+            "cli/automa_cli/memory.py",
+            "cli/automa_cli/perception_runs.py",
+            "cli/automa_cli/lab_plugins.py",
+            "cli/automa_cli/memory_check.py",
+            "cli/automa_cli/bundles.py",
+            "cli/automa_cli/decision.py",
+            "cli/automa_cli/operations.py",
+            "cli/automa_cli/perception_view.py",
+            "cli/automa_cli/streaming.py",
+        ):
+            p = root / rel
+            p.parent.mkdir(parents=True, exist_ok=True)
+            if not p.exists():
+                p.write_text(f"# {rel}\n", encoding="utf-8")
+        for tree in ("autonomy", "implementations"):
+            # workspace trees (not only vehicle bundle)
+            t = root / tree
+            t.mkdir(parents=True, exist_ok=True)
+            (t / "__init__.py").write_text(f"# {tree}\n", encoding="utf-8")
+        cat_dir = (
+            root
+            / "docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/catalogs"
+        )
+        cat_dir.mkdir(parents=True, exist_ok=True)
+        # copy runner modules into temp? identity hashes real files under ROOT via catalog_path
+        return root
+
+    def _continuity_catalog(self) -> dict:
+        return {
+            "schema": "live_cli_session_catalog_v0",
+            "id": "m007-continuity-test-runner",
+            "track": "continuity",
+            "vehicle_id": VEHICLE,
+            "title": "US-04 runner matrix",
+            "steps": [
+                {
+                    "id": "offline-capture",
+                    "kind": "command",
+                    "family_id": "continuity.offline_perception",
+                    "safety": "local_write",
+                    "required_for_verdict": True,
+                    "primary_cue": "human summary leads with review path and frame counts",
+                    "visual_required": False,
+                    "expect_exit": 0,
+                    "commands": [
+                        [
+                            "./cli/automa",
+                            "vehicles",
+                            "perception",
+                            "run",
+                            "--id",
+                            VEHICLE,
+                            "--frames",
+                            "1",
+                            "--record",
+                        ]
+                    ],
+                },
+                {
+                    "id": "offline-apply",
+                    "kind": "command",
+                    "family_id": "continuity.offline_perception",
+                    "safety": "local_write",
+                    "required_for_verdict": True,
+                    "primary_cue": "review path first; exclusive apply run directory",
+                    "visual_required": False,
+                    "requires_prompt": "src_dir",
+                    "expect_exit": 0,
+                    "commands": [
+                        [
+                            "./cli/automa",
+                            "vehicles",
+                            "perception",
+                            "apply",
+                            "{src_dir}",
+                            "--algorithm",
+                            "lightweight_observer",
+                            "--record",
+                        ]
+                    ],
+                },
+                {
+                    "id": "live-swap-stage",
+                    "kind": "command",
+                    "family_id": "continuity.live_config_swap",
+                    "safety": "live_mutation",
+                    "required_for_verdict": True,
+                    "visual_required": True,
+                    "visual_prompt": "view healthy?",
+                    "primary_cue": "Ready for: inspect perception; worker running; observe_only",
+                    "expect_exit": 0,
+                    "commands": [
+                        [
+                            "./cli/automa",
+                            "vehicles",
+                            "update",
+                            "perception",
+                            "--id",
+                            VEHICLE,
+                            "--algorithm",
+                            "lightweight_observer",
+                        ],
+                        [
+                            "./cli/automa",
+                            "vehicles",
+                            "automation",
+                            "run",
+                            "--id",
+                            VEHICLE,
+                            "--observe-only",
+                            "--frames",
+                            "0",
+                            "--open-view",
+                        ],
+                    ],
+                },
+                {
+                    "id": "live-swap-stop",
+                    "kind": "command",
+                    "family_id": "continuity.live_config_swap",
+                    "safety": "live_mutation",
+                    "required_for_verdict": True,
+                    "visual_required": False,
+                    "primary_cue": "worker stopped; activation restored",
+                    "expect_exit": 0,
+                    "commands": [
+                        ["./cli/automa", "vehicles", "automation", "stop", "--id", VEHICLE],
+                    ],
+                },
+                {
+                    "id": "memory-lifecycle",
+                    "kind": "command",
+                    "family_id": "continuity.memory_lifecycle",
+                    "safety": "live_mutation",
+                    "required_for_verdict": True,
+                    "primary_cue": "Memory check: PASS",
+                    "visual_required": False,
+                    "expect_exit": 0,
+                    "commands": [
+                        [
+                            "./cli/automa",
+                            "vehicles",
+                            "memory",
+                            "check",
+                            "--id",
+                            VEHICLE,
+                            "--record",
+                        ]
+                    ],
+                },
+            ],
+        }
+
+    def _install_fakes(self, runner, *, fail_on=None, raise_interrupt=False, fail_restore=False):
+        fail_on = fail_on or set()
+        calls: list[list[str]] = []
+
+        def fake_precondition(state, **kwargs):
+            return {
+                "ok": True,
+                "attempted": True,
+                "needed": False,
+                "worker_stopped": True,
+                "error": None,
+            }
+
+        def fake_run(argv, **kwargs):
+            calls.append(list(argv))
+            step_dir = kwargs["step_dir"]
+            step_dir.mkdir(parents=True, exist_ok=True)
+            index = kwargs["index"]
+            argv_s = " ".join(str(a) for a in argv)
+            if raise_interrupt and "update" in argv and "perception" in argv:
+                raise KeyboardInterrupt()
+            exit_code = 1 if any(tok in argv_s for tok in fail_on) else 0
+            stdout = "ok\n"
+            if "perception" in argv and "run" in argv and "--record" in argv:
+                # Provide exact capture path for lineage binding
+                src = kwargs.get("cwd") or ROOT
+                # Will be set by test via state - use a placeholder path written by outer scope
+                run_dir = getattr(fake_run, "run_dir", None)
+                if run_dir is not None:
+                    stdout = f"run: {run_dir}\n"
+            (step_dir / f"cmd-{index:02d}.stdout.txt").write_text(stdout, encoding="utf-8")
+            (step_dir / f"cmd-{index:02d}.stderr.txt").write_text("", encoding="utf-8")
+            return runner.CommandOutcome(
+                argv=list(argv),
+                command=" ".join(str(a) for a in argv),
+                exit_code=exit_code,
+                elapsed_ms=1,
+                stdout_path=f"steps/x/cmd-{index:02d}.stdout.txt",
+                stderr_path=f"steps/x/cmd-{index:02d}.stderr.txt",
+                started_at_utc="t0",
+                ended_at_utc="t1",
+            )
+
+        originals = {
+            "run": runner._run_command,
+            "pre": runner._run_precondition_cleanup,
+            "cleanup": runner._enforce_cleanup,
+            "restore": runner.restore_activation,
+        }
+
+        def fake_cleanup(state, **kwargs):
+            return {
+                "attempted": True,
+                "needed": False,
+                "worker_stopped": True,
+                "error": None,
+                "stop_exit_code": 0,
+                "final_status_exit_code": 0,
+                "pid_alive": False,
+                "pids": [],
+            }
+
+        runner._run_command = fake_run  # type: ignore[assignment]
+        runner._run_precondition_cleanup = fake_precondition  # type: ignore[assignment]
+        runner._enforce_cleanup = fake_cleanup  # type: ignore[assignment]
+        if fail_restore:
+            def boom(snapshot, **kwargs):
+                return {"ok": False, "error": "injected restore failure", "results": {}}
+            runner.restore_activation = boom  # type: ignore[assignment]
+        return calls, originals, fake_run
+
+    def _restore_originals(self, runner, originals):
+        runner._run_command = originals["run"]  # type: ignore[assignment]
+        runner._run_precondition_cleanup = originals["pre"]  # type: ignore[assignment]
+        runner._enforce_cleanup = originals["cleanup"]  # type: ignore[assignment]
+        runner.restore_activation = originals["restore"]  # type: ignore[assignment]
+
+    def test_success_path_restores_staged_state(self) -> None:
+        runner = _load_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "repo"
+            root.mkdir()
+            self._vehicle_repo(root)
+            # Create a real capture dir with frames for lineage
+            run_dir = (
+                root
+                / "runtime"
+                / "vehicles"
+                / VEHICLE
+                / "bundle"
+                / "runtime"
+                / "perception-runs"
+                / "cap-1"
+            )
+            frames = run_dir / "frames"
+            frames.mkdir(parents=True)
+            f0 = frames / "frame_000000.png"
+            f0.write_bytes(b"png0")
+            (run_dir / "run.json").write_text(
+                json.dumps({"frames": [{"frame_id": "frame_000000", "image_path": str(f0)}]}),
+                encoding="utf-8",
+            )
+            session_dir = Path(tmp) / "session"
+            catalog = self._continuity_catalog()
+            catalog_path = root / "cat.yaml"
+            catalog_path.write_text("id: m007-continuity-test-runner\n", encoding="utf-8")
+            # Point identity digests at ROOT's real runner/contract by using ROOT as repo
+            # but vehicle bundle under ROOT — use ROOT for real product trees.
+            session_dir = Path(tmp) / "session"
+            calls, originals, fake_run = self._install_fakes(runner)
+            fake_run.run_dir = run_dir  # type: ignore[attr-defined]
+            # Mutate staged autonomy after snapshot by wrapping snapshot
+            real_snap = runner.snapshot_staged_state
+
+            def snap_and_mark(*args, **kwargs):
+                snap = real_snap(*args, **kwargs)
+                # after snapshot, mutate live tree (trial)
+                vehicle_bundle = (
+                    ROOT / "runtime" / "vehicles" / VEHICLE / "bundle" / "autonomy"
+                )
+                # Use ROOT vehicle if present; else skip mutation
+                if vehicle_bundle.is_dir():
+                    marker = vehicle_bundle / "_trial_marker.py"
+                    marker.write_text("trial=1\n", encoding="utf-8")
+                    fake_run.trial_marker = marker  # type: ignore[attr-defined]
+                return snap
+
+            runner.snapshot_staged_state = snap_and_mark  # type: ignore[assignment]
+            try:
+                result = runner.run_session(
+                    catalog=catalog,
+                    session_dir=session_dir,
+                    repo_root=ROOT,
+                    metrics_ui_origin="http://localhost:5050",
+                    metrics_ui_repo=None,
+                    browser_name="Chrome",
+                    browser_version="1",
+                    prompt=lambda _m: "skip",
+                    non_interactive=True,
+                    auto_visual="skip",
+                    command_timeout_s=5,
+                    dry_run=False,
+                    browser_view_path=None,
+                    operator="test",
+                    catalog_path=CATALOGS / "m007-continuity.yaml",
+                    machine_only=True,
+                )
+            finally:
+                runner.snapshot_staged_state = real_snap  # type: ignore[assignment]
+                self._restore_originals(runner, originals)
+                marker = getattr(fake_run, "trial_marker", None)
+                if marker is not None and Path(marker).is_file():
+                    Path(marker).unlink()
+
+            restore_path = session_dir / "us04-activation-restore.json"
+            self.assertTrue(restore_path.is_file(), "restore receipt required")
+            restore = json.loads(restore_path.read_text(encoding="utf-8"))
+            self.assertTrue(restore.get("ok"), restore)
+            # Continuity verdict must not be pass without HITL
+            self.assertNotEqual(result.get("result"), "pass")
+            cont = result.get("continuity") or {}
+            self.assertTrue(cont.get("restore_ok"))
+
+    def test_command_failure_still_restores(self) -> None:
+        runner = _load_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = (
+                ROOT
+                / "runtime"
+                / "vehicles"
+                / VEHICLE
+                / "bundle"
+                / "runtime"
+                / "perception-runs"
+            )
+            # ensure a capture dir exists for binding
+            cap = run_dir / "matrix-cap"
+            frames = cap / "frames"
+            frames.mkdir(parents=True, exist_ok=True)
+            f0 = frames / "frame_000000.png"
+            if not f0.is_file():
+                f0.write_bytes(b"png0")
+            if not (cap / "run.json").is_file():
+                (cap / "run.json").write_text(
+                    json.dumps({"frames": [{"frame_id": "frame_000000", "image_path": str(f0)}]}),
+                    encoding="utf-8",
+                )
+            session_dir = Path(tmp) / "session"
+            catalog = self._continuity_catalog()
+            calls, originals, fake_run = self._install_fakes(
+                runner, fail_on={"automation run"}
+            )
+            fake_run.run_dir = cap  # type: ignore[attr-defined]
+            try:
+                result = runner.run_session(
+                    catalog=catalog,
+                    session_dir=session_dir,
+                    repo_root=ROOT,
+                    metrics_ui_origin="http://localhost:5050",
+                    metrics_ui_repo=None,
+                    browser_name="Chrome",
+                    browser_version="1",
+                    prompt=lambda _m: "skip",
+                    non_interactive=True,
+                    auto_visual="skip",
+                    command_timeout_s=5,
+                    dry_run=False,
+                    browser_view_path=None,
+                    operator="test",
+                    catalog_path=CATALOGS / "m007-continuity.yaml",
+                    machine_only=True,
+                )
+            finally:
+                self._restore_originals(runner, originals)
+            restore = json.loads(
+                (session_dir / "us04-activation-restore.json").read_text(encoding="utf-8")
+            )
+            self.assertTrue(restore.get("ok"), restore)
+            self.assertNotEqual(result.get("result"), "pass")
+
+    def test_keyboard_interrupt_still_restores(self) -> None:
+        runner = _load_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            cap = (
+                ROOT
+                / "runtime"
+                / "vehicles"
+                / VEHICLE
+                / "bundle"
+                / "runtime"
+                / "perception-runs"
+                / "matrix-cap-int"
+            )
+            frames = cap / "frames"
+            frames.mkdir(parents=True, exist_ok=True)
+            f0 = frames / "frame_000000.png"
+            f0.write_bytes(b"png0")
+            (cap / "run.json").write_text(
+                json.dumps({"frames": [{"frame_id": "frame_000000", "image_path": str(f0)}]}),
+                encoding="utf-8",
+            )
+            session_dir = Path(tmp) / "session"
+            catalog = self._continuity_catalog()
+            calls, originals, fake_run = self._install_fakes(
+                runner, raise_interrupt=True
+            )
+            fake_run.run_dir = cap  # type: ignore[attr-defined]
+            try:
+                result = runner.run_session(
+                    catalog=catalog,
+                    session_dir=session_dir,
+                    repo_root=ROOT,
+                    metrics_ui_origin="http://localhost:5050",
+                    metrics_ui_repo=None,
+                    browser_name="Chrome",
+                    browser_version="1",
+                    prompt=lambda _m: "skip",
+                    non_interactive=True,
+                    auto_visual="skip",
+                    command_timeout_s=5,
+                    dry_run=False,
+                    browser_view_path=None,
+                    operator="test",
+                    catalog_path=CATALOGS / "m007-continuity.yaml",
+                    machine_only=True,
+                )
+            finally:
+                self._restore_originals(runner, originals)
+            restore_path = session_dir / "us04-activation-restore.json"
+            self.assertTrue(restore_path.is_file())
+            restore = json.loads(restore_path.read_text(encoding="utf-8"))
+            self.assertTrue(restore.get("ok"), restore)
+            self.assertNotEqual(result.get("result"), "pass")
+
+    def test_restore_failure_is_non_pass(self) -> None:
+        runner = _load_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            cap = (
+                ROOT
+                / "runtime"
+                / "vehicles"
+                / VEHICLE
+                / "bundle"
+                / "runtime"
+                / "perception-runs"
+                / "matrix-cap-fail"
+            )
+            frames = cap / "frames"
+            frames.mkdir(parents=True, exist_ok=True)
+            f0 = frames / "frame_000000.png"
+            f0.write_bytes(b"png0")
+            (cap / "run.json").write_text(
+                json.dumps({"frames": [{"frame_id": "frame_000000", "image_path": str(f0)}]}),
+                encoding="utf-8",
+            )
+            session_dir = Path(tmp) / "session"
+            catalog = self._continuity_catalog()
+            calls, originals, fake_run = self._install_fakes(runner, fail_restore=True)
+            fake_run.run_dir = cap  # type: ignore[attr-defined]
+            try:
+                result = runner.run_session(
+                    catalog=catalog,
+                    session_dir=session_dir,
+                    repo_root=ROOT,
+                    metrics_ui_origin="http://localhost:5050",
+                    metrics_ui_repo=None,
+                    browser_name="Chrome",
+                    browser_version="1",
+                    prompt=lambda _m: "skip",
+                    non_interactive=True,
+                    auto_visual="skip",
+                    command_timeout_s=5,
+                    dry_run=False,
+                    browser_view_path=None,
+                    operator="test",
+                    catalog_path=CATALOGS / "m007-continuity.yaml",
+                    machine_only=True,
+                )
+            finally:
+                self._restore_originals(runner, originals)
+            restore = json.loads(
+                (session_dir / "us04-activation-restore.json").read_text(encoding="utf-8")
+            )
+            self.assertFalse(restore.get("ok"), restore)
+            self.assertNotEqual(result.get("result"), "pass")
+            cont = result.get("continuity") or {}
+            self.assertFalse(cont.get("restore_ok"))
+            self.assertIn(result.get("result"), {"findings", "incomplete"})
+

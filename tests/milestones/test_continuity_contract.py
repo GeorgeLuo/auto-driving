@@ -19,6 +19,14 @@ assert _spec and _spec.loader
 cc = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(cc)
 
+def _full_product_map(fill: str = "ddd") -> dict[str, str]:
+    """Minimal complete product key set for finalizer unit tests."""
+    product = {rel: f"{fill}-{i}" for i, rel in enumerate(sorted(cc.DEFAULT_PRODUCT_RELATIVE_PATHS))}
+    for tree in cc.DEFAULT_PRODUCT_TREE_ROOTS:
+        product[f"{tree}/"] = f"{fill}-tree-{tree}"
+    return product
+
+
 
 def _base_catalog(steps: list[dict]) -> dict:
     return {
@@ -467,7 +475,7 @@ class ContinuityRestoreAndFinalizerTests(unittest.TestCase):
             "catalog_sha256": "aaa",
             "runner_sha256": "bbb",
             "continuity_contract_sha256": "ccc",
-            "product_sha256": {"cli/x.py": "ddd"},
+            "product_sha256": _full_product_map("ddd"),
             "metrics_ui": None,
         }
         current = dict(recorded)
@@ -482,13 +490,13 @@ class ContinuityRestoreAndFinalizerTests(unittest.TestCase):
                 "catalog_sha256": None,
                 "runner_sha256": "bbb",
                 "continuity_contract_sha256": "ccc",
-                "product_sha256": {"cli/x.py": "ddd"},
+                "product_sha256": _full_product_map("ddd"),
             },
             {
                 "catalog_sha256": "aaa",
                 "runner_sha256": "bbb",
                 "continuity_contract_sha256": "ccc",
-                "product_sha256": {"cli/x.py": "ddd"},
+                "product_sha256": _full_product_map("ddd"),
             },
         )
         self.assertFalse(ok)
@@ -517,7 +525,7 @@ class ContinuityRestoreAndFinalizerTests(unittest.TestCase):
             "catalog_sha256": "aaa",
             "runner_sha256": "bbb",
             "continuity_contract_sha256": "ccc",
-            "product_sha256": {"cli/x.py": "ddd"},
+            "product_sha256": _full_product_map("ddd"),
             "metrics_ui": {"commit": "abc", "worktree_state": "clean"},
             "metrics_ui_required": True,
         }
@@ -534,6 +542,9 @@ class ContinuityRestoreAndFinalizerTests(unittest.TestCase):
                 p = root / rel
                 p.parent.mkdir(parents=True, exist_ok=True)
                 p.write_text(f"# {rel}\n", encoding="utf-8")
+            for tree in cc.DEFAULT_PRODUCT_TREE_ROOTS:
+                (root / tree / "__init__.py").parent.mkdir(parents=True, exist_ok=True)
+                (root / tree / "__init__.py").write_text(f"# {tree}\n", encoding="utf-8")
             cat = (
                 root
                 / "docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/catalogs"
@@ -580,6 +591,9 @@ class ContinuityRestoreAndFinalizerTests(unittest.TestCase):
                 p = root / rel
                 p.parent.mkdir(parents=True, exist_ok=True)
                 p.write_text(f"# {rel}\n", encoding="utf-8")
+            for tree in cc.DEFAULT_PRODUCT_TREE_ROOTS:
+                (root / tree / "__init__.py").parent.mkdir(parents=True, exist_ok=True)
+                (root / tree / "__init__.py").write_text(f"# {tree}\n", encoding="utf-8")
             cat = (
                 root
                 / "docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/catalogs"
@@ -689,6 +703,227 @@ class CompareErrorDetailTests(unittest.TestCase):
         text = src.read_text(encoding="utf-8")
         self.assertIn('"error_detail": raw', text)
         self.assertIn("Human table stays one-line", text)
+
+
+
+class Us04TreeRestoreVerificationTests(unittest.TestCase):
+    def test_absent_tree_removes_trial_created_tree(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            vehicle = "v1"
+            bundle = root / "runtime" / "vehicles" / vehicle / "bundle"
+            runtime = bundle / "runtime"
+            perc = runtime / "perception" / "active.json"
+            perc.parent.mkdir(parents=True)
+            perc.write_text('{"k":"p"}\n', encoding="utf-8")
+            # no autonomy tree at snapshot
+            cache = root / "cache"
+            snap = cc.snapshot_staged_state(root, vehicle, cache_dir=cache)
+            self.assertTrue(cc.snapshot_is_restorable(snap), snap)
+            self.assertFalse(snap["staged_trees"]["autonomy"]["existed"])
+            # trial creates autonomy
+            trial = bundle / "autonomy" / "trial.py"
+            trial.parent.mkdir(parents=True)
+            trial.write_text("trial=1\n", encoding="utf-8")
+            restored = cc.restore_activation(snap)
+            self.assertTrue(restored["ok"], restored)
+            self.assertFalse((bundle / "autonomy").exists(), "trial autonomy tree must be removed")
+
+    def test_corrupted_cache_fails_restore(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            vehicle = "v1"
+            bundle = root / "runtime" / "vehicles" / vehicle / "bundle"
+            runtime = bundle / "runtime"
+            for name in ("perception",):
+                path = runtime / name / "active.json"
+                path.parent.mkdir(parents=True)
+                path.write_text(f'{{"k":"{name}"}}\n', encoding="utf-8")
+            auto = bundle / "autonomy" / "pkg.py"
+            auto.parent.mkdir(parents=True)
+            auto.write_text("prior=1\n", encoding="utf-8")
+            cache = root / "cache"
+            snap = cc.snapshot_staged_state(root, vehicle, cache_dir=cache)
+            # corrupt cache before restore
+            (cache / "autonomy" / "pkg.py").write_text("CORRUPT\n", encoding="utf-8")
+            restored = cc.restore_activation(snap)
+            self.assertFalse(restored["ok"], restored)
+            self.assertIn("corrupted", str(restored.get("error") or "").lower())
+
+    def test_restored_tree_hash_verified(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            vehicle = "v1"
+            bundle = root / "runtime" / "vehicles" / vehicle / "bundle"
+            runtime = bundle / "runtime"
+            perc = runtime / "perception" / "active.json"
+            perc.parent.mkdir(parents=True)
+            perc.write_text('{"k":"p"}\n', encoding="utf-8")
+            auto = bundle / "autonomy" / "pkg.py"
+            auto.parent.mkdir(parents=True)
+            auto.write_text("prior=1\n", encoding="utf-8")
+            cache = root / "cache"
+            snap = cc.snapshot_staged_state(root, vehicle, cache_dir=cache)
+            auto.write_text("mutated=2\n", encoding="utf-8")
+            restored = cc.restore_activation(snap)
+            self.assertTrue(restored["ok"], restored)
+            self.assertEqual(auto.read_text(encoding="utf-8"), "prior=1\n")
+            tree_res = restored["results"]["tree:autonomy"]
+            self.assertTrue(tree_res.get("verified"))
+            self.assertEqual(
+                tree_res.get("tree_sha256"),
+                snap["staged_trees"]["autonomy"]["tree_sha256"],
+            )
+
+
+class FinalizerRequiredKeysAndMetricsTests(unittest.TestCase):
+    def test_omitted_required_product_key_fails(self) -> None:
+        product = _full_product_map("x")
+        incomplete = dict(product)
+        incomplete.pop(next(iter(incomplete)))
+        complete = _full_product_map("x")
+        ok, reason = cc.finalize_evidence_freshness(
+            {
+                "catalog_sha256": "a",
+                "runner_sha256": "b",
+                "continuity_contract_sha256": "c",
+                "product_sha256": incomplete,
+            },
+            {
+                "catalog_sha256": "a",
+                "runner_sha256": "b",
+                "continuity_contract_sha256": "c",
+                "product_sha256": complete,
+            },
+        )
+        self.assertFalse(ok)
+        self.assertIn("required", reason.lower())
+
+    def test_product_key_set_mismatch_fails(self) -> None:
+        rec = _full_product_map("x")
+        cur = _full_product_map("x")
+        cur["extra/file.py"] = "zzz"
+        ok, reason = cc.finalize_evidence_freshness(
+            {
+                "catalog_sha256": "a",
+                "runner_sha256": "b",
+                "continuity_contract_sha256": "c",
+                "product_sha256": rec,
+            },
+            {
+                "catalog_sha256": "a",
+                "runner_sha256": "b",
+                "continuity_contract_sha256": "c",
+                "product_sha256": cur,
+            },
+        )
+        self.assertFalse(ok)
+        self.assertIn("key set", reason.lower())
+
+    def test_runtime_tree_change_invalidates(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for rel in cc.DEFAULT_PRODUCT_RELATIVE_PATHS:
+                p = root / rel
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text(f"# {rel}\n", encoding="utf-8")
+            for tree in cc.DEFAULT_PRODUCT_TREE_ROOTS:
+                (root / tree / "__init__.py").parent.mkdir(parents=True, exist_ok=True)
+                (root / tree / "__init__.py").write_text(f"# {tree}\n", encoding="utf-8")
+            cat = root / "cat.yaml"
+            cat.write_text("id: x\n", encoding="utf-8")
+            runner = (
+                root
+                / "docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/session_runner.py"
+            )
+            runner.parent.mkdir(parents=True, exist_ok=True)
+            runner.write_text("# r\n", encoding="utf-8")
+            (runner.parent / "continuity_contract.py").write_text("# c\n", encoding="utf-8")
+            recorded = cc.collect_identity_bundle(repo_root=root, catalog_path=cat)
+            recorded["metrics_ui_required"] = False
+            # mutate autonomy tree B
+            (root / "autonomy" / "__init__.py").write_text("# mutated autonomy\n", encoding="utf-8")
+            current = cc.collect_identity_bundle(repo_root=root, catalog_path=cat)
+            ok, reason = cc.finalize_evidence_freshness(recorded, current)
+            self.assertFalse(ok)
+            self.assertIn("product mismatch", reason)
+
+    def test_metrics_ui_a_to_b_fails_when_required(self) -> None:
+        product = _full_product_map("p")
+        rec = {
+            "catalog_sha256": "a",
+            "runner_sha256": "b",
+            "continuity_contract_sha256": "c",
+            "product_sha256": product,
+            "metrics_ui_required": True,
+            "metrics_ui": {"commit": "A", "worktree_state": "clean"},
+        }
+        cur = {
+            "catalog_sha256": "a",
+            "runner_sha256": "b",
+            "continuity_contract_sha256": "c",
+            "product_sha256": product,
+            "metrics_ui_required": True,
+            "metrics_ui": {"commit": "B", "worktree_state": "clean"},
+        }
+        ok, reason = cc.finalize_evidence_freshness(rec, cur)
+        self.assertFalse(ok)
+        self.assertIn("commit", reason)
+
+    def test_dirty_metrics_ui_without_named_diff_fails(self) -> None:
+        product = _full_product_map("p")
+        bundle = {
+            "catalog_sha256": "a",
+            "runner_sha256": "b",
+            "continuity_contract_sha256": "c",
+            "product_sha256": product,
+            "metrics_ui_required": True,
+            "metrics_ui": {"commit": "A", "worktree_state": "dirty"},
+        }
+        ok, reason = cc.finalize_evidence_freshness(bundle, bundle)
+        self.assertFalse(ok)
+        self.assertIn("named diff", reason.lower())
+
+    def test_posthoc_does_not_reuse_recorded_metrics_ui(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for rel in cc.DEFAULT_PRODUCT_RELATIVE_PATHS:
+                p = root / rel
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text(f"# {rel}\n", encoding="utf-8")
+            for tree in cc.DEFAULT_PRODUCT_TREE_ROOTS:
+                (root / tree / "__init__.py").parent.mkdir(parents=True, exist_ok=True)
+                (root / tree / "__init__.py").write_text(f"# {tree}\n", encoding="utf-8")
+            cat = (
+                root
+                / "docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/catalogs"
+            )
+            cat.mkdir(parents=True)
+            catalog_path = cat / "m007-continuity.yaml"
+            catalog_path.write_text("id: m007-continuity\n", encoding="utf-8")
+            runner = (
+                root
+                / "docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/session_runner.py"
+            )
+            runner.parent.mkdir(parents=True, exist_ok=True)
+            runner.write_text("# runner\n", encoding="utf-8")
+            (runner.parent / "continuity_contract.py").write_text("# c\n", encoding="utf-8")
+            recorded = cc.collect_identity_bundle(repo_root=root, catalog_path=catalog_path)
+            recorded["metrics_ui_required"] = True
+            recorded["metrics_ui"] = {"commit": "AAA", "worktree_state": "clean"}
+            session = root / "session"
+            session.mkdir()
+            (session / "result.json").write_text(
+                json.dumps({"result": "incomplete", "continuity": {"identity_recorded": recorded}}),
+                encoding="utf-8",
+            )
+            # No metrics_ui / metrics_ui_repo supplied — must fail closed, not reuse recorded.
+            out = cc.validate_session_against_tree(
+                session, repo_root=root, catalog_path=catalog_path
+            )
+            self.assertFalse(out["ok"], out)
+            self.assertIn("metrics_ui", out["reason"])
+
 
 
 if __name__ == "__main__":

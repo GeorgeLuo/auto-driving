@@ -1,4 +1,5 @@
 {
+  "cache_dir": "us04-staged-cache",
   "files": {
     "bundle_manifest": {
       "existed": true,
@@ -22,8 +23,21 @@
       "existed": true,
       "path": "<repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception/active.json",
       "restorable": true,
-      "sha256": "65d28a56b8aa2e012a5b640a7bb573662a653ae896df3328741bd0a1e236194d"
+      "sha256": "90cdc4cb0b3abd43f6d3691175072273bc0972210044ac577e74b1fbfff8047a"
     }
   },
-  "restorable": true
+  "restorable": true,
+  "schema": "continuity_us04_snapshot_meta_v1",
+  "staged_trees": {
+    "autonomy": {
+      "existed": true,
+      "file_count": 23,
+      "tree_sha256": "974475edbb16fd26f03bbe8309b881503fc11d6f1acb0d9218384e45fdb1e677"
+    },
+    "implementations": {
+      "existed": true,
+      "file_count": 48,
+      "tree_sha256": "0676ca738cf1140175fe930baa7a6975c84a5c6b7758179733cdbc9ebeaa529b"
+    }
+  }
 }

@@ -43,31 +43,30 @@
       "track": "continuity"
     },
     "timestamps": {
-      "ended_at_utc": "2026-08-08T08:40:50.873544Z",
+      "ended_at_utc": "2026-08-08T19:00:23.595025Z",
       "local_timezone": [
         "PST",
         "PDT"
       ],
-      "started_at_utc": "2026-08-08T08:40:10.264359Z"
+      "started_at_utc": "2026-08-08T18:59:43.477863Z"
     }
   },
   "findings": [],
   "review_repair": {
-    "us04_verified_tree_restore": true,
-    "us04_remove_absent_trial_trees": true,
-    "finalizer_exact_product_keys": true,
-    "finalizer_autonomy_implementations_trees": true,
-    "posthoc_independent_metrics_ui": true,
-    "runner_restore_matrix_tests": true
+    "dirty_metrics_exact_diff_identity": true,
+    "shared_git_identity_untracked_bytes": true,
+    "archive_clean_us04_matrix": true,
+    "snapshot_meta_staged_trees": true,
+    "snapshot_restore_compare": true
   },
   "artifacts": [
     {
       "path": "README.md",
-      "sha256": "4a4e027c75739b78bbe38a000d428b87683ff36bde263a947c614163eeb79a3c"
+      "sha256": "b9451b4a8603eae1dac27198ef8dd00d80af1f50ad676c002a6be88a1eb789b5"
     },
     {
       "path": "runner-session/result.json",
-      "sha256": "123135b2d203dc201eec957f450f56e81e14fd9b411952c21442900e717f0889"
+      "sha256": "ea6d88e778229b5d21945f4781d4273a7a63fe485f8b2825a4543f6beac160fc"
     },
     {
       "path": "runner-session/continuity-preflight.json",
@@ -75,19 +74,27 @@
     },
     {
       "path": "runner-session/us04-activation-restore.json",
-      "sha256": "a7c8204095dae69e202c437db05e84c8b28d58e99b7ee3974516c62132ff20e1"
+      "sha256": "e74ff7459bfe1d9f303bb31ec46b35de6c092551f4f085175687db36bb062fff"
+    },
+    {
+      "path": "runner-session/us04-activation-snapshot-meta.json",
+      "sha256": "b9d2e4c3e3c71c34684cc11b998e68aa7cac2c6e6e6088e0dc6b0902db1b1bf5"
+    },
+    {
+      "path": "runner-session/us04-snapshot-restore-compare.json",
+      "sha256": "3c283cd97838e4e6e12c9a406d69d0902f99acf0a4f0c4d41521d48bdfe803a3"
     },
     {
       "path": "runner-session/offline-source-lineage.json",
-      "sha256": "2b9194000c9e525cbd405b5cc9fd28ea5a455f695157b9b8b715cb78eae1b79f"
+      "sha256": "3fae3fed66e8fc08bc3222b34454882ed38b3c0b2c50f8ecfa5ce81c967da8e3"
     },
     {
       "path": "runner-session/human-notes.md",
-      "sha256": "88cff56bd3b859c0dea6cc4f08eba36642a1910a7442c2f1f2bad1e480bbe234"
+      "sha256": "15d858be7a8a944a6c55cac161bc078e7d92601d9bed022d273daac0fd690146"
     },
     {
       "path": "runner-session/digests.json",
-      "sha256": "289518a408764727773a08f0f6d3d091372ec9fe74c801eed2e681c45d23c8a1"
+      "sha256": "300ba939d641f3c8de9003ff40c84431a4cb68961b44d7698d8f0da61c6e370d"
     }
   ]
 }

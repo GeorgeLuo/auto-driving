@@ -13,10 +13,10 @@
         "lightweight_observer"
       ],
       "command": "./cli/automa vehicles update perception --id chase-sim-chaser --algorithm lightweight_observer",
-      "elapsed_ms": 868,
-      "ended_at_utc": "2026-08-08T08:40:31.021530Z",
+      "elapsed_ms": 848,
+      "ended_at_utc": "2026-08-08T19:00:03.993591Z",
       "exit_code": 0,
-      "started_at_utc": "2026-08-08T08:40:30.152757Z",
+      "started_at_utc": "2026-08-08T19:00:03.145129Z",
       "stderr_path": "steps/live-swap-stage/cmd-00.stderr.txt",
       "stdout_path": "steps/live-swap-stage/cmd-00.stdout.txt"
     },
@@ -34,10 +34,10 @@
         "--open-view"
       ],
       "command": "./cli/automa vehicles automation run --id chase-sim-chaser --observe-only --frames 0 --open-view",
-      "elapsed_ms": 2180,
-      "ended_at_utc": "2026-08-08T08:40:33.203066Z",
+      "elapsed_ms": 2195,
+      "ended_at_utc": "2026-08-08T19:00:06.190071Z",
       "exit_code": 0,
-      "started_at_utc": "2026-08-08T08:40:31.022461Z",
+      "started_at_utc": "2026-08-08T19:00:03.994417Z",
       "stderr_path": "steps/live-swap-stage/cmd-01.stderr.txt",
       "stdout_path": "steps/live-swap-stage/cmd-01.stdout.txt"
     },
@@ -50,10 +50,10 @@
         "chase-sim-chaser"
       ],
       "command": "./cli/automa vehicles status --id chase-sim-chaser",
-      "elapsed_ms": 1497,
-      "ended_at_utc": "2026-08-08T08:40:34.703517Z",
+      "elapsed_ms": 1352,
+      "ended_at_utc": "2026-08-08T19:00:07.544182Z",
       "exit_code": 0,
-      "started_at_utc": "2026-08-08T08:40:33.205924Z",
+      "started_at_utc": "2026-08-08T19:00:06.192026Z",
       "stderr_path": "steps/live-swap-stage/cmd-02.stderr.txt",
       "stdout_path": "steps/live-swap-stage/cmd-02.stdout.txt"
     }

@@ -1,7 +1,7 @@
 {
   "catalog_path": "<repo>/docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/catalogs/m007-continuity.yaml",
   "catalog_sha256": "c3ef8cccfc1a3dcdab6efdaefaf0b8f79fb5638327360e87e0d6686f71042fcb",
-  "continuity_contract_sha256": "1bfa2fd1e932f2f02117eed7351551aef7b017a837cd47041491e4ba36aa5664",
+  "continuity_contract_sha256": "ccaa67b42398603162e2a280b9486ab16d032ed4b5ba3ed463b4fc6ecbe9fc90",
   "metrics_ui": {
     "branch": null,
     "commit": null,
@@ -29,6 +29,6 @@
     "cli/automa_cli/vehicles.py": "432c0a2001833649c32d91173813f279a16ba37d37212dc20185abae7b9cd40c",
     "implementations/": "0676ca738cf1140175fe930baa7a6975c84a5c6b7758179733cdbc9ebeaa529b"
   },
-  "runner_sha256": "4944b2ef8cc7b3c00cdc85bf7e854ddda33da6495a40ecbb3072969a8e01e5e3",
+  "runner_sha256": "a490546dda838a097bdc0cf886d670f38fbf8c305446df056a1c7b0bf7827909",
   "schema": "continuity_identity_bundle_v0"
 }

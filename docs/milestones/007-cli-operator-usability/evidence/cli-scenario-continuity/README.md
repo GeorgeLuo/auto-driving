@@ -1,6 +1,6 @@
 # Realistic CLI scenario continuity evidence
 
-Status: **Machine-first complete after re-review restore/finalizer repairs; HITL pending.**
+Status: **Machine-first complete after dirty-identity + archive-clean matrix repairs; HITL pending.**
 
 Accepted contract: [cli-scenario-continuity.md](../../proposals/cli-scenario-continuity.md) (PR #99).
 
@@ -11,24 +11,24 @@ Accepted contract: [cli-scenario-continuity.md](../../proposals/cli-scenario-con
 | Catalog | `m007-continuity` |
 | Machine preflight | **pass** |
 | Continuity verdict | **incomplete** (live_config_swap partial — visual HITL pending) |
-| US-04 full staged restore | **ok** (verified tree digests; trial absences removed) |
-| Finalizer | **ok** (exact product keys incl. autonomy/implementations trees) |
-| Offline lineage | content-bound ordered frame digests + apply re-verify |
-| Behavior head | `3fc5e9a` |
+| US-04 restore | **ok** (snapshot meta `staged_trees` + restore compare) |
+| Finalizer | **ok** (exact product keys; shared dirty git identity) |
+| Behavior head | `cad6119` |
 
 ## Family ledger
 
 | Family | Aggregate | Notes |
 | --- | --- | --- |
-| `continuity.offline_perception` | **passed** | Capture + two exclusive applies; lineage re-verified |
-| `continuity.live_config_swap` | **partial** | Machine green; HITL visual still required |
+| `continuity.offline_perception` | **passed** | Content-bound lineage |
+| `continuity.live_config_swap` | **partial** | HITL visual still required |
 | `continuity.memory_lifecycle` | **passed** | Memory check PASS |
 
-## Re-review repairs (latest)
+## Latest re-review repairs
 
-1. US-04: remove trial-created absent trees; verify cache + restored tree_sha256
-2. Post-hoc finalizer: exact product key set; autonomy/ + implementations/ trees; no reuse of recorded Metrics UI as current; dirty UI needs named diff/linked PR
-3. Runner-level restore matrix tests (success / command-fail / interrupt / restore-fail)
+1. Dirty Metrics UI: exact `diff_identity` match required (no linked_pr None escape)
+2. Shared `collect_git_identity` hashes untracked **contents** for record and post-hoc
+3. US-04 runner matrix is archive-clean temp fixtures only (no ROOT runtime)
+4. Snapshot meta persists `staged_trees` digests; restore receipt compared mechanically
 
 ## Remaining for Met
 

@@ -5,35 +5,35 @@
       "frame_id": "frame_000000",
       "index": 0,
       "path_name": "frame_000000_front_camera.png",
-      "sha256": "fd72ea5058dedf5563c856e3b7e2f12490bdc362bb6ace3ef7a2bb5b8809f160",
-      "size": 150948
+      "sha256": "2de21be6e2f098ef53807abfeee1668e93d836e011de53bacd4beea3f702a7ec",
+      "size": 15537
     },
     {
       "frame_id": "frame_000001",
       "index": 1,
       "path_name": "frame_000001_front_camera.png",
-      "sha256": "88d0363619abded6f8f85595dfd4ad99418e6afc349261408f1fc748b4005e9f",
-      "size": 51113
+      "sha256": "3b27b7adfd74f52329fef3bf8aac46c50b2ba208759b6177957ee38602cb62a0",
+      "size": 152706
     },
     {
       "frame_id": "frame_000002",
       "index": 2,
       "path_name": "frame_000002_front_camera.png",
-      "sha256": "7d8314deefc09b3c87267d5cfb94ef4afe9572bb295dbd08a9dd5a894050fc84",
-      "size": 182879
+      "sha256": "517d1e3717b988be594c5d09ddce59426bf3807c74eb2be3cd7cca6cfaef3463",
+      "size": 157915
     },
     {
       "frame_id": "frame_000003",
       "index": 3,
       "path_name": "frame_000003_front_camera.png",
-      "sha256": "98617ac8054ae3f4e41cd8ea2b14e48387998b10ccaf2169be863c8fe1f595a5",
-      "size": 180456
+      "sha256": "f9ad9154b52529d501a45c654adcbdc4c66bc83a3396363af8ab64f1e50702d5",
+      "size": 132688
     }
   ],
-  "manifest_sha256": "92b4885cb5958afe955b6deab7f231ad1280eec13ca70489efcdeef81883048a",
+  "manifest_sha256": "31bf2431d0159cea6ae3a0cddda995ed8cc4f71e08f63a2642b6971d1b55dd3d",
   "ok": true,
-  "ordered_input_sha256": "b2ae0c1b93cec05871946b1941a10a9c107d50b1eb60bb0188348c497c5a6b34",
+  "ordered_input_sha256": "e6c9e15e8a6c546d90e29caffd35ed5093152eead9f7bb4336998dabb0ea9073",
   "schema": "continuity_source_lineage_v1",
-  "src_dir": "<repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260808-014022-456977-bd9737da",
-  "src_dir_redacted": "<repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260808-014022-456977-bd9737da"
+  "src_dir": "<repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260808-115955-531937-f60066c2",
+  "src_dir_redacted": "<repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260808-115955-531937-f60066c2"
 }

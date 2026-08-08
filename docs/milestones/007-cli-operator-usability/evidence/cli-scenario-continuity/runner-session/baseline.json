@@ -17,10 +17,10 @@
     "needed": false,
     "ok": true,
     "pid_liveness": {
-      "75867": false
+      "77192": false
     },
     "pids_before": [
-      75867
+      77192
     ],
     "status_exit_code": 0,
     "stop_exit_code": null,
@@ -29,7 +29,7 @@
     "worker_state_before": "stopped"
   },
   "python": "3.11.7",
-  "recorded_at_utc": "2026-08-08T08:40:10.264359Z",
+  "recorded_at_utc": "2026-08-08T18:59:43.477863Z",
   "recording_before": [
     "automation-20260630-214835",
     "automation-20260630-214933"
@@ -37,7 +37,7 @@
   "repositories": {
     "auto_driving": {
       "branch": "m007/scenario-continuity",
-      "commit": "3fc5e9af81244c09abad69194a06e808a7c44511",
+      "commit": "cad61195f017b1cc180eaca0995dcaec0f8cd08d",
       "diff_identity": null,
       "github_owner": "GeorgeLuo",
       "github_repo": "auto-driving",

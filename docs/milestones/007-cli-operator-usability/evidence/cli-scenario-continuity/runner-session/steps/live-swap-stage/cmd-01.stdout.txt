@@ -1,7 +1,7 @@
 Automation ready for chase-sim-chaser.
-PID: 75858
-First frame: chase_frame_397579
-Startup phases: capture=237ms, perception=66ms, view=current-generation correlated
+PID: 77184
+First frame: chase_frame_542807
+Startup phases: capture=312ms, perception=111ms, view=current-generation correlated
 Perception view: http://127.0.0.1:8898/
 Ready for: inspect perception and stop automation
 Browser opened: http://127.0.0.1:8898/

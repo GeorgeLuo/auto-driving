@@ -19,21 +19,25 @@
       "error": null,
       "ok": true,
       "path": "<repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception/active.json",
-      "sha256": "cc6fa35bf7814f89f2c274298a057f6345cd6f273b421f4cc61ba991c00dc746"
+      "sha256": "65d28a56b8aa2e012a5b640a7bb573662a653ae896df3328741bd0a1e236194d"
     },
     "tree:autonomy": {
       "ok": true,
       "path": "<repo>/runtime/vehicles/chase-sim-chaser/bundle/autonomy",
-      "tree_sha256": "974475edbb16fd26f03bbe8309b881503fc11d6f1acb0d9218384e45fdb1e677"
+      "tree_sha256": "974475edbb16fd26f03bbe8309b881503fc11d6f1acb0d9218384e45fdb1e677",
+      "verified": true
     },
     "tree:bundle_manifest": {
       "ok": true,
-      "path": "<repo>/runtime/vehicles/chase-sim-chaser/bundle/bundle-manifest.json"
+      "path": "<repo>/runtime/vehicles/chase-sim-chaser/bundle/bundle-manifest.json",
+      "sha256": "5b03e32d145a36b0bab900f3fa2ca177f0659d275c2e8cf8f5b4c71fcfd234df",
+      "verified": true
     },
     "tree:implementations": {
       "ok": true,
       "path": "<repo>/runtime/vehicles/chase-sim-chaser/bundle/implementations",
-      "tree_sha256": "0676ca738cf1140175fe930baa7a6975c84a5c6b7758179733cdbc9ebeaa529b"
+      "tree_sha256": "0676ca738cf1140175fe930baa7a6975c84a5c6b7758179733cdbc9ebeaa529b",
+      "verified": true
     }
   }
 }

@@ -43,47 +43,31 @@
       "track": "continuity"
     },
     "timestamps": {
-      "ended_at_utc": "2026-08-08T07:48:12.891343Z",
+      "ended_at_utc": "2026-08-08T08:40:50.873544Z",
       "local_timezone": [
         "PST",
         "PDT"
       ],
-      "started_at_utc": "2026-08-08T07:47:33.896085Z"
+      "started_at_utc": "2026-08-08T08:40:10.264359Z"
     }
   },
   "findings": [],
-  "repairs_applied": [
-    {
-      "id": "M007-LIVE-001",
-      "status": "implemented"
-    },
-    {
-      "id": "M007-LIVE-003",
-      "status": "implemented"
-    },
-    {
-      "id": "M007-LIVE-005",
-      "status": "implemented"
-    }
-  ],
   "review_repair": {
-    "per_leaf_flag_allowlist": true,
-    "strong_family_topology": true,
-    "us04_full_staged_cache_restore": true,
-    "precondition_fail_stop": true,
-    "posthoc_final_tree_validator": true,
-    "content_bound_lineage": true,
-    "single_continuity_verdict_writer": true,
-    "expanded_product_surface": true
+    "us04_verified_tree_restore": true,
+    "us04_remove_absent_trial_trees": true,
+    "finalizer_exact_product_keys": true,
+    "finalizer_autonomy_implementations_trees": true,
+    "posthoc_independent_metrics_ui": true,
+    "runner_restore_matrix_tests": true
   },
   "artifacts": [
     {
       "path": "README.md",
-      "sha256": "ab666d03698dc94132fe7a970dd6d7bf6fb97f882ddeadd36153f0c29a64aee1"
+      "sha256": "4a4e027c75739b78bbe38a000d428b87683ff36bde263a947c614163eeb79a3c"
     },
     {
       "path": "runner-session/result.json",
-      "sha256": "52bd06369f9f933247b8d3f3c74410b163e3fcac9db25d945a6a0b14d52fbbbe"
+      "sha256": "123135b2d203dc201eec957f450f56e81e14fd9b411952c21442900e717f0889"
     },
     {
       "path": "runner-session/continuity-preflight.json",
@@ -91,19 +75,19 @@
     },
     {
       "path": "runner-session/us04-activation-restore.json",
-      "sha256": "9e47c357d1f49e601b09d55b616855d306ce8ecfa606cbc22a5f1db63379d659"
+      "sha256": "a7c8204095dae69e202c437db05e84c8b28d58e99b7ee3974516c62132ff20e1"
     },
     {
       "path": "runner-session/offline-source-lineage.json",
-      "sha256": "b7ca9ac3df3cbbc02e70086e6fd1e6dc40b55cf48c3245d3a6a12689ea207697"
+      "sha256": "2b9194000c9e525cbd405b5cc9fd28ea5a455f695157b9b8b715cb78eae1b79f"
     },
     {
       "path": "runner-session/human-notes.md",
-      "sha256": "6db81337356976ab5bddebf8894ae3c376d8f42f116d6360ed5a0f5bc52b9b17"
+      "sha256": "88cff56bd3b859c0dea6cc4f08eba36642a1910a7442c2f1f2bad1e480bbe234"
     },
     {
       "path": "runner-session/digests.json",
-      "sha256": "3f63306b315cf6bdfecc0a897a1b4c77142ef689cb9fc5d5092727b4b9312210"
+      "sha256": "289518a408764727773a08f0f6d3d091372ec9fe74c801eed2e681c45d23c8a1"
     }
   ]
 }

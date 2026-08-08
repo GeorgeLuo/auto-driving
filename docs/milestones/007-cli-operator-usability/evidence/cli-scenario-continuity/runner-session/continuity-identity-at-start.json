@@ -1,14 +1,19 @@
 {
   "catalog_path": "<repo>/docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/catalogs/m007-continuity.yaml",
   "catalog_sha256": "c3ef8cccfc1a3dcdab6efdaefaf0b8f79fb5638327360e87e0d6686f71042fcb",
-  "continuity_contract_sha256": "605f40775ef7ee78d9c566793fccb082685eb20954eab997fb86f649376e5112",
+  "continuity_contract_sha256": "1bfa2fd1e932f2f02117eed7351551aef7b017a837cd47041491e4ba36aa5664",
   "metrics_ui": {
     "branch": null,
     "commit": null,
+    "diff_identity": null,
+    "linked_pr": null,
+    "named_diff": null,
+    "path": null,
     "worktree_state": null
   },
   "metrics_ui_required": false,
   "product_sha256": {
+    "autonomy/": "974475edbb16fd26f03bbe8309b881503fc11d6f1acb0d9218384e45fdb1e677",
     "cli/automa_cli/app.py": "32d76546dd59815202bc71c33f2115683b179adc06d0c7d36849636767e63b89",
     "cli/automa_cli/automation.py": "4b1f35bae59ad21ae9952ebd8dd3309a5eb9b5c6c1a95c8d0daad05eb72d46af",
     "cli/automa_cli/bundles.py": "6e80598c130b1a5d7a5c8e240d97fbf5d79b53e861a793f311606c3c03d06343",
@@ -21,8 +26,9 @@
     "cli/automa_cli/perception_runs.py": "ecd0e8fc008e6f1b97cb462fa09c263ae0388d3c9f0e3a9c64e8d620d2d091fc",
     "cli/automa_cli/perception_view.py": "aae008176f84622d11dad260b87a1424d189674f507e96a4179e6a17e5c49bae",
     "cli/automa_cli/streaming.py": "2ded91f6d981582f3e97f33285c55eeefccbf5185a120de391e831e59142f710",
-    "cli/automa_cli/vehicles.py": "432c0a2001833649c32d91173813f279a16ba37d37212dc20185abae7b9cd40c"
+    "cli/automa_cli/vehicles.py": "432c0a2001833649c32d91173813f279a16ba37d37212dc20185abae7b9cd40c",
+    "implementations/": "0676ca738cf1140175fe930baa7a6975c84a5c6b7758179733cdbc9ebeaa529b"
   },
-  "runner_sha256": "ede5f8fa21b5c8ec0896836bd21dfdea4cd7e8e9f7415511bda661f7fa189241",
+  "runner_sha256": "4944b2ef8cc7b3c00cdc85bf7e854ddda33da6495a40ecbb3072969a8e01e5e3",
   "schema": "continuity_identity_bundle_v0"
 }

@@ -1,0 +1,17 @@
+Perception experiment
+---------------------
+review: runtime/perception-applies/apply-perception-chase-sim-chaser-20260808-123723-444166-9f703ccb-20260808-123731-659865-ca3f23a6/review.html
+run: runtime/perception-applies/apply-perception-chase-sim-chaser-20260808-123723-444166-9f703ccb-20260808-123731-659865-ca3f23a6
+source: <repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260808-123723-444166-9f703ccb
+algorithm: sim_debug
+frames: 4
+failed frames: 0
+statuses: ok=4
+evidence: evader=1, sensor_frame=4
+latency: cold 21.780 ms; steady median 10.911 ms, p95 12.190 ms
+peak memory: 94.281 MiB
+representation health: 0.555 (not semantic accuracy)
+recording: on
+plugins:
+- frame-observation-v0: ok=4; median 6.117 ms
+- sim-color-targets-v0: ok=4; median 5.370 ms

@@ -1,0 +1,43 @@
+{
+  "cache_dir": "us04-staged-cache",
+  "files": {
+    "bundle_manifest": {
+      "existed": true,
+      "path": "<repo>/runtime/vehicles/chase-sim-chaser/bundle/bundle-manifest.json",
+      "restorable": true,
+      "sha256": "5b03e32d145a36b0bab900f3fa2ca177f0659d275c2e8cf8f5b4c71fcfd234df"
+    },
+    "decision": {
+      "existed": true,
+      "path": "<repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/decision/active.json",
+      "restorable": true,
+      "sha256": "c7bd14eab24c9fb9a1e46a05ee0091a4b6bfd430e7761064559f8536661b4f0f"
+    },
+    "memory": {
+      "existed": true,
+      "path": "<repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/memory/active.json",
+      "restorable": true,
+      "sha256": "6751ab63214756791e3d442b23b210b1d7ecf9e8f80839e8ad312ecd8b15c923"
+    },
+    "perception": {
+      "existed": true,
+      "path": "<repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception/active.json",
+      "restorable": true,
+      "sha256": "b965833dea69126882d47b0ba9c21de4aef4350e752ba70d9cf64dc7e065a51b"
+    }
+  },
+  "restorable": true,
+  "schema": "continuity_us04_snapshot_meta_v1",
+  "staged_trees": {
+    "autonomy": {
+      "existed": true,
+      "file_count": 23,
+      "tree_sha256": "974475edbb16fd26f03bbe8309b881503fc11d6f1acb0d9218384e45fdb1e677"
+    },
+    "implementations": {
+      "existed": true,
+      "file_count": 48,
+      "tree_sha256": "0676ca738cf1140175fe930baa7a6975c84a5c6b7758179733cdbc9ebeaa529b"
+    }
+  }
+}

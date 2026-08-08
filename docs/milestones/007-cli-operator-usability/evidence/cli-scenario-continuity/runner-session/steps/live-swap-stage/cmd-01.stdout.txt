@@ -1,0 +1,11 @@
+Automation ready for chase-sim-chaser.
+PID: 81739
+First frame: chase_frame_333629
+Startup phases: capture=270ms, perception=71ms, view=current-generation correlated
+Perception view: http://127.0.0.1:8898/
+Ready for: inspect perception and stop automation
+Browser opened: http://127.0.0.1:8898/
+State: runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/state.json
+Log: disabled; pass --log to persist worker output
+Stream: ./cli/automa vehicles stream perception --id chase-sim-chaser
+View: ./cli/automa vehicles info perception --id chase-sim-chaser

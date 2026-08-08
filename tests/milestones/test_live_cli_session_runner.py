@@ -1442,8 +1442,10 @@ class LiveCliSessionRunnerTests(unittest.TestCase):
 
             executed = result.get("ordered_step_outcomes") or []
             statuses = {s["id"]: s["status"] for s in executed}
-            self.assertEqual(statuses.get("automation-run"), "blocked")
-            # Ensure no automation run argv was executed.
+            # Fail-stop: precondition failure refuses the catalog (no step execution).
+            # Stronger than per-step blocked — live_mutation never reaches the loop.
+            self.assertNotIn("automation-run", statuses)
+            self.assertEqual(executed, [], f"catalog should not run after precondition fail: {statuses}")
             all_cmds = []
             for step in executed:
                 for cmd in step.get("commands") or []:
@@ -1454,6 +1456,15 @@ class LiveCliSessionRunnerTests(unittest.TestCase):
                     f"automation run should not execute: {argv}",
                 )
             self.assertNotEqual(result.get("result"), "pass")
+            findings = result.get("findings") or []
+            self.assertTrue(
+                any(
+                    f.get("step_id") == "_precondition_cleanup"
+                    for f in findings
+                    if isinstance(f, dict)
+                ),
+                findings,
+            )
 
     def test_pre_session_identity_reports_sibling_dirt(self) -> None:
         """Pre-session identity must not hide unrelated dirt under evidence/."""
@@ -2006,3 +2017,519 @@ class LiveCliSessionRunnerTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class ContinuityRunnerUs04TransactionTests(unittest.TestCase):
+    """Archive-clean session-runner US-04 restore matrix (no developer ROOT runtime)."""
+
+    def _build_fixture(self, root: Path) -> tuple[Path, Path, Path]:
+        """Create a self-contained repo with vehicle bundle + product identity surface.
+
+        Returns (repo_root, catalog_path, capture_run_dir).
+        """
+        vehicle = VEHICLE
+        # Product files for identity collection
+        for rel in (
+            "cli/automa_cli/app.py",
+            "cli/automa_cli/automation.py",
+            "cli/automa_cli/vehicles.py",
+            "cli/automa_cli/perception.py",
+            "cli/automa_cli/memory.py",
+            "cli/automa_cli/perception_runs.py",
+            "cli/automa_cli/lab_plugins.py",
+            "cli/automa_cli/memory_check.py",
+            "cli/automa_cli/bundles.py",
+            "cli/automa_cli/decision.py",
+            "cli/automa_cli/operations.py",
+            "cli/automa_cli/perception_view.py",
+            "cli/automa_cli/streaming.py",
+        ):
+            p = root / rel
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(f"# {rel}\n", encoding="utf-8")
+        for tree in ("autonomy", "implementations"):
+            (root / tree).mkdir(parents=True, exist_ok=True)
+            (root / tree / "__init__.py").write_text(f"# {tree}\n", encoding="utf-8")
+
+        # Runner + continuity_contract at expected relative paths (identity digests)
+        tool = (
+            root
+            / "docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner"
+        )
+        tool.mkdir(parents=True, exist_ok=True)
+        real_tool = RUNNER_PATH.parent
+        (tool / "session_runner.py").write_text(
+            (real_tool / "session_runner.py").read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+        (tool / "continuity_contract.py").write_text(
+            (real_tool / "continuity_contract.py").read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+        cat_dir = tool / "catalogs"
+        cat_dir.mkdir(parents=True, exist_ok=True)
+        catalog_path = cat_dir / "m007-continuity.yaml"
+        catalog_path.write_text(
+            (CATALOGS / "m007-continuity.yaml").read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+
+        # Vehicle staged bundle (required for US-04 snapshot restorable)
+        bundle = root / "runtime" / "vehicles" / vehicle / "bundle"
+        for name in ("perception", "decision", "memory"):
+            p = bundle / "runtime" / name / "active.json"
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(
+                f'{{"schema":"test","k":"{name}","v":1}}\n', encoding="utf-8"
+            )
+        (bundle / "autonomy").mkdir(parents=True, exist_ok=True)
+        (bundle / "autonomy" / "prior.py").write_text("prior=1\n", encoding="utf-8")
+        (bundle / "implementations").mkdir(parents=True, exist_ok=True)
+        (bundle / "implementations" / "prior.py").write_text(
+            "prior_impl=1\n", encoding="utf-8"
+        )
+        (bundle / "bundle-manifest.json").write_text(
+            '{"tree":"prior"}\n', encoding="utf-8"
+        )
+
+        # Capture run for offline lineage binding
+        run_dir = (
+            bundle / "runtime" / "perception-runs" / "cap-1"
+        )
+        frames = run_dir / "frames"
+        frames.mkdir(parents=True, exist_ok=True)
+        f0 = frames / "frame_000000.png"
+        f0.write_bytes(b"png-bytes-0")
+        (run_dir / "run.json").write_text(
+            json.dumps(
+                {
+                    "frames": [
+                        {"frame_id": "frame_000000", "image_path": str(f0)}
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        return root, catalog_path, run_dir
+
+    def _continuity_catalog(self) -> dict:
+        return {
+            "schema": "live_cli_session_catalog_v0",
+            "id": "m007-continuity-test-runner",
+            "track": "continuity",
+            "vehicle_id": VEHICLE,
+            "title": "US-04 runner matrix",
+            "steps": [
+                {
+                    "id": "offline-capture",
+                    "kind": "command",
+                    "family_id": "continuity.offline_perception",
+                    "safety": "local_write",
+                    "required_for_verdict": True,
+                    "primary_cue": "human summary leads with review path and frame counts",
+                    "visual_required": False,
+                    "expect_exit": 0,
+                    "commands": [
+                        [
+                            "./cli/automa",
+                            "vehicles",
+                            "perception",
+                            "run",
+                            "--id",
+                            VEHICLE,
+                            "--frames",
+                            "1",
+                            "--record",
+                        ]
+                    ],
+                },
+                {
+                    "id": "offline-apply",
+                    "kind": "command",
+                    "family_id": "continuity.offline_perception",
+                    "safety": "local_write",
+                    "required_for_verdict": True,
+                    "primary_cue": "review path first; exclusive apply run directory",
+                    "visual_required": False,
+                    "requires_prompt": "src_dir",
+                    "expect_exit": 0,
+                    "commands": [
+                        [
+                            "./cli/automa",
+                            "vehicles",
+                            "perception",
+                            "apply",
+                            "{src_dir}",
+                            "--algorithm",
+                            "lightweight_observer",
+                            "--record",
+                        ]
+                    ],
+                },
+                {
+                    "id": "live-swap-stage",
+                    "kind": "command",
+                    "family_id": "continuity.live_config_swap",
+                    "safety": "live_mutation",
+                    "required_for_verdict": True,
+                    "visual_required": True,
+                    "visual_prompt": "view healthy?",
+                    "primary_cue": "Ready for: inspect perception; worker running; observe_only",
+                    "expect_exit": 0,
+                    "commands": [
+                        [
+                            "./cli/automa",
+                            "vehicles",
+                            "update",
+                            "perception",
+                            "--id",
+                            VEHICLE,
+                            "--algorithm",
+                            "lightweight_observer",
+                        ],
+                        [
+                            "./cli/automa",
+                            "vehicles",
+                            "automation",
+                            "run",
+                            "--id",
+                            VEHICLE,
+                            "--observe-only",
+                            "--frames",
+                            "0",
+                            "--open-view",
+                        ],
+                    ],
+                },
+                {
+                    "id": "live-swap-stop",
+                    "kind": "command",
+                    "family_id": "continuity.live_config_swap",
+                    "safety": "live_mutation",
+                    "required_for_verdict": True,
+                    "visual_required": False,
+                    "primary_cue": "worker stopped; activation restored",
+                    "expect_exit": 0,
+                    "commands": [
+                        [
+                            "./cli/automa",
+                            "vehicles",
+                            "automation",
+                            "stop",
+                            "--id",
+                            VEHICLE,
+                        ],
+                    ],
+                },
+                {
+                    "id": "memory-lifecycle",
+                    "kind": "command",
+                    "family_id": "continuity.memory_lifecycle",
+                    "safety": "live_mutation",
+                    "required_for_verdict": True,
+                    "primary_cue": "Memory check: PASS",
+                    "visual_required": False,
+                    "expect_exit": 0,
+                    "commands": [
+                        [
+                            "./cli/automa",
+                            "vehicles",
+                            "memory",
+                            "check",
+                            "--id",
+                            VEHICLE,
+                            "--record",
+                        ]
+                    ],
+                },
+            ],
+        }
+
+    def _install_fakes(
+        self,
+        runner,
+        *,
+        repo_root: Path,
+        run_dir: Path,
+        fail_on=None,
+        raise_interrupt=False,
+        fail_restore=False,
+        mutate_after_snapshot=False,
+    ):
+        fail_on = fail_on or set()
+        calls: list[list[str]] = []
+        prior_perception = (
+            repo_root
+            / "runtime"
+            / "vehicles"
+            / VEHICLE
+            / "bundle"
+            / "runtime"
+            / "perception"
+            / "active.json"
+        ).read_text(encoding="utf-8")
+        prior_auto = (
+            repo_root
+            / "runtime"
+            / "vehicles"
+            / VEHICLE
+            / "bundle"
+            / "autonomy"
+            / "prior.py"
+        ).read_text(encoding="utf-8")
+
+        def fake_precondition(state, **kwargs):
+            return {
+                "ok": True,
+                "attempted": True,
+                "needed": False,
+                "worker_stopped": True,
+                "error": None,
+            }
+
+        def fake_run(argv, **kwargs):
+            calls.append(list(argv))
+            step_dir = kwargs["step_dir"]
+            step_dir.mkdir(parents=True, exist_ok=True)
+            index = kwargs["index"]
+            argv_s = " ".join(str(a) for a in argv)
+            exit_code = 1 if any(tok in argv_s for tok in fail_on) else 0
+            # Trial mutation on update perception (after US-04 snapshot).
+            # When raise_interrupt is set, mutate first then interrupt so the
+            # matrix proves restore after trial state change (not pre-mutation).
+            if (
+                mutate_after_snapshot
+                and "update" in argv
+                and "perception" in argv
+                and exit_code == 0
+            ):
+                perc = (
+                    repo_root
+                    / "runtime"
+                    / "vehicles"
+                    / VEHICLE
+                    / "bundle"
+                    / "runtime"
+                    / "perception"
+                    / "active.json"
+                )
+                perc.write_text('{"schema":"test","k":"perception","v":"trial"}\n', encoding="utf-8")
+                auto = (
+                    repo_root
+                    / "runtime"
+                    / "vehicles"
+                    / VEHICLE
+                    / "bundle"
+                    / "autonomy"
+                    / "prior.py"
+                )
+                auto.write_text("prior=TRIAL\n", encoding="utf-8")
+                trial = (
+                    repo_root
+                    / "runtime"
+                    / "vehicles"
+                    / VEHICLE
+                    / "bundle"
+                    / "autonomy"
+                    / "trial_only.py"
+                )
+                trial.write_text("trial=1\n", encoding="utf-8")
+            if raise_interrupt and "update" in argv and "perception" in argv:
+                raise KeyboardInterrupt()
+            stdout = "ok\n"
+            if "perception" in argv and "run" in argv and "--record" in argv:
+                stdout = f"run: {run_dir}\n"
+            (step_dir / f"cmd-{index:02d}.stdout.txt").write_text(stdout, encoding="utf-8")
+            (step_dir / f"cmd-{index:02d}.stderr.txt").write_text("", encoding="utf-8")
+            return runner.CommandOutcome(
+                argv=list(argv),
+                command=" ".join(str(a) for a in argv),
+                exit_code=exit_code,
+                elapsed_ms=1,
+                stdout_path=f"steps/x/cmd-{index:02d}.stdout.txt",
+                stderr_path=f"steps/x/cmd-{index:02d}.stderr.txt",
+                started_at_utc="t0",
+                ended_at_utc="t1",
+            )
+
+        originals = {
+            "run": runner._run_command,
+            "pre": runner._run_precondition_cleanup,
+            "cleanup": runner._enforce_cleanup,
+            "restore": runner.restore_activation,
+        }
+
+        def fake_cleanup(state, **kwargs):
+            return {
+                "attempted": True,
+                "needed": False,
+                "worker_stopped": True,
+                "error": None,
+                "stop_exit_code": 0,
+                "final_status_exit_code": 0,
+                "pid_alive": False,
+                "pids": [],
+            }
+
+        runner._run_command = fake_run  # type: ignore[assignment]
+        runner._run_precondition_cleanup = fake_precondition  # type: ignore[assignment]
+        runner._enforce_cleanup = fake_cleanup  # type: ignore[assignment]
+        if fail_restore:
+            def boom(snapshot, **kwargs):
+                return {"ok": False, "error": "injected restore failure", "results": {}}
+            runner.restore_activation = boom  # type: ignore[assignment]
+        return calls, originals, prior_perception, prior_auto
+
+    def _restore_originals(self, runner, originals):
+        runner._run_command = originals["run"]  # type: ignore[assignment]
+        runner._run_precondition_cleanup = originals["pre"]  # type: ignore[assignment]
+        runner._enforce_cleanup = originals["cleanup"]  # type: ignore[assignment]
+        runner.restore_activation = originals["restore"]  # type: ignore[assignment]
+
+    def _run(
+        self,
+        *,
+        fail_on=None,
+        raise_interrupt=False,
+        fail_restore=False,
+        mutate_after_snapshot=True,
+    ):
+        import shutil
+
+        runner = _load_runner_module()
+        tmp = tempfile.mkdtemp(prefix="m007-us04-")
+        self.addCleanup(shutil.rmtree, tmp, True)
+        root = Path(tmp) / "repo"
+        root.mkdir()
+        repo, catalog_path, run_dir = self._build_fixture(root)
+        session_dir = Path(tmp) / "session"
+        catalog = self._continuity_catalog()
+        calls, originals, prior_perc, prior_auto = self._install_fakes(
+            runner,
+            repo_root=repo,
+            run_dir=run_dir,
+            fail_on=fail_on,
+            raise_interrupt=raise_interrupt,
+            fail_restore=fail_restore,
+            mutate_after_snapshot=mutate_after_snapshot,
+        )
+        try:
+            result = runner.run_session(
+                catalog=catalog,
+                session_dir=session_dir,
+                repo_root=repo,
+                metrics_ui_origin="http://localhost:5050",
+                metrics_ui_repo=None,
+                browser_name="Chrome",
+                browser_version="1",
+                prompt=lambda _m: "skip",
+                non_interactive=True,
+                auto_visual="skip",
+                command_timeout_s=5,
+                dry_run=False,
+                browser_view_path=None,
+                operator="test",
+                catalog_path=catalog_path,
+                machine_only=True,
+            )
+        finally:
+            self._restore_originals(runner, originals)
+
+        perc_path = (
+            repo
+            / "runtime"
+            / "vehicles"
+            / VEHICLE
+            / "bundle"
+            / "runtime"
+            / "perception"
+            / "active.json"
+        )
+        auto_path = (
+            repo
+            / "runtime"
+            / "vehicles"
+            / VEHICLE
+            / "bundle"
+            / "autonomy"
+            / "prior.py"
+        )
+        trial_path = (
+            repo
+            / "runtime"
+            / "vehicles"
+            / VEHICLE
+            / "bundle"
+            / "autonomy"
+            / "trial_only.py"
+        )
+        return {
+            "result": result,
+            "session_dir": session_dir,
+            "repo": repo,
+            "prior_perc": prior_perc,
+            "prior_auto": prior_auto,
+            "perc_path": perc_path,
+            "auto_path": auto_path,
+            "trial_path": trial_path,
+            "calls": calls,
+        }
+
+    def test_success_path_restores_staged_state(self) -> None:
+        out = self._run(mutate_after_snapshot=True)
+        session_dir = out["session_dir"]
+        restore_path = session_dir / "us04-activation-restore.json"
+        self.assertTrue(restore_path.is_file(), "restore receipt required")
+        restore = json.loads(restore_path.read_text(encoding="utf-8"))
+        self.assertTrue(restore.get("ok"), restore)
+        meta = json.loads(
+            (session_dir / "us04-activation-snapshot-meta.json").read_text(encoding="utf-8")
+        )
+        self.assertIn("staged_trees", meta)
+        self.assertTrue(meta["staged_trees"].get("autonomy", {}).get("tree_sha256"))
+        compare = json.loads(
+            (session_dir / "us04-snapshot-restore-compare.json").read_text(encoding="utf-8")
+        )
+        self.assertTrue(compare.get("ok"), compare)
+        # Exact staged identity restored
+        self.assertEqual(out["perc_path"].read_text(encoding="utf-8"), out["prior_perc"])
+        self.assertEqual(out["auto_path"].read_text(encoding="utf-8"), out["prior_auto"])
+        self.assertFalse(out["trial_path"].exists(), "trial file must be removed by restore")
+        self.assertNotEqual(out["result"].get("result"), "pass")
+        self.assertTrue((out["result"].get("continuity") or {}).get("restore_ok"))
+
+    def test_command_failure_still_restores(self) -> None:
+        out = self._run(fail_on={"automation run"}, mutate_after_snapshot=True)
+        restore = json.loads(
+            (out["session_dir"] / "us04-activation-restore.json").read_text(encoding="utf-8")
+        )
+        self.assertTrue(restore.get("ok"), restore)
+        self.assertEqual(out["perc_path"].read_text(encoding="utf-8"), out["prior_perc"])
+        self.assertEqual(out["auto_path"].read_text(encoding="utf-8"), out["prior_auto"])
+        self.assertNotEqual(out["result"].get("result"), "pass")
+
+    def test_keyboard_interrupt_still_restores(self) -> None:
+        # Mutate trial state then interrupt — restore must roll back activations/trees.
+        out = self._run(raise_interrupt=True, mutate_after_snapshot=True)
+        restore_path = out["session_dir"] / "us04-activation-restore.json"
+        self.assertTrue(restore_path.is_file())
+        restore = json.loads(restore_path.read_text(encoding="utf-8"))
+        self.assertTrue(restore.get("ok"), restore)
+        self.assertEqual(out["perc_path"].read_text(encoding="utf-8"), out["prior_perc"])
+        self.assertEqual(out["auto_path"].read_text(encoding="utf-8"), out["prior_auto"])
+        self.assertFalse(
+            out["trial_path"].exists(),
+            "trial file must be removed after interrupt restore",
+        )
+        self.assertNotEqual(out["result"].get("result"), "pass")
+
+    def test_restore_failure_is_non_pass(self) -> None:
+        out = self._run(fail_restore=True, mutate_after_snapshot=True)
+        restore = json.loads(
+            (out["session_dir"] / "us04-activation-restore.json").read_text(encoding="utf-8")
+        )
+        self.assertFalse(restore.get("ok"), restore)
+        self.assertNotEqual(out["result"].get("result"), "pass")
+        cont = out["result"].get("continuity") or {}
+        self.assertFalse(cont.get("restore_ok"))
+        self.assertIn(out["result"].get("result"), {"findings", "incomplete"})

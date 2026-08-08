@@ -1,0 +1,99 @@
+{
+  "schema": "m007_cli_scenario_continuity_v0",
+  "result": "incomplete",
+  "incomplete_reason": "required family continuity.live_config_swap still partial (often HITL pending)",
+  "required_family_ids": [
+    "continuity.offline_perception",
+    "continuity.live_config_swap",
+    "continuity.memory_lifecycle"
+  ],
+  "family_aggregates": {
+    "continuity.live_config_swap": "partial",
+    "continuity.memory_lifecycle": "passed",
+    "continuity.offline_perception": "passed"
+  },
+  "machine_preflight": {
+    "evaluated_steps": [
+      "offline-capture",
+      "offline-apply-a",
+      "offline-apply-b",
+      "live-swap-stage",
+      "live-swap-stop",
+      "memory-lifecycle"
+    ],
+    "failures": [],
+    "summary": "6 required step(s) machine-green",
+    "verdict": "pass"
+  },
+  "finalizer": {
+    "ok": true,
+    "reason": "evidence freshness finalizer ok"
+  },
+  "restore_ok": true,
+  "hitl_complete": false,
+  "verdict": "incomplete",
+  "verdict_reason": "required family continuity.live_config_swap still partial (often HITL pending)",
+  "session": {
+    "path": "runner-session",
+    "execution_mode": "machine_only_live",
+    "catalog": {
+      "id": "m007-continuity",
+      "max_frame_lag": null,
+      "title": "M007 realistic CLI scenario continuity",
+      "track": "continuity"
+    },
+    "timestamps": {
+      "ended_at_utc": "2026-08-08T19:37:51.748548Z",
+      "local_timezone": [
+        "PST",
+        "PDT"
+      ],
+      "started_at_utc": "2026-08-08T19:37:11.074700Z"
+    }
+  },
+  "findings": [],
+  "review_repair": {
+    "untracked_symlink_target_identity": true,
+    "untracked_executable_mode_identity": true,
+    "interrupt_after_trial_mutation": true,
+    "milestones_in_default_suite": true
+  },
+  "artifacts": [
+    {
+      "path": "README.md",
+      "sha256": "b9a6d8fa0b241ff5c72f2783f8c6145621e0d8997cfa5d4fca92ce5cb61220ca"
+    },
+    {
+      "path": "runner-session/result.json",
+      "sha256": "91868658a2b856438a1bfc3cfb1d83b6b1f53d919f797668aa36a0d6fbf37f0f"
+    },
+    {
+      "path": "runner-session/continuity-preflight.json",
+      "sha256": "6aa6556a7336aeab789499b60d2d8c7a1fe9f08ba62dc897a905612e5552031d"
+    },
+    {
+      "path": "runner-session/us04-activation-restore.json",
+      "sha256": "cbffcc080529ffbac900f0e48bb5d962efbda23b7504e2f16d159b13225f6552"
+    },
+    {
+      "path": "runner-session/us04-activation-snapshot-meta.json",
+      "sha256": "896387f7b173e1cc54b2a0ce1cbeaa201e70016e57ba9caf5c21fb090bb37263"
+    },
+    {
+      "path": "runner-session/us04-snapshot-restore-compare.json",
+      "sha256": "3c283cd97838e4e6e12c9a406d69d0902f99acf0a4f0c4d41521d48bdfe803a3"
+    },
+    {
+      "path": "runner-session/offline-source-lineage.json",
+      "sha256": "12e2201acb64d3ec71b9a5c78cbf7c6fdb1212991617527635384fa50ed96ce4"
+    },
+    {
+      "path": "runner-session/human-notes.md",
+      "sha256": "ef0764017733e426c3d09e4f6e65194178b8c9ac2abd4682545e0f539a61282a"
+    },
+    {
+      "path": "runner-session/digests.json",
+      "sha256": "52f468dc99b3b99b0ec059f3af69cf27128a674bc850c66989a02dc47caadc68"
+    }
+  ]
+}

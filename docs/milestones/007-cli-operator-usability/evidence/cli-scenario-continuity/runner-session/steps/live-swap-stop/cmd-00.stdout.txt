@@ -1,0 +1,4 @@
+Automation stopped for chase-sim-chaser.
+PID: 81739
+State: runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/state.json
+Ready for: inspect stopped deployment

@@ -1,0 +1,39 @@
+{
+  "frame_count": 4,
+  "frames": [
+    {
+      "frame_id": "frame_000000",
+      "index": 0,
+      "path_name": "frame_000000_front_camera.png",
+      "sha256": "7150a347fad8d98d8ccdff5bf4b88f55278054e22519dc76c1a1e036458ff516",
+      "size": 145617
+    },
+    {
+      "frame_id": "frame_000001",
+      "index": 1,
+      "path_name": "frame_000001_front_camera.png",
+      "sha256": "ce81395f783f376c542c2d02be753ae8282946d37cde8d427a43883a4537dfc0",
+      "size": 23067
+    },
+    {
+      "frame_id": "frame_000002",
+      "index": 2,
+      "path_name": "frame_000002_front_camera.png",
+      "sha256": "ad5eb5e2eb59b0c8ba108f5e1c8abc0b6afce6ed01e36c7c721e199ff7bd74b3",
+      "size": 130084
+    },
+    {
+      "frame_id": "frame_000003",
+      "index": 3,
+      "path_name": "frame_000003_front_camera.png",
+      "sha256": "bd7c7b92f847212be8b45e80f1eaac0abe2bf6bb0660f0b7072b48909e9bd772",
+      "size": 159745
+    }
+  ],
+  "manifest_sha256": "791b21e357c354f4d7d49b8deb06d9cdfb18f5aaaea08ccfda974f384c7c0420",
+  "ok": true,
+  "ordered_input_sha256": "ee604ab48c46dcd68f5f409e7966857958498ec4fc6a7f305870804705b278fa",
+  "schema": "continuity_source_lineage_v1",
+  "src_dir": "<repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260808-123723-444166-9f703ccb",
+  "src_dir_redacted": "<repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260808-123723-444166-9f703ccb"
+}

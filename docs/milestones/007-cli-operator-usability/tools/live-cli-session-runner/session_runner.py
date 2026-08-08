@@ -27,6 +27,34 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
+import importlib.util
+
+_CONTINUITY_PATH = Path(__file__).resolve().parent / "continuity_contract.py"
+_CONTINUITY_SPEC = importlib.util.spec_from_file_location(
+    "live_cli_continuity_contract",
+    _CONTINUITY_PATH,
+)
+assert _CONTINUITY_SPEC is not None and _CONTINUITY_SPEC.loader is not None
+_continuity = importlib.util.module_from_spec(_CONTINUITY_SPEC)
+_CONTINUITY_SPEC.loader.exec_module(_continuity)
+CONTINUITY_TRACK = _continuity.CONTINUITY_TRACK
+REQUIRED_FAMILY_IDS = _continuity.REQUIRED_FAMILY_IDS
+aggregate_family_status = _continuity.aggregate_family_status
+collect_identity_bundle = _continuity.collect_identity_bundle
+finalize_evidence_freshness = _continuity.finalize_evidence_freshness
+overall_pass_allowed = _continuity.overall_pass_allowed
+validate_continuity_families = _continuity.validate_continuity_families
+validate_continuity_safety_preflight = _continuity.validate_continuity_safety_preflight
+snapshot_activation = _continuity.snapshot_activation
+snapshot_staged_state = _continuity.snapshot_staged_state
+restore_activation = _continuity.restore_activation
+snapshot_is_restorable = _continuity.snapshot_is_restorable
+derive_continuity_verdict = _continuity.derive_continuity_verdict
+collect_git_identity = _continuity.collect_git_identity
+capture_source_lineage = _continuity.capture_source_lineage
+verify_source_lineage = _continuity.verify_source_lineage
+validate_session_against_tree = _continuity.validate_session_against_tree
+
 
 SCHEMA = "live_cli_session_result_v0"
 FINDING_SCHEMA = "live_cli_session_finding_v0"
@@ -437,61 +465,25 @@ def _path_under(path: Path, root: Path) -> str | None:
 
 
 def _git_identity(repo: Path) -> dict[str, Any]:
-    """Record pre-session repository identity (before any session artifacts)."""
+    """Record pre-session repository identity via the shared continuity algorithm.
 
-    def run(args: list[str]) -> str:
-        try:
-            completed = subprocess.run(
-                args, cwd=repo, check=False, capture_output=True, text=True
-            )
-        except OSError:
-            return ""
-        return completed.stdout.strip() if completed.returncode == 0 else ""
+    Must match ``collect_git_identity`` / post-hoc ``finalize-session`` exactly so
+    dirty Metrics UI and auto-driving identities cannot diverge by collector.
+    """
 
-    status_lines = [
-        line
-        for line in (run(["git", "status", "--porcelain"]) or "").splitlines()
-        if line
-    ]
-    status = "\n".join(status_lines)
-    commit = run(["git", "rev-parse", "HEAD"]) or None
-    branch = run(["git", "branch", "--show-current"]) or None
-    dirty = bool(status)
-    diff_identity = None
-    untracked_names: list[str] = []
-    untracked_hashes: dict[str, str] = {}
-    if dirty:
-        # Tracked patch for identity material; untracked listed but never copied.
-        patch = run(["git", "diff", "HEAD"])
-        cached = run(["git", "diff", "--cached"])
-        untracked_raw = run(["git", "ls-files", "--others", "--exclude-standard"])
-        untracked_names = [line for line in untracked_raw.splitlines() if line]
-        parts = [status, patch, cached]
-        for rel in untracked_names:
-            path = repo / rel
-            # Never follow symlinks for identity hashing.
-            if path.is_symlink():
-                parts.append(f"untracked-symlink:{rel}")
-                continue
-            if path.is_file():
-                digest = _sha256_file(path)
-                untracked_hashes[rel] = digest
-                parts.append(f"untracked:{rel}:{digest}")
-            else:
-                parts.append(f"untracked:{rel}:missing")
-        material = "\n".join(parts).encode("utf-8")
-        diff_identity = hashlib.sha256(material).hexdigest()
-    return {
-        # Never store absolute local paths in reviewable artifacts.
-        "path": repo.name,
-        "commit": commit,
-        "branch": branch,
-        "worktree_state": "dirty" if dirty else "clean",
-        "diff_identity": diff_identity,
-        "status_porcelain": status_lines,
-        "untracked_files": untracked_names,
-        "untracked_sha256": untracked_hashes,
-    }
+    identity = collect_git_identity(repo)
+    if identity is None:
+        return {
+            "path": repo.name,
+            "commit": None,
+            "branch": None,
+            "worktree_state": "unknown",
+            "diff_identity": None,
+            "status_porcelain": [],
+            "untracked_files": [],
+            "untracked_sha256": {},
+        }
+    return identity
 
 
 def _default_prompt(message: str) -> str:
@@ -513,6 +505,77 @@ def _pid_alive(pid: int | None) -> bool | None:
     except OSError:
         return None
     return True
+
+
+def _bind_src_dir_from_capture_stdout(
+    stdout_text: str, *, repo_root: Path
+) -> Path | None:
+    """Parse exact recorded run path from perception run human/json output."""
+
+    candidates: list[Path] = []
+    for line in stdout_text.splitlines():
+        line = line.strip()
+        for prefix in ("run:", "run_dir:", "record:", "Record:"):
+            if line.lower().startswith(prefix.lower()):
+                raw = line.split(":", 1)[1].strip()
+                path = Path(raw)
+                if not path.is_absolute():
+                    path = (repo_root / path).resolve()
+                if path.is_dir():
+                    candidates.append(path)
+        # bare path line containing perception-runs
+        if "perception-runs" in line and not line.startswith("$"):
+            # may be JSON "run_dir": "..."
+            m = re.search(r'(/[^\s"]*perception-runs/[^\s"]+)', line)
+            if m:
+                path = Path(m.group(1))
+                if path.is_dir():
+                    candidates.append(path)
+            else:
+                raw = line.strip().strip(",\"'")
+                path = Path(raw)
+                if not path.is_absolute():
+                    path = (repo_root / path).resolve()
+                if path.is_dir() and "perception-runs" in str(path):
+                    candidates.append(path)
+    return candidates[-1] if candidates else None
+
+
+def _latest_perception_run_dir(repo_root: Path, vehicle_id: str) -> Path | None:
+    """Newest recorded perception-run directory for continuity src_dir binding."""
+
+    root = (
+        repo_root
+        / "runtime"
+        / "vehicles"
+        / vehicle_id
+        / "bundle"
+        / "runtime"
+        / "perception-runs"
+    )
+    if not root.is_dir():
+        # Fallback global applies/runs layouts used by some configs
+        alt = repo_root / "runtime" / "perception-runs"
+        root = alt if alt.is_dir() else root
+    if not root.is_dir():
+        return None
+    dirs = [p for p in root.iterdir() if p.is_dir()]
+    if not dirs:
+        return None
+    return max(dirs, key=lambda p: p.stat().st_mtime)
+
+
+def _perception_activation_path(repo_root: Path, vehicle_id: str) -> Path:
+    return (
+        repo_root
+        / "runtime"
+        / "vehicles"
+        / vehicle_id
+        / "bundle"
+        / "runtime"
+        / "perception"
+        / "active.json"
+    )
 
 
 def _list_run_directories(repo_root: Path, vehicle_id: str) -> list[str]:
@@ -1810,12 +1873,18 @@ def _derive_verdict(state: SessionState) -> tuple[str, str | None]:
 
 
 def _write_digests(session_dir: Path) -> list[dict[str, str]]:
-    """Write digests.json for all files except digests.json itself."""
+    """Write digests.json for all files except digests.json itself.
+
+    Excludes the US-04 staged cache tree (local restorable bytes, not review evidence).
+    """
     artifacts: list[dict[str, str]] = []
     for path in sorted(session_dir.rglob("*")):
         if not path.is_file():
             continue
         if path.name == "digests.json":
+            continue
+        rel = path.relative_to(session_dir).as_posix()
+        if rel == "us04-staged-cache" or rel.startswith("us04-staged-cache/"):
             continue
         artifacts.append(
             {"path": str(path.relative_to(session_dir)), "sha256": _sha256_file(path)}
@@ -1909,14 +1978,21 @@ def _enforce_cleanup(
                     state.session_dir / "session-fingerprint-cleanup.json",
                     {"error": "extraction_failed", "capture": "cleanup-status"},
                 )
-            ok_pres, pres_summary = validate_preservation(
-                state.baseline_fingerprint, fingerprint
-            )
-            cleanup["preservation"] = {"ok": ok_pres, "summary": pres_summary}
-            if not ok_pres:
-                cleanup["error"] = cleanup.get("error") or f"cleanup preservation: {pres_summary}"
-                # Do not claim full cleanup success when terminal receipt drifts.
-                cleanup["worker_stopped"] = False
+            if state.baseline_fingerprint is None and state.catalog.get("track") == CONTINUITY_TRACK:
+                # Continuity catalogs may not capture an initial status fingerprint.
+                cleanup["preservation"] = {
+                    "ok": True,
+                    "summary": "continuity track: baseline fingerprint not required",
+                }
+            else:
+                ok_pres, pres_summary = validate_preservation(
+                    state.baseline_fingerprint, fingerprint
+                )
+                cleanup["preservation"] = {"ok": ok_pres, "summary": pres_summary}
+                if not ok_pres:
+                    cleanup["error"] = cleanup.get("error") or f"cleanup preservation: {pres_summary}"
+                    # Do not claim full cleanup success when terminal receipt drifts.
+                    cleanup["worker_stopped"] = False
         except json.JSONDecodeError as exc:
             cleanup["error"] = f"cleanup status not JSON: {exc}"
             cleanup["worker_stopped"] = False
@@ -2215,12 +2291,20 @@ def _capture_worktree_reviewables(
 
 
 def _live_mutation_prerequisites_met(state: SessionState) -> tuple[bool, str]:
-    """Acceptance live mutations require precondition + initial + staging pass."""
+    """Live mutations require proven precondition; acceptance also needs staging gates."""
 
-    if state.catalog.get("track") != "acceptance":
-        return True, "non-acceptance track"
+    track = state.catalog.get("track")
     if state.dry_run:
         return True, "dry-run"
+    if track == CONTINUITY_TRACK:
+        pre = state.precondition_cleanup
+        if not isinstance(pre, dict) or pre.get("ok") is not True:
+            return False, "continuity precondition_cleanup not proven ok"
+        if state.safety_blocked:
+            return False, state.safety_block_reason or "continuity safety blocked"
+        return True, "continuity precondition ok"
+    if track != "acceptance":
+        return True, "non-acceptance track"
     if not state.canonical_acceptance:
         return False, "noncanonical acceptance catalog cannot execute live mutation"
     pre = state.precondition_cleanup
@@ -2413,12 +2497,78 @@ def run_session(
     ]
 
     cleanup_info: dict[str, Any] = {"attempted": False, "needed": False}
+    continuity_restore: dict[str, Any] | None = None
+    continuity_restore_done = False
+    continuity_identity_at_start: dict[str, Any] | None = None
+    last_swap_step_id: str | None = None
 
     # Formal acceptance: never execute any CLI from a noncanonical catalog.
     # Verdict already fails closed; this is the safety owner (execution order).
     refuse_acceptance_execution = (
         catalog.get("track") == "acceptance" and not canonical and not dry_run
     )
+
+    # Continuity track: argv-derived safety + required families before any CLI.
+    continuity_preflight: dict[str, Any] | None = None
+    refuse_continuity_execution = False
+    if catalog.get("track") == CONTINUITY_TRACK and not dry_run:
+        safety_ok, safety_reason, safety_findings = validate_continuity_safety_preflight(
+            catalog
+        )
+        family_ok, family_reason, family_meta = validate_continuity_families(catalog)
+        continuity_preflight = {
+            "schema": "continuity_preflight_v0",
+            "safety_ok": safety_ok,
+            "safety_reason": safety_reason,
+            "family_ok": family_ok,
+            "family_reason": family_reason,
+            "family_meta": family_meta,
+            "safety_findings": safety_findings,
+            "required_family_ids": list(REQUIRED_FAMILY_IDS),
+        }
+        _write_json(session_dir / "continuity-preflight.json", continuity_preflight)
+        if not safety_ok or not family_ok:
+            refuse_continuity_execution = True
+            reason = safety_reason if not safety_ok else family_reason
+            state.safety_blocked = True
+            state.safety_block_reason = f"continuity preflight refused: {reason}"
+            state.precondition_cleanup = {
+                "ok": False,
+                "attempted": False,
+                "needed": False,
+                "skipped": "continuity_preflight",
+                "error": state.safety_block_reason,
+            }
+            baseline["precondition_cleanup"] = state.precondition_cleanup
+            baseline["continuity_preflight"] = continuity_preflight
+            _write_json(session_dir / "baseline.json", baseline)
+            _write_json(
+                session_dir / "precondition-cleanup.json",
+                state.precondition_cleanup,
+            )
+            _record_finding(
+                state,
+                step_id="_continuity_preflight",
+                classification="acceptance_blocker",
+                severity="P1",
+                summary="Continuity catalog refused before any command",
+                human_notes=reason,
+                evidence=["continuity-preflight.json", "baseline.json"],
+            )
+            notes_lines.extend(
+                [
+                    "## continuity preflight failed",
+                    "",
+                    f"- reason: {reason}",
+                    "- action: no catalog commands executed",
+                    "",
+                ]
+            )
+            print()
+            print("=" * 72)
+            print("REFUSED: continuity preflight — no commands executed")
+            print(reason)
+            print("=" * 72)
 
     try:
         if refuse_acceptance_execution:
@@ -2462,9 +2612,11 @@ def run_session(
             print("REFUSED: noncanonical acceptance catalog — no commands executed")
             print(canonical_reason)
             print("=" * 72)
+        elif refuse_continuity_execution:
+            pass  # findings and notes already recorded above
         else:
-            # Acceptance: stop any pre-existing worker before the catalog baseline.
-            if catalog.get("track") == "acceptance" and not dry_run:
+            # Stop any pre-existing worker before acceptance or continuity catalogs.
+            if catalog.get("track") in {"acceptance", CONTINUITY_TRACK} and not dry_run:
                 print()
                 print("=" * 72)
                 print("PRECONDITION: ensure no pre-existing automation worker")
@@ -2492,26 +2644,171 @@ def run_session(
                         step_id="_precondition_cleanup",
                         classification="acceptance_blocker",
                         severity="P1",
-                        summary="Precondition cleanup failed before acceptance baseline",
+                        summary="Precondition cleanup failed before catalog baseline",
                         human_notes=str(state.precondition_cleanup.get("error")),
                         evidence=[
                             "steps/_precondition_cleanup/",
                             "precondition-cleanup.json",
                         ],
                     )
+                    notes_lines.extend(
+                        [
+                            "## precondition failed",
+                            "",
+                            f"- error: `{state.precondition_cleanup.get('error')}`",
+                            "- action: catalog steps not executed",
+                            "",
+                        ]
+                    )
+                    print()
+                    print("=" * 72)
+                    print("REFUSED: precondition cleanup failed — no catalog commands")
+                    print(state.precondition_cleanup.get("error"))
+                    print("=" * 72)
 
-            for step in catalog.get("steps") or []:
+            continuity_swap_family = "continuity.live_config_swap"
+            precondition_blocks_catalog = (
+                state.safety_blocked
+                and state.precondition_cleanup is not None
+                and state.precondition_cleanup.get("ok") is not True
+            )
+            if catalog.get("track") == CONTINUITY_TRACK and catalog_path is not None:
+                continuity_identity_at_start = collect_identity_bundle(
+                    repo_root=repo_root,
+                    catalog_path=catalog_path,
+                    metrics_ui={
+                        "commit": (metrics_ui or {}).get("commit") if metrics_ui else None,
+                        "worktree_state": (metrics_ui or {}).get("worktree_state")
+                        if metrics_ui
+                        else None,
+                        "branch": (metrics_ui or {}).get("branch") if metrics_ui else None,
+                        "diff_identity": (metrics_ui or {}).get("diff_identity")
+                        if metrics_ui
+                        else None,
+                        "linked_pr": (metrics_ui or {}).get("linked_pr") if metrics_ui else None,
+                        "path": (metrics_ui or {}).get("path") if metrics_ui else None,
+                    },
+                )
+                # metrics_ui_required is decided at finalizer time (only when visual HITL complete).
+                if continuity_identity_at_start is not None:
+                    continuity_identity_at_start["metrics_ui_required"] = False
+                    _write_json(
+                        session_dir / "continuity-identity-at-start.json",
+                        continuity_identity_at_start,
+                    )
+            catalog_step_list = [
+                s for s in (catalog.get("steps") or []) if isinstance(s, dict)
+            ]
+            for s in catalog_step_list:
+                if s.get("family_id") == continuity_swap_family:
+                    last_swap_step_id = str(s.get("id") or "")
+
+            if precondition_blocks_catalog:
+                catalog_step_list = []  # fail-stop: do not mutate after failed precondition
+
+            for step in catalog_step_list:
                 if not isinstance(step, dict):
                     continue
                 step_id = str(step.get("id") or f"step-{len(state.steps)+1}")
+                family_id = step.get("family_id")
                 print()
                 print("=" * 72)
                 print(f"STEP {step_id}  ({step.get('kind') or 'command'})")
                 print(f"Question: {step.get('question') or ''}")
                 print(f"Safety: {step.get('safety') or 'unspecified'}")
+                if family_id:
+                    print(f"Family: {family_id}")
                 if step.get("note"):
                     print(f"Note: {step['note']}")
                 print("=" * 72)
+
+                # US-04: snapshot full staged activations before first swap mutation.
+                if (
+                    catalog.get("track") == CONTINUITY_TRACK
+                    and family_id == continuity_swap_family
+                    and continuity_restore is None
+                    and not dry_run
+                ):
+                    us04_cache = session_dir / "us04-staged-cache"
+                    snap = snapshot_staged_state(
+                        repo_root,
+                        variables["vehicle_id"],
+                        cache_dir=us04_cache,
+                    )
+                    if not snapshot_is_restorable(snap):
+                        step_status = "fail"
+                        machine_ok = False
+                        machine_summary = (
+                            f"US-04 snapshot not restorable: {snap.get('error')}"
+                        )
+                        _record_finding(
+                            state,
+                            step_id=step_id,
+                            classification="acceptance_blocker",
+                            severity="P1",
+                            summary=machine_summary,
+                            human_notes=str(snap.get("error")),
+                            evidence=[],
+                        )
+                        print(f"  FAIL: {machine_summary}")
+                        envelope = {
+                            "id": step_id,
+                            "family_id": family_id,
+                            "kind": step.get("kind"),
+                            "status": "fail",
+                            "machine_ok": False,
+                            "machine_summary": machine_summary,
+                            "commands": [],
+                            "human": {
+                                "visual": "skip",
+                                "notes": "",
+                                "finding_requested": False,
+                                "interactive": False,
+                            },
+                            "required_for_verdict": bool(step.get("required_for_verdict")),
+                        }
+                        step_dir = session_dir / "steps" / step_id
+                        step_dir.mkdir(parents=True, exist_ok=True)
+                        _write_json(step_dir / "envelope.json", envelope)
+                        state.steps.append(envelope)
+                        continue
+                    continuity_restore = snap
+                    meta_files = {}
+                    for name, file_snap in (snap.get("files") or {}).items():
+                        if not isinstance(file_snap, dict):
+                            continue
+                        meta_files[name] = {
+                            "path": _redact_path(str(file_snap.get("path") or ""), repo_root),
+                            "sha256": file_snap.get("sha256"),
+                            "restorable": snapshot_is_restorable(file_snap),
+                            "existed": file_snap.get("existed"),
+                        }
+                    staged_meta: dict[str, Any] = {}
+                    for tree_name, meta in (snap.get("staged_trees") or {}).items():
+                        if not isinstance(meta, dict):
+                            continue
+                        staged_meta[tree_name] = {
+                            "existed": meta.get("existed"),
+                            "file_count": meta.get("file_count"),
+                            "tree_sha256": meta.get("tree_sha256"),
+                            # durable expected digest only (not full file path map)
+                        }
+                    snapshot_meta_doc = {
+                        "schema": "continuity_us04_snapshot_meta_v1",
+                        "restorable": True,
+                        "files": meta_files,
+                        "staged_trees": staged_meta,
+                        "cache_dir": "us04-staged-cache",
+                    }
+                    _write_json(
+                        session_dir / "us04-activation-snapshot-meta.json",
+                        snapshot_meta_doc,
+                    )
+                    perc = (snap.get("files") or {}).get("perception") or {}
+                    print(
+                        f"  US-04 staged snapshot ok perception="
+                        f"{str(perc.get('sha256') or '')[:12]}…"
+                    )
 
                 requires = step.get("requires_prompt")
                 if isinstance(requires, str) and requires:
@@ -2531,11 +2828,13 @@ def run_session(
                 machine_ok = True
                 validator_notes: list[str] = []
 
-                # Hard safety: never execute live_mutation when prerequisites failed.
+                # Hard safety: acceptance live_mutation requires precondition/staging.
+                # Continuity live_mutation also requires proven precondition cleanup.
                 if (
                     not dry_run
                     and step.get("safety") == "live_mutation"
                     and step.get("kind") != "baseline"
+                    and catalog.get("track") in {"acceptance", CONTINUITY_TRACK}
                 ):
                     prereq_ok, prereq_reason = _live_mutation_prerequisites_met(state)
                     if not prereq_ok:
@@ -2672,6 +2971,98 @@ def run_session(
                         elif outcome.exit_code != 0 and not allow_nonzero and expect_exit is None:
                             step_status = "fail"
                             machine_ok = False
+                        # Continuity: bind exact capture run from stdout; content lineage required.
+                        if (
+                            catalog.get("track") == CONTINUITY_TRACK
+                            and outcome.exit_code == 0
+                            and "perception" in rendered
+                            and "run" in rendered
+                            and "--record" in rendered
+                        ):
+                            stdout_text = (
+                                step_dir / f"cmd-{index:02d}.stdout.txt"
+                            ).read_text(encoding="utf-8")
+                            bound = _bind_src_dir_from_capture_stdout(
+                                stdout_text, repo_root=repo_root
+                            )
+                            if bound is None:
+                                step_status = "fail"
+                                machine_ok = False
+                                validator_notes.append(
+                                    "offline capture: exact run path missing from stdout "
+                                    "(mtime fallback disabled)"
+                                )
+                                print(
+                                    "  FAIL: continuity requires exact capture path in stdout"
+                                )
+                            else:
+                                lineage = capture_source_lineage(bound)
+                                if lineage.get("ok") is not True:
+                                    step_status = "fail"
+                                    machine_ok = False
+                                    validator_notes.append(
+                                        f"offline capture lineage failed: {lineage.get('error')}"
+                                    )
+                                    print(
+                                        f"  FAIL: content lineage: {lineage.get('error')}"
+                                    )
+                                else:
+                                    state.variables["src_dir"] = str(bound)
+                                    lineage_out = {
+                                        "ok": True,
+                                        "src_dir": str(bound),
+                                        "src_dir_redacted": _redact_path(bound, repo_root),
+                                        "manifest_sha256": lineage.get("manifest_sha256"),
+                                        "ordered_input_sha256": lineage.get(
+                                            "ordered_input_sha256"
+                                        ),
+                                        "frame_count": lineage.get("frame_count"),
+                                        "frames": lineage.get("frames"),
+                                        "schema": lineage.get("schema"),
+                                    }
+                                    _write_json(
+                                        session_dir / "offline-source-lineage.json",
+                                        lineage_out,
+                                    )
+                                    print(
+                                        f"  continuity: src_dir={bound} "
+                                        f"ordered_input={str(lineage.get('ordered_input_sha256') or '')[:12]}…"
+                                    )
+                        # Continuity: re-verify content lineage before/after apply.
+                        if (
+                            catalog.get("track") == CONTINUITY_TRACK
+                            and outcome.exit_code == 0
+                            and "perception" in rendered
+                            and "apply" in rendered
+                        ):
+                            lineage_path = session_dir / "offline-source-lineage.json"
+                            src = state.variables.get("src_dir")
+                            if not lineage_path.is_file() or not src:
+                                step_status = "fail"
+                                machine_ok = False
+                                validator_notes.append(
+                                    "offline apply: missing bound content lineage"
+                                )
+                                print("  FAIL: apply without content-bound lineage")
+                            else:
+                                try:
+                                    expected = json.loads(
+                                        lineage_path.read_text(encoding="utf-8")
+                                    )
+                                except (OSError, json.JSONDecodeError) as exc:
+                                    expected = {"ok": False, "error": str(exc)}
+                                ok_lin, lin_reason = verify_source_lineage(
+                                    Path(str(src)), expected
+                                )
+                                if not ok_lin:
+                                    step_status = "fail"
+                                    machine_ok = False
+                                    validator_notes.append(
+                                        f"offline apply lineage mismatch: {lin_reason}"
+                                    )
+                                    print(f"  FAIL: lineage: {lin_reason}")
+                                else:
+                                    print(f"  continuity: lineage verified ({lin_reason})")
 
                     # JSON capture as a first-class command outcome
                     capture = step.get("capture_json")
@@ -3031,6 +3422,7 @@ def run_session(
 
                 envelope = {
                     "id": step_id,
+                    "family_id": family_id,
                     "kind": step.get("kind"),
                     "question": step.get("question"),
                     "safety": step.get("safety"),
@@ -3102,6 +3494,142 @@ def run_session(
             f"## aborted\n\n- {type(exc).__name__}: {exc}\n"
         )
     finally:
+        # US-04: always restore staged state if a snapshot was taken (any exit path).
+        if (
+            catalog.get("track") == CONTINUITY_TRACK
+            and continuity_restore is not None
+            and not continuity_restore_done
+            and not dry_run
+        ):
+            try:
+                restore_result = restore_activation(continuity_restore)
+                continuity_restore_done = True
+                redacted_results = restore_result.get("results") or {}
+                if isinstance(redacted_results, dict):
+                    cleaned = {}
+                    for k, v in redacted_results.items():
+                        if isinstance(v, dict):
+                            vv = dict(v)
+                            if "path" in vv:
+                                vv["path"] = _redact_path(str(vv.get("path") or ""), repo_root)
+                            cleaned[k] = vv
+                        else:
+                            cleaned[k] = v
+                    redacted_results = cleaned
+                _write_json(
+                    session_dir / "us04-activation-restore.json",
+                    {
+                        "ok": restore_result.get("ok"),
+                        "error": restore_result.get("error"),
+                        "results": redacted_results,
+                        "path": _redact_path(
+                            str(
+                                ((restore_result.get("results") or {}).get("perception") or {}).get(
+                                    "path"
+                                )
+                                or ""
+                            ),
+                            repo_root,
+                        ),
+                    },
+                )
+                if restore_result.get("ok") is not True:
+                    _record_finding(
+                        state,
+                        step_id="_us04_restore",
+                        classification="acceptance_blocker",
+                        severity="P1",
+                        summary=f"US-04 restore failed: {restore_result.get('error')}",
+                        human_notes=str(restore_result.get("error")),
+                        evidence=["us04-activation-restore.json"],
+                    )
+                    print(f"  FAIL: US-04 restore failed: {restore_result.get('error')}")
+                else:
+                    # Mechanically compare restore receipt to durable snapshot meta digests.
+                    meta_path = session_dir / "us04-activation-snapshot-meta.json"
+                    compare_ok = True
+                    compare_reason = "snapshot meta vs restore ok"
+                    if meta_path.is_file():
+                        try:
+                            meta_doc = json.loads(meta_path.read_text(encoding="utf-8"))
+                        except (OSError, json.JSONDecodeError) as exc:
+                            compare_ok = False
+                            compare_reason = f"snapshot meta unreadable: {exc}"
+                        else:
+                            expected_trees = meta_doc.get("staged_trees") or {}
+                            results = restore_result.get("results") or {}
+                            for tree_name, exp in expected_trees.items():
+                                if not isinstance(exp, dict):
+                                    continue
+                                key = f"tree:{tree_name}"
+                                got = results.get(key) or {}
+                                if exp.get("existed"):
+                                    if got.get("tree_sha256") != exp.get("tree_sha256"):
+                                        compare_ok = False
+                                        compare_reason = (
+                                            f"restore tree digest mismatch for {tree_name}"
+                                        )
+                                        break
+                                    if got.get("verified") is not True:
+                                        compare_ok = False
+                                        compare_reason = (
+                                            f"restore tree {tree_name} not verified"
+                                        )
+                                        break
+                                else:
+                                    # Absent at snapshot: trial tree must be gone / removed.
+                                    if got.get("ok") is not True:
+                                        compare_ok = False
+                                        compare_reason = (
+                                            f"absent tree {tree_name} not restored cleanly"
+                                        )
+                                        break
+                    else:
+                        compare_ok = False
+                        compare_reason = "missing us04-activation-snapshot-meta.json"
+                    _write_json(
+                        session_dir / "us04-snapshot-restore-compare.json",
+                        {"ok": compare_ok, "reason": compare_reason},
+                    )
+                    if not compare_ok:
+                        restore_result = dict(restore_result)
+                        restore_result["ok"] = False
+                        restore_result["error"] = compare_reason
+                        # rewrite restore receipt with failure
+                        _write_json(
+                            session_dir / "us04-activation-restore.json",
+                            {
+                                "ok": False,
+                                "error": compare_reason,
+                                "results": restore_result.get("results"),
+                            },
+                        )
+                        _record_finding(
+                            state,
+                            step_id="_us04_restore",
+                            classification="acceptance_blocker",
+                            severity="P1",
+                            summary=f"US-04 snapshot/restore compare failed: {compare_reason}",
+                            human_notes=compare_reason,
+                            evidence=[
+                                "us04-activation-restore.json",
+                                "us04-activation-snapshot-meta.json",
+                                "us04-snapshot-restore-compare.json",
+                            ],
+                        )
+                        print(f"  FAIL: US-04 compare: {compare_reason}")
+                    else:
+                        print("  US-04 staged-state restore ok (finally)")
+            except Exception as restore_exc:  # noqa: BLE001
+                _record_finding(
+                    state,
+                    step_id="_us04_restore",
+                    classification="acceptance_blocker",
+                    severity="P1",
+                    summary=f"US-04 restore exception: {type(restore_exc).__name__}: {restore_exc}",
+                    human_notes=str(restore_exc),
+                    evidence=[],
+                )
         cleanup_info = _enforce_cleanup(
             state,
             command_timeout_s=command_timeout_s,
@@ -3110,7 +3638,6 @@ def run_session(
         state.recording_after = _list_run_directories(repo_root, variables["vehicle_id"])
 
     ended = _utc_now()
-    result_status, incomplete_reason = _derive_verdict(state)
 
     gates_list = []
     declared = state.catalog.get("gates") or []
@@ -3131,6 +3658,152 @@ def run_session(
     else:
         gates_list = list(state.gate_results.values())
 
+    machine_preflight = _derive_machine_preflight(state, cleanup_info)
+
+    # Continuity track: compute the single authoritative verdict BEFORE any human
+    # or machine representation is written (prevents complete vs pass leakage).
+    continuity_block: dict[str, Any] | None = None
+    if catalog.get("track") == CONTINUITY_TRACK:
+        sequences = []
+        catalog_steps = {
+            str(s.get("id")): s
+            for s in (catalog.get("steps") or [])
+            if isinstance(s, dict) and s.get("id") is not None
+        }
+        hitl_needed = False
+        hitl_done = True
+        for step in state.steps:
+            if not isinstance(step, dict):
+                continue
+            cat_step = catalog_steps.get(str(step.get("id"))) or {}
+            visual_required = bool(
+                step.get("visual_required")
+                if step.get("visual_required") is not None
+                else cat_step.get("visual_required")
+            )
+            sequences.append(
+                {
+                    "family_id": step.get("family_id")
+                    or cat_step.get("family_id")
+                    or (step.get("machine_evidence") or {}).get("family_id"),
+                    "status": step.get("status"),
+                    "id": step.get("id"),
+                    "visual_required": visual_required,
+                    "machine_ok": step.get("machine_ok"),
+                }
+            )
+            if visual_required and step.get("required_for_verdict"):
+                hitl_needed = True
+                human = step.get("human") or {}
+                if not (
+                    human.get("interactive")
+                    and human.get("visual") in {"pass", "fail"}
+                ):
+                    hitl_done = False
+        family_aggregates = aggregate_family_status(sequences)
+        identity_recorded = continuity_identity_at_start or collect_identity_bundle(
+            repo_root=repo_root,
+            catalog_path=catalog_path
+            if catalog_path is not None
+            else CATALOGS_DIR / "m007-continuity.yaml",
+            metrics_ui={
+                "commit": (metrics_ui or {}).get("commit") if metrics_ui else None,
+                "worktree_state": (metrics_ui or {}).get("worktree_state")
+                if metrics_ui
+                else None,
+                "branch": (metrics_ui or {}).get("branch") if metrics_ui else None,
+                "diff_identity": (metrics_ui or {}).get("diff_identity")
+                if metrics_ui
+                else None,
+                "linked_pr": (metrics_ui or {}).get("linked_pr") if metrics_ui else None,
+                "path": (metrics_ui or {}).get("path") if metrics_ui else None,
+            },
+        )
+        metrics_required = bool(hitl_needed and hitl_done)
+        if isinstance(identity_recorded, dict):
+            identity_recorded = dict(identity_recorded)
+            identity_recorded["metrics_ui_required"] = metrics_required
+            if metrics_ui is not None:
+                identity_recorded["metrics_ui"] = {
+                    "commit": metrics_ui.get("commit"),
+                    "worktree_state": metrics_ui.get("worktree_state"),
+                    "branch": metrics_ui.get("branch"),
+                    "path": metrics_ui.get("path"),
+                    "diff_identity": metrics_ui.get("diff_identity"),
+                    "linked_pr": metrics_ui.get("linked_pr"),
+                    "named_diff": metrics_ui.get("named_diff"),
+                }
+        identity_current = collect_identity_bundle(
+            repo_root=repo_root,
+            catalog_path=catalog_path
+            if catalog_path is not None
+            else CATALOGS_DIR / "m007-continuity.yaml",
+            metrics_ui={
+                "commit": (metrics_ui or {}).get("commit") if metrics_ui else None,
+                "worktree_state": (metrics_ui or {}).get("worktree_state")
+                if metrics_ui
+                else None,
+                "branch": (metrics_ui or {}).get("branch") if metrics_ui else None,
+                "path": (metrics_ui or {}).get("path") if metrics_ui else None,
+                "diff_identity": (metrics_ui or {}).get("diff_identity")
+                if metrics_ui
+                else None,
+                "linked_pr": (metrics_ui or {}).get("linked_pr") if metrics_ui else None,
+                "named_diff": (metrics_ui or {}).get("named_diff") if metrics_ui else None,
+            },
+        )
+        if isinstance(identity_current, dict):
+            identity_current = dict(identity_current)
+            identity_current["metrics_ui_required"] = metrics_required
+        finalizer_ok, finalizer_reason = finalize_evidence_freshness(
+            identity_recorded,
+            identity_current,
+        )
+        safety_ok = bool(
+            continuity_preflight
+            and continuity_preflight.get("safety_ok")
+            and continuity_preflight.get("family_ok")
+        )
+        if refuse_continuity_execution:
+            safety_ok = False
+        restore_ok: bool | None = None
+        restore_path = session_dir / "us04-activation-restore.json"
+        if restore_path.is_file():
+            try:
+                restore_doc = json.loads(restore_path.read_text(encoding="utf-8"))
+                restore_ok = bool(restore_doc.get("ok"))
+            except (OSError, json.JSONDecodeError):
+                restore_ok = False
+        elif continuity_restore is not None:
+            restore_ok = False
+        cleanup_ok = cleanup_info.get("worker_stopped") is True
+        hitl_complete = (not hitl_needed) or hitl_done
+        verdict, verdict_reason = derive_continuity_verdict(
+            safety_preflight_ok=safety_ok,
+            family_aggregates=family_aggregates,
+            restore_ok=restore_ok,
+            cleanup_ok=cleanup_ok,
+            finalizer_ok=finalizer_ok,
+            findings=state.findings,
+            hitl_complete=hitl_complete,
+        )
+        result_status = verdict
+        incomplete_reason = verdict_reason
+        continuity_block = {
+            "preflight": continuity_preflight,
+            "family_aggregates": family_aggregates,
+            "required_family_ids": list(REQUIRED_FAMILY_IDS),
+            "identity_recorded": identity_recorded,
+            "identity_current": identity_current,
+            "finalizer": {"ok": finalizer_ok, "reason": finalizer_reason},
+            "restore_ok": restore_ok,
+            "hitl_complete": hitl_complete,
+            "verdict": verdict,
+            "verdict_reason": verdict_reason,
+        }
+    else:
+        result_status, incomplete_reason = _derive_verdict(state)
+
     notes_lines.extend(
         [
             "## Verdict",
@@ -3148,7 +3821,6 @@ def run_session(
         for finding in state.findings:
             handle.write(json.dumps(finding, sort_keys=True) + "\n")
 
-    machine_preflight = _derive_machine_preflight(state, cleanup_info)
     result = {
         "schema": SCHEMA,
         "result": result_status,
@@ -3186,6 +3858,9 @@ def run_session(
         "artifact_manifest": "digests.json",
         "variables": {k: v for k, v in state.variables.items() if k != "src_dir" or v},
     }
+    if continuity_block is not None:
+        result["continuity"] = continuity_block
+
     # Write immutable result first, then detached digests that include it.
     _write_json(session_dir / "result.json", result)
     digests = _write_digests(session_dir)

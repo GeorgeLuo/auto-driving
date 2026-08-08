@@ -128,7 +128,7 @@ deletion; it does not retroactively widen the accepted primary journey.
 
 **Realistic CLI scenario continuity**
 
-- Workflow state: ready_for_implementation
+- Workflow state: implementation_in_review
 - Proposal branch: `m007/scenario-continuity-proposal`
 - Implementation branch: `m007/scenario-continuity`
 - Proposal path: `docs/milestones/007-cli-operator-usability/proposals/cli-scenario-continuity.md`
@@ -176,6 +176,7 @@ deletion; it does not retroactively widen the accepted primary journey.
 | Realistic CLI scenario continuity | ready_for_proposal | Plan revision: insert post-acceptance continuity for named realistic multi-command sequences on the live session runner (machine-first/HITL, targeted product/UI repairs, M007-10) before coverage instrumentation; requeue CLI journey coverage foundation as the next candidate; freeze representative #88 catalog families and the human-scannable confirmation standard so a thin nonvisual catalog cannot satisfy M007-10. |
 | Realistic CLI scenario continuity | proposal_in_review | Started m007/scenario-continuity-proposal. |
 | Realistic CLI scenario continuity | ready_for_implementation | Proposal PR #99 accepted at 7fd92683fc424addd1549bed81ef707e5259937d. |
+| Realistic CLI scenario continuity | implementation_in_review | Started m007/scenario-continuity. |
 
 ## Accepted Review Units
 

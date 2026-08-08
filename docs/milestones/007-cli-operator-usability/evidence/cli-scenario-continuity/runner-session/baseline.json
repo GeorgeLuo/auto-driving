@@ -1,0 +1,56 @@
+{
+  "browser": {
+    "name": null,
+    "version": null
+  },
+  "canonical_acceptance": false,
+  "canonical_acceptance_reason": "catalog file digest does not match the reviewed PINNED_ACCEPTANCE_CATALOG_DIGEST constant",
+  "catalog_source": "<repo>/docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/catalogs/m007-continuity.yaml",
+  "execution_mode": "machine_only_live",
+  "metrics_ui_origin": "http://localhost:5050",
+  "operating_system": "macOS-26.5.1-arm64-arm-64bit",
+  "operator": "machine-preflight",
+  "precondition_cleanup": {
+    "attempted": false,
+    "deployment_before": "deployed",
+    "error": null,
+    "needed": false,
+    "ok": true,
+    "pid_liveness": {
+      "80101": false
+    },
+    "pids_before": [
+      80101
+    ],
+    "status_exit_code": 0,
+    "stop_exit_code": null,
+    "view_before": "stale",
+    "worker_state_after": "stopped",
+    "worker_state_before": "stopped"
+  },
+  "python": "3.11.7",
+  "recorded_at_utc": "2026-08-08T19:37:11.074700Z",
+  "recording_before": [
+    "automation-20260630-214835",
+    "automation-20260630-214933"
+  ],
+  "repositories": {
+    "auto_driving": {
+      "branch": "m007/scenario-continuity",
+      "commit": "c2aca340053ce19df343f175f59287e5191a8487",
+      "diff_identity": null,
+      "github_owner": "GeorgeLuo",
+      "github_repo": "auto-driving",
+      "path": "auto-driving",
+      "status_porcelain": [],
+      "untracked_files": [],
+      "untracked_sha256": {},
+      "worktree_state": "clean"
+    },
+    "metrics_ui": null
+  },
+  "session_visible": null,
+  "vehicle_id": "chase-sim-chaser",
+  "worktree_diff_path": null,
+  "worktree_reviewables": {}
+}

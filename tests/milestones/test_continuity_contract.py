@@ -1119,3 +1119,98 @@ class SharedGitIdentityCollectorTests(unittest.TestCase):
             assert posthoc_b is not None
             self.assertEqual(recorded_b.get("diff_identity"), posthoc_b.get("diff_identity"))
             self.assertNotEqual(recorded.get("diff_identity"), recorded_b.get("diff_identity"))
+
+
+class UntrackedGitMaterialIdentityTests(unittest.TestCase):
+    def _init_repo(self, repo: Path) -> None:
+        import subprocess
+
+        subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "config", "user.email", "t@example.com"],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "t"],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+        )
+        (repo / "README").write_text("base\n", encoding="utf-8")
+        subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "init"],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+        )
+
+    def test_symlink_target_change_invalidates_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            self._init_repo(repo)
+            link = repo / "link"
+            link.symlink_to("target-A")
+            id_a = cc.collect_git_identity(repo)
+            assert id_a is not None
+            link.unlink()
+            link.symlink_to("target-B")
+            id_b = cc.collect_git_identity(repo)
+            assert id_b is not None
+            self.assertNotEqual(
+                id_a.get("diff_identity"),
+                id_b.get("diff_identity"),
+                "symlink target change must alter dirty identity",
+            )
+            # Unchanged round-trip
+            id_b2 = cc.collect_git_identity(repo)
+            assert id_b2 is not None
+            self.assertEqual(id_b.get("diff_identity"), id_b2.get("diff_identity"))
+
+    def test_executable_bit_change_invalidates_identity(self) -> None:
+        import os
+        import stat as statmod
+
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            self._init_repo(repo)
+            tool = repo / "tool.sh"
+            tool.write_text("#!/bin/sh\necho hi\n", encoding="utf-8")
+            tool.chmod(0o644)
+            id_a = cc.collect_git_identity(repo)
+            assert id_a is not None
+            tool.chmod(0o755)
+            id_b = cc.collect_git_identity(repo)
+            assert id_b is not None
+            self.assertNotEqual(
+                id_a.get("diff_identity"),
+                id_b.get("diff_identity"),
+                "executable bit change must alter dirty identity",
+            )
+            id_b2 = cc.collect_git_identity(repo)
+            assert id_b2 is not None
+            self.assertEqual(id_b.get("diff_identity"), id_b2.get("diff_identity"))
+            # Finalize rejects A->B
+            product = _full_product_map("p")
+            rec = {
+                "catalog_sha256": "a",
+                "runner_sha256": "b",
+                "continuity_contract_sha256": "c",
+                "product_sha256": product,
+                "metrics_ui_required": True,
+                "metrics_ui": id_a,
+            }
+            cur = {
+                "catalog_sha256": "a",
+                "runner_sha256": "b",
+                "continuity_contract_sha256": "c",
+                "product_sha256": product,
+                "metrics_ui_required": True,
+                "metrics_ui": id_b,
+            }
+            ok, reason = cc.finalize_evidence_freshness(rec, cur)
+            self.assertFalse(ok)
+            self.assertIn("diff_identity", reason)
+

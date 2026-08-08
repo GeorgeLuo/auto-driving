@@ -2293,10 +2293,10 @@ class ContinuityRunnerUs04TransactionTests(unittest.TestCase):
             step_dir.mkdir(parents=True, exist_ok=True)
             index = kwargs["index"]
             argv_s = " ".join(str(a) for a in argv)
-            if raise_interrupt and "update" in argv and "perception" in argv:
-                raise KeyboardInterrupt()
             exit_code = 1 if any(tok in argv_s for tok in fail_on) else 0
-            # Trial mutation on update perception (after US-04 snapshot)
+            # Trial mutation on update perception (after US-04 snapshot).
+            # When raise_interrupt is set, mutate first then interrupt so the
+            # matrix proves restore after trial state change (not pre-mutation).
             if (
                 mutate_after_snapshot
                 and "update" in argv
@@ -2334,6 +2334,8 @@ class ContinuityRunnerUs04TransactionTests(unittest.TestCase):
                     / "trial_only.py"
                 )
                 trial.write_text("trial=1\n", encoding="utf-8")
+            if raise_interrupt and "update" in argv and "perception" in argv:
+                raise KeyboardInterrupt()
             stdout = "ok\n"
             if "perception" in argv and "run" in argv and "--record" in argv:
                 stdout = f"run: {run_dir}\n"
@@ -2507,12 +2509,18 @@ class ContinuityRunnerUs04TransactionTests(unittest.TestCase):
         self.assertNotEqual(out["result"].get("result"), "pass")
 
     def test_keyboard_interrupt_still_restores(self) -> None:
-        out = self._run(raise_interrupt=True, mutate_after_snapshot=False)
-        # Interrupt happens on update before mutation; snapshot still restores
+        # Mutate trial state then interrupt — restore must roll back activations/trees.
+        out = self._run(raise_interrupt=True, mutate_after_snapshot=True)
         restore_path = out["session_dir"] / "us04-activation-restore.json"
         self.assertTrue(restore_path.is_file())
         restore = json.loads(restore_path.read_text(encoding="utf-8"))
         self.assertTrue(restore.get("ok"), restore)
+        self.assertEqual(out["perc_path"].read_text(encoding="utf-8"), out["prior_perc"])
+        self.assertEqual(out["auto_path"].read_text(encoding="utf-8"), out["prior_auto"])
+        self.assertFalse(
+            out["trial_path"].exists(),
+            "trial file must be removed after interrupt restore",
+        )
         self.assertNotEqual(out["result"].get("result"), "pass")
 
     def test_restore_failure_is_non_pass(self) -> None:

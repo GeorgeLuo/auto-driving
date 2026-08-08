@@ -1204,11 +1204,51 @@ def finalize_evidence_freshness(
 
 
 
+
+def _untracked_path_identity(path: Path, rel: str) -> tuple[str, str | None]:
+    """Canonical untracked identity as Git-relevant mode + content digest.
+
+    - Symlinks: mode ``120000`` and hash of the **target path bytes** (not the
+      target's file contents; matches Git's symlink blob representation).
+    - Regular files: mode ``100644`` / ``100755`` from the executable bit, plus
+      content hash.
+    - Other/missing: explicit sentinel so disappearance is identity-bearing.
+    """
+
+    import os
+    import stat as statmod
+
+    if path.is_symlink():
+        try:
+            target = os.readlink(path)
+        except OSError:
+            target = ""
+        target_bytes = str(target).encode("utf-8", errors="surrogateescape")
+        digest = hashlib.sha256(target_bytes).hexdigest()
+        return f"untracked:120000:{rel}:{digest}", digest
+    if path.is_file():
+        try:
+            mode_bits = path.stat().st_mode
+        except OSError:
+            return f"untracked:missing:{rel}", None
+        mode = "100755" if (mode_bits & (statmod.S_IXUSR | statmod.S_IXGRP | statmod.S_IXOTH)) else "100644"
+        try:
+            blob = path.read_bytes()
+        except OSError:
+            return f"untracked:{mode}:{rel}:unreadable", None
+        digest = hashlib.sha256(blob).hexdigest()
+        return f"untracked:{mode}:{rel}:{digest}", digest
+    if path.exists():
+        return f"untracked:other:{rel}", None
+    return f"untracked:missing:{rel}", None
+
+
 def collect_git_identity(repo: Path) -> dict[str, Any] | None:
     """Shared Git identity algorithm for session recording and post-hoc finalization.
 
-    Dirty material hashes status, tracked diffs, and **untracked file contents**
-    (not names alone) so changed untracked bytes invalidate the identity.
+    Dirty material hashes status, tracked diffs, and untracked paths using a
+    Git-relevant representation: symlink target bytes (mode 120000) and regular
+    file content plus executable mode (100644/100755).
     """
 
     import subprocess
@@ -1248,15 +1288,10 @@ def collect_git_identity(repo: Path) -> dict[str, Any] | None:
         parts = [status, patch, cached]
         for rel in untracked_names:
             path = repo / rel
-            if path.is_symlink():
-                parts.append(f"untracked-symlink:{rel}")
-                continue
-            if path.is_file():
-                digest = hashlib.sha256(path.read_bytes()).hexdigest()
+            entry, digest = _untracked_path_identity(path, rel)
+            parts.append(entry)
+            if digest is not None:
                 untracked_hashes[rel] = digest
-                parts.append(f"untracked:{rel}:{digest}")
-            else:
-                parts.append(f"untracked:{rel}:missing")
         material = "\n".join(parts).encode("utf-8")
         diff_identity = hashlib.sha256(material).hexdigest()
     return {

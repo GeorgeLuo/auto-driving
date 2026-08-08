@@ -1,5 +1,11 @@
 {
   "files": {
+    "bundle_manifest": {
+      "existed": true,
+      "path": "<repo>/runtime/vehicles/chase-sim-chaser/bundle/bundle-manifest.json",
+      "restorable": true,
+      "sha256": "5b03e32d145a36b0bab900f3fa2ca177f0659d275c2e8cf8f5b4c71fcfd234df"
+    },
     "decision": {
       "existed": true,
       "path": "<repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/decision/active.json",
@@ -16,7 +22,7 @@
       "existed": true,
       "path": "<repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception/active.json",
       "restorable": true,
-      "sha256": "c700c06e952bad23b864c1920eae48d4dbd35856882b12751923cd0a7b823a73"
+      "sha256": "cc6fa35bf7814f89f2c274298a057f6345cd6f273b421f4cc61ba991c00dc746"
     }
   },
   "restorable": true

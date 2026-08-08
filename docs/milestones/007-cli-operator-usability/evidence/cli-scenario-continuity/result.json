@@ -43,12 +43,12 @@
       "track": "continuity"
     },
     "timestamps": {
-      "ended_at_utc": "2026-08-07T06:23:00.459575Z",
+      "ended_at_utc": "2026-08-08T07:48:12.891343Z",
       "local_timezone": [
         "PST",
         "PDT"
       ],
-      "started_at_utc": "2026-08-07T06:22:19.651178Z"
+      "started_at_utc": "2026-08-08T07:47:33.896085Z"
     }
   },
   "findings": [],
@@ -67,21 +67,23 @@
     }
   ],
   "review_repair": {
-    "parser_flag_validation": true,
-    "us04_finally_restore_full_staged_state": true,
-    "finalizer_start_vs_end_identities": true,
-    "family_topology": true,
-    "authoritative_continuity_verdict": true,
-    "exact_src_lineage": true
+    "per_leaf_flag_allowlist": true,
+    "strong_family_topology": true,
+    "us04_full_staged_cache_restore": true,
+    "precondition_fail_stop": true,
+    "posthoc_final_tree_validator": true,
+    "content_bound_lineage": true,
+    "single_continuity_verdict_writer": true,
+    "expanded_product_surface": true
   },
   "artifacts": [
     {
       "path": "README.md",
-      "sha256": "d7d1c0e9d717fb27e2cb717d97421de774c3e9f4ce4c4f25ea83678160392739"
+      "sha256": "ab666d03698dc94132fe7a970dd6d7bf6fb97f882ddeadd36153f0c29a64aee1"
     },
     {
       "path": "runner-session/result.json",
-      "sha256": "cbd4c6b7af55e2ececeb70680dd90f71c240d841a7567392e86200858a6fda94"
+      "sha256": "52bd06369f9f933247b8d3f3c74410b163e3fcac9db25d945a6a0b14d52fbbbe"
     },
     {
       "path": "runner-session/continuity-preflight.json",
@@ -89,15 +91,19 @@
     },
     {
       "path": "runner-session/us04-activation-restore.json",
-      "sha256": "537a9ea7910eca8b93b0c84426a4898c8caca3fac777049d6e4320074eba7e5c"
+      "sha256": "9e47c357d1f49e601b09d55b616855d306ce8ecfa606cbc22a5f1db63379d659"
     },
     {
       "path": "runner-session/offline-source-lineage.json",
-      "sha256": "5cf3fd75a0015a7c779f1ffdc12080e640e280460b930fca922152bb0eda1a84"
+      "sha256": "b7ca9ac3df3cbbc02e70086e6fd1e6dc40b55cf48c3245d3a6a12689ea207697"
     },
     {
       "path": "runner-session/human-notes.md",
-      "sha256": "5d80713df39eb6262b243ca5a428cac5f153bcb5053936446fd4fb56ea26ca45"
+      "sha256": "6db81337356976ab5bddebf8894ae3c376d8f42f116d6360ed5a0f5bc52b9b17"
+    },
+    {
+      "path": "runner-session/digests.json",
+      "sha256": "3f63306b315cf6bdfecc0a897a1b4c77142ef689cb9fc5d5092727b4b9312210"
     }
   ]
 }

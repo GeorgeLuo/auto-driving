@@ -1,6 +1,6 @@
 # Session notes — m007-continuity
 
-- started_at_utc: `2026-08-07T06:22:19.651178Z`
+- started_at_utc: `2026-08-08T07:47:33.896085Z`
 - execution_mode: `machine_only_live`
 - track: `continuity`
 - operator: `machine-preflight`
@@ -50,6 +50,6 @@
 ## Verdict
 
 - result: `incomplete`
-- reason: Exploratory session had blocked or skipped steps.
+- reason: required family continuity.live_config_swap still partial (often HITL pending)
 - findings: 0
-- cleanup: {'attempted': True, 'needed': True, 'stop_exit_code': 0, 'final_status_exit_code': 0, 'worker_stopped': True, 'pid_alive': False, 'pids': [64321, 64516], 'pid_liveness': {'64321': False, '64516': False}, 'error': None, 'preservation': {'ok': True, 'summary': 'continuity track: baseline fingerprint not required'}, 'stopped_layers_summary': 'stopped layers healthy', 'pid': 64516}
+- cleanup: {'attempted': True, 'needed': True, 'stop_exit_code': 0, 'final_status_exit_code': 0, 'worker_stopped': True, 'pid_alive': False, 'pids': [75647, 75867], 'pid_liveness': {'75647': False, '75867': False}, 'error': None, 'preservation': {'ok': True, 'summary': 'continuity track: baseline fingerprint not required'}, 'stopped_layers_summary': 'stopped layers healthy', 'pid': 75867}

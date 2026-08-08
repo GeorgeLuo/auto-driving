@@ -29,6 +29,6 @@
     "cli/automa_cli/vehicles.py": "432c0a2001833649c32d91173813f279a16ba37d37212dc20185abae7b9cd40c",
     "implementations/": "0676ca738cf1140175fe930baa7a6975c84a5c6b7758179733cdbc9ebeaa529b"
   },
-  "runner_sha256": "a490546dda838a097bdc0cf886d670f38fbf8c305446df056a1c7b0bf7827909",
+  "runner_sha256": "9c077fba403a4558306aaad1485ab18d19536689e37a3fe686000d8be1d89287",
   "schema": "continuity_identity_bundle_v0"
 }

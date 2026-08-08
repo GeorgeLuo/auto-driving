@@ -19,10 +19,10 @@
       "needed": false,
       "ok": true,
       "pid_liveness": {
-        "77192": false
+        "79352": false
       },
       "pids_before": [
-        77192
+        79352
       ],
       "status_exit_code": 0,
       "stop_exit_code": null,
@@ -31,7 +31,7 @@
       "worker_state_before": "stopped"
     },
     "python": "3.11.7",
-    "recorded_at_utc": "2026-08-08T18:59:43.477863Z",
+    "recorded_at_utc": "2026-08-08T19:20:02.421756Z",
     "recording_before": [
       "automation-20260630-214835",
       "automation-20260630-214933"
@@ -39,7 +39,7 @@
     "repositories": {
       "auto_driving": {
         "branch": "m007/scenario-continuity",
-        "commit": "cad61195f017b1cc180eaca0995dcaec0f8cd08d",
+        "commit": "74a4a4ae2744a403e5b91c123907895722097f33",
         "diff_identity": null,
         "github_owner": "GeorgeLuo",
         "github_repo": "auto-driving",
@@ -68,15 +68,15 @@
     "error": null,
     "final_status_exit_code": 0,
     "needed": true,
-    "pid": 79352,
+    "pid": 80101,
     "pid_alive": false,
     "pid_liveness": {
-      "77192": false,
-      "79352": false
+      "79352": false,
+      "80101": false
     },
     "pids": [
-      77192,
-      79352
+      79352,
+      80101
     ],
     "preservation": {
       "ok": true,
@@ -128,7 +128,7 @@
         "cli/automa_cli/vehicles.py": "432c0a2001833649c32d91173813f279a16ba37d37212dc20185abae7b9cd40c",
         "implementations/": "0676ca738cf1140175fe930baa7a6975c84a5c6b7758179733cdbc9ebeaa529b"
       },
-      "runner_sha256": "a490546dda838a097bdc0cf886d670f38fbf8c305446df056a1c7b0bf7827909",
+      "runner_sha256": "9c077fba403a4558306aaad1485ab18d19536689e37a3fe686000d8be1d89287",
       "schema": "continuity_identity_bundle_v0"
     },
     "identity_recorded": {
@@ -162,7 +162,7 @@
         "cli/automa_cli/vehicles.py": "432c0a2001833649c32d91173813f279a16ba37d37212dc20185abae7b9cd40c",
         "implementations/": "0676ca738cf1140175fe930baa7a6975c84a5c6b7758179733cdbc9ebeaa529b"
       },
-      "runner_sha256": "a490546dda838a097bdc0cf886d670f38fbf8c305446df056a1c7b0bf7827909",
+      "runner_sha256": "9c077fba403a4558306aaad1485ab18d19536689e37a3fe686000d8be1d89287",
       "schema": "continuity_identity_bundle_v0"
     },
     "preflight": {
@@ -248,10 +248,10 @@
             "--record"
           ],
           "command": "./cli/automa vehicles perception run --id chase-sim-chaser --frames 4 --interval-s 0.25 --record",
-          "elapsed_ms": 14983,
-          "ended_at_utc": "2026-08-08T18:59:59.758766Z",
+          "elapsed_ms": 14940,
+          "ended_at_utc": "2026-08-08T19:20:18.617585Z",
           "exit_code": 0,
-          "started_at_utc": "2026-08-08T18:59:44.775551Z",
+          "started_at_utc": "2026-08-08T19:20:03.676648Z",
           "stderr_path": "steps/offline-capture/cmd-00.stderr.txt",
           "stdout_path": "steps/offline-capture/cmd-00.stdout.txt"
         }
@@ -284,16 +284,16 @@
             "vehicles",
             "perception",
             "apply",
-            "<repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260808-115955-531937-f60066c2",
+            "<repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260808-122014-381630-8711c51a",
             "--algorithm",
             "lightweight_observer",
             "--record"
           ],
-          "command": "./cli/automa vehicles perception apply <repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260808-115955-531937-f60066c2 --algorithm lightweight_observer --record",
-          "elapsed_ms": 2799,
-          "ended_at_utc": "2026-08-08T19:00:02.561088Z",
+          "command": "./cli/automa vehicles perception apply <repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260808-122014-381630-8711c51a --algorithm lightweight_observer --record",
+          "elapsed_ms": 2903,
+          "ended_at_utc": "2026-08-08T19:20:21.523906Z",
           "exit_code": 0,
-          "started_at_utc": "2026-08-08T18:59:59.761190Z",
+          "started_at_utc": "2026-08-08T19:20:18.620426Z",
           "stderr_path": "steps/offline-apply-a/cmd-00.stderr.txt",
           "stdout_path": "steps/offline-apply-a/cmd-00.stdout.txt"
         }
@@ -326,16 +326,16 @@
             "vehicles",
             "perception",
             "apply",
-            "<repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260808-115955-531937-f60066c2",
+            "<repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260808-122014-381630-8711c51a",
             "--algorithm",
             "sim_debug",
             "--record"
           ],
-          "command": "./cli/automa vehicles perception apply <repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260808-115955-531937-f60066c2 --algorithm sim_debug --record",
-          "elapsed_ms": 550,
-          "ended_at_utc": "2026-08-08T19:00:03.114485Z",
+          "command": "./cli/automa vehicles perception apply <repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260808-122014-381630-8711c51a --algorithm sim_debug --record",
+          "elapsed_ms": 513,
+          "ended_at_utc": "2026-08-08T19:20:22.039443Z",
           "exit_code": 0,
-          "started_at_utc": "2026-08-08T19:00:02.563972Z",
+          "started_at_utc": "2026-08-08T19:20:21.525721Z",
           "stderr_path": "steps/offline-apply-b/cmd-00.stderr.txt",
           "stdout_path": "steps/offline-apply-b/cmd-00.stdout.txt"
         }
@@ -374,10 +374,10 @@
             "lightweight_observer"
           ],
           "command": "./cli/automa vehicles update perception --id chase-sim-chaser --algorithm lightweight_observer",
-          "elapsed_ms": 848,
-          "ended_at_utc": "2026-08-08T19:00:03.993591Z",
+          "elapsed_ms": 761,
+          "ended_at_utc": "2026-08-08T19:20:22.833995Z",
           "exit_code": 0,
-          "started_at_utc": "2026-08-08T19:00:03.145129Z",
+          "started_at_utc": "2026-08-08T19:20:22.072748Z",
           "stderr_path": "steps/live-swap-stage/cmd-00.stderr.txt",
           "stdout_path": "steps/live-swap-stage/cmd-00.stdout.txt"
         },
@@ -395,10 +395,10 @@
             "--open-view"
           ],
           "command": "./cli/automa vehicles automation run --id chase-sim-chaser --observe-only --frames 0 --open-view",
-          "elapsed_ms": 2195,
-          "ended_at_utc": "2026-08-08T19:00:06.190071Z",
+          "elapsed_ms": 2079,
+          "ended_at_utc": "2026-08-08T19:20:24.917167Z",
           "exit_code": 0,
-          "started_at_utc": "2026-08-08T19:00:03.994417Z",
+          "started_at_utc": "2026-08-08T19:20:22.837600Z",
           "stderr_path": "steps/live-swap-stage/cmd-01.stderr.txt",
           "stdout_path": "steps/live-swap-stage/cmd-01.stdout.txt"
         },
@@ -411,10 +411,10 @@
             "chase-sim-chaser"
           ],
           "command": "./cli/automa vehicles status --id chase-sim-chaser",
-          "elapsed_ms": 1352,
-          "ended_at_utc": "2026-08-08T19:00:07.544182Z",
+          "elapsed_ms": 960,
+          "ended_at_utc": "2026-08-08T19:20:25.880114Z",
           "exit_code": 0,
-          "started_at_utc": "2026-08-08T19:00:06.192026Z",
+          "started_at_utc": "2026-08-08T19:20:24.919879Z",
           "stderr_path": "steps/live-swap-stage/cmd-02.stderr.txt",
           "stdout_path": "steps/live-swap-stage/cmd-02.stdout.txt"
         }
@@ -451,10 +451,10 @@
             "chase-sim-chaser"
           ],
           "command": "./cli/automa vehicles automation stop --id chase-sim-chaser",
-          "elapsed_ms": 729,
-          "ended_at_utc": "2026-08-08T19:00:08.275582Z",
+          "elapsed_ms": 748,
+          "ended_at_utc": "2026-08-08T19:20:26.630353Z",
           "exit_code": 0,
-          "started_at_utc": "2026-08-08T19:00:07.545869Z",
+          "started_at_utc": "2026-08-08T19:20:25.881946Z",
           "stderr_path": "steps/live-swap-stop/cmd-00.stderr.txt",
           "stdout_path": "steps/live-swap-stop/cmd-00.stdout.txt"
         },
@@ -467,10 +467,10 @@
             "chase-sim-chaser"
           ],
           "command": "./cli/automa vehicles status --id chase-sim-chaser",
-          "elapsed_ms": 666,
-          "ended_at_utc": "2026-08-08T19:00:08.942906Z",
+          "elapsed_ms": 840,
+          "ended_at_utc": "2026-08-08T19:20:27.471231Z",
           "exit_code": 0,
-          "started_at_utc": "2026-08-08T19:00:08.276380Z",
+          "started_at_utc": "2026-08-08T19:20:26.631150Z",
           "stderr_path": "steps/live-swap-stop/cmd-01.stderr.txt",
           "stdout_path": "steps/live-swap-stop/cmd-01.stdout.txt"
         }
@@ -509,10 +509,10 @@
             "bounded_evidence"
           ],
           "command": "./cli/automa vehicles update memory --id chase-sim-chaser --implementation bounded_evidence",
-          "elapsed_ms": 529,
-          "ended_at_utc": "2026-08-08T19:00:09.473981Z",
+          "elapsed_ms": 556,
+          "ended_at_utc": "2026-08-08T19:20:28.028658Z",
           "exit_code": 0,
-          "started_at_utc": "2026-08-08T19:00:08.944028Z",
+          "started_at_utc": "2026-08-08T19:20:27.472360Z",
           "stderr_path": "steps/memory-lifecycle/cmd-00.stderr.txt",
           "stdout_path": "steps/memory-lifecycle/cmd-00.stdout.txt"
         },
@@ -529,10 +529,10 @@
             "5"
           ],
           "command": "./cli/automa vehicles automation run --id chase-sim-chaser --observe-only --frames 5",
-          "elapsed_ms": 1503,
-          "ended_at_utc": "2026-08-08T19:00:10.978137Z",
+          "elapsed_ms": 1699,
+          "ended_at_utc": "2026-08-08T19:20:29.728886Z",
           "exit_code": 0,
-          "started_at_utc": "2026-08-08T19:00:09.474915Z",
+          "started_at_utc": "2026-08-08T19:20:28.029423Z",
           "stderr_path": "steps/memory-lifecycle/cmd-01.stderr.txt",
           "stdout_path": "steps/memory-lifecycle/cmd-01.stdout.txt"
         },
@@ -547,10 +547,10 @@
             "--record"
           ],
           "command": "./cli/automa vehicles memory check --id chase-sim-chaser --record",
-          "elapsed_ms": 10834,
-          "ended_at_utc": "2026-08-08T19:00:21.813582Z",
+          "elapsed_ms": 10796,
+          "ended_at_utc": "2026-08-08T19:20:40.528782Z",
           "exit_code": 0,
-          "started_at_utc": "2026-08-08T19:00:10.979254Z",
+          "started_at_utc": "2026-08-08T19:20:29.732274Z",
           "stderr_path": "steps/memory-lifecycle/cmd-02.stderr.txt",
           "stdout_path": "steps/memory-lifecycle/cmd-02.stdout.txt"
         },
@@ -564,10 +564,10 @@
             "chase-sim-chaser"
           ],
           "command": "./cli/automa vehicles automation stop --id chase-sim-chaser",
-          "elapsed_ms": 558,
-          "ended_at_utc": "2026-08-08T19:00:22.372887Z",
+          "elapsed_ms": 524,
+          "ended_at_utc": "2026-08-08T19:20:41.053873Z",
           "exit_code": 0,
-          "started_at_utc": "2026-08-08T19:00:21.814457Z",
+          "started_at_utc": "2026-08-08T19:20:40.529611Z",
           "stderr_path": "steps/memory-lifecycle/cmd-03.stderr.txt",
           "stdout_path": "steps/memory-lifecycle/cmd-03.stdout.txt"
         }
@@ -614,7 +614,7 @@
       "game_id": "chase",
       "mutation_attempted": false,
       "playback": {
-        "frameIndex": 205326,
+        "frameIndex": 278404,
         "pendingAction": false,
         "phase": "running"
       },
@@ -636,17 +636,17 @@
     }
   },
   "timestamps": {
-    "ended_at_utc": "2026-08-08T19:00:23.595025Z",
+    "ended_at_utc": "2026-08-08T19:20:42.149832Z",
     "local_timezone": [
       "PST",
       "PDT"
     ],
-    "started_at_utc": "2026-08-08T18:59:43.477863Z"
+    "started_at_utc": "2026-08-08T19:20:02.421756Z"
   },
   "variables": {
     "metrics_ui_origin": "http://localhost:5050",
     "perception_algorithm": "lightweight_observer",
-    "src_dir": "<repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260808-115955-531937-f60066c2",
+    "src_dir": "<repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260808-122014-381630-8711c51a",
     "vehicle_id": "chase-sim-chaser"
   },
   "view_correlation": null

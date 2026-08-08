@@ -1,6 +1,6 @@
 # Realistic CLI scenario continuity evidence
 
-Status: **Machine-first complete after dirty-identity + archive-clean matrix repairs; HITL pending.**
+Status: **Machine-first complete; shared git-identity wiring closed; HITL pending.**
 
 Accepted contract: [cli-scenario-continuity.md](../../proposals/cli-scenario-continuity.md) (PR #99).
 
@@ -12,8 +12,8 @@ Accepted contract: [cli-scenario-continuity.md](../../proposals/cli-scenario-con
 | Machine preflight | **pass** |
 | Continuity verdict | **incomplete** (live_config_swap partial — visual HITL pending) |
 | US-04 restore | **ok** (snapshot meta `staged_trees` + restore compare) |
-| Finalizer | **ok** (exact product keys; shared dirty git identity) |
-| Behavior head | `cad6119` |
+| Finalizer | **ok** |
+| Behavior head | `74a4a4a` |
 
 ## Family ledger
 
@@ -23,12 +23,9 @@ Accepted contract: [cli-scenario-continuity.md](../../proposals/cli-scenario-con
 | `continuity.live_config_swap` | **partial** | HITL visual still required |
 | `continuity.memory_lifecycle` | **passed** | Memory check PASS |
 
-## Latest re-review repairs
+## Latest repair
 
-1. Dirty Metrics UI: exact `diff_identity` match required (no linked_pr None escape)
-2. Shared `collect_git_identity` hashes untracked **contents** for record and post-hoc
-3. US-04 runner matrix is archive-clean temp fixtures only (no ROOT runtime)
-4. Snapshot meta persists `staged_trees` digests; restore receipt compared mechanically
+`_git_identity` now **delegates** to shared `collect_git_identity` (no inline duplicate).
 
 ## Remaining for Met
 

@@ -16,10 +16,10 @@
         "--record"
       ],
       "command": "./cli/automa vehicles perception run --id chase-sim-chaser --frames 4 --interval-s 0.25 --record",
-      "elapsed_ms": 15361,
-      "ended_at_utc": "2026-08-08T19:37:27.945394Z",
+      "elapsed_ms": 15140,
+      "ended_at_utc": "2026-08-09T04:58:15.604514Z",
       "exit_code": 0,
-      "started_at_utc": "2026-08-08T19:37:12.583949Z",
+      "started_at_utc": "2026-08-09T04:58:00.463734Z",
       "stderr_path": "steps/offline-capture/cmd-00.stderr.txt",
       "stdout_path": "steps/offline-capture/cmd-00.stdout.txt"
     }

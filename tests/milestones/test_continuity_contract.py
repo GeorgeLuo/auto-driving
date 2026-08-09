@@ -1147,6 +1147,64 @@ class UntrackedGitMaterialIdentityTests(unittest.TestCase):
             capture_output=True,
         )
 
+    def _assert_path_change_invalidates_identity(self, name: str) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            self._init_repo(repo)
+            untracked = repo / name
+            untracked.write_bytes(b"A\n")
+
+            id_a = cc.collect_git_identity(repo)
+            self.assertIsNotNone(id_a)
+            assert id_a is not None
+            self.assertIn(name, id_a.get("untracked_files", []))
+            id_a2 = cc.collect_git_identity(repo)
+            assert id_a2 is not None
+            self.assertEqual(
+                id_a.get("diff_identity"),
+                id_a2.get("diff_identity"),
+                "unchanged path/content must have stable dirty identity",
+            )
+
+            untracked.write_bytes(b"B\n")
+            id_b = cc.collect_git_identity(repo)
+            assert id_b is not None
+            self.assertNotEqual(
+                id_a.get("diff_identity"),
+                id_b.get("diff_identity"),
+                "changed bytes must alter dirty identity even for quoted paths",
+            )
+            id_b2 = cc.collect_git_identity(repo)
+            assert id_b2 is not None
+            self.assertEqual(id_b.get("diff_identity"), id_b2.get("diff_identity"))
+
+            product = _full_product_map("p")
+            rec = {
+                "catalog_sha256": "a",
+                "runner_sha256": "b",
+                "continuity_contract_sha256": "c",
+                "product_sha256": product,
+                "metrics_ui_required": True,
+                "metrics_ui": id_a,
+            }
+            cur = {
+                "catalog_sha256": "a",
+                "runner_sha256": "b",
+                "continuity_contract_sha256": "c",
+                "product_sha256": product,
+                "metrics_ui_required": True,
+                "metrics_ui": id_b,
+            }
+            ok, reason = cc.finalize_evidence_freshness(rec, cur)
+            self.assertFalse(ok, reason)
+            self.assertIn("diff_identity", reason)
+
+    def test_unicode_untracked_path_binds_actual_path_bytes(self) -> None:
+        self._assert_path_change_invalidates_identity("café.txt")
+
+    def test_embedded_newline_untracked_path_binds_actual_path_bytes(self) -> None:
+        self._assert_path_change_invalidates_identity("line\nbreak.txt")
+
     def test_symlink_target_change_invalidates_identity(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
@@ -1213,4 +1271,3 @@ class UntrackedGitMaterialIdentityTests(unittest.TestCase):
             ok, reason = cc.finalize_evidence_freshness(rec, cur)
             self.assertFalse(ok)
             self.assertIn("diff_identity", reason)
-

@@ -1205,7 +1205,23 @@ def finalize_evidence_freshness(
 
 
 
-def _untracked_path_identity(path: Path, rel: str) -> tuple[str, str | None]:
+def _serialize_identity_fields(fields: Sequence[bytes]) -> bytes:
+    """Serialize identity fields without path/content delimiter ambiguity."""
+
+    encoded = bytearray()
+    encoded.extend(len(fields).to_bytes(8, "big"))
+    for field in fields:
+        encoded.extend(len(field).to_bytes(8, "big"))
+        encoded.extend(field)
+    return bytes(encoded)
+
+
+def _untracked_path_identity(
+    path: Path,
+    rel: str,
+    *,
+    rel_bytes: bytes,
+) -> tuple[str, str | None, bytes]:
     """Canonical untracked identity as Git-relevant mode + content digest.
 
     - Symlinks: mode ``120000`` and hash of the **target path bytes** (not the
@@ -1213,6 +1229,11 @@ def _untracked_path_identity(path: Path, rel: str) -> tuple[str, str | None]:
     - Regular files: mode ``100644`` / ``100755`` from the executable bit, plus
       content hash.
     - Other/missing: explicit sentinel so disappearance is identity-bearing.
+
+    The third return value is the byte-safe, length-framed material used in the
+    aggregate dirty identity. ``rel`` is display metadata only; Git path bytes
+    are carried separately so quoted or delimiter-containing names cannot turn
+    into a stable ``missing`` sentinel or collide during serialization.
     """
 
     import os
@@ -1223,24 +1244,36 @@ def _untracked_path_identity(path: Path, rel: str) -> tuple[str, str | None]:
             target = os.readlink(path)
         except OSError:
             target = ""
-        target_bytes = str(target).encode("utf-8", errors="surrogateescape")
+        target_bytes = os.fsencode(target)
         digest = hashlib.sha256(target_bytes).hexdigest()
-        return f"untracked:120000:{rel}:{digest}", digest
+        material = _serialize_identity_fields(
+            (b"untracked", b"120000", rel_bytes, target_bytes)
+        )
+        return f"untracked:120000:{rel}:{digest}", digest, material
     if path.is_file():
         try:
             mode_bits = path.stat().st_mode
         except OSError:
-            return f"untracked:missing:{rel}", None
+            material = _serialize_identity_fields((b"untracked", b"missing", rel_bytes))
+            return f"untracked:missing:{rel}", None, material
         mode = "100755" if (mode_bits & (statmod.S_IXUSR | statmod.S_IXGRP | statmod.S_IXOTH)) else "100644"
         try:
             blob = path.read_bytes()
         except OSError:
-            return f"untracked:{mode}:{rel}:unreadable", None
+            material = _serialize_identity_fields(
+                (b"untracked", mode.encode("ascii"), rel_bytes, b"unreadable")
+            )
+            return f"untracked:{mode}:{rel}:unreadable", None, material
         digest = hashlib.sha256(blob).hexdigest()
-        return f"untracked:{mode}:{rel}:{digest}", digest
+        material = _serialize_identity_fields(
+            (b"untracked", mode.encode("ascii"), rel_bytes, digest.encode("ascii"))
+        )
+        return f"untracked:{mode}:{rel}:{digest}", digest, material
     if path.exists():
-        return f"untracked:other:{rel}", None
-    return f"untracked:missing:{rel}", None
+        material = _serialize_identity_fields((b"untracked", b"other", rel_bytes))
+        return f"untracked:other:{rel}", None, material
+    material = _serialize_identity_fields((b"untracked", b"missing", rel_bytes))
+    return f"untracked:missing:{rel}", None, material
 
 
 def collect_git_identity(repo: Path) -> dict[str, Any] | None:
@@ -1251,6 +1284,7 @@ def collect_git_identity(repo: Path) -> dict[str, Any] | None:
     file content plus executable mode (100644/100755).
     """
 
+    import os
     import subprocess
 
     repo = Path(repo)
@@ -1263,37 +1297,55 @@ def collect_git_identity(repo: Path) -> dict[str, Any] | None:
     if completed.returncode != 0:
         return None
 
-    def run(args: list[str]) -> str:
+    def run_text(args: list[str]) -> str:
         try:
             done = subprocess.run(args, cwd=repo, check=False, capture_output=True, text=True)
         except OSError:
             return ""
         return done.stdout.strip() if done.returncode == 0 else ""
 
-    status_lines = [
-        line for line in (run(["git", "status", "--porcelain"]) or "").splitlines() if line
-    ]
-    status = "\n".join(status_lines)
-    commit = run(["git", "rev-parse", "HEAD"]) or None
-    branch = run(["git", "branch", "--show-current"]) or None
-    dirty = bool(status)
+    def run_bytes(args: list[str]) -> bytes:
+        try:
+            done = subprocess.run(args, cwd=repo, check=False, capture_output=True)
+        except OSError:
+            return b""
+        return done.stdout if done.returncode == 0 else b""
+
+    # ``-z`` makes Git emit raw path bytes terminated by NUL instead of its
+    # human-oriented quoted representation. Decode only after splitting so
+    # Unicode, control characters, and embedded newlines remain one path.
+    status_raw = run_bytes(
+        ["git", "status", "--porcelain=v1", "--untracked-files=all", "-z"]
+    )
+    status_lines = [os.fsdecode(part) for part in status_raw.split(b"\0") if part]
+    commit = run_text(["git", "rev-parse", "HEAD"]) or None
+    branch = run_text(["git", "branch", "--show-current"]) or None
+    dirty = bool(status_raw)
     diff_identity = None
     untracked_names: list[str] = []
     untracked_hashes: dict[str, str] = {}
     if dirty:
-        patch = run(["git", "diff", "HEAD"])
-        cached = run(["git", "diff", "--cached"])
-        untracked_raw = run(["git", "ls-files", "--others", "--exclude-standard"])
-        untracked_names = [line for line in untracked_raw.splitlines() if line]
-        parts = [status, patch, cached]
-        for rel in untracked_names:
+        # Keep patch bytes intact; framing below prevents path/content bytes
+        # from being reinterpreted as separators in the aggregate identity.
+        patch = run_bytes(["git", "diff", "--binary", "--no-ext-diff", "HEAD"])
+        cached = run_bytes(["git", "diff", "--binary", "--no-ext-diff", "--cached"])
+        untracked_raw = run_bytes(
+            ["git", "ls-files", "--others", "--exclude-standard", "--full-name", "-z"]
+        )
+        untracked_path_bytes = [part for part in untracked_raw.split(b"\0") if part]
+        untracked_names = [os.fsdecode(part) for part in untracked_path_bytes]
+        untracked_material: list[bytes] = []
+        for rel_bytes, rel in zip(untracked_path_bytes, untracked_names):
             path = repo / rel
-            entry, digest = _untracked_path_identity(path, rel)
-            parts.append(entry)
+            entry, digest, material = _untracked_path_identity(
+                path, rel, rel_bytes=rel_bytes
+            )
+            untracked_material.append(material)
             if digest is not None:
                 untracked_hashes[rel] = digest
-        material = "\n".join(parts).encode("utf-8")
-        diff_identity = hashlib.sha256(material).hexdigest()
+        material_fields = [b"git-identity-v2", status_raw, patch, cached]
+        material_fields.extend(sorted(untracked_material))
+        diff_identity = hashlib.sha256(_serialize_identity_fields(material_fields)).hexdigest()
     return {
         "path": repo.name,
         "commit": commit,

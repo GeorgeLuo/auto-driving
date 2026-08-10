@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import tempfile
 import unittest
@@ -1163,6 +1164,75 @@ class Us04TreeRestoreVerificationTests(unittest.TestCase):
                 tree_res.get("tree_sha256"),
                 snap["staged_trees"]["autonomy"]["tree_sha256"],
             )
+
+    def test_snapshot_restore_preserves_nested_symlink_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            vehicle = "v1"
+            bundle = root / "runtime" / "vehicles" / vehicle / "bundle"
+            perception = bundle / "runtime" / "perception" / "active.json"
+            perception.parent.mkdir(parents=True)
+            perception.write_text('{"k":"p"}\n', encoding="utf-8")
+            autonomy = bundle / "autonomy"
+            autonomy.mkdir(parents=True)
+            (autonomy / "real.py").write_text("prior = 1\n", encoding="utf-8")
+            link = autonomy / "active.py"
+            link.symlink_to("real.py")
+            before_hash = cc.tree_content_sha256(autonomy)
+
+            cache = root / "cache"
+            snap = cc.snapshot_staged_state(root, vehicle, cache_dir=cache)
+            self.assertTrue(snap["ok"], snap)
+            autonomy_meta = snap["staged_trees"]["autonomy"]
+            self.assertEqual(autonomy_meta["source_tree_sha256"], before_hash)
+            self.assertEqual(autonomy_meta["cache_tree_sha256"], before_hash)
+            self.assertTrue((cache / "autonomy" / "active.py").is_symlink())
+
+            link.unlink()
+            link.write_text("trial = 2\n", encoding="utf-8")
+            restored = cc.restore_activation(snap)
+            self.assertTrue(restored["ok"], restored)
+            self.assertTrue(link.is_symlink())
+            self.assertEqual(os.readlink(link), "real.py")
+            self.assertEqual(cc.tree_content_sha256(autonomy), before_hash)
+            tree_result = restored["results"]["tree:autonomy"]
+            self.assertTrue(tree_result["verified"])
+            self.assertEqual(tree_result["source_tree_sha256"], before_hash)
+            self.assertEqual(tree_result["cache_tree_sha256"], before_hash)
+
+    def test_snapshot_restore_preserves_symlink_tree_root_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            vehicle = "v1"
+            bundle = root / "runtime" / "vehicles" / vehicle / "bundle"
+            perception = bundle / "runtime" / "perception" / "active.json"
+            perception.parent.mkdir(parents=True)
+            perception.write_text('{"k":"p"}\n', encoding="utf-8")
+            target = bundle / "autonomy-target"
+            target.mkdir(parents=True)
+            (target / "prior.py").write_text("prior = 1\n", encoding="utf-8")
+            autonomy = bundle / "autonomy"
+            autonomy.symlink_to("autonomy-target", target_is_directory=True)
+            before_hash = cc.tree_content_sha256(autonomy)
+
+            cache = root / "cache"
+            snap = cc.snapshot_staged_state(root, vehicle, cache_dir=cache)
+            self.assertTrue(snap["ok"], snap)
+            autonomy_meta = snap["staged_trees"]["autonomy"]
+            self.assertEqual(autonomy_meta["source_tree_sha256"], before_hash)
+            self.assertTrue((cache / "autonomy").is_symlink())
+            self.assertEqual(os.readlink(cache / "autonomy"), "autonomy-target")
+
+            autonomy.unlink()
+            trial = bundle / "autonomy-trial"
+            trial.mkdir()
+            (trial / "trial.py").write_text("trial = 2\n", encoding="utf-8")
+            autonomy.symlink_to("autonomy-trial", target_is_directory=True)
+            restored = cc.restore_activation(snap)
+            self.assertTrue(restored["ok"], restored)
+            self.assertTrue(autonomy.is_symlink())
+            self.assertEqual(os.readlink(autonomy), "autonomy-target")
+            self.assertEqual(cc.tree_content_sha256(autonomy), before_hash)
 
 
 class FinalizerRequiredKeysAndMetricsTests(unittest.TestCase):

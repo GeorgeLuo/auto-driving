@@ -2916,10 +2916,12 @@ def run_session(
                             "existed": meta.get("existed"),
                             "file_count": meta.get("file_count"),
                             "tree_sha256": meta.get("tree_sha256"),
+                            "source_tree_sha256": meta.get("source_tree_sha256"),
+                            "cache_tree_sha256": meta.get("cache_tree_sha256"),
                             # durable expected digest only (not full file path map)
                         }
                     snapshot_meta_doc = {
-                        "schema": "continuity_us04_snapshot_meta_v1",
+                        "schema": "continuity_us04_snapshot_meta_v2",
                         "restorable": True,
                         "files": meta_files,
                         "staged_trees": staged_meta,
@@ -3692,11 +3694,19 @@ def run_session(
                                 key = f"tree:{tree_name}"
                                 got = results.get(key) or {}
                                 if exp.get("existed"):
-                                    if got.get("tree_sha256") != exp.get("tree_sha256"):
-                                        compare_ok = False
-                                        compare_reason = (
-                                            f"restore tree digest mismatch for {tree_name}"
-                                        )
+                                    for identity_key in (
+                                        "tree_sha256",
+                                        "source_tree_sha256",
+                                        "cache_tree_sha256",
+                                    ):
+                                        if got.get(identity_key) != exp.get(identity_key):
+                                            compare_ok = False
+                                            compare_reason = (
+                                                f"restore tree {identity_key} mismatch for "
+                                                f"{tree_name}"
+                                            )
+                                            break
+                                    if not compare_ok:
                                         break
                                     if got.get("verified") is not True:
                                         compare_ok = False

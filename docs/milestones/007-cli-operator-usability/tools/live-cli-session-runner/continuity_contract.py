@@ -885,11 +885,28 @@ def tree_content_sha256(root: Path) -> str | None:
     )
 
 
+def _remove_tree_path(path: Path) -> None:
+    """Remove a tree or symlink without following a symlink at its root."""
+
+    if path.is_symlink():
+        path.unlink()
+    elif path.exists():
+        if path.is_dir():
+            shutil.rmtree(path)
+        else:
+            path.unlink()
+
+
 def _copy_tree(src: Path, dst: Path) -> None:
-    if dst.exists():
-        shutil.rmtree(dst)
-    if src.is_dir():
-        shutil.copytree(src, dst)
+    """Copy a staged tree while preserving nested and root symlink identity."""
+
+    _remove_tree_path(dst)
+    if src.is_symlink():
+        target = os.readlink(src)
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst.symlink_to(target, target_is_directory=src.is_dir())
+    elif src.is_dir():
+        shutil.copytree(src, dst, symlinks=True)
 
 
 def snapshot_staged_state(
@@ -932,39 +949,67 @@ def snapshot_staged_state(
         for tree_name in ("autonomy", "implementations"):
             src = bundle / tree_name
             dst = cache_dir / tree_name
-            if src.is_dir():
-                try:
-                    _copy_tree(src, dst)
-                    digests = _dir_file_digests(dst)
-                    tree_hash = _tree_sha256_from_digests(digests)
-                except (OSError, TreeIdentityCollectionError) as exc:
-                    ok = False
-                    error = f"staged tree {tree_name} collection failed: {exc}"
-                    errors.append(error)
-                    staged_trees[tree_name] = {
+            try:
+                src_stat = _tree_lstat(src, context=f"staged tree {tree_name}")
+                if src_stat is None:
+                    staged_meta = {
                         "cache_relative": tree_name,
                         "file_count": 0,
                         "tree_sha256": None,
+                        "source_tree_sha256": None,
+                        "cache_tree_sha256": None,
                         "file_digests": {},
-                        "existed": True,
-                        "collection_error": error,
+                        "existed": False,
                     }
                 else:
-                    staged_trees[tree_name] = {
+                    if not (
+                        statmod.S_ISDIR(src_stat.st_mode)
+                        or statmod.S_ISLNK(src_stat.st_mode)
+                    ):
+                        raise TreeIdentityCollectionError(
+                            f"staged tree root is not a directory or symlink: {src}"
+                        )
+
+                    source_hash = tree_content_sha256(src)
+                    if not isinstance(source_hash, str) or not source_hash:
+                        raise TreeIdentityCollectionError(
+                            f"staged tree source identity unavailable: {src}"
+                        )
+                    _copy_tree(src, dst)
+                    if dst.is_symlink():
+                        digests = {}
+                    else:
+                        digests = _dir_file_digests(dst)
+                    cache_hash = tree_content_sha256(dst)
+                    if cache_hash != source_hash:
+                        raise TreeIdentityCollectionError(
+                            f"staged tree cache identity mismatch for {tree_name}: "
+                            f"source={source_hash} cache={cache_hash}"
+                        )
+                    staged_meta = {
                         "cache_relative": tree_name,
                         "file_count": len(digests),
-                        "tree_sha256": tree_hash,
+                        "tree_sha256": source_hash,
+                        "source_tree_sha256": source_hash,
+                        "cache_tree_sha256": cache_hash,
                         "file_digests": digests,
                         "existed": True,
                     }
-            else:
-                staged_trees[tree_name] = {
+            except (OSError, TreeIdentityCollectionError) as exc:
+                ok = False
+                error = f"staged tree {tree_name} collection failed: {exc}"
+                errors.append(error)
+                staged_meta = {
                     "cache_relative": tree_name,
                     "file_count": 0,
                     "tree_sha256": None,
+                    "source_tree_sha256": None,
+                    "cache_tree_sha256": None,
                     "file_digests": {},
-                    "existed": False,
+                    "existed": True,
+                    "collection_error": error,
                 }
+            staged_trees[tree_name] = staged_meta
         if manifest_path.is_file():
             (cache_dir / "bundle-manifest.json").write_bytes(manifest_path.read_bytes())
 
@@ -975,7 +1020,7 @@ def snapshot_staged_state(
         "vehicle_id": vehicle_id,
         "staged_trees": staged_trees,
         "cache_dir": str(cache_dir) if cache_dir is not None else None,
-        "schema": "continuity_staged_snapshot_v1",
+        "schema": "continuity_staged_snapshot_v2",
     }
 
 
@@ -1026,12 +1071,9 @@ def restore_activation(snapshot: Mapping[str, Any], *, path: Path | None = None)
                     dst = bundle / tree_name
                     if not meta.get("existed"):
                         # Absence is restorable: remove trial-created tree if present.
-                        if dst.exists():
+                        if dst.is_symlink() or dst.exists():
                             try:
-                                if dst.is_dir():
-                                    shutil.rmtree(dst)
-                                else:
-                                    dst.unlink()
+                                _remove_tree_path(dst)
                             except OSError as exc:
                                 return {
                                     "ok": False,
@@ -1052,14 +1094,25 @@ def restore_activation(snapshot: Mapping[str, Any], *, path: Path | None = None)
                         continue
 
                     expected_hash = meta.get("tree_sha256")
-                    if not isinstance(expected_hash, str) or not expected_hash:
+                    source_expected = meta.get("source_tree_sha256")
+                    cache_expected = meta.get("cache_tree_sha256")
+                    if not all(
+                        isinstance(value, str) and value
+                        for value in (expected_hash, source_expected, cache_expected)
+                    ):
                         return {
                             "ok": False,
-                            "error": f"staged tree {tree_name} missing tree_sha256",
+                            "error": f"staged tree {tree_name} missing source/cache identity",
+                            "results": results,
+                        }
+                    if source_expected != expected_hash or cache_expected != expected_hash:
+                        return {
+                            "ok": False,
+                            "error": f"staged tree {tree_name} has inconsistent source/cache identity",
                             "results": results,
                         }
                     src = cache_dir / tree_name
-                    if not src.is_dir():
+                    if not (src.is_symlink() or src.is_dir()):
                         return {
                             "ok": False,
                             "error": f"staged tree cache missing: {tree_name}",
@@ -1074,7 +1127,7 @@ def restore_activation(snapshot: Mapping[str, Any], *, path: Path | None = None)
                             "error": f"staged tree cache collection failed for {tree_name}: {exc}",
                             "results": results,
                         }
-                    if cache_hash != expected_hash:
+                    if cache_hash != expected_hash or cache_hash != cache_expected:
                         return {
                             "ok": False,
                             "error": (
@@ -1099,7 +1152,7 @@ def restore_activation(snapshot: Mapping[str, Any], *, path: Path | None = None)
                             "error": f"restored tree collection failed for {tree_name}: {exc}",
                             "results": results,
                         }
-                    if actual_hash != expected_hash:
+                    if actual_hash != expected_hash or actual_hash != source_expected:
                         return {
                             "ok": False,
                             "error": (
@@ -1112,6 +1165,8 @@ def restore_activation(snapshot: Mapping[str, Any], *, path: Path | None = None)
                         "ok": True,
                         "path": str(dst),
                         "tree_sha256": actual_hash,
+                        "source_tree_sha256": source_expected,
+                        "cache_tree_sha256": cache_hash,
                         "verified": True,
                     }
                 # restore bundle-manifest from cache if present and verify

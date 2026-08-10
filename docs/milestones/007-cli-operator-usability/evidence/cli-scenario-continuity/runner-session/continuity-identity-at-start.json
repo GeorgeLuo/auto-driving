@@ -3,13 +3,13 @@
   "catalog_sha256": "c3ef8cccfc1a3dcdab6efdaefaf0b8f79fb5638327360e87e0d6686f71042fcb",
   "continuity_contract_sha256": "e7bb2b489594070fa4ca842b38d325164c05d479f031bb511ef0e14e0986be91",
   "metrics_ui": {
-    "branch": null,
-    "commit": null,
+    "branch": "m002/04-passive-observation",
+    "commit": "722e070fdc9f4ee89d13f947bf3996e62dcb2783",
     "diff_identity": null,
     "linked_pr": null,
     "named_diff": null,
-    "path": null,
-    "worktree_state": null
+    "path": "Stream-Metrics-UI",
+    "worktree_state": "clean"
   },
   "metrics_ui_required": false,
   "product_sha256": {

@@ -1,48 +1,44 @@
 # Realistic CLI scenario continuity evidence
 
-Status: **Machine-first complete at behavior head `28701cc`; visual HITL pending.**
+Status: **Interactive HITL complete at behavior head `04258e1`.**
 
 Accepted contract: [cli-scenario-continuity.md](../../proposals/cli-scenario-continuity.md) (PR #99).
 
-## Session (machine-only)
+## Session
 
 | Field | Value |
 | --- | --- |
 | Catalog | `m007-continuity` |
-| Machine preflight | **pass** |
-| Continuity verdict | **incomplete** (live_config_swap partial — visual HITL pending) |
-| US-04 restore | **ok** (snapshot meta `staged_trees` + restore compare) |
-| Finalizer | **ok** (dirty identity includes symlink targets + exec modes) |
-| Product identity | **17/17 exact keys** (launcher + whole CLI package + runtime trees) |
-| Behavior head | `28701cc` |
+| Execution | `interactive_live` |
+| Named operator | `GeorgeLuo` |
+| Machine preflight | **pass** (6/6 required steps) |
+| Continuity verdict | **pass** |
+| Visual gate | **pass** — nonblank Automa view with live/current status, intelligible floor-boundary overlays, frame/status details, and observation-only readiness |
+| US-04 restore | **ok** (full staged snapshot/restore verification) |
+| Finalizer | **ok** against the auto-driving tree and Metrics UI checkout |
+| Metrics UI | `m002/04-passive-observation` at `722e070fdc9f4ee89d13f947bf3996e62dcb2783`, clean |
+| Evidence | `runner-session/browser-view.png` and `human-notes.md` |
 
 ## Family ledger
 
 | Family | Aggregate | Notes |
 | --- | --- | --- |
-| `continuity.offline_perception` | **passed** | Content-bound lineage |
-| `continuity.live_config_swap` | **partial** | HITL visual still required |
-| `continuity.memory_lifecycle` | **passed** | Memory check PASS |
+| `continuity.offline_perception` | **passed** | Content-bound capture lineage and two exclusive applies |
+| `continuity.live_config_swap` | **passed** | Named visual confirmation, stop cleanup, and staged-state restoration |
+| `continuity.memory_lifecycle` | **passed** | Present/dropout/expiry/reset memory check PASS |
 
-## Latest re-review repairs
+## Review repair coverage
 
-1. Untracked dirty identity binds symlink **targets** (mode 120000) and file **exec modes** (100644/100755)
-2. Quoted Unicode and delimiter-containing untracked paths use raw NUL-delimited Git output and length-framed identity material
-3. US-04 interrupt matrix mutates then interrupts; asserts exact activation/tree rollback
-4. `tests/milestones/` package + `tests/run.py` discovery so GitHub check runs the matrix
-5. Machine-only exit is fail-closed across required-step completeness, family/safety preflight, restore, cleanup, and finalizer
-6. Required nonvisual skips cannot be hidden by passing family siblings
-7. Freshness binds the launcher, rendered/runtime CLI surface, and whole autonomy/implementation trees
-8. Continuity pass requires a trimmed named operator; README now documents the executable HITL/finalizer handoff
-9. Validation counts reconciled to **97** milestone tests / **575** discovered
+The session exercises the repaired boundaries: parser-valid and semantically
+allowlisted commands, fail-closed required-step/family aggregation, exact
+capture lineage, full US-04 transaction restore, current-tree freshness
+finalization, Git-significant dirty identity, and named-operator enforcement.
 
-## Remaining for Met
-
-Interactive HITL on `live-swap-stage` visual cue, then re-package. The machine
-preflight and post-hoc finalizer are current-head green; this evidence remains
-explicitly non-pass until a named operator records the visual result.
+The tracked session contains **55** inner digest entries; the outer evidence
+receipt covers the selected session artifacts. All paths are repository-redacted
+and the detached manifests were regenerated after packaging.
 
 ## Verdict
 
-`incomplete` — machine-first contract exercised and finalized at `28701cc`;
-HITL outstanding.
+`pass` — machine-first continuity, named-operator visual HITL, cleanup,
+restoration, and finalization all passed on the same fresh session.

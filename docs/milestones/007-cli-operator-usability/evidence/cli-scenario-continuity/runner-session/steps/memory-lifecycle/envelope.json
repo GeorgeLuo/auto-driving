@@ -13,10 +13,10 @@
         "bounded_evidence"
       ],
       "command": "./cli/automa vehicles update memory --id chase-sim-chaser --implementation bounded_evidence",
-      "elapsed_ms": 552,
-      "ended_at_utc": "2026-08-10T04:32:01.990635Z",
+      "elapsed_ms": 716,
+      "ended_at_utc": "2026-08-10T04:57:30.685605Z",
       "exit_code": 0,
-      "started_at_utc": "2026-08-10T04:32:01.438195Z",
+      "started_at_utc": "2026-08-10T04:57:29.969389Z",
       "stderr_path": "steps/memory-lifecycle/cmd-00.stderr.txt",
       "stdout_path": "steps/memory-lifecycle/cmd-00.stdout.txt"
     },
@@ -33,10 +33,10 @@
         "5"
       ],
       "command": "./cli/automa vehicles automation run --id chase-sim-chaser --observe-only --frames 5",
-      "elapsed_ms": 1420,
-      "ended_at_utc": "2026-08-10T04:32:03.411917Z",
+      "elapsed_ms": 1803,
+      "ended_at_utc": "2026-08-10T04:57:32.490806Z",
       "exit_code": 0,
-      "started_at_utc": "2026-08-10T04:32:01.991467Z",
+      "started_at_utc": "2026-08-10T04:57:30.686846Z",
       "stderr_path": "steps/memory-lifecycle/cmd-01.stderr.txt",
       "stdout_path": "steps/memory-lifecycle/cmd-01.stdout.txt"
     },
@@ -51,10 +51,10 @@
         "--record"
       ],
       "command": "./cli/automa vehicles memory check --id chase-sim-chaser --record",
-      "elapsed_ms": 10824,
-      "ended_at_utc": "2026-08-10T04:32:14.238125Z",
+      "elapsed_ms": 10865,
+      "ended_at_utc": "2026-08-10T04:57:43.357489Z",
       "exit_code": 0,
-      "started_at_utc": "2026-08-10T04:32:03.414142Z",
+      "started_at_utc": "2026-08-10T04:57:32.491847Z",
       "stderr_path": "steps/memory-lifecycle/cmd-02.stderr.txt",
       "stdout_path": "steps/memory-lifecycle/cmd-02.stdout.txt"
     },
@@ -68,10 +68,10 @@
         "chase-sim-chaser"
       ],
       "command": "./cli/automa vehicles automation stop --id chase-sim-chaser",
-      "elapsed_ms": 463,
-      "ended_at_utc": "2026-08-10T04:32:14.702125Z",
+      "elapsed_ms": 462,
+      "ended_at_utc": "2026-08-10T04:57:43.820637Z",
       "exit_code": 0,
-      "started_at_utc": "2026-08-10T04:32:14.239010Z",
+      "started_at_utc": "2026-08-10T04:57:43.358655Z",
       "stderr_path": "steps/memory-lifecycle/cmd-03.stderr.txt",
       "stdout_path": "steps/memory-lifecycle/cmd-03.stdout.txt"
     }
@@ -80,9 +80,9 @@
   "gate_ids": [],
   "human": {
     "finding_requested": false,
-    "interactive": false,
-    "notes": "non-interactive session",
-    "visual": "pass"
+    "interactive": true,
+    "notes": "p",
+    "visual": "n/a"
   },
   "id": "memory-lifecycle",
   "kind": "command",

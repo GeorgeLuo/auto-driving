@@ -1,55 +1,55 @@
 # Session notes — m007-continuity
 
-- started_at_utc: `2026-08-10T04:31:37.039098Z`
-- execution_mode: `machine_only_live`
+- started_at_utc: `2026-08-10T04:54:31.975042Z`
+- execution_mode: `interactive_live`
 - track: `continuity`
-- operator: `machine-preflight`
+- operator: `GeorgeLuo`
 
 ## offline-capture
 
 - status: `pass`
 - visual: `pass`
-- notes: non-interactive session
+- notes: (none)
 - machine: (none)
 
 ## offline-apply-a
 
 - status: `pass`
 - visual: `pass`
-- notes: non-interactive session
+- notes: (none)
 - machine: (none)
 
 ## offline-apply-b
 
 - status: `pass`
 - visual: `pass`
-- notes: non-interactive session
+- notes: (none)
 - machine: (none)
 
 ## live-swap-stage
 
-- status: `skip`
-- visual: `skip`
-- notes: non-interactive session
+- status: `pass`
+- visual: `pass`
+- notes: Nonblank view with live current overlay, intelligible floor-boundary labels, frame/status details, and observation-only readiness visible.
 - machine: (none)
 
 ## live-swap-stop
 
 - status: `pass`
 - visual: `pass`
-- notes: non-interactive session
+- notes: p
 - machine: (none)
 
 ## memory-lifecycle
 
 - status: `pass`
-- visual: `pass`
-- notes: non-interactive session
+- visual: `n/a`
+- notes: p
 - machine: (none)
 
 ## Verdict
 
-- result: `incomplete`
-- reason: required family continuity.live_config_swap still partial (often HITL pending)
+- result: `pass`
+- reason: (none)
 - findings: 0
-- cleanup: {'attempted': True, 'needed': True, 'stop_exit_code': 0, 'final_status_exit_code': 0, 'worker_stopped': True, 'pid_alive': False, 'pids': [679, 98663], 'pid_liveness': {'679': False, '98663': False}, 'error': None, 'preservation': {'ok': True, 'summary': 'continuity track: baseline fingerprint not required'}, 'stopped_layers_summary': 'stopped layers healthy', 'pid': 679}
+- cleanup: {'attempted': True, 'needed': True, 'stop_exit_code': 0, 'final_status_exit_code': 0, 'worker_stopped': True, 'pid_alive': False, 'pids': [679, 2821], 'pid_liveness': {'679': False, '2821': False}, 'error': None, 'preservation': {'ok': True, 'summary': 'continuity track: baseline fingerprint not required'}, 'stopped_layers_summary': 'stopped layers healthy', 'pid': 2821}

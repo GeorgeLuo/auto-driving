@@ -11,10 +11,10 @@
         "chase-sim-chaser"
       ],
       "command": "./cli/automa vehicles automation stop --id chase-sim-chaser",
-      "elapsed_ms": 817,
-      "ended_at_utc": "2026-08-10T04:57:15.234584Z",
+      "elapsed_ms": 763,
+      "ended_at_utc": "2026-08-10T05:15:12.663741Z",
       "exit_code": 0,
-      "started_at_utc": "2026-08-10T04:57:14.417337Z",
+      "started_at_utc": "2026-08-10T05:15:11.899890Z",
       "stderr_path": "steps/live-swap-stop/cmd-00.stderr.txt",
       "stdout_path": "steps/live-swap-stop/cmd-00.stdout.txt"
     },
@@ -27,10 +27,10 @@
         "chase-sim-chaser"
       ],
       "command": "./cli/automa vehicles status --id chase-sim-chaser",
-      "elapsed_ms": 745,
-      "ended_at_utc": "2026-08-10T04:57:15.980865Z",
+      "elapsed_ms": 742,
+      "ended_at_utc": "2026-08-10T05:15:13.407611Z",
       "exit_code": 0,
-      "started_at_utc": "2026-08-10T04:57:15.235696Z",
+      "started_at_utc": "2026-08-10T05:15:12.664754Z",
       "stderr_path": "steps/live-swap-stop/cmd-01.stderr.txt",
       "stdout_path": "steps/live-swap-stop/cmd-01.stdout.txt"
     }
@@ -39,8 +39,8 @@
   "gate_ids": [],
   "human": {
     "finding_requested": false,
-    "interactive": true,
-    "notes": "p",
+    "interactive": false,
+    "notes": "non-interactive session",
     "visual": "pass"
   },
   "id": "live-swap-stop",

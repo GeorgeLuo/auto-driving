@@ -16,10 +16,10 @@
         "--record"
       ],
       "command": "./cli/automa vehicles perception run --id chase-sim-chaser --frames 4 --interval-s 0.25 --record",
-      "elapsed_ms": 15642,
-      "ended_at_utc": "2026-08-10T04:54:49.465818Z",
+      "elapsed_ms": 15270,
+      "ended_at_utc": "2026-08-10T05:15:04.005396Z",
       "exit_code": 0,
-      "started_at_utc": "2026-08-10T04:54:33.823462Z",
+      "started_at_utc": "2026-08-10T05:14:48.734917Z",
       "stderr_path": "steps/offline-capture/cmd-00.stderr.txt",
       "stdout_path": "steps/offline-capture/cmd-00.stdout.txt"
     }
@@ -28,8 +28,8 @@
   "gate_ids": [],
   "human": {
     "finding_requested": false,
-    "interactive": true,
-    "notes": "",
+    "interactive": false,
+    "notes": "non-interactive session",
     "visual": "pass"
   },
   "id": "offline-capture",

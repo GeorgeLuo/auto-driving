@@ -13,10 +13,10 @@
         "lightweight_observer"
       ],
       "command": "./cli/automa vehicles update perception --id chase-sim-chaser --algorithm lightweight_observer",
-      "elapsed_ms": 955,
-      "ended_at_utc": "2026-08-10T04:55:48.756542Z",
+      "elapsed_ms": 841,
+      "ended_at_utc": "2026-08-10T05:15:08.970439Z",
       "exit_code": 0,
-      "started_at_utc": "2026-08-10T04:55:47.801366Z",
+      "started_at_utc": "2026-08-10T05:15:08.128614Z",
       "stderr_path": "steps/live-swap-stage/cmd-00.stderr.txt",
       "stdout_path": "steps/live-swap-stage/cmd-00.stdout.txt"
     },
@@ -34,10 +34,10 @@
         "--open-view"
       ],
       "command": "./cli/automa vehicles automation run --id chase-sim-chaser --observe-only --frames 0 --open-view",
-      "elapsed_ms": 2208,
-      "ended_at_utc": "2026-08-10T04:55:50.965686Z",
+      "elapsed_ms": 1869,
+      "ended_at_utc": "2026-08-10T05:15:10.840664Z",
       "exit_code": 0,
-      "started_at_utc": "2026-08-10T04:55:48.757459Z",
+      "started_at_utc": "2026-08-10T05:15:08.971468Z",
       "stderr_path": "steps/live-swap-stage/cmd-01.stderr.txt",
       "stdout_path": "steps/live-swap-stage/cmd-01.stdout.txt"
     },
@@ -50,10 +50,10 @@
         "chase-sim-chaser"
       ],
       "command": "./cli/automa vehicles status --id chase-sim-chaser",
-      "elapsed_ms": 1065,
-      "ended_at_utc": "2026-08-10T04:55:52.034271Z",
+      "elapsed_ms": 1055,
+      "ended_at_utc": "2026-08-10T05:15:11.898523Z",
       "exit_code": 0,
-      "started_at_utc": "2026-08-10T04:55:50.968437Z",
+      "started_at_utc": "2026-08-10T05:15:10.843382Z",
       "stderr_path": "steps/live-swap-stage/cmd-02.stderr.txt",
       "stdout_path": "steps/live-swap-stage/cmd-02.stdout.txt"
     }
@@ -62,9 +62,9 @@
   "gate_ids": [],
   "human": {
     "finding_requested": false,
-    "interactive": true,
-    "notes": "Nonblank view with live current overlay, intelligible floor-boundary labels, frame/status details, and observation-only readiness visible.",
-    "visual": "pass"
+    "interactive": false,
+    "notes": "non-interactive session",
+    "visual": "skip"
   },
   "id": "live-swap-stage",
   "kind": "command",
@@ -75,6 +75,6 @@
   "question": "Can we restage perception and reach observation-only readiness with a healthy view?",
   "required_for_verdict": true,
   "safety": "live_mutation",
-  "status": "pass",
+  "status": "skip",
   "visual_required": true
 }

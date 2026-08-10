@@ -19,7 +19,7 @@
       "error": null,
       "ok": true,
       "path": "<repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception/active.json",
-      "sha256": "cc950e010501579d2fac55eb9a9ed9f0991bc3d884df4f538a9e0b0df318cab4"
+      "sha256": "49888a797b118480f34a20f5f8146ff51fd0b23b8c2dc800e935395a8d0716ec"
     },
     "tree:autonomy": {
       "ok": true,

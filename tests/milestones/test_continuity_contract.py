@@ -27,6 +27,40 @@ def _full_product_map(fill: str = "ddd") -> dict[str, str]:
     return product
 
 
+def _identity_fixture(
+    root: Path, *, autonomy_symlink_target: str | None = None
+) -> Path:
+    """Create a complete disposable identity bundle and return its catalog."""
+
+    for rel in cc.DEFAULT_PRODUCT_RELATIVE_PATHS:
+        path = root / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"# {rel}\n", encoding="utf-8")
+    for tree in cc.DEFAULT_PRODUCT_TREE_ROOTS:
+        if tree == "autonomy" and autonomy_symlink_target is not None:
+            continue
+        path = root / tree / "__init__.py"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"# {tree}\n", encoding="utf-8")
+
+    if autonomy_symlink_target is not None:
+        target = root / autonomy_symlink_target
+        (target / "runtime").mkdir(parents=True)
+        (target / "runtime" / "engine.py").write_text("engine\n", encoding="utf-8")
+        (target / "runtime" / "manager.py").write_text("manager\n", encoding="utf-8")
+        (root / "autonomy").symlink_to(autonomy_symlink_target, target_is_directory=True)
+
+    tool_dir = root / (
+        "docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner"
+    )
+    catalog_path = tool_dir / "catalogs/m007-continuity.yaml"
+    catalog_path.parent.mkdir(parents=True, exist_ok=True)
+    catalog_path.write_text("id: m007-continuity\n", encoding="utf-8")
+    (tool_dir / "session_runner.py").write_text("# runner\n", encoding="utf-8")
+    (tool_dir / "continuity_contract.py").write_text("# contract\n", encoding="utf-8")
+    return catalog_path
+
+
 
 def _base_catalog(steps: list[dict]) -> dict:
     return {
@@ -735,6 +769,77 @@ class ContinuityRestoreAndFinalizerTests(unittest.TestCase):
             )
             self.assertFalse(ok, reason)
             self.assertIn("product mismatch cli/automa", reason)
+
+    def test_product_tree_root_symlink_retarget_invalidates_full_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            recorded_root = base / "recorded"
+            current_root = base / "current"
+            recorded_catalog = _identity_fixture(
+                recorded_root, autonomy_symlink_target="autonomy-target-a"
+            )
+            current_catalog = _identity_fixture(
+                current_root, autonomy_symlink_target="autonomy-target-b"
+            )
+
+            recorded = cc.collect_identity_bundle(
+                repo_root=recorded_root, catalog_path=recorded_catalog
+            )
+            current = cc.collect_identity_bundle(
+                repo_root=current_root, catalog_path=current_catalog
+            )
+            recorded["metrics_ui_required"] = False
+            current["metrics_ui_required"] = False
+
+            self.assertNotEqual(
+                recorded["product_sha256"]["autonomy/"],
+                current["product_sha256"]["autonomy/"],
+            )
+            ok, reason = cc.finalize_evidence_freshness(recorded, current)
+            self.assertFalse(ok, reason)
+            self.assertIn("product mismatch autonomy/", reason)
+
+    def test_product_tree_path_delimiter_collision_invalidates_full_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            recorded_root = base / "recorded"
+            current_root = base / "current"
+            recorded_catalog = _identity_fixture(recorded_root)
+            current_catalog = _identity_fixture(current_root)
+
+            recorded_runtime = recorded_root / "autonomy" / "runtime"
+            recorded_runtime.mkdir(parents=True)
+            first = recorded_runtime / "engine.py"
+            first.write_text("engine\n", encoding="utf-8")
+            (recorded_runtime / "manager.py").write_text("manager\n", encoding="utf-8")
+
+            current_runtime = current_root / "autonomy" / "runtime"
+            first_digest = cc.tree_file_digest(first)
+            self.assertIsInstance(first_digest, str)
+            collision_path = (
+                current_runtime
+                / f"engine.py:{first_digest}\nruntime"
+                / "manager.py"
+            )
+            collision_path.parent.mkdir(parents=True)
+            collision_path.write_text("manager\n", encoding="utf-8")
+
+            recorded = cc.collect_identity_bundle(
+                repo_root=recorded_root, catalog_path=recorded_catalog
+            )
+            current = cc.collect_identity_bundle(
+                repo_root=current_root, catalog_path=current_catalog
+            )
+            recorded["metrics_ui_required"] = False
+            current["metrics_ui_required"] = False
+
+            self.assertNotEqual(
+                recorded["product_sha256"]["autonomy/"],
+                current["product_sha256"]["autonomy/"],
+            )
+            ok, reason = cc.finalize_evidence_freshness(recorded, current)
+            self.assertFalse(ok, reason)
+            self.assertIn("product mismatch autonomy/", reason)
 
     def test_session_against_tree_ok_when_unchanged(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

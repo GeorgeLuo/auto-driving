@@ -761,17 +761,62 @@ def _dir_file_digests(root: Path) -> dict[str, str]:
     return digests
 
 
-def _tree_sha256_from_digests(digests: Mapping[str, str]) -> str:
-    material = "\n".join(f"{k}:{v}" for k, v in sorted(digests.items())).encode("utf-8")
+def _tree_root_identity(root: Path) -> bytes | None:
+    """Return byte-safe Git-relevant identity for an accepted tree root."""
+
+    import os
+    import stat as statmod
+
+    try:
+        if root.is_symlink():
+            return _serialize_identity_fields(
+                (b"product-tree-root-v1", b"120000", os.fsencode(os.readlink(root)))
+            )
+        if root.is_dir():
+            return _serialize_identity_fields((b"product-tree-root-v1", b"040000"))
+    except OSError:
+        return None
+    if root.exists():
+        try:
+            root_type = f"other:{statmod.S_IFMT(root.stat().st_mode):o}".encode("ascii")
+        except OSError:
+            return None
+        return _serialize_identity_fields((b"product-tree-root-v1", root_type))
+    return None
+
+
+def _tree_sha256_from_digests(
+    digests: Mapping[str, str], *, root_identity: bytes | None = None
+) -> str:
+    """Hash a tree using length-framed raw path bytes and leaf identities."""
+
+    import os
+
+    if root_identity is None:
+        root_identity = _serialize_identity_fields((b"product-tree-root-v1", b"040000"))
+    entries = tuple(
+        _serialize_identity_fields((os.fsencode(rel), digest.encode("ascii")))
+        for rel, digest in sorted(digests.items(), key=lambda item: os.fsencode(item[0]))
+    )
+    material = _serialize_identity_fields(
+        (b"product-tree-identity-v1", root_identity, *entries)
+    )
     return hashlib.sha256(material).hexdigest()
 
 
 def tree_content_sha256(root: Path) -> str | None:
-    """Content-addressed digest of a directory tree (None if path is not a directory)."""
+    """Content-addressed digest of a Git-relevant product tree."""
 
+    root_identity = _tree_root_identity(root)
+    if root_identity is None:
+        return None
+    if root.is_symlink():
+        return _tree_sha256_from_digests({}, root_identity=root_identity)
     if not root.is_dir():
         return None
-    return _tree_sha256_from_digests(_dir_file_digests(root))
+    return _tree_sha256_from_digests(
+        _dir_file_digests(root), root_identity=root_identity
+    )
 
 
 def _copy_tree(src: Path, dst: Path) -> None:

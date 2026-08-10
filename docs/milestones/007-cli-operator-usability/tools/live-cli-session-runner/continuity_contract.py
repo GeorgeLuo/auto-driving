@@ -171,6 +171,7 @@ _HELP_STATUS_ONLY_PREFIXES = (
 
 # Behavioral product surface hashed for evidence freshness (CLI + runtime trees used by catalog).
 DEFAULT_PRODUCT_RELATIVE_PATHS: tuple[str, ...] = (
+    "cli/automa",
     "cli/automa_cli/perception_runs.py",
     "cli/automa_cli/lab_plugins.py",
     "cli/automa_cli/memory_check.py",
@@ -190,6 +191,7 @@ DEFAULT_PRODUCT_RELATIVE_PATHS: tuple[str, ...] = (
 DEFAULT_PRODUCT_TREE_ROOTS: tuple[str, ...] = (
     "autonomy",
     "implementations",
+    "cli/automa_cli",
 )
 
 
@@ -664,6 +666,15 @@ def aggregate_family_status(
         status = _normalize_step_status(str(seq.get("status") or "incomplete"))
         if status == "skip" and seq.get("visual_required"):
             hitl_pending[fid] = True
+            status = "partial"
+        elif seq.get("required_for_verdict") and status in {
+            "skip",
+            "blocked",
+            "incomplete",
+        }:
+            # A required leaf cannot be hidden by a passing sibling. Visual
+            # skips are the one expected machine-only hold; all other required
+            # incomplete states remain partial and block an overall pass.
             status = "partial"
         by_family.setdefault(fid, []).append(status)
 
@@ -1463,6 +1474,7 @@ def derive_continuity_verdict(
     finalizer_ok: bool,
     findings: Sequence[Mapping[str, Any]],
     hitl_complete: bool,
+    operator: str | None = None,
 ) -> tuple[str, str | None]:
     """Single authoritative pass|findings|incomplete for continuity track."""
 
@@ -1490,6 +1502,8 @@ def derive_continuity_verdict(
         return "findings", f"{len(blockers)} blocking finding(s) remain"
     if not hitl_complete:
         return "incomplete", "required visual HITL not completed"
+    if not isinstance(operator, str) or not operator.strip():
+        return "incomplete", "continuity pass requires a named --operator identity"
     return "pass", None
 
 

@@ -379,6 +379,24 @@ class ContinuityFamilyTests(unittest.TestCase):
         )
         self.assertEqual(aggregates["continuity.live_config_swap"], "partial")
 
+    def test_required_nonvisual_skip_keeps_family_partial(self) -> None:
+        aggregates = cc.aggregate_family_status(
+            [
+                {
+                    "family_id": "continuity.live_config_swap",
+                    "status": "passed",
+                    "required_for_verdict": True,
+                },
+                {
+                    "family_id": "continuity.live_config_swap",
+                    "status": "skip",
+                    "required_for_verdict": True,
+                    "visual_required": False,
+                },
+            ]
+        )
+        self.assertEqual(aggregates["continuity.live_config_swap"], "partial")
+
     def test_passed_when_all_required_passed(self) -> None:
         aggregates = {
             "continuity.offline_perception": "passed",
@@ -584,6 +602,50 @@ class ContinuityRestoreAndFinalizerTests(unittest.TestCase):
             self.assertFalse(out["ok"], out)
             self.assertIn("mismatch", out["reason"].lower() + out.get("reason", ""))
 
+    def test_render_launcher_and_runtime_changes_invalidate_identity(self) -> None:
+        for relative in (
+            "cli/automa",
+            "cli/automa_cli/perception_view.html",
+            "cli/automa_cli/physical_observation.py",
+        ):
+            with self.subTest(relative=relative), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                for rel in cc.DEFAULT_PRODUCT_RELATIVE_PATHS:
+                    path = root / rel
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_text(f"# {rel}\n", encoding="utf-8")
+                for tree in cc.DEFAULT_PRODUCT_TREE_ROOTS:
+                    path = root / tree / "__init__.py"
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_text(f"# {tree}\n", encoding="utf-8")
+                changed = root / relative
+                changed.parent.mkdir(parents=True, exist_ok=True)
+                changed.write_text("baseline\n", encoding="utf-8")
+                tool_dir = root / (
+                    "docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner"
+                )
+                catalog_path = tool_dir / "catalogs/m007-continuity.yaml"
+                catalog_path.parent.mkdir(parents=True, exist_ok=True)
+                catalog_path.write_text("id: m007-continuity\n", encoding="utf-8")
+                runner_path = tool_dir / "session_runner.py"
+                runner_path.parent.mkdir(parents=True, exist_ok=True)
+                runner_path.write_text("# runner\n", encoding="utf-8")
+                (runner_path.parent / "continuity_contract.py").write_text(
+                    "# contract\n", encoding="utf-8"
+                )
+
+                recorded = cc.collect_identity_bundle(
+                    repo_root=root, catalog_path=catalog_path
+                )
+                recorded["metrics_ui_required"] = False
+                changed.write_text("mutated\n", encoding="utf-8")
+                current = cc.collect_identity_bundle(
+                    repo_root=root, catalog_path=catalog_path
+                )
+                ok, reason = cc.finalize_evidence_freshness(recorded, current)
+                self.assertFalse(ok, reason)
+                self.assertIn("product mismatch", reason)
+
     def test_session_against_tree_ok_when_unchanged(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -683,6 +745,24 @@ class ContinuityVerdictTests(unittest.TestCase):
         )
         self.assertEqual(verdict, "incomplete")
         self.assertIn("partial", reason or "")
+
+    def test_named_operator_is_required_for_continuity_pass(self) -> None:
+        verdict, reason = cc.derive_continuity_verdict(
+            safety_preflight_ok=True,
+            family_aggregates={
+                "continuity.offline_perception": "passed",
+                "continuity.live_config_swap": "passed",
+                "continuity.memory_lifecycle": "passed",
+            },
+            restore_ok=True,
+            cleanup_ok=True,
+            finalizer_ok=True,
+            findings=[],
+            hitl_complete=True,
+            operator="   ",
+        )
+        self.assertEqual(verdict, "incomplete")
+        self.assertIn("operator", reason or "")
 
 
 class RunIdCollisionTests(unittest.TestCase):

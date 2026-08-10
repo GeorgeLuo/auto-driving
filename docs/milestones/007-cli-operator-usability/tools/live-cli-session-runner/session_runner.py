@@ -54,6 +54,7 @@ collect_git_identity = _continuity.collect_git_identity
 capture_source_lineage = _continuity.capture_source_lineage
 verify_source_lineage = _continuity.verify_source_lineage
 validate_session_against_tree = _continuity.validate_session_against_tree
+normalize_step_status = _continuity._normalize_step_status
 
 
 SCHEMA = "live_cli_session_result_v0"
@@ -1674,8 +1675,16 @@ def _repo_reviewable(
 def _derive_machine_preflight(
     state: SessionState,
     cleanup: Mapping[str, Any],
+    *,
+    continuity: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Summarize deterministic sequence health independently of human judgment."""
+    """Summarize deterministic sequence health independently of human judgment.
+
+    On the continuity track this is the single machine-readiness gate. It must
+    prove complete required-step evaluation plus catalog preflight, restore,
+    cleanup, and finalizer success. A required visual skip is the only allowed
+    incomplete family state because it is the handoff to named human HITL.
+    """
 
     if state.dry_run:
         return {
@@ -1686,6 +1695,13 @@ def _derive_machine_preflight(
         }
 
     evaluated_steps: list[str] = []
+    required_catalog_ids = {
+        str(step.get("id"))
+        for step in (state.catalog.get("steps") or [])
+        if isinstance(step, dict)
+        and step.get("required_for_verdict")
+        and step.get("id") is not None
+    }
     failures: list[dict[str, str]] = []
     for step in state.steps:
         if not step.get("required_for_verdict"):
@@ -1710,6 +1726,27 @@ def _derive_machine_preflight(
                     "reason": reason or f"machine status={step.get('status')!r}",
                 }
             )
+        elif not step.get("visual_required") and normalize_step_status(
+            str(step.get("status") or "incomplete")
+        ) != "passed":
+            failures.append(
+                {
+                    "step_id": step_id,
+                    "reason": (
+                        "required nonvisual step did not complete: "
+                        f"status={step.get('status')!r}"
+                    ),
+                }
+            )
+
+    missing_steps = sorted(required_catalog_ids - set(evaluated_steps))
+    failures.extend(
+        {
+            "step_id": step_id,
+            "reason": "required catalog step was not evaluated",
+        }
+        for step_id in missing_steps
+    )
 
     if cleanup.get("worker_stopped") is not True:
         failures.append(
@@ -1725,6 +1762,88 @@ def _derive_machine_preflight(
                 "reason": str(state.safety_block_reason or "safety prerequisite blocked"),
             }
         )
+
+    if continuity is not None:
+        preflight = continuity.get("preflight")
+        if not isinstance(preflight, Mapping) or preflight.get("safety_ok") is not True:
+            failures.append(
+                {
+                    "step_id": "_continuity_safety",
+                    "reason": "continuity safety preflight not proven",
+                }
+            )
+        if not isinstance(preflight, Mapping) or preflight.get("family_ok") is not True:
+            failures.append(
+                {
+                    "step_id": "_continuity_families",
+                    "reason": "continuity family preflight not proven",
+                }
+            )
+        if continuity.get("restore_ok") is not True:
+            failures.append(
+                {
+                    "step_id": "_us04_restore",
+                    "reason": "US-04 staged-state restore not proven ok",
+                }
+            )
+        finalizer = continuity.get("finalizer")
+        if not isinstance(finalizer, Mapping) or finalizer.get("ok") is not True:
+            failures.append(
+                {
+                    "step_id": "_evidence_finalizer",
+                    "reason": "evidence freshness finalizer not proven ok",
+                }
+            )
+
+        pending_visual_ids = {
+            str(step_id) for step_id in (continuity.get("hitl_pending_steps") or [])
+        }
+        aggregates = continuity.get("family_aggregates")
+        for family_id in REQUIRED_FAMILY_IDS:
+            aggregate = aggregates.get(family_id) if isinstance(aggregates, Mapping) else None
+            if aggregate == "passed":
+                continue
+            family_steps = [
+                step
+                for step in state.steps
+                if step.get("required_for_verdict")
+                and str(step.get("family_id") or "") == family_id
+            ]
+            pending = [
+                step
+                for step in family_steps
+                if str(step.get("id") or "") in pending_visual_ids
+                and step.get("visual_required")
+                and normalize_step_status(str(step.get("status") or "incomplete"))
+                == "skip"
+                and step.get("machine_ok") is True
+            ]
+            other_incomplete = [
+                str(step.get("id") or "unknown")
+                for step in family_steps
+                if step not in pending
+                and (
+                    step.get("machine_ok") is not True
+                    or (
+                        not step.get("visual_required")
+                        and normalize_step_status(
+                            str(step.get("status") or "incomplete")
+                        )
+                        != "passed"
+                    )
+                )
+            ]
+            if aggregate == "partial" and pending and not other_incomplete:
+                continue
+            failures.append(
+                {
+                    "step_id": family_id,
+                    "reason": (
+                        f"required family aggregate is {aggregate!r}; "
+                        f"incomplete leaves={other_incomplete or ['none']}"
+                    ),
+                }
+            )
 
     if failures:
         return {
@@ -2344,6 +2463,11 @@ def run_session(
 ) -> dict[str, Any]:
     started = _utc_now()
     session_id = started.strftime("%Y%m%d%H%M%S")
+    operator_identity = (
+        operator.strip()
+        if isinstance(operator, str) and operator.strip()
+        else None
+    )
     if dry_run:
         execution_mode = "dry_run"
     elif machine_only:
@@ -2436,7 +2560,7 @@ def run_session(
         session_id=session_id,
         dry_run=dry_run,
         non_interactive=non_interactive,
-        operator=operator,
+        operator=operator_identity,
         canonical_acceptance=canonical,
         auto_driving_linked_pr=auto_driving_linked_pr,
         metrics_ui_linked_pr=metrics_ui_linked_pr,
@@ -2466,7 +2590,7 @@ def run_session(
         "recorded_at_utc": _iso(started),
         "operating_system": platform.platform(),
         "python": sys.version.split()[0],
-        "operator": operator,
+        "operator": operator_identity,
         "browser": {"name": browser_name, "version": browser_version},
         "metrics_ui_origin": variables["metrics_ui_origin"],
         "repositories": {"auto_driving": auto_driving, "metrics_ui": metrics_ui},
@@ -2492,7 +2616,7 @@ def run_session(
         f"- started_at_utc: `{_iso(started)}`",
         f"- execution_mode: `{execution_mode}`",
         f"- track: `{catalog.get('track')}`",
-        f"- operator: `{operator or '(unset)'}`",
+        f"- operator: `{operator_identity or '(unset)'}`",
         "",
     ]
 
@@ -2755,6 +2879,7 @@ def run_session(
                             "id": step_id,
                             "family_id": family_id,
                             "kind": step.get("kind"),
+                            "visual_required": bool(step.get("visual_required")),
                             "status": "fail",
                             "machine_ok": False,
                             "machine_summary": machine_summary,
@@ -2874,10 +2999,12 @@ def run_session(
                             )
                         envelope = {
                             "id": step_id,
+                            "family_id": family_id,
                             "kind": step.get("kind"),
                             "question": step.get("question"),
                             "safety": step.get("safety"),
                             "primary_cue": step.get("primary_cue"),
+                            "visual_required": bool(step.get("visual_required")),
                             "status": step_status,
                             "machine_summary": machine_summary,
                             "machine_ok": False,
@@ -3427,6 +3554,7 @@ def run_session(
                     "question": step.get("question"),
                     "safety": step.get("safety"),
                     "primary_cue": step.get("primary_cue"),
+                    "visual_required": bool(step.get("visual_required")),
                     "status": step_status,
                     "machine_summary": machine_summary,
                     "machine_ok": machine_ok,
@@ -3658,8 +3786,6 @@ def run_session(
     else:
         gates_list = list(state.gate_results.values())
 
-    machine_preflight = _derive_machine_preflight(state, cleanup_info)
-
     # Continuity track: compute the single authoritative verdict BEFORE any human
     # or machine representation is written (prevents complete vs pass leakage).
     continuity_block: dict[str, Any] | None = None
@@ -3690,6 +3816,7 @@ def run_session(
                     "id": step.get("id"),
                     "visual_required": visual_required,
                     "machine_ok": step.get("machine_ok"),
+                    "required_for_verdict": bool(step.get("required_for_verdict")),
                 }
             )
             if visual_required and step.get("required_for_verdict"):
@@ -3778,6 +3905,16 @@ def run_session(
             restore_ok = False
         cleanup_ok = cleanup_info.get("worker_stopped") is True
         hitl_complete = (not hitl_needed) or hitl_done
+        hitl_pending_steps = [
+            str(step.get("id") or "")
+            for step in state.steps
+            if step.get("required_for_verdict")
+            and step.get("visual_required")
+            and not (
+                (step.get("human") or {}).get("interactive")
+                and (step.get("human") or {}).get("visual") in {"pass", "fail"}
+            )
+        ]
         verdict, verdict_reason = derive_continuity_verdict(
             safety_preflight_ok=safety_ok,
             family_aggregates=family_aggregates,
@@ -3786,6 +3923,7 @@ def run_session(
             finalizer_ok=finalizer_ok,
             findings=state.findings,
             hitl_complete=hitl_complete,
+            operator=state.operator,
         )
         result_status = verdict
         incomplete_reason = verdict_reason
@@ -3797,12 +3935,23 @@ def run_session(
             "identity_current": identity_current,
             "finalizer": {"ok": finalizer_ok, "reason": finalizer_reason},
             "restore_ok": restore_ok,
+            "hitl_pending_steps": hitl_pending_steps,
             "hitl_complete": hitl_complete,
             "verdict": verdict,
             "verdict_reason": verdict_reason,
         }
     else:
         result_status, incomplete_reason = _derive_verdict(state)
+
+    # Compute this after the continuity verdict inputs exist so machine-only
+    # cannot pass on partial steps, failed restore, failed finalization, or a
+    # failed family/safety preflight. A visual skip is represented explicitly
+    # as the only allowed machine-only handoff.
+    machine_preflight = _derive_machine_preflight(
+        state,
+        cleanup_info,
+        continuity=continuity_block,
+    )
 
     notes_lines.extend(
         [
@@ -3995,7 +4144,8 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help=(
             "Execute the live sequence without human prompts; exit 0 only when "
-            "machine_preflight passes (formal acceptance remains incomplete)."
+            "the complete machine-readiness gate passes (formal acceptance "
+            "may remain incomplete for visual HITL)."
         ),
     )
     parser.add_argument(
@@ -4014,6 +4164,11 @@ def _result_exit_code(result: Mapping[str, Any], *, machine_only: bool) -> int:
     if machine_only:
         machine_verdict = (result.get("machine_preflight") or {}).get("verdict")
         if machine_verdict == "pass":
+            # A stale/contradictory result must not turn a partial machine gate
+            # into a successful process exit. Normal continuity machine-only
+            # runs are ``incomplete`` only because visual HITL is pending.
+            if result.get("result") in {"findings", "fail"}:
+                return 1
             return 0
         if machine_verdict == "fail":
             return 1

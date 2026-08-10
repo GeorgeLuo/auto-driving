@@ -220,6 +220,113 @@ class LiveCliSessionRunnerTests(unittest.TestCase):
                     expected,
                 )
 
+    def test_machine_only_exit_rejects_contradictory_findings(self) -> None:
+        runner = _load_runner_module()
+        self.assertEqual(
+            runner._result_exit_code(
+                {"result": "findings", "machine_preflight": {"verdict": "pass"}},
+                machine_only=True,
+            ),
+            1,
+        )
+
+    def test_continuity_machine_gate_allows_only_visual_hitl_pending(self) -> None:
+        runner = _load_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            catalog = {
+                "track": "continuity",
+                "steps": [
+                    {
+                        "id": "offline",
+                        "family_id": "continuity.offline_perception",
+                        "required_for_verdict": True,
+                    },
+                    {
+                        "id": "live-stage",
+                        "family_id": "continuity.live_config_swap",
+                        "required_for_verdict": True,
+                        "visual_required": True,
+                    },
+                    {
+                        "id": "live-stop",
+                        "family_id": "continuity.live_config_swap",
+                        "required_for_verdict": True,
+                        "visual_required": False,
+                    },
+                    {
+                        "id": "memory",
+                        "family_id": "continuity.memory_lifecycle",
+                        "required_for_verdict": True,
+                        "visual_required": False,
+                    },
+                ],
+            }
+            state = runner.SessionState(
+                catalog=catalog,
+                session_dir=root / "session",
+                repo_root=root,
+                variables={},
+                execution_mode="machine_only_live",
+                session_id="test",
+            )
+            state.steps = [
+                {
+                    "id": "offline",
+                    "family_id": "continuity.offline_perception",
+                    "required_for_verdict": True,
+                    "visual_required": False,
+                    "status": "pass",
+                    "machine_ok": True,
+                },
+                {
+                    "id": "live-stage",
+                    "family_id": "continuity.live_config_swap",
+                    "required_for_verdict": True,
+                    "visual_required": True,
+                    "status": "skip",
+                    "machine_ok": True,
+                },
+                {
+                    "id": "live-stop",
+                    "family_id": "continuity.live_config_swap",
+                    "required_for_verdict": True,
+                    "visual_required": False,
+                    "status": "pass",
+                    "machine_ok": True,
+                },
+                {
+                    "id": "memory",
+                    "family_id": "continuity.memory_lifecycle",
+                    "required_for_verdict": True,
+                    "visual_required": False,
+                    "status": "pass",
+                    "machine_ok": True,
+                },
+            ]
+            continuity = {
+                "preflight": {"safety_ok": True, "family_ok": True},
+                "family_aggregates": {
+                    "continuity.offline_perception": "passed",
+                    "continuity.live_config_swap": "partial",
+                    "continuity.memory_lifecycle": "passed",
+                },
+                "hitl_pending_steps": ["live-stage"],
+                "restore_ok": True,
+                "finalizer": {"ok": True},
+            }
+            machine = runner._derive_machine_preflight(
+                state, {"worker_stopped": True}, continuity=continuity
+            )
+            self.assertEqual(machine["verdict"], "pass", machine)
+
+            continuity["restore_ok"] = False
+            machine = runner._derive_machine_preflight(
+                state, {"worker_stopped": True}, continuity=continuity
+            )
+            self.assertEqual(machine["verdict"], "fail", machine)
+            self.assertTrue(any(f["step_id"] == "_us04_restore" for f in machine["failures"]))
+
     def test_list_catalogs(self) -> None:
         completed = subprocess.run(
             [sys.executable, str(RUNNER_PATH), "--list-catalogs"],

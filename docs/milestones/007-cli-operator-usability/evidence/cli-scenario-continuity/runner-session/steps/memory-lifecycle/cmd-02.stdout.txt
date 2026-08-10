@@ -13,12 +13,12 @@ phase: expiry
   PASS  keys=0  health=empty  reason=tracked lifecycle keys expired from live/offline memory
 phase: reset
   PASS  keys=0  health=empty  reason=reset produced a new empty epoch
-record: lab/runs/memory-check/chase-sim-chaser-20260809-224219
-provenance extract: lab/runs/memory-check/chase-sim-chaser-20260809-224219/provenance_extract.html
+record: lab/runs/memory-check/chase-sim-chaser-20260810-004147
+provenance extract: lab/runs/memory-check/chase-sim-chaser-20260810-004147/provenance_extract.html
 Memory check: chase-sim-chaser  PASS
 Implementation: bounded_evidence
 Activation: ephemeral-check:bounded_evidence(max_age_ms=1000)
 Phases: present=ok, dropout=ok, expiry=ok, reset=ok
 Movement: never commanded
-Record: lab/runs/memory-check/chase-sim-chaser-20260809-224219
-Provenance extract: lab/runs/memory-check/chase-sim-chaser-20260809-224219/provenance_extract.html
+Record: lab/runs/memory-check/chase-sim-chaser-20260810-004147
+Provenance extract: lab/runs/memory-check/chase-sim-chaser-20260810-004147/provenance_extract.html

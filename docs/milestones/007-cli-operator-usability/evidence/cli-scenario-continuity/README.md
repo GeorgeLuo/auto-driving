@@ -10,6 +10,7 @@ Accepted contract: [cli-scenario-continuity.md](../../proposals/cli-scenario-con
 | --- | --- |
 | Catalog | `m007-continuity` |
 | Execution | `machine_only_live` |
+| Behavior head | `c0ffed7` |
 | Human operator | **None recorded** |
 | Machine preflight | **pass** (6/6 required steps) |
 | Continuity verdict | **incomplete** |
@@ -18,6 +19,14 @@ Accepted contract: [cli-scenario-continuity.md](../../proposals/cli-scenario-con
 | Finalizer | **ok** against auto-driving identities; Metrics UI identity recorded but not independently freshness-gated in machine-only mode |
 | Metrics UI | `m002/04-passive-observation` at `722e070fdc9f4ee89d13f947bf3996e62dcb2783`, clean; reserved for independent HITL finalization |
 | Evidence | `runner-session/result.json`, `human-notes.md`, and machine transcripts |
+
+## Freshness repair
+
+The product-tree identity now binds the root type and symlink target bytes and
+uses length-framed raw relative-path bytes plus Git-relevant leaf identities.
+This closes root-symlink retarget and newline/colon path-collision bypasses at
+the aggregate tree owner. The refreshed package was collected from behavior
+head `c0ffed7` and finalized against the current auto-driving tree.
 
 ## Family ledger
 

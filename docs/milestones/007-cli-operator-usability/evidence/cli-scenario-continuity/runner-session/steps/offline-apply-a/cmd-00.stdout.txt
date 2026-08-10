@@ -1,17 +1,17 @@
 Perception experiment
 ---------------------
-review: runtime/perception-applies/apply-perception-chase-sim-chaser-20260809-224151-904735-23546d31-20260809-224157-187830-c151bbcd/review.html
-run: runtime/perception-applies/apply-perception-chase-sim-chaser-20260809-224151-904735-23546d31-20260809-224157-187830-c151bbcd
-source: <repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260809-224151-904735-23546d31
+review: runtime/perception-applies/apply-perception-chase-sim-chaser-20260810-004119-948505-294b8b79-20260810-004125-280444-c0ad4e4b/review.html
+run: runtime/perception-applies/apply-perception-chase-sim-chaser-20260810-004119-948505-294b8b79-20260810-004125-280444-c0ad4e4b
+source: <repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260810-004119-948505-294b8b79
 algorithm: lightweight_observer
 frames: 4
 failed frames: 0
 statuses: ok=4
-evidence: floor_boundary=3, sensor_frame=4, surface=4
-latency: cold 701.925 ms; steady median 660.591 ms, p95 689.601 ms
-peak memory: 170.953 MiB
-representation health: 0.830 (not semantic accuracy)
+evidence: floor_boundary=5, sensor_frame=4, surface=4
+latency: cold 700.743 ms; steady median 650.588 ms, p95 668.354 ms
+peak memory: 169.375 MiB
+representation health: 0.860 (not semantic accuracy)
 recording: on
 plugins:
-- floor-plane-v0: ok=4; median 668.143 ms
-- frame-observation-v0: ok=4; median 6.731 ms
+- floor-plane-v0: ok=4; median 653.470 ms
+- frame-observation-v0: ok=4; median 6.410 ms

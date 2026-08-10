@@ -2,11 +2,11 @@
   "artifacts": [
     {
       "path": "README.md",
-      "sha256": "d3fead3e80f6e2db07f96130a4bcd418a7fe9291c147982c88062f213991081f"
+      "sha256": "09d8102b012aa3a0f8de3138474ceeac16f7c4097b4e3bef45c02391350e6b29"
     },
     {
       "path": "runner-session/result.json",
-      "sha256": "470d0d2bbf0ef897fb0499861c0bc5d24a5cec71dc76d02560dce0b138baad35"
+      "sha256": "5a44d12cc1063be2e8b266970f84869a59df4e08ba8259f925cc68bdd2baba46"
     },
     {
       "path": "runner-session/continuity-preflight.json",
@@ -14,11 +14,11 @@
     },
     {
       "path": "runner-session/us04-activation-restore.json",
-      "sha256": "283c86c2ea58b32c735e663f8df616622efbbdf0769d43a9b044fbee276d8d9f"
+      "sha256": "9873434a76726f4234f3253ab930eeb70c298350f33e973bf25361b567513a7d"
     },
     {
       "path": "runner-session/us04-activation-snapshot-meta.json",
-      "sha256": "f507c977c1a01e752d5c8d3f9278efb5b9c0a5f559a02ec123375a13a3ab66c4"
+      "sha256": "31bec96f0b107b609c99c23716da9fcefdd3b04a2cfca6642a2973bfcb3ad9fd"
     },
     {
       "path": "runner-session/us04-snapshot-restore-compare.json",
@@ -26,15 +26,15 @@
     },
     {
       "path": "runner-session/offline-source-lineage.json",
-      "sha256": "51ab89c31a8b80b30aaabbdcd1b96b8efd8daa1f14c6011627ac48a5fe053471"
+      "sha256": "5f70f52f879f9c8566cd882837a17d1b9d3d26eb324279f4ac12d4d4eae9a3f9"
     },
     {
       "path": "runner-session/human-notes.md",
-      "sha256": "cee42ee870e3fc2cafac473a60ff18b94ea3a80c10ed63c81099d31d0af44cc6"
+      "sha256": "0550f57f00d68e1da3845ace57e4e0cc531dcccbef3efc7e12ed44ef97c493aa"
     },
     {
       "path": "runner-session/digests.json",
-      "sha256": "1186bdc625b70b5e9f86bda3780fcd5c1f63d57f4696331733a6fc76a75ec466"
+      "sha256": "9c2532d0f38bb62b08b3b796db53e53bf7fd9bf13db6b4422fd5ff10234820b3"
     }
   ],
   "family_aggregates": {
@@ -81,15 +81,19 @@
   "restore_ok": true,
   "result": "incomplete",
   "review_repair": {
-    "behavior_head": "1dba04b",
-    "behavior_head_full": "1dba04b8a004f4ab87feb18f211b3e15b315e7ec",
+    "activation_symlink_regression": true,
+    "behavior_head": "cfd1a3d",
+    "behavior_head_full": "cfd1a3d5f1435f705cb6c4c365ae241048906224",
+    "bundle_manifest_symlink_regression": true,
     "byte_safe_tree_path_identity": true,
-    "code_repair_commit": "1dba04b8a004f4ab87feb18f211b3e15b315e7ec",
+    "code_repair_commit": "cfd1a3d5f1435f705cb6c4c365ae241048906224",
     "complete_cli_runtime_render_surface": true,
+    "continuity_contract_sha256": "8cc8c22bc355f8001e46f00995815d924a4299c419c61bf2a3e40d40e61ceb4b",
+    "continuity_contract_tests": 69,
     "continuity_hitl_runbook": true,
-    "discovered_tests": 586,
-    "focused_continuity_tests": 65,
-    "full_deterministic_suite": "586 passed, 2 expected skips",
+    "discovered_tests": 590,
+    "focused_continuity_tests": 112,
+    "full_deterministic_suite": "590 passed, 2 expected skips",
     "hitl_operator": null,
     "inaccessible_subtree_regression": true,
     "inner_digest_entries": 54,
@@ -97,10 +101,13 @@
     "interrupt_after_trial_mutation": true,
     "machine_readiness_gate": true,
     "machine_session": "6/6 required steps green",
-    "milestone_tests": 108,
+    "managed_file_identity_gate": true,
+    "managed_file_receipt_compare": true,
+    "milestone_tests": 112,
     "milestones_in_default_suite": true,
     "named_operator_required": true,
     "nested_symlink_regression": true,
+    "optional_absence_residue_regression": true,
     "outer_artifact_entries": 9,
     "posthoc_freshness_finalizer": true,
     "product_collection_errors_empty": true,
@@ -108,11 +115,14 @@
     "product_file_type_mode_identity": true,
     "product_tree_root_identity": true,
     "quoted_untracked_path_identity": true,
+    "regular_mode_regression": true,
     "required_nonvisual_skip_block": true,
     "root_relative_cache_exclusion": true,
     "root_symlink_regression": true,
+    "runner_sha256": "45da4ea9f2ccf66b27709e63061c8d1cddcac1ce768a757eb723b92246baff05",
+    "session_runner_tests": 43,
+    "snapshot_schema_v3": true,
     "source_cache_restored_identity_gate": true,
-    "staged_snapshot_schema_v2": true,
     "symlink_preserving_snapshot_restore": true,
     "tree_collection_fail_closed": true,
     "tree_path_collision_identity": true,
@@ -120,7 +130,7 @@
     "unreadable_regular_file_regression": true,
     "untracked_executable_mode_identity": true,
     "untracked_symlink_target_identity": true,
-    "us04_snapshot_meta_schema_v2": true,
+    "us04_snapshot_meta_schema_v3": true,
     "visual_evidence": null
   },
   "schema": "m007_cli_scenario_continuity_v0",
@@ -136,12 +146,12 @@
     "operator_label": "machine-preflight (non-human runner label)",
     "path": "runner-session",
     "timestamps": {
-      "ended_at_utc": "2026-08-10T18:26:32.860185Z",
+      "ended_at_utc": "2026-08-10T18:58:19.989598Z",
       "local_timezone": [
         "PST",
         "PDT"
       ],
-      "started_at_utc": "2026-08-10T18:25:50.989081Z"
+      "started_at_utc": "2026-08-10T18:57:40.717717Z"
     }
   },
   "verdict": "incomplete",

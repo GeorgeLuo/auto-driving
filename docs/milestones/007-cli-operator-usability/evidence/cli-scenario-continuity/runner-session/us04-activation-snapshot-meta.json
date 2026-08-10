@@ -2,32 +2,48 @@
   "cache_dir": "us04-staged-cache",
   "files": {
     "bundle_manifest": {
+      "entry_type": "regular",
       "existed": true,
+      "identity_sha256": "090f128ecbf129359e5fed4cd2a65820cbeef3c48bd97a0460a9c2d606619aa0",
+      "mode": 420,
       "path": "<repo>/runtime/vehicles/chase-sim-chaser/bundle/bundle-manifest.json",
       "restorable": true,
-      "sha256": "5b03e32d145a36b0bab900f3fa2ca177f0659d275c2e8cf8f5b4c71fcfd234df"
+      "sha256": "5b03e32d145a36b0bab900f3fa2ca177f0659d275c2e8cf8f5b4c71fcfd234df",
+      "symlink_target": null
     },
     "decision": {
+      "entry_type": "regular",
       "existed": true,
+      "identity_sha256": "f1c80225b09ace37133362145716d64d5f8f003d482ae691f0c497213cf7c159",
+      "mode": 420,
       "path": "<repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/decision/active.json",
       "restorable": true,
-      "sha256": "c7bd14eab24c9fb9a1e46a05ee0091a4b6bfd430e7761064559f8536661b4f0f"
+      "sha256": "c7bd14eab24c9fb9a1e46a05ee0091a4b6bfd430e7761064559f8536661b4f0f",
+      "symlink_target": null
     },
     "memory": {
+      "entry_type": "regular",
       "existed": true,
+      "identity_sha256": "d8fb53a502835dbcb28ae572d5ec130a7bcd9155b0b509e592fe8fc4445c2954",
+      "mode": 420,
       "path": "<repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/memory/active.json",
       "restorable": true,
-      "sha256": "6751ab63214756791e3d442b23b210b1d7ecf9e8f80839e8ad312ecd8b15c923"
+      "sha256": "6751ab63214756791e3d442b23b210b1d7ecf9e8f80839e8ad312ecd8b15c923",
+      "symlink_target": null
     },
     "perception": {
+      "entry_type": "regular",
       "existed": true,
+      "identity_sha256": "8f737276fd845929849c17691a08c96f0dc1b9e6960436705028e17c64e6e901",
+      "mode": 420,
       "path": "<repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception/active.json",
       "restorable": true,
-      "sha256": "0d334fdb33fd1e7fe39275080d15d174067ef51ab3117278d5fee2b7ed8d66b2"
+      "sha256": "e65b156af59e09e89ee33cbb52569de5285a5ea8ab2e34097037e87f92db4b63",
+      "symlink_target": null
     }
   },
   "restorable": true,
-  "schema": "continuity_us04_snapshot_meta_v2",
+  "schema": "continuity_us04_snapshot_meta_v3",
   "staged_trees": {
     "autonomy": {
       "cache_tree_sha256": "6431a4fccd949ccaea2cbc66bf2a310dfabc454ac439ba737f524832c23efd99",

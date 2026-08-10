@@ -7,16 +7,16 @@
         "vehicles",
         "perception",
         "apply",
-        "<repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260810-112603-643369-1a7a2c13",
+        "<repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260810-115752-879877-43af7934",
         "--algorithm",
         "lightweight_observer",
         "--record"
       ],
-      "command": "./cli/automa vehicles perception apply <repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260810-112603-643369-1a7a2c13 --algorithm lightweight_observer --record",
-      "elapsed_ms": 3024,
-      "ended_at_utc": "2026-08-10T18:26:11.470461Z",
+      "command": "./cli/automa vehicles perception apply <repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260810-115752-879877-43af7934 --algorithm lightweight_observer --record",
+      "elapsed_ms": 2958,
+      "ended_at_utc": "2026-08-10T18:58:00.113095Z",
       "exit_code": 0,
-      "started_at_utc": "2026-08-10T18:26:08.445582Z",
+      "started_at_utc": "2026-08-10T18:57:57.154114Z",
       "stderr_path": "steps/offline-apply-a/cmd-00.stderr.txt",
       "stdout_path": "steps/offline-apply-a/cmd-00.stdout.txt"
     }

@@ -10,7 +10,7 @@ Accepted contract: [cli-scenario-continuity.md](../../proposals/cli-scenario-con
 | --- | --- |
 | Catalog | `m007-continuity` |
 | Execution | `machine_only_live` |
-| Behavior head | `1dba04b` |
+| Behavior head | `cfd1a3d` |
 | Human operator | **None recorded** |
 | Machine preflight | **pass** (6/6 required steps) |
 | Continuity verdict | **incomplete** |
@@ -26,22 +26,25 @@ The product-tree identity now binds the root type and symlink target bytes and
 uses length-framed raw relative-path bytes plus Git-relevant leaf identities.
 This closes root-symlink retarget and newline/colon path-collision bypasses at
 the aggregate tree owner. The refreshed package was collected from behavior
-head `0d52aca` and finalized against the current auto-driving tree.
+head `cfd1a3d` and finalized against the current auto-driving tree.
 
 ## Latest re-review repair
 
-The remaining staged-tree restore-integrity bypass is closed at the snapshot
-and restore owner. Snapshot copies preserve nested symlinks and symlink roots,
-and record the source, cache, and expected tree identities. Restore now checks
-all three identities, preserves them in the restored tree, and fails closed on
-missing or inconsistent source/cache metadata.
+The activation-file side of the US-04 transaction now uses `lstat` identity:
+regular-file bytes and mode, symlink target bytes without following the link,
+and explicit absence. Snapshot and restore fail closed on unsupported or
+incomplete collection, remove absent broken-symlink or directory residue
+without following it, and verify the complete identity in the restore receipt.
+The bundle manifest is covered by the same managed-entry gate. Durable snapshot
+metadata and the staged-restore compare use schema v3.
 
-Regression coverage includes a nested staged symlink and an explicit symlink
-tree root, including mutation followed by rollback. The fresh machine-only run
-at `1dba04b` passed 6/6 required steps, full staged-state restore, cleanup, and
-the post-hoc finalizer. Deterministic validation was 65 focused continuity
-tests, 108 milestone tests, and 586 full-suite tests with 2 expected skips.
-No human visual confirmation was performed.
+Regression coverage includes required perception symlink restoration, optional
+absence with broken-symlink and directory residue, bundle-manifest symlink
+restoration, and regular-file mode restoration. The fresh machine-only run at
+`cfd1a3d` passed 6/6 required steps, full staged-state restore, cleanup, and
+the post-hoc finalizer. Deterministic validation was 69 continuity-contract
+tests, 43 session-runner tests, 112 milestone tests, and 590 full-suite tests
+with 2 expected skips. No human visual confirmation was performed.
 
 ## Family ledger
 
@@ -63,8 +66,8 @@ finalizer must supply and require the exact reviewed Metrics UI checkout.
 
 ## Verdict
 
-`incomplete` — deterministic commands, safety preflight, cleanup, symlink-
-preserving restoration, and auto-driving freshness finalization passed; Metrics
+`incomplete` — deterministic commands, safety preflight, cleanup, managed-file
+identity restoration, and auto-driving freshness finalization passed; Metrics
 UI identity was recorded but not independently freshness-gated, and a named
 human must still inspect the live view and record the visual result before
 continuity can pass.

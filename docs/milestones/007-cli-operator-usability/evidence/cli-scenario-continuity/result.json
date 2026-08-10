@@ -1,17 +1,54 @@
 {
-  "schema": "m007_cli_scenario_continuity_v0",
-  "result": "incomplete",
-  "incomplete_reason": "required family continuity.live_config_swap still partial (often HITL pending)",
-  "required_family_ids": [
-    "continuity.offline_perception",
-    "continuity.live_config_swap",
-    "continuity.memory_lifecycle"
+  "artifacts": [
+    {
+      "path": "README.md",
+      "sha256": "6d37c15833942c755f790bbeecaa29bbb89d352d69e02616c1d72d8fed4b38fa"
+    },
+    {
+      "path": "runner-session/result.json",
+      "sha256": "5912a7a71f7e03cb401c13cf64df1f327b7dd87c286738d63fbf5bf3f728c7af"
+    },
+    {
+      "path": "runner-session/continuity-preflight.json",
+      "sha256": "6aa6556a7336aeab789499b60d2d8c7a1fe9f08ba62dc897a905612e5552031d"
+    },
+    {
+      "path": "runner-session/us04-activation-restore.json",
+      "sha256": "c05dc24da0210228ef8ccff4b25854fe29fbe9462d2b707f67bdafb99420dff9"
+    },
+    {
+      "path": "runner-session/us04-activation-snapshot-meta.json",
+      "sha256": "ba67314c2c30de2c43242ce9bae5ef9500a555fcce34cbf856e41510575df5f0"
+    },
+    {
+      "path": "runner-session/us04-snapshot-restore-compare.json",
+      "sha256": "3c283cd97838e4e6e12c9a406d69d0902f99acf0a4f0c4d41521d48bdfe803a3"
+    },
+    {
+      "path": "runner-session/offline-source-lineage.json",
+      "sha256": "0b0f81ec66357395f7a62651983aafd05a51095fc34a8e4c121c0be427e71992"
+    },
+    {
+      "path": "runner-session/human-notes.md",
+      "sha256": "74c7dc9cd0cfa43b0df6f01ad0a06d4e972b5b4a17f45553ad85f1e7c11e4de5"
+    },
+    {
+      "path": "runner-session/digests.json",
+      "sha256": "3912cb73d6f1880cc27b837e9cc24f444a3a06af6c082fcf7ad0f82f987b215e"
+    }
   ],
   "family_aggregates": {
     "continuity.live_config_swap": "partial",
     "continuity.memory_lifecycle": "passed",
     "continuity.offline_perception": "passed"
   },
+  "finalizer": {
+    "ok": true,
+    "reason": "evidence freshness finalizer ok"
+  },
+  "findings": [],
+  "hitl_complete": false,
+  "incomplete_reason": "required family continuity.live_config_swap still partial (often HITL pending)",
   "machine_preflight": {
     "evaluated_steps": [
       "offline-capture",
@@ -25,77 +62,48 @@
     "summary": "6 required step(s) machine-green",
     "verdict": "pass"
   },
-  "finalizer": {
-    "ok": true,
-    "reason": "evidence freshness finalizer ok"
-  },
+  "required_family_ids": [
+    "continuity.offline_perception",
+    "continuity.live_config_swap",
+    "continuity.memory_lifecycle"
+  ],
   "restore_ok": true,
-  "hitl_complete": false,
-  "verdict": "incomplete",
-  "verdict_reason": "required family continuity.live_config_swap still partial (often HITL pending)",
+  "result": "incomplete",
+  "review_repair": {
+    "behavior_head": "28701cc",
+    "complete_cli_runtime_render_surface": true,
+    "continuity_hitl_runbook": true,
+    "discovered_tests": 575,
+    "interrupt_after_trial_mutation": true,
+    "machine_readiness_gate": true,
+    "milestone_tests": 97,
+    "milestones_in_default_suite": true,
+    "named_operator_required": true,
+    "quoted_untracked_path_identity": true,
+    "required_nonvisual_skip_block": true,
+    "untracked_executable_mode_identity": true,
+    "untracked_symlink_target_identity": true
+  },
+  "schema": "m007_cli_scenario_continuity_v0",
   "session": {
-    "path": "runner-session",
-    "execution_mode": "machine_only_live",
     "catalog": {
       "id": "m007-continuity",
       "max_frame_lag": null,
       "title": "M007 realistic CLI scenario continuity",
       "track": "continuity"
     },
+    "execution_mode": "machine_only_live",
+    "operator": "machine-preflight",
+    "path": "runner-session",
     "timestamps": {
-      "ended_at_utc": "2026-08-09T04:58:38.835410Z",
+      "ended_at_utc": "2026-08-10T04:32:15.860140Z",
       "local_timezone": [
         "PST",
         "PDT"
       ],
-      "started_at_utc": "2026-08-09T04:57:58.735976Z"
+      "started_at_utc": "2026-08-10T04:31:37.039098Z"
     }
   },
-  "findings": [],
-  "review_repair": {
-    "untracked_symlink_target_identity": true,
-    "untracked_executable_mode_identity": true,
-    "quoted_untracked_path_identity": true,
-    "interrupt_after_trial_mutation": true,
-    "milestones_in_default_suite": true,
-    "behavior_head": "63f402c"
-  },
-  "artifacts": [
-    {
-      "path": "README.md",
-      "sha256": "3c4c40e3733d5bca1b2090e6d0881b42ea2e763d813ba6d4721465cd1d53c8a5"
-    },
-    {
-      "path": "runner-session/result.json",
-      "sha256": "50037ddf07af80112631c6a71e4709c1d7d099dd08584134c2a7fc75e31666d0"
-    },
-    {
-      "path": "runner-session/continuity-preflight.json",
-      "sha256": "6aa6556a7336aeab789499b60d2d8c7a1fe9f08ba62dc897a905612e5552031d"
-    },
-    {
-      "path": "runner-session/us04-activation-restore.json",
-      "sha256": "be2ebd69f2e6d5d03f0d7b57e73a265f085659fe133fe69e21cc7489187f3526"
-    },
-    {
-      "path": "runner-session/us04-activation-snapshot-meta.json",
-      "sha256": "1801ea85dd57befac89cc2ba7735fc832e43d22e34cf4b0d7b6113754d19c52b"
-    },
-    {
-      "path": "runner-session/us04-snapshot-restore-compare.json",
-      "sha256": "3c283cd97838e4e6e12c9a406d69d0902f99acf0a4f0c4d41521d48bdfe803a3"
-    },
-    {
-      "path": "runner-session/offline-source-lineage.json",
-      "sha256": "0b2ecc70a3c557f1ad31341c13ba8904544aec283270a86579c2659d3dc7fbf5"
-    },
-    {
-      "path": "runner-session/human-notes.md",
-      "sha256": "a0cacb707c27ed5c3e366506a4d467bde39f23880f6cf58e9608efdcb0e6e6e7"
-    },
-    {
-      "path": "runner-session/digests.json",
-      "sha256": "ac69c855db35494ed13c66460208534b5cc3c57afdffb607b43d6e569c67a1f0"
-    }
-  ]
+  "verdict": "incomplete",
+  "verdict_reason": "required family continuity.live_config_swap still partial (often HITL pending)"
 }

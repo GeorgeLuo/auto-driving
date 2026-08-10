@@ -1,6 +1,6 @@
 # Realistic CLI scenario continuity evidence
 
-Status: **Machine-first complete at behavior head `63f402c`; visual HITL pending.**
+Status: **Machine-first complete at behavior head `28701cc`; visual HITL pending.**
 
 Accepted contract: [cli-scenario-continuity.md](../../proposals/cli-scenario-continuity.md) (PR #99).
 
@@ -13,7 +13,8 @@ Accepted contract: [cli-scenario-continuity.md](../../proposals/cli-scenario-con
 | Continuity verdict | **incomplete** (live_config_swap partial — visual HITL pending) |
 | US-04 restore | **ok** (snapshot meta `staged_trees` + restore compare) |
 | Finalizer | **ok** (dirty identity includes symlink targets + exec modes) |
-| Behavior head | `63f402c` |
+| Product identity | **17/17 exact keys** (launcher + whole CLI package + runtime trees) |
+| Behavior head | `28701cc` |
 
 ## Family ledger
 
@@ -29,7 +30,11 @@ Accepted contract: [cli-scenario-continuity.md](../../proposals/cli-scenario-con
 2. Quoted Unicode and delimiter-containing untracked paths use raw NUL-delimited Git output and length-framed identity material
 3. US-04 interrupt matrix mutates then interrupts; asserts exact activation/tree rollback
 4. `tests/milestones/` package + `tests/run.py` discovery so GitHub check runs the matrix
-5. PR validation counts reconciled to **92** milestone tests / **570** discovered
+5. Machine-only exit is fail-closed across required-step completeness, family/safety preflight, restore, cleanup, and finalizer
+6. Required nonvisual skips cannot be hidden by passing family siblings
+7. Freshness binds the launcher, rendered/runtime CLI surface, and whole autonomy/implementation trees
+8. Continuity pass requires a trimmed named operator; README now documents the executable HITL/finalizer handoff
+9. Validation counts reconciled to **97** milestone tests / **575** discovered
 
 ## Remaining for Met
 
@@ -39,5 +44,5 @@ explicitly non-pass until a named operator records the visual result.
 
 ## Verdict
 
-`incomplete` — machine-first contract exercised and finalized at `63f402c`;
+`incomplete` — machine-first contract exercised and finalized at `28701cc`;
 HITL outstanding.

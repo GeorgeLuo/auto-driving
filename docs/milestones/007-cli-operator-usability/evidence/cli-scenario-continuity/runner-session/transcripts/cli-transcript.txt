@@ -8,8 +8,8 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --chase-url http://localhos
     },
     "sensor": {
       "actor_id": "chaser",
-      "capture_id": "chase:evaluation:chase-run%3A61269814-9a28-456d-92ac-e8ce6d6201bf:chaser:812240",
-      "frame_id": "chase_frame_812240",
+      "capture_id": "chase:evaluation:chase-run%3A392a5992-671d-4525-9108-a71f75a29641:chaser:444844",
+      "frame_id": "chase_frame_444844",
       "game_id": "chase",
       "image": {
         "content_type": "image/png",
@@ -19,13 +19,13 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --chase-url http://localhos
       },
       "playback_advanced": false,
       "schema": "chase_sensor_capture_v1",
-      "simulation_epoch": "chase-run:61269814-9a28-456d-92ac-e8ce6d6201bf",
-      "simulator_frame_index": 812240
+      "simulation_epoch": "chase-run:392a5992-671d-4525-9108-a71f75a29641",
+      "simulator_frame_index": 444844
     }
   },
-  "checked_at_ms": 1786251480405,
+  "checked_at_ms": 1786336298244,
   "diagnostics": {},
-  "elapsed_ms": 273,
+  "elapsed_ms": 254,
   "endpoint": {
     "operator_url": "http://localhost:5050/",
     "resolved_ws_url": "ws://localhost:5050/ws/control"
@@ -84,7 +84,7 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --chase-url http://localhos
           "generation_matches": true,
           "log_path": null,
           "log_to_disk": false,
-          "pid": 87543,
+          "pid": 98663,
           "pid_state": "not_running",
           "process_record": "runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/process.json",
           "reason": null,
@@ -95,17 +95,17 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --chase-url http://localhos
         "published_view": {
           "available": false,
           "host": "127.0.0.1",
-          "pid": 87543,
+          "pid": 98663,
           "port": 8898,
           "reason": "perception view is not responding: <urlopen error [Errno 61] Connection refused>",
           "record_path": "<repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/perception_view.json",
-          "run_id": "automation-20260808-213015-8fb53ed4b8a5",
+          "run_id": "automation-20260809-212733-6c7725f82cad",
           "schema": "automa_perception_view_v1",
-          "started_at_ms": 1786249815348,
+          "started_at_ms": 1786336053299,
           "status": "unavailable",
           "url": "http://127.0.0.1:8898/",
           "vehicle_id": "chase-sim-chaser",
-          "worker_pid": 87543
+          "worker_pid": 98663
         },
         "state": {
           "action_policy": "observe_only",
@@ -120,19 +120,19 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --chase-url http://localhos
           "frames_processed": 5,
           "interval_s": 0.25,
           "last_capture": {
-            "capture_duration_ms": 341,
+            "capture_duration_ms": 257,
             "capture_sequence": 4,
-            "captured_at_ms": 1786249817531,
-            "frame_id": "chase_frame_712471",
-            "frame_index": 712471,
+            "captured_at_ms": 1786336055095,
+            "frame_id": "chase_frame_430256",
+            "frame_index": 430256,
             "front_camera": "runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/latest/frames/latest_front_camera.png",
             "shadow_aligned": true,
-            "simulation_epoch": "chase-run:61269814-9a28-456d-92ac-e8ce6d6201bf",
-            "simulator_frame_index": 712471
+            "simulation_epoch": "chase-run:392a5992-671d-4525-9108-a71f75a29641",
+            "simulator_frame_index": 430256
           },
           "last_frame": {
-            "capture_to_perception_ms": 168,
-            "captured_at_ms": 1786249817531,
+            "capture_to_perception_ms": 64,
+            "captured_at_ms": 1786336055095,
             "control": {
               "applied": false,
               "confidence": 1.0,
@@ -147,21 +147,21 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --chase-url http://localhos
               "steering": 0.0,
               "throttle": 0.0
             },
-            "cycle_duration_ms": 167,
+            "cycle_duration_ms": 63,
             "engine": "autonomy.runtime.engine:IdleAutonomyEngine",
-            "frame_id": "chase_frame_712471",
-            "frame_index": 712471,
-            "perception_completed_at_ms": 1786249817699,
-            "perception_duration_ms": 167,
+            "frame_id": "chase_frame_430256",
+            "frame_index": 430256,
+            "perception_completed_at_ms": 1786336055159,
+            "perception_duration_ms": 63,
             "perception_json": "runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/latest_perception.json",
             "perception_text": "runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/latest_perception.txt",
             "shadow_aligned": true,
             "signals": 3,
-            "simulation_epoch": "chase-run:61269814-9a28-456d-92ac-e8ce6d6201bf",
-            "simulator_frame_index": 712471,
+            "simulation_epoch": "chase-run:392a5992-671d-4525-9108-a71f75a29641",
+            "simulator_frame_index": 430256,
             "things": 5
           },
-          "latest_perception_age_ms": 1662706,
+          "latest_perception_age_ms": 243084,
           "latest_perception_text": "runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/latest_perception.txt",
           "max_frames": 5,
           "passive_capture": {
@@ -171,18 +171,18 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --chase-url http://localhos
               "play_game_query:atomic-evaluation-capture"
             ],
             "code": null,
-            "elapsed_ms": 316,
+            "elapsed_ms": 247,
             "environment": {
               "control_input": null,
               "control_source": "programmatic",
               "game_id": "chase",
               "playback": {
-                "frameIndex": 712471,
+                "frameIndex": 430256,
                 "pendingAction": false,
                 "phase": "running"
               },
               "scenario_id": "default",
-              "simulation_epoch": "chase-run:61269814-9a28-456d-92ac-e8ce6d6201bf"
+              "simulation_epoch": "chase-run:392a5992-671d-4525-9108-a71f75a29641"
             },
             "evaluator_reference": {
               "status": "available"
@@ -207,11 +207,11 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --chase-url http://localhos
             },
             "phases": {
               "debug_before": {
-                "duration_ms": 272,
+                "duration_ms": 217,
                 "status": "complete"
               },
               "sensor_capture": {
-                "duration_ms": 35,
+                "duration_ms": 21,
                 "status": "complete"
               },
               "state_before": {
@@ -223,8 +223,8 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --chase-url http://localhos
             "schema": "chase_passive_capture_v1",
             "sensor": {
               "actor_id": "chaser",
-              "capture_id": "chase:evaluation:chase-run%3A61269814-9a28-456d-92ac-e8ce6d6201bf:chaser:712471",
-              "frame_id": "chase_frame_712471",
+              "capture_id": "chase:evaluation:chase-run%3A392a5992-671d-4525-9108-a71f75a29641:chaser:430256",
+              "frame_id": "chase_frame_430256",
               "game_id": "chase",
               "image": {
                 "content_type": "image/png",
@@ -234,8 +234,8 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --chase-url http://localhos
               },
               "playback_advanced": false,
               "schema": "chase_sensor_capture_v1",
-              "simulation_epoch": "chase-run:61269814-9a28-456d-92ac-e8ce6d6201bf",
-              "simulator_frame_index": 712471
+              "simulation_epoch": "chase-run:392a5992-671d-4525-9108-a71f75a29641",
+              "simulator_frame_index": 430256
             },
             "session_preservation": {
               "after": {
@@ -245,13 +245,13 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --chase-url http://localhos
                 "control_source": "programmatic",
                 "game_id": "chase",
                 "playback": {
-                  "frameIndex": 712471,
+                  "frameIndex": 430256,
                   "pendingAction": false,
                   "phase": "running"
                 },
                 "scenario_id": "default",
                 "schema": "chase_session_fingerprint_v1",
-                "simulation_epoch": "chase-run:61269814-9a28-456d-92ac-e8ce6d6201bf",
+                "simulation_epoch": "chase-run:392a5992-671d-4525-9108-a71f75a29641",
                 "unknown_fields": []
               },
               "before": {
@@ -261,13 +261,13 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --chase-url http://localhos
                 "control_source": "programmatic",
                 "game_id": "chase",
                 "playback": {
-                  "frameIndex": 712471,
+                  "frameIndex": 430256,
                   "pendingAction": false,
                   "phase": "running"
                 },
                 "scenario_id": "default",
                 "schema": "chase_session_fingerprint_v1",
-                "simulation_epoch": "chase-run:61269814-9a28-456d-92ac-e8ce6d6201bf",
+                "simulation_epoch": "chase-run:392a5992-671d-4525-9108-a71f75a29641",
                 "unknown_fields": []
               },
               "changed_fields": [],
@@ -285,13 +285,13 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --chase-url http://localhos
               "control_source": "programmatic",
               "game_id": "chase",
               "playback": {
-                "frameIndex": 712471,
+                "frameIndex": 430256,
                 "pendingAction": false,
                 "phase": "running"
               },
               "scenario_id": "default",
               "schema": "chase_session_fingerprint_v1",
-              "simulation_epoch": "chase-run:61269814-9a28-456d-92ac-e8ce6d6201bf",
+              "simulation_epoch": "chase-run:392a5992-671d-4525-9108-a71f75a29641",
               "unknown_fields": []
             },
             "before": {
@@ -301,13 +301,13 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --chase-url http://localhos
               "control_source": "programmatic",
               "game_id": "chase",
               "playback": {
-                "frameIndex": 712359,
+                "frameIndex": 430173,
                 "pendingAction": false,
                 "phase": "running"
               },
               "scenario_id": "default",
               "schema": "chase_session_fingerprint_v1",
-              "simulation_epoch": "chase-run:61269814-9a28-456d-92ac-e8ce6d6201bf",
+              "simulation_epoch": "chase-run:392a5992-671d-4525-9108-a71f75a29641",
               "unknown_fields": []
             },
             "changed_fields": [],
@@ -324,11 +324,11 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --chase-url http://localhos
             "preserved": true,
             "unknown_fields": []
           },
-          "pid": 87543,
+          "pid": 98663,
           "pipeline": "latest_frame_async_perception",
           "readiness": {
             "blocking_layer": null,
-            "checked_at_ms": 1786249818193,
+            "checked_at_ms": 1786336055241,
             "gates": {
               "automation_worker": {
                 "status": "stopped"
@@ -342,11 +342,11 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --chase-url http://localhos
             "status": "ready"
           },
           "recording": false,
-          "run_id": "automation-20260808-213015-8fb53ed4b8a5",
+          "run_id": "automation-20260809-212733-6c7725f82cad",
           "state_record": "runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/state.json",
           "status": "completed",
           "stop_reason": null,
-          "updated_at_ms": 1786249817704
+          "updated_at_ms": 1786336055163
         },
         "vehicle_id": "chase-sim-chaser"
       },
@@ -367,19 +367,19 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --chase-url http://localhos
           "frames_processed": 5,
           "interval_s": 0.25,
           "last_capture": {
-            "capture_duration_ms": 341,
+            "capture_duration_ms": 257,
             "capture_sequence": 4,
-            "captured_at_ms": 1786249817531,
-            "frame_id": "chase_frame_712471",
-            "frame_index": 712471,
+            "captured_at_ms": 1786336055095,
+            "frame_id": "chase_frame_430256",
+            "frame_index": 430256,
             "front_camera": "runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/latest/frames/latest_front_camera.png",
             "shadow_aligned": true,
-            "simulation_epoch": "chase-run:61269814-9a28-456d-92ac-e8ce6d6201bf",
-            "simulator_frame_index": 712471
+            "simulation_epoch": "chase-run:392a5992-671d-4525-9108-a71f75a29641",
+            "simulator_frame_index": 430256
           },
           "last_frame": {
-            "capture_to_perception_ms": 168,
-            "captured_at_ms": 1786249817531,
+            "capture_to_perception_ms": 64,
+            "captured_at_ms": 1786336055095,
             "control": {
               "applied": false,
               "confidence": 1.0,
@@ -394,21 +394,21 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --chase-url http://localhos
               "steering": 0.0,
               "throttle": 0.0
             },
-            "cycle_duration_ms": 167,
+            "cycle_duration_ms": 63,
             "engine": "autonomy.runtime.engine:IdleAutonomyEngine",
-            "frame_id": "chase_frame_712471",
-            "frame_index": 712471,
-            "perception_completed_at_ms": 1786249817699,
-            "perception_duration_ms": 167,
+            "frame_id": "chase_frame_430256",
+            "frame_index": 430256,
+            "perception_completed_at_ms": 1786336055159,
+            "perception_duration_ms": 63,
             "perception_json": "runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/latest_perception.json",
             "perception_text": "runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/latest_perception.txt",
             "shadow_aligned": true,
             "signals": 3,
-            "simulation_epoch": "chase-run:61269814-9a28-456d-92ac-e8ce6d6201bf",
-            "simulator_frame_index": 712471,
+            "simulation_epoch": "chase-run:392a5992-671d-4525-9108-a71f75a29641",
+            "simulator_frame_index": 430256,
             "things": 5
           },
-          "latest_perception_age_ms": 1662706,
+          "latest_perception_age_ms": 243084,
           "latest_perception_text": "runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/latest_perception.txt",
           "max_frames": 5,
           "passive_capture": {
@@ -418,18 +418,18 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --chase-url http://localhos
               "play_game_query:atomic-evaluation-capture"
             ],
             "code": null,
-            "elapsed_ms": 316,
+            "elapsed_ms": 247,
             "environment": {
               "control_input": null,
               "control_source": "programmatic",
               "game_id": "chase",
               "playback": {
-                "frameIndex": 712471,
+                "frameIndex": 430256,
                 "pendingAction": false,
                 "phase": "running"
               },
               "scenario_id": "default",
-              "simulation_epoch": "chase-run:61269814-9a28-456d-92ac-e8ce6d6201bf"
+              "simulation_epoch": "chase-run:392a5992-671d-4525-9108-a71f75a29641"
             },
             "evaluator_reference": {
               "status": "available"
@@ -454,11 +454,11 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --chase-url http://localhos
             },
             "phases": {
               "debug_before": {
-                "duration_ms": 272,
+                "duration_ms": 217,
                 "status": "complete"
               },
               "sensor_capture": {
-                "duration_ms": 35,
+                "duration_ms": 21,
                 "status": "complete"
               },
               "state_before": {
@@ -470,8 +470,8 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --chase-url http://localhos
             "schema": "chase_passive_capture_v1",
             "sensor": {
               "actor_id": "chaser",
-              "capture_id": "chase:evaluation:chase-run%3A61269814-9a28-456d-92ac-e8ce6d6201bf:chaser:712471",
-              "frame_id": "chase_frame_712471",
+              "capture_id": "chase:evaluation:chase-run%3A392a5992-671d-4525-9108-a71f75a29641:chaser:430256",
+              "frame_id": "chase_frame_430256",
               "game_id": "chase",
               "image": {
                 "content_type": "image/png",
@@ -481,8 +481,8 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --chase-url http://localhos
               },
               "playback_advanced": false,
               "schema": "chase_sensor_capture_v1",
-              "simulation_epoch": "chase-run:61269814-9a28-456d-92ac-e8ce6d6201bf",
-              "simulator_frame_index": 712471
+              "simulation_epoch": "chase-run:392a5992-671d-4525-9108-a71f75a29641",
+              "simulator_frame_index": 430256
             },
             "session_preservation": {
               "after": {
@@ -492,13 +492,13 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --chase-url http://localhos
                 "control_source": "programmatic",
                 "game_id": "chase",
                 "playback": {
-                  "frameIndex": 712471,
+                  "frameIndex": 430256,
                   "pendingAction": false,
                   "phase": "running"
                 },
                 "scenario_id": "default",
                 "schema": "chase_session_fingerprint_v1",
-                "simulation_epoch": "chase-run:61269814-9a28-456d-92ac-e8ce6d6201bf",
+                "simulation_epoch": "chase-run:392a5992-671d-4525-9108-a71f75a29641",
                 "unknown_fields": []
               },
               "before": {
@@ -508,13 +508,13 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --chase-url http://localhos
                 "control_source": "programmatic",
                 "game_id": "chase",
                 "playback": {
-                  "frameIndex": 712471,
+                  "frameIndex": 430256,
                   "pendingAction": false,
                   "phase": "running"
                 },
                 "scenario_id": "default",
                 "schema": "chase_session_fingerprint_v1",
-                "simulation_epoch": "chase-run:61269814-9a28-456d-92ac-e8ce6d6201bf",
+                "simulation_epoch": "chase-run:392a5992-671d-4525-9108-a71f75a29641",
                 "unknown_fields": []
               },
               "changed_fields": [],
@@ -532,13 +532,13 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --chase-url http://localhos
               "control_source": "programmatic",
               "game_id": "chase",
               "playback": {
-                "frameIndex": 712471,
+                "frameIndex": 430256,
                 "pendingAction": false,
                 "phase": "running"
               },
               "scenario_id": "default",
               "schema": "chase_session_fingerprint_v1",
-              "simulation_epoch": "chase-run:61269814-9a28-456d-92ac-e8ce6d6201bf",
+              "simulation_epoch": "chase-run:392a5992-671d-4525-9108-a71f75a29641",
               "unknown_fields": []
             },
             "before": {
@@ -548,13 +548,13 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --chase-url http://localhos
               "control_source": "programmatic",
               "game_id": "chase",
               "playback": {
-                "frameIndex": 712359,
+                "frameIndex": 430173,
                 "pendingAction": false,
                 "phase": "running"
               },
               "scenario_id": "default",
               "schema": "chase_session_fingerprint_v1",
-              "simulation_epoch": "chase-run:61269814-9a28-456d-92ac-e8ce6d6201bf",
+              "simulation_epoch": "chase-run:392a5992-671d-4525-9108-a71f75a29641",
               "unknown_fields": []
             },
             "changed_fields": [],
@@ -571,11 +571,11 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --chase-url http://localhos
             "preserved": true,
             "unknown_fields": []
           },
-          "pid": 87543,
+          "pid": 98663,
           "pipeline": "latest_frame_async_perception",
           "readiness": {
             "blocking_layer": null,
-            "checked_at_ms": 1786249818193,
+            "checked_at_ms": 1786336055241,
             "gates": {
               "automation_worker": {
                 "status": "stopped"
@@ -589,11 +589,11 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --chase-url http://localhos
             "status": "ready"
           },
           "recording": false,
-          "run_id": "automation-20260808-213015-8fb53ed4b8a5",
+          "run_id": "automation-20260809-212733-6c7725f82cad",
           "state_record": "runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/state.json",
           "status": "completed",
           "stop_reason": null,
-          "updated_at_ms": 1786249817704
+          "updated_at_ms": 1786336055163
         },
         "command": [
           "/opt/homebrew/anaconda3/bin/python3",
@@ -615,7 +615,7 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --chase-url http://localhos
         "generation_matches": true,
         "log_path": null,
         "log_to_disk": false,
-        "pid": 87543,
+        "pid": 98663,
         "pid_state": "not_running",
         "process_record": "runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/process.json",
         "reason": null,
@@ -644,13 +644,13 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --chase-url http://localhos
           "control_source": "programmatic",
           "game_id": "chase",
           "playback": {
-            "frameIndex": 812240,
+            "frameIndex": 444844,
             "pendingAction": false,
             "phase": "running"
           },
           "scenario_id": "default",
           "schema": "chase_session_fingerprint_v1",
-          "simulation_epoch": "chase-run:61269814-9a28-456d-92ac-e8ce6d6201bf",
+          "simulation_epoch": "chase-run:392a5992-671d-4525-9108-a71f75a29641",
           "unknown_fields": []
         },
         "before": {
@@ -660,13 +660,13 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --chase-url http://localhos
           "control_source": "programmatic",
           "game_id": "chase",
           "playback": {
-            "frameIndex": 812240,
+            "frameIndex": 444844,
             "pendingAction": false,
             "phase": "running"
           },
           "scenario_id": "default",
           "schema": "chase_session_fingerprint_v1",
-          "simulation_epoch": "chase-run:61269814-9a28-456d-92ac-e8ce6d6201bf",
+          "simulation_epoch": "chase-run:392a5992-671d-4525-9108-a71f75a29641",
           "unknown_fields": []
         },
         "changed_fields": [],
@@ -679,17 +679,17 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --chase-url http://localhos
       "details": {
         "available": false,
         "host": "127.0.0.1",
-        "pid": 87543,
+        "pid": 98663,
         "port": 8898,
         "reason": "perception view is not responding: <urlopen error [Errno 61] Connection refused>",
         "record_path": "<repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/perception_view.json",
-        "run_id": "automation-20260808-213015-8fb53ed4b8a5",
+        "run_id": "automation-20260809-212733-6c7725f82cad",
         "schema": "automa_perception_view_v1",
-        "started_at_ms": 1786249815348,
+        "started_at_ms": 1786336053299,
         "status": "unavailable",
         "url": "http://127.0.0.1:8898/",
         "vehicle_id": "chase-sim-chaser",
-        "worker_pid": 87543
+        "worker_pid": 98663
       },
       "state": "stale"
     },
@@ -711,7 +711,7 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --chase-url http://localhos
   },
   "readiness": {
     "blocking_layer": "automation_worker",
-    "checked_at_ms": 1786251480405,
+    "checked_at_ms": 1786336298244,
     "gates": {
       "automation_deployment": {
         "status": "ready"
@@ -746,77 +746,77 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --chase-url http://localhos
   "timeout_s": 5.0,
   "vehicle_id": "chase-sim-chaser"
 }
-exit=0 elapsed_ms=767 started=2026-08-09T04:57:59.670414Z ended=2026-08-09T04:58:00.437941Z
+exit=0 elapsed_ms=696 started=2026-08-10T04:31:37.579750Z ended=2026-08-10T04:31:38.275981Z
 $ ./cli/automa vehicles perception run --id chase-sim-chaser --frames 4 --interval-s 0.25 --record
 Perception experiment
 ---------------------
-review: runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260808-215811-234392-77f9c4c9/review.html
-run: runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260808-215811-234392-77f9c4c9
+review: runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260809-213148-981577-87ba0dc0/review.html
+run: runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260809-213148-981577-87ba0dc0
 source: chase-sim-chaser
 selection: explicit id
 algorithm: lightweight_observer
 frames: 4
 failed frames: 0
 statuses: ok=4
-evidence: floor_boundary=3, sensor_frame=4, surface=4
-latency: cold 899.227 ms; steady median 915.121 ms, p95 951.022 ms
-peak memory: 217.703 MiB
-representation health: 0.937 (not semantic accuracy)
+evidence: floor_boundary=4, sensor_frame=4, surface=4
+latency: cold 749.572 ms; steady median 894.939 ms, p95 959.011 ms
+peak memory: 222.875 MiB
+representation health: 0.967 (not semantic accuracy)
 recording: on
 plugins:
-- floor-plane-v0: ok=4; median 635.120 ms
-- frame-observation-v0: ok=4; median 6.079 ms
-exit=0 elapsed_ms=15140 started=2026-08-09T04:58:00.463734Z ended=2026-08-09T04:58:15.604514Z
-$ ./cli/automa vehicles perception apply <repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260808-215811-234392-77f9c4c9 --algorithm lightweight_observer --record
+- floor-plane-v0: ok=4; median 573.039 ms
+- frame-observation-v0: ok=4; median 5.681 ms
+exit=0 elapsed_ms=14854 started=2026-08-10T04:31:38.288166Z ended=2026-08-10T04:31:53.142523Z
+$ ./cli/automa vehicles perception apply <repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260809-213148-981577-87ba0dc0 --algorithm lightweight_observer --record
 Perception experiment
 ---------------------
-review: runtime/perception-applies/apply-perception-chase-sim-chaser-20260808-215811-234392-77f9c4c9-20260808-215816-113701-8e7d68af/review.html
-run: runtime/perception-applies/apply-perception-chase-sim-chaser-20260808-215811-234392-77f9c4c9-20260808-215816-113701-8e7d68af
-source: <repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260808-215811-234392-77f9c4c9
+review: runtime/perception-applies/apply-perception-chase-sim-chaser-20260809-213148-981577-87ba0dc0-20260809-213153-563824-3a260ec2/review.html
+run: runtime/perception-applies/apply-perception-chase-sim-chaser-20260809-213148-981577-87ba0dc0-20260809-213153-563824-3a260ec2
+source: <repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260809-213148-981577-87ba0dc0
 algorithm: lightweight_observer
 frames: 4
 failed frames: 0
 statuses: ok=4
-evidence: floor_boundary=3, sensor_frame=4, surface=4
-latency: cold 607.667 ms; steady median 600.225 ms, p95 630.478 ms
-peak memory: 174.797 MiB
-representation health: 0.937 (not semantic accuracy)
+evidence: floor_boundary=4, sensor_frame=4, surface=4
+latency: cold 522.486 ms; steady median 619.228 ms, p95 623.423 ms
+peak memory: 167.375 MiB
+representation health: 0.967 (not semantic accuracy)
 recording: on
 plugins:
-- floor-plane-v0: ok=4; median 594.971 ms
-- frame-observation-v0: ok=4; median 6.223 ms
-exit=0 elapsed_ms=2923 started=2026-08-09T04:58:15.607208Z ended=2026-08-09T04:58:18.530777Z
-$ ./cli/automa vehicles perception apply <repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260808-215811-234392-77f9c4c9 --algorithm sim_debug --record
+- floor-plane-v0: ok=4; median 561.763 ms
+- frame-observation-v0: ok=4; median 6.283 ms
+exit=0 elapsed_ms=2723 started=2026-08-10T04:31:53.145023Z ended=2026-08-10T04:31:55.868376Z
+$ ./cli/automa vehicles perception apply <repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260809-213148-981577-87ba0dc0 --algorithm sim_debug --record
 Perception experiment
 ---------------------
-review: runtime/perception-applies/apply-perception-chase-sim-chaser-20260808-215811-234392-77f9c4c9-20260808-215818-955940-7b7faab5/review.html
-run: runtime/perception-applies/apply-perception-chase-sim-chaser-20260808-215811-234392-77f9c4c9-20260808-215818-955940-7b7faab5
-source: <repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260808-215811-234392-77f9c4c9
+review: runtime/perception-applies/apply-perception-chase-sim-chaser-20260809-213148-981577-87ba0dc0-20260809-213156-290046-6d71f5c9/review.html
+run: runtime/perception-applies/apply-perception-chase-sim-chaser-20260809-213148-981577-87ba0dc0-20260809-213156-290046-6d71f5c9
+source: <repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260809-213148-981577-87ba0dc0
 algorithm: sim_debug
 frames: 4
 failed frames: 0
 statuses: ok=4
-evidence: obstruction_evidence=1, sensor_frame=4
-latency: cold 16.983 ms; steady median 11.554 ms, p95 17.753 ms
-peak memory: 96.969 MiB
-representation health: 0.555 (not semantic accuracy)
+evidence: obstruction_evidence=2, sensor_frame=4
+latency: cold 20.478 ms; steady median 24.835 ms, p95 37.167 ms
+peak memory: 98.781 MiB
+representation health: 0.625 (not semantic accuracy)
 recording: on
 plugins:
-- frame-observation-v0: ok=4; median 6.357 ms
-- sim-color-targets-v0: ok=4; median 5.668 ms
-exit=0 elapsed_ms=517 started=2026-08-09T04:58:18.532743Z ended=2026-08-09T04:58:19.050716Z
+- frame-observation-v0: ok=4; median 8.130 ms
+- sim-color-targets-v0: ok=4; median 11.066 ms
+exit=0 elapsed_ms=552 started=2026-08-10T04:31:55.870544Z ended=2026-08-10T04:31:56.422878Z
 $ ./cli/automa vehicles update perception --id chase-sim-chaser --algorithm lightweight_observer
 Updated perception: chase-sim-chaser -> lightweight_observer
 Bundle: runtime/vehicles/chase-sim-chaser/bundle
 Activation: runtime/vehicles/chase-sim-chaser/bundle/runtime/perception/active.json
 Ready for: observation-only automation
 Next action: ./cli/automa vehicles automation run --id chase-sim-chaser --observe-only --frames 0 --open-view
-exit=0 elapsed_ms=867 started=2026-08-09T04:58:19.087380Z ended=2026-08-09T04:58:19.954962Z
+exit=0 elapsed_ms=804 started=2026-08-10T04:31:56.445111Z ended=2026-08-10T04:31:57.249975Z
 $ ./cli/automa vehicles automation run --id chase-sim-chaser --observe-only --frames 0 --open-view
 Automation ready for chase-sim-chaser.
-PID: 91379
-First frame: chase_frame_813496
-Startup phases: capture=232ms, perception=71ms, view=current-generation correlated
+PID: 666
+First frame: chase_frame_446066
+Startup phases: capture=216ms, perception=63ms, view=current-generation correlated
 Perception view: http://127.0.0.1:8898/
 Ready for: inspect perception and stop automation
 Browser opened: http://127.0.0.1:8898/
@@ -824,7 +824,7 @@ State: runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/state.json
 Log: disabled; pass --log to persist worker output
 Stream: ./cli/automa vehicles stream perception --id chase-sim-chaser
 View: ./cli/automa vehicles info perception --id chase-sim-chaser
-exit=0 elapsed_ms=1768 started=2026-08-09T04:58:19.955853Z ended=2026-08-09T04:58:21.724362Z
+exit=0 elapsed_ms=1702 started=2026-08-10T04:31:57.250756Z ended=2026-08-10T04:31:58.953263Z
 $ ./cli/automa vehicles status --id chase-sim-chaser
 Vehicle: chase-sim-chaser
 Endpoint: http://localhost:5050/ -> ws://localhost:5050/ws/control
@@ -839,13 +839,13 @@ perception_view: available
 authority: control_source=programmatic, action_policy=observe_only, control_application=not_applied
 evaluator_reference: available
 Ready for: inspect perception and stop automation
-exit=0 elapsed_ms=996 started=2026-08-09T04:58:21.726246Z ended=2026-08-09T04:58:22.722481Z
+exit=0 elapsed_ms=1093 started=2026-08-10T04:31:58.954687Z ended=2026-08-10T04:32:00.047805Z
 $ ./cli/automa vehicles automation stop --id chase-sim-chaser
 Automation stopped for chase-sim-chaser.
-PID: 91379
+PID: 666
 State: runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/state.json
 Ready for: inspect stopped deployment
-exit=0 elapsed_ms=647 started=2026-08-09T04:58:22.723687Z ended=2026-08-09T04:58:23.371265Z
+exit=0 elapsed_ms=706 started=2026-08-10T04:32:00.048995Z ended=2026-08-10T04:32:00.755392Z
 $ ./cli/automa vehicles status --id chase-sim-chaser
 Vehicle: chase-sim-chaser
 Endpoint: http://localhost:5050/ -> ws://localhost:5050/ws/control
@@ -861,24 +861,24 @@ authority: control_source=programmatic, action_policy=observe_only, control_appl
 evaluator_reference: available
 Not ready for: inspect perception
 Next action: ./cli/automa vehicles automation run --id chase-sim-chaser --observe-only --frames 0 --open-view
-exit=0 elapsed_ms=704 started=2026-08-09T04:58:23.372143Z ended=2026-08-09T04:58:24.076665Z
+exit=0 elapsed_ms=680 started=2026-08-10T04:32:00.756260Z ended=2026-08-10T04:32:01.437069Z
 $ ./cli/automa vehicles update memory --id chase-sim-chaser --implementation bounded_evidence
 Updated memory: chase-sim-chaser -> bounded_evidence
 Implementation: implementations.memory.bounded_evidence:BoundedEvidenceLedger
 Activation: runtime/vehicles/chase-sim-chaser/bundle/runtime/memory/active.json
-exit=0 elapsed_ms=578 started=2026-08-09T04:58:24.077708Z ended=2026-08-09T04:58:24.656382Z
+exit=0 elapsed_ms=552 started=2026-08-10T04:32:01.438195Z ended=2026-08-10T04:32:01.990635Z
 $ ./cli/automa vehicles automation run --id chase-sim-chaser --observe-only --frames 5
 Automation ready for chase-sim-chaser.
-PID: 91389
-First frame: chase_frame_813780
-Startup phases: capture=262ms, perception=76ms, view=current-generation correlated
+PID: 679
+First frame: chase_frame_446347
+Startup phases: capture=230ms, perception=68ms, view=current-generation correlated
 Perception view: http://127.0.0.1:8898/
 Ready for: inspect perception and stop automation
 State: runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/state.json
 Log: disabled; pass --log to persist worker output
 Stream: ./cli/automa vehicles stream perception --id chase-sim-chaser
 View: ./cli/automa vehicles info perception --id chase-sim-chaser
-exit=0 elapsed_ms=1584 started=2026-08-09T04:58:24.657330Z ended=2026-08-09T04:58:26.242049Z
+exit=0 elapsed_ms=1420 started=2026-08-10T04:32:01.991467Z ended=2026-08-10T04:32:03.411917Z
 $ ./cli/automa vehicles memory check --id chase-sim-chaser --record
 Memory check (present → dropout → expiry → reset)
 vehicle: chase-sim-chaser
@@ -895,28 +895,28 @@ phase: expiry
   PASS  keys=0  health=empty  reason=tracked lifecycle keys expired from live/offline memory
 phase: reset
   PASS  keys=0  health=empty  reason=reset produced a new empty epoch
-record: lab/runs/memory-check/chase-sim-chaser-20260808-215837
-provenance extract: lab/runs/memory-check/chase-sim-chaser-20260808-215837/provenance_extract.html
+record: lab/runs/memory-check/chase-sim-chaser-20260809-213214
+provenance extract: lab/runs/memory-check/chase-sim-chaser-20260809-213214/provenance_extract.html
 Memory check: chase-sim-chaser  PASS
 Implementation: bounded_evidence
 Activation: ephemeral-check:bounded_evidence(max_age_ms=1000)
 Phases: present=ok, dropout=ok, expiry=ok, reset=ok
 Movement: never commanded
-Record: lab/runs/memory-check/chase-sim-chaser-20260808-215837
-Provenance extract: lab/runs/memory-check/chase-sim-chaser-20260808-215837/provenance_extract.html
-exit=0 elapsed_ms=10895 started=2026-08-09T04:58:26.243451Z ended=2026-08-09T04:58:37.139040Z
+Record: lab/runs/memory-check/chase-sim-chaser-20260809-213214
+Provenance extract: lab/runs/memory-check/chase-sim-chaser-20260809-213214/provenance_extract.html
+exit=0 elapsed_ms=10824 started=2026-08-10T04:32:03.414142Z ended=2026-08-10T04:32:14.238125Z
 $ ./cli/automa vehicles automation stop --id chase-sim-chaser
 Automation is not running for chase-sim-chaser.
-Recorded PID: 91389
+Recorded PID: 679
 State: runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/state.json
 Ready for: inspect stopped deployment
-exit=0 elapsed_ms=483 started=2026-08-09T04:58:37.139919Z ended=2026-08-09T04:58:37.623633Z
+exit=0 elapsed_ms=463 started=2026-08-10T04:32:14.239010Z ended=2026-08-10T04:32:14.702125Z
 $ ./cli/automa vehicles automation stop --id chase-sim-chaser
 Automation is not running for chase-sim-chaser.
-Recorded PID: 91389
+Recorded PID: 679
 State: runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/state.json
 Ready for: inspect stopped deployment
-exit=0 elapsed_ms=461 started=2026-08-09T04:58:37.658794Z ended=2026-08-09T04:58:38.120632Z
+exit=0 elapsed_ms=461 started=2026-08-10T04:32:14.735841Z ended=2026-08-10T04:32:15.197275Z
 $ ./cli/automa vehicles status --id chase-sim-chaser --json
 {
   "capture": {
@@ -926,8 +926,8 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --json
     },
     "sensor": {
       "actor_id": "chaser",
-      "capture_id": "chase:evaluation:chase-run%3A61269814-9a28-456d-92ac-e8ce6d6201bf:chaser:814545",
-      "frame_id": "chase_frame_814545",
+      "capture_id": "chase:evaluation:chase-run%3A392a5992-671d-4525-9108-a71f75a29641:chaser:447099",
+      "frame_id": "chase_frame_447099",
       "game_id": "chase",
       "image": {
         "content_type": "image/png",
@@ -937,13 +937,13 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --json
       },
       "playback_advanced": false,
       "schema": "chase_sensor_capture_v1",
-      "simulation_epoch": "chase-run:61269814-9a28-456d-92ac-e8ce6d6201bf",
-      "simulator_frame_index": 814545
+      "simulation_epoch": "chase-run:392a5992-671d-4525-9108-a71f75a29641",
+      "simulator_frame_index": 447099
     }
   },
-  "checked_at_ms": 1786251518801,
+  "checked_at_ms": 1786336335828,
   "diagnostics": {},
-  "elapsed_ms": 256,
+  "elapsed_ms": 222,
   "endpoint": {
     "operator_url": "http://localhost:5050/",
     "resolved_ws_url": "ws://localhost:5050/ws/control"
@@ -1002,7 +1002,7 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --json
           "generation_matches": true,
           "log_path": null,
           "log_to_disk": false,
-          "pid": 91389,
+          "pid": 679,
           "pid_state": "not_running",
           "process_record": "runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/process.json",
           "reason": null,
@@ -1013,17 +1013,17 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --json
         "published_view": {
           "available": false,
           "host": "127.0.0.1",
-          "pid": 91389,
+          "pid": 679,
           "port": 8898,
           "reason": "perception view is not responding: <urlopen error [Errno 61] Connection refused>",
           "record_path": "<repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/perception_view.json",
-          "run_id": "automation-20260808-215825-fd9f288b8dd0",
+          "run_id": "automation-20260809-213203-475e2595e333",
           "schema": "automa_perception_view_v1",
-          "started_at_ms": 1786251505780,
+          "started_at_ms": 1786336323051,
           "status": "unavailable",
           "url": "http://127.0.0.1:8898/",
           "vehicle_id": "chase-sim-chaser",
-          "worker_pid": 91389
+          "worker_pid": 679
         },
         "state": {
           "action_policy": "observe_only",
@@ -1038,19 +1038,19 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --json
           "frames_processed": 5,
           "interval_s": 0.25,
           "last_capture": {
-            "capture_duration_ms": 261,
+            "capture_duration_ms": 275,
             "capture_sequence": 4,
-            "captured_at_ms": 1786251507448,
-            "frame_id": "chase_frame_813861",
-            "frame_index": 813861,
+            "captured_at_ms": 1786336324586,
+            "frame_id": "chase_frame_446423",
+            "frame_index": 446423,
             "front_camera": "runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/latest/frames/latest_front_camera.png",
             "shadow_aligned": true,
-            "simulation_epoch": "chase-run:61269814-9a28-456d-92ac-e8ce6d6201bf",
-            "simulator_frame_index": 813861
+            "simulation_epoch": "chase-run:392a5992-671d-4525-9108-a71f75a29641",
+            "simulator_frame_index": 446423
           },
           "last_frame": {
-            "capture_to_perception_ms": 62,
-            "captured_at_ms": 1786251507448,
+            "capture_to_perception_ms": 66,
+            "captured_at_ms": 1786336324586,
             "control": {
               "applied": false,
               "confidence": 1.0,
@@ -1065,21 +1065,21 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --json
               "steering": 0.0,
               "throttle": 0.0
             },
-            "cycle_duration_ms": 61,
+            "cycle_duration_ms": 65,
             "engine": "autonomy.runtime.engine:IdleAutonomyEngine",
-            "frame_id": "chase_frame_813861",
-            "frame_index": 813861,
-            "perception_completed_at_ms": 1786251507510,
-            "perception_duration_ms": 61,
+            "frame_id": "chase_frame_446423",
+            "frame_index": 446423,
+            "perception_completed_at_ms": 1786336324652,
+            "perception_duration_ms": 65,
             "perception_json": "runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/latest_perception.json",
             "perception_text": "runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/latest_perception.txt",
             "shadow_aligned": true,
             "signals": 3,
-            "simulation_epoch": "chase-run:61269814-9a28-456d-92ac-e8ce6d6201bf",
-            "simulator_frame_index": 813861,
+            "simulation_epoch": "chase-run:392a5992-671d-4525-9108-a71f75a29641",
+            "simulator_frame_index": 446423,
             "things": 3
           },
-          "latest_perception_age_ms": 11290,
+          "latest_perception_age_ms": 11175,
           "latest_perception_text": "runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/latest_perception.txt",
           "max_frames": 5,
           "passive_capture": {
@@ -1089,18 +1089,18 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --json
               "play_game_query:atomic-evaluation-capture"
             ],
             "code": null,
-            "elapsed_ms": 250,
+            "elapsed_ms": 267,
             "environment": {
               "control_input": null,
               "control_source": "programmatic",
               "game_id": "chase",
               "playback": {
-                "frameIndex": 813861,
+                "frameIndex": 446423,
                 "pendingAction": false,
                 "phase": "running"
               },
               "scenario_id": "default",
-              "simulation_epoch": "chase-run:61269814-9a28-456d-92ac-e8ce6d6201bf"
+              "simulation_epoch": "chase-run:392a5992-671d-4525-9108-a71f75a29641"
             },
             "evaluator_reference": {
               "status": "available"
@@ -1125,15 +1125,15 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --json
             },
             "phases": {
               "debug_before": {
-                "duration_ms": 193,
+                "duration_ms": 227,
                 "status": "complete"
               },
               "sensor_capture": {
-                "duration_ms": 51,
+                "duration_ms": 33,
                 "status": "complete"
               },
               "state_before": {
-                "duration_ms": 2,
+                "duration_ms": 1,
                 "status": "complete"
               }
             },
@@ -1141,8 +1141,8 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --json
             "schema": "chase_passive_capture_v1",
             "sensor": {
               "actor_id": "chaser",
-              "capture_id": "chase:evaluation:chase-run%3A61269814-9a28-456d-92ac-e8ce6d6201bf:chaser:813861",
-              "frame_id": "chase_frame_813861",
+              "capture_id": "chase:evaluation:chase-run%3A392a5992-671d-4525-9108-a71f75a29641:chaser:446423",
+              "frame_id": "chase_frame_446423",
               "game_id": "chase",
               "image": {
                 "content_type": "image/png",
@@ -1152,8 +1152,8 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --json
               },
               "playback_advanced": false,
               "schema": "chase_sensor_capture_v1",
-              "simulation_epoch": "chase-run:61269814-9a28-456d-92ac-e8ce6d6201bf",
-              "simulator_frame_index": 813861
+              "simulation_epoch": "chase-run:392a5992-671d-4525-9108-a71f75a29641",
+              "simulator_frame_index": 446423
             },
             "session_preservation": {
               "after": {
@@ -1163,13 +1163,13 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --json
                 "control_source": "programmatic",
                 "game_id": "chase",
                 "playback": {
-                  "frameIndex": 813861,
+                  "frameIndex": 446423,
                   "pendingAction": false,
                   "phase": "running"
                 },
                 "scenario_id": "default",
                 "schema": "chase_session_fingerprint_v1",
-                "simulation_epoch": "chase-run:61269814-9a28-456d-92ac-e8ce6d6201bf",
+                "simulation_epoch": "chase-run:392a5992-671d-4525-9108-a71f75a29641",
                 "unknown_fields": []
               },
               "before": {
@@ -1179,13 +1179,13 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --json
                 "control_source": "programmatic",
                 "game_id": "chase",
                 "playback": {
-                  "frameIndex": 813861,
+                  "frameIndex": 446423,
                   "pendingAction": false,
                   "phase": "running"
                 },
                 "scenario_id": "default",
                 "schema": "chase_session_fingerprint_v1",
-                "simulation_epoch": "chase-run:61269814-9a28-456d-92ac-e8ce6d6201bf",
+                "simulation_epoch": "chase-run:392a5992-671d-4525-9108-a71f75a29641",
                 "unknown_fields": []
               },
               "changed_fields": [],
@@ -1203,13 +1203,13 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --json
               "control_source": "programmatic",
               "game_id": "chase",
               "playback": {
-                "frameIndex": 813861,
+                "frameIndex": 446423,
                 "pendingAction": false,
                 "phase": "running"
               },
               "scenario_id": "default",
               "schema": "chase_session_fingerprint_v1",
-              "simulation_epoch": "chase-run:61269814-9a28-456d-92ac-e8ce6d6201bf",
+              "simulation_epoch": "chase-run:392a5992-671d-4525-9108-a71f75a29641",
               "unknown_fields": []
             },
             "before": {
@@ -1219,13 +1219,13 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --json
               "control_source": "programmatic",
               "game_id": "chase",
               "playback": {
-                "frameIndex": 813780,
+                "frameIndex": 446347,
                 "pendingAction": false,
                 "phase": "running"
               },
               "scenario_id": "default",
               "schema": "chase_session_fingerprint_v1",
-              "simulation_epoch": "chase-run:61269814-9a28-456d-92ac-e8ce6d6201bf",
+              "simulation_epoch": "chase-run:392a5992-671d-4525-9108-a71f75a29641",
               "unknown_fields": []
             },
             "changed_fields": [],
@@ -1242,11 +1242,11 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --json
             "preserved": true,
             "unknown_fields": []
           },
-          "pid": 91389,
+          "pid": 679,
           "pipeline": "latest_frame_async_perception",
           "readiness": {
             "blocking_layer": null,
-            "checked_at_ms": 1786251507556,
+            "checked_at_ms": 1786336324753,
             "gates": {
               "automation_worker": {
                 "status": "stopped"
@@ -1260,11 +1260,11 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --json
             "status": "ready"
           },
           "recording": false,
-          "run_id": "automation-20260808-215825-fd9f288b8dd0",
+          "run_id": "automation-20260809-213203-475e2595e333",
           "state_record": "runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/state.json",
           "status": "completed",
           "stop_reason": null,
-          "updated_at_ms": 1786251507513
+          "updated_at_ms": 1786336324655
         },
         "vehicle_id": "chase-sim-chaser"
       },
@@ -1285,19 +1285,19 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --json
           "frames_processed": 5,
           "interval_s": 0.25,
           "last_capture": {
-            "capture_duration_ms": 261,
+            "capture_duration_ms": 275,
             "capture_sequence": 4,
-            "captured_at_ms": 1786251507448,
-            "frame_id": "chase_frame_813861",
-            "frame_index": 813861,
+            "captured_at_ms": 1786336324586,
+            "frame_id": "chase_frame_446423",
+            "frame_index": 446423,
             "front_camera": "runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/latest/frames/latest_front_camera.png",
             "shadow_aligned": true,
-            "simulation_epoch": "chase-run:61269814-9a28-456d-92ac-e8ce6d6201bf",
-            "simulator_frame_index": 813861
+            "simulation_epoch": "chase-run:392a5992-671d-4525-9108-a71f75a29641",
+            "simulator_frame_index": 446423
           },
           "last_frame": {
-            "capture_to_perception_ms": 62,
-            "captured_at_ms": 1786251507448,
+            "capture_to_perception_ms": 66,
+            "captured_at_ms": 1786336324586,
             "control": {
               "applied": false,
               "confidence": 1.0,
@@ -1312,21 +1312,21 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --json
               "steering": 0.0,
               "throttle": 0.0
             },
-            "cycle_duration_ms": 61,
+            "cycle_duration_ms": 65,
             "engine": "autonomy.runtime.engine:IdleAutonomyEngine",
-            "frame_id": "chase_frame_813861",
-            "frame_index": 813861,
-            "perception_completed_at_ms": 1786251507510,
-            "perception_duration_ms": 61,
+            "frame_id": "chase_frame_446423",
+            "frame_index": 446423,
+            "perception_completed_at_ms": 1786336324652,
+            "perception_duration_ms": 65,
             "perception_json": "runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/latest_perception.json",
             "perception_text": "runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/latest_perception.txt",
             "shadow_aligned": true,
             "signals": 3,
-            "simulation_epoch": "chase-run:61269814-9a28-456d-92ac-e8ce6d6201bf",
-            "simulator_frame_index": 813861,
+            "simulation_epoch": "chase-run:392a5992-671d-4525-9108-a71f75a29641",
+            "simulator_frame_index": 446423,
             "things": 3
           },
-          "latest_perception_age_ms": 11290,
+          "latest_perception_age_ms": 11175,
           "latest_perception_text": "runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/latest_perception.txt",
           "max_frames": 5,
           "passive_capture": {
@@ -1336,18 +1336,18 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --json
               "play_game_query:atomic-evaluation-capture"
             ],
             "code": null,
-            "elapsed_ms": 250,
+            "elapsed_ms": 267,
             "environment": {
               "control_input": null,
               "control_source": "programmatic",
               "game_id": "chase",
               "playback": {
-                "frameIndex": 813861,
+                "frameIndex": 446423,
                 "pendingAction": false,
                 "phase": "running"
               },
               "scenario_id": "default",
-              "simulation_epoch": "chase-run:61269814-9a28-456d-92ac-e8ce6d6201bf"
+              "simulation_epoch": "chase-run:392a5992-671d-4525-9108-a71f75a29641"
             },
             "evaluator_reference": {
               "status": "available"
@@ -1372,15 +1372,15 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --json
             },
             "phases": {
               "debug_before": {
-                "duration_ms": 193,
+                "duration_ms": 227,
                 "status": "complete"
               },
               "sensor_capture": {
-                "duration_ms": 51,
+                "duration_ms": 33,
                 "status": "complete"
               },
               "state_before": {
-                "duration_ms": 2,
+                "duration_ms": 1,
                 "status": "complete"
               }
             },
@@ -1388,8 +1388,8 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --json
             "schema": "chase_passive_capture_v1",
             "sensor": {
               "actor_id": "chaser",
-              "capture_id": "chase:evaluation:chase-run%3A61269814-9a28-456d-92ac-e8ce6d6201bf:chaser:813861",
-              "frame_id": "chase_frame_813861",
+              "capture_id": "chase:evaluation:chase-run%3A392a5992-671d-4525-9108-a71f75a29641:chaser:446423",
+              "frame_id": "chase_frame_446423",
               "game_id": "chase",
               "image": {
                 "content_type": "image/png",
@@ -1399,8 +1399,8 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --json
               },
               "playback_advanced": false,
               "schema": "chase_sensor_capture_v1",
-              "simulation_epoch": "chase-run:61269814-9a28-456d-92ac-e8ce6d6201bf",
-              "simulator_frame_index": 813861
+              "simulation_epoch": "chase-run:392a5992-671d-4525-9108-a71f75a29641",
+              "simulator_frame_index": 446423
             },
             "session_preservation": {
               "after": {
@@ -1410,13 +1410,13 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --json
                 "control_source": "programmatic",
                 "game_id": "chase",
                 "playback": {
-                  "frameIndex": 813861,
+                  "frameIndex": 446423,
                   "pendingAction": false,
                   "phase": "running"
                 },
                 "scenario_id": "default",
                 "schema": "chase_session_fingerprint_v1",
-                "simulation_epoch": "chase-run:61269814-9a28-456d-92ac-e8ce6d6201bf",
+                "simulation_epoch": "chase-run:392a5992-671d-4525-9108-a71f75a29641",
                 "unknown_fields": []
               },
               "before": {
@@ -1426,13 +1426,13 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --json
                 "control_source": "programmatic",
                 "game_id": "chase",
                 "playback": {
-                  "frameIndex": 813861,
+                  "frameIndex": 446423,
                   "pendingAction": false,
                   "phase": "running"
                 },
                 "scenario_id": "default",
                 "schema": "chase_session_fingerprint_v1",
-                "simulation_epoch": "chase-run:61269814-9a28-456d-92ac-e8ce6d6201bf",
+                "simulation_epoch": "chase-run:392a5992-671d-4525-9108-a71f75a29641",
                 "unknown_fields": []
               },
               "changed_fields": [],
@@ -1450,13 +1450,13 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --json
               "control_source": "programmatic",
               "game_id": "chase",
               "playback": {
-                "frameIndex": 813861,
+                "frameIndex": 446423,
                 "pendingAction": false,
                 "phase": "running"
               },
               "scenario_id": "default",
               "schema": "chase_session_fingerprint_v1",
-              "simulation_epoch": "chase-run:61269814-9a28-456d-92ac-e8ce6d6201bf",
+              "simulation_epoch": "chase-run:392a5992-671d-4525-9108-a71f75a29641",
               "unknown_fields": []
             },
             "before": {
@@ -1466,13 +1466,13 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --json
               "control_source": "programmatic",
               "game_id": "chase",
               "playback": {
-                "frameIndex": 813780,
+                "frameIndex": 446347,
                 "pendingAction": false,
                 "phase": "running"
               },
               "scenario_id": "default",
               "schema": "chase_session_fingerprint_v1",
-              "simulation_epoch": "chase-run:61269814-9a28-456d-92ac-e8ce6d6201bf",
+              "simulation_epoch": "chase-run:392a5992-671d-4525-9108-a71f75a29641",
               "unknown_fields": []
             },
             "changed_fields": [],
@@ -1489,11 +1489,11 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --json
             "preserved": true,
             "unknown_fields": []
           },
-          "pid": 91389,
+          "pid": 679,
           "pipeline": "latest_frame_async_perception",
           "readiness": {
             "blocking_layer": null,
-            "checked_at_ms": 1786251507556,
+            "checked_at_ms": 1786336324753,
             "gates": {
               "automation_worker": {
                 "status": "stopped"
@@ -1507,11 +1507,11 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --json
             "status": "ready"
           },
           "recording": false,
-          "run_id": "automation-20260808-215825-fd9f288b8dd0",
+          "run_id": "automation-20260809-213203-475e2595e333",
           "state_record": "runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/state.json",
           "status": "completed",
           "stop_reason": null,
-          "updated_at_ms": 1786251507513
+          "updated_at_ms": 1786336324655
         },
         "command": [
           "/opt/homebrew/anaconda3/bin/python3",
@@ -1533,7 +1533,7 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --json
         "generation_matches": true,
         "log_path": null,
         "log_to_disk": false,
-        "pid": 91389,
+        "pid": 679,
         "pid_state": "not_running",
         "process_record": "runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/process.json",
         "reason": null,
@@ -1562,13 +1562,13 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --json
           "control_source": "programmatic",
           "game_id": "chase",
           "playback": {
-            "frameIndex": 814545,
+            "frameIndex": 447099,
             "pendingAction": false,
             "phase": "running"
           },
           "scenario_id": "default",
           "schema": "chase_session_fingerprint_v1",
-          "simulation_epoch": "chase-run:61269814-9a28-456d-92ac-e8ce6d6201bf",
+          "simulation_epoch": "chase-run:392a5992-671d-4525-9108-a71f75a29641",
           "unknown_fields": []
         },
         "before": {
@@ -1578,13 +1578,13 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --json
           "control_source": "programmatic",
           "game_id": "chase",
           "playback": {
-            "frameIndex": 814545,
+            "frameIndex": 447099,
             "pendingAction": false,
             "phase": "running"
           },
           "scenario_id": "default",
           "schema": "chase_session_fingerprint_v1",
-          "simulation_epoch": "chase-run:61269814-9a28-456d-92ac-e8ce6d6201bf",
+          "simulation_epoch": "chase-run:392a5992-671d-4525-9108-a71f75a29641",
           "unknown_fields": []
         },
         "changed_fields": [],
@@ -1597,17 +1597,17 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --json
       "details": {
         "available": false,
         "host": "127.0.0.1",
-        "pid": 91389,
+        "pid": 679,
         "port": 8898,
         "reason": "perception view is not responding: <urlopen error [Errno 61] Connection refused>",
         "record_path": "<repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/perception_view.json",
-        "run_id": "automation-20260808-215825-fd9f288b8dd0",
+        "run_id": "automation-20260809-213203-475e2595e333",
         "schema": "automa_perception_view_v1",
-        "started_at_ms": 1786251505780,
+        "started_at_ms": 1786336323051,
         "status": "unavailable",
         "url": "http://127.0.0.1:8898/",
         "vehicle_id": "chase-sim-chaser",
-        "worker_pid": 91389
+        "worker_pid": 679
       },
       "state": "stale"
     },
@@ -1629,7 +1629,7 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --json
   },
   "readiness": {
     "blocking_layer": "automation_worker",
-    "checked_at_ms": 1786251518801,
+    "checked_at_ms": 1786336335828,
     "gates": {
       "automation_deployment": {
         "status": "ready"
@@ -1664,4 +1664,4 @@ $ ./cli/automa vehicles status --id chase-sim-chaser --json
   "timeout_s": 5.0,
   "vehicle_id": "chase-sim-chaser"
 }
-exit=0 elapsed_ms=711 started=2026-08-09T04:58:38.121430Z ended=2026-08-09T04:58:38.833307Z
+exit=0 elapsed_ms=659 started=2026-08-10T04:32:15.197998Z ended=2026-08-10T04:32:15.857530Z

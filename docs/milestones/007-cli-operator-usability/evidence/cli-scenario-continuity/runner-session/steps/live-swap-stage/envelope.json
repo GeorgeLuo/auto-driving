@@ -13,10 +13,10 @@
         "lightweight_observer"
       ],
       "command": "./cli/automa vehicles update perception --id chase-sim-chaser --algorithm lightweight_observer",
-      "elapsed_ms": 867,
-      "ended_at_utc": "2026-08-09T04:58:19.954962Z",
+      "elapsed_ms": 804,
+      "ended_at_utc": "2026-08-10T04:31:57.249975Z",
       "exit_code": 0,
-      "started_at_utc": "2026-08-09T04:58:19.087380Z",
+      "started_at_utc": "2026-08-10T04:31:56.445111Z",
       "stderr_path": "steps/live-swap-stage/cmd-00.stderr.txt",
       "stdout_path": "steps/live-swap-stage/cmd-00.stdout.txt"
     },
@@ -34,10 +34,10 @@
         "--open-view"
       ],
       "command": "./cli/automa vehicles automation run --id chase-sim-chaser --observe-only --frames 0 --open-view",
-      "elapsed_ms": 1768,
-      "ended_at_utc": "2026-08-09T04:58:21.724362Z",
+      "elapsed_ms": 1702,
+      "ended_at_utc": "2026-08-10T04:31:58.953263Z",
       "exit_code": 0,
-      "started_at_utc": "2026-08-09T04:58:19.955853Z",
+      "started_at_utc": "2026-08-10T04:31:57.250756Z",
       "stderr_path": "steps/live-swap-stage/cmd-01.stderr.txt",
       "stdout_path": "steps/live-swap-stage/cmd-01.stdout.txt"
     },
@@ -50,10 +50,10 @@
         "chase-sim-chaser"
       ],
       "command": "./cli/automa vehicles status --id chase-sim-chaser",
-      "elapsed_ms": 996,
-      "ended_at_utc": "2026-08-09T04:58:22.722481Z",
+      "elapsed_ms": 1093,
+      "ended_at_utc": "2026-08-10T04:32:00.047805Z",
       "exit_code": 0,
-      "started_at_utc": "2026-08-09T04:58:21.726246Z",
+      "started_at_utc": "2026-08-10T04:31:58.954687Z",
       "stderr_path": "steps/live-swap-stage/cmd-02.stderr.txt",
       "stdout_path": "steps/live-swap-stage/cmd-02.stdout.txt"
     }
@@ -75,5 +75,6 @@
   "question": "Can we restage perception and reach observation-only readiness with a healthy view?",
   "required_for_verdict": true,
   "safety": "live_mutation",
-  "status": "skip"
+  "status": "skip",
+  "visual_required": true
 }

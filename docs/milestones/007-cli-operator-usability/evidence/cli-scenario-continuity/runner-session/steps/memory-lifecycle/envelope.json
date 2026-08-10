@@ -13,10 +13,10 @@
         "bounded_evidence"
       ],
       "command": "./cli/automa vehicles update memory --id chase-sim-chaser --implementation bounded_evidence",
-      "elapsed_ms": 578,
-      "ended_at_utc": "2026-08-09T04:58:24.656382Z",
+      "elapsed_ms": 552,
+      "ended_at_utc": "2026-08-10T04:32:01.990635Z",
       "exit_code": 0,
-      "started_at_utc": "2026-08-09T04:58:24.077708Z",
+      "started_at_utc": "2026-08-10T04:32:01.438195Z",
       "stderr_path": "steps/memory-lifecycle/cmd-00.stderr.txt",
       "stdout_path": "steps/memory-lifecycle/cmd-00.stdout.txt"
     },
@@ -33,10 +33,10 @@
         "5"
       ],
       "command": "./cli/automa vehicles automation run --id chase-sim-chaser --observe-only --frames 5",
-      "elapsed_ms": 1584,
-      "ended_at_utc": "2026-08-09T04:58:26.242049Z",
+      "elapsed_ms": 1420,
+      "ended_at_utc": "2026-08-10T04:32:03.411917Z",
       "exit_code": 0,
-      "started_at_utc": "2026-08-09T04:58:24.657330Z",
+      "started_at_utc": "2026-08-10T04:32:01.991467Z",
       "stderr_path": "steps/memory-lifecycle/cmd-01.stderr.txt",
       "stdout_path": "steps/memory-lifecycle/cmd-01.stdout.txt"
     },
@@ -51,10 +51,10 @@
         "--record"
       ],
       "command": "./cli/automa vehicles memory check --id chase-sim-chaser --record",
-      "elapsed_ms": 10895,
-      "ended_at_utc": "2026-08-09T04:58:37.139040Z",
+      "elapsed_ms": 10824,
+      "ended_at_utc": "2026-08-10T04:32:14.238125Z",
       "exit_code": 0,
-      "started_at_utc": "2026-08-09T04:58:26.243451Z",
+      "started_at_utc": "2026-08-10T04:32:03.414142Z",
       "stderr_path": "steps/memory-lifecycle/cmd-02.stderr.txt",
       "stdout_path": "steps/memory-lifecycle/cmd-02.stdout.txt"
     },
@@ -68,10 +68,10 @@
         "chase-sim-chaser"
       ],
       "command": "./cli/automa vehicles automation stop --id chase-sim-chaser",
-      "elapsed_ms": 483,
-      "ended_at_utc": "2026-08-09T04:58:37.623633Z",
+      "elapsed_ms": 463,
+      "ended_at_utc": "2026-08-10T04:32:14.702125Z",
       "exit_code": 0,
-      "started_at_utc": "2026-08-09T04:58:37.139919Z",
+      "started_at_utc": "2026-08-10T04:32:14.239010Z",
       "stderr_path": "steps/memory-lifecycle/cmd-03.stderr.txt",
       "stdout_path": "steps/memory-lifecycle/cmd-03.stdout.txt"
     }
@@ -93,5 +93,6 @@
   "question": "Does real perception become bounded attributable memory with a concise PASS/FAIL?",
   "required_for_verdict": true,
   "safety": "live_mutation",
-  "status": "pass"
+  "status": "pass",
+  "visual_required": false
 }

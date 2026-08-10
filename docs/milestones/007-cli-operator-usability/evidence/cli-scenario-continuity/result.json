@@ -2,11 +2,11 @@
   "artifacts": [
     {
       "path": "README.md",
-      "sha256": "2f84de6cbeb74f67ca63cdd433520810e27b7e08eb7a07e0b5dee472c47882c3"
+      "sha256": "d3fead3e80f6e2db07f96130a4bcd418a7fe9291c147982c88062f213991081f"
     },
     {
       "path": "runner-session/result.json",
-      "sha256": "0a14d99d29f984aa32c0d908b5d07839c355e22c4476bfcf52f38b571a8a30c9"
+      "sha256": "470d0d2bbf0ef897fb0499861c0bc5d24a5cec71dc76d02560dce0b138baad35"
     },
     {
       "path": "runner-session/continuity-preflight.json",
@@ -14,11 +14,11 @@
     },
     {
       "path": "runner-session/us04-activation-restore.json",
-      "sha256": "2bc5de3bd741b7df2588974c526858502d71d040d4c602cd8d10c55df7b33ddd"
+      "sha256": "283c86c2ea58b32c735e663f8df616622efbbdf0769d43a9b044fbee276d8d9f"
     },
     {
       "path": "runner-session/us04-activation-snapshot-meta.json",
-      "sha256": "81d80177941608d8e9e4b43e2ef2a215549de66be452839d348438dff758b84d"
+      "sha256": "f507c977c1a01e752d5c8d3f9278efb5b9c0a5f559a02ec123375a13a3ab66c4"
     },
     {
       "path": "runner-session/us04-snapshot-restore-compare.json",
@@ -26,15 +26,15 @@
     },
     {
       "path": "runner-session/offline-source-lineage.json",
-      "sha256": "6e64f51084570289f3405901130d4e5c102cb6208e260b0cd5ada84807a6a7ec"
+      "sha256": "51ab89c31a8b80b30aaabbdcd1b96b8efd8daa1f14c6011627ac48a5fe053471"
     },
     {
       "path": "runner-session/human-notes.md",
-      "sha256": "50c4bdf2e9397344e839ed7c89b9900980c579a03a4bbbafbd1a085be66cc5fc"
+      "sha256": "cee42ee870e3fc2cafac473a60ff18b94ea3a80c10ed63c81099d31d0af44cc6"
     },
     {
       "path": "runner-session/digests.json",
-      "sha256": "31f94067a1a5cdde7b044a996e6a84060bc92e7d00825f62ef93052277316078"
+      "sha256": "1186bdc625b70b5e9f86bda3780fcd5c1f63d57f4696331733a6fc76a75ec466"
     }
   ],
   "family_aggregates": {
@@ -48,7 +48,7 @@
   },
   "findings": [],
   "hitl_complete": false,
-  "incomplete_reason": "Human visual HITL has not been performed; the machine-only run is not a continuity pass.",
+  "incomplete_reason": "required family continuity.live_config_swap still partial (often HITL pending)",
   "machine_preflight": {
     "evaluated_steps": [
       "offline-capture",
@@ -81,14 +81,15 @@
   "restore_ok": true,
   "result": "incomplete",
   "review_repair": {
-    "behavior_head": "0d52aca",
-    "behavior_head_full": "0d52acafa82bd0d84270030619e6d33e143b217d",
+    "behavior_head": "1dba04b",
+    "behavior_head_full": "1dba04b8a004f4ab87feb18f211b3e15b315e7ec",
     "byte_safe_tree_path_identity": true,
-    "code_repair_commit": "0d52acafa82bd0d84270030619e6d33e143b217d",
+    "code_repair_commit": "1dba04b8a004f4ab87feb18f211b3e15b315e7ec",
     "complete_cli_runtime_render_surface": true,
     "continuity_hitl_runbook": true,
-    "discovered_tests": 584,
-    "full_deterministic_suite": "584 passed, 2 expected skips",
+    "discovered_tests": 586,
+    "focused_continuity_tests": 65,
+    "full_deterministic_suite": "586 passed, 2 expected skips",
     "hitl_operator": null,
     "inaccessible_subtree_regression": true,
     "inner_digest_entries": 54,
@@ -96,9 +97,10 @@
     "interrupt_after_trial_mutation": true,
     "machine_readiness_gate": true,
     "machine_session": "6/6 required steps green",
-    "milestone_tests": 106,
+    "milestone_tests": 108,
     "milestones_in_default_suite": true,
     "named_operator_required": true,
+    "nested_symlink_regression": true,
     "outer_artifact_entries": 9,
     "posthoc_freshness_finalizer": true,
     "product_collection_errors_empty": true,
@@ -108,12 +110,17 @@
     "quoted_untracked_path_identity": true,
     "required_nonvisual_skip_block": true,
     "root_relative_cache_exclusion": true,
+    "root_symlink_regression": true,
+    "source_cache_restored_identity_gate": true,
+    "staged_snapshot_schema_v2": true,
+    "symlink_preserving_snapshot_restore": true,
     "tree_collection_fail_closed": true,
     "tree_path_collision_identity": true,
     "tree_root_symlink_identity": true,
     "unreadable_regular_file_regression": true,
     "untracked_executable_mode_identity": true,
     "untracked_symlink_target_identity": true,
+    "us04_snapshot_meta_schema_v2": true,
     "visual_evidence": null
   },
   "schema": "m007_cli_scenario_continuity_v0",
@@ -129,16 +136,16 @@
     "operator_label": "machine-preflight (non-human runner label)",
     "path": "runner-session",
     "timestamps": {
-      "ended_at_utc": "2026-08-10T17:41:23.605004Z",
+      "ended_at_utc": "2026-08-10T18:26:32.860185Z",
       "local_timezone": [
         "PST",
         "PDT"
       ],
-      "started_at_utc": "2026-08-10T17:40:41.553482Z"
+      "started_at_utc": "2026-08-10T18:25:50.989081Z"
     }
   },
   "verdict": "incomplete",
-  "verdict_reason": "Human visual HITL has not been performed; the machine-only run is not a continuity pass.",
+  "verdict_reason": "required family continuity.live_config_swap still partial (often HITL pending)",
   "visual_hitl": {
     "notes": "No human visual confirmation was recorded. Agent/VLM observation is not counted as HITL evidence.",
     "operator": null,

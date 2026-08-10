@@ -23,20 +23,24 @@
       "existed": true,
       "path": "<repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception/active.json",
       "restorable": true,
-      "sha256": "d8e97abc8eade6095f709af8050831813064c240254aeb1da39b89d963617815"
+      "sha256": "0d334fdb33fd1e7fe39275080d15d174067ef51ab3117278d5fee2b7ed8d66b2"
     }
   },
   "restorable": true,
-  "schema": "continuity_us04_snapshot_meta_v1",
+  "schema": "continuity_us04_snapshot_meta_v2",
   "staged_trees": {
     "autonomy": {
+      "cache_tree_sha256": "6431a4fccd949ccaea2cbc66bf2a310dfabc454ac439ba737f524832c23efd99",
       "existed": true,
       "file_count": 23,
+      "source_tree_sha256": "6431a4fccd949ccaea2cbc66bf2a310dfabc454ac439ba737f524832c23efd99",
       "tree_sha256": "6431a4fccd949ccaea2cbc66bf2a310dfabc454ac439ba737f524832c23efd99"
     },
     "implementations": {
+      "cache_tree_sha256": "a87006c3f975546c377659babdfe50bb50a7d9cee607626d538145133e64cac3",
       "existed": true,
       "file_count": 48,
+      "source_tree_sha256": "a87006c3f975546c377659babdfe50bb50a7d9cee607626d538145133e64cac3",
       "tree_sha256": "a87006c3f975546c377659babdfe50bb50a7d9cee607626d538145133e64cac3"
     }
   }

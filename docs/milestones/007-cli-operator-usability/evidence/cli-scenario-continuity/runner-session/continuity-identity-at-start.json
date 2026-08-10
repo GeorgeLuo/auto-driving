@@ -1,7 +1,7 @@
 {
   "catalog_path": "<repo>/docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/catalogs/m007-continuity.yaml",
   "catalog_sha256": "c3a91dd86354f185d17b13cbc1500edfa343ad05340eece335065b0e2233bd12",
-  "continuity_contract_sha256": "89db5cf045e23dfc6c1b427ac55047ed806b068195156c7eb512f3d4ba93902f",
+  "continuity_contract_sha256": "0234a61ebd7d194c3986f07be2674940f96dc96b4468b20b7ed257928977ca80",
   "metrics_ui": {
     "branch": "m002/04-passive-observation",
     "commit": "722e070fdc9f4ee89d13f947bf3996e62dcb2783",
@@ -32,6 +32,6 @@
     "cli/automa_cli/vehicles.py": "7dbb09e7585506dc54e2ca0360b478269f64da2d27471c38b6bdc7450aca0de4",
     "implementations/": "a87006c3f975546c377659babdfe50bb50a7d9cee607626d538145133e64cac3"
   },
-  "runner_sha256": "3b4082c80cde00b6b4cfd9e76195e2c2f3a4102ee6809366bccbbd33c636c529",
+  "runner_sha256": "93b0add96c5ae7245f1b0a9c563fdfe00e4d51e1b187701ab51f31ab1dcdee0d",
   "schema": "continuity_identity_bundle_v0"
 }

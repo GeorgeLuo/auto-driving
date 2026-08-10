@@ -10,7 +10,7 @@ Accepted contract: [cli-scenario-continuity.md](../../proposals/cli-scenario-con
 | --- | --- |
 | Catalog | `m007-continuity` |
 | Execution | `machine_only_live` |
-| Behavior head | `0d52aca` |
+| Behavior head | `1dba04b` |
 | Human operator | **None recorded** |
 | Machine preflight | **pass** (6/6 required steps) |
 | Continuity verdict | **incomplete** |
@@ -30,19 +30,17 @@ head `0d52aca` and finalized against the current auto-driving tree.
 
 ## Latest re-review repair
 
-The remaining product-tree freshness bypass is closed at the collection owner.
-Tree exclusions are now evaluated against lexical paths relative to each tree
-root, so an ancestor directory named `__pycache__` cannot hide product files.
-The explicit scanner raises on traversal, lstat, readlink, unsupported-entry,
-or content-hash failures; `collect_identity_bundle()` records those failures
-and the finalizer refuses freshness whenever `product_collection_errors` is
-non-empty. Staged snapshot and restore paths also fail closed on tree
-collection errors.
+The remaining staged-tree restore-integrity bypass is closed at the snapshot
+and restore owner. Snapshot copies preserve nested symlinks and symlink roots,
+and record the source, cache, and expected tree identities. Restore now checks
+all three identities, preserves them in the restored tree, and fails closed on
+missing or inconsistent source/cache metadata.
 
-Regression coverage includes ancestor `__pycache__`, stable root-relative
-`__pycache__`/`.pyc`/`.pyo` exclusions, an unreadable new regular file, and an
-inaccessible subtree. The fresh machine-only run at `0d52aca` passed 6/6
-required steps, full staged-state restore, cleanup, and the post-hoc finalizer.
+Regression coverage includes a nested staged symlink and an explicit symlink
+tree root, including mutation followed by rollback. The fresh machine-only run
+at `1dba04b` passed 6/6 required steps, full staged-state restore, cleanup, and
+the post-hoc finalizer. Deterministic validation was 65 focused continuity
+tests, 108 milestone tests, and 586 full-suite tests with 2 expected skips.
 No human visual confirmation was performed.
 
 ## Family ledger
@@ -65,7 +63,8 @@ finalizer must supply and require the exact reviewed Metrics UI checkout.
 
 ## Verdict
 
-`incomplete` — deterministic commands, safety preflight, cleanup, restoration,
-and auto-driving freshness finalization passed; Metrics UI identity was
-recorded but not independently freshness-gated, and a named human must still
-inspect the live view and record the visual result before continuity can pass.
+`incomplete` — deterministic commands, safety preflight, cleanup, symlink-
+preserving restoration, and auto-driving freshness finalization passed; Metrics
+UI identity was recorded but not independently freshness-gated, and a named
+human must still inspect the live view and record the visual result before
+continuity can pass.

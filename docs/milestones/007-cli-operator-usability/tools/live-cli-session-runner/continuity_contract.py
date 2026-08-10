@@ -9,8 +9,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import shutil
+import stat as statmod
 import sys
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -745,44 +747,107 @@ def snapshot_activation(path: Path) -> dict[str, Any]:
     }
 
 
+class TreeIdentityCollectionError(RuntimeError):
+    """Raised when a product-tree identity cannot be collected completely."""
+
+
+def _tree_lstat(path: Path, *, context: str) -> os.stat_result | None:
+    """Return lstat metadata, distinguishing an absent path from collection failure."""
+
+    try:
+        return os.lstat(path)
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise TreeIdentityCollectionError(
+            f"{context} lstat failed for {path}: {exc}"
+        ) from exc
+
+
 def _dir_file_digests(root: Path) -> dict[str, str]:
+    """Collect every included leaf below ``root`` or fail closed.
+
+    Exclusions are evaluated against lexical paths relative to ``root``.  An
+    absolute checkout ancestor named ``__pycache__`` therefore cannot suppress
+    a product leaf, while enumeration, metadata, link, and content failures
+    remain visible to the freshness finalizer.
+    """
+
+    root_stat = _tree_lstat(root, context="product tree")
+    if root_stat is None:
+        raise TreeIdentityCollectionError(f"product tree root missing: {root}")
+    if not statmod.S_ISDIR(root_stat.st_mode):
+        raise TreeIdentityCollectionError(f"product tree root is not a directory: {root}")
+
     digests: dict[str, str] = {}
-    if not root.is_dir():
-        return digests
-    for path in sorted(root.rglob("*")):
-        if not (path.is_symlink() or path.is_file()):
-            continue
-        if "__pycache__" in path.parts or path.suffix in {".pyc", ".pyo"}:
-            continue
-        rel = path.relative_to(root).as_posix()
-        digest = tree_file_digest(path)
-        if digest is not None:
-            digests[rel] = digest
+
+    def visit(directory: Path, rel_parts: tuple[str, ...]) -> None:
+        try:
+            with os.scandir(directory) as iterator:
+                entries = sorted(iterator, key=lambda entry: os.fsencode(entry.name))
+        except OSError as exc:
+            raise TreeIdentityCollectionError(
+                f"product tree enumeration failed for {directory}: {exc}"
+            ) from exc
+
+        for entry in entries:
+            child_parts = rel_parts + (entry.name,)
+            if "__pycache__" in child_parts:
+                continue
+            if Path(entry.name).suffix in {".pyc", ".pyo"}:
+                continue
+
+            child = directory / entry.name
+            try:
+                child_stat = entry.stat(follow_symlinks=False)
+            except OSError as exc:
+                raise TreeIdentityCollectionError(
+                    f"product tree lstat failed for {child}: {exc}"
+                ) from exc
+
+            if statmod.S_ISDIR(child_stat.st_mode):
+                visit(child, child_parts)
+                continue
+            if not (
+                statmod.S_ISREG(child_stat.st_mode)
+                or statmod.S_ISLNK(child_stat.st_mode)
+            ):
+                raise TreeIdentityCollectionError(
+                    f"unsupported product tree entry type for {child}"
+                )
+
+            digest = tree_file_digest(child)
+            if digest is None:
+                raise TreeIdentityCollectionError(
+                    f"product tree leaf could not be hashed: {child}"
+                )
+            digests["/".join(child_parts)] = digest
+
+    visit(root, ())
     return digests
 
 
-def _tree_root_identity(root: Path) -> bytes | None:
+def _tree_root_identity(
+    root: Path, *, root_stat: os.stat_result | None = None
+) -> bytes | None:
     """Return byte-safe Git-relevant identity for an accepted tree root."""
 
-    import os
-    import stat as statmod
-
-    try:
-        if root.is_symlink():
-            return _serialize_identity_fields(
-                (b"product-tree-root-v1", b"120000", os.fsencode(os.readlink(root)))
-            )
-        if root.is_dir():
-            return _serialize_identity_fields((b"product-tree-root-v1", b"040000"))
-    except OSError:
+    if root_stat is None:
+        root_stat = _tree_lstat(root, context="product tree")
+    if root_stat is None:
         return None
-    if root.exists():
+    if statmod.S_ISLNK(root_stat.st_mode):
         try:
-            root_type = f"other:{statmod.S_IFMT(root.stat().st_mode):o}".encode("ascii")
-        except OSError:
-            return None
-        return _serialize_identity_fields((b"product-tree-root-v1", root_type))
-    return None
+            target = os.fsencode(os.readlink(root))
+        except OSError as exc:
+            raise TreeIdentityCollectionError(
+                f"product tree root readlink failed for {root}: {exc}"
+            ) from exc
+        return _serialize_identity_fields((b"product-tree-root-v1", b"120000", target))
+    if statmod.S_ISDIR(root_stat.st_mode):
+        return _serialize_identity_fields((b"product-tree-root-v1", b"040000"))
+    root_type = f"other:{statmod.S_IFMT(root_stat.st_mode):o}".encode("ascii")
+    return _serialize_identity_fields((b"product-tree-root-v1", root_type))
 
 
 def _tree_sha256_from_digests(
@@ -807,12 +872,13 @@ def _tree_sha256_from_digests(
 def tree_content_sha256(root: Path) -> str | None:
     """Content-addressed digest of a Git-relevant product tree."""
 
-    root_identity = _tree_root_identity(root)
+    root_stat = _tree_lstat(root, context="product tree")
+    root_identity = _tree_root_identity(root, root_stat=root_stat)
     if root_identity is None:
         return None
-    if root.is_symlink():
+    if root_stat is not None and statmod.S_ISLNK(root_stat.st_mode):
         return _tree_sha256_from_digests({}, root_identity=root_identity)
-    if not root.is_dir():
+    if root_stat is None or not statmod.S_ISDIR(root_stat.st_mode):
         return None
     return _tree_sha256_from_digests(
         _dir_file_digests(root), root_identity=root_identity
@@ -867,16 +933,30 @@ def snapshot_staged_state(
             src = bundle / tree_name
             dst = cache_dir / tree_name
             if src.is_dir():
-                _copy_tree(src, dst)
-                digests = _dir_file_digests(dst)
-                tree_hash = _tree_sha256_from_digests(digests)
-                staged_trees[tree_name] = {
-                    "cache_relative": tree_name,
-                    "file_count": len(digests),
-                    "tree_sha256": tree_hash,
-                    "file_digests": digests,
-                    "existed": True,
-                }
+                try:
+                    _copy_tree(src, dst)
+                    digests = _dir_file_digests(dst)
+                    tree_hash = _tree_sha256_from_digests(digests)
+                except (OSError, TreeIdentityCollectionError) as exc:
+                    ok = False
+                    error = f"staged tree {tree_name} collection failed: {exc}"
+                    errors.append(error)
+                    staged_trees[tree_name] = {
+                        "cache_relative": tree_name,
+                        "file_count": 0,
+                        "tree_sha256": None,
+                        "file_digests": {},
+                        "existed": True,
+                        "collection_error": error,
+                    }
+                else:
+                    staged_trees[tree_name] = {
+                        "cache_relative": tree_name,
+                        "file_count": len(digests),
+                        "tree_sha256": tree_hash,
+                        "file_digests": digests,
+                        "existed": True,
+                    }
             else:
                 staged_trees[tree_name] = {
                     "cache_relative": tree_name,
@@ -986,7 +1066,14 @@ def restore_activation(snapshot: Mapping[str, Any], *, path: Path | None = None)
                             "results": results,
                         }
                     # Verify cache integrity before installing (fail closed on corruption).
-                    cache_hash = tree_content_sha256(src)
+                    try:
+                        cache_hash = tree_content_sha256(src)
+                    except TreeIdentityCollectionError as exc:
+                        return {
+                            "ok": False,
+                            "error": f"staged tree cache collection failed for {tree_name}: {exc}",
+                            "results": results,
+                        }
                     if cache_hash != expected_hash:
                         return {
                             "ok": False,
@@ -1004,7 +1091,14 @@ def restore_activation(snapshot: Mapping[str, Any], *, path: Path | None = None)
                             "error": f"restore tree {tree_name}: {exc}",
                             "results": results,
                         }
-                    actual_hash = tree_content_sha256(dst)
+                    try:
+                        actual_hash = tree_content_sha256(dst)
+                    except TreeIdentityCollectionError as exc:
+                        return {
+                            "ok": False,
+                            "error": f"restored tree collection failed for {tree_name}: {exc}",
+                            "results": results,
+                        }
                     if actual_hash != expected_hash:
                         return {
                             "ok": False,
@@ -1142,16 +1236,33 @@ def collect_identity_bundle(
         paths = [repo_root / rel for rel in DEFAULT_PRODUCT_RELATIVE_PATHS]
         include_default_trees = True
     product: dict[str, str | None] = {}
+    product_collection_errors: dict[str, str] = {}
     for path in paths:
         try:
             rel = str(path.resolve().relative_to(repo_root.resolve()))
         except ValueError:
             rel = str(path)
-        product[rel] = tree_file_digest(path)
+        digest = tree_file_digest(path)
+        product[rel] = digest
+        if digest is None:
+            product_collection_errors[rel] = (
+                f"product file identity unavailable: {path}"
+            )
     if include_default_trees:
         for tree in DEFAULT_PRODUCT_TREE_ROOTS:
             root = repo_root / tree
-            product[f"{tree}/"] = tree_content_sha256(root)
+            key = f"{tree}/"
+            try:
+                digest = tree_content_sha256(root)
+            except TreeIdentityCollectionError as exc:
+                digest = None
+                product_collection_errors[key] = str(exc)
+            else:
+                if digest is None:
+                    product_collection_errors[key] = (
+                        f"product tree identity unavailable: {root}"
+                    )
+            product[key] = digest
 
     return {
         "schema": "continuity_identity_bundle_v0",
@@ -1160,6 +1271,7 @@ def collect_identity_bundle(
         "runner_sha256": tree_file_digest(runner),
         "continuity_contract_sha256": tree_file_digest(continuity),
         "product_sha256": product,
+        "product_collection_errors": product_collection_errors,
         "metrics_ui": normalize_metrics_ui_identity(metrics_ui),
     }
 
@@ -1200,6 +1312,18 @@ def finalize_evidence_freshness(
     current: Mapping[str, Any],
 ) -> tuple[bool, str]:
     """Compare recorded identities to final tree identities; refuse pass on mismatch."""
+
+    for label, bundle in (("recorded", recorded), ("current", current)):
+        errors = bundle.get("product_collection_errors")
+        if errors is None or errors == {}:
+            continue
+        if isinstance(errors, dict):
+            detail = "; ".join(
+                f"{path}: {message}" for path, message in sorted(errors.items())
+            )
+        else:
+            detail = repr(errors)
+        return False, f"{label} product collection failed: {detail}"
 
     for key in ("catalog_sha256", "runner_sha256", "continuity_contract_sha256"):
         rec = recorded.get(key)

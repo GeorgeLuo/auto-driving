@@ -7,6 +7,7 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import importlib.util
 
@@ -840,6 +841,119 @@ class ContinuityRestoreAndFinalizerTests(unittest.TestCase):
             ok, reason = cc.finalize_evidence_freshness(recorded, current)
             self.assertFalse(ok, reason)
             self.assertIn("product mismatch autonomy/", reason)
+
+    def test_product_tree_ancestor_pycache_name_does_not_omit_material(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "__pycache__" / "repo"
+            catalog = _identity_fixture(root)
+            engine = root / "autonomy" / "runtime" / "engine.py"
+            engine.parent.mkdir(parents=True)
+            engine.write_text("engine-v1\n", encoding="utf-8")
+
+            recorded = cc.collect_identity_bundle(
+                repo_root=root, catalog_path=catalog
+            )
+            self.assertIn(
+                "runtime/engine.py",
+                cc._dir_file_digests(root / "autonomy"),
+            )
+            engine.write_text("engine-v2\n", encoding="utf-8")
+            current = cc.collect_identity_bundle(
+                repo_root=root, catalog_path=catalog
+            )
+
+            self.assertNotEqual(
+                recorded["product_sha256"]["autonomy/"],
+                current["product_sha256"]["autonomy/"],
+            )
+            ok, reason = cc.finalize_evidence_freshness(recorded, current)
+            self.assertFalse(ok, reason)
+            self.assertIn("product mismatch autonomy/", reason)
+
+    def test_product_tree_relative_cache_exclusions_are_stable(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            catalog = _identity_fixture(root)
+            autonomy = root / "autonomy"
+            before = cc.tree_content_sha256(autonomy)
+
+            (autonomy / "__pycache__" / "ignored.py").parent.mkdir()
+            (autonomy / "__pycache__" / "ignored.py").write_text(
+                "ignored\n", encoding="utf-8"
+            )
+            (autonomy / "generated.pyc").write_bytes(b"ignored-pyc")
+            (autonomy / "generated.pyo").write_bytes(b"ignored-pyo")
+
+            after = cc.tree_content_sha256(autonomy)
+            self.assertEqual(before, after)
+            self.assertEqual(
+                cc.collect_identity_bundle(
+                    repo_root=root, catalog_path=catalog
+                )["product_collection_errors"],
+                {},
+            )
+
+    def test_unreadable_product_tree_file_fails_full_finalizer(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            catalog = _identity_fixture(root)
+            recorded = cc.collect_identity_bundle(
+                repo_root=root, catalog_path=catalog
+            )
+            unreadable = root / "autonomy" / "runtime" / "unreadable-extra.py"
+            unreadable.parent.mkdir(parents=True)
+            unreadable.write_text("secret\n", encoding="utf-8")
+            unreadable.chmod(0)
+            try:
+                real_digest = cc.tree_file_digest
+
+                def fail_unreadable(path: Path) -> str | None:
+                    if path == unreadable:
+                        return None
+                    return real_digest(path)
+
+                with mock.patch.object(cc, "tree_file_digest", side_effect=fail_unreadable):
+                    current = cc.collect_identity_bundle(
+                        repo_root=root, catalog_path=catalog
+                    )
+            finally:
+                unreadable.chmod(0o644)
+
+            self.assertIn("autonomy/", current["product_collection_errors"])
+            ok, reason = cc.finalize_evidence_freshness(recorded, current)
+            self.assertFalse(ok, reason)
+            self.assertIn("product collection failed", reason)
+
+    def test_inaccessible_product_tree_subtree_fails_full_finalizer(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            catalog = _identity_fixture(root)
+            recorded = cc.collect_identity_bundle(
+                repo_root=root, catalog_path=catalog
+            )
+            blocked = root / "autonomy" / "runtime" / "inaccessible-subtree"
+            blocked.mkdir(parents=True)
+            (blocked / "material.py").write_text("material\n", encoding="utf-8")
+            blocked.chmod(0)
+            try:
+                real_scandir = cc.os.scandir
+
+                def fail_subtree(path: Path):
+                    if Path(path) == blocked:
+                        raise PermissionError("test inaccessible subtree")
+                    return real_scandir(path)
+
+                with mock.patch.object(cc.os, "scandir", side_effect=fail_subtree):
+                    current = cc.collect_identity_bundle(
+                        repo_root=root, catalog_path=catalog
+                    )
+            finally:
+                blocked.chmod(0o755)
+
+            self.assertIn("autonomy/", current["product_collection_errors"])
+            ok, reason = cc.finalize_evidence_freshness(recorded, current)
+            self.assertFalse(ok, reason)
+            self.assertIn("product collection failed", reason)
 
     def test_session_against_tree_ok_when_unchanged(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

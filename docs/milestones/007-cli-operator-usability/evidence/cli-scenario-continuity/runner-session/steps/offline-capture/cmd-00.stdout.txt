@@ -1,18 +1,18 @@
 Perception experiment
 ---------------------
-review: runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260810-004119-948505-294b8b79/review.html
-run: runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260810-004119-948505-294b8b79
+review: runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260810-104054-247631-ae133811/review.html
+run: runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260810-104054-247631-ae133811
 source: chase-sim-chaser
 selection: explicit id
 algorithm: lightweight_observer
 frames: 4
 failed frames: 0
 statuses: ok=4
-evidence: floor_boundary=5, sensor_frame=4, surface=4
-latency: cold 898.181 ms; steady median 1007.478 ms, p95 1077.604 ms
-peak memory: 232.375 MiB
-representation health: 0.860 (not semantic accuracy)
+evidence: floor_boundary=8, sensor_frame=4, surface=4
+latency: cold 861.591 ms; steady median 873.331 ms, p95 887.217 ms
+peak memory: 224.156 MiB
+representation health: 0.835 (not semantic accuracy)
 recording: on
 plugins:
-- floor-plane-v0: ok=4; median 653.078 ms
-- frame-observation-v0: ok=4; median 6.500 ms
+- floor-plane-v0: ok=4; median 558.562 ms
+- frame-observation-v0: ok=4; median 6.464 ms

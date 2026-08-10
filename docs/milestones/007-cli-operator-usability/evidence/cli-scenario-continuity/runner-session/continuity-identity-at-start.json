@@ -1,7 +1,7 @@
 {
   "catalog_path": "<repo>/docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/catalogs/m007-continuity.yaml",
   "catalog_sha256": "c3a91dd86354f185d17b13cbc1500edfa343ad05340eece335065b0e2233bd12",
-  "continuity_contract_sha256": "27268ebf366e5c98e997ee004dc7741fb4e982b021ec4299fc102136be4727a6",
+  "continuity_contract_sha256": "89db5cf045e23dfc6c1b427ac55047ed806b068195156c7eb512f3d4ba93902f",
   "metrics_ui": {
     "branch": "m002/04-passive-observation",
     "commit": "722e070fdc9f4ee89d13f947bf3996e62dcb2783",
@@ -12,6 +12,7 @@
     "worktree_state": "clean"
   },
   "metrics_ui_required": false,
+  "product_collection_errors": {},
   "product_sha256": {
     "autonomy/": "6431a4fccd949ccaea2cbc66bf2a310dfabc454ac439ba737f524832c23efd99",
     "cli/automa": "a88ec0f9081e8447150b4a1e322517c4b73e0c1a4fa92e70c17fffde544291ce",

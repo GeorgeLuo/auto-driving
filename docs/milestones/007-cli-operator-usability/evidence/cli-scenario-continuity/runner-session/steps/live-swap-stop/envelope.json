@@ -11,10 +11,10 @@
         "chase-sim-chaser"
       ],
       "command": "./cli/automa vehicles automation stop --id chase-sim-chaser",
-      "elapsed_ms": 676,
-      "ended_at_utc": "2026-08-10T07:41:33.788508Z",
+      "elapsed_ms": 762,
+      "ended_at_utc": "2026-08-10T17:41:07.077649Z",
       "exit_code": 0,
-      "started_at_utc": "2026-08-10T07:41:33.112516Z",
+      "started_at_utc": "2026-08-10T17:41:06.315255Z",
       "stderr_path": "steps/live-swap-stop/cmd-00.stderr.txt",
       "stdout_path": "steps/live-swap-stop/cmd-00.stdout.txt"
     },
@@ -27,10 +27,10 @@
         "chase-sim-chaser"
       ],
       "command": "./cli/automa vehicles status --id chase-sim-chaser",
-      "elapsed_ms": 703,
-      "ended_at_utc": "2026-08-10T07:41:34.493017Z",
+      "elapsed_ms": 734,
+      "ended_at_utc": "2026-08-10T17:41:07.813722Z",
       "exit_code": 0,
-      "started_at_utc": "2026-08-10T07:41:33.789410Z",
+      "started_at_utc": "2026-08-10T17:41:07.079116Z",
       "stderr_path": "steps/live-swap-stop/cmd-01.stderr.txt",
       "stdout_path": "steps/live-swap-stop/cmd-01.stdout.txt"
     }

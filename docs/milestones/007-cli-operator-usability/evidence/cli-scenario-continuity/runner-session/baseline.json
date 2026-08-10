@@ -9,7 +9,7 @@
   "execution_mode": "machine_only_live",
   "metrics_ui_origin": "http://localhost:5050",
   "operating_system": "macOS-26.5.1-arm64-arm-64bit",
-  "operator": "machine-preflight",
+  "operator": null,
   "precondition_cleanup": {
     "attempted": false,
     "deployment_before": "deployed",
@@ -17,10 +17,10 @@
     "needed": false,
     "ok": true,
     "pid_liveness": {
-      "6526": false
+      "11734": false
     },
     "pids_before": [
-      6526
+      11734
     ],
     "status_exit_code": 0,
     "stop_exit_code": null,
@@ -29,7 +29,7 @@
     "worker_state_before": "stopped"
   },
   "python": "3.11.7",
-  "recorded_at_utc": "2026-08-10T07:41:07.566980Z",
+  "recorded_at_utc": "2026-08-10T17:40:41.553482Z",
   "recording_before": [
     "automation-20260630-214835",
     "automation-20260630-214933"
@@ -37,7 +37,7 @@
   "repositories": {
     "auto_driving": {
       "branch": "m007/scenario-continuity",
-      "commit": "c0ffed754a689a90189a516f36573a2a2e5fc7a6",
+      "commit": "0d52acafa82bd0d84270030619e6d33e143b217d",
       "diff_identity": null,
       "github_owner": "GeorgeLuo",
       "github_repo": "auto-driving",

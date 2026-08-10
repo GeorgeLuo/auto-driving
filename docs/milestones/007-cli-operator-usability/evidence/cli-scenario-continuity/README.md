@@ -10,13 +10,13 @@ Accepted contract: [cli-scenario-continuity.md](../../proposals/cli-scenario-con
 | --- | --- |
 | Catalog | `m007-continuity` |
 | Execution | `machine_only_live` |
-| Behavior head | `c0ffed7` |
+| Behavior head | `0d52aca` |
 | Human operator | **None recorded** |
 | Machine preflight | **pass** (6/6 required steps) |
 | Continuity verdict | **incomplete** |
 | Visual gate | **pending** — no human visual confirmation was recorded |
 | US-04 restore | **ok** (full staged snapshot/restore verification) |
-| Finalizer | **ok** against auto-driving identities; Metrics UI identity recorded but not independently freshness-gated in machine-only mode |
+| Finalizer | **ok** against auto-driving identities; product collection errors empty; Metrics UI identity recorded but not independently freshness-gated in machine-only mode |
 | Metrics UI | `m002/04-passive-observation` at `722e070fdc9f4ee89d13f947bf3996e62dcb2783`, clean; reserved for independent HITL finalization |
 | Evidence | `runner-session/result.json`, `human-notes.md`, and machine transcripts |
 
@@ -26,7 +26,24 @@ The product-tree identity now binds the root type and symlink target bytes and
 uses length-framed raw relative-path bytes plus Git-relevant leaf identities.
 This closes root-symlink retarget and newline/colon path-collision bypasses at
 the aggregate tree owner. The refreshed package was collected from behavior
-head `c0ffed7` and finalized against the current auto-driving tree.
+head `0d52aca` and finalized against the current auto-driving tree.
+
+## Latest re-review repair
+
+The remaining product-tree freshness bypass is closed at the collection owner.
+Tree exclusions are now evaluated against lexical paths relative to each tree
+root, so an ancestor directory named `__pycache__` cannot hide product files.
+The explicit scanner raises on traversal, lstat, readlink, unsupported-entry,
+or content-hash failures; `collect_identity_bundle()` records those failures
+and the finalizer refuses freshness whenever `product_collection_errors` is
+non-empty. Staged snapshot and restore paths also fail closed on tree
+collection errors.
+
+Regression coverage includes ancestor `__pycache__`, stable root-relative
+`__pycache__`/`.pyc`/`.pyo` exclusions, an unreadable new regular file, and an
+inaccessible subtree. The fresh machine-only run at `0d52aca` passed 6/6
+required steps, full staged-state restore, cleanup, and the post-hoc finalizer.
+No human visual confirmation was performed.
 
 ## Family ledger
 

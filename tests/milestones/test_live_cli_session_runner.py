@@ -2592,8 +2592,13 @@ class ContinuityRunnerUs04TransactionTests(unittest.TestCase):
         meta = json.loads(
             (session_dir / "us04-activation-snapshot-meta.json").read_text(encoding="utf-8")
         )
+        self.assertEqual(meta.get("schema"), "continuity_us04_snapshot_meta_v3")
         self.assertIn("staged_trees", meta)
         self.assertTrue(meta["staged_trees"].get("autonomy", {}).get("tree_sha256"))
+        self.assertEqual(meta["files"]["perception"].get("entry_type"), "regular")
+        self.assertTrue(meta["files"]["perception"].get("identity_sha256"))
+        self.assertEqual(restore["results"]["perception"].get("entry_type"), "regular")
+        self.assertTrue(restore["results"]["perception"].get("verified"))
         compare = json.loads(
             (session_dir / "us04-snapshot-restore-compare.json").read_text(encoding="utf-8")
         )

@@ -723,32 +723,166 @@ def bundle_root(repo_root: Path, vehicle_id: str) -> Path:
     return repo_root / "runtime" / "vehicles" / vehicle_id / "bundle"
 
 
-def snapshot_activation(path: Path) -> dict[str, Any]:
-    """Capture restorable activation bytes + verification hash for one file."""
+class TreeIdentityCollectionError(RuntimeError):
+    """Raised when a product-tree identity cannot be collected completely."""
 
-    if not path.is_file():
+
+_MANAGED_IDENTITY_KEYS = (
+    "existed",
+    "entry_type",
+    "mode",
+    "sha256",
+    "symlink_target",
+    "identity_sha256",
+)
+_MANAGED_FILE_NAMES = ("perception", "decision", "memory", "bundle_manifest")
+
+
+def _managed_identity_sha256(
+    *,
+    entry_type: str,
+    mode: int | None,
+    material: bytes,
+) -> str:
+    """Hash a managed entry's non-followed type, mode, and material."""
+
+    mode_bytes = b"" if mode is None else str(mode).encode("ascii")
+    return hashlib.sha256(
+        _serialize_identity_fields(
+            (b"managed-entry-identity-v1", entry_type.encode("utf-8"), mode_bytes, material)
+        )
+    ).hexdigest()
+
+
+def _collect_managed_identity(path: Path) -> tuple[dict[str, Any], bytes | None]:
+    """Collect one managed file-like entry without following symlinks."""
+
+    try:
+        info = os.lstat(path)
+    except FileNotFoundError:
+        identity = {
+            "existed": False,
+            "entry_type": "absent",
+            "mode": None,
+            "sha256": None,
+            "symlink_target": None,
+            "identity_sha256": _managed_identity_sha256(
+                entry_type="absent", mode=None, material=b""
+            ),
+        }
+        return identity, None
+    except OSError as exc:
+        raise TreeIdentityCollectionError(
+            f"managed entry lstat failed for {path}: {exc}"
+        ) from exc
+
+    if statmod.S_ISREG(info.st_mode):
+        try:
+            raw = path.read_bytes()
+        except OSError as exc:
+            raise TreeIdentityCollectionError(
+                f"managed entry read failed for {path}: {exc}"
+            ) from exc
+        mode = statmod.S_IMODE(info.st_mode)
+        identity = {
+            "existed": True,
+            "entry_type": "regular",
+            "mode": mode,
+            "sha256": hashlib.sha256(raw).hexdigest(),
+            "symlink_target": None,
+            "identity_sha256": _managed_identity_sha256(
+                entry_type="regular", mode=mode, material=raw
+            ),
+        }
+        return identity, raw
+
+    if statmod.S_ISLNK(info.st_mode):
+        try:
+            target = os.readlink(path)
+        except OSError as exc:
+            raise TreeIdentityCollectionError(
+                f"managed symlink read failed for {path}: {exc}"
+            ) from exc
+        target_bytes = os.fsencode(target)
+        identity = {
+            "existed": True,
+            "entry_type": "symlink",
+            "mode": None,
+            "sha256": hashlib.sha256(target_bytes).hexdigest(),
+            "symlink_target": target,
+            "identity_sha256": _managed_identity_sha256(
+                entry_type="symlink", mode=None, material=target_bytes
+            ),
+        }
+        return identity, None
+
+    raise TreeIdentityCollectionError(
+        f"managed entry has unsupported type for {path}: mode={info.st_mode:o}"
+    )
+
+
+def _identity_matches(expected: Mapping[str, Any], actual: Mapping[str, Any]) -> bool:
+    return all(actual.get(key) == expected.get(key) for key in _MANAGED_IDENTITY_KEYS)
+
+
+def snapshot_activation(path: Path) -> dict[str, Any]:
+    """Capture one managed activation/manifest entry with exact identity."""
+
+    try:
+        identity, raw = _collect_managed_identity(path)
+    except (OSError, TreeIdentityCollectionError) as exc:
+        return {
+            "ok": False,
+            "error": str(exc),
+            "restorable_bytes": None,
+            "path": str(path),
+            "existed": True,
+            "entry_type": "unsupported",
+            "mode": None,
+            "sha256": None,
+            "symlink_target": None,
+            "identity_sha256": None,
+        }
+
+    if identity["entry_type"] == "absent":
         return {
             "ok": False,
             "error": f"activation file missing: {path}",
             "restorable_bytes": None,
-            "sha256": None,
             "path": str(path),
-            "existed": False,
+            "encoding": "utf-8",
+            **identity,
         }
-    raw = path.read_bytes()
+
+    if identity["entry_type"] == "symlink":
+        return {
+            "ok": True,
+            "error": None,
+            "restorable_bytes": None,
+            "path": str(path),
+            "encoding": None,
+            **identity,
+        }
+
+    try:
+        body = (raw or b"").decode("utf-8")
+    except UnicodeDecodeError as exc:
+        return {
+            "ok": False,
+            "error": f"managed entry is not UTF-8: {path}: {exc}",
+            "restorable_bytes": None,
+            "path": str(path),
+            "encoding": "utf-8",
+            **identity,
+        }
     return {
         "ok": True,
         "error": None,
-        "restorable_bytes": raw.decode("utf-8"),
-        "sha256": hashlib.sha256(raw).hexdigest(),
+        "restorable_bytes": body,
         "path": str(path),
         "encoding": "utf-8",
-        "existed": True,
+        **identity,
     }
-
-
-class TreeIdentityCollectionError(RuntimeError):
-    """Raised when a product-tree identity cannot be collected completely."""
 
 
 def _tree_lstat(path: Path, *, context: str) -> os.stat_result | None:
@@ -886,7 +1020,7 @@ def tree_content_sha256(root: Path) -> str | None:
 
 
 def _remove_tree_path(path: Path) -> None:
-    """Remove a tree or symlink without following a symlink at its root."""
+    """Remove a path without following a symlink at its root."""
 
     if path.is_symlink():
         path.unlink()
@@ -918,8 +1052,9 @@ def snapshot_staged_state(
     """Snapshot perception/decision/memory activations + full staged bundle trees.
 
     When ``cache_dir`` is provided, copies ``autonomy/`` and ``implementations/``
-    plus ``bundle-manifest.json`` into the cache so restore can recreate the prior
-    staged configuration even after ``update perception/memory`` resyncs the bundle.
+    into the cache so restore can recreate the prior staged configuration even
+    after ``update perception/memory`` resyncs the bundle. Managed activation and
+    manifest entries retain their complete non-followed identity in ``files``.
     """
 
     files: dict[str, Any] = {}
@@ -1010,9 +1145,6 @@ def snapshot_staged_state(
                     "collection_error": error,
                 }
             staged_trees[tree_name] = staged_meta
-        if manifest_path.is_file():
-            (cache_dir / "bundle-manifest.json").write_bytes(manifest_path.read_bytes())
-
     return {
         "ok": ok,
         "error": None if ok else "; ".join(errors),
@@ -1020,28 +1152,112 @@ def snapshot_staged_state(
         "vehicle_id": vehicle_id,
         "staged_trees": staged_trees,
         "cache_dir": str(cache_dir) if cache_dir is not None else None,
-        "schema": "continuity_staged_snapshot_v2",
+        "schema": "continuity_staged_snapshot_v3",
     }
 
 
 def snapshot_is_restorable(snapshot: Mapping[str, Any]) -> bool:
-    if snapshot.get("ok") is not True and "files" not in snapshot:
-        # single-file form
-        if snapshot.get("existed") is False:
-            return True  # absence is a valid restorable state
-        return False
     if "files" in snapshot:
         if snapshot.get("ok") is not True:
             return False
         files = snapshot.get("files") or {}
         if not isinstance(files, dict) or not files:
             return False
+        if any(
+            name not in files or not isinstance(files.get(name), dict)
+            for name in _MANAGED_FILE_NAMES
+        ):
+            return False
         perception = files.get("perception") or {}
-        return bool(perception.get("existed")) and isinstance(
-            perception.get("restorable_bytes"), str
-        ) and bool(perception.get("sha256"))
-    body = snapshot.get("restorable_bytes")
-    return isinstance(body, str) and len(body) > 0 and isinstance(snapshot.get("sha256"), str)
+        return bool(perception.get("existed")) and all(
+            snapshot_is_restorable(files[name]) for name in _MANAGED_FILE_NAMES
+        )
+
+    entry_type = snapshot.get("entry_type")
+    identity_sha256 = snapshot.get("identity_sha256")
+    if not isinstance(identity_sha256, str) or not identity_sha256:
+        return False
+    if entry_type == "absent":
+        return snapshot.get("existed") is False
+    if snapshot.get("existed") is not True:
+        return False
+    if entry_type == "regular":
+        mode = snapshot.get("mode")
+        return (
+            isinstance(snapshot.get("restorable_bytes"), str)
+            and isinstance(snapshot.get("sha256"), str)
+            and bool(snapshot.get("sha256"))
+            and isinstance(mode, int)
+            and not isinstance(mode, bool)
+        )
+    if entry_type == "symlink":
+        return (
+            isinstance(snapshot.get("symlink_target"), str)
+            and isinstance(snapshot.get("sha256"), str)
+            and bool(snapshot.get("sha256"))
+            and snapshot.get("mode") is None
+        )
+    return False
+
+
+def _restore_managed_snapshot(
+    snapshot: Mapping[str, Any], *, path: Path | None = None
+) -> dict[str, Any]:
+    """Restore one managed entry and verify its complete non-followed identity."""
+
+    raw_path = path if path is not None else snapshot.get("path")
+    if not raw_path:
+        return {"ok": False, "error": "managed snapshot missing path"}
+    target = Path(str(raw_path))
+    if not snapshot_is_restorable(snapshot):
+        return {"ok": False, "error": "snapshot is not restorable"}
+
+    entry_type = snapshot.get("entry_type")
+    was_present = os.path.lexists(target)
+    try:
+        if entry_type == "absent":
+            if was_present:
+                _remove_tree_path(target)
+        elif entry_type == "regular":
+            body = str(snapshot["restorable_bytes"]).encode("utf-8")
+            _remove_tree_path(target)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(body)
+            os.chmod(target, int(snapshot["mode"]))
+        elif entry_type == "symlink":
+            link_target = snapshot.get("symlink_target")
+            if not isinstance(link_target, str):
+                return {"ok": False, "error": "symlink snapshot missing target"}
+            _remove_tree_path(target)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.symlink_to(link_target)
+        else:
+            return {"ok": False, "error": f"unsupported managed entry type: {entry_type}"}
+
+        actual, _ = _collect_managed_identity(target)
+    except (OSError, OverflowError, ValueError, TreeIdentityCollectionError) as exc:
+        return {"ok": False, "error": f"managed entry restore failed for {target}: {exc}"}
+
+    if not _identity_matches(snapshot, actual):
+        return {
+            "ok": False,
+            "error": f"managed entry identity mismatch for {target}",
+            "expected": {key: snapshot.get(key) for key in _MANAGED_IDENTITY_KEYS},
+            "actual": actual,
+        }
+
+    result = {
+        "ok": True,
+        "error": None,
+        "path": str(target),
+        **actual,
+        "verified": True,
+    }
+    if entry_type == "absent":
+        result["removed_trial_file"] = was_present
+        if not was_present:
+            result["skipped"] = "did_not_exist"
+    return result
 
 
 def restore_activation(snapshot: Mapping[str, Any], *, path: Path | None = None) -> dict[str, Any]:
@@ -1169,90 +1385,21 @@ def restore_activation(snapshot: Mapping[str, Any], *, path: Path | None = None)
                         "cache_tree_sha256": cache_hash,
                         "verified": True,
                     }
-                # restore bundle-manifest from cache if present and verify
-                cached_manifest = cache_dir / "bundle-manifest.json"
-                manifest_snap = (snapshot.get("files") or {}).get("bundle_manifest") or {}
-                if cached_manifest.is_file():
-                    target_manifest = bundle / "bundle-manifest.json"
-                    body = cached_manifest.read_bytes()
-                    target_manifest.write_bytes(body)
-                    actual = hashlib.sha256(body).hexdigest()
-                    expected = manifest_snap.get("sha256")
-                    if isinstance(expected, str) and expected and actual != expected:
-                        return {
-                            "ok": False,
-                            "error": "restored bundle-manifest hash mismatch",
-                            "results": results,
-                        }
-                    results["tree:bundle_manifest"] = {
-                        "ok": True,
-                        "path": str(target_manifest),
-                        "sha256": actual,
-                        "verified": True,
-                    }
-
         for name, file_snap in (snapshot.get("files") or {}).items():
             if not isinstance(file_snap, dict):
-                continue
-            if name in {"bundle_manifest"} and snapshot.get("cache_dir"):
-                # already restored from cache when available
-                if "tree:bundle_manifest" in results:
-                    continue
-            target = Path(str(file_snap.get("path") or ""))
-            if file_snap.get("existed") is False:
-                # Absence is restorable: remove trial-created file if present.
-                if target and target.is_file():
-                    try:
-                        target.unlink()
-                        results[name] = {
-                            "ok": True,
-                            "removed_trial_file": True,
-                            "path": str(target),
-                        }
-                    except OSError as exc:
-                        return {
-                            "ok": False,
-                            "error": f"{name}: failed to remove trial file: {exc}",
-                            "results": results,
-                        }
-                else:
-                    results[name] = {"ok": True, "skipped": "did_not_exist", "removed_trial_file": False}
-                continue
-            if not snapshot_is_restorable(file_snap):
-                if name == "perception":
-                    return {"ok": False, "error": f"{name} not restorable", "results": results}
-                results[name] = {"ok": True, "skipped": "not_restorable_optional"}
-                continue
-            one = restore_activation(file_snap)
+                return {
+                    "ok": False,
+                    "error": f"{name}: invalid managed snapshot",
+                    "results": results,
+                }
+            one = _restore_managed_snapshot(file_snap)
             results[name] = one
             if one.get("ok") is not True:
                 return {"ok": False, "error": f"{name}: {one.get('error')}", "results": results}
         return {"ok": True, "error": None, "results": results}
 
     # Single-file restore
-    if snapshot.get("existed") is False:
-        target = Path(path or snapshot.get("path") or "")
-        if target.is_file():
-            target.unlink()
-            return {"ok": True, "error": None, "path": str(target), "removed_trial_file": True}
-        return {"ok": True, "error": None, "skipped": "did_not_exist", "removed_trial_file": False}
-
-    if not snapshot_is_restorable(snapshot):
-        return {"ok": False, "error": "snapshot is not restorable (need restorable_bytes)"}
-    target = Path(path or snapshot["path"])
-    body = str(snapshot["restorable_bytes"]).encode("utf-8")
-    expected = str(snapshot["sha256"])
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_bytes(body)
-    actual = hashlib.sha256(target.read_bytes()).hexdigest()
-    if actual != expected:
-        return {
-            "ok": False,
-            "error": "restore verification hash mismatch",
-            "expected": expected,
-            "actual": actual,
-        }
-    return {"ok": True, "error": None, "path": str(target), "sha256": actual}
+    return _restore_managed_snapshot(snapshot, path=path)
 
 
 def tree_file_digest(path: Path) -> str | None:

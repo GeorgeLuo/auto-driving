@@ -49,6 +49,7 @@ snapshot_activation = _continuity.snapshot_activation
 snapshot_staged_state = _continuity.snapshot_staged_state
 restore_activation = _continuity.restore_activation
 snapshot_is_restorable = _continuity.snapshot_is_restorable
+MANAGED_IDENTITY_KEYS = _continuity._MANAGED_IDENTITY_KEYS
 derive_continuity_verdict = _continuity.derive_continuity_verdict
 collect_git_identity = _continuity.collect_git_identity
 capture_source_lineage = _continuity.capture_source_lineage
@@ -2905,6 +2906,17 @@ def run_session(
                         meta_files[name] = {
                             "path": _redact_path(str(file_snap.get("path") or ""), repo_root),
                             "sha256": file_snap.get("sha256"),
+                            "entry_type": file_snap.get("entry_type"),
+                            "mode": file_snap.get("mode"),
+                            "symlink_target": (
+                                _redact_path(
+                                    str(file_snap.get("symlink_target")),
+                                    repo_root,
+                                )
+                                if file_snap.get("symlink_target") is not None
+                                else None
+                            ),
+                            "identity_sha256": file_snap.get("identity_sha256"),
                             "restorable": snapshot_is_restorable(file_snap),
                             "existed": file_snap.get("existed"),
                         }
@@ -2921,7 +2933,7 @@ def run_session(
                             # durable expected digest only (not full file path map)
                         }
                     snapshot_meta_doc = {
-                        "schema": "continuity_us04_snapshot_meta_v2",
+                        "schema": "continuity_us04_snapshot_meta_v3",
                         "restorable": True,
                         "files": meta_files,
                         "staged_trees": staged_meta,
@@ -3642,6 +3654,10 @@ def run_session(
                             vv = dict(v)
                             if "path" in vv:
                                 vv["path"] = _redact_path(str(vv.get("path") or ""), repo_root)
+                            if vv.get("symlink_target") is not None:
+                                vv["symlink_target"] = _redact_path(
+                                    str(vv.get("symlink_target")), repo_root
+                                )
                             cleaned[k] = vv
                         else:
                             cleaned[k] = v
@@ -3686,8 +3702,35 @@ def run_session(
                             compare_ok = False
                             compare_reason = f"snapshot meta unreadable: {exc}"
                         else:
+                            expected_files = meta_doc.get("files") or {}
                             expected_trees = meta_doc.get("staged_trees") or {}
                             results = restore_result.get("results") or {}
+                            for file_name, exp in expected_files.items():
+                                if not isinstance(exp, dict):
+                                    compare_ok = False
+                                    compare_reason = (
+                                        f"invalid restore file metadata for {file_name}"
+                                    )
+                                    break
+                                got = results.get(file_name) or {}
+                                for identity_key in MANAGED_IDENTITY_KEYS:
+                                    if got.get(identity_key) != exp.get(identity_key):
+                                        compare_ok = False
+                                        compare_reason = (
+                                            f"restore file {identity_key} mismatch for "
+                                            f"{file_name}"
+                                        )
+                                        break
+                                if not compare_ok:
+                                    break
+                                if got.get("ok") is not True or got.get("verified") is not True:
+                                    compare_ok = False
+                                    compare_reason = (
+                                        f"restore file {file_name} not verified"
+                                    )
+                                    break
+                            if not compare_ok:
+                                expected_trees = {}
                             for tree_name, exp in expected_trees.items():
                                 if not isinstance(exp, dict):
                                     continue

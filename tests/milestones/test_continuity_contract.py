@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import stat
 import tempfile
 import unittest
 from pathlib import Path
@@ -1233,6 +1234,119 @@ class Us04TreeRestoreVerificationTests(unittest.TestCase):
             self.assertTrue(autonomy.is_symlink())
             self.assertEqual(os.readlink(autonomy), "autonomy-target")
             self.assertEqual(cc.tree_content_sha256(autonomy), before_hash)
+
+    def test_snapshot_restore_preserves_required_activation_symlink_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            vehicle = "v1"
+            bundle = root / "runtime" / "vehicles" / vehicle / "bundle"
+            perception = bundle / "runtime" / "perception" / "active.json"
+            perception.parent.mkdir(parents=True)
+            baseline = perception.parent / "baseline-target.json"
+            baseline.write_text('{"algorithm":"baseline"}\n', encoding="utf-8")
+            perception.symlink_to("baseline-target.json")
+
+            snap = cc.snapshot_staged_state(root, vehicle)
+            self.assertTrue(snap["ok"], snap)
+            file_meta = snap["files"]["perception"]
+            self.assertEqual(file_meta["entry_type"], "symlink")
+            self.assertEqual(file_meta["symlink_target"], "baseline-target.json")
+            self.assertTrue(cc.snapshot_is_restorable(snap), snap)
+
+            perception.unlink()
+            perception.write_text('{"algorithm":"trial"}\n', encoding="utf-8")
+            restored = cc.restore_activation(snap)
+            self.assertTrue(restored["ok"], restored)
+            self.assertTrue(perception.is_symlink())
+            self.assertEqual(os.readlink(perception), "baseline-target.json")
+            receipt = restored["results"]["perception"]
+            self.assertTrue(receipt["verified"])
+            for key in cc._MANAGED_IDENTITY_KEYS:
+                self.assertEqual(receipt[key], file_meta[key], key)
+
+    def test_absent_activation_removes_broken_symlink_and_directory_residue(self) -> None:
+        for residue in ("broken_symlink", "directory"):
+            with self.subTest(residue=residue), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                vehicle = "v1"
+                bundle = root / "runtime" / "vehicles" / vehicle / "bundle"
+                perception = bundle / "runtime" / "perception" / "active.json"
+                perception.parent.mkdir(parents=True)
+                perception.write_text('{"algorithm":"baseline"}\n', encoding="utf-8")
+                memory = bundle / "runtime" / "memory" / "active.json"
+
+                snap = cc.snapshot_staged_state(root, vehicle)
+                self.assertTrue(snap["ok"], snap)
+                self.assertEqual(snap["files"]["memory"]["entry_type"], "absent")
+
+                memory.parent.mkdir(parents=True)
+                if residue == "broken_symlink":
+                    memory.symlink_to("missing-target.json")
+                else:
+                    memory.mkdir()
+                    (memory / "trial-leftover.txt").write_text("trial\n", encoding="utf-8")
+
+                restored = cc.restore_activation(snap)
+                self.assertTrue(restored["ok"], restored)
+                self.assertFalse(os.path.lexists(memory))
+                receipt = restored["results"]["memory"]
+                self.assertTrue(receipt["verified"])
+                self.assertEqual(receipt["entry_type"], "absent")
+
+    def test_snapshot_restore_preserves_bundle_manifest_symlink_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            vehicle = "v1"
+            bundle = root / "runtime" / "vehicles" / vehicle / "bundle"
+            perception = bundle / "runtime" / "perception" / "active.json"
+            perception.parent.mkdir(parents=True)
+            perception.write_text('{"algorithm":"baseline"}\n', encoding="utf-8")
+            baseline = bundle / "manifest-target.json"
+            baseline.write_text('{"tree":"baseline"}\n', encoding="utf-8")
+            manifest = bundle / "bundle-manifest.json"
+            manifest.symlink_to("manifest-target.json")
+
+            snap = cc.snapshot_staged_state(root, vehicle, cache_dir=root / "cache")
+            self.assertTrue(snap["ok"], snap)
+            file_meta = snap["files"]["bundle_manifest"]
+            self.assertEqual(file_meta["entry_type"], "symlink")
+
+            manifest.unlink()
+            manifest.write_text('{"tree":"trial"}\n', encoding="utf-8")
+            restored = cc.restore_activation(snap)
+            self.assertTrue(restored["ok"], restored)
+            self.assertTrue(manifest.is_symlink())
+            self.assertEqual(os.readlink(manifest), "manifest-target.json")
+            receipt = restored["results"]["bundle_manifest"]
+            self.assertTrue(receipt["verified"])
+            self.assertEqual(receipt["identity_sha256"], file_meta["identity_sha256"])
+
+    def test_snapshot_restore_preserves_regular_activation_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            vehicle = "v1"
+            perception = (
+                root
+                / "runtime"
+                / "vehicles"
+                / vehicle
+                / "bundle"
+                / "runtime"
+                / "perception"
+                / "active.json"
+            )
+            perception.parent.mkdir(parents=True)
+            perception.write_text('{"algorithm":"baseline"}\n', encoding="utf-8")
+            perception.chmod(0o755)
+            snap = cc.snapshot_staged_state(root, vehicle)
+            self.assertTrue(snap["ok"], snap)
+            self.assertEqual(snap["files"]["perception"]["mode"], 0o755)
+
+            perception.chmod(0o644)
+            restored = cc.restore_activation(snap)
+            self.assertTrue(restored["ok"], restored)
+            self.assertEqual(stat.S_IMODE(perception.stat().st_mode), 0o755)
+            self.assertEqual(restored["results"]["perception"]["mode"], 0o755)
 
 
 class FinalizerRequiredKeysAndMetricsTests(unittest.TestCase):

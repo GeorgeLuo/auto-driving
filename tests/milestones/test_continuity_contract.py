@@ -646,6 +646,96 @@ class ContinuityRestoreAndFinalizerTests(unittest.TestCase):
                 self.assertFalse(ok, reason)
                 self.assertIn("product mismatch", reason)
 
+    def test_product_launcher_mode_change_invalidates_freshness(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            launcher = Path(tmp) / "cli" / "automa"
+            launcher.parent.mkdir(parents=True)
+            launcher.write_text("#!/bin/sh\necho automa\n", encoding="utf-8")
+            launcher.chmod(0o755)
+
+            recorded_product = _full_product_map("p")
+            recorded_product["cli/automa"] = cc.tree_file_digest(launcher)
+            recorded = {
+                "catalog_sha256": "a",
+                "runner_sha256": "b",
+                "continuity_contract_sha256": "c",
+                "product_sha256": recorded_product,
+                "metrics_ui_required": False,
+            }
+
+            launcher.chmod(0o644)
+            current_product = dict(recorded_product)
+            current_product["cli/automa"] = cc.tree_file_digest(launcher)
+            current = dict(recorded)
+            current["product_sha256"] = current_product
+
+            ok, reason = cc.finalize_evidence_freshness(recorded, current)
+            self.assertFalse(ok, reason)
+            self.assertIn("product mismatch cli/automa", reason)
+
+    def test_product_regular_file_symlink_substitution_invalidates_freshness(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            launcher = root / "cli" / "automa"
+            launcher.parent.mkdir(parents=True)
+            launcher.write_bytes(b"same payload\n")
+            target = root / "target"
+            target.write_bytes(b"same payload\n")
+
+            regular_digest = cc.tree_file_digest(launcher)
+            launcher.unlink()
+            launcher.symlink_to("../target")
+            symlink_digest = cc.tree_file_digest(launcher)
+            self.assertNotEqual(regular_digest, symlink_digest)
+
+            recorded_product = _full_product_map("p")
+            recorded_product["cli/automa"] = regular_digest
+            current_product = dict(recorded_product)
+            current_product["cli/automa"] = symlink_digest
+            base = {
+                "catalog_sha256": "a",
+                "runner_sha256": "b",
+                "continuity_contract_sha256": "c",
+                "metrics_ui_required": False,
+            }
+            ok, reason = cc.finalize_evidence_freshness(
+                {**base, "product_sha256": recorded_product},
+                {**base, "product_sha256": current_product},
+            )
+            self.assertFalse(ok, reason)
+            self.assertIn("product mismatch cli/automa", reason)
+
+    def test_product_symlink_target_change_invalidates_freshness(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            launcher = root / "cli" / "automa"
+            launcher.parent.mkdir(parents=True)
+            (root / "target-a").write_bytes(b"same payload\n")
+            (root / "target-b").write_bytes(b"same payload\n")
+            launcher.symlink_to("../target-a")
+            digest_a = cc.tree_file_digest(launcher)
+            launcher.unlink()
+            launcher.symlink_to("../target-b")
+            digest_b = cc.tree_file_digest(launcher)
+            self.assertNotEqual(digest_a, digest_b)
+
+            product = _full_product_map("p")
+            product["cli/automa"] = digest_a
+            current_product = dict(product)
+            current_product["cli/automa"] = digest_b
+            base = {
+                "catalog_sha256": "a",
+                "runner_sha256": "b",
+                "continuity_contract_sha256": "c",
+                "metrics_ui_required": False,
+            }
+            ok, reason = cc.finalize_evidence_freshness(
+                {**base, "product_sha256": product},
+                {**base, "product_sha256": current_product},
+            )
+            self.assertFalse(ok, reason)
+            self.assertIn("product mismatch cli/automa", reason)
+
     def test_session_against_tree_ok_when_unchanged(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

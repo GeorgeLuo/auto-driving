@@ -750,12 +750,14 @@ def _dir_file_digests(root: Path) -> dict[str, str]:
     if not root.is_dir():
         return digests
     for path in sorted(root.rglob("*")):
-        if not path.is_file():
+        if not (path.is_symlink() or path.is_file()):
             continue
         if "__pycache__" in path.parts or path.suffix in {".pyc", ".pyo"}:
             continue
         rel = path.relative_to(root).as_posix()
-        digests[rel] = hashlib.sha256(path.read_bytes()).hexdigest()
+        digest = tree_file_digest(path)
+        if digest is not None:
+            digests[rel] = digest
     return digests
 
 
@@ -1060,10 +1062,14 @@ def restore_activation(snapshot: Mapping[str, Any], *, path: Path | None = None)
 
 
 def tree_file_digest(path: Path) -> str | None:
-    try:
-        return hashlib.sha256(path.read_bytes()).hexdigest()
-    except OSError:
-        return None
+    """Digest one product file using Git-relevant type, mode, and material.
+
+    Regular files bind executable mode plus bytes; symlinks bind mode ``120000``
+    plus the target path bytes without following the link. Missing paths return
+    ``None`` so required product entries fail closed in the finalizer.
+    """
+
+    return _git_relevant_file_digest(path)
 
 
 def collect_identity_bundle(
@@ -1225,6 +1231,37 @@ def _serialize_identity_fields(fields: Sequence[bytes]) -> bytes:
         encoded.extend(len(field).to_bytes(8, "big"))
         encoded.extend(field)
     return bytes(encoded)
+
+
+def _git_relevant_file_digest(path: Path) -> str | None:
+    """Return an unambiguous Git-material digest for a file-like product path."""
+
+    import os
+    import stat as statmod
+
+    try:
+        if path.is_symlink():
+            mode = b"120000"
+            material = os.fsencode(os.readlink(path))
+        elif path.is_file():
+            mode_bits = path.stat().st_mode
+            mode = (
+                b"100755"
+                if mode_bits & (statmod.S_IXUSR | statmod.S_IXGRP | statmod.S_IXOTH)
+                else b"100644"
+            )
+            material = path.read_bytes()
+        elif path.exists():
+            mode = f"other:{statmod.S_IFMT(path.stat().st_mode):o}".encode("ascii")
+            material = b""
+        else:
+            return None
+    except OSError:
+        return None
+
+    return hashlib.sha256(
+        _serialize_identity_fields((b"product-file-identity-v1", mode, material))
+    ).hexdigest()
 
 
 def _untracked_path_identity(

@@ -243,6 +243,9 @@ Guided stationary physical placement check (PiCar only; never commands movement)
 ```
 
 Results land under `lab/runs/perception-check/<run-id>/` with `review.html` when `--record` is set.
+Recorded perception experiment reviews provide source, processed, and combined
+view modes plus play/pause and frame scrubbing; the review remains a local,
+dependency-free HTML artifact alongside its recorded images.
 
 Offline strategy qualification on a recorded check run:
 

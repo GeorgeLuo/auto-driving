@@ -66,6 +66,27 @@ PROPOSAL_AMENDMENT_REQUIRED_HEADINGS = (
     "## File Impact",
     "## Validation Plan",
 )
+IMPLEMENTATION_ADJUNCT_REQUIRED_HEADINGS = (
+    "## Parent Implementation",
+    "## Operator Request",
+    "## HITL Authorization",
+    "## Review Question",
+    "## Compatibility",
+    "## Scope",
+    "## Evidence Impact",
+    "## Validation",
+)
+IMPLEMENTATION_ADJUNCT_COMPATIBILITY_CHECKS = (
+    "The parent contract remains true without this adjunct.",
+    "The change serves the same current frontier and operator journey.",
+    "The behavior is additive or optional and weakens no existing outcome.",
+    (
+        "No exit criterion, safety authority, schema, external assumption, "
+        "expected handoff, or explicit non-goal changes."
+    ),
+    "No milestone plan, accepted proposal, or accepted amendment changes.",
+    "There is one bounded review question and the base is the parent branch.",
+)
 HANDOFF_TEMPLATE_SCHEMA = "milestone_handoff_template_v1"
 EXAMPLE_RECEIPT: dict[str, Any] = {
     "schema": "milestone_handoff_v1",
@@ -1543,6 +1564,180 @@ def validate_proposal_amendment_text(text: str) -> None:
             raise PlanContractError(f"proposal amendment is missing {heading}")
 
 
+def _required_section_body(text: str, heading: str) -> str:
+    lines = text.splitlines()
+    start, end = _section_bounds(lines, heading)
+    body = "\n".join(lines[start:end]).strip()
+    without_comments = re.sub(r"<!--.*?-->", "", body, flags=re.DOTALL)
+    meaningful = [
+        line.strip()
+        for line in without_comments.splitlines()
+        if line.strip()
+        and line.strip() not in {"-", "```", "```text", "```sh"}
+        and not line.strip().startswith("### ")
+    ]
+    if not meaningful:
+        raise PlanContractError(
+            f"implementation adjunct section {heading} must be completed"
+        )
+    return body
+
+
+def _implementation_adjunct_field(section: str, label: str) -> str:
+    match = re.search(
+        rf"(?m)^-\s+{re.escape(label)}:\s*(.*?)\s*$",
+        section,
+    )
+    if match is None or not match.group(1).strip():
+        raise PlanContractError(
+            f"implementation adjunct must provide {label!r}"
+        )
+    return match.group(1).strip()
+
+
+def validate_implementation_adjunct_body(
+    text: str,
+    *,
+    base_branch: str | None = None,
+    head_branch: str | None = None,
+    milestone_number: str | None = None,
+    frontier_name: str | None = None,
+) -> None:
+    """Validate the durable human request and compatibility claim for an adjunct."""
+
+    if not text.startswith("# HITL Implementation Adjunct"):
+        raise PlanContractError(
+            "implementation adjunct PR body must start with "
+            "'# HITL Implementation Adjunct'"
+        )
+    sections: dict[str, str] = {}
+    for heading in IMPLEMENTATION_ADJUNCT_REQUIRED_HEADINGS:
+        try:
+            sections[heading] = _required_section_body(text, heading)
+        except PlanContractError as exc:
+            raise PlanContractError(
+                f"implementation adjunct PR body is missing or incomplete: {heading}"
+            ) from exc
+
+    parent = sections["## Parent Implementation"]
+    listed_milestone = _implementation_adjunct_field(
+        parent,
+        "Milestone",
+    ).strip("`")
+    if (
+        milestone_number is not None
+        and listed_milestone not in {milestone_number, f"M{milestone_number}"}
+    ):
+        raise PlanContractError(
+            "implementation adjunct Milestone must match the owning plan "
+            f"M{milestone_number}"
+        )
+    listed_frontier = _implementation_adjunct_field(parent, "Current frontier")
+    if frontier_name is not None and listed_frontier != frontier_name:
+        raise PlanContractError(
+            "implementation adjunct Current frontier must match the owning plan "
+            f"{frontier_name!r}"
+        )
+    parent_pr = _implementation_adjunct_field(
+        parent,
+        "Parent implementation PR",
+    )
+    if re.search(r"#[1-9]\d*", parent_pr) is None:
+        raise PlanContractError(
+            "implementation adjunct Parent implementation PR must contain #<number>"
+        )
+    listed_base = _implementation_adjunct_field(
+        parent,
+        "Base implementation branch",
+    ).strip("`")
+    if base_branch is not None and listed_base != base_branch:
+        raise PlanContractError(
+            "implementation adjunct Base implementation branch must match its PR base "
+            f"{base_branch!r}"
+        )
+    listed_head = _implementation_adjunct_field(
+        parent,
+        "Adjunct branch",
+    ).strip("`")
+    if head_branch is not None and listed_head != head_branch:
+        raise PlanContractError(
+            "implementation adjunct Adjunct branch must match its PR head "
+            f"{head_branch!r}"
+        )
+
+    request = _implementation_adjunct_field(
+        sections["## Operator Request"],
+        "Request issue",
+    )
+    if (
+        re.search(r"#[1-9]\d*", request) is None
+        and re.search(
+            r"https://github\.com/[^\s/]+/[^\s/]+/issues/[1-9]\d*",
+            request,
+        )
+        is None
+    ):
+        raise PlanContractError(
+            "implementation adjunct Request issue must contain a durable issue reference"
+        )
+
+    authorization = sections["## HITL Authorization"]
+    _implementation_adjunct_field(authorization, "Human requester")
+    _implementation_adjunct_field(authorization, "Discovery context")
+    disposition = _implementation_adjunct_field(
+        authorization,
+        "Requested disposition",
+    ).strip("`")
+    if disposition != "implement-now":
+        raise PlanContractError(
+            "implementation adjunct Requested disposition must be `implement-now`"
+        )
+
+    question = sections["## Review Question"]
+    _implementation_adjunct_field(question, "Acceptance owner")
+    question_without_owner = re.sub(
+        r"(?m)^-\s+Acceptance owner:\s*.*$",
+        "",
+        question,
+    )
+    question_without_comments = re.sub(
+        r"<!--.*?-->",
+        "",
+        question_without_owner,
+        flags=re.DOTALL,
+    )
+    if "?" not in question_without_comments:
+        raise PlanContractError(
+            "implementation adjunct must state one explicit review question"
+        )
+
+    compatibility = sections["## Compatibility"]
+    for check in IMPLEMENTATION_ADJUNCT_COMPATIBILITY_CHECKS:
+        if re.search(
+            rf"(?m)^-\s+\[[xX]\]\s+{re.escape(check)}\s*$",
+            compatibility,
+        ) is None:
+            raise PlanContractError(
+                "implementation adjunct compatibility assertion is not checked: "
+                + check
+            )
+
+    for heading in ("### In Scope", "### Out Of Scope"):
+        _required_section_body(text, heading)
+
+    evidence = sections["## Evidence Impact"]
+    _implementation_adjunct_field(evidence, "Existing evidence affected")
+    _implementation_adjunct_field(evidence, "Evidence to refresh")
+    _implementation_adjunct_field(evidence, "Parent integration check")
+
+    validation = sections["## Validation"]
+    fenced = re.search(r"```(?:text|sh)?\s*\n(.*?)```", validation, re.DOTALL)
+    if fenced is None or not fenced.group(1).strip():
+        raise PlanContractError(
+            "implementation adjunct Validation must contain exact commands or results"
+        )
+
+
 def load_handoff_template(proposal_text: str) -> dict[str, Any]:
     """Load and validate the proposal's reviewed post-merge handoff template."""
 
@@ -2236,16 +2431,168 @@ def _plan_at_branch(
     )
 
 
+def _plan_at_implementation_branch(
+    ref: str,
+    *,
+    implementation_branch: str,
+    repo_root: Path = ROOT,
+) -> tuple[str, str] | None:
+    listing = _run_git(
+        ["ls-tree", "-r", "--name-only", ref, "--", "docs/milestones"],
+        cwd=repo_root,
+    ).stdout.splitlines()
+    matches: list[tuple[str, str]] = []
+    for path in listing:
+        if not path.endswith("/plan.md"):
+            continue
+        text = _git_text_at(ref, path, repo_root=repo_root)
+        try:
+            state = validate_plan_text(text)
+        except PlanContractError:
+            continue
+        if state.current.is_empty:
+            continue
+        if _workflow_state(state.current) != "implementation_in_review":
+            continue
+        planned_branch = _frontier_branch(
+            state.current,
+            heading="Current Frontier",
+            field="implementation branch",
+        )
+        if planned_branch == implementation_branch:
+            matches.append((path, text))
+    if len(matches) > 1:
+        raise PlanContractError(
+            "multiple canonical plans claim implementation branch "
+            f"{implementation_branch!r}"
+        )
+    return matches[0] if matches else None
+
+
+def _is_implementation_adjunct_branch(base_branch: str, head_branch: str) -> bool:
+    return (
+        re.fullmatch(
+            rf"{re.escape(base_branch)}--adjunct-[a-z0-9][a-z0-9-]*",
+            head_branch,
+        )
+        is not None
+    )
+
+
+def _validate_implementation_adjunct_git_diff(
+    *,
+    plan_path: str,
+    base_text: str,
+    base_ref: str,
+    head_ref: str,
+    base_sha: str,
+    head_sha: str,
+    pr_body: str | None,
+    repo_root: Path,
+) -> str:
+    if "--adjunct-" in base_ref:
+        raise PlanContractError(
+            "implementation adjuncts cannot target another adjunct branch"
+        )
+    if not _is_implementation_adjunct_branch(base_ref, head_ref):
+        raise PlanContractError(
+            "implementation adjunct branch must match "
+            f"{base_ref}--adjunct-<slug>, not {head_ref}"
+        )
+    ancestor = _run_git(
+        ["merge-base", "--is-ancestor", base_sha, head_sha],
+        cwd=repo_root,
+        check=False,
+    )
+    if ancestor.returncode != 0:
+        raise PlanContractError(
+            "implementation adjunct must include the current parent implementation "
+            "branch head"
+        )
+
+    head_text = _git_text_at(head_sha, plan_path, repo_root=repo_root)
+    if head_text != base_text:
+        raise PlanContractError(
+            "implementation adjunct cannot change the canonical milestone plan"
+        )
+    changed_paths = set(
+        _run_git(
+            ["diff", "--name-only", base_sha, head_sha],
+            cwd=repo_root,
+        ).stdout.splitlines()
+    )
+    if not changed_paths:
+        raise PlanContractError("implementation adjunct must contain a bounded diff")
+    protected_contract_paths = {
+        path
+        for path in changed_paths
+        if re.fullmatch(
+            r"docs/milestones/[^/]+/(?:plan\.(?:md|html)|proposals/.+)",
+            path,
+        )
+        is not None
+    }
+    if protected_contract_paths:
+        raise PlanContractError(
+            "implementation adjunct cannot modify milestone contract artifacts: "
+            + ", ".join(sorted(protected_contract_paths))
+        )
+    if pr_body is None:
+        raise PlanContractError(
+            "implementation adjunct validation requires the pull-request body"
+        )
+    state = validate_plan_text(base_text)
+    validate_implementation_adjunct_body(
+        pr_body,
+        base_branch=base_ref,
+        head_branch=head_ref,
+        milestone_number=state.milestone_number,
+        frontier_name=state.current.name,
+    )
+    return "implementation_adjunct"
+
+
 def validate_review_unit_git_diff(
     *,
     base_ref: str,
     head_ref: str,
     base_sha: str,
     head_sha: str,
+    pr_body: str | None = None,
     repo_root: Path = ROOT,
 ) -> str | None:
     if not base_ref.startswith("milestone/"):
-        return None
+        if "--adjunct-" in base_ref:
+            raise PlanContractError(
+                "implementation adjuncts cannot be used as a PR base"
+            )
+        adjunct_plan = _plan_at_implementation_branch(
+            base_sha,
+            implementation_branch=base_ref,
+            repo_root=repo_root,
+        )
+        if adjunct_plan is None:
+            return None
+        declares_adjunct = _is_implementation_adjunct_branch(
+            base_ref,
+            head_ref,
+        ) or bool(
+            pr_body
+            and pr_body.startswith("# HITL Implementation Adjunct")
+        )
+        if not declares_adjunct:
+            return None
+        plan_path, base_text = adjunct_plan
+        return _validate_implementation_adjunct_git_diff(
+            plan_path=plan_path,
+            base_text=base_text,
+            base_ref=base_ref,
+            head_ref=head_ref,
+            base_sha=base_sha,
+            head_sha=head_sha,
+            pr_body=pr_body,
+            repo_root=repo_root,
+        )
     plan_path, base_text = _plan_at_branch(
         base_sha,
         milestone_branch=base_ref,
@@ -2326,7 +2673,8 @@ def _workflow_status_payload(plan: Path, state: PlanState) -> dict[str, Any]:
             "proposal amendment when established evidence requires correction."
         ),
         "implementation_in_review": (
-            "Review the implementation against the accepted proposal."
+            "Review the implementation against the accepted proposal. "
+            "An eligible human implement-now discovery may use a HITL adjunct."
         ),
     }
     return {
@@ -2826,18 +3174,40 @@ def _cmd_status(plan: Path, *, as_json: bool) -> int:
     return 0
 
 
+def _pull_request_body_from_event(event_path: Path | None) -> str | None:
+    if event_path is None:
+        return None
+    try:
+        payload = json.loads(event_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise PlanContractError(
+            f"cannot load pull-request event {event_path}: {exc}"
+        ) from exc
+    pull_request = payload.get("pull_request") if isinstance(payload, dict) else None
+    if not isinstance(pull_request, dict):
+        raise PlanContractError("event payload does not contain pull_request metadata")
+    body = pull_request.get("body")
+    if body is None:
+        return ""
+    if not isinstance(body, str):
+        raise PlanContractError("pull_request.body must be text")
+    return body
+
+
 def _cmd_validate_pr(
     *,
     base_ref: str,
     head_ref: str,
     base_sha: str,
     head_sha: str,
+    event_path: Path | None,
 ) -> int:
     transition = validate_review_unit_git_diff(
         base_ref=base_ref,
         head_ref=head_ref,
         base_sha=base_sha,
         head_sha=head_sha,
+        pr_body=_pull_request_body_from_event(event_path),
     )
     if transition is None:
         print(f"PR targets {base_ref}; milestone review-unit gate not applicable.")
@@ -2920,12 +3290,19 @@ def main() -> int:
 
     validate_pr_parser = subparsers.add_parser(
         "validate-pr",
-        help="validate a proposal, amendment, or implementation PR transition",
+        help=(
+            "validate a proposal, amendment, implementation, or HITL adjunct PR"
+        ),
     )
     validate_pr_parser.add_argument("--base-ref", required=True)
     validate_pr_parser.add_argument("--head-ref", required=True)
     validate_pr_parser.add_argument("--base-sha", required=True)
     validate_pr_parser.add_argument("--head-sha", required=True)
+    validate_pr_parser.add_argument(
+        "--event-path",
+        type=Path,
+        help="GitHub pull_request event JSON used to validate adjunct metadata",
+    )
 
     subparsers.add_parser(
         "receipt-example",
@@ -2963,6 +3340,7 @@ def main() -> int:
                 head_ref=args.head_ref,
                 base_sha=args.base_sha,
                 head_sha=args.head_sha,
+                event_path=args.event_path,
             )
         return _cmd_handoff(args.plan, args.receipt)
     except (OSError, PlanContractError, subprocess.CalledProcessError) as exc:

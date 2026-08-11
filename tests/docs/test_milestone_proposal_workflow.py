@@ -13,6 +13,7 @@ from docs.milestones.workflow import (
     start_proposal_amendment_branch,
     validate_merged_proposal_amendment_metadata,
     validate_merged_proposal_metadata,
+    validate_implementation_adjunct_body,
     validate_plan_text,
     validate_proposal_amendment_text,
     validate_proposal_text,
@@ -22,6 +23,7 @@ from docs.milestones.workflow import (
 from tests.docs.milestone_workflow_fixtures import (
     CURRENT_CRITERION,
     CURRENT_FRONTIER,
+    IMPLEMENTATION_ADJUNCT_BRANCH,
     IMPLEMENTATION_BRANCH,
     MILESTONE_BRANCH,
     PLAN_RELATIVE,
@@ -29,6 +31,8 @@ from tests.docs.milestone_workflow_fixtures import (
     PROPOSAL_AMENDMENT_RELATIVE,
     PROPOSAL_BRANCH,
     PROPOSAL_RELATIVE,
+    implementation_adjunct_body,
+    implementation_review_plan_text,
     proposal_amendment_text,
     proposal_text,
     ready_plan_text,
@@ -155,6 +159,41 @@ class ProposalDocumentTests(unittest.TestCase):
                     "## Contract Delta",
                     "## Revised Idea",
                 )
+            )
+
+    def test_required_implementation_adjunct_body_is_accepted(self) -> None:
+        validate_implementation_adjunct_body(
+            implementation_adjunct_body(),
+            base_branch=IMPLEMENTATION_BRANCH,
+        )
+
+    def test_implementation_adjunct_requires_implement_now_direction(self) -> None:
+        invalid = implementation_adjunct_body().replace(
+            "Requested disposition: `implement-now`",
+            "Requested disposition: `later`",
+        )
+        with self.assertRaisesRegex(PlanContractError, "implement-now"):
+            validate_implementation_adjunct_body(
+                invalid,
+                base_branch=IMPLEMENTATION_BRANCH,
+            )
+
+    def test_implementation_adjunct_requires_checked_compatibility(self) -> None:
+        invalid = implementation_adjunct_body().replace(
+            "- [x] The parent contract remains true without this adjunct.",
+            "- [ ] The parent contract remains true without this adjunct.",
+        )
+        with self.assertRaisesRegex(PlanContractError, "not checked"):
+            validate_implementation_adjunct_body(
+                invalid,
+                base_branch=IMPLEMENTATION_BRANCH,
+            )
+
+    def test_implementation_adjunct_names_its_actual_base(self) -> None:
+        with self.assertRaisesRegex(PlanContractError, "must match its PR base"):
+            validate_implementation_adjunct_body(
+                implementation_adjunct_body(),
+                base_branch="m900/different-parent",
             )
 
 
@@ -781,6 +820,239 @@ class ReviewUnitGitDiffTests(unittest.TestCase):
             text=True,
         )
         return result.stdout.strip()
+
+    def _create_implementation_parent(self, root: Path) -> tuple[Path, str]:
+        plan = root / PLAN_RELATIVE
+        plan.parent.mkdir(parents=True)
+        plan.write_text(implementation_review_plan_text(), encoding="utf-8")
+        parent_file = root / "implementations" / "evidence" / "policy.py"
+        parent_file.parent.mkdir(parents=True)
+        parent_file.write_text("POLICY = 'accepted'\n", encoding="utf-8")
+        self._git(root, "init", "-b", IMPLEMENTATION_BRANCH)
+        self._git(root, "add", ".")
+        self._git(
+            root,
+            "-c",
+            "user.name=Milestone Test",
+            "-c",
+            "user.email=milestone@example.invalid",
+            "commit",
+            "-m",
+            "start implementation review",
+        )
+        return plan, self._git(root, "rev-parse", "HEAD")
+
+    def test_git_diff_gate_recognizes_hitl_implementation_adjunct(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            _, base_sha = self._create_implementation_parent(root)
+            self._git(root, "switch", "-c", IMPLEMENTATION_ADJUNCT_BRANCH)
+            adjunct = root / "implementations" / "evidence" / "inspection.py"
+            adjunct.write_text("OPTIONAL_VIEW = True\n", encoding="utf-8")
+            self._git(root, "add", ".")
+            self._git(
+                root,
+                "-c",
+                "user.name=Milestone Test",
+                "-c",
+                "user.email=milestone@example.invalid",
+                "commit",
+                "-m",
+                "add optional evidence inspection",
+            )
+            head_sha = self._git(root, "rev-parse", "HEAD")
+
+            transition = validate_review_unit_git_diff(
+                base_ref=IMPLEMENTATION_BRANCH,
+                head_ref=IMPLEMENTATION_ADJUNCT_BRANCH,
+                base_sha=base_sha,
+                head_sha=head_sha,
+                pr_body=implementation_adjunct_body(),
+                repo_root=root,
+            )
+
+            self.assertEqual(transition, "implementation_adjunct")
+
+    def test_implementation_adjunct_rejects_contract_artifact_change(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            plan, base_sha = self._create_implementation_parent(root)
+            self._git(root, "switch", "-c", IMPLEMENTATION_ADJUNCT_BRANCH)
+            plan.write_text(
+                plan.read_text(encoding="utf-8") + "\nUnreviewed plan note.\n",
+                encoding="utf-8",
+            )
+            self._git(root, "add", ".")
+            self._git(
+                root,
+                "-c",
+                "user.name=Milestone Test",
+                "-c",
+                "user.email=milestone@example.invalid",
+                "commit",
+                "-m",
+                "change plan from adjunct",
+            )
+
+            with self.assertRaisesRegex(
+                PlanContractError,
+                "cannot change the canonical milestone plan",
+            ):
+                validate_review_unit_git_diff(
+                    base_ref=IMPLEMENTATION_BRANCH,
+                    head_ref=IMPLEMENTATION_ADJUNCT_BRANCH,
+                    base_sha=base_sha,
+                    head_sha=self._git(root, "rev-parse", "HEAD"),
+                    pr_body=implementation_adjunct_body(),
+                    repo_root=root,
+                )
+
+    def test_implementation_adjunct_requires_reserved_child_branch(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            _, base_sha = self._create_implementation_parent(root)
+            wrong_branch = "m900/evidence-inspection"
+            self._git(root, "switch", "-c", wrong_branch)
+            adjunct = root / "implementations" / "evidence" / "inspection.py"
+            adjunct.write_text("OPTIONAL_VIEW = True\n", encoding="utf-8")
+            self._git(root, "add", ".")
+            self._git(
+                root,
+                "-c",
+                "user.name=Milestone Test",
+                "-c",
+                "user.email=milestone@example.invalid",
+                "commit",
+                "-m",
+                "use wrong adjunct branch",
+            )
+
+            with self.assertRaisesRegex(PlanContractError, "must match"):
+                validate_review_unit_git_diff(
+                    base_ref=IMPLEMENTATION_BRANCH,
+                    head_ref=wrong_branch,
+                    base_sha=base_sha,
+                    head_sha=self._git(root, "rev-parse", "HEAD"),
+                    pr_body=implementation_adjunct_body(),
+                    repo_root=root,
+                )
+
+    def test_reserved_adjunct_branch_requires_pr_body(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            _, base_sha = self._create_implementation_parent(root)
+            self._git(root, "switch", "-c", IMPLEMENTATION_ADJUNCT_BRANCH)
+            adjunct = root / "implementations" / "evidence" / "inspection.py"
+            adjunct.write_text("OPTIONAL_VIEW = True\n", encoding="utf-8")
+            self._git(root, "add", ".")
+            self._git(
+                root,
+                "-c",
+                "user.name=Milestone Test",
+                "-c",
+                "user.email=milestone@example.invalid",
+                "commit",
+                "-m",
+                "omit adjunct metadata",
+            )
+
+            with self.assertRaisesRegex(PlanContractError, "requires.*body"):
+                validate_review_unit_git_diff(
+                    base_ref=IMPLEMENTATION_BRANCH,
+                    head_ref=IMPLEMENTATION_ADJUNCT_BRANCH,
+                    base_sha=base_sha,
+                    head_sha=self._git(root, "rev-parse", "HEAD"),
+                    repo_root=root,
+                )
+
+    def test_implementation_adjunct_must_include_current_parent_head(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            self._create_implementation_parent(root)
+            self._git(root, "switch", "-c", IMPLEMENTATION_ADJUNCT_BRANCH)
+            adjunct = root / "implementations" / "evidence" / "inspection.py"
+            adjunct.write_text("OPTIONAL_VIEW = True\n", encoding="utf-8")
+            self._git(root, "add", ".")
+            self._git(
+                root,
+                "-c",
+                "user.name=Milestone Test",
+                "-c",
+                "user.email=milestone@example.invalid",
+                "commit",
+                "-m",
+                "add inspection from old parent",
+            )
+            head_sha = self._git(root, "rev-parse", "HEAD")
+            self._git(root, "switch", IMPLEMENTATION_BRANCH)
+            parent_file = root / "implementations" / "evidence" / "policy.py"
+            parent_file.write_text("POLICY = 'advanced'\n", encoding="utf-8")
+            self._git(root, "add", ".")
+            self._git(
+                root,
+                "-c",
+                "user.name=Milestone Test",
+                "-c",
+                "user.email=milestone@example.invalid",
+                "commit",
+                "-m",
+                "advance parent implementation",
+            )
+            current_base_sha = self._git(root, "rev-parse", "HEAD")
+
+            with self.assertRaisesRegex(PlanContractError, "current parent"):
+                validate_review_unit_git_diff(
+                    base_ref=IMPLEMENTATION_BRANCH,
+                    head_ref=IMPLEMENTATION_ADJUNCT_BRANCH,
+                    base_sha=current_base_sha,
+                    head_sha=head_sha,
+                    pr_body=implementation_adjunct_body(),
+                    repo_root=root,
+                )
+
+    def test_non_adjunct_child_does_not_claim_hitl_lane(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            _, base_sha = self._create_implementation_parent(root)
+            repair_branch = f"{IMPLEMENTATION_BRANCH}--repair-policy"
+            self._git(root, "switch", "-c", repair_branch)
+            repair = root / "implementations" / "evidence" / "repair.py"
+            repair.write_text("REPAIR = True\n", encoding="utf-8")
+            self._git(root, "add", ".")
+            self._git(
+                root,
+                "-c",
+                "user.name=Milestone Test",
+                "-c",
+                "user.email=milestone@example.invalid",
+                "commit",
+                "-m",
+                "repair parent review finding",
+            )
+
+            transition = validate_review_unit_git_diff(
+                base_ref=IMPLEMENTATION_BRANCH,
+                head_ref=repair_branch,
+                base_sha=base_sha,
+                head_sha=self._git(root, "rev-parse", "HEAD"),
+                repo_root=root,
+            )
+
+            self.assertIsNone(transition)
+
+    def test_adjunct_branch_cannot_be_a_pr_base(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with self.assertRaisesRegex(
+                PlanContractError,
+                "cannot be used as a PR base",
+            ):
+                validate_review_unit_git_diff(
+                    base_ref=IMPLEMENTATION_ADJUNCT_BRANCH,
+                    head_ref=f"{IMPLEMENTATION_ADJUNCT_BRANCH}--adjunct-nested",
+                    base_sha="0" * 40,
+                    head_sha="1" * 40,
+                    repo_root=Path(temp_dir),
+                )
 
     def test_git_diff_gate_recognizes_proposal_transition(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

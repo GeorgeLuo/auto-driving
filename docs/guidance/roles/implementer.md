@@ -26,6 +26,11 @@ implementing it.
 - When addressing findings in the existing PR, load
   [repair-cycle.md](../repair-cycle.md), [validation.md](../validation.md), and
   the relevant adversarial cases.
+- When a human requests a change from hands-on testing during
+  `implementation_in_review`, classify it before editing and load
+  [hitl-implementation-adjunct.md](../hitl-implementation-adjunct.md). An
+  adjunct is available only when the accepted parent contract remains true
+  without the additive change.
 
 Stop and report the required handoff when the next action belongs to another
 phase or role. Never combine proposal acceptance and implementation merely

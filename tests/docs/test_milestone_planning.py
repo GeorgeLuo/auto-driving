@@ -21,6 +21,9 @@ PROPOSAL_PR_TEMPLATE = (
 PROPOSAL_AMENDMENT_PR_TEMPLATE = (
     ROOT / ".github" / "PULL_REQUEST_TEMPLATE" / "proposal-amendment.md"
 )
+IMPLEMENTATION_ADJUNCT_PR_TEMPLATE = (
+    ROOT / ".github" / "PULL_REQUEST_TEMPLATE" / "implementation-adjunct.md"
+)
 MILESTONE_PR_TEMPLATE = ROOT / ".github" / "PULL_REQUEST_TEMPLATE" / "milestone.md"
 
 
@@ -177,6 +180,7 @@ class MilestonePlanningTests(unittest.TestCase):
         for heading in (
             "## Milestone Context",
             "## Accepted Proposal",
+            "## Integrated HITL Adjuncts",
             "## Review Kind",
             "## Review Question",
             "## Invariant Or Acceptance Contract",
@@ -202,6 +206,23 @@ class MilestonePlanningTests(unittest.TestCase):
         self.assertIn("No accepted proposal or prior amendment was modified", text)
         self.assertIn("No product or runtime implementation changed", text)
 
+    def test_implementation_adjunct_template_records_human_compatibility(self) -> None:
+        self.assertTrue(IMPLEMENTATION_ADJUNCT_PR_TEMPLATE.is_file())
+        text = IMPLEMENTATION_ADJUNCT_PR_TEMPLATE.read_text(encoding="utf-8")
+        for heading in (
+            "## Parent Implementation",
+            "## Operator Request",
+            "## HITL Authorization",
+            "## Review Question",
+            "## Compatibility",
+            "## Evidence Impact",
+            "## Validation",
+        ):
+            self.assertIn(heading, text)
+        self.assertIn("Requested disposition: `implement-now`", text)
+        self.assertIn("parent contract remains true without this adjunct", text)
+        self.assertIn("Base implementation branch", text)
+
     def test_cumulative_milestone_pr_template_targets_main_topology(self) -> None:
         self.assertTrue(MILESTONE_PR_TEMPLATE.is_file())
         text = MILESTONE_PR_TEMPLATE.read_text(encoding="utf-8")
@@ -221,9 +242,19 @@ class MilestonePlanningTests(unittest.TestCase):
             "### Closeout",
             "milestone/<number>-<slug>",
             "m<number>/<frontier>-proposal",
+            "m<number>/<frontier>--adjunct-<slug>",
         ):
             self.assertIn(term, text)
         self.assertIn("targets the milestone branch", text.lower())
+
+    def test_contract_routes_human_discovery_without_reopening_parent(self) -> None:
+        text = CONTRACT_SOURCE.read_text(encoding="utf-8")
+        normalized = " ".join(text.split())
+        self.assertIn("### Human Discovery During Implementation", text)
+        self.assertIn("parent contract remains true", text.lower())
+        self.assertIn("implement-now", text)
+        self.assertIn("creates no plan transition", normalized)
+        self.assertIn("review the integrated parent in totality", normalized)
 
     def test_contract_discourages_multiple_independent_review_questions(self) -> None:
         text = CONTRACT_SOURCE.read_text(encoding="utf-8")

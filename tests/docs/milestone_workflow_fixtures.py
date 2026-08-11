@@ -11,6 +11,9 @@ PROPOSAL_RELATIVE = (
 )
 PROPOSAL_BRANCH = "m900/evidence-policy-proposal"
 IMPLEMENTATION_BRANCH = "m900/evidence-policy"
+IMPLEMENTATION_ADJUNCT_BRANCH = (
+    "m900/evidence-policy--adjunct-evidence-inspection"
+)
 PROPOSAL_AMENDMENT_BRANCH = "m900/amend-evidence-policy-lag"
 PROPOSAL_AMENDMENT_RELATIVE = (
     "docs/milestones/900-workflow-fixture/proposals/"
@@ -262,6 +265,67 @@ Validator, focused tests, and command catalog expectations.
 ## Validation Plan
 
 Exercise current, bounded-stale, beyond-bound, and malformed observations.
+"""
+
+
+def implementation_adjunct_body() -> str:
+    return f"""# HITL Implementation Adjunct — evidence inspection
+
+## Parent Implementation
+
+- Milestone: M900
+- Current frontier: {CURRENT_FRONTIER}
+- Parent implementation PR: #59
+- Base implementation branch: `{IMPLEMENTATION_BRANCH}`
+- Adjunct branch: `{IMPLEMENTATION_ADJUNCT_BRANCH}`
+
+## Operator Request
+
+- Request issue: #101
+
+## HITL Authorization
+
+- Human requester: Test operator
+- Discovery context: Hands-on replay inspection exposed a presentation need.
+- Requested disposition: `implement-now`
+
+## Review Question
+
+- Acceptance owner: Synthetic evidence presentation
+
+Does the optional inspection view expose the accepted evidence without changing it?
+
+## Compatibility
+
+- [x] The parent contract remains true without this adjunct.
+- [x] The change serves the same current frontier and operator journey.
+- [x] The behavior is additive or optional and weakens no existing outcome.
+- [x] No exit criterion, safety authority, schema, external assumption, expected handoff, or explicit non-goal changes.
+- [x] No milestone plan, accepted proposal, or accepted amendment changes.
+- [x] There is one bounded review question and the base is the parent branch.
+
+## Scope
+
+### In Scope
+
+- Add the optional inspection presentation.
+
+### Out Of Scope
+
+- Change evidence selection or storage.
+
+## Evidence Impact
+
+- Existing evidence affected: None; the accepted policy is unchanged.
+- Evidence to refresh: Presentation tests and the parent deterministic suite.
+- Parent integration check: Repeat the parent adversarial matrix after merge.
+
+## Validation
+
+```text
+python3 -m unittest tests.test_inspection
+1 test passed
+```
 """
 
 

@@ -52,7 +52,8 @@ jobs:
             --base-ref "${{ github.base_ref }}" \
             --head-ref "${{ github.head_ref }}" \
             --base-sha "${{ github.event.pull_request.base.sha }}" \
-            --head-sha "${{ github.event.pull_request.head.sha }}"
+            --head-sha "${{ github.event.pull_request.head.sha }}" \
+            --event-path "$GITHUB_EVENT_PATH"
 
       - name: Run deterministic tests with coverage
         run: |

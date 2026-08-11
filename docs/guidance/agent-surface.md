@@ -44,6 +44,7 @@ closeout work is permitted.
 | Implement an accepted proposal | [proposal-vs-implementation.md](proposal-vs-implementation.md), [validation.md](validation.md) |
 | Review a proposal or implementation | [review-unit.md](review-unit.md), [adversarial-matrix.md](adversarial-matrix.md) |
 | Repair or re-review findings | [repair-cycle.md](repair-cycle.md), [validation.md](validation.md), and relevant adversarial rows |
+| Human-requested change discovered during implementation | [hitl-implementation-adjunct.md](hitl-implementation-adjunct.md), [review-unit.md](review-unit.md), and [validation.md](validation.md) |
 | Prepare a handoff | [proposal-vs-implementation.md](proposal-vs-implementation.md) |
 | Change process or milestone mechanics | Full canonical contract |
 

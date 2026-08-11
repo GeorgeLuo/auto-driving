@@ -1,0 +1,67 @@
+{
+  "browser": {
+    "name": "Chrome",
+    "version": "151.0.7922.108"
+  },
+  "canonical_acceptance": false,
+  "canonical_acceptance_reason": "catalog file digest does not match the reviewed PINNED_ACCEPTANCE_CATALOG_DIGEST constant",
+  "catalog_source": "<repo>/docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/catalogs/m007-continuity.yaml",
+  "execution_mode": "interactive_live",
+  "metrics_ui_origin": "http://localhost:5050",
+  "operating_system": "macOS-26.5.1-arm64-arm-64bit",
+  "operator": "GeorgeLuo",
+  "precondition_cleanup": {
+    "attempted": false,
+    "deployment_before": "deployed",
+    "error": null,
+    "needed": false,
+    "ok": true,
+    "pid_liveness": {
+      "34826": false
+    },
+    "pids_before": [
+      34826
+    ],
+    "status_exit_code": 0,
+    "stop_exit_code": null,
+    "view_before": "stale",
+    "worker_state_after": "stopped",
+    "worker_state_before": "stopped"
+  },
+  "python": "3.11.7",
+  "recorded_at_utc": "2026-08-11T18:17:57.556173Z",
+  "recording_before": [
+    "automation-20260630-214835",
+    "automation-20260630-214933"
+  ],
+  "repositories": {
+    "auto_driving": {
+      "branch": "m007/scenario-continuity",
+      "commit": "37b7393fe759f1597860a30d8c10ca5692f1c0cc",
+      "diff_identity": null,
+      "github_owner": "GeorgeLuo",
+      "github_repo": "auto-driving",
+      "path": "auto-driving",
+      "status_porcelain": [],
+      "untracked_files": [],
+      "untracked_sha256": {},
+      "worktree_state": "clean"
+    },
+    "metrics_ui": {
+      "branch": "m002/04-passive-observation",
+      "commit": "722e070fdc9f4ee89d13f947bf3996e62dcb2783",
+      "diff_identity": null,
+      "github_owner": "GeorgeLuo",
+      "github_repo": "metrics-ui",
+      "path": "Stream-Metrics-UI",
+      "status_porcelain": [],
+      "untracked_files": [],
+      "untracked_sha256": {},
+      "worktree_state": "clean"
+    }
+  },
+  "session_visible": null,
+  "vehicle_id": "chase-sim-chaser",
+  "worktree_diff_path": null,
+  "worktree_reviewables": {}
+}

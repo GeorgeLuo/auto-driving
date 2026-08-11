@@ -1,0 +1,101 @@
+# M007-10 realistic CLI scenario continuity catalog.
+# Required families: offline perception, live config swap, memory lifecycle.
+schema: live_cli_session_catalog_v0
+id: m007-continuity
+track: continuity
+title: M007 realistic CLI scenario continuity
+description: >
+  Representative multi-command sequences beyond the primary six-step journey.
+vehicle_id: chase-sim-chaser
+metrics_ui_origin: http://localhost:5050
+perception_algorithm: lightweight_observer
+safety:
+  movement: never
+  record_default: false
+  observe_only: true
+gates: []
+steps:
+  # --- continuity.offline_perception (US-03-class) ---
+  - id: offline-capture
+    kind: command
+    family_id: continuity.offline_perception
+    question: Can we capture a short recorded sequence without taking control?
+    safety: local_write
+    commands:
+      - ["./cli/automa", "vehicles", "perception", "run", "--id", "{vehicle_id}", "--frames", "4", "--interval-s", "0.25", "--record"]
+    primary_cue: "human summary leads with review/run path and frame counts"
+    visual_required: false
+    required_for_verdict: true
+    expect_exit: 0
+
+  - id: offline-apply-a
+    kind: command
+    family_id: continuity.offline_perception
+    question: Does apply produce a compact human summary for lightweight_observer on the same frames?
+    safety: local_write
+    commands:
+      - ["./cli/automa", "vehicles", "perception", "apply", "{src_dir}", "--algorithm", "lightweight_observer", "--record"]
+    primary_cue: "review path first; exclusive apply run directory"
+    visual_required: false
+    required_for_verdict: true
+    requires_prompt: src_dir
+    requires_prompt_help: "Path to recorded perception-run directory (auto-bound after offline-capture in machine-only)"
+    expect_exit: 0
+
+  - id: offline-apply-b
+    kind: command
+    family_id: continuity.offline_perception
+    question: Does a second apply in the same second keep a distinct exclusive record directory?
+    safety: local_write
+    commands:
+      - ["./cli/automa", "vehicles", "perception", "apply", "{src_dir}", "--algorithm", "sim_debug", "--record"]
+    primary_cue: "distinct run id from offline-apply-a; no overwrite"
+    visual_required: false
+    required_for_verdict: true
+    requires_prompt: src_dir
+    expect_exit: 0
+
+  # --- continuity.live_config_swap (US-04-class) ---
+  - id: live-swap-stage
+    kind: command
+    family_id: continuity.live_config_swap
+    question: Can we restage perception and reach observation-only readiness with a healthy view?
+    safety: live_mutation
+    commands:
+      - ["./cli/automa", "vehicles", "update", "perception", "--id", "{vehicle_id}", "--algorithm", "lightweight_observer"]
+      - ["./cli/automa", "vehicles", "automation", "run", "--id", "{vehicle_id}", "--observe-only", "--frames", "0", "--open-view"]
+      - ["./cli/automa", "vehicles", "status", "--id", "{vehicle_id}"]
+    primary_cue: "Ready for: inspect perception; worker running; observe_only"
+    visual_required: true
+    visual_prompt: "Automa view nonblank with intelligible perception overlay after restage?"
+    required_for_verdict: true
+    expect_exit: 0
+
+  - id: live-swap-stop
+    kind: command
+    family_id: continuity.live_config_swap
+    question: Does stop leave the worker dead, and does activation restore after the trial?
+    safety: live_mutation
+    commands:
+      - ["./cli/automa", "vehicles", "automation", "stop", "--id", "{vehicle_id}"]
+      - ["./cli/automa", "vehicles", "status", "--id", "{vehicle_id}"]
+    primary_cue: "worker stopped; view not current-generation; activation restored to pre-trial snapshot"
+    visual_required: false
+    required_for_verdict: true
+    expect_exit: 0
+
+  # --- continuity.memory_lifecycle (US-05/08-class) ---
+  - id: memory-lifecycle
+    kind: command
+    family_id: continuity.memory_lifecycle
+    question: Does real perception become bounded attributable memory with a concise PASS/FAIL?
+    safety: live_mutation
+    commands:
+      - ["./cli/automa", "vehicles", "update", "memory", "--id", "{vehicle_id}", "--implementation", "bounded_evidence"]
+      - ["./cli/automa", "vehicles", "automation", "run", "--id", "{vehicle_id}", "--observe-only", "--frames", "5"]
+      - ["./cli/automa", "vehicles", "memory", "check", "--id", "{vehicle_id}", "--record"]
+      - ["./cli/automa", "vehicles", "automation", "stop", "--id", "{vehicle_id}"]
+    primary_cue: "Memory check: ... PASS (includes present/dropout/expiry/reset phases)"
+    visual_required: false
+    required_for_verdict: true
+    expect_exit: 0

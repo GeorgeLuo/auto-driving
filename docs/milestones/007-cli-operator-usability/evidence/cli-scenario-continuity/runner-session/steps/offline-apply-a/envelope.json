@@ -1,0 +1,43 @@
+{
+  "browser_view": null,
+  "commands": [
+    {
+      "argv": [
+        "./cli/automa",
+        "vehicles",
+        "perception",
+        "apply",
+        "<repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260811-111809-905238-db9100cd",
+        "--algorithm",
+        "lightweight_observer",
+        "--record"
+      ],
+      "command": "./cli/automa vehicles perception apply <repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260811-111809-905238-db9100cd --algorithm lightweight_observer --record",
+      "elapsed_ms": 2964,
+      "ended_at_utc": "2026-08-11T18:25:05.697068Z",
+      "exit_code": 0,
+      "started_at_utc": "2026-08-11T18:25:02.732940Z",
+      "stderr_path": "steps/offline-apply-a/cmd-00.stderr.txt",
+      "stdout_path": "steps/offline-apply-a/cmd-00.stdout.txt"
+    }
+  ],
+  "family_id": "continuity.offline_perception",
+  "gate_ids": [],
+  "human": {
+    "finding_requested": false,
+    "interactive": true,
+    "notes": "",
+    "visual": "pass"
+  },
+  "id": "offline-apply-a",
+  "kind": "command",
+  "machine_evidence": {},
+  "machine_ok": true,
+  "machine_summary": "",
+  "primary_cue": "review path first; exclusive apply run directory",
+  "question": "Does apply produce a compact human summary for lightweight_observer on the same frames?",
+  "required_for_verdict": true,
+  "safety": "local_write",
+  "status": "pass",
+  "visual_required": false
+}

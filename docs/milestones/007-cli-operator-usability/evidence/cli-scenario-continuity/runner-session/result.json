@@ -1,0 +1,677 @@
+{
+  "artifact_manifest": "digests.json",
+  "baseline": {
+    "browser": {
+      "name": "Chrome",
+      "version": "151.0.7922.108"
+    },
+    "canonical_acceptance": false,
+    "canonical_acceptance_reason": "catalog file digest does not match the reviewed PINNED_ACCEPTANCE_CATALOG_DIGEST constant",
+    "catalog_source": "<repo>/docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/catalogs/m007-continuity.yaml",
+    "execution_mode": "interactive_live",
+    "metrics_ui_origin": "http://localhost:5050",
+    "operating_system": "macOS-26.5.1-arm64-arm-64bit",
+    "operator": "GeorgeLuo",
+    "precondition_cleanup": {
+      "attempted": false,
+      "deployment_before": "deployed",
+      "error": null,
+      "needed": false,
+      "ok": true,
+      "pid_liveness": {
+        "34826": false
+      },
+      "pids_before": [
+        34826
+      ],
+      "status_exit_code": 0,
+      "stop_exit_code": null,
+      "view_before": "stale",
+      "worker_state_after": "stopped",
+      "worker_state_before": "stopped"
+    },
+    "python": "3.11.7",
+    "recorded_at_utc": "2026-08-11T18:17:57.556173Z",
+    "recording_before": [
+      "automation-20260630-214835",
+      "automation-20260630-214933"
+    ],
+    "repositories": {
+      "auto_driving": {
+        "branch": "m007/scenario-continuity",
+        "commit": "37b7393fe759f1597860a30d8c10ca5692f1c0cc",
+        "diff_identity": null,
+        "github_owner": "GeorgeLuo",
+        "github_repo": "auto-driving",
+        "path": "auto-driving",
+        "status_porcelain": [],
+        "untracked_files": [],
+        "untracked_sha256": {},
+        "worktree_state": "clean"
+      },
+      "metrics_ui": {
+        "branch": "m002/04-passive-observation",
+        "commit": "722e070fdc9f4ee89d13f947bf3996e62dcb2783",
+        "diff_identity": null,
+        "github_owner": "GeorgeLuo",
+        "github_repo": "metrics-ui",
+        "path": "Stream-Metrics-UI",
+        "status_porcelain": [],
+        "untracked_files": [],
+        "untracked_sha256": {},
+        "worktree_state": "clean"
+      }
+    },
+    "session_visible": null,
+    "vehicle_id": "chase-sim-chaser",
+    "worktree_diff_path": null,
+    "worktree_reviewables": {}
+  },
+  "browser_view": null,
+  "catalog": {
+    "id": "m007-continuity",
+    "max_frame_lag": null,
+    "title": "M007 realistic CLI scenario continuity",
+    "track": "continuity"
+  },
+  "cleanup": {
+    "attempted": true,
+    "error": null,
+    "final_status_exit_code": 0,
+    "needed": true,
+    "pid": 35340,
+    "pid_alive": false,
+    "pid_liveness": {
+      "34826": false,
+      "35340": false
+    },
+    "pids": [
+      34826,
+      35340
+    ],
+    "preservation": {
+      "ok": true,
+      "summary": "continuity track: baseline fingerprint not required"
+    },
+    "stop_exit_code": 0,
+    "stopped_layers_summary": "stopped layers healthy",
+    "worker_stopped": true
+  },
+  "continuity": {
+    "family_aggregates": {
+      "continuity.live_config_swap": "passed",
+      "continuity.memory_lifecycle": "passed",
+      "continuity.offline_perception": "passed"
+    },
+    "finalizer": {
+      "ok": true,
+      "reason": "evidence freshness finalizer ok"
+    },
+    "hitl_complete": true,
+    "hitl_pending_steps": [],
+    "identity_current": {
+      "catalog_path": "<repo>/docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/catalogs/m007-continuity.yaml",
+      "catalog_sha256": "c3a91dd86354f185d17b13cbc1500edfa343ad05340eece335065b0e2233bd12",
+      "continuity_contract_sha256": "8cc8c22bc355f8001e46f00995815d924a4299c419c61bf2a3e40d40e61ceb4b",
+      "metrics_ui": {
+        "branch": "m002/04-passive-observation",
+        "commit": "722e070fdc9f4ee89d13f947bf3996e62dcb2783",
+        "diff_identity": null,
+        "linked_pr": null,
+        "named_diff": null,
+        "path": "Stream-Metrics-UI",
+        "worktree_state": "clean"
+      },
+      "metrics_ui_required": true,
+      "product_collection_errors": {},
+      "product_sha256": {
+        "autonomy/": "6431a4fccd949ccaea2cbc66bf2a310dfabc454ac439ba737f524832c23efd99",
+        "cli/automa": "a88ec0f9081e8447150b4a1e322517c4b73e0c1a4fa92e70c17fffde544291ce",
+        "cli/automa_cli/": "02d6e349f941d14afa26be54a45fb4d62d5272a7a3f75131d1fe97b96d81e75c",
+        "cli/automa_cli/app.py": "7ab58f01eb1cb7ee6176173cee6f6d55d027ee42b5fc079c1eefeafe2a91ab85",
+        "cli/automa_cli/automation.py": "33fc472820d82db2c9387e7bb3707c620b7b5117157f15f681ef861178eebc03",
+        "cli/automa_cli/bundles.py": "d275bd901bc48a29a271ba68c873670981439a483a62e667db046321ad17f695",
+        "cli/automa_cli/decision.py": "7e20cdb5a779814b9922c52719e04302b56454e071a6d6252a64cc12f24e6d7f",
+        "cli/automa_cli/lab_plugins.py": "a0096127eca99a2ea2f2f605af9e6581eb0321c9548fd81c2eedeea414944273",
+        "cli/automa_cli/memory.py": "1b4e8489f324a61556e6220dff2628e4cb4d6adbb8dbfd95c9706a3bc5cf19a0",
+        "cli/automa_cli/memory_check.py": "de1f7a135f965620db0b334b168ff8c70b8bf4cee23dc2aa8cf4eb2cf919242a",
+        "cli/automa_cli/operations.py": "bf331de5ad5164204752098875473d3ea387ad0101aae9aba35d6d245d19faac",
+        "cli/automa_cli/perception.py": "5a72976a55c17239ae17cd32eb3eb348f3d2ceee46fb518dbe8ad90bcacbcab3",
+        "cli/automa_cli/perception_runs.py": "3addb04981cff7c04dbd25570f74f75e03be6bbab78431537278c8ad2147e5f9",
+        "cli/automa_cli/perception_view.py": "53cedb315a2a18ec2c25f8c9e5623406d0f0d622fe7d69d2c534cd1595524a0a",
+        "cli/automa_cli/streaming.py": "f42ba7c32d84bc8dcd69558ac47b82f2ef9f5d15f803b778f3a08deff32155ae",
+        "cli/automa_cli/vehicles.py": "7dbb09e7585506dc54e2ca0360b478269f64da2d27471c38b6bdc7450aca0de4",
+        "implementations/": "a87006c3f975546c377659babdfe50bb50a7d9cee607626d538145133e64cac3"
+      },
+      "runner_sha256": "45da4ea9f2ccf66b27709e63061c8d1cddcac1ce768a757eb723b92246baff05",
+      "schema": "continuity_identity_bundle_v0"
+    },
+    "identity_recorded": {
+      "catalog_path": "<repo>/docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/catalogs/m007-continuity.yaml",
+      "catalog_sha256": "c3a91dd86354f185d17b13cbc1500edfa343ad05340eece335065b0e2233bd12",
+      "continuity_contract_sha256": "8cc8c22bc355f8001e46f00995815d924a4299c419c61bf2a3e40d40e61ceb4b",
+      "metrics_ui": {
+        "branch": "m002/04-passive-observation",
+        "commit": "722e070fdc9f4ee89d13f947bf3996e62dcb2783",
+        "diff_identity": null,
+        "linked_pr": null,
+        "named_diff": null,
+        "path": "Stream-Metrics-UI",
+        "worktree_state": "clean"
+      },
+      "metrics_ui_required": true,
+      "product_collection_errors": {},
+      "product_sha256": {
+        "autonomy/": "6431a4fccd949ccaea2cbc66bf2a310dfabc454ac439ba737f524832c23efd99",
+        "cli/automa": "a88ec0f9081e8447150b4a1e322517c4b73e0c1a4fa92e70c17fffde544291ce",
+        "cli/automa_cli/": "02d6e349f941d14afa26be54a45fb4d62d5272a7a3f75131d1fe97b96d81e75c",
+        "cli/automa_cli/app.py": "7ab58f01eb1cb7ee6176173cee6f6d55d027ee42b5fc079c1eefeafe2a91ab85",
+        "cli/automa_cli/automation.py": "33fc472820d82db2c9387e7bb3707c620b7b5117157f15f681ef861178eebc03",
+        "cli/automa_cli/bundles.py": "d275bd901bc48a29a271ba68c873670981439a483a62e667db046321ad17f695",
+        "cli/automa_cli/decision.py": "7e20cdb5a779814b9922c52719e04302b56454e071a6d6252a64cc12f24e6d7f",
+        "cli/automa_cli/lab_plugins.py": "a0096127eca99a2ea2f2f605af9e6581eb0321c9548fd81c2eedeea414944273",
+        "cli/automa_cli/memory.py": "1b4e8489f324a61556e6220dff2628e4cb4d6adbb8dbfd95c9706a3bc5cf19a0",
+        "cli/automa_cli/memory_check.py": "de1f7a135f965620db0b334b168ff8c70b8bf4cee23dc2aa8cf4eb2cf919242a",
+        "cli/automa_cli/operations.py": "bf331de5ad5164204752098875473d3ea387ad0101aae9aba35d6d245d19faac",
+        "cli/automa_cli/perception.py": "5a72976a55c17239ae17cd32eb3eb348f3d2ceee46fb518dbe8ad90bcacbcab3",
+        "cli/automa_cli/perception_runs.py": "3addb04981cff7c04dbd25570f74f75e03be6bbab78431537278c8ad2147e5f9",
+        "cli/automa_cli/perception_view.py": "53cedb315a2a18ec2c25f8c9e5623406d0f0d622fe7d69d2c534cd1595524a0a",
+        "cli/automa_cli/streaming.py": "f42ba7c32d84bc8dcd69558ac47b82f2ef9f5d15f803b778f3a08deff32155ae",
+        "cli/automa_cli/vehicles.py": "7dbb09e7585506dc54e2ca0360b478269f64da2d27471c38b6bdc7450aca0de4",
+        "implementations/": "a87006c3f975546c377659babdfe50bb50a7d9cee607626d538145133e64cac3"
+      },
+      "runner_sha256": "45da4ea9f2ccf66b27709e63061c8d1cddcac1ce768a757eb723b92246baff05",
+      "schema": "continuity_identity_bundle_v0"
+    },
+    "preflight": {
+      "family_meta": {
+        "by_family": {
+          "continuity.live_config_swap": [
+            "live-swap-stage",
+            "live-swap-stop"
+          ],
+          "continuity.memory_lifecycle": [
+            "memory-lifecycle"
+          ],
+          "continuity.memory_replay": [],
+          "continuity.offline_perception": [
+            "offline-capture",
+            "offline-apply-a",
+            "offline-apply-b"
+          ],
+          "continuity.plugin_ablation": [],
+          "continuity.temporal_backpressure": []
+        },
+        "required": [
+          "continuity.offline_perception",
+          "continuity.live_config_swap",
+          "continuity.memory_lifecycle"
+        ]
+      },
+      "family_ok": true,
+      "family_reason": "family validation ok",
+      "required_family_ids": [
+        "continuity.offline_perception",
+        "continuity.live_config_swap",
+        "continuity.memory_lifecycle"
+      ],
+      "safety_findings": [],
+      "safety_ok": true,
+      "safety_reason": "continuity safety preflight ok",
+      "schema": "continuity_preflight_v0"
+    },
+    "required_family_ids": [
+      "continuity.offline_perception",
+      "continuity.live_config_swap",
+      "continuity.memory_lifecycle"
+    ],
+    "restore_ok": true,
+    "verdict": "pass",
+    "verdict_reason": null
+  },
+  "execution_mode": "interactive_live",
+  "findings": [],
+  "gates": [],
+  "incomplete_reason": null,
+  "interactive_human_confirmation": true,
+  "machine_preflight": {
+    "evaluated_steps": [
+      "offline-capture",
+      "offline-apply-a",
+      "offline-apply-b",
+      "live-swap-stage",
+      "live-swap-stop",
+      "memory-lifecycle"
+    ],
+    "failures": [],
+    "summary": "6 required step(s) machine-green",
+    "verdict": "pass"
+  },
+  "ordered_step_outcomes": [
+    {
+      "browser_view": null,
+      "commands": [
+        {
+          "argv": [
+            "./cli/automa",
+            "vehicles",
+            "perception",
+            "run",
+            "--id",
+            "chase-sim-chaser",
+            "--frames",
+            "4",
+            "--interval-s",
+            "0.25",
+            "--record"
+          ],
+          "command": "./cli/automa vehicles perception run --id chase-sim-chaser --frames 4 --interval-s 0.25 --record",
+          "elapsed_ms": 14867,
+          "ended_at_utc": "2026-08-11T18:18:14.065170Z",
+          "exit_code": 0,
+          "started_at_utc": "2026-08-11T18:17:59.198309Z",
+          "stderr_path": "steps/offline-capture/cmd-00.stderr.txt",
+          "stdout_path": "steps/offline-capture/cmd-00.stdout.txt"
+        }
+      ],
+      "family_id": "continuity.offline_perception",
+      "gate_ids": [],
+      "human": {
+        "finding_requested": false,
+        "interactive": true,
+        "notes": "",
+        "visual": "pass"
+      },
+      "id": "offline-capture",
+      "kind": "command",
+      "machine_evidence": {},
+      "machine_ok": true,
+      "machine_summary": "",
+      "primary_cue": "human summary leads with review/run path and frame counts",
+      "question": "Can we capture a short recorded sequence without taking control?",
+      "required_for_verdict": true,
+      "safety": "local_write",
+      "status": "pass",
+      "visual_required": false
+    },
+    {
+      "browser_view": null,
+      "commands": [
+        {
+          "argv": [
+            "./cli/automa",
+            "vehicles",
+            "perception",
+            "apply",
+            "<repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260811-111809-905238-db9100cd",
+            "--algorithm",
+            "lightweight_observer",
+            "--record"
+          ],
+          "command": "./cli/automa vehicles perception apply <repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260811-111809-905238-db9100cd --algorithm lightweight_observer --record",
+          "elapsed_ms": 2964,
+          "ended_at_utc": "2026-08-11T18:25:05.697068Z",
+          "exit_code": 0,
+          "started_at_utc": "2026-08-11T18:25:02.732940Z",
+          "stderr_path": "steps/offline-apply-a/cmd-00.stderr.txt",
+          "stdout_path": "steps/offline-apply-a/cmd-00.stdout.txt"
+        }
+      ],
+      "family_id": "continuity.offline_perception",
+      "gate_ids": [],
+      "human": {
+        "finding_requested": false,
+        "interactive": true,
+        "notes": "",
+        "visual": "pass"
+      },
+      "id": "offline-apply-a",
+      "kind": "command",
+      "machine_evidence": {},
+      "machine_ok": true,
+      "machine_summary": "",
+      "primary_cue": "review path first; exclusive apply run directory",
+      "question": "Does apply produce a compact human summary for lightweight_observer on the same frames?",
+      "required_for_verdict": true,
+      "safety": "local_write",
+      "status": "pass",
+      "visual_required": false
+    },
+    {
+      "browser_view": null,
+      "commands": [
+        {
+          "argv": [
+            "./cli/automa",
+            "vehicles",
+            "perception",
+            "apply",
+            "<repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260811-111809-905238-db9100cd",
+            "--algorithm",
+            "sim_debug",
+            "--record"
+          ],
+          "command": "./cli/automa vehicles perception apply <repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260811-111809-905238-db9100cd --algorithm sim_debug --record",
+          "elapsed_ms": 628,
+          "ended_at_utc": "2026-08-11T18:25:47.359148Z",
+          "exit_code": 0,
+          "started_at_utc": "2026-08-11T18:25:46.730388Z",
+          "stderr_path": "steps/offline-apply-b/cmd-00.stderr.txt",
+          "stdout_path": "steps/offline-apply-b/cmd-00.stdout.txt"
+        }
+      ],
+      "family_id": "continuity.offline_perception",
+      "gate_ids": [],
+      "human": {
+        "finding_requested": false,
+        "interactive": true,
+        "notes": "",
+        "visual": "pass"
+      },
+      "id": "offline-apply-b",
+      "kind": "command",
+      "machine_evidence": {},
+      "machine_ok": true,
+      "machine_summary": "",
+      "primary_cue": "distinct run id from offline-apply-a; no overwrite",
+      "question": "Does a second apply in the same second keep a distinct exclusive record directory?",
+      "required_for_verdict": true,
+      "safety": "local_write",
+      "status": "pass",
+      "visual_required": false
+    },
+    {
+      "browser_view": null,
+      "commands": [
+        {
+          "argv": [
+            "./cli/automa",
+            "vehicles",
+            "update",
+            "perception",
+            "--id",
+            "chase-sim-chaser",
+            "--algorithm",
+            "lightweight_observer"
+          ],
+          "command": "./cli/automa vehicles update perception --id chase-sim-chaser --algorithm lightweight_observer",
+          "elapsed_ms": 915,
+          "ended_at_utc": "2026-08-11T18:25:59.404083Z",
+          "exit_code": 0,
+          "started_at_utc": "2026-08-11T18:25:58.489053Z",
+          "stderr_path": "steps/live-swap-stage/cmd-00.stderr.txt",
+          "stdout_path": "steps/live-swap-stage/cmd-00.stdout.txt"
+        },
+        {
+          "argv": [
+            "./cli/automa",
+            "vehicles",
+            "automation",
+            "run",
+            "--id",
+            "chase-sim-chaser",
+            "--observe-only",
+            "--frames",
+            "0",
+            "--open-view"
+          ],
+          "command": "./cli/automa vehicles automation run --id chase-sim-chaser --observe-only --frames 0 --open-view",
+          "elapsed_ms": 1716,
+          "ended_at_utc": "2026-08-11T18:26:01.121371Z",
+          "exit_code": 0,
+          "started_at_utc": "2026-08-11T18:25:59.405143Z",
+          "stderr_path": "steps/live-swap-stage/cmd-01.stderr.txt",
+          "stdout_path": "steps/live-swap-stage/cmd-01.stdout.txt"
+        },
+        {
+          "argv": [
+            "./cli/automa",
+            "vehicles",
+            "status",
+            "--id",
+            "chase-sim-chaser"
+          ],
+          "command": "./cli/automa vehicles status --id chase-sim-chaser",
+          "elapsed_ms": 1034,
+          "ended_at_utc": "2026-08-11T18:26:02.158376Z",
+          "exit_code": 0,
+          "started_at_utc": "2026-08-11T18:26:01.124172Z",
+          "stderr_path": "steps/live-swap-stage/cmd-02.stderr.txt",
+          "stdout_path": "steps/live-swap-stage/cmd-02.stdout.txt"
+        }
+      ],
+      "family_id": "continuity.live_config_swap",
+      "gate_ids": [],
+      "human": {
+        "finding_requested": false,
+        "interactive": true,
+        "notes": "",
+        "visual": "pass"
+      },
+      "id": "live-swap-stage",
+      "kind": "command",
+      "machine_evidence": {},
+      "machine_ok": true,
+      "machine_summary": "",
+      "primary_cue": "Ready for: inspect perception; worker running; observe_only",
+      "question": "Can we restage perception and reach observation-only readiness with a healthy view?",
+      "required_for_verdict": true,
+      "safety": "live_mutation",
+      "status": "pass",
+      "visual_required": true
+    },
+    {
+      "browser_view": null,
+      "commands": [
+        {
+          "argv": [
+            "./cli/automa",
+            "vehicles",
+            "automation",
+            "stop",
+            "--id",
+            "chase-sim-chaser"
+          ],
+          "command": "./cli/automa vehicles automation stop --id chase-sim-chaser",
+          "elapsed_ms": 843,
+          "ended_at_utc": "2026-08-11T18:27:22.484165Z",
+          "exit_code": 0,
+          "started_at_utc": "2026-08-11T18:27:21.640363Z",
+          "stderr_path": "steps/live-swap-stop/cmd-00.stderr.txt",
+          "stdout_path": "steps/live-swap-stop/cmd-00.stdout.txt"
+        },
+        {
+          "argv": [
+            "./cli/automa",
+            "vehicles",
+            "status",
+            "--id",
+            "chase-sim-chaser"
+          ],
+          "command": "./cli/automa vehicles status --id chase-sim-chaser",
+          "elapsed_ms": 688,
+          "ended_at_utc": "2026-08-11T18:27:23.174377Z",
+          "exit_code": 0,
+          "started_at_utc": "2026-08-11T18:27:22.485517Z",
+          "stderr_path": "steps/live-swap-stop/cmd-01.stderr.txt",
+          "stdout_path": "steps/live-swap-stop/cmd-01.stdout.txt"
+        }
+      ],
+      "family_id": "continuity.live_config_swap",
+      "gate_ids": [],
+      "human": {
+        "finding_requested": false,
+        "interactive": true,
+        "notes": "",
+        "visual": "pass"
+      },
+      "id": "live-swap-stop",
+      "kind": "command",
+      "machine_evidence": {},
+      "machine_ok": true,
+      "machine_summary": "",
+      "primary_cue": "worker stopped; view not current-generation; activation restored to pre-trial snapshot",
+      "question": "Does stop leave the worker dead, and does activation restore after the trial?",
+      "required_for_verdict": true,
+      "safety": "live_mutation",
+      "status": "pass",
+      "visual_required": false
+    },
+    {
+      "browser_view": null,
+      "commands": [
+        {
+          "argv": [
+            "./cli/automa",
+            "vehicles",
+            "update",
+            "memory",
+            "--id",
+            "chase-sim-chaser",
+            "--implementation",
+            "bounded_evidence"
+          ],
+          "command": "./cli/automa vehicles update memory --id chase-sim-chaser --implementation bounded_evidence",
+          "elapsed_ms": 666,
+          "ended_at_utc": "2026-08-11T18:27:59.881172Z",
+          "exit_code": 0,
+          "started_at_utc": "2026-08-11T18:27:59.214452Z",
+          "stderr_path": "steps/memory-lifecycle/cmd-00.stderr.txt",
+          "stdout_path": "steps/memory-lifecycle/cmd-00.stdout.txt"
+        },
+        {
+          "argv": [
+            "./cli/automa",
+            "vehicles",
+            "automation",
+            "run",
+            "--id",
+            "chase-sim-chaser",
+            "--observe-only",
+            "--frames",
+            "5"
+          ],
+          "command": "./cli/automa vehicles automation run --id chase-sim-chaser --observe-only --frames 5",
+          "elapsed_ms": 1671,
+          "ended_at_utc": "2026-08-11T18:28:01.553499Z",
+          "exit_code": 0,
+          "started_at_utc": "2026-08-11T18:27:59.882174Z",
+          "stderr_path": "steps/memory-lifecycle/cmd-01.stderr.txt",
+          "stdout_path": "steps/memory-lifecycle/cmd-01.stdout.txt"
+        },
+        {
+          "argv": [
+            "./cli/automa",
+            "vehicles",
+            "memory",
+            "check",
+            "--id",
+            "chase-sim-chaser",
+            "--record"
+          ],
+          "command": "./cli/automa vehicles memory check --id chase-sim-chaser --record",
+          "elapsed_ms": 10814,
+          "ended_at_utc": "2026-08-11T18:28:12.369331Z",
+          "exit_code": 0,
+          "started_at_utc": "2026-08-11T18:28:01.554347Z",
+          "stderr_path": "steps/memory-lifecycle/cmd-02.stderr.txt",
+          "stdout_path": "steps/memory-lifecycle/cmd-02.stdout.txt"
+        },
+        {
+          "argv": [
+            "./cli/automa",
+            "vehicles",
+            "automation",
+            "stop",
+            "--id",
+            "chase-sim-chaser"
+          ],
+          "command": "./cli/automa vehicles automation stop --id chase-sim-chaser",
+          "elapsed_ms": 520,
+          "ended_at_utc": "2026-08-11T18:28:12.891351Z",
+          "exit_code": 0,
+          "started_at_utc": "2026-08-11T18:28:12.370505Z",
+          "stderr_path": "steps/memory-lifecycle/cmd-03.stderr.txt",
+          "stdout_path": "steps/memory-lifecycle/cmd-03.stdout.txt"
+        }
+      ],
+      "family_id": "continuity.memory_lifecycle",
+      "gate_ids": [],
+      "human": {
+        "finding_requested": false,
+        "interactive": true,
+        "notes": "",
+        "visual": "pass"
+      },
+      "id": "memory-lifecycle",
+      "kind": "command",
+      "machine_evidence": {},
+      "machine_ok": true,
+      "machine_summary": "",
+      "primary_cue": "Memory check: ... PASS (includes present/dropout/expiry/reset phases)",
+      "question": "Does real perception become bounded attributable memory with a concise PASS/FAIL?",
+      "required_for_verdict": true,
+      "safety": "live_mutation",
+      "status": "pass",
+      "visual_required": false
+    }
+  ],
+  "recording": {
+    "after": [
+      "automation-20260630-214835",
+      "automation-20260630-214933"
+    ],
+    "before": [
+      "automation-20260630-214835",
+      "automation-20260630-214933"
+    ],
+    "new": []
+  },
+  "result": "pass",
+  "schema": "live_cli_session_result_v0",
+  "session_fingerprint": {
+    "baseline": null,
+    "latest": {
+      "changed_fields": [],
+      "control_input": null,
+      "control_source": "programmatic",
+      "game_id": "chase",
+      "mutation_attempted": false,
+      "playback": {
+        "frameIndex": 278096,
+        "pendingAction": false,
+        "phase": "running"
+      },
+      "preserved": true,
+      "scenario_id": "default",
+      "simulation_epoch": "chase-run:c985c4ab-101e-4c2d-b8cf-7b454d382880",
+      "stable_projection": {
+        "control_input": null,
+        "control_source": "programmatic",
+        "game_id": "chase",
+        "playback_mode": {
+          "pendingAction": false,
+          "phase": "running"
+        },
+        "scenario_id": "default",
+        "simulation_epoch": "chase-run:c985c4ab-101e-4c2d-b8cf-7b454d382880"
+      },
+      "unknown_fields": []
+    }
+  },
+  "timestamps": {
+    "ended_at_utc": "2026-08-11T18:30:35.517277Z",
+    "local_timezone": [
+      "PST",
+      "PDT"
+    ],
+    "started_at_utc": "2026-08-11T18:17:57.556173Z"
+  },
+  "variables": {
+    "metrics_ui_origin": "http://localhost:5050",
+    "perception_algorithm": "lightweight_observer",
+    "src_dir": "<repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260811-111809-905238-db9100cd",
+    "vehicle_id": "chase-sim-chaser"
+  },
+  "view_correlation": null
+}

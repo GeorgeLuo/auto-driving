@@ -58,13 +58,14 @@ Dependency: **PyYAML** for `.yaml` catalogs (`pip install pyyaml` if needed).
 | File | Track | Purpose |
 | --- | --- | --- |
 | `catalogs/m007-acceptance.yaml` | `acceptance` | Contracted Chase 6-step journey + help audit |
+| `catalogs/m007-continuity.yaml` | `continuity` | M007-10 offline/live-swap/memory scenario continuity |
 | `catalogs/exploratory-discovery.yaml` | `exploratory` | Capture-once multi-engine / compare / memory check |
 
 ### Catalog schema (`live_cli_session_catalog_v0`)
 
 Top-level fields:
 
-- `id`, `track` (`acceptance` \| `exploratory`), `title`, `description`
+- `id`, `track` (`acceptance` \| `continuity` \| `exploratory`), `title`, `description`
 - `vehicle_id`, `metrics_ui_origin`, `perception_algorithm`
 - `acceptance_contract.correlation.max_frame_lag` — reviewed frame-count bound
   for the pinned acceptance catalog (currently `24`)
@@ -273,3 +274,74 @@ python3 …/session_runner.py --catalog …/m007-acceptance.yaml --dry-run --non
 `--non-interactive` always prevents a formal acceptance `pass`, even when
 `--auto-visual pass` is supplied. Only an interactive session can provide the
 human portion of the M007-05 verdict.
+
+## M007-10 continuity HITL handoff
+
+Use this handoff after the continuity machine-only command exits `0`. It is a
+fresh, named-operator session; do not reuse the machine-only session directory
+or convert its visual `skip` into a pass.
+
+```sh
+SESSION_DIR="$(mktemp -d /tmp/m007-continuity-hitl.XXXXXX)"
+CATALOG="docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/catalogs/m007-continuity.yaml"
+RUNNER="docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/session_runner.py"
+
+python3 "$RUNNER" \
+  --catalog "$CATALOG" \
+  --metrics-ui-origin http://localhost:5050 \
+  --metrics-ui-repo /path/to/Stream-Metrics-UI \
+  --browser-name Chrome \
+  --browser-version "<value from chrome://version>" \
+  --operator "<named operator>" \
+  --session-dir "$SESSION_DIR"
+```
+
+During the interactive prompts:
+
+1. For `src_dir`, enter the exact recorded perception-run directory emitted by
+   `offline-capture`; it must contain the same `run.json` and ordered frame
+   bytes for both applies. Do not select a newer run by directory timestamp.
+2. At `live-swap-stage`, inspect the launched Automa view and answer `pass`
+   only when it is nonblank, intelligible, and shows the expected perception
+   overlay/readiness cue. The operator records notes; raw JSON and artifact
+   paths are not the visual confirmation.
+3. Accept each required nonvisual step only after its machine summary is
+   visible. Record any finding instead of skipping a required leaf.
+
+The session command must finish with a named operator and a continuity
+`pass`. Independently finalize that exact fresh session against both checkouts:
+
+```sh
+python3 docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/continuity_contract.py \
+  finalize-session "$SESSION_DIR" \
+  --repo-root "$PWD" \
+  --catalog "$CATALOG" \
+  --metrics-ui-repo /path/to/Stream-Metrics-UI
+```
+
+The finalizer must exit `0`. Then verify the detached session manifest before
+copying it into the tracked evidence package:
+
+```sh
+python3 - "$SESSION_DIR" <<'PY'
+import hashlib, json, sys
+from pathlib import Path
+
+session = Path(sys.argv[1])
+result = json.loads((session / "result.json").read_text())
+assert result["result"] == "pass", result
+assert result["continuity"]["hitl_complete"] is True, result
+manifest = json.loads((session / "digests.json").read_text())
+for artifact in manifest["artifacts"]:
+    path = session / artifact["path"]
+    actual = hashlib.sha256(path.read_bytes()).hexdigest()
+    assert actual == artifact["sha256"], artifact["path"]
+print(f"verified {len(manifest['artifacts'])} session artifacts")
+PY
+```
+
+Finally replace `evidence/cli-scenario-continuity/runner-session/` with this
+fresh session, regenerate the outer `result.json` from the session's
+`continuity` block, refresh the outer artifact hashes, and run
+`git diff --check`. Commit the complete package together; a stale outer receipt
+or inner `digests.json` is not evidence of a continuity pass.

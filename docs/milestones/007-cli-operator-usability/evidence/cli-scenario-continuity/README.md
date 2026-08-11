@@ -21,6 +21,20 @@ Accepted contract: [cli-scenario-continuity.md](../../proposals/cli-scenario-con
 | Metrics UI | `m002/04-passive-observation` at `722e070fdc9f4ee89d13f947bf3996e62dcb2783`, clean |
 | Evidence | `runner-session/browser-view.png`, `result.json`, `human-notes.md`, and command transcripts |
 
+## Session separation
+
+The package contains two independent, finalized runner sessions. The
+machine-only rehearsal is not relabeled or derived from the interactive run.
+
+| Session | Manifest | Result |
+| --- | --- | --- |
+| Machine-only rehearsal | `machine-only-session/result.json` | **incomplete by design**; 6/6 machine steps green, US-04 restore/cleanup ok, finalizer ok, HITL not attempted |
+| Named HITL run | `runner-session/result.json` | **pass**; named operator `GeorgeLuo`, visual gate and recorded-review adjunct passed |
+
+The machine-only session was freshly captured at PR head `8da2b10` against
+behavior head `37b7393`; its separate identity, cleanup, restore, and
+finalizer records are retained under `machine-only-session/`.
+
 ## Integrated HITL adjunct
 
 PR #103, originating from issue #101, adds local playback controls to recorded
@@ -33,8 +47,23 @@ contract changed.
 The adjunct is confined to `README.md`,
 `cli/automa_cli/perception_evaluation.py`, and
 `tests/cli/perception/test_runs.py`. Its focused validation covers zero- and
-one-frame reviews, missing source/processed images, untrusted label escaping,
-no-JavaScript fallback content, and the absence of external runtime assets.
+one-frame reviews and the new renderer’s two-frame selector/escaping and
+zero-frame no-motion cases. The 22-test command/run suite does not directly
+assert missing source/processed images, no-JavaScript fallback, or external
+asset absence; those rows are not claimed as deterministic test coverage here.
+When the selected view has no representation, the renderer shows an explicit
+empty-view message; it does not fall back to another representation.
+
+## Acceptance anchor and repair ledger
+
+Acceptance breadth remains anchored to the [#88 prospective usage-sequence
+catalog and confirmation standard](https://github.com/GeorgeLuo/auto-driving/pull/88#issuecomment-5169077892).
+
+| Finding / issue | Disposition | Evidence or implementation |
+| --- | --- | --- |
+| US-04 restore-integrity P1 from [review 4899909647](https://github.com/GeorgeLuo/auto-driving/pull/100#pullrequestreview-4899909647) | Repaired at the managed-entry owner | [cfd1a3d](https://github.com/GeorgeLuo/auto-driving/commit/cfd1a3d); lstat identity, safe absence cleanup, receipt comparison, and regressions |
+| [Issue #101](https://github.com/GeorgeLuo/auto-driving/issues/101) / [PR #103](https://github.com/GeorgeLuo/auto-driving/pull/103) recorded-review playback | Bounded additive adjunct integrated; no live-view or continuity-contract change | [37b7393](https://github.com/GeorgeLuo/auto-driving/commit/37b7393); named-HITL playback exercise and 22-test command/run suite |
+| Latest review evidence P1/P2 from [review 4899909647](https://github.com/GeorgeLuo/auto-driving/pull/100#pullrequestreview-4899909647) | Evidence-only reconciliation; no new product defect | Separate machine-only session, narrowed claims, #88 anchor, and this repair ledger |
 
 ## Family ledger
 
@@ -46,16 +75,19 @@ no-JavaScript fallback content, and the absence of external runtime assets.
 
 ## Validation and integrity
 
-- 22 focused recorded-review tests passed.
+- 22 focused perception command/run tests passed; 2 directly exercise the new
+  recorded-review renderer.
 - 69 continuity-contract tests and 43 session-runner tests passed.
 - 112 milestone tests passed.
 - The full deterministic suite ran 605 tests successfully with 2 expected skips.
-- The fresh machine-only rehearsal passed all six required steps before HITL.
+- The separate machine-only rehearsal passed all six required steps, restored
+  and cleaned up successfully, and finalized independently before HITL.
 - The interactive session has zero findings, 55 verified inner digest entries,
-  and a finalizer pass against both clean reviewed checkouts.
+  and a finalizer pass against both clean reviewed checkouts; the machine-only
+  session has 54 verified inner digest entries and its own finalizer pass.
 
 ## Verdict
 
-`pass` — machine-first continuity, the integrated recorded-review adjunct,
-named-operator HITL, cleanup, restoration, and freshness finalization all passed
-on the same product head.
+`pass` — the independent machine-first rehearsal, integrated recorded-review
+adjunct, named-operator HITL, cleanup, restoration, and freshness finalization
+all passed on the same product head.

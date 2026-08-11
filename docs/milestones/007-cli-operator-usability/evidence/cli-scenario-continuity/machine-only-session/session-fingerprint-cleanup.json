@@ -1,0 +1,27 @@
+{
+  "changed_fields": [],
+  "control_input": null,
+  "control_source": "programmatic",
+  "game_id": "chase",
+  "mutation_attempted": false,
+  "playback": {
+    "frameIndex": 79951,
+    "pendingAction": false,
+    "phase": "running"
+  },
+  "preserved": true,
+  "scenario_id": "default",
+  "simulation_epoch": "chase-run:763314cf-8505-4e08-84f9-1852f892cd2f",
+  "stable_projection": {
+    "control_input": null,
+    "control_source": "programmatic",
+    "game_id": "chase",
+    "playback_mode": {
+      "pendingAction": false,
+      "phase": "running"
+    },
+    "scenario_id": "default",
+    "simulation_epoch": "chase-run:763314cf-8505-4e08-84f9-1852f892cd2f"
+  },
+  "unknown_fields": []
+}

@@ -2,7 +2,7 @@
   "artifacts": [
     {
       "path": "README.md",
-      "sha256": "c8301556b0569210759d7ce9f7660614bf66e4fb644b0f7b1b09b258b318b780"
+      "sha256": "b2f343f184f5b923df53cbb120669f808b4faa50fee87f53f7680d5de2e2630d"
     },
     {
       "path": "runner-session/result.json",
@@ -34,11 +34,39 @@
     },
     {
       "path": "runner-session/digests.json",
-      "sha256": "77df827edaf34bf9755d8fef088d342f9fddb64d00eac0cbbd951f76ab2fd42c"
+      "sha256": "845f270fb90f4adc02a5216c1285b01e13cb0a8b04a4f224f17b47fee9ce088f"
     },
     {
       "path": "runner-session/browser-view.png",
       "sha256": "69b9dabe0af3ad339a3bc2c02c44cf6b6221c08ad20337bd87d3948364d08620"
+    },
+    {
+      "path": "machine-only-session/result.json",
+      "sha256": "bb0e7d3045debe0d6ff34c82dc2b1bb0953a6b9bcbe196297303beb73962bb90"
+    },
+    {
+      "path": "machine-only-session/continuity-preflight.json",
+      "sha256": "6aa6556a7336aeab789499b60d2d8c7a1fe9f08ba62dc897a905612e5552031d"
+    },
+    {
+      "path": "machine-only-session/us04-activation-restore.json",
+      "sha256": "3f626adae9be159e917488057753a3fddd6c66a2759518a45c2a868a043b5e6f"
+    },
+    {
+      "path": "machine-only-session/us04-snapshot-restore-compare.json",
+      "sha256": "3c283cd97838e4e6e12c9a406d69d0902f99acf0a4f0c4d41521d48bdfe803a3"
+    },
+    {
+      "path": "machine-only-session/offline-source-lineage.json",
+      "sha256": "31a12f1f0a9c0a08a4a1987ecd04f07d4f5f0c930dbe089267745ec8b4cc49b8"
+    },
+    {
+      "path": "machine-only-session/human-notes.md",
+      "sha256": "8c54f847cd39f3eae3e4b0291509edcb69f8fce3ff9324ee736792a6b5a19b3c"
+    },
+    {
+      "path": "machine-only-session/digests.json",
+      "sha256": "dc7b739f4735c7ecd035726959d1592aad52c4562796c81485bbe1e40f2ea92a"
     }
   ],
   "family_aggregates": {
@@ -96,6 +124,39 @@
     "result": "pass",
     "step_id": "offline-capture"
   },
+  "repairs": [
+    {
+      "disposition": "repaired at the owning snapshot/restore boundary",
+      "evidence": "machine-only-session plus runner-session",
+      "id": "review-4899909647-us04-p1",
+      "implementation": "cfd1a3d",
+      "review": "https://github.com/GeorgeLuo/auto-driving/pull/100#pullrequestreview-4899909647",
+      "scope": "US-04 managed activation and manifest identity"
+    },
+    {
+      "direct_renderer_tests": 2,
+      "disposition": "bounded additive adjunct integrated; no live-view or continuity-contract change",
+      "id": "issue-101-pr-103-recorded-review",
+      "implementation": "37b7393",
+      "issue": "https://github.com/GeorgeLuo/auto-driving/issues/101",
+      "pull_request": "https://github.com/GeorgeLuo/auto-driving/pull/103",
+      "scope": "recorded-review playback adjunct"
+    },
+    {
+      "disposition": "repaired in tracked evidence packaging; distinct finalized machine-only manifest added",
+      "evidence": "machine-only-session/result.json and machine-only-session/digests.json",
+      "id": "review-4909716246-p1",
+      "review": "https://github.com/GeorgeLuo/auto-driving/pull/100#pullrequestreview-4909716246",
+      "scope": "separate machine-only evidence session"
+    },
+    {
+      "disposition": "claims narrowed to 22 command/run tests with 2 direct renderer tests; explicit empty-view behavior documented; #88 anchor and repair ledger added",
+      "evidence": "README.md and result.json",
+      "id": "review-4909716246-p2",
+      "review": "https://github.com/GeorgeLuo/auto-driving/pull/100#pullrequestreview-4909716246",
+      "scope": "recorded-review claims and reconciliation records"
+    }
+  ],
   "required_family_ids": [
     "continuity.offline_perception",
     "continuity.live_config_swap",
@@ -114,7 +175,9 @@
     "continuity_contract_tests": 69,
     "continuity_hitl_runbook": true,
     "continuity_repair_head": "cfd1a3d5f1435f705cb6c4c365ae241048906224",
+    "direct_recorded_review_renderer_tests": 2,
     "discovered_tests": 605,
+    "empty_view_semantics_explicit": true,
     "focused_continuity_tests": 112,
     "focused_recorded_review_tests": 22,
     "full_deterministic_suite": "605 tests OK, 2 expected skips",
@@ -125,6 +188,9 @@
     "integrated_hitl_adjunct_pr": 103,
     "interactive_hitl": true,
     "interrupt_after_trial_mutation": true,
+    "machine_only_inner_digest_entries": 54,
+    "machine_only_result": "incomplete",
+    "machine_only_session_separate": true,
     "machine_readiness_gate": true,
     "machine_session": "6/6 required steps green",
     "managed_file_identity_gate": true,
@@ -134,15 +200,18 @@
     "named_operator_required": true,
     "nested_symlink_regression": true,
     "optional_absence_residue_regression": true,
-    "outer_artifact_entries": 10,
+    "outer_artifact_entries": 17,
     "posthoc_freshness_finalizer": true,
     "product_collection_errors_empty": true,
     "product_collection_errors_gate": true,
     "product_file_type_mode_identity": true,
     "product_tree_root_identity": true,
+    "prospective_catalog_anchor": "https://github.com/GeorgeLuo/auto-driving/pull/88#issuecomment-5169077892",
     "quoted_untracked_path_identity": true,
+    "recorded_review_claims_narrowed": true,
     "recorded_review_playback": true,
     "regular_mode_regression": true,
+    "repair_ledger": true,
     "required_nonvisual_skip_block": true,
     "root_relative_cache_exclusion": true,
     "root_symlink_regression": true,
@@ -180,6 +249,44 @@
       "started_at_utc": "2026-08-11T18:17:57.556173Z"
     }
   },
+  "session_manifests": [
+    {
+      "behavior_head": "37b7393fe759f1597860a30d8c10ca5692f1c0cc",
+      "digest_manifest_path": "machine-only-session/digests.json",
+      "digest_sha256": "dc7b739f4735c7ecd035726959d1592aad52c4562796c81485bbe1e40f2ea92a",
+      "execution_mode": "machine_only_live",
+      "finalizer": {
+        "ok": true,
+        "reason": "evidence freshness finalizer ok"
+      },
+      "id": "machine-only-rehearsal",
+      "inner_digest_entries": 54,
+      "machine_preflight": "pass",
+      "manifest_path": "machine-only-session/result.json",
+      "operator": null,
+      "result": "incomplete",
+      "result_sha256": "bb0e7d3045debe0d6ff34c82dc2b1bb0953a6b9bcbe196297303beb73962bb90",
+      "runner_head": "8da2b10039daeac54d59c2e652630f29c052d288"
+    },
+    {
+      "behavior_head": "37b7393fe759f1597860a30d8c10ca5692f1c0cc",
+      "digest_manifest_path": "runner-session/digests.json",
+      "digest_sha256": "845f270fb90f4adc02a5216c1285b01e13cb0a8b04a4f224f17b47fee9ce088f",
+      "execution_mode": "interactive_live",
+      "finalizer": {
+        "ok": true,
+        "reason": "evidence freshness finalizer ok"
+      },
+      "id": "named-hitl",
+      "inner_digest_entries": 55,
+      "machine_preflight": "pass",
+      "manifest_path": "runner-session/result.json",
+      "operator": "GeorgeLuo",
+      "result": "pass",
+      "result_sha256": "ab8afa1ce914a2f0c3b163f888bc9f246f9ff25399f92e152f3363c5d8596255",
+      "runner_head": "37b7393fe759f1597860a30d8c10ca5692f1c0cc"
+    }
+  ],
   "verdict": "pass",
   "verdict_reason": null,
   "visual_hitl": {

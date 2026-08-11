@@ -63,7 +63,7 @@
         },
         "process": {
           "command": [
-            "/opt/homebrew/anaconda3/bin/python3",
+            "<python>",
             "<repo>/cli/automa",
             "vehicles",
             "automation",
@@ -594,7 +594,7 @@
           "updated_at_ms": 1786472211629
         },
         "command": [
-          "/opt/homebrew/anaconda3/bin/python3",
+          "<python>",
           "<repo>/cli/automa",
           "vehicles",
           "automation",

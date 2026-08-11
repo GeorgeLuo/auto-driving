@@ -1,0 +1,98 @@
+{
+  "browser_view": null,
+  "commands": [
+    {
+      "argv": [
+        "./cli/automa",
+        "vehicles",
+        "update",
+        "memory",
+        "--id",
+        "chase-sim-chaser",
+        "--implementation",
+        "bounded_evidence"
+      ],
+      "command": "./cli/automa vehicles update memory --id chase-sim-chaser --implementation bounded_evidence",
+      "elapsed_ms": 537,
+      "ended_at_utc": "2026-08-11T22:57:25.063991Z",
+      "exit_code": 0,
+      "started_at_utc": "2026-08-11T22:57:24.526916Z",
+      "stderr_path": "steps/memory-lifecycle/cmd-00.stderr.txt",
+      "stdout_path": "steps/memory-lifecycle/cmd-00.stdout.txt"
+    },
+    {
+      "argv": [
+        "./cli/automa",
+        "vehicles",
+        "automation",
+        "run",
+        "--id",
+        "chase-sim-chaser",
+        "--observe-only",
+        "--frames",
+        "5"
+      ],
+      "command": "./cli/automa vehicles automation run --id chase-sim-chaser --observe-only --frames 5",
+      "elapsed_ms": 1696,
+      "ended_at_utc": "2026-08-11T22:57:26.761332Z",
+      "exit_code": 0,
+      "started_at_utc": "2026-08-11T22:57:25.065104Z",
+      "stderr_path": "steps/memory-lifecycle/cmd-01.stderr.txt",
+      "stdout_path": "steps/memory-lifecycle/cmd-01.stdout.txt"
+    },
+    {
+      "argv": [
+        "./cli/automa",
+        "vehicles",
+        "memory",
+        "check",
+        "--id",
+        "chase-sim-chaser",
+        "--record"
+      ],
+      "command": "./cli/automa vehicles memory check --id chase-sim-chaser --record",
+      "elapsed_ms": 10907,
+      "ended_at_utc": "2026-08-11T22:57:37.669399Z",
+      "exit_code": 0,
+      "started_at_utc": "2026-08-11T22:57:26.762605Z",
+      "stderr_path": "steps/memory-lifecycle/cmd-02.stderr.txt",
+      "stdout_path": "steps/memory-lifecycle/cmd-02.stdout.txt"
+    },
+    {
+      "argv": [
+        "./cli/automa",
+        "vehicles",
+        "automation",
+        "stop",
+        "--id",
+        "chase-sim-chaser"
+      ],
+      "command": "./cli/automa vehicles automation stop --id chase-sim-chaser",
+      "elapsed_ms": 568,
+      "ended_at_utc": "2026-08-11T22:57:38.238783Z",
+      "exit_code": 0,
+      "started_at_utc": "2026-08-11T22:57:37.670324Z",
+      "stderr_path": "steps/memory-lifecycle/cmd-03.stderr.txt",
+      "stdout_path": "steps/memory-lifecycle/cmd-03.stdout.txt"
+    }
+  ],
+  "family_id": "continuity.memory_lifecycle",
+  "gate_ids": [],
+  "human": {
+    "finding_requested": false,
+    "interactive": false,
+    "notes": "non-interactive session",
+    "visual": "pass"
+  },
+  "id": "memory-lifecycle",
+  "kind": "command",
+  "machine_evidence": {},
+  "machine_ok": true,
+  "machine_summary": "",
+  "primary_cue": "Memory check: ... PASS (includes present/dropout/expiry/reset phases)",
+  "question": "Does real perception become bounded attributable memory with a concise PASS/FAIL?",
+  "required_for_verdict": true,
+  "safety": "live_mutation",
+  "status": "pass",
+  "visual_required": false
+}

@@ -1,17 +1,17 @@
 Perception experiment
 ---------------------
-review: runtime/perception-applies/apply-perception-chase-sim-chaser-20260810-115752-879877-43af7934-20260810-115800-504423-8b38fb5d/review.html
-run: runtime/perception-applies/apply-perception-chase-sim-chaser-20260810-115752-879877-43af7934-20260810-115800-504423-8b38fb5d
-source: <repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260810-115752-879877-43af7934
+review: runtime/perception-applies/apply-perception-chase-sim-chaser-20260811-111809-905238-db9100cd-20260811-112547-233101-becfbe22/review.html
+run: runtime/perception-applies/apply-perception-chase-sim-chaser-20260811-111809-905238-db9100cd-20260811-112547-233101-becfbe22
+source: <repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception-runs/perception-chase-sim-chaser-20260811-111809-905238-db9100cd
 algorithm: sim_debug
 frames: 4
 failed frames: 0
 statuses: ok=4
-evidence: obstruction_evidence=4, sensor_frame=4
-latency: cold 87.877 ms; steady median 78.042 ms, p95 78.711 ms
-peak memory: 99.203 MiB
-representation health: 1.000 (not semantic accuracy)
+evidence: obstruction_evidence=2, sensor_frame=4
+latency: cold 29.404 ms; steady median 13.524 ms, p95 36.911 ms
+peak memory: 97.797 MiB
+representation health: 0.625 (not semantic accuracy)
 recording: on
 plugins:
-- frame-observation-v0: ok=4; median 5.572 ms
-- sim-color-targets-v0: ok=4; median 72.722 ms
+- frame-observation-v0: ok=4; median 7.005 ms
+- sim-color-targets-v0: ok=4; median 9.344 ms

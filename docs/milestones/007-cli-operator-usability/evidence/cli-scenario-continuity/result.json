@@ -2,11 +2,11 @@
   "artifacts": [
     {
       "path": "README.md",
-      "sha256": "09d8102b012aa3a0f8de3138474ceeac16f7c4097b4e3bef45c02391350e6b29"
+      "sha256": "c8301556b0569210759d7ce9f7660614bf66e4fb644b0f7b1b09b258b318b780"
     },
     {
       "path": "runner-session/result.json",
-      "sha256": "5a44d12cc1063be2e8b266970f84869a59df4e08ba8259f925cc68bdd2baba46"
+      "sha256": "ab8afa1ce914a2f0c3b163f888bc9f246f9ff25399f92e152f3363c5d8596255"
     },
     {
       "path": "runner-session/continuity-preflight.json",
@@ -14,11 +14,11 @@
     },
     {
       "path": "runner-session/us04-activation-restore.json",
-      "sha256": "9873434a76726f4234f3253ab930eeb70c298350f33e973bf25361b567513a7d"
+      "sha256": "3ce81330f99b714e3db230c20c2638918ff9183c1d8e23aa39a1b0a2d3188e98"
     },
     {
       "path": "runner-session/us04-activation-snapshot-meta.json",
-      "sha256": "31bec96f0b107b609c99c23716da9fcefdd3b04a2cfca6642a2973bfcb3ad9fd"
+      "sha256": "183eacfc892e69a9035037fa4c589536a2bb55256b949e75448429f2e2cdd975"
     },
     {
       "path": "runner-session/us04-snapshot-restore-compare.json",
@@ -26,19 +26,23 @@
     },
     {
       "path": "runner-session/offline-source-lineage.json",
-      "sha256": "5f70f52f879f9c8566cd882837a17d1b9d3d26eb324279f4ac12d4d4eae9a3f9"
+      "sha256": "a869115e2ae7329da4401f1b158686ccf12e961e6a812abbdc71635abeb4e020"
     },
     {
       "path": "runner-session/human-notes.md",
-      "sha256": "0550f57f00d68e1da3845ace57e4e0cc531dcccbef3efc7e12ed44ef97c493aa"
+      "sha256": "8a6aa65532927e83423acd22bdc6f89f89d9468500d7ca5f2522ec90c5314381"
     },
     {
       "path": "runner-session/digests.json",
-      "sha256": "9c2532d0f38bb62b08b3b796db53e53bf7fd9bf13db6b4422fd5ff10234820b3"
+      "sha256": "77df827edaf34bf9755d8fef088d342f9fddb64d00eac0cbbd951f76ab2fd42c"
+    },
+    {
+      "path": "runner-session/browser-view.png",
+      "sha256": "69b9dabe0af3ad339a3bc2c02c44cf6b6221c08ad20337bd87d3948364d08620"
     }
   ],
   "family_aggregates": {
-    "continuity.live_config_swap": "partial",
+    "continuity.live_config_swap": "passed",
     "continuity.memory_lifecycle": "passed",
     "continuity.offline_perception": "passed"
   },
@@ -47,8 +51,20 @@
     "reason": "evidence freshness finalizer ok"
   },
   "findings": [],
-  "hitl_complete": false,
-  "incomplete_reason": "required family continuity.live_config_swap still partial (often HITL pending)",
+  "hitl_complete": true,
+  "incomplete_reason": null,
+  "integrated_hitl_adjunct": {
+    "affected_paths": [
+      "README.md",
+      "cli/automa_cli/perception_evaluation.py",
+      "tests/cli/perception/test_runs.py"
+    ],
+    "contract_reconciliation": "additive implementation-discovered need; accepted frontier remains true without the adjunct",
+    "issue": 101,
+    "merge_commit": "37b7393fe759f1597860a30d8c10ca5692f1c0cc",
+    "pull_request": 103,
+    "result": "pass"
+  },
   "machine_preflight": {
     "evaluated_steps": [
       "offline-capture",
@@ -71,33 +87,43 @@
     "path": "Stream-Metrics-UI",
     "worktree_state": "clean"
   },
-  "metrics_ui_freshness": "recorded_only_machine_only",
-  "metrics_ui_required": false,
+  "metrics_ui_freshness": "independently_finalized_interactive",
+  "metrics_ui_required": true,
+  "recorded_review_hitl": {
+    "evidence": "runner-session/steps/offline-capture/envelope.json",
+    "notes": "The operator exercised source/processed/combined selection, timeline scrubbing, and play/pause on the fresh four-frame recording.",
+    "operator": "GeorgeLuo",
+    "result": "pass",
+    "step_id": "offline-capture"
+  },
   "required_family_ids": [
     "continuity.offline_perception",
     "continuity.live_config_swap",
     "continuity.memory_lifecycle"
   ],
   "restore_ok": true,
-  "result": "incomplete",
+  "result": "pass",
   "review_repair": {
     "activation_symlink_regression": true,
-    "behavior_head": "cfd1a3d",
-    "behavior_head_full": "cfd1a3d5f1435f705cb6c4c365ae241048906224",
+    "behavior_head": "37b7393",
+    "behavior_head_full": "37b7393fe759f1597860a30d8c10ca5692f1c0cc",
     "bundle_manifest_symlink_regression": true,
     "byte_safe_tree_path_identity": true,
-    "code_repair_commit": "cfd1a3d5f1435f705cb6c4c365ae241048906224",
     "complete_cli_runtime_render_surface": true,
     "continuity_contract_sha256": "8cc8c22bc355f8001e46f00995815d924a4299c419c61bf2a3e40d40e61ceb4b",
     "continuity_contract_tests": 69,
     "continuity_hitl_runbook": true,
-    "discovered_tests": 590,
+    "continuity_repair_head": "cfd1a3d5f1435f705cb6c4c365ae241048906224",
+    "discovered_tests": 605,
     "focused_continuity_tests": 112,
-    "full_deterministic_suite": "590 passed, 2 expected skips",
-    "hitl_operator": null,
+    "focused_recorded_review_tests": 22,
+    "full_deterministic_suite": "605 tests OK, 2 expected skips",
+    "hitl_operator": "GeorgeLuo",
     "inaccessible_subtree_regression": true,
-    "inner_digest_entries": 54,
-    "interactive_hitl": false,
+    "inner_digest_entries": 55,
+    "integrated_hitl_adjunct_issue": 101,
+    "integrated_hitl_adjunct_pr": 103,
+    "interactive_hitl": true,
     "interrupt_after_trial_mutation": true,
     "machine_readiness_gate": true,
     "machine_session": "6/6 required steps green",
@@ -108,13 +134,14 @@
     "named_operator_required": true,
     "nested_symlink_regression": true,
     "optional_absence_residue_regression": true,
-    "outer_artifact_entries": 9,
+    "outer_artifact_entries": 10,
     "posthoc_freshness_finalizer": true,
     "product_collection_errors_empty": true,
     "product_collection_errors_gate": true,
     "product_file_type_mode_identity": true,
     "product_tree_root_identity": true,
     "quoted_untracked_path_identity": true,
+    "recorded_review_playback": true,
     "regular_mode_regression": true,
     "required_nonvisual_skip_block": true,
     "root_relative_cache_exclusion": true,
@@ -131,7 +158,7 @@
     "untracked_executable_mode_identity": true,
     "untracked_symlink_target_identity": true,
     "us04_snapshot_meta_schema_v3": true,
-    "visual_evidence": null
+    "visual_evidence": "runner-session/browser-view.png"
   },
   "schema": "m007_cli_scenario_continuity_v0",
   "session": {
@@ -141,26 +168,25 @@
       "title": "M007 realistic CLI scenario continuity",
       "track": "continuity"
     },
-    "execution_mode": "machine_only_live",
-    "operator": null,
-    "operator_label": "machine-preflight (non-human runner label)",
+    "execution_mode": "interactive_live",
+    "operator": "GeorgeLuo",
     "path": "runner-session",
     "timestamps": {
-      "ended_at_utc": "2026-08-10T18:58:19.989598Z",
+      "ended_at_utc": "2026-08-11T18:30:35.517277Z",
       "local_timezone": [
         "PST",
         "PDT"
       ],
-      "started_at_utc": "2026-08-10T18:57:40.717717Z"
+      "started_at_utc": "2026-08-11T18:17:57.556173Z"
     }
   },
-  "verdict": "incomplete",
-  "verdict_reason": "required family continuity.live_config_swap still partial (often HITL pending)",
+  "verdict": "pass",
+  "verdict_reason": null,
   "visual_hitl": {
-    "notes": "No human visual confirmation was recorded. Agent/VLM observation is not counted as HITL evidence.",
-    "operator": null,
-    "result": "pending",
-    "screenshot": null,
+    "notes": "The operator answered pass after inspecting the fresh live Automa view for a nonblank, intelligible expected perception overlay/readiness cue.",
+    "operator": "GeorgeLuo",
+    "result": "pass",
+    "screenshot": "runner-session/browser-view.png",
     "step_id": "live-swap-stage"
   }
 }

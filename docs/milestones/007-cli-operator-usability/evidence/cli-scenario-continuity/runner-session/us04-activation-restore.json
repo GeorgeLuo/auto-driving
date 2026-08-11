@@ -43,11 +43,11 @@
       "entry_type": "regular",
       "error": null,
       "existed": true,
-      "identity_sha256": "8f737276fd845929849c17691a08c96f0dc1b9e6960436705028e17c64e6e901",
+      "identity_sha256": "ea3e2ca31b6383c6ea94aed0ca12cec205cfe294ea7496495f44894e97281829",
       "mode": 420,
       "ok": true,
       "path": "<repo>/runtime/vehicles/chase-sim-chaser/bundle/runtime/perception/active.json",
-      "sha256": "e65b156af59e09e89ee33cbb52569de5285a5ea8ab2e34097037e87f92db4b63",
+      "sha256": "386858e48136a6221245f9f1a3600d0bcc9d732ad860dbf40ceee1907c09bcd0",
       "symlink_target": null,
       "verified": true
     },

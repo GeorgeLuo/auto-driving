@@ -2,7 +2,11 @@
   "artifacts": [
     {
       "path": "baseline.json",
-      "sha256": "eed92b8ec37b4680f7b79d15d2a46b01d505bc4a18d23a11b1161abccc7ba0f4"
+      "sha256": "4efe133661e169c9a571bde912227e0daf80a437e8f6d2791b003fc5cc7f930a"
+    },
+    {
+      "path": "browser-view.png",
+      "sha256": "69b9dabe0af3ad339a3bc2c02c44cf6b6221c08ad20337bd87d3948364d08620"
     },
     {
       "path": "catalog-source.txt",
@@ -14,11 +18,11 @@
     },
     {
       "path": "cleanup-status.json",
-      "sha256": "0330df5cee5e61944e1dd4ea63340cff8b3cc3c269554759d50cf5dbc9a390c4"
+      "sha256": "2fe6038fe51b2d94b0628d6636bba31e4a77e5b9be2749940621c0096f44a78f"
     },
     {
       "path": "continuity-identity-at-start.json",
-      "sha256": "57d024672e688a2921952018b2e32eb5a5618d0a25adf48b2bd729e4ab96f993"
+      "sha256": "2ef9aa2715e51ea8695d81d2bd4d496a1d80b454d8dd1dd2e1719424d509ee1f"
     },
     {
       "path": "continuity-preflight.json",
@@ -34,27 +38,27 @@
     },
     {
       "path": "human-notes.md",
-      "sha256": "0550f57f00d68e1da3845ace57e4e0cc531dcccbef3efc7e12ed44ef97c493aa"
+      "sha256": "8a6aa65532927e83423acd22bdc6f89f89d9468500d7ca5f2522ec90c5314381"
     },
     {
       "path": "offline-source-lineage.json",
-      "sha256": "5f70f52f879f9c8566cd882837a17d1b9d3d26eb324279f4ac12d4d4eae9a3f9"
+      "sha256": "a869115e2ae7329da4401f1b158686ccf12e961e6a812abbdc71635abeb4e020"
     },
     {
       "path": "pre-baseline-status.json",
-      "sha256": "48ac732a67bc7cba79e45b97b0c9ce08fb7866733cfef633aacfd276bbed5a39"
+      "sha256": "e206384a288c180562fd20ea27ad84e9f44b1dbcf932376b00ecd37b30f901b1"
     },
     {
       "path": "precondition-cleanup.json",
-      "sha256": "43c89e85e59e39d50dfcc0a9186b10e1dffda89da2232f12ba7cea6fe054c90b"
+      "sha256": "f97bc2b8f5a7dfed489a5100bf7f933468f6fe1dcce6f60a3d72e8f75f32cc64"
     },
     {
       "path": "result.json",
-      "sha256": "5a44d12cc1063be2e8b266970f84869a59df4e08ba8259f925cc68bdd2baba46"
+      "sha256": "ab8afa1ce914a2f0c3b163f888bc9f246f9ff25399f92e152f3363c5d8596255"
     },
     {
       "path": "session-fingerprint-cleanup.json",
-      "sha256": "8984ad07760bc191a21dd42917130e7fad62d824ad569902aed75c6bf43b3cad"
+      "sha256": "b9942a9c080a62c905d274fb946f497ea592ab02a516d0f18d652c49ffcc5ca7"
     },
     {
       "path": "steps/_cleanup/cmd-00.stderr.txt",
@@ -62,7 +66,7 @@
     },
     {
       "path": "steps/_cleanup/cmd-00.stdout.txt",
-      "sha256": "765f681856e4df3af14c9463ce1fdb65513677eb6b5e3ca90fd8e244ffd332bb"
+      "sha256": "e8e67bbe3abc665541168e14d504268c9b68a5f282a9292d3a9de13458492b31"
     },
     {
       "path": "steps/_cleanup/cmd-01.stderr.txt",
@@ -70,7 +74,7 @@
     },
     {
       "path": "steps/_cleanup/cmd-01.stdout.txt",
-      "sha256": "0330df5cee5e61944e1dd4ea63340cff8b3cc3c269554759d50cf5dbc9a390c4"
+      "sha256": "2fe6038fe51b2d94b0628d6636bba31e4a77e5b9be2749940621c0096f44a78f"
     },
     {
       "path": "steps/_precondition_cleanup/cmd-00.stderr.txt",
@@ -78,7 +82,7 @@
     },
     {
       "path": "steps/_precondition_cleanup/cmd-00.stdout.txt",
-      "sha256": "48ac732a67bc7cba79e45b97b0c9ce08fb7866733cfef633aacfd276bbed5a39"
+      "sha256": "e206384a288c180562fd20ea27ad84e9f44b1dbcf932376b00ecd37b30f901b1"
     },
     {
       "path": "steps/live-swap-stage/cmd-00.stderr.txt",
@@ -94,7 +98,7 @@
     },
     {
       "path": "steps/live-swap-stage/cmd-01.stdout.txt",
-      "sha256": "9c042dc11c3c032eb69e5589087d336018ac69155fc36533d1a52ea61a683525"
+      "sha256": "a93dc91ce5e467627971f9a4f00717ed43261f040dbd7eeff395ec23c27d4c6e"
     },
     {
       "path": "steps/live-swap-stage/cmd-02.stderr.txt",
@@ -106,7 +110,7 @@
     },
     {
       "path": "steps/live-swap-stage/envelope.json",
-      "sha256": "d8cde80379f09b7260818685436c4c94f1c34da9358210b4132684fa8b12bf7b"
+      "sha256": "d9dfd8209f19d07351678dbfa0354f060cd869add44fa655887245c135d333e3"
     },
     {
       "path": "steps/live-swap-stop/cmd-00.stderr.txt",
@@ -114,7 +118,7 @@
     },
     {
       "path": "steps/live-swap-stop/cmd-00.stdout.txt",
-      "sha256": "7a1eefaf7d64c3f74595369953749f72ef9a49f7bde81637d1fc70091a4ce79c"
+      "sha256": "299a052e7d48e5657d1e4198f5e37ee51b2a2b258c9363e108b418640b561f77"
     },
     {
       "path": "steps/live-swap-stop/cmd-01.stderr.txt",
@@ -126,7 +130,7 @@
     },
     {
       "path": "steps/live-swap-stop/envelope.json",
-      "sha256": "00b24052772b3fcfc5f5d690a538d778e5e1a28b698ac542feef8294d9a52e61"
+      "sha256": "103581ee31acd4bafafadd6751f7d13bc1f0974bb988055308b01aec4f857435"
     },
     {
       "path": "steps/memory-lifecycle/cmd-00.stderr.txt",
@@ -142,7 +146,7 @@
     },
     {
       "path": "steps/memory-lifecycle/cmd-01.stdout.txt",
-      "sha256": "264b85b9c1b18a4e090f822b6c63d5ec56f32c19d9420f7abb85323f5c6fa820"
+      "sha256": "3234dc550d81a1ca5529e52dc7ec07d5d034cafe5570e44bc4b2b7e142c74ea6"
     },
     {
       "path": "steps/memory-lifecycle/cmd-02.stderr.txt",
@@ -150,7 +154,7 @@
     },
     {
       "path": "steps/memory-lifecycle/cmd-02.stdout.txt",
-      "sha256": "8247a3100d75207ad08de08c83a88ef9cf41549f4936fbe4e75e134a183c4fbe"
+      "sha256": "9e5894e4dfd00a65e32d4d5d33a7af1984ff627ebeca1d2e8b2dccb55fcf0ade"
     },
     {
       "path": "steps/memory-lifecycle/cmd-03.stderr.txt",
@@ -158,11 +162,11 @@
     },
     {
       "path": "steps/memory-lifecycle/cmd-03.stdout.txt",
-      "sha256": "765f681856e4df3af14c9463ce1fdb65513677eb6b5e3ca90fd8e244ffd332bb"
+      "sha256": "e8e67bbe3abc665541168e14d504268c9b68a5f282a9292d3a9de13458492b31"
     },
     {
       "path": "steps/memory-lifecycle/envelope.json",
-      "sha256": "96f2243f5613447444bbe735990cdf2129b254735d4bcef61712c298a24044fc"
+      "sha256": "28febc7a39f6d6f313bed907c8ae61d1aecc5884b7f383ec6bf119d7c3a0f704"
     },
     {
       "path": "steps/offline-apply-a/cmd-00.stderr.txt",
@@ -170,11 +174,11 @@
     },
     {
       "path": "steps/offline-apply-a/cmd-00.stdout.txt",
-      "sha256": "f6b31185aa992b58ed78f991b35be3cca8700ad5b2055c6e899c5c31e92ff8fc"
+      "sha256": "7c9860b8ea2cdad975733be4c1c527718f89532624caaa039a6b7c6e60bf857a"
     },
     {
       "path": "steps/offline-apply-a/envelope.json",
-      "sha256": "100ceec55bddbec762e21aeee42f4ef81fa8c40fff5777a5cf60355afaa96733"
+      "sha256": "713e9209dc743a9827520ec4387ad3306724bd59b228909c9312ba03f1e887bc"
     },
     {
       "path": "steps/offline-apply-b/cmd-00.stderr.txt",
@@ -182,11 +186,11 @@
     },
     {
       "path": "steps/offline-apply-b/cmd-00.stdout.txt",
-      "sha256": "9fea1c0abfb72a5c12ae60ceb2622918f57010746c910fa8abbcb2400cfbacf6"
+      "sha256": "d5d81267d9bf25886652933e3dcdf6de904a7877fd6d46bb448f840c36345c07"
     },
     {
       "path": "steps/offline-apply-b/envelope.json",
-      "sha256": "300dd52209e6cac3ed31a6b64021f71cac5a874378d9c63f9761436267437486"
+      "sha256": "3cb4cbc7d1b517b3a9b84f8aaae86f7034b0da3e33a0bc3e1fedfb6dcc0049c5"
     },
     {
       "path": "steps/offline-capture/cmd-00.stderr.txt",
@@ -194,23 +198,23 @@
     },
     {
       "path": "steps/offline-capture/cmd-00.stdout.txt",
-      "sha256": "fd33b8d432edf46f9ac2c7f271f9f92982198fe2a892f485f9a81c181b3879dd"
+      "sha256": "8ae51371ac18d15baf321aef17383a4b5300dc6c07e34da04e6c75b6428b0f95"
     },
     {
       "path": "steps/offline-capture/envelope.json",
-      "sha256": "c000cc9d88790e6890d5390fb8120d39842c6946025fc35227af514de02644f0"
+      "sha256": "321187987a2a0200708f90796f691db23b7ebd9fb332500294494658c9af56da"
     },
     {
       "path": "transcripts/cli-transcript.txt",
-      "sha256": "ead090ab5f92addad010a327ec3639ad067d2bbc4838ceaba530cf42404c9b11"
+      "sha256": "0d8f1dca25258e6c41ef4e6b058905c9791ae8a90992f454fc26b3010677b9e2"
     },
     {
       "path": "us04-activation-restore.json",
-      "sha256": "9873434a76726f4234f3253ab930eeb70c298350f33e973bf25361b567513a7d"
+      "sha256": "3ce81330f99b714e3db230c20c2638918ff9183c1d8e23aa39a1b0a2d3188e98"
     },
     {
       "path": "us04-activation-snapshot-meta.json",
-      "sha256": "31bec96f0b107b609c99c23716da9fcefdd3b04a2cfca6642a2973bfcb3ad9fd"
+      "sha256": "183eacfc892e69a9035037fa4c589536a2bb55256b949e75448429f2e2cdd975"
     },
     {
       "path": "us04-snapshot-restore-compare.json",

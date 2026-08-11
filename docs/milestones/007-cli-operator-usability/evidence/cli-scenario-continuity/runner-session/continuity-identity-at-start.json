@@ -16,7 +16,7 @@
   "product_sha256": {
     "autonomy/": "6431a4fccd949ccaea2cbc66bf2a310dfabc454ac439ba737f524832c23efd99",
     "cli/automa": "a88ec0f9081e8447150b4a1e322517c4b73e0c1a4fa92e70c17fffde544291ce",
-    "cli/automa_cli/": "6c10d958e1ad40a97318170fc15c385576aa0ed0598d59831a63bb59f0957721",
+    "cli/automa_cli/": "02d6e349f941d14afa26be54a45fb4d62d5272a7a3f75131d1fe97b96d81e75c",
     "cli/automa_cli/app.py": "7ab58f01eb1cb7ee6176173cee6f6d55d027ee42b5fc079c1eefeafe2a91ab85",
     "cli/automa_cli/automation.py": "33fc472820d82db2c9387e7bb3707c620b7b5117157f15f681ef861178eebc03",
     "cli/automa_cli/bundles.py": "d275bd901bc48a29a271ba68c873670981439a483a62e667db046321ad17f695",

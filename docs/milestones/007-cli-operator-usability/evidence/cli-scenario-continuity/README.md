@@ -1,6 +1,6 @@
 # Realistic CLI scenario continuity evidence
 
-Status: **Machine-first validation complete; human HITL pending.**
+Status: **Interactive HITL complete at behavior head `37b7393`.**
 
 Accepted contract: [cli-scenario-continuity.md](../../proposals/cli-scenario-continuity.md) (PR #99).
 
@@ -9,65 +9,53 @@ Accepted contract: [cli-scenario-continuity.md](../../proposals/cli-scenario-con
 | Field | Value |
 | --- | --- |
 | Catalog | `m007-continuity` |
-| Execution | `machine_only_live` |
-| Behavior head | `cfd1a3d` |
-| Human operator | **None recorded** |
+| Execution | `interactive_live` |
+| Behavior head | `37b7393fe759f1597860a30d8c10ca5692f1c0cc` |
+| Named operator | `GeorgeLuo` |
 | Machine preflight | **pass** (6/6 required steps) |
-| Continuity verdict | **incomplete** |
-| Visual gate | **pending** — no human visual confirmation was recorded |
+| Continuity verdict | **pass** |
+| Recorded-review adjunct | **pass** — source/processed/combined selection, scrubbing, and play/pause were exercised on the fresh four-frame recording |
+| Live visual gate | **pass** — the named operator confirmed a nonblank, intelligible Automa perception view with the expected overlay/readiness cue |
 | US-04 restore | **ok** (full staged snapshot/restore verification) |
-| Finalizer | **ok** against auto-driving identities; product collection errors empty; Metrics UI identity recorded but not independently freshness-gated in machine-only mode |
-| Metrics UI | `m002/04-passive-observation` at `722e070fdc9f4ee89d13f947bf3996e62dcb2783`, clean; reserved for independent HITL finalization |
-| Evidence | `runner-session/result.json`, `human-notes.md`, and machine transcripts |
+| Finalizer | **ok** against the auto-driving tree and Metrics UI checkout |
+| Metrics UI | `m002/04-passive-observation` at `722e070fdc9f4ee89d13f947bf3996e62dcb2783`, clean |
+| Evidence | `runner-session/browser-view.png`, `result.json`, `human-notes.md`, and command transcripts |
 
-## Freshness repair
+## Integrated HITL adjunct
 
-The product-tree identity now binds the root type and symlink target bytes and
-uses length-framed raw relative-path bytes plus Git-relevant leaf identities.
-This closes root-symlink retarget and newline/colon path-collision bypasses at
-the aggregate tree owner. The refreshed package was collected from behavior
-head `cfd1a3d` and finalized against the current auto-driving tree.
+PR #103, originating from issue #101, adds local playback controls to recorded
+perception-review artifacts. It is additive to the accepted frontier contract:
+the original continuity scenarios remain valid without it, while the fresh
+human run now exercises the implementation-discovered review need on the same
+recorded frames. No live-view, safety, activation, report-schema, or command
+contract changed.
 
-## Latest re-review repair
-
-The activation-file side of the US-04 transaction now uses `lstat` identity:
-regular-file bytes and mode, symlink target bytes without following the link,
-and explicit absence. Snapshot and restore fail closed on unsupported or
-incomplete collection, remove absent broken-symlink or directory residue
-without following it, and verify the complete identity in the restore receipt.
-The bundle manifest is covered by the same managed-entry gate. Durable snapshot
-metadata and the staged-restore compare use schema v3.
-
-Regression coverage includes required perception symlink restoration, optional
-absence with broken-symlink and directory residue, bundle-manifest symlink
-restoration, and regular-file mode restoration. The fresh machine-only run at
-`cfd1a3d` passed 6/6 required steps, full staged-state restore, cleanup, and
-the post-hoc finalizer. Deterministic validation was 69 continuity-contract
-tests, 43 session-runner tests, 112 milestone tests, and 590 full-suite tests
-with 2 expected skips. No human visual confirmation was performed.
+The adjunct is confined to `README.md`,
+`cli/automa_cli/perception_evaluation.py`, and
+`tests/cli/perception/test_runs.py`. Its focused validation covers zero- and
+one-frame reviews, missing source/processed images, untrusted label escaping,
+no-JavaScript fallback content, and the absence of external runtime assets.
 
 ## Family ledger
 
 | Family | Aggregate | Notes |
 | --- | --- | --- |
-| `continuity.offline_perception` | **passed** | Content-bound capture lineage and two exclusive applies |
-| `continuity.live_config_swap` | **partial** | Machine commands passed; `live-swap-stage` visual confirmation is pending |
-| `continuity.memory_lifecycle` | **passed** | Present/dropout/expiry/reset memory check PASS |
+| `continuity.offline_perception` | **passed** | Content-bound capture lineage, two exclusive applies, and named-human recorded-review playback |
+| `continuity.live_config_swap` | **passed** | Named visual confirmation, stop cleanup, and staged-state restoration |
+| `continuity.memory_lifecycle` | **passed** | Present/dropout/expiry/reset memory check PASS; movement never commanded |
 
-## Provenance correction
+## Validation and integrity
 
-An earlier agent session inspected a browser screenshot with model vision and
-entered a visual `pass` under the repository owner's identity. That was not
-human-in-the-loop confirmation, so it is not included as acceptance evidence.
-The tracked package intentionally records only the fresh machine-only run.
-The machine-only finalizer records the Metrics UI identity but does not claim
-an independent Metrics UI freshness comparison; the eventual named-human HITL
-finalizer must supply and require the exact reviewed Metrics UI checkout.
+- 22 focused recorded-review tests passed.
+- 69 continuity-contract tests and 43 session-runner tests passed.
+- 112 milestone tests passed.
+- The full deterministic suite ran 605 tests successfully with 2 expected skips.
+- The fresh machine-only rehearsal passed all six required steps before HITL.
+- The interactive session has zero findings, 55 verified inner digest entries,
+  and a finalizer pass against both clean reviewed checkouts.
 
 ## Verdict
 
-`incomplete` — deterministic commands, safety preflight, cleanup, managed-file
-identity restoration, and auto-driving freshness finalization passed; Metrics
-UI identity was recorded but not independently freshness-gated, and a named
-human must still inspect the live view and record the visual result before
-continuity can pass.
+`pass` — machine-first continuity, the integrated recorded-review adjunct,
+named-operator HITL, cleanup, restoration, and freshness finalization all passed
+on the same product head.

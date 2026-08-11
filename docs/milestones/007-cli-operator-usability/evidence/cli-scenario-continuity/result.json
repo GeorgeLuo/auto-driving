@@ -2,7 +2,7 @@
   "artifacts": [
     {
       "path": "README.md",
-      "sha256": "b2f343f184f5b923df53cbb120669f808b4faa50fee87f53f7680d5de2e2630d"
+      "sha256": "5884de738946d4ce3c18c2320a4fd9cf9454180da7c1d4d251046dc18f3158b4"
     },
     {
       "path": "runner-session/result.json",
@@ -42,7 +42,7 @@
     },
     {
       "path": "machine-only-session/result.json",
-      "sha256": "bb0e7d3045debe0d6ff34c82dc2b1bb0953a6b9bcbe196297303beb73962bb90"
+      "sha256": "02e9ae527346580a6587bf74915036591ccce65ea409eff565eaf01854f3f50a"
     },
     {
       "path": "machine-only-session/continuity-preflight.json",
@@ -50,7 +50,7 @@
     },
     {
       "path": "machine-only-session/us04-activation-restore.json",
-      "sha256": "3f626adae9be159e917488057753a3fddd6c66a2759518a45c2a868a043b5e6f"
+      "sha256": "40be4db8cf6662903d65120aa257f449a9021028a6fcc72515ee82f2ff98e530"
     },
     {
       "path": "machine-only-session/us04-snapshot-restore-compare.json",
@@ -58,15 +58,15 @@
     },
     {
       "path": "machine-only-session/offline-source-lineage.json",
-      "sha256": "31a12f1f0a9c0a08a4a1987ecd04f07d4f5f0c930dbe089267745ec8b4cc49b8"
+      "sha256": "56916bc3d243e1fe56c58da35384f02056411350a61c8c06ed5cc7fc4c6b5541"
     },
     {
       "path": "machine-only-session/human-notes.md",
-      "sha256": "8c54f847cd39f3eae3e4b0291509edcb69f8fce3ff9324ee736792a6b5a19b3c"
+      "sha256": "17784556f41798479919325ad9d042e25c2187d5f68dcbb854fd6a188748e36f"
     },
     {
       "path": "machine-only-session/digests.json",
-      "sha256": "dc7b739f4735c7ecd035726959d1592aad52c4562796c81485bbe1e40f2ea92a"
+      "sha256": "22f785c03d879ee98ae66b9086ac50cb1c40416528b3e8bf097000e45779d08f"
     }
   ],
   "family_aggregates": {
@@ -155,6 +155,20 @@
       "id": "review-4909716246-p2",
       "review": "https://github.com/GeorgeLuo/auto-driving/pull/100#pullrequestreview-4909716246",
       "scope": "recorded-review claims and reconciliation records"
+    },
+    {
+      "disposition": "replaced the later machine-only package with the retained pre-HITL session; no HITL rerun required",
+      "evidence": "machine-only-session/result.json and machine-only-session/digests.json",
+      "id": "review-4911549038-p1",
+      "review": "https://github.com/GeorgeLuo/auto-driving/pull/100#pullrequestreview-4911549038",
+      "scope": "machine-first evidence ordering"
+    },
+    {
+      "disposition": "removed the unsupported one-frame phrase, renamed the 22-test receipt field, and corrected the prior-review link",
+      "evidence": "README.md and result.json",
+      "id": "review-4911549038-p2",
+      "review": "https://github.com/GeorgeLuo/auto-driving/pull/100#pullrequestreview-4911549038",
+      "scope": "receipt wording and review-reconciliation metadata"
     }
   ],
   "required_family_ids": [
@@ -179,7 +193,6 @@
     "discovered_tests": 605,
     "empty_view_semantics_explicit": true,
     "focused_continuity_tests": 112,
-    "focused_recorded_review_tests": 22,
     "full_deterministic_suite": "605 tests OK, 2 expected skips",
     "hitl_operator": "GeorgeLuo",
     "inaccessible_subtree_regression": true,
@@ -227,7 +240,12 @@
     "untracked_executable_mode_identity": true,
     "untracked_symlink_target_identity": true,
     "us04_snapshot_meta_schema_v3": true,
-    "visual_evidence": "runner-session/browser-view.png"
+    "visual_evidence": "runner-session/browser-view.png",
+    "focused_perception_command_run_tests": 22,
+    "machine_only_ended_at_utc": "2026-08-11T18:17:03.128773Z",
+    "machine_only_runner_head": "37b7393fe759f1597860a30d8c10ca5692f1c0cc",
+    "machine_only_started_at_utc": "2026-08-11T18:16:19.664233Z",
+    "machine_only_precedes_hitl": true
   },
   "schema": "m007_cli_scenario_continuity_v0",
   "session": {
@@ -253,7 +271,7 @@
     {
       "behavior_head": "37b7393fe759f1597860a30d8c10ca5692f1c0cc",
       "digest_manifest_path": "machine-only-session/digests.json",
-      "digest_sha256": "dc7b739f4735c7ecd035726959d1592aad52c4562796c81485bbe1e40f2ea92a",
+      "digest_sha256": "22f785c03d879ee98ae66b9086ac50cb1c40416528b3e8bf097000e45779d08f",
       "execution_mode": "machine_only_live",
       "finalizer": {
         "ok": true,
@@ -265,8 +283,11 @@
       "manifest_path": "machine-only-session/result.json",
       "operator": null,
       "result": "incomplete",
-      "result_sha256": "bb0e7d3045debe0d6ff34c82dc2b1bb0953a6b9bcbe196297303beb73962bb90",
-      "runner_head": "8da2b10039daeac54d59c2e652630f29c052d288"
+      "result_sha256": "02e9ae527346580a6587bf74915036591ccce65ea409eff565eaf01854f3f50a",
+      "runner_head": "37b7393fe759f1597860a30d8c10ca5692f1c0cc",
+      "started_at_utc": "2026-08-11T18:16:19.664233Z",
+      "ended_at_utc": "2026-08-11T18:17:03.128773Z",
+      "precedes_session_id": "named-hitl"
     },
     {
       "behavior_head": "37b7393fe759f1597860a30d8c10ca5692f1c0cc",

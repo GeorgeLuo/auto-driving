@@ -31,9 +31,10 @@ machine-only rehearsal is not relabeled or derived from the interactive run.
 | Machine-only rehearsal | `machine-only-session/result.json` | **incomplete by design**; 6/6 machine steps green, US-04 restore/cleanup ok, finalizer ok, HITL not attempted |
 | Named HITL run | `runner-session/result.json` | **pass**; named operator `GeorgeLuo`, visual gate and recorded-review adjunct passed |
 
-The machine-only session was freshly captured at PR head `8da2b10` against
-behavior head `37b7393`; its separate identity, cleanup, restore, and
-finalizer records are retained under `machine-only-session/`.
+The retained machine-only session ran from `18:16:19Z` to `18:17:03Z`,
+immediately before the named HITL session. It was recorded against behavior
+head `37b7393`; its separate identity, cleanup, restore, and finalizer records
+are retained under `machine-only-session/`.
 
 ## Integrated HITL adjunct
 
@@ -46,11 +47,11 @@ contract changed.
 
 The adjunct is confined to `README.md`,
 `cli/automa_cli/perception_evaluation.py`, and
-`tests/cli/perception/test_runs.py`. Its focused validation covers zero- and
-one-frame reviews and the new renderer’s two-frame selector/escaping and
-zero-frame no-motion cases. The 22-test command/run suite does not directly
-assert missing source/processed images, no-JavaScript fallback, or external
-asset absence; those rows are not claimed as deterministic test coverage here.
+`tests/cli/perception/test_runs.py`. Its direct renderer coverage is the
+two-frame selector/escaping case and the zero-frame no-motion case. The
+22-test command/run suite does not directly assert missing source/processed
+images, no-JavaScript fallback, or external asset absence; those rows are not
+claimed as deterministic test coverage here.
 When the selected view has no representation, the renderer shows an explicit
 empty-view message; it does not fall back to another representation.
 
@@ -63,7 +64,7 @@ catalog and confirmation standard](https://github.com/GeorgeLuo/auto-driving/pul
 | --- | --- | --- |
 | US-04 restore-integrity P1 from [review 4899909647](https://github.com/GeorgeLuo/auto-driving/pull/100#pullrequestreview-4899909647) | Repaired at the managed-entry owner | [cfd1a3d](https://github.com/GeorgeLuo/auto-driving/commit/cfd1a3d); lstat identity, safe absence cleanup, receipt comparison, and regressions |
 | [Issue #101](https://github.com/GeorgeLuo/auto-driving/issues/101) / [PR #103](https://github.com/GeorgeLuo/auto-driving/pull/103) recorded-review playback | Bounded additive adjunct integrated; no live-view or continuity-contract change | [37b7393](https://github.com/GeorgeLuo/auto-driving/commit/37b7393); named-HITL playback exercise and 22-test command/run suite |
-| Latest review evidence P1/P2 from [review 4899909647](https://github.com/GeorgeLuo/auto-driving/pull/100#pullrequestreview-4899909647) | Evidence-only reconciliation; no new product defect | Separate machine-only session, narrowed claims, #88 anchor, and this repair ledger |
+| Latest review evidence P1/P2 from [review 4909716246](https://github.com/GeorgeLuo/auto-driving/pull/100#pullrequestreview-4909716246) | Evidence-only reconciliation; no new product defect | Separate machine-only session, narrowed claims, #88 anchor, and this repair ledger |
 
 ## Family ledger
 

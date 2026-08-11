@@ -1,7 +1,7 @@
 Automation ready for chase-sim-chaser.
-PID: 37444
-First frame: chase_frame_079174
-Startup phases: capture=306ms, perception=70ms, view=current-generation correlated
+PID: 34826
+First frame: chase_frame_248566
+Startup phases: capture=291ms, perception=73ms, view=current-generation correlated
 Perception view: http://127.0.0.1:8898/
 Ready for: inspect perception and stop automation
 State: runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/state.json

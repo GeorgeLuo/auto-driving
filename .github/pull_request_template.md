@@ -15,6 +15,13 @@
 - Proposal artifact:
 - Accepted amendment PR(s), merge commit(s), and artifact(s): None
 
+## Integrated HITL Adjuncts
+
+<!-- List each merged adjunct PR, its operator-request issue, and merge commit.
+     Write "None" when no human-requested implementation adjunct was used. -->
+
+- None
+
 ## Review Kind
 
 <!-- One primary kind: deterministic invariant closure | behavioral feature slice |

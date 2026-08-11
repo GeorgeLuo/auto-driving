@@ -153,6 +153,20 @@ A repair response should identify:
 Create a separate repair review unit only when a distinct PR is genuinely
 necessary.
 
+### HITL Implementation Adjunct
+
+A **HITL implementation adjunct** is an exceptional child review unit for a
+bounded change first requested by a human during hands-on testing after an
+implementation review has started. It targets the canonical implementation
+branch, not the milestone branch, and leaves the frontier in
+`implementation_in_review`.
+
+An adjunct is neither a repair nor a contract amendment. The parent’s accepted
+contract must remain true without it, while the requested behavior is additive,
+compatible, and useful to the same frontier and operator journey. Human
+direction supplies the need and `implement-now` priority; it does not waive
+contract compatibility, safety review, or evidence refresh.
+
 ### Closeout
 
 **Milestone closeout** is a separate review unit asking:
@@ -176,6 +190,7 @@ Closeout must not conceal unfinished implementation or validation.
 | Detailed invariant and adversarial matrix | Accepted proposal document |
 | Planned file impact and validation commands | Accepted proposal document |
 | Actual file impact and validation results | Implementation PR |
+| Human user-testing request and implement-now direction | Durable issue and adjunct PR |
 | Review findings and repair history | Review-unit PR |
 | Accepted result of a merged PR | One-row plan ledger |
 | Current architecture behavior | `docs/reference/` |
@@ -228,6 +243,7 @@ main
 └── milestone/<number>-<slug>
     ├── m<number>/<frontier>-proposal
     ├── m<number>/<frontier>
+    │   └── m<number>/<frontier>--adjunct-<slug>
     └── ...
 ```
 
@@ -266,6 +282,24 @@ Prefer squash-merging both PRs into the milestone branch. Proposal merge is an
 approval receipt, not implementation acceptance. Merge the final cumulative
 milestone PR into `main` with a **merge commit** so accepted frontier history
 remains visible.
+
+### HITL implementation adjunct branches
+
+When a human explicitly requests an eligible additive change during hands-on
+testing, branch `m<number>/<frontier>--adjunct-<slug>` from the current head of
+the canonical `m<number>/<frontier>` implementation branch. The adjunct PR:
+
+- targets that implementation branch, never the milestone branch or `main`;
+- uses `.github/PULL_REQUEST_TEMPLATE/implementation-adjunct.md`;
+- links the parent implementation PR and durable operator-request issue;
+- records the HITL discovery context and explicit `implement-now` disposition;
+- contains one bounded review question and compatibility assertion; and
+- does not change the milestone plan, accepted proposal, or accepted amendment.
+
+Do not base an adjunct on another adjunct. Keep it current with the parent
+implementation branch, merge it back into that parent, then re-review the
+parent PR in totality. The parent implementation remains the frontier’s sole
+acceptance and ledger unit.
 
 Do not create an implementation branch until its proposal PR has merged and the
 workflow records `ready_for_implementation`. Do not begin the next frontier
@@ -550,6 +584,53 @@ exact merge commit, and artifact path, then return the frontier to
 implementation PR must link and reconcile the original proposal plus every
 accepted amendment, and CI rejects changes to any of those artifacts.
 
+### Human Discovery During Implementation
+
+Classify a human request from hands-on testing before changing code:
+
+| Discovery | Required route |
+| --- | --- |
+| The parent review question is false without the change | Repair the parent implementation PR; this is not adjunct scope |
+| The accepted contract, exit criteria, safety authority, schema, external assumption, expected handoff, or explicit non-goal must change | Stop and use proposal-amendment or later-frontier review; never conceal the change in an adjunct |
+| The parent contract remains true and the human explicitly wants a bounded additive change in the same journey now | Use a HITL implementation adjunct |
+| The request has a different goal, journey, primary owner, or independently acceptable feature outcome | Queue and contract a later frontier |
+
+An adjunct is eligible only when all of the following are true:
+
+1. a durable issue records the human user-testing request, and the adjunct PR
+   records the requester, discovery context, and `implement-now` direction;
+2. the parent implementation is already in `implementation_in_review` and the
+   request serves its current frontier and operator journey;
+3. the change is additive or optional, and every parent contract claim remains
+   true if the adjunct is omitted;
+4. it changes no exit criterion, safety or enforcement authority, schema,
+   external assumption, expected handoff, or explicit non-goal;
+5. it changes no canonical plan, accepted proposal, accepted amendment, or
+   workflow state;
+6. it has one bounded acceptance owner and one review question; and
+7. it declares which evidence remains valid, which evidence must be refreshed,
+   and what parent-level integration check will be run.
+
+The human request authorizes consideration and priority, not a compatibility
+waiver. If any eligibility assertion is uncertain, do not start the adjunct;
+route the request through repair, amendment, or frontier planning.
+
+Open the child PR from
+`m<number>/<frontier>--adjunct-<slug>` to `m<number>/<frontier>`. Prefer one
+active adjunct at a time. After it is reviewed and merged, update the parent
+implementation PR’s `Integrated HITL Adjuncts`, scope reconciliation, affected
+paths, adversarial matrix, file impact, assumptions, and exact validation.
+Refresh invalidated evidence and review the integrated parent in totality
+before accepting it. If the child is rejected or abandoned, the parent
+contract remains reviewable without it.
+
+An adjunct creates no plan transition or accepted-review-unit ledger row. CI
+recognizes the canonical implementation branch as its base, requires the child
+branch shape and completed adjunct template, rejects stale parent ancestry, and
+rejects milestone plan or proposal-artifact edits. The machine validates the
+recorded topology and assertions; the reviewer owns whether the asserted
+compatibility is actually true.
+
 Each proposal lives at the current frontier’s declared `proposal path` and uses
 `.github/PULL_REQUEST_TEMPLATE/proposal.md`. It records the review question,
 proposed contract, owner, affected paths, adversarial matrix, assumptions,
@@ -826,6 +907,20 @@ python3 docs/milestones/workflow.py start-implementation \
   --branch m<number>/<frontier>
 ```
 
+If explicit human testing then produces an eligible implement-now request,
+create its child from the published parent head without changing plan state:
+
+```sh
+git fetch origin m<number>/<frontier>
+git switch -c m<number>/<frontier>--adjunct-<slug> \
+  origin/m<number>/<frontier>
+```
+
+Open the child PR back to `m<number>/<frontier>` with the implementation-adjunct
+template. After child acceptance, merge it into the parent branch, reconcile
+the parent description, refresh affected evidence, and request one parent
+totality re-review.
+
 After the implementation PR is accepted:
 
 1. squash-merge it into the milestone branch;
@@ -861,13 +956,17 @@ updates to the current frontier, prevents premature closeout, updates the
 accepted ledger and risks, promotes the reviewed next candidate to
 `ready_for_proposal`, records workflow history, and regenerates HTML.
 
-CI runs `workflow.py validate-pr` on every PR targeting a milestone branch. A
-proposal PR may change only its declared proposal document, canonical plan, and
-generated plan HTML. A proposal amendment PR has the same contract-only
-boundary and must add a new artifact without modifying accepted proposal
-history. An implementation PR is rejected unless its base records an accepted
-proposal; it may not modify that proposal, an accepted amendment, or the frozen
-frontier.
+CI runs `workflow.py validate-pr` on every PR. It applies the frontier gate to
+PRs targeting a milestone branch and the adjunct gate to reserved adjunct PRs
+targeting the active plan’s canonical implementation branch. A proposal PR may
+change only its declared proposal document, canonical plan, and generated plan
+HTML. A
+proposal amendment PR has the same contract-only boundary and must add a new
+artifact without modifying accepted proposal history. An implementation PR is
+rejected unless its base records an accepted proposal; it may not modify that
+proposal, an accepted amendment, or the frozen frontier. An adjunct PR must use
+the reserved child branch, current parent head, completed HITL template, and
+immutable milestone contract artifacts.
 `docs/render_markdown.py` invokes the same plan validator, so hand-edited state
 that omits required fields or history is rejected.
 

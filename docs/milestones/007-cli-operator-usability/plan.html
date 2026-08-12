@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="f781b20c79262472d5750e49ecc2be991117688f65aafe09d88a9f3aa83d7e88">
+  <meta name="source-sha256" content="87b0a4202059b3da22a99d7a12be4a8d84d54b84ed6aa8e293542c88dd0b83ee">
   <base target="_blank">
   <title>Milestone plan — 007-cli-operator-usability</title>
   <style>
@@ -369,10 +369,17 @@ deletion; it does not retroactively widen the accepted primary journey.</p>
 <li>Milestone-level non-goal: Exhaustive CLI-leaf audit, exhaustive #88 sequence definition/disposition, capability disposition, product deletion, new CLI features, Metrics UI JavaScript coverage, or a numeric coverage gate; the coverage collector consumes already-declared journeys, while M007-08 owns the complete US-01 through US-10 reconciliation</li>
 </ul>
 <h3>Next-Frontier Candidate</h3>
-<p><strong>None</strong></p>
+<p><strong>Complete CLI surface and sequence audit</strong></p>
 <ul>
-<li>Reason: CLI journey coverage foundation is promoted after realistic scenario continuity declares the journeys coverage will attribute.</li>
-<li>Revisit when: The coverage frontier implements reproducible per-command and multi-command journey attribution against the declared continuity and primary journeys so the full CLI-leaf and US-01 through US-10 reconciliation audit can be frozen as a candidate.</li>
+<li>Proposal branch: <code>m007/cli-surface-audit-proposal</code></li>
+<li>Implementation branch: <code>m007/cli-surface-audit</code></li>
+<li>Proposal path: <code>docs/milestones/007-cli-operator-usability/proposals/cli-surface-audit.md</code></li>
+<li>Review kind: Broad mechanical rollout</li>
+<li>Review question: Can one committed CLI usage registry prove complete parser-leaf and #88 US-01 through US-10 accounting, with every public leaf mapped to realistic usage, prerequisites, side effects and safety, expected output, owning boundary, and deterministic or live validation, and every sequence assigned stable commands, confirmation, cleanup, coverage treatment, and an explicit passed, ready, blocked, or deferred disposition with owned unlock conditions, while machine-first and HITL evidence covers safe executable patterns without running hazardous or external entries unsafely?</li>
+<li>Acceptance owner: Parser-derived CLI leaf inventory, committed usage and sequence registry, completeness/schema validators, and runner-backed machine/HITL audit evidence</li>
+<li>Exit criteria affected: M007-08</li>
+<li>Prerequisite: M007-07 is <code>Met</code>; the accepted named-command and journey-coverage collector/report, primary journey, and scenario-continuity catalogs are stable audit inputs</li>
+<li>Non-goals: Capability disposition under M007-09, product repair, new CLI features, removal, unsafe execution for coverage, reopening M007-10, a numeric coverage gate, or milestone closeout</li>
 </ul>
 <h2>Workflow History</h2>
 <table>
@@ -493,6 +500,11 @@ deletion; it does not retroactively widen the accepted primary journey.</p>
 <td>CLI journey coverage foundation</td>
 <td>ready_for_proposal</td>
 <td>Plan revision: make exhaustive #88 US-01 through US-10 definition and disposition an explicit M007-08 and milestone-closeout requirement while preserving accepted M007-10 and the current coverage frontier.</td>
+</tr>
+<tr>
+<td>CLI journey coverage foundation</td>
+<td>ready_for_proposal</td>
+<td>Plan revision: queue the complete CLI surface and #88 US-01 through US-10 sequence audit as the reviewed successor required for a successful coverage handoff.</td>
 </tr>
 </tbody>
 </table>

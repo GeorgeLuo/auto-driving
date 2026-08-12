@@ -1178,11 +1178,17 @@ def expected_contract_from_expanded(expanded: Mapping[str, Any]) -> dict[str, An
             tokenized.append(part)
         return tokenized
 
+    owned_roots = expanded.get("owned_source_roots")
+    if not isinstance(owned_roots, list) or any(
+        not isinstance(item, str) for item in owned_roots
+    ):
+        raise CoverageContractError("expanded owned source roots are malformed")
     return {
         "manifest_path": str(expanded.get("manifest_path") or ""),
         "manifest_sha256": str(expanded.get("manifest_sha256") or ""),
         "catalogs": catalog_records,
         "catalog_ids": catalog_ids,
+        "owned_source_roots": list(owned_roots),
         "required_command_keys": required_keys,
         "required_logical_context_ids": required_logical,
         "registered_command_keys": registered_keys,
@@ -1865,7 +1871,11 @@ def validate_acceptance_semantics(
         )
 
 
-def _validate_immutable_receipt_authority(report: Mapping[str, Any]) -> None:
+def _validate_immutable_receipt_authority(
+    report: Mapping[str, Any],
+    *,
+    expected_contract: Mapping[str, Any],
+) -> None:
     """Derive seal/finalization digests, timestamps, and lineage from embedded receipts."""
 
     integrity = report.get("integrity")
@@ -1963,6 +1973,47 @@ def _validate_immutable_receipt_authority(report: Mapping[str, Any]) -> None:
         raise CoverageContractError("subject/contexts are malformed for collection binding")
     if not isinstance(commands, list):
         raise CoverageContractError("commands are malformed for collection binding")
+    # Exact projections of the sealed session-start receipt.
+    if subject.get("source_identity") != session_start.get("source_identity"):
+        raise CoverageContractError(
+            "subject.source_identity is not the sealed session-start source identity"
+        )
+    if subject.get("platform") != session_start.get("platform"):
+        raise CoverageContractError(
+            "subject.platform is not the sealed session-start platform"
+        )
+    if subject.get("coverage_version") != session_start.get("coverage_version"):
+        raise CoverageContractError(
+            "subject.coverage_version is not the sealed session-start coverage version"
+        )
+    if inputs.get("metrics_ui_identity") != session_start.get("metrics_ui_identity"):
+        raise CoverageContractError(
+            "inputs.metrics_ui_identity is not the sealed session-start Metrics UI identity"
+        )
+    source_identity = session_start.get("source_identity")
+    if not isinstance(source_identity, Mapping):
+        raise CoverageContractError("session-start source identity is malformed")
+    relevant = source_identity.get("relevant")
+    if not isinstance(relevant, Mapping):
+        raise CoverageContractError("session-start relevant identity is malformed")
+    relevant_files = relevant.get("files")
+    if not isinstance(relevant_files, list):
+        raise CoverageContractError("session-start relevant file list is malformed")
+    expected_relevant_map = {
+        str(item.get("path") or ""): str(item.get("sha256") or "")
+        for item in relevant_files
+        if isinstance(item, Mapping)
+    }
+    if inputs.get("relevant_file_sha256") != expected_relevant_map:
+        raise CoverageContractError(
+            "inputs.relevant_file_sha256 is not derived from sealed session-start relevant files"
+        )
+    expected_roots = expected_contract.get("owned_source_roots")
+    if inputs.get("owned_source_roots") != expected_roots:
+        raise CoverageContractError(
+            "inputs.owned_source_roots is not the accepted manifest ownership set"
+        )
+
     collection_ids = {
         str(session_start.get("collection_id") or ""),
         str(seal.get("collection_id") or ""),
@@ -2033,39 +2084,61 @@ def _validate_immutable_receipt_authority(report: Mapping[str, Any]) -> None:
             "top-level cleanup is not identical to process_completeness.cleanup"
         )
 
-    # Raw-shard inventory is carried on the seal itself (not as a sealed file
-    # projection): report shard IDs/digests must equal seal.raw_shards exactly.
+    # Full sealed shards.json attribution: rejoin report rows with the seal's
+    # raw_session_path values and require the canonical sealed digest.
     report_shards = process.get("shards")
     seal_raw_shards = seal.get("raw_shards")
     if not isinstance(report_shards, list) or not isinstance(seal_raw_shards, list):
         raise CoverageContractError("report/seal raw-shard inventories are malformed")
-    report_inventory = [
-        {
-            "shard_id": str(item.get("shard_id") or ""),
-            "sha256": str(item.get("shard_sha256") or ""),
-        }
-        for item in report_shards
-        if isinstance(item, Mapping)
-    ]
-    seal_inventory = [
-        {
-            "shard_id": str(item.get("shard_id") or ""),
-            "sha256": str(item.get("sha256") or ""),
-        }
-        for item in seal_raw_shards
-        if isinstance(item, Mapping)
-    ]
-    if (
-        not report_inventory
-        or any(
-            not item["shard_id"] or not LOWER_HEX_64.fullmatch(item["sha256"])
-            for item in report_inventory
-        )
-        or report_inventory != seal_inventory
-    ):
+    if len(report_shards) != len(seal_raw_shards) or not report_shards:
         raise CoverageContractError(
-            "report shard inventory does not exactly match session_seal.raw_shards"
+            "report shard count does not match session_seal.raw_shards"
         )
+    seal_raw_by_id: dict[str, Mapping[str, Any]] = {}
+    for item in seal_raw_shards:
+        if not isinstance(item, Mapping):
+            raise CoverageContractError("session_seal.raw_shards entry is malformed")
+        shard_id = str(item.get("shard_id") or "")
+        digest = str(item.get("sha256") or "")
+        path = str(item.get("path") or "")
+        if (
+            not shard_id
+            or shard_id in seal_raw_by_id
+            or not LOWER_HEX_64.fullmatch(digest)
+            or not path.startswith("raw/")
+        ):
+            raise CoverageContractError(
+                "session_seal.raw_shards identities are malformed or duplicate"
+            )
+        seal_raw_by_id[shard_id] = item
+    reconstructed_shards: list[dict[str, Any]] = []
+    for item in report_shards:
+        if not isinstance(item, Mapping):
+            raise CoverageContractError("report shard receipt is malformed")
+        shard_id = str(item.get("shard_id") or "")
+        digest = str(item.get("shard_sha256") or "")
+        seal_row = seal_raw_by_id.get(shard_id)
+        if seal_row is None or digest != str(seal_row.get("sha256") or ""):
+            raise CoverageContractError(
+                f"report shard {shard_id!r} is not bound to session_seal.raw_shards"
+            )
+        reconstructed = {
+            key: value for key, value in item.items() if key != "raw_session_path"
+        }
+        reconstructed["raw_session_path"] = str(seal_row.get("path") or "")
+        reconstructed_shards.append(reconstructed)
+    if set(seal_raw_by_id) != {
+        str(item.get("shard_id") or "") for item in report_shards if isinstance(item, Mapping)
+    }:
+        raise CoverageContractError(
+            "report shards and session_seal.raw_shards do not cover the same shard IDs"
+        )
+    _require_sealed_projection(
+        sealed_by_path,
+        seal_path="shards.json",
+        projection=reconstructed_shards,
+        label="report shard attribution rows",
+    )
 
 
 def _require_sealed_projection(
@@ -2259,7 +2332,9 @@ def validate_report_semantics(
     }
     if integrity.get("canonical_json") != expected_canonical_json:
         raise CoverageContractError("canonical JSON declaration is malformed")
-    _validate_immutable_receipt_authority(report)
+    _validate_immutable_receipt_authority(
+        report, expected_contract=expected_contract
+    )
 
     freshness = integrity.get("freshness")
     if not isinstance(freshness, Mapping):

@@ -112,6 +112,7 @@ def _synthetic_expected_contract(commands: list[dict[str, object]]) -> dict[str,
         "manifest_sha256": "e" * 64,
         "catalogs": catalogs,
         "commands": commands,
+        "owned_source_roots": ["cli/automa_cli"],
         "bootstrap_logical_context_id": "m007/bootstrap/root-help",
         "worker_probe": {
             "path": "cli/automa_cli/automation.py",
@@ -481,6 +482,8 @@ def _synthetic_pass_report() -> dict[str, object]:
                     ),
                 },
             },
+            "platform": "darwin",
+            "coverage_version": "7.15.2",
             "collection_id": collection_id,
         },
         "inputs": {
@@ -497,7 +500,11 @@ def _synthetic_pass_report() -> dict[str, object]:
                     "raw_receipt": lineage_receipt,
                 }
             ],
-            "metrics_ui_identity": {},
+            "metrics_ui_identity": {
+                "branch": "m002/04-passive-observation",
+                "clean": True,
+                "commit": "c" * 40,
+            },
         },
         "dependency_environment": {},
         "commands": commands,
@@ -539,13 +546,36 @@ def _synthetic_pass_report() -> dict[str, object]:
         },
     }
     offline_lineages = payload["inputs"]["offline_source_lineages"]
+    subject = payload["subject"]
+    assert isinstance(subject, dict)
     session_start = {
         "schema": "m007_cli_coverage_session_start_v1",
         "collection_id": collection_id,
         "collection_started_at_utc": "2026-01-01T00:00:00Z",
+        "source_identity": subject["source_identity"],
+        "platform": subject["platform"],
+        "coverage_version": subject["coverage_version"],
+        "metrics_ui_identity": payload["inputs"]["metrics_ui_identity"],
     }
     process = payload["process_completeness"]
     assert isinstance(process, dict)
+    raw_shards = [
+        {
+            "shard_id": str(shard["shard_id"]),
+            "sha256": str(shard["shard_sha256"]),
+            "path": f"raw/.coverage.synthetic.{index}",
+        }
+        for index, shard in enumerate(process["shards"])
+        if isinstance(shard, dict)
+    ]
+    sealed_shard_rows = [
+        {
+            **{key: value for key, value in shard.items() if key != "raw_session_path"},
+            "raw_session_path": raw_shards[index]["path"],
+        }
+        for index, shard in enumerate(process["shards"])
+        if isinstance(shard, dict)
+    ]
     projection_digests = {
         "session-start.json": report.sha256_bytes(
             report.canonical_file_bytes(session_start)
@@ -571,6 +601,9 @@ def _synthetic_pass_report() -> dict[str, object]:
         "receipts/offline-source-lineages.json": report.sha256_bytes(
             report.canonical_file_bytes(offline_lineages)
         ),
+        "shards.json": report.sha256_bytes(
+            report.canonical_file_bytes(sealed_shard_rows)
+        ),
     }
     seal = {
         "schema": "m007_cli_coverage_session_seal_v1",
@@ -581,15 +614,7 @@ def _synthetic_pass_report() -> dict[str, object]:
             {"path": path, "sha256": digest}
             for path, digest in projection_digests.items()
         ],
-        "raw_shards": [
-            {
-                "shard_id": str(shard["shard_id"]),
-                "sha256": str(shard["shard_sha256"]),
-                "path": f"raw/.coverage.synthetic.{index}",
-            }
-            for index, shard in enumerate(process["shards"])
-            if isinstance(shard, dict)
-        ],
+        "raw_shards": raw_shards,
     }
     seal_digest = report.sha256_bytes(report.canonical_file_bytes(seal))
     final_receipt = {
@@ -2067,6 +2092,29 @@ class DependencyFreshnessAndDigestTests(unittest.TestCase):
                 value["cleanup"].__setitem__("all_workers_stopped", False),
                 value["process_completeness"]["cleanup"].__setitem__(
                     "all_workers_stopped", False
+                ),
+            ),
+            "forged subject source commit unbound from session-start": lambda value: (
+                value["subject"]["source_identity"].__setitem__(
+                    "commit", "a" * 40
+                )
+            ),
+            "swapped shard attribution contexts": lambda value: (
+                value["process_completeness"]["shards"][0].__setitem__(
+                    "logical_context_id",
+                    value["process_completeness"]["shards"][1]["logical_context_id"],
+                ),
+                value["process_completeness"]["shards"][0].__setitem__(
+                    "measurement_context",
+                    value["process_completeness"]["shards"][1]["measurement_context"],
+                ),
+                value["process_completeness"]["shards"][1].__setitem__(
+                    "logical_context_id",
+                    value["commands"][0]["logical_context_id"],
+                ),
+                value["process_completeness"]["shards"][1].__setitem__(
+                    "measurement_context",
+                    value["commands"][0]["measurement_context"],
                 ),
             ),
         }

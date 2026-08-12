@@ -20,10 +20,10 @@ numeric coverage threshold; PRs #88 and #100 remain the behavioral authority.
 ## Canonical capture
 
 The 2026-08-12 UTC capture passed from clean auto-driving commit
-`84444d6d51f1f46d5c6ecee4e01a00d11081d6b4` and clean Metrics UI commit
+`7931fa9a995af5626fabef818f9e28b98c73e299` and clean Metrics UI commit
 `722e070fdc9f4ee89d13f947bf3996e62dcb2783` on
 `m002/04-passive-observation`. Collection
-`a33a8df306b510305574b0a06ff574ad` used CPython 3.11.7 and Coverage.py
+`ef921c24d1d16236da0ab90c3d406023` used CPython 3.11.7 and Coverage.py
 7.15.2 with a canonical receipt for all 539 visible distributions.
 
 The report contains 34 commands, 34 logical contexts, 37 validated raw shards,
@@ -32,9 +32,9 @@ templates and collection order are bound to the accepted expansion, including
 exact reconstruction of dynamic substitutions from each receipt's variables.
 Immutable session-start, session-seal, and finalization-receipt contents are
 embedded so offline verification re-derives digests, timestamps, collection ID,
-and sealed projections for commands, runner results, worker checks, cleanup,
-collection checks, dependency environment, offline lineage, and raw-shard
-inventory.
+subject/source/platform/coverage/Metrics UI projections, relevant-file maps,
+owned roots, sealed command/runner/worker/cleanup/collection/dependency/lineage
+projections, and complete sealed `shards.json` attribution rows.
 
 Both catalogs passed their machine preflight, terminal cleanup proved every
 observed worker dead, dependency/source freshness passed, and repository-root
@@ -44,11 +44,11 @@ observed worker dead, dependency/source freshness passed, and repository-root
 Integrity identities:
 
 - Report projection SHA-256:
-  `b75486afcbfba125d9e30b70336729e02c7c2cec281ff72b22abcb643a7fbb77`
+  `51801c7686b247055114109e7462d13cb6702a1c8dcd8990a168f68357015789`
 - Session seal SHA-256:
-  `930c6c28f6e6dd6d2dc2c00fe4da27a0017b7b80e5ae9e991f9a80d3c272f836`
+  `b5bfdb561368b94c51976530d5960a462273cdd514680b340048a0dd57f55884`
 - Immutable finalization receipt SHA-256:
-  `296b169d114c94add89419a5393065bff198b7cbc8718a730c2b3fb243e1ba2a`
+  `98ac57ab188f37a1d3a22be7bfbc5ca92e1836f24eac1952b2975ec4720113f1`
 
 Verify the tracked report from the repository root:
 

@@ -800,6 +800,15 @@ def validate_worker_execution(
     worker_probe: Mapping[str, Any],
     worker_lifecycles: Sequence[Mapping[str, Any]],
 ) -> list[dict[str, Any]]:
+    def canonical_digest_list(value: Any) -> bool:
+        return (
+            isinstance(value, list)
+            and all(
+                isinstance(item, str) and LOWER_HEX_64.fullmatch(item) for item in value
+            )
+            and value == sorted(set(value))
+        )
+
     def is_worker_status(command: Mapping[str, Any]) -> bool:
         argv = list(command.get("resolved_argv") or [])
         try:
@@ -835,26 +844,42 @@ def validate_worker_execution(
         )
         worker_lines = sorted(line for line in executed_lines if start <= line <= end)
         final_shards = shards_by_logical.get(logical, set())
+        foreground_values = command.get("new_shard_sha256_visible_at_return")
         foreground_shards = {
             str(value)
-            for value in command.get("new_shard_sha256_visible_at_return") or []
+            for value in foreground_values or []
             if LOWER_HEX_64.fullmatch(str(value))
         }
         candidates = lifecycles_by_logical.get(logical, [])
         lifecycle = candidates[0] if len(candidates) == 1 else {}
         launch = lifecycle.get("launch") if isinstance(lifecycle, Mapping) else {}
         launch = launch if isinstance(launch, Mapping) else {}
+        launch_visible_values = launch.get("raw_shard_sha256_visible")
         launch_visible = {
             str(value)
-            for value in launch.get("raw_shard_sha256_visible") or []
+            for value in launch_visible_values or []
             if LOWER_HEX_64.fullmatch(str(value))
         }
         observations = lifecycle.get("observations") if lifecycle else []
         observations = observations if isinstance(observations, list) else []
+        expected_command = {
+            "catalog_id": str(command.get("catalog_id") or ""),
+            "role": str(command.get("role") or ""),
+            "step_id": str(command.get("step_id") or ""),
+            "command_ordinal": command.get("command_ordinal"),
+        }
+        measurement = str(command.get("measurement_context") or "")
         same_generation = [
             item
             for item in observations
-            if isinstance(item, Mapping) and item.get("same_generation") is True
+            if isinstance(item, Mapping)
+            and item.get("same_generation") is True
+            and item.get("pid") == launch.get("pid")
+            and item.get("run_id") == launch.get("run_id")
+            and item.get("generation_matches") is True
+            and item.get("launch_command") == expected_command
+            and item.get("logical_context_id") == logical
+            and item.get("measurement_context") == measurement
         ]
         terminal = [
             item
@@ -888,6 +913,22 @@ def validate_worker_execution(
         )
         lifecycle_checks = {
             "single_lifecycle": len(candidates) == 1,
+            "lifecycle_receipts_canonical": (
+                canonical_digest_list(foreground_values)
+                and canonical_digest_list(launch_visible_values)
+                and isinstance(observations, list)
+                and all(
+                    isinstance(item, Mapping)
+                    and item.get("kind") in {"status", "termination", "terminal_status"}
+                    and canonical_digest_list(item.get("raw_shard_sha256_visible"))
+                    for item in observations
+                )
+            ),
+            "launch_context_bound": (
+                launch.get("command") == expected_command
+                and launch.get("logical_context_id") == logical
+                and launch.get("measurement_context") == measurement
+            ),
             "launch_identity": (
                 lifecycle.get("schema") == "m007_cli_coverage_worker_lifecycle_v1"
                 and isinstance(launch.get("pid"), int)
@@ -1042,6 +1083,7 @@ def validate_acceptance_semantics(
     if claimed_result not in {"pass", "incomplete", "failed"}:
         raise CoverageContractError(f"invalid claimed result: {claimed_result!r}")
     logical_ids = [str(command.get("logical_context_id") or "") for command in commands]
+    logical_id_set = set(logical_ids)
     command_keys = [
         (
             str(command.get("catalog_id") or ""),
@@ -1056,8 +1098,33 @@ def validate_acceptance_semantics(
         or any(not value for value in logical_ids)
         or len(logical_ids) != len(set(logical_ids))
         or len(command_keys) != len(set(command_keys))
+        or any(
+            command.get("role")
+            not in {
+                "bootstrap",
+                "journey_command",
+                "supplemental_capture",
+                "precondition",
+                "cleanup",
+            }
+            or type(command.get("command_ordinal")) is not int
+            or int(command.get("command_ordinal")) < 0
+            or type(command.get("expected_exit")) is not int
+            or type(command.get("observed_exit")) is not int
+            or not isinstance(command.get("argv_template"), list)
+            or not isinstance(command.get("resolved_argv"), list)
+            or any(
+                not isinstance(value, str)
+                for value in [
+                    *(command.get("argv_template") or []),
+                    *(command.get("resolved_argv") or []),
+                ]
+            )
+            or command.get("normalized_working_directory") != "$REPO"
+            for command in commands
+        )
     ):
-        raise CoverageContractError("command identities are empty or duplicate")
+        raise CoverageContractError("command receipts are malformed or duplicate")
 
     shard_ids: list[str] = []
     shard_hashes: list[str] = []
@@ -1069,9 +1136,20 @@ def validate_acceptance_semantics(
         if (
             not shard_id
             or not LOWER_HEX_64.fullmatch(digest)
-            or logical not in set(logical_ids)
+            or logical not in logical_id_set
             or shard.get("readable") is not True
             or shard.get("branch_arcs") is not True
+            or not isinstance(shard.get("measured_sources"), list)
+            or not shard.get("measured_sources")
+            or shard.get("measured_sources")
+            != sorted(set(shard.get("measured_sources") or []))
+            or any(
+                not isinstance(source, str)
+                or not source
+                or source.startswith("/")
+                or ".." in Path(source).parts
+                for source in shard.get("measured_sources") or []
+            )
         ):
             raise CoverageContractError(f"invalid shard receipt: {shard_id!r}")
         shard_ids.append(shard_id)
@@ -1101,7 +1179,8 @@ def validate_acceptance_semantics(
     if not collection_id:
         raise CoverageContractError("collection identity is missing")
     if any(
-        command.get("measurement_context")
+        command.get("collection_id") != collection_id
+        or command.get("measurement_context")
         != f"m007-run/{collection_id}/{command.get('logical_context_id')}"
         for command in commands
     ):
@@ -1139,6 +1218,20 @@ def validate_acceptance_semantics(
     if expected_worker_ids != observed_worker_ids:
         raise CoverageContractError(
             "worker checks do not exactly cover expected workers"
+        )
+    lifecycle_ids: list[str] = []
+    for result in runner_results:
+        lifecycles = result.get("worker_lifecycles")
+        if not isinstance(lifecycles, list):
+            raise CoverageContractError("runner worker lifecycle receipt is malformed")
+        for lifecycle in lifecycles:
+            launch = lifecycle.get("launch") if isinstance(lifecycle, Mapping) else None
+            if not isinstance(launch, Mapping):
+                raise CoverageContractError("worker lifecycle launch is malformed")
+            lifecycle_ids.append(str(launch.get("logical_context_id") or ""))
+    if sorted(lifecycle_ids) != expected_worker_ids:
+        raise CoverageContractError(
+            "worker lifecycles do not exactly cover expected launches"
         )
 
     expected_catalogs = sorted(
@@ -1186,6 +1279,14 @@ def validate_acceptance_semantics(
         or int(identity["frame_count"]) <= 0
     ):
         raise CoverageContractError("offline replay lineage identity is malformed")
+    raw_lineage_receipt = lineage.get("raw_receipt")
+    if (
+        not isinstance(raw_lineage_receipt, Mapping)
+        or raw_lineage_receipt.get("path")
+        != "runner/m007-continuity/offline-source-lineage.json"
+        or not LOWER_HEX_64.fullmatch(str(raw_lineage_receipt.get("sha256") or ""))
+    ):
+        raise CoverageContractError("offline replay raw lineage receipt is malformed")
     for command in offline_commands:
         bound = command.get("offline_source_lineage")
         if not isinstance(bound, Mapping) or any(
@@ -1215,21 +1316,53 @@ def validate_acceptance_semantics(
     if cleanup.get("all_workers_stopped") is not True:
         failures.append("cleanup did not stop all workers")
     cleanup_catalogs = cleanup.get("catalogs")
-    if not isinstance(cleanup_catalogs, list) or any(
-        not isinstance(item, Mapping)
-        or item.get("worker_stopped") is not True
-        or item.get("pid_alive") is not False
-        for item in cleanup_catalogs
+    if (
+        not isinstance(cleanup_catalogs, list)
+        or sorted(
+            str(item.get("catalog_id") or "")
+            for item in cleanup_catalogs
+            if isinstance(item, Mapping)
+        )
+        != expected_catalogs
+        or any(
+            not isinstance(item, Mapping)
+            or item.get("worker_stopped") is not True
+            or item.get("pid_alive") is not False
+            for item in cleanup_catalogs
+        )
     ):
         failures.append("cleanup catalog state is not terminal")
     checks = collection_checks.get("checks")
     reasons = collection_checks.get("reasons")
+    required_check_names = {
+        "manifest_complete",
+        "all_command_exits_expected",
+        "all_executed_contexts_have_shards",
+        "background_workers_complete",
+        "offline_replay_lineage_complete",
+        "runner_machine_preflight",
+        "cleanup",
+        "dependency_environment_unchanged",
+        "relevant_source_unchanged",
+        "metrics_ui_identity_unchanged",
+        "repository_coverage_unchanged",
+        "measured_config_probe",
+    }
+    required_reason_names = {
+        "missing_required_commands",
+        "unexpected_command_exits",
+        "missing_foreground_contexts",
+        "incomplete_background_contexts",
+        "missing_offline_source_lineage",
+        "failed_machine_preflight_catalogs",
+    }
     if (
         collection_checks.get("result") != "pass"
         or not isinstance(checks, Mapping)
-        or not checks
+        or set(checks) != required_check_names
         or any(value is not True for value in checks.values())
         or not isinstance(reasons, Mapping)
+        or set(reasons) != required_reason_names
         or any(value != [] for value in reasons.values())
     ):
         failures.append("collection checks are not an unqualified pass")
@@ -1244,7 +1377,8 @@ def validate_acceptance_semantics(
     ):
         failures.append("runner machine preflight or cleanup is not passing")
     if (
-        freshness.get("source_ok") is not True
+        set(freshness) != {"source_ok", "source_reasons", "dependency_ok"}
+        or freshness.get("source_ok") is not True
         or freshness.get("dependency_ok") is not True
     ):
         failures.append("source or dependency freshness is not passing")
@@ -1311,12 +1445,18 @@ def validate_report_semantics(
 
     execution = _report_execution(files)
     collection_id = str(contexts.get("collection_id") or "")
+    if not re.fullmatch(r"[0-9a-f]{32}", collection_id):
+        raise CoverageContractError("collection identity is malformed")
     expected_measurements = {
         str(command.get("logical_context_id") or ""): (
             f"m007-run/{collection_id}/{command.get('logical_context_id')}"
         )
         for command in commands
     }
+    if set(execution) != set(expected_measurements):
+        raise CoverageContractError(
+            "file execution contexts do not exactly cover command receipts"
+        )
     for file_record in files:
         for context in file_record.get("contexts") or []:
             logical = str(context.get("logical_context_id") or "")
@@ -1396,6 +1536,24 @@ def validate_report_semantics(
         raise CoverageContractError(
             "aggregate summaries are not deterministically derived"
         )
+
+    expected_canonical_json = {
+        "ensure_ascii": False,
+        "allow_nan": False,
+        "sort_keys": True,
+        "separators": [",", ":"],
+        "trailing_lf": 1,
+        "digest_projection_omits": ["integrity.report_sha256"],
+    }
+    if integrity.get("canonical_json") != expected_canonical_json:
+        raise CoverageContractError("canonical JSON declaration is malformed")
+    for digest_name in (
+        "session_seal_sha256",
+        "finalization_receipt_sha256",
+    ):
+        digest = integrity.get(digest_name)
+        if not isinstance(digest, str) or not LOWER_HEX_64.fullmatch(digest):
+            raise CoverageContractError(f"{digest_name} is not strict SHA-256 hex")
 
     freshness = integrity.get("freshness")
     if not isinstance(freshness, Mapping):

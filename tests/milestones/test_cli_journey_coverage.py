@@ -92,8 +92,12 @@ def _synthetic_pass_report() -> dict[str, object]:
             "role": "bootstrap",
             "step_id": "_bootstrap",
             "command_ordinal": 0,
+            "collection_id": collection_id,
             "logical_context_id": bootstrap,
             "family_id": None,
+            "argv_template": ["./cli/automa", "--help"],
+            "resolved_argv": ["./cli/automa", "--help"],
+            "normalized_working_directory": "$REPO",
             "expected_exit": 0,
             "observed_exit": 0,
             "expects_background_worker": False,
@@ -108,8 +112,12 @@ def _synthetic_pass_report() -> dict[str, object]:
                 "role": "journey_command",
                 "step_id": step_id,
                 "command_ordinal": 0,
+                "collection_id": collection_id,
                 "logical_context_id": logical,
                 "family_id": "continuity.offline_perception",
+                "argv_template": ["./cli/automa", "offline", step_id],
+                "resolved_argv": ["./cli/automa", "offline", step_id],
+                "normalized_working_directory": "$REPO",
                 "expected_exit": 0,
                 "observed_exit": 0,
                 "expects_background_worker": False,
@@ -128,8 +136,12 @@ def _synthetic_pass_report() -> dict[str, object]:
             "role": "journey_command",
             "step_id": "automation-run",
             "command_ordinal": 0,
+            "collection_id": collection_id,
             "logical_context_id": worker_id,
             "family_id": None,
+            "argv_template": ["./cli/automa", "vehicles", "automation", "run"],
+            "resolved_argv": ["./cli/automa", "vehicles", "automation", "run"],
+            "normalized_working_directory": "$REPO",
             "expected_exit": 0,
             "observed_exit": 0,
             "expects_background_worker": True,
@@ -184,10 +196,19 @@ def _synthetic_pass_report() -> dict[str, object]:
             ],
         },
     ]
+    worker_command = {
+        "catalog_id": "m007-acceptance",
+        "role": "journey_command",
+        "step_id": "automation-run",
+        "command_ordinal": 0,
+    }
+    worker_measurement = f"m007-run/{collection_id}/{worker_id}"
     lifecycle = {
         "schema": "m007_cli_coverage_worker_lifecycle_v1",
         "launch": {
+            "command": worker_command,
             "logical_context_id": worker_id,
+            "measurement_context": worker_measurement,
             "pid": 123,
             "run_id": "generation-1",
             "generation_matches": True,
@@ -204,6 +225,12 @@ def _synthetic_pass_report() -> dict[str, object]:
         "observations": [
             {
                 "kind": "terminal_status",
+                "pid": 123,
+                "run_id": "generation-1",
+                "generation_matches": True,
+                "launch_command": worker_command,
+                "logical_context_id": worker_id,
+                "measurement_context": worker_measurement,
                 "same_generation": True,
                 "pid_alive": False,
                 "status": "stopped",
@@ -277,6 +304,8 @@ def _synthetic_pass_report() -> dict[str, object]:
             "unexpected_command_exits": [],
             "missing_foreground_contexts": [],
             "incomplete_background_contexts": [],
+            "missing_offline_source_lineage": [],
+            "failed_machine_preflight_catalogs": [],
         },
     }
     logical_ids = sorted(str(command["logical_context_id"]) for command in commands)
@@ -378,11 +407,21 @@ def _synthetic_pass_report() -> dict[str, object]:
         ),
         "aggregates": aggregates,
         "integrity": {
+            "canonical_json": {
+                "ensure_ascii": False,
+                "allow_nan": False,
+                "sort_keys": True,
+                "separators": [",", ":"],
+                "trailing_lf": 1,
+                "digest_projection_omits": ["integrity.report_sha256"],
+            },
+            "session_seal_sha256": "8" * 64,
+            "finalization_receipt_sha256": "9" * 64,
             "freshness": {
                 "source_ok": True,
                 "source_reasons": [],
                 "dependency_ok": True,
-            }
+            },
         },
         "non_claims": {
             "behavioral_correctness": False,
@@ -537,6 +576,30 @@ class ManifestAndLauncherTests(unittest.TestCase):
         )
         self.assertEqual(completed.returncode, 2)
         self.assertIn("direct Python entrypoint is unsupported", completed.stderr)
+
+    def test_copied_import_bootstrap_cannot_bypass_ambient_refusal(self):
+        bootstrap = "\n".join(
+            [
+                "import importlib.util, pathlib, sys",
+                "path = pathlib.Path(sys.argv[1])",
+                "spec = importlib.util.spec_from_file_location('copied_bootstrap', path)",
+                "module = importlib.util.module_from_spec(spec)",
+                "sys.modules[spec.name] = module",
+                "spec.loader.exec_module(module)",
+                "raise SystemExit(module.main(['validate-manifest']))",
+            ]
+        )
+        completed = subprocess.run(
+            [sys.executable, "-c", bootstrap, str(SESSION_MODULE)],
+            cwd=ROOT,
+            env=_clean_environment(COVERAGE_DEBUG="trace"),
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(completed.returncode, 2)
+        self.assertIn("internal boundary", completed.stderr)
+        self.assertNotIn('"result": "pass"', completed.stdout)
 
 
 class RootAndEnvironmentTests(unittest.TestCase):
@@ -1239,15 +1302,28 @@ class ShardAndAttributionTests(unittest.TestCase):
 
     def test_missing_worker_shard_cannot_be_masked_by_foreground(self):
         logical = "m007/journey/primary/automation-run/cmd-00"
+        collection_id = "7" * 32
+        measurement = f"m007-run/{collection_id}/{logical}"
         body_start, _body_end = report.function_body_range(
             ROOT / "cli/automa_cli/automation.py", "run_vehicle_automation"
         )
         foreground = "a" * 64
         worker = "b" * 64
         command = {
+            "catalog_id": "m007-acceptance",
+            "role": "journey_command",
+            "step_id": "automation-run",
+            "command_ordinal": 0,
             "logical_context_id": logical,
+            "measurement_context": measurement,
             "expects_background_worker": True,
             "new_shard_sha256_visible_at_return": [foreground],
+        }
+        command_identity = {
+            "catalog_id": "m007-acceptance",
+            "role": "journey_command",
+            "step_id": "automation-run",
+            "command_ordinal": 0,
         }
         execution = {
             logical: {
@@ -1261,7 +1337,9 @@ class ShardAndAttributionTests(unittest.TestCase):
         lifecycle = {
             "schema": "m007_cli_coverage_worker_lifecycle_v1",
             "launch": {
+                "command": command_identity,
                 "logical_context_id": logical,
+                "measurement_context": measurement,
                 "pid": 123,
                 "run_id": "generation-1",
                 "generation_matches": True,
@@ -1272,6 +1350,12 @@ class ShardAndAttributionTests(unittest.TestCase):
             "observations": [
                 {
                     "kind": "termination",
+                    "pid": 123,
+                    "run_id": "generation-1",
+                    "generation_matches": True,
+                    "launch_command": command_identity,
+                    "logical_context_id": logical,
+                    "measurement_context": measurement,
                     "same_generation": True,
                     "pid_alive": False,
                     "status": "stopped",
@@ -1466,6 +1550,17 @@ class DependencyFreshnessAndDigestTests(unittest.TestCase):
                     "all_workers_stopped", False
                 ),
             ),
+            "missing required collection gate": lambda value: value[
+                "process_completeness"
+            ]["collection_checks"]["checks"].pop("measured_config_probe"),
+            "forged lifecycle generation": lambda value: value[
+                "process_completeness"
+            ]["runner_results"][0]["worker_lifecycles"][0]["observations"][
+                0
+            ].__setitem__("run_id", "forged-generation"),
+            "missing execution context": lambda value: value["files"][0][
+                "contexts"
+            ].pop(),
         }
         for name, mutate in mutations.items():
             with self.subTest(name=name):

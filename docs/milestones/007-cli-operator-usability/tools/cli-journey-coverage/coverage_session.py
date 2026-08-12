@@ -1744,6 +1744,14 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     try:
+        ambient_coverage = sorted(
+            name for name in os.environ if name.startswith("COVERAGE_")
+        )
+        if ambient_coverage:
+            raise reporting.CoverageContractError(
+                "inherited COVERAGE_* environment reached the internal boundary: "
+                + ", ".join(ambient_coverage)
+            )
         args = build_parser().parse_args(argv)
         if args.command == "validate-manifest":
             expanded = expand_and_validate_manifest()

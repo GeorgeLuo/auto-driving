@@ -1983,22 +1983,111 @@ def _validate_immutable_receipt_authority(report: Mapping[str, Any]) -> None:
             "collection ID is not singular across start, seal, subject, contexts, and commands"
         )
 
-    lineage_path = "receipts/offline-source-lineages.json"
-    lineage_digest = sealed_by_path.get(lineage_path)
-    lineages = inputs.get("offline_source_lineages")
-    if not isinstance(lineages, list):
-        raise CoverageContractError("offline source lineages are malformed")
-    if not lineage_digest or not LOWER_HEX_64.fullmatch(lineage_digest):
-        raise CoverageContractError(
-            "session seal omits offline lineage sealed-input digest"
+    process = report.get("process_completeness")
+    if not isinstance(process, Mapping):
+        raise CoverageContractError("process_completeness is malformed")
+    # Generalized seal-projection boundary: every direct report receipt that is
+    # a canonical projection of a sealed input must match that seal digest.
+    projection_bindings: list[tuple[str, Any, str]] = [
+        ("commands.json", commands, "report commands"),
+        (
+            "runner-results.json",
+            process.get("runner_results"),
+            "runner results",
+        ),
+        (
+            "receipts/worker-checks.json",
+            process.get("worker_checks"),
+            "worker checks",
+        ),
+        (
+            "receipts/cleanup.json",
+            report.get("cleanup"),
+            "cleanup receipt",
+        ),
+        (
+            "receipts/collection-checks.json",
+            process.get("collection_checks"),
+            "collection checks",
+        ),
+        (
+            "receipts/environment-before.json",
+            report.get("dependency_environment"),
+            "dependency environment",
+        ),
+        (
+            "receipts/offline-source-lineages.json",
+            inputs.get("offline_source_lineages"),
+            "offline source lineages",
+        ),
+    ]
+    for seal_path, projection, label in projection_bindings:
+        _require_sealed_projection(
+            sealed_by_path,
+            seal_path=seal_path,
+            projection=projection,
+            label=label,
         )
-    if sha256_bytes(canonical_file_bytes(lineages)) != lineage_digest:
+    if report.get("cleanup") != process.get("cleanup"):
         raise CoverageContractError(
-            "offline source lineages are not the sealed session-input content"
+            "top-level cleanup is not identical to process_completeness.cleanup"
         )
-    # Each lineage raw receipt must stay bound to the promoted identity and its
-    # own content digest (already checked in acceptance); the seal binding above
-    # proves that exact lineage list was an immutable collection input.
+
+    # Raw-shard inventory is carried on the seal itself (not as a sealed file
+    # projection): report shard IDs/digests must equal seal.raw_shards exactly.
+    report_shards = process.get("shards")
+    seal_raw_shards = seal.get("raw_shards")
+    if not isinstance(report_shards, list) or not isinstance(seal_raw_shards, list):
+        raise CoverageContractError("report/seal raw-shard inventories are malformed")
+    report_inventory = [
+        {
+            "shard_id": str(item.get("shard_id") or ""),
+            "sha256": str(item.get("shard_sha256") or ""),
+        }
+        for item in report_shards
+        if isinstance(item, Mapping)
+    ]
+    seal_inventory = [
+        {
+            "shard_id": str(item.get("shard_id") or ""),
+            "sha256": str(item.get("sha256") or ""),
+        }
+        for item in seal_raw_shards
+        if isinstance(item, Mapping)
+    ]
+    if (
+        not report_inventory
+        or any(
+            not item["shard_id"] or not LOWER_HEX_64.fullmatch(item["sha256"])
+            for item in report_inventory
+        )
+        or report_inventory != seal_inventory
+    ):
+        raise CoverageContractError(
+            "report shard inventory does not exactly match session_seal.raw_shards"
+        )
+
+
+def _require_sealed_projection(
+    sealed_by_path: Mapping[str, str],
+    *,
+    seal_path: str,
+    projection: Any,
+    label: str,
+) -> None:
+    """Require one report projection's canonical bytes to match a seal digest."""
+
+    digest = sealed_by_path.get(seal_path)
+    if not digest or not LOWER_HEX_64.fullmatch(digest):
+        raise CoverageContractError(
+            f"session seal omits sealed-input digest for {seal_path}"
+        )
+    if projection is None:
+        raise CoverageContractError(f"{label} projection is missing")
+    if sha256_bytes(canonical_file_bytes(projection)) != digest:
+        raise CoverageContractError(
+            f"{label} is not the sealed {seal_path} content"
+        )
 
 
 def validate_report_semantics(

@@ -539,29 +539,57 @@ def _synthetic_pass_report() -> dict[str, object]:
         },
     }
     offline_lineages = payload["inputs"]["offline_source_lineages"]
-    lineage_digest = report.sha256_bytes(report.canonical_file_bytes(offline_lineages))
     session_start = {
         "schema": "m007_cli_coverage_session_start_v1",
         "collection_id": collection_id,
         "collection_started_at_utc": "2026-01-01T00:00:00Z",
     }
-    start_digest = report.sha256_bytes(report.canonical_file_bytes(session_start))
+    process = payload["process_completeness"]
+    assert isinstance(process, dict)
+    projection_digests = {
+        "session-start.json": report.sha256_bytes(
+            report.canonical_file_bytes(session_start)
+        ),
+        "commands.json": report.sha256_bytes(
+            report.canonical_file_bytes(payload["commands"])
+        ),
+        "runner-results.json": report.sha256_bytes(
+            report.canonical_file_bytes(process["runner_results"])
+        ),
+        "receipts/worker-checks.json": report.sha256_bytes(
+            report.canonical_file_bytes(process["worker_checks"])
+        ),
+        "receipts/cleanup.json": report.sha256_bytes(
+            report.canonical_file_bytes(payload["cleanup"])
+        ),
+        "receipts/collection-checks.json": report.sha256_bytes(
+            report.canonical_file_bytes(process["collection_checks"])
+        ),
+        "receipts/environment-before.json": report.sha256_bytes(
+            report.canonical_file_bytes(payload["dependency_environment"])
+        ),
+        "receipts/offline-source-lineages.json": report.sha256_bytes(
+            report.canonical_file_bytes(offline_lineages)
+        ),
+    }
     seal = {
         "schema": "m007_cli_coverage_session_seal_v1",
         "collection_id": collection_id,
         "collection_ended_at_utc": "2026-01-01T00:00:01Z",
         "collection_result": "pass",
         "sealed_inputs": [
-            {
-                "path": "session-start.json",
-                "sha256": start_digest,
-            },
-            {
-                "path": "receipts/offline-source-lineages.json",
-                "sha256": lineage_digest,
-            },
+            {"path": path, "sha256": digest}
+            for path, digest in projection_digests.items()
         ],
-        "raw_shards": [],
+        "raw_shards": [
+            {
+                "shard_id": str(shard["shard_id"]),
+                "sha256": str(shard["shard_sha256"]),
+                "path": f"raw/.coverage.synthetic.{index}",
+            }
+            for index, shard in enumerate(process["shards"])
+            if isinstance(shard, dict)
+        ],
     }
     seal_digest = report.sha256_bytes(report.canonical_file_bytes(seal))
     final_receipt = {
@@ -1977,20 +2005,24 @@ class DependencyFreshnessAndDigestTests(unittest.TestCase):
                     if command.get("offline_source_lineage")
                 ],
             ),
-            "wrong dynamic substitution": lambda value: next(
-                command
-                for command in value["commands"]
-                if command.get("step_id") == "automation-run"
-            ).__setitem__(
-                "resolved_argv",
-                [
-                    "./cli/automa",
-                    "vehicles",
-                    "automation",
-                    "run",
-                    "--id",
-                    "forged-vehicle",
-                ],
+            "wrong dynamic substitution": lambda value: (
+                # Keep argv length and fixed arguments; only the substituted
+                # slot disagrees with recorded variables.
+                next(
+                    command
+                    for command in value["commands"]
+                    if command.get("step_id") == "automation-run"
+                ).__setitem__(
+                    "resolved_argv",
+                    [
+                        "./cli/automa",
+                        "vehicles",
+                        "automation",
+                        "run",
+                        "--id",
+                        "forged-vehicle",
+                    ],
+                )
             ),
             "session-start time unbound from seal": lambda value: (
                 value["integrity"]["session_start"].__setitem__(
@@ -2003,6 +2035,40 @@ class DependencyFreshnessAndDigestTests(unittest.TestCase):
             "session-start collection id mismatch": lambda value: value["integrity"][
                 "session_start"
             ].__setitem__("collection_id", "0" * 32),
+            "coherent command mutation unbound from seal": lambda value: (
+                next(
+                    command
+                    for command in value["commands"]
+                    if command.get("step_id") == "automation-run"
+                ).__setitem__("variables", {"vehicle_id": "forged-vehicle"}),
+                next(
+                    command
+                    for command in value["commands"]
+                    if command.get("step_id") == "automation-run"
+                ).__setitem__(
+                    "resolved_argv",
+                    [
+                        "./cli/automa",
+                        "vehicles",
+                        "automation",
+                        "run",
+                        "--id",
+                        "forged-vehicle",
+                    ],
+                ),
+            ),
+            "forged report shard digest unbound from seal": lambda value: value[
+                "process_completeness"
+            ]["shards"][0].__setitem__("shard_sha256", "0" * 64),
+            "forged runner results unbound from seal": lambda value: value[
+                "process_completeness"
+            ]["runner_results"][0].__setitem__("result", "forged"),
+            "forged cleanup unbound from seal": lambda value: (
+                value["cleanup"].__setitem__("all_workers_stopped", False),
+                value["process_completeness"]["cleanup"].__setitem__(
+                    "all_workers_stopped", False
+                ),
+            ),
         }
         for name, mutate in mutations.items():
             with self.subTest(name=name):

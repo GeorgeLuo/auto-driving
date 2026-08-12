@@ -1559,29 +1559,32 @@ def validate_acceptance_semantics(
                 raise CoverageContractError(
                     f"command {key!r} argv template contradicts accepted manifest authority"
                 )
-            # Static templates (no substitution tokens) must match resolved argv.
-            # Dynamic templates still require the same length and fixed prefixes.
-            if expected_argv and all("{" not in part for part in expected_argv):
-                if resolved_argv != expected_argv:
-                    raise CoverageContractError(
-                        f"command {key!r} resolved argv contradicts accepted template"
-                    )
-            elif len(resolved_argv) != len(expected_argv):
+            variables = command.get("variables")
+            if variables is None:
+                variables = {}
+            if not isinstance(variables, Mapping) or any(
+                not isinstance(name, str) or not isinstance(value, str)
+                for name, value in variables.items()
+            ):
                 raise CoverageContractError(
-                    f"command {key!r} resolved argv length contradicts accepted template"
+                    f"command {key!r} substitution variables are malformed"
                 )
-            else:
-                for expected_part, resolved_part in zip(expected_argv, resolved_argv):
-                    if "{" in expected_part:
-                        if not isinstance(resolved_part, str) or not resolved_part:
-                            raise CoverageContractError(
-                                f"command {key!r} resolved argv is missing a substitution"
-                            )
-                        continue
-                    if resolved_part != expected_part:
-                        raise CoverageContractError(
-                            f"command {key!r} resolved argv contradicts accepted template"
-                        )
+            # Reconstruct resolved argv from the authoritative template plus the
+            # receipt's recorded substitutions; refuse missing/unknown tokens.
+            expected_resolved: list[str] = []
+            for part in expected_argv:
+                value = part
+                for name, replacement in variables.items():
+                    value = value.replace("{" + name + "}", replacement)
+                if re.search(r"\{[a-zA-Z0-9_]+\}", value):
+                    raise CoverageContractError(
+                        f"command {key!r} has unresolved argv token after substitutions: {value!r}"
+                    )
+                expected_resolved.append(value)
+            if resolved_argv != expected_resolved:
+                raise CoverageContractError(
+                    f"command {key!r} resolved argv contradicts template substitutions"
+                )
 
     shard_ids: list[str] = []
     shard_hashes: list[str] = []
@@ -1906,6 +1909,8 @@ def _validate_immutable_receipt_authority(report: Mapping[str, Any]) -> None:
     if final_receipt.get("schema") != "m007_cli_coverage_finalization_receipt_v1":
         raise CoverageContractError("finalization receipt schema is invalid")
 
+    if session_start.get("schema") != "m007_cli_coverage_session_start_v1":
+        raise CoverageContractError("session-start schema is invalid")
     if timestamps.get("collection_started_at_utc") != session_start.get(
         "collection_started_at_utc"
     ):
@@ -1937,6 +1942,47 @@ def _validate_immutable_receipt_authority(report: Mapping[str, Any]) -> None:
         for item in sealed_inputs
         if isinstance(item, Mapping)
     }
+    if len(sealed_by_path) != len(sealed_inputs):
+        raise CoverageContractError("session seal sealed_inputs paths are not unique")
+
+    start_path = "session-start.json"
+    start_digest = sealed_by_path.get(start_path)
+    if not start_digest or not LOWER_HEX_64.fullmatch(start_digest):
+        raise CoverageContractError(
+            "session seal omits session-start sealed-input digest"
+        )
+    if sha256_bytes(canonical_file_bytes(session_start)) != start_digest:
+        raise CoverageContractError(
+            "embedded session-start is not the sealed session-start.json content"
+        )
+
+    subject = report.get("subject")
+    contexts = report.get("contexts")
+    commands = report.get("commands")
+    if not isinstance(subject, Mapping) or not isinstance(contexts, Mapping):
+        raise CoverageContractError("subject/contexts are malformed for collection binding")
+    if not isinstance(commands, list):
+        raise CoverageContractError("commands are malformed for collection binding")
+    collection_ids = {
+        str(session_start.get("collection_id") or ""),
+        str(seal.get("collection_id") or ""),
+        str(subject.get("collection_id") or ""),
+        str(contexts.get("collection_id") or ""),
+    }
+    command_collection_ids = {
+        str(command.get("collection_id") or "")
+        for command in commands
+        if isinstance(command, Mapping)
+    }
+    collection_ids |= command_collection_ids
+    if (
+        len(collection_ids) != 1
+        or not re.fullmatch(r"[0-9a-f]{32}", next(iter(collection_ids)))
+    ):
+        raise CoverageContractError(
+            "collection ID is not singular across start, seal, subject, contexts, and commands"
+        )
+
     lineage_path = "receipts/offline-source-lineages.json"
     lineage_digest = sealed_by_path.get(lineage_path)
     lineages = inputs.get("offline_source_lineages")

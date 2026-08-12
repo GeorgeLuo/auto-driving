@@ -152,6 +152,7 @@ def _synthetic_pass_report() -> dict[str, object]:
             "family_id": None,
             "argv_template": ["./cli/automa", "--help"],
             "resolved_argv": ["./cli/automa", "--help"],
+            "variables": {},
             "normalized_working_directory": "$REPO",
             "expected_exit": 0,
             "observed_exit": 0,
@@ -172,6 +173,7 @@ def _synthetic_pass_report() -> dict[str, object]:
                 "family_id": "continuity.offline_perception",
                 "argv_template": ["./cli/automa", "offline", step_id],
                 "resolved_argv": ["./cli/automa", "offline", step_id],
+                "variables": {},
                 "normalized_working_directory": "$REPO",
                 "expected_exit": 0,
                 "observed_exit": 0,
@@ -194,8 +196,23 @@ def _synthetic_pass_report() -> dict[str, object]:
             "collection_id": collection_id,
             "logical_context_id": worker_id,
             "family_id": None,
-            "argv_template": ["./cli/automa", "vehicles", "automation", "run"],
-            "resolved_argv": ["./cli/automa", "vehicles", "automation", "run"],
+            "argv_template": [
+                "./cli/automa",
+                "vehicles",
+                "automation",
+                "run",
+                "--id",
+                "{vehicle_id}",
+            ],
+            "resolved_argv": [
+                "./cli/automa",
+                "vehicles",
+                "automation",
+                "run",
+                "--id",
+                "chase-sim-chaser",
+            ],
+            "variables": {"vehicle_id": "chase-sim-chaser"},
             "normalized_working_directory": "$REPO",
             "expected_exit": 0,
             "observed_exit": 0,
@@ -523,6 +540,12 @@ def _synthetic_pass_report() -> dict[str, object]:
     }
     offline_lineages = payload["inputs"]["offline_source_lineages"]
     lineage_digest = report.sha256_bytes(report.canonical_file_bytes(offline_lineages))
+    session_start = {
+        "schema": "m007_cli_coverage_session_start_v1",
+        "collection_id": collection_id,
+        "collection_started_at_utc": "2026-01-01T00:00:00Z",
+    }
+    start_digest = report.sha256_bytes(report.canonical_file_bytes(session_start))
     seal = {
         "schema": "m007_cli_coverage_session_seal_v1",
         "collection_id": collection_id,
@@ -530,9 +553,13 @@ def _synthetic_pass_report() -> dict[str, object]:
         "collection_result": "pass",
         "sealed_inputs": [
             {
+                "path": "session-start.json",
+                "sha256": start_digest,
+            },
+            {
                 "path": "receipts/offline-source-lineages.json",
                 "sha256": lineage_digest,
-            }
+            },
         ],
         "raw_shards": [],
     }
@@ -543,10 +570,6 @@ def _synthetic_pass_report() -> dict[str, object]:
         "session_seal_sha256": seal_digest,
     }
     final_digest = report.sha256_bytes(report.canonical_file_bytes(final_receipt))
-    session_start = {
-        "collection_id": collection_id,
-        "collection_started_at_utc": "2026-01-01T00:00:00Z",
-    }
     integrity = payload["integrity"]
     assert isinstance(integrity, dict)
     integrity.update(
@@ -1954,6 +1977,32 @@ class DependencyFreshnessAndDigestTests(unittest.TestCase):
                     if command.get("offline_source_lineage")
                 ],
             ),
+            "wrong dynamic substitution": lambda value: next(
+                command
+                for command in value["commands"]
+                if command.get("step_id") == "automation-run"
+            ).__setitem__(
+                "resolved_argv",
+                [
+                    "./cli/automa",
+                    "vehicles",
+                    "automation",
+                    "run",
+                    "--id",
+                    "forged-vehicle",
+                ],
+            ),
+            "session-start time unbound from seal": lambda value: (
+                value["integrity"]["session_start"].__setitem__(
+                    "collection_started_at_utc", "2026-08-12T16:00:00Z"
+                ),
+                value["timestamps"].__setitem__(
+                    "collection_started_at_utc", "2026-08-12T16:00:00Z"
+                ),
+            ),
+            "session-start collection id mismatch": lambda value: value["integrity"][
+                "session_start"
+            ].__setitem__("collection_id", "0" * 32),
         }
         for name, mutate in mutations.items():
             with self.subTest(name=name):

@@ -143,10 +143,17 @@ deletion; it does not retroactively widen the accepted primary journey.
 
 ### Next-Frontier Candidate
 
-**None**
+**Complete CLI surface and sequence audit**
 
-- Reason: CLI journey coverage foundation is promoted after realistic scenario continuity declares the journeys coverage will attribute.
-- Revisit when: The coverage frontier implements reproducible per-command and multi-command journey attribution against the declared continuity and primary journeys so the full CLI-leaf and US-01 through US-10 reconciliation audit can be frozen as a candidate.
+- Proposal branch: `m007/cli-surface-audit-proposal`
+- Implementation branch: `m007/cli-surface-audit`
+- Proposal path: `docs/milestones/007-cli-operator-usability/proposals/cli-surface-audit.md`
+- Review kind: Broad mechanical rollout
+- Review question: Can one committed CLI usage registry prove complete parser-leaf and #88 US-01 through US-10 accounting, with every public leaf mapped to realistic usage, prerequisites, side effects and safety, expected output, owning boundary, and deterministic or live validation, and every sequence assigned stable commands, confirmation, cleanup, coverage treatment, and an explicit passed, ready, blocked, or deferred disposition with owned unlock conditions, while machine-first and HITL evidence covers safe executable patterns without running hazardous or external entries unsafely?
+- Acceptance owner: Parser-derived CLI leaf inventory, committed usage and sequence registry, completeness/schema validators, and runner-backed machine/HITL audit evidence
+- Exit criteria affected: M007-08
+- Prerequisite: M007-07 is `Met`; the accepted named-command and journey-coverage collector/report, primary journey, and scenario-continuity catalogs are stable audit inputs
+- Non-goals: Capability disposition under M007-09, product repair, new CLI features, removal, unsafe execution for coverage, reopening M007-10, a numeric coverage gate, or milestone closeout
 
 ## Workflow History
 
@@ -174,6 +181,7 @@ deletion; it does not retroactively widen the accepted primary journey.
 | Realistic CLI scenario continuity | accepted | Implementation PR #100 merged at 4b8204bb847d9a6dd067b609e99b87ddc554b139. |
 | CLI journey coverage foundation | ready_for_proposal | Promoted after implementation PR #100. |
 | CLI journey coverage foundation | ready_for_proposal | Plan revision: make exhaustive #88 US-01 through US-10 definition and disposition an explicit M007-08 and milestone-closeout requirement while preserving accepted M007-10 and the current coverage frontier. |
+| CLI journey coverage foundation | ready_for_proposal | Plan revision: queue the complete CLI surface and #88 US-01 through US-10 sequence audit as the reviewed successor required for a successful coverage handoff. |
 
 ## Accepted Review Units
 

@@ -130,10 +130,11 @@ deletion; it does not retroactively widen the accepted primary journey.
 
 **CLI journey coverage foundation**
 
-- Workflow state: proposal_in_review
+- Workflow state: ready_for_implementation
 - Proposal branch: `m007/cli-journey-coverage-proposal`
 - Implementation branch: `m007/cli-journey-coverage`
 - Proposal path: `docs/milestones/007-cli-operator-usability/proposals/cli-journey-coverage.md`
+- Accepted proposal: [#106](https://github.com/GeorgeLuo/auto-driving/pull/106) at `47a6ac9d5f9060f420477dcddae07dea2da1eafa`
 - Review kind: Deterministic invariant closure
 - Review question: Can a developer record reproducible branch-aware owned-Python coverage for named CLI commands and multi-command journeys across foreground and Python subprocess/background-worker execution while separating bootstrap/import footprint from command-specific behavior and avoiding false correctness or dead-code claims?
 - Acceptance owner: Coverage session collector, command/context manifest, bootstrap subtraction, and versioned journey-coverage report schema built on `.coveragerc`
@@ -183,6 +184,7 @@ deletion; it does not retroactively widen the accepted primary journey.
 | CLI journey coverage foundation | ready_for_proposal | Plan revision: make exhaustive #88 US-01 through US-10 definition and disposition an explicit M007-08 and milestone-closeout requirement while preserving accepted M007-10 and the current coverage frontier. |
 | CLI journey coverage foundation | ready_for_proposal | Plan revision: queue the complete CLI surface and #88 US-01 through US-10 sequence audit as the reviewed successor required for a successful coverage handoff. |
 | CLI journey coverage foundation | proposal_in_review | Started m007/cli-journey-coverage-proposal. |
+| CLI journey coverage foundation | ready_for_implementation | Proposal PR #106 accepted at 47a6ac9d5f9060f420477dcddae07dea2da1eafa. |
 
 ## Accepted Review Units
 

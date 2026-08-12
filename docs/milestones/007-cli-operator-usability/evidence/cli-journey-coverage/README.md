@@ -20,10 +20,10 @@ numeric coverage threshold; PRs #88 and #100 remain the behavioral authority.
 ## Canonical capture
 
 The 2026-08-12 UTC capture passed from clean auto-driving commit
-`19327a9b5441112312cb4e621743ca95a09e35d2` and clean Metrics UI commit
+`e962ca858027715f69321166911c4db53921d8a1` and clean Metrics UI commit
 `722e070fdc9f4ee89d13f947bf3996e62dcb2783` on
 `m002/04-passive-observation`. Collection
-`bc3a14ebe5d508be3e59def24d5d3c33` used CPython 3.11.7 and Coverage.py
+`8f2c46b483ad9fc1064d0ab58f4a61f7` used CPython 3.11.7 and Coverage.py
 7.15.2 with a canonical receipt for all 539 visible distributions.
 
 The report contains 34 commands, 34 logical contexts, 37 validated raw shards,
@@ -44,11 +44,11 @@ observed worker dead, dependency/source freshness passed, and repository-root
 Integrity identities:
 
 - Report projection SHA-256:
-  `349beafe3ecb99f4550893020a80b11d6b7c20b273ebfe8801b1d33d65f18b97`
+  `83a9133780bb11d895ddb1c459fe0a99978bcef81702382bcfd0208f11d09915`
 - Session seal SHA-256:
-  `8b3fa35df48241fcdf4f00655ab14fb28a7786e4fe01e42c933455d14ef891e1`
+  `6b4d7e7e2480f37f5493ae960b5e03b01093bab9986fcff733c5e4c9ca4aa200`
 - Immutable finalization receipt SHA-256:
-  `7a67092d59400f846843ab464d3b700892e9645eb6029b51fcd82b340b0443c9`
+  `757afcd8ac5e8942c9172d1adaaaf7c866e2bd7676457d7d5d28aa44f69d5bc7`
 
 Verify the tracked report from the repository root:
 

@@ -1,0 +1,16 @@
+#!/bin/sh
+set -eu
+
+if LC_ALL=C env | grep '^COVERAGE_[^=]*=' >/dev/null 2>&1; then
+    echo "coverage session refused: inherited COVERAGE_* environment" >&2
+    exit 2
+fi
+
+script_dir=$(CDPATH= cd -P "$(dirname "$0")" && pwd)
+launcher_path="$script_dir/coverage_session"
+exec 9<"$launcher_path"
+COVERAGE_SESSION_LAUNCH_PID=$$
+COVERAGE_SESSION_LAUNCH_FD=9
+COVERAGE_SESSION_LAUNCH_PATH=$launcher_path
+export COVERAGE_SESSION_LAUNCH_PID COVERAGE_SESSION_LAUNCH_FD COVERAGE_SESSION_LAUNCH_PATH
+exec python3 "$script_dir/coverage_session.py" "$@"

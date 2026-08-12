@@ -1372,6 +1372,7 @@ def _run_command(
     index: int,
     timeout_s: float | None,
     transcript_path: Path,
+    environment: Mapping[str, str] | None = None,
 ) -> CommandOutcome:
     step_dir.mkdir(parents=True, exist_ok=True)
     stdout_path = step_dir / f"cmd-{index:02d}.stdout.txt"
@@ -1379,14 +1380,16 @@ def _run_command(
     wall_started = _utc_now()
     started = time.monotonic()
     try:
-        completed = subprocess.run(
-            list(argv),
-            cwd=cwd,
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=timeout_s,
-        )
+        run_kwargs: dict[str, Any] = {
+            "cwd": cwd,
+            "check": False,
+            "capture_output": True,
+            "text": True,
+            "timeout": timeout_s,
+        }
+        if environment is not None:
+            run_kwargs["env"] = dict(environment)
+        completed = subprocess.run(list(argv), **run_kwargs)
         exit_code = completed.returncode
         stdout = completed.stdout or ""
         stderr = completed.stderr or ""
@@ -1466,6 +1469,65 @@ class SessionState:
     safety_block_reason: str | None = None
     executed_commands: list[list[str]] = field(default_factory=list)
     metrics_ui_repo_path: Path | None = None
+    command_hook: Any | None = None
+    coverage_only: bool = False
+
+
+def _run_session_command(
+    state: SessionState,
+    argv: Sequence[str],
+    *,
+    role: str,
+    step_id: str,
+    command_ordinal: int,
+    argv_template: Sequence[str],
+    step_dir: Path,
+    index: int,
+    timeout_s: float | None,
+    transcript_path: Path,
+) -> CommandOutcome:
+    """Run one command through the optional coverage-only instrumentation hook.
+
+    The disabled path delegates to :func:`_run_command` without an ``env``
+    argument, preserving the runner's established subprocess behavior. A hook
+    may only provide the child environment and observe the completed outcome;
+    argv, ordering, timeouts, evidence paths, and cleanup remain runner-owned.
+    """
+
+    environment: Mapping[str, str] | None = None
+    hook = state.command_hook
+    if hook is not None:
+        environment = hook.environment_for(
+            catalog_id=str(state.catalog.get("id") or ""),
+            role=role,
+            step_id=step_id,
+            command_ordinal=command_ordinal,
+            argv_template=list(argv_template),
+            resolved_argv=list(argv),
+            variables=dict(state.variables),
+        )
+    outcome = _run_command(
+        argv,
+        cwd=state.repo_root,
+        session_dir=state.session_dir,
+        step_dir=step_dir,
+        index=index,
+        timeout_s=timeout_s,
+        transcript_path=transcript_path,
+        **({"environment": environment} if environment is not None else {}),
+    )
+    if hook is not None:
+        hook.command_completed(
+            catalog_id=str(state.catalog.get("id") or ""),
+            role=role,
+            step_id=step_id,
+            command_ordinal=command_ordinal,
+            argv_template=list(argv_template),
+            resolved_argv=list(argv),
+            variables=dict(state.variables),
+            outcome=outcome,
+        )
+    return outcome
 
 
 def _note_worker_pid(state: SessionState, pid: Any, *, source: str) -> None:
@@ -2039,10 +2101,21 @@ def _enforce_cleanup(
     vehicle = state.variables["vehicle_id"]
     step_dir = state.session_dir / "steps" / "_cleanup"
     try:
-        stop = _run_command(
-            ["./cli/automa", "vehicles", "automation", "stop", "--id", vehicle],
-            cwd=state.repo_root,
-            session_dir=state.session_dir,
+        stop_argv = [
+            "./cli/automa",
+            "vehicles",
+            "automation",
+            "stop",
+            "--id",
+            vehicle,
+        ]
+        stop = _run_session_command(
+            state,
+            stop_argv,
+            role="cleanup",
+            step_id="_cleanup",
+            command_ordinal=0,
+            argv_template=stop_argv,
             step_dir=step_dir,
             index=0,
             timeout_s=command_timeout_s,
@@ -2057,10 +2130,13 @@ def _enforce_cleanup(
             vehicle,
             "--json",
         ]
-        status_out = _run_command(
+        status_out = _run_session_command(
+            state,
             status_cmd,
-            cwd=state.repo_root,
-            session_dir=state.session_dir,
+            role="cleanup",
+            step_id="_cleanup",
+            command_ordinal=1,
+            argv_template=status_cmd,
             step_dir=step_dir,
             index=1,
             timeout_s=command_timeout_s,
@@ -2220,19 +2296,23 @@ def _run_precondition_cleanup(
         return record
 
     try:
-        status_out = _run_command(
-            [
-                "./cli/automa",
-                "vehicles",
-                "status",
-                "--id",
-                vehicle,
-                "--chase-url",
-                metrics_ui_origin,
-                "--json",
-            ],
-            cwd=state.repo_root,
-            session_dir=state.session_dir,
+        status_argv = [
+            "./cli/automa",
+            "vehicles",
+            "status",
+            "--id",
+            vehicle,
+            "--chase-url",
+            metrics_ui_origin,
+            "--json",
+        ]
+        status_out = _run_session_command(
+            state,
+            status_argv,
+            role="precondition",
+            step_id="_precondition_cleanup",
+            command_ordinal=0,
+            argv_template=status_argv,
             step_dir=step_dir,
             index=0,
             timeout_s=command_timeout_s,
@@ -2288,10 +2368,21 @@ def _run_precondition_cleanup(
         record["needed"] = True
         record["attempted"] = True
         state.worker_may_exist = True
-        stop = _run_command(
-            ["./cli/automa", "vehicles", "automation", "stop", "--id", vehicle],
-            cwd=state.repo_root,
-            session_dir=state.session_dir,
+        stop_argv = [
+            "./cli/automa",
+            "vehicles",
+            "automation",
+            "stop",
+            "--id",
+            vehicle,
+        ]
+        stop = _run_session_command(
+            state,
+            stop_argv,
+            role="precondition",
+            step_id="_precondition_cleanup",
+            command_ordinal=1,
+            argv_template=stop_argv,
             step_dir=step_dir,
             index=1,
             timeout_s=command_timeout_s,
@@ -2300,19 +2391,23 @@ def _run_precondition_cleanup(
         record["stop_exit_code"] = stop.exit_code
         if stop.exit_code != 0:
             return _fail(f"precondition stop exit={stop.exit_code}")
-        after_out = _run_command(
-            [
-                "./cli/automa",
-                "vehicles",
-                "status",
-                "--id",
-                vehicle,
-                "--chase-url",
-                metrics_ui_origin,
-                "--json",
-            ],
-            cwd=state.repo_root,
-            session_dir=state.session_dir,
+        after_argv = [
+            "./cli/automa",
+            "vehicles",
+            "status",
+            "--id",
+            vehicle,
+            "--chase-url",
+            metrics_ui_origin,
+            "--json",
+        ]
+        after_out = _run_session_command(
+            state,
+            after_argv,
+            role="precondition",
+            step_id="_precondition_cleanup",
+            command_ordinal=2,
+            argv_template=after_argv,
             step_dir=step_dir,
             index=2,
             timeout_s=command_timeout_s,
@@ -2461,6 +2556,8 @@ def run_session(
     auto_driving_linked_pr: str | None = None,
     metrics_ui_linked_pr: str | None = None,
     machine_only: bool = False,
+    command_hook: Any | None = None,
+    coverage_only: bool = False,
 ) -> dict[str, Any]:
     started = _utc_now()
     session_id = started.strftime("%Y%m%d%H%M%S")
@@ -2469,7 +2566,9 @@ def run_session(
         if isinstance(operator, str) and operator.strip()
         else None
     )
-    if dry_run:
+    if coverage_only:
+        execution_mode = "coverage_only_live"
+    elif dry_run:
         execution_mode = "dry_run"
     elif machine_only:
         execution_mode = "machine_only_live"
@@ -2570,6 +2669,8 @@ def run_session(
         else None,
         recording_before=recording_before,
         metrics_ui_repo_path=metrics_ui_repo,
+        command_hook=command_hook,
+        coverage_only=coverage_only,
     )
 
     worktree_meta: dict[str, Any] = {}
@@ -3078,10 +3179,13 @@ def run_session(
                         rendered = _substitute_argv(argv, state.variables)
                         state.executed_commands.append(list(rendered))
                         print(f"\n$ {_format_command(rendered)}")
-                        outcome = _run_command(
+                        outcome = _run_session_command(
+                            state,
                             rendered,
-                            cwd=repo_root,
-                            session_dir=session_dir,
+                            role="journey_command",
+                            step_id=step_id,
+                            command_ordinal=index,
+                            argv_template=[str(part) for part in argv],
                             step_dir=step_dir,
                             index=index,
                             timeout_s=command_timeout_s,
@@ -3213,10 +3317,14 @@ def run_session(
                         json_name = str(capture.get("path") or f"{step_id}.json")
                         json_out = session_dir / json_name
                         print(f"\n$ {_format_command(rendered)}  > {json_name}")
-                        outcome = _run_command(
+                        capture_ordinal = len(step.get("commands") or [])
+                        outcome = _run_session_command(
+                            state,
                             rendered,
-                            cwd=repo_root,
-                            session_dir=session_dir,
+                            role="supplemental_capture",
+                            step_id=step_id,
+                            command_ordinal=capture_ordinal,
+                            argv_template=[str(part) for part in capture["command"]],
                             step_dir=step_dir,
                             index=len(command_outcomes),
                             timeout_s=command_timeout_s,
@@ -4060,6 +4168,9 @@ def run_session(
         "artifact_manifest": "digests.json",
         "variables": {k: v for k, v in state.variables.items() if k != "src_dir" or v},
     }
+    if coverage_only:
+        result["behavioral_verdict"] = "not_evaluated"
+        result["coverage_only"] = True
     if continuity_block is not None:
         result["continuity"] = continuity_block
 

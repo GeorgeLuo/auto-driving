@@ -35,9 +35,6 @@ RUNNER_PATH = RUNNER_DIR / "session_runner.py"
 REPORT_PATH = TOOL_DIR / "coverage_report.py"
 COLLECTION_ID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
 LOGICAL_CONTEXT_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._/-]{0,159}$")
-MARKER_PID = "COVERAGE_SESSION_LAUNCH_PID"
-MARKER_FD = "COVERAGE_SESSION_LAUNCH_FD"
-MARKER_PATH = "COVERAGE_SESSION_LAUNCH_PATH"
 
 
 def _load_module(name: str, path: Path) -> Any:
@@ -88,38 +85,6 @@ def _atomic_json_once(path: Path, value: Any) -> None:
             temporary.unlink()
         except FileNotFoundError:
             pass
-
-
-def _require_sealed_launcher() -> None:
-    pid_text = os.environ.get(MARKER_PID)
-    fd_text = os.environ.get(MARKER_FD)
-    path_text = os.environ.get(MARKER_PATH)
-    try:
-        marker_pid = int(pid_text or "")
-        marker_fd = int(fd_text or "")
-    except ValueError as exc:
-        raise reporting.CoverageContractError(
-            "direct Python entrypoint refused: invalid launcher seal"
-        ) from exc
-    if marker_pid != os.getpid() or marker_fd < 3 or not path_text:
-        raise reporting.CoverageContractError(
-            "direct Python entrypoint refused: public launcher seal is missing"
-        )
-    launcher = Path(path_text).resolve(strict=True)
-    fd_stat = os.fstat(marker_fd)
-    launcher_stat = launcher.stat()
-    if (fd_stat.st_dev, fd_stat.st_ino) != (launcher_stat.st_dev, launcher_stat.st_ino):
-        raise reporting.CoverageContractError(
-            "direct Python entrypoint refused: launcher seal does not identify "
-            "the public executable"
-        )
-    if not stat.S_ISREG(launcher_stat.st_mode) or not os.access(launcher, os.X_OK):
-        raise reporting.CoverageContractError(
-            "public coverage launcher is not executable"
-        )
-    os.close(marker_fd)
-    for name in (MARKER_PID, MARKER_FD, MARKER_PATH):
-        os.environ.pop(name, None)
 
 
 def _path_in_repo(relative: str) -> Path:
@@ -607,6 +572,16 @@ class RunnerCoverageHook:
             )
         return path
 
+    def _raw_shard_digests(self) -> list[str]:
+        digests: list[str] = []
+        for path in sorted(
+            self.raw_dir.iterdir(), key=lambda candidate: candidate.name
+        ):
+            if not path.name.startswith(".coverage."):
+                continue
+            digests.append(reporting.sha256_regular_file(path, root=self.raw_dir))
+        return sorted(digests)
+
     def environment_for(
         self,
         *,
@@ -640,9 +615,7 @@ class RunnerCoverageHook:
                 f"resolved argv differs from manifest for {key!r}: {list(resolved_argv)!r}"
             )
         config_path = self._write_config(entry)
-        before = sorted(
-            path.name for path in self.raw_dir.glob(".coverage.*") if path.is_file()
-        )
+        before = self._raw_shard_digests()
         self._pending[key] = {
             "entry": entry,
             "config_path": config_path,
@@ -685,21 +658,23 @@ class RunnerCoverageHook:
             raise reporting.CoverageContractError(
                 f"command completion has no prepared environment: {key!r}"
             )
-        after = sorted(
-            path.name for path in self.raw_dir.glob(".coverage.*") if path.is_file()
-        )
+        after = self._raw_shard_digests()
         created = sorted(set(after) - set(pending["before_shards"]))
         logical = str(entry["logical_context_id"])
         repo_text = str(REPO_ROOT.resolve())
         session_text = str(self.session_root.resolve())
-        python_text = str(Path(sys.executable).resolve())
+        python_path = Path(sys.executable).resolve(strict=True)
 
         def normalize(value: str) -> str:
             normalized = value.replace(session_text, "$SESSION").replace(
                 repo_text, "$REPO"
             )
-            if normalized == python_text:
-                return "$PYTHON"
+            if normalized.startswith("/"):
+                try:
+                    if Path(normalized).resolve(strict=True) == python_path:
+                        return "$PYTHON"
+                except (OSError, RuntimeError):
+                    pass
             return normalized
 
         normalized_variables = {
@@ -721,8 +696,128 @@ class RunnerCoverageHook:
                 "ended_at_utc": str(outcome.ended_at_utc),
                 "variables": normalized_variables,
                 "new_shards_visible_at_return": len(created),
+                "new_shard_sha256_visible_at_return": created,
             }
         )
+
+    def worker_lifecycle_event(self, event: Mapping[str, Any]) -> dict[str, Any]:
+        launch_command = event.get("launch_command") or event.get("command")
+        if not isinstance(launch_command, Mapping):
+            raise reporting.CoverageContractError(
+                "worker lifecycle event has no launch command identity"
+            )
+        _key, entry = self._lookup(
+            catalog_id=str(launch_command.get("catalog_id") or ""),
+            role=str(launch_command.get("role") or ""),
+            step_id=str(launch_command.get("step_id") or ""),
+            command_ordinal=int(launch_command.get("command_ordinal", -1)),
+        )
+        if entry.get("expects_background_worker") is not True:
+            raise reporting.CoverageContractError(
+                "worker lifecycle event is not bound to an expected worker command"
+            )
+        logical = str(entry["logical_context_id"])
+        return {
+            **dict(event),
+            "logical_context_id": logical,
+            "measurement_context": f"m007-run/{self.collection_id}/{logical}",
+            "raw_shard_sha256_visible": self._raw_shard_digests(),
+        }
+
+    def bind_offline_source_lineage(
+        self,
+        *,
+        catalog_id: str,
+        lineage: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        if lineage.get("ok") is not True or lineage.get("schema") != (
+            "continuity_source_lineage_v1"
+        ):
+            raise reporting.CoverageContractError(
+                "offline source lineage is missing or unsuccessful"
+            )
+        manifest_sha = str(lineage.get("manifest_sha256") or "")
+        ordered_sha = str(lineage.get("ordered_input_sha256") or "")
+        if not reporting.LOWER_HEX_64.fullmatch(
+            manifest_sha
+        ) or not reporting.LOWER_HEX_64.fullmatch(ordered_sha):
+            raise reporting.CoverageContractError(
+                "offline source lineage digests are not canonical SHA-256 values"
+            )
+        frames = lineage.get("frames")
+        frame_count = lineage.get("frame_count")
+        if (
+            not isinstance(frames, list)
+            or not isinstance(frame_count, int)
+            or frame_count <= 0
+            or len(frames) != frame_count
+            or any(
+                not isinstance(frame, dict)
+                or not reporting.LOWER_HEX_64.fullmatch(str(frame.get("sha256") or ""))
+                for frame in frames
+            )
+        ):
+            raise reporting.CoverageContractError(
+                "offline source lineage frame receipt is malformed"
+            )
+        source_text = str(
+            lineage.get("src_dir_redacted") or lineage.get("src_dir") or ""
+        )
+        repo_text = str(REPO_ROOT.resolve())
+        if source_text == repo_text or source_text == "<repo>":
+            normalized_source = "$REPO"
+        elif source_text.startswith(repo_text + os.sep):
+            normalized_source = (
+                "$REPO/" + Path(source_text).relative_to(REPO_ROOT.resolve()).as_posix()
+            )
+        elif source_text.startswith("<repo>/"):
+            normalized_source = "$REPO/" + source_text[len("<repo>/") :]
+        elif source_text.startswith("$REPO/"):
+            normalized_source = source_text
+        else:
+            raise reporting.CoverageContractError(
+                "offline source lineage path is not repository-owned"
+            )
+        identity = {
+            "schema": "m007_cli_coverage_offline_lineage_v1",
+            "catalog_id": catalog_id,
+            "source_identity": normalized_source,
+            "manifest_sha256": manifest_sha,
+            "ordered_input_sha256": ordered_sha,
+            "frame_count": frame_count,
+            "frame_receipt_sha256": reporting.sha256_bytes(
+                reporting.canonical_json_bytes(frames)
+            ),
+        }
+        bound = 0
+        for receipt in self.receipts:
+            if (
+                receipt.get("catalog_id") != catalog_id
+                or receipt.get("family_id") != "continuity.offline_perception"
+                or receipt.get("role") != "journey_command"
+            ):
+                continue
+            relation = (
+                "produced"
+                if receipt.get("step_id") == "offline-capture"
+                else "consumed"
+            )
+            if relation == "consumed":
+                observed_source = (receipt.get("variables") or {}).get("src_dir")
+                if observed_source != normalized_source:
+                    raise reporting.CoverageContractError(
+                        "offline apply command is not bound to the sealed source lineage"
+                    )
+            receipt["offline_source_lineage"] = {
+                **identity,
+                "relation": relation,
+            }
+            bound += 1
+        if bound != 3:
+            raise reporting.CoverageContractError(
+                f"offline source lineage bound {bound} commands instead of 3"
+            )
+        return identity
 
 
 def _standalone_command(
@@ -830,17 +925,96 @@ def _create_session_root(path: Path) -> Path:
 def _verify_seal(session_root: Path) -> dict[str, Any]:
     seal_path = session_root / "session-seal.json"
     seal = reporting.load_json(seal_path)
-    for entry in seal.get("sealed_inputs") or []:
+    if seal.get("schema") != "m007_cli_coverage_session_seal_v1":
+        raise reporting.CoverageContractError("session seal schema is invalid")
+    sealed_inputs = seal.get("sealed_inputs")
+    raw_shards = seal.get("raw_shards")
+    if not isinstance(sealed_inputs, list) or not isinstance(raw_shards, list):
+        raise reporting.CoverageContractError("session seal inputs are malformed")
+    sealed_paths: set[str] = set()
+    for entry in sealed_inputs:
         if not isinstance(entry, dict):
             raise reporting.CoverageContractError("invalid sealed input entry")
         relative = str(entry.get("path") or "")
-        path = (session_root / relative).resolve(strict=True)
-        if not _within(path, session_root):
+        digest = str(entry.get("sha256") or "")
+        if (
+            not relative
+            or Path(relative).is_absolute()
+            or relative in sealed_paths
+            or not reporting.LOWER_HEX_64.fullmatch(digest)
+        ):
             raise reporting.CoverageContractError(
-                f"sealed input escapes session root: {relative}"
+                f"invalid or duplicate sealed input: {relative!r}"
             )
-        if reporting.sha256_file(path) != entry.get("sha256"):
+        sealed_paths.add(relative)
+        path = session_root / relative
+        if reporting.sha256_regular_file(path, root=session_root) != digest:
             raise reporting.CoverageContractError(f"sealed input changed: {relative}")
+
+    raw_dir = session_root / "raw"
+    if raw_dir.is_symlink() or not stat.S_ISDIR(raw_dir.lstat().st_mode):
+        raise reporting.CoverageContractError("sealed raw shard root is invalid")
+    declared_raw_paths: set[str] = set()
+    declared_raw_ids: set[str] = set()
+    for entry in raw_shards:
+        if not isinstance(entry, dict):
+            raise reporting.CoverageContractError("invalid sealed raw shard entry")
+        relative = str(entry.get("path") or "")
+        shard_id = str(entry.get("shard_id") or "")
+        digest = str(entry.get("sha256") or "")
+        if (
+            not relative.startswith("raw/.coverage.")
+            or Path(relative).is_absolute()
+            or relative in declared_raw_paths
+            or not shard_id
+            or shard_id in declared_raw_ids
+            or not reporting.LOWER_HEX_64.fullmatch(digest)
+        ):
+            raise reporting.CoverageContractError(
+                f"invalid or duplicate sealed raw shard: {relative!r}"
+            )
+        declared_raw_paths.add(relative)
+        declared_raw_ids.add(shard_id)
+        if (
+            reporting.sha256_regular_file(session_root / relative, root=session_root)
+            != digest
+        ):
+            raise reporting.CoverageContractError(
+                f"sealed raw shard changed: {relative}"
+            )
+    actual_raw_paths = {
+        path.relative_to(session_root).as_posix()
+        for path in raw_dir.iterdir()
+        if path.name.startswith(".coverage.")
+    }
+    if actual_raw_paths != declared_raw_paths:
+        raise reporting.CoverageContractError(
+            "sealed raw shard inventory differs from session raw directory"
+        )
+    try:
+        shard_receipts = json.loads(
+            (session_root / "shards.json").read_text(encoding="utf-8")
+        )
+    except (OSError, json.JSONDecodeError) as exc:
+        raise reporting.CoverageContractError(
+            f"cannot read sealed shard receipt: {exc}"
+        ) from exc
+    if not isinstance(shard_receipts, list) or any(
+        not isinstance(shard, dict) for shard in shard_receipts
+    ):
+        raise reporting.CoverageContractError("sealed shard receipt is malformed")
+    expected_raw_shards = [
+        {
+            "path": str(shard.get("raw_session_path") or ""),
+            "shard_id": str(shard.get("shard_id") or ""),
+            "sha256": str(shard.get("shard_sha256") or ""),
+        }
+        for shard in shard_receipts
+    ]
+    if expected_raw_shards != raw_shards:
+        raise reporting.CoverageContractError(
+            "sealed raw shard inventory contradicts shard inspection receipt"
+        )
     return seal
 
 
@@ -978,6 +1152,8 @@ def collect(
 
     runner = _load_runner()
     runner_results: list[dict[str, Any]] = []
+    offline_source_lineages: list[dict[str, Any]] = []
+    lineage_seal_names: list[str] = []
     for catalog_record in expanded["catalogs"]:
         catalog_path = REPO_ROOT / catalog_record["path"]
         catalog = runner._load_catalog(catalog_path)  # runner owns catalog parsing
@@ -1002,6 +1178,31 @@ def collect(
             command_hook=hook,
             coverage_only=True,
         )
+        worker_lifecycles = result.get("coverage_worker_lifecycles")
+        if not isinstance(worker_lifecycles, list):
+            raise reporting.CoverageContractError(
+                "coverage-only runner omitted worker lifecycle receipts"
+            )
+        if catalog_record["id"] == "m007-continuity":
+            lineage_path = runner_session / "offline-source-lineage.json"
+            raw_lineage = reporting.load_json(lineage_path)
+            identity = hook.bind_offline_source_lineage(
+                catalog_id=str(catalog_record["id"]),
+                lineage=raw_lineage,
+            )
+            relative_lineage = lineage_path.relative_to(session_root).as_posix()
+            offline_source_lineages.append(
+                {
+                    **identity,
+                    "raw_receipt": {
+                        "path": relative_lineage,
+                        "sha256": reporting.sha256_regular_file(
+                            lineage_path, root=session_root
+                        ),
+                    },
+                }
+            )
+            lineage_seal_names.append(relative_lineage)
         runner_results.append(
             {
                 "catalog_id": catalog_record["id"],
@@ -1014,11 +1215,16 @@ def collect(
                 "ordered_step_ids": [
                     step.get("id") for step in result.get("ordered_step_outcomes") or []
                 ],
+                "worker_lifecycles": worker_lifecycles,
             }
         )
 
     _write_json(session_root / "commands.json", hook.receipts)
     _write_json(session_root / "runner-results.json", runner_results)
+    _write_json(
+        session_root / "receipts" / "offline-source-lineages.json",
+        offline_source_lineages,
+    )
     cleanup_receipt = {
         "all_workers_stopped": all(
             (result.get("cleanup") or {}).get("worker_stopped") is True
@@ -1048,8 +1254,12 @@ def collect(
         session_root / "receipts" / "repository-coverage-after.json", outside_after
     )
 
+    # Optional cleanup preconditions are catalog-declared but execute only when
+    # the initial status finds a live/stale worker. Canonical expected contexts
+    # are therefore the exact command receipts, while required-key validation
+    # below still proves every unconditional manifest command ran.
     logical_contexts = {
-        str(entry["logical_context_id"]) for entry in expanded["commands"]
+        str(receipt["logical_context_id"]) for receipt in hook.receipts
     }
     shards, combined_path = reporting.inspect_and_combine_shards(
         session_root=session_root,
@@ -1075,6 +1285,11 @@ def collect(
         execution=execution,
         repo_root=REPO_ROOT,
         worker_probe=expanded["worker_probe"],
+        worker_lifecycles=[
+            lifecycle
+            for result in runner_results
+            for lifecycle in result["worker_lifecycles"]
+        ],
     )
     _write_json(session_root / "receipts" / "worker-checks.json", worker_checks)
 
@@ -1105,6 +1320,11 @@ def collect(
         "background_workers_complete": all(
             check["complete"] for check in worker_checks
         ),
+        "offline_replay_lineage_complete": len(offline_source_lineages) == 1,
+        "runner_machine_preflight": all(
+            result.get("machine_preflight_verdict") == "pass"
+            for result in runner_results
+        ),
         "cleanup": cleanup_receipt["all_workers_stopped"] is True,
         "dependency_environment_unchanged": dependencies_before == dependencies_after,
         "relevant_source_unchanged": source_before["relevant"]
@@ -1122,6 +1342,14 @@ def collect(
             check["logical_context_id"]
             for check in worker_checks
             if not check["complete"]
+        ],
+        "missing_offline_source_lineage": (
+            [] if len(offline_source_lineages) == 1 else ["m007-continuity"]
+        ),
+        "failed_machine_preflight_catalogs": [
+            str(result["catalog_id"])
+            for result in runner_results
+            if result.get("machine_preflight_verdict") != "pass"
         ],
     }
     if all(integrity_checks.values()):
@@ -1144,6 +1372,40 @@ def collect(
         "checks": integrity_checks,
         "reasons": reasons,
     }
+    expected_logical = sorted(logical_contexts)
+    observed_logical = sorted(context_counts)
+    reporting.validate_acceptance_semantics(
+        claimed_result=collection_result,
+        reason_codes=[],
+        commands=hook.receipts,
+        shards=shards,
+        worker_checks=worker_checks,
+        cleanup=cleanup_receipt,
+        collection_checks=collection_checks,
+        runner_results=runner_results,
+        offline_source_lineages=offline_source_lineages,
+        contexts={
+            "collection_id": collection_id,
+            "expected_logical_contexts": expected_logical,
+            "observed_logical_contexts": observed_logical,
+            "measurement_to_logical": [
+                {
+                    "logical_context_id": logical,
+                    "measurement_context": f"m007-run/{collection_id}/{logical}",
+                    "shard_count": context_counts.get(logical, 0),
+                }
+                for logical in expected_logical
+            ],
+            "empty_contexts": [],
+            "foreign_contexts": [],
+            "unknown_contexts": [],
+        },
+        freshness={
+            "source_ok": integrity_checks["relevant_source_unchanged"],
+            "source_reasons": [],
+            "dependency_ok": integrity_checks["dependency_environment_unchanged"],
+        },
+    )
     _write_json(session_root / "receipts" / "collection-checks.json", collection_checks)
 
     seal_names = [
@@ -1162,16 +1424,24 @@ def collect(
         "receipts/repository-coverage-after.json",
         "receipts/cleanup.json",
         "receipts/worker-checks.json",
+        "receipts/offline-source-lineages.json",
         "receipts/collection-checks.json",
+        *lineage_seal_names,
     ]
     sealed_inputs = [
-        {"path": name, "sha256": reporting.sha256_file(session_root / name)}
+        {
+            "path": name,
+            "sha256": reporting.sha256_regular_file(
+                session_root / name, root=session_root
+            ),
+        }
         for name in seal_names
     ]
     raw_shards = [
         {
             "shard_id": shard["shard_id"],
             "sha256": shard["shard_sha256"],
+            "path": shard["raw_session_path"],
         }
         for shard in shards
     ]
@@ -1254,8 +1524,17 @@ def _report_from_session(session_root: Path) -> dict[str, Any]:
     worker_checks = json.loads(
         (session_root / "receipts" / "worker-checks.json").read_text(encoding="utf-8")
     )
-    if not isinstance(worker_checks, list):
-        raise reporting.CoverageContractError("worker checks receipt is malformed")
+    offline_source_lineages = json.loads(
+        (session_root / "receipts" / "offline-source-lineages.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    if not isinstance(worker_checks, list) or not isinstance(
+        offline_source_lineages, list
+    ):
+        raise reporting.CoverageContractError(
+            "worker checks or offline lineage receipt is malformed"
+        )
     measurement_to_logical = {
         str(command["measurement_context"]): str(command["logical_context_id"])
         for command in commands_doc
@@ -1269,7 +1548,12 @@ def _report_from_session(session_root: Path) -> dict[str, Any]:
     bootstrap = reporting.bootstrap_comparison(
         execution,
         bootstrap_logical_id=str(expanded["bootstrap_logical_context_id"]),
+        commands=commands_doc,
     )
+    report_shards = [
+        {key: value for key, value in shard.items() if key != "raw_session_path"}
+        for shard in shards_doc
+    ]
     observed_logical = sorted(
         {str(shard["logical_context_id"]) for shard in shards_doc}
     )
@@ -1354,12 +1638,14 @@ def _report_from_session(session_root: Path) -> dict[str, Any]:
             "catalogs": expanded["catalogs"],
             "relevant_file_sha256": input_paths,
             "owned_source_roots": expanded["owned_source_roots"],
+            "worker_probe": expanded["worker_probe"],
+            "offline_source_lineages": offline_source_lineages,
             "metrics_ui_identity": start.get("metrics_ui_identity"),
         },
         "dependency_environment": dependencies,
         "commands": commands_doc,
         "process_completeness": {
-            "shards": shards_doc,
+            "shards": report_shards,
             "worker_checks": worker_checks,
             "cleanup": cleanup,
             "collection_checks": collection_checks,
@@ -1384,6 +1670,7 @@ def _report_from_session(session_root: Path) -> dict[str, Any]:
             "files": len(files),
             "executed_line_entries": executed_lines,
             "executed_arc_entries": executed_arcs,
+            "rollups": reporting.aggregate_rollups(execution, commands_doc),
             "numeric_gate": False,
         },
         "integrity": {
@@ -1406,6 +1693,7 @@ def _report_from_session(session_root: Path) -> dict[str, Any]:
             "numeric_coverage_gate": False,
         },
     }
+    reporting.validate_report_semantics(report, repo_root=REPO_ROOT)
     return reporting.finalize_report_digest(report)
 
 
@@ -1456,7 +1744,6 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     try:
-        _require_sealed_launcher()
         args = build_parser().parse_args(argv)
         if args.command == "validate-manifest":
             expanded = expand_and_validate_manifest()
@@ -1509,4 +1796,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    print(
+        "coverage session refused: direct Python entrypoint is unsupported; "
+        "use the public coverage_session launcher",
+        file=sys.stderr,
+    )
+    raise SystemExit(2)

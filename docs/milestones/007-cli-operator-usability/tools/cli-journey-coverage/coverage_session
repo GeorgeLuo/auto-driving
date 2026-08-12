@@ -1,16 +1,32 @@
 #!/bin/sh
 set -eu
 
-if LC_ALL=C env | grep '^COVERAGE_[^=]*=' >/dev/null 2>&1; then
+if LC_ALL=C /usr/bin/env | /usr/bin/grep '^COVERAGE_[^=]*=' >/dev/null 2>&1; then
     echo "coverage session refused: inherited COVERAGE_* environment" >&2
     exit 2
 fi
 
-script_dir=$(CDPATH= cd -P "$(dirname "$0")" && pwd)
-launcher_path="$script_dir/coverage_session"
-exec 9<"$launcher_path"
-COVERAGE_SESSION_LAUNCH_PID=$$
-COVERAGE_SESSION_LAUNCH_FD=9
-COVERAGE_SESSION_LAUNCH_PATH=$launcher_path
-export COVERAGE_SESSION_LAUNCH_PID COVERAGE_SESSION_LAUNCH_FD COVERAGE_SESSION_LAUNCH_PATH
-exec python3 "$script_dir/coverage_session.py" "$@"
+case $0 in
+    /*) launcher_path=$0 ;;
+    *) launcher_path=$PWD/$0 ;;
+esac
+script_dir=${launcher_path%/*}
+script_dir=$(CDPATH= cd -P "$script_dir" && pwd -P)
+
+# The internal module is deliberately not a runnable Python program.  Import it
+# through this clean-launch bootstrap so direct ``python coverage_session.py``
+# can never be enabled by copying caller-controlled environment or descriptors.
+exec python3 -c '
+import importlib.util
+import pathlib
+import sys
+
+module_path = pathlib.Path(sys.argv[1]).resolve(strict=True)
+spec = importlib.util.spec_from_file_location("m007_cli_coverage_session", module_path)
+if spec is None or spec.loader is None:
+    raise SystemExit("coverage session refused: cannot load internal module")
+module = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = module
+spec.loader.exec_module(module)
+raise SystemExit(module.main(sys.argv[2:]))
+' "$script_dir/coverage_session.py" "$@"

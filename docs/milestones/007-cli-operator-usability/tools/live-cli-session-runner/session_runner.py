@@ -1471,6 +1471,7 @@ class SessionState:
     metrics_ui_repo_path: Path | None = None
     command_hook: Any | None = None
     coverage_only: bool = False
+    coverage_worker_lifecycles: list[dict[str, Any]] = field(default_factory=list)
 
 
 def _run_session_command(
@@ -1527,6 +1528,15 @@ def _run_session_command(
             variables=dict(state.variables),
             outcome=outcome,
         )
+    if state.coverage_only:
+        _record_coverage_worker_event(
+            state,
+            argv=list(argv),
+            role=role,
+            step_id=step_id,
+            command_ordinal=command_ordinal,
+            outcome=outcome,
+        )
     return outcome
 
 
@@ -1539,6 +1549,188 @@ def _note_worker_pid(state: SessionState, pid: Any, *, source: str) -> None:
         state.session_owned_worker_pids.add(pid)
     else:
         state.pre_existing_worker_pids.add(pid)
+
+
+def _worker_command_operation(argv: Sequence[str]) -> str | None:
+    values = list(argv)
+    try:
+        vehicles = values.index("vehicles")
+    except ValueError:
+        return None
+    tail = values[vehicles + 1 :]
+    if tail[:2] == ["automation", "run"] and "--help" not in tail:
+        return "run"
+    if tail[:2] == ["automation", "stop"]:
+        return "stop"
+    if tail[:1] == ["status"] or tail[:2] == ["automation", "status"]:
+        return "status"
+    return None
+
+
+def _worker_runtime_snapshot(state: SessionState) -> dict[str, Any]:
+    vehicle_id = state.variables.get("vehicle_id")
+    if not vehicle_id:
+        return {
+            "vehicle_id": None,
+            "pid": None,
+            "run_id": None,
+            "status": None,
+            "generation_matches": False,
+            "pid_alive": None,
+        }
+    automation_dir = (
+        state.repo_root
+        / "runtime"
+        / "vehicles"
+        / vehicle_id
+        / "bundle"
+        / "runtime"
+        / "automation"
+    )
+
+    def read_object(path: Path) -> dict[str, Any]:
+        try:
+            value = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {}
+        return value if isinstance(value, dict) else {}
+
+    process = read_object(automation_dir / "process.json")
+    worker_state = read_object(automation_dir / "state.json")
+    process_pid = process.get("pid") if isinstance(process.get("pid"), int) else None
+    state_pid = (
+        worker_state.get("pid") if isinstance(worker_state.get("pid"), int) else None
+    )
+    pid = process_pid if process_pid is not None else state_pid
+    generation_matches = (
+        process_pid is not None and state_pid is not None and process_pid == state_pid
+    )
+    return {
+        "vehicle_id": vehicle_id,
+        "pid": pid,
+        "process_pid": process_pid,
+        "state_pid": state_pid,
+        "run_id": worker_state.get("run_id")
+        if isinstance(worker_state.get("run_id"), str)
+        else None,
+        "status": worker_state.get("status")
+        if isinstance(worker_state.get("status"), str)
+        else None,
+        "generation_matches": generation_matches,
+        "pid_alive": _pid_alive(pid),
+    }
+
+
+def _same_worker_generation(
+    launch: Mapping[str, Any], snapshot: Mapping[str, Any]
+) -> bool:
+    return (
+        isinstance(launch.get("pid"), int)
+        and launch.get("pid") == snapshot.get("pid")
+        and isinstance(launch.get("run_id"), str)
+        and bool(launch.get("run_id"))
+        and launch.get("run_id") == snapshot.get("run_id")
+        and snapshot.get("generation_matches") is True
+    )
+
+
+def _record_coverage_worker_event(
+    state: SessionState,
+    *,
+    argv: Sequence[str],
+    role: str,
+    step_id: str,
+    command_ordinal: int,
+    outcome: CommandOutcome,
+) -> None:
+    operation = _worker_command_operation(argv)
+    if operation is None or outcome.exit_code != 0:
+        return
+    snapshot = _worker_runtime_snapshot(state)
+    command = {
+        "catalog_id": str(state.catalog.get("id") or ""),
+        "role": role,
+        "step_id": step_id,
+        "command_ordinal": command_ordinal,
+    }
+    if operation == "run":
+        stdout = ""
+        try:
+            stdout = (state.session_dir / outcome.stdout_path).read_text(
+                encoding="utf-8"
+            )
+        except OSError:
+            pass
+        match = re.search(r"(?m)^PID:\s*([1-9][0-9]*)\s*$", stdout)
+        stdout_pid = int(match.group(1)) if match else None
+        event = {
+            "kind": "launch",
+            "command": command,
+            "observed_at_utc": outcome.ended_at_utc,
+            "stdout_pid": stdout_pid,
+            "stdout_pid_matches": stdout_pid is not None
+            and stdout_pid == snapshot.get("pid"),
+            **snapshot,
+        }
+        hook = state.command_hook
+        if hook is not None and hasattr(hook, "worker_lifecycle_event"):
+            event = hook.worker_lifecycle_event(event)
+        state.coverage_worker_lifecycles.append(
+            {
+                "schema": "m007_cli_coverage_worker_lifecycle_v1",
+                "launch": event,
+                "observations": [],
+            }
+        )
+        return
+
+    lifecycle = next(
+        (
+            candidate
+            for candidate in reversed(state.coverage_worker_lifecycles)
+            if _same_worker_generation(candidate.get("launch") or {}, snapshot)
+        ),
+        None,
+    )
+    if lifecycle is None:
+        lifecycle = next(
+            (
+                candidate
+                for candidate in reversed(state.coverage_worker_lifecycles)
+                if not any(
+                    observation.get("kind") in {"termination", "terminal_status"}
+                    for observation in candidate.get("observations") or []
+                )
+            ),
+            None,
+        )
+    if lifecycle is None:
+        return
+    launch = lifecycle.get("launch") or {}
+    same_generation = _same_worker_generation(launch, snapshot)
+    terminal = snapshot.get("pid_alive") is False and snapshot.get("status") in {
+        "stopped",
+        "completed",
+    }
+    kind = (
+        "terminal_status"
+        if operation == "status" and terminal
+        else "termination"
+        if operation == "stop" and terminal
+        else "status"
+    )
+    event = {
+        "kind": kind,
+        "command": command,
+        "launch_command": launch.get("command"),
+        "observed_at_utc": outcome.ended_at_utc,
+        "same_generation": same_generation,
+        **snapshot,
+    }
+    hook = state.command_hook
+    if hook is not None and hasattr(hook, "worker_lifecycle_event"):
+        event = hook.worker_lifecycle_event(event)
+    lifecycle.setdefault("observations", []).append(event)
 
 
 def _next_finding_id(state: SessionState) -> str:
@@ -4210,6 +4402,7 @@ def run_session(
     if coverage_only:
         result["behavioral_verdict"] = "not_evaluated"
         result["coverage_only"] = True
+        result["coverage_worker_lifecycles"] = state.coverage_worker_lifecycles
     if continuity_block is not None:
         result["continuity"] = continuity_block
 

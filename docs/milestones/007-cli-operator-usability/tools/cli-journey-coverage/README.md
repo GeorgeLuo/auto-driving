@@ -15,8 +15,8 @@ Those are explicit false values in every canonical report.
 Use only the executable `coverage_session`. It checks the inherited environment
 before Python starts and refuses every `COVERAGE_*` variable, including an
 ambient subprocess-patched coverage session. Direct execution of
-`coverage_session.py` is unsupported and refuses without the launcher's sealed
-file-descriptor marker.
+`coverage_session.py` is unsupported and always refuses; the launcher imports
+the internal module only after the PATH-independent environment check.
 
 For each measured command, the collector:
 
@@ -27,8 +27,9 @@ For each measured command, the collector:
   parallel, SIGTERM, context, and data-path configuration;
 - uses a measurement context of
   `m007-run/<collection_id>/<logical_context_id>`; and
-- inspects every parallel shard through the public `CoverageData` API before
-  explicitly combining validated inputs.
+- rejects symlinked/non-regular shard inputs, inspects every parallel shard
+  through the public `CoverageData` API, and seals every retained raw shard
+  before finalization.
 
 The live session runner remains the safety, command-ordering, machine-validation,
 restoration, and cleanup owner. Coverage mode is opt-in and records
@@ -79,15 +80,24 @@ receipt for review and diagnosis.
 
 A canonical `pass` requires all declared journey and supplemental commands to
 execute with expected exits, every executed command context to have readable
-branch data, each automation launch to include both foreground and worker data
-plus execution inside `run_vehicle_automation`, cleanup to prove every observed
-worker dead, and repository coverage sentinels to remain unchanged.
+branch data, each automation launch to bind its foreground shard to the same
+PID/run generation through a later observation and terminal death, and a
+distinct worker shard to be visible after termination. Offline replay commands
+must bind the exact manifest, ordered-input, and frame-receipt digests they
+produced or consumed. Cleanup must prove every observed worker dead, both
+runner machine preflights must pass, and repository coverage sentinels must
+remain unchanged.
 
 The requirements files, exact interpreter executable, every visible installed
 distribution, owned source/config/tool paths, catalogs, manifest, and Metrics UI
 identity must remain unchanged through collection and verification. A stale or
 foreign shard, missing worker, failed cleanup, changed immutable receipt, or
 digest mismatch cannot produce `pass`.
+
+The same semantic validator owns collection, finalization, and verification.
+It recomputes context, worker, bootstrap, command, journey-family,
+support/cleanup, and all-context summaries, rejects contradictory pass fields,
+and recursively rejects unnormalized local absolute paths.
 
 ## Reproducibility
 

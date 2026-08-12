@@ -385,6 +385,100 @@ class RootAndEnvironmentTests(unittest.TestCase):
             self.assertEqual(hook.prepared["variables"], {"vehicle_id": "chase"})
             self.assertIs(hook.completed["outcome"], outcome)
 
+    def test_runner_precondition_preserves_manifest_template_before_substitution(self):
+        expanded = session.expand_and_validate_manifest()
+        vehicle_id = "chase-sim-chaser"
+        metrics_ui_origin = "http://localhost:5050"
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            for name in ("configs", "raw"):
+                (root / name).mkdir()
+            runner_dir = root / "runner"
+            (runner_dir / "steps").mkdir(parents=True)
+            hook = session.RunnerCoverageHook(
+                session_root=root,
+                collection_id="c" * 32,
+                expanded_manifest=expanded,
+            )
+            state = runner.SessionState(
+                catalog={"id": "m007-acceptance", "track": "acceptance"},
+                session_dir=runner_dir,
+                repo_root=ROOT,
+                variables={
+                    "vehicle_id": vehicle_id,
+                    "metrics_ui_origin": metrics_ui_origin,
+                },
+                execution_mode="coverage_only_live",
+                session_id="test",
+                command_hook=hook,
+                coverage_only=True,
+            )
+
+            def fake_run(argv, **kwargs):
+                step_dir = kwargs["step_dir"]
+                step_dir.mkdir(parents=True, exist_ok=True)
+                index = kwargs["index"]
+                payload = {
+                    "schema": runner.STATUS_SCHEMA,
+                    "vehicle_id": vehicle_id,
+                    "layers": {
+                        "automation_worker": {"state": "stopped", "details": {}},
+                        "automation_deployment": {"state": "staged"},
+                        "perception_view": {"state": "stale"},
+                    },
+                }
+                (step_dir / f"cmd-{index:02d}.stdout.txt").write_text(
+                    json.dumps(payload) + "\n", encoding="utf-8"
+                )
+                (step_dir / f"cmd-{index:02d}.stderr.txt").write_text(
+                    "", encoding="utf-8"
+                )
+                return runner.CommandOutcome(
+                    argv=list(argv),
+                    command=" ".join(argv),
+                    exit_code=0,
+                    elapsed_ms=1,
+                    stdout_path="steps/_precondition_cleanup/cmd-00.stdout.txt",
+                    stderr_path="steps/_precondition_cleanup/cmd-00.stderr.txt",
+                    started_at_utc="t0",
+                    ended_at_utc="t1",
+                )
+
+            with mock.patch.object(runner, "_run_command", fake_run):
+                record = runner._run_precondition_cleanup(
+                    state,
+                    command_timeout_s=5,
+                    transcript_path=runner_dir / "transcript.txt",
+                    metrics_ui_origin=metrics_ui_origin,
+                )
+            self.assertTrue(record["ok"], record)
+            self.assertEqual(
+                hook.receipts[0]["argv_template"],
+                [
+                    "./cli/automa",
+                    "vehicles",
+                    "status",
+                    "--id",
+                    "{vehicle_id}",
+                    "--chase-url",
+                    "{metrics_ui_origin}",
+                    "--json",
+                ],
+            )
+            self.assertEqual(
+                hook.receipts[0]["resolved_argv"],
+                [
+                    "./cli/automa",
+                    "vehicles",
+                    "status",
+                    "--id",
+                    vehicle_id,
+                    "--chase-url",
+                    metrics_ui_origin,
+                    "--json",
+                ],
+            )
+
     def test_immutable_receipt_cannot_be_replaced(self):
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "receipt.json"

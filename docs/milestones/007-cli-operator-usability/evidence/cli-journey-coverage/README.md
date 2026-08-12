@@ -20,10 +20,10 @@ numeric coverage threshold; PRs #88 and #100 remain the behavioral authority.
 ## Canonical capture
 
 The 2026-08-12 UTC capture passed from clean auto-driving commit
-`79dc68e68c25fe3235c7a75914cf36f2f6672b62` and clean Metrics UI commit
+`20ced979221b635993ea4ef85b3b27fb05cc0e75` and clean Metrics UI commit
 `722e070fdc9f4ee89d13f947bf3996e62dcb2783` on
 `m002/04-passive-observation`. Collection
-`ddcece93b36bf19990f66e9704033ddd` used CPython 3.11.7 and Coverage.py
+`298509b3a1fa8540383c97e60ac790e6` used CPython 3.11.7 and Coverage.py
 7.15.2 with a canonical receipt for all 539 visible distributions.
 
 The report contains 34 commands, 34 logical contexts, 37 validated raw shards,
@@ -32,9 +32,10 @@ is bound to its PID and run generation, a later same-generation status, terminal
 death, one foreground shard, and a distinct post-termination worker shard with
 execution inside `run_vehicle_automation`. The three offline replay commands
 share one sealed four-frame source identity with manifest, ordered-input, and
-frame-receipt digests. Deterministic primary, continuity-family,
-support/cleanup, and all-context rollups plus command/journey bootstrap
-comparisons are included directly in the report.
+frame-receipt digests, and the promoted identity is re-derived from a sealed
+path-tokenized raw-lineage receipt content. Deterministic primary,
+continuity-family, support/cleanup, and all-context rollups plus
+command/journey bootstrap comparisons are included directly in the report.
 
 Both catalogs passed their machine preflight, terminal cleanup proved every
 observed worker dead, dependency/source freshness passed, and repository-root
@@ -44,11 +45,11 @@ observed worker dead, dependency/source freshness passed, and repository-root
 Integrity identities:
 
 - Report projection SHA-256:
-  `59da407af99d00c6931965384a3978bde4674b9c0db2352331193560837b3b00`
+  `301022722f248197d0ce17dbdfe79b3d000d9ea0818718273b0f20681bc665d7`
 - Session seal SHA-256:
-  `1470eed8ef37326c415ae55c35ce02cdf219433b611aa1fd5b7fbf58932c5b40`
+  `980f44cf3a8df6ab2a2c914e8705f2a1d23d4a39a9fc90ef0d17538cfda91e71`
 - Immutable finalization receipt SHA-256:
-  `9b6ddd5183020b821debd0ab2631c250f2635e47e3551fa7489e47f3eed25ecc`
+  `c6be66c28a4cc66a4241a76d11c140fd00a1a583e88d6e1c34658c33eae7e579`
 
 Verify the tracked report from the repository root:
 

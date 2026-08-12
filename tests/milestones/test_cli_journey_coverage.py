@@ -554,7 +554,8 @@ class ManifestAndLauncherTests(unittest.TestCase):
                 "COVERAGE_SESSION_LAUNCH_PID=$$",
                 "COVERAGE_SESSION_LAUNCH_FD=9",
                 'COVERAGE_SESSION_LAUNCH_PATH="$1"',
-                "export COVERAGE_SESSION_LAUNCH_PID COVERAGE_SESSION_LAUNCH_FD COVERAGE_SESSION_LAUNCH_PATH",
+                "export COVERAGE_SESSION_LAUNCH_PID COVERAGE_SESSION_LAUNCH_FD "
+                "COVERAGE_SESSION_LAUNCH_PATH",
                 'exec "$2" "$3" validate-manifest',
             ]
         )

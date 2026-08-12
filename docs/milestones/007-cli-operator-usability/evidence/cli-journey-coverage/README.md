@@ -20,22 +20,20 @@ numeric coverage threshold; PRs #88 and #100 remain the behavioral authority.
 ## Canonical capture
 
 The 2026-08-12 UTC capture passed from clean auto-driving commit
-`20ced979221b635993ea4ef85b3b27fb05cc0e75` and clean Metrics UI commit
+`90dabe3f47cb1f8778fcb22b568ea6ddf35933e0` and clean Metrics UI commit
 `722e070fdc9f4ee89d13f947bf3996e62dcb2783` on
 `m002/04-passive-observation`. Collection
-`298509b3a1fa8540383c97e60ac790e6` used CPython 3.11.7 and Coverage.py
+`23b3e32ea5878bf277b16c9b529d3a75` used CPython 3.11.7 and Coverage.py
 7.15.2 with a canonical receipt for all 539 visible distributions.
 
 The report contains 34 commands, 34 logical contexts, 37 validated raw shards,
-and context-aware execution for 63 owned Python files. Each automation launch
-is bound to its PID and run generation, a later same-generation status, terminal
-death, one foreground shard, and a distinct post-termination worker shard with
-execution inside `run_vehicle_automation`. The three offline replay commands
-share one sealed four-frame source identity with manifest, ordered-input, and
-frame-receipt digests, and the promoted identity is re-derived from a sealed
-path-tokenized raw-lineage receipt content. Deterministic primary,
-continuity-family, support/cleanup, and all-context rollups plus
-command/journey bootstrap comparisons are included directly in the report.
+and context-aware execution for 63 owned Python files. Required command argv
+templates and collection order are bound to the accepted expansion. Immutable
+session-seal and finalization-receipt contents are embedded so offline
+verification re-derives their digests, timestamps, and sealed offline-lineage
+input binding. Each automation launch is bound to its PID and run generation,
+terminal death, and distinct worker shards with execution inside
+`run_vehicle_automation`.
 
 Both catalogs passed their machine preflight, terminal cleanup proved every
 observed worker dead, dependency/source freshness passed, and repository-root
@@ -45,15 +43,16 @@ observed worker dead, dependency/source freshness passed, and repository-root
 Integrity identities:
 
 - Report projection SHA-256:
-  `301022722f248197d0ce17dbdfe79b3d000d9ea0818718273b0f20681bc665d7`
+  `2ad61a74fad4cf231c005acb24beb56876d520c395f3167ad99e8fbd033b761f`
 - Session seal SHA-256:
-  `980f44cf3a8df6ab2a2c914e8705f2a1d23d4a39a9fc90ef0d17538cfda91e71`
+  `8106a33dbd6765e5350814970cdac73ec540ad590b39cb2b65c51a4ad7199c12`
 - Immutable finalization receipt SHA-256:
-  `c6be66c28a4cc66a4241a76d11c140fd00a1a583e88d6e1c34658c33eae7e579`
+  `46b47a230e7fa9e98538713ab67542b9d7863ca0bc5b1d1d92640aa11845d1da`
 
 Verify the tracked report from the repository root:
 
 ```sh
+export M007_COVERAGE_PYTHON="$(python3 -c 'import sys; print(sys.executable)')"
 docs/milestones/007-cli-operator-usability/tools/cli-journey-coverage/coverage_session \
   verify-report \
   docs/milestones/007-cli-operator-usability/evidence/cli-journey-coverage/report.json

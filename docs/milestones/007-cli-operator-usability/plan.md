@@ -130,7 +130,7 @@ deletion; it does not retroactively widen the accepted primary journey.
 
 **CLI journey coverage foundation**
 
-- Workflow state: ready_for_proposal
+- Workflow state: proposal_in_review
 - Proposal branch: `m007/cli-journey-coverage-proposal`
 - Implementation branch: `m007/cli-journey-coverage`
 - Proposal path: `docs/milestones/007-cli-operator-usability/proposals/cli-journey-coverage.md`
@@ -182,6 +182,7 @@ deletion; it does not retroactively widen the accepted primary journey.
 | CLI journey coverage foundation | ready_for_proposal | Promoted after implementation PR #100. |
 | CLI journey coverage foundation | ready_for_proposal | Plan revision: make exhaustive #88 US-01 through US-10 definition and disposition an explicit M007-08 and milestone-closeout requirement while preserving accepted M007-10 and the current coverage frontier. |
 | CLI journey coverage foundation | ready_for_proposal | Plan revision: queue the complete CLI surface and #88 US-01 through US-10 sequence audit as the reviewed successor required for a successful coverage handoff. |
+| CLI journey coverage foundation | proposal_in_review | Started m007/cli-journey-coverage-proposal. |
 
 ## Accepted Review Units
 

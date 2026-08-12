@@ -1064,6 +1064,315 @@ def _flatten_worker_lifecycles(
     return lifecycles
 
 
+def expected_contract_from_expanded(expanded: Mapping[str, Any]) -> dict[str, Any]:
+    """Project the accepted expanded manifest into the verifier contract.
+
+    Required manifest commands must appear in the report. Optional support
+    templates may be present only when they match a registered expansion row.
+    Worker expectations are owned by the expansion, never by mutable report flags.
+    """
+
+    commands = expanded.get("commands")
+    catalogs = expanded.get("catalogs")
+    if not isinstance(commands, list) or not isinstance(catalogs, list):
+        raise CoverageContractError("expanded manifest contract is malformed")
+    registered_commands = [
+        command for command in commands if isinstance(command, Mapping)
+    ]
+    required_commands = [
+        command
+        for command in registered_commands
+        if command.get("required") is True
+        or command.get("role")
+        in {"bootstrap", "journey_command", "supplemental_capture"}
+    ]
+    # Config probe is required even though role is precondition.
+    for command in registered_commands:
+        if (
+            command.get("catalog_id") == "_collector"
+            and command.get("step_id") == "_config_probe"
+            and command not in required_commands
+        ):
+            required_commands.append(command)
+
+    def _key(command: Mapping[str, Any]) -> tuple[str, str, str, int]:
+        return (
+            str(command.get("catalog_id") or ""),
+            str(command.get("role") or ""),
+            str(command.get("step_id") or ""),
+            int(command.get("command_ordinal")),
+        )
+
+    required_keys = sorted(_key(command) for command in required_commands)
+    required_logical = sorted(
+        str(command.get("logical_context_id") or "") for command in required_commands
+    )
+    registered_keys = sorted(_key(command) for command in registered_commands)
+    worker_ids = sorted(
+        str(command.get("logical_context_id") or "")
+        for command in registered_commands
+        if command.get("expects_background_worker") is True
+    )
+    offline_ids = sorted(
+        str(command.get("logical_context_id") or "")
+        for command in registered_commands
+        if command.get("family_id") == "continuity.offline_perception"
+        and command.get("role") == "journey_command"
+    )
+    catalog_ids = sorted(
+        str(item.get("id") or "") for item in catalogs if isinstance(item, Mapping)
+    )
+    catalog_records = sorted(
+        [
+            {
+                "id": str(item.get("id") or ""),
+                "path": str(item.get("path") or ""),
+                "sha256": str(item.get("sha256") or ""),
+            }
+            for item in catalogs
+            if isinstance(item, Mapping)
+        ],
+        key=lambda item: item["id"],
+    )
+    worker_probe = expanded.get("worker_probe")
+    if not isinstance(worker_probe, Mapping):
+        raise CoverageContractError("expanded manifest worker probe is malformed")
+    return {
+        "manifest_path": str(expanded.get("manifest_path") or ""),
+        "manifest_sha256": str(expanded.get("manifest_sha256") or ""),
+        "catalogs": catalog_records,
+        "catalog_ids": catalog_ids,
+        "required_command_keys": required_keys,
+        "required_logical_context_ids": required_logical,
+        "registered_command_keys": registered_keys,
+        "worker_logical_ids": worker_ids,
+        "offline_journey_logical_ids": offline_ids,
+        "bootstrap_logical_context_id": str(
+            expanded.get("bootstrap_logical_context_id") or ""
+        ),
+        "worker_probe": {
+            "path": str(worker_probe.get("path") or ""),
+            "function": str(worker_probe.get("function") or ""),
+        },
+        "command_expectations": {
+            _key(command): {
+                "logical_context_id": str(command.get("logical_context_id") or ""),
+                "expects_background_worker": command.get("expects_background_worker")
+                is True,
+                "expected_exit": int(command.get("expected_exit", 0)),
+                "family_id": command.get("family_id"),
+                "required": command.get("required") is True
+                or command.get("role")
+                in {"bootstrap", "journey_command", "supplemental_capture"}
+                or (
+                    command.get("catalog_id") == "_collector"
+                    and command.get("step_id") == "_config_probe"
+                ),
+            }
+            for command in registered_commands
+        },
+    }
+
+
+def sealed_offline_lineage_content(
+    raw_lineage: Mapping[str, Any],
+    *,
+    source_identity: str,
+) -> dict[str, Any]:
+    """Return a path-tokenized raw-lineage projection safe for canonical evidence."""
+
+    if raw_lineage.get("ok") is not True or raw_lineage.get("schema") != (
+        "continuity_source_lineage_v1"
+    ):
+        raise CoverageContractError(
+            "offline source lineage is missing or unsuccessful"
+        )
+    if not source_identity.startswith("$REPO"):
+        raise CoverageContractError(
+            "sealed offline lineage source identity must be repository-tokenized"
+        )
+    frames = raw_lineage.get("frames")
+    if not isinstance(frames, list):
+        raise CoverageContractError("offline source lineage frames are malformed")
+    return {
+        "schema": "continuity_source_lineage_v1",
+        "ok": True,
+        "src_dir": source_identity,
+        "src_dir_redacted": source_identity,
+        "manifest_sha256": str(raw_lineage.get("manifest_sha256") or ""),
+        "ordered_input_sha256": str(raw_lineage.get("ordered_input_sha256") or ""),
+        "frame_count": raw_lineage.get("frame_count"),
+        "frames": frames,
+    }
+
+
+def derive_offline_lineage_identity(
+    raw_lineage: Mapping[str, Any],
+    *,
+    catalog_id: str,
+    repo_root: Path,
+) -> dict[str, Any]:
+    """Recompute the promoted offline lineage identity from sealed raw content."""
+
+    if raw_lineage.get("ok") is not True or raw_lineage.get("schema") != (
+        "continuity_source_lineage_v1"
+    ):
+        raise CoverageContractError(
+            "offline source lineage is missing or unsuccessful"
+        )
+    manifest_sha = str(raw_lineage.get("manifest_sha256") or "")
+    ordered_sha = str(raw_lineage.get("ordered_input_sha256") or "")
+    if not LOWER_HEX_64.fullmatch(manifest_sha) or not LOWER_HEX_64.fullmatch(
+        ordered_sha
+    ):
+        raise CoverageContractError(
+            "offline source lineage digests are not canonical SHA-256 values"
+        )
+    frames = raw_lineage.get("frames")
+    frame_count = raw_lineage.get("frame_count")
+    if (
+        not isinstance(frames, list)
+        or not isinstance(frame_count, int)
+        or frame_count <= 0
+        or len(frames) != frame_count
+        or any(
+            not isinstance(frame, dict)
+            or not LOWER_HEX_64.fullmatch(str(frame.get("sha256") or ""))
+            for frame in frames
+        )
+    ):
+        raise CoverageContractError(
+            "offline source lineage frame receipt is malformed"
+        )
+    source_text = str(
+        raw_lineage.get("src_dir_redacted") or raw_lineage.get("src_dir") or ""
+    )
+    repo_text = str(repo_root.resolve())
+    if source_text == repo_text or source_text == "<repo>":
+        normalized_source = "$REPO"
+    elif source_text.startswith(repo_text + os.sep):
+        normalized_source = (
+            "$REPO/" + Path(source_text).relative_to(repo_root.resolve()).as_posix()
+        )
+    elif source_text.startswith("<repo>/"):
+        normalized_source = "$REPO/" + source_text[len("<repo>/") :]
+    elif source_text.startswith("$REPO/"):
+        normalized_source = source_text
+    else:
+        raise CoverageContractError(
+            "offline source lineage path is not repository-owned"
+        )
+    return {
+        "schema": "m007_cli_coverage_offline_lineage_v1",
+        "catalog_id": catalog_id,
+        "source_identity": normalized_source,
+        "manifest_sha256": manifest_sha,
+        "ordered_input_sha256": ordered_sha,
+        "frame_count": frame_count,
+        "frame_receipt_sha256": sha256_bytes(canonical_json_bytes(frames)),
+    }
+
+
+def _reconcile_manifest_authority(
+    report: Mapping[str, Any],
+    *,
+    repo_root: Path,
+    expected_contract: Mapping[str, Any],
+) -> None:
+    """Bind report input identities to the accepted manifest contract."""
+
+    inputs = report.get("inputs")
+    subject = report.get("subject")
+    if not isinstance(inputs, Mapping) or not isinstance(subject, Mapping):
+        raise CoverageContractError("report inputs/subject are malformed")
+    manifest_meta = inputs.get("manifest")
+    if not isinstance(manifest_meta, Mapping):
+        raise CoverageContractError("report manifest identity is malformed")
+    path = str(manifest_meta.get("path") or "")
+    digest = str(manifest_meta.get("sha256") or "")
+    if path != expected_contract.get("manifest_path"):
+        raise CoverageContractError(
+            "report manifest path contradicts accepted manifest authority"
+        )
+    if digest != expected_contract.get("manifest_sha256"):
+        raise CoverageContractError(
+            "report manifest digest contradicts accepted manifest authority"
+        )
+    if not LOWER_HEX_64.fullmatch(digest):
+        raise CoverageContractError("report manifest digest is not SHA-256 hex")
+    live_path = repo_root / path
+    if not live_path.is_file():
+        raise CoverageContractError(f"accepted manifest is missing: {path}")
+    live_digest = sha256_file(live_path)
+    if live_digest != digest:
+        raise CoverageContractError(
+            "live manifest digest contradicts report and accepted authority"
+        )
+    relevant_map = inputs.get("relevant_file_sha256")
+    if not isinstance(relevant_map, Mapping) or relevant_map.get(path) != digest:
+        raise CoverageContractError(
+            "inputs.relevant_file_sha256 does not bind the accepted manifest"
+        )
+    source_identity = subject.get("source_identity")
+    if not isinstance(source_identity, Mapping):
+        raise CoverageContractError("subject source identity is malformed")
+    relevant = source_identity.get("relevant")
+    if not isinstance(relevant, Mapping):
+        raise CoverageContractError("subject relevant identity is malformed")
+    files = relevant.get("files")
+    if not isinstance(files, list):
+        raise CoverageContractError("subject relevant file list is malformed")
+    relevant_files = {
+        str(item.get("path") or ""): str(item.get("sha256") or "")
+        for item in files
+        if isinstance(item, Mapping)
+    }
+    if relevant_files.get(path) != digest:
+        raise CoverageContractError(
+            "subject relevant identity does not bind the accepted manifest"
+        )
+    catalogs = inputs.get("catalogs")
+    if not isinstance(catalogs, list):
+        raise CoverageContractError("report catalog identity list is malformed")
+    reported_catalogs = sorted(
+        [
+            {
+                "id": str(item.get("id") or ""),
+                "path": str(item.get("path") or ""),
+                "sha256": str(item.get("sha256") or ""),
+            }
+            for item in catalogs
+            if isinstance(item, Mapping)
+        ],
+        key=lambda item: item["id"],
+    )
+    if reported_catalogs != expected_contract.get("catalogs"):
+        raise CoverageContractError(
+            "report catalogs contradict accepted manifest authority"
+        )
+    for catalog in reported_catalogs:
+        catalog_path = str(catalog["path"])
+        catalog_digest = str(catalog["sha256"])
+        if relevant_map.get(catalog_path) != catalog_digest:
+            raise CoverageContractError(
+                f"relevant_file_sha256 does not bind catalog {catalog['id']}"
+            )
+        if relevant_files.get(catalog_path) != catalog_digest:
+            raise CoverageContractError(
+                f"subject relevant identity does not bind catalog {catalog['id']}"
+            )
+        live_catalog = repo_root / catalog_path
+        if not live_catalog.is_file() or sha256_file(live_catalog) != catalog_digest:
+            raise CoverageContractError(
+                f"live catalog digest contradicts accepted authority: {catalog_path}"
+            )
+    worker_probe = inputs.get("worker_probe")
+    if worker_probe != expected_contract.get("worker_probe"):
+        raise CoverageContractError(
+            "worker probe contradicts accepted manifest authority"
+        )
+
+
 def validate_acceptance_semantics(
     *,
     claimed_result: str,
@@ -1077,6 +1386,8 @@ def validate_acceptance_semantics(
     offline_source_lineages: Sequence[Mapping[str, Any]],
     contexts: Mapping[str, Any],
     freshness: Mapping[str, Any],
+    expected_contract: Mapping[str, Any],
+    repo_root: Path,
 ) -> None:
     """Own pass/fail cross-field semantics at every acceptance boundary."""
 
@@ -1125,6 +1436,54 @@ def validate_acceptance_semantics(
         )
     ):
         raise CoverageContractError("command receipts are malformed or duplicate")
+
+    required_keys = list(expected_contract.get("required_command_keys") or [])
+    registered_keys = set(expected_contract.get("registered_command_keys") or [])
+    expected_workers = list(expected_contract.get("worker_logical_ids") or [])
+    expected_offline = list(expected_contract.get("offline_journey_logical_ids") or [])
+    expected_catalogs = list(expected_contract.get("catalog_ids") or [])
+    expectations = expected_contract.get("command_expectations")
+    if not isinstance(expectations, Mapping):
+        raise CoverageContractError("expected command contract is malformed")
+    observed_key_set = set(command_keys)
+    if any(key not in observed_key_set for key in required_keys):
+        raise CoverageContractError(
+            "command receipts omit required accepted-manifest commands"
+        )
+    if any(key not in registered_keys for key in observed_key_set):
+        raise CoverageContractError(
+            "command receipts include commands absent from accepted manifest authority"
+        )
+    for command in commands:
+        key = (
+            str(command.get("catalog_id") or ""),
+            str(command.get("role") or ""),
+            str(command.get("step_id") or ""),
+            int(command.get("command_ordinal")),
+        )
+        expected_row = expectations.get(key)
+        if not isinstance(expected_row, Mapping):
+            raise CoverageContractError(
+                f"command {key!r} is absent from accepted manifest authority"
+            )
+        if command.get("logical_context_id") != expected_row.get("logical_context_id"):
+            raise CoverageContractError(
+                f"command {key!r} logical context contradicts manifest authority"
+            )
+        if command.get("expects_background_worker") is not (
+            expected_row.get("expects_background_worker") is True
+        ):
+            raise CoverageContractError(
+                f"command {key!r} worker expectation contradicts manifest authority"
+            )
+        if command.get("expected_exit") != expected_row.get("expected_exit"):
+            raise CoverageContractError(
+                f"command {key!r} expected exit contradicts manifest authority"
+            )
+        if command.get("family_id") != expected_row.get("family_id"):
+            raise CoverageContractError(
+                f"command {key!r} family contradicts manifest authority"
+            )
 
     shard_ids: list[str] = []
     shard_hashes: list[str] = []
@@ -1207,11 +1566,9 @@ def validate_acceptance_semantics(
             "measurement-context summary is not derived from shards"
         )
 
-    expected_worker_ids = sorted(
-        str(command.get("logical_context_id") or "")
-        for command in commands
-        if command.get("expects_background_worker") is True
-    )
+    # Worker expectations come only from the accepted manifest contract, never
+    # from mutable report command flags alone.
+    expected_worker_ids = list(expected_workers)
     observed_worker_ids = sorted(
         str(check.get("logical_context_id") or "") for check in worker_checks
     )
@@ -1234,13 +1591,6 @@ def validate_acceptance_semantics(
             "worker lifecycles do not exactly cover expected launches"
         )
 
-    expected_catalogs = sorted(
-        {
-            str(command.get("catalog_id") or "")
-            for command in commands
-            if command.get("catalog_id") != "_collector"
-        }
-    )
     observed_catalogs = sorted(
         str(result.get("catalog_id") or "") for result in runner_results
     )
@@ -1255,7 +1605,12 @@ def validate_acceptance_semantics(
         if command.get("family_id") == "continuity.offline_perception"
         and command.get("role") == "journey_command"
     ]
-    if len(offline_commands) != 3 or len(offline_source_lineages) != 1:
+    if (
+        sorted(str(command.get("logical_context_id") or "") for command in offline_commands)
+        != expected_offline
+        or len(offline_commands) != 3
+        or len(offline_source_lineages) != 1
+    ):
         raise CoverageContractError("offline replay lineage is incomplete")
     lineage = offline_source_lineages[0]
     identity_keys = (
@@ -1285,8 +1640,27 @@ def validate_acceptance_semantics(
         or raw_lineage_receipt.get("path")
         != "runner/m007-continuity/offline-source-lineage.json"
         or not LOWER_HEX_64.fullmatch(str(raw_lineage_receipt.get("sha256") or ""))
+        or not isinstance(raw_lineage_receipt.get("content"), Mapping)
     ):
         raise CoverageContractError("offline replay raw lineage receipt is malformed")
+    raw_content = raw_lineage_receipt["content"]
+    if not isinstance(raw_content, Mapping):
+        raise CoverageContractError("offline raw lineage content is malformed")
+    if sha256_bytes(canonical_json_bytes(raw_content)) != raw_lineage_receipt.get(
+        "sha256"
+    ):
+        raise CoverageContractError(
+            "offline raw lineage content does not match sealed receipt hash"
+        )
+    derived_identity = derive_offline_lineage_identity(
+        raw_content,
+        catalog_id="m007-continuity",
+        repo_root=repo_root,
+    )
+    if any(identity[key] != derived_identity[key] for key in identity_keys):
+        raise CoverageContractError(
+            "promoted offline lineage identity is not derived from sealed raw receipt"
+        )
     for command in offline_commands:
         bound = command.get("offline_source_lineage")
         if not isinstance(bound, Mapping) or any(
@@ -1394,6 +1768,7 @@ def validate_report_semantics(
     report: Mapping[str, Any],
     *,
     repo_root: Path,
+    expected_contract: Mapping[str, Any] | None = None,
 ) -> None:
     """Validate deterministic derivations and acceptance semantics in one place."""
 
@@ -1442,6 +1817,13 @@ def validate_report_semantics(
         "collection_id"
     ):
         raise CoverageContractError("subject and context collection identities differ")
+    if expected_contract is None:
+        raise CoverageContractError(
+            "acceptance contract from accepted manifest authority is required"
+        )
+    _reconcile_manifest_authority(
+        report, repo_root=repo_root, expected_contract=expected_contract
+    )
 
     execution = _report_execution(files)
     collection_id = str(contexts.get("collection_id") or "")
@@ -1483,12 +1865,16 @@ def validate_report_semantics(
     if not isinstance(bootstrap, Mapping):
         raise CoverageContractError("bootstrap comparison is malformed")
     bootstrap_id = str(bootstrap.get("bootstrap_logical_context_id") or "")
+    contract_bootstrap = str(
+        expected_contract.get("bootstrap_logical_context_id") or ""
+    )
     bootstrap_commands = [
         command for command in commands if command.get("role") == "bootstrap"
     ]
     if (
         len(bootstrap_commands) != 1
         or bootstrap_commands[0].get("logical_context_id") != bootstrap_id
+        or bootstrap_id != contract_bootstrap
     ):
         raise CoverageContractError("bootstrap identity contradicts command receipts")
     expected_bootstrap = bootstrap_comparison(
@@ -1570,6 +1956,8 @@ def validate_report_semantics(
         offline_source_lineages=lineages,
         contexts=contexts,
         freshness=freshness,
+        expected_contract=expected_contract,
+        repo_root=repo_root,
     )
 
 
@@ -1595,6 +1983,7 @@ def verify_canonical_report(
     report_path: Path,
     *,
     repo_root: Path,
+    expected_contract: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     raw = report_path.read_bytes()
     if not raw.endswith(b"\n") or raw.endswith(b"\n\n"):
@@ -1653,7 +2042,9 @@ def verify_canonical_report(
             "report non_claims must contain the four exact false values"
         )
 
-    validate_report_semantics(report, repo_root=repo_root)
+    validate_report_semantics(
+        report, repo_root=repo_root, expected_contract=expected_contract
+    )
 
     dependency_now = dependency_environment(repo_root)
     if dependency_now != report.get("dependency_environment"):

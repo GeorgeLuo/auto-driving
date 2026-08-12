@@ -35,6 +35,7 @@ RUNNER_PATH = RUNNER_DIR / "session_runner.py"
 REPORT_PATH = TOOL_DIR / "coverage_report.py"
 COLLECTION_ID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
 LOGICAL_CONTEXT_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._/-]{0,159}$")
+_PUBLIC_LAUNCH_AUTHORIZED = False
 
 
 def _load_module(name: str, path: Path) -> Any:
@@ -730,65 +731,11 @@ class RunnerCoverageHook:
         catalog_id: str,
         lineage: Mapping[str, Any],
     ) -> dict[str, Any]:
-        if lineage.get("ok") is not True or lineage.get("schema") != (
-            "continuity_source_lineage_v1"
-        ):
-            raise reporting.CoverageContractError(
-                "offline source lineage is missing or unsuccessful"
-            )
-        manifest_sha = str(lineage.get("manifest_sha256") or "")
-        ordered_sha = str(lineage.get("ordered_input_sha256") or "")
-        if not reporting.LOWER_HEX_64.fullmatch(
-            manifest_sha
-        ) or not reporting.LOWER_HEX_64.fullmatch(ordered_sha):
-            raise reporting.CoverageContractError(
-                "offline source lineage digests are not canonical SHA-256 values"
-            )
-        frames = lineage.get("frames")
-        frame_count = lineage.get("frame_count")
-        if (
-            not isinstance(frames, list)
-            or not isinstance(frame_count, int)
-            or frame_count <= 0
-            or len(frames) != frame_count
-            or any(
-                not isinstance(frame, dict)
-                or not reporting.LOWER_HEX_64.fullmatch(str(frame.get("sha256") or ""))
-                for frame in frames
-            )
-        ):
-            raise reporting.CoverageContractError(
-                "offline source lineage frame receipt is malformed"
-            )
-        source_text = str(
-            lineage.get("src_dir_redacted") or lineage.get("src_dir") or ""
+        identity = reporting.derive_offline_lineage_identity(
+            lineage,
+            catalog_id=catalog_id,
+            repo_root=REPO_ROOT,
         )
-        repo_text = str(REPO_ROOT.resolve())
-        if source_text == repo_text or source_text == "<repo>":
-            normalized_source = "$REPO"
-        elif source_text.startswith(repo_text + os.sep):
-            normalized_source = (
-                "$REPO/" + Path(source_text).relative_to(REPO_ROOT.resolve()).as_posix()
-            )
-        elif source_text.startswith("<repo>/"):
-            normalized_source = "$REPO/" + source_text[len("<repo>/") :]
-        elif source_text.startswith("$REPO/"):
-            normalized_source = source_text
-        else:
-            raise reporting.CoverageContractError(
-                "offline source lineage path is not repository-owned"
-            )
-        identity = {
-            "schema": "m007_cli_coverage_offline_lineage_v1",
-            "catalog_id": catalog_id,
-            "source_identity": normalized_source,
-            "manifest_sha256": manifest_sha,
-            "ordered_input_sha256": ordered_sha,
-            "frame_count": frame_count,
-            "frame_receipt_sha256": reporting.sha256_bytes(
-                reporting.canonical_json_bytes(frames)
-            ),
-        }
         bound = 0
         for receipt in self.receipts:
             if (
@@ -804,7 +751,7 @@ class RunnerCoverageHook:
             )
             if relation == "consumed":
                 observed_source = (receipt.get("variables") or {}).get("src_dir")
-                if observed_source != normalized_source:
+                if observed_source != identity["source_identity"]:
                     raise reporting.CoverageContractError(
                         "offline apply command is not bound to the sealed source lineage"
                     )
@@ -1191,14 +1138,22 @@ def collect(
                 lineage=raw_lineage,
             )
             relative_lineage = lineage_path.relative_to(session_root).as_posix()
+            # Seal a path-tokenized content projection of the raw receipt so
+            # verification can re-derive the promoted identity without local
+            # absolute paths or trusting mutable report fields alone.
+            sealed_content = reporting.sealed_offline_lineage_content(
+                raw_lineage,
+                source_identity=str(identity["source_identity"]),
+            )
             offline_source_lineages.append(
                 {
                     **identity,
                     "raw_receipt": {
                         "path": relative_lineage,
-                        "sha256": reporting.sha256_regular_file(
-                            lineage_path, root=session_root
+                        "sha256": reporting.sha256_bytes(
+                            reporting.canonical_json_bytes(sealed_content)
                         ),
+                        "content": sealed_content,
                     },
                 }
             )
@@ -1405,6 +1360,8 @@ def collect(
             "source_reasons": [],
             "dependency_ok": integrity_checks["dependency_environment_unchanged"],
         },
+        expected_contract=expected_acceptance_contract(expanded),
+        repo_root=REPO_ROOT,
     )
     _write_json(session_root / "receipts" / "collection-checks.json", collection_checks)
 
@@ -1693,7 +1650,13 @@ def _report_from_session(session_root: Path) -> dict[str, Any]:
             "numeric_coverage_gate": False,
         },
     }
-    reporting.validate_report_semantics(report, repo_root=REPO_ROOT)
+    # Live accepted manifest is the authority; the sealed session expansion must
+    # already match it (source freshness also re-checks relevant inputs).
+    reporting.validate_report_semantics(
+        report,
+        repo_root=REPO_ROOT,
+        expected_contract=expected_acceptance_contract(),
+    )
     return reporting.finalize_report_digest(report)
 
 
@@ -1710,7 +1673,9 @@ def finalize(*, session_root: Path, output: Path) -> dict[str, Any]:
             "repeated finalization is not byte-identical"
         )
     reporting.verify_canonical_report(
-        output.expanduser().resolve(), repo_root=REPO_ROOT
+        output.expanduser().resolve(),
+        repo_root=REPO_ROOT,
+        expected_contract=expected_acceptance_contract(),
     )
     print(
         json.dumps(
@@ -1742,8 +1707,83 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _parent_command_line(pid: int) -> str:
+    completed = subprocess.run(
+        ["ps", "-p", str(pid), "-o", "command="],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if completed.returncode != 0:
+        raise reporting.CoverageContractError(
+            f"cannot inspect parent process {pid} for launcher authentication"
+        )
+    return completed.stdout.strip()
+
+
+def _command_references_path(command_line: str, expected: Path) -> bool:
+    """True when a shell argv token resolves to the reviewed launcher path.
+
+    Substring search is intentionally avoided: host wrappers may embed the path
+    in a larger ``-c`` script without actually executing that launcher.
+    """
+
+    expected_resolved = expected.resolve(strict=True)
+    for token in command_line.split():
+        cleaned = token.strip("\"'")
+        if not cleaned or cleaned.startswith("-"):
+            continue
+        try:
+            if Path(cleaned).resolve() == expected_resolved:
+                return True
+        except OSError:
+            continue
+    return False
+
+
+def require_public_launcher(launcher_path: Path) -> None:
+    """Refuse normal operation unless the reviewed public launcher is parent.
+
+    The POSIX launcher remains the parent process (no exec) after the
+    pre-interpreter ``COVERAGE_*`` refusal.  A pure-Python import bootstrap has a
+    different parent and cannot mint this capability.
+    """
+
+    global _PUBLIC_LAUNCH_AUTHORIZED
+    expected = (TOOL_DIR / "coverage_session").resolve(strict=True)
+    try:
+        provided = launcher_path.resolve(strict=True)
+    except OSError as exc:
+        raise reporting.CoverageContractError(
+            "public launcher path is missing or unreadable"
+        ) from exc
+    if provided != expected:
+        raise reporting.CoverageContractError(
+            "public launcher path is not the reviewed coverage_session entrypoint"
+        )
+    parent_cmd = _parent_command_line(os.getppid())
+    if not _command_references_path(parent_cmd, expected):
+        raise reporting.CoverageContractError(
+            "public launcher boundary missing: parent is not the reviewed POSIX entrypoint"
+        )
+    _PUBLIC_LAUNCH_AUTHORIZED = True
+
+
+def expected_acceptance_contract(
+    expanded: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Derive the acceptance contract from the accepted manifest authority."""
+
+    payload = expanded if expanded is not None else expand_and_validate_manifest()
+    return reporting.expected_contract_from_expanded(payload)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     try:
+        if not _PUBLIC_LAUNCH_AUTHORIZED:
+            raise reporting.CoverageContractError(
+                "public launcher boundary missing: use the coverage_session entrypoint"
+            )
         ambient_coverage = sorted(
             name for name in os.environ if name.startswith("COVERAGE_")
         )
@@ -1784,8 +1824,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             report = finalize(session_root=args.session_dir, output=args.output)
             return 0 if report["result"] == "pass" else 2
         if args.command == "verify-report":
+            contract = expected_acceptance_contract()
             report = reporting.verify_canonical_report(
-                args.report.expanduser().resolve(strict=True), repo_root=REPO_ROOT
+                args.report.expanduser().resolve(strict=True),
+                repo_root=REPO_ROOT,
+                expected_contract=contract,
             )
             print(
                 json.dumps(

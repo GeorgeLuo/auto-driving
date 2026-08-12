@@ -14,9 +14,12 @@ Those are explicit false values in every canonical report.
 
 Use only the executable `coverage_session`. It checks the inherited environment
 before Python starts and refuses every `COVERAGE_*` variable, including an
-ambient subprocess-patched coverage session. Direct execution of
-`coverage_session.py` is unsupported and always refuses; the launcher imports
-the internal module only after the PATH-independent environment check.
+ambient subprocess-patched coverage session. Interpreter selection never execs
+the bare name `python3` through caller-controlled PATH: the launcher resolves a
+native absolute interpreter (optionally via absolute `M007_COVERAGE_PYTHON`) and
+rejects shebang PATH shims. Direct execution of `coverage_session.py` is
+unsupported and always refuses; the launcher remains the parent process and the
+internal module authenticates that public entry before normal operation.
 
 For each measured command, the collector:
 

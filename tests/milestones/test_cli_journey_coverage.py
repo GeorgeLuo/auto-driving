@@ -68,6 +68,57 @@ def _write_arc_shard(
     data.write()
 
 
+def _synthetic_raw_lineage() -> dict[str, object]:
+    frames = [{"index": 0, "sha256": "c" * 64, "name": "frame-0.png"}]
+    return report.sealed_offline_lineage_content(
+        {
+            "schema": "continuity_source_lineage_v1",
+            "ok": True,
+            "src_dir": "/tmp/should-not-appear",
+            "src_dir_redacted": "$REPO/runtime/offline/source",
+            "manifest_sha256": "a" * 64,
+            "ordered_input_sha256": "b" * 64,
+            "frame_count": 1,
+            "frames": frames,
+        },
+        source_identity="$REPO/runtime/offline/source",
+    )
+
+
+def _synthetic_expected_contract(commands: list[dict[str, object]]) -> dict[str, object]:
+    catalog_root = (
+        "docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/"
+        "catalogs"
+    )
+    catalogs = [
+        {
+            "id": "m007-acceptance",
+            "path": f"{catalog_root}/m007-acceptance.yaml",
+            "sha256": "1" * 64,
+        },
+        {
+            "id": "m007-continuity",
+            "path": f"{catalog_root}/m007-continuity.yaml",
+            "sha256": "2" * 64,
+        },
+    ]
+    expanded = {
+        "manifest_path": (
+            "docs/milestones/007-cli-operator-usability/tools/"
+            "cli-journey-coverage/manifest.json"
+        ),
+        "manifest_sha256": "e" * 64,
+        "catalogs": catalogs,
+        "commands": commands,
+        "bootstrap_logical_context_id": "m007/bootstrap/root-help",
+        "worker_probe": {
+            "path": "cli/automa_cli/automation.py",
+            "function": "run_vehicle_automation",
+        },
+    }
+    return report.expected_contract_from_expanded(expanded)
+
+
 def _synthetic_pass_report() -> dict[str, object]:
     collection_id = "7" * 32
     bootstrap = "m007/bootstrap/root-help"
@@ -77,14 +128,16 @@ def _synthetic_pass_report() -> dict[str, object]:
         "m007/journey/continuity.offline_perception/offline-apply-b/cmd-00",
     ]
     worker_id = "m007/journey/primary/automation-run/cmd-00"
-    lineage = {
-        "schema": "m007_cli_coverage_offline_lineage_v1",
-        "catalog_id": "m007-continuity",
-        "source_identity": "$REPO/runtime/offline/source",
-        "manifest_sha256": "a" * 64,
-        "ordered_input_sha256": "b" * 64,
-        "frame_count": 1,
-        "frame_receipt_sha256": "c" * 64,
+    raw_lineage = _synthetic_raw_lineage()
+    lineage = report.derive_offline_lineage_identity(
+        raw_lineage,
+        catalog_id="m007-continuity",
+        repo_root=ROOT,
+    )
+    lineage_receipt = {
+        "path": "runner/m007-continuity/offline-source-lineage.json",
+        "sha256": report.sha256_bytes(report.canonical_json_bytes(raw_lineage)),
+        "content": raw_lineage,
     }
     commands: list[dict[str, object]] = [
         {
@@ -358,6 +411,37 @@ def _synthetic_pass_report() -> dict[str, object]:
         "rollups": report.aggregate_rollups(execution, commands),
         "numeric_gate": False,
     }
+    manifest_path = (
+        "docs/milestones/007-cli-operator-usability/tools/"
+        "cli-journey-coverage/manifest.json"
+    )
+    catalog_root = (
+        "docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/"
+        "catalogs"
+    )
+    catalog_records = [
+        {
+            "id": "m007-acceptance",
+            "path": f"{catalog_root}/m007-acceptance.yaml",
+            "sha256": "1" * 64,
+        },
+        {
+            "id": "m007-continuity",
+            "path": f"{catalog_root}/m007-continuity.yaml",
+            "sha256": "2" * 64,
+        },
+    ]
+    relevant_files = [
+        {"path": manifest_path, "sha256": "e" * 64},
+        {
+            "path": catalog_records[0]["path"],
+            "sha256": catalog_records[0]["sha256"],
+        },
+        {
+            "path": catalog_records[1]["path"],
+            "sha256": catalog_records[1]["sha256"],
+        },
+    ]
     payload: dict[str, object] = {
         "schema": report.REPORT_SCHEMA,
         "result": "pass",
@@ -369,22 +453,29 @@ def _synthetic_pass_report() -> dict[str, object]:
         },
         "cleanup": cleanup,
         "subject": {
-            "source_identity": {"commit": "d" * 40, "relevant": {}},
+            "source_identity": {
+                "commit": "d" * 40,
+                "relevant": {
+                    "files": relevant_files,
+                    "tree_sha256": report.sha256_bytes(
+                        report.canonical_json_bytes(relevant_files)
+                    ),
+                },
+            },
             "collection_id": collection_id,
         },
         "inputs": {
-            "manifest": {"path": "manifest.json", "sha256": "e" * 64},
-            "catalogs": [],
-            "relevant_file_sha256": {},
+            "manifest": {"path": manifest_path, "sha256": "e" * 64},
+            "catalogs": catalog_records,
+            "relevant_file_sha256": {
+                item["path"]: item["sha256"] for item in relevant_files
+            },
             "owned_source_roots": ["cli/automa_cli"],
             "worker_probe": worker_probe,
             "offline_source_lineages": [
                 {
                     **lineage,
-                    "raw_receipt": {
-                        "path": "runner/m007-continuity/offline-source-lineage.json",
-                        "sha256": "f" * 64,
-                    },
+                    "raw_receipt": lineage_receipt,
                 }
             ],
             "metrics_ui_identity": {},
@@ -599,8 +690,116 @@ class ManifestAndLauncherTests(unittest.TestCase):
             text=True,
         )
         self.assertEqual(completed.returncode, 2)
-        self.assertIn("internal boundary", completed.stderr)
+        self.assertTrue(
+            "internal boundary" in completed.stderr
+            or "public launcher boundary" in completed.stderr,
+            completed.stderr,
+        )
         self.assertNotIn('"result": "pass"', completed.stdout)
+
+    def test_path_shadowed_python3_cannot_inject_coverage_before_refusal(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            shim_dir = root / "bin"
+            shim_dir.mkdir()
+            outside = root / "outside.coverage"
+            outside.write_bytes(b"unchanged")
+            real_python = Path(sys.executable).resolve()
+            shim = shim_dir / "python3"
+            shim.write_text(
+                "\n".join(
+                    [
+                        "#!/bin/sh",
+                        f'export COVERAGE_FILE="{outside}"',
+                        'export COVERAGE_PROCESS_START="/tmp/hostile-coverage.ini"',
+                        f'exec "{real_python}" "$@"',
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            shim.chmod(0o755)
+            completed = subprocess.run(
+                [str(LAUNCHER), "validate-manifest"],
+                cwd=ROOT,
+                env=_clean_environment(PATH=f"{shim_dir}:{os.environ.get('PATH', '')}"),
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertEqual(json.loads(completed.stdout)["result"], "pass")
+            self.assertEqual(outside.read_bytes(), b"unchanged")
+            self.assertFalse(Path("/tmp/hostile-coverage.ini").exists())
+
+    def test_copied_clean_bootstrap_cannot_enter_without_public_launcher(self):
+        bootstrap = "\n".join(
+            [
+                "import importlib.util, pathlib, sys",
+                "path = pathlib.Path(sys.argv[1])",
+                "spec = importlib.util.spec_from_file_location('copied_clean', path)",
+                "module = importlib.util.module_from_spec(spec)",
+                "sys.modules[spec.name] = module",
+                "spec.loader.exec_module(module)",
+                # Deliberately omit require_public_launcher; even calling it with the
+                # real launcher path must fail because the parent is not that shell.
+                "raise SystemExit(module.main(['validate-manifest']))",
+            ]
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            sentinel = Path(temporary) / "outside.coverage"
+            sentinel.write_bytes(b"unchanged")
+            completed = subprocess.run(
+                [sys.executable, "-c", bootstrap, str(SESSION_MODULE)],
+                cwd=ROOT,
+                env=_clean_environment(),
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(completed.returncode, 2)
+            self.assertTrue(
+                "public launcher" in completed.stderr
+                or "direct Python entrypoint" in completed.stderr
+                or "launcher boundary" in completed.stderr
+                or "unsupported" in completed.stderr
+                or completed.returncode == 2
+            )
+            # Clean copied import must not produce a pass result.
+            self.assertNotIn('"result": "pass"', completed.stdout)
+            self.assertEqual(sentinel.read_bytes(), b"unchanged")
+
+    def test_require_public_launcher_rejects_non_parent_caller(self):
+        # Run in a subprocess so this test process's parent cmdline cannot
+        # accidentally mention the launcher path (agent/shell wrappers sometimes do).
+        probe = "\n".join(
+            [
+                "import importlib.util, pathlib, sys",
+                "path = pathlib.Path(sys.argv[1])",
+                "launcher = pathlib.Path(sys.argv[2])",
+                "spec = importlib.util.spec_from_file_location('probe_session', path)",
+                "module = importlib.util.module_from_spec(spec)",
+                "spec.loader.exec_module(module)",
+                "try:",
+                "    module.require_public_launcher(launcher)",
+                "except module.reporting.CoverageContractError as exc:",
+                "    print(type(exc).__name__ + ':' + str(exc))",
+                "    raise SystemExit(2)",
+                "print('authorized')",
+                "raise SystemExit(0)",
+            ]
+        )
+        completed = subprocess.run(
+            [sys.executable, "-c", probe, str(SESSION_MODULE), str(LAUNCHER)],
+            cwd=ROOT,
+            env=_clean_environment(),
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(completed.returncode, 2, completed.stdout + completed.stderr)
+        self.assertIn("CoverageContractError", completed.stdout)
+        self.assertIn("public launcher", completed.stdout)
 
 
 class RootAndEnvironmentTests(unittest.TestCase):
@@ -1519,17 +1718,45 @@ class CoverageProcessTests(unittest.TestCase):
 class DependencyFreshnessAndDigestTests(unittest.TestCase):
     def test_verifier_rejects_each_semantically_contradictory_pass_report(self):
         baseline = _synthetic_pass_report()
+        contract = _synthetic_expected_contract(baseline["commands"])
 
         def verify(payload):
             with tempfile.TemporaryDirectory() as temporary:
                 path = Path(temporary) / "report.json"
                 report.write_canonical(path, report.finalize_report_digest(payload))
+                digest_map = {
+                    str(ROOT / payload["inputs"]["manifest"]["path"]): payload[
+                        "inputs"
+                    ]["manifest"]["sha256"],
+                }
+                for catalog in payload["inputs"]["catalogs"]:
+                    digest_map[str(ROOT / catalog["path"])] = catalog["sha256"]
+
+                def fake_sha256(path_value):
+                    key = str(path_value)
+                    if key in digest_map:
+                        return digest_map[key]
+                    return report.sha256_file.__wrapped__(path_value)  # type: ignore[attr-defined]
+
                 with mock.patch.object(
                     report, "dependency_environment", return_value={}
                 ), mock.patch.object(
                     report, "verify_source_freshness", return_value=(True, [])
+                ), mock.patch.object(
+                    report,
+                    "sha256_file",
+                    side_effect=lambda path_value: digest_map.get(
+                        str(path_value),
+                        __import__("hashlib")
+                        .sha256(Path(path_value).read_bytes())
+                        .hexdigest()
+                        if Path(path_value).is_file()
+                        else "0" * 64,
+                    ),
                 ):
-                    return report.verify_canonical_report(path, repo_root=ROOT)
+                    return report.verify_canonical_report(
+                        path, repo_root=ROOT, expected_contract=contract
+                    )
 
         verify(json.loads(json.dumps(baseline)))
         mutations = {
@@ -1562,6 +1789,34 @@ class DependencyFreshnessAndDigestTests(unittest.TestCase):
             "missing execution context": lambda value: value["files"][0][
                 "contexts"
             ].pop(),
+            "forged manifest digest only": lambda value: value["inputs"][
+                "manifest"
+            ].__setitem__("sha256", "0" * 64),
+            "coordinated worker contract removal": lambda value: (
+                [
+                    command.__setitem__("expects_background_worker", False)
+                    for command in value["commands"]
+                ],
+                value["process_completeness"].__setitem__("worker_checks", []),
+                value["process_completeness"]["runner_results"][0].__setitem__(
+                    "worker_lifecycles", []
+                ),
+                value["process_completeness"]["collection_checks"]["checks"].__setitem__(
+                    "background_workers_complete", True
+                ),
+            ),
+            "coordinated lineage forge keeping raw hash": lambda value: (
+                value["inputs"]["offline_source_lineages"][0].__setitem__(
+                    "ordered_input_sha256", "0" * 64
+                ),
+                [
+                    command.get("offline_source_lineage", {}).__setitem__(
+                        "ordered_input_sha256", "0" * 64
+                    )
+                    for command in value["commands"]
+                    if command.get("offline_source_lineage")
+                ],
+            ),
         }
         for name, mutate in mutations.items():
             with self.subTest(name=name):

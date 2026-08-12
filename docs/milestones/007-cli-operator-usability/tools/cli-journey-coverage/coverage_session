@@ -12,21 +12,94 @@ case $0 in
 esac
 script_dir=${launcher_path%/*}
 script_dir=$(CDPATH= cd -P "$script_dir" && pwd -P)
+launcher_path=$script_dir/coverage_session
 
-# The internal module is deliberately not a runnable Python program.  Import it
-# through this clean-launch bootstrap so direct ``python coverage_session.py``
-# can never be enabled by copying caller-controlled environment or descriptors.
-exec python3 -c '
+# Resolve a native interpreter to an absolute path. Never exec the bare name
+# ``python3`` through caller-controlled PATH (PATH shims can inject COVERAGE_*
+# after the shell check and before process start). Shebang scripts are rejected.
+_resolve_native_python() {
+    candidate=$1
+    case $candidate in
+        /*) abs=$candidate ;;
+        *) abs=$PWD/$candidate ;;
+    esac
+    dir=$(CDPATH= cd -P "$(dirname "$abs")" 2>/dev/null && pwd -P) || return 1
+    base=$(basename "$abs")
+    abs=$dir/$base
+    max=32
+    while [ -L "$abs" ]; do
+        max=$((max - 1))
+        [ "$max" -ge 0 ] || return 1
+        target=$(/usr/bin/readlink "$abs") || return 1
+        case $target in
+            /*) abs=$target ;;
+            *)
+                abs=$(CDPATH= cd -P "$(dirname "$abs")" 2>/dev/null && pwd -P)/$target ||
+                    return 1
+                ;;
+        esac
+        dir=$(CDPATH= cd -P "$(dirname "$abs")" 2>/dev/null && pwd -P) || return 1
+        base=$(basename "$abs")
+        abs=$dir/$base
+    done
+    [ -f "$abs" ] && [ -x "$abs" ] || return 1
+    header=$(/usr/bin/head -c 2 "$abs" 2>/dev/null) || return 1
+    # Reject shell/script shims. A native CPython is not a shebang script.
+    if [ "$header" = "#!" ]; then
+        return 1
+    fi
+    printf '%s\n' "$abs"
+}
+
+if [ -n "${M007_COVERAGE_PYTHON-}" ]; then
+    case $M007_COVERAGE_PYTHON in
+        /*) ;;
+        *)
+            echo "coverage session refused: M007_COVERAGE_PYTHON must be an absolute path" >&2
+            exit 2
+            ;;
+    esac
+    if ! python_bin=$(_resolve_native_python "$M007_COVERAGE_PYTHON"); then
+        echo "coverage session refused: M007_COVERAGE_PYTHON is not a native interpreter" >&2
+        exit 2
+    fi
+else
+    python_bin=
+    old_ifs=$IFS
+    IFS=:
+    for dir in ${PATH-}; do
+        IFS=$old_ifs
+        [ -n "$dir" ] || dir=.
+        if python_bin=$(_resolve_native_python "$dir/python3"); then
+            break
+        fi
+        python_bin=
+    done
+    IFS=$old_ifs
+    if [ -z "$python_bin" ]; then
+        echo "coverage session refused: no native python3 interpreter on PATH" >&2
+        exit 2
+    fi
+fi
+
+# Spawn without exec so this launcher shell remains the parent process. The
+# internal module authenticates that parent before any normal operation. A
+# copied import bootstrap has a different parent and cannot satisfy the check.
+"$python_bin" -c '
 import importlib.util
 import pathlib
 import sys
 
-module_path = pathlib.Path(sys.argv[1]).resolve(strict=True)
+launcher_path = pathlib.Path(sys.argv[1]).resolve(strict=True)
+module_path = pathlib.Path(sys.argv[2]).resolve(strict=True)
 spec = importlib.util.spec_from_file_location("m007_cli_coverage_session", module_path)
 if spec is None or spec.loader is None:
     raise SystemExit("coverage session refused: cannot load internal module")
 module = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = module
 spec.loader.exec_module(module)
-raise SystemExit(module.main(sys.argv[2:]))
-' "$script_dir/coverage_session.py" "$@"
+module.require_public_launcher(launcher_path)
+raise SystemExit(module.main(sys.argv[3:]))
+' "$launcher_path" "$script_dir/coverage_session.py" "$@"
+status=$?
+exit "$status"

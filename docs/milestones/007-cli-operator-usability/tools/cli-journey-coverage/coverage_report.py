@@ -1103,11 +1103,35 @@ def expected_contract_from_expanded(expanded: Mapping[str, Any]) -> dict[str, An
             int(command.get("command_ordinal")),
         )
 
-    required_keys = sorted(_key(command) for command in required_commands)
-    required_logical = sorted(
-        str(command.get("logical_context_id") or "") for command in required_commands
+    # Required order is collection order, not raw expansion append order:
+    # measured config probe, bootstrap, then catalog commands in expansion order.
+    collector_required = [
+        command
+        for command in required_commands
+        if command.get("catalog_id") == "_collector"
+    ]
+    catalog_required = [
+        command
+        for command in required_commands
+        if command.get("catalog_id") != "_collector"
+    ]
+
+    def _collector_rank(command: Mapping[str, Any]) -> int:
+        step = str(command.get("step_id") or "")
+        if step == "_config_probe":
+            return 0
+        if step == "_bootstrap":
+            return 1
+        return 2
+
+    ordered_required = (
+        sorted(collector_required, key=_collector_rank) + catalog_required
     )
-    registered_keys = sorted(_key(command) for command in registered_commands)
+    required_keys = [_key(command) for command in ordered_required]
+    required_logical = [
+        str(command.get("logical_context_id") or "") for command in ordered_required
+    ]
+    registered_keys = [_key(command) for command in registered_commands]
     worker_ids = sorted(
         str(command.get("logical_context_id") or "")
         for command in registered_commands
@@ -1137,6 +1161,23 @@ def expected_contract_from_expanded(expanded: Mapping[str, Any]) -> dict[str, An
     worker_probe = expanded.get("worker_probe")
     if not isinstance(worker_probe, Mapping):
         raise CoverageContractError("expanded manifest worker probe is malformed")
+
+    def _tokenized_argv(argv: Any) -> list[str]:
+        if not isinstance(argv, list) or any(not isinstance(part, str) for part in argv):
+            raise CoverageContractError("manifest argv template is malformed")
+        tokenized: list[str] = []
+        for part in argv:
+            try:
+                if Path(part).resolve(strict=True) == Path(sys.executable).resolve(
+                    strict=True
+                ):
+                    tokenized.append("$PYTHON")
+                    continue
+            except (OSError, RuntimeError):
+                pass
+            tokenized.append(part)
+        return tokenized
+
     return {
         "manifest_path": str(expanded.get("manifest_path") or ""),
         "manifest_sha256": str(expanded.get("manifest_sha256") or ""),
@@ -1161,6 +1202,7 @@ def expected_contract_from_expanded(expanded: Mapping[str, Any]) -> dict[str, An
                 is True,
                 "expected_exit": int(command.get("expected_exit", 0)),
                 "family_id": command.get("family_id"),
+                "argv_template": _tokenized_argv(command.get("argv_template")),
                 "required": command.get("required") is True
                 or command.get("role")
                 in {"bootstrap", "journey_command", "supplemental_capture"}
@@ -1438,7 +1480,8 @@ def validate_acceptance_semantics(
         raise CoverageContractError("command receipts are malformed or duplicate")
 
     required_keys = list(expected_contract.get("required_command_keys") or [])
-    registered_keys = set(expected_contract.get("registered_command_keys") or [])
+    registered_keys = list(expected_contract.get("registered_command_keys") or [])
+    registered_key_set = set(registered_keys)
     expected_workers = list(expected_contract.get("worker_logical_ids") or [])
     expected_offline = list(expected_contract.get("offline_journey_logical_ids") or [])
     expected_catalogs = list(expected_contract.get("catalog_ids") or [])
@@ -1446,13 +1489,20 @@ def validate_acceptance_semantics(
     if not isinstance(expectations, Mapping):
         raise CoverageContractError("expected command contract is malformed")
     observed_key_set = set(command_keys)
-    if any(key not in observed_key_set for key in required_keys):
+    missing_required = [key for key in required_keys if key not in observed_key_set]
+    if missing_required:
         raise CoverageContractError(
             "command receipts omit required accepted-manifest commands"
         )
-    if any(key not in registered_keys for key in observed_key_set):
+    if any(key not in registered_key_set for key in observed_key_set):
         raise CoverageContractError(
             "command receipts include commands absent from accepted manifest authority"
+        )
+    # Required commands must appear in expansion order (not merely as a set).
+    observed_required_order = [key for key in command_keys if key in set(required_keys)]
+    if observed_required_order != required_keys:
+        raise CoverageContractError(
+            "required command order contradicts accepted manifest expansion order"
         )
     for command in commands:
         key = (
@@ -1484,6 +1534,54 @@ def validate_acceptance_semantics(
             raise CoverageContractError(
                 f"command {key!r} family contradicts manifest authority"
             )
+        expected_argv = list(expected_row.get("argv_template") or [])
+        observed_argv = list(command.get("argv_template") or [])
+        resolved_argv = list(command.get("resolved_argv") or [])
+        is_config_probe = (
+            command.get("catalog_id") == "_collector"
+            and command.get("step_id") == "_config_probe"
+        )
+        if is_config_probe:
+            # Expansion records a placeholder probe body; collection substitutes
+            # the measured probe source while keeping the interpreter token.
+            if (
+                len(observed_argv) != 3
+                or observed_argv[0] != "$PYTHON"
+                or observed_argv[1] != "-c"
+                or not observed_argv[2]
+                or resolved_argv != observed_argv
+            ):
+                raise CoverageContractError(
+                    f"command {key!r} config-probe argv contradicts accepted template shape"
+                )
+        else:
+            if observed_argv != expected_argv:
+                raise CoverageContractError(
+                    f"command {key!r} argv template contradicts accepted manifest authority"
+                )
+            # Static templates (no substitution tokens) must match resolved argv.
+            # Dynamic templates still require the same length and fixed prefixes.
+            if expected_argv and all("{" not in part for part in expected_argv):
+                if resolved_argv != expected_argv:
+                    raise CoverageContractError(
+                        f"command {key!r} resolved argv contradicts accepted template"
+                    )
+            elif len(resolved_argv) != len(expected_argv):
+                raise CoverageContractError(
+                    f"command {key!r} resolved argv length contradicts accepted template"
+                )
+            else:
+                for expected_part, resolved_part in zip(expected_argv, resolved_argv):
+                    if "{" in expected_part:
+                        if not isinstance(resolved_part, str) or not resolved_part:
+                            raise CoverageContractError(
+                                f"command {key!r} resolved argv is missing a substitution"
+                            )
+                        continue
+                    if resolved_part != expected_part:
+                        raise CoverageContractError(
+                            f"command {key!r} resolved argv contradicts accepted template"
+                        )
 
     shard_ids: list[str] = []
     shard_hashes: list[str] = []
@@ -1764,6 +1862,99 @@ def validate_acceptance_semantics(
         )
 
 
+def _validate_immutable_receipt_authority(report: Mapping[str, Any]) -> None:
+    """Derive seal/finalization digests, timestamps, and lineage from embedded receipts."""
+
+    integrity = report.get("integrity")
+    timestamps = report.get("timestamps")
+    inputs = report.get("inputs")
+    if not isinstance(integrity, Mapping) or not isinstance(timestamps, Mapping):
+        raise CoverageContractError("integrity/timestamps sections are malformed")
+    if not isinstance(inputs, Mapping):
+        raise CoverageContractError("inputs section is malformed")
+
+    seal = integrity.get("session_seal")
+    final_receipt = integrity.get("finalization_receipt")
+    session_start = integrity.get("session_start")
+    if not all(isinstance(value, Mapping) for value in (seal, final_receipt, session_start)):
+        raise CoverageContractError(
+            "immutable session/finalization/start receipt contents are missing"
+        )
+
+    seal_digest = integrity.get("session_seal_sha256")
+    final_digest = integrity.get("finalization_receipt_sha256")
+    if not isinstance(seal_digest, str) or not LOWER_HEX_64.fullmatch(seal_digest):
+        raise CoverageContractError("session_seal_sha256 is not strict SHA-256 hex")
+    if not isinstance(final_digest, str) or not LOWER_HEX_64.fullmatch(final_digest):
+        raise CoverageContractError(
+            "finalization_receipt_sha256 is not strict SHA-256 hex"
+        )
+    if sha256_bytes(canonical_file_bytes(seal)) != seal_digest:
+        raise CoverageContractError(
+            "session_seal_sha256 is not derived from embedded session seal content"
+        )
+    if sha256_bytes(canonical_file_bytes(final_receipt)) != final_digest:
+        raise CoverageContractError(
+            "finalization_receipt_sha256 is not derived from embedded finalization content"
+        )
+    if final_receipt.get("session_seal_sha256") != seal_digest:
+        raise CoverageContractError(
+            "finalization receipt does not bind the embedded session seal digest"
+        )
+    if seal.get("schema") != "m007_cli_coverage_session_seal_v1":
+        raise CoverageContractError("session seal schema is invalid")
+    if final_receipt.get("schema") != "m007_cli_coverage_finalization_receipt_v1":
+        raise CoverageContractError("finalization receipt schema is invalid")
+
+    if timestamps.get("collection_started_at_utc") != session_start.get(
+        "collection_started_at_utc"
+    ):
+        raise CoverageContractError(
+            "collection_started_at_utc is not derived from session-start receipt"
+        )
+    if timestamps.get("collection_ended_at_utc") != seal.get("collection_ended_at_utc"):
+        raise CoverageContractError(
+            "collection_ended_at_utc is not derived from session seal content"
+        )
+    if timestamps.get("finalized_at_utc") != final_receipt.get("finalized_at_utc"):
+        raise CoverageContractError(
+            "finalized_at_utc is not derived from finalization receipt content"
+        )
+    # Fail closed on reversed/forged chronology once contents are authoritative.
+    started = str(timestamps.get("collection_started_at_utc") or "")
+    ended = str(timestamps.get("collection_ended_at_utc") or "")
+    finalized = str(timestamps.get("finalized_at_utc") or "")
+    if not (started and ended and finalized) or not (started <= ended <= finalized):
+        raise CoverageContractError(
+            "receipt timestamps are not monotonically ordered"
+        )
+
+    sealed_inputs = seal.get("sealed_inputs")
+    if not isinstance(sealed_inputs, list):
+        raise CoverageContractError("session seal sealed_inputs are malformed")
+    sealed_by_path = {
+        str(item.get("path") or ""): str(item.get("sha256") or "")
+        for item in sealed_inputs
+        if isinstance(item, Mapping)
+    }
+    lineage_path = "receipts/offline-source-lineages.json"
+    lineage_digest = sealed_by_path.get(lineage_path)
+    lineages = inputs.get("offline_source_lineages")
+    if not isinstance(lineages, list):
+        raise CoverageContractError("offline source lineages are malformed")
+    if not lineage_digest or not LOWER_HEX_64.fullmatch(lineage_digest):
+        raise CoverageContractError(
+            "session seal omits offline lineage sealed-input digest"
+        )
+    if sha256_bytes(canonical_file_bytes(lineages)) != lineage_digest:
+        raise CoverageContractError(
+            "offline source lineages are not the sealed session-input content"
+        )
+    # Each lineage raw receipt must stay bound to the promoted identity and its
+    # own content digest (already checked in acceptance); the seal binding above
+    # proves that exact lineage list was an immutable collection input.
+
+
 def validate_report_semantics(
     report: Mapping[str, Any],
     *,
@@ -1933,13 +2124,7 @@ def validate_report_semantics(
     }
     if integrity.get("canonical_json") != expected_canonical_json:
         raise CoverageContractError("canonical JSON declaration is malformed")
-    for digest_name in (
-        "session_seal_sha256",
-        "finalization_receipt_sha256",
-    ):
-        digest = integrity.get(digest_name)
-        if not isinstance(digest, str) or not LOWER_HEX_64.fullmatch(digest):
-            raise CoverageContractError(f"{digest_name} is not strict SHA-256 hex")
+    _validate_immutable_receipt_authority(report)
 
     freshness = integrity.get("freshness")
     if not isinstance(freshness, Mapping):

@@ -1639,8 +1639,13 @@ def _report_from_session(session_root: Path) -> dict[str, Any]:
                 "trailing_lf": 1,
                 "digest_projection_omits": ["integrity.report_sha256"],
             },
+            # Embed immutable receipt contents so offline verification can re-derive
+            # hashes/timestamps without trusting digest-shaped report strings alone.
+            "session_seal": seal,
             "session_seal_sha256": seal_hash,
+            "finalization_receipt": final_receipt,
             "finalization_receipt_sha256": reporting.sha256_file(final_path),
+            "session_start": start,
             "freshness": freshness,
         },
         "non_claims": {
@@ -1707,46 +1712,22 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _parent_command_line(pid: int) -> str:
-    completed = subprocess.run(
-        ["ps", "-p", str(pid), "-o", "command="],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    if completed.returncode != 0:
-        raise reporting.CoverageContractError(
-            f"cannot inspect parent process {pid} for launcher authentication"
-        )
-    return completed.stdout.strip()
+_LAUNCH_CAPABILITY_HEADER = "m007-coverage-launch-v1"
+_LAUNCH_TOKEN_PATTERN = re.compile(r"^[0-9a-f]{32}$")
 
 
-def _command_references_path(command_line: str, expected: Path) -> bool:
-    """True when a shell argv token resolves to the reviewed launcher path.
+def authorize_public_launch(*, capability_fd: int, launcher_path: Path) -> None:
+    """Authorize normal operation from the public POSIX launcher capability FD.
 
-    Substring search is intentionally avoided: host wrappers may embed the path
-    in a larger ``-c`` script without actually executing that launcher.
-    """
+    The supported entrypoint is the reviewed shell script: it refuses ambient
+    ``COVERAGE_*`` before Python starts, requires an absolute native
+    ``M007_COVERAGE_PYTHON``, then mints an unlinked capability receipt on an
+    inherited FD.  Accidental direct module entry without that FD refuses.
 
-    expected_resolved = expected.resolve(strict=True)
-    for token in command_line.split():
-        cleaned = token.strip("\"'")
-        if not cleaned or cleaned.startswith("-"):
-            continue
-        try:
-            if Path(cleaned).resolve() == expected_resolved:
-                return True
-        except OSError:
-            continue
-    return False
-
-
-def require_public_launcher(launcher_path: Path) -> None:
-    """Refuse normal operation unless the reviewed public launcher is parent.
-
-    The POSIX launcher remains the parent process (no exec) after the
-    pre-interpreter ``COVERAGE_*`` refusal.  A pure-Python import bootstrap has a
-    different parent and cannot mint this capability.
+    This is not a same-user adversarial trust root.  A process that reimplements
+    the full shell capability protocol is treated as using the public launcher
+    surface; the enforceable shell guarantee remains pre-interpreter ambient
+    refusal when the reviewed script is the entrypoint.
     """
 
     global _PUBLIC_LAUNCH_AUTHORIZED
@@ -1761,12 +1742,67 @@ def require_public_launcher(launcher_path: Path) -> None:
         raise reporting.CoverageContractError(
             "public launcher path is not the reviewed coverage_session entrypoint"
         )
-    parent_cmd = _parent_command_line(os.getppid())
-    if not _command_references_path(parent_cmd, expected):
+    if type(capability_fd) is not int or capability_fd < 0:
         raise reporting.CoverageContractError(
-            "public launcher boundary missing: parent is not the reviewed POSIX entrypoint"
+            "public launcher capability FD is malformed"
+        )
+    try:
+        payload = os.read(capability_fd, 4096)
+    except OSError as exc:
+        raise reporting.CoverageContractError(
+            "public launcher capability FD is unreadable"
+        ) from exc
+    try:
+        text = payload.decode("ascii")
+    except UnicodeDecodeError as exc:
+        raise reporting.CoverageContractError(
+            "public launcher capability is not ASCII"
+        ) from exc
+    lines = text.splitlines()
+    if (
+        len(lines) != 3
+        or lines[0] != _LAUNCH_CAPABILITY_HEADER
+        or not _LAUNCH_TOKEN_PATTERN.fullmatch(lines[2])
+    ):
+        raise reporting.CoverageContractError(
+            "public launcher capability receipt is malformed"
+        )
+    try:
+        claimed_launcher = Path(lines[1]).resolve(strict=True)
+    except OSError as exc:
+        raise reporting.CoverageContractError(
+            "public launcher capability path is invalid"
+        ) from exc
+    if claimed_launcher != expected:
+        raise reporting.CoverageContractError(
+            "public launcher capability path is not the reviewed entrypoint"
+        )
+    try:
+        fd_stat = os.fstat(capability_fd)
+    except OSError as exc:
+        raise reporting.CoverageContractError(
+            "public launcher capability FD cannot be stated"
+        ) from exc
+    if not stat.S_ISREG(fd_stat.st_mode):
+        raise reporting.CoverageContractError(
+            "public launcher capability FD is not a regular file"
+        )
+    # The public shell unlinks the capability file after open; require nlink==0
+    # so a live still-linked path cannot be presented as the shell receipt.
+    if fd_stat.st_nlink != 0:
+        raise reporting.CoverageContractError(
+            "public launcher capability FD is not an unlinked shell receipt"
         )
     _PUBLIC_LAUNCH_AUTHORIZED = True
+
+
+def require_public_launcher(launcher_path: Path) -> None:
+    """Compatibility alias — parent-text authorization is no longer accepted."""
+
+    del launcher_path
+    raise reporting.CoverageContractError(
+        "public launcher boundary missing: capability FD authorization is required"
+    )
 
 
 def expected_acceptance_contract(

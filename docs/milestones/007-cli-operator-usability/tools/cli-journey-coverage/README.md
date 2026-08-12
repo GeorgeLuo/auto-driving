@@ -14,12 +14,16 @@ Those are explicit false values in every canonical report.
 
 Use only the executable `coverage_session`. It checks the inherited environment
 before Python starts and refuses every `COVERAGE_*` variable, including an
-ambient subprocess-patched coverage session. Interpreter selection never execs
-the bare name `python3` through caller-controlled PATH: the launcher resolves a
-native absolute interpreter (optionally via absolute `M007_COVERAGE_PYTHON`) and
-rejects shebang PATH shims. Direct execution of `coverage_session.py` is
-unsupported and always refuses; the launcher remains the parent process and the
-internal module authenticates that public entry before normal operation.
+ambient subprocess-patched coverage session. Set absolute
+`M007_COVERAGE_PYTHON` to a native interpreter; the launcher never searches
+caller `PATH` for `python3`. After that pre-check it mints an unlinked
+capability receipt on an inherited FD that the internal module requires before
+normal operation. Direct execution of `coverage_session.py` is unsupported and
+refuses. This is not a same-user adversarial trust root: reimplementing the
+shell capability protocol is equivalent to using the public launcher surface.
+The enforceable guarantee is pre-interpreter ambient refusal when this reviewed
+script is the entrypoint, plus refusal of accidental direct module entry without
+the capability FD.
 
 For each measured command, the collector:
 
@@ -45,8 +49,8 @@ behavioral acceptance.
 - A clean auto-driving implementation checkout.
 - A clean, identifiable local Stream Metrics UI checkout serving the accepted
   safe Chase environment.
-- The same `python3` interpreter for the collector, CLI shebang, and spawned
-  Python worker, with `coverage>=7.15,<8` installed.
+- Absolute `M007_COVERAGE_PYTHON` pointing at the same native interpreter the
+  CLI workers will use, with `coverage>=7.15,<8` installed.
 - A caller-selected session path that does not already exist. A file, symlink,
   empty directory, or nonempty directory at that path is refused.
 
@@ -61,6 +65,10 @@ From the repository root:
 session_parent="$(mktemp -d)"
 session_root="$session_parent/collection"
 coverage_session="docs/milestones/007-cli-operator-usability/tools/cli-journey-coverage/coverage_session"
+
+export M007_COVERAGE_PYTHON="$(command -v python3)"
+# Prefer an absolute realpath of the native interpreter, for example:
+# export M007_COVERAGE_PYTHON="$(python3 -c 'import sys; print(sys.executable)')"
 
 "$coverage_session" validate-manifest
 "$coverage_session" collect \

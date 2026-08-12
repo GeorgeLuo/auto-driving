@@ -51,6 +51,8 @@ def _clean_environment(**updates: str) -> dict[str, str]:
         for key, value in os.environ.items()
         if not key.startswith("COVERAGE_")
     }
+    # Public launcher requires an absolute native interpreter; never PATH search.
+    environment["M007_COVERAGE_PYTHON"] = str(Path(sys.executable).resolve())
     environment.update(updates)
     return environment
 
@@ -506,8 +508,6 @@ def _synthetic_pass_report() -> dict[str, object]:
                 "trailing_lf": 1,
                 "digest_projection_omits": ["integrity.report_sha256"],
             },
-            "session_seal_sha256": "8" * 64,
-            "finalization_receipt_sha256": "9" * 64,
             "freshness": {
                 "source_ok": True,
                 "source_reasons": [],
@@ -521,6 +521,43 @@ def _synthetic_pass_report() -> dict[str, object]:
             "numeric_coverage_gate": False,
         },
     }
+    offline_lineages = payload["inputs"]["offline_source_lineages"]
+    lineage_digest = report.sha256_bytes(report.canonical_file_bytes(offline_lineages))
+    seal = {
+        "schema": "m007_cli_coverage_session_seal_v1",
+        "collection_id": collection_id,
+        "collection_ended_at_utc": "2026-01-01T00:00:01Z",
+        "collection_result": "pass",
+        "sealed_inputs": [
+            {
+                "path": "receipts/offline-source-lineages.json",
+                "sha256": lineage_digest,
+            }
+        ],
+        "raw_shards": [],
+    }
+    seal_digest = report.sha256_bytes(report.canonical_file_bytes(seal))
+    final_receipt = {
+        "schema": "m007_cli_coverage_finalization_receipt_v1",
+        "finalized_at_utc": "2026-01-01T00:00:02Z",
+        "session_seal_sha256": seal_digest,
+    }
+    final_digest = report.sha256_bytes(report.canonical_file_bytes(final_receipt))
+    session_start = {
+        "collection_id": collection_id,
+        "collection_started_at_utc": "2026-01-01T00:00:00Z",
+    }
+    integrity = payload["integrity"]
+    assert isinstance(integrity, dict)
+    integrity.update(
+        {
+            "session_seal": seal,
+            "session_seal_sha256": seal_digest,
+            "finalization_receipt": final_receipt,
+            "finalization_receipt_sha256": final_digest,
+            "session_start": session_start,
+        }
+    )
     return report.finalize_report_digest(payload)
 
 
@@ -697,27 +734,31 @@ class ManifestAndLauncherTests(unittest.TestCase):
         )
         self.assertNotIn('"result": "pass"', completed.stdout)
 
-    def test_path_shadowed_python3_cannot_inject_coverage_before_refusal(self):
+    def test_launcher_requires_absolute_native_interpreter_env(self):
+        env = _clean_environment()
+        env.pop("M007_COVERAGE_PYTHON", None)
+        completed = subprocess.run(
+            [str(LAUNCHER), "validate-manifest"],
+            cwd=ROOT,
+            env=env,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(completed.returncode, 2)
+        self.assertIn("M007_COVERAGE_PYTHON", completed.stderr)
+
+    def test_path_python3_is_never_used_when_absolute_interpreter_is_set(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             shim_dir = root / "bin"
             shim_dir.mkdir()
             outside = root / "outside.coverage"
             outside.write_bytes(b"unchanged")
-            real_python = Path(sys.executable).resolve()
+            # Native-looking binary name that is still a shell wrapper would be
+            # rejected if selected; PATH must not be consulted at all.
             shim = shim_dir / "python3"
-            shim.write_text(
-                "\n".join(
-                    [
-                        "#!/bin/sh",
-                        f'export COVERAGE_FILE="{outside}"',
-                        'export COVERAGE_PROCESS_START="/tmp/hostile-coverage.ini"',
-                        f'exec "{real_python}" "$@"',
-                        "",
-                    ]
-                ),
-                encoding="utf-8",
-            )
+            shim.write_bytes(b"\x7fELF-fake-native-wrapper")
             shim.chmod(0o755)
             completed = subprocess.run(
                 [str(LAUNCHER), "validate-manifest"],
@@ -730,19 +771,22 @@ class ManifestAndLauncherTests(unittest.TestCase):
             self.assertEqual(completed.returncode, 0, completed.stderr)
             self.assertEqual(json.loads(completed.stdout)["result"], "pass")
             self.assertEqual(outside.read_bytes(), b"unchanged")
-            self.assertFalse(Path("/tmp/hostile-coverage.ini").exists())
 
-    def test_copied_clean_bootstrap_cannot_enter_without_public_launcher(self):
+    def test_copied_clean_bootstrap_cannot_enter_without_capability_fd(self):
         bootstrap = "\n".join(
             [
                 "import importlib.util, pathlib, sys",
                 "path = pathlib.Path(sys.argv[1])",
+                "launcher = pathlib.Path(sys.argv[2])",
                 "spec = importlib.util.spec_from_file_location('copied_clean', path)",
                 "module = importlib.util.module_from_spec(spec)",
                 "sys.modules[spec.name] = module",
                 "spec.loader.exec_module(module)",
-                # Deliberately omit require_public_launcher; even calling it with the
-                # real launcher path must fail because the parent is not that shell.
+                # Parent-text / require_public_launcher alias must not authorize.
+                "try:",
+                "    module.require_public_launcher(launcher)",
+                "except Exception:",
+                "    pass",
                 "raise SystemExit(module.main(['validate-manifest']))",
             ]
         )
@@ -750,7 +794,7 @@ class ManifestAndLauncherTests(unittest.TestCase):
             sentinel = Path(temporary) / "outside.coverage"
             sentinel.write_bytes(b"unchanged")
             completed = subprocess.run(
-                [sys.executable, "-c", bootstrap, str(SESSION_MODULE)],
+                [sys.executable, "-c", bootstrap, str(SESSION_MODULE), str(LAUNCHER)],
                 cwd=ROOT,
                 env=_clean_environment(),
                 check=False,
@@ -758,35 +802,78 @@ class ManifestAndLauncherTests(unittest.TestCase):
                 text=True,
             )
             self.assertEqual(completed.returncode, 2)
-            self.assertTrue(
-                "public launcher" in completed.stderr
-                or "direct Python entrypoint" in completed.stderr
-                or "launcher boundary" in completed.stderr
-                or "unsupported" in completed.stderr
-                or completed.returncode == 2
-            )
-            # Clean copied import must not produce a pass result.
+            self.assertIn("public launcher", completed.stderr)
             self.assertNotIn('"result": "pass"', completed.stdout)
             self.assertEqual(sentinel.read_bytes(), b"unchanged")
 
-    def test_require_public_launcher_rejects_non_parent_caller(self):
-        # Run in a subprocess so this test process's parent cmdline cannot
-        # accidentally mention the launcher path (agent/shell wrappers sometimes do).
+    def test_fake_ps_and_parent_text_cannot_authorize_without_capability_fd(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            shim_dir = Path(temporary) / "bin"
+            shim_dir.mkdir()
+            ps = shim_dir / "ps"
+            ps.write_text(
+                "#!/bin/sh\nprintf '%s\\n' " + repr(str(LAUNCHER)) + "\n",
+                encoding="utf-8",
+            )
+            ps.chmod(0o755)
+            probe = "\n".join(
+                [
+                    "import importlib.util, pathlib, sys",
+                    "path = pathlib.Path(sys.argv[1])",
+                    "launcher = pathlib.Path(sys.argv[2])",
+                    "spec = importlib.util.spec_from_file_location('fake_ps', path)",
+                    "module = importlib.util.module_from_spec(spec)",
+                    "sys.modules[spec.name] = module",
+                    "spec.loader.exec_module(module)",
+                    "try:",
+                    "    module.require_public_launcher(launcher)",
+                    "    print('authorized-by-text')",
+                    "    raise SystemExit(module.main(['validate-manifest']))",
+                    "except module.reporting.CoverageContractError as exc:",
+                    "    print(type(exc).__name__)",
+                    "    raise SystemExit(2)",
+                ]
+            )
+            completed = subprocess.run(
+                [sys.executable, "-c", probe, str(SESSION_MODULE), str(LAUNCHER)],
+                cwd=ROOT,
+                env=_clean_environment(PATH=f"{shim_dir}:{os.environ.get('PATH', '')}"),
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(completed.returncode, 2)
+            self.assertNotIn("authorized-by-text", completed.stdout)
+            self.assertNotIn('"result": "pass"', completed.stdout)
+
+    def test_linked_capability_file_is_rejected(self):
         probe = "\n".join(
             [
-                "import importlib.util, pathlib, sys",
+                "import importlib.util, os, pathlib, sys, tempfile",
                 "path = pathlib.Path(sys.argv[1])",
-                "launcher = pathlib.Path(sys.argv[2])",
-                "spec = importlib.util.spec_from_file_location('probe_session', path)",
+                "launcher = pathlib.Path(sys.argv[2]).resolve()",
+                "spec = importlib.util.spec_from_file_location('linked_cap', path)",
                 "module = importlib.util.module_from_spec(spec)",
+                "sys.modules[spec.name] = module",
                 "spec.loader.exec_module(module)",
+                "temporary = tempfile.NamedTemporaryFile('w+b', delete=False)",
+                "payload = (",
+                "    b'm007-coverage-launch-v1\\n'",
+                "    + str(launcher).encode() + b'\\n'",
+                "    + (b'a' * 32) + b'\\n'",
+                ")",
+                "temporary.write(payload)",
+                "temporary.flush()",
+                "fd = os.open(temporary.name, os.O_RDONLY)",
                 "try:",
-                "    module.require_public_launcher(launcher)",
-                "except module.reporting.CoverageContractError as exc:",
-                "    print(type(exc).__name__ + ':' + str(exc))",
+                "    module.authorize_public_launch(capability_fd=fd, launcher_path=launcher)",
+                "    print('authorized-linked')",
+                "    raise SystemExit(0)",
+                "except module.reporting.CoverageContractError:",
                 "    raise SystemExit(2)",
-                "print('authorized')",
-                "raise SystemExit(0)",
+                "finally:",
+                "    os.close(fd)",
+                "    os.unlink(temporary.name)",
             ]
         )
         completed = subprocess.run(
@@ -797,9 +884,8 @@ class ManifestAndLauncherTests(unittest.TestCase):
             capture_output=True,
             text=True,
         )
-        self.assertEqual(completed.returncode, 2, completed.stdout + completed.stderr)
-        self.assertIn("CoverageContractError", completed.stdout)
-        self.assertIn("public launcher", completed.stdout)
+        self.assertEqual(completed.returncode, 2)
+        self.assertNotIn("authorized-linked", completed.stdout)
 
 
 class RootAndEnvironmentTests(unittest.TestCase):
@@ -1808,6 +1894,57 @@ class DependencyFreshnessAndDigestTests(unittest.TestCase):
             "coordinated lineage forge keeping raw hash": lambda value: (
                 value["inputs"]["offline_source_lineages"][0].__setitem__(
                     "ordered_input_sha256", "0" * 64
+                ),
+                [
+                    command.get("offline_source_lineage", {}).__setitem__(
+                        "ordered_input_sha256", "0" * 64
+                    )
+                    for command in value["commands"]
+                    if command.get("offline_source_lineage")
+                ],
+            ),
+            "forged argv template": lambda value: (
+                value["commands"][0].__setitem__(
+                    "argv_template", ["./cli/automa", "forged-command"]
+                ),
+                value["commands"][0].__setitem__(
+                    "resolved_argv", ["./cli/automa", "forged-command"]
+                ),
+            ),
+            "reordered required commands": lambda value: value.__setitem__(
+                "commands",
+                [value["commands"][1], value["commands"][0], *value["commands"][2:]],
+            ),
+            "forged seal digest only": lambda value: value["integrity"].__setitem__(
+                "session_seal_sha256", "0" * 64
+            ),
+            "forged reverse timestamps": lambda value: (
+                value["timestamps"].__setitem__(
+                    "collection_started_at_utc", "2099-01-01T00:00:02Z"
+                ),
+                value["timestamps"].__setitem__(
+                    "collection_ended_at_utc", "2099-01-01T00:00:01Z"
+                ),
+                value["timestamps"].__setitem__(
+                    "finalized_at_utc", "2099-01-01T00:00:00Z"
+                ),
+            ),
+            "lineage content rewrite with matching hash": lambda value: (
+                value["inputs"]["offline_source_lineages"][0]["raw_receipt"][
+                    "content"
+                ].__setitem__("ordered_input_sha256", "0" * 64),
+                value["inputs"]["offline_source_lineages"][0].__setitem__(
+                    "ordered_input_sha256", "0" * 64
+                ),
+                value["inputs"]["offline_source_lineages"][0]["raw_receipt"].__setitem__(
+                    "sha256",
+                    report.sha256_bytes(
+                        report.canonical_json_bytes(
+                            value["inputs"]["offline_source_lineages"][0]["raw_receipt"][
+                                "content"
+                            ]
+                        )
+                    ),
                 ),
                 [
                     command.get("offline_source_lineage", {}).__setitem__(

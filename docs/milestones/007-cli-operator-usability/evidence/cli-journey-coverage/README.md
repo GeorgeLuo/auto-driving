@@ -20,28 +20,35 @@ numeric coverage threshold; PRs #88 and #100 remain the behavioral authority.
 ## Canonical capture
 
 The 2026-08-12 UTC capture passed from clean auto-driving commit
-`2345c10901ebaafe44773ec511d87c0e584b9634` and clean Metrics UI commit
+`19327a9b5441112312cb4e621743ca95a09e35d2` and clean Metrics UI commit
 `722e070fdc9f4ee89d13f947bf3996e62dcb2783` on
 `m002/04-passive-observation`. Collection
-`c947c3f2038336b594954ec9ab2d31e6` used CPython 3.11.7 and Coverage.py
+`bc3a14ebe5d508be3e59def24d5d3c33` used CPython 3.11.7 and Coverage.py
 7.15.2 with a canonical receipt for all 539 visible distributions.
 
 The report contains 34 commands, 34 logical contexts, 37 validated raw shards,
-and context-aware execution for 63 owned Python files. All three automation
-launch contexts have two shards and worker-only execution inside
-`run_vehicle_automation`. Both catalogs passed their machine preflight, terminal
-cleanup proved every observed worker dead, dependency/source freshness passed,
-and repository-root `.coverage*` identities were unchanged. The runners remain
+and context-aware execution for 63 owned Python files. Each automation launch
+is bound to its PID and run generation, a later same-generation status, terminal
+death, one foreground shard, and a distinct post-termination worker shard with
+execution inside `run_vehicle_automation`. The three offline replay commands
+share one sealed four-frame source identity with manifest, ordered-input, and
+frame-receipt digests. Deterministic primary, continuity-family,
+support/cleanup, and all-context rollups plus command/journey bootstrap
+comparisons are included directly in the report.
+
+Both catalogs passed their machine preflight, terminal cleanup proved every
+observed worker dead, dependency/source freshness passed, and repository-root
+`.coverage*` identities were unchanged. The runners remain
 `behavioral_verdict: not_evaluated`, as required for this coverage-only replay.
 
 Integrity identities:
 
 - Report projection SHA-256:
-  `35fe4969170cb5ac91575c2b942d62316cb796c0fa24ee9e99868ca205355718`
+  `349beafe3ecb99f4550893020a80b11d6b7c20b273ebfe8801b1d33d65f18b97`
 - Session seal SHA-256:
-  `2cb0d89da5e9aa9fde12e32b4cd61e351eb45b629e5c72a5cab5e67467feabf5`
+  `8b3fa35df48241fcdf4f00655ab14fb28a7786e4fe01e42c933455d14ef891e1`
 - Immutable finalization receipt SHA-256:
-  `2367f73b812c1f0e7ce92cc9ff63d63fa42b0f8c12b748279af6a2179c7e70eb`
+  `7a67092d59400f846843ab464d3b700892e9645eb6029b51fcd82b340b0443c9`
 
 Verify the tracked report from the repository root:
 

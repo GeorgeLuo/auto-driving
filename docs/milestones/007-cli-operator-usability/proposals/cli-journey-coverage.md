@@ -55,12 +55,36 @@ It must bind, by repository-relative path and SHA-256:
   bootstrap context before journey collection.
 
 The manifest records stable journey, family, step, command-ordinal, and role
-identities. Context IDs are generated from those stable fields, never from raw
-argv, absolute paths, timestamps, PIDs, vehicle responses, or operator input.
-They are static contexts, dynamic context switching is disabled, and IDs must
-match `^[a-z0-9][a-z0-9._/-]{0,159}$` without `|`. The documented hierarchy is
-`m007/bootstrap/<probe>`, `m007/journey/<journey-or-family>/<step>/cmd-<NN>`,
-or `m007/support/<role>/<step>/cmd-<NN>`. Every expanded ID is unique.
+identities. **Logical context IDs** are generated from those stable fields,
+never from raw argv, absolute paths, timestamps, PIDs, vehicle responses, or
+operator input. They must match `^[a-z0-9][a-z0-9._/-]{0,159}$` without `|`.
+The documented hierarchy is `m007/bootstrap/<probe>`,
+`m007/journey/<journey-or-family>/<step>/cmd-<NN>`, or
+`m007/support/<role>/<step>/cmd-<NN>`. Every expanded logical ID is unique.
+
+Logical identity alone is not raw-data provenance. Before any measured command,
+the collector exclusively creates the empty session root, obtains at least 128
+bits from the operating system CSPRNG, encodes them as one 32-character
+lowercase hexadecimal `collection_id`, and writes that value once into the
+immutable session-start receipt. The value is unpredictable before root
+creation and cannot be caller-supplied, derived from a commit/timestamp/PID, or
+copied from an earlier receipt; every collection performs a fresh CSPRNG draw.
+
+Coverage.py records one **measurement context** per process in this exact form:
+
+```text
+m007-run/<collection_id>/<logical_context_id>
+```
+
+These are static contexts and dynamic context switching is disabled. Before
+combination, the collector reads each shard independently through the supported
+`CoverageData` API. Every context in every candidate shard must contain the
+current receipt's exact `collection_id` and map one-to-one to an expected
+logical context. Empty contexts, a previous/future/unknown collection ID,
+multiple logical contexts in one process shard, or a value that cannot be
+mapped without lossy normalization rejects the shard and prevents `pass`.
+Only after this validation may the report map measurement contexts back to
+stable logical contexts for command and journey aggregation.
 
 Every Python CLI invocation performed by the runner receives a context,
 including catalog commands, `capture_json` commands, precondition checks or
@@ -75,14 +99,16 @@ of these attribution roles:
 | `precondition` | Safety/readiness inspection or pre-existing-worker cleanup | No; separate support rollup |
 | `cleanup` | Terminal stop/status or restoration command | Separate cleanup rollup; included only when the catalog declares it as a journey command |
 
-The same argv appearing in two steps or journeys receives two distinct
-contexts. An unregistered or empty measured context, an unknown CLI invocation,
-a missing manifest entry, or a catalog digest mismatch prevents `pass` before
-the data can be presented as complete journey coverage.
+The same argv appearing in two steps or journeys receives two distinct logical
+and measurement contexts. An unregistered or empty measured context, an
+unknown CLI invocation, a missing manifest entry, a wrong `collection_id`, or
+a catalog digest mismatch prevents `pass` before the data can be presented as
+complete journey coverage.
 
 For every executed command, the durable report records:
 
-- manifest context, role, journey/family/step, and command ordinal;
+- collection ID, measurement context, logical manifest context, role,
+  journey/family/step, and command ordinal;
 - argv template and resolved argv as an array, normalized working directory,
   expected and observed exit code, and ordered start/end timestamps;
 - normalized identities for run-produced paths such as the offline source
@@ -127,6 +153,45 @@ pretend foreground and worker execution are separate commands, but collection
 must prove that worker-only execution reached the combined data under that
 launch context.
 
+### Authoritative pre-interpreter environment
+
+The supported public entrypoint is a small POSIX executable launcher in the
+new coverage-tool directory, not direct execution of its internal Python
+module. This is an enforcement boundary: it runs before Python startup and
+refuses collection or finalization if the inherited environment contains any
+variable whose name begins `COVERAGE_`. This includes an invocation nested
+beneath another subprocess-patched Coverage.py session. Refusal occurs before
+the collector interpreter starts, so an ambient `COVERAGE_PROCESS_CONFIG`,
+`COVERAGE_PROCESS_START`, `COVERAGE_FILE`, or `COVERAGE_RCFILE` cannot start the
+collector under foreign measurement or write an outside-root file on exit.
+
+After that clean launch, the collector constructs every measured CLI child
+environment from the sanitized parent. At the injection boundary it removes
+all `COVERAGE_*` keys, then adds only
+`COVERAGE_PROCESS_START=<absolute session-owned command config>`. It leaves
+`COVERAGE_FILE`, `COVERAGE_RCFILE`, and `COVERAGE_PROCESS_CONFIG` absent.
+Coverage.py may then create `COVERAGE_PROCESS_CONFIG` from that verified
+configuration inside the foreground CLI process for its Python descendants;
+that generated value, rather than any caller value, is the sole descendant
+process configuration.
+
+Before any catalog command, the collector loads every generated command config
+through supported Coverage.py configuration access and verifies the effective
+data-file realpath is inside the session root, branch measurement is enabled,
+the exact current measurement context is selected, subprocess patching and
+parallel data are active, and SIGTERM saving is enabled. A measured support
+probe under the same authoritative child environment confirms those effective
+values at interpreter startup. Any mismatch fails before a journey command and
+all data written by the probe is already session-contained.
+
+Tests must invoke the public launcher with hostile individual and combined
+`COVERAGE_*` environments, including a parent `patch = subprocess` session and
+outside-root data/config paths. They prove refusal happens before the internal
+Python entrypoint marker executes and that outside sentinels remain unchanged.
+Direct Python execution of the internal module is unsupported and must refuse
+normal operation unless the launcher has established its sealed clean-launch
+marker.
+
 ### Process completion and background-worker flush
 
 The coverage session configuration preserves `.coveragerc` source, omit,
@@ -136,8 +201,10 @@ configuration and tests that the prior/default application signal behavior is
 preserved.
 
 For each expected measured Python process, the collector inventories newly
-created readable parallel data shards while they are still separate. For a
-background automation run it must additionally establish this lifecycle:
+created readable parallel data shards while they are still separate and
+rejects any shard whose supported-API contexts do not bind to the current
+collection receipt. For a background automation run it must additionally
+establish this lifecycle:
 
 1. the runner records a worker start and expected launch context;
 2. runner/runtime evidence records the worker generation and, when the catalog
@@ -166,8 +233,10 @@ database, and intermediate reports must all remain under that root.
 
 The collector must:
 
-1. refuse a nonempty raw-data directory or a data-file path outside the
-   resolved session root;
+1. require a caller-selected, nonexistent session-root path and create it
+   atomically with owner-only permissions; refuse any pre-existing file,
+   symlink, empty directory, or nonempty directory, or a data-file path outside
+   the resolved session root;
 2. snapshot repository-root `.coverage` / `.coverage.*` identities before
    collection and prove they are unchanged afterward;
 3. never call `coverage erase` against the repository or use an implicit
@@ -191,16 +260,17 @@ Required sections are:
 
 | Section | Required content |
 | --- | --- |
-| `result` | `pass`, `incomplete`, or `failed`; reason codes; collection/finalization timestamps; cleanup verdict |
-| `subject` | auto-driving commit, clean-worktree assertion, relevant-source tree identity, platform, Python and exact Coverage.py versions |
-| `inputs` | manifest/config/collector/runner/catalog paths and SHA-256 values; owned source roots and omit rules; Metrics UI identity used for live commands |
+| `result` | `pass`, `incomplete`, or `failed`; reason codes; immutable receipt-sourced collection/finalization timestamps; cleanup verdict |
+| `subject` | auto-driving commit, clean-worktree assertion, relevant-source tree identity, platform, exact Python interpreter identity, exact Coverage.py version, and collection ID |
+| `inputs` | manifest/config/collector/launcher/runner/catalog paths and SHA-256 values; owned source roots and omit rules; Metrics UI identity used for live commands |
+| `dependency_environment` | Both requirements-file hashes and canonical sorted installed-distribution receipt for the exact interpreter |
 | `commands` | Ordered normalized command receipts with exact context and attribution role |
-| `process_completeness` | Expected/observed foreground and background process receipts, raw-shard stable IDs/hashes, readability, and flush verdicts |
-| `contexts` | Expected and observed context sets; no empty/unknown contexts; journey/support membership |
+| `process_completeness` | Expected/observed foreground and background process receipts, collection-bound raw-shard stable IDs/hashes, readability, and flush verdicts |
+| `contexts` | Collection ID; expected/observed measurement-to-logical context mapping; no empty, foreign, or unknown contexts; journey/support membership |
 | `files` | Repository-relative owned files with sorted executed statement lines and executed arcs for each context |
 | `bootstrap_comparison` | Raw bootstrap, shared-with-bootstrap, bootstrap-only, and command/journey-specific line and arc sets |
 | `aggregates` | Informational command, journey, support, cleanup, and all-context counts; no pass threshold |
-| `integrity` | Canonical report payload digest and freshness checks against post-run source/config/tool/catalog identities |
+| `integrity` | Exact canonical digest algorithm/projection and freshness checks against post-run source/config/tool/catalog/dependency identities |
 | `non_claims` | Explicit false values for behavioral correctness, dead-code proof, production value, and numeric coverage gating |
 
 Executed arcs are the context-aware raw representation used for branch
@@ -222,6 +292,31 @@ cli/automa_cli/
 
 An absolute alias, case-fold collision, symlink escape, or measured file
 outside those roots is rejected rather than silently merged.
+
+### Canonical dependency-environment receipt
+
+“Exact dependency identity” has one required representation. The collector
+records SHA-256 values for repository-root `requirements.txt` and
+`requirements-test.txt`, including the latter's recursive reference to the
+former. For the exact Python executable used by the runner and every measured
+CLI process, it then uses the standard `importlib.metadata` interface to record
+**all** visible installed distributions, not a hand-selected subset that could
+omit a branch-affecting transitive package.
+
+Each distribution entry contains its PEP 503-normalized lowercase name and
+exact version. When `direct_url.json` exists, the receipt records its SHA-256
+but not its potentially sensitive absolute URL. Entries sort by normalized
+name then version; duplicate normalized names, missing/invalid names or
+versions, or conflicting visible versions prevent `pass`. The interpreter
+receipt also records implementation, full version, ABI/cache tag, normalized
+executable identity, and executable SHA-256.
+
+The canonical dependency receipt is captured before commands, repeated after
+cleanup, included in the report, and compared again by finalization and
+`verify-report`. Any difference in requirements hashes, interpreter identity,
+or installed-distribution entries makes the capture stale. This records the
+environment in which branches executed; it does not introduce a lockfile or
+claim that a different environment should execute the same live path.
 
 ### Bootstrap/import classification
 
@@ -253,13 +348,61 @@ particular, an eager import appearing in a command context means only that the
 line executed during that invocation; the comparison determines whether it
 also belongs to the measured bootstrap footprint.
 
+### Immutable timestamps and canonical report digest
+
+Canonical output never calls the clock while assembling report fields. The
+collector writes three immutable, session-owned receipts with UTC RFC 3339
+timestamps at the events they name:
+
+1. `session-start.json` is exclusively created before any measured process and
+   contains `collection_id` and `collection_started_at_utc`.
+2. `session-seal.json` is atomically written once after terminal cleanup and
+   raw-shard inventory. It contains `collection_ended_at_utc`, the ordered raw
+   input/shard hashes, and hashes of the command, environment, and cleanup
+   receipts. After sealing, those inputs are immutable.
+3. `finalization-receipt.json` is atomically written once immediately before
+   the first report assembly. It contains `finalized_at_utc` plus the exact
+   `session-seal.json` hash. Later finalization must reuse it; a different seal,
+   missing immutable input, or attempted timestamp replacement fails.
+
+The report's timestamps come only from those receipts. Re-running finalization
+therefore does not create a new report timestamp. Volatile invocation facts
+such as verifier start/end time, elapsed time, caller working directory, and
+the final PR-head check live only in stdout and optional untracked
+`<session-root>/diagnostics/` receipts. They are excluded from raw-input
+sealing, the tracked report, and its digest domain; `verify-report` never
+modifies `report.json`.
+
+The canonical digest algorithm is exact:
+
+1. Report values are limited to JSON null, booleans, integers, strings, arrays,
+   and objects; floats and non-finite numbers are forbidden.
+2. The digest projection is the complete report object with only
+   `integrity.report_sha256` omitted. No timestamp or acceptance field is
+   otherwise normalized or excluded.
+3. Serialize that projection with Python's `json.dumps` using
+   `ensure_ascii=False`, `allow_nan=False`, `sort_keys=True`, and
+   `separators=(",", ":")`; encode the resulting string as UTF-8 with no
+   trailing newline; SHA-256 those bytes.
+4. Set `integrity.report_sha256` to the lowercase hexadecimal digest. Serialize
+   the full report with the same options and write exactly one trailing LF.
+
+Verification removes only the digest field, recomputes this projection, and
+compares it with a strict lowercase-hex value. Two finalizations of the same
+sealed session and immutable finalization receipt must produce byte-identical
+files. A changed receipt, self-digest, pretty-print variation, volatile
+timestamp insertion, reordered set-derived array, or post-write mutation fails
+verification.
+
 ### Reproducibility, freshness, and evidence
 
 For this frontier, reproducible means:
 
-- stable manifest/context identities and an exact replay command;
+- stable logical manifest contexts, collection-bound measurement contexts, and
+  an exact replay command through the authoritative launcher;
 - exact source, tool, config, catalog, dependency, and external identities;
-- deterministic report generation from a frozen raw session; and
+- deterministic report generation from a sealed raw session and reused
+  immutable finalization receipt; and
 - explicit deltas when a later live replay follows a different path.
 
 It does not mean two live simulator runs must execute byte-identical line/arc
@@ -270,7 +413,9 @@ An acceptance capture starts from a clean auto-driving worktree. The report
 records the source commit at collection time. A freshness verifier run at the
 final implementation head permits only tracked evidence-file changes after
 that subject commit; any change to owned source, `.coveragerc`, collector,
-runner, manifest, or catalog invalidates `pass` until collection is rerun.
+launcher, runner, manifest, catalog, either requirements file, exact Python
+interpreter, or installed-distribution receipt invalidates `pass` until
+collection is rerun.
 
 Tracked evidence lives under
 `docs/milestones/007-cli-operator-usability/evidence/cli-journey-coverage/` and
@@ -292,13 +437,21 @@ be cited as behavioral acceptance. The previously accepted evidence in PRs
 `pass` requires all of the following:
 
 - preflight identity and clean-source checks pass;
+- the public launcher established a clean pre-interpreter environment and every
+  effective command configuration resolves inside the session root;
+- requirements, interpreter, and installed-distribution receipts match before
+  commands, after cleanup, and at final verification;
 - every manifest journey command executes with its expected exit code;
-- every runner-generated Python CLI command has a registered nonempty context;
+- every runner-generated Python CLI command has a registered nonempty logical
+  context and a measurement context bound to the current collection ID;
 - all expected foreground and background process data is readable and
-  combined from the isolated session root;
+  individually provenance-validated, then combined from the isolated session
+  root;
 - branch/arc data is present for the configured owned source roots;
 - terminal cleanup succeeds and no repository-owned automation worker remains;
-- the report validates against its schema and canonical digest; and
+- immutable receipts validate, repeated finalization is byte-stable, and the
+  report validates against its schema and exact canonical digest projection;
+  and
 - the freshness verifier matches the final implementation tree, allowing only
   evidence-only descendants of the recorded subject commit.
 
@@ -313,10 +466,11 @@ uses a separately reviewed exceptional handoff rather than weakening `pass`.
 | Concern | Owner |
 | --- | --- |
 | Catalog safety, command ordering, machine validation, restoration, cleanup | Accepted live CLI session runner |
-| Manifest expansion, stable context identity, coverage-only runner integration | New CLI journey coverage collector |
+| Pre-interpreter ambient Coverage.py refusal and sealed child environment | New POSIX coverage-session launcher |
+| Manifest expansion, collection ID, logical/measurement context mapping, coverage-only runner integration | New CLI journey coverage collector |
 | Process startup, parallel data, SIGTERM flush, context-preserving combination | Session-scoped Coverage.py configuration built from `.coveragerc` |
-| Context-aware line/arc extraction, bootstrap classification, canonical schema | New coverage report/finalizer module using public Coverage.py APIs |
-| Source and evidence freshness | Finalizer comparing subject commit and relevant path digests to final implementation head |
+| Dependency/interpreter receipt, context-aware line/arc extraction, bootstrap classification, canonical schema/digest | New coverage report/finalizer module using public Python and Coverage.py APIs |
+| Source, dependency-environment, and evidence freshness | Finalizer comparing subject commit and relevant path/environment identities to final implementation head |
 | Behavioral correctness of primary/continuity journeys | Existing accepted PR #88 / PR #100 evidence, not this collector |
 | Later complete leaf and US-01 through US-10 accounting | Next frontier, Complete CLI surface and sequence audit |
 
@@ -326,8 +480,9 @@ cannot independently produce `m007_cli_journey_coverage_v1.result = pass`.
 
 ## Affected Paths
 
-- `.coveragerc` and `requirements-test.txt` define the existing owned-code
-  measurement engine and supported Coverage.py range.
+- `.coveragerc`, `requirements.txt`, and `requirements-test.txt` define the
+  existing owned-code measurement engine and declared dependency ranges; their
+  hashes are report inputs.
 - `autonomy/`, `implementations/`, and `cli/automa_cli/` are measured inputs;
   this frontier does not modify their product behavior.
 - `cli/automa_cli/automation.py` supplies the detached Python-worker topology
@@ -338,8 +493,8 @@ cannot independently produce `m007_cli_journey_coverage_v1.result = pass`.
   opt-in coverage integration.
 - A new
   `docs/milestones/007-cli-operator-usability/tools/cli-journey-coverage/`
-  directory owns the manifest, collector, report schema/finalizer, and usage
-  documentation.
+  directory owns the pre-interpreter launcher, manifest, collector, report
+  schema/finalizer, and usage documentation.
 - `docs/milestones/007-cli-operator-usability/evidence/cli-journey-coverage/`
   owns the tracked acceptance report.
 - `tests/milestones/` owns deterministic collection, isolation, attribution,
@@ -351,9 +506,14 @@ cannot independently produce `m007_cli_journey_coverage_v1.result = pass`.
 | Case | Required result |
 | --- | --- |
 | Repository already has `.coverage` and `.coverage.*` sentinels | Collector uses only its fresh session root; outside names and hashes are unchanged on success and failure |
-| Empty or reused/nonempty session data directory | Empty fresh root proceeds; reused raw-data root is refused before execution |
+| Public launcher inherits any `COVERAGE_*` variable | Refuse before Python startup; neither internal-entrypoint marker nor outside-root data changes |
+| Collector is invoked beneath another `patch = subprocess` Coverage.py process | Launcher detects inherited process configuration and refuses before its Python interpreter can be auto-measured |
+| Direct internal-Python entrypoint bypasses the launcher | Refuse normal operation because no sealed clean-launch marker exists; documented commands never use this path |
+| Generated command config or effective `COVERAGE_FILE` resolves outside the session | Refuse before a catalog command; the measured config probe writes only inside the session |
+| Nonexistent versus pre-existing empty/nonempty/symlink session root | Collector atomically creates only the nonexistent root; every pre-existing form is refused before execution |
 | Combine/report command omits an explicit input path | Validation rejects the implementation path; no current-directory implicit combine is permitted |
-| Stale or foreign shard is injected into the session | Digest/context/source checks reject `pass`; it is never silently unioned |
+| Same-commit, same-config, same-logical-context worker shard from a prior successful run is copied into the fresh root | Per-shard public-API inspection sees the prior collection ID and rejects it before combine; it cannot conceal the missing current worker |
+| Other stale or foreign shard is injected into the session | Collection-ID/context/source checks reject `pass`; it is never silently unioned |
 | Parallel shard is unreadable or has no branch arcs | `incomplete`/`failed` with the shard receipt; no summary-only fallback |
 | Normal foreground CLI command | A registered context and readable shard appear with expected command receipt and owned execution |
 | Foreground command spawns a normal Python child | Child-owned sentinel execution combines under the command context |
@@ -365,6 +525,9 @@ cannot independently produce `m007_cli_journey_coverage_v1.result = pass`.
 | Runner emits supplemental status/precondition/cleanup commands | Every command is labeled; support execution cannot inflate declared journey-only rollups |
 | Catalog or manifest changes after collection | Freshness fails until the full capture is rerun |
 | Owned source or `.coveragerc` changes after collection | Freshness fails even if the old report still parses |
+| Requirements file, interpreter, or installed distribution changes after collection | Dependency freshness fails with the exact receipt delta; report cannot remain `pass` |
+| Two allowed environments use different NumPy/OpenCV/Pillow/Requests/PyYAML or transitive versions | Each report records a different canonical distribution receipt; the path delta is interpretable rather than silently called irreproducible |
+| Duplicate normalized distribution names or sensitive `direct_url.json` | Duplicate/conflicting identities fail; only the direct-URL hash is recorded |
 | Evidence-only commit follows the recorded subject commit | Finalizer permits it only when every non-evidence relevant digest is unchanged |
 | Auto-driving worktree is dirty at acceptance capture | Refuse canonical `pass`; diagnostic collection may be explicitly noncanonical |
 | Metrics UI is unavailable or its required identity cannot be recorded | `incomplete`, not skip/pass; no simulator reconfiguration workaround |
@@ -372,7 +535,10 @@ cannot independently produce `m007_cli_journey_coverage_v1.result = pass`.
 | Bootstrap and command execute the same import line/arc | Raw sets retain it and `shared_with_bootstrap` owns it; it is absent from `command_specific` |
 | Primary help command matches the bootstrap probe | Both contexts remain named; an empty/small help delta is truthful |
 | Source path arrives through absolute/relative alias or symlink escape | Canonicalize only valid owned paths; collisions/escapes reject `pass` |
-| Same frozen raw data is finalized twice | Canonical `report.json` payload and digest are byte-identical |
+| Same sealed raw data is finalized twice at different wall-clock times | Immutable finalization receipt is reused; canonical `report.json` payload and digest are byte-identical |
+| Digest verification reads `integrity.report_sha256` | The field is omitted from the digest projection, then strictly compared; no self-referential hash |
+| Finalizer or verifier adds invocation timestamps/paths/durations | Volatile values remain only in stdout or untracked diagnostics and cannot change the tracked report |
+| Session seal or finalization receipt is replaced, reordered, or mismatched | Receipt/hash validation fails; report is not regenerated from altered provenance |
 | Live replay executes a different valid path | Report exposes the line/arc delta; reproducibility is not falsely failed |
 | Consumer asks whether covered behavior is correct | `non_claims.behavioral_correctness` is false; refer to behavioral tests/evidence |
 | Consumer asks whether unobserved code is dead | `non_claims.dead_code` is false; defer capability reconciliation to M007-09 |
@@ -393,8 +559,12 @@ cannot independently produce `m007_cli_journey_coverage_v1.result = pass`.
   with Coverage.py installed. Non-Python subprocess execution is outside this
   Python report and must not be presented as measured.
 - Acceptance collection runs on a POSIX environment that supports the runner's
-  detached process-group and SIGTERM cleanup semantics. An unsupported platform
-  reports `incomplete` rather than assuming worker coverage.
+  pre-interpreter shell launcher plus detached process-group and SIGTERM cleanup
+  semantics. An unsupported platform reports `incomplete` rather than bypassing
+  the launcher or assuming worker coverage.
+- The exact Python interpreter exposes installed-distribution metadata through
+  the standard `importlib.metadata` API. Missing or contradictory metadata is
+  an explicit non-pass environment finding, not a reason to omit the receipt.
 - The local Metrics UI/Chase environment can execute the already accepted
   observation-only commands and provides a recordable repository/version
   identity. This proposal authorizes no hidden simulator setup, movement, or
@@ -421,6 +591,8 @@ cannot independently produce `m007_cli_journey_coverage_v1.result = pass`.
 - Replacing the existing informational deterministic-test coverage job.
 - Tracking binary `.coverage` databases or raw process shards as milestone
   evidence.
+- Introducing a dependency lockfile or claiming the recorded environment is
+  the only valid environment; the receipt records what executed this capture.
 - Guaranteeing byte-identical paths across repeated live simulator runs.
 
 ## File Impact
@@ -439,12 +611,13 @@ cannot independently produce `m007_cli_journey_coverage_v1.result = pass`.
 | `.coveragerc` | Enable SIGTERM data save while preserving branch/source/relative/subprocess behavior |
 | `docs/milestones/007-cli-operator-usability/tools/cli-journey-coverage/README.md` | Operator/developer procedure and non-claims |
 | `docs/milestones/007-cli-operator-usability/tools/cli-journey-coverage/manifest.json` | `m007_cli_coverage_manifest_v1` accepted journey/context mapping |
-| `docs/milestones/007-cli-operator-usability/tools/cli-journey-coverage/coverage_session.py` | Isolated collection, runner orchestration, process/shard receipts, and finalization CLI |
-| `docs/milestones/007-cli-operator-usability/tools/cli-journey-coverage/coverage_report.py` | Public-API line/arc extraction, bootstrap classification, canonical report schema/verification |
+| `docs/milestones/007-cli-operator-usability/tools/cli-journey-coverage/coverage_session` | Public POSIX entrypoint; reject ambient Coverage.py control before interpreter startup and seal the clean launch |
+| `docs/milestones/007-cli-operator-usability/tools/cli-journey-coverage/coverage_session.py` | Internal isolated collection, collection-ID/context binding, runner orchestration, process/shard/immutable receipts, and finalization CLI |
+| `docs/milestones/007-cli-operator-usability/tools/cli-journey-coverage/coverage_report.py` | Public-API line/arc extraction, dependency receipt, bootstrap classification, exact canonical report/digest schema and verification |
 | `docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/session_runner.py` | Bounded opt-in per-command context/environment hook and coverage-only non-acceptance mode |
 | `docs/milestones/007-cli-operator-usability/evidence/cli-journey-coverage/README.md` | Tracked capture procedure/result/non-claims |
-| `docs/milestones/007-cli-operator-usability/evidence/cli-journey-coverage/report.json` | Canonical `m007_cli_journey_coverage_v1` pass report |
-| `tests/milestones/test_cli_journey_coverage.py` | Collector, process, isolation, attribution, schema, and freshness tests |
+| `docs/milestones/007-cli-operator-usability/evidence/cli-journey-coverage/report.json` | Canonical `m007_cli_journey_coverage_v1` collection-bound pass report |
+| `tests/milestones/test_cli_journey_coverage.py` | Launcher, collector, process/provenance, isolation, dependency, attribution, canonical digest/schema, and freshness tests |
 | `tests/milestones/test_live_cli_session_runner.py` | Disabled-mode compatibility and coverage-only safety/cleanup/context tests |
 
 No file under `autonomy/`, `implementations/`, or `cli/automa_cli/` is planned
@@ -489,54 +662,71 @@ python3 tests/run.py
 Focused tests must cover every adversarial row that does not require the live
 Metrics UI, including:
 
-- manifest digest/context uniqueness and all accepted command-producing fields;
+- manifest digest/logical-context uniqueness, unpredictable collection-ID
+  generation, exact measurement-to-logical mapping, and all accepted
+  command-producing fields;
 - exact argv preservation and disabled-runner-mode compatibility;
+- public-launcher refusal before Python startup for hostile ambient
+  `COVERAGE_*` variables and parent subprocess-patched collection, sealed
+  internal-entrypoint enforcement, effective-config containment, and unchanged
+  outside-root sentinels;
 - normal foreground, nested Python child, detached background worker, SIGTERM
-  flush, missing worker shard, timeout, and SIGKILL non-pass fixtures;
-- fresh-root enforcement, stale/foreign/unreadable shards, explicit combine,
-  and unchanged repository-root coverage sentinels on all exits;
+  flush, missing worker shard, same-commit/same-logical-context prior worker
+  shard, timeout, and SIGKILL non-pass fixtures;
+- atomic nonexistent-root enforcement, stale/foreign/unreadable shards,
+  explicit combine, and unchanged repository-root coverage sentinels on all
+  exits;
 - empty/unknown contexts, support-versus-journey rollups, same-argv distinct
   contexts, bootstrap line/arc set arithmetic, and canonical source paths;
 - public CoverageData API extraction with branch arcs and no private SQLite
   dependency;
+- requirements-file hashes, canonical interpreter/all-distribution receipts,
+  duplicate/conflicting distribution refusal, direct-URL hashing, and
+  dependency drift;
 - dirty source, post-capture source/config/tool/catalog drift, evidence-only
-  descendant handling, canonical serialization, schema validation, and digest
-  verification; and
+  descendant handling, immutable start/seal/finalization receipts,
+  byte-identical repeated finalization, exact digest projection, volatile
+  diagnostics exclusion, schema validation, and digest verification; and
 - no numeric gate and all required `non_claims` values.
 
 Bounded live collection, run from a clean implementation tree with an existing
 safe Chase environment:
 
 ```sh
-session_root="$(mktemp -d)"
-python3 docs/milestones/007-cli-operator-usability/tools/cli-journey-coverage/coverage_session.py \
+session_parent="$(mktemp -d)"
+session_root="$session_parent/collection"
+coverage_session="docs/milestones/007-cli-operator-usability/tools/cli-journey-coverage/coverage_session"
+"$coverage_session" \
   validate-manifest
-python3 docs/milestones/007-cli-operator-usability/tools/cli-journey-coverage/coverage_session.py \
+"$coverage_session" \
   collect \
   --session-dir "$session_root" \
   --metrics-ui-origin http://localhost:5050 \
   --metrics-ui-repo /path/to/Stream-Metrics-UI
-python3 docs/milestones/007-cli-operator-usability/tools/cli-journey-coverage/coverage_session.py \
+"$coverage_session" \
   finalize \
   --session-dir "$session_root" \
   --output docs/milestones/007-cli-operator-usability/evidence/cli-journey-coverage/report.json
-python3 docs/milestones/007-cli-operator-usability/tools/cli-journey-coverage/coverage_session.py \
+"$coverage_session" \
   verify-report \
   docs/milestones/007-cli-operator-usability/evidence/cli-journey-coverage/report.json
 ```
 
 The implementation PR records the actual temporary path without committing it,
-the exact Metrics UI identity, final command results, report digest, context and
-process completeness counts, cleanup result, and proof that pre-existing
-repository-root `.coverage*` identities are unchanged. Regenerating the report
-from the same frozen session must be byte-identical. A second live run may
-produce a coverage delta and is not required for acceptance.
+the exact Metrics UI/dependency/interpreter identity, collection ID, final
+command results, report digest, logical/measurement context and process
+completeness counts, cleanup result, immutable receipt hashes, and proof that
+pre-existing repository-root `.coverage*` identities are unchanged.
+Regenerating the report from the same sealed session must be byte-identical. A
+second live run may produce a coverage delta and is not required for acceptance.
 
 The report is accepted only at `result: pass`. Reviewers inspect the manifest,
-bootstrap comparison, process-completeness receipts, at least one known
-worker-only region under an automation-run context, journey/support separation,
-freshness result, and explicit non-claims. No human browser judgment is part of
-this validation.
+collection ID and measurement-to-logical mapping, launcher/config containment
+receipts, canonical dependency environment, bootstrap comparison,
+process-completeness receipts, at least one known worker-only region under an
+automation-run context, immutable timestamp/seal receipts and report digest,
+journey/support separation, freshness result, and explicit non-claims. No human
+browser judgment is part of this validation.
 
 ## Expected Handoff
 
@@ -547,11 +737,11 @@ Post-merge successful implementation template:
   "schema": "milestone_handoff_template_v1",
   "outcome": "advance",
   "result": "Accepted",
-  "durable_evidence": "Reproducible branch-aware owned-Python CLI journey coverage in PR #{pr}: a digest-bound command/context manifest; isolated foreground, subprocess, and SIGTERM-flushed background-worker collection; complete expected-context and process receipts; raw plus bootstrap/shared/command-specific statement and arc attribution; exact source/config/tool/catalog/runtime identities; terminal cleanup; byte-stable public-API report generation; explicit correctness/dead-code/numeric-gate non-claims; and tracked pass evidence under docs/milestones/007-cli-operator-usability/evidence/cli-journey-coverage/",
+  "durable_evidence": "Reproducible branch-aware owned-Python CLI journey coverage in PR #{pr}: a digest-bound command/context manifest; unpredictable collection-bound shard provenance; pre-interpreter ambient Coverage.py refusal and session-contained effective configuration; isolated foreground, subprocess, and SIGTERM-flushed background-worker collection; complete expected-context and process receipts; canonical requirements/interpreter/all-distribution identity; raw plus bootstrap/shared/command-specific statement and arc attribution; immutable timestamp receipts and an exact byte-stable public-API report digest; terminal cleanup; explicit correctness/dead-code/numeric-gate non-claims; and tracked pass evidence under docs/milestones/007-cli-operator-usability/evidence/cli-journey-coverage/",
   "criterion_updates": {
     "M007-07": {
       "status": "Met",
-      "evidence": "PR #{pr} provides a versioned manifest and pass report attributing branch-aware owned-Python execution to the accepted primary and continuity command/journey contexts across foreground and background Python processes, with bootstrap classification, exact identities, isolation, completeness/freshness checks, cleanup, and no correctness, dead-code, or percentage-gate claim"
+      "evidence": "PR #{pr} provides a versioned manifest and collection-bound pass report attributing branch-aware owned-Python execution to the accepted primary and continuity command/journey contexts across foreground and background Python processes, with pre-interpreter environment isolation, canonical dependency identity, bootstrap classification, immutable receipts, exact digest semantics, completeness/freshness checks, cleanup, and no correctness, dead-code, or percentage-gate claim"
     }
   },
   "risk_remove": [
@@ -567,10 +757,12 @@ Post-merge successful implementation template:
 ```
 
 This success template applies only to a tracked `m007_cli_journey_coverage_v1`
-`pass` with no missing expected process/context, source drift, cleanup failure,
-or unresolved collector integrity finding. An incomplete external capture or a
-conclusive findings unit does not mark M007-07 `Met` and does not promote the
-complete CLI surface and sequence audit.
+`pass` with no foreign collection identity, ambient/outside-root Coverage.py
+control, missing expected process/context, source or dependency drift,
+receipt/digest mismatch, cleanup failure, or unresolved collector integrity
+finding. An incomplete external capture or a conclusive findings unit does not
+mark M007-07 `Met` and does not promote the complete CLI surface and sequence
+audit.
 
 ### Sequence after this proposal merges
 
@@ -578,8 +770,9 @@ complete CLI surface and sequence audit.
 2. Run `workflow.py accept-proposal`; verify `ready_for_implementation` and the
    exact accepted proposal merge commit.
 3. Start `m007/cli-journey-coverage` and implement only this collector,
-   opt-in runner integration, manifest/report contracts, focused tests, and
-   evidence scaffold.
+   authoritative launcher, opt-in runner integration, collection-bound
+   manifest/report/dependency/receipt contracts, focused tests, and evidence
+   scaffold.
 4. Pass deterministic process/isolation/attribution/freshness validation.
 5. Run the bounded machine-only collection against the accepted primary and
    continuity catalogs; finalize and commit one internally consistent report.

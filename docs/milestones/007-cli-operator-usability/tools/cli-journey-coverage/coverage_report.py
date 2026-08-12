@@ -44,6 +44,18 @@ RELEVANT_PATHS = (
 LOWER_HEX_64 = re.compile(r"^[0-9a-f]{64}$")
 LOWER_HEX_40 = re.compile(r"^[0-9a-f]{40}$")
 NORMALIZED_NAME = re.compile(r"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$")
+PEP440_VERSION = re.compile(
+    r"""
+    ^v?
+    (?:(?:[0-9]+!)?[0-9]+(?:\.[0-9]+)*)
+    (?:[-_.]?(?:alpha|a|beta|b|preview|pre|c|rc)[-_.]?[0-9]*)?
+    (?:-[0-9]+|[-_.]?(?:post|rev|r)[-_.]?[0-9]*)?
+    (?:[-_.]?dev[-_.]?[0-9]*)?
+    (?:\+[a-z0-9]+(?:[-_.][a-z0-9]+)*)?
+    $
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
 
 
 class CoverageContractError(RuntimeError):
@@ -118,14 +130,14 @@ def normalize_distribution_name(name: str) -> str:
     return normalized
 
 
-def dependency_environment(repo_root: Path) -> dict[str, Any]:
-    try:
-        from packaging.version import InvalidVersion, Version
-    except ImportError as exc:  # pragma: no cover - declared dependency environment
-        raise CoverageContractError(
-            "packaging is required to validate versions"
-        ) from exc
+def normalize_distribution_version(version: str) -> str:
+    normalized = version.strip()
+    if not normalized or not PEP440_VERSION.fullmatch(normalized):
+        raise CoverageContractError(f"invalid distribution version: {version!r}")
+    return normalized
 
+
+def dependency_environment(repo_root: Path) -> dict[str, Any]:
     requirements: list[dict[str, str]] = []
     for relative in ("requirements.txt", "requirements-test.txt"):
         path = repo_root / relative
@@ -148,14 +160,14 @@ def dependency_environment(repo_root: Path) -> dict[str, Any]:
                 f"installed distribution {raw_name!r} has no valid version"
             )
         try:
-            Version(raw_version)
-        except InvalidVersion as exc:
+            version = normalize_distribution_version(raw_version)
+        except CoverageContractError as exc:
             raise CoverageContractError(
                 f"installed distribution {raw_name!r} has invalid version {raw_version!r}"
             ) from exc
         entry = {
             "name": normalize_distribution_name(raw_name.strip()),
-            "version": raw_version.strip(),
+            "version": version,
         }
         direct_url = distribution.read_text("direct_url.json")
         if direct_url is not None:

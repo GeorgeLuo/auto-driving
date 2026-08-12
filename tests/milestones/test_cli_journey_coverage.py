@@ -833,6 +833,21 @@ class DependencyFreshnessAndDigestTests(unittest.TestCase):
         with self.assertRaises(report.CoverageContractError):
             report.normalize_distribution_name("---")
 
+    def test_distribution_version_validation_has_no_optional_dependency(self):
+        for value in (
+            "1.0",
+            "v2!1.0rc1.post2.dev3+local.1",
+            "1.0-1",
+            "2026.08.11",
+        ):
+            with self.subTest(valid=value):
+                self.assertEqual(report.normalize_distribution_version(value), value)
+        for value in ("", "release", "1..0", "1.0+bad+local", "1.0\n2"):
+            with self.subTest(invalid=value), self.assertRaises(
+                report.CoverageContractError
+            ):
+                report.normalize_distribution_version(value)
+
     def test_report_digest_omits_only_self_digest_and_is_byte_stable(self):
         value = {
             "schema": report.REPORT_SCHEMA,

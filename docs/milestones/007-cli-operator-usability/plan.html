@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="46a120c29456f586f4ddc07008ae7b7850a1c6662a580ab4dd27130021b6430c">
+  <meta name="source-sha256" content="a12e9c3f6eb8a076fcccc835302ab5bdca41f06ffde8ff52ae46732797c14f7b">
   <base target="_blank">
   <title>Milestone plan — 007-cli-operator-usability</title>
   <style>
@@ -85,7 +85,7 @@
 </tr>
 <tr>
 <td>Current frontier</td>
-<td>CLI journey coverage foundation</td>
+<td>Complete CLI surface and sequence audit</td>
 </tr>
 <tr>
 <td>Started</td>
@@ -330,8 +330,8 @@ deletion; it does not retroactively widen the accepted primary journey.</p>
 <tr>
 <td>M007-07</td>
 <td>A reproducible CLI journey-coverage collector attributes owned-Python statement and branch execution to named commands and multi-command journeys across foreground and Python subprocess/background-worker boundaries, separates bootstrap/import footprint from command-specific behavior, records exact source/command identity, and remains informational</td>
-<td>Unmet</td>
-<td>Instrumentation frontier after realistic scenario continuity declares the journeys coverage will attribute</td>
+<td>Met</td>
+<td>PR #107 provides a versioned manifest and collection-bound pass report attributing branch-aware owned-Python execution to the accepted primary and continuity command/journey contexts across foreground and background Python processes, with pre-interpreter environment isolation, canonical dependency identity, bootstrap classification, immutable receipts, exact digest semantics, completeness/freshness checks, cleanup, and no correctness, dead-code, or percentage-gate claim</td>
 </tr>
 <tr>
 <td>M007-08</td>
@@ -355,23 +355,9 @@ deletion; it does not retroactively widen the accepted primary journey.</p>
 </table>
 <h2>Current Delivery</h2>
 <h3>Current Frontier</h3>
-<p><strong>CLI journey coverage foundation</strong></p>
-<ul>
-<li>Workflow state: implementation_in_review</li>
-<li>Proposal branch: <code>m007/cli-journey-coverage-proposal</code></li>
-<li>Implementation branch: <code>m007/cli-journey-coverage</code></li>
-<li>Proposal path: <code>docs/milestones/007-cli-operator-usability/proposals/cli-journey-coverage.md</code></li>
-<li>Accepted proposal: <a href="https://github.com/GeorgeLuo/auto-driving/pull/106">#106</a> at <code>47a6ac9d5f9060f420477dcddae07dea2da1eafa</code></li>
-<li>Review kind: Deterministic invariant closure</li>
-<li>Review question: Can a developer record reproducible branch-aware owned-Python coverage for named CLI commands and multi-command journeys across foreground and Python subprocess/background-worker execution while separating bootstrap/import footprint from command-specific behavior and avoiding false correctness or dead-code claims?</li>
-<li>Acceptance owner: Coverage session collector, command/context manifest, bootstrap subtraction, and versioned journey-coverage report schema built on <code>.coveragerc</code></li>
-<li>Exit criteria affected: M007-07</li>
-<li>Prerequisite: M007-10 is <code>Met</code> so the journeys coverage attributes are the declared realistic sequences plus the primary journey; existing subprocess-aware owned-code coverage baseline remains available</li>
-<li>Milestone-level non-goal: Exhaustive CLI-leaf audit, exhaustive #88 sequence definition/disposition, capability disposition, product deletion, new CLI features, Metrics UI JavaScript coverage, or a numeric coverage gate; the coverage collector consumes already-declared journeys, while M007-08 owns the complete US-01 through US-10 reconciliation</li>
-</ul>
-<h3>Next-Frontier Candidate</h3>
 <p><strong>Complete CLI surface and sequence audit</strong></p>
 <ul>
+<li>Workflow state: ready_for_proposal</li>
 <li>Proposal branch: <code>m007/cli-surface-audit-proposal</code></li>
 <li>Implementation branch: <code>m007/cli-surface-audit</code></li>
 <li>Proposal path: <code>docs/milestones/007-cli-operator-usability/proposals/cli-surface-audit.md</code></li>
@@ -380,7 +366,13 @@ deletion; it does not retroactively widen the accepted primary journey.</p>
 <li>Acceptance owner: Parser-derived CLI leaf inventory, committed usage and sequence registry, completeness/schema validators, and runner-backed machine/HITL audit evidence</li>
 <li>Exit criteria affected: M007-08</li>
 <li>Prerequisite: M007-07 is <code>Met</code>; the accepted named-command and journey-coverage collector/report, primary journey, and scenario-continuity catalogs are stable audit inputs</li>
-<li>Non-goals: Capability disposition under M007-09, product repair, new CLI features, removal, unsafe execution for coverage, reopening M007-10, a numeric coverage gate, or milestone closeout</li>
+<li>Milestone-level non-goal: Capability disposition under M007-09, product repair, new CLI features, removal, unsafe execution for coverage, reopening M007-10, a numeric coverage gate, or milestone closeout</li>
+</ul>
+<h3>Next-Frontier Candidate</h3>
+<p><strong>None</strong></p>
+<ul>
+<li>Reason: Complete CLI surface and sequence audit is promoted after trustworthy named-command and journey attribution satisfies M007-07.</li>
+<li>Revisit when: The audit maps every parser leaf and #88 US-01 through US-10 entry to realistic usage, evidence, safety, coverage treatment, and an explicit owned disposition before capability-level reconciliation.</li>
 </ul>
 <h2>Workflow History</h2>
 <table>
@@ -522,6 +514,16 @@ deletion; it does not retroactively widen the accepted primary journey.</p>
 <td>implementation_in_review</td>
 <td>Started m007/cli-journey-coverage.</td>
 </tr>
+<tr>
+<td>CLI journey coverage foundation</td>
+<td>accepted</td>
+<td>Implementation PR #107 merged at ff75a200ffa8df2cd41458893a5c0e2aafef29c7.</td>
+</tr>
+<tr>
+<td>Complete CLI surface and sequence audit</td>
+<td>ready_for_proposal</td>
+<td>Promoted after implementation PR #107.</td>
+</tr>
 </tbody>
 </table>
 <h2>Accepted Review Units</h2>
@@ -557,6 +559,13 @@ deletion; it does not retroactively widen the accepted primary journey.</p>
 <td>M007-10</td>
 <td>Realistic CLI scenario continuity in PR #100: required family aggregates continuity.offline_perception, continuity.live_config_swap, and continuity.memory_lifecycle each passed on the live session runner with fail-closed safety preflight; machine-first then conditional HITL with human-scannable confirmations; US-04 restorable snapshot and restore verified; evidence freshness finalizer matched final product/runner/catalog/Metrics UI identities; durable finding disposition; repairs limited to the proposal bounded table; tracked under docs/milestones/007-cli-operator-usability/evidence/cli-scenario-continuity/</td>
 </tr>
+<tr>
+<td>#107</td>
+<td>Can a developer record reproducible branch-aware owned-Python coverage for named CLI commands and multi-command journeys across foreground and Python subprocess/background-worker execution while separating bootstrap/import footprint from command-specific behavior and avoiding false correctness or dead-code claims?</td>
+<td>Accepted</td>
+<td>M007-07</td>
+<td>Reproducible branch-aware owned-Python CLI journey coverage in PR #107: a digest-bound command/context manifest; unpredictable collection-bound shard provenance; pre-interpreter ambient Coverage.py refusal and session-contained effective configuration; isolated foreground, subprocess, and SIGTERM-flushed background-worker collection; complete expected-context and process receipts; canonical requirements/interpreter/all-distribution identity; raw plus bootstrap/shared/command-specific statement and arc attribution; immutable timestamp receipts and an exact byte-stable public-API report digest; terminal cleanup; explicit correctness/dead-code/numeric-gate non-claims; and tracked pass evidence under docs/milestones/007-cli-operator-usability/evidence/cli-journey-coverage/</td>
+</tr>
 </tbody>
 </table>
 <h2>Open Risks And Unverified Assumptions</h2>
@@ -588,11 +597,6 @@ deletion; it does not retroactively widen the accepted primary journey.</p>
 <td>Browser opening is platform-dependent</td>
 <td>An otherwise healthy worker could be reported failed because the OS cannot launch a browser</td>
 <td>Keep view health authoritative; browser launch is explicit and reports its own non-fatal result and URL</td>
-</tr>
-<tr>
-<td>Eager CLI imports execute shared module top levels before a leaf handler runs</td>
-<td>Naive per-command coverage overstates feature use and makes unrelated modules look journey-owned</td>
-<td>Record a bootstrap/help context, preserve per-command contexts, and report shared/bootstrap execution separately from command-specific lines and branches</td>
 </tr>
 <tr>
 <td>Coverage absence is not proof that code is dead</td>

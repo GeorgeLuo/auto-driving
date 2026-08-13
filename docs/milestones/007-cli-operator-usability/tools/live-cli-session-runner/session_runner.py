@@ -1372,6 +1372,7 @@ def _run_command(
     index: int,
     timeout_s: float | None,
     transcript_path: Path,
+    environment: Mapping[str, str] | None = None,
 ) -> CommandOutcome:
     step_dir.mkdir(parents=True, exist_ok=True)
     stdout_path = step_dir / f"cmd-{index:02d}.stdout.txt"
@@ -1379,14 +1380,16 @@ def _run_command(
     wall_started = _utc_now()
     started = time.monotonic()
     try:
-        completed = subprocess.run(
-            list(argv),
-            cwd=cwd,
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=timeout_s,
-        )
+        run_kwargs: dict[str, Any] = {
+            "cwd": cwd,
+            "check": False,
+            "capture_output": True,
+            "text": True,
+            "timeout": timeout_s,
+        }
+        if environment is not None:
+            run_kwargs["env"] = dict(environment)
+        completed = subprocess.run(list(argv), **run_kwargs)
         exit_code = completed.returncode
         stdout = completed.stdout or ""
         stderr = completed.stderr or ""
@@ -1466,6 +1469,75 @@ class SessionState:
     safety_block_reason: str | None = None
     executed_commands: list[list[str]] = field(default_factory=list)
     metrics_ui_repo_path: Path | None = None
+    command_hook: Any | None = None
+    coverage_only: bool = False
+    coverage_worker_lifecycles: list[dict[str, Any]] = field(default_factory=list)
+
+
+def _run_session_command(
+    state: SessionState,
+    argv: Sequence[str],
+    *,
+    role: str,
+    step_id: str,
+    command_ordinal: int,
+    argv_template: Sequence[str],
+    step_dir: Path,
+    index: int,
+    timeout_s: float | None,
+    transcript_path: Path,
+) -> CommandOutcome:
+    """Run one command through the optional coverage-only instrumentation hook.
+
+    The disabled path delegates to :func:`_run_command` without an ``env``
+    argument, preserving the runner's established subprocess behavior. A hook
+    may only provide the child environment and observe the completed outcome;
+    argv, ordering, timeouts, evidence paths, and cleanup remain runner-owned.
+    """
+
+    environment: Mapping[str, str] | None = None
+    hook = state.command_hook
+    if hook is not None:
+        environment = hook.environment_for(
+            catalog_id=str(state.catalog.get("id") or ""),
+            role=role,
+            step_id=step_id,
+            command_ordinal=command_ordinal,
+            argv_template=list(argv_template),
+            resolved_argv=list(argv),
+            variables=dict(state.variables),
+        )
+    outcome = _run_command(
+        argv,
+        cwd=state.repo_root,
+        session_dir=state.session_dir,
+        step_dir=step_dir,
+        index=index,
+        timeout_s=timeout_s,
+        transcript_path=transcript_path,
+        **({"environment": environment} if environment is not None else {}),
+    )
+    if hook is not None:
+        hook.command_completed(
+            catalog_id=str(state.catalog.get("id") or ""),
+            role=role,
+            step_id=step_id,
+            command_ordinal=command_ordinal,
+            argv_template=list(argv_template),
+            resolved_argv=list(argv),
+            variables=dict(state.variables),
+            outcome=outcome,
+        )
+    if state.coverage_only:
+        _record_coverage_worker_event(
+            state,
+            argv=list(argv),
+            role=role,
+            step_id=step_id,
+            command_ordinal=command_ordinal,
+            outcome=outcome,
+        )
+    return outcome
 
 
 def _note_worker_pid(state: SessionState, pid: Any, *, source: str) -> None:
@@ -1477,6 +1549,188 @@ def _note_worker_pid(state: SessionState, pid: Any, *, source: str) -> None:
         state.session_owned_worker_pids.add(pid)
     else:
         state.pre_existing_worker_pids.add(pid)
+
+
+def _worker_command_operation(argv: Sequence[str]) -> str | None:
+    values = list(argv)
+    try:
+        vehicles = values.index("vehicles")
+    except ValueError:
+        return None
+    tail = values[vehicles + 1 :]
+    if tail[:2] == ["automation", "run"] and "--help" not in tail:
+        return "run"
+    if tail[:2] == ["automation", "stop"]:
+        return "stop"
+    if tail[:1] == ["status"] or tail[:2] == ["automation", "status"]:
+        return "status"
+    return None
+
+
+def _worker_runtime_snapshot(state: SessionState) -> dict[str, Any]:
+    vehicle_id = state.variables.get("vehicle_id")
+    if not vehicle_id:
+        return {
+            "vehicle_id": None,
+            "pid": None,
+            "run_id": None,
+            "status": None,
+            "generation_matches": False,
+            "pid_alive": None,
+        }
+    automation_dir = (
+        state.repo_root
+        / "runtime"
+        / "vehicles"
+        / vehicle_id
+        / "bundle"
+        / "runtime"
+        / "automation"
+    )
+
+    def read_object(path: Path) -> dict[str, Any]:
+        try:
+            value = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {}
+        return value if isinstance(value, dict) else {}
+
+    process = read_object(automation_dir / "process.json")
+    worker_state = read_object(automation_dir / "state.json")
+    process_pid = process.get("pid") if isinstance(process.get("pid"), int) else None
+    state_pid = (
+        worker_state.get("pid") if isinstance(worker_state.get("pid"), int) else None
+    )
+    pid = process_pid if process_pid is not None else state_pid
+    generation_matches = (
+        process_pid is not None and state_pid is not None and process_pid == state_pid
+    )
+    return {
+        "vehicle_id": vehicle_id,
+        "pid": pid,
+        "process_pid": process_pid,
+        "state_pid": state_pid,
+        "run_id": worker_state.get("run_id")
+        if isinstance(worker_state.get("run_id"), str)
+        else None,
+        "status": worker_state.get("status")
+        if isinstance(worker_state.get("status"), str)
+        else None,
+        "generation_matches": generation_matches,
+        "pid_alive": _pid_alive(pid),
+    }
+
+
+def _same_worker_generation(
+    launch: Mapping[str, Any], snapshot: Mapping[str, Any]
+) -> bool:
+    return (
+        isinstance(launch.get("pid"), int)
+        and launch.get("pid") == snapshot.get("pid")
+        and isinstance(launch.get("run_id"), str)
+        and bool(launch.get("run_id"))
+        and launch.get("run_id") == snapshot.get("run_id")
+        and snapshot.get("generation_matches") is True
+    )
+
+
+def _record_coverage_worker_event(
+    state: SessionState,
+    *,
+    argv: Sequence[str],
+    role: str,
+    step_id: str,
+    command_ordinal: int,
+    outcome: CommandOutcome,
+) -> None:
+    operation = _worker_command_operation(argv)
+    if operation is None or outcome.exit_code != 0:
+        return
+    snapshot = _worker_runtime_snapshot(state)
+    command = {
+        "catalog_id": str(state.catalog.get("id") or ""),
+        "role": role,
+        "step_id": step_id,
+        "command_ordinal": command_ordinal,
+    }
+    if operation == "run":
+        stdout = ""
+        try:
+            stdout = (state.session_dir / outcome.stdout_path).read_text(
+                encoding="utf-8"
+            )
+        except OSError:
+            pass
+        match = re.search(r"(?m)^PID:\s*([1-9][0-9]*)\s*$", stdout)
+        stdout_pid = int(match.group(1)) if match else None
+        event = {
+            "kind": "launch",
+            "command": command,
+            "observed_at_utc": outcome.ended_at_utc,
+            "stdout_pid": stdout_pid,
+            "stdout_pid_matches": stdout_pid is not None
+            and stdout_pid == snapshot.get("pid"),
+            **snapshot,
+        }
+        hook = state.command_hook
+        if hook is not None and hasattr(hook, "worker_lifecycle_event"):
+            event = hook.worker_lifecycle_event(event)
+        state.coverage_worker_lifecycles.append(
+            {
+                "schema": "m007_cli_coverage_worker_lifecycle_v1",
+                "launch": event,
+                "observations": [],
+            }
+        )
+        return
+
+    lifecycle = next(
+        (
+            candidate
+            for candidate in reversed(state.coverage_worker_lifecycles)
+            if _same_worker_generation(candidate.get("launch") or {}, snapshot)
+        ),
+        None,
+    )
+    if lifecycle is None:
+        lifecycle = next(
+            (
+                candidate
+                for candidate in reversed(state.coverage_worker_lifecycles)
+                if not any(
+                    observation.get("kind") in {"termination", "terminal_status"}
+                    for observation in candidate.get("observations") or []
+                )
+            ),
+            None,
+        )
+    if lifecycle is None:
+        return
+    launch = lifecycle.get("launch") or {}
+    same_generation = _same_worker_generation(launch, snapshot)
+    terminal = snapshot.get("pid_alive") is False and snapshot.get("status") in {
+        "stopped",
+        "completed",
+    }
+    kind = (
+        "terminal_status"
+        if operation == "status" and terminal
+        else "termination"
+        if operation == "stop" and terminal
+        else "status"
+    )
+    event = {
+        "kind": kind,
+        "command": command,
+        "launch_command": launch.get("command"),
+        "observed_at_utc": outcome.ended_at_utc,
+        "same_generation": same_generation,
+        **snapshot,
+    }
+    hook = state.command_hook
+    if hook is not None and hasattr(hook, "worker_lifecycle_event"):
+        event = hook.worker_lifecycle_event(event)
+    lifecycle.setdefault("observations", []).append(event)
 
 
 def _next_finding_id(state: SessionState) -> str:
@@ -2039,10 +2293,28 @@ def _enforce_cleanup(
     vehicle = state.variables["vehicle_id"]
     step_dir = state.session_dir / "steps" / "_cleanup"
     try:
-        stop = _run_command(
-            ["./cli/automa", "vehicles", "automation", "stop", "--id", vehicle],
-            cwd=state.repo_root,
-            session_dir=state.session_dir,
+        stop_argv = [
+            "./cli/automa",
+            "vehicles",
+            "automation",
+            "stop",
+            "--id",
+            vehicle,
+        ]
+        stop = _run_session_command(
+            state,
+            stop_argv,
+            role="cleanup",
+            step_id="_cleanup",
+            command_ordinal=0,
+            argv_template=[
+                "./cli/automa",
+                "vehicles",
+                "automation",
+                "stop",
+                "--id",
+                "{vehicle_id}",
+            ],
             step_dir=step_dir,
             index=0,
             timeout_s=command_timeout_s,
@@ -2057,10 +2329,20 @@ def _enforce_cleanup(
             vehicle,
             "--json",
         ]
-        status_out = _run_command(
+        status_out = _run_session_command(
+            state,
             status_cmd,
-            cwd=state.repo_root,
-            session_dir=state.session_dir,
+            role="cleanup",
+            step_id="_cleanup",
+            command_ordinal=1,
+            argv_template=[
+                "./cli/automa",
+                "vehicles",
+                "status",
+                "--id",
+                "{vehicle_id}",
+                "--json",
+            ],
             step_dir=step_dir,
             index=1,
             timeout_s=command_timeout_s,
@@ -2220,19 +2502,32 @@ def _run_precondition_cleanup(
         return record
 
     try:
-        status_out = _run_command(
-            [
+        status_argv = [
+            "./cli/automa",
+            "vehicles",
+            "status",
+            "--id",
+            vehicle,
+            "--chase-url",
+            metrics_ui_origin,
+            "--json",
+        ]
+        status_out = _run_session_command(
+            state,
+            status_argv,
+            role="precondition",
+            step_id="_precondition_cleanup",
+            command_ordinal=0,
+            argv_template=[
                 "./cli/automa",
                 "vehicles",
                 "status",
                 "--id",
-                vehicle,
+                "{vehicle_id}",
                 "--chase-url",
-                metrics_ui_origin,
+                "{metrics_ui_origin}",
                 "--json",
             ],
-            cwd=state.repo_root,
-            session_dir=state.session_dir,
             step_dir=step_dir,
             index=0,
             timeout_s=command_timeout_s,
@@ -2288,10 +2583,28 @@ def _run_precondition_cleanup(
         record["needed"] = True
         record["attempted"] = True
         state.worker_may_exist = True
-        stop = _run_command(
-            ["./cli/automa", "vehicles", "automation", "stop", "--id", vehicle],
-            cwd=state.repo_root,
-            session_dir=state.session_dir,
+        stop_argv = [
+            "./cli/automa",
+            "vehicles",
+            "automation",
+            "stop",
+            "--id",
+            vehicle,
+        ]
+        stop = _run_session_command(
+            state,
+            stop_argv,
+            role="precondition",
+            step_id="_precondition_cleanup",
+            command_ordinal=1,
+            argv_template=[
+                "./cli/automa",
+                "vehicles",
+                "automation",
+                "stop",
+                "--id",
+                "{vehicle_id}",
+            ],
             step_dir=step_dir,
             index=1,
             timeout_s=command_timeout_s,
@@ -2300,19 +2613,32 @@ def _run_precondition_cleanup(
         record["stop_exit_code"] = stop.exit_code
         if stop.exit_code != 0:
             return _fail(f"precondition stop exit={stop.exit_code}")
-        after_out = _run_command(
-            [
+        after_argv = [
+            "./cli/automa",
+            "vehicles",
+            "status",
+            "--id",
+            vehicle,
+            "--chase-url",
+            metrics_ui_origin,
+            "--json",
+        ]
+        after_out = _run_session_command(
+            state,
+            after_argv,
+            role="precondition",
+            step_id="_precondition_cleanup",
+            command_ordinal=2,
+            argv_template=[
                 "./cli/automa",
                 "vehicles",
                 "status",
                 "--id",
-                vehicle,
+                "{vehicle_id}",
                 "--chase-url",
-                metrics_ui_origin,
+                "{metrics_ui_origin}",
                 "--json",
             ],
-            cwd=state.repo_root,
-            session_dir=state.session_dir,
             step_dir=step_dir,
             index=2,
             timeout_s=command_timeout_s,
@@ -2461,6 +2787,8 @@ def run_session(
     auto_driving_linked_pr: str | None = None,
     metrics_ui_linked_pr: str | None = None,
     machine_only: bool = False,
+    command_hook: Any | None = None,
+    coverage_only: bool = False,
 ) -> dict[str, Any]:
     started = _utc_now()
     session_id = started.strftime("%Y%m%d%H%M%S")
@@ -2469,7 +2797,9 @@ def run_session(
         if isinstance(operator, str) and operator.strip()
         else None
     )
-    if dry_run:
+    if coverage_only:
+        execution_mode = "coverage_only_live"
+    elif dry_run:
         execution_mode = "dry_run"
     elif machine_only:
         execution_mode = "machine_only_live"
@@ -2570,6 +2900,8 @@ def run_session(
         else None,
         recording_before=recording_before,
         metrics_ui_repo_path=metrics_ui_repo,
+        command_hook=command_hook,
+        coverage_only=coverage_only,
     )
 
     worktree_meta: dict[str, Any] = {}
@@ -3078,10 +3410,13 @@ def run_session(
                         rendered = _substitute_argv(argv, state.variables)
                         state.executed_commands.append(list(rendered))
                         print(f"\n$ {_format_command(rendered)}")
-                        outcome = _run_command(
+                        outcome = _run_session_command(
+                            state,
                             rendered,
-                            cwd=repo_root,
-                            session_dir=session_dir,
+                            role="journey_command",
+                            step_id=step_id,
+                            command_ordinal=index,
+                            argv_template=[str(part) for part in argv],
                             step_dir=step_dir,
                             index=index,
                             timeout_s=command_timeout_s,
@@ -3213,10 +3548,14 @@ def run_session(
                         json_name = str(capture.get("path") or f"{step_id}.json")
                         json_out = session_dir / json_name
                         print(f"\n$ {_format_command(rendered)}  > {json_name}")
-                        outcome = _run_command(
+                        capture_ordinal = len(step.get("commands") or [])
+                        outcome = _run_session_command(
+                            state,
                             rendered,
-                            cwd=repo_root,
-                            session_dir=session_dir,
+                            role="supplemental_capture",
+                            step_id=step_id,
+                            command_ordinal=capture_ordinal,
+                            argv_template=[str(part) for part in capture["command"]],
                             step_dir=step_dir,
                             index=len(command_outcomes),
                             timeout_s=command_timeout_s,
@@ -4060,6 +4399,10 @@ def run_session(
         "artifact_manifest": "digests.json",
         "variables": {k: v for k, v in state.variables.items() if k != "src_dir" or v},
     }
+    if coverage_only:
+        result["behavioral_verdict"] = "not_evaluated"
+        result["coverage_only"] = True
+        result["coverage_worker_lifecycles"] = state.coverage_worker_lifecycles
     if continuity_block is not None:
         result["continuity"] = continuity_block
 

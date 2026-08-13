@@ -45,6 +45,17 @@ of outstanding changes. Merge alone does not promote the frontier; run the
 matching acceptance command so the plan records the reviewer, authority,
 reviewed head, review time, and merge commit.
 
+When the review question or proposed contract uses universal language such as
+`deterministic`, `exact`, or `fail-closed`, complete the proposal's
+`Trust And Authority Model` and `Evidence Topology And Capture Strategy` before
+handoff. Distinguish consistency, provenance, and authenticity; map visible
+claims to authoritative inputs and verification; choose bounded implementation
+evidence or a separate evidence unit; and state when canonical capture is ready.
+Settle uncertain process or library boundaries with bounded feasibility evidence
+or narrow the claim and record the limit. Apply the same sections to a proposal
+amendment that introduces or changes a universal guarantee, scoped to its
+contract delta.
+
 Implementation links the accepted proposal and merge commit, stays within that
 contract, and reports actual file impact and validation. If the contract must
 change, return to proposal review rather than rewriting acceptance during

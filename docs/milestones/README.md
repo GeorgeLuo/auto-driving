@@ -137,6 +137,14 @@ review burden. Split it into an evidence unit when it needs separate environment
 preparation, repeatable operator procedure, tracked artifacts, or an acceptance
 judgment that could fail while the implementation contract still passes.
 
+For a universal or deterministic implementation claim, the proposal chooses the
+evidence topology before implementation starts. It states whether bounded proof
+remains in the implementation review unit or whether capture and acceptance use
+a later evidence review unit. Do not begin canonical live-artifact capture until
+the proposal's stated capture-readiness conditions hold; repeated capture while
+the artifact schema, authority mapping, semantic verifier, or adversarial
+mutation cases are still changing is contract discovery, not acceptance proof.
+
 ### Repair Cycle
 
 A review finding remains in the existing PR when it still challenges that PR’s
@@ -187,7 +195,7 @@ Closeout must not conceal unfinished implementation or validation.
 | Completion usage | Milestone plan |
 | Exit criteria and status | Milestone plan |
 | Current and next frontier | Milestone plan |
-| Detailed invariant and adversarial matrix | Accepted proposal document |
+| Detailed invariant, trust/authority model, evidence topology, and adversarial matrix | Accepted proposal document |
 | Planned file impact and validation commands | Accepted proposal document |
 | Actual file impact and validation results | Implementation PR |
 | Human user-testing request and implement-now direction | Durable issue and adjunct PR |
@@ -624,6 +632,12 @@ cumulative and immutable. The implementation PR must link and reconcile the
 original proposal plus every accepted amendment, and CI rejects changes to any
 of those artifacts.
 
+When an amendment's Review Question or Contract Delta introduces or changes a
+universal invariant, its artifact also completes `## Trust And Authority Model`
+and `## Evidence Topology And Capture Strategy` for that delta. An amendment
+cannot bypass contractability requirements merely because the original proposal
+has already been accepted.
+
 ### Human Discovery During Implementation
 
 Classify a human request from hands-on testing before changing code:
@@ -675,8 +689,10 @@ Each proposal lives at the current frontier’s declared `proposal path` and use
 `.github/PULL_REQUEST_TEMPLATE/proposal.md`. It records the review question,
 proposed contract, owner, affected paths, adversarial matrix, assumptions,
 non-goals, file impacts, validation plan, and the expected successful handoff.
-It contains no product code, tests of unimplemented behavior, generated runtime
-artifacts, or implementation repair.
+When the review question or proposed contract claims a universal invariant, it
+also records the trust and authority model plus the evidence topology and
+capture strategy defined below. It contains no product code, tests of
+unimplemented behavior, generated runtime artifacts, or implementation repair.
 
 `## Expected Handoff` contains exactly one `json` code block. It uses
 `milestone_handoff_template_v1`, which is the normal handoff receipt without
@@ -768,6 +784,30 @@ Words such as `bounded`, `detached`, `deterministic`, `exact`, `fail-closed`,
 examples. Settle invariant, owner, affected paths, adversarial matrix, external
 assumptions, and unverified limits in the proposal. The implementation PR
 reports how the accepted contract was enforced and validated.
+
+When either `## Review Question` or `## Proposed Contract` makes one of those
+claims, the proposal artifact must complete both of these sections before it can
+be accepted:
+
+- `## Trust And Authority Model`: distinguish consistency, provenance, and
+  authenticity guarantees; identify trusted and untrusted actors and inputs;
+  map each externally visible claim to its source of authority; and state the
+  covered and excluded adversaries, including whether same-user mutation is
+  inside the model.
+- `## Evidence Topology And Capture Strategy`: map each claim and explicit
+  non-claim through authoritative raw evidence, derivation, and semantic
+  verifier; choose bounded implementation evidence or a separate evidence review
+  unit; and define capture readiness, freshness, reproducibility, invalidation,
+  and retained-versus-derived artifact boundaries.
+
+If the guarantee depends on process, library, or external-system behavior whose
+ownership is uncertain, cite the smallest feasibility evidence that settles the
+boundary. Otherwise narrow the guarantee and record the behavior as an
+unverified limit; do not leave ownership discovery for implementation. For
+canonical live capture, readiness must at least settle the artifact format,
+authority mapping, semantic verifier, and coordinated mutation cases. A digest
+or self-seal proves internal consistency only unless the trust model identifies
+an independent authenticity root.
 
 Before requesting review:
 

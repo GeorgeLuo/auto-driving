@@ -58,6 +58,16 @@ PROPOSAL_REQUIRED_HEADINGS = (
     "## Validation Plan",
     "## Expected Handoff",
 )
+UNIVERSAL_CONTRACT_REQUIRED_HEADINGS = (
+    "## Trust And Authority Model",
+    "## Evidence Topology And Capture Strategy",
+)
+UNIVERSAL_CLAIM_PATTERN = re.compile(
+    r"\b(?:bounded|detached|deterministic|exact|fresh)\b"
+    r"|\bfail(?:-|\s+)closed\b"
+    r"|\bno movement\b",
+    re.IGNORECASE,
+)
 PROPOSAL_AMENDMENT_REQUIRED_HEADINGS = (
     "## Review Question",
     "## Reason For Amendment",
@@ -1589,12 +1599,44 @@ def start_proposal_amendment_branch(
     return updated
 
 
+def _contract_sections_claim_universal(
+    text: str,
+    headings: tuple[str, ...],
+) -> bool:
+    lines = text.splitlines()
+    claim_sections: list[str] = []
+    for heading in headings:
+        start, end = _section_bounds(lines, heading)
+        claim_sections.extend(lines[start:end])
+    claims = re.sub(
+        r"<!--.*?-->",
+        "",
+        "\n".join(claim_sections),
+        flags=re.DOTALL,
+    )
+    return UNIVERSAL_CLAIM_PATTERN.search(claims) is not None
+
+
 def validate_proposal_text(text: str) -> None:
     if not text.startswith("# Proposal:"):
         raise PlanContractError("proposal must start with '# Proposal:'")
     for heading in PROPOSAL_REQUIRED_HEADINGS:
         if heading not in text:
             raise PlanContractError(f"proposal is missing {heading}")
+    if _contract_sections_claim_universal(
+        text,
+        ("## Review Question", "## Proposed Contract"),
+    ):
+        for heading in UNIVERSAL_CONTRACT_REQUIRED_HEADINGS:
+            if heading not in text:
+                raise PlanContractError(
+                    f"universal proposal claim requires {heading}"
+                )
+            _required_section_body(
+                text,
+                heading,
+                document="universal proposal",
+            )
     load_handoff_template(text)
 
 
@@ -1606,9 +1648,28 @@ def validate_proposal_amendment_text(text: str) -> None:
     for heading in PROPOSAL_AMENDMENT_REQUIRED_HEADINGS:
         if heading not in text:
             raise PlanContractError(f"proposal amendment is missing {heading}")
+    if _contract_sections_claim_universal(
+        text,
+        ("## Review Question", "## Contract Delta"),
+    ):
+        for heading in UNIVERSAL_CONTRACT_REQUIRED_HEADINGS:
+            if heading not in text:
+                raise PlanContractError(
+                    f"universal proposal amendment claim requires {heading}"
+                )
+            _required_section_body(
+                text,
+                heading,
+                document="universal proposal amendment",
+            )
 
 
-def _required_section_body(text: str, heading: str) -> str:
+def _required_section_body(
+    text: str,
+    heading: str,
+    *,
+    document: str = "implementation adjunct",
+) -> str:
     lines = text.splitlines()
     start, end = _section_bounds(lines, heading)
     body = "\n".join(lines[start:end]).strip()
@@ -1621,9 +1682,7 @@ def _required_section_body(text: str, heading: str) -> str:
         and not line.strip().startswith("### ")
     ]
     if not meaningful:
-        raise PlanContractError(
-            f"implementation adjunct section {heading} must be completed"
-        )
+        raise PlanContractError(f"{document} section {heading} must be completed")
     return body
 
 

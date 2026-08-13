@@ -150,6 +150,20 @@ mutation cases are still changing is contract discovery, not acceptance proof.
 A review finding remains in the existing PR when it still challenges that PR’s
 stated contract.
 
+A **repair cycle** is one consolidated changes-requested verdict followed by an
+author revision that addresses that verdict. Count the round once regardless of
+how many findings, commits, or comments it contains. Repeated discussion against
+the same repair revision is still the same cycle; a later consolidated verdict
+against a newer revision followed by another repair is the next cycle.
+
+The reviewer classifies the cycle in the verdict. It is **substantial** when
+either the verdict contains a P0–P2 contract failure or the repair changes the
+review question, contract, primary owner or abstraction, material scope or file
+impact, external assumptions, or adversarial failure class. Editorial cleanup,
+evidence formatting, and localized P3 corrections are **minor** only when none
+of those conditions applies. A disputed or omitted classification is treated as
+substantial until the reviewer resolves it.
+
 A repair response should identify:
 
 - root cause;
@@ -157,6 +171,29 @@ A repair response should identify:
 - adjacent paths audited;
 - regression coverage added;
 - assumptions still unverified.
+
+Every review-unit PR body keeps a `Repair Cycle Ledger` with the verdict receipt,
+classification, repair revision, and contract impact for each cycle. The count
+belongs to the review unit and does not reset after force-push, reopen, or a
+change of author.
+
+After the **second substantial** cycle, stop before requesting re-review. A
+human operator or meta-manager—not the repair author acting alone—must record a
+durable escalation decision and select exactly one route:
+
+- `replan-current-unit` when the accepted contract remains unchanged and the
+  question is still singular, but the owner or implementation approach needs an
+  explicit reset;
+- `proposal-amendment` when the accepted contract must change;
+- `split-or-replace-review-unit` when the question or scope is not singular; or
+- `abandon-review-unit` when the claim should not proceed.
+
+Record that receipt, route, and disposition in `Repair Escalation` before
+re-review. A third substantial cycle cannot remain in the same review unit; it
+must be split, replaced, amended through a replacement implementation review,
+or abandoned. A replacement review unit starts its own count but links the
+decision receipt and superseded PR so the reset is explicit rather than a way to
+erase repair history.
 
 Create a separate repair review unit only when a distinct PR is genuinely
 necessary.
@@ -760,6 +797,19 @@ Approval does **not** mean the milestone is complete, every improvement belongs
 in this PR, the next frontier is automatically approved, or external
 assumptions are proven.
 
+Every review-unit template includes two shared state receipts:
+
+- `Repair Cycle Ledger`, whose cycle numbers are consecutive and whose review
+  receipt, classification, repair revision, and contract impact are updated
+  before re-review; and
+- `Repair Escalation`, which stays `not-required` until escalation occurs and
+  becomes `completed` with a durable human decision receipt, route, and
+  disposition at the second substantial cycle.
+
+The ledger contains one all-`None` row for an initial review. Do not delete a
+prior row, combine separate verdict rounds, or downgrade a reviewer’s
+classification in order to pass the gate.
+
 ### Proposal PR Template
 
 Use `.github/PULL_REQUEST_TEMPLATE/proposal.md`. The proposal document itself is
@@ -786,6 +836,8 @@ Use `.github/pull_request_template.md` (required headings):
 - Scope (in / out)
 - File impact
 - Scope reconciliation
+- Repair cycle ledger
+- Repair escalation
 - Validation
 - Review notes
 
@@ -906,6 +958,9 @@ Severities: `P0` unsafe/destructive; `P1` stated question materially false;
 ## Review Repair Summary
 
 Revision: `<commit>`
+Cycle: `<consecutive integer>`
+Classification: `<minor | substantial>`
+Review receipt: `<durable link to the consolidated verdict>`
 
 ### Finding 1 — <title>
 
@@ -924,9 +979,10 @@ Revision: `<commit>`
 <Additional cases checked after repair>
 ```
 
-One review-and-repair cycle is normal. After two substantial repair cycles for
-the same invariant, reconsider abstraction, enforcement location, PR scope, and
-whether the question is singular.
+One review-and-repair cycle is normal. The second substantial cycle invokes the
+hard escalation rule in [Repair Cycle](#repair-cycle); do not request another
+review until its human decision receipt and disposition are recorded. A third
+substantial cycle cannot remain in the same review unit.
 
 Before every review or re-review request, reconcile the PR description to the
 current diff. Refresh the review question when its wording no longer matches,
@@ -1074,6 +1130,13 @@ rejected unless its base records an accepted proposal; it may not modify that
 proposal, an accepted amendment, or the frozen frontier. An adjunct PR must use
 the reserved child branch, current parent head, completed HITL template, and
 immutable milestone contract artifacts.
+For each recognized milestone review-unit transition and adjunct, CI also
+validates the PR body’s declared repair ledger and hard escalation receipt. The
+pull-request workflow runs when that body is edited so a newly recorded
+decision can satisfy the gate without an unrelated code commit. The same
+sections remain required human-visible state in cumulative milestone and
+separate repair templates even when those PR topologies are outside the
+transition gate.
 `docs/render_markdown.py` invokes the same plan validator, so hand-edited state
 that omits required fields or history is rejected.
 
@@ -1082,10 +1145,15 @@ check, save the current PR description and pass it with
 `--pr-body-file <path>`; a milestone proposal, amendment, or implementation
 cannot receive a complete validation result without its PR body.
 
-The machine cannot prove which model authored a phase, that a reviewer
-understood a proposal, or that approval was intellectually sound. The operator
-owns those judgments. It can prove that a decisive review was submitted on a
-specific proposal head and preserve that fact separately from merge ancestry.
+The machine cannot discover an unrecorded review round, decide whether a cycle
+was intellectually substantial, prove that the named decision author had sound
+judgment, prove which model authored a phase, prove that a reviewer understood a
+proposal, or prove that approval was intellectually sound. The reviewer and
+operator own those judgments. It can prove that a decisive review was submitted
+on a specific proposal head and preserve that fact separately from merge
+ancestry. The gate also guarantees that declared cycles are consecutive, the
+second declared substantial cycle has an explicit decision receipt and route,
+and a third declared substantial cycle cannot be merged as the same review unit.
 The repository also guarantees that the current state and next handoff are
 visible, the accepted proposal is durable, proposal and implementation diffs
 are separate, and implementation cannot pass CI before proposal acceptance.

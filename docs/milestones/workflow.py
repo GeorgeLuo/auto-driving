@@ -109,6 +109,23 @@ IMPLEMENTATION_ADJUNCT_COMPATIBILITY_CHECKS = (
     "No milestone plan, accepted proposal, or accepted amendment changes.",
     "There is one bounded review question and the base is the parent branch.",
 )
+REPAIR_CYCLE_LEDGER_HEADING = "## Repair Cycle Ledger"
+REPAIR_CYCLE_LEDGER_HEADER = (
+    "Cycle",
+    "Review receipt",
+    "Classification",
+    "Repair revision",
+    "Contract impact",
+)
+REPAIR_CYCLE_CLASSIFICATIONS = {"minor", "substantial"}
+REPAIR_ESCALATION_HEADING = "## Repair Escalation"
+REPAIR_ESCALATION_STATUSES = {"not-required", "completed"}
+REPAIR_ESCALATION_ROUTES = {
+    "replan-current-unit",
+    "proposal-amendment",
+    "split-or-replace-review-unit",
+    "abandon-review-unit",
+}
 HANDOFF_TEMPLATE_SCHEMA = "milestone_handoff_template_v1"
 EXAMPLE_RECEIPT: dict[str, Any] = {
     "schema": "milestone_handoff_v1",
@@ -1685,6 +1702,153 @@ def validate_proposal_amendment_text(text: str) -> None:
             )
 
 
+def _repair_field(text: str, heading: str, label: str) -> str:
+    lines = text.splitlines()
+    start, end = _section_bounds(lines, heading)
+    section = "\n".join(lines[start:end])
+    matches = re.findall(
+        rf"(?m)^-\s+{re.escape(label)}:\s*(.*?)\s*$",
+        section,
+    )
+    if len(matches) != 1 or not matches[0].strip():
+        raise PlanContractError(
+            f"{heading} must provide exactly one {label!r} field"
+        )
+    return matches[0].strip()
+
+
+def _repair_value(value: str) -> str:
+    return value.strip().strip("`*_ ").lower()
+
+
+def _is_placeholder(value: str) -> bool:
+    return _repair_value(value) in {"", "-", "none", "n/a", "tbd"}
+
+
+def _has_durable_reference(value: str) -> bool:
+    return re.search(r"https?://\S+|#[1-9]\d*", value) is not None
+
+
+def validate_repair_cycle_governance_body(text: str) -> int:
+    """Validate declared repair rounds and the hard escalation threshold.
+
+    The PR body is the durable index for repair review receipts. GitHub review
+    discussion still owns the finding and classification; this validator makes
+    the declared count and required escalation machine-checkable.
+    """
+
+    try:
+        ledger = parse_table(text, REPAIR_CYCLE_LEDGER_HEADING)
+    except PlanContractError as exc:
+        raise PlanContractError(
+            f"PR body must contain {REPAIR_CYCLE_LEDGER_HEADING}"
+        ) from exc
+    if ledger.header != REPAIR_CYCLE_LEDGER_HEADER:
+        raise PlanContractError(
+            "Repair Cycle Ledger must use columns: "
+            + ", ".join(REPAIR_CYCLE_LEDGER_HEADER)
+        )
+    if not ledger.rows:
+        raise PlanContractError("Repair Cycle Ledger must contain a row")
+
+    first_values = tuple(_repair_value(value) for value in ledger.rows[0])
+    if first_values[0] == "none":
+        if len(ledger.rows) != 1 or any(
+            value != "none" for value in first_values
+        ):
+            raise PlanContractError(
+                "the no-repair ledger must contain exactly one all-None row"
+            )
+        substantial_cycles = 0
+    else:
+        substantial_cycles = 0
+        for expected_cycle, row in enumerate(ledger.rows, start=1):
+            cycle, review_receipt, classification, repair_revision, impact = row
+            if _repair_value(cycle) != str(expected_cycle):
+                raise PlanContractError(
+                    "Repair Cycle Ledger cycle numbers must be consecutive from 1"
+                )
+            if not _has_durable_reference(review_receipt):
+                raise PlanContractError(
+                    f"repair cycle {expected_cycle} needs a durable review receipt"
+                )
+            normalized_classification = _repair_value(classification)
+            if normalized_classification not in REPAIR_CYCLE_CLASSIFICATIONS:
+                raise PlanContractError(
+                    f"repair cycle {expected_cycle} classification must be one of: "
+                    + ", ".join(sorted(REPAIR_CYCLE_CLASSIFICATIONS))
+                )
+            normalized_revision = _repair_value(repair_revision)
+            if re.fullmatch(r"[0-9a-f]{7,40}", normalized_revision) is None:
+                raise PlanContractError(
+                    f"repair cycle {expected_cycle} must name its repair revision SHA"
+                )
+            if _is_placeholder(impact):
+                raise PlanContractError(
+                    f"repair cycle {expected_cycle} must summarize contract impact"
+                )
+            if normalized_classification == "substantial":
+                substantial_cycles += 1
+
+    if substantial_cycles > 2:
+        raise PlanContractError(
+            "a third substantial repair cycle cannot remain in the same review unit; "
+            "split, replace, amend, or abandon it"
+        )
+
+    try:
+        status = _repair_value(
+            _repair_field(text, REPAIR_ESCALATION_HEADING, "Status")
+        )
+        decision_receipt = _repair_field(
+            text,
+            REPAIR_ESCALATION_HEADING,
+            "Decision receipt",
+        )
+        route = _repair_value(
+            _repair_field(text, REPAIR_ESCALATION_HEADING, "Route")
+        )
+        disposition = _repair_field(
+            text,
+            REPAIR_ESCALATION_HEADING,
+            "Disposition",
+        )
+    except PlanContractError as exc:
+        raise PlanContractError(
+            f"PR body must contain a completed {REPAIR_ESCALATION_HEADING} section"
+        ) from exc
+
+    if status not in REPAIR_ESCALATION_STATUSES:
+        raise PlanContractError(
+            "Repair Escalation Status must be `not-required` or `completed`"
+        )
+    if substantial_cycles == 2 and status != "completed":
+        raise PlanContractError(
+            "two substantial repair cycles require a completed repair escalation "
+            "before re-review"
+        )
+    if status == "not-required":
+        if not _is_placeholder(decision_receipt) or route != "none":
+            raise PlanContractError(
+                "a not-required repair escalation must keep receipt and route as None"
+            )
+    else:
+        if not _has_durable_reference(decision_receipt):
+            raise PlanContractError(
+                "a completed repair escalation needs a durable decision receipt"
+            )
+        if route not in REPAIR_ESCALATION_ROUTES:
+            raise PlanContractError(
+                "Repair Escalation Route must be one of: "
+                + ", ".join(sorted(REPAIR_ESCALATION_ROUTES))
+            )
+        if _is_placeholder(disposition):
+            raise PlanContractError(
+                "a completed repair escalation must record its disposition"
+            )
+    return substantial_cycles
+
+
 def _required_section_body(
     text: str,
     heading: str,
@@ -2069,6 +2233,7 @@ def validate_implementation_adjunct_body(
         raise PlanContractError(
             "implementation adjunct Validation must contain exact commands or results"
         )
+    validate_repair_cycle_governance_body(text)
 
 
 def load_handoff_template(proposal_text: str) -> dict[str, Any]:
@@ -2913,6 +3078,8 @@ def validate_review_unit_transition(
         raise PlanContractError(
             "review-unit PR history does not record its workflow transition"
         )
+    if pr_body is not None:
+        validate_repair_cycle_governance_body(pr_body)
     return transition_kind
 
 
@@ -3855,7 +4022,10 @@ def main() -> int:
     body_source.add_argument(
         "--event-path",
         type=Path,
-        help="GitHub pull_request event JSON used to validate PR metadata",
+        help=(
+            "GitHub pull_request event JSON used to validate PR-body receipts "
+            "and adjunct metadata"
+        ),
     )
     body_source.add_argument(
         "--pr-body-file",

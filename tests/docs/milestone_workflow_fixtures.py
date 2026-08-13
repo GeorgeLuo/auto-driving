@@ -292,7 +292,31 @@ Exercise current, bounded-stale, beyond-bound, and malformed observations.
 """
 
 
+def repair_cycle_governance_body(
+    *,
+    rows: str = "| None | None | None | None | None |",
+    status: str = "not-required",
+    decision_receipt: str = "None",
+    route: str = "None",
+    disposition: str = "Continue under the current review question.",
+) -> str:
+    return f"""## Repair Cycle Ledger
+
+| Cycle | Review receipt | Classification | Repair revision | Contract impact |
+| --- | --- | --- | --- | --- |
+{rows}
+
+## Repair Escalation
+
+- Status: `{status}`
+- Decision receipt: {decision_receipt}
+- Route: {route}
+- Disposition: {disposition}
+"""
+
+
 def implementation_adjunct_body() -> str:
+    repair_governance = repair_cycle_governance_body()
     return f"""# HITL Implementation Adjunct — evidence inspection
 
 ## Parent Implementation
@@ -343,6 +367,8 @@ Does the optional inspection view expose the accepted evidence without changing 
 - Existing evidence affected: None; the accepted policy is unchanged.
 - Evidence to refresh: Presentation tests and the parent deterministic suite.
 - Parent integration check: Repeat the parent adversarial matrix after merge.
+
+{repair_governance}
 
 ## Validation
 

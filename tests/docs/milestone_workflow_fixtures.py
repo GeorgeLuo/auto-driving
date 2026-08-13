@@ -136,7 +136,10 @@ def implementation_review_plan_text() -> str:
     text = text.replace(
         f"- Proposal path: `{PROPOSAL_RELATIVE}`\n",
         f"- Proposal path: `{PROPOSAL_RELATIVE}`\n"
-        "- Accepted proposal: [#58](https://example.invalid/58) at `def5678`\n",
+        "- Accepted proposal: [#58](https://example.invalid/58) at `def5678` "
+        "(reviewed head `ffffffffffffffffffffffffffffffffffffffff` by "
+        "`workflow-reviewer` as `COLLABORATOR` at "
+        "`2026-08-12T18:00:00Z`)\n",
         1,
     )
     return text.replace(

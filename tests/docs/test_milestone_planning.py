@@ -198,6 +198,9 @@ class MilestonePlanningTests(unittest.TestCase):
         self.assertIn("## Independence Check", text)
         self.assertIn("No product or runtime implementation changed", text)
         self.assertIn("Proposal artifact", text)
+        self.assertIn("## Contract Review Receipt", text)
+        self.assertIn("current repository push authority", text)
+        self.assertIn("unedited COMMENT review", text)
 
     def test_proposal_amendment_template_preserves_accepted_contract(self) -> None:
         self.assertTrue(PROPOSAL_AMENDMENT_PR_TEMPLATE.is_file())
@@ -205,6 +208,8 @@ class MilestonePlanningTests(unittest.TestCase):
         self.assertIn("## Evidence Requiring Amendment", text)
         self.assertIn("No accepted proposal or prior amendment was modified", text)
         self.assertIn("No product or runtime implementation changed", text)
+        self.assertIn("## Contract Review Receipt", text)
+        self.assertIn("current repository push authority", text)
 
     def test_implementation_adjunct_template_records_human_compatibility(self) -> None:
         self.assertTrue(IMPLEMENTATION_ADJUNCT_PR_TEMPLATE.is_file())

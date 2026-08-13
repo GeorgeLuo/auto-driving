@@ -231,7 +231,10 @@ class MilestonePlanContractTests(unittest.TestCase):
         promoted = promoted.replace(
             "- Proposal path: `docs/milestones/900-workflow-fixture/proposals/closeout.md`\n",
             "- Proposal path: `docs/milestones/900-workflow-fixture/proposals/closeout.md`\n"
-            "- Accepted proposal: [#61](https://example.invalid/61) at `cab1234`\n",
+            "- Accepted proposal: [#61](https://example.invalid/61) at `cab1234` "
+            "(reviewed head `ffffffffffffffffffffffffffffffffffffffff` by "
+            "`workflow-reviewer` as `COLLABORATOR` at "
+            "`2026-08-12T18:00:00Z`)\n",
             1,
         )
         promoted = promoted.replace(

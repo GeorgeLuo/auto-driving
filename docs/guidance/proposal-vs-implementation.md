@@ -56,6 +56,12 @@ or narrow the claim and record the limit. Apply the same sections to a proposal
 amendment that introduces or changes a universal guarantee, scoped to its
 contract delta.
 
+The canonical plan selects one supported review kind for the frontier. Copy
+that value into the single `## Review Kind` section of every proposal, proposal
+amendment, and implementation PR. CI checks it when the PR opens, changes, or
+its description is edited; proposal acceptance, amendment acceptance, and
+implementation completion recheck the merged PR body before promotion.
+
 Implementation links the accepted proposal and merge commit, stays within that
 contract, and reports actual file impact and validation. If the contract must
 change, return to proposal review rather than rewriting acceptance during

@@ -409,6 +409,11 @@ commit before implementation starts. Record each accepted additive proposal
 amendment with its artifact path, PR, and merge commit. Add the active PR only
 for the phase currently under review.
 
+The current frontier and any populated next-frontier candidate must use one of
+the supported values in [Review Kinds](#review-kinds). The value is the stable
+review focus for that frontier across its proposal, any proposal amendments,
+and its implementation.
+
 When populated, the **next-frontier candidate** is a pre-implementation
 acceptance contract. It is valid only when it records at least:
 
@@ -525,6 +530,9 @@ paths and tests.
 
 ### Review Kinds
 
+The values below are the complete supported set for canonical milestone plans
+and review-unit PR bodies. Use one value; do not invent a hybrid label.
+
 | Kind | Focus |
 | --- | --- |
 | Deterministic invariant closure | Universal guarantee, owner, bypasses, boundaries, final external values |
@@ -599,6 +607,13 @@ bounded 100-review window, fail closed if that window would truncate, compare
 pre-merge timing, and record the reviewer, authority, review time, reviewed
 head, and merge commit in the canonical plan. A merged PR without that receipt
 remains `proposal_in_review`; do not begin implementation.
+
+Every proposal, proposal amendment, and implementation PR body must provide
+exactly one completed `## Review Kind` section. Its value must be supported and
+must match the current frontier's canonical plan value. This keeps the review
+focus stable across the proposal and implementation phases; changing the kind
+requires a reviewed plan revision before proposal work starts, not a PR-body
+reclassification during delivery.
 
 If the frozen frontier is found to be wrong before proposal work starts, revise
 it in a separate plan-only review unit. Use a
@@ -749,7 +764,8 @@ assumptions are proven.
 
 Use `.github/PULL_REQUEST_TEMPLATE/proposal.md`. The proposal document itself is
 the durable contract; the PR body gives the reviewer its milestone context,
-question, scope, and explicit confirmation that no implementation is present.
+review kind, question, scope, and explicit confirmation that no implementation
+is present. Proposal amendments use the same canonical review kind.
 
 ### Implementation PR Template
 
@@ -951,10 +967,12 @@ python3 docs/milestones/workflow.py start-proposal \
 ```
 
 The proposal author commits the proposal artifact, plan transition, and rendered
-HTML, then opens a proposal PR to the milestone branch. When the contract is
-acceptable, submit the exact-head GitHub review receipt described above before
-merging. Any later proposal commit requires another receipt. After merge, the
-maintainer updates the clean milestone branch and records acceptance:
+HTML, then opens a proposal PR to the milestone branch. Its `Review Kind` must
+match the canonical frontier. When the contract is acceptable, submit the
+exact-head GitHub review receipt described above before merging. Any later
+proposal commit requires another receipt. After merge, the maintainer updates
+the clean milestone branch and records acceptance; the acceptance command
+rechecks the merged PR body and exact-head review receipt before promotion:
 
 ```sh
 python3 docs/milestones/workflow.py accept-proposal \
@@ -973,7 +991,8 @@ python3 docs/milestones/workflow.py start-proposal-amendment \
 ```
 
 Apply the same exact-head review rule to the contract-only amendment PR. After
-it merges, record its reviewed head and exact merge acceptance receipt:
+it merges, record its reviewed head and exact merge acceptance receipt. The
+amendment acceptance command also rechecks the canonical review kind:
 
 ```sh
 python3 docs/milestones/workflow.py accept-proposal-amendment \
@@ -1018,11 +1037,12 @@ python3 docs/milestones/workflow.py complete-implementation \
 ```
 
 `complete-implementation` fetches and fast-forwards the milestone branch,
-confirms the implementation PR is merged from the planned branch, fills the
-reviewed template with the PR number and merge SHA, applies the existing
-handoff owner, verifies that only canonical `plan.md` and generated `plan.html`
-changed, commits them, and pushes the milestone branch. It stops at
-`ready_for_proposal`; it never starts the next proposal branch.
+confirms the implementation PR is merged from the planned branch and its body
+still matches the canonical review kind, fills the reviewed template with the
+PR number and merge SHA, applies the existing handoff owner, verifies that only
+canonical `plan.md` and generated `plan.html` changed, commits them, and pushes
+the milestone branch. It stops at `ready_for_proposal`; it never starts the next
+proposal branch.
 
 The lower-level `handoff --receipt <path>` command remains available for a
 reviewed exceptional receipt or recovery, but normal successful completion
@@ -1033,18 +1053,21 @@ dirty worktree, the wrong branch, a branch/state mismatch, an unmerged proposal,
 an implementation start without an accepted proposal, an implementation PR
 from the wrong branch, or a merge commit that is not already an ancestor of the
 milestone branch. Proposal acceptance asks GitHub to confirm the exact base,
-head, merge commit, changed-file allowlist, and accepted authorized review
-receipt attached to the exact proposal head. Implementation completion asks
-GitHub to confirm the implementation PR and commit, then limits criterion
-updates to the current frontier, prevents premature closeout, updates the
-accepted ledger and risks, promotes the reviewed next candidate to
-`ready_for_proposal`, records workflow history, and regenerates HTML.
+head, merge commit, changed-file allowlist, accepted authorized review receipt
+attached to the exact proposal head, and matching review kind. Implementation
+completion asks GitHub to confirm the implementation PR, commit, and matching
+review kind, then limits criterion updates to the current frontier, prevents
+premature closeout, updates the accepted ledger and risks, promotes the
+reviewed next candidate to `ready_for_proposal`, records workflow history, and
+regenerates HTML.
 
-CI runs `workflow.py validate-pr` on every PR. It applies the frontier gate to
-PRs targeting a milestone branch and the adjunct gate to reserved adjunct PRs
-targeting the active plan’s canonical implementation branch. A proposal PR may
-change only its declared proposal document, canonical plan, and generated plan
-HTML. A
+CI runs `workflow.py validate-pr` when a PR is opened, synchronized, reopened,
+or its description is edited. It applies the frontier gate to PRs targeting a
+milestone branch and the adjunct gate to reserved adjunct PRs targeting the
+active plan's canonical implementation branch. Proposal, proposal-amendment,
+and implementation PRs must provide the canonical review kind. A proposal PR
+may change only its declared proposal document, canonical plan, and generated
+plan HTML. A
 proposal amendment PR has the same contract-only boundary and must add a new
 artifact without modifying accepted proposal history. An implementation PR is
 rejected unless its base records an accepted proposal; it may not modify that
@@ -1053,6 +1076,11 @@ the reserved child branch, current parent head, completed HITL template, and
 immutable milestone contract artifacts.
 `docs/render_markdown.py` invokes the same plan validator, so hand-edited state
 that omits required fields or history is rejected.
+
+CI supplies `validate-pr` with the PR event payload. For an equivalent local
+check, save the current PR description and pass it with
+`--pr-body-file <path>`; a milestone proposal, amendment, or implementation
+cannot receive a complete validation result without its PR body.
 
 The machine cannot prove which model authored a phase, that a reviewer
 understood a proposal, or that approval was intellectually sound. The operator

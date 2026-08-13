@@ -9,6 +9,11 @@
 - Accepted proposal PR and merge commit:
 - Amendment artifact: `docs/milestones/<number>-<slug>/proposals/<slug>-amendment.md`
 
+## Review Kind
+
+<!-- One supported value matching the current frontier's canonical milestone
+     plan. -->
+
 ## Review Question
 
 <!-- Does established evidence justify this bounded correction, and is the

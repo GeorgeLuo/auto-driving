@@ -24,8 +24,10 @@
 
 ## Review Kind
 
-<!-- One primary kind: deterministic invariant closure | behavioral feature slice |
-     broad mechanical rollout | live or external evidence | review repair | milestone closeout -->
+<!-- One supported value matching the canonical milestone plan exactly:
+     deterministic invariant closure | behavioral feature slice | broad
+     mechanical rollout | live or external evidence | review repair |
+     milestone closeout -->
 
 ## Review Question
 

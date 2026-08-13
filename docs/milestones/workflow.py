@@ -46,6 +46,14 @@ WORKFLOW_STATES = {
 CONTRACT_REVIEW_RECEIPT_HEADING = "## Contract Review Receipt"
 CONTRACT_REVIEW_RECEIPT_OUTCOMES = {"accepted", "changes_requested"}
 AUTHORIZED_REVIEW_ASSOCIATIONS = {"OWNER", "MEMBER", "COLLABORATOR"}
+ALLOWED_REVIEW_KINDS = {
+    "deterministic invariant closure",
+    "behavioral feature slice",
+    "broad mechanical rollout",
+    "live or external evidence",
+    "review repair",
+    "milestone closeout",
+}
 PROPOSAL_REQUIRED_HEADINGS = (
     "## Review Question",
     "## Proposed Contract",
@@ -247,6 +255,10 @@ def _normalize_field(label: str) -> str:
     return normalized
 
 
+def _normalize_review_kind(value: str) -> str:
+    return re.sub(r"\s+", " ", value.strip().strip("`*_ ").lower())
+
+
 def parse_frontier(text: str, heading: str) -> Frontier:
     lines = text.splitlines()
     start, end = _section_bounds(lines, heading)
@@ -297,6 +309,11 @@ def _require_frontier_fields(
     for field in required:
         if not frontier.fields.get(field):
             raise PlanContractError(f"{heading} is missing {field!r}")
+    review_kind = _normalize_review_kind(frontier.fields["review kind"])
+    if review_kind not in ALLOWED_REVIEW_KINDS:
+        raise PlanContractError(
+            f"{heading} has unsupported review kind {frontier.fields['review kind']!r}"
+        )
     if not frontier.fields.get("non-goals"):
         raise PlanContractError(f"{heading} is missing 'non-goals'")
 
@@ -1280,6 +1297,10 @@ def validate_merged_pr_metadata(
         raise PlanContractError(
             f"PR #{receipt['accepted_pr']} did not use {expected_head}"
         )
+    _validate_pr_review_kind(
+        payload.get("body"),
+        expected=state.current.fields["review kind"],
+    )
     merge_commit = payload.get("mergeCommit")
     merge_oid = merge_commit.get("oid") if isinstance(merge_commit, dict) else None
     expected = receipt["accepted_merge_commit"]
@@ -1312,7 +1333,7 @@ def _fetch_pr_metadata(
                 "view",
                 str(pr_number),
                 "--json",
-                "state,mergeCommit,baseRefName,headRefName",
+                "state,mergeCommit,baseRefName,headRefName,body",
             ],
             cwd=repo_root,
             check=True,
@@ -1854,6 +1875,45 @@ def _contract_review_receipt_suffix(
         f" (reviewed head `{receipt.head_oid}` by `{receipt.reviewer}` as "
         f"`{receipt.reviewer_association}` at `{receipt.submitted_at}`)"
     )
+def _pr_review_kind(text: str) -> str:
+    if text.splitlines().count("## Review Kind") != 1:
+        raise PlanContractError(
+            "review-unit PR body must contain exactly one ## Review Kind section"
+        )
+    try:
+        body = _required_section_body(text, "## Review Kind")
+    except PlanContractError as exc:
+        raise PlanContractError(
+            "review-unit PR body must provide a completed ## Review Kind section"
+        ) from exc
+    without_comments = re.sub(r"<!--.*?-->", "", body, flags=re.DOTALL)
+    values = [
+        line.strip().removeprefix("- ").strip()
+        for line in without_comments.splitlines()
+        if line.strip()
+    ]
+    if len(values) != 1:
+        raise PlanContractError(
+            "review-unit PR body ## Review Kind must contain exactly one value"
+        )
+    review_kind = _normalize_review_kind(values[0])
+    if review_kind not in ALLOWED_REVIEW_KINDS:
+        raise PlanContractError(
+            f"review-unit PR body has unsupported review kind {values[0]!r}"
+        )
+    return review_kind
+
+
+def _validate_pr_review_kind(text: Any, *, expected: str) -> None:
+    if not isinstance(text, str):
+        raise PlanContractError("review-unit PR validation requires the PR body")
+    actual = _pr_review_kind(text)
+    normalized_expected = _normalize_review_kind(expected)
+    if actual != normalized_expected:
+        raise PlanContractError(
+            "review-unit PR body review kind does not match the canonical plan: "
+            f"{actual!r} != {normalized_expected!r}"
+        )
 
 
 def _implementation_adjunct_field(section: str, label: str) -> str:
@@ -2315,6 +2375,10 @@ def validate_merged_proposal_metadata(
         review_metadata=review_metadata,
         label=f"proposal PR #{proposal_pr}",
     )
+    _validate_pr_review_kind(
+        payload.get("body"),
+        expected=state.current.fields["review kind"],
+    )
     merge_commit = payload.get("mergeCommit")
     merge_oid = merge_commit.get("oid") if isinstance(merge_commit, dict) else None
     if not isinstance(merge_oid, str) or re.fullmatch(r"[0-9a-f]{40}", merge_oid) is None:
@@ -2432,6 +2496,10 @@ def validate_merged_proposal_amendment_metadata(
         payload,
         review_metadata=review_metadata,
         label=f"proposal amendment PR #{amendment_pr}",
+    )
+    _validate_pr_review_kind(
+        payload.get("body"),
+        expected=state.current.fields["review kind"],
     )
     merge_commit = payload.get("mergeCommit")
     merge_oid = merge_commit.get("oid") if isinstance(merge_commit, dict) else None
@@ -2616,6 +2684,7 @@ def validate_review_unit_transition(
     head_branch: str,
     proposal_text: str | None = None,
     proposal_amendment_text: str | None = None,
+    pr_body: str | None = None,
 ) -> str:
     base = validate_plan_text(base_text)
     head = validate_plan_text(head_text)
@@ -2729,6 +2798,10 @@ def validate_review_unit_transition(
             )
         if proposal_path not in changed_paths or proposal_text is None:
             raise PlanContractError(f"proposal PR must provide {proposal_path}")
+        _validate_pr_review_kind(
+            pr_body,
+            expected=base.current.fields["review kind"],
+        )
         validate_proposal_text(proposal_text)
         validate_handoff_template_against_plan(proposal_text, head_text)
         transition_kind = "proposal"
@@ -2780,6 +2853,10 @@ def validate_review_unit_transition(
             raise PlanContractError(
                 f"proposal amendment PR must provide {amendment_path}"
             )
+        _validate_pr_review_kind(
+            pr_body,
+            expected=base.current.fields["review kind"],
+        )
         validate_proposal_amendment_text(proposal_amendment_text)
         transition_kind = "proposal_amendment"
     elif base_state == "ready_for_implementation":
@@ -2821,6 +2898,10 @@ def validate_review_unit_transition(
                 "amendments: "
                 + ", ".join(sorted(changed_proposal_paths))
             )
+        _validate_pr_review_kind(
+            pr_body,
+            expected=base.current.fields["review kind"],
+        )
         transition_kind = "implementation"
     else:
         raise PlanContractError(
@@ -3079,6 +3160,7 @@ def validate_review_unit_git_diff(
         head_branch=head_ref,
         proposal_text=proposal_text,
         proposal_amendment_text=proposal_amendment_text,
+        pr_body=pr_body,
     )
 
 
@@ -3401,7 +3483,7 @@ def _cmd_accept_proposal(plan: Path, proposal_pr: int) -> int:
                 str(proposal_pr),
                 "--json",
                 (
-                    "state,mergeCommit,baseRefName,headRefName,headRefOid,files,url"
+                    "state,mergeCommit,baseRefName,headRefName,headRefOid,files,url,body"
                 ),
             ],
             cwd=repo_root,
@@ -3514,7 +3596,7 @@ def _cmd_accept_proposal_amendment(plan: Path, amendment_pr: int) -> int:
                 str(amendment_pr),
                 "--json",
                 (
-                    "state,mergeCommit,baseRefName,headRefName,headRefOid,files,url"
+                    "state,mergeCommit,baseRefName,headRefName,headRefOid,files,url,body"
                 ),
             ],
             cwd=repo_root,
@@ -3648,6 +3730,17 @@ def _pull_request_body_from_event(event_path: Path | None) -> str | None:
     return body
 
 
+def _pull_request_body_from_file(body_path: Path | None) -> str | None:
+    if body_path is None:
+        return None
+    try:
+        return body_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise PlanContractError(
+            f"cannot load pull-request body {body_path}: {exc}"
+        ) from exc
+
+
 def _cmd_validate_pr(
     *,
     base_ref: str,
@@ -3655,13 +3748,19 @@ def _cmd_validate_pr(
     base_sha: str,
     head_sha: str,
     event_path: Path | None,
+    body_path: Path | None,
 ) -> int:
+    pr_body = (
+        _pull_request_body_from_event(event_path)
+        if event_path is not None
+        else _pull_request_body_from_file(body_path)
+    )
     transition = validate_review_unit_git_diff(
         base_ref=base_ref,
         head_ref=head_ref,
         base_sha=base_sha,
         head_sha=head_sha,
-        pr_body=_pull_request_body_from_event(event_path),
+        pr_body=pr_body,
     )
     if transition is None:
         print(f"PR targets {base_ref}; milestone review-unit gate not applicable.")
@@ -3752,10 +3851,16 @@ def main() -> int:
     validate_pr_parser.add_argument("--head-ref", required=True)
     validate_pr_parser.add_argument("--base-sha", required=True)
     validate_pr_parser.add_argument("--head-sha", required=True)
-    validate_pr_parser.add_argument(
+    body_source = validate_pr_parser.add_mutually_exclusive_group()
+    body_source.add_argument(
         "--event-path",
         type=Path,
-        help="GitHub pull_request event JSON used to validate adjunct metadata",
+        help="GitHub pull_request event JSON used to validate PR metadata",
+    )
+    body_source.add_argument(
+        "--pr-body-file",
+        type=Path,
+        help="local Markdown PR body used to validate review metadata",
     )
 
     subparsers.add_parser(
@@ -3795,6 +3900,7 @@ def main() -> int:
                 base_sha=args.base_sha,
                 head_sha=args.head_sha,
                 event_path=args.event_path,
+                body_path=args.pr_body_file,
             )
         return _cmd_handoff(args.plan, args.receipt)
     except (OSError, PlanContractError, subprocess.CalledProcessError) as exc:

@@ -281,6 +281,10 @@ class MilestonePlanContractTests(unittest.TestCase):
             "baseRefName": MILESTONE_BRANCH,
             "headRefName": IMPLEMENTATION_BRANCH,
             "mergeCommit": {"oid": "abc123456789"},
+            "body": (
+                "## Review Kind\n\n"
+                "Deterministic invariant closure\n"
+            ),
         }
         validate_merged_pr_metadata(valid, state, receipt)
 
@@ -291,6 +295,13 @@ class MilestonePlanContractTests(unittest.TestCase):
         wrong_sha = {**valid, "mergeCommit": {"oid": "def567890"}}
         with self.assertRaisesRegex(PlanContractError, "does not match"):
             validate_merged_pr_metadata(wrong_sha, state, receipt)
+
+        wrong_kind = {
+            **valid,
+            "body": "## Review Kind\n\nBehavioral feature slice\n",
+        }
+        with self.assertRaisesRegex(PlanContractError, "review kind does not match"):
+            validate_merged_pr_metadata(wrong_kind, state, receipt)
 
 
 class MilestoneHandoffGitOrderingTests(unittest.TestCase):

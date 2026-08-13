@@ -45,6 +45,17 @@ from tests.docs.milestone_workflow_fixtures import (
 
 PLAN_REVISION_BRANCH = "m900/plan-shadow-proposals"
 REVISED_FRONTIER = "Shadow action proposals"
+REVIEW_KIND = "Deterministic invariant closure"
+
+
+def _review_unit_body(review_kind: str = REVIEW_KIND) -> str:
+    return (
+        "# Synthetic review unit\n\n"
+        "## Review Kind\n\n"
+        f"{review_kind}\n\n"
+        "## Review Question\n\n"
+        "Is the bounded contract acceptable?\n"
+    )
 
 
 def _contract_review(
@@ -387,6 +398,15 @@ class WorkflowStateContractTests(unittest.TestCase):
         with self.assertRaisesRegex(PlanContractError, "contract review receipt"):
             validate_plan_text(without_receipt)
 
+    def test_frontier_rejects_unsupported_review_kind(self) -> None:
+        invalid = self.plan.replace(
+            f"- Review kind: {REVIEW_KIND}\n",
+            "- Review kind: Exploratory bundle\n",
+            1,
+        )
+        with self.assertRaisesRegex(PlanContractError, "unsupported review kind"):
+            validate_plan_text(invalid)
+
     def test_preproposal_plan_revision_preserves_history(self) -> None:
         state = validate_plan_text(_revise_plan(self.plan))
 
@@ -425,8 +445,49 @@ class ReviewUnitTransitionTests(unittest.TestCase):
             },
             head_branch=PROPOSAL_BRANCH,
             proposal_text=proposal_text(),
+            pr_body=_review_unit_body(),
         )
         self.assertEqual(transition, "proposal")
+
+    def test_proposal_pr_review_kind_must_match_plan(self) -> None:
+        with self.assertRaisesRegex(PlanContractError, "does not match"):
+            validate_review_unit_transition(
+                self.base,
+                self.proposal_head,
+                plan_path=PLAN_RELATIVE,
+                changed_paths={
+                    PLAN_RELATIVE,
+                    str(Path(PLAN_RELATIVE).with_suffix(".html")),
+                    PROPOSAL_RELATIVE,
+                },
+                head_branch=PROPOSAL_BRANCH,
+                proposal_text=proposal_text(),
+                pr_body=_review_unit_body("Behavioral feature slice"),
+            )
+
+    def test_proposal_pr_requires_one_completed_review_kind(self) -> None:
+        duplicate = _review_unit_body() + "\n## Review Kind\n\nReview repair\n"
+        with self.assertRaisesRegex(PlanContractError, "exactly one"):
+            validate_review_unit_transition(
+                self.base,
+                self.proposal_head,
+                plan_path=PLAN_RELATIVE,
+                changed_paths={PLAN_RELATIVE, PROPOSAL_RELATIVE},
+                head_branch=PROPOSAL_BRANCH,
+                proposal_text=proposal_text(),
+                pr_body=duplicate,
+            )
+
+    def test_proposal_pr_requires_pr_body(self) -> None:
+        with self.assertRaisesRegex(PlanContractError, "requires the PR body"):
+            validate_review_unit_transition(
+                self.base,
+                self.proposal_head,
+                plan_path=PLAN_RELATIVE,
+                changed_paths={PLAN_RELATIVE, PROPOSAL_RELATIVE},
+                head_branch=PROPOSAL_BRANCH,
+                proposal_text=proposal_text(),
+            )
 
     def test_plan_revision_can_replace_unstarted_frontier(self) -> None:
         transition = validate_review_unit_transition(
@@ -584,6 +645,7 @@ class ReviewUnitTransitionTests(unittest.TestCase):
             },
             head_branch=PROPOSAL_BRANCH,
             proposal_text=proposal_text(),
+            pr_body=_review_unit_body(),
         )
 
         self.assertEqual(transition, "proposal")
@@ -666,6 +728,7 @@ class ReviewUnitTransitionTests(unittest.TestCase):
             },
             head_branch=PROPOSAL_AMENDMENT_BRANCH,
             proposal_amendment_text=proposal_amendment_text(),
+            pr_body=_review_unit_body(),
         )
 
         self.assertEqual(transition, "proposal_amendment")
@@ -718,8 +781,30 @@ class ReviewUnitTransitionTests(unittest.TestCase):
                 "implementations/memory/bounded_evidence.py",
             },
             head_branch=IMPLEMENTATION_BRANCH,
+            pr_body=_review_unit_body(),
         )
         self.assertEqual(transition, "implementation")
+
+    def test_implementation_pr_review_kind_must_match_plan(self) -> None:
+        accepted = accept_proposal(
+            self.proposal_head,
+            proposal_pr=60,
+            merge_commit="a" * 40,
+            proposal_url="https://example.invalid/60",
+        )
+        implementation_head = _move_to_review(accepted, implementation=True)
+        with self.assertRaisesRegex(PlanContractError, "does not match"):
+            validate_review_unit_transition(
+                accepted,
+                implementation_head,
+                plan_path=PLAN_RELATIVE,
+                changed_paths={
+                    PLAN_RELATIVE,
+                    "implementations/memory/bounded_evidence.py",
+                },
+                head_branch=IMPLEMENTATION_BRANCH,
+                pr_body=_review_unit_body("Review repair"),
+            )
 
     def test_implementation_cannot_modify_accepted_amendment(self) -> None:
         amendment_review = _move_to_amendment_review(_accepted_plan())
@@ -770,6 +855,7 @@ class ReviewUnitTransitionTests(unittest.TestCase):
             changed_paths={PLAN_RELATIVE, second_path},
             head_branch=second_branch,
             proposal_amendment_text=proposal_amendment_text(),
+            pr_body=_review_unit_body(),
         )
         self.assertEqual(transition, "proposal_amendment")
 
@@ -822,6 +908,7 @@ class ReviewUnitTransitionTests(unittest.TestCase):
                 "tests/implementations/memory/test_bounded_evidence.py",
             },
             head_branch=IMPLEMENTATION_BRANCH,
+            pr_body=_review_unit_body(),
         )
         self.assertEqual(transition, "implementation")
 
@@ -850,6 +937,7 @@ class ReviewUnitTransitionTests(unittest.TestCase):
                 "implementations/memory/bounded_evidence.py",
             },
             head_branch=IMPLEMENTATION_BRANCH,
+            pr_body=_review_unit_body(),
         )
 
         self.assertEqual(transition, "implementation")
@@ -896,6 +984,7 @@ class ProposalAcceptanceMetadataTests(unittest.TestCase):
             "mergeCommit": {"oid": "b" * 40},
             "mergedAt": "2026-08-12T18:02:00Z",
             "url": "https://example.invalid/60",
+            "body": _review_unit_body(),
             "reviews": [_contract_review(head_oid=head_oid)],
             "files": [
                 {"path": PLAN_RELATIVE},
@@ -1209,6 +1298,17 @@ class ProposalAcceptanceMetadataTests(unittest.TestCase):
 
         self.assertEqual(receipt.reviewer, "workflow-reviewer")
 
+    def test_merged_proposal_rejects_mismatched_review_kind(self) -> None:
+        payload = self._payload()
+        payload["body"] = _review_unit_body("Behavioral feature slice")
+        with self.assertRaisesRegex(PlanContractError, "does not match"):
+            validate_merged_proposal_metadata(
+                payload,
+                self.state,
+                proposal_pr=60,
+                allowed_paths=self.allowed,
+            )
+
     def test_merged_proposal_rejects_code_changes(self) -> None:
         payload = self._payload()
         payload["files"].append(
@@ -1246,6 +1346,7 @@ class ProposalAmendmentAcceptanceMetadataTests(unittest.TestCase):
             "mergeCommit": {"oid": "b" * 40},
             "mergedAt": "2026-08-12T18:02:00Z",
             "url": "https://example.invalid/61",
+            "body": _review_unit_body(),
             "reviews": [_contract_review(head_oid=head_oid)],
             "files": [
                 {"path": PLAN_RELATIVE},
@@ -1298,6 +1399,17 @@ class ProposalAmendmentAcceptanceMetadataTests(unittest.TestCase):
         record = state.current.fields["accepted proposal amendments"]
         self.assertIn("reviewed head", record)
         self.assertIn("workflow-reviewer", record)
+
+    def test_merged_amendment_rejects_mismatched_review_kind(self) -> None:
+        payload = self._payload()
+        payload["body"] = _review_unit_body("Review repair")
+        with self.assertRaisesRegex(PlanContractError, "does not match"):
+            validate_merged_proposal_amendment_metadata(
+                payload,
+                self.state,
+                amendment_pr=61,
+                allowed_paths=self.allowed,
+            )
 
     def test_merged_amendment_rejects_code_changes(self) -> None:
         payload = self._payload()
@@ -1602,6 +1714,7 @@ class ReviewUnitGitDiffTests(unittest.TestCase):
                 head_ref=PROPOSAL_BRANCH,
                 base_sha=base_sha,
                 head_sha=head_sha,
+                pr_body=_review_unit_body(),
                 repo_root=root,
             )
 
@@ -1702,6 +1815,7 @@ class ReviewUnitGitDiffTests(unittest.TestCase):
                 head_ref=PROPOSAL_AMENDMENT_BRANCH,
                 base_sha=base_sha,
                 head_sha=head_sha,
+                pr_body=_review_unit_body(),
                 repo_root=root,
             )
 

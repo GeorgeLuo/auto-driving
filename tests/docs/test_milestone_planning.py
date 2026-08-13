@@ -26,6 +26,7 @@ IMPLEMENTATION_ADJUNCT_PR_TEMPLATE = (
     ROOT / ".github" / "PULL_REQUEST_TEMPLATE" / "implementation-adjunct.md"
 )
 MILESTONE_PR_TEMPLATE = ROOT / ".github" / "PULL_REQUEST_TEMPLATE" / "milestone.md"
+TEST_WORKFLOW = ROOT / ".github" / "workflows" / "tests.yml"
 
 
 def _active_milestone_section() -> str:
@@ -192,11 +193,13 @@ class MilestonePlanningTests(unittest.TestCase):
             "## Validation",
         ):
             self.assertIn(heading, text)
+        self.assertIn("matching the canonical milestone plan", text)
 
     def test_proposal_pr_template_forbids_implementation(self) -> None:
         self.assertTrue(PROPOSAL_PR_TEMPLATE.is_file())
         text = PROPOSAL_PR_TEMPLATE.read_text(encoding="utf-8")
         self.assertIn("## Independence Check", text)
+        self.assertIn("## Review Kind", text)
         self.assertIn("## Invariant Contractability", text)
         self.assertIn("Trust And Authority Model", text)
         self.assertIn("Evidence Topology And Capture Strategy", text)
@@ -227,6 +230,7 @@ class MilestonePlanningTests(unittest.TestCase):
     def test_proposal_amendment_template_preserves_accepted_contract(self) -> None:
         self.assertTrue(PROPOSAL_AMENDMENT_PR_TEMPLATE.is_file())
         text = PROPOSAL_AMENDMENT_PR_TEMPLATE.read_text(encoding="utf-8")
+        self.assertIn("## Review Kind", text)
         self.assertIn("## Evidence Requiring Amendment", text)
         self.assertIn("## Invariant Contractability", text)
         self.assertIn("Trust And Authority Model", text)
@@ -259,6 +263,13 @@ class MilestonePlanningTests(unittest.TestCase):
         self.assertIn("Targets: `main`", text)
         self.assertIn("milestone branch", text.lower())
         self.assertIn("## Accepted Review Units", text)
+
+    def test_pr_body_edits_rerun_review_kind_validation(self) -> None:
+        text = TEST_WORKFLOW.read_text(encoding="utf-8")
+        self.assertRegex(
+            text,
+            r"pull_request:\s*\n\s+types: \[[^\]]*edited[^\]]*\]",
+        )
 
     def test_contract_defines_work_unit_terms_and_branch_model(self) -> None:
         text = CONTRACT_SOURCE.read_text(encoding="utf-8")

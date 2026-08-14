@@ -709,7 +709,7 @@ class CliSurfaceAuditTests(unittest.TestCase):
             template_id="help-unknown-opt",
         )
         self.assertFalse(receipt.ok)
-        self.assertIn("unknown tokens before help", receipt.reason)
+        self.assertIn("invalid tokens before help", receipt.reason)
 
     def test_help_extra_positional_before_help_fails(self) -> None:
         receipt = self.argv_validate.validate_argv(
@@ -717,7 +717,38 @@ class CliSurfaceAuditTests(unittest.TestCase):
             template_id="help-extra-pos",
         )
         self.assertFalse(receipt.ok)
-        self.assertIn("unknown tokens before help", receipt.reason)
+        self.assertIn("invalid tokens before help", receipt.reason)
+
+    def test_help_invalid_choice_before_help_fails(self) -> None:
+        # --candidate is free-form; --control-algorithm is a closed argparse choice.
+        receipt = self.argv_validate.validate_argv(
+            [
+                "vehicles",
+                "perception",
+                "qualify",
+                "--control-algorithm",
+                "bogus",
+                "--help",
+            ],
+            template_id="help-bad-choice",
+        )
+        self.assertFalse(receipt.ok)
+        self.assertIn("invalid tokens before help", receipt.reason)
+
+    def test_help_valid_positional_prefix_ok(self) -> None:
+        receipt = self.argv_validate.validate_argv(
+            [
+                "vehicles",
+                "perception",
+                "apply",
+                "/tmp/x",
+                "--algorithm",
+                "lightweight_observer",
+                "--help",
+            ],
+            template_id="help-valid-pos",
+        )
+        self.assertTrue(receipt.ok, receipt.reason)
 
     def test_us01_help_predicates_fail_when_help_steps_removed(self) -> None:
         result_path = (
@@ -756,6 +787,42 @@ class CliSurfaceAuditTests(unittest.TestCase):
             )
         msg = str(ctx.exception).lower()
         self.assertTrue("ledger" in msg or "identity" in msg or "links" in msg, msg)
+
+    def test_cite_digest_frozen_against_registry_resign(self) -> None:
+        result_path = (
+            ROOT
+            / "docs/milestones/007-cli-operator-usability/evidence/"
+            "live-cli-acceptance/result.json"
+        )
+        original = result_path.read_text(encoding="utf-8")
+        sequences = json.loads(
+            (TOOL / "sequence_registry.json").read_text(encoding="utf-8")
+        )
+        claim_map = json.loads((TOOL / "claim_map.json").read_text(encoding="utf-8"))
+        try:
+            mutated = original.replace("./cli/automa help", "./cli/automa help MUTATED", 1)
+            self.assertNotEqual(mutated, original)
+            result_path.write_text(mutated, encoding="utf-8")
+            import hashlib
+
+            digest = hashlib.sha256(mutated.encode("utf-8")).hexdigest()
+            rel = (
+                "docs/milestones/007-cli-operator-usability/evidence/"
+                "live-cli-acceptance/result.json"
+            )
+            for row in sequences["sequences"]:
+                evidence = row.get("evidence") or {}
+                if rel in (evidence.get("digests") or {}):
+                    evidence["digests"][rel] = digest
+            with self.assertRaises(self.validate_audit.AuditError) as ctx:
+                self.validate_audit.validate_semantic_cite(
+                    sequences=sequences,
+                    claim_map=claim_map,
+                    repo_root=ROOT,
+                )
+            self.assertIn("frozen", str(ctx.exception).lower())
+        finally:
+            result_path.write_text(original, encoding="utf-8")
 
 
 if __name__ == "__main__":

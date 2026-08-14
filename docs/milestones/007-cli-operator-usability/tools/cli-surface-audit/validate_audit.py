@@ -15,6 +15,7 @@ try:
     from .argv_validate import ArgvValidationError, normalize_placeholders, validate_argv
     from .frozen_authority import (
         CANONICAL_US88_SOURCE,
+        FROZEN_CITE_PATH_DIGESTS,
         FROZEN_CLAIM_MAP,
         FROZEN_LIVE_LEDGER_SHA256,
         FROZEN_LIVE_RESIDUALS,
@@ -34,6 +35,7 @@ except ImportError:  # script / path execution
     from argv_validate import ArgvValidationError, normalize_placeholders, validate_argv
     from frozen_authority import (
         CANONICAL_US88_SOURCE,
+        FROZEN_CITE_PATH_DIGESTS,
         FROZEN_CLAIM_MAP,
         FROZEN_LIVE_LEDGER_SHA256,
         FROZEN_LIVE_RESIDUALS,
@@ -1081,6 +1083,11 @@ def validate_frozen_claim_map(claim_map: dict[str, Any]) -> None:
         preds = claim.get("predicates") or []
         if not preds:
             raise AuditError(f"frozen claim {claim_id} has empty predicates")
+        for rel in claim.get("paths") or []:
+            if rel not in FROZEN_CITE_PATH_DIGESTS:
+                raise AuditError(
+                    f"frozen claim {claim_id} path {rel} missing FROZEN_CITE_PATH_DIGESTS"
+                )
 
 
 def validate_semantic_cite(
@@ -1194,6 +1201,16 @@ def validate_semantic_cite(
             if not abs_path.is_file():
                 raise AuditError(f"cite path missing: {rel}")
             digest = _sha256_file(abs_path)
+            frozen_digest = FROZEN_CITE_PATH_DIGESTS.get(rel)
+            if not frozen_digest:
+                raise AuditError(
+                    f"{us_id} cite path {rel} has no frozen FROZEN_CITE_PATH_DIGESTS entry"
+                )
+            if digest != frozen_digest:
+                raise AuditError(
+                    f"{us_id} cited bytes {rel} digest {digest[:12]} != "
+                    f"frozen {frozen_digest[:12]}"
+                )
             if rel not in digests:
                 raise AuditError(f"{us_id} missing required digest for {rel}")
             expected = digests[rel]

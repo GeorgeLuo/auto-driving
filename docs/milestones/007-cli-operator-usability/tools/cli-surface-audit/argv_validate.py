@@ -131,14 +131,14 @@ def validate_argv(
                     reason="help flag must be sole trailing token without extra args",
                 )
             prefix = normalized[:-1]
-            extras = _unknown_tokens_before_help(parser, prefix)
-            if extras:
+            prefix_reason = _validate_prefix_before_help(prefix)
+            if prefix_reason:
                 return ArgvReceipt(
                     template_id=template_id,
                     argv=list(argv),
                     leaf_id=leaf_id,
                     ok=False,
-                    reason=f"unknown tokens before help flag: {extras}",
+                    reason=prefix_reason,
                 )
 
         try:
@@ -185,83 +185,51 @@ def validate_argv(
         )
 
 
-def _subparsers(parser: argparse.ArgumentParser) -> argparse._SubParsersAction | None:
-    for action in parser._actions:
-        if isinstance(action, argparse._SubParsersAction):
-            return action
-    return None
+def _relax_parser_for_prefix(parser: argparse.ArgumentParser) -> None:
+    """Allow discovery prefixes: keep choices/types, drop required and help-exit."""
+
+    parser.add_help = False
+    for action in list(parser._actions):
+        action.required = False
+        if isinstance(action, argparse._HelpAction):
+            parser._remove_action(action)
+            for option in action.option_strings:
+                parser._option_string_actions.pop(option, None)
+        elif isinstance(action, argparse._SubParsersAction):
+            for child in action.choices.values():
+                _relax_parser_for_prefix(child)
 
 
-def _option_takes_value(action: argparse.Action) -> bool:
-    if isinstance(
-        action,
-        (
-            argparse._StoreTrueAction,
-            argparse._StoreFalseAction,
-            argparse._HelpAction,
-            argparse._VersionAction,
-            argparse._CountAction,
-        ),
-    ):
-        return False
-    if action.nargs == 0:
-        return False
-    return True
+def _validate_prefix_before_help(prefix: list[str]) -> str:
+    """Return a failure reason if the argv prefix is invalid without ``--help``.
 
-
-def _unknown_tokens_before_help(
-    parser: argparse.ArgumentParser, prefix: list[str]
-) -> list[str]:
-    """Return unknown options/positionals in the argv prefix before trailing help.
-
-    Argparse exits on ``--help`` before checking earlier unknown tokens, and
-    ``parse_known_args`` may still demand required options. Inspect the leaf
-    parser's declared options without invoking ``parser.error``.
+    Uses a fresh parser so the live tree is not mutated. Required flags are
+    relaxed because help is a discovery form; unknown tokens, extra
+    positionals, and invalid choices/types still fail.
     """
 
-    current = parser
-    index = 0
-    while index < len(prefix):
-        token = prefix[index]
-        if token.startswith("-"):
-            break
-        sub = _subparsers(current)
-        if sub is None or token not in sub.choices:
-            return list(prefix[index:])
-        current = sub.choices[token]
-        index += 1
-    rest = prefix[index:]
-    options = {
-        option: action
-        for action in current._actions
-        for option in (action.option_strings or ())
-    }
-    accepts_positional = any(
-        not action.option_strings
-        and not isinstance(action, argparse._SubParsersAction)
-        and action.dest not in {"help"}
-        for action in current._actions
-    )
-    extras: list[str] = []
-    cursor = 0
-    while cursor < len(rest):
-        token = rest[cursor]
-        if token.startswith("-"):
-            name = token.split("=", 1)[0]
-            action = options.get(name)
-            if action is None:
-                extras.append(token)
-                cursor += 1
-                continue
-            if _option_takes_value(action) and "=" not in token:
-                cursor += 2
-            else:
-                cursor += 1
-            continue
-        if not accepts_positional:
-            extras.append(token)
-        cursor += 1
-    return extras
+    import contextlib
+    import io
+
+    from cli.automa_cli.app import build_parser
+
+    probe = build_parser()
+    _relax_parser_for_prefix(probe)
+
+    def _error(message: str) -> None:
+        raise ArgvValidationError(message)
+
+    _patch_error(probe, _error)
+    try:
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(
+            io.StringIO()
+        ):
+            probe.parse_args(list(prefix))
+    except ArgvValidationError as exc:
+        return f"invalid tokens before help flag: {exc}"
+    except SystemExit as exc:
+        return f"invalid tokens before help flag: parser SystemExit {exc.code!r}"
+    return ""
 
 
 def _patch_error(parser: argparse.ArgumentParser, error_fn: Any) -> None:

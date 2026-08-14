@@ -20,6 +20,12 @@ SEALED_SOURCE_COMMITS = {
 
 LIVE_ACCEPTANCE_RESULT = "docs/milestones/007-cli-operator-usability/evidence/live-cli-acceptance/result.json"
 CONTINUITY_RESULT = "docs/milestones/007-cli-operator-usability/evidence/cli-scenario-continuity/result.json"
+# Independent sealed content hashes. Registry evidence.digests cannot re-sign
+# mutated cited bytes; validate_semantic_cite requires disk == these values.
+FROZEN_CITE_PATH_DIGESTS: dict[str, str] = {
+    LIVE_ACCEPTANCE_RESULT: "d9656ddb1bad6720bf3b6dd5d2d2fbc5f0d1c2204c9e82883c56e9772d53dcf1",
+    CONTINUITY_RESULT: "72b579bbf29a5dc58cabbb3e03ee325b32330f2b260cddc407589448f34a2c85",
+}
 
 USAGE_PATTERNS: dict[str, str] = {
     "operator_status": "Passive discovery/status of simulator or vehicle layers",

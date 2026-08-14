@@ -49,7 +49,6 @@ SAFETY_CLASSES = {
     "live_mutation",
     "hazardous_external",
     "meta_docs",
-    "not_applicable",
 }
 VALIDATION_CLASSES = {
     "deterministic",
@@ -102,10 +101,26 @@ def catalog_digest(path: Path = CATALOG_PATH) -> str:
     return _sha256_file(path)
 
 
-def load_catalog(path: Path = CATALOG_PATH) -> dict[str, Any]:
+def load_catalog(
+    path: Path = CATALOG_PATH,
+    *,
+    anchor_path: Path | None = None,
+) -> dict[str, Any]:
     data = _load_json(path)
     if data.get("schema") != "m007_us88_catalog_v1":
         raise AuditError(f"unexpected catalog schema {data.get('schema')!r}")
+    source = data.get("source")
+    if not isinstance(source, dict):
+        raise AuditError("catalog source provenance object is required")
+    _require_keys(
+        source,
+        ("url", "comment_id", "title"),
+        where="catalog.source",
+    )
+    if not str(source.get("url") or "").strip():
+        raise AuditError("catalog.source.url must be non-empty")
+    if not isinstance(source.get("comment_id"), int) or source["comment_id"] <= 0:
+        raise AuditError("catalog.source.comment_id must be a positive int")
     entries = data.get("entries")
     if not isinstance(entries, list) or len(entries) != 10:
         raise AuditError("catalog must contain exactly 10 US entries")
@@ -124,7 +139,49 @@ def load_catalog(path: Path = CATALOG_PATH) -> dict[str, Any]:
             ),
             where=f"catalog {entry.get('id')}",
         )
+    digest = catalog_digest(path)
+    anchor = anchor_path or path.with_name("us88_catalog.sha256")
+    if not anchor.is_file():
+        raise AuditError(f"catalog content anchor missing: {anchor}")
+    anchored = anchor.read_text(encoding="utf-8").strip().split()[0]
+    if anchored != digest:
+        raise AuditError(
+            f"catalog digest {digest[:12]} != committed anchor {anchored[:12]}"
+        )
     return data
+
+
+def validate_leaf_inventory_document(
+    inventory_doc: dict[str, Any],
+    *,
+    parser: argparse.ArgumentParser | None = None,
+) -> list[str]:
+    """Validate full leaf inventory document schema, membership, and help skeleton."""
+
+    if not isinstance(inventory_doc, dict):
+        raise AuditError("leaf inventory document must be an object")
+    if inventory_doc.get("schema") != "m007_leaf_inventory_v1":
+        raise AuditError(
+            f"unexpected leaf inventory schema {inventory_doc.get('schema')!r}"
+        )
+    if inventory_doc.get("program") != "automa":
+        raise AuditError("leaf inventory program must be 'automa'")
+    generator = inventory_doc.get("generator")
+    if not isinstance(generator, dict):
+        raise AuditError("leaf inventory generator provenance object is required")
+    _require_keys(
+        generator,
+        ("name", "revision"),
+        where="leaf inventory generator",
+    )
+    if not str(generator.get("name") or "").strip():
+        raise AuditError("leaf inventory generator.name must be non-empty")
+    if not str(generator.get("revision") or "").strip():
+        raise AuditError("leaf inventory generator.revision must be non-empty")
+    inventory = inventory_doc.get("leaves")
+    if not isinstance(inventory, list):
+        raise AuditError("leaf inventory leaves must be a list")
+    return validate_leaf_membership(inventory=inventory, parser=parser)
 
 
 def validate_leaf_membership(
@@ -164,8 +221,14 @@ def validate_leaf_membership(
             raise AuditError(
                 f"inventory {leaf_id} tokens mismatch parser walk"
             )
-        if not isinstance(row.get("help"), str):
-            raise AuditError(f"inventory {leaf_id} help must be a string")
+        help_text = row.get("help")
+        if not isinstance(help_text, str) or not help_text.strip():
+            raise AuditError(f"inventory {leaf_id} help must be a non-empty string")
+        if help_text.strip() != (expected.help or "").strip():
+            raise AuditError(
+                f"inventory {leaf_id} help summary does not match parser-derived "
+                f"skeleton ({help_text!r} != {expected.help!r})"
+            )
     return actual
 
 
@@ -198,6 +261,11 @@ def validate_overlay(
                 val = row[field]
                 if isinstance(val, dict) and val.get("value") == "not_applicable":
                     _na_ok(val, field=field, where=f"overlay {leaf_id}")
+                elif val == "not_applicable":
+                    raise AuditError(
+                        f"overlay {leaf_id}.safety_class not_applicable must use "
+                        "{value, reason} object form"
+                    )
                 elif val not in SAFETY_CLASSES:
                     raise AuditError(
                         f"overlay {leaf_id}.safety_class invalid: {val!r}"
@@ -406,6 +474,10 @@ def validate_sequences(
                 raise AuditError(
                     f"{us_id} cleanup {index} argv invalid: {receipt.reason}"
                 )
+            if receipt.leaf_id not in leaf_ids:
+                raise AuditError(
+                    f"{us_id} cleanup {index} leaf {receipt.leaf_id} not in inventory"
+                )
 
     missing = sorted(set(catalog_by_id) - seen)
     if missing:
@@ -597,11 +669,22 @@ def build_rollup(
     cited = sum(1 for r in cite_receipts if r.get("mode") == "cited")
     executed = sum(1 for r in cite_receipts if r.get("mode") == "executed")
     deferred_lines = []
+    coverage_lines = []
+    by_cov: dict[str, int] = {}
     for row in sequences["sequences"]:
         if row["disposition"] in {"deferred", "blocked"}:
             deferred_lines.append(
                 f"- `{row['id']}` {row['disposition']}: owner={row.get('owner')}; "
                 f"unlock={row.get('unlock')}"
+            )
+        cov = row.get("coverage") or {}
+        cov_val = cov.get("value") if isinstance(cov, dict) else None
+        if cov_val:
+            by_cov[cov_val] = by_cov.get(cov_val, 0) + 1
+        if cov_val in {"unmeasured", "not_applicable"}:
+            reason = cov.get("reason") or cov.get("evidence") or ""
+            coverage_lines.append(
+                f"- `{row['id']}` coverage={cov_val}: {reason}"
             )
     residual_lines = [
         f"- `{row['id']}` {row['disposition']} owner={row['owner']}"
@@ -614,11 +697,15 @@ def build_rollup(
             f"- Leaves: **{len(leaf_ids)}** (all classified; residual unclassified: 0)",
             f"- Sequences by disposition: {by_disp}",
             f"- Sequences by completeness: {by_comp}",
+            f"- Sequences by coverage: {by_cov}",
             f"- Passed evidence: cited={cited}, executed={executed}",
             f"- Help drift: {help_drift.get('status', 'unknown')}",
             "",
             "## Deferred / blocked",
             *(deferred_lines or ["- (none)"]),
+            "",
+            "## Coverage residuals (unmeasured / not_applicable)",
+            *(coverage_lines or ["- (none)"]),
             "",
             "## LIVE residuals",
             *residual_lines,
@@ -632,32 +719,86 @@ def build_rollup(
     )
 
 
-def help_drift_report(parser: argparse.ArgumentParser | None = None) -> dict[str, Any]:
-    """Report help-derived command tokens vs argparse leaf set.
+def _subcommands_from_help_text(help_text: str) -> set[str]:
+    """Extract subcommand names from rendered argparse help choice groups."""
 
-    Membership authority remains argparse. This report must actually inspect
-    generated help text (not a stub). Hard equality is not Met-blocking yet,
-    but an empty or failed help walk fails closed.
+    found: set[str] = set()
+    for match in re.finditer(r"\{([^{}]+)\}", help_text):
+        parts = [part.strip() for part in match.group(1).split(",")]
+        if not parts:
+            continue
+        if not all(re.fullmatch(r"[a-z][a-z0-9_-]*", part) for part in parts):
+            continue
+        found.update(parts)
+    return found
+
+
+def _subparsers_action(
+    parser: argparse.ArgumentParser,
+) -> argparse._SubParsersAction | None:
+    for action in parser._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            return action
+    return None
+
+
+def help_derived_leaf_ids(
+    parser: argparse.ArgumentParser,
+) -> tuple[set[str], set[str]]:
+    """Discover terminal command paths from rendered ``format_help()`` text.
+
+    Returns ``(help_leaves, invented)`` where ``invented`` names appear in help
+    choice groups but not in the parser's registered subcommands at that node.
+    """
+
+    help_leaves: set[str] = set()
+    invented: set[str] = set()
+    stack: list[tuple[argparse.ArgumentParser, tuple[str, ...]]] = [(parser, ())]
+    while stack:
+        current, prefix = stack.pop()
+        help_text = current.format_help()
+        help_names = _subcommands_from_help_text(help_text)
+        sub = _subparsers_action(current)
+        if sub is None or not sub.choices:
+            if prefix:
+                help_leaves.add(".".join(prefix))
+            continue
+        parser_names = set(sub.choices)
+        for name in sorted(help_names - parser_names):
+            if name == "help":
+                continue
+            invented.add(".".join(prefix + (name,)) if prefix else name)
+        for name in sorted(help_names & parser_names):
+            if name == "help":
+                continue
+            child = sub.choices[name]
+            path = prefix + (name,)
+            child_sub = _subparsers_action(child)
+            if child_sub is None or not child_sub.choices:
+                help_leaves.add(".".join(path))
+            else:
+                stack.append((child, path))
+    return help_leaves, invented
+
+
+def help_drift_report(parser: argparse.ArgumentParser | None = None) -> dict[str, Any]:
+    """Compare rendered-help-derived leaves to argparse membership authority.
+
+    Argparse remains membership authority. Soft Met reports drift both ways; an
+    empty help-derived set fails closed as a broken help walk.
     """
 
     from cli.automa_cli.app import build_parser
 
     parser = parser or build_parser()
     leaf_ids = set(public_leaf_ids(parser))
-    help_tokens: set[str] = set()
-    # Walk registered choice names from help-bearing subparsers (same tree).
-    for leaf in walk_leaves(parser):
-        # Each leaf path is discoverable as successive help children.
-        help_tokens.add(leaf.leaf_id)
-        for i in range(1, len(leaf.tokens) + 1):
-            help_tokens.add(".".join(leaf.tokens[:i]))
-    # Compare terminal leaves present in help walk vs inventory authority.
-    help_leaves = {tok for tok in help_tokens if tok in leaf_ids}
+    help_leaves, invented = help_derived_leaf_ids(parser)
+    if not help_leaves:
+        raise AuditError("help-derived leaf walk produced no leaves")
     missing_from_help = sorted(leaf_ids - help_leaves)
-    extra_in_help = sorted(help_leaves - leaf_ids)
+    extra_in_help = sorted((help_leaves - leaf_ids) | invented)
     status = "ok"
-    if missing_from_help:
-        # Soft Met: report drift but do not fail audit solely on help gap.
+    if missing_from_help or extra_in_help:
         status = "drift_reported"
     return {
         "status": status,
@@ -667,8 +808,8 @@ def help_drift_report(parser: argparse.ArgumentParser | None = None) -> dict[str
         "missing_from_help": missing_from_help,
         "extra_in_help": extra_in_help,
         "note": (
-            "Help walk is generated from the same parser tree used for membership. "
-            "Hard help≠parser Met gate remains optional; soft drift is reported."
+            "Help-derived set comes from rendered format_help() choice groups. "
+            "Membership authority remains argparse; hard equality is not Met-blocking."
         ),
     }
 
@@ -677,8 +818,11 @@ def run_audit(*, repo_root: Path = ROOT) -> dict[str, Any]:
     from cli.automa_cli.app import build_parser
 
     parser = build_parser()
-    catalog = load_catalog(repo_root / CATALOG_PATH.relative_to(ROOT))
     catalog_path = repo_root / CATALOG_PATH.relative_to(ROOT)
+    catalog = load_catalog(
+        catalog_path,
+        anchor_path=repo_root / TOOL_DIR.relative_to(ROOT) / "us88_catalog.sha256",
+    )
     cat_sha = catalog_digest(catalog_path)
     inventory = _load_json(repo_root / LEAVES_PATH.relative_to(ROOT))
     overlay = _load_json(repo_root / OVERLAY_PATH.relative_to(ROOT))
@@ -687,8 +831,7 @@ def run_audit(*, repo_root: Path = ROOT) -> dict[str, Any]:
     residuals_path = repo_root / TOOL_DIR.relative_to(ROOT) / "live_residuals.json"
     residuals = _load_json(residuals_path)
 
-    leaf_rows = inventory["leaves"]
-    leaf_ids = validate_leaf_membership(inventory=leaf_rows, parser=parser)
+    leaf_ids = validate_leaf_inventory_document(inventory, parser=parser)
     validate_overlay(leaf_ids=leaf_ids, overlay=overlay)
     argv_receipts = validate_sequences(
         catalog=catalog,

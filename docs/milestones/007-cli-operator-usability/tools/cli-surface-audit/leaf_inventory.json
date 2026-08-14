@@ -1,4 +1,8 @@
 {
+  "generator": {
+    "name": "parser_walk.leaf_skeleton",
+    "revision": "m007_cli_surface_audit_v1"
+  },
   "leaves": [
     {
       "help": "Explicitly launch/configure a known simulator environment.",

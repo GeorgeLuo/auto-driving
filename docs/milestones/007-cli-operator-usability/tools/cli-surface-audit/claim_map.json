@@ -1,0 +1,114 @@
+{
+  "claims": {
+    "continuity_live_config_swap": {
+      "paths": [
+        "docs/milestones/007-cli-operator-usability/evidence/cli-scenario-continuity/result.json"
+      ],
+      "predicates": [
+        {
+          "equals": "pass",
+          "path": "result"
+        },
+        {
+          "equals": "passed",
+          "path": [
+            "family_aggregates",
+            "continuity.live_config_swap"
+          ]
+        },
+        {
+          "equals": true,
+          "path": "restore_ok"
+        },
+        {
+          "equals": true,
+          "path": "finalizer.ok"
+        },
+        {
+          "equals": true,
+          "path": "hitl_complete"
+        }
+      ],
+      "source_pr": 100
+    },
+    "continuity_memory_lifecycle": {
+      "paths": [
+        "docs/milestones/007-cli-operator-usability/evidence/cli-scenario-continuity/result.json"
+      ],
+      "predicates": [
+        {
+          "equals": "pass",
+          "path": "result"
+        },
+        {
+          "equals": "passed",
+          "path": [
+            "family_aggregates",
+            "continuity.memory_lifecycle"
+          ]
+        },
+        {
+          "equals": true,
+          "path": "finalizer.ok"
+        },
+        {
+          "equals": true,
+          "path": "hitl_complete"
+        }
+      ],
+      "source_pr": 100
+    },
+    "continuity_offline_perception": {
+      "paths": [
+        "docs/milestones/007-cli-operator-usability/evidence/cli-scenario-continuity/result.json"
+      ],
+      "predicates": [
+        {
+          "equals": "pass",
+          "path": "result"
+        },
+        {
+          "equals": "m007_cli_scenario_continuity_v0",
+          "path": "schema"
+        },
+        {
+          "equals": "passed",
+          "path": [
+            "family_aggregates",
+            "continuity.offline_perception"
+          ]
+        },
+        {
+          "equals": true,
+          "path": "finalizer.ok"
+        },
+        {
+          "equals": true,
+          "path": "hitl_complete"
+        }
+      ],
+      "source_pr": 100
+    },
+    "us01_us02_live_acceptance": {
+      "paths": [
+        "docs/milestones/007-cli-operator-usability/evidence/live-cli-acceptance/result.json"
+      ],
+      "predicates": [
+        {
+          "equals": "pass",
+          "path": "result"
+        },
+        {
+          "equals": "m007_live_cli_acceptance_v1",
+          "path": "schema"
+        },
+        {
+          "equals": true,
+          "path": "cleanup.worker_stopped"
+        }
+      ],
+      "source_pr": 88
+    }
+  },
+  "schema": "m007_claim_map_v1"
+}

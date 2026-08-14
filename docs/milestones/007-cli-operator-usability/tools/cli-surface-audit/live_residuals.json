@@ -1,0 +1,71 @@
+{
+  "findings": [
+    {
+      "disposition": "deferred",
+      "id": "M007-LIVE-001",
+      "links": {
+        "leaves": [
+          "vehicles.perception.apply"
+        ],
+        "sequences": [
+          "US-03"
+        ]
+      },
+      "owner": "cli-perception-apply"
+    },
+    {
+      "disposition": "deferred",
+      "id": "M007-LIVE-002",
+      "links": {
+        "leaves": [
+          "vehicles.perception.candidates",
+          "vehicles.perception.compare"
+        ],
+        "sequences": [
+          "US-03"
+        ]
+      },
+      "owner": "lab-candidates-compare"
+    },
+    {
+      "disposition": "deferred",
+      "id": "M007-LIVE-003",
+      "links": {
+        "leaves": [
+          "vehicles.perception.compare"
+        ],
+        "sequences": [
+          "US-03"
+        ]
+      },
+      "owner": "cli-perception-compare"
+    },
+    {
+      "disposition": "deferred",
+      "id": "M007-LIVE-004",
+      "links": {
+        "leaves": [
+          "vehicles.perception.compare"
+        ],
+        "sequences": [
+          "US-03"
+        ]
+      },
+      "owner": "cli-perception-review-ux"
+    },
+    {
+      "disposition": "deferred",
+      "id": "M007-LIVE-005",
+      "links": {
+        "leaves": [
+          "vehicles.perception.run"
+        ],
+        "sequences": [
+          "US-03"
+        ]
+      },
+      "owner": "cli-perception-run"
+    }
+  ],
+  "schema": "m007_live_residuals_v1"
+}

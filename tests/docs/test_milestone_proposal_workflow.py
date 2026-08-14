@@ -791,6 +791,7 @@ class ReviewUnitTransitionTests(unittest.TestCase):
             proposal_pr=60,
             merge_commit="a" * 40,
             proposal_url="https://example.invalid/60",
+            review_receipt=_accepted_review_receipt(),
         )
         implementation_head = _move_to_review(accepted, implementation=True)
         with self.assertRaisesRegex(PlanContractError, "does not match"):

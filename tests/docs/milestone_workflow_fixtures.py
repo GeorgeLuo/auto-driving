@@ -186,6 +186,17 @@ Is the evidence policy bounded and deterministic?
 
 One slot has one structural contract.
 
+## Trust And Authority Model
+
+The synthetic ledger is authoritative for stored evidence. The claim covers
+consistency and provenance, not authenticity against same-user mutation.
+
+## Evidence Topology And Capture Strategy
+
+The stored receipt feeds policy derivation and then the replay validator.
+Focused implementation tests are sufficient; no canonical live artifact is
+captured. Capture is ready when the receipt shape and mutation cases pass.
+
 ## Ownership
 
 The synthetic evidence ledger owns compatibility.
@@ -238,6 +249,16 @@ Live observation proved that exact-current correlation rejects known-good lag.
 ## Contract Delta
 
 Accept current or bounded-stale observations with an explicit lag value.
+
+## Trust And Authority Model
+
+The original evidence authority remains unchanged. Sequence identifiers are
+trusted for provenance within one run, not for cross-run authenticity.
+
+## Evidence Topology And Capture Strategy
+
+The observation receipt supplies the sequence value, the validator derives lag,
+and focused amendment tests verify the bound. No new live capture is required.
 
 ## Ownership
 

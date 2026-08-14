@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import tempfile
 import unittest
@@ -80,6 +81,23 @@ def _accepted_review_receipt(
         reviewer_association="COLLABORATOR",
         submitted_at="2026-08-12T18:00:00Z",
     )
+
+
+def _replace_section_body(text: str, heading: str, body: str) -> str:
+    pattern = rf"(?ms)^{re.escape(heading)}\n.*?(?=^## |\Z)"
+    replacement = f"{heading}\n\n{body.strip()}\n\n"
+    updated, count = re.subn(pattern, replacement, text, count=1)
+    if count != 1:
+        raise AssertionError(f"missing fixture section: {heading}")
+    return updated
+
+
+def _remove_section(text: str, heading: str) -> str:
+    pattern = rf"(?ms)^{re.escape(heading)}\n.*?(?=^## |\Z)"
+    updated, count = re.subn(pattern, "", text, count=1)
+    if count != 1:
+        raise AssertionError(f"missing fixture section: {heading}")
+    return updated
 
 
 def _move_to_review(text: str, *, implementation: bool = False) -> str:
@@ -180,6 +198,63 @@ class ProposalDocumentTests(unittest.TestCase):
     def test_required_proposal_shape_is_accepted(self) -> None:
         validate_proposal_text(proposal_text())
 
+    def test_universal_claim_requires_trust_and_authority_model(self) -> None:
+        invalid = proposal_text().replace(
+            "## Trust And Authority Model",
+            "## Trust Notes",
+        )
+        with self.assertRaisesRegex(PlanContractError, "Trust And Authority Model"):
+            validate_proposal_text(invalid)
+
+    def test_universal_claim_requires_evidence_topology_and_capture(self) -> None:
+        invalid = proposal_text().replace(
+            "## Evidence Topology And Capture Strategy",
+            "## Evidence Notes",
+        )
+        with self.assertRaisesRegex(
+            PlanContractError,
+            "Evidence Topology And Capture Strategy",
+        ):
+            validate_proposal_text(invalid)
+
+    def test_universal_claim_rejects_an_empty_contractability_section(self) -> None:
+        invalid = _replace_section_body(
+            proposal_text(),
+            "## Trust And Authority Model",
+            "<!-- model pending -->",
+        )
+        with self.assertRaisesRegex(PlanContractError, "must be completed"):
+            validate_proposal_text(invalid)
+
+    def test_non_universal_proposal_does_not_require_contractability_sections(
+        self,
+    ) -> None:
+        ordinary = proposal_text().replace(
+            "Is the evidence policy bounded and deterministic?",
+            "Does the evidence policy assign one structural contract?",
+        )
+        ordinary = _remove_section(
+            ordinary,
+            "## Trust And Authority Model",
+        )
+        ordinary = _remove_section(
+            ordinary,
+            "## Evidence Topology And Capture Strategy",
+        )
+        validate_proposal_text(ordinary)
+
+    def test_universal_language_in_proposed_contract_triggers_the_gate(self) -> None:
+        invalid = proposal_text().replace(
+            "Is the evidence policy bounded and deterministic?",
+            "Does the evidence policy assign one structural contract?",
+        ).replace(
+            "One slot has one structural contract.",
+            "One slot has one exact structural contract.",
+        )
+        invalid = _remove_section(invalid, "## Trust And Authority Model")
+        with self.assertRaisesRegex(PlanContractError, "Trust And Authority Model"):
+            validate_proposal_text(invalid)
+
     def test_missing_validation_plan_is_rejected(self) -> None:
         with self.assertRaisesRegex(PlanContractError, "Validation Plan"):
             validate_proposal_text(
@@ -194,6 +269,34 @@ class ProposalDocumentTests(unittest.TestCase):
 
     def test_required_proposal_amendment_shape_is_accepted(self) -> None:
         validate_proposal_amendment_text(proposal_amendment_text())
+
+    def test_universal_amendment_requires_contractability_delta(self) -> None:
+        invalid = _remove_section(
+            proposal_amendment_text(),
+            "## Evidence Topology And Capture Strategy",
+        )
+        with self.assertRaisesRegex(
+            PlanContractError,
+            "Evidence Topology And Capture Strategy",
+        ):
+            validate_proposal_amendment_text(invalid)
+
+    def test_non_universal_amendment_does_not_require_contractability_sections(
+        self,
+    ) -> None:
+        ordinary = proposal_amendment_text().replace(
+            "Is bounded lag accepted without weakening attributable evidence?",
+            "Is attributable lag accepted without weakening evidence?",
+        ).replace(
+            "Accept current or bounded-stale observations with an explicit lag value.",
+            "Accept current or recent observations with an explicit lag value.",
+        )
+        ordinary = _remove_section(ordinary, "## Trust And Authority Model")
+        ordinary = _remove_section(
+            ordinary,
+            "## Evidence Topology And Capture Strategy",
+        )
+        validate_proposal_amendment_text(ordinary)
 
     def test_proposal_amendment_requires_contract_delta(self) -> None:
         with self.assertRaisesRegex(PlanContractError, "Contract Delta"):

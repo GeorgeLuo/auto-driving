@@ -18,6 +18,7 @@ PR_TEMPLATE = ROOT / ".github" / "pull_request_template.md"
 PROPOSAL_PR_TEMPLATE = (
     ROOT / ".github" / "PULL_REQUEST_TEMPLATE" / "proposal.md"
 )
+PROPOSAL_GUIDANCE = DOCS / "guidance" / "proposal-vs-implementation.md"
 PROPOSAL_AMENDMENT_PR_TEMPLATE = (
     ROOT / ".github" / "PULL_REQUEST_TEMPLATE" / "proposal-amendment.md"
 )
@@ -196,16 +197,40 @@ class MilestonePlanningTests(unittest.TestCase):
         self.assertTrue(PROPOSAL_PR_TEMPLATE.is_file())
         text = PROPOSAL_PR_TEMPLATE.read_text(encoding="utf-8")
         self.assertIn("## Independence Check", text)
+        self.assertIn("## Invariant Contractability", text)
+        self.assertIn("Trust And Authority Model", text)
+        self.assertIn("Evidence Topology And Capture Strategy", text)
         self.assertIn("No product or runtime implementation changed", text)
         self.assertIn("Proposal artifact", text)
         self.assertIn("## Contract Review Receipt", text)
         self.assertIn("current repository push authority", text)
         self.assertIn("unedited COMMENT review", text)
 
+    def test_universal_claim_contractability_is_visible_in_author_guidance(
+        self,
+    ) -> None:
+        contract = CONTRACT_SOURCE.read_text(encoding="utf-8")
+        guidance = PROPOSAL_GUIDANCE.read_text(encoding="utf-8")
+        for phrase in (
+            "Trust And Authority Model",
+            "Evidence Topology And Capture Strategy",
+        ):
+            self.assertIn(phrase, contract)
+            self.assertIn(phrase, guidance)
+        normalized_contract = " ".join(contract.split())
+        self.assertIn(
+            "consistency, provenance, and authenticity",
+            normalized_contract,
+        )
+        self.assertIn("canonical capture is ready", guidance)
+
     def test_proposal_amendment_template_preserves_accepted_contract(self) -> None:
         self.assertTrue(PROPOSAL_AMENDMENT_PR_TEMPLATE.is_file())
         text = PROPOSAL_AMENDMENT_PR_TEMPLATE.read_text(encoding="utf-8")
         self.assertIn("## Evidence Requiring Amendment", text)
+        self.assertIn("## Invariant Contractability", text)
+        self.assertIn("Trust And Authority Model", text)
+        self.assertIn("Evidence Topology And Capture Strategy", text)
         self.assertIn("No accepted proposal or prior amendment was modified", text)
         self.assertIn("No product or runtime implementation changed", text)
         self.assertIn("## Contract Review Receipt", text)

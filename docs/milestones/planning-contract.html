@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="57a0dec4c5c7186566dccc7e18507d4b8198b188bca8af3885a5b94de116aae6">
+  <meta name="source-sha256" content="bb5d82f53882a02624c57b56284aa30616420a9e5b624205b73f15b85fac75cd">
   <base target="_blank">
   <title>Milestone Planning And Delivery Contract</title>
   <style>
@@ -172,6 +172,13 @@ immediate, requires no additional implementation, and adds little independent
 review burden. Split it into an evidence unit when it needs separate environment
 preparation, repeatable operator procedure, tracked artifacts, or an acceptance
 judgment that could fail while the implementation contract still passes.</p>
+<p>For a universal or deterministic implementation claim, the proposal chooses the
+evidence topology before implementation starts. It states whether bounded proof
+remains in the implementation review unit or whether capture and acceptance use
+a later evidence review unit. Do not begin canonical live-artifact capture until
+the proposal's stated capture-readiness conditions hold; repeated capture while
+the artifact schema, authority mapping, semantic verifier, or adversarial
+mutation cases are still changing is contract discovery, not acceptance proof.</p>
 <h3>Repair Cycle</h3>
 <p>A review finding remains in the existing PR when it still challenges that PR’s
 stated contract.</p>
@@ -231,7 +238,7 @@ milestone or pre-plan should be activated.</p>
 <td>Milestone plan</td>
 </tr>
 <tr>
-<td>Detailed invariant and adversarial matrix</td>
+<td>Detailed invariant, trust/authority model, evidence topology, and adversarial matrix</td>
 <td>Accepted proposal document</td>
 </tr>
 <tr>
@@ -755,6 +762,11 @@ path, then return the frontier to <code>ready_for_implementation</code>. Amendme
 cumulative and immutable. The implementation PR must link and reconcile the
 original proposal plus every accepted amendment, and CI rejects changes to any
 of those artifacts.</p>
+<p>When an amendment's Review Question or Contract Delta introduces or changes a
+universal invariant, its artifact also completes <code>## Trust And Authority Model</code>
+and <code>## Evidence Topology And Capture Strategy</code> for that delta. An amendment
+cannot bypass contractability requirements merely because the original proposal
+has already been accepted.</p>
 <h3>Human Discovery During Implementation</h3>
 <p>Classify a human request from hands-on testing before changing code:</p>
 <table>
@@ -820,8 +832,10 @@ compatibility is actually true.</p>
 <code>.github/PULL_REQUEST_TEMPLATE/proposal.md</code>. It records the review question,
 proposed contract, owner, affected paths, adversarial matrix, assumptions,
 non-goals, file impacts, validation plan, and the expected successful handoff.
-It contains no product code, tests of unimplemented behavior, generated runtime
-artifacts, or implementation repair.</p>
+When the review question or proposed contract claims a universal invariant, it
+also records the trust and authority model plus the evidence topology and
+capture strategy defined below. It contains no product code, tests of
+unimplemented behavior, generated runtime artifacts, or implementation repair.</p>
 <p><code>## Expected Handoff</code> contains exactly one <code>json</code> code block. It uses
 <code>milestone_handoff_template_v1</code>, which is the normal handoff receipt without
 <code>accepted_pr</code> or <code>accepted_merge_commit</code>. Those facts do not exist until merge.
@@ -919,6 +933,29 @@ without silently changing them.</p>
 examples. Settle invariant, owner, affected paths, adversarial matrix, external
 assumptions, and unverified limits in the proposal. The implementation PR
 reports how the accepted contract was enforced and validated.</p>
+<p>When either <code>## Review Question</code> or <code>## Proposed Contract</code> makes one of those
+claims, the proposal artifact must complete both of these sections before it can
+be accepted:</p>
+<ul>
+<li><code>## Trust And Authority Model</code>: distinguish consistency, provenance, and
+  authenticity guarantees; identify trusted and untrusted actors and inputs;
+  map each externally visible claim to its source of authority; and state the
+  covered and excluded adversaries, including whether same-user mutation is
+  inside the model.</li>
+<li><code>## Evidence Topology And Capture Strategy</code>: map each claim and explicit
+  non-claim through authoritative raw evidence, derivation, and semantic
+  verifier; choose bounded implementation evidence or a separate evidence review
+  unit; and define capture readiness, freshness, reproducibility, invalidation,
+  and retained-versus-derived artifact boundaries.</li>
+</ul>
+<p>If the guarantee depends on process, library, or external-system behavior whose
+ownership is uncertain, cite the smallest feasibility evidence that settles the
+boundary. Otherwise narrow the guarantee and record the behavior as an
+unverified limit; do not leave ownership discovery for implementation. For
+canonical live capture, readiness must at least settle the artifact format,
+authority mapping, semantic verifier, and coordinated mutation cases. A digest
+or self-seal proves internal consistency only unless the trust model identifies
+an independent authenticity root.</p>
 <p>Before requesting review:</p>
 <ol>
 <li>Test the failure class and adjacent paths, not only the first reproduction.</li>

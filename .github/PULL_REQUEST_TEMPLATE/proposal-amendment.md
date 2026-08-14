@@ -22,6 +22,13 @@
 
 <!-- State exactly what changes. The original proposal remains immutable. -->
 
+## Invariant Contractability
+
+- Universal or deterministic claim introduced or changed (`yes` / `no`):
+- [ ] If `yes`, the amendment artifact completes `Trust And Authority Model` for the changed trust boundary or authority mapping.
+- [ ] If `yes`, the amendment artifact completes `Evidence Topology And Capture Strategy` for changed derivation, verification, or capture readiness.
+- [ ] If `yes`, uncertain process, library, and external-system boundaries have feasibility evidence or narrow the amended claim as an unverified limit.
+
 ## Independence Check
 
 - [ ] No accepted proposal or prior amendment was modified.

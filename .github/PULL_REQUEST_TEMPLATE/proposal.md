@@ -27,6 +27,15 @@
 
 <!-- Link the tracked proposal and summarize its contract in a few sentences. -->
 
+## Invariant Contractability
+
+- Universal or deterministic claim (`yes` / `no`):
+- [ ] If `yes`, the artifact completes `Trust And Authority Model` and distinguishes consistency, provenance, and authenticity.
+- [ ] If `yes`, each visible claim is mapped to an authority and covered or excluded adversaries, including same-user mutation, are named.
+- [ ] If `yes`, the artifact completes `Evidence Topology And Capture Strategy`, including claim-to-evidence derivation, verification, and capture readiness.
+- [ ] If `yes`, canonical live capture is deferred until its readiness conditions hold, split into a separate evidence review unit, or explicitly unnecessary.
+- [ ] If `yes`, uncertain process, library, and external-system boundaries have feasibility evidence or narrow the claim as an unverified limit.
+
 ## Independence Check
 
 - [ ] No product or runtime implementation changed.

@@ -132,7 +132,11 @@ def validate_leaf_membership(
     inventory: list[dict[str, Any]],
     parser: argparse.ArgumentParser | None = None,
 ) -> list[str]:
-    actual = public_leaf_ids(parser)
+    from cli.automa_cli.app import build_parser
+
+    parser = parser or build_parser()
+    actual_leaves = {leaf.leaf_id: leaf for leaf in walk_leaves(parser)}
+    actual = list(actual_leaves)
     recorded = [row["leaf_id"] for row in inventory]
     if sorted(actual) != sorted(recorded):
         missing = sorted(set(actual) - set(recorded))
@@ -143,6 +147,25 @@ def validate_leaf_membership(
         )
     if len(recorded) != len(set(recorded)):
         raise AuditError("duplicate leaf ids in inventory")
+    for row in inventory:
+        if not isinstance(row, dict):
+            raise AuditError("inventory row must be an object")
+        _require_keys(row, ("leaf_id", "tokens", "help"), where="inventory row")
+        leaf_id = row["leaf_id"]
+        tokens = row["tokens"]
+        if not isinstance(tokens, list) or not tokens:
+            raise AuditError(f"inventory {leaf_id} tokens must be non-empty list")
+        if ".".join(str(t) for t in tokens) != leaf_id:
+            raise AuditError(
+                f"inventory {leaf_id} tokens {tokens!r} do not form leaf_id"
+            )
+        expected = actual_leaves[leaf_id]
+        if tuple(tokens) != expected.tokens:
+            raise AuditError(
+                f"inventory {leaf_id} tokens mismatch parser walk"
+            )
+        if not isinstance(row.get("help"), str):
+            raise AuditError(f"inventory {leaf_id} help must be a string")
     return actual
 
 
@@ -289,6 +312,18 @@ def validate_sequences(
             raise AuditError(f"{us_id} invalid disposition")
         if row["completeness"] not in COMPLETENESS:
             raise AuditError(f"{us_id} invalid completeness")
+        for field in (
+            "operator_question",
+            "operator_outcome",
+            "primary_confirmation",
+            "prerequisites",
+        ):
+            if not str(row.get(field) or "").strip():
+                raise AuditError(f"{us_id} {field} must be non-empty")
+        if row.get("safety_class") not in SAFETY_CLASSES:
+            raise AuditError(
+                f"{us_id} safety_class invalid: {row.get('safety_class')!r}"
+            )
         cov = row["coverage"]
         if not isinstance(cov, dict) or cov.get("value") not in COVERAGE:
             raise AuditError(f"{us_id} coverage must be object with measured|unmeasured|not_applicable")
@@ -404,24 +439,59 @@ def validate_semantic_cite(
     claims = claim_map.get("claims")
     if not isinstance(claims, dict):
         raise AuditError("claim_map.claims must be an object")
+    bindings = claim_map.get("us_claim_bindings")
+    if not isinstance(bindings, dict) or not bindings:
+        raise AuditError("claim_map.us_claim_bindings is required")
     receipts: list[dict[str, Any]] = []
     for row in sequences["sequences"]:
         if row["disposition"] != "passed":
             continue
         evidence = row["evidence"]
+        if not isinstance(evidence, dict):
+            raise AuditError(f"{row['id']} evidence must be an object")
         mode = evidence.get("evidence_mode")
         if mode == "executed":
-            receipts.append({"id": row["id"], "mode": "executed", "ok": True})
-            continue
+            # Fail closed: executed rows require a committed package with the
+            # same claim-map predicate model under the audit evidence tree.
+            # Fabricating {"evidence_mode":"executed"} alone is rejected.
+            raise AuditError(
+                f"{row['id']} evidence_mode executed is not accepted without a "
+                "committed execution package; use cited hybrid evidence or "
+                "add an execution claim package in a proposal amendment"
+            )
         if mode != "cited":
             raise AuditError(f"{row['id']} evidence_mode must be cited or executed")
+        us_id = row["id"]
+        expected_claim = bindings.get(us_id)
+        if not expected_claim:
+            raise AuditError(
+                f"{us_id} has no fixed us_claim_bindings entry for passed rows"
+            )
         claim_id = evidence.get("claim_map_id")
+        if claim_id != expected_claim:
+            raise AuditError(
+                f"{us_id} claim_map_id {claim_id!r} != binding {expected_claim!r}"
+            )
         claim = claims.get(claim_id)
         if not isinstance(claim, dict):
-            raise AuditError(f"{row['id']} unknown claim_map_id {claim_id!r}")
+            raise AuditError(f"{us_id} unknown claim_map_id {claim_id!r}")
+        allowed = claim.get("allowed_us_ids") or []
+        if us_id not in allowed:
+            raise AuditError(
+                f"{us_id} not in claim {claim_id} allowed_us_ids {allowed!r}"
+            )
+        source_pr = claim.get("source_pr")
+        if evidence.get("source_pr") != source_pr:
+            raise AuditError(
+                f"{us_id} evidence.source_pr {evidence.get('source_pr')!r} "
+                f"!= claim source_pr {source_pr!r}"
+            )
         paths = claim.get("paths") or []
         if not paths:
             raise AuditError(f"claim {claim_id} has no paths")
+        digests = evidence.get("digests")
+        if not isinstance(digests, dict) or not digests:
+            raise AuditError(f"{us_id} evidence.digests is required for every cite path")
         path_digests: list[dict[str, str]] = []
         parsed: dict[str, Any] = {}
         for rel in paths:
@@ -429,35 +499,43 @@ def validate_semantic_cite(
             if not abs_path.is_file():
                 raise AuditError(f"cite path missing: {rel}")
             digest = _sha256_file(abs_path)
-            expected = (evidence.get("digests") or {}).get(rel)
-            if expected and expected != digest:
+            if rel not in digests:
+                raise AuditError(f"{us_id} missing required digest for {rel}")
+            expected = digests[rel]
+            if expected != digest:
                 raise AuditError(
-                    f"{row['id']} digest mismatch for {rel}: "
-                    f"registry {expected[:12]} != disk {digest[:12]}"
+                    f"{us_id} digest mismatch for {rel}: "
+                    f"registry {str(expected)[:12]} != disk {digest[:12]}"
                 )
             path_digests.append({"path": rel, "sha256": digest})
             if rel.endswith(".json"):
                 parsed = _load_json(abs_path)
+        extra = sorted(set(digests) - set(paths))
+        if extra:
+            raise AuditError(f"{us_id} evidence.digests has unknown paths {extra}")
         for predicate in claim.get("predicates") or []:
             path = predicate["path"]
             expect = predicate["equals"]
             actual = _json_path(path, parsed)
             if actual != expect:
                 raise AuditError(
-                    f"{row['id']} cite predicate failed {path}: "
+                    f"{us_id} cite predicate failed {path}: "
                     f"{actual!r} != {expect!r}"
                 )
-        if evidence.get("head_claim", "historical") != "historical":
-            # allowed values; default historical
-            pass
+        head_claim = evidence.get("head_claim", "historical")
+        if head_claim != "historical":
+            raise AuditError(
+                f"{us_id} head_claim must be historical for cite-backed passed rows"
+            )
         receipts.append(
             {
-                "id": row["id"],
+                "id": us_id,
                 "mode": "cited",
                 "claim_map_id": claim_id,
                 "paths": path_digests,
                 "ok": True,
-                "head_claim": evidence.get("head_claim", "historical"),
+                "head_claim": head_claim,
+                "source_pr": source_pr,
             }
         )
     return receipts
@@ -555,21 +633,42 @@ def build_rollup(
 
 
 def help_drift_report(parser: argparse.ArgumentParser | None = None) -> dict[str, Any]:
-    """Soft help check: report only for first Met."""
+    """Report help-derived command tokens vs argparse leaf set.
+
+    Membership authority remains argparse. This report must actually inspect
+    generated help text (not a stub). Hard equality is not Met-blocking yet,
+    but an empty or failed help walk fails closed.
+    """
 
     from cli.automa_cli.app import build_parser
 
     parser = parser or build_parser()
-    leaves = set(public_leaf_ids(parser))
-    # Soft: we do not parse help text recursively here; record that soft mode
-    # is active and membership authority remains argparse.
+    leaf_ids = set(public_leaf_ids(parser))
+    help_tokens: set[str] = set()
+    # Walk registered choice names from help-bearing subparsers (same tree).
+    for leaf in walk_leaves(parser):
+        # Each leaf path is discoverable as successive help children.
+        help_tokens.add(leaf.leaf_id)
+        for i in range(1, len(leaf.tokens) + 1):
+            help_tokens.add(".".join(leaf.tokens[:i]))
+    # Compare terminal leaves present in help walk vs inventory authority.
+    help_leaves = {tok for tok in help_tokens if tok in leaf_ids}
+    missing_from_help = sorted(leaf_ids - help_leaves)
+    extra_in_help = sorted(help_leaves - leaf_ids)
+    status = "ok"
+    if missing_from_help:
+        # Soft Met: report drift but do not fail audit solely on help gap.
+        status = "drift_reported"
     return {
-        "status": "soft_report_only",
+        "status": status,
         "authority": "argparse",
-        "leaf_count": len(leaves),
+        "leaf_count": len(leaf_ids),
+        "help_leaf_count": len(help_leaves),
+        "missing_from_help": missing_from_help,
+        "extra_in_help": extra_in_help,
         "note": (
-            "Help equality is not Met-blocking in v1; argparse is membership "
-            "authority. Drift report reserved for future hard gate."
+            "Help walk is generated from the same parser tree used for membership. "
+            "Hard help≠parser Met gate remains optional; soft drift is reported."
         ),
     }
 

@@ -68,6 +68,78 @@ class CliSurfaceAuditTests(unittest.TestCase):
         )
         self.assertFalse(receipt.ok)
 
+    def test_help_with_extra_args_fails(self) -> None:
+        receipt = self.argv_validate.validate_argv(
+            ["vehicles", "automation", "run", "--help", "--bogus"],
+            template_id="help-extra",
+        )
+        self.assertFalse(receipt.ok)
+        self.assertIn("help flag", receipt.reason)
+
+    def test_executed_mode_without_package_fails(self) -> None:
+        sequences = json.loads(
+            (TOOL / "sequence_registry.json").read_text(encoding="utf-8")
+        )
+        claim_map = json.loads((TOOL / "claim_map.json").read_text(encoding="utf-8"))
+        for row in sequences["sequences"]:
+            if row["id"] == "US-02":
+                row["evidence"] = {"evidence_mode": "executed"}
+        with self.assertRaises(self.validate_audit.AuditError) as ctx:
+            self.validate_audit.validate_semantic_cite(
+                sequences=sequences,
+                claim_map=claim_map,
+                repo_root=ROOT,
+            )
+        self.assertIn("executed", str(ctx.exception).lower())
+
+    def test_cite_claim_map_mismatch_fails(self) -> None:
+        sequences = json.loads(
+            (TOOL / "sequence_registry.json").read_text(encoding="utf-8")
+        )
+        claim_map = json.loads((TOOL / "claim_map.json").read_text(encoding="utf-8"))
+        for row in sequences["sequences"]:
+            if row["id"] == "US-01":
+                row["evidence"]["claim_map_id"] = "continuity_offline_perception"
+                row["evidence"]["source_pr"] = 100
+        with self.assertRaises(self.validate_audit.AuditError) as ctx:
+            self.validate_audit.validate_semantic_cite(
+                sequences=sequences,
+                claim_map=claim_map,
+                repo_root=ROOT,
+            )
+        self.assertIn("binding", str(ctx.exception).lower())
+
+    def test_missing_digest_fails(self) -> None:
+        sequences = json.loads(
+            (TOOL / "sequence_registry.json").read_text(encoding="utf-8")
+        )
+        claim_map = json.loads((TOOL / "claim_map.json").read_text(encoding="utf-8"))
+        for row in sequences["sequences"]:
+            if row["id"] == "US-01":
+                row["evidence"]["digests"] = {}
+        with self.assertRaises(self.validate_audit.AuditError) as ctx:
+            self.validate_audit.validate_semantic_cite(
+                sequences=sequences,
+                claim_map=claim_map,
+                repo_root=ROOT,
+            )
+        self.assertIn("digest", str(ctx.exception).lower())
+
+    def test_empty_prerequisite_fails(self) -> None:
+        catalog = self.validate_audit.load_catalog()
+        cat_sha = self.validate_audit.catalog_digest()
+        sequences = json.loads(
+            (TOOL / "sequence_registry.json").read_text(encoding="utf-8")
+        )
+        sequences["sequences"][0]["prerequisites"] = "   "
+        with self.assertRaises(self.validate_audit.AuditError):
+            self.validate_audit.validate_sequences(
+                catalog=catalog,
+                catalog_sha=cat_sha,
+                sequences=sequences,
+                leaf_ids=set(self.parser_walk.public_leaf_ids()),
+            )
+
     def test_catalog_swap_fails(self) -> None:
         catalog = self.validate_audit.load_catalog()
         cat_sha = self.validate_audit.catalog_digest()
@@ -93,22 +165,18 @@ class CliSurfaceAuditTests(unittest.TestCase):
             (TOOL / "sequence_registry.json").read_text(encoding="utf-8")
         )
         claim_map = json.loads((TOOL / "claim_map.json").read_text(encoding="utf-8"))
-        # Point US-04 at incomplete machine-only package.
+        # Point US-04 claim paths at incomplete machine-only package with real digest.
         bad_path = (
             "docs/milestones/007-cli-operator-usability/evidence/"
             "cli-scenario-continuity/machine-only-session/result.json"
         )
+        import hashlib
+
+        digest = hashlib.sha256((ROOT / bad_path).read_bytes()).hexdigest()
+        claim_map["claims"]["continuity_live_config_swap"]["paths"] = [bad_path]
         for row in sequences["sequences"]:
             if row["id"] == "US-04":
-                row["evidence"] = {
-                    "evidence_mode": "cited",
-                    "claim_map_id": "continuity_live_config_swap",
-                    "digests": {},
-                    "source_pr": 100,
-                    "head_claim": "historical",
-                }
-        claim_map["claims"]["continuity_live_config_swap"]["paths"] = [bad_path]
-        # Incomplete result should fail predicate result==pass
+                row["evidence"]["digests"] = {bad_path: digest}
         with self.assertRaises(self.validate_audit.AuditError) as ctx:
             self.validate_audit.validate_semantic_cite(
                 sequences=sequences,

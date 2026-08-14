@@ -1,6 +1,9 @@
 {
   "claims": {
     "continuity_live_config_swap": {
+      "allowed_us_ids": [
+        "US-04"
+      ],
       "paths": [
         "docs/milestones/007-cli-operator-usability/evidence/cli-scenario-continuity/result.json"
       ],
@@ -32,6 +35,10 @@
       "source_pr": 100
     },
     "continuity_memory_lifecycle": {
+      "allowed_us_ids": [
+        "US-05",
+        "US-08"
+      ],
       "paths": [
         "docs/milestones/007-cli-operator-usability/evidence/cli-scenario-continuity/result.json"
       ],
@@ -59,6 +66,9 @@
       "source_pr": 100
     },
     "continuity_offline_perception": {
+      "allowed_us_ids": [
+        "US-03"
+      ],
       "paths": [
         "docs/milestones/007-cli-operator-usability/evidence/cli-scenario-continuity/result.json"
       ],
@@ -90,6 +100,10 @@
       "source_pr": 100
     },
     "us01_us02_live_acceptance": {
+      "allowed_us_ids": [
+        "US-01",
+        "US-02"
+      ],
       "paths": [
         "docs/milestones/007-cli-operator-usability/evidence/live-cli-acceptance/result.json"
       ],
@@ -110,5 +124,13 @@
       "source_pr": 88
     }
   },
-  "schema": "m007_claim_map_v1"
+  "schema": "m007_claim_map_v1",
+  "us_claim_bindings": {
+    "US-01": "us01_us02_live_acceptance",
+    "US-02": "us01_us02_live_acceptance",
+    "US-03": "continuity_offline_perception",
+    "US-04": "continuity_live_config_swap",
+    "US-05": "continuity_memory_lifecycle",
+    "US-08": "continuity_memory_lifecycle"
+  }
 }

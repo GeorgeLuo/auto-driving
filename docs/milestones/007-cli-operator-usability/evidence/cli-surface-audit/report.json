@@ -435,7 +435,8 @@
           "path": "docs/milestones/007-cli-operator-usability/evidence/live-cli-acceptance/result.json",
           "sha256": "d9656ddb1bad6720bf3b6dd5d2d2fbc5f0d1c2204c9e82883c56e9772d53dcf1"
         }
-      ]
+      ],
+      "source_pr": 88
     },
     {
       "claim_map_id": "us01_us02_live_acceptance",
@@ -448,7 +449,8 @@
           "path": "docs/milestones/007-cli-operator-usability/evidence/live-cli-acceptance/result.json",
           "sha256": "d9656ddb1bad6720bf3b6dd5d2d2fbc5f0d1c2204c9e82883c56e9772d53dcf1"
         }
-      ]
+      ],
+      "source_pr": 88
     },
     {
       "claim_map_id": "continuity_offline_perception",
@@ -461,7 +463,8 @@
           "path": "docs/milestones/007-cli-operator-usability/evidence/cli-scenario-continuity/result.json",
           "sha256": "72b579bbf29a5dc58cabbb3e03ee325b32330f2b260cddc407589448f34a2c85"
         }
-      ]
+      ],
+      "source_pr": 100
     },
     {
       "claim_map_id": "continuity_live_config_swap",
@@ -474,7 +477,8 @@
           "path": "docs/milestones/007-cli-operator-usability/evidence/cli-scenario-continuity/result.json",
           "sha256": "72b579bbf29a5dc58cabbb3e03ee325b32330f2b260cddc407589448f34a2c85"
         }
-      ]
+      ],
+      "source_pr": 100
     },
     {
       "claim_map_id": "continuity_memory_lifecycle",
@@ -487,7 +491,8 @@
           "path": "docs/milestones/007-cli-operator-usability/evidence/cli-scenario-continuity/result.json",
           "sha256": "72b579bbf29a5dc58cabbb3e03ee325b32330f2b260cddc407589448f34a2c85"
         }
-      ]
+      ],
+      "source_pr": 100
     },
     {
       "claim_map_id": "continuity_memory_lifecycle",
@@ -500,14 +505,18 @@
           "path": "docs/milestones/007-cli-operator-usability/evidence/cli-scenario-continuity/result.json",
           "sha256": "72b579bbf29a5dc58cabbb3e03ee325b32330f2b260cddc407589448f34a2c85"
         }
-      ]
+      ],
+      "source_pr": 100
     }
   ],
   "help_drift": {
     "authority": "argparse",
+    "extra_in_help": [],
+    "help_leaf_count": 32,
     "leaf_count": 32,
-    "note": "Help equality is not Met-blocking in v1; argparse is membership authority. Drift report reserved for future hard gate.",
-    "status": "soft_report_only"
+    "missing_from_help": [],
+    "note": "Help walk is generated from the same parser tree used for membership. Hard help\u2260parser Met gate remains optional; soft drift is reported.",
+    "status": "ok"
   },
   "leaves": {
     "count": 32,
@@ -546,7 +555,7 @@
       "vehicles.update.perception"
     ],
     "inventory_sha256": "287358189752bf9941f1678444360a2b0106a4ef5464b54d512193a611b0a4be",
-    "overlay_sha256": "85c2e8041f3b27c4d223e4fa4e634c0721da87afecc12f415c4811fcd6c1de2a"
+    "overlay_sha256": "38dfcef7e955d6d760872642d532578aab737f5d93dbfafaefff23d9bda8985b"
   },
   "live_residuals": [
     {

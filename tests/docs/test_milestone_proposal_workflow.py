@@ -15,6 +15,7 @@ from docs.milestones.workflow import (
     accept_proposal,
     accept_proposal_amendment,
     abandon_proposal_amendment,
+    bind_github_receipt,
     format_paused_implementation,
     parse_paused_implementation,
     start_implementation_branch,
@@ -237,6 +238,7 @@ def _mock_impl_github(
         fetch_github_review_receipt=mock.Mock(
             return_value=receipt or _impl_escalation_receipt()
         ),
+        mark_github_pr_ready_for_review=mock.Mock(),
     )
 
 
@@ -1062,6 +1064,35 @@ class ReviewUnitTransitionTests(unittest.TestCase):
         )
         self.assertEqual(transition, "proposal_amendment")
 
+    def test_ready_base_amendment_cannot_claim_implementation_source(self) -> None:
+        accepted = _accepted_plan()
+        paused = _paused_impl_value("a" * 40)
+        head = _move_to_amendment_review(accepted)
+        mutated = head.replace(
+            f"- Proposal amendment path: `{PROPOSAL_AMENDMENT_RELATIVE}`\n",
+            f"- Proposal amendment path: `{PROPOSAL_AMENDMENT_RELATIVE}`\n"
+            "- Amendment source state: implementation_in_review\n"
+            f"- Paused implementation: {paused}\n",
+            1,
+        )
+        with self.assertRaisesRegex(
+            PlanContractError,
+            "ready_for_implementation amendment cannot record",
+        ):
+            validate_review_unit_transition(
+                accepted,
+                mutated,
+                plan_path=PLAN_RELATIVE,
+                changed_paths={
+                    PLAN_RELATIVE,
+                    str(Path(PLAN_RELATIVE).with_suffix(".html")),
+                    PROPOSAL_AMENDMENT_RELATIVE,
+                },
+                head_branch=PROPOSAL_AMENDMENT_BRANCH,
+                proposal_amendment_text=proposal_amendment_text(),
+                pr_body=_review_unit_body(),
+            )
+
     def test_proposal_amendment_cannot_rewrite_accepted_proposal(self) -> None:
         accepted = _accepted_plan()
         amendment_head = _move_to_amendment_review(accepted)
@@ -1764,6 +1795,17 @@ class ReviewUnitGitDiffTests(unittest.TestCase):
             capture_output=True,
             text=True,
         )
+        if args and args[0] == "init":
+            subprocess.run(
+                ["git", "config", "user.name", "Milestone Test"],
+                cwd=root,
+                check=True,
+            )
+            subprocess.run(
+                ["git", "config", "user.email", "milestone@example.invalid"],
+                cwd=root,
+                check=True,
+            )
         return result.stdout.strip()
 
     def _create_implementation_parent(self, root: Path) -> tuple[Path, str]:
@@ -2193,6 +2235,27 @@ class ReviewUnitGitDiffTests(unittest.TestCase):
                 f"`{PROPOSAL_AMENDMENT_RELATIVE}`",
             )
 
+    def test_ready_amendment_does_not_use_existing_implementation_branch(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            plan = root / PLAN_RELATIVE
+            accepted = _accepted_plan()
+            self._init_plan(root, accepted, "accept proposal")
+            self._git(root, "branch", IMPLEMENTATION_BRANCH)
+            start_proposal_amendment_branch(
+                plan,
+                validate_plan_text(accepted),
+                PROPOSAL_AMENDMENT_BRANCH,
+                PROPOSAL_AMENDMENT_RELATIVE,
+                repo_root=root,
+            )
+            transitioned = validate_plan_text(plan.read_text(encoding="utf-8"))
+            self.assertEqual(
+                transitioned.current.fields["amendment source state"],
+                "ready_for_implementation",
+            )
+            self.assertFalse(transitioned.current.fields.get("paused implementation"))
+
     def test_implementation_branch_starts_only_after_proposal_acceptance(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -2427,12 +2490,24 @@ class ReviewUnitGitDiffTests(unittest.TestCase):
                 self._git(root, "branch", "--show-current"),
                 PROPOSAL_AMENDMENT_BRANCH,
             )
-            abandon_proposal_amendment(
-                plan,
-                validate_plan_text(plan.read_text(encoding="utf-8")),
-                reason="Amendment rejected; resume the implementation unit.",
-                repo_root=root,
-            )
+            ready = mock.Mock()
+            with mock.patch.multiple(
+                "docs.milestones.workflow",
+                fetch_github_pr_view=mock.Mock(
+                    return_value=_impl_github_payload("a" * 40)
+                ),
+                fetch_github_review_receipt=mock.Mock(
+                    return_value=_impl_escalation_receipt()
+                ),
+                mark_github_pr_ready_for_review=ready,
+            ):
+                abandon_proposal_amendment(
+                    plan,
+                    validate_plan_text(plan.read_text(encoding="utf-8")),
+                    reason="Amendment rejected; resume the implementation unit.",
+                    repo_root=root,
+                )
+            ready.assert_called_once()
             self.assertEqual(
                 self._git(root, "branch", "--show-current"),
                 MILESTONE_BRANCH,
@@ -2526,13 +2601,23 @@ class ReviewUnitGitDiffTests(unittest.TestCase):
             self._git(root, "branch", IMPLEMENTATION_BRANCH)
             head = self._start_impl_amendment(root, plan)
             accepted, merge_sha = self._accept_amendment_on_milestone(root, plan)
-            with _mock_impl_github(head):
+            ready = mock.Mock()
+            with mock.patch.multiple(
+                "docs.milestones.workflow",
+                fetch_github_pr_view=mock.Mock(return_value=_impl_github_payload(head)),
+                fetch_github_review_receipt=mock.Mock(
+                    return_value=_impl_escalation_receipt()
+                ),
+                mark_github_pr_ready_for_review=ready,
+            ):
                 start_implementation_branch(
                     plan,
                     validate_plan_text(accepted),
                     IMPLEMENTATION_BRANCH,
                     repo_root=root,
                 )
+            ready.assert_called_once()
+            self.assertEqual(ready.call_args.args[0], 59)
             resumed = validate_plan_text(plan.read_text(encoding="utf-8"))
             self.assertEqual(
                 resumed.current.fields["workflow state"],
@@ -2641,6 +2726,44 @@ class ReviewUnitGitDiffTests(unittest.TestCase):
                 )
             self.assertEqual(transition, "proposal_amendment")
 
+    def test_git_diff_rejects_implementation_source_on_ready_base(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            plan = root / PLAN_RELATIVE
+            accepted = _accepted_plan()
+            self._init_plan(root, accepted, "accept proposal")
+            plan_html = plan.with_suffix(".html")
+            plan_html.write_text("accepted", encoding="utf-8")
+            self._commit(root, "record accepted html")
+            base_sha = self._git(root, "rev-parse", "HEAD")
+            self._git(root, "switch", "-c", PROPOSAL_AMENDMENT_BRANCH)
+            paused = _paused_impl_value("a" * 40)
+            mutated = _move_to_amendment_review(accepted).replace(
+                f"- Proposal amendment path: `{PROPOSAL_AMENDMENT_RELATIVE}`\n",
+                f"- Proposal amendment path: `{PROPOSAL_AMENDMENT_RELATIVE}`\n"
+                "- Amendment source state: implementation_in_review\n"
+                f"- Paused implementation: {paused}\n",
+                1,
+            )
+            plan.write_text(mutated, encoding="utf-8")
+            plan_html.write_text("mutated", encoding="utf-8")
+            amendment = root / PROPOSAL_AMENDMENT_RELATIVE
+            amendment.parent.mkdir(parents=True, exist_ok=True)
+            amendment.write_text(proposal_amendment_text(), encoding="utf-8")
+            head_sha = self._commit(root, "claim implementation source from ready")
+            with self.assertRaisesRegex(
+                PlanContractError,
+                "ready_for_implementation amendment cannot record",
+            ):
+                validate_review_unit_git_diff(
+                    base_ref=MILESTONE_BRANCH,
+                    head_ref=PROPOSAL_AMENDMENT_BRANCH,
+                    base_sha=base_sha,
+                    head_sha=head_sha,
+                    pr_body=_review_unit_body(),
+                    repo_root=root,
+                )
+
 
 class ImplementationPauseGithubTests(unittest.TestCase):
     def _verify(
@@ -2720,6 +2843,86 @@ class ImplementationPauseGithubTests(unittest.TestCase):
     def test_escalation_must_select_proposal_amendment(self) -> None:
         with self.assertRaisesRegex(PlanContractError, "proposal-amendment"):
             self._verify(receipt=_impl_escalation_receipt(body="Please replan."))
+
+
+class GithubReceiptBindingTests(unittest.TestCase):
+    def test_comment_on_claimed_issue_is_accepted(self) -> None:
+        receipt = bind_github_receipt(
+            "https://github.com/example/auto-driving/issues/59#issuecomment-9001",
+            {
+                "id": 9001,
+                "html_url": (
+                    "https://github.com/example/auto-driving/issues/59"
+                    "#issuecomment-9001"
+                ),
+                "issue_url": (
+                    "https://api.github.com/repos/example/auto-driving/issues/59"
+                ),
+                "author_association": "OWNER",
+                "body": "Route: `proposal-amendment`.",
+                "user": {"login": "operator"},
+            },
+            current_repository="example/auto-driving",
+        )
+        self.assertEqual(receipt["pr"], 59)
+        self.assertEqual(receipt["repository"], "example/auto-driving")
+
+    def test_comment_wrong_issue_is_rejected(self) -> None:
+        with self.assertRaisesRegex(PlanContractError, "claimed issue or pull"):
+            bind_github_receipt(
+                "https://github.com/example/auto-driving/issues/59#issuecomment-9001",
+                {
+                    "id": 9001,
+                    "html_url": (
+                        "https://github.com/example/auto-driving/issues/70"
+                        "#issuecomment-9001"
+                    ),
+                    "issue_url": (
+                        "https://api.github.com/repos/example/auto-driving/issues/70"
+                    ),
+                    "author_association": "OWNER",
+                    "body": "Route: `proposal-amendment`.",
+                    "user": {"login": "operator"},
+                },
+                current_repository="example/auto-driving",
+            )
+
+    def test_comment_wrong_repository_is_rejected(self) -> None:
+        with self.assertRaisesRegex(PlanContractError, "other/repo"):
+            bind_github_receipt(
+                "https://github.com/other/repo/issues/59#issuecomment-9001",
+                {
+                    "id": 9001,
+                    "html_url": (
+                        "https://github.com/other/repo/issues/59#issuecomment-9001"
+                    ),
+                    "issue_url": "https://api.github.com/repos/other/repo/issues/59",
+                    "author_association": "OWNER",
+                    "body": "Route: `proposal-amendment`.",
+                    "user": {"login": "operator"},
+                },
+                current_repository="example/auto-driving",
+            )
+
+    def test_review_wrong_repository_is_rejected(self) -> None:
+        with self.assertRaisesRegex(PlanContractError, "belongs to other/repo"):
+            bind_github_receipt(
+                "https://github.com/example/auto-driving/pull/59#pullrequestreview-1",
+                {
+                    "id": 1,
+                    "html_url": (
+                        "https://github.com/other/repo/pull/59#pullrequestreview-1"
+                    ),
+                    "pull_request_url": (
+                        "https://api.github.com/repos/other/repo/pulls/59"
+                    ),
+                    "author_association": "OWNER",
+                    "body": "Route: `proposal-amendment`.",
+                    "state": "COMMENTED",
+                    "user": {"login": "operator"},
+                },
+                current_repository="example/auto-driving",
+            )
 
 
 if __name__ == "__main__":

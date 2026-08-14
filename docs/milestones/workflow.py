@@ -590,6 +590,101 @@ def fetch_github_pr_view(
     return payload
 
 
+def github_repository_name(*, repo_root: Path = ROOT) -> str:
+    try:
+        result = subprocess.run(
+            ["gh", "repo", "view", "--json", "nameWithOwner"],
+            cwd=repo_root,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError as exc:
+        raise PlanContractError(
+            "GitHub CLI `gh` is required to identify the current repository"
+        ) from exc
+    except subprocess.CalledProcessError as exc:
+        detail = exc.stderr.strip() or exc.stdout.strip() or str(exc)
+        raise PlanContractError(
+            f"cannot identify the current GitHub repository: {detail}"
+        ) from exc
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise PlanContractError("GitHub CLI returned invalid repository metadata") from exc
+    name_with_owner = payload.get("nameWithOwner") if isinstance(payload, dict) else None
+    if not isinstance(name_with_owner, str) or "/" not in name_with_owner:
+        raise PlanContractError("GitHub CLI returned invalid repository metadata")
+    return name_with_owner
+
+
+def _github_web_identity(url: str) -> tuple[str, int]:
+    match = re.fullmatch(
+        r"https://github.com/([^/]+)/([^/]+)/(?:pull|issues)/(\d+)"
+        r"(?:#(?:pullrequestreview|issuecomment)-\d+)?",
+        url.rstrip("/"),
+    )
+    if match is None:
+        raise PlanContractError(f"not a GitHub pull or issue URL: {url}")
+    return f"{match.group(1)}/{match.group(2)}", int(match.group(3))
+
+
+def _github_api_issue_identity(url: str) -> tuple[str, int]:
+    match = re.fullmatch(
+        r"https://api.github.com/repos/([^/]+)/([^/]+)/(?:issues|pulls)/(\d+)",
+        str(url or "").rstrip("/"),
+    )
+    if match is None:
+        raise PlanContractError(f"GitHub API URL is not an issue or pull: {url}")
+    return f"{match.group(1)}/{match.group(2)}", int(match.group(3))
+
+
+def bind_github_receipt(
+    receipt_url: str,
+    payload: dict[str, Any],
+    *,
+    current_repository: str,
+) -> dict[str, Any]:
+    """Bind a fetched review or comment to this repository and its real issue/PR."""
+
+    claimed_repo, claimed_number = _github_web_identity(receipt_url)
+    if claimed_repo != current_repository:
+        raise PlanContractError(
+            f"escalation receipt repository {claimed_repo} is not "
+            f"{current_repository}"
+        )
+    html_url = str(payload.get("html_url") or "")
+    issue_url = str(payload.get("issue_url") or payload.get("pull_request_url") or "")
+    if html_url:
+        actual_repo, actual_number = _github_web_identity(html_url)
+    elif issue_url:
+        actual_repo, actual_number = _github_api_issue_identity(issue_url)
+    else:
+        raise PlanContractError(
+            "escalation receipt did not expose html_url or issue_url"
+        )
+    if actual_repo != current_repository:
+        raise PlanContractError(
+            f"escalation receipt belongs to {actual_repo}, not {current_repository}"
+        )
+    if actual_number != claimed_number:
+        raise PlanContractError(
+            "escalation receipt does not belong to the claimed issue or pull "
+            f"#{claimed_number}"
+        )
+    author = payload.get("user") or {}
+    return {
+        "id": str(payload.get("id") or ""),
+        "pr": actual_number,
+        "repository": actual_repo,
+        "html_url": html_url,
+        "authorAssociation": payload.get("author_association"),
+        "body": payload.get("body") or "",
+        "state": payload.get("state") or "COMMENTED",
+        "login": author.get("login") if isinstance(author, dict) else None,
+    }
+
+
 def fetch_github_review_receipt(
     receipt_url: str,
     *,
@@ -597,6 +692,7 @@ def fetch_github_review_receipt(
 ) -> dict[str, Any]:
     """Load one GitHub review or issue comment named by a durable URL."""
 
+    current_repository = github_repository_name(repo_root=repo_root)
     review_match = re.fullmatch(
         r"https://github.com/[^/]+/[^/]+/pull/(\d+)#pullrequestreview-(\d+)",
         receipt_url,
@@ -629,16 +725,19 @@ def fetch_github_review_receipt(
             raise PlanContractError(
                 f"cannot verify escalation review {receipt_url}: {detail}"
             ) from exc
-        payload = json.loads(result.stdout)
-        author = payload.get("user") or {}
-        return {
-            "id": str(payload.get("id") or review_id),
-            "pr": pr_number,
-            "authorAssociation": payload.get("author_association"),
-            "body": payload.get("body") or "",
-            "state": payload.get("state"),
-            "login": author.get("login"),
-        }
+        try:
+            payload = json.loads(result.stdout)
+        except json.JSONDecodeError as exc:
+            raise PlanContractError(
+                "GitHub CLI returned invalid review metadata"
+            ) from exc
+        if not isinstance(payload, dict):
+            raise PlanContractError("GitHub CLI returned invalid review metadata")
+        return bind_github_receipt(
+            receipt_url,
+            payload,
+            current_repository=current_repository,
+        )
     if comment_match:
         comment_id = comment_match.group(2)
         try:
@@ -658,16 +757,19 @@ def fetch_github_review_receipt(
             raise PlanContractError(
                 f"cannot verify escalation comment {receipt_url}: {detail}"
             ) from exc
-        payload = json.loads(result.stdout)
-        author = payload.get("user") or {}
-        return {
-            "id": str(payload.get("id") or comment_id),
-            "pr": int(comment_match.group(1)),
-            "authorAssociation": payload.get("author_association"),
-            "body": payload.get("body") or "",
-            "state": "COMMENTED",
-            "login": author.get("login"),
-        }
+        try:
+            payload = json.loads(result.stdout)
+        except json.JSONDecodeError as exc:
+            raise PlanContractError(
+                "GitHub CLI returned invalid comment metadata"
+            ) from exc
+        if not isinstance(payload, dict):
+            raise PlanContractError("GitHub CLI returned invalid comment metadata")
+        return bind_github_receipt(
+            receipt_url,
+            payload,
+            current_repository=current_repository,
+        )
     raise PlanContractError(
         "escalation receipt must be a GitHub pullrequestreview or issuecomment URL"
     )
@@ -747,6 +849,54 @@ def verify_implementation_pause_against_github(
         implementation_pr=pr_number,
         repo_root=repo_root,
     )
+
+
+def mark_github_pr_ready_for_review(
+    pr_number: int,
+    *,
+    repo_root: Path = ROOT,
+) -> None:
+    """Convert a paused draft implementation PR back to a reviewable PR."""
+
+    payload = fetch_github_pr_view(pr_number, repo_root=repo_root)
+    if payload.get("state") != "OPEN" or payload.get("merged"):
+        raise PlanContractError(
+            "implementation PR must stay OPEN and unmerged to restore reviewability"
+        )
+    if payload.get("isDraft"):
+        try:
+            subprocess.run(
+                ["gh", "pr", "ready", str(pr_number)],
+                cwd=repo_root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        except FileNotFoundError as exc:
+            raise PlanContractError(
+                "GitHub CLI `gh` is required to restore implementation reviewability"
+            ) from exc
+        except subprocess.CalledProcessError as exc:
+            detail = exc.stderr.strip() or exc.stdout.strip() or str(exc)
+            raise PlanContractError(
+                f"cannot mark implementation PR #{pr_number} ready for review: "
+                f"{detail}"
+            ) from exc
+        payload = fetch_github_pr_view(pr_number, repo_root=repo_root)
+    if payload.get("isDraft"):
+        raise PlanContractError(
+            f"implementation PR #{pr_number} is still draft after ready-for-review"
+        )
+
+
+def _restore_paused_implementation_reviewability(
+    parsed: dict[str, str],
+    *,
+    repo_root: Path,
+) -> None:
+    if parsed["disposition"] != "paused":
+        return
+    mark_github_pr_ready_for_review(int(parsed["pr"]), repo_root=repo_root)
 
 
 def _validate_paused_implementation_fields(
@@ -1996,6 +2146,7 @@ def _resume_implementation_after_amendment(
         field_updates=field_updates,
         field_removes=("paused implementation",),
     )
+    _restore_paused_implementation_reviewability(paused, repo_root=repo_root)
     plan.write_text(updated, encoding="utf-8")
     return updated
 
@@ -2029,26 +2180,15 @@ def start_proposal_amendment_branch(
             "proposal amendment start requires ready_for_implementation or "
             "implementation_in_review"
         )
-    impl_branch_name = _frontier_branch(
-        state.current,
-        heading="Current Frontier",
-        field="implementation branch",
-    )
-    existing_refs = _run_git(
-        ["for-each-ref", "--format=%(refname)", "refs/heads", "refs/remotes"],
-        cwd=repo_root,
-    ).stdout.splitlines()
-    implementation_branch_exists = any(
-        ref == f"refs/heads/{impl_branch_name}"
-        or (
-            ref.startswith("refs/remotes/")
-            and ref.endswith(f"/{impl_branch_name}")
+    if (
+        source_state == "ready_for_implementation"
+        and state.current.fields.get("paused implementation")
+    ):
+        raise PlanContractError(
+            "cannot start a proposal amendment while a paused implementation "
+            "is awaiting resume"
         )
-        for ref in existing_refs
-    )
-    in_flight = (
-        source_state == "implementation_in_review" or implementation_branch_exists
-    )
+    in_flight = source_state == "implementation_in_review"
     extra = {
         implementation_pr,
         implementation_url,
@@ -3372,6 +3512,7 @@ def abandon_proposal_amendment(
         "amendment source state",
     ]
     restored_state = source
+    restore_reviewability: dict[str, str] | None = None
     if source == "implementation_in_review":
         if not paused:
             raise PlanContractError(
@@ -3383,8 +3524,10 @@ def abandon_proposal_amendment(
             field_updates["pr"] = f"[#{parsed['pr']}]({parsed['url']})"
             field_removes.append("paused implementation")
             restored_state = "implementation_in_review"
+            restore_reviewability = parsed
         else:
             restored_state = "ready_for_implementation"
+            restore_reviewability = None
     else:
         field_removes.append("paused implementation")
         restored_state = "ready_for_implementation"
@@ -3402,6 +3545,11 @@ def abandon_proposal_amendment(
     )
     _run_git(["switch", "--force", state.milestone_branch], cwd=repo_root)
     plan.write_text(updated, encoding="utf-8")
+    if restore_reviewability is not None:
+        _restore_paused_implementation_reviewability(
+            restore_reviewability,
+            repo_root=repo_root,
+        )
     return updated
 
 
@@ -3701,13 +3849,13 @@ def validate_review_unit_transition(
         )
         validate_proposal_amendment_text(proposal_amendment_text)
         head_source = head.current.fields.get("amendment source state")
+        paused_raw = head.current.fields.get("paused implementation")
         if base_state == "implementation_in_review":
             if head_source != "implementation_in_review":
                 raise PlanContractError(
                     "implementation-source amendment must record amendment "
                     "source state implementation_in_review"
                 )
-            paused_raw = head.current.fields.get("paused implementation")
             if not paused_raw:
                 raise PlanContractError(
                     "implementation-source amendment must record a paused "
@@ -3731,16 +3879,11 @@ def validate_review_unit_transition(
                     milestone_branch=base.milestone_branch,
                     repo_root=repo_root,
                 )
-        elif head_source == "implementation_in_review" or head.current.fields.get(
-            "paused implementation"
-        ):
-            paused_raw = head.current.fields.get("paused implementation")
-            if not paused_raw or head_source != "implementation_in_review":
-                raise PlanContractError(
-                    "in-flight implementation amendment must keep both "
-                    "amendment source state and paused implementation"
-                )
-            parse_paused_implementation(paused_raw)
+        elif head_source == "implementation_in_review" or paused_raw:
+            raise PlanContractError(
+                "ready_for_implementation amendment cannot record "
+                "implementation source state or a paused implementation"
+            )
         transition_kind = "proposal_amendment"
     elif base_state == "ready_for_implementation":
         if head_state != "implementation_in_review":

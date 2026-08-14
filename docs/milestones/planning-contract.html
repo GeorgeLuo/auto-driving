@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="6bcaf52fc2c0ae25e62e4345814d095c9a225c995e07b176eeaa868ce6ce7d34">
+  <meta name="source-sha256" content="b7430eca5bdbdbf1bde617299378b58047f610c03f5906b8a6056274ed851d4e">
   <base target="_blank">
   <title>Milestone Planning And Delivery Contract</title>
   <style>
@@ -1189,8 +1189,10 @@ Drift fails closed.</p>
 frontier to <code>ready_for_implementation</code> and preserves any paused implementation
 identity. Then <code>start-implementation</code> resumes only the exact recorded head and
 merges the updated milestone branch into that published implementation branch
-(<code>--no-ff</code>; do not rebase it). <code>reconcile</code> restores the paused PR; <code>replace</code>
-reopens the planned branch for a new implementation PR.</p>
+(<code>--no-ff</code>; do not rebase it). <code>reconcile</code> restores the paused PR and marks it
+ready for review (<code>gh pr ready</code>); <code>replace</code> reopens the planned branch for a
+new implementation PR. Abandoning a <code>paused</code>/<code>reconcile</code> amendment also marks
+that PR ready for review.</p>
 <p>To reject or abandon an in-review amendment without accepting it, run the
 command on the unmerged amendment branch. It writes the restore onto the
 milestone branch and does not merge the amendment artifact or copy amendment
@@ -1199,11 +1201,11 @@ state by hand:</p>
   --plan docs/milestones/&lt;number&gt;-&lt;slug&gt;/plan.md \
   --reason &quot;&lt;concrete reason&gt;&quot;
 </code></pre>
-<p><code>paused</code>/<code>reconcile</code> restores <code>implementation_in_review</code> and the existing PR.
-<code>closed</code>/<code>replace</code> returns to <code>ready_for_implementation</code> while keeping the
-pause receipt so <code>start-implementation</code> can open the recorded replacement. A
-failed amendment is not implementation acceptance and does not rewrite the
-original proposal.</p>
+<p><code>paused</code>/<code>reconcile</code> restores <code>implementation_in_review</code> and the existing PR,
+and marks that draft PR ready for review. <code>closed</code>/<code>replace</code> returns to
+<code>ready_for_implementation</code> while keeping the pause receipt so
+<code>start-implementation</code> can open the recorded replacement. A failed amendment
+is not implementation acceptance and does not rewrite the original proposal.</p>
 <p>Apply the same exact-head review rule to the contract-only amendment PR. After
 it merges, record its reviewed head and exact merge acceptance receipt. The
 amendment acceptance command also rechecks the canonical review kind:</p>

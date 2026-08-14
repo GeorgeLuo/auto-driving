@@ -1082,8 +1082,10 @@ After exact-head review and merge, `accept-proposal-amendment` returns the
 frontier to `ready_for_implementation` and preserves any paused implementation
 identity. Then `start-implementation` resumes only the exact recorded head and
 merges the updated milestone branch into that published implementation branch
-(`--no-ff`; do not rebase it). `reconcile` restores the paused PR; `replace`
-reopens the planned branch for a new implementation PR.
+(`--no-ff`; do not rebase it). `reconcile` restores the paused PR and marks it
+ready for review (`gh pr ready`); `replace` reopens the planned branch for a
+new implementation PR. Abandoning a `paused`/`reconcile` amendment also marks
+that PR ready for review.
 
 To reject or abandon an in-review amendment without accepting it, run the
 command on the unmerged amendment branch. It writes the restore onto the
@@ -1096,11 +1098,11 @@ python3 docs/milestones/workflow.py abandon-proposal-amendment \
   --reason "<concrete reason>"
 ```
 
-`paused`/`reconcile` restores `implementation_in_review` and the existing PR.
-`closed`/`replace` returns to `ready_for_implementation` while keeping the
-pause receipt so `start-implementation` can open the recorded replacement. A
-failed amendment is not implementation acceptance and does not rewrite the
-original proposal.
+`paused`/`reconcile` restores `implementation_in_review` and the existing PR,
+and marks that draft PR ready for review. `closed`/`replace` returns to
+`ready_for_implementation` while keeping the pause receipt so
+`start-implementation` can open the recorded replacement. A failed amendment
+is not implementation acceptance and does not rewrite the original proposal.
 
 Apply the same exact-head review rule to the contract-only amendment PR. After
 it merges, record its reviewed head and exact merge acceptance receipt. The

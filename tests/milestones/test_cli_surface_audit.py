@@ -254,6 +254,97 @@ class CliSurfaceAuditTests(unittest.TestCase):
         self.assertIsInstance(report["missing_from_help"], list)
         self.assertIsInstance(report["extra_in_help"], list)
 
+    def test_wrong_document_schema_fails(self) -> None:
+        overlay = json.loads((TOOL / "leaf_overlay.json").read_text(encoding="utf-8"))
+        overlay["schema"] = "wrong_schema"
+        with self.assertRaises(self.validate_audit.AuditError):
+            self.validate_audit._require_document_schema(
+                overlay, "m007_leaf_overlay_v1", where="leaf_overlay"
+            )
+
+    def test_catalog_wrong_source_url_fails(self) -> None:
+        catalog_path = TOOL / "us88_catalog.json"
+        data = json.loads(catalog_path.read_text(encoding="utf-8"))
+        data["source"]["url"] = "https://example.invalid/not-88"
+        data["source"]["comment_id"] = 1
+        data["source"]["title"] = ""
+        bad = TOOL / "_tmp_bad_source_catalog.json"
+        try:
+            bad.write_text(json.dumps(data), encoding="utf-8")
+            # Keep anchor matching bad file content so only source identity fails.
+            import hashlib
+
+            digest = hashlib.sha256(bad.read_bytes()).hexdigest()
+            anchor = TOOL / "_tmp_bad_source_catalog.sha256"
+            anchor.write_text(digest + "\n", encoding="utf-8")
+            with self.assertRaises(self.validate_audit.AuditError) as ctx:
+                self.validate_audit.load_catalog(bad, anchor_path=anchor)
+            self.assertIn("canonical", str(ctx.exception).lower())
+        finally:
+            for path in (bad, TOOL / "_tmp_bad_source_catalog.sha256"):
+                if path.exists():
+                    path.unlink()
+
+    def test_primary_confirmation_mismatch_fails(self) -> None:
+        catalog = self.validate_audit.load_catalog()
+        cat_sha = self.validate_audit.catalog_digest()
+        sequences = json.loads(
+            (TOOL / "sequence_registry.json").read_text(encoding="utf-8")
+        )
+        sequences["sequences"][0]["primary_confirmation"] = "arbitrary confirmation"
+        with self.assertRaises(self.validate_audit.AuditError) as ctx:
+            self.validate_audit.validate_sequences(
+                catalog=catalog,
+                catalog_sha=cat_sha,
+                sequences=sequences,
+                leaf_ids=set(self.parser_walk.public_leaf_ids()),
+            )
+        self.assertIn("primary_confirmation", str(ctx.exception))
+
+    def test_absolute_cite_path_fails(self) -> None:
+        sequences = json.loads(
+            (TOOL / "sequence_registry.json").read_text(encoding="utf-8")
+        )
+        claim_map = json.loads((TOOL / "claim_map.json").read_text(encoding="utf-8"))
+        abs_path = str(
+            (
+                ROOT
+                / "docs/milestones/007-cli-operator-usability/evidence/"
+                "live-cli-acceptance/result.json"
+            ).resolve()
+        )
+        claim_map["claims"]["us01_us02_live_acceptance"]["paths"] = [abs_path]
+        import hashlib
+
+        digest = hashlib.sha256(Path(abs_path).read_bytes()).hexdigest()
+        for row in sequences["sequences"]:
+            if row["id"] in {"US-01", "US-02"}:
+                row["evidence"]["digests"] = {abs_path: digest}
+        with self.assertRaises(self.validate_audit.AuditError) as ctx:
+            self.validate_audit.validate_semantic_cite(
+                sequences=sequences,
+                claim_map=claim_map,
+                repo_root=ROOT,
+            )
+        self.assertIn("repository-relative", str(ctx.exception).lower())
+
+    def test_live_residual_bogus_disposition_fails(self) -> None:
+        sequences = json.loads(
+            (TOOL / "sequence_registry.json").read_text(encoding="utf-8")
+        )
+        overlay = json.loads((TOOL / "leaf_overlay.json").read_text(encoding="utf-8"))
+        residuals = json.loads(
+            (TOOL / "live_residuals.json").read_text(encoding="utf-8")
+        )
+        residuals["findings"][0]["owner"] = ""
+        residuals["findings"][0]["disposition"] = "bogus"
+        with self.assertRaises(self.validate_audit.AuditError):
+            self.validate_audit.validate_live_residuals(
+                sequences=sequences,
+                overlay=overlay,
+                residuals=residuals["findings"],
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

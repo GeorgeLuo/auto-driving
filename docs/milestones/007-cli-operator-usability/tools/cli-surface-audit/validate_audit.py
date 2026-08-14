@@ -101,6 +101,20 @@ def catalog_digest(path: Path = CATALOG_PATH) -> str:
     return _sha256_file(path)
 
 
+def _require_document_schema(
+    doc: dict[str, Any],
+    expected: str,
+    *,
+    where: str,
+) -> None:
+    if not isinstance(doc, dict):
+        raise AuditError(f"{where} must be an object")
+    if doc.get("schema") != expected:
+        raise AuditError(
+            f"{where} schema must be {expected!r}; got {doc.get('schema')!r}"
+        )
+
+
 def load_catalog(
     path: Path = CATALOG_PATH,
     *,
@@ -117,10 +131,25 @@ def load_catalog(
         ("url", "comment_id", "title"),
         where="catalog.source",
     )
-    if not str(source.get("url") or "").strip():
-        raise AuditError("catalog.source.url must be non-empty")
-    if not isinstance(source.get("comment_id"), int) or source["comment_id"] <= 0:
-        raise AuditError("catalog.source.comment_id must be a positive int")
+    expected_url = (
+        "https://github.com/GeorgeLuo/auto-driving/pull/88#issuecomment-5169077892"
+    )
+    expected_comment_id = 5169077892
+    expected_title = (
+        "Prospective README appendix: usage sequences and human confirmation"
+    )
+    if str(source.get("url") or "").strip() != expected_url:
+        raise AuditError(
+            f"catalog.source.url must be the canonical #88 authority {expected_url!r}"
+        )
+    if source.get("comment_id") != expected_comment_id:
+        raise AuditError(
+            f"catalog.source.comment_id must be {expected_comment_id}"
+        )
+    if str(source.get("title") or "").strip() != expected_title:
+        raise AuditError(
+            "catalog.source.title must match the canonical #88 appendix title"
+        )
     entries = data.get("entries")
     if not isinstance(entries, list) or len(entries) != 10:
         raise AuditError("catalog must contain exactly 10 US entries")
@@ -375,6 +404,13 @@ def validate_sequences(
             raise AuditError(
                 f"{us_id} operator_outcome does not match catalog (swap/alter)"
             )
+        if _normalize_question(row["primary_confirmation"]) != _normalize_question(
+            source["primary_human_confirmation"]
+        ):
+            raise AuditError(
+                f"{us_id} primary_confirmation does not match catalog "
+                "(primary_human_confirmation)"
+            )
 
         if row["disposition"] not in DISPOSITIONS:
             raise AuditError(f"{us_id} invalid disposition")
@@ -566,8 +602,25 @@ def validate_semantic_cite(
             raise AuditError(f"{us_id} evidence.digests is required for every cite path")
         path_digests: list[dict[str, str]] = []
         parsed: dict[str, Any] = {}
+        repo_root = repo_root.resolve()
         for rel in paths:
-            abs_path = repo_root / rel
+            if not isinstance(rel, str) or not rel.strip():
+                raise AuditError(f"{us_id} claim path must be a non-empty string")
+            if Path(rel).is_absolute() or rel.startswith("/") or rel.startswith("\\"):
+                raise AuditError(
+                    f"{us_id} claim path must be repository-relative, not absolute: {rel!r}"
+                )
+            if ".." in Path(rel).parts:
+                raise AuditError(
+                    f"{us_id} claim path must not contain '..' traversal: {rel!r}"
+                )
+            abs_path = (repo_root / rel).resolve()
+            try:
+                abs_path.relative_to(repo_root)
+            except ValueError as exc:
+                raise AuditError(
+                    f"{us_id} claim path escapes repo root: {rel!r}"
+                ) from exc
             if not abs_path.is_file():
                 raise AuditError(f"cite path missing: {rel}")
             digest = _sha256_file(abs_path)
@@ -613,6 +666,9 @@ def validate_semantic_cite(
     return receipts
 
 
+LIVE_DISPOSITIONS = {"deferred", "wontfix", "fixed_elsewhere"}
+
+
 def validate_live_residuals(
     *,
     sequences: dict[str, Any],
@@ -626,7 +682,18 @@ def validate_live_residuals(
         "M007-LIVE-004",
         "M007-LIVE-005",
     }
-    seen = {row.get("id") for row in residuals}
+    if not isinstance(residuals, list):
+        raise AuditError("LIVE residuals must be a list")
+    seen: set[str] = set()
+    for row in residuals:
+        if not isinstance(row, dict):
+            raise AuditError("LIVE residual row must be an object")
+        rid = row.get("id")
+        if not isinstance(rid, str) or not rid.strip():
+            raise AuditError("LIVE residual id must be a non-empty string")
+        if rid in seen:
+            raise AuditError(f"duplicate LIVE residual id {rid}")
+        seen.add(rid)
     missing = sorted(required_ids - seen)
     if missing:
         raise AuditError(f"LIVE residuals missing: {missing}")
@@ -638,11 +705,20 @@ def validate_live_residuals(
             ("id", "owner", "disposition", "links"),
             where=f"LIVE {row.get('id')}",
         )
+        if not str(row.get("owner") or "").strip():
+            raise AuditError(f"LIVE {row['id']} owner must be non-empty")
+        if row.get("disposition") not in LIVE_DISPOSITIONS:
+            raise AuditError(
+                f"LIVE {row['id']} disposition must be one of "
+                f"{sorted(LIVE_DISPOSITIONS)}; got {row.get('disposition')!r}"
+            )
         links = row["links"]
         if not isinstance(links, dict):
             raise AuditError(f"LIVE {row['id']} links must be object")
         leaves = links.get("leaves") or []
         seqs = links.get("sequences") or []
+        if not isinstance(leaves, list) or not isinstance(seqs, list):
+            raise AuditError(f"LIVE {row['id']} links.leaves/sequences must be lists")
         if not leaves and not seqs:
             raise AuditError(f"LIVE {row['id']} must link leaf or sequence")
         for leaf in leaves:
@@ -830,6 +906,25 @@ def run_audit(*, repo_root: Path = ROOT) -> dict[str, Any]:
     claim_map = _load_json(repo_root / CLAIM_MAP_PATH.relative_to(ROOT))
     residuals_path = repo_root / TOOL_DIR.relative_to(ROOT) / "live_residuals.json"
     residuals = _load_json(residuals_path)
+
+    _require_document_schema(overlay, "m007_leaf_overlay_v1", where="leaf_overlay")
+    if not isinstance(overlay.get("leaves"), dict):
+        raise AuditError("leaf_overlay.leaves must be an object")
+    _require_document_schema(
+        sequences, "m007_sequence_registry_v1", where="sequence_registry"
+    )
+    if not isinstance(sequences.get("sequences"), list):
+        raise AuditError("sequence_registry.sequences must be a list")
+    _require_document_schema(claim_map, "m007_claim_map_v1", where="claim_map")
+    if not isinstance(claim_map.get("claims"), dict):
+        raise AuditError("claim_map.claims must be an object")
+    if not isinstance(claim_map.get("us_claim_bindings"), dict):
+        raise AuditError("claim_map.us_claim_bindings must be an object")
+    _require_document_schema(
+        residuals, "m007_live_residuals_v1", where="live_residuals"
+    )
+    if not isinstance(residuals.get("findings"), list):
+        raise AuditError("live_residuals.findings must be a list")
 
     leaf_ids = validate_leaf_inventory_document(inventory, parser=parser)
     validate_overlay(leaf_ids=leaf_ids, overlay=overlay)

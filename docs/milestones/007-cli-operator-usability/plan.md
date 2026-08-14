@@ -130,10 +130,11 @@ deletion; it does not retroactively widen the accepted primary journey.
 
 **Complete CLI surface and sequence audit**
 
-- Workflow state: proposal_in_review
+- Workflow state: ready_for_implementation
 - Proposal branch: `m007/cli-surface-audit-proposal`
 - Implementation branch: `m007/cli-surface-audit`
 - Proposal path: `docs/milestones/007-cli-operator-usability/proposals/cli-surface-audit.md`
+- Accepted proposal: [#113](https://github.com/GeorgeLuo/auto-driving/pull/113) at `75072a9e9270d8c8e8f866c39a52f6bdce0d56ca` (reviewed head `44158825e8b8f9566617702e31a570d169d339b2` by `GeorgeLuo` as `OWNER` at `2026-08-14T07:32:32Z`)
 - Review kind: Broad mechanical rollout
 - Review question: Can one committed CLI usage registry prove complete parser-leaf and #88 US-01 through US-10 accounting, with every public leaf mapped to realistic usage, prerequisites, side effects and safety, expected output, owning boundary, and deterministic or live validation, and every sequence assigned stable commands, confirmation, cleanup, coverage treatment, and an explicit passed, ready, blocked, or deferred disposition with owned unlock conditions, while machine-first and HITL evidence covers safe executable patterns without running hazardous or external entries unsafely?
 - Acceptance owner: Parser-derived CLI leaf inventory, committed usage and sequence registry, completeness/schema validators, and runner-backed machine/HITL audit evidence
@@ -188,6 +189,7 @@ deletion; it does not retroactively widen the accepted primary journey.
 | CLI journey coverage foundation | accepted | Implementation PR #107 merged at ff75a200ffa8df2cd41458893a5c0e2aafef29c7. |
 | Complete CLI surface and sequence audit | ready_for_proposal | Promoted after implementation PR #107. |
 | Complete CLI surface and sequence audit | proposal_in_review | Started m007/cli-surface-audit-proposal. |
+| Complete CLI surface and sequence audit | ready_for_implementation | Proposal PR #113 accepted at 75072a9e9270d8c8e8f866c39a52f6bdce0d56ca (reviewed head `44158825e8b8f9566617702e31a570d169d339b2` by `GeorgeLuo` as `OWNER` at `2026-08-14T07:32:32Z`). |
 
 ## Accepted Review Units
 

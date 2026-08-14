@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="4f948443d76124be82897f11a8c27f6214c295647ff5467ea45f98d1a6146dc9">
+  <meta name="source-sha256" content="6bcaf52fc2c0ae25e62e4345814d095c9a225c995e07b176eeaa868ce6ce7d34">
   <base target="_blank">
   <title>Milestone Planning And Delivery Contract</title>
   <style>
@@ -1174,20 +1174,36 @@ PR as <code>paused</code> (resume policy <code>reconcile</code>) or <code>closed
 </code></pre>
 <p>The amendment PR remains contract-only. Concurrent implementation mutation is
 forbidden while the frontier is <code>proposal_amendment_in_review</code>; validate-pr
-rejects implementation heads in that state. After exact-head review and merge,
-<code>accept-proposal-amendment</code> returns the frontier to <code>ready_for_implementation</code>
-and preserves any paused implementation identity. Then <code>start-implementation</code>
-resumes the recorded branch: <code>reconcile</code> restores the paused PR, <code>replace</code>
+rejects implementation heads in that state. Starting an implementation-source
+amendment, validating that PR, accepting the amendment, and resuming
+implementation all recheck authoritative GitHub metadata: the implementation
+URL must be this repository's pull request, the head branch must be the
+planned implementation branch, the base must be the milestone branch, and the
+recorded 40-character head must still be the PR head. A <code>paused</code> PR must
+remain open, unmerged, and converted to draft so it cannot merge. A <code>closed</code>
+PR must be closed and unmerged. The escalation receipt must be a GitHub
+<code>pullrequestreview</code> or <code>issuecomment</code> URL on that implementation PR from an
+<code>OWNER</code>, <code>MEMBER</code>, or <code>COLLABORATOR</code> whose body selects <code>proposal-amendment</code>.
+Drift fails closed.</p>
+<p>After exact-head review and merge, <code>accept-proposal-amendment</code> returns the
+frontier to <code>ready_for_implementation</code> and preserves any paused implementation
+identity. Then <code>start-implementation</code> resumes only the exact recorded head and
+merges the updated milestone branch into that published implementation branch
+(<code>--no-ff</code>; do not rebase it). <code>reconcile</code> restores the paused PR; <code>replace</code>
 reopens the planned branch for a new implementation PR.</p>
-<p>To reject or abandon an in-review amendment without accepting it:</p>
+<p>To reject or abandon an in-review amendment without accepting it, run the
+command on the unmerged amendment branch. It writes the restore onto the
+milestone branch and does not merge the amendment artifact or copy amendment
+state by hand:</p>
 <pre><code class="language-sh">python3 docs/milestones/workflow.py abandon-proposal-amendment \
   --plan docs/milestones/&lt;number&gt;-&lt;slug&gt;/plan.md \
   --reason &quot;&lt;concrete reason&gt;&quot;
 </code></pre>
-<p>Abandon restores the recorded source state (<code>ready_for_implementation</code> or
-<code>implementation_in_review</code>) and cannot leave amendment branch/path fields
-dangling. A failed amendment is not implementation acceptance and does not
-rewrite the original proposal.</p>
+<p><code>paused</code>/<code>reconcile</code> restores <code>implementation_in_review</code> and the existing PR.
+<code>closed</code>/<code>replace</code> returns to <code>ready_for_implementation</code> while keeping the
+pause receipt so <code>start-implementation</code> can open the recorded replacement. A
+failed amendment is not implementation acceptance and does not rewrite the
+original proposal.</p>
 <p>Apply the same exact-head review rule to the contract-only amendment PR. After
 it merges, record its reviewed head and exact merge acceptance receipt. The
 amendment acceptance command also rechecks the canonical review kind:</p>

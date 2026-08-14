@@ -502,7 +502,7 @@ def _accepted_proposal_amendments(
 AMENDMENT_ESCALATION_ROUTE = "proposal-amendment"
 PAUSED_IMPLEMENTATION_RE = re.compile(
     r"\[#(?P<pr>\d+)\]\((?P<url>https://[^)\s]+)\) on "
-    r"`(?P<branch>m\d{3}/[^`]+)` at `(?P<head>[0-9a-f]{7,40})` "
+    r"`(?P<branch>m\d{3}/[^`]+)` at `(?P<head>[0-9a-f]{40})` "
     r"\((?P<disposition>paused|closed)\); resume "
     r"`(?P<resume>reconcile|replace)`; escalation "
     r"`(?P<route>proposal-amendment)` (?P<receipt>https://\S+)"
@@ -550,6 +550,205 @@ def parse_paused_implementation(
     return match.groupdict()
 
 
+def fetch_github_pr_view(
+    pr_number: int,
+    *,
+    repo_root: Path = ROOT,
+) -> dict[str, Any]:
+    """Authoritative pull-request identity and mergeability."""
+
+    try:
+        result = subprocess.run(
+            [
+                "gh",
+                "pr",
+                "view",
+                str(pr_number),
+                "--json",
+                "number,url,state,isDraft,merged,baseRefName,headRefName,headRefOid",
+            ],
+            cwd=repo_root,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError as exc:
+        raise PlanContractError(
+            "GitHub CLI `gh` is required to verify a paused implementation"
+        ) from exc
+    except subprocess.CalledProcessError as exc:
+        detail = exc.stderr.strip() or exc.stdout.strip() or str(exc)
+        raise PlanContractError(
+            f"cannot verify implementation PR #{pr_number}: {detail}"
+        ) from exc
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise PlanContractError("GitHub CLI returned invalid PR metadata") from exc
+    if not isinstance(payload, dict):
+        raise PlanContractError("GitHub CLI returned invalid PR metadata")
+    return payload
+
+
+def fetch_github_review_receipt(
+    receipt_url: str,
+    *,
+    repo_root: Path = ROOT,
+) -> dict[str, Any]:
+    """Load one GitHub review or issue comment named by a durable URL."""
+
+    review_match = re.fullmatch(
+        r"https://github.com/[^/]+/[^/]+/pull/(\d+)#pullrequestreview-(\d+)",
+        receipt_url,
+    )
+    comment_match = re.fullmatch(
+        r"https://github.com/[^/]+/[^/]+/(?:pull|issues)/(\d+)#issuecomment-(\d+)",
+        receipt_url,
+    )
+    if review_match:
+        pr_number = int(review_match.group(1))
+        review_id = review_match.group(2)
+        try:
+            result = subprocess.run(
+                [
+                    "gh",
+                    "api",
+                    f"repos/{{owner}}/{{repo}}/pulls/{pr_number}/reviews/{review_id}",
+                ],
+                cwd=repo_root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        except FileNotFoundError as exc:
+            raise PlanContractError(
+                "GitHub CLI `gh` is required to verify an escalation receipt"
+            ) from exc
+        except subprocess.CalledProcessError as exc:
+            detail = exc.stderr.strip() or exc.stdout.strip() or str(exc)
+            raise PlanContractError(
+                f"cannot verify escalation review {receipt_url}: {detail}"
+            ) from exc
+        payload = json.loads(result.stdout)
+        author = payload.get("user") or {}
+        return {
+            "id": str(payload.get("id") or review_id),
+            "pr": pr_number,
+            "authorAssociation": payload.get("author_association"),
+            "body": payload.get("body") or "",
+            "state": payload.get("state"),
+            "login": author.get("login"),
+        }
+    if comment_match:
+        comment_id = comment_match.group(2)
+        try:
+            result = subprocess.run(
+                ["gh", "api", f"repos/{{owner}}/{{repo}}/issues/comments/{comment_id}"],
+                cwd=repo_root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        except FileNotFoundError as exc:
+            raise PlanContractError(
+                "GitHub CLI `gh` is required to verify an escalation receipt"
+            ) from exc
+        except subprocess.CalledProcessError as exc:
+            detail = exc.stderr.strip() or exc.stdout.strip() or str(exc)
+            raise PlanContractError(
+                f"cannot verify escalation comment {receipt_url}: {detail}"
+            ) from exc
+        payload = json.loads(result.stdout)
+        author = payload.get("user") or {}
+        return {
+            "id": str(payload.get("id") or comment_id),
+            "pr": int(comment_match.group(1)),
+            "authorAssociation": payload.get("author_association"),
+            "body": payload.get("body") or "",
+            "state": "COMMENTED",
+            "login": author.get("login"),
+        }
+    raise PlanContractError(
+        "escalation receipt must be a GitHub pullrequestreview or issuecomment URL"
+    )
+
+
+def verify_escalation_receipt(
+    receipt_url: str,
+    *,
+    implementation_pr: int,
+    repo_root: Path = ROOT,
+) -> None:
+    receipt = fetch_github_review_receipt(receipt_url, repo_root=repo_root)
+    if int(receipt.get("pr") or 0) != implementation_pr:
+        raise PlanContractError(
+            "escalation receipt must belong to the implementation PR"
+        )
+    association = str(receipt.get("authorAssociation") or "").upper()
+    if association not in AUTHORIZED_REVIEW_ASSOCIATIONS:
+        raise PlanContractError(
+            "escalation receipt must come from an OWNER, MEMBER, or COLLABORATOR"
+        )
+    body = str(receipt.get("body") or "")
+    if "proposal-amendment" not in body:
+        raise PlanContractError(
+            "escalation receipt must select the proposal-amendment route"
+        )
+
+
+def verify_implementation_pause_against_github(
+    parsed: dict[str, str],
+    *,
+    planned_branch: str,
+    milestone_branch: str,
+    repo_root: Path = ROOT,
+) -> None:
+    pr_number = int(parsed["pr"])
+    payload = fetch_github_pr_view(pr_number, repo_root=repo_root)
+    if int(payload.get("number") or 0) != pr_number:
+        raise PlanContractError(
+            f"GitHub PR number {payload.get('number')!r} does not match #{pr_number}"
+        )
+    url = str(payload.get("url") or "")
+    if parsed["url"].rstrip("/") != url.rstrip("/"):
+        raise PlanContractError(
+            f"implementation URL {parsed['url']!r} does not match GitHub {url!r}"
+        )
+    if payload.get("headRefName") != planned_branch:
+        raise PlanContractError(
+            "implementation PR head branch must be the planned implementation branch"
+        )
+    if payload.get("baseRefName") != milestone_branch:
+        raise PlanContractError(
+            "implementation PR base must be the milestone branch"
+        )
+    if payload.get("headRefOid") != parsed["head"]:
+        raise PlanContractError(
+            "implementation PR head does not match the recorded pause head"
+        )
+    if parsed["disposition"] == "paused":
+        if payload.get("state") != "OPEN":
+            raise PlanContractError("paused implementation PR must remain OPEN")
+        if payload.get("merged"):
+            raise PlanContractError("paused implementation PR must not be merged")
+        if not payload.get("isDraft"):
+            raise PlanContractError(
+                "paused implementation PR must be converted to draft so it cannot merge"
+            )
+    else:
+        if payload.get("state") != "CLOSED":
+            raise PlanContractError("closed implementation PR must be CLOSED")
+        if payload.get("merged"):
+            raise PlanContractError(
+                "closed implementation PR must not already be merged"
+            )
+    verify_escalation_receipt(
+        parsed["receipt"],
+        implementation_pr=pr_number,
+        repo_root=repo_root,
+    )
+
+
 def _validate_paused_implementation_fields(
     frontier: Frontier,
     *,
@@ -559,6 +758,7 @@ def _validate_paused_implementation_fields(
     source = frontier.fields.get("amendment source state")
     if workflow_state == "proposal_amendment_in_review":
         if not source:
+            # Legacy plans authored before implementation-source amendments.
             source = "ready_for_implementation"
         if source not in {
             "ready_for_implementation",
@@ -1696,6 +1896,86 @@ def _resume_implementation_after_amendment(
         raise PlanContractError(
             f"paused implementation branch is missing: {requested_branch}"
         )
+    impl_oid = _run_git(["rev-parse", requested_branch], cwd=repo_root).stdout.strip()
+    if impl_oid != paused["head"]:
+        raise PlanContractError(
+            f"implementation head drifted: {impl_oid} != {paused['head']}"
+        )
+    verify_implementation_pause_against_github(
+        paused,
+        planned_branch=planned,
+        milestone_branch=state.milestone_branch,
+        repo_root=repo_root,
+    )
+    accepted_records = _accepted_proposal_amendments(
+        state.current,
+        heading="Current Frontier",
+    )
+    latest_merge = accepted_records[-1][1] if accepted_records else None
+    latest_path = accepted_records[-1][2] if accepted_records else None
+    needs_amendment_merge = False
+    if latest_merge:
+        already_present = _run_git(
+            ["merge-base", "--is-ancestor", latest_merge, requested_branch],
+            cwd=repo_root,
+            check=False,
+        )
+        needs_amendment_merge = already_present.returncode != 0
+    if needs_amendment_merge:
+        ancestor = _run_git(
+            ["merge-base", "--is-ancestor", latest_merge, "HEAD"],
+            cwd=repo_root,
+            check=False,
+        )
+        if ancestor.returncode != 0:
+            raise PlanContractError(
+                "accepted amendment merge is not an ancestor of the milestone "
+                "branch"
+            )
+        assert latest_path is not None
+        _git_text_at(state.milestone_branch, latest_path, repo_root=repo_root)
+    elif not accepted_records and paused["resume"] == "reconcile":
+        raise PlanContractError(
+            "reconcile resume requires an accepted proposal amendment"
+        )
+    # Snapshot the milestone plan before switching. The implementation branch
+    # still carries the pre-amendment plan; writing after switch would restore
+    # that stale frontier instead of the accepted amendment state.
+    original = plan.read_text(encoding="utf-8")
+    _run_git(["switch", requested_branch], cwd=repo_root)
+    if needs_amendment_merge:
+        merge = _run_git(
+            [
+                "merge",
+                "--no-ff",
+                "-m",
+                "Merge accepted proposal amendment into paused implementation.",
+                state.milestone_branch,
+            ],
+            cwd=repo_root,
+            check=False,
+        )
+        if merge.returncode != 0:
+            _run_git(["merge", "--abort"], cwd=repo_root, check=False)
+            raise PlanContractError(
+                "cannot merge accepted amendment into paused implementation; "
+                "resolve conflicts or replace from the milestone head"
+            )
+        merged_ancestor = _run_git(
+            ["merge-base", "--is-ancestor", latest_merge, "HEAD"],
+            cwd=repo_root,
+            check=False,
+        )
+        if (
+            merged_ancestor.returncode != 0
+            or latest_path is None
+            or not (repo_root / latest_path).is_file()
+        ):
+            _run_git(["reset", "--hard", paused["head"]], cwd=repo_root)
+            raise PlanContractError(
+                "accepted amendment merge is not an ancestor of the resumed "
+                "implementation"
+            )
     field_updates: dict[str, str] = {}
     if paused["resume"] == "reconcile":
         field_updates["pr"] = f"[#{paused['pr']}]({paused['url']})"
@@ -1708,7 +1988,6 @@ def _resume_implementation_after_amendment(
             f"Reopened implementation {requested_branch} after proposal amendment "
             f"(replace closed PR #{paused['pr']})."
         )
-    original = plan.read_text(encoding="utf-8")
     updated = _replace_current_frontier_state(
         original,
         expected_state="ready_for_implementation",
@@ -1717,7 +1996,6 @@ def _resume_implementation_after_amendment(
         field_updates=field_updates,
         field_removes=("paused implementation",),
     )
-    _run_git(["switch", requested_branch], cwd=repo_root)
     plan.write_text(updated, encoding="utf-8")
     return updated
 
@@ -1801,17 +2079,17 @@ def start_proposal_amendment_branch(
             )
         if resume_policy not in {"reconcile", "replace"}:
             raise PlanContractError("resume policy must be reconcile or replace")
-        if not str(escalation_receipt).startswith("https://"):
+        impl_url_re = re.fullmatch(
+            rf"https://github.com/[^/]+/[^/]+/pull/{implementation_pr}",
+            str(implementation_url or ""),
+        )
+        if impl_url_re is None:
             raise PlanContractError(
-                "amendment escalation receipt must be a durable https URL"
+                "implementation URL must be https://github.com/<owner>/<repo>/pull/<n>"
             )
-        if not str(implementation_url).startswith("https://"):
+        if re.fullmatch(r"[0-9a-f]{40}", implementation_head or "") is None:
             raise PlanContractError(
-                "implementation URL must be a durable https URL"
-            )
-        if re.fullmatch(r"[0-9a-f]{7,40}", implementation_head or "") is None:
-            raise PlanContractError(
-                "implementation head must be a git commit id"
+                "implementation head must be a full 40-character git commit id"
             )
         impl_branch = _frontier_branch(
             state.current,
@@ -1827,7 +2105,13 @@ def start_proposal_amendment_branch(
             resume=resume_policy or "",
             receipt=escalation_receipt or "",
         )
-        parse_paused_implementation(paused_value)
+        parsed_pause = parse_paused_implementation(paused_value)
+        verify_implementation_pause_against_github(
+            parsed_pause,
+            planned_branch=impl_branch,
+            milestone_branch=state.milestone_branch,
+            repo_root=repo_root,
+        )
     else:
         if any(value is not None for value in extra):
             raise PlanContractError(
@@ -3058,14 +3342,21 @@ def abandon_proposal_amendment(
         ["branch", "--show-current"],
         cwd=repo_root,
     ).stdout.strip()
-    if current_branch != state.milestone_branch:
+    amendment_branch = _frontier_branch(
+        state.current,
+        heading="Current Frontier",
+        field="proposal amendment branch",
+    )
+    if current_branch != amendment_branch:
         raise PlanContractError(
-            f"proposal amendment abandon must run on {state.milestone_branch!r}, "
+            f"proposal amendment abandon must run on {amendment_branch!r}, "
             f"currently {current_branch!r}"
         )
-    if _run_git(["status", "--porcelain"], cwd=repo_root).stdout.strip():
-        raise PlanContractError("proposal amendment abandon requires a clean worktree")
-    source = state.current.fields.get("amendment source state")
+    source = state.current.fields.get("amendment source state") or (
+        "implementation_in_review"
+        if state.current.fields.get("paused implementation")
+        else "ready_for_implementation"
+    )
     if source not in {
         "ready_for_implementation",
         "implementation_in_review",
@@ -3073,14 +3364,14 @@ def abandon_proposal_amendment(
         raise PlanContractError(
             "proposal amendment abandon requires a recorded amendment source state"
         )
+    paused = state.current.fields.get("paused implementation")
     field_updates: dict[str, str] = {}
-    field_removes = (
+    field_removes = [
         "proposal amendment branch",
         "proposal amendment path",
         "amendment source state",
-        "paused implementation",
-    )
-    paused = state.current.fields.get("paused implementation")
+    ]
+    restored_state = source
     if source == "implementation_in_review":
         if not paused:
             raise PlanContractError(
@@ -3088,16 +3379,28 @@ def abandon_proposal_amendment(
                 "implementation receipt"
             )
         parsed = parse_paused_implementation(paused)
-        field_updates["pr"] = f"[#{parsed['pr']}]({parsed['url']})"
+        if parsed["disposition"] == "paused":
+            field_updates["pr"] = f"[#{parsed['pr']}]({parsed['url']})"
+            field_removes.append("paused implementation")
+            restored_state = "implementation_in_review"
+        else:
+            restored_state = "ready_for_implementation"
+    else:
+        field_removes.append("paused implementation")
+        restored_state = "ready_for_implementation"
     original = plan.read_text(encoding="utf-8")
     updated = _replace_current_frontier_state(
         original,
         expected_state="proposal_amendment_in_review",
-        new_state=source,
-        evidence=f"Abandoned proposal amendment; restored {source}: {reason.strip()}",
+        new_state=restored_state,
+        evidence=(
+            f"Abandoned proposal amendment; restored {restored_state}: "
+            f"{reason.strip()}"
+        ),
         field_updates=field_updates,
-        field_removes=field_removes,
+        field_removes=tuple(field_removes),
     )
+    _run_git(["switch", "--force", state.milestone_branch], cwd=repo_root)
     plan.write_text(updated, encoding="utf-8")
     return updated
 
@@ -3217,6 +3520,7 @@ def validate_review_unit_transition(
     proposal_text: str | None = None,
     proposal_amendment_text: str | None = None,
     pr_body: str | None = None,
+    repo_root: Path | None = None,
 ) -> str:
     base = validate_plan_text(base_text)
     head = validate_plan_text(head_text)
@@ -3396,6 +3700,47 @@ def validate_review_unit_transition(
             expected=base.current.fields["review kind"],
         )
         validate_proposal_amendment_text(proposal_amendment_text)
+        head_source = head.current.fields.get("amendment source state")
+        if base_state == "implementation_in_review":
+            if head_source != "implementation_in_review":
+                raise PlanContractError(
+                    "implementation-source amendment must record amendment "
+                    "source state implementation_in_review"
+                )
+            paused_raw = head.current.fields.get("paused implementation")
+            if not paused_raw:
+                raise PlanContractError(
+                    "implementation-source amendment must record a paused "
+                    "implementation receipt"
+                )
+            parsed_pause = parse_paused_implementation(paused_raw)
+            planned_impl = _frontier_branch(
+                base.current,
+                heading="Current Frontier",
+                field="implementation branch",
+            )
+            if parsed_pause["branch"] != planned_impl:
+                raise PlanContractError(
+                    "paused implementation branch must match the planned "
+                    "implementation branch"
+                )
+            if repo_root is not None:
+                verify_implementation_pause_against_github(
+                    parsed_pause,
+                    planned_branch=planned_impl,
+                    milestone_branch=base.milestone_branch,
+                    repo_root=repo_root,
+                )
+        elif head_source == "implementation_in_review" or head.current.fields.get(
+            "paused implementation"
+        ):
+            paused_raw = head.current.fields.get("paused implementation")
+            if not paused_raw or head_source != "implementation_in_review":
+                raise PlanContractError(
+                    "in-flight implementation amendment must keep both "
+                    "amendment source state and paused implementation"
+                )
+            parse_paused_implementation(paused_raw)
         transition_kind = "proposal_amendment"
     elif base_state == "ready_for_implementation":
         if head_state != "implementation_in_review":
@@ -3680,7 +4025,8 @@ def validate_review_unit_git_diff(
             repo_root=repo_root,
         )
     if (
-        _workflow_state(base.current) == "ready_for_implementation"
+        _workflow_state(base.current)
+        in {"ready_for_implementation", "implementation_in_review"}
         and _workflow_state(head.current) == "proposal_amendment_in_review"
     ):
         amendment_path = _frontier_proposal_amendment_path(
@@ -3701,6 +4047,7 @@ def validate_review_unit_git_diff(
         proposal_text=proposal_text,
         proposal_amendment_text=proposal_amendment_text,
         pr_body=pr_body,
+        repo_root=repo_root,
     )
 
 
@@ -4158,6 +4505,20 @@ def _cmd_accept_proposal_amendment(plan: Path, amendment_pr: int) -> int:
     if _run_git(["status", "--porcelain"], cwd=repo_root).stdout.strip():
         raise PlanContractError(
             "proposal amendment acceptance requires a clean worktree"
+        )
+    paused_raw = state.current.fields.get("paused implementation")
+    if paused_raw:
+        parsed_pause = parse_paused_implementation(paused_raw)
+        planned_impl = _frontier_branch(
+            state.current,
+            heading="Current Frontier",
+            field="implementation branch",
+        )
+        verify_implementation_pause_against_github(
+            parsed_pause,
+            planned_branch=planned_impl,
+            milestone_branch=state.milestone_branch,
+            repo_root=repo_root,
         )
     try:
         result = subprocess.run(

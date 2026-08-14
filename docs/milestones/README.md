@@ -1066,13 +1066,29 @@ python3 docs/milestones/workflow.py start-proposal-amendment \
 
 The amendment PR remains contract-only. Concurrent implementation mutation is
 forbidden while the frontier is `proposal_amendment_in_review`; validate-pr
-rejects implementation heads in that state. After exact-head review and merge,
-`accept-proposal-amendment` returns the frontier to `ready_for_implementation`
-and preserves any paused implementation identity. Then `start-implementation`
-resumes the recorded branch: `reconcile` restores the paused PR, `replace`
+rejects implementation heads in that state. Starting an implementation-source
+amendment, validating that PR, accepting the amendment, and resuming
+implementation all recheck authoritative GitHub metadata: the implementation
+URL must be this repository's pull request, the head branch must be the
+planned implementation branch, the base must be the milestone branch, and the
+recorded 40-character head must still be the PR head. A `paused` PR must
+remain open, unmerged, and converted to draft so it cannot merge. A `closed`
+PR must be closed and unmerged. The escalation receipt must be a GitHub
+`pullrequestreview` or `issuecomment` URL on that implementation PR from an
+`OWNER`, `MEMBER`, or `COLLABORATOR` whose body selects `proposal-amendment`.
+Drift fails closed.
+
+After exact-head review and merge, `accept-proposal-amendment` returns the
+frontier to `ready_for_implementation` and preserves any paused implementation
+identity. Then `start-implementation` resumes only the exact recorded head and
+merges the updated milestone branch into that published implementation branch
+(`--no-ff`; do not rebase it). `reconcile` restores the paused PR; `replace`
 reopens the planned branch for a new implementation PR.
 
-To reject or abandon an in-review amendment without accepting it:
+To reject or abandon an in-review amendment without accepting it, run the
+command on the unmerged amendment branch. It writes the restore onto the
+milestone branch and does not merge the amendment artifact or copy amendment
+state by hand:
 
 ```sh
 python3 docs/milestones/workflow.py abandon-proposal-amendment \
@@ -1080,10 +1096,11 @@ python3 docs/milestones/workflow.py abandon-proposal-amendment \
   --reason "<concrete reason>"
 ```
 
-Abandon restores the recorded source state (`ready_for_implementation` or
-`implementation_in_review`) and cannot leave amendment branch/path fields
-dangling. A failed amendment is not implementation acceptance and does not
-rewrite the original proposal.
+`paused`/`reconcile` restores `implementation_in_review` and the existing PR.
+`closed`/`replace` returns to `ready_for_implementation` while keeping the
+pause receipt so `start-implementation` can open the recorded replacement. A
+failed amendment is not implementation acceptance and does not rewrite the
+original proposal.
 
 Apply the same exact-head review rule to the contract-only amendment PR. After
 it merges, record its reviewed head and exact merge acceptance receipt. The

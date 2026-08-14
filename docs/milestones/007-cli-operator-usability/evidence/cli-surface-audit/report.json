@@ -515,7 +515,7 @@
     "help_leaf_count": 32,
     "leaf_count": 32,
     "missing_from_help": [],
-    "note": "Help walk is generated from the same parser tree used for membership. Hard help\u2260parser Met gate remains optional; soft drift is reported.",
+    "note": "Help-derived set comes from rendered format_help() choice groups. Membership authority remains argparse; hard equality is not Met-blocking.",
     "status": "ok"
   },
   "leaves": {
@@ -554,7 +554,7 @@
       "vehicles.update.memory",
       "vehicles.update.perception"
     ],
-    "inventory_sha256": "287358189752bf9941f1678444360a2b0106a4ef5464b54d512193a611b0a4be",
+    "inventory_sha256": "ee8603de5d48e9f2ae4e6deb1856d76a6340b17fe30bba92219725ea15d75bf4",
     "overlay_sha256": "38dfcef7e955d6d760872642d532578aab737f5d93dbfafaefff23d9bda8985b"
   },
   "live_residuals": [

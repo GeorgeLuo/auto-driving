@@ -190,6 +190,69 @@ class CliSurfaceAuditTests(unittest.TestCase):
         self.assertEqual(result["report"]["result"], "pass")
         self.assertEqual(result["report"]["sequences"]["count"], 10)
         self.assertIn("Deferred", result["rollup"])
+        self.assertIn("Coverage residuals", result["rollup"])
+        self.assertIn("unmeasured", result["rollup"])
+        self.assertIn("not_applicable", result["rollup"])
+
+    def test_scalar_safety_not_applicable_fails(self) -> None:
+        inventory = json.loads((TOOL / "leaf_inventory.json").read_text(encoding="utf-8"))
+        overlay = json.loads((TOOL / "leaf_overlay.json").read_text(encoding="utf-8"))
+        leaf_id = next(iter(overlay["leaves"]))
+        overlay["leaves"][leaf_id]["safety_class"] = "not_applicable"
+        with self.assertRaises(self.validate_audit.AuditError) as ctx:
+            self.validate_audit.validate_overlay(
+                leaf_ids=[row["leaf_id"] for row in inventory["leaves"]],
+                overlay=overlay,
+            )
+        self.assertIn("object form", str(ctx.exception))
+
+    def test_cleanup_non_terminal_leaf_fails(self) -> None:
+        catalog = self.validate_audit.load_catalog()
+        cat_sha = self.validate_audit.catalog_digest()
+        sequences = json.loads(
+            (TOOL / "sequence_registry.json").read_text(encoding="utf-8")
+        )
+        for row in sequences["sequences"]:
+            if row["id"] == "US-02":
+                row["cleanup"] = [["vehicles", "automation", "--help"]]
+        with self.assertRaises(self.validate_audit.AuditError) as ctx:
+            self.validate_audit.validate_sequences(
+                catalog=catalog,
+                catalog_sha=cat_sha,
+                sequences=sequences,
+                leaf_ids=set(self.parser_walk.public_leaf_ids()),
+            )
+        self.assertTrue(
+            "not in inventory" in str(ctx.exception)
+            or "argv invalid" in str(ctx.exception)
+        )
+
+    def test_catalog_missing_source_fails(self) -> None:
+        catalog_path = TOOL / "us88_catalog.json"
+        data = json.loads(catalog_path.read_text(encoding="utf-8"))
+        del data["source"]
+        bad = TOOL / "_tmp_bad_catalog.json"
+        try:
+            bad.write_text(json.dumps(data), encoding="utf-8")
+            with self.assertRaises(self.validate_audit.AuditError) as ctx:
+                self.validate_audit.load_catalog(bad, anchor_path=TOOL / "us88_catalog.sha256")
+            self.assertIn("source", str(ctx.exception).lower())
+        finally:
+            if bad.exists():
+                bad.unlink()
+
+    def test_empty_inventory_help_fails(self) -> None:
+        inventory = json.loads((TOOL / "leaf_inventory.json").read_text(encoding="utf-8"))
+        inventory["leaves"][0]["help"] = "   "
+        with self.assertRaises(self.validate_audit.AuditError):
+            self.validate_audit.validate_leaf_inventory_document(inventory)
+
+    def test_help_walk_detects_directionality(self) -> None:
+        report = self.validate_audit.help_drift_report()
+        self.assertIn(report["status"], {"ok", "drift_reported"})
+        self.assertGreater(report["help_leaf_count"], 0)
+        self.assertIsInstance(report["missing_from_help"], list)
+        self.assertIsInstance(report["extra_in_help"], list)
 
 
 if __name__ == "__main__":

@@ -16,6 +16,9 @@ try:
     from .frozen_authority import (
         CANONICAL_US88_SOURCE,
         FROZEN_CLAIM_MAP,
+        FROZEN_US_TEMPLATES,
+        US88_SOURCE_CONTENT_SHA256,
+        US88_SOURCE_RELPATH,
         USAGE_PATTERNS,
     )
     from .parser_walk import leaf_skeleton, public_leaf_ids, walk_leaves
@@ -24,6 +27,9 @@ except ImportError:  # script / path execution
     from frozen_authority import (
         CANONICAL_US88_SOURCE,
         FROZEN_CLAIM_MAP,
+        FROZEN_US_TEMPLATES,
+        US88_SOURCE_CONTENT_SHA256,
+        US88_SOURCE_RELPATH,
         USAGE_PATTERNS,
     )
     from parser_walk import leaf_skeleton, public_leaf_ids, walk_leaves
@@ -146,6 +152,28 @@ def load_catalog(
             "catalog.source must equal frozen CANONICAL_US88_SOURCE "
             f"(url/comment_id/title); got {source!r}"
         )
+    if data.get("source_content_sha256") != US88_SOURCE_CONTENT_SHA256:
+        raise AuditError(
+            "catalog.source_content_sha256 must equal frozen US88_SOURCE_CONTENT_SHA256"
+        )
+    if data.get("source_path") != US88_SOURCE_RELPATH:
+        raise AuditError(f"catalog.source_path must be {US88_SOURCE_RELPATH!r}")
+    source_file = path.parent / "us88_source.md"
+    if not source_file.is_file():
+        # also allow repo-relative resolution via CWD root
+        alt = ROOT / US88_SOURCE_RELPATH
+        source_file = alt if alt.is_file() else source_file
+    if not source_file.is_file():
+        raise AuditError(f"independent #88 source file missing: {US88_SOURCE_RELPATH}")
+    source_digest = _sha256_file(source_file)
+    if source_digest != US88_SOURCE_CONTENT_SHA256:
+        raise AuditError(
+            "us88_source.md digest does not match frozen US88_SOURCE_CONTENT_SHA256"
+        )
+    anchor_src = source_file.with_suffix(".sha256")
+    if anchor_src.is_file():
+        if anchor_src.read_text(encoding="utf-8").strip().split()[0] != source_digest:
+            raise AuditError("us88_source.sha256 does not match us88_source.md")
     entries = data.get("entries")
     if not isinstance(entries, list) or len(entries) != 10:
         raise AuditError("catalog must contain exactly 10 US entries")
@@ -161,9 +189,30 @@ def load_catalog(
                 "operator_outcome",
                 "primary_human_confirmation",
                 "operator_question",
+                "required_command_templates",
+                "required_cleanup_templates",
+                "required_command_leaves",
+                "required_cleanup_leaves",
             ),
             where=f"catalog {entry.get('id')}",
         )
+        us_id = entry["id"]
+        frozen = FROZEN_US_TEMPLATES.get(us_id)
+        if frozen is None:
+            raise AuditError(f"no frozen template for {us_id}")
+        for field in (
+            "operator_question",
+            "operator_outcome",
+            "primary_human_confirmation",
+            "required_command_templates",
+            "required_cleanup_templates",
+            "required_command_leaves",
+            "required_cleanup_leaves",
+        ):
+            if entry.get(field) != frozen.get(field):
+                raise AuditError(
+                    f"catalog {us_id}.{field} must equal frozen FROZEN_US_TEMPLATES"
+                )
     digest = catalog_digest(path)
     anchor = anchor_path or path.with_name("us88_catalog.sha256")
     if not anchor.is_file():
@@ -228,7 +277,10 @@ def validate_leaf_membership(
     from cli.automa_cli.app import build_parser
 
     parser = parser or build_parser()
-    actual_leaves = {leaf.leaf_id: leaf for leaf in walk_leaves(parser)}
+    actual_leaves = {
+        leaf.leaf_id: leaf
+        for leaf in walk_leaves(parser, include_help_meta=True)
+    }
     actual = list(actual_leaves)
     recorded = [row["leaf_id"] for row in inventory]
     if sorted(actual) != sorted(recorded):
@@ -352,7 +404,6 @@ def validate_overlay(
                     continue
                 if not isinstance(side, str) or not side.strip():
                     raise AuditError(f"overlay {leaf_id}.side_effects must be non-empty")
-                # Fail closed on known false "read-only" labels for mutating leaves.
                 if leaf_id in {
                     "vehicles.automation.stop",
                     "vehicles.memory.check",
@@ -360,9 +411,58 @@ def validate_overlay(
                     "vehicles.perception.enable",
                     "vehicles.perception.disable",
                     "vehicles.perception.setup",
+                    "simulators.ensure",
                 } and re.search(r"read-?only", side, re.I):
                     raise AuditError(
                         f"overlay {leaf_id}.side_effects falsely claims read-only"
+                    )
+                if leaf_id == "simulators.status" and re.search(
+                    r"reconfigure|prepare", side, re.I
+                ):
+                    raise AuditError(
+                        "simulators.status side_effects must not claim prepare/reconfigure"
+                    )
+                continue
+            if field == "output_contract":
+                out = row[field]
+                if not isinstance(out, str) or not out.strip():
+                    raise AuditError(
+                        f"overlay {leaf_id}.output_contract must be non-empty"
+                    )
+                supports = row.get("supports_json")
+                if not isinstance(supports, bool):
+                    raise AuditError(
+                        f"overlay {leaf_id}.supports_json bool is required"
+                    )
+                mentions_json = bool(re.search(r"--json", out))
+                if supports and not mentions_json:
+                    raise AuditError(
+                        f"overlay {leaf_id} supports --json but output_contract omits it"
+                    )
+                if not supports and re.search(r"optional --json|Supports --json", out):
+                    raise AuditError(
+                        f"overlay {leaf_id} claims --json but parser has no --json"
+                    )
+                continue
+            if field == "owning_boundary":
+                owner = row[field]
+                if not isinstance(owner, str) or not owner.strip():
+                    raise AuditError(
+                        f"overlay {leaf_id}.owning_boundary must be non-empty"
+                    )
+                expected_owners = {
+                    "vehicles.update.perception": "cli/automa_cli/perception.py",
+                    "vehicles.update.decision": "cli/automa_cli/decision.py",
+                    "vehicles.update.memory": "cli/automa_cli/memory.py",
+                    "vehicles.update.core": "cli/automa_cli/deploy.py",
+                    "vehicles.update.autonomy": "cli/automa_cli/deploy.py",
+                    "simulators.status": "cli/automa_cli/simulators.py",
+                    "simulators.ensure": "cli/automa_cli/simulators.py",
+                }
+                if leaf_id in expected_owners and owner != expected_owners[leaf_id]:
+                    raise AuditError(
+                        f"overlay {leaf_id}.owning_boundary must be "
+                        f"{expected_owners[leaf_id]!r}"
                     )
                 continue
             _na_ok(row[field], field=field, where=f"overlay {leaf_id}")
@@ -371,6 +471,9 @@ def validate_overlay(
                     f"overlay {leaf_id}.{field} must use "
                     "{value: not_applicable, reason: ...} object form"
                 )
+        # Parser/--json parity table check
+        if "supports_json" not in row:
+            raise AuditError(f"overlay {leaf_id} missing supports_json")
 
 
 def _normalize_question(text: str) -> str:
@@ -697,11 +800,27 @@ def validate_semantic_cite(
                 f"{us_id} evidence.source_pr {evidence.get('source_pr')!r} "
                 f"!= claim source_pr {source_pr!r}"
             )
-        for field in ("source_commit", "disposition_set_by", "disposition_set_at"):
-            if not str(evidence.get(field) or "").strip():
-                raise AuditError(f"{us_id} evidence.{field} is required")
-        if re.fullmatch(r"[0-9a-f]{7,40}", str(evidence["source_commit"])) is None:
-            raise AuditError(f"{us_id} evidence.source_commit must be a git commit id")
+        expected_schema = claim.get("source_result_schema")
+        if not expected_schema:
+            raise AuditError(f"claim {claim_id} missing source_result_schema")
+        expected_commit = claim.get("source_commit")
+        if not expected_commit or re.fullmatch(r"[0-9a-f]{40}", str(expected_commit)) is None:
+            raise AuditError(
+                f"claim {claim_id} source_commit must be full 40-char git id"
+            )
+        if evidence.get("source_commit") != expected_commit:
+            raise AuditError(
+                f"{us_id} evidence.source_commit must equal sealed package revision "
+                f"{expected_commit}"
+            )
+        actor = str(evidence.get("disposition_set_by") or "").strip()
+        when = str(evidence.get("disposition_set_at") or "").strip()
+        if len(actor) < 2 or actor.lower() in {"x", "n/a", "none", "tbd"}:
+            raise AuditError(f"{us_id} disposition_set_by must be a real actor identity")
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", when) is None:
+            raise AuditError(
+                f"{us_id} disposition_set_at must be ISO-8601 UTC ...Z (got {when!r})"
+            )
         paths = claim.get("paths") or []
         if not paths:
             raise AuditError(f"claim {claim_id} has no paths")
@@ -755,6 +874,12 @@ def validate_semantic_cite(
                     f"{us_id} cite predicate failed {path}: "
                     f"{actual!r} != {expect!r}"
                 )
+        actual_schema = parsed.get("schema") if isinstance(parsed, dict) else None
+        if actual_schema != expected_schema:
+            raise AuditError(
+                f"{us_id} cited schema {actual_schema!r} != "
+                f"source_result_schema {expected_schema!r}"
+            )
         head_claim = evidence.get("head_claim", "historical")
         if head_claim != "historical":
             raise AuditError(
@@ -769,6 +894,10 @@ def validate_semantic_cite(
                 "ok": True,
                 "head_claim": head_claim,
                 "source_pr": source_pr,
+                "source_commit": expected_commit,
+                "source_result_schema": expected_schema,
+                "disposition_set_by": actor,
+                "disposition_set_at": when,
             }
         )
     return receipts

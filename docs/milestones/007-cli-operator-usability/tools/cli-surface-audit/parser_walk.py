@@ -74,15 +74,26 @@ def walk_leaves(
     return leaves
 
 
-def public_leaf_ids(parser: argparse.ArgumentParser | None = None) -> list[str]:
+def public_leaf_ids(
+    parser: argparse.ArgumentParser | None = None,
+    *,
+    include_help_meta: bool = True,
+) -> list[str]:
     if parser is None:
         from cli.automa_cli.app import build_parser
 
         parser = build_parser()
-    return [leaf.leaf_id for leaf in walk_leaves(parser)]
+    return [
+        leaf.leaf_id
+        for leaf in walk_leaves(parser, include_help_meta=include_help_meta)
+    ]
 
 
-def leaf_skeleton(parser: argparse.ArgumentParser | None = None) -> list[dict[str, Any]]:
+def leaf_skeleton(
+    parser: argparse.ArgumentParser | None = None,
+    *,
+    include_help_meta: bool = True,
+) -> list[dict[str, Any]]:
     if parser is None:
         from cli.automa_cli.app import build_parser
 
@@ -93,5 +104,5 @@ def leaf_skeleton(parser: argparse.ArgumentParser | None = None) -> list[dict[st
             "tokens": list(leaf.tokens),
             "help": leaf.help,
         }
-        for leaf in walk_leaves(parser)
+        for leaf in walk_leaves(parser, include_help_meta=include_help_meta)
     ]

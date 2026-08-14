@@ -1,16 +1,31 @@
 {
   "generator": {
-    "name": "parser_walk.leaf_skeleton",
-    "revision": "5d7c35e7fd593c0d4b99e84d05f4a8c37a0be322",
-    "source_commit": "5d7c35e7fd593c0d4b99e84d05f4a8c37a0be322"
+    "name": "parser_walk.walk_leaves",
+    "revision": "ac60564e3e9284751cc164b1dbdf3787cfee6bb8",
+    "source_commit": "ac60564e3e9284751cc164b1dbdf3787cfee6bb8"
   },
   "leaves": [
+    {
+      "help": "Show top-level commands and common examples.",
+      "leaf_id": "help",
+      "tokens": [
+        "help"
+      ]
+    },
     {
       "help": "Explicitly launch/configure a known simulator environment.",
       "leaf_id": "simulators.ensure",
       "tokens": [
         "simulators",
         "ensure"
+      ]
+    },
+    {
+      "help": "Show simulator-level commands.",
+      "leaf_id": "simulators.help",
+      "tokens": [
+        "simulators",
+        "help"
       ]
     },
     {
@@ -27,6 +42,15 @@
       "tokens": [
         "vehicles",
         "active"
+      ]
+    },
+    {
+      "help": "Show automation-level commands.",
+      "leaf_id": "vehicles.automation.help",
+      "tokens": [
+        "vehicles",
+        "automation",
+        "help"
       ]
     },
     {
@@ -66,12 +90,29 @@
       ]
     },
     {
+      "help": "Show vehicle-level commands.",
+      "leaf_id": "vehicles.help",
+      "tokens": [
+        "vehicles",
+        "help"
+      ]
+    },
+    {
       "help": "Show the locally staged decision engine and stage schema.",
       "leaf_id": "vehicles.info.decision",
       "tokens": [
         "vehicles",
         "info",
         "decision"
+      ]
+    },
+    {
+      "help": "Show info-level commands.",
+      "leaf_id": "vehicles.info.help",
+      "tokens": [
+        "vehicles",
+        "info",
+        "help"
       ]
     },
     {
@@ -102,6 +143,15 @@
       ]
     },
     {
+      "help": "Show memory-level commands.",
+      "leaf_id": "vehicles.memory.help",
+      "tokens": [
+        "vehicles",
+        "memory",
+        "help"
+      ]
+    },
+    {
       "help": "Replay a fixed observation sequence through staged memory offline.",
       "leaf_id": "vehicles.memory.replay",
       "tokens": [
@@ -117,6 +167,15 @@
         "vehicles",
         "memory",
         "reset"
+      ]
+    },
+    {
+      "help": "Show operation-level commands.",
+      "leaf_id": "vehicles.operation.help",
+      "tokens": [
+        "vehicles",
+        "operation",
+        "help"
       ]
     },
     {
@@ -183,6 +242,15 @@
       ]
     },
     {
+      "help": "Show perception-level commands.",
+      "leaf_id": "vehicles.perception.help",
+      "tokens": [
+        "vehicles",
+        "perception",
+        "help"
+      ]
+    },
+    {
       "help": "Compare packaged control vs one lab candidate on labeled physical-check frames.",
       "leaf_id": "vehicles.perception.qualify",
       "tokens": [
@@ -224,6 +292,15 @@
       "tokens": [
         "vehicles",
         "status"
+      ]
+    },
+    {
+      "help": "Show stream-level commands.",
+      "leaf_id": "vehicles.stream.help",
+      "tokens": [
+        "vehicles",
+        "stream",
+        "help"
       ]
     },
     {
@@ -269,6 +346,15 @@
         "vehicles",
         "update",
         "decision"
+      ]
+    },
+    {
+      "help": "Show update-level commands.",
+      "leaf_id": "vehicles.update.help",
+      "tokens": [
+        "vehicles",
+        "update",
+        "help"
       ]
     },
     {

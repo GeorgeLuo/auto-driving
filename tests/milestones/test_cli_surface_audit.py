@@ -189,10 +189,52 @@ class CliSurfaceAuditTests(unittest.TestCase):
         result = self.validate_audit.run_audit(repo_root=ROOT)
         self.assertEqual(result["report"]["result"], "pass")
         self.assertEqual(result["report"]["sequences"]["count"], 10)
+        self.assertGreaterEqual(result["report"]["leaves"]["count"], 40)
         self.assertIn("Deferred", result["rollup"])
         self.assertIn("Coverage residuals", result["rollup"])
         self.assertIn("unmeasured", result["rollup"])
         self.assertIn("not_applicable", result["rollup"])
+
+    def test_catalog_template_must_match_frozen_authority(self) -> None:
+        catalog_path = TOOL / "us88_catalog.json"
+        data = json.loads(catalog_path.read_text(encoding="utf-8"))
+        for entry in data["entries"]:
+            if entry["id"] == "US-01":
+                entry["required_command_templates"] = [
+                    ["vehicles", "info", "memory", "--id", "{vehicle_id}"],
+                ]
+        bad = TOOL / "_tmp_us01_rewrite.json"
+        try:
+            payload = json.dumps(data, indent=2, sort_keys=True) + "\n"
+            bad.write_text(payload, encoding="utf-8")
+            import hashlib
+
+            digest = hashlib.sha256(payload.encode()).hexdigest()
+            anchor = TOOL / "_tmp_us01_rewrite.sha256"
+            anchor.write_text(digest + "\n", encoding="utf-8")
+            with self.assertRaises(self.validate_audit.AuditError) as ctx:
+                self.validate_audit.load_catalog(bad, anchor_path=anchor)
+            self.assertIn("frozen", str(ctx.exception).lower())
+        finally:
+            for path in (bad, TOOL / "_tmp_us01_rewrite.sha256"):
+                if path.exists():
+                    path.unlink()
+
+    def test_wrong_source_commit_fails(self) -> None:
+        sequences = json.loads(
+            (TOOL / "sequence_registry.json").read_text(encoding="utf-8")
+        )
+        claim_map = json.loads((TOOL / "claim_map.json").read_text(encoding="utf-8"))
+        for row in sequences["sequences"]:
+            if row["id"] == "US-02":
+                row["evidence"]["source_commit"] = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+        with self.assertRaises(self.validate_audit.AuditError) as ctx:
+            self.validate_audit.validate_semantic_cite(
+                sequences=sequences,
+                claim_map=claim_map,
+                repo_root=ROOT,
+            )
+        self.assertIn("source_commit", str(ctx.exception))
 
     def test_scalar_safety_not_applicable_fails(self) -> None:
         inventory = json.loads((TOOL / "leaf_inventory.json").read_text(encoding="utf-8"))

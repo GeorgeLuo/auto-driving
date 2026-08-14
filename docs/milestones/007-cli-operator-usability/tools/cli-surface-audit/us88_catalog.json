@@ -5,80 +5,573 @@
       "operator_outcome": "Discover the bounded Chase journey from public help",
       "operator_question": "Can an operator discover the supported passive workflow without knowing the parser or runtime layout?",
       "primary_human_confirmation": "The next leaf and required flags are visible without implementation knowledge",
-      "source_status": "Ready to try in #88",
-      "visual_surface": "None required"
+      "required_cleanup_leaves": [],
+      "required_cleanup_templates": [],
+      "required_command_leaves": [
+        "vehicles.status",
+        "vehicles.automation.run"
+      ],
+      "required_command_templates": [
+        [
+          "vehicles",
+          "status",
+          "--chase-url",
+          "http://localhost:5050"
+        ],
+        [
+          "vehicles",
+          "automation",
+          "run",
+          "--help"
+        ]
+      ],
+      "source_commands": [
+        [
+          "help"
+        ]
+      ],
+      "source_status": "Ready to try in #88"
     },
     {
       "id": "US-02",
       "operator_outcome": "Reach a healthy passive camera/perception view and cleanly stop",
       "operator_question": "Can an operator attach to the existing Chase session, see current perception, and leave no worker running without changing simulator state?",
       "primary_human_confirmation": "CLI prints `Ready for: inspect perception and stop automation`; final status reports stopped",
-      "source_status": "#88 acceptance sequence",
-      "visual_surface": "Automatically opened Automa view shows Live | overlay current and a nonblank correlated frame"
+      "required_cleanup_leaves": [
+        "vehicles.automation.stop"
+      ],
+      "required_cleanup_templates": [
+        [
+          "vehicles",
+          "automation",
+          "stop",
+          "--id",
+          "{vehicle_id}"
+        ]
+      ],
+      "required_command_leaves": [
+        "vehicles.status",
+        "vehicles.update.perception",
+        "vehicles.automation.run",
+        "vehicles.automation.stop"
+      ],
+      "required_command_templates": [
+        [
+          "vehicles",
+          "status",
+          "--chase-url",
+          "http://localhost:5050"
+        ],
+        [
+          "vehicles",
+          "update",
+          "perception",
+          "--id",
+          "{vehicle_id}",
+          "--algorithm",
+          "lightweight_observer"
+        ],
+        [
+          "vehicles",
+          "automation",
+          "run",
+          "--id",
+          "{vehicle_id}",
+          "--observe-only",
+          "--frames",
+          "0",
+          "--open-view"
+        ],
+        [
+          "vehicles",
+          "status",
+          "--id",
+          "{vehicle_id}"
+        ],
+        [
+          "vehicles",
+          "automation",
+          "stop",
+          "--id",
+          "{vehicle_id}"
+        ],
+        [
+          "vehicles",
+          "status",
+          "--id",
+          "{vehicle_id}"
+        ]
+      ],
+      "source_status": "#88 acceptance sequence"
     },
     {
       "id": "US-03",
+      "min_apply_count": 2,
       "operator_outcome": "Capture once and compare perception implementations on the same frames",
       "operator_question": "Which packaged algorithm or ready candidate produces the most useful representation on the exact same captured frames?",
       "primary_human_confirmation": "Compact human experiment summary / candidate comparison table",
-      "source_status": "Partial; #89 and #90",
-      "visual_surface": "Recorded per-run review.html; not auto-opened or consolidated today"
+      "required_cleanup_leaves": [],
+      "required_cleanup_templates": [],
+      "required_command_leaves": [
+        "vehicles.update.perception",
+        "vehicles.perception.run",
+        "vehicles.perception.apply",
+        "vehicles.perception.compare"
+      ],
+      "required_command_templates": [
+        [
+          "vehicles",
+          "update",
+          "perception",
+          "--id",
+          "{vehicle_id}",
+          "--algorithm",
+          "lightweight_observer"
+        ],
+        [
+          "vehicles",
+          "perception",
+          "run",
+          "--id",
+          "{vehicle_id}",
+          "--frames",
+          "4",
+          "--interval-s",
+          "0.25",
+          "--record"
+        ],
+        [
+          "vehicles",
+          "perception",
+          "apply",
+          "{src_dir}",
+          "--algorithm",
+          "lightweight_observer",
+          "--record"
+        ],
+        [
+          "vehicles",
+          "perception",
+          "apply",
+          "{src_dir}",
+          "--algorithm",
+          "sim_debug",
+          "--record"
+        ],
+        [
+          "vehicles",
+          "perception",
+          "apply",
+          "{src_dir}",
+          "--algorithm",
+          "visual_observer",
+          "--record"
+        ],
+        [
+          "vehicles",
+          "perception",
+          "compare",
+          "{src_dir}",
+          "--record"
+        ]
+      ],
+      "source_status": "Partial; #89 and #90"
     },
     {
       "id": "US-04",
       "operator_outcome": "Swap a live algorithm/plugin configuration in the same simulator environment",
-      "operator_question": "Can an operator swap a live algorithm/plugin configuration in the same simulator environment and restore prior activation?",
+      "operator_question": "What visibly changes when an operator swaps perception configuration while preserving the same running simulator environment?",
       "primary_human_confirmation": "Restart reaches Ready for:; plugin list matches the staged configuration",
-      "source_status": "Partial; manual rollback today, #91",
-      "visual_surface": "Automatically opened view visibly shows plugin runs, findings, overlays, and memory-key count"
+      "required_cleanup_leaves": [
+        "vehicles.automation.stop",
+        "vehicles.perception.enable"
+      ],
+      "required_cleanup_templates": [
+        [
+          "vehicles",
+          "automation",
+          "stop",
+          "--id",
+          "{vehicle_id}"
+        ],
+        [
+          "vehicles",
+          "perception",
+          "enable",
+          "--id",
+          "{vehicle_id}",
+          "motion_tracks"
+        ]
+      ],
+      "required_command_leaves": [
+        "vehicles.automation.stop",
+        "vehicles.update.perception",
+        "vehicles.automation.run",
+        "vehicles.perception.disable"
+      ],
+      "required_command_templates": [
+        [
+          "vehicles",
+          "automation",
+          "stop",
+          "--id",
+          "{vehicle_id}"
+        ],
+        [
+          "vehicles",
+          "update",
+          "perception",
+          "--id",
+          "{vehicle_id}",
+          "--algorithm",
+          "visual_observer"
+        ],
+        [
+          "vehicles",
+          "automation",
+          "run",
+          "--id",
+          "{vehicle_id}",
+          "--observe-only",
+          "--frames",
+          "0",
+          "--open-view"
+        ],
+        [
+          "vehicles",
+          "automation",
+          "stop",
+          "--id",
+          "{vehicle_id}"
+        ],
+        [
+          "vehicles",
+          "perception",
+          "disable",
+          "--id",
+          "{vehicle_id}",
+          "motion_tracks"
+        ],
+        [
+          "vehicles",
+          "automation",
+          "run",
+          "--id",
+          "{vehicle_id}",
+          "--observe-only",
+          "--frames",
+          "0",
+          "--open-view"
+        ]
+      ],
+      "source_status": "Partial; manual rollback today, #91"
     },
     {
       "id": "US-05",
       "operator_outcome": "Confirm real perception becomes bounded, attributable memory",
-      "operator_question": "Does real perception become bounded, attributable memory with a concise PASS/FAIL check?",
+      "operator_question": "Does selected perception become attributable retained evidence, survive brief dropout, expire, and reset without movement?",
       "primary_human_confirmation": "Final Memory check: chase-sim-chaser PASS/FAIL",
-      "source_status": "Ready to try",
-      "visual_surface": "Open view \u2192 Memory map shows live health, key count, epoch, bounds, and retained keys"
+      "required_cleanup_leaves": [
+        "vehicles.automation.stop"
+      ],
+      "required_cleanup_templates": [
+        [
+          "vehicles",
+          "automation",
+          "stop",
+          "--id",
+          "{vehicle_id}"
+        ]
+      ],
+      "required_command_leaves": [
+        "vehicles.update.perception",
+        "vehicles.update.memory",
+        "vehicles.automation.run",
+        "vehicles.stream.memory",
+        "vehicles.memory.check"
+      ],
+      "required_command_templates": [
+        [
+          "vehicles",
+          "update",
+          "perception",
+          "--id",
+          "{vehicle_id}",
+          "--algorithm",
+          "visual_observer"
+        ],
+        [
+          "vehicles",
+          "update",
+          "memory",
+          "--id",
+          "{vehicle_id}",
+          "--implementation",
+          "bounded_evidence"
+        ],
+        [
+          "vehicles",
+          "automation",
+          "run",
+          "--id",
+          "{vehicle_id}",
+          "--observe-only",
+          "--frames",
+          "0",
+          "--open-view"
+        ],
+        [
+          "vehicles",
+          "stream",
+          "memory",
+          "--id",
+          "{vehicle_id}",
+          "--once"
+        ],
+        [
+          "vehicles",
+          "memory",
+          "check",
+          "--id",
+          "{vehicle_id}",
+          "--record"
+        ]
+      ],
+      "source_status": "Ready to try"
     },
     {
       "id": "US-06",
       "operator_outcome": "Ablate motion tracking and observe downstream memory differences",
-      "operator_question": "Can motion tracking be ablated to observe downstream memory differences?",
+      "operator_question": "Does motion tracking add useful temporal evidence, or mainly add record churn and capacity pressure?",
       "primary_human_confirmation": "Both trials reach readiness and the lifecycle check gives a concise verdict",
-      "source_status": "Ready with caveat: live frames differ",
-      "visual_surface": "Plugin Runs shows motion-tracks present/absent; Memory map shows resulting key/provenance changes"
+      "required_cleanup_leaves": [
+        "vehicles.automation.stop",
+        "vehicles.perception.enable"
+      ],
+      "required_cleanup_templates": [
+        [
+          "vehicles",
+          "automation",
+          "stop",
+          "--id",
+          "{vehicle_id}"
+        ],
+        [
+          "vehicles",
+          "perception",
+          "enable",
+          "--id",
+          "{vehicle_id}",
+          "motion_tracks"
+        ]
+      ],
+      "required_command_leaves": [
+        "vehicles.perception.disable",
+        "vehicles.automation.run",
+        "vehicles.memory.check",
+        "vehicles.automation.stop"
+      ],
+      "required_command_templates": [
+        [
+          "vehicles",
+          "perception",
+          "disable",
+          "--id",
+          "{vehicle_id}",
+          "motion_tracks"
+        ],
+        [
+          "vehicles",
+          "automation",
+          "run",
+          "--id",
+          "{vehicle_id}",
+          "--observe-only",
+          "--frames",
+          "0",
+          "--open-view"
+        ],
+        [
+          "vehicles",
+          "memory",
+          "check",
+          "--id",
+          "{vehicle_id}",
+          "--record"
+        ],
+        [
+          "vehicles",
+          "automation",
+          "stop",
+          "--id",
+          "{vehicle_id}"
+        ]
+      ],
+      "source_status": "Ready with caveat: live frames differ"
     },
     {
       "id": "US-07",
       "operator_outcome": "Observe whether slow perception makes temporal memory ineffective",
-      "operator_question": "Does slow perception make temporal memory ineffective in a human-visible way?",
+      "operator_question": "Can an expensive observer keep overlays and memory useful at the requested capture cadence?",
       "primary_human_confirmation": "Human automation status exposes captured, processed, and skipped on one run line",
-      "source_status": "Partial: no synthesized overload verdict",
-      "visual_surface": "View shows overlay current/stale state and perception duration"
+      "required_cleanup_leaves": [
+        "vehicles.automation.stop"
+      ],
+      "required_cleanup_templates": [
+        [
+          "vehicles",
+          "automation",
+          "stop",
+          "--id",
+          "{vehicle_id}"
+        ]
+      ],
+      "required_command_leaves": [
+        "vehicles.automation.run",
+        "vehicles.automation.status",
+        "vehicles.stream.memory",
+        "vehicles.automation.stop"
+      ],
+      "required_command_templates": [
+        [
+          "vehicles",
+          "automation",
+          "run",
+          "--id",
+          "{vehicle_id}",
+          "--observe-only",
+          "--frames",
+          "0",
+          "--interval-s",
+          "0.02",
+          "--open-view"
+        ],
+        [
+          "vehicles",
+          "automation",
+          "status",
+          "--id",
+          "{vehicle_id}"
+        ],
+        [
+          "vehicles",
+          "stream",
+          "memory",
+          "--id",
+          "{vehicle_id}",
+          "--once"
+        ],
+        [
+          "vehicles",
+          "automation",
+          "stop",
+          "--id",
+          "{vehicle_id}"
+        ],
+        [
+          "vehicles",
+          "automation",
+          "status",
+          "--id",
+          "{vehicle_id}"
+        ]
+      ],
+      "source_status": "Partial: no synthesized overload verdict"
     },
     {
       "id": "US-08",
       "operator_outcome": "Recover from suspicious retained evidence",
-      "operator_question": "Can an operator recover from suspicious retained evidence via reset and repopulation?",
+      "operator_question": "Can an operator clear suspect memory and observe current perception repopulate a new epoch?",
       "primary_human_confirmation": "Reset output shows Keys: N -> 0 and Epoch: old -> new",
-      "source_status": "Ready to try",
-      "visual_surface": "Memory map shows the new epoch and subsequent repopulation"
+      "required_cleanup_leaves": [],
+      "required_cleanup_templates": [],
+      "required_command_leaves": [
+        "vehicles.stream.memory",
+        "vehicles.memory.reset"
+      ],
+      "required_command_templates": [
+        [
+          "vehicles",
+          "stream",
+          "memory",
+          "--id",
+          "{vehicle_id}",
+          "--once"
+        ],
+        [
+          "vehicles",
+          "memory",
+          "reset",
+          "--id",
+          "{vehicle_id}"
+        ],
+        [
+          "vehicles",
+          "stream",
+          "memory",
+          "--id",
+          "{vehicle_id}",
+          "--once"
+        ]
+      ],
+      "source_status": "Ready to try"
     },
     {
       "id": "US-09",
       "operator_outcome": "Freeze and reproduce a live memory anomaly",
-      "operator_question": "Can a live memory anomaly be frozen and reproduced deterministically?",
+      "operator_question": "Can an unexpected live memory outcome be reproduced deterministically offline?",
       "primary_human_confirmation": "Replay prints Deterministic: yes (two independent passes matched)",
-      "source_status": "Ready to try",
-      "visual_surface": "Recorded provenance extract is optional investigation evidence"
+      "required_cleanup_leaves": [],
+      "required_cleanup_templates": [],
+      "required_command_leaves": [
+        "vehicles.memory.replay"
+      ],
+      "required_command_templates": [
+        [
+          "vehicles",
+          "memory",
+          "replay",
+          "{record_dir}",
+          "--id",
+          "{vehicle_id}",
+          "--implementation",
+          "bounded_evidence",
+          "--record"
+        ]
+      ],
+      "source_status": "Ready to try"
     },
     {
       "id": "US-10",
       "operator_outcome": "Qualify a candidate on labeled physical-check frames",
-      "operator_question": "Can a candidate be qualified on labeled physical-check frames with a promote/reject verdict?",
+      "operator_question": "Does a ready candidate materially improve labeled physical-check behavior without unacceptable regressions?",
       "primary_human_confirmation": "First line says promote_candidate or reject_keep_control",
-      "source_status": "Ready when physical labeled input exists",
-      "visual_surface": "Recorded summary/contact-sheet evidence is secondary"
+      "required_cleanup_leaves": [],
+      "required_cleanup_templates": [],
+      "required_command_leaves": [
+        "vehicles.perception.check",
+        "vehicles.perception.qualify"
+      ],
+      "required_command_templates": [
+        [
+          "vehicles",
+          "perception",
+          "check",
+          "--id",
+          "{vehicle_id}",
+          "--record"
+        ],
+        [
+          "vehicles",
+          "perception",
+          "qualify",
+          "--from-check-run",
+          "{record_dir}",
+          "--candidate",
+          "floor_continuity"
+        ]
+      ],
+      "source_status": "Ready when physical labeled input exists"
     }
   ],
   "schema": "m007_us88_catalog_v1",

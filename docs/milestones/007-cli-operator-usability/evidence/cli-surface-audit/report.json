@@ -121,6 +121,21 @@
     {
       "argv": [
         "vehicles",
+        "update",
+        "perception",
+        "--id",
+        "chase-sim-chaser",
+        "--algorithm",
+        "lightweight_observer"
+      ],
+      "leaf_id": "vehicles.update.perception",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-03.cmd-00"
+    },
+    {
+      "argv": [
+        "vehicles",
         "perception",
         "run",
         "--id",
@@ -134,7 +149,7 @@
       "leaf_id": "vehicles.perception.run",
       "ok": true,
       "reason": "ok",
-      "template_id": "US-03.cmd-00"
+      "template_id": "US-03.cmd-01"
     },
     {
       "argv": [
@@ -149,7 +164,63 @@
       "leaf_id": "vehicles.perception.apply",
       "ok": true,
       "reason": "ok",
-      "template_id": "US-03.cmd-01"
+      "template_id": "US-03.cmd-02"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "perception",
+        "apply",
+        "/tmp/m007-audit-src",
+        "--algorithm",
+        "sim_debug",
+        "--record"
+      ],
+      "leaf_id": "vehicles.perception.apply",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-03.cmd-03"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "perception",
+        "apply",
+        "/tmp/m007-audit-src",
+        "--algorithm",
+        "visual_observer",
+        "--record"
+      ],
+      "leaf_id": "vehicles.perception.apply",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-03.cmd-04"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "perception",
+        "compare",
+        "/tmp/m007-audit-src",
+        "--record"
+      ],
+      "leaf_id": "vehicles.perception.compare",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-03.cmd-05"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "automation",
+        "stop",
+        "--id",
+        "chase-sim-chaser"
+      ],
+      "leaf_id": "vehicles.automation.stop",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-04.cmd-00"
     },
     {
       "argv": [
@@ -159,12 +230,12 @@
         "--id",
         "chase-sim-chaser",
         "--algorithm",
-        "lightweight_observer"
+        "visual_observer"
       ],
       "leaf_id": "vehicles.update.perception",
       "ok": true,
       "reason": "ok",
-      "template_id": "US-04.cmd-00"
+      "template_id": "US-04.cmd-01"
     },
     {
       "argv": [
@@ -179,18 +250,6 @@
         "--open-view"
       ],
       "leaf_id": "vehicles.automation.run",
-      "ok": true,
-      "reason": "ok",
-      "template_id": "US-04.cmd-01"
-    },
-    {
-      "argv": [
-        "vehicles",
-        "status",
-        "--id",
-        "chase-sim-chaser"
-      ],
-      "leaf_id": "vehicles.status",
       "ok": true,
       "reason": "ok",
       "template_id": "US-04.cmd-02"
@@ -211,6 +270,37 @@
     {
       "argv": [
         "vehicles",
+        "perception",
+        "disable",
+        "--id",
+        "chase-sim-chaser",
+        "motion_tracks"
+      ],
+      "leaf_id": "vehicles.perception.disable",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-04.cmd-04"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "automation",
+        "run",
+        "--id",
+        "chase-sim-chaser",
+        "--observe-only",
+        "--frames",
+        "0",
+        "--open-view"
+      ],
+      "leaf_id": "vehicles.automation.run",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-04.cmd-05"
+    },
+    {
+      "argv": [
+        "vehicles",
         "automation",
         "stop",
         "--id",
@@ -224,15 +314,104 @@
     {
       "argv": [
         "vehicles",
+        "perception",
+        "enable",
+        "--id",
+        "chase-sim-chaser",
+        "motion_tracks"
+      ],
+      "leaf_id": "vehicles.perception.enable",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-04.cleanup-01"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "update",
+        "perception",
+        "--id",
+        "chase-sim-chaser",
+        "--algorithm",
+        "visual_observer"
+      ],
+      "leaf_id": "vehicles.update.perception",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-05.cmd-00"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "update",
+        "memory",
+        "--id",
+        "chase-sim-chaser",
+        "--implementation",
+        "bounded_evidence"
+      ],
+      "leaf_id": "vehicles.update.memory",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-05.cmd-01"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "automation",
+        "run",
+        "--id",
+        "chase-sim-chaser",
+        "--observe-only",
+        "--frames",
+        "0",
+        "--open-view"
+      ],
+      "leaf_id": "vehicles.automation.run",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-05.cmd-02"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "stream",
+        "memory",
+        "--id",
+        "chase-sim-chaser",
+        "--once"
+      ],
+      "leaf_id": "vehicles.stream.memory",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-05.cmd-03"
+    },
+    {
+      "argv": [
+        "vehicles",
         "memory",
         "check",
         "--id",
-        "chase-sim-chaser"
+        "chase-sim-chaser",
+        "--record"
       ],
       "leaf_id": "vehicles.memory.check",
       "ok": true,
       "reason": "ok",
-      "template_id": "US-05.cmd-00"
+      "template_id": "US-05.cmd-04"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "automation",
+        "stop",
+        "--id",
+        "chase-sim-chaser"
+      ],
+      "leaf_id": "vehicles.automation.stop",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-05.cleanup-00"
     },
     {
       "argv": [
@@ -271,7 +450,8 @@
         "memory",
         "check",
         "--id",
-        "chase-sim-chaser"
+        "chase-sim-chaser",
+        "--record"
       ],
       "leaf_id": "vehicles.memory.check",
       "ok": true,
@@ -307,6 +487,20 @@
     {
       "argv": [
         "vehicles",
+        "perception",
+        "enable",
+        "--id",
+        "chase-sim-chaser",
+        "motion_tracks"
+      ],
+      "leaf_id": "vehicles.perception.enable",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-06.cleanup-01"
+    },
+    {
+      "argv": [
+        "vehicles",
         "automation",
         "run",
         "--id",
@@ -314,6 +508,8 @@
         "--observe-only",
         "--frames",
         "0",
+        "--interval-s",
+        "0.02",
         "--open-view"
       ],
       "leaf_id": "vehicles.automation.run",
@@ -337,6 +533,20 @@
     {
       "argv": [
         "vehicles",
+        "stream",
+        "memory",
+        "--id",
+        "chase-sim-chaser",
+        "--once"
+      ],
+      "leaf_id": "vehicles.stream.memory",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-07.cmd-02"
+    },
+    {
+      "argv": [
+        "vehicles",
         "automation",
         "stop",
         "--id",
@@ -345,7 +555,20 @@
       "leaf_id": "vehicles.automation.stop",
       "ok": true,
       "reason": "ok",
-      "template_id": "US-07.cmd-02"
+      "template_id": "US-07.cmd-03"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "automation",
+        "status",
+        "--id",
+        "chase-sim-chaser"
+      ],
+      "leaf_id": "vehicles.automation.status",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-07.cmd-04"
     },
     {
       "argv": [
@@ -363,12 +586,13 @@
     {
       "argv": [
         "vehicles",
+        "stream",
         "memory",
-        "reset",
         "--id",
-        "chase-sim-chaser"
+        "chase-sim-chaser",
+        "--once"
       ],
-      "leaf_id": "vehicles.memory.reset",
+      "leaf_id": "vehicles.stream.memory",
       "ok": true,
       "reason": "ok",
       "template_id": "US-08.cmd-00"
@@ -377,11 +601,11 @@
       "argv": [
         "vehicles",
         "memory",
-        "check",
+        "reset",
         "--id",
         "chase-sim-chaser"
       ],
-      "leaf_id": "vehicles.memory.check",
+      "leaf_id": "vehicles.memory.reset",
       "ok": true,
       "reason": "ok",
       "template_id": "US-08.cmd-01"
@@ -389,11 +613,28 @@
     {
       "argv": [
         "vehicles",
+        "stream",
         "memory",
-        "replay",
         "--id",
         "chase-sim-chaser",
-        "/tmp/m007-audit-record"
+        "--once"
+      ],
+      "leaf_id": "vehicles.stream.memory",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-08.cmd-02"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "memory",
+        "replay",
+        "/tmp/m007-audit-record",
+        "--id",
+        "chase-sim-chaser",
+        "--implementation",
+        "bounded_evidence",
+        "--record"
       ],
       "leaf_id": "vehicles.memory.replay",
       "ok": true,
@@ -404,19 +645,35 @@
       "argv": [
         "vehicles",
         "perception",
+        "check",
+        "--id",
+        "chase-sim-chaser",
+        "--record"
+      ],
+      "leaf_id": "vehicles.perception.check",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-10.cmd-00"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "perception",
         "qualify",
         "--from-check-run",
-        "/tmp/m007-audit-record"
+        "/tmp/m007-audit-record",
+        "--candidate",
+        "floor_continuity"
       ],
       "leaf_id": "vehicles.perception.qualify",
       "ok": true,
       "reason": "ok",
-      "template_id": "US-10.cmd-00"
+      "template_id": "US-10.cmd-01"
     }
   ],
   "catalog": {
     "path": "docs/milestones/007-cli-operator-usability/tools/cli-surface-audit/us88_catalog.json",
-    "sha256": "7617a749828e6fa52ea2d6e8a32437e70d1c83e63648cbd9d7291b8049bd4d9f",
+    "sha256": "568531e76e39edff85c7ad24b42a89d9324d9bc131c3200e690b02ebb5c76216",
     "source": {
       "comment_id": 5169077892,
       "title": "Prospective README appendix: usage sequences and human confirmation",
@@ -554,8 +811,8 @@
       "vehicles.update.memory",
       "vehicles.update.perception"
     ],
-    "inventory_sha256": "ee8603de5d48e9f2ae4e6deb1856d76a6340b17fe30bba92219725ea15d75bf4",
-    "overlay_sha256": "38dfcef7e955d6d760872642d532578aab737f5d93dbfafaefff23d9bda8985b"
+    "inventory_sha256": "d4c34409e7a0739d35bb84d363e3566d92f015b81272c34353128ad126d9976c",
+    "overlay_sha256": "18c101f58066e08cef078061e5ea154bd357a5b22674e80a53782d68ed008882"
   },
   "live_residuals": [
     {
@@ -647,6 +904,6 @@
       "US-09": "deferred",
       "US-10": "blocked"
     },
-    "registry_sha256": "520df055f0ee55ba25ffb3cf013341d1ab9d55b88ec24bd2671a37ae1afdafec"
+    "registry_sha256": "a976ccb89c73b3b9dd99339bf2ea149bf0a9b1a427164fc7c7da64c9746d681d"
   }
 }

@@ -384,7 +384,7 @@ class CliSurfaceAuditTests(unittest.TestCase):
                 "live-cli-acceptance/result.json"
             ).resolve()
         )
-        claim_map["claims"]["us01_us02_live_acceptance"]["paths"] = [abs_path]
+        claim_map["claims"]["us01_help_discovery"]["paths"] = [abs_path]
         import hashlib
 
         digest = hashlib.sha256(Path(abs_path).read_bytes()).hexdigest()
@@ -702,6 +702,60 @@ class CliSurfaceAuditTests(unittest.TestCase):
         with self.assertRaises(self.validate_audit.AuditError) as ctx:
             self.validate_audit.validate_sequence_source_prerequisites(sequences)
         self.assertIn("observer", str(ctx.exception).lower())
+
+    def test_help_unknown_option_before_help_fails(self) -> None:
+        receipt = self.argv_validate.validate_argv(
+            ["vehicles", "automation", "run", "--bogus", "--help"],
+            template_id="help-unknown-opt",
+        )
+        self.assertFalse(receipt.ok)
+        self.assertIn("unknown tokens before help", receipt.reason)
+
+    def test_help_extra_positional_before_help_fails(self) -> None:
+        receipt = self.argv_validate.validate_argv(
+            ["vehicles", "automation", "run", "bogus", "--help"],
+            template_id="help-extra-pos",
+        )
+        self.assertFalse(receipt.ok)
+        self.assertIn("unknown tokens before help", receipt.reason)
+
+    def test_us01_help_predicates_fail_when_help_steps_removed(self) -> None:
+        result_path = (
+            ROOT
+            / "docs/milestones/007-cli-operator-usability/evidence/"
+            "live-cli-acceptance/result.json"
+        )
+        parsed = json.loads(result_path.read_text(encoding="utf-8"))
+        parsed["ordered_command_outcomes"] = [
+            row
+            for row in parsed["ordered_command_outcomes"]
+            if not str(row.get("step_id") or "").startswith("help-")
+            and " --help" not in str(row.get("command") or "")
+        ]
+        claim_map = json.loads((TOOL / "claim_map.json").read_text(encoding="utf-8"))
+        claim = claim_map["claims"]["us01_help_discovery"]
+        with self.assertRaises(self.validate_audit.AuditError) as ctx:
+            self.validate_audit.eval_cite_predicates("US-01", claim, parsed)
+        self.assertIn("help", str(ctx.exception).lower())
+
+    def test_live_residual_fabricated_identity_fails(self) -> None:
+        sequences = json.loads(
+            (TOOL / "sequence_registry.json").read_text(encoding="utf-8")
+        )
+        overlay = json.loads((TOOL / "leaf_overlay.json").read_text(encoding="utf-8"))
+        residuals = json.loads((TOOL / "live_residuals.json").read_text(encoding="utf-8"))
+        for row in residuals["findings"]:
+            row["owner"] = "fabricated-owner"
+            row["ledger_owner"] = "fabricated ledger owner"
+            row["links"] = {"leaves": ["vehicles.status"], "sequences": ["US-01"]}
+        with self.assertRaises(self.validate_audit.AuditError) as ctx:
+            self.validate_audit.validate_live_residuals(
+                sequences=sequences,
+                overlay=overlay,
+                residuals=residuals["findings"],
+            )
+        msg = str(ctx.exception).lower()
+        self.assertTrue("ledger" in msg or "identity" in msg or "links" in msg, msg)
 
 
 if __name__ == "__main__":

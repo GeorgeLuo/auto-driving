@@ -5,7 +5,7 @@
 | Status | Active |
 | Milestone branch | `milestone/006-decision-facing-perception-readiness` |
 | Cumulative PR | [#70](https://github.com/GeorgeLuo/auto-driving/pull/70) (draft until whole-milestone closeout) |
-| Current frontier | Automa shadow decision surfaces |
+| Current frontier | Cross-environment shadow proposal evidence |
 | Started | 2026-07-28 |
 | Action policy | Proposals may contain movement intent; applied vehicle control remains zero for the entire milestone |
 
@@ -58,7 +58,7 @@ for simulator and physical vehicles.
 | M006-02 | Independent proposal plugins consume only the decision-data contract and emit a bounded, serializable proposal containing identity, lifecycle status, confidence, reason, one canonical proposed command, freshness, assumptions, and exact evidence/pattern/projection references | Met | Bounded ActionProposal schema with lifecycle/freshness matrix, ProposedVehicleCommand, assumptions, source_refs; one candidate per enabled plugin in PR #74 |
 | M006-03 | One deterministic selector/mixer consumes the complete proposal set and emits an inspectable action plan with selected proposal or contributions, while a separate runtime authority result proves proposed and applied control cannot be confused | Met | deterministic_first_active ActionPlan; ShadowAuthorityResult proposed vs authorized_output vs proposed_applied=false vs host_application; cycle ok/engine_error envelope in PR #74 |
 | M006-04 | One packaged `avoid_recent_obstruction` proposal demonstrates left/right active steering, retained-fresh continuity, stale-to-inactive fallback, incompatible input, missing input, and plugin-error behavior without claiming navigation safety or semantic identity | Met | avoid_recent_obstruction fresh-before-stale selection and lifecycle matrix including obstruction_evidence kind in PR #74 |
-| M006-05 | Automa can stage, inspect, replay, and stream the decision path with concise default output, complete `--json` output, deterministic replay, latest-frame replacement, a combined frame/evidence/proposal/authority view, an opt-in exact-frame HTML artifact, and no default disk writes | Unmet | Current frontier: Automa shadow decision surfaces |
+| M006-05 | Automa can stage, inspect, replay, and stream the decision path with concise default output, complete `--json` output, deterministic replay, latest-frame replacement, a combined frame/evidence/proposal/authority view, an opt-in exact-frame HTML artifact, and no default disk writes | Met | Decision stage/info/apply/stream/view with concise default, --json, adapter-backed automation publication, byte-equal apply digests, freshness-gated latest-frame stream, combined view with source_refs, opt-in --record HTML, no default disk writes, no invented applied_control in PR #80 |
 | M006-06 | Tracked Chase and physical evidence exercise the same proposal contract and combined review view, showing exact source provenance, freshness transitions, proposal selection, proposed movement intent, and zero applied control | Unmet | Next-frontier: cross-environment evidence (after surfaces) |
 | M006-07 | Chase evaluator/shadow state remains outside controller inputs, and PiRacer remains in user mode with zero pilot output throughout all milestone evidence | Unmet | Next-frontier: cross-environment evidence (after surfaces) |
 | M006-08 | Closeout states whether the evidence justifies a later bounded movement or prediction milestone and preserves unresolved perception, identity, self-motion, command-model, and safety limits | Unmet | Closeout only |
@@ -67,24 +67,9 @@ for simulator and physical vehicles.
 
 ### Current Frontier
 
-**Automa shadow decision surfaces**
-
-- Workflow state: implementation_in_review
-- Proposal branch: `m006/shadow-decision-surfaces-proposal`
-- Implementation branch: `m006/shadow-decision-surfaces`
-- Proposal path: `docs/milestones/006-decision-facing-perception-readiness/proposals/shadow-decision-surfaces.md`
-- Accepted proposal: [#79](https://github.com/GeorgeLuo/auto-driving/pull/79) at `b9c1af61be8837ee6832fd2e33c706aa4ee84b44`
-- Review kind: Behavioral feature slice
-- Review question: Can Automa stage, inspect, replay, and stream the accepted `shadow-proposals` decision path with concise default output, complete `--json` output, deterministic offline replay, latest-frame replacement, one combined frame/evidence/proposal/authority view, and an opt-in exact-frame HTML artifact with no default disk writes while applied control remains zero?
-- Acceptance owner: Automa decision stage/info/apply/stream/view surfaces and deterministic offline replay against the PR #74 shadow engine
-- Exit criteria affected: M006-05
-- Prerequisite: Modular shadow action proposal foundation accepted (PR #74) with importable schemas and `avoid_recent_obstruction`
-- Milestone-level non-goal: Live Chase/Pi evidence packages, changing proposal semantics, selecting another policy, applying movement, using privileged simulator state, or claiming physical navigation readiness
-
-### Next-Frontier Candidate
-
 **Cross-environment shadow proposal evidence**
 
+- Workflow state: ready_for_proposal
 - Proposal branch: `m006/shadow-proposal-evidence-proposal`
 - Implementation branch: `m006/shadow-proposal-evidence`
 - Proposal path: `docs/milestones/006-decision-facing-perception-readiness/proposals/shadow-proposal-evidence.md`
@@ -93,7 +78,14 @@ for simulator and physical vehicles.
 - Acceptance owner: Tracked exact-frame Chase and stationary PiRacer shadow evidence packages using the accepted Automa decision surfaces
 - Exit criteria affected: M006-06, M006-07
 - Prerequisite: Automa shadow decision surfaces accepted (M006-05) with stage/info/apply/stream/view and deterministic replay
-- Non-goals: Re-implementing operator surfaces, changing PR #74 proposal policy, perception retune, applied movement, or navigation claims
+- Milestone-level non-goal: Re-implementing operator surfaces, changing PR #74 proposal policy, perception retune, applied movement, or navigation claims
+
+### Next-Frontier Candidate
+
+**None**
+
+- Reason: Cross-environment shadow proposal evidence is promoted from the frozen next-candidate slot after M006-05.
+- Revisit when: Live Chase/Pi evidence packages (M006-06–M006-07) are accepted or closeout planning begins after a plan revision queues M006-08.
 
 ## Workflow History
 
@@ -111,12 +103,15 @@ for simulator and physical vehicles.
 | Automa shadow decision surfaces | proposal_in_review | Started m006/shadow-decision-surfaces-proposal. |
 | Automa shadow decision surfaces | ready_for_implementation | Proposal PR #79 accepted at b9c1af61be8837ee6832fd2e33c706aa4ee84b44. |
 | Automa shadow decision surfaces | implementation_in_review | Started m006/shadow-decision-surfaces. |
+| Automa shadow decision surfaces | accepted | Implementation PR #80 merged at 0206c860a7a3aad38045b570f31784c22dac00e8. |
+| Cross-environment shadow proposal evidence | ready_for_proposal | Promoted after implementation PR #80. |
 
 ## Accepted Review Units
 
 | PR | Accepted review question | Result | Exit criteria | Durable evidence |
 | --- | --- | --- | --- | --- |
 | #74 | Can independent action-proposal plugins consume one immutable, cycle-aligned decision data source and produce attributable, replayable action plans while runtime authority guarantees that no proposed command is applied? | Accepted | M006-01, M006-02, M006-03, M006-04 | DecisionDataSource, ActionProposal/Plan, ShadowAuthorityResult (proposed_applied=false), ShadowDecisionCycleResult, and avoid_recent_obstruction matrix in PR #74 |
+| #80 | Can Automa stage, inspect, replay, and stream the accepted `shadow-proposals` decision path with concise default output, complete `--json` output, deterministic offline replay, latest-frame replacement, one combined frame/evidence/proposal/authority view, and an opt-in exact-frame HTML artifact with no default disk writes while applied control remains zero? | Accepted | M006-05 | Automa decision stage/info/apply/stream/view for shadow-proposals; AutonomyManager adapter over run_cycle with no stale last_cycle_result; generation-scoped latest_decision publication; --id apply with canonical_json_utf8 digest equality; strict apply pre-validation; combined decision view with source_refs; opt-in --record exact-frame HTML; proposed_applied=false and authorized idle output in PR #80 |
 
 ## Open Risks And Unverified Assumptions
 

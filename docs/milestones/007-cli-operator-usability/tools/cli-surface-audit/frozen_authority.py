@@ -1,33 +1,599 @@
-"""Independent frozen claim-map authority for M007-08 semantic citation.
-
-The committed claim_map.json must match this constant exactly. Coordinated
-rewrites of bindings, paths, or empty predicates cannot invent a pass.
-"""
-
+"""Independent frozen authority for M007-08 audit (not PR-rewritable alone)."""
 from __future__ import annotations
-
 from typing import Any
 
-# Canonical #88 catalog identity (immutable source of US meaning).
 CANONICAL_US88_SOURCE = {
-    "url": (
-        "https://github.com/GeorgeLuo/auto-driving/pull/88"
-        "#issuecomment-5169077892"
-    ),
+    "url": "https://github.com/GeorgeLuo/auto-driving/pull/88#issuecomment-5169077892",
     "comment_id": 5169077892,
-    "title": (
-        "Prospective README appendix: usage sequences and human confirmation"
-    ),
+    "title": "Prospective README appendix: usage sequences and human confirmation",
 }
 
-LIVE_ACCEPTANCE_RESULT = (
-    "docs/milestones/007-cli-operator-usability/evidence/"
-    "live-cli-acceptance/result.json"
-)
-CONTINUITY_RESULT = (
-    "docs/milestones/007-cli-operator-usability/evidence/"
-    "cli-scenario-continuity/result.json"
-)
+US88_SOURCE_CONTENT_SHA256 = "1f4033a981b059fe285880bdc57aac4afd1f2a47158b9bd97df665dedd9c57b4"
+US88_SOURCE_RELPATH = "docs/milestones/007-cli-operator-usability/tools/cli-surface-audit/us88_source.md"
+
+SEALED_SOURCE_COMMITS = {
+    "us01_us02_live_acceptance": "caf335797b71df1323736a2054934b7c211418b0",
+    "continuity_offline_perception": "37b7393fe759f1597860a30d8c10ca5692f1c0cc",
+    "continuity_live_config_swap": "37b7393fe759f1597860a30d8c10ca5692f1c0cc",
+    "continuity_memory_lifecycle": "37b7393fe759f1597860a30d8c10ca5692f1c0cc",
+}
+
+LIVE_ACCEPTANCE_RESULT = "docs/milestones/007-cli-operator-usability/evidence/live-cli-acceptance/result.json"
+CONTINUITY_RESULT = "docs/milestones/007-cli-operator-usability/evidence/cli-scenario-continuity/result.json"
+
+USAGE_PATTERNS: dict[str, str] = {
+    "operator_status": "Passive discovery/status of simulator or vehicle layers",
+    "primary_observe_only_journey": "Primary six-step observe-only automation journey",
+    "offline_perception_feedback": "Capture/apply/compare offline perception experiments",
+    "memory_lifecycle": "Memory check/reset/replay lifecycle operations",
+    "stage_or_deploy": "Stage perception/decision/memory or deploy code",
+    "plugin_management": "Enable/disable/setup perception plugins (mutates activation)",
+    "inspection_stream": "Stream or info inspection of stages",
+    "bounded_operation_check": "Bounded vehicle operation checks",
+    "physical_or_lab_check": "Physical-check / qualify / viability paths",
+    "simulator_prep": "Simulator ensure (mutating prep)",
+    "simulator_status": "Simulator status/UI verification without auto-serve mutation",
+    "help_discovery": "Help meta surfaces for operator discovery",
+    "general_cli_leaf": "Other public CLI terminal command"
+}
+
+FROZEN_US_TEMPLATES: dict[str, Any] = {
+  "US-01": {
+    "operator_question": "Can an operator discover the supported passive workflow without knowing the parser or runtime layout?",
+    "operator_outcome": "Discover the bounded Chase journey from public help",
+    "primary_human_confirmation": "The next leaf and required flags are visible without implementation knowledge",
+    "required_command_templates": [
+      [
+        "help"
+      ],
+      [
+        "vehicles",
+        "help"
+      ],
+      [
+        "vehicles",
+        "automation",
+        "help"
+      ],
+      [
+        "vehicles",
+        "automation",
+        "run",
+        "--help"
+      ]
+    ],
+    "required_cleanup_templates": [],
+    "required_command_leaves": [
+      "help",
+      "vehicles.help",
+      "vehicles.automation.help",
+      "vehicles.automation.run"
+    ],
+    "required_cleanup_leaves": []
+  },
+  "US-02": {
+    "operator_question": "Can an operator attach to the existing Chase session, see current perception, and leave no worker running without changing simulator state?",
+    "operator_outcome": "Reach a healthy passive camera/perception view and cleanly stop",
+    "primary_human_confirmation": "CLI prints `Ready for: inspect perception and stop automation`; final status reports stopped",
+    "required_command_templates": [
+      [
+        "vehicles",
+        "status",
+        "--chase-url",
+        "http://localhost:5050"
+      ],
+      [
+        "vehicles",
+        "update",
+        "perception",
+        "--id",
+        "{vehicle_id}",
+        "--algorithm",
+        "lightweight_observer"
+      ],
+      [
+        "vehicles",
+        "automation",
+        "run",
+        "--id",
+        "{vehicle_id}",
+        "--observe-only",
+        "--frames",
+        "0",
+        "--open-view"
+      ],
+      [
+        "vehicles",
+        "status",
+        "--id",
+        "{vehicle_id}"
+      ],
+      [
+        "vehicles",
+        "automation",
+        "stop",
+        "--id",
+        "{vehicle_id}"
+      ],
+      [
+        "vehicles",
+        "status",
+        "--id",
+        "{vehicle_id}"
+      ]
+    ],
+    "required_cleanup_templates": [
+      [
+        "vehicles",
+        "automation",
+        "stop",
+        "--id",
+        "{vehicle_id}"
+      ]
+    ],
+    "required_command_leaves": [
+      "vehicles.status",
+      "vehicles.update.perception",
+      "vehicles.automation.run",
+      "vehicles.automation.stop"
+    ],
+    "required_cleanup_leaves": [
+      "vehicles.automation.stop"
+    ]
+  },
+  "US-03": {
+    "operator_question": "Which packaged algorithm or ready candidate produces the most useful representation on the exact same captured frames?",
+    "operator_outcome": "Capture once and compare perception implementations on the same frames",
+    "primary_human_confirmation": "Compact human experiment summary / candidate comparison table",
+    "required_command_templates": [
+      [
+        "vehicles",
+        "update",
+        "perception",
+        "--id",
+        "{vehicle_id}",
+        "--algorithm",
+        "lightweight_observer"
+      ],
+      [
+        "vehicles",
+        "perception",
+        "run",
+        "--id",
+        "{vehicle_id}",
+        "--frames",
+        "4",
+        "--interval-s",
+        "0.25",
+        "--record"
+      ],
+      [
+        "vehicles",
+        "perception",
+        "apply",
+        "{src_dir}",
+        "--algorithm",
+        "lightweight_observer",
+        "--record"
+      ],
+      [
+        "vehicles",
+        "perception",
+        "apply",
+        "{src_dir}",
+        "--algorithm",
+        "sim_debug",
+        "--record"
+      ],
+      [
+        "vehicles",
+        "perception",
+        "apply",
+        "{src_dir}",
+        "--algorithm",
+        "visual_observer",
+        "--record"
+      ],
+      [
+        "vehicles",
+        "perception",
+        "compare",
+        "{src_dir}",
+        "--record"
+      ]
+    ],
+    "required_cleanup_templates": [],
+    "required_command_leaves": [
+      "vehicles.update.perception",
+      "vehicles.perception.run",
+      "vehicles.perception.apply",
+      "vehicles.perception.compare"
+    ],
+    "required_cleanup_leaves": []
+  },
+  "US-04": {
+    "operator_question": "What visibly changes when an operator swaps perception configuration while preserving the same running simulator environment?",
+    "operator_outcome": "Swap a live algorithm/plugin configuration in the same simulator environment",
+    "primary_human_confirmation": "Restart reaches Ready for:; plugin list matches the staged configuration",
+    "required_command_templates": [
+      [
+        "vehicles",
+        "automation",
+        "stop",
+        "--id",
+        "{vehicle_id}"
+      ],
+      [
+        "vehicles",
+        "update",
+        "perception",
+        "--id",
+        "{vehicle_id}",
+        "--algorithm",
+        "visual_observer"
+      ],
+      [
+        "vehicles",
+        "automation",
+        "run",
+        "--id",
+        "{vehicle_id}",
+        "--observe-only",
+        "--frames",
+        "0",
+        "--open-view"
+      ],
+      [
+        "vehicles",
+        "automation",
+        "stop",
+        "--id",
+        "{vehicle_id}"
+      ],
+      [
+        "vehicles",
+        "perception",
+        "disable",
+        "--id",
+        "{vehicle_id}",
+        "motion_tracks"
+      ],
+      [
+        "vehicles",
+        "automation",
+        "run",
+        "--id",
+        "{vehicle_id}",
+        "--observe-only",
+        "--frames",
+        "0",
+        "--open-view"
+      ]
+    ],
+    "required_cleanup_templates": [
+      [
+        "vehicles",
+        "automation",
+        "stop",
+        "--id",
+        "{vehicle_id}"
+      ],
+      [
+        "vehicles",
+        "perception",
+        "enable",
+        "--id",
+        "{vehicle_id}",
+        "motion_tracks"
+      ]
+    ],
+    "required_command_leaves": [
+      "vehicles.automation.stop",
+      "vehicles.update.perception",
+      "vehicles.automation.run",
+      "vehicles.perception.disable"
+    ],
+    "required_cleanup_leaves": [
+      "vehicles.automation.stop",
+      "vehicles.perception.enable"
+    ]
+  },
+  "US-05": {
+    "operator_question": "Does selected perception become attributable retained evidence, survive brief dropout, expire, and reset without movement?",
+    "operator_outcome": "Confirm real perception becomes bounded, attributable memory",
+    "primary_human_confirmation": "Final Memory check: chase-sim-chaser PASS/FAIL",
+    "required_command_templates": [
+      [
+        "vehicles",
+        "update",
+        "perception",
+        "--id",
+        "{vehicle_id}",
+        "--algorithm",
+        "visual_observer"
+      ],
+      [
+        "vehicles",
+        "update",
+        "memory",
+        "--id",
+        "{vehicle_id}",
+        "--implementation",
+        "bounded_evidence"
+      ],
+      [
+        "vehicles",
+        "automation",
+        "run",
+        "--id",
+        "{vehicle_id}",
+        "--observe-only",
+        "--frames",
+        "0",
+        "--open-view"
+      ],
+      [
+        "vehicles",
+        "stream",
+        "memory",
+        "--id",
+        "{vehicle_id}",
+        "--once"
+      ],
+      [
+        "vehicles",
+        "memory",
+        "check",
+        "--id",
+        "{vehicle_id}",
+        "--record"
+      ]
+    ],
+    "required_cleanup_templates": [
+      [
+        "vehicles",
+        "automation",
+        "stop",
+        "--id",
+        "{vehicle_id}"
+      ]
+    ],
+    "required_command_leaves": [
+      "vehicles.update.perception",
+      "vehicles.update.memory",
+      "vehicles.automation.run",
+      "vehicles.stream.memory",
+      "vehicles.memory.check"
+    ],
+    "required_cleanup_leaves": [
+      "vehicles.automation.stop"
+    ]
+  },
+  "US-06": {
+    "operator_question": "Does motion tracking add useful temporal evidence, or mainly add record churn and capacity pressure?",
+    "operator_outcome": "Ablate motion tracking and observe downstream memory differences",
+    "primary_human_confirmation": "Both trials reach readiness and the lifecycle check gives a concise verdict",
+    "required_command_templates": [
+      [
+        "vehicles",
+        "perception",
+        "disable",
+        "--id",
+        "{vehicle_id}",
+        "motion_tracks"
+      ],
+      [
+        "vehicles",
+        "automation",
+        "run",
+        "--id",
+        "{vehicle_id}",
+        "--observe-only",
+        "--frames",
+        "0",
+        "--open-view"
+      ],
+      [
+        "vehicles",
+        "memory",
+        "check",
+        "--id",
+        "{vehicle_id}",
+        "--record"
+      ],
+      [
+        "vehicles",
+        "automation",
+        "stop",
+        "--id",
+        "{vehicle_id}"
+      ]
+    ],
+    "required_cleanup_templates": [
+      [
+        "vehicles",
+        "automation",
+        "stop",
+        "--id",
+        "{vehicle_id}"
+      ],
+      [
+        "vehicles",
+        "perception",
+        "enable",
+        "--id",
+        "{vehicle_id}",
+        "motion_tracks"
+      ]
+    ],
+    "required_command_leaves": [
+      "vehicles.perception.disable",
+      "vehicles.automation.run",
+      "vehicles.memory.check",
+      "vehicles.automation.stop"
+    ],
+    "required_cleanup_leaves": [
+      "vehicles.automation.stop",
+      "vehicles.perception.enable"
+    ]
+  },
+  "US-07": {
+    "operator_question": "Can an expensive observer keep overlays and memory useful at the requested capture cadence?",
+    "operator_outcome": "Observe whether slow perception makes temporal memory ineffective",
+    "primary_human_confirmation": "Human automation status exposes captured, processed, and skipped on one run line",
+    "required_command_templates": [
+      [
+        "vehicles",
+        "automation",
+        "run",
+        "--id",
+        "{vehicle_id}",
+        "--observe-only",
+        "--frames",
+        "0",
+        "--interval-s",
+        "0.02",
+        "--open-view"
+      ],
+      [
+        "vehicles",
+        "automation",
+        "status",
+        "--id",
+        "{vehicle_id}"
+      ],
+      [
+        "vehicles",
+        "stream",
+        "memory",
+        "--id",
+        "{vehicle_id}",
+        "--once"
+      ],
+      [
+        "vehicles",
+        "automation",
+        "stop",
+        "--id",
+        "{vehicle_id}"
+      ],
+      [
+        "vehicles",
+        "automation",
+        "status",
+        "--id",
+        "{vehicle_id}"
+      ]
+    ],
+    "required_cleanup_templates": [
+      [
+        "vehicles",
+        "automation",
+        "stop",
+        "--id",
+        "{vehicle_id}"
+      ]
+    ],
+    "required_command_leaves": [
+      "vehicles.automation.run",
+      "vehicles.automation.status",
+      "vehicles.stream.memory",
+      "vehicles.automation.stop"
+    ],
+    "required_cleanup_leaves": [
+      "vehicles.automation.stop"
+    ]
+  },
+  "US-08": {
+    "operator_question": "Can an operator clear suspect memory and observe current perception repopulate a new epoch?",
+    "operator_outcome": "Recover from suspicious retained evidence",
+    "primary_human_confirmation": "Reset output shows Keys: N -> 0 and Epoch: old -> new",
+    "required_command_templates": [
+      [
+        "vehicles",
+        "stream",
+        "memory",
+        "--id",
+        "{vehicle_id}",
+        "--once"
+      ],
+      [
+        "vehicles",
+        "memory",
+        "reset",
+        "--id",
+        "{vehicle_id}"
+      ],
+      [
+        "vehicles",
+        "stream",
+        "memory",
+        "--id",
+        "{vehicle_id}",
+        "--once"
+      ]
+    ],
+    "required_cleanup_templates": [],
+    "required_command_leaves": [
+      "vehicles.stream.memory",
+      "vehicles.memory.reset"
+    ],
+    "required_cleanup_leaves": []
+  },
+  "US-09": {
+    "operator_question": "Can an unexpected live memory outcome be reproduced deterministically offline?",
+    "operator_outcome": "Freeze and reproduce a live memory anomaly",
+    "primary_human_confirmation": "Replay prints Deterministic: yes (two independent passes matched)",
+    "required_command_templates": [
+      [
+        "vehicles",
+        "memory",
+        "replay",
+        "{record_dir}",
+        "--id",
+        "{vehicle_id}",
+        "--implementation",
+        "bounded_evidence",
+        "--record"
+      ]
+    ],
+    "required_cleanup_templates": [],
+    "required_command_leaves": [
+      "vehicles.memory.replay"
+    ],
+    "required_cleanup_leaves": []
+  },
+  "US-10": {
+    "operator_question": "Does a ready candidate materially improve labeled physical-check behavior without unacceptable regressions?",
+    "operator_outcome": "Qualify a candidate on labeled physical-check frames",
+    "primary_human_confirmation": "First line says promote_candidate or reject_keep_control",
+    "required_command_templates": [
+      [
+        "vehicles",
+        "perception",
+        "check",
+        "--id",
+        "{vehicle_id}",
+        "--record"
+      ],
+      [
+        "vehicles",
+        "perception",
+        "qualify",
+        "--from-check-run",
+        "{record_dir}",
+        "--candidate",
+        "floor_continuity"
+      ]
+    ],
+    "required_cleanup_templates": [],
+    "required_command_leaves": [
+      "vehicles.perception.check",
+      "vehicles.perception.qualify"
+    ],
+    "required_cleanup_leaves": []
+  }
+}
 
 FROZEN_CLAIM_MAP: dict[str, Any] = {
     "schema": "m007_claim_map_v1",
@@ -45,10 +611,12 @@ FROZEN_CLAIM_MAP: dict[str, Any] = {
             "paths": [LIVE_ACCEPTANCE_RESULT],
             "source_pr": 88,
             "source_result_schema": "m007_live_cli_acceptance_v1",
+            "source_commit": SEALED_SOURCE_COMMITS["us01_us02_live_acceptance"],
             "predicates": [
                 {"path": "result", "equals": "pass"},
                 {"path": "schema", "equals": "m007_live_cli_acceptance_v1"},
                 {"path": "cleanup.worker_stopped", "equals": True},
+                {"path": ["repositories", "auto_driving", "commit"], "equals": SEALED_SOURCE_COMMITS["us01_us02_live_acceptance"]},
             ],
         },
         "continuity_offline_perception": {
@@ -56,18 +624,14 @@ FROZEN_CLAIM_MAP: dict[str, Any] = {
             "paths": [CONTINUITY_RESULT],
             "source_pr": 100,
             "source_result_schema": "m007_cli_scenario_continuity_v0",
+            "source_commit": SEALED_SOURCE_COMMITS["continuity_offline_perception"],
             "predicates": [
                 {"path": "result", "equals": "pass"},
                 {"path": "schema", "equals": "m007_cli_scenario_continuity_v0"},
-                {
-                    "path": [
-                        "family_aggregates",
-                        "continuity.offline_perception",
-                    ],
-                    "equals": "passed",
-                },
+                {"path": ["family_aggregates", "continuity.offline_perception"], "equals": "passed"},
                 {"path": "finalizer.ok", "equals": True},
                 {"path": "hitl_complete", "equals": True},
+                {"path": ["review_repair", "behavior_head_full"], "equals": SEALED_SOURCE_COMMITS["continuity_offline_perception"]},
             ],
         },
         "continuity_live_config_swap": {
@@ -75,18 +639,15 @@ FROZEN_CLAIM_MAP: dict[str, Any] = {
             "paths": [CONTINUITY_RESULT],
             "source_pr": 100,
             "source_result_schema": "m007_cli_scenario_continuity_v0",
+            "source_commit": SEALED_SOURCE_COMMITS["continuity_live_config_swap"],
             "predicates": [
                 {"path": "result", "equals": "pass"},
-                {
-                    "path": [
-                        "family_aggregates",
-                        "continuity.live_config_swap",
-                    ],
-                    "equals": "passed",
-                },
+                {"path": "schema", "equals": "m007_cli_scenario_continuity_v0"},
+                {"path": ["family_aggregates", "continuity.live_config_swap"], "equals": "passed"},
                 {"path": "restore_ok", "equals": True},
                 {"path": "finalizer.ok", "equals": True},
                 {"path": "hitl_complete", "equals": True},
+                {"path": ["review_repair", "behavior_head_full"], "equals": SEALED_SOURCE_COMMITS["continuity_live_config_swap"]},
             ],
         },
         "continuity_memory_lifecycle": {
@@ -94,34 +655,15 @@ FROZEN_CLAIM_MAP: dict[str, Any] = {
             "paths": [CONTINUITY_RESULT],
             "source_pr": 100,
             "source_result_schema": "m007_cli_scenario_continuity_v0",
+            "source_commit": SEALED_SOURCE_COMMITS["continuity_memory_lifecycle"],
             "predicates": [
                 {"path": "result", "equals": "pass"},
-                {
-                    "path": [
-                        "family_aggregates",
-                        "continuity.memory_lifecycle",
-                    ],
-                    "equals": "passed",
-                },
+                {"path": "schema", "equals": "m007_cli_scenario_continuity_v0"},
+                {"path": ["family_aggregates", "continuity.memory_lifecycle"], "equals": "passed"},
                 {"path": "finalizer.ok", "equals": True},
                 {"path": "hitl_complete", "equals": True},
+                {"path": ["review_repair", "behavior_head_full"], "equals": SEALED_SOURCE_COMMITS["continuity_memory_lifecycle"]},
             ],
         },
     },
-}
-
-# Usage-pattern vocabulary (must be referenced by overlay usage lists).
-USAGE_PATTERNS: dict[str, str] = {
-    "operator_status": "Passive discovery/status of simulator or vehicle layers",
-    "primary_observe_only_journey": "Primary six-step observe-only automation journey",
-    "offline_perception_feedback": "Capture/apply/compare offline perception experiments",
-    "memory_lifecycle": "Memory check/reset/replay lifecycle operations",
-    "stage_or_deploy": "Stage perception/decision/memory or deploy code",
-    "plugin_management": "Enable/disable/setup perception plugins (mutates activation)",
-    "inspection_stream": "Stream or info inspection of stages",
-    "bounded_operation_check": "Bounded vehicle operation checks",
-    "physical_or_lab_check": "Physical-check / qualify / viability paths",
-    "simulator_prep": "Simulator ensure/status preparation",
-    "general_cli_leaf": "Other public CLI terminal command",
-    "utility_status": "General status utility",
 }

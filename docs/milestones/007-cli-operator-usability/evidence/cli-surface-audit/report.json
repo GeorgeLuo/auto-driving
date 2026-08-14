@@ -2,15 +2,33 @@
   "argv_receipts": [
     {
       "argv": [
-        "vehicles",
-        "status",
-        "--chase-url",
-        "http://localhost:5050"
+        "help"
       ],
-      "leaf_id": "vehicles.status",
+      "leaf_id": "help",
       "ok": true,
       "reason": "ok",
       "template_id": "US-01.cmd-00"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "help"
+      ],
+      "leaf_id": "vehicles.help",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-01.cmd-01"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "automation",
+        "help"
+      ],
+      "leaf_id": "vehicles.automation.help",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-01.cmd-02"
     },
     {
       "argv": [
@@ -22,7 +40,7 @@
       "leaf_id": "vehicles.automation.run",
       "ok": true,
       "reason": "ok_help",
-      "template_id": "US-01.cmd-01"
+      "template_id": "US-01.cmd-03"
     },
     {
       "argv": [
@@ -673,7 +691,7 @@
   ],
   "catalog": {
     "path": "docs/milestones/007-cli-operator-usability/tools/cli-surface-audit/us88_catalog.json",
-    "sha256": "568531e76e39edff85c7ad24b42a89d9324d9bc131c3200e690b02ebb5c76216",
+    "sha256": "cc47703d551a01f238afc82af9d42cbc8e06e200c399020200cb9e9b3afb85f1",
     "source": {
       "comment_id": 5169077892,
       "title": "Prospective README appendix: usage sequences and human confirmation",
@@ -683,6 +701,8 @@
   "cite_receipts": [
     {
       "claim_map_id": "us01_us02_live_acceptance",
+      "disposition_set_at": "2026-08-14T09:44:41Z",
+      "disposition_set_by": "GeorgeLuo",
       "head_claim": "historical",
       "id": "US-01",
       "mode": "cited",
@@ -693,10 +713,14 @@
           "sha256": "d9656ddb1bad6720bf3b6dd5d2d2fbc5f0d1c2204c9e82883c56e9772d53dcf1"
         }
       ],
-      "source_pr": 88
+      "source_commit": "caf335797b71df1323736a2054934b7c211418b0",
+      "source_pr": 88,
+      "source_result_schema": "m007_live_cli_acceptance_v1"
     },
     {
       "claim_map_id": "us01_us02_live_acceptance",
+      "disposition_set_at": "2026-08-14T09:44:41Z",
+      "disposition_set_by": "GeorgeLuo",
       "head_claim": "historical",
       "id": "US-02",
       "mode": "cited",
@@ -707,10 +731,14 @@
           "sha256": "d9656ddb1bad6720bf3b6dd5d2d2fbc5f0d1c2204c9e82883c56e9772d53dcf1"
         }
       ],
-      "source_pr": 88
+      "source_commit": "caf335797b71df1323736a2054934b7c211418b0",
+      "source_pr": 88,
+      "source_result_schema": "m007_live_cli_acceptance_v1"
     },
     {
       "claim_map_id": "continuity_offline_perception",
+      "disposition_set_at": "2026-08-14T09:44:41Z",
+      "disposition_set_by": "GeorgeLuo",
       "head_claim": "historical",
       "id": "US-03",
       "mode": "cited",
@@ -721,10 +749,14 @@
           "sha256": "72b579bbf29a5dc58cabbb3e03ee325b32330f2b260cddc407589448f34a2c85"
         }
       ],
-      "source_pr": 100
+      "source_commit": "37b7393fe759f1597860a30d8c10ca5692f1c0cc",
+      "source_pr": 100,
+      "source_result_schema": "m007_cli_scenario_continuity_v0"
     },
     {
       "claim_map_id": "continuity_live_config_swap",
+      "disposition_set_at": "2026-08-14T09:44:41Z",
+      "disposition_set_by": "GeorgeLuo",
       "head_claim": "historical",
       "id": "US-04",
       "mode": "cited",
@@ -735,10 +767,14 @@
           "sha256": "72b579bbf29a5dc58cabbb3e03ee325b32330f2b260cddc407589448f34a2c85"
         }
       ],
-      "source_pr": 100
+      "source_commit": "37b7393fe759f1597860a30d8c10ca5692f1c0cc",
+      "source_pr": 100,
+      "source_result_schema": "m007_cli_scenario_continuity_v0"
     },
     {
       "claim_map_id": "continuity_memory_lifecycle",
+      "disposition_set_at": "2026-08-14T09:44:41Z",
+      "disposition_set_by": "GeorgeLuo",
       "head_claim": "historical",
       "id": "US-05",
       "mode": "cited",
@@ -749,10 +785,14 @@
           "sha256": "72b579bbf29a5dc58cabbb3e03ee325b32330f2b260cddc407589448f34a2c85"
         }
       ],
-      "source_pr": 100
+      "source_commit": "37b7393fe759f1597860a30d8c10ca5692f1c0cc",
+      "source_pr": 100,
+      "source_result_schema": "m007_cli_scenario_continuity_v0"
     },
     {
       "claim_map_id": "continuity_memory_lifecycle",
+      "disposition_set_at": "2026-08-14T09:44:41Z",
+      "disposition_set_by": "GeorgeLuo",
       "head_claim": "historical",
       "id": "US-08",
       "mode": "cited",
@@ -763,34 +803,54 @@
           "sha256": "72b579bbf29a5dc58cabbb3e03ee325b32330f2b260cddc407589448f34a2c85"
         }
       ],
-      "source_pr": 100
+      "source_commit": "37b7393fe759f1597860a30d8c10ca5692f1c0cc",
+      "source_pr": 100,
+      "source_result_schema": "m007_cli_scenario_continuity_v0"
     }
   ],
   "help_drift": {
     "authority": "argparse",
     "extra_in_help": [],
     "help_leaf_count": 32,
-    "leaf_count": 32,
-    "missing_from_help": [],
+    "leaf_count": 42,
+    "missing_from_help": [
+      "help",
+      "simulators.help",
+      "vehicles.automation.help",
+      "vehicles.help",
+      "vehicles.info.help",
+      "vehicles.memory.help",
+      "vehicles.operation.help",
+      "vehicles.perception.help",
+      "vehicles.stream.help",
+      "vehicles.update.help"
+    ],
     "note": "Help-derived set comes from rendered format_help() choice groups. Membership authority remains argparse; hard equality is not Met-blocking.",
-    "status": "ok"
+    "status": "drift_reported"
   },
   "leaves": {
-    "count": 32,
+    "count": 42,
     "ids": [
+      "help",
       "simulators.ensure",
+      "simulators.help",
       "simulators.status",
       "vehicles.active",
+      "vehicles.automation.help",
       "vehicles.automation.restart",
       "vehicles.automation.run",
       "vehicles.automation.status",
       "vehicles.automation.stop",
+      "vehicles.help",
       "vehicles.info.decision",
+      "vehicles.info.help",
       "vehicles.info.memory",
       "vehicles.info.perception",
       "vehicles.memory.check",
+      "vehicles.memory.help",
       "vehicles.memory.replay",
       "vehicles.memory.reset",
+      "vehicles.operation.help",
       "vehicles.operation.startup-check",
       "vehicles.perception.apply",
       "vehicles.perception.candidates",
@@ -798,21 +858,24 @@
       "vehicles.perception.compare",
       "vehicles.perception.disable",
       "vehicles.perception.enable",
+      "vehicles.perception.help",
       "vehicles.perception.qualify",
       "vehicles.perception.run",
       "vehicles.perception.setup",
       "vehicles.perception.viability",
       "vehicles.status",
+      "vehicles.stream.help",
       "vehicles.stream.memory",
       "vehicles.stream.perception",
       "vehicles.update.autonomy",
       "vehicles.update.core",
       "vehicles.update.decision",
+      "vehicles.update.help",
       "vehicles.update.memory",
       "vehicles.update.perception"
     ],
-    "inventory_sha256": "d4c34409e7a0739d35bb84d363e3566d92f015b81272c34353128ad126d9976c",
-    "overlay_sha256": "18c101f58066e08cef078061e5ea154bd357a5b22674e80a53782d68ed008882"
+    "inventory_sha256": "f86a9d6015b229861634404d5c4ceaab15325d397eb02b21918e9806c9b43d4f",
+    "overlay_sha256": "22065cab6b6c1eb25606aef9552054118fd71a1ef70d796da7a11be4d1407395"
   },
   "live_residuals": [
     {
@@ -904,6 +967,6 @@
       "US-09": "deferred",
       "US-10": "blocked"
     },
-    "registry_sha256": "a976ccb89c73b3b9dd99339bf2ea149bf0a9b1a427164fc7c7da64c9746d681d"
+    "registry_sha256": "c6a354853b9211fbd6db934566f30e47a746d60334257a742f0febddad9a4bd4"
   }
 }

@@ -8,15 +8,23 @@
       "required_cleanup_leaves": [],
       "required_cleanup_templates": [],
       "required_command_leaves": [
-        "vehicles.status",
+        "help",
+        "vehicles.help",
+        "vehicles.automation.help",
         "vehicles.automation.run"
       ],
       "required_command_templates": [
         [
+          "help"
+        ],
+        [
           "vehicles",
-          "status",
-          "--chase-url",
-          "http://localhost:5050"
+          "help"
+        ],
+        [
+          "vehicles",
+          "automation",
+          "help"
         ],
         [
           "vehicles",
@@ -25,12 +33,7 @@
           "--help"
         ]
       ],
-      "source_commands": [
-        [
-          "help"
-        ]
-      ],
-      "source_status": "Ready to try in #88"
+      "source_status": "from #88 durable appendix"
     },
     {
       "id": "US-02",
@@ -102,11 +105,10 @@
           "{vehicle_id}"
         ]
       ],
-      "source_status": "#88 acceptance sequence"
+      "source_status": "from #88 durable appendix"
     },
     {
       "id": "US-03",
-      "min_apply_count": 2,
       "operator_outcome": "Capture once and compare perception implementations on the same frames",
       "operator_question": "Which packaged algorithm or ready candidate produces the most useful representation on the exact same captured frames?",
       "primary_human_confirmation": "Compact human experiment summary / candidate comparison table",
@@ -175,7 +177,7 @@
           "--record"
         ]
       ],
-      "source_status": "Partial; #89 and #90"
+      "source_status": "from #88 durable appendix"
     },
     {
       "id": "US-04",
@@ -264,7 +266,7 @@
           "--open-view"
         ]
       ],
-      "source_status": "Partial; manual rollback today, #91"
+      "source_status": "from #88 durable appendix"
     },
     {
       "id": "US-05",
@@ -337,7 +339,7 @@
           "--record"
         ]
       ],
-      "source_status": "Ready to try"
+      "source_status": "from #88 durable appendix"
     },
     {
       "id": "US-06",
@@ -407,7 +409,7 @@
           "{vehicle_id}"
         ]
       ],
-      "source_status": "Ready with caveat: live frames differ"
+      "source_status": "from #88 durable appendix"
     },
     {
       "id": "US-07",
@@ -476,7 +478,7 @@
           "{vehicle_id}"
         ]
       ],
-      "source_status": "Partial: no synthesized overload verdict"
+      "source_status": "from #88 durable appendix"
     },
     {
       "id": "US-08",
@@ -514,7 +516,7 @@
           "--once"
         ]
       ],
-      "source_status": "Ready to try"
+      "source_status": "from #88 durable appendix"
     },
     {
       "id": "US-09",
@@ -539,7 +541,7 @@
           "--record"
         ]
       ],
-      "source_status": "Ready to try"
+      "source_status": "from #88 durable appendix"
     },
     {
       "id": "US-10",
@@ -571,7 +573,7 @@
           "floor_continuity"
         ]
       ],
-      "source_status": "Ready when physical labeled input exists"
+      "source_status": "from #88 durable appendix"
     }
   ],
   "schema": "m007_us88_catalog_v1",
@@ -579,5 +581,7 @@
     "comment_id": 5169077892,
     "title": "Prospective README appendix: usage sequences and human confirmation",
     "url": "https://github.com/GeorgeLuo/auto-driving/pull/88#issuecomment-5169077892"
-  }
+  },
+  "source_content_sha256": "1f4033a981b059fe285880bdc57aac4afd1f2a47158b9bd97df665dedd9c57b4",
+  "source_path": "docs/milestones/007-cli-operator-usability/tools/cli-surface-audit/us88_source.md"
 }

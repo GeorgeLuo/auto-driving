@@ -1,23 +1,23 @@
 # M007-08 CLI surface audit rollup
 
-- Leaves: **32** (all classified; residual unclassified: 0)
+- Leaves: **42** (all classified; residual unclassified: 0)
 - Sequences by disposition: {'passed': 6, 'deferred': 3, 'blocked': 1}
 - Sequences by completeness: {'evidenced': 6, 'template': 4}
 - Sequences by coverage: {'measured': 6, 'unmeasured': 3, 'not_applicable': 1}
 - Passed evidence: cited=6, executed=0
-- Help drift: ok
+- Help drift: drift_reported
 
 ## Deferred / blocked
-- `US-06` deferred: owner=cli-perception-plugins; unlock=When ablation sequence is sealed with machine-first/HITL under continuity.plugin_ablation or successor
-- `US-07` deferred: owner=cli-automation-status; unlock=When temporal backpressure sequence is sealed with captured/processed/skipped cues
-- `US-09` deferred: owner=cli-memory-replay; unlock=When deterministic memory replay is sealed with Deterministic: yes confirmation
-- `US-10` blocked: owner=physical-perception-lab; unlock=When labeled physical-check corpus exists and non-destructive qualify sequence is sealed
+- `US-06` deferred: owner=cli-perception-plugins; unlock=Seal continuity.plugin_ablation or successor with HITL
+- `US-07` deferred: owner=cli-automation-status; unlock=Seal temporal backpressure sequence
+- `US-09` deferred: owner=cli-memory-replay; unlock=Seal deterministic replay sequence
+- `US-10` blocked: owner=physical-perception-lab; unlock=Labeled physical corpus available
 
 ## Coverage residuals (unmeasured / not_applicable)
-- `US-06` coverage=unmeasured: Optional US-06 family not sealed as required #107 journey
-- `US-07` coverage=unmeasured: Optional US-07 family not sealed as required #107 journey
-- `US-09` coverage=unmeasured: Optional US-09 family not sealed as required #107 journey
-- `US-10` coverage=not_applicable: Physical labeled qualification outside measured M007-08 journey coverage
+- `US-06` coverage=unmeasured: Optional ablation not sealed
+- `US-07` coverage=unmeasured: Optional backpressure not sealed
+- `US-09` coverage=unmeasured: Optional replay not sealed
+- `US-10` coverage=not_applicable: Physical labeled path out of measured M007-08 set
 
 ## LIVE residuals
 - `M007-LIVE-001` deferred owner=cli-perception-apply

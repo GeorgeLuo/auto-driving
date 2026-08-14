@@ -13,6 +13,10 @@
           "path": "result"
         },
         {
+          "equals": "m007_cli_scenario_continuity_v0",
+          "path": "schema"
+        },
+        {
           "equals": "passed",
           "path": [
             "family_aggregates",
@@ -30,8 +34,16 @@
         {
           "equals": true,
           "path": "hitl_complete"
+        },
+        {
+          "equals": "37b7393fe759f1597860a30d8c10ca5692f1c0cc",
+          "path": [
+            "review_repair",
+            "behavior_head_full"
+          ]
         }
       ],
+      "source_commit": "37b7393fe759f1597860a30d8c10ca5692f1c0cc",
       "source_pr": 100,
       "source_result_schema": "m007_cli_scenario_continuity_v0"
     },
@@ -49,6 +61,10 @@
           "path": "result"
         },
         {
+          "equals": "m007_cli_scenario_continuity_v0",
+          "path": "schema"
+        },
+        {
           "equals": "passed",
           "path": [
             "family_aggregates",
@@ -62,8 +78,16 @@
         {
           "equals": true,
           "path": "hitl_complete"
+        },
+        {
+          "equals": "37b7393fe759f1597860a30d8c10ca5692f1c0cc",
+          "path": [
+            "review_repair",
+            "behavior_head_full"
+          ]
         }
       ],
+      "source_commit": "37b7393fe759f1597860a30d8c10ca5692f1c0cc",
       "source_pr": 100,
       "source_result_schema": "m007_cli_scenario_continuity_v0"
     },
@@ -97,8 +121,16 @@
         {
           "equals": true,
           "path": "hitl_complete"
+        },
+        {
+          "equals": "37b7393fe759f1597860a30d8c10ca5692f1c0cc",
+          "path": [
+            "review_repair",
+            "behavior_head_full"
+          ]
         }
       ],
+      "source_commit": "37b7393fe759f1597860a30d8c10ca5692f1c0cc",
       "source_pr": 100,
       "source_result_schema": "m007_cli_scenario_continuity_v0"
     },
@@ -122,8 +154,17 @@
         {
           "equals": true,
           "path": "cleanup.worker_stopped"
+        },
+        {
+          "equals": "caf335797b71df1323736a2054934b7c211418b0",
+          "path": [
+            "repositories",
+            "auto_driving",
+            "commit"
+          ]
         }
       ],
+      "source_commit": "caf335797b71df1323736a2054934b7c211418b0",
       "source_pr": 88,
       "source_result_schema": "m007_live_cli_acceptance_v1"
     }

@@ -2,11 +2,11 @@
   "leaves": {
     "simulators.ensure": {
       "open_finding_links": [],
-      "output_contract": "Human and/or --json layer status or command-specific summary",
+      "output_contract": "Human summary and optional --json payload for this leaf",
       "owning_boundary": "cli/automa_cli/simulators.py",
-      "prerequisites": "Repository checkout; local Metrics UI only when live class applies",
+      "prerequisites": "Repository checkout; local Metrics UI when live",
       "safety_class": "live_mutation",
-      "side_effects": "May prepare or inspect simulator session state",
+      "side_effects": "May prepare or reconfigure simulator session state",
       "usage": [
         "simulator_prep"
       ],
@@ -14,11 +14,11 @@
     },
     "simulators.status": {
       "open_finding_links": [],
-      "output_contract": "Human and/or --json layer status or command-specific summary",
+      "output_contract": "Human summary and optional --json payload for this leaf",
       "owning_boundary": "cli/automa_cli/simulators.py",
-      "prerequisites": "Repository checkout; local Metrics UI only when live class applies",
+      "prerequisites": "Repository checkout; local Metrics UI when live",
       "safety_class": "live_mutation",
-      "side_effects": "May prepare or inspect simulator session state",
+      "side_effects": "May prepare or reconfigure simulator session state",
       "usage": [
         "simulator_prep"
       ],
@@ -26,11 +26,11 @@
     },
     "vehicles.active": {
       "open_finding_links": [],
-      "output_contract": "Human and/or --json layer status or command-specific summary",
-      "owning_boundary": "cli/automa_cli",
-      "prerequisites": "Repository checkout; local Metrics UI only when live class applies",
+      "output_contract": "Human summary and optional --json payload for this leaf",
+      "owning_boundary": "cli/automa_cli/vehicles.py",
+      "prerequisites": "Repository checkout; local Metrics UI when live",
       "safety_class": "observe_only",
-      "side_effects": "Read-only status or documentation when used as documented",
+      "side_effects": "Read-only discovery/status of vehicle and layer readiness",
       "usage": [
         "operator_status"
       ],
@@ -38,11 +38,11 @@
     },
     "vehicles.automation.restart": {
       "open_finding_links": [],
-      "output_contract": "Human and/or --json layer status or command-specific summary",
-      "owning_boundary": "cli/automa_cli",
-      "prerequisites": "Chase vehicle discoverable; passive capture capable Metrics UI",
+      "output_contract": "Human summary and optional --json payload for this leaf",
+      "owning_boundary": "cli/automa_cli/automation.py",
+      "prerequisites": "Discoverable vehicle; Chase passive capture when live",
       "safety_class": "live_mutation",
-      "side_effects": "Starts observation-only worker; may open browser view",
+      "side_effects": "Starts or restarts automation worker; may open browser view; with --observe-only does not apply vehicle control",
       "usage": [
         "primary_observe_only_journey"
       ],
@@ -50,11 +50,11 @@
     },
     "vehicles.automation.run": {
       "open_finding_links": [],
-      "output_contract": "Human and/or --json layer status or command-specific summary",
-      "owning_boundary": "cli/automa_cli",
-      "prerequisites": "Chase vehicle discoverable; passive capture capable Metrics UI",
+      "output_contract": "Human summary and optional --json payload for this leaf",
+      "owning_boundary": "cli/automa_cli/automation.py",
+      "prerequisites": "Discoverable vehicle; Chase passive capture when live",
       "safety_class": "live_mutation",
-      "side_effects": "Starts observation-only worker; may open browser view",
+      "side_effects": "Starts or restarts automation worker; may open browser view; with --observe-only does not apply vehicle control",
       "usage": [
         "primary_observe_only_journey"
       ],
@@ -62,11 +62,11 @@
     },
     "vehicles.automation.status": {
       "open_finding_links": [],
-      "output_contract": "Human and/or --json layer status or command-specific summary",
-      "owning_boundary": "cli/automa_cli",
-      "prerequisites": "Repository checkout; local Metrics UI only when live class applies",
+      "output_contract": "Human summary and optional --json payload for this leaf",
+      "owning_boundary": "cli/automa_cli/automation.py",
+      "prerequisites": "Repository checkout; local Metrics UI when live",
       "safety_class": "observe_only",
-      "side_effects": "Read-only status or documentation when used as documented",
+      "side_effects": "Read-only automation/worker status",
       "usage": [
         "primary_observe_only_journey"
       ],
@@ -74,11 +74,11 @@
     },
     "vehicles.automation.stop": {
       "open_finding_links": [],
-      "output_contract": "Human and/or --json layer status or command-specific summary",
-      "owning_boundary": "cli/automa_cli",
-      "prerequisites": "Repository checkout; local Metrics UI only when live class applies",
+      "output_contract": "Human summary and optional --json payload for this leaf",
+      "owning_boundary": "cli/automa_cli/automation.py",
+      "prerequisites": "Repository checkout; local Metrics UI when live",
       "safety_class": "live_mutation",
-      "side_effects": "Read-only status or documentation when used as documented",
+      "side_effects": "Terminates automation worker process and writes stopped worker state",
       "usage": [
         "primary_observe_only_journey"
       ],
@@ -86,11 +86,11 @@
     },
     "vehicles.info.decision": {
       "open_finding_links": [],
-      "output_contract": "Human and/or --json layer status or command-specific summary",
+      "output_contract": "Human summary and optional --json payload for this leaf",
       "owning_boundary": "cli/automa_cli",
-      "prerequisites": "Repository checkout; local Metrics UI only when live class applies",
+      "prerequisites": "Repository checkout; local Metrics UI when live",
       "safety_class": "observe_only",
-      "side_effects": "Read-only status or documentation when used as documented",
+      "side_effects": "Read-only stream/info inspection of staged data",
       "usage": [
         "inspection_stream"
       ],
@@ -98,11 +98,11 @@
     },
     "vehicles.info.memory": {
       "open_finding_links": [],
-      "output_contract": "Human and/or --json layer status or command-specific summary",
+      "output_contract": "Human summary and optional --json payload for this leaf",
       "owning_boundary": "cli/automa_cli",
-      "prerequisites": "Repository checkout; local Metrics UI only when live class applies",
+      "prerequisites": "Repository checkout; local Metrics UI when live",
       "safety_class": "observe_only",
-      "side_effects": "Read-only status or documentation when used as documented",
+      "side_effects": "Read-only stream/info inspection of staged data",
       "usage": [
         "inspection_stream"
       ],
@@ -110,11 +110,11 @@
     },
     "vehicles.info.perception": {
       "open_finding_links": [],
-      "output_contract": "Human and/or --json layer status or command-specific summary",
+      "output_contract": "Human summary and optional --json payload for this leaf",
       "owning_boundary": "cli/automa_cli",
-      "prerequisites": "Repository checkout; local Metrics UI only when live class applies",
+      "prerequisites": "Repository checkout; local Metrics UI when live",
       "safety_class": "observe_only",
-      "side_effects": "Read-only status or documentation when used as documented",
+      "side_effects": "Read-only stream/info inspection of staged data",
       "usage": [
         "inspection_stream"
       ],
@@ -122,11 +122,11 @@
     },
     "vehicles.memory.check": {
       "open_finding_links": [],
-      "output_contract": "Human and/or --json layer status or command-specific summary",
-      "owning_boundary": "cli/automa_cli",
-      "prerequisites": "Repository checkout; local Metrics UI only when live class applies",
-      "safety_class": "observe_only",
-      "side_effects": "Reads or mutates vehicle memory stage / local replay artifacts",
+      "output_contract": "PASS/FAIL lifecycle verdict; optional recorded provenance extract",
+      "owning_boundary": "cli/automa_cli/memory_check.py",
+      "prerequisites": "Repository checkout; local Metrics UI when live",
+      "safety_class": "live_mutation",
+      "side_effects": "Runs present\u2192dropout\u2192expiry\u2192reset lifecycle gates; resets live memory state; may write --record artifacts",
       "usage": [
         "memory_lifecycle"
       ],
@@ -134,11 +134,11 @@
     },
     "vehicles.memory.replay": {
       "open_finding_links": [],
-      "output_contract": "Human and/or --json layer status or command-specific summary",
-      "owning_boundary": "cli/automa_cli",
-      "prerequisites": "Repository checkout; local Metrics UI only when live class applies",
+      "output_contract": "Human summary and optional --json payload for this leaf",
+      "owning_boundary": "cli/automa_cli/memory.py",
+      "prerequisites": "Repository checkout; local Metrics UI when live",
       "safety_class": "local_write",
-      "side_effects": "Reads or mutates vehicle memory stage / local replay artifacts",
+      "side_effects": "Replays sequence through memory; may write --record provenance extract under lab/runs",
       "usage": [
         "memory_lifecycle"
       ],
@@ -146,11 +146,11 @@
     },
     "vehicles.memory.reset": {
       "open_finding_links": [],
-      "output_contract": "Human and/or --json layer status or command-specific summary",
-      "owning_boundary": "cli/automa_cli",
-      "prerequisites": "Repository checkout; local Metrics UI only when live class applies",
+      "output_contract": "Human summary and optional --json payload for this leaf",
+      "owning_boundary": "cli/automa_cli/memory.py",
+      "prerequisites": "Repository checkout; local Metrics UI when live",
       "safety_class": "live_mutation",
-      "side_effects": "Reads or mutates vehicle memory stage / local replay artifacts",
+      "side_effects": "Clears retained memory keys and advances epoch on the vehicle memory stage",
       "usage": [
         "memory_lifecycle"
       ],
@@ -158,11 +158,11 @@
     },
     "vehicles.operation.startup-check": {
       "open_finding_links": [],
-      "output_contract": "Human and/or --json startup-check report; may include applied action results",
+      "output_contract": "Human summary and optional --json payload for this leaf",
       "owning_boundary": "cli/automa_cli/operations.py",
-      "prerequisites": "Discoverable vehicle; default path applies control pulses unless --dry-run",
+      "prerequisites": "Discoverable vehicle; do not run default path for inventory completeness",
       "safety_class": "hazardous_external",
-      "side_effects": "Default run sends action pulses to the vehicle; --dry-run is inspection-only and is a separate safe usage not implied by the leaf default",
+      "side_effects": "Default path sends action pulses to the vehicle; --dry-run is a separate non-default usage",
       "usage": [
         "bounded_operation_check"
       ],
@@ -172,11 +172,11 @@
       "open_finding_links": [
         "M007-LIVE-001"
       ],
-      "output_contract": "Human and/or --json layer status or command-specific summary",
-      "owning_boundary": "cli/automa_cli",
-      "prerequisites": "Repository checkout; local Metrics UI only when live class applies",
+      "output_contract": "Human summary and optional --json payload for this leaf",
+      "owning_boundary": "cli/automa_cli/perception_runs.py",
+      "prerequisites": "Repository checkout; local Metrics UI when live",
       "safety_class": "local_write",
-      "side_effects": "Local record/apply artifacts under runtime/",
+      "side_effects": "Writes apply run artifacts under runtime/; can collide on same-second ids",
       "usage": [
         "offline_perception_feedback"
       ],
@@ -186,11 +186,11 @@
       "open_finding_links": [
         "M007-LIVE-002"
       ],
-      "output_contract": "Human and/or --json layer status or command-specific summary",
-      "owning_boundary": "cli/automa_cli",
-      "prerequisites": "Repository checkout; local Metrics UI only when live class applies",
+      "output_contract": "Human summary and optional --json payload for this leaf",
+      "owning_boundary": "cli/automa_cli/lab_plugins.py",
+      "prerequisites": "Repository checkout; local Metrics UI when live",
       "safety_class": "observe_only",
-      "side_effects": "Read-only status or documentation when used as documented",
+      "side_effects": "Lists lab candidates; readiness may not match compare resolver",
       "usage": [
         "offline_perception_feedback"
       ],
@@ -198,14 +198,14 @@
     },
     "vehicles.perception.check": {
       "open_finding_links": [],
-      "output_contract": "Human and/or --json layer status or command-specific summary",
+      "output_contract": "Human summary and optional --json payload for this leaf",
       "owning_boundary": "cli/automa_cli",
       "prerequisites": {
-        "reason": "Requires labeled physical or lab assets not required for M007-08 Met",
+        "reason": "Physical/lab assets not required for M007-08 Met",
         "value": "not_applicable"
       },
       "safety_class": "hazardous_external",
-      "side_effects": "May exercise physical-check or lab hardware paths",
+      "side_effects": "Physical-check/qualify/viability paths; may require hardware or labeled corpora",
       "usage": [
         "physical_or_lab_check"
       ],
@@ -216,11 +216,11 @@
         "M007-LIVE-002",
         "M007-LIVE-003"
       ],
-      "output_contract": "Human and/or --json layer status or command-specific summary",
-      "owning_boundary": "cli/automa_cli",
-      "prerequisites": "Repository checkout; local Metrics UI only when live class applies",
+      "output_contract": "Human summary and optional --json payload for this leaf",
+      "owning_boundary": "cli/automa_cli/perception_runs.py",
+      "prerequisites": "Repository checkout; local Metrics UI when live",
       "safety_class": "local_write",
-      "side_effects": "Local record/apply artifacts under runtime/",
+      "side_effects": "Writes comparison artifacts; human failure paths may dump verbose detail",
       "usage": [
         "offline_perception_feedback"
       ],
@@ -228,11 +228,11 @@
     },
     "vehicles.perception.disable": {
       "open_finding_links": [],
-      "output_contract": "Human and/or --json layer status or command-specific summary",
-      "owning_boundary": "cli/automa_cli",
-      "prerequisites": "Repository checkout; local Metrics UI only when live class applies",
+      "output_contract": "Human summary and optional --json payload for this leaf",
+      "owning_boundary": "cli/automa_cli/perception.py",
+      "prerequisites": "Repository checkout; local Metrics UI when live",
       "safety_class": "live_mutation",
-      "side_effects": "Read-only status or documentation when used as documented",
+      "side_effects": "Edits staged perception activation plugin chain; requires worker restart to observe",
       "usage": [
         "plugin_management"
       ],
@@ -240,11 +240,11 @@
     },
     "vehicles.perception.enable": {
       "open_finding_links": [],
-      "output_contract": "Human and/or --json layer status or command-specific summary",
-      "owning_boundary": "cli/automa_cli",
-      "prerequisites": "Repository checkout; local Metrics UI only when live class applies",
+      "output_contract": "Human summary and optional --json payload for this leaf",
+      "owning_boundary": "cli/automa_cli/perception.py",
+      "prerequisites": "Repository checkout; local Metrics UI when live",
       "safety_class": "live_mutation",
-      "side_effects": "Read-only status or documentation when used as documented",
+      "side_effects": "Edits staged perception activation plugin chain; requires worker restart to observe",
       "usage": [
         "plugin_management"
       ],
@@ -252,14 +252,14 @@
     },
     "vehicles.perception.qualify": {
       "open_finding_links": [],
-      "output_contract": "Human and/or --json layer status or command-specific summary",
+      "output_contract": "Human summary and optional --json payload for this leaf",
       "owning_boundary": "cli/automa_cli",
       "prerequisites": {
-        "reason": "Requires labeled physical or lab assets not required for M007-08 Met",
+        "reason": "Physical/lab assets not required for M007-08 Met",
         "value": "not_applicable"
       },
       "safety_class": "hazardous_external",
-      "side_effects": "May exercise physical-check or lab hardware paths",
+      "side_effects": "Physical-check/qualify/viability paths; may require hardware or labeled corpora",
       "usage": [
         "physical_or_lab_check"
       ],
@@ -269,11 +269,11 @@
       "open_finding_links": [
         "M007-LIVE-005"
       ],
-      "output_contract": "Human and/or --json layer status or command-specific summary",
-      "owning_boundary": "cli/automa_cli",
-      "prerequisites": "Repository checkout; local Metrics UI only when live class applies",
+      "output_contract": "Human summary and optional --json payload for this leaf",
+      "owning_boundary": "cli/automa_cli/perception_runs.py",
+      "prerequisites": "Repository checkout; local Metrics UI when live",
       "safety_class": "local_write",
-      "side_effects": "Local record/apply artifacts under runtime/",
+      "side_effects": "Captures frames and may write local record directories under runtime/",
       "usage": [
         "offline_perception_feedback"
       ],
@@ -281,11 +281,11 @@
     },
     "vehicles.perception.setup": {
       "open_finding_links": [],
-      "output_contract": "Human and/or --json layer status or command-specific summary",
-      "owning_boundary": "cli/automa_cli",
-      "prerequisites": "Repository checkout; local Metrics UI only when live class applies",
+      "output_contract": "Human summary and optional --json payload for this leaf",
+      "owning_boundary": "cli/automa_cli/lab_plugins.py",
+      "prerequisites": "Repository checkout; local Metrics UI when live",
       "safety_class": "live_mutation",
-      "side_effects": "Read-only status or documentation when used as documented",
+      "side_effects": "Creates runtime state and may install/download lab candidate dependencies",
       "usage": [
         "plugin_management"
       ],
@@ -293,14 +293,14 @@
     },
     "vehicles.perception.viability": {
       "open_finding_links": [],
-      "output_contract": "Human and/or --json layer status or command-specific summary",
+      "output_contract": "Human summary and optional --json payload for this leaf",
       "owning_boundary": "cli/automa_cli",
       "prerequisites": {
-        "reason": "Requires labeled physical or lab assets not required for M007-08 Met",
+        "reason": "Physical/lab assets not required for M007-08 Met",
         "value": "not_applicable"
       },
       "safety_class": "hazardous_external",
-      "side_effects": "May exercise physical-check or lab hardware paths",
+      "side_effects": "Physical-check/qualify/viability paths; may require hardware or labeled corpora",
       "usage": [
         "physical_or_lab_check"
       ],
@@ -308,11 +308,11 @@
     },
     "vehicles.status": {
       "open_finding_links": [],
-      "output_contract": "Human and/or --json layer status or command-specific summary",
-      "owning_boundary": "cli/automa_cli",
-      "prerequisites": "Repository checkout; local Metrics UI only when live class applies",
+      "output_contract": "Human summary and optional --json payload for this leaf",
+      "owning_boundary": "cli/automa_cli/vehicles.py",
+      "prerequisites": "Repository checkout; local Metrics UI when live",
       "safety_class": "observe_only",
-      "side_effects": "Read-only status or documentation when used as documented",
+      "side_effects": "Read-only discovery/status of vehicle and layer readiness",
       "usage": [
         "operator_status"
       ],
@@ -320,11 +320,11 @@
     },
     "vehicles.stream.memory": {
       "open_finding_links": [],
-      "output_contract": "Human and/or --json layer status or command-specific summary",
+      "output_contract": "Human summary and optional --json payload for this leaf",
       "owning_boundary": "cli/automa_cli",
-      "prerequisites": "Repository checkout; local Metrics UI only when live class applies",
+      "prerequisites": "Repository checkout; local Metrics UI when live",
       "safety_class": "observe_only",
-      "side_effects": "Read-only status or documentation when used as documented",
+      "side_effects": "Read-only stream/info inspection of staged data",
       "usage": [
         "inspection_stream"
       ],
@@ -332,11 +332,11 @@
     },
     "vehicles.stream.perception": {
       "open_finding_links": [],
-      "output_contract": "Human and/or --json layer status or command-specific summary",
+      "output_contract": "Human summary and optional --json payload for this leaf",
       "owning_boundary": "cli/automa_cli",
-      "prerequisites": "Repository checkout; local Metrics UI only when live class applies",
+      "prerequisites": "Repository checkout; local Metrics UI when live",
       "safety_class": "observe_only",
-      "side_effects": "Read-only status or documentation when used as documented",
+      "side_effects": "Read-only stream/info inspection of staged data",
       "usage": [
         "inspection_stream"
       ],
@@ -344,11 +344,11 @@
     },
     "vehicles.update.autonomy": {
       "open_finding_links": [],
-      "output_contract": "Human and/or --json layer status or command-specific summary",
-      "owning_boundary": "cli/automa_cli",
-      "prerequisites": "Repository checkout; local Metrics UI only when live class applies",
+      "output_contract": "Human summary and optional --json payload for this leaf",
+      "owning_boundary": "cli/automa_cli/deploy.py",
+      "prerequisites": "Repository checkout; local Metrics UI when live",
       "safety_class": "live_mutation",
-      "side_effects": "Stages controller selection or deploys code to a vehicle host",
+      "side_effects": "Stages controller selections and/or deploys code to the vehicle host",
       "usage": [
         "stage_or_deploy"
       ],
@@ -356,11 +356,11 @@
     },
     "vehicles.update.core": {
       "open_finding_links": [],
-      "output_contract": "Human and/or --json layer status or command-specific summary",
-      "owning_boundary": "cli/automa_cli",
-      "prerequisites": "Repository checkout; local Metrics UI only when live class applies",
+      "output_contract": "Human summary and optional --json payload for this leaf",
+      "owning_boundary": "cli/automa_cli/deploy.py",
+      "prerequisites": "Repository checkout; local Metrics UI when live",
       "safety_class": "live_mutation",
-      "side_effects": "Stages controller selection or deploys code to a vehicle host",
+      "side_effects": "Stages controller selections and/or deploys code to the vehicle host",
       "usage": [
         "stage_or_deploy"
       ],
@@ -368,11 +368,11 @@
     },
     "vehicles.update.decision": {
       "open_finding_links": [],
-      "output_contract": "Human and/or --json layer status or command-specific summary",
-      "owning_boundary": "cli/automa_cli",
-      "prerequisites": "Repository checkout; local Metrics UI only when live class applies",
+      "output_contract": "Human summary and optional --json payload for this leaf",
+      "owning_boundary": "cli/automa_cli/deploy.py",
+      "prerequisites": "Repository checkout; local Metrics UI when live",
       "safety_class": "live_mutation",
-      "side_effects": "Stages controller selection or deploys code to a vehicle host",
+      "side_effects": "Stages controller selections and/or deploys code to the vehicle host",
       "usage": [
         "stage_or_deploy"
       ],
@@ -380,11 +380,11 @@
     },
     "vehicles.update.memory": {
       "open_finding_links": [],
-      "output_contract": "Human and/or --json layer status or command-specific summary",
-      "owning_boundary": "cli/automa_cli",
-      "prerequisites": "Repository checkout; local Metrics UI only when live class applies",
+      "output_contract": "Human summary and optional --json payload for this leaf",
+      "owning_boundary": "cli/automa_cli/deploy.py",
+      "prerequisites": "Repository checkout; local Metrics UI when live",
       "safety_class": "live_mutation",
-      "side_effects": "Stages controller selection or deploys code to a vehicle host",
+      "side_effects": "Stages controller selections and/or deploys code to the vehicle host",
       "usage": [
         "stage_or_deploy"
       ],
@@ -392,16 +392,30 @@
     },
     "vehicles.update.perception": {
       "open_finding_links": [],
-      "output_contract": "Human and/or --json layer status or command-specific summary",
-      "owning_boundary": "cli/automa_cli",
-      "prerequisites": "Repository checkout; local Metrics UI only when live class applies",
+      "output_contract": "Human summary and optional --json payload for this leaf",
+      "owning_boundary": "cli/automa_cli/deploy.py",
+      "prerequisites": "Repository checkout; local Metrics UI when live",
       "safety_class": "live_mutation",
-      "side_effects": "Stages controller selection or deploys code to a vehicle host",
+      "side_effects": "Stages controller selections and/or deploys code to the vehicle host",
       "usage": [
         "stage_or_deploy"
       ],
       "validation_class": "live"
     }
   },
-  "schema": "m007_leaf_overlay_v1"
+  "schema": "m007_leaf_overlay_v1",
+  "usage_patterns": {
+    "bounded_operation_check": "Bounded vehicle operation checks",
+    "general_cli_leaf": "Other public CLI terminal command",
+    "inspection_stream": "Stream or info inspection of stages",
+    "memory_lifecycle": "Memory check/reset/replay lifecycle operations",
+    "offline_perception_feedback": "Capture/apply/compare offline perception experiments",
+    "operator_status": "Passive discovery/status of simulator or vehicle layers",
+    "physical_or_lab_check": "Physical-check / qualify / viability paths",
+    "plugin_management": "Enable/disable/setup perception plugins (mutates activation)",
+    "primary_observe_only_journey": "Primary six-step observe-only automation journey",
+    "simulator_prep": "Simulator ensure/status preparation",
+    "stage_or_deploy": "Stage perception/decision/memory or deploy code",
+    "utility_status": "General status utility"
+  }
 }

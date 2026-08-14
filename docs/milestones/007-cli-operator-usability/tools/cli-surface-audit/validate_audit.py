@@ -13,9 +13,19 @@ from typing import Any
 
 try:
     from .argv_validate import ArgvValidationError, normalize_placeholders, validate_argv
+    from .frozen_authority import (
+        CANONICAL_US88_SOURCE,
+        FROZEN_CLAIM_MAP,
+        USAGE_PATTERNS,
+    )
     from .parser_walk import leaf_skeleton, public_leaf_ids, walk_leaves
 except ImportError:  # script / path execution
     from argv_validate import ArgvValidationError, normalize_placeholders, validate_argv
+    from frozen_authority import (
+        CANONICAL_US88_SOURCE,
+        FROZEN_CLAIM_MAP,
+        USAGE_PATTERNS,
+    )
     from parser_walk import leaf_skeleton, public_leaf_ids, walk_leaves
 
 ROOT = Path(__file__).resolve().parents[5]
@@ -131,24 +141,10 @@ def load_catalog(
         ("url", "comment_id", "title"),
         where="catalog.source",
     )
-    expected_url = (
-        "https://github.com/GeorgeLuo/auto-driving/pull/88#issuecomment-5169077892"
-    )
-    expected_comment_id = 5169077892
-    expected_title = (
-        "Prospective README appendix: usage sequences and human confirmation"
-    )
-    if str(source.get("url") or "").strip() != expected_url:
+    if source != CANONICAL_US88_SOURCE:
         raise AuditError(
-            f"catalog.source.url must be the canonical #88 authority {expected_url!r}"
-        )
-    if source.get("comment_id") != expected_comment_id:
-        raise AuditError(
-            f"catalog.source.comment_id must be {expected_comment_id}"
-        )
-    if str(source.get("title") or "").strip() != expected_title:
-        raise AuditError(
-            "catalog.source.title must match the canonical #88 appendix title"
+            "catalog.source must equal frozen CANONICAL_US88_SOURCE "
+            f"(url/comment_id/title); got {source!r}"
         )
     entries = data.get("entries")
     if not isinstance(entries, list) or len(entries) != 10:
@@ -205,8 +201,19 @@ def validate_leaf_inventory_document(
     )
     if not str(generator.get("name") or "").strip():
         raise AuditError("leaf inventory generator.name must be non-empty")
-    if not str(generator.get("revision") or "").strip():
+    revision = str(generator.get("revision") or "").strip()
+    if not revision:
         raise AuditError("leaf inventory generator.revision must be non-empty")
+    if re.fullmatch(r"[0-9a-f]{7,40}", revision) is None:
+        raise AuditError(
+            "leaf inventory generator.revision must be a git commit id "
+            f"(got {revision!r})"
+        )
+    source_commit = str(generator.get("source_commit") or revision).strip()
+    if re.fullmatch(r"[0-9a-f]{7,40}", source_commit) is None:
+        raise AuditError(
+            "leaf inventory generator.source_commit must be a git commit id"
+        )
     inventory = inventory_doc.get("leaves")
     if not isinstance(inventory, list):
         raise AuditError("leaf inventory leaves must be a list")
@@ -269,6 +276,14 @@ def validate_overlay(
     rows = overlay.get("leaves")
     if not isinstance(rows, dict):
         raise AuditError("leaf_overlay.leaves must be an object keyed by leaf_id")
+    patterns = overlay.get("usage_patterns")
+    if not isinstance(patterns, dict) or not patterns:
+        raise AuditError("leaf_overlay.usage_patterns vocabulary is required")
+    for key, desc in USAGE_PATTERNS.items():
+        if patterns.get(key) != desc:
+            raise AuditError(
+                f"leaf_overlay.usage_patterns[{key!r}] must match frozen vocabulary"
+            )
     missing = sorted(set(leaf_ids) - set(rows))
     extra = sorted(set(rows) - set(leaf_ids))
     if missing or extra:
@@ -315,16 +330,41 @@ def validate_overlay(
                 }:
                     if usage.get("value") == "not_applicable":
                         _na_ok(usage, field=field, where=f"overlay {leaf_id}")
-                    elif not str(usage.get("reason") or "").strip() and usage.get(
-                        "value"
-                    ) != "unsupported":
-                        pass
                     continue
                 if isinstance(usage, list) and usage:
+                    unknown = [u for u in usage if u not in patterns]
+                    if unknown:
+                        raise AuditError(
+                            f"overlay {leaf_id}.usage unknown patterns {unknown}"
+                        )
                     continue
                 if isinstance(usage, str) and usage.strip():
+                    if usage not in patterns:
+                        raise AuditError(
+                            f"overlay {leaf_id}.usage unknown pattern {usage!r}"
+                        )
                     continue
                 raise AuditError(f"overlay {leaf_id}.usage invalid: {usage!r}")
+            if field == "side_effects":
+                side = row[field]
+                if isinstance(side, dict) and side.get("value") == "not_applicable":
+                    _na_ok(side, field=field, where=f"overlay {leaf_id}")
+                    continue
+                if not isinstance(side, str) or not side.strip():
+                    raise AuditError(f"overlay {leaf_id}.side_effects must be non-empty")
+                # Fail closed on known false "read-only" labels for mutating leaves.
+                if leaf_id in {
+                    "vehicles.automation.stop",
+                    "vehicles.memory.check",
+                    "vehicles.memory.reset",
+                    "vehicles.perception.enable",
+                    "vehicles.perception.disable",
+                    "vehicles.perception.setup",
+                } and re.search(r"read-?only", side, re.I):
+                    raise AuditError(
+                        f"overlay {leaf_id}.side_effects falsely claims read-only"
+                    )
+                continue
             _na_ok(row[field], field=field, where=f"overlay {leaf_id}")
             if row[field] == "not_applicable":
                 raise AuditError(
@@ -412,6 +452,24 @@ def validate_sequences(
                 "(primary_human_confirmation)"
             )
 
+        # Commands/cleanup must equal the frozen #88-derived templates.
+        expected_commands = source.get("required_command_templates")
+        expected_cleanup = source.get("required_cleanup_templates")
+        if not isinstance(expected_commands, list) or not expected_commands:
+            raise AuditError(f"catalog {us_id} missing required_command_templates")
+        if row.get("commands") != expected_commands:
+            raise AuditError(
+                f"{us_id} commands must equal catalog required_command_templates"
+            )
+        if expected_cleanup is None:
+            expected_cleanup = []
+        if row.get("cleanup") != expected_cleanup:
+            raise AuditError(
+                f"{us_id} cleanup must equal catalog required_cleanup_templates"
+            )
+        required_leaves = source.get("required_command_leaves") or []
+        required_cleanup_leaves = source.get("required_cleanup_leaves") or []
+
         if row["disposition"] not in DISPOSITIONS:
             raise AuditError(f"{us_id} invalid disposition")
         if row["completeness"] not in COMPLETENESS:
@@ -485,6 +543,23 @@ def validate_sequences(
                 raise AuditError(
                     f"{us_id} command {index} leaf {receipt.leaf_id} not in inventory"
                 )
+        observed_leaves = [
+            validate_argv(cmd, parser=parser, template_id=f"{us_id}.leaf").leaf_id
+            for cmd in commands
+        ]
+        for required in required_leaves:
+            if required not in observed_leaves:
+                raise AuditError(
+                    f"{us_id} missing required command leaf {required} from catalog"
+                )
+        if us_id == "US-03":
+            apply_count = sum(
+                1 for leaf in observed_leaves if leaf == "vehicles.perception.apply"
+            )
+            if apply_count < 2:
+                raise AuditError(f"{us_id} requires at least two perception apply steps")
+            if "vehicles.perception.compare" not in observed_leaves:
+                raise AuditError(f"{us_id} requires perception compare command")
 
         cleanup = row["cleanup"]
         if not isinstance(cleanup, list):
@@ -514,6 +589,16 @@ def validate_sequences(
                 raise AuditError(
                     f"{us_id} cleanup {index} leaf {receipt.leaf_id} not in inventory"
                 )
+        cleanup_leaves = [
+            validate_argv(cmd, parser=parser, template_id=f"{us_id}.cleaf").leaf_id
+            for cmd in cleanup
+            if cmd
+        ]
+        for required in required_cleanup_leaves:
+            if required not in cleanup_leaves:
+                raise AuditError(
+                    f"{us_id} missing required cleanup leaf {required} from catalog"
+                )
 
     missing = sorted(set(catalog_by_id) - seen)
     if missing:
@@ -538,12 +623,27 @@ def _json_path(path: str | list[str], data: Any) -> Any:
     return cur
 
 
+def validate_frozen_claim_map(claim_map: dict[str, Any]) -> None:
+    """Require claim_map.json to match the independent frozen authority constant."""
+
+    if claim_map != FROZEN_CLAIM_MAP:
+        raise AuditError(
+            "claim_map.json must exactly match frozen_authority.FROZEN_CLAIM_MAP "
+            "(bindings/paths/predicates/source_pr cannot be reconfigured in-repo)"
+        )
+    for claim_id, claim in FROZEN_CLAIM_MAP["claims"].items():
+        preds = claim.get("predicates") or []
+        if not preds:
+            raise AuditError(f"frozen claim {claim_id} has empty predicates")
+
+
 def validate_semantic_cite(
     *,
     sequences: dict[str, Any],
     claim_map: dict[str, Any],
     repo_root: Path = ROOT,
 ) -> list[dict[str, Any]]:
+    validate_frozen_claim_map(claim_map)
     claims = claim_map.get("claims")
     if not isinstance(claims, dict):
         raise AuditError("claim_map.claims must be an object")
@@ -583,6 +683,9 @@ def validate_semantic_cite(
         claim = claims.get(claim_id)
         if not isinstance(claim, dict):
             raise AuditError(f"{us_id} unknown claim_map_id {claim_id!r}")
+        preds = claim.get("predicates") or []
+        if not preds:
+            raise AuditError(f"{us_id} claim {claim_id} predicates must be non-empty")
         allowed = claim.get("allowed_us_ids") or []
         if us_id not in allowed:
             raise AuditError(
@@ -594,6 +697,11 @@ def validate_semantic_cite(
                 f"{us_id} evidence.source_pr {evidence.get('source_pr')!r} "
                 f"!= claim source_pr {source_pr!r}"
             )
+        for field in ("source_commit", "disposition_set_by", "disposition_set_at"):
+            if not str(evidence.get(field) or "").strip():
+                raise AuditError(f"{us_id} evidence.{field} is required")
+        if re.fullmatch(r"[0-9a-f]{7,40}", str(evidence["source_commit"])) is None:
+            raise AuditError(f"{us_id} evidence.source_commit must be a git commit id")
         paths = claim.get("paths") or []
         if not paths:
             raise AuditError(f"claim {claim_id} has no paths")
@@ -920,6 +1028,7 @@ def run_audit(*, repo_root: Path = ROOT) -> dict[str, Any]:
         raise AuditError("claim_map.claims must be an object")
     if not isinstance(claim_map.get("us_claim_bindings"), dict):
         raise AuditError("claim_map.us_claim_bindings must be an object")
+    validate_frozen_claim_map(claim_map)
     _require_document_schema(
         residuals, "m007_live_residuals_v1", where="live_residuals"
     )

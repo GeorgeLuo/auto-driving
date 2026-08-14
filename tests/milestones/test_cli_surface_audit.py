@@ -165,7 +165,7 @@ class CliSurfaceAuditTests(unittest.TestCase):
             (TOOL / "sequence_registry.json").read_text(encoding="utf-8")
         )
         claim_map = json.loads((TOOL / "claim_map.json").read_text(encoding="utf-8"))
-        # Point US-04 claim paths at incomplete machine-only package with real digest.
+        # Mutating the claim map away from frozen authority must fail closed.
         bad_path = (
             "docs/milestones/007-cli-operator-usability/evidence/"
             "cli-scenario-continuity/machine-only-session/result.json"
@@ -183,7 +183,7 @@ class CliSurfaceAuditTests(unittest.TestCase):
                 claim_map=claim_map,
                 repo_root=ROOT,
             )
-        self.assertIn("predicate failed", str(ctx.exception).lower())
+        self.assertIn("frozen", str(ctx.exception).lower())
 
     def test_full_audit_pass(self) -> None:
         result = self.validate_audit.run_audit(repo_root=ROOT)
@@ -222,9 +222,13 @@ class CliSurfaceAuditTests(unittest.TestCase):
                 sequences=sequences,
                 leaf_ids=set(self.parser_walk.public_leaf_ids()),
             )
+        msg = str(ctx.exception).lower()
         self.assertTrue(
-            "not in inventory" in str(ctx.exception)
-            or "argv invalid" in str(ctx.exception)
+            "cleanup must equal" in msg
+            or "not in inventory" in msg
+            or "argv invalid" in msg
+            or "missing required cleanup" in msg,
+            msg,
         )
 
     def test_catalog_missing_source_fails(self) -> None:
@@ -302,6 +306,8 @@ class CliSurfaceAuditTests(unittest.TestCase):
         self.assertIn("primary_confirmation", str(ctx.exception))
 
     def test_absolute_cite_path_fails(self) -> None:
+        # Absolute path rejection is enforced inside cite validation; coordinated
+        # claim-map rewrites are also rejected by frozen-authority equality.
         sequences = json.loads(
             (TOOL / "sequence_registry.json").read_text(encoding="utf-8")
         )
@@ -326,7 +332,31 @@ class CliSurfaceAuditTests(unittest.TestCase):
                 claim_map=claim_map,
                 repo_root=ROOT,
             )
-        self.assertIn("repository-relative", str(ctx.exception).lower())
+        msg = str(ctx.exception).lower()
+        self.assertTrue(
+            "frozen" in msg or "repository-relative" in msg,
+            msg,
+        )
+
+    def test_command_template_must_match_catalog(self) -> None:
+        catalog = self.validate_audit.load_catalog()
+        cat_sha = self.validate_audit.catalog_digest()
+        sequences = json.loads(
+            (TOOL / "sequence_registry.json").read_text(encoding="utf-8")
+        )
+        for row in sequences["sequences"]:
+            if row["id"] == "US-03":
+                row["commands"] = [
+                    ["vehicles", "status", "--id", "{vehicle_id}"],
+                ]
+        with self.assertRaises(self.validate_audit.AuditError) as ctx:
+            self.validate_audit.validate_sequences(
+                catalog=catalog,
+                catalog_sha=cat_sha,
+                sequences=sequences,
+                leaf_ids=set(self.parser_walk.public_leaf_ids()),
+            )
+        self.assertIn("required_command_templates", str(ctx.exception))
 
     def test_live_residual_bogus_disposition_fails(self) -> None:
         sequences = json.loads(

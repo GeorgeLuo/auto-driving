@@ -1,9 +1,9 @@
 {
-  "catalog_digest": "7617a749828e6fa52ea2d6e8a32437e70d1c83e63648cbd9d7291b8049bd4d9f",
+  "catalog_digest": "568531e76e39edff85c7ad24b42a89d9324d9bc131c3200e690b02ebb5c76216",
   "schema": "m007_sequence_registry_v1",
   "sequences": [
     {
-      "catalog_digest": "7617a749828e6fa52ea2d6e8a32437e70d1c83e63648cbd9d7291b8049bd4d9f",
+      "catalog_digest": "568531e76e39edff85c7ad24b42a89d9324d9bc131c3200e690b02ebb5c76216",
       "cleanup": [],
       "commands": [
         [
@@ -30,8 +30,11 @@
         "digests": {
           "docs/milestones/007-cli-operator-usability/evidence/live-cli-acceptance/result.json": "d9656ddb1bad6720bf3b6dd5d2d2fbc5f0d1c2204c9e82883c56e9772d53dcf1"
         },
+        "disposition_set_at": "2026-08-14T09:30:00Z",
+        "disposition_set_by": "m007-cli-surface-audit-implementer",
         "evidence_mode": "cited",
         "head_claim": "historical",
+        "source_commit": "5d7c35e7fd593c0d4b99e84d05f4a8c37a0be322",
         "source_pr": 88
       },
       "execution": "machine_only",
@@ -44,7 +47,7 @@
       "source_us_id": "US-01"
     },
     {
-      "catalog_digest": "7617a749828e6fa52ea2d6e8a32437e70d1c83e63648cbd9d7291b8049bd4d9f",
+      "catalog_digest": "568531e76e39edff85c7ad24b42a89d9324d9bc131c3200e690b02ebb5c76216",
       "cleanup": [
         [
           "vehicles",
@@ -112,23 +115,35 @@
         "digests": {
           "docs/milestones/007-cli-operator-usability/evidence/live-cli-acceptance/result.json": "d9656ddb1bad6720bf3b6dd5d2d2fbc5f0d1c2204c9e82883c56e9772d53dcf1"
         },
+        "disposition_set_at": "2026-08-14T09:30:00Z",
+        "disposition_set_by": "m007-cli-surface-audit-implementer",
         "evidence_mode": "cited",
         "head_claim": "historical",
+        "source_commit": "5d7c35e7fd593c0d4b99e84d05f4a8c37a0be322",
         "source_pr": 88
       },
       "execution": "hitl",
       "id": "US-02",
       "operator_outcome": "Reach a healthy passive camera/perception view and cleanly stop",
       "operator_question": "Can an operator attach to the existing Chase session, see current perception, and leave no worker running without changing simulator state?",
-      "prerequisites": "Metrics UI Chase vehicle exposed at localhost:5050",
+      "prerequisites": "Metrics UI Chase vehicle at localhost:5050",
       "primary_confirmation": "CLI prints `Ready for: inspect perception and stop automation`; final status reports stopped",
       "safety_class": "live_mutation",
       "source_us_id": "US-02"
     },
     {
-      "catalog_digest": "7617a749828e6fa52ea2d6e8a32437e70d1c83e63648cbd9d7291b8049bd4d9f",
+      "catalog_digest": "568531e76e39edff85c7ad24b42a89d9324d9bc131c3200e690b02ebb5c76216",
       "cleanup": [],
       "commands": [
+        [
+          "vehicles",
+          "update",
+          "perception",
+          "--id",
+          "{vehicle_id}",
+          "--algorithm",
+          "lightweight_observer"
+        ],
         [
           "vehicles",
           "perception",
@@ -149,6 +164,31 @@
           "--algorithm",
           "lightweight_observer",
           "--record"
+        ],
+        [
+          "vehicles",
+          "perception",
+          "apply",
+          "{src_dir}",
+          "--algorithm",
+          "sim_debug",
+          "--record"
+        ],
+        [
+          "vehicles",
+          "perception",
+          "apply",
+          "{src_dir}",
+          "--algorithm",
+          "visual_observer",
+          "--record"
+        ],
+        [
+          "vehicles",
+          "perception",
+          "compare",
+          "{src_dir}",
+          "--record"
         ]
       ],
       "completeness": "evidenced",
@@ -162,21 +202,125 @@
         "digests": {
           "docs/milestones/007-cli-operator-usability/evidence/cli-scenario-continuity/result.json": "72b579bbf29a5dc58cabbb3e03ee325b32330f2b260cddc407589448f34a2c85"
         },
+        "disposition_set_at": "2026-08-14T09:30:00Z",
+        "disposition_set_by": "m007-cli-surface-audit-implementer",
         "evidence_mode": "cited",
         "head_claim": "historical",
+        "source_commit": "5d7c35e7fd593c0d4b99e84d05f4a8c37a0be322",
         "source_pr": 100
       },
       "execution": "machine_only",
       "id": "US-03",
       "operator_outcome": "Capture once and compare perception implementations on the same frames",
       "operator_question": "Which packaged algorithm or ready candidate produces the most useful representation on the exact same captured frames?",
-      "prerequisites": "Chase vehicle; offline capture/apply path available",
+      "prerequisites": "Chase vehicle; offline capture/apply/compare path",
       "primary_confirmation": "Compact human experiment summary / candidate comparison table",
       "safety_class": "local_write",
       "source_us_id": "US-03"
     },
     {
-      "catalog_digest": "7617a749828e6fa52ea2d6e8a32437e70d1c83e63648cbd9d7291b8049bd4d9f",
+      "catalog_digest": "568531e76e39edff85c7ad24b42a89d9324d9bc131c3200e690b02ebb5c76216",
+      "cleanup": [
+        [
+          "vehicles",
+          "automation",
+          "stop",
+          "--id",
+          "{vehicle_id}"
+        ],
+        [
+          "vehicles",
+          "perception",
+          "enable",
+          "--id",
+          "{vehicle_id}",
+          "motion_tracks"
+        ]
+      ],
+      "commands": [
+        [
+          "vehicles",
+          "automation",
+          "stop",
+          "--id",
+          "{vehicle_id}"
+        ],
+        [
+          "vehicles",
+          "update",
+          "perception",
+          "--id",
+          "{vehicle_id}",
+          "--algorithm",
+          "visual_observer"
+        ],
+        [
+          "vehicles",
+          "automation",
+          "run",
+          "--id",
+          "{vehicle_id}",
+          "--observe-only",
+          "--frames",
+          "0",
+          "--open-view"
+        ],
+        [
+          "vehicles",
+          "automation",
+          "stop",
+          "--id",
+          "{vehicle_id}"
+        ],
+        [
+          "vehicles",
+          "perception",
+          "disable",
+          "--id",
+          "{vehicle_id}",
+          "motion_tracks"
+        ],
+        [
+          "vehicles",
+          "automation",
+          "run",
+          "--id",
+          "{vehicle_id}",
+          "--observe-only",
+          "--frames",
+          "0",
+          "--open-view"
+        ]
+      ],
+      "completeness": "evidenced",
+      "coverage": {
+        "evidence": "continuity.live_config_swap contexts in #107",
+        "value": "measured"
+      },
+      "disposition": "passed",
+      "evidence": {
+        "claim_map_id": "continuity_live_config_swap",
+        "digests": {
+          "docs/milestones/007-cli-operator-usability/evidence/cli-scenario-continuity/result.json": "72b579bbf29a5dc58cabbb3e03ee325b32330f2b260cddc407589448f34a2c85"
+        },
+        "disposition_set_at": "2026-08-14T09:30:00Z",
+        "disposition_set_by": "m007-cli-surface-audit-implementer",
+        "evidence_mode": "cited",
+        "head_claim": "historical",
+        "source_commit": "5d7c35e7fd593c0d4b99e84d05f4a8c37a0be322",
+        "source_pr": 100
+      },
+      "execution": "hitl",
+      "id": "US-04",
+      "operator_outcome": "Swap a live algorithm/plugin configuration in the same simulator environment",
+      "operator_question": "What visibly changes when an operator swaps perception configuration while preserving the same running simulator environment?",
+      "prerequisites": "Chase vehicle; plugin enable/disable with worker restart",
+      "primary_confirmation": "Restart reaches Ready for:; plugin list matches the staged configuration",
+      "safety_class": "live_mutation",
+      "source_us_id": "US-04"
+    },
+    {
+      "catalog_digest": "568531e76e39edff85c7ad24b42a89d9324d9bc131c3200e690b02ebb5c76216",
       "cleanup": [
         [
           "vehicles",
@@ -194,7 +338,16 @@
           "--id",
           "{vehicle_id}",
           "--algorithm",
-          "lightweight_observer"
+          "visual_observer"
+        ],
+        [
+          "vehicles",
+          "update",
+          "memory",
+          "--id",
+          "{vehicle_id}",
+          "--implementation",
+          "bounded_evidence"
         ],
         [
           "vehicles",
@@ -209,52 +362,19 @@
         ],
         [
           "vehicles",
-          "status",
+          "stream",
+          "memory",
           "--id",
-          "{vehicle_id}"
+          "{vehicle_id}",
+          "--once"
         ],
-        [
-          "vehicles",
-          "automation",
-          "stop",
-          "--id",
-          "{vehicle_id}"
-        ]
-      ],
-      "completeness": "evidenced",
-      "coverage": {
-        "evidence": "continuity.live_config_swap contexts in #107",
-        "value": "measured"
-      },
-      "disposition": "passed",
-      "evidence": {
-        "claim_map_id": "continuity_live_config_swap",
-        "digests": {
-          "docs/milestones/007-cli-operator-usability/evidence/cli-scenario-continuity/result.json": "72b579bbf29a5dc58cabbb3e03ee325b32330f2b260cddc407589448f34a2c85"
-        },
-        "evidence_mode": "cited",
-        "head_claim": "historical",
-        "source_pr": 100
-      },
-      "execution": "hitl",
-      "id": "US-04",
-      "operator_outcome": "Swap a live algorithm/plugin configuration in the same simulator environment",
-      "operator_question": "Can an operator swap a live algorithm/plugin configuration in the same simulator environment and restore prior activation?",
-      "prerequisites": "Chase vehicle; restorable activation snapshot support",
-      "primary_confirmation": "Restart reaches Ready for:; plugin list matches the staged configuration",
-      "safety_class": "live_mutation",
-      "source_us_id": "US-04"
-    },
-    {
-      "catalog_digest": "7617a749828e6fa52ea2d6e8a32437e70d1c83e63648cbd9d7291b8049bd4d9f",
-      "cleanup": [],
-      "commands": [
         [
           "vehicles",
           "memory",
           "check",
           "--id",
-          "{vehicle_id}"
+          "{vehicle_id}",
+          "--record"
         ]
       ],
       "completeness": "evidenced",
@@ -268,21 +388,24 @@
         "digests": {
           "docs/milestones/007-cli-operator-usability/evidence/cli-scenario-continuity/result.json": "72b579bbf29a5dc58cabbb3e03ee325b32330f2b260cddc407589448f34a2c85"
         },
+        "disposition_set_at": "2026-08-14T09:30:00Z",
+        "disposition_set_by": "m007-cli-surface-audit-implementer",
         "evidence_mode": "cited",
         "head_claim": "historical",
+        "source_commit": "5d7c35e7fd593c0d4b99e84d05f4a8c37a0be322",
         "source_pr": 100
       },
-      "execution": "machine_only",
+      "execution": "hitl",
       "id": "US-05",
       "operator_outcome": "Confirm real perception becomes bounded, attributable memory",
-      "operator_question": "Does real perception become bounded, attributable memory with a concise PASS/FAIL check?",
-      "prerequisites": "Chase vehicle with memory stage available",
+      "operator_question": "Does selected perception become attributable retained evidence, survive brief dropout, expire, and reset without movement?",
+      "prerequisites": "Chase vehicle; memory stage; observe-only automation",
       "primary_confirmation": "Final Memory check: chase-sim-chaser PASS/FAIL",
-      "safety_class": "observe_only",
+      "safety_class": "live_mutation",
       "source_us_id": "US-05"
     },
     {
-      "catalog_digest": "7617a749828e6fa52ea2d6e8a32437e70d1c83e63648cbd9d7291b8049bd4d9f",
+      "catalog_digest": "568531e76e39edff85c7ad24b42a89d9324d9bc131c3200e690b02ebb5c76216",
       "cleanup": [
         [
           "vehicles",
@@ -290,6 +413,14 @@
           "stop",
           "--id",
           "{vehicle_id}"
+        ],
+        [
+          "vehicles",
+          "perception",
+          "enable",
+          "--id",
+          "{vehicle_id}",
+          "motion_tracks"
         ]
       ],
       "commands": [
@@ -317,7 +448,8 @@
           "memory",
           "check",
           "--id",
-          "{vehicle_id}"
+          "{vehicle_id}",
+          "--record"
         ],
         [
           "vehicles",
@@ -329,23 +461,23 @@
       ],
       "completeness": "template",
       "coverage": {
-        "reason": "Optional US-06 family not in required #107 journey set",
+        "reason": "Optional US-06 family not sealed as required #107 journey",
         "value": "unmeasured"
       },
       "disposition": "deferred",
       "execution": "hitl",
       "id": "US-06",
       "operator_outcome": "Ablate motion tracking and observe downstream memory differences",
-      "operator_question": "Can motion tracking be ablated to observe downstream memory differences?",
+      "operator_question": "Does motion tracking add useful temporal evidence, or mainly add record churn and capacity pressure?",
       "owner": "cli-perception-plugins",
-      "prerequisites": "Plugin disable/enable path and two observe-only trials",
+      "prerequisites": "Plugin disable/enable and two observe-only trials",
       "primary_confirmation": "Both trials reach readiness and the lifecycle check gives a concise verdict",
       "safety_class": "live_mutation",
       "source_us_id": "US-06",
-      "unlock": "When a stable observe-only ablation sequence is sealed with machine-first and HITL evidence under continuity.plugin_ablation or a successor unit"
+      "unlock": "When ablation sequence is sealed with machine-first/HITL under continuity.plugin_ablation or successor"
     },
     {
-      "catalog_digest": "7617a749828e6fa52ea2d6e8a32437e70d1c83e63648cbd9d7291b8049bd4d9f",
+      "catalog_digest": "568531e76e39edff85c7ad24b42a89d9324d9bc131c3200e690b02ebb5c76216",
       "cleanup": [
         [
           "vehicles",
@@ -365,6 +497,8 @@
           "--observe-only",
           "--frames",
           "0",
+          "--interval-s",
+          "0.02",
           "--open-view"
         ],
         [
@@ -376,33 +510,56 @@
         ],
         [
           "vehicles",
+          "stream",
+          "memory",
+          "--id",
+          "{vehicle_id}",
+          "--once"
+        ],
+        [
+          "vehicles",
           "automation",
           "stop",
+          "--id",
+          "{vehicle_id}"
+        ],
+        [
+          "vehicles",
+          "automation",
+          "status",
           "--id",
           "{vehicle_id}"
         ]
       ],
       "completeness": "template",
       "coverage": {
-        "reason": "Optional US-07 family not in required #107 journey set",
+        "reason": "Optional US-07 family not sealed as required #107 journey",
         "value": "unmeasured"
       },
       "disposition": "deferred",
       "execution": "hitl",
       "id": "US-07",
       "operator_outcome": "Observe whether slow perception makes temporal memory ineffective",
-      "operator_question": "Does slow perception make temporal memory ineffective in a human-visible way?",
+      "operator_question": "Can an expensive observer keep overlays and memory useful at the requested capture cadence?",
       "owner": "cli-automation-status",
-      "prerequisites": "Ability to induce or observe perception backpressure without movement",
+      "prerequisites": "Ability to observe backpressure without movement",
       "primary_confirmation": "Human automation status exposes captured, processed, and skipped on one run line",
       "safety_class": "live_mutation",
       "source_us_id": "US-07",
-      "unlock": "When a temporal backpressure sequence is sealed with human-visible captured/processed/skipped cues"
+      "unlock": "When temporal backpressure sequence is sealed with captured/processed/skipped cues"
     },
     {
-      "catalog_digest": "7617a749828e6fa52ea2d6e8a32437e70d1c83e63648cbd9d7291b8049bd4d9f",
+      "catalog_digest": "568531e76e39edff85c7ad24b42a89d9324d9bc131c3200e690b02ebb5c76216",
       "cleanup": [],
       "commands": [
+        [
+          "vehicles",
+          "stream",
+          "memory",
+          "--id",
+          "{vehicle_id}",
+          "--once"
+        ],
         [
           "vehicles",
           "memory",
@@ -412,10 +569,11 @@
         ],
         [
           "vehicles",
+          "stream",
           "memory",
-          "check",
           "--id",
-          "{vehicle_id}"
+          "{vehicle_id}",
+          "--once"
         ]
       ],
       "completeness": "evidenced",
@@ -429,77 +587,93 @@
         "digests": {
           "docs/milestones/007-cli-operator-usability/evidence/cli-scenario-continuity/result.json": "72b579bbf29a5dc58cabbb3e03ee325b32330f2b260cddc407589448f34a2c85"
         },
+        "disposition_set_at": "2026-08-14T09:30:00Z",
+        "disposition_set_by": "m007-cli-surface-audit-implementer",
         "evidence_mode": "cited",
         "head_claim": "historical",
+        "source_commit": "5d7c35e7fd593c0d4b99e84d05f4a8c37a0be322",
         "source_pr": 100
       },
       "execution": "machine_only",
       "id": "US-08",
       "operator_outcome": "Recover from suspicious retained evidence",
-      "operator_question": "Can an operator recover from suspicious retained evidence via reset and repopulation?",
-      "prerequisites": "Memory stage with reset operator path",
+      "operator_question": "Can an operator clear suspect memory and observe current perception repopulate a new epoch?",
+      "prerequisites": "Running memory stage / automation from US-05 class path",
       "primary_confirmation": "Reset output shows Keys: N -> 0 and Epoch: old -> new",
       "safety_class": "live_mutation",
       "source_us_id": "US-08"
     },
     {
-      "catalog_digest": "7617a749828e6fa52ea2d6e8a32437e70d1c83e63648cbd9d7291b8049bd4d9f",
+      "catalog_digest": "568531e76e39edff85c7ad24b42a89d9324d9bc131c3200e690b02ebb5c76216",
       "cleanup": [],
       "commands": [
         [
           "vehicles",
           "memory",
           "replay",
+          "{record_dir}",
           "--id",
           "{vehicle_id}",
-          "{record_dir}"
+          "--implementation",
+          "bounded_evidence",
+          "--record"
         ]
       ],
       "completeness": "template",
       "coverage": {
-        "reason": "Optional US-09 family not in required #107 journey set",
+        "reason": "Optional US-09 family not sealed as required #107 journey",
         "value": "unmeasured"
       },
       "disposition": "deferred",
       "execution": "machine_only",
       "id": "US-09",
       "operator_outcome": "Freeze and reproduce a live memory anomaly",
-      "operator_question": "Can a live memory anomaly be frozen and reproduced deterministically?",
+      "operator_question": "Can an unexpected live memory outcome be reproduced deterministically offline?",
       "owner": "cli-memory-replay",
-      "prerequisites": "Recorded memory provenance extract available for replay",
+      "prerequisites": "Record directory from memory check",
       "primary_confirmation": "Replay prints Deterministic: yes (two independent passes matched)",
       "safety_class": "local_write",
       "source_us_id": "US-09",
-      "unlock": "When a deterministic memory replay sequence is sealed with Deterministic: yes confirmation under continuity.memory_replay or successor"
+      "unlock": "When deterministic memory replay is sealed with Deterministic: yes confirmation"
     },
     {
-      "catalog_digest": "7617a749828e6fa52ea2d6e8a32437e70d1c83e63648cbd9d7291b8049bd4d9f",
+      "catalog_digest": "568531e76e39edff85c7ad24b42a89d9324d9bc131c3200e690b02ebb5c76216",
       "cleanup": [],
       "commands": [
         [
           "vehicles",
           "perception",
+          "check",
+          "--id",
+          "{vehicle_id}",
+          "--record"
+        ],
+        [
+          "vehicles",
+          "perception",
           "qualify",
           "--from-check-run",
-          "{record_dir}"
+          "{record_dir}",
+          "--candidate",
+          "floor_continuity"
         ]
       ],
       "completeness": "template",
       "coverage": {
-        "reason": "Physical labeled qualification is outside measured CLI journey coverage for M007-08",
+        "reason": "Physical labeled qualification outside measured M007-08 journey coverage",
         "value": "not_applicable"
       },
       "disposition": "blocked",
       "execution": "blocked",
       "id": "US-10",
       "operator_outcome": "Qualify a candidate on labeled physical-check frames",
-      "operator_question": "Can a candidate be qualified on labeled physical-check frames with a promote/reject verdict?",
+      "operator_question": "Does a ready candidate materially improve labeled physical-check behavior without unacceptable regressions?",
       "owner": "physical-perception-lab",
-      "prerequisites": "Labeled physical-check frame corpus",
+      "prerequisites": "Labeled physical-check frames and ready candidate",
       "primary_confirmation": "First line says promote_candidate or reject_keep_control",
       "safety_class": "hazardous_external",
       "source_us_id": "US-10",
-      "unlock": "When a labeled physical-check corpus path is available and a non-destructive qualify sequence is sealed"
+      "unlock": "When labeled physical-check corpus exists and non-destructive qualify sequence is sealed"
     }
   ]
 }

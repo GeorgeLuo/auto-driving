@@ -8,16 +8,16 @@
 - Help drift: ok
 
 ## Deferred / blocked
-- `US-06` deferred: owner=cli-perception-plugins; unlock=When a stable observe-only ablation sequence is sealed with machine-first and HITL evidence under continuity.plugin_ablation or a successor unit
-- `US-07` deferred: owner=cli-automation-status; unlock=When a temporal backpressure sequence is sealed with human-visible captured/processed/skipped cues
-- `US-09` deferred: owner=cli-memory-replay; unlock=When a deterministic memory replay sequence is sealed with Deterministic: yes confirmation under continuity.memory_replay or successor
-- `US-10` blocked: owner=physical-perception-lab; unlock=When a labeled physical-check corpus path is available and a non-destructive qualify sequence is sealed
+- `US-06` deferred: owner=cli-perception-plugins; unlock=When ablation sequence is sealed with machine-first/HITL under continuity.plugin_ablation or successor
+- `US-07` deferred: owner=cli-automation-status; unlock=When temporal backpressure sequence is sealed with captured/processed/skipped cues
+- `US-09` deferred: owner=cli-memory-replay; unlock=When deterministic memory replay is sealed with Deterministic: yes confirmation
+- `US-10` blocked: owner=physical-perception-lab; unlock=When labeled physical-check corpus exists and non-destructive qualify sequence is sealed
 
 ## Coverage residuals (unmeasured / not_applicable)
-- `US-06` coverage=unmeasured: Optional US-06 family not in required #107 journey set
-- `US-07` coverage=unmeasured: Optional US-07 family not in required #107 journey set
-- `US-09` coverage=unmeasured: Optional US-09 family not in required #107 journey set
-- `US-10` coverage=not_applicable: Physical labeled qualification is outside measured CLI journey coverage for M007-08
+- `US-06` coverage=unmeasured: Optional US-06 family not sealed as required #107 journey
+- `US-07` coverage=unmeasured: Optional US-07 family not sealed as required #107 journey
+- `US-09` coverage=unmeasured: Optional US-09 family not sealed as required #107 journey
+- `US-10` coverage=not_applicable: Physical labeled qualification outside measured M007-08 journey coverage
 
 ## LIVE residuals
 - `M007-LIVE-001` deferred owner=cli-perception-apply

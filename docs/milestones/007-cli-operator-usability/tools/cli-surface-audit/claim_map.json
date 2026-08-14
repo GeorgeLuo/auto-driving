@@ -32,7 +32,8 @@
           "path": "hitl_complete"
         }
       ],
-      "source_pr": 100
+      "source_pr": 100,
+      "source_result_schema": "m007_cli_scenario_continuity_v0"
     },
     "continuity_memory_lifecycle": {
       "allowed_us_ids": [
@@ -63,7 +64,8 @@
           "path": "hitl_complete"
         }
       ],
-      "source_pr": 100
+      "source_pr": 100,
+      "source_result_schema": "m007_cli_scenario_continuity_v0"
     },
     "continuity_offline_perception": {
       "allowed_us_ids": [
@@ -97,7 +99,8 @@
           "path": "hitl_complete"
         }
       ],
-      "source_pr": 100
+      "source_pr": 100,
+      "source_result_schema": "m007_cli_scenario_continuity_v0"
     },
     "us01_us02_live_acceptance": {
       "allowed_us_ids": [
@@ -121,7 +124,8 @@
           "path": "cleanup.worker_stopped"
         }
       ],
-      "source_pr": 88
+      "source_pr": 88,
+      "source_result_schema": "m007_live_cli_acceptance_v1"
     }
   },
   "schema": "m007_claim_map_v1",

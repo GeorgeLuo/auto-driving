@@ -213,7 +213,7 @@
     "vehicles.memory.check": {
       "kind": "action",
       "open_finding_links": [],
-      "output_contract": "PASS/FAIL lifecycle verdict; optional --json and record extract.",
+      "output_contract": "PASS/FAIL lifecycle verdict and optional record extract. Supports --json.",
       "owning_boundary": "cli/automa_cli/memory_check.py",
       "prerequisites": "Repository checkout; Metrics UI when live",
       "safety_class": "live_mutation",

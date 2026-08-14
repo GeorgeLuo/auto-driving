@@ -434,16 +434,32 @@
     {
       "argv": [
         "vehicles",
+        "update",
         "perception",
-        "disable",
         "--id",
         "chase-sim-chaser",
-        "motion_tracks"
+        "--algorithm",
+        "visual_observer"
       ],
-      "leaf_id": "vehicles.perception.disable",
+      "leaf_id": "vehicles.update.perception",
       "ok": true,
       "reason": "ok",
       "template_id": "US-06.cmd-00"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "update",
+        "memory",
+        "--id",
+        "chase-sim-chaser",
+        "--implementation",
+        "bounded_evidence"
+      ],
+      "leaf_id": "vehicles.update.memory",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-06.cmd-01"
     },
     {
       "argv": [
@@ -460,7 +476,7 @@
       "leaf_id": "vehicles.automation.run",
       "ok": true,
       "reason": "ok",
-      "template_id": "US-06.cmd-01"
+      "template_id": "US-06.cmd-02"
     },
     {
       "argv": [
@@ -474,7 +490,7 @@
       "leaf_id": "vehicles.memory.check",
       "ok": true,
       "reason": "ok",
-      "template_id": "US-06.cmd-02"
+      "template_id": "US-06.cmd-03"
     },
     {
       "argv": [
@@ -487,7 +503,65 @@
       "leaf_id": "vehicles.automation.stop",
       "ok": true,
       "reason": "ok",
-      "template_id": "US-06.cmd-03"
+      "template_id": "US-06.cmd-04"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "perception",
+        "disable",
+        "--id",
+        "chase-sim-chaser",
+        "motion_tracks"
+      ],
+      "leaf_id": "vehicles.perception.disable",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-06.cmd-05"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "automation",
+        "run",
+        "--id",
+        "chase-sim-chaser",
+        "--observe-only",
+        "--frames",
+        "0",
+        "--open-view"
+      ],
+      "leaf_id": "vehicles.automation.run",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-06.cmd-06"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "memory",
+        "check",
+        "--id",
+        "chase-sim-chaser",
+        "--record"
+      ],
+      "leaf_id": "vehicles.memory.check",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-06.cmd-07"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "automation",
+        "stop",
+        "--id",
+        "chase-sim-chaser"
+      ],
+      "leaf_id": "vehicles.automation.stop",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-06.cmd-08"
     },
     {
       "argv": [
@@ -566,6 +640,33 @@
       "argv": [
         "vehicles",
         "automation",
+        "status",
+        "--id",
+        "chase-sim-chaser"
+      ],
+      "leaf_id": "vehicles.automation.status",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-07.cmd-03"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "stream",
+        "memory",
+        "--id",
+        "chase-sim-chaser",
+        "--once"
+      ],
+      "leaf_id": "vehicles.stream.memory",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-07.cmd-04"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "automation",
         "stop",
         "--id",
         "chase-sim-chaser"
@@ -573,7 +674,7 @@
       "leaf_id": "vehicles.automation.stop",
       "ok": true,
       "reason": "ok",
-      "template_id": "US-07.cmd-03"
+      "template_id": "US-07.cmd-05"
     },
     {
       "argv": [
@@ -586,7 +687,7 @@
       "leaf_id": "vehicles.automation.status",
       "ok": true,
       "reason": "ok",
-      "template_id": "US-07.cmd-04"
+      "template_id": "US-07.cmd-06"
     },
     {
       "argv": [
@@ -691,7 +792,7 @@
   ],
   "catalog": {
     "path": "docs/milestones/007-cli-operator-usability/tools/cli-surface-audit/us88_catalog.json",
-    "sha256": "2220fabdf91390d2c04ae9448a14a54723a1103d324a31f03c2281b1c7cd5034",
+    "sha256": "c2361c6ffc983efb64fc367ccc2a5bdc5b5961d14ba37ae700accd3b8f17beb8",
     "source": {
       "comment_id": 5169077892,
       "title": "Prospective README appendix: usage sequences and human confirmation",
@@ -881,7 +982,7 @@
     ],
     "inventory_sha256": "f5c1be987cdd809cf1ed9836df685b4793b3766ad34273a968113f4600586652",
     "meta_count": 10,
-    "overlay_sha256": "395dd60c1f14c8e019e8e7354342d17de9101aa591b5043062463cb90ca4fc9f"
+    "overlay_sha256": "aa5b5eba1e3ae84a3508fa07e84f0cc3181236f95df72a08c0f439e7de18c7ac"
   },
   "live_residuals": [
     {
@@ -973,6 +1074,6 @@
       "US-09": "deferred",
       "US-10": "blocked"
     },
-    "registry_sha256": "02db50c99500a5dd177d3bc839b4ab809e1dff3ba88975602270629b974851aa"
+    "registry_sha256": "9204a752e443980631d3197465ae62563657f1853e2b4712efd7f33ce82733dc"
   }
 }

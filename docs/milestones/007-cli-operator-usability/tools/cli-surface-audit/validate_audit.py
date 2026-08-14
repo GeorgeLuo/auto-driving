@@ -91,6 +91,52 @@ DETERMINISTIC_LEAVES = {
     "vehicles.perception.compare",
 }
 LEAF_KINDS = {"action", "meta"}
+JSON_CAPABLE_SENTENCE = "Supports --json."
+JSON_ABSENT_SENTENCE = "No --json flag on this leaf."
+_JSON_NEGATIVE_CLAIM = re.compile(
+    r"\bno\s+--json\b|\bwithout\s+--json\b|"
+    r"\bdoes\s+not\s+support\s+--json\b|\blacks\s+--json\b",
+    re.I,
+)
+_JSON_POSITIVE_CLAIM = re.compile(
+    r"\bsupports\s+--json\b|\boptional\s+--json\b",
+    re.I,
+)
+
+
+def assert_json_output_contract(leaf_id: str, out: Any, *, parser_json: bool) -> None:
+    """Require argparse-derived JSON capability in the human output contract.
+
+    Token presence of ``--json`` is not enough: negative prose on a capable
+    leaf, or positive prose on a non-capable leaf, is a contradiction.
+    """
+
+    if not isinstance(out, str) or not out.strip():
+        raise AuditError(f"overlay {leaf_id}.output_contract must be non-empty")
+    negative = bool(_JSON_NEGATIVE_CLAIM.search(out))
+    positive = bool(_JSON_POSITIVE_CLAIM.search(out))
+    if parser_json:
+        if negative:
+            raise AuditError(
+                f"overlay {leaf_id} output_contract denies --json but argparse "
+                "declares --json"
+            )
+        if JSON_CAPABLE_SENTENCE not in out:
+            raise AuditError(
+                f"overlay {leaf_id} output_contract must include "
+                f"{JSON_CAPABLE_SENTENCE!r} when argparse has --json"
+            )
+    else:
+        if positive:
+            raise AuditError(
+                f"overlay {leaf_id} output_contract claims --json but argparse "
+                "has no --json"
+            )
+        if JSON_ABSENT_SENTENCE not in out:
+            raise AuditError(
+                f"overlay {leaf_id} output_contract must include "
+                f"{JSON_ABSENT_SENTENCE!r} when argparse has no --json"
+            )
 DISPOSITIONS = {"passed", "ready", "blocked", "deferred"}
 COMPLETENESS = {"stub", "template", "catalog_ready", "evidenced"}
 COVERAGE = {"measured", "unmeasured", "not_applicable"}
@@ -257,6 +303,7 @@ def load_catalog(
                     raise AuditError(
                         f"catalog {us_id}.command_deltas[{i}].{key} required"
                     )
+    validate_source_command_shapes(data)
     digest = catalog_digest(path)
     anchor = anchor_path or path.with_name("us88_catalog.sha256")
     if not anchor.is_file():
@@ -267,6 +314,91 @@ def load_catalog(
             f"catalog digest {digest[:12]} != committed anchor {anchored[:12]}"
         )
     return data
+
+
+
+def _cmd_prefix(cmd: list[Any], n: int) -> list[str]:
+    return [str(part) for part in cmd[:n]]
+
+
+def validate_source_command_shapes(catalog: dict[str, Any]) -> None:
+    """Fail closed if frozen/catalog templates drop #88 narrative steps.
+
+    These invariants are derived from ``us88_source.md`` and live outside
+    ``FROZEN_US_TEMPLATES`` so duplicating an omission into both JSON and
+    frozen constants cannot pass.
+    """
+
+    by_id = {entry["id"]: entry for entry in catalog["entries"]}
+
+    us06 = by_id["US-06"]
+    cmds = us06["required_command_templates"]
+    checks = [
+        cmd
+        for cmd in cmds
+        if _cmd_prefix(cmd, 3) == ["vehicles", "memory", "check"] and "--record" in cmd
+    ]
+    if len(checks) < 2:
+        raise AuditError(
+            "US-06 source shape requires two memory check --record trials"
+        )
+    try:
+        disable_idx = next(
+            i
+            for i, cmd in enumerate(cmds)
+            if _cmd_prefix(cmd, 3) == ["vehicles", "perception", "disable"]
+            and "motion_tracks" in cmd
+        )
+    except StopIteration as exc:
+        raise AuditError("US-06 source shape requires disable motion_tracks") from exc
+    if not any(
+        _cmd_prefix(cmd, 3) == ["vehicles", "automation", "stop"]
+        for cmd in cmds[:disable_idx]
+    ):
+        raise AuditError(
+            "US-06 source shape requires stop of the US-05 baseline before disable"
+        )
+    after = cmds[disable_idx + 1 :]
+    if not any(_cmd_prefix(cmd, 3) == ["vehicles", "automation", "run"] for cmd in after):
+        raise AuditError("US-06 source shape requires restart after disable")
+    if not any(
+        _cmd_prefix(cmd, 3) == ["vehicles", "memory", "check"] for cmd in after
+    ):
+        raise AuditError("US-06 source shape requires repeated memory check after disable")
+    if not any(
+        _cmd_prefix(cmd, 3) == ["vehicles", "perception", "enable"]
+        and "motion_tracks" in cmd
+        for cmd in us06["required_cleanup_templates"]
+    ):
+        raise AuditError("US-06 source shape requires cleanup restore of motion_tracks")
+
+    us07 = by_id["US-07"]
+    cmds = us07["required_command_templates"]
+    try:
+        first_stop = next(
+            i
+            for i, cmd in enumerate(cmds)
+            if _cmd_prefix(cmd, 3) == ["vehicles", "automation", "stop"]
+        )
+    except StopIteration as exc:
+        raise AuditError("US-07 source shape requires an automation stop") from exc
+    pre = cmds[:first_stop]
+    n_status = sum(
+        1 for cmd in pre if _cmd_prefix(cmd, 3) == ["vehicles", "automation", "status"]
+    )
+    n_mem = sum(
+        1 for cmd in pre if _cmd_prefix(cmd, 3) == ["vehicles", "stream", "memory"]
+    )
+    if n_status < 2 or n_mem < 2:
+        raise AuditError(
+            "US-07 source shape requires both pre-stop inspection rounds "
+            "(status + memory stream, repeated after an operator interval)"
+        )
+    if not any(
+        _cmd_prefix(cmd, 3) == ["vehicles", "automation", "run"] and "--interval-s" in cmd
+        for cmd in cmds
+    ):
+        raise AuditError("US-07 source shape requires run --interval-s from #88")
 
 
 def validate_leaf_inventory_document(
@@ -490,24 +622,13 @@ def validate_overlay(
                 continue
             if field == "output_contract":
                 out = row[field]
-                if not isinstance(out, str) or not out.strip():
-                    raise AuditError(
-                        f"overlay {leaf_id}.output_contract must be non-empty"
-                    )
                 supports = row.get("supports_json")
                 if not isinstance(supports, bool):
                     raise AuditError(
                         f"overlay {leaf_id}.supports_json bool is required"
                     )
-                mentions_json = bool(re.search(r"--json", out))
-                if supports and not mentions_json:
-                    raise AuditError(
-                        f"overlay {leaf_id} supports --json but output_contract omits it"
-                    )
-                if not supports and re.search(r"optional --json|Supports --json", out):
-                    raise AuditError(
-                        f"overlay {leaf_id} claims --json but parser has no --json"
-                    )
+                # Provisional vs overlay boolean; argparse check below is authority.
+                assert_json_output_contract(leaf_id, out, parser_json=supports)
                 continue
             if field == "owning_boundary":
                 owner = row[field]
@@ -550,18 +671,7 @@ def validate_overlay(
                 f"argparse --json presence={parser_json}"
             )
         out = row.get("output_contract")
-        if isinstance(out, str):
-            mentions_json = bool(re.search(r"--json", out))
-            if parser_json and not mentions_json:
-                raise AuditError(
-                    f"overlay {leaf_id} argparse has --json but output_contract omits it"
-                )
-            if not parser_json and re.search(
-                r"Supports --json|optional --json", out, re.I
-            ):
-                raise AuditError(
-                    f"overlay {leaf_id} claims Supports --json but argparse has no --json"
-                )
+        assert_json_output_contract(leaf_id, out, parser_json=parser_json)
 
         kind = row.get("kind")
         if kind not in LEAF_KINDS:
@@ -1124,7 +1234,12 @@ def build_rollup(
         [
             "# M007-08 CLI surface audit rollup",
             "",
-            f"- Leaves: **{len(leaf_ids)}** (all classified; residual unclassified: 0)",
+            (
+                f"- Leaves: **{len(leaf_ids)}** "
+                f"(action={help_drift.get('action_leaf_count', '?')}, "
+                f"meta={help_drift.get('meta_leaf_count', '?')}; "
+                "all classified; residual unclassified: 0)"
+            ),
             f"- Sequences by disposition: {by_disp}",
             f"- Sequences by completeness: {by_comp}",
             f"- Sequences by coverage: {by_cov}",

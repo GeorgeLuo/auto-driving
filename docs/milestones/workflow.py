@@ -7,6 +7,7 @@ import re
 import subprocess
 import sys
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
@@ -42,6 +43,9 @@ WORKFLOW_STATES = {
     "proposal_amendment_in_review",
     "implementation_in_review",
 }
+CONTRACT_REVIEW_RECEIPT_HEADING = "## Contract Review Receipt"
+CONTRACT_REVIEW_RECEIPT_OUTCOMES = {"accepted", "changes_requested"}
+AUTHORIZED_REVIEW_ASSOCIATIONS = {"OWNER", "MEMBER", "COLLABORATOR"}
 PROPOSAL_REQUIRED_HEADINGS = (
     "## Review Question",
     "## Proposed Contract",
@@ -120,6 +124,20 @@ class MarkdownTable:
     heading: str
     header: tuple[str, ...]
     rows: tuple[tuple[str, ...], ...]
+
+
+@dataclass(frozen=True)
+class ContractReviewReceipt:
+    head_oid: str
+    reviewer: str
+    reviewer_association: str
+    submitted_at: str
+
+
+@dataclass(frozen=True)
+class ProposalReviewMetadata:
+    merged_at: str
+    reviews: tuple[dict[str, Any], ...]
 
 
 @dataclass(frozen=True)
@@ -360,13 +378,27 @@ def _accepted_proposal(frontier: Frontier, *, heading: str) -> tuple[int, str] |
     raw_value = frontier.fields.get("accepted proposal")
     if not raw_value:
         return None
-    pr_match = re.search(r"#(\d+)", raw_value)
-    sha_match = re.search(r"`([0-9a-f]{7,40})`", raw_value)
-    if pr_match is None or sha_match is None:
+    match = re.fullmatch(
+        r"\[#(\d+)\]\([^)]+\) at `([0-9a-f]{7,40})` "
+        r"\(reviewed head `([0-9a-f]{40})` by `([^`]+)` as "
+        r"`(OWNER|MEMBER|COLLABORATOR)` at `([^`]+)`\)",
+        raw_value,
+    )
+    if match is None:
         raise PlanContractError(
-            f"{heading} accepted proposal must identify a PR and merge commit"
+            f"{heading} accepted proposal must identify a PR, merge commit, "
+            "and authorized exact-head contract review receipt"
         )
-    return int(pr_match.group(1)), sha_match.group(1)
+    _github_timestamp(
+        match.group(6),
+        label=f"{heading} accepted proposal contract review",
+    )
+    if match.group(3) == match.group(2):
+        raise PlanContractError(
+            f"{heading} accepted proposal review head must be the pre-merge PR "
+            "head, not the merge commit"
+        )
+    return int(match.group(1)), match.group(2)
 
 
 def _accepted_proposal_amendments(
@@ -381,13 +413,25 @@ def _accepted_proposal_amendments(
     for raw_record in raw_value.split("; "):
         match = re.fullmatch(
             r"\[#(\d+)\]\([^)]+\) at `([0-9a-f]{7,40})` "
-            r"\(`([^`]+)`\)",
+            r"\(`([^`]+)`\) "
+            r"\(reviewed head `([0-9a-f]{40})` by `([^`]+)` as "
+            r"`(OWNER|MEMBER|COLLABORATOR)` at `([^`]+)`\)",
             raw_record,
         )
         if match is None:
             raise PlanContractError(
                 f"{heading} accepted proposal amendments must identify each "
-                "PR, merge commit, and amendment path"
+                "PR, merge commit, amendment path, and authorized exact-head "
+                "contract review receipt"
+            )
+        _github_timestamp(
+            match.group(7),
+            label=f"{heading} accepted proposal amendment contract review",
+        )
+        if match.group(4) == match.group(2):
+            raise PlanContractError(
+                f"{heading} accepted proposal amendment review head must be the "
+                "pre-merge PR head, not the merge commit"
             )
         path = _proposal_document_path(
             f"`{match.group(3)}`",
@@ -1583,6 +1627,176 @@ def _required_section_body(text: str, heading: str) -> str:
     return body
 
 
+def _comment_review_receipt_outcome(body: str) -> str | None:
+    if CONTRACT_REVIEW_RECEIPT_HEADING not in body:
+        return None
+    normalized = body.replace("\r\n", "\n").strip()
+    match = re.fullmatch(
+        rf"{re.escape(CONTRACT_REVIEW_RECEIPT_HEADING)}\n\n"
+        r"- Outcome: `(accepted|changes_requested)`",
+        normalized,
+    )
+    if match is None:
+        raise PlanContractError(
+            "contract COMMENT review must contain only the canonical receipt "
+            "with Outcome `accepted` or `changes_requested`"
+        )
+    outcome = match.group(1)
+    if outcome not in CONTRACT_REVIEW_RECEIPT_OUTCOMES:
+        raise PlanContractError("contract review receipt outcome is invalid")
+    return outcome
+
+
+def _github_timestamp(value: Any, *, label: str) -> datetime:
+    if not isinstance(value, str) or not value:
+        raise PlanContractError(f"{label} is missing its timestamp")
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise PlanContractError(f"{label} has an invalid timestamp") from exc
+    if parsed.tzinfo is None:
+        raise PlanContractError(f"{label} timestamp must include a timezone")
+    return parsed
+
+
+def _validate_exact_head_contract_review(
+    payload: dict[str, Any],
+    *,
+    review_metadata: ProposalReviewMetadata,
+    label: str,
+) -> ContractReviewReceipt:
+    head_oid = payload.get("headRefOid")
+    if not isinstance(head_oid, str) or re.fullmatch(r"[0-9a-f]{40}", head_oid) is None:
+        raise PlanContractError(f"{label} has no full head commit")
+    merged_at = _github_timestamp(
+        review_metadata.merged_at,
+        label=f"{label} merge",
+    )
+    reviews = review_metadata.reviews
+
+    decisive_by_reviewer: dict[
+        str,
+        tuple[datetime, int, str, str, str, str],
+    ] = {}
+    for index, review in enumerate(reviews):
+        if not isinstance(review, dict):
+            continue
+        commit = review.get("commit")
+        review_oid = commit.get("oid") if isinstance(commit, dict) else None
+        if review_oid != head_oid:
+            continue
+        author = review.get("author")
+        reviewer = author.get("login") if isinstance(author, dict) else None
+        if not isinstance(reviewer, str) or not reviewer:
+            continue
+        association = str(review.get("authorAssociation") or "").upper()
+        can_push = review.get("authorCanPushToRepository") is True
+        if (
+            association not in AUTHORIZED_REVIEW_ASSOCIATIONS
+            or not can_push
+        ):
+            continue
+        state = str(review.get("state") or "").upper()
+        outcome: str | None = None
+        if state == "APPROVED":
+            outcome = "accepted"
+        elif state == "CHANGES_REQUESTED":
+            outcome = "changes_requested"
+        elif state == "COMMENTED":
+            body = review.get("body")
+            if not isinstance(body, str):
+                raise PlanContractError(f"{label} review body must be text")
+            try:
+                outcome = _comment_review_receipt_outcome(body)
+            except PlanContractError:
+                outcome = "malformed"
+            if outcome is not None and review.get("includesCreatedEdit") is not False:
+                outcome = "malformed"
+        if outcome is None:
+            continue
+        submitted_at = review.get("submittedAt")
+        submitted = _github_timestamp(
+            submitted_at,
+            label=f"{label} decisive review",
+        )
+        if submitted > merged_at:
+            continue
+        assert isinstance(submitted_at, str)
+        decision = (
+            submitted,
+            index,
+            outcome,
+            reviewer,
+            association,
+            submitted_at,
+        )
+        previous = decisive_by_reviewer.get(reviewer)
+        if previous is None or decision[:2] > previous[:2]:
+            decisive_by_reviewer[reviewer] = decision
+
+    if not decisive_by_reviewer:
+        raise PlanContractError(
+            f"{label} has no decisive authorized GitHub review on exact head "
+            f"{head_oid}"
+        )
+    outstanding = sorted(
+        reviewer
+        for reviewer, decision in decisive_by_reviewer.items()
+        if decision[2] == "changes_requested"
+    )
+    if outstanding:
+        raise PlanContractError(
+            f"{label} has outstanding authorized changes requested on exact head "
+            f"{head_oid} by {', '.join(outstanding)}"
+        )
+    malformed = sorted(
+        reviewer
+        for reviewer, decision in decisive_by_reviewer.items()
+        if decision[2] == "malformed"
+    )
+    if malformed:
+        raise PlanContractError(
+            f"{label} has malformed or edited COMMENT receipt on exact head "
+            f"{head_oid} by {', '.join(malformed)}"
+        )
+    accepted = [
+        decision
+        for decision in decisive_by_reviewer.values()
+        if decision[2] == "accepted"
+    ]
+    if not accepted:
+        raise PlanContractError(
+            f"{label} has no accepted authorized review on exact head {head_oid}"
+        )
+    _, _, _, reviewer, association, submitted_at = max(accepted)
+    return ContractReviewReceipt(
+        head_oid=head_oid,
+        reviewer=reviewer,
+        reviewer_association=association,
+        submitted_at=submitted_at,
+    )
+
+
+def _contract_review_receipt_suffix(
+    receipt: ContractReviewReceipt,
+) -> str:
+    if re.fullmatch(r"[0-9a-f]{40}", receipt.head_oid) is None:
+        raise PlanContractError("contract review receipt requires a full head commit")
+    if (
+        not receipt.reviewer
+        or receipt.reviewer_association not in AUTHORIZED_REVIEW_ASSOCIATIONS
+    ):
+        raise PlanContractError("contract review receipt has invalid reviewer authority")
+    _github_timestamp(
+        receipt.submitted_at,
+        label="contract review receipt",
+    )
+    return (
+        f" (reviewed head `{receipt.head_oid}` by `{receipt.reviewer}` as "
+        f"`{receipt.reviewer_association}` at `{receipt.submitted_at}`)"
+    )
+
+
 def _implementation_adjunct_field(section: str, label: str) -> str:
     match = re.search(
         rf"(?m)^-\s+{re.escape(label)}:\s*(.*?)\s*$",
@@ -1856,6 +2070,12 @@ def validate_handoff_template_against_plan(
         proposal_pr=proposal_pr,
         merge_commit="b" * 40,
         proposal_url="https://example.invalid/proposal",
+        review_receipt=ContractReviewReceipt(
+            head_oid="a" * 40,
+            reviewer="contract-simulation",
+            reviewer_association="OWNER",
+            submitted_at="2000-01-01T00:00:00+00:00",
+        ),
     )
     implementation_review = _replace_current_frontier_state(
         accepted,
@@ -1881,13 +2101,135 @@ def proposal_allowed_paths(plan: Path, state: PlanState, *, repo_root: Path = RO
     return {plan_relative, html_relative, proposal_relative}
 
 
+def _fetch_pr_review_metadata(
+    pr_number: int,
+    *,
+    repo_root: Path = ROOT,
+) -> ProposalReviewMetadata:
+    query = """
+query(
+  $owner: String!,
+  $name: String!,
+  $number: Int!
+) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      mergedAt
+      reviews(first: 100) {
+        totalCount
+        nodes {
+          author { login }
+          authorAssociation
+          authorCanPushToRepository
+          body
+          commit { oid }
+          includesCreatedEdit
+          state
+          submittedAt
+        }
+      }
+    }
+  }
+}
+""".strip()
+    try:
+        repository = subprocess.run(
+            ["gh", "repo", "view", "--json", "nameWithOwner"],
+            cwd=repo_root,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        repository_payload = json.loads(repository.stdout)
+        if not isinstance(repository_payload, dict):
+            raise PlanContractError("GitHub CLI returned invalid repository metadata")
+        name_with_owner = repository_payload.get("nameWithOwner")
+        if not isinstance(name_with_owner, str) or "/" not in name_with_owner:
+            raise PlanContractError("GitHub CLI returned invalid repository metadata")
+        owner, name = name_with_owner.split("/", 1)
+        result = subprocess.run(
+            [
+                "gh",
+                "api",
+                "graphql",
+                "-F",
+                f"owner={owner}",
+                "-F",
+                f"name={name}",
+                "-F",
+                f"number={pr_number}",
+                "-f",
+                f"query={query}",
+            ],
+            cwd=repo_root,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        response = json.loads(result.stdout)
+    except FileNotFoundError as exc:
+        raise PlanContractError(
+            "GitHub CLI `gh` is required for proposal acceptance"
+        ) from exc
+    except subprocess.CalledProcessError as exc:
+        detail = exc.stderr.strip() or exc.stdout.strip() or str(exc)
+        raise PlanContractError(f"cannot fetch proposal reviews: {detail}") from exc
+    except json.JSONDecodeError as exc:
+        raise PlanContractError("GitHub CLI returned invalid review metadata") from exc
+    try:
+        pull_request = response["data"]["repository"]["pullRequest"]
+        connection = pull_request["reviews"]
+        reviews = connection["nodes"]
+        total_count = connection["totalCount"]
+    except (KeyError, TypeError) as exc:
+        raise PlanContractError(
+            "GitHub CLI returned incomplete review metadata"
+        ) from exc
+    merged_at = pull_request.get("mergedAt")
+    if not isinstance(merged_at, str):
+        raise PlanContractError("GitHub pull request review metadata is incomplete")
+    if not isinstance(total_count, int) or not isinstance(reviews, list):
+        raise PlanContractError("GitHub review connection is invalid")
+    if total_count > 100 or len(reviews) != total_count:
+        raise PlanContractError(
+            "proposal acceptance refuses a review history larger than the "
+            "100-review verification window"
+        )
+    if any(not isinstance(review, dict) for review in reviews):
+        raise PlanContractError("GitHub review connection has invalid review nodes")
+    return ProposalReviewMetadata(
+        merged_at=merged_at,
+        reviews=tuple(reviews),
+    )
+
+
+def _review_metadata_from_payload(
+    payload: dict[str, Any],
+    *,
+    label: str,
+) -> ProposalReviewMetadata:
+    merged_at = payload.get("mergedAt")
+    reviews = payload.get("reviews")
+    if (
+        not isinstance(merged_at, str)
+        or not isinstance(reviews, list)
+        or any(not isinstance(review, dict) for review in reviews)
+    ):
+        raise PlanContractError(f"{label} did not expose complete review metadata")
+    return ProposalReviewMetadata(
+        merged_at=merged_at,
+        reviews=tuple(reviews),
+    )
+
+
 def validate_merged_proposal_metadata(
     payload: dict[str, Any],
     state: PlanState,
     *,
     proposal_pr: int,
     allowed_paths: set[str],
-) -> tuple[str, str]:
+    review_metadata: ProposalReviewMetadata | None = None,
+) -> tuple[str, str, ContractReviewReceipt]:
     if _workflow_state(state.current) != "proposal_in_review":
         raise PlanContractError(
             "proposal acceptance requires workflow state proposal_in_review"
@@ -1907,6 +2249,13 @@ def validate_merged_proposal_metadata(
         raise PlanContractError(
             f"proposal PR #{proposal_pr} did not use {expected_head}"
         )
+    if review_metadata is None:
+        review_metadata = _review_metadata_from_payload(payload, label="proposal PR")
+    review_receipt = _validate_exact_head_contract_review(
+        payload,
+        review_metadata=review_metadata,
+        label=f"proposal PR #{proposal_pr}",
+    )
     merge_commit = payload.get("mergeCommit")
     merge_oid = merge_commit.get("oid") if isinstance(merge_commit, dict) else None
     if not isinstance(merge_oid, str) or re.fullmatch(r"[0-9a-f]{40}", merge_oid) is None:
@@ -1937,7 +2286,11 @@ def validate_merged_proposal_metadata(
         raise PlanContractError(
             f"proposal PR must create or update {proposal_path}"
         )
-    return merge_oid, str(payload.get("url") or f"PR #{proposal_pr}")
+    return (
+        merge_oid,
+        str(payload.get("url") or f"PR #{proposal_pr}"),
+        review_receipt,
+    )
 
 
 def accept_proposal(
@@ -1946,14 +2299,20 @@ def accept_proposal(
     proposal_pr: int,
     merge_commit: str,
     proposal_url: str,
+    review_receipt: ContractReviewReceipt,
 ) -> str:
+    reviewed_suffix = _contract_review_receipt_suffix(review_receipt)
     return _replace_current_frontier_state(
         text,
         expected_state="proposal_in_review",
         new_state="ready_for_implementation",
-        evidence=f"Proposal PR #{proposal_pr} accepted at {merge_commit}.",
+        evidence=(
+            f"Proposal PR #{proposal_pr} accepted at {merge_commit}"
+            f"{reviewed_suffix}."
+        ),
         accepted_proposal=(
             f"[#{proposal_pr}]({proposal_url}) at `{merge_commit}`"
+            f"{reviewed_suffix}"
         ),
     )
 
@@ -1982,7 +2341,8 @@ def validate_merged_proposal_amendment_metadata(
     *,
     amendment_pr: int,
     allowed_paths: set[str],
-) -> tuple[str, str]:
+    review_metadata: ProposalReviewMetadata | None = None,
+) -> tuple[str, str, ContractReviewReceipt]:
     if _workflow_state(state.current) != "proposal_amendment_in_review":
         raise PlanContractError(
             "proposal amendment acceptance requires workflow state "
@@ -2004,6 +2364,16 @@ def validate_merged_proposal_amendment_metadata(
         raise PlanContractError(
             f"proposal amendment PR #{amendment_pr} did not use {expected_head}"
         )
+    if review_metadata is None:
+        review_metadata = _review_metadata_from_payload(
+            payload,
+            label="proposal amendment PR",
+        )
+    review_receipt = _validate_exact_head_contract_review(
+        payload,
+        review_metadata=review_metadata,
+        label=f"proposal amendment PR #{amendment_pr}",
+    )
     merge_commit = payload.get("mergeCommit")
     merge_oid = merge_commit.get("oid") if isinstance(merge_commit, dict) else None
     if not isinstance(merge_oid, str) or re.fullmatch(r"[0-9a-f]{40}", merge_oid) is None:
@@ -2034,7 +2404,11 @@ def validate_merged_proposal_amendment_metadata(
         raise PlanContractError(
             f"proposal amendment PR must create {amendment_path}"
         )
-    return merge_oid, str(payload.get("url") or f"PR #{amendment_pr}")
+    return (
+        merge_oid,
+        str(payload.get("url") or f"PR #{amendment_pr}"),
+        review_receipt,
+    )
 
 
 def accept_proposal_amendment(
@@ -2043,6 +2417,7 @@ def accept_proposal_amendment(
     amendment_pr: int,
     merge_commit: str,
     amendment_url: str,
+    review_receipt: ContractReviewReceipt,
 ) -> str:
     state = validate_plan_text(text)
     amendment_path = _frontier_proposal_amendment_path(
@@ -2053,6 +2428,7 @@ def accept_proposal_amendment(
         f"[#{amendment_pr}]({amendment_url}) at `{merge_commit}` "
         f"(`{amendment_path}`)"
     )
+    receipt += _contract_review_receipt_suffix(review_receipt)
     existing = state.current.fields.get("accepted proposal amendments")
     accepted = f"{existing}; {receipt}" if existing else receipt
     return _replace_current_frontier_state(
@@ -2060,7 +2436,8 @@ def accept_proposal_amendment(
         expected_state="proposal_amendment_in_review",
         new_state="ready_for_implementation",
         evidence=(
-            f"Proposal amendment PR #{amendment_pr} accepted at {merge_commit}."
+            f"Proposal amendment PR #{amendment_pr} accepted at {merge_commit}"
+            f"{_contract_review_receipt_suffix(review_receipt)}."
         ),
         field_updates={"accepted proposal amendments": accepted},
     )
@@ -2964,7 +3341,9 @@ def _cmd_accept_proposal(plan: Path, proposal_pr: int) -> int:
                 "view",
                 str(proposal_pr),
                 "--json",
-                "state,mergeCommit,baseRefName,headRefName,files,url",
+                (
+                    "state,mergeCommit,baseRefName,headRefName,headRefOid,files,url"
+                ),
             ],
             cwd=repo_root,
             check=True,
@@ -2984,11 +3363,16 @@ def _cmd_accept_proposal(plan: Path, proposal_pr: int) -> int:
         raise PlanContractError("GitHub CLI returned invalid proposal metadata") from exc
     if not isinstance(payload, dict):
         raise PlanContractError("GitHub CLI returned invalid proposal metadata")
-    merge_commit, proposal_url = validate_merged_proposal_metadata(
+    review_metadata = _fetch_pr_review_metadata(
+        proposal_pr,
+        repo_root=repo_root,
+    )
+    merge_commit, proposal_url, review_receipt = validate_merged_proposal_metadata(
         payload,
         state,
         proposal_pr=proposal_pr,
         allowed_paths=proposal_allowed_paths(plan, state),
+        review_metadata=review_metadata,
     )
     ancestor = _run_git(
         ["merge-base", "--is-ancestor", merge_commit, "HEAD"],
@@ -3011,6 +3395,7 @@ def _cmd_accept_proposal(plan: Path, proposal_pr: int) -> int:
         proposal_pr=proposal_pr,
         merge_commit=merge_commit,
         proposal_url=proposal_url,
+        review_receipt=review_receipt,
     )
     _write_plan_and_render(plan, original, updated)
     print(f"Accepted proposal PR #{proposal_pr} for {state.current.name}.")
@@ -3069,7 +3454,9 @@ def _cmd_accept_proposal_amendment(plan: Path, amendment_pr: int) -> int:
                 "view",
                 str(amendment_pr),
                 "--json",
-                "state,mergeCommit,baseRefName,headRefName,files,url",
+                (
+                    "state,mergeCommit,baseRefName,headRefName,headRefOid,files,url"
+                ),
             ],
             cwd=repo_root,
             check=True,
@@ -3095,11 +3482,18 @@ def _cmd_accept_proposal_amendment(plan: Path, amendment_pr: int) -> int:
         raise PlanContractError(
             "GitHub CLI returned invalid proposal amendment metadata"
         )
-    merge_commit, amendment_url = validate_merged_proposal_amendment_metadata(
-        payload,
-        state,
-        amendment_pr=amendment_pr,
-        allowed_paths=proposal_amendment_allowed_paths(plan, state),
+    review_metadata = _fetch_pr_review_metadata(
+        amendment_pr,
+        repo_root=repo_root,
+    )
+    merge_commit, amendment_url, review_receipt = (
+        validate_merged_proposal_amendment_metadata(
+            payload,
+            state,
+            amendment_pr=amendment_pr,
+            allowed_paths=proposal_amendment_allowed_paths(plan, state),
+            review_metadata=review_metadata,
+        )
     )
     ancestor = _run_git(
         ["merge-base", "--is-ancestor", merge_commit, "HEAD"],
@@ -3120,6 +3514,7 @@ def _cmd_accept_proposal_amendment(plan: Path, amendment_pr: int) -> int:
         amendment_pr=amendment_pr,
         merge_commit=merge_commit,
         amendment_url=amendment_url,
+        review_receipt=review_receipt,
     )
     _write_plan_and_render(plan, original, updated)
     print(f"Accepted proposal amendment PR #{amendment_pr} for {state.current.name}.")

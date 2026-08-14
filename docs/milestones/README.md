@@ -278,10 +278,11 @@ Both branches:
 - contains one primary review question;
 - leaves the milestone branch coherent after merge.
 
-Prefer squash-merging both PRs into the milestone branch. Proposal merge is an
-approval receipt, not implementation acceptance. Merge the final cumulative
-milestone PR into `main` with a **merge commit** so accepted frontier history
-remains visible.
+Prefer squash-merging both PRs into the milestone branch. A proposal's
+exact-head contract review and merge together form its approval receipt; merge
+alone is not proposal acceptance or implementation acceptance. Merge the final
+cumulative milestone PR into `main` with a **merge commit** so accepted
+frontier history remains visible.
 
 ### HITL implementation adjunct branches
 
@@ -534,7 +535,7 @@ loop after proposal acceptance:
 | --- | --- | --- |
 | `ready_for_proposal` | The bounded frontier is ready to hand to a proposal author | Start the proposal branch, or review a necessary pre-proposal plan revision |
 | `proposal_in_review` | A proposal is being authored or reviewed | Proposal document and plan transition only |
-| `ready_for_implementation` | The proposal PR and any amendments merged and their exact commits are recorded | Start the implementation branch, or start a bounded proposal amendment when established evidence requires one |
+| `ready_for_implementation` | The proposal PR and any amendments have accepted exact-head contract reviews, are merged, and have their reviewed heads and merge commits recorded | Start the implementation branch, or start a bounded proposal amendment when established evidence requires one |
 | `proposal_amendment_in_review` | New evidence requires a bounded correction to the accepted proposal | Additive amendment document and plan transition only; implementation remains blocked |
 | `implementation_in_review` | Accepted scope is being implemented or reviewed | Product, test, and documentation changes described by the accepted proposal |
 
@@ -543,8 +544,9 @@ The expected collaboration is explicit:
 1. the reviewer reports **ready for proposal** and stops;
 2. the operator gives proposal work to the proposal author;
 3. the reviewer reviews and finalizes that proposal without implementation;
-4. proposal merge records acceptance and the reviewer reports **ready for
-   implementation**;
+4. the reviewer records an accepted review on the proposal's exact final head;
+   merge and the acceptance command then record both commits, and the reviewer
+   reports **ready for implementation**;
 5. the operator gives the accepted proposal to the implementer;
 6. implementation review begins only after implementation is complete enough
    to answer the accepted review question.
@@ -552,6 +554,43 @@ The expected collaboration is explicit:
 The proposal author and implementer may be the same person or model, but they
 must operate in separate branches and review phases. The reviewer must not
 silently fill both roles in one change.
+
+### Exact-Head Contract Review Receipts
+
+A proposal or proposal amendment must have an accepted GitHub review attached
+to the PR's final head commit before merge. The review is the contract judgment;
+the subsequent merge establishes repository ancestry. They are separate facts,
+and neither substitutes for the other. An authorized contract reviewer must
+have current repository push authority and an `OWNER`, `MEMBER`, or
+`COLLABORATOR` association when acceptance is recorded.
+
+- An `APPROVED` review records `accepted`.
+- A `CHANGES_REQUESTED` review records `changes_requested`.
+- When GitHub prevents a reviewer from approving their own PR, a new, unedited
+  formal `COMMENTED` review may contain only:
+
+  ```text
+  ## Contract Review Receipt
+
+  - Outcome: `accepted`
+  ```
+
+  Use `changes_requested` instead when the contract is not acceptable.
+- Only formal GitHub reviews count. PR conversation comments are not bound to a
+  commit and never count as contract receipts.
+- For each authorized reviewer, their latest decisive review on the exact head
+  owns their outcome. Promotion requires at least one accepted outcome and no
+  authorized reviewer with an outstanding `changes_requested` outcome.
+- A later commit invalidates every receipt attached to an earlier head and
+  requires another review. A review submitted or edited after merge cannot
+  retroactively authorize promotion.
+
+The proposal acceptance commands verify the complete review history within a
+bounded 100-review window, fail closed if that window would truncate, compare
+`headRefOid` with each review's commit, enforce reviewer authority and
+pre-merge timing, and record the reviewer, authority, review time, reviewed
+head, and merge commit in the canonical plan. A merged PR without that receipt
+remains `proposal_in_review`; do not begin implementation.
 
 If the frozen frontier is found to be wrong before proposal work starts, revise
 it in a separate plan-only review unit. Use a
@@ -578,11 +617,12 @@ An amendment document starts with `# Proposal Amendment:` and records Review
 Question, Reason For Amendment, Contract Delta, Ownership, Affected Paths,
 Adversarial Matrix, External Assumptions, Non-Goals, File Impact, and Validation
 Plan. It narrows or corrects the implementation contract; it cannot replace the
-proposal's reviewed Expected Handoff. After merge, record the amendment PR,
-exact merge commit, and artifact path, then return the frontier to
-`ready_for_implementation`. Amendments are cumulative and immutable. The
-implementation PR must link and reconcile the original proposal plus every
-accepted amendment, and CI rejects changes to any of those artifacts.
+proposal's reviewed Expected Handoff. After exact-head contract review and
+merge, record the amendment PR, reviewed head, exact merge commit, and artifact
+path, then return the frontier to `ready_for_implementation`. Amendments are
+cumulative and immutable. The implementation PR must link and reconcile the
+original proposal plus every accepted amendment, and CI rejects changes to any
+of those artifacts.
 
 ### Human Discovery During Implementation
 
@@ -871,8 +911,10 @@ python3 docs/milestones/workflow.py start-proposal \
 ```
 
 The proposal author commits the proposal artifact, plan transition, and rendered
-HTML, then opens a proposal PR to the milestone branch. After review and merge,
-the maintainer updates the clean milestone branch and records acceptance:
+HTML, then opens a proposal PR to the milestone branch. When the contract is
+acceptable, submit the exact-head GitHub review receipt described above before
+merging. Any later proposal commit requires another receipt. After merge, the
+maintainer updates the clean milestone branch and records acceptance:
 
 ```sh
 python3 docs/milestones/workflow.py accept-proposal \
@@ -890,7 +932,8 @@ python3 docs/milestones/workflow.py start-proposal-amendment \
   --path docs/milestones/<number>-<slug>/proposals/<slug>-amendment.md
 ```
 
-After that contract-only PR merges, record its exact acceptance receipt:
+Apply the same exact-head review rule to the contract-only amendment PR. After
+it merges, record its reviewed head and exact merge acceptance receipt:
 
 ```sh
 python3 docs/milestones/workflow.py accept-proposal-amendment \
@@ -950,7 +993,8 @@ dirty worktree, the wrong branch, a branch/state mismatch, an unmerged proposal,
 an implementation start without an accepted proposal, an implementation PR
 from the wrong branch, or a merge commit that is not already an ancestor of the
 milestone branch. Proposal acceptance asks GitHub to confirm the exact base,
-head, merge commit, and changed-file allowlist. Implementation completion asks
+head, merge commit, changed-file allowlist, and accepted authorized review
+receipt attached to the exact proposal head. Implementation completion asks
 GitHub to confirm the implementation PR and commit, then limits criterion
 updates to the current frontier, prevents premature closeout, updates the
 accepted ledger and risks, promotes the reviewed next candidate to
@@ -972,10 +1016,11 @@ that omits required fields or history is rejected.
 
 The machine cannot prove which model authored a phase, that a reviewer
 understood a proposal, or that approval was intellectually sound. The operator
-owns those judgments. What the repository does guarantee is that the current
-state and next handoff are visible, the accepted proposal is durable, proposal
-and implementation diffs are separate, and implementation cannot pass CI
-before proposal acceptance.
+owns those judgments. It can prove that a decisive review was submitted on a
+specific proposal head and preserve that fact separately from merge ancestry.
+The repository also guarantees that the current state and next handoff are
+visible, the accepted proposal is durable, proposal and implementation diffs
+are separate, and implementation cannot pass CI before proposal acceptance.
 
 The handoff commit is a narrow exception to PR-only changes because it applies
 mechanical post-merge facts that cannot truthfully exist in the merged review

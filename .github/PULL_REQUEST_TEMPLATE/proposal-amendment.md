@@ -32,4 +32,17 @@
 
 ## Review Notes
 
-<!-- Amendment sections needing deepest attention -->
+<!-- Amendment sections needing deepest attention. Before merge, a reviewer
+     with current repository push authority must submit a GitHub review on the
+     final amendment commit. An APPROVE review counts. For self-review, submit
+     a new, unedited COMMENT review containing only:
+
+     ## Contract Review Receipt
+
+     - Outcome: `accepted`
+
+     Use `changes_requested` instead when the contract is not acceptable.
+     A PR conversation comment does not count. Any later commit invalidates
+     this receipt. Every authorized reviewer's latest exact-head decision must
+     be clear of outstanding changes.
+-->

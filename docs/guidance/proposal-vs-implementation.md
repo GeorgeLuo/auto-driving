@@ -28,6 +28,23 @@ A proposal records the contract, owner, affected paths, adversarial matrix,
 assumptions, non-goals, file impact, validation plan, and expected handoff. It
 contains no implementation.
 
+Before a proposal or amendment merges, a reviewer with current repository push
+authority submits a decisive GitHub review on its exact final head. `APPROVED`
+counts as acceptance. If GitHub prevents self-approval, use a new, unedited
+formal `COMMENTED` review containing only:
+
+```text
+## Contract Review Receipt
+
+- Outcome: `accepted`
+```
+
+Conversation comments do not count, and any later commit requires another
+review. Each authorized reviewer's latest decision on that head must be clear
+of outstanding changes. Merge alone does not promote the frontier; run the
+matching acceptance command so the plan records the reviewer, authority,
+reviewed head, review time, and merge commit.
+
 Implementation links the accepted proposal and merge commit, stays within that
 contract, and reports actual file impact and validation. If the contract must
 change, return to proposal review rather than rewriting acceptance during

@@ -37,4 +37,17 @@
 
 ## Review Notes
 
-<!-- Proposal sections needing deepest attention -->
+<!-- Proposal sections needing deepest attention. Before merge, a reviewer with
+     current repository push authority must submit a GitHub review on the final
+     proposal commit. An APPROVE review is an acceptance receipt. When GitHub
+     prevents self-approval, submit a new, unedited COMMENT review containing
+     only:
+
+     ## Contract Review Receipt
+
+     - Outcome: `accepted`
+
+     Use `changes_requested` instead when the contract is not acceptable.
+     A PR conversation comment does not count because it is not commit-bound.
+     Any later commit invalidates this receipt. Every authorized reviewer's
+     latest exact-head decision must be clear of outstanding changes. -->

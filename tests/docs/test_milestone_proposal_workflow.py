@@ -22,6 +22,7 @@ from docs.milestones.workflow import (
     validate_plan_text,
     validate_proposal_amendment_text,
     validate_proposal_text,
+    validate_repair_cycle_governance_body,
     validate_review_unit_transition,
     validate_review_unit_git_diff,
 )
@@ -41,6 +42,7 @@ from tests.docs.milestone_workflow_fixtures import (
     proposal_amendment_text,
     proposal_text,
     ready_plan_text,
+    repair_cycle_governance_body,
 )
 
 PLAN_REVISION_BRANCH = "m900/plan-shadow-proposals"
@@ -54,7 +56,8 @@ def _review_unit_body(review_kind: str = REVIEW_KIND) -> str:
         "## Review Kind\n\n"
         f"{review_kind}\n\n"
         "## Review Question\n\n"
-        "Is the bounded contract acceptable?\n"
+        "Is the bounded contract acceptable?\n\n"
+        f"{repair_cycle_governance_body()}\n"
     )
 
 
@@ -354,6 +357,103 @@ class ProposalDocumentTests(unittest.TestCase):
             )
 
 
+class RepairCycleGovernanceTests(unittest.TestCase):
+    def test_initial_review_receipt_is_accepted(self) -> None:
+        self.assertEqual(
+            validate_repair_cycle_governance_body(
+                repair_cycle_governance_body()
+            ),
+            0,
+        )
+
+    def test_one_substantial_cycle_does_not_require_escalation(self) -> None:
+        body = repair_cycle_governance_body(
+            rows=(
+                "| 1 | https://github.example/review/1 | substantial | "
+                "abc1234 | Replaced the enforcement boundary. |"
+            ),
+        )
+
+        self.assertEqual(validate_repair_cycle_governance_body(body), 1)
+
+    def test_second_substantial_cycle_requires_completed_escalation(self) -> None:
+        body = repair_cycle_governance_body(
+            rows=(
+                "| 1 | https://github.example/review/1 | substantial | "
+                "abc1234 | Replaced the enforcement boundary. |\n"
+                "| 2 | https://github.example/review/2 | substantial | "
+                "def5678 | Reframed the failure class. |"
+            ),
+        )
+
+        with self.assertRaisesRegex(
+            PlanContractError,
+            "require a completed repair escalation",
+        ):
+            validate_repair_cycle_governance_body(body)
+
+    def test_second_substantial_cycle_accepts_human_decision_receipt(self) -> None:
+        body = repair_cycle_governance_body(
+            rows=(
+                "| 1 | https://github.example/review/1 | substantial | "
+                "abc1234 | Replaced the enforcement boundary. |\n"
+                "| 2 | https://github.example/review/2 | substantial | "
+                "def5678 | Reframed the failure class. |"
+            ),
+            status="completed",
+            decision_receipt="https://github.example/decision/2",
+            route="replan-current-unit",
+            disposition="Keep the singular question with a reset owner.",
+        )
+
+        self.assertEqual(validate_repair_cycle_governance_body(body), 2)
+
+    def test_minor_cycles_do_not_consume_substantial_cycle_budget(self) -> None:
+        body = repair_cycle_governance_body(
+            rows=(
+                "| 1 | https://github.example/review/1 | minor | "
+                "abc1234 | Corrected evidence formatting. |\n"
+                "| 2 | https://github.example/review/2 | substantial | "
+                "def5678 | Replaced the enforcement boundary. |"
+            ),
+        )
+
+        self.assertEqual(validate_repair_cycle_governance_body(body), 1)
+
+    def test_third_substantial_cycle_must_leave_review_unit(self) -> None:
+        body = repair_cycle_governance_body(
+            rows=(
+                "| 1 | https://github.example/review/1 | substantial | "
+                "abc1234 | Replaced the enforcement boundary. |\n"
+                "| 2 | https://github.example/review/2 | substantial | "
+                "def5678 | Reframed the failure class. |\n"
+                "| 3 | https://github.example/review/3 | substantial | "
+                "fed9876 | Expanded material scope again. |"
+            ),
+            status="completed",
+            decision_receipt="https://github.example/decision/2",
+            route="replan-current-unit",
+            disposition="Keep the singular question with a reset owner.",
+        )
+
+        with self.assertRaisesRegex(
+            PlanContractError,
+            "third substantial repair cycle",
+        ):
+            validate_repair_cycle_governance_body(body)
+
+    def test_cycle_numbers_must_be_consecutive(self) -> None:
+        body = repair_cycle_governance_body(
+            rows=(
+                "| 2 | https://github.example/review/2 | minor | "
+                "def5678 | Corrected evidence formatting. |"
+            ),
+        )
+
+        with self.assertRaisesRegex(PlanContractError, "consecutive from 1"):
+            validate_repair_cycle_governance_body(body)
+
+
 class WorkflowStateContractTests(unittest.TestCase):
     def setUp(self) -> None:
         self.plan = ready_plan_text()
@@ -487,6 +587,29 @@ class ReviewUnitTransitionTests(unittest.TestCase):
                 changed_paths={PLAN_RELATIVE, PROPOSAL_RELATIVE},
                 head_branch=PROPOSAL_BRANCH,
                 proposal_text=proposal_text(),
+            )
+
+    def test_milestone_review_unit_pr_body_requires_repair_receipts(self) -> None:
+        # Keep a valid Review Kind so the repair-cycle gate is the failing check.
+        body = (
+            "# Synthetic review unit\n\n"
+            f"## Review Kind\n\n{REVIEW_KIND}\n\n"
+            "## Review Question\n\n"
+            "Is the bounded contract acceptable?\n"
+        )
+        with self.assertRaisesRegex(PlanContractError, "Repair Cycle Ledger"):
+            validate_review_unit_transition(
+                self.base,
+                self.proposal_head,
+                plan_path=PLAN_RELATIVE,
+                changed_paths={
+                    PLAN_RELATIVE,
+                    str(Path(PLAN_RELATIVE).with_suffix(".html")),
+                    PROPOSAL_RELATIVE,
+                },
+                head_branch=PROPOSAL_BRANCH,
+                proposal_text=proposal_text(),
+                pr_body=body,
             )
 
     def test_plan_revision_can_replace_unstarted_frontier(self) -> None:

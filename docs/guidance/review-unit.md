@@ -21,7 +21,10 @@ canonical contract. The contract wins if any wording conflicts.
 
 Before review, confirm that the PR question is stable, the description matches
 the current diff, validation is exact, limitations are explicit, and the
-adversarial pass is current.
+adversarial pass is current. Before re-review, also confirm that the repair-cycle
+ledger names the consolidated verdict and repair revision. The second
+substantial cycle requires a completed human escalation receipt; a third cannot
+remain in the same review unit.
 
 ## Review
 

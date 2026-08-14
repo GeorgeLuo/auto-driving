@@ -143,10 +143,17 @@ deletion; it does not retroactively widen the accepted primary journey.
 
 ### Next-Frontier Candidate
 
-**None**
+**Capability disposition outside CLI journeys**
 
-- Reason: Complete CLI surface and sequence audit is promoted after trustworthy named-command and journey attribution satisfies M007-07.
-- Revisit when: The audit maps every parser leaf and #88 US-01 through US-10 entry to realistic usage, evidence, safety, coverage treatment, and an explicit owned disposition before capability-level reconciliation.
+- Proposal branch: `m007/capability-disposition-proposal`
+- Implementation branch: `m007/capability-disposition`
+- Proposal path: `docs/milestones/007-cli-operator-usability/proposals/capability-disposition.md`
+- Review kind: Deterministic invariant closure
+- Review question: Can owned production code not reached by the declared CLI journey set be grouped by capability and reconciled with tests, other entrypoints, dynamic or platform paths, and ownership so every group is flagged to expose through CLI, retain with an explicit owner and reason, or remove through separately reviewed work, without authorizing feature or deletion solely by a coverage percentage?
+- Acceptance owner: Capability grouping from leaf inventory, sequence registry, and #107 reachability; owned expose/retain/remove candidate record
+- Exit criteria affected: M007-09
+- Prerequisite: M007-08 is `Met`; complete-to-parser leaf inventory, US-01 through US-10 dispositions, and journey-coverage attribution are stable inputs
+- Non-goals: Executing the expose/retain/remove product work itself, numeric coverage gates, reopening M007-08 accounting, or milestone closeout
 
 ## Workflow History
 

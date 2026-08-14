@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="a12e9c3f6eb8a076fcccc835302ab5bdca41f06ffde8ff52ae46732797c14f7b">
+  <meta name="source-sha256" content="ef8ace62ac844051407ec0f1226a3ad55987005d9663a43cb14516a1bd0a0418">
   <base target="_blank">
   <title>Milestone plan — 007-cli-operator-usability</title>
   <style>
@@ -369,10 +369,17 @@ deletion; it does not retroactively widen the accepted primary journey.</p>
 <li>Milestone-level non-goal: Capability disposition under M007-09, product repair, new CLI features, removal, unsafe execution for coverage, reopening M007-10, a numeric coverage gate, or milestone closeout</li>
 </ul>
 <h3>Next-Frontier Candidate</h3>
-<p><strong>None</strong></p>
+<p><strong>Capability disposition outside CLI journeys</strong></p>
 <ul>
-<li>Reason: Complete CLI surface and sequence audit is promoted after trustworthy named-command and journey attribution satisfies M007-07.</li>
-<li>Revisit when: The audit maps every parser leaf and #88 US-01 through US-10 entry to realistic usage, evidence, safety, coverage treatment, and an explicit owned disposition before capability-level reconciliation.</li>
+<li>Proposal branch: <code>m007/capability-disposition-proposal</code></li>
+<li>Implementation branch: <code>m007/capability-disposition</code></li>
+<li>Proposal path: <code>docs/milestones/007-cli-operator-usability/proposals/capability-disposition.md</code></li>
+<li>Review kind: Deterministic invariant closure</li>
+<li>Review question: Can owned production code not reached by the declared CLI journey set be grouped by capability and reconciled with tests, other entrypoints, dynamic or platform paths, and ownership so every group is flagged to expose through CLI, retain with an explicit owner and reason, or remove through separately reviewed work, without authorizing feature or deletion solely by a coverage percentage?</li>
+<li>Acceptance owner: Capability grouping from leaf inventory, sequence registry, and #107 reachability; owned expose/retain/remove candidate record</li>
+<li>Exit criteria affected: M007-09</li>
+<li>Prerequisite: M007-08 is <code>Met</code>; complete-to-parser leaf inventory, US-01 through US-10 dispositions, and journey-coverage attribution are stable inputs</li>
+<li>Non-goals: Executing the expose/retain/remove product work itself, numeric coverage gates, reopening M007-08 accounting, or milestone closeout</li>
 </ul>
 <h2>Workflow History</h2>
 <table>

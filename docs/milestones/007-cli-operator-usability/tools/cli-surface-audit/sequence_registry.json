@@ -32,7 +32,7 @@
       },
       "disposition": "passed",
       "evidence": {
-        "claim_map_id": "us01_us02_live_acceptance",
+        "claim_map_id": "us01_help_discovery",
         "digests": {
           "docs/milestones/007-cli-operator-usability/evidence/live-cli-acceptance/result.json": "d9656ddb1bad6720bf3b6dd5d2d2fbc5f0d1c2204c9e82883c56e9772d53dcf1"
         },
@@ -117,7 +117,7 @@
       },
       "disposition": "passed",
       "evidence": {
-        "claim_map_id": "us01_us02_live_acceptance",
+        "claim_map_id": "us02_passive_journey",
         "digests": {
           "docs/milestones/007-cli-operator-usability/evidence/live-cli-acceptance/result.json": "d9656ddb1bad6720bf3b6dd5d2d2fbc5f0d1c2204c9e82883c56e9772d53dcf1"
         },

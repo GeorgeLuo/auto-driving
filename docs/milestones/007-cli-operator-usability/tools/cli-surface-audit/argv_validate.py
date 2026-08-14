@@ -130,6 +130,16 @@ def validate_argv(
                     ok=False,
                     reason="help flag must be sole trailing token without extra args",
                 )
+            prefix = normalized[:-1]
+            extras = _unknown_tokens_before_help(parser, prefix)
+            if extras:
+                return ArgvReceipt(
+                    template_id=template_id,
+                    argv=list(argv),
+                    leaf_id=leaf_id,
+                    ok=False,
+                    reason=f"unknown tokens before help flag: {extras}",
+                )
 
         try:
             with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(
@@ -173,6 +183,85 @@ def validate_argv(
             ok=False,
             reason=str(exc),
         )
+
+
+def _subparsers(parser: argparse.ArgumentParser) -> argparse._SubParsersAction | None:
+    for action in parser._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            return action
+    return None
+
+
+def _option_takes_value(action: argparse.Action) -> bool:
+    if isinstance(
+        action,
+        (
+            argparse._StoreTrueAction,
+            argparse._StoreFalseAction,
+            argparse._HelpAction,
+            argparse._VersionAction,
+            argparse._CountAction,
+        ),
+    ):
+        return False
+    if action.nargs == 0:
+        return False
+    return True
+
+
+def _unknown_tokens_before_help(
+    parser: argparse.ArgumentParser, prefix: list[str]
+) -> list[str]:
+    """Return unknown options/positionals in the argv prefix before trailing help.
+
+    Argparse exits on ``--help`` before checking earlier unknown tokens, and
+    ``parse_known_args`` may still demand required options. Inspect the leaf
+    parser's declared options without invoking ``parser.error``.
+    """
+
+    current = parser
+    index = 0
+    while index < len(prefix):
+        token = prefix[index]
+        if token.startswith("-"):
+            break
+        sub = _subparsers(current)
+        if sub is None or token not in sub.choices:
+            return list(prefix[index:])
+        current = sub.choices[token]
+        index += 1
+    rest = prefix[index:]
+    options = {
+        option: action
+        for action in current._actions
+        for option in (action.option_strings or ())
+    }
+    accepts_positional = any(
+        not action.option_strings
+        and not isinstance(action, argparse._SubParsersAction)
+        and action.dest not in {"help"}
+        for action in current._actions
+    )
+    extras: list[str] = []
+    cursor = 0
+    while cursor < len(rest):
+        token = rest[cursor]
+        if token.startswith("-"):
+            name = token.split("=", 1)[0]
+            action = options.get(name)
+            if action is None:
+                extras.append(token)
+                cursor += 1
+                continue
+            if _option_takes_value(action) and "=" not in token:
+                cursor += 2
+            else:
+                cursor += 1
+            continue
+        if not accepts_positional:
+            extras.append(token)
+        cursor += 1
+    return extras
 
 
 def _patch_error(parser: argparse.ArgumentParser, error_fn: Any) -> None:

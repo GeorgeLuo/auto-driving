@@ -815,7 +815,7 @@
   },
   "cite_receipts": [
     {
-      "claim_map_id": "us01_us02_live_acceptance",
+      "claim_map_id": "us01_help_discovery",
       "disposition_set_at": "2026-08-14T09:44:41Z",
       "disposition_set_by": "GeorgeLuo",
       "head_claim": "historical",
@@ -833,7 +833,7 @@
       "source_result_schema": "m007_live_cli_acceptance_v1"
     },
     {
-      "claim_map_id": "us01_us02_live_acceptance",
+      "claim_map_id": "us02_passive_journey",
       "disposition_set_at": "2026-08-14T09:44:41Z",
       "disposition_set_by": "GeorgeLuo",
       "head_claim": "historical",
@@ -1000,8 +1000,10 @@
   },
   "live_residuals": [
     {
+      "classification": "usability_defect",
       "disposition": "deferred",
       "id": "M007-LIVE-001",
+      "ledger_owner": "Automa CLI perception apply run-id / artifact naming",
       "links": {
         "leaves": [
           "vehicles.perception.apply"
@@ -1010,11 +1012,15 @@
           "US-03"
         ]
       },
-      "owner": "cli-perception-apply"
+      "one_line": "Apply run-id collision overwrites sibling artifacts",
+      "owner": "cli-perception-apply",
+      "severity": "P2"
     },
     {
+      "classification": "usability_defect",
       "disposition": "deferred",
       "id": "M007-LIVE-002",
+      "ledger_owner": "Lab candidate readiness inventory vs compare path resolution",
       "links": {
         "leaves": [
           "vehicles.perception.candidates",
@@ -1024,11 +1030,15 @@
           "US-03"
         ]
       },
-      "owner": "lab-candidates-compare"
+      "one_line": "Candidates \u201cready\u201d \u2260 compare model path",
+      "owner": "lab-candidates-compare",
+      "severity": "P2"
     },
     {
+      "classification": "usability_defect",
       "disposition": "deferred",
       "id": "M007-LIVE-003",
+      "ledger_owner": "Automa CLI compare human formatting",
       "links": {
         "leaves": [
           "vehicles.perception.compare"
@@ -1037,11 +1047,15 @@
           "US-03"
         ]
       },
-      "owner": "cli-perception-compare"
+      "one_line": "Failed compare dumps full JSON on human surface",
+      "owner": "cli-perception-compare",
+      "severity": "P3"
     },
     {
+      "classification": "enhancement_candidate",
       "disposition": "deferred",
       "id": "M007-LIVE-004",
+      "ledger_owner": "Perception review artifact UX",
       "links": {
         "leaves": [
           "vehicles.perception.compare"
@@ -1050,11 +1064,15 @@
           "US-03"
         ]
       },
-      "owner": "cli-perception-review-ux"
+      "one_line": "Want consolidated multi-engine review / open-review",
+      "owner": "cli-perception-review-ux",
+      "severity": "P3"
     },
     {
+      "classification": "usability_defect",
       "disposition": "deferred",
       "id": "M007-LIVE-005",
+      "ledger_owner": "Perception run default human vs JSON surfaces",
       "links": {
         "leaves": [
           "vehicles.perception.run"
@@ -1063,7 +1081,9 @@
           "US-03"
         ]
       },
-      "owner": "cli-perception-run"
+      "one_line": "`perception run --json` buries review path",
+      "owner": "cli-perception-run",
+      "severity": "P3"
     }
   ],
   "non_claims": {
@@ -1088,6 +1108,6 @@
       "US-09": "deferred",
       "US-10": "blocked"
     },
-    "registry_sha256": "c4e214def1af01c96721676a0300ffad6799f4cc7b86a0fdcf2f97aca8a190de"
+    "registry_sha256": "ba2fbe6e0a758d9bbbb7e37039334796da30107f6a65c35d5f03f4741ea31318"
   }
 }

@@ -16,6 +16,8 @@ try:
     from .frozen_authority import (
         CANONICAL_US88_SOURCE,
         FROZEN_CLAIM_MAP,
+        FROZEN_LIVE_LEDGER_SHA256,
+        FROZEN_LIVE_RESIDUALS,
         FROZEN_US_TEMPLATES,
         US88_SOURCE_CONTENT_SHA256,
         US88_SOURCE_RELPATH,
@@ -33,6 +35,8 @@ except ImportError:  # script / path execution
     from frozen_authority import (
         CANONICAL_US88_SOURCE,
         FROZEN_CLAIM_MAP,
+        FROZEN_LIVE_LEDGER_SHA256,
+        FROZEN_LIVE_RESIDUALS,
         FROZEN_US_TEMPLATES,
         US88_SOURCE_CONTENT_SHA256,
         US88_SOURCE_RELPATH,
@@ -973,6 +977,81 @@ def validate_sequences(
     return argv_receipts
 
 
+def _eval_cite_predicate(us_id: str, predicate: dict[str, Any], parsed: Any) -> None:
+    """Apply one frozen cite predicate against a parsed evidence document."""
+
+    if "contains_where" in predicate:
+        path = predicate.get("path")
+        if path is None:
+            raise AuditError(f"{us_id} contains_where predicate missing path")
+        rows = _json_path(path, parsed)
+        if not isinstance(rows, list):
+            raise AuditError(
+                f"{us_id} cite predicate {path} is not a list for contains_where"
+            )
+        wanted = predicate["contains_where"]
+        if not isinstance(wanted, dict) or not wanted:
+            raise AuditError(f"{us_id} contains_where must be a non-empty object")
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            if all(row.get(key) == value for key, value in wanted.items()):
+                return
+        raise AuditError(
+            f"{us_id} cite predicate missing row matching {wanted!r} under {path}"
+        )
+    if "equals" not in predicate:
+        raise AuditError(f"{us_id} cite predicate must use equals or contains_where")
+    path = predicate["path"]
+    expect = predicate["equals"]
+    actual = _json_path(path, parsed)
+    if actual != expect:
+        raise AuditError(
+            f"{us_id} cite predicate failed {path}: {actual!r} != {expect!r}"
+        )
+
+
+def eval_cite_predicates(us_id: str, claim: dict[str, Any], parsed: Any) -> None:
+    preds = claim.get("predicates") or []
+    if not preds:
+        raise AuditError(f"{us_id} claim predicates must be non-empty")
+    for predicate in preds:
+        if not isinstance(predicate, dict):
+            raise AuditError(f"{us_id} cite predicate must be an object")
+        _eval_cite_predicate(us_id, predicate, parsed)
+
+
+def parse_exploratory_ledger(text: str) -> dict[str, dict[str, str]]:
+    """Parse M007-LIVE identity rows from the exploratory ledger summary."""
+
+    parsed: dict[str, dict[str, str]] = {}
+    for match in re.finditer(
+        r"\|\s*`(?P<id>M007-LIVE-\d+)`\s*\|\s*`(?P<classification>[^`]+)`\s*\|\s*"
+        r"(?P<severity>P\d)\s*\|\s*(?P<one_line>[^|]+)\|",
+        text,
+    ):
+        parsed[match.group("id")] = {
+            "classification": match.group("classification").strip(),
+            "severity": match.group("severity").strip(),
+            "one_line": match.group("one_line").strip(),
+        }
+    owners: dict[str, str] = {}
+    current: str | None = None
+    for line in text.splitlines():
+        heading = re.fullmatch(r"###\s+(M007-LIVE-\d+)\s*", line)
+        if heading:
+            current = heading.group(1)
+            continue
+        owner = re.fullmatch(r"\|\s*Owner\s*\|\s*(.+?)\s*\|", line)
+        if owner and current:
+            owners[current] = owner.group(1).strip()
+    for live_id, row in parsed.items():
+        if live_id not in owners:
+            raise AuditError(f"exploratory ledger missing Owner for {live_id}")
+        row["ledger_owner"] = owners[live_id]
+    return parsed
+
+
 def _json_path(path: str | list[str], data: Any) -> Any:
     """Resolve a dotted path, or an explicit list path for keys that contain dots."""
 
@@ -1129,15 +1208,7 @@ def validate_semantic_cite(
         extra = sorted(set(digests) - set(paths))
         if extra:
             raise AuditError(f"{us_id} evidence.digests has unknown paths {extra}")
-        for predicate in claim.get("predicates") or []:
-            path = predicate["path"]
-            expect = predicate["equals"]
-            actual = _json_path(path, parsed)
-            if actual != expect:
-                raise AuditError(
-                    f"{us_id} cite predicate failed {path}: "
-                    f"{actual!r} != {expect!r}"
-                )
+        eval_cite_predicates(us_id, claim, parsed)
         actual_schema = parsed.get("schema") if isinstance(parsed, dict) else None
         if actual_schema != expected_schema:
             raise AuditError(
@@ -1175,14 +1246,31 @@ def validate_live_residuals(
     sequences: dict[str, Any],
     overlay: dict[str, Any],
     residuals: list[dict[str, Any]],
+    repo_root: Path = ROOT,
 ) -> None:
-    required_ids = {
-        "M007-LIVE-001",
-        "M007-LIVE-002",
-        "M007-LIVE-003",
-        "M007-LIVE-004",
-        "M007-LIVE-005",
-    }
+    ledger_path = repo_root / LIVE_FINDINGS_PATH.relative_to(ROOT)
+    if not ledger_path.is_file():
+        raise AuditError(f"exploratory LIVE ledger missing: {LIVE_FINDINGS_PATH}")
+    ledger_text = ledger_path.read_text(encoding="utf-8")
+    ledger_digest = _sha256_bytes(ledger_text.encode("utf-8"))
+    if ledger_digest != FROZEN_LIVE_LEDGER_SHA256:
+        raise AuditError(
+            "exploratory LIVE ledger digest "
+            f"{ledger_digest[:12]} != frozen {FROZEN_LIVE_LEDGER_SHA256[:12]}"
+        )
+    parsed_ledger = parse_exploratory_ledger(ledger_text)
+
+    def _identity(row: dict[str, Any]) -> dict[str, str]:
+        return {
+            key: str(row[key])
+            for key in ("classification", "severity", "one_line", "ledger_owner")
+        }
+
+    frozen_ident = {key: _identity(val) for key, val in FROZEN_LIVE_RESIDUALS.items()}
+    if parsed_ledger != frozen_ident:
+        raise AuditError(
+            "parsed exploratory LIVE ledger identity must equal FROZEN_LIVE_RESIDUALS"
+        )
     if not isinstance(residuals, list):
         raise AuditError("LIVE residuals must be a list")
     seen: set[str] = set()
@@ -1195,23 +1283,48 @@ def validate_live_residuals(
         if rid in seen:
             raise AuditError(f"duplicate LIVE residual id {rid}")
         seen.add(rid)
+    required_ids = set(FROZEN_LIVE_RESIDUALS)
     missing = sorted(required_ids - seen)
-    if missing:
-        raise AuditError(f"LIVE residuals missing: {missing}")
+    extra = sorted(seen - required_ids)
+    if missing or extra:
+        raise AuditError(
+            f"LIVE residuals must exactly match ledger IDs missing={missing} extra={extra}"
+        )
     leaf_ids = set(overlay.get("leaves", {}))
     seq_ids = {row["id"] for row in sequences["sequences"]}
     for row in residuals:
         _require_keys(
             row,
-            ("id", "owner", "disposition", "links"),
+            (
+                "id",
+                "owner",
+                "ledger_owner",
+                "classification",
+                "severity",
+                "one_line",
+                "disposition",
+                "links",
+            ),
             where=f"LIVE {row.get('id')}",
         )
+        ident = FROZEN_LIVE_RESIDUALS[row["id"]]
+        for field in ("classification", "severity", "one_line", "ledger_owner"):
+            if row.get(field) != ident[field]:
+                raise AuditError(
+                    f"LIVE {row['id']}.{field} must equal ledger identity "
+                    f"{ident[field]!r}; got {row.get(field)!r}"
+                )
         if not str(row.get("owner") or "").strip():
             raise AuditError(f"LIVE {row['id']} owner must be non-empty")
         if row.get("disposition") not in LIVE_DISPOSITIONS:
             raise AuditError(
                 f"LIVE {row['id']} disposition must be one of "
                 f"{sorted(LIVE_DISPOSITIONS)}; got {row.get('disposition')!r}"
+            )
+        expected_links = ident.get("links")
+        if expected_links is not None and row.get("links") != expected_links:
+            raise AuditError(
+                f"LIVE {row['id']} links must equal frozen ledger links"
             )
         links = row["links"]
         if not isinstance(links, dict):
@@ -1467,6 +1580,7 @@ def run_audit(*, repo_root: Path = ROOT) -> dict[str, Any]:
         sequences=sequences,
         overlay=overlay,
         residuals=residuals["findings"],
+        repo_root=repo_root,
     )
     help_drift = help_drift_report(parser)
     rollup = build_rollup(

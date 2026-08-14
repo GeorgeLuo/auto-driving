@@ -134,9 +134,57 @@
       "source_pr": 100,
       "source_result_schema": "m007_cli_scenario_continuity_v0"
     },
-    "us01_us02_live_acceptance": {
+    "us01_help_discovery": {
       "allowed_us_ids": [
-        "US-01",
+        "US-01"
+      ],
+      "paths": [
+        "docs/milestones/007-cli-operator-usability/evidence/live-cli-acceptance/result.json"
+      ],
+      "predicates": [
+        {
+          "equals": "pass",
+          "path": "result"
+        },
+        {
+          "equals": "m007_live_cli_acceptance_v1",
+          "path": "schema"
+        },
+        {
+          "contains_where": {
+            "step_id": "help-top",
+            "step_status": "pass"
+          },
+          "path": "ordered_command_outcomes"
+        },
+        {
+          "contains_where": {
+            "step_id": "help-vehicles",
+            "step_status": "pass"
+          },
+          "path": "ordered_command_outcomes"
+        },
+        {
+          "contains_where": {
+            "command": "./cli/automa vehicles automation help",
+            "step_status": "pass"
+          },
+          "path": "ordered_command_outcomes"
+        },
+        {
+          "contains_where": {
+            "command": "./cli/automa vehicles automation run --help",
+            "step_status": "pass"
+          },
+          "path": "ordered_command_outcomes"
+        }
+      ],
+      "source_commit": "caf335797b71df1323736a2054934b7c211418b0",
+      "source_pr": 88,
+      "source_result_schema": "m007_live_cli_acceptance_v1"
+    },
+    "us02_passive_journey": {
+      "allowed_us_ids": [
         "US-02"
       ],
       "paths": [
@@ -162,6 +210,48 @@
             "auto_driving",
             "commit"
           ]
+        },
+        {
+          "contains_where": {
+            "step_id": "status-initial",
+            "step_status": "pass"
+          },
+          "path": "ordered_command_outcomes"
+        },
+        {
+          "contains_where": {
+            "step_id": "update-perception",
+            "step_status": "pass"
+          },
+          "path": "ordered_command_outcomes"
+        },
+        {
+          "contains_where": {
+            "step_id": "automation-run",
+            "step_status": "pass"
+          },
+          "path": "ordered_command_outcomes"
+        },
+        {
+          "contains_where": {
+            "step_id": "status-running",
+            "step_status": "pass"
+          },
+          "path": "ordered_command_outcomes"
+        },
+        {
+          "contains_where": {
+            "step_id": "automation-stop",
+            "step_status": "pass"
+          },
+          "path": "ordered_command_outcomes"
+        },
+        {
+          "contains_where": {
+            "step_id": "status-stopped",
+            "step_status": "pass"
+          },
+          "path": "ordered_command_outcomes"
         }
       ],
       "source_commit": "caf335797b71df1323736a2054934b7c211418b0",
@@ -171,8 +261,8 @@
   },
   "schema": "m007_claim_map_v1",
   "us_claim_bindings": {
-    "US-01": "us01_us02_live_acceptance",
-    "US-02": "us01_us02_live_acceptance",
+    "US-01": "us01_help_discovery",
+    "US-02": "us02_passive_journey",
     "US-03": "continuity_offline_perception",
     "US-04": "continuity_live_config_swap",
     "US-05": "continuity_memory_lifecycle",

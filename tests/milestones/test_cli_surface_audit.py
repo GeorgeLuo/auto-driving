@@ -462,7 +462,9 @@ class CliSurfaceAuditTests(unittest.TestCase):
         leaf_id = "vehicles.memory.check"
         self.assertTrue(overlay["leaves"][leaf_id]["supports_json"])
         overlay["leaves"][leaf_id]["supports_json"] = False
-        overlay["leaves"][leaf_id]["output_contract"] = "No --json flag on this leaf."
+        overlay["leaves"][leaf_id]["json_capability"] = (
+            self.validate_audit.JSON_ABSENT_SENTENCE
+        )
         with self.assertRaises(self.validate_audit.AuditError) as ctx:
             self.validate_audit.validate_overlay(leaf_ids=leaf_ids, overlay=overlay)
         self.assertIn("argparse", str(ctx.exception).lower())
@@ -532,32 +534,47 @@ class CliSurfaceAuditTests(unittest.TestCase):
             all(not mid.endswith(".help") and mid != "help" for mid in report["missing_from_help"])
         )
 
-    def test_output_contract_negative_text_fails_when_parser_has_json(self) -> None:
+    def test_json_capability_must_equal_argparse_sentence(self) -> None:
         inventory = json.loads((TOOL / "leaf_inventory.json").read_text(encoding="utf-8"))
         overlay = json.loads((TOOL / "leaf_overlay.json").read_text(encoding="utf-8"))
         leaf_ids = [row["leaf_id"] for row in inventory["leaves"]]
         leaf_id = "vehicles.memory.check"
-        self.assertTrue(overlay["leaves"][leaf_id]["supports_json"])
-        overlay["leaves"][leaf_id]["output_contract"] = (
-            "Human summary only. No --json flag on this leaf."
+        self.assertEqual(
+            overlay["leaves"][leaf_id]["json_capability"],
+            self.validate_audit.JSON_CAPABLE_SENTENCE,
+        )
+        overlay["leaves"][leaf_id]["json_capability"] = (
+            self.validate_audit.JSON_CAPABLE_SENTENCE + " However, --json is unavailable."
         )
         with self.assertRaises(self.validate_audit.AuditError) as ctx:
             self.validate_audit.validate_overlay(leaf_ids=leaf_ids, overlay=overlay)
-        self.assertIn("denies --json", str(ctx.exception))
+        self.assertIn("json_capability", str(ctx.exception))
 
-    def test_output_contract_positive_text_fails_when_parser_lacks_json(self) -> None:
+    def test_output_contract_cannot_restate_or_contradict_json(self) -> None:
         inventory = json.loads((TOOL / "leaf_inventory.json").read_text(encoding="utf-8"))
         overlay = json.loads((TOOL / "leaf_overlay.json").read_text(encoding="utf-8"))
         leaf_ids = [row["leaf_id"] for row in inventory["leaves"]]
-        leaf_id = "vehicles.automation.run"
-        self.assertFalse(overlay["leaves"][leaf_id]["supports_json"])
-        overlay["leaves"][leaf_id]["output_contract"] = (
-            "Human summary and optional machine payload for this leaf. Supports --json."
+        check = overlay["leaves"]["vehicles.memory.check"]
+        run = overlay["leaves"]["vehicles.automation.run"]
+        self.assertEqual(
+            check["json_capability"], self.validate_audit.JSON_CAPABLE_SENTENCE
+        )
+        self.assertEqual(
+            run["json_capability"], self.validate_audit.JSON_ABSENT_SENTENCE
+        )
+        check["output_contract"] = (
+            "Human summary. Supports --json. However, --json is unavailable."
         )
         with self.assertRaises(self.validate_audit.AuditError) as ctx:
             self.validate_audit.validate_overlay(leaf_ids=leaf_ids, overlay=overlay)
-        msg = str(ctx.exception).lower()
-        self.assertTrue("claims --json" in msg or "argparse" in msg, msg)
+        self.assertIn("must not mention --json", str(ctx.exception))
+        check["output_contract"] = "Memory check PASS/FAIL."
+        run["output_contract"] = (
+            "Human summary. No --json flag on this leaf. Even so, --json is available."
+        )
+        with self.assertRaises(self.validate_audit.AuditError) as ctx:
+            self.validate_audit.validate_overlay(leaf_ids=leaf_ids, overlay=overlay)
+        self.assertIn("must not mention --json", str(ctx.exception))
 
     def test_us06_source_requires_two_trial_shape(self) -> None:
         catalog = json.loads((TOOL / "us88_catalog.json").read_text(encoding="utf-8"))
@@ -587,6 +604,11 @@ class CliSurfaceAuditTests(unittest.TestCase):
         with self.assertRaises(self.validate_audit.AuditError) as ctx:
             self.validate_audit.validate_source_command_shapes(catalog)
         self.assertIn("US-06", str(ctx.exception))
+        # Coordinated omission: keep both check tokens, drop US-05 setup/run.
+        us06["required_command_templates"] = cmds[3:]
+        with self.assertRaises(self.validate_audit.AuditError) as ctx:
+            self.validate_audit.validate_source_command_shapes(catalog)
+        self.assertIn("baseline", str(ctx.exception))
 
     def test_us07_source_requires_repeated_inspections(self) -> None:
         catalog = json.loads((TOOL / "us88_catalog.json").read_text(encoding="utf-8"))
@@ -616,6 +638,70 @@ class CliSurfaceAuditTests(unittest.TestCase):
             self.validate_audit.validate_source_command_shapes(catalog)
         self.assertIn("US-07", str(ctx.exception))
 
+    def test_boilerplate_output_and_prereq_rejected(self) -> None:
+        inventory = json.loads((TOOL / "leaf_inventory.json").read_text(encoding="utf-8"))
+        overlay = json.loads((TOOL / "leaf_overlay.json").read_text(encoding="utf-8"))
+        leaf_ids = [row["leaf_id"] for row in inventory["leaves"]]
+        leaf_id = "vehicles.memory.replay"
+        overlay["leaves"][leaf_id]["output_contract"] = (
+            "Human summary and optional machine payload for this leaf."
+        )
+        with self.assertRaises(self.validate_audit.AuditError) as ctx:
+            self.validate_audit.validate_overlay(leaf_ids=leaf_ids, overlay=overlay)
+        self.assertIn("boilerplate", str(ctx.exception))
+        overlay["leaves"][leaf_id]["output_contract"] = (
+            "Deterministic: yes (two independent passes matched)."
+        )
+        overlay["leaves"][leaf_id]["prerequisites"] = (
+            "Repository checkout; Metrics UI when live"
+        )
+        with self.assertRaises(self.validate_audit.AuditError) as ctx:
+            self.validate_audit.validate_overlay(leaf_ids=leaf_ids, overlay=overlay)
+        self.assertIn("boilerplate", str(ctx.exception))
+
+    def test_qualify_is_offline_deterministic(self) -> None:
+        overlay = json.loads((TOOL / "leaf_overlay.json").read_text(encoding="utf-8"))
+        row = overlay["leaves"]["vehicles.perception.qualify"]
+        self.assertEqual(row["safety_class"], "local_write")
+        self.assertEqual(row["validation_class"], "deterministic")
+        self.assertEqual(row["owning_boundary"], "cli/automa_cli/physical_qualify.py")
+        self.assertIsInstance(row["prerequisites"], str)
+        self.assertIn("from-check-run", row["prerequisites"])
+        self.assertNotIn("Metrics UI", row["prerequisites"])
+
+    def test_replay_prereq_is_sequence_not_metrics_ui(self) -> None:
+        overlay = json.loads((TOOL / "leaf_overlay.json").read_text(encoding="utf-8"))
+        row = overlay["leaves"]["vehicles.memory.replay"]
+        self.assertEqual(row["validation_class"], "deterministic")
+        self.assertIn("sequence", row["prerequisites"].lower())
+        self.assertNotIn("Metrics UI", row["prerequisites"])
+
+    def test_registry_root_digest_must_match_catalog(self) -> None:
+        catalog = self.validate_audit.load_catalog()
+        cat_sha = self.validate_audit.catalog_digest()
+        sequences = json.loads(
+            (TOOL / "sequence_registry.json").read_text(encoding="utf-8")
+        )
+        sequences["catalog_digest"] = "0" * 64
+        with self.assertRaises(self.validate_audit.AuditError) as ctx:
+            self.validate_audit.validate_sequences(
+                catalog=catalog,
+                catalog_sha=cat_sha,
+                sequences=sequences,
+                leaf_ids=set(self.parser_walk.public_leaf_ids()),
+            )
+        self.assertIn("sequence_registry.catalog_digest", str(ctx.exception))
+
+    def test_us07_prereq_requires_observer_and_interval(self) -> None:
+        sequences = json.loads(
+            (TOOL / "sequence_registry.json").read_text(encoding="utf-8")
+        )
+        for row in sequences["sequences"]:
+            if row["id"] == "US-07":
+                row["prerequisites"] = "Operator-chosen observation interval only"
+        with self.assertRaises(self.validate_audit.AuditError) as ctx:
+            self.validate_audit.validate_sequence_source_prerequisites(sequences)
+        self.assertIn("observer", str(ctx.exception).lower())
 
 
 if __name__ == "__main__":

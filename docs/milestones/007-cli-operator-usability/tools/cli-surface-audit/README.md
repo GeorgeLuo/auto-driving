@@ -7,14 +7,22 @@ Implements the accepted
 
 | Path | Role |
 | --- | --- |
-| `us88_catalog.json` | Immutable #88 US-01…US-10 meaning authority (comment 5169077892) |
-| `leaf_inventory.json` | Argparse-derived public leaf membership snapshot |
-| `leaf_overlay.json` | Mandatory classification overlay keyed by leaf id |
+| `us88_source.md` | Verbatim #88 source blob (content digest frozen) |
+| `us88_catalog.json` | Normalized #88 US-01…US-10 authority with per-US anchors and reviewed command deltas |
+| `leaf_inventory.json` | Argparse-derived public leaf membership (`kind: action` \| `meta`) |
+| `leaf_overlay.json` | Mandatory classification overlay; `supports_json` must match argparse |
 | `sequence_registry.json` | US registry bound to catalog digest with dispositions |
 | `claim_map.json` | Semantic citation predicates for hybrid `passed` |
 | `live_residuals.json` | Linked `M007-LIVE-*` residuals |
+| `frozen_authority.py` | Code-frozen templates, claim map, and #88 source identity |
 | `validate_audit.py` | Fail-closed finalizer |
-| `parser_walk.py` / `argv_validate.py` | Membership walk and parser-aware argv checks |
+| `parser_walk.py` / `argv_validate.py` | Membership walk (help → `kind: meta`) and parser-aware argv checks |
+
+### Membership rule
+
+Terminal leaves whose last token is `help` are inventory members tagged
+`kind: meta`. All other terminals are `kind: action`. Help-drift compares the
+action set only to the help-derived action set (like-for-like).
 
 Evidence output:
 

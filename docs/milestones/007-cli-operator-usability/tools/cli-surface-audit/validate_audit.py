@@ -21,7 +21,13 @@ try:
         US88_SOURCE_RELPATH,
         USAGE_PATTERNS,
     )
-    from .parser_walk import leaf_skeleton, public_leaf_ids, walk_leaves
+    from .parser_walk import (
+        action_leaf_ids,
+        leaf_skeleton,
+        leaf_supports_json,
+        public_leaf_ids,
+        walk_leaves,
+    )
 except ImportError:  # script / path execution
     from argv_validate import ArgvValidationError, normalize_placeholders, validate_argv
     from frozen_authority import (
@@ -32,7 +38,13 @@ except ImportError:  # script / path execution
         US88_SOURCE_RELPATH,
         USAGE_PATTERNS,
     )
-    from parser_walk import leaf_skeleton, public_leaf_ids, walk_leaves
+    from parser_walk import (
+        action_leaf_ids,
+        leaf_skeleton,
+        leaf_supports_json,
+        public_leaf_ids,
+        walk_leaves,
+    )
 
 ROOT = Path(__file__).resolve().parents[5]
 TOOL_DIR = Path(__file__).resolve().parent
@@ -72,6 +84,13 @@ VALIDATION_CLASSES = {
     "documented_only",
     "unsafe_not_executed",
 }
+# Offline / process-local leaves whose validation path is deterministic evidence.
+DETERMINISTIC_LEAVES = {
+    "vehicles.memory.replay",
+    "vehicles.perception.apply",
+    "vehicles.perception.compare",
+}
+LEAF_KINDS = {"action", "meta"}
 DISPOSITIONS = {"passed", "ready", "blocked", "deferred"}
 COMPLETENESS = {"stub", "template", "catalog_ready", "evidenced"}
 COVERAGE = {"measured", "unmeasured", "not_applicable"}
@@ -208,11 +227,36 @@ def load_catalog(
             "required_cleanup_templates",
             "required_command_leaves",
             "required_cleanup_leaves",
+            "source_anchor",
+            "command_deltas",
+            "source_status",
         ):
             if entry.get(field) != frozen.get(field):
                 raise AuditError(
                     f"catalog {us_id}.{field} must equal frozen FROZEN_US_TEMPLATES"
                 )
+        anchor = entry.get("source_anchor")
+        if not isinstance(anchor, str) or not anchor.startswith("### US-"):
+            raise AuditError(
+                f"catalog {us_id}.source_anchor must be a ### US-… heading string"
+            )
+        deltas = entry.get("command_deltas")
+        if not isinstance(deltas, list):
+            raise AuditError(f"catalog {us_id}.command_deltas must be a list")
+        for i, delta in enumerate(deltas):
+            if not isinstance(delta, dict):
+                raise AuditError(f"catalog {us_id}.command_deltas[{i}] must be object")
+            for key in (
+                "dimension",
+                "source_value",
+                "current_value",
+                "rationale",
+                "evidence",
+            ):
+                if not str(delta.get(key) or "").strip():
+                    raise AuditError(
+                        f"catalog {us_id}.command_deltas[{i}].{key} required"
+                    )
     digest = catalog_digest(path)
     anchor = anchor_path or path.with_name("us88_catalog.sha256")
     if not anchor.is_file():
@@ -295,7 +339,9 @@ def validate_leaf_membership(
     for row in inventory:
         if not isinstance(row, dict):
             raise AuditError("inventory row must be an object")
-        _require_keys(row, ("leaf_id", "tokens", "help"), where="inventory row")
+        _require_keys(
+            row, ("leaf_id", "tokens", "help", "kind"), where="inventory row"
+        )
         leaf_id = row["leaf_id"]
         tokens = row["tokens"]
         if not isinstance(tokens, list) or not tokens:
@@ -308,6 +354,13 @@ def validate_leaf_membership(
         if tuple(tokens) != expected.tokens:
             raise AuditError(
                 f"inventory {leaf_id} tokens mismatch parser walk"
+            )
+        kind = row.get("kind")
+        if kind not in LEAF_KINDS:
+            raise AuditError(f"inventory {leaf_id}.kind invalid: {kind!r}")
+        if kind != expected.kind:
+            raise AuditError(
+                f"inventory {leaf_id}.kind {kind!r} != parser-derived {expected.kind!r}"
             )
         help_text = row.get("help")
         if not isinstance(help_text, str) or not help_text.strip():
@@ -324,6 +377,8 @@ def validate_overlay(
     *,
     leaf_ids: list[str],
     overlay: dict[str, Any],
+    parser: argparse.ArgumentParser | None = None,
+    inventory_kinds: dict[str, str] | None = None,
 ) -> None:
     rows = overlay.get("leaves")
     if not isinstance(rows, dict):
@@ -342,6 +397,16 @@ def validate_overlay(
         raise AuditError(
             f"overlay membership mismatch missing={missing} extra={extra}"
         )
+    if parser is None:
+        from cli.automa_cli.app import build_parser
+
+        parser = build_parser()
+    actual_kinds = {
+        leaf.leaf_id: leaf.kind
+        for leaf in walk_leaves(parser, include_help_meta=True)
+    }
+    if inventory_kinds is None:
+        inventory_kinds = actual_kinds
     for leaf_id, row in rows.items():
         if not isinstance(row, dict):
             raise AuditError(f"overlay {leaf_id} must be an object")
@@ -471,9 +536,61 @@ def validate_overlay(
                     f"overlay {leaf_id}.{field} must use "
                     "{value: not_applicable, reason: ...} object form"
                 )
-        # Parser/--json parity table check
+        # Parser/--json parity: derive from argparse, not overlay self-check alone.
         if "supports_json" not in row:
             raise AuditError(f"overlay {leaf_id} missing supports_json")
+        supports = row.get("supports_json")
+        if not isinstance(supports, bool):
+            raise AuditError(f"overlay {leaf_id}.supports_json bool is required")
+        tokens = leaf_id.split(".")
+        parser_json = leaf_supports_json(parser, tokens)
+        if supports != parser_json:
+            raise AuditError(
+                f"overlay {leaf_id}.supports_json={supports} does not match "
+                f"argparse --json presence={parser_json}"
+            )
+        out = row.get("output_contract")
+        if isinstance(out, str):
+            mentions_json = bool(re.search(r"--json", out))
+            if parser_json and not mentions_json:
+                raise AuditError(
+                    f"overlay {leaf_id} argparse has --json but output_contract omits it"
+                )
+            if not parser_json and re.search(
+                r"Supports --json|optional --json", out, re.I
+            ):
+                raise AuditError(
+                    f"overlay {leaf_id} claims Supports --json but argparse has no --json"
+                )
+
+        kind = row.get("kind")
+        if kind not in LEAF_KINDS:
+            raise AuditError(f"overlay {leaf_id}.kind invalid or missing: {kind!r}")
+        expected_kind = inventory_kinds.get(leaf_id) or actual_kinds.get(leaf_id)
+        if kind != expected_kind:
+            raise AuditError(
+                f"overlay {leaf_id}.kind {kind!r} != inventory/parser {expected_kind!r}"
+            )
+        if kind == "meta":
+            if row.get("safety_class") != "meta_docs":
+                raise AuditError(
+                    f"overlay {leaf_id} meta leaf must use safety_class meta_docs"
+                )
+            if row.get("validation_class") != "documented_only":
+                raise AuditError(
+                    f"overlay {leaf_id} meta leaf must use validation_class documented_only"
+                )
+
+        vclass = row.get("validation_class")
+        if leaf_id in DETERMINISTIC_LEAVES and vclass != "deterministic":
+            raise AuditError(
+                f"overlay {leaf_id}.validation_class must be deterministic "
+                f"(offline/process-local boundary); got {vclass!r}"
+            )
+        if kind == "meta" and vclass not in {"documented_only"}:
+            raise AuditError(
+                f"overlay {leaf_id} meta validation_class must be documented_only"
+            )
 
 
 def _normalize_question(text: str) -> str:
@@ -1104,24 +1221,32 @@ def help_drift_report(parser: argparse.ArgumentParser | None = None) -> dict[str
     from cli.automa_cli.app import build_parser
 
     parser = parser or build_parser()
-    leaf_ids = set(public_leaf_ids(parser))
+    all_leaves = list(walk_leaves(parser, include_help_meta=True))
+    action_ids = {leaf.leaf_id for leaf in all_leaves if leaf.kind == "action"}
+    meta_ids = {leaf.leaf_id for leaf in all_leaves if leaf.kind == "meta"}
     help_leaves, invented = help_derived_leaf_ids(parser)
     if not help_leaves:
         raise AuditError("help-derived leaf walk produced no leaves")
-    missing_from_help = sorted(leaf_ids - help_leaves)
-    extra_in_help = sorted((help_leaves - leaf_ids) | invented)
+    # Like-for-like: help walk already excludes help meta nodes; compare action only.
+    missing_from_help = sorted(action_ids - help_leaves)
+    extra_in_help = sorted((help_leaves - action_ids) | invented)
     status = "ok"
     if missing_from_help or extra_in_help:
         status = "drift_reported"
     return {
         "status": status,
         "authority": "argparse",
-        "leaf_count": len(leaf_ids),
+        "membership_rule": "kind: meta for help token leaves; action otherwise",
+        "leaf_count": len(all_leaves),
+        "action_leaf_count": len(action_ids),
+        "meta_leaf_count": len(meta_ids),
         "help_leaf_count": len(help_leaves),
         "missing_from_help": missing_from_help,
         "extra_in_help": extra_in_help,
+        "meta_leaf_ids": sorted(meta_ids),
         "note": (
-            "Help-derived set comes from rendered format_help() choice groups. "
+            "Help-derived set comes from rendered format_help() choice groups and "
+            "excludes help meta nodes. Drift compares action leaves only. "
             "Membership authority remains argparse; hard equality is not Met-blocking."
         ),
     }
@@ -1165,7 +1290,15 @@ def run_audit(*, repo_root: Path = ROOT) -> dict[str, Any]:
         raise AuditError("live_residuals.findings must be a list")
 
     leaf_ids = validate_leaf_inventory_document(inventory, parser=parser)
-    validate_overlay(leaf_ids=leaf_ids, overlay=overlay)
+    inventory_kinds = {
+        row["leaf_id"]: row["kind"] for row in inventory["leaves"]
+    }
+    validate_overlay(
+        leaf_ids=leaf_ids,
+        overlay=overlay,
+        parser=parser,
+        inventory_kinds=inventory_kinds,
+    )
     argv_receipts = validate_sequences(
         catalog=catalog,
         catalog_sha=cat_sha,
@@ -1202,6 +1335,12 @@ def run_audit(*, repo_root: Path = ROOT) -> dict[str, Any]:
         },
         "leaves": {
             "count": len(leaf_ids),
+            "action_count": sum(
+                1 for row in inventory["leaves"] if row.get("kind") == "action"
+            ),
+            "meta_count": sum(
+                1 for row in inventory["leaves"] if row.get("kind") == "meta"
+            ),
             "ids": leaf_ids,
             "inventory_sha256": _sha256_file(repo_root / LEAVES_PATH.relative_to(ROOT)),
             "overlay_sha256": _sha256_file(repo_root / OVERLAY_PATH.relative_to(ROOT)),

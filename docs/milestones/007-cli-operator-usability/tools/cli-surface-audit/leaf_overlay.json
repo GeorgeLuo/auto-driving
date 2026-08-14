@@ -1,10 +1,11 @@
 {
   "leaves": {
     "help": {
+      "kind": "meta",
       "open_finding_links": [],
-      "output_contract": "Human summary and optional machine payload for this leaf. No --json flag on this leaf.",
+      "output_contract": "Help text only. No --json flag on this leaf.",
       "owning_boundary": "cli/automa_cli/app.py",
-      "prerequisites": "Repository checkout; Metrics UI when live",
+      "prerequisites": "Repository checkout",
       "safety_class": "meta_docs",
       "side_effects": "Prints help text only; no runtime mutation",
       "supports_json": false,
@@ -14,6 +15,7 @@
       "validation_class": "documented_only"
     },
     "simulators.ensure": {
+      "kind": "action",
       "open_finding_links": [],
       "output_contract": "Human summary and optional machine payload for this leaf. Supports --json.",
       "owning_boundary": "cli/automa_cli/simulators.py",
@@ -27,10 +29,11 @@
       "validation_class": "live"
     },
     "simulators.help": {
+      "kind": "meta",
       "open_finding_links": [],
-      "output_contract": "Human summary and optional machine payload for this leaf. No --json flag on this leaf.",
+      "output_contract": "Help text only. No --json flag on this leaf.",
       "owning_boundary": "cli/automa_cli/app.py",
-      "prerequisites": "Repository checkout; Metrics UI when live",
+      "prerequisites": "Repository checkout",
       "safety_class": "meta_docs",
       "side_effects": "Prints help text only; no runtime mutation",
       "supports_json": false,
@@ -40,6 +43,7 @@
       "validation_class": "documented_only"
     },
     "simulators.status": {
+      "kind": "action",
       "open_finding_links": [],
       "output_contract": "Human summary and optional machine payload for this leaf. Supports --json.",
       "owning_boundary": "cli/automa_cli/simulators.py",
@@ -53,6 +57,7 @@
       "validation_class": "live"
     },
     "vehicles.active": {
+      "kind": "action",
       "open_finding_links": [],
       "output_contract": "Human summary and optional machine payload for this leaf. Supports --json.",
       "owning_boundary": "cli/automa_cli/vehicles.py",
@@ -66,10 +71,11 @@
       "validation_class": "live"
     },
     "vehicles.automation.help": {
+      "kind": "meta",
       "open_finding_links": [],
-      "output_contract": "Human summary and optional machine payload for this leaf. No --json flag on this leaf.",
+      "output_contract": "Help text only. No --json flag on this leaf.",
       "owning_boundary": "cli/automa_cli/app.py",
-      "prerequisites": "Repository checkout; Metrics UI when live",
+      "prerequisites": "Repository checkout",
       "safety_class": "meta_docs",
       "side_effects": "Prints help text only; no runtime mutation",
       "supports_json": false,
@@ -79,6 +85,7 @@
       "validation_class": "documented_only"
     },
     "vehicles.automation.restart": {
+      "kind": "action",
       "open_finding_links": [],
       "output_contract": "Human summary and optional machine payload for this leaf. No --json flag on this leaf.",
       "owning_boundary": "cli/automa_cli/automation.py",
@@ -92,6 +99,7 @@
       "validation_class": "live"
     },
     "vehicles.automation.run": {
+      "kind": "action",
       "open_finding_links": [],
       "output_contract": "Human summary and optional machine payload for this leaf. No --json flag on this leaf.",
       "owning_boundary": "cli/automa_cli/automation.py",
@@ -105,6 +113,7 @@
       "validation_class": "live"
     },
     "vehicles.automation.status": {
+      "kind": "action",
       "open_finding_links": [],
       "output_contract": "Human summary and optional machine payload for this leaf. Supports --json.",
       "owning_boundary": "cli/automa_cli/automation.py",
@@ -118,6 +127,7 @@
       "validation_class": "live"
     },
     "vehicles.automation.stop": {
+      "kind": "action",
       "open_finding_links": [],
       "output_contract": "Human summary and optional machine payload for this leaf. No --json flag on this leaf.",
       "owning_boundary": "cli/automa_cli/automation.py",
@@ -131,10 +141,11 @@
       "validation_class": "live"
     },
     "vehicles.help": {
+      "kind": "meta",
       "open_finding_links": [],
-      "output_contract": "Human summary and optional machine payload for this leaf. No --json flag on this leaf.",
+      "output_contract": "Help text only. No --json flag on this leaf.",
       "owning_boundary": "cli/automa_cli/app.py",
-      "prerequisites": "Repository checkout; Metrics UI when live",
+      "prerequisites": "Repository checkout",
       "safety_class": "meta_docs",
       "side_effects": "Prints help text only; no runtime mutation",
       "supports_json": false,
@@ -144,6 +155,7 @@
       "validation_class": "documented_only"
     },
     "vehicles.info.decision": {
+      "kind": "action",
       "open_finding_links": [],
       "output_contract": "Human summary and optional machine payload for this leaf. Supports --json.",
       "owning_boundary": "cli/automa_cli",
@@ -157,10 +169,11 @@
       "validation_class": "live"
     },
     "vehicles.info.help": {
+      "kind": "meta",
       "open_finding_links": [],
-      "output_contract": "Human summary and optional machine payload for this leaf. No --json flag on this leaf.",
+      "output_contract": "Help text only. No --json flag on this leaf.",
       "owning_boundary": "cli/automa_cli/app.py",
-      "prerequisites": "Repository checkout; Metrics UI when live",
+      "prerequisites": "Repository checkout",
       "safety_class": "meta_docs",
       "side_effects": "Prints help text only; no runtime mutation",
       "supports_json": false,
@@ -170,6 +183,7 @@
       "validation_class": "documented_only"
     },
     "vehicles.info.memory": {
+      "kind": "action",
       "open_finding_links": [],
       "output_contract": "Human summary and optional machine payload for this leaf. Supports --json.",
       "owning_boundary": "cli/automa_cli",
@@ -183,6 +197,7 @@
       "validation_class": "live"
     },
     "vehicles.info.perception": {
+      "kind": "action",
       "open_finding_links": [],
       "output_contract": "Human summary and optional machine payload for this leaf. Supports --json.",
       "owning_boundary": "cli/automa_cli",
@@ -196,6 +211,7 @@
       "validation_class": "live"
     },
     "vehicles.memory.check": {
+      "kind": "action",
       "open_finding_links": [],
       "output_contract": "PASS/FAIL lifecycle verdict; optional --json and record extract.",
       "owning_boundary": "cli/automa_cli/memory_check.py",
@@ -209,10 +225,11 @@
       "validation_class": "live"
     },
     "vehicles.memory.help": {
+      "kind": "meta",
       "open_finding_links": [],
-      "output_contract": "Human summary and optional machine payload for this leaf. No --json flag on this leaf.",
+      "output_contract": "Help text only. No --json flag on this leaf.",
       "owning_boundary": "cli/automa_cli/app.py",
-      "prerequisites": "Repository checkout; Metrics UI when live",
+      "prerequisites": "Repository checkout",
       "safety_class": "meta_docs",
       "side_effects": "Prints help text only; no runtime mutation",
       "supports_json": false,
@@ -222,6 +239,7 @@
       "validation_class": "documented_only"
     },
     "vehicles.memory.replay": {
+      "kind": "action",
       "open_finding_links": [],
       "output_contract": "Human summary and optional machine payload for this leaf. Supports --json.",
       "owning_boundary": "cli/automa_cli/memory.py",
@@ -232,9 +250,10 @@
       "usage": [
         "memory_lifecycle"
       ],
-      "validation_class": "live"
+      "validation_class": "deterministic"
     },
     "vehicles.memory.reset": {
+      "kind": "action",
       "open_finding_links": [],
       "output_contract": "Human summary and optional machine payload for this leaf. Supports --json.",
       "owning_boundary": "cli/automa_cli/memory.py",
@@ -248,10 +267,11 @@
       "validation_class": "live"
     },
     "vehicles.operation.help": {
+      "kind": "meta",
       "open_finding_links": [],
-      "output_contract": "Human summary and optional machine payload for this leaf. No --json flag on this leaf.",
+      "output_contract": "Help text only. No --json flag on this leaf.",
       "owning_boundary": "cli/automa_cli/app.py",
-      "prerequisites": "Repository checkout; Metrics UI when live",
+      "prerequisites": "Repository checkout",
       "safety_class": "meta_docs",
       "side_effects": "Prints help text only; no runtime mutation",
       "supports_json": false,
@@ -261,6 +281,7 @@
       "validation_class": "documented_only"
     },
     "vehicles.operation.startup-check": {
+      "kind": "action",
       "open_finding_links": [],
       "output_contract": "Human summary and optional machine payload for this leaf. Supports --json.",
       "owning_boundary": "cli/automa_cli/operations.py",
@@ -274,6 +295,7 @@
       "validation_class": "unsafe_not_executed"
     },
     "vehicles.perception.apply": {
+      "kind": "action",
       "open_finding_links": [
         "M007-LIVE-001"
       ],
@@ -286,9 +308,10 @@
       "usage": [
         "offline_perception_feedback"
       ],
-      "validation_class": "live"
+      "validation_class": "deterministic"
     },
     "vehicles.perception.candidates": {
+      "kind": "action",
       "open_finding_links": [
         "M007-LIVE-002"
       ],
@@ -304,6 +327,7 @@
       "validation_class": "live"
     },
     "vehicles.perception.check": {
+      "kind": "action",
       "open_finding_links": [],
       "output_contract": "Human summary and optional machine payload for this leaf. Supports --json.",
       "owning_boundary": "cli/automa_cli",
@@ -320,6 +344,7 @@
       "validation_class": "unsafe_not_executed"
     },
     "vehicles.perception.compare": {
+      "kind": "action",
       "open_finding_links": [
         "M007-LIVE-002",
         "M007-LIVE-003"
@@ -333,9 +358,10 @@
       "usage": [
         "offline_perception_feedback"
       ],
-      "validation_class": "live"
+      "validation_class": "deterministic"
     },
     "vehicles.perception.disable": {
+      "kind": "action",
       "open_finding_links": [],
       "output_contract": "Human summary and optional machine payload for this leaf. Supports --json.",
       "owning_boundary": "cli/automa_cli/perception.py",
@@ -349,6 +375,7 @@
       "validation_class": "live"
     },
     "vehicles.perception.enable": {
+      "kind": "action",
       "open_finding_links": [],
       "output_contract": "Human summary and optional machine payload for this leaf. Supports --json.",
       "owning_boundary": "cli/automa_cli/perception.py",
@@ -362,10 +389,11 @@
       "validation_class": "live"
     },
     "vehicles.perception.help": {
+      "kind": "meta",
       "open_finding_links": [],
-      "output_contract": "Human summary and optional machine payload for this leaf. No --json flag on this leaf.",
+      "output_contract": "Help text only. No --json flag on this leaf.",
       "owning_boundary": "cli/automa_cli/app.py",
-      "prerequisites": "Repository checkout; Metrics UI when live",
+      "prerequisites": "Repository checkout",
       "safety_class": "meta_docs",
       "side_effects": "Prints help text only; no runtime mutation",
       "supports_json": false,
@@ -375,6 +403,7 @@
       "validation_class": "documented_only"
     },
     "vehicles.perception.qualify": {
+      "kind": "action",
       "open_finding_links": [],
       "output_contract": "Human summary and optional machine payload for this leaf. Supports --json.",
       "owning_boundary": "cli/automa_cli",
@@ -391,6 +420,7 @@
       "validation_class": "unsafe_not_executed"
     },
     "vehicles.perception.run": {
+      "kind": "action",
       "open_finding_links": [
         "M007-LIVE-005"
       ],
@@ -406,6 +436,7 @@
       "validation_class": "live"
     },
     "vehicles.perception.setup": {
+      "kind": "action",
       "open_finding_links": [],
       "output_contract": "Human summary and optional machine payload for this leaf. Supports --json.",
       "owning_boundary": "cli/automa_cli/lab_plugins.py",
@@ -419,6 +450,7 @@
       "validation_class": "live"
     },
     "vehicles.perception.viability": {
+      "kind": "action",
       "open_finding_links": [],
       "output_contract": "Human summary and optional machine payload for this leaf. Supports --json.",
       "owning_boundary": "cli/automa_cli",
@@ -435,6 +467,7 @@
       "validation_class": "unsafe_not_executed"
     },
     "vehicles.status": {
+      "kind": "action",
       "open_finding_links": [],
       "output_contract": "Human summary and optional machine payload for this leaf. Supports --json.",
       "owning_boundary": "cli/automa_cli/vehicles.py",
@@ -448,10 +481,11 @@
       "validation_class": "live"
     },
     "vehicles.stream.help": {
+      "kind": "meta",
       "open_finding_links": [],
-      "output_contract": "Human summary and optional machine payload for this leaf. No --json flag on this leaf.",
+      "output_contract": "Help text only. No --json flag on this leaf.",
       "owning_boundary": "cli/automa_cli/app.py",
-      "prerequisites": "Repository checkout; Metrics UI when live",
+      "prerequisites": "Repository checkout",
       "safety_class": "meta_docs",
       "side_effects": "Prints help text only; no runtime mutation",
       "supports_json": false,
@@ -461,6 +495,7 @@
       "validation_class": "documented_only"
     },
     "vehicles.stream.memory": {
+      "kind": "action",
       "open_finding_links": [],
       "output_contract": "Human summary and optional machine payload for this leaf. Supports --json.",
       "owning_boundary": "cli/automa_cli",
@@ -474,6 +509,7 @@
       "validation_class": "live"
     },
     "vehicles.stream.perception": {
+      "kind": "action",
       "open_finding_links": [],
       "output_contract": "Human summary and optional machine payload for this leaf. No --json flag on this leaf.",
       "owning_boundary": "cli/automa_cli",
@@ -487,6 +523,7 @@
       "validation_class": "live"
     },
     "vehicles.update.autonomy": {
+      "kind": "action",
       "open_finding_links": [],
       "output_contract": "Human summary and optional machine payload for this leaf. Supports --json.",
       "owning_boundary": "cli/automa_cli/deploy.py",
@@ -500,6 +537,7 @@
       "validation_class": "live"
     },
     "vehicles.update.core": {
+      "kind": "action",
       "open_finding_links": [],
       "output_contract": "Human summary and optional machine payload for this leaf. Supports --json.",
       "owning_boundary": "cli/automa_cli/deploy.py",
@@ -513,6 +551,7 @@
       "validation_class": "live"
     },
     "vehicles.update.decision": {
+      "kind": "action",
       "open_finding_links": [],
       "output_contract": "Human summary and optional machine payload for this leaf. Supports --json.",
       "owning_boundary": "cli/automa_cli/decision.py",
@@ -526,10 +565,11 @@
       "validation_class": "live"
     },
     "vehicles.update.help": {
+      "kind": "meta",
       "open_finding_links": [],
-      "output_contract": "Human summary and optional machine payload for this leaf. No --json flag on this leaf.",
+      "output_contract": "Help text only. No --json flag on this leaf.",
       "owning_boundary": "cli/automa_cli/app.py",
-      "prerequisites": "Repository checkout; Metrics UI when live",
+      "prerequisites": "Repository checkout",
       "safety_class": "meta_docs",
       "side_effects": "Prints help text only; no runtime mutation",
       "supports_json": false,
@@ -539,6 +579,7 @@
       "validation_class": "documented_only"
     },
     "vehicles.update.memory": {
+      "kind": "action",
       "open_finding_links": [],
       "output_contract": "Human summary and optional machine payload for this leaf. Supports --json.",
       "owning_boundary": "cli/automa_cli/memory.py",
@@ -552,6 +593,7 @@
       "validation_class": "live"
     },
     "vehicles.update.perception": {
+      "kind": "action",
       "open_finding_links": [],
       "output_contract": "Human summary and optional machine payload for this leaf. Supports --json.",
       "owning_boundary": "cli/automa_cli/perception.py",

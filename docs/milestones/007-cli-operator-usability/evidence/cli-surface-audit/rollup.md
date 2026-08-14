@@ -5,7 +5,7 @@
 - Sequences by completeness: {'evidenced': 6, 'template': 4}
 - Sequences by coverage: {'measured': 6, 'unmeasured': 3, 'not_applicable': 1}
 - Passed evidence: cited=6, executed=0
-- Help drift: drift_reported
+- Help drift: ok
 
 ## Deferred / blocked
 - `US-06` deferred: owner=cli-perception-plugins; unlock=Seal continuity.plugin_ablation or successor with HITL

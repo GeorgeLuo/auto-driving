@@ -3,7 +3,7 @@
   "schema": "m007_sequence_registry_v1",
   "sequences": [
     {
-      "catalog_digest": "cc47703d551a01f238afc82af9d42cbc8e06e200c399020200cb9e9b3afb85f1",
+      "catalog_digest": "2220fabdf91390d2c04ae9448a14a54723a1103d324a31f03c2281b1c7cd5034",
       "cleanup": [],
       "commands": [
         [
@@ -53,7 +53,7 @@
       "source_us_id": "US-01"
     },
     {
-      "catalog_digest": "cc47703d551a01f238afc82af9d42cbc8e06e200c399020200cb9e9b3afb85f1",
+      "catalog_digest": "2220fabdf91390d2c04ae9448a14a54723a1103d324a31f03c2281b1c7cd5034",
       "cleanup": [
         [
           "vehicles",
@@ -138,7 +138,7 @@
       "source_us_id": "US-02"
     },
     {
-      "catalog_digest": "cc47703d551a01f238afc82af9d42cbc8e06e200c399020200cb9e9b3afb85f1",
+      "catalog_digest": "2220fabdf91390d2c04ae9448a14a54723a1103d324a31f03c2281b1c7cd5034",
       "cleanup": [],
       "commands": [
         [
@@ -225,7 +225,7 @@
       "source_us_id": "US-03"
     },
     {
-      "catalog_digest": "cc47703d551a01f238afc82af9d42cbc8e06e200c399020200cb9e9b3afb85f1",
+      "catalog_digest": "2220fabdf91390d2c04ae9448a14a54723a1103d324a31f03c2281b1c7cd5034",
       "cleanup": [
         [
           "vehicles",
@@ -326,7 +326,7 @@
       "source_us_id": "US-04"
     },
     {
-      "catalog_digest": "cc47703d551a01f238afc82af9d42cbc8e06e200c399020200cb9e9b3afb85f1",
+      "catalog_digest": "2220fabdf91390d2c04ae9448a14a54723a1103d324a31f03c2281b1c7cd5034",
       "cleanup": [
         [
           "vehicles",
@@ -411,7 +411,7 @@
       "source_us_id": "US-05"
     },
     {
-      "catalog_digest": "cc47703d551a01f238afc82af9d42cbc8e06e200c399020200cb9e9b3afb85f1",
+      "catalog_digest": "2220fabdf91390d2c04ae9448a14a54723a1103d324a31f03c2281b1c7cd5034",
       "cleanup": [
         [
           "vehicles",
@@ -483,7 +483,7 @@
       "unlock": "Seal continuity.plugin_ablation or successor with HITL"
     },
     {
-      "catalog_digest": "cc47703d551a01f238afc82af9d42cbc8e06e200c399020200cb9e9b3afb85f1",
+      "catalog_digest": "2220fabdf91390d2c04ae9448a14a54723a1103d324a31f03c2281b1c7cd5034",
       "cleanup": [
         [
           "vehicles",
@@ -555,7 +555,7 @@
       "unlock": "Seal temporal backpressure sequence"
     },
     {
-      "catalog_digest": "cc47703d551a01f238afc82af9d42cbc8e06e200c399020200cb9e9b3afb85f1",
+      "catalog_digest": "2220fabdf91390d2c04ae9448a14a54723a1103d324a31f03c2281b1c7cd5034",
       "cleanup": [],
       "commands": [
         [
@@ -610,7 +610,7 @@
       "source_us_id": "US-08"
     },
     {
-      "catalog_digest": "cc47703d551a01f238afc82af9d42cbc8e06e200c399020200cb9e9b3afb85f1",
+      "catalog_digest": "2220fabdf91390d2c04ae9448a14a54723a1103d324a31f03c2281b1c7cd5034",
       "cleanup": [],
       "commands": [
         [
@@ -643,7 +643,7 @@
       "unlock": "Seal deterministic replay sequence"
     },
     {
-      "catalog_digest": "cc47703d551a01f238afc82af9d42cbc8e06e200c399020200cb9e9b3afb85f1",
+      "catalog_digest": "2220fabdf91390d2c04ae9448a14a54723a1103d324a31f03c2281b1c7cd5034",
       "cleanup": [],
       "commands": [
         [

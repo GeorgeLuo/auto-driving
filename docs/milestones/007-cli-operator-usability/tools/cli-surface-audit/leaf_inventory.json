@@ -1,12 +1,13 @@
 {
   "generator": {
     "name": "parser_walk.walk_leaves",
-    "revision": "ac60564e3e9284751cc164b1dbdf3787cfee6bb8",
-    "source_commit": "ac60564e3e9284751cc164b1dbdf3787cfee6bb8"
+    "revision": "75e18bca2551461ac5142a7f2bd3cac8854a08e2",
+    "source_commit": "75e18bca2551461ac5142a7f2bd3cac8854a08e2"
   },
   "leaves": [
     {
       "help": "Show top-level commands and common examples.",
+      "kind": "meta",
       "leaf_id": "help",
       "tokens": [
         "help"
@@ -14,6 +15,7 @@
     },
     {
       "help": "Explicitly launch/configure a known simulator environment.",
+      "kind": "action",
       "leaf_id": "simulators.ensure",
       "tokens": [
         "simulators",
@@ -22,6 +24,7 @@
     },
     {
       "help": "Show simulator-level commands.",
+      "kind": "meta",
       "leaf_id": "simulators.help",
       "tokens": [
         "simulators",
@@ -30,6 +33,7 @@
     },
     {
       "help": "Show whether SimEval has an online simulator deployment.",
+      "kind": "action",
       "leaf_id": "simulators.status",
       "tokens": [
         "simulators",
@@ -38,6 +42,7 @@
     },
     {
       "help": "Discover vehicle endpoints; this does not imply deployment or a running worker.",
+      "kind": "action",
       "leaf_id": "vehicles.active",
       "tokens": [
         "vehicles",
@@ -46,6 +51,7 @@
     },
     {
       "help": "Show automation-level commands.",
+      "kind": "meta",
       "leaf_id": "vehicles.automation.help",
       "tokens": [
         "vehicles",
@@ -55,6 +61,7 @@
     },
     {
       "help": "Restart the automation worker and verify its first camera frame.",
+      "kind": "action",
       "leaf_id": "vehicles.automation.restart",
       "tokens": [
         "vehicles",
@@ -64,6 +71,7 @@
     },
     {
       "help": "Start a worker and verify one correlated camera/perception publication.",
+      "kind": "action",
       "leaf_id": "vehicles.automation.run",
       "tokens": [
         "vehicles",
@@ -73,6 +81,7 @@
     },
     {
       "help": "Show locally deployed automation runtimes and worker status.",
+      "kind": "action",
       "leaf_id": "vehicles.automation.status",
       "tokens": [
         "vehicles",
@@ -82,6 +91,7 @@
     },
     {
       "help": "Stop the background automation loop for a vehicle.",
+      "kind": "action",
       "leaf_id": "vehicles.automation.stop",
       "tokens": [
         "vehicles",
@@ -91,6 +101,7 @@
     },
     {
       "help": "Show vehicle-level commands.",
+      "kind": "meta",
       "leaf_id": "vehicles.help",
       "tokens": [
         "vehicles",
@@ -99,6 +110,7 @@
     },
     {
       "help": "Show the locally staged decision engine and stage schema.",
+      "kind": "action",
       "leaf_id": "vehicles.info.decision",
       "tokens": [
         "vehicles",
@@ -108,6 +120,7 @@
     },
     {
       "help": "Show info-level commands.",
+      "kind": "meta",
       "leaf_id": "vehicles.info.help",
       "tokens": [
         "vehicles",
@@ -117,6 +130,7 @@
     },
     {
       "help": "Show the locally staged memory implementation and bounds.",
+      "kind": "action",
       "leaf_id": "vehicles.info.memory",
       "tokens": [
         "vehicles",
@@ -126,6 +140,7 @@
     },
     {
       "help": "Show the staged perception schema and current published view URL.",
+      "kind": "action",
       "leaf_id": "vehicles.info.perception",
       "tokens": [
         "vehicles",
@@ -135,6 +150,7 @@
     },
     {
       "help": "Run present/dropout/expiry/reset memory lifecycle gates (Chase or Pi).",
+      "kind": "action",
       "leaf_id": "vehicles.memory.check",
       "tokens": [
         "vehicles",
@@ -144,6 +160,7 @@
     },
     {
       "help": "Show memory-level commands.",
+      "kind": "meta",
       "leaf_id": "vehicles.memory.help",
       "tokens": [
         "vehicles",
@@ -153,6 +170,7 @@
     },
     {
       "help": "Replay a fixed observation sequence through staged memory offline.",
+      "kind": "action",
       "leaf_id": "vehicles.memory.replay",
       "tokens": [
         "vehicles",
@@ -162,6 +180,7 @@
     },
     {
       "help": "Reset live memory to a new empty epoch on Chase or PiCar.",
+      "kind": "action",
       "leaf_id": "vehicles.memory.reset",
       "tokens": [
         "vehicles",
@@ -171,6 +190,7 @@
     },
     {
       "help": "Show operation-level commands.",
+      "kind": "meta",
       "leaf_id": "vehicles.operation.help",
       "tokens": [
         "vehicles",
@@ -180,6 +200,7 @@
     },
     {
       "help": "Send bounded action pulses and verify camera changes around each command.",
+      "kind": "action",
       "leaf_id": "vehicles.operation.startup-check",
       "tokens": [
         "vehicles",
@@ -189,6 +210,7 @@
     },
     {
       "help": "Apply perception to an existing image or image directory.",
+      "kind": "action",
       "leaf_id": "vehicles.perception.apply",
       "tokens": [
         "vehicles",
@@ -198,6 +220,7 @@
     },
     {
       "help": "Show experimental perception candidates and readiness.",
+      "kind": "action",
       "leaf_id": "vehicles.perception.candidates",
       "tokens": [
         "vehicles",
@@ -207,6 +230,7 @@
     },
     {
       "help": "Run a guided stationary physical perception placement check.",
+      "kind": "action",
       "leaf_id": "vehicles.perception.check",
       "tokens": [
         "vehicles",
@@ -216,6 +240,7 @@
     },
     {
       "help": "Compare all ready lab candidates on one image sequence.",
+      "kind": "action",
       "leaf_id": "vehicles.perception.compare",
       "tokens": [
         "vehicles",
@@ -225,6 +250,7 @@
     },
     {
       "help": "Disable one plugin in the locally staged perception activation.",
+      "kind": "action",
       "leaf_id": "vehicles.perception.disable",
       "tokens": [
         "vehicles",
@@ -234,6 +260,7 @@
     },
     {
       "help": "Enable one plugin in the locally staged perception activation.",
+      "kind": "action",
       "leaf_id": "vehicles.perception.enable",
       "tokens": [
         "vehicles",
@@ -243,6 +270,7 @@
     },
     {
       "help": "Show perception-level commands.",
+      "kind": "meta",
       "leaf_id": "vehicles.perception.help",
       "tokens": [
         "vehicles",
@@ -252,6 +280,7 @@
     },
     {
       "help": "Compare packaged control vs one lab candidate on labeled physical-check frames.",
+      "kind": "action",
       "leaf_id": "vehicles.perception.qualify",
       "tokens": [
         "vehicles",
@@ -261,6 +290,7 @@
     },
     {
       "help": "Observe a short perception sequence from an active vehicle.",
+      "kind": "action",
       "leaf_id": "vehicles.perception.run",
       "tokens": [
         "vehicles",
@@ -270,6 +300,7 @@
     },
     {
       "help": "Prepare one isolated perception candidate.",
+      "kind": "action",
       "leaf_id": "vehicles.perception.setup",
       "tokens": [
         "vehicles",
@@ -279,6 +310,7 @@
     },
     {
       "help": "Measure onboard physical observation cadence and freshness for a PiCar.",
+      "kind": "action",
       "leaf_id": "vehicles.perception.viability",
       "tokens": [
         "vehicles",
@@ -288,6 +320,7 @@
     },
     {
       "help": "Show simulator, vehicle, deployment, worker, and perception-view state.",
+      "kind": "action",
       "leaf_id": "vehicles.status",
       "tokens": [
         "vehicles",
@@ -296,6 +329,7 @@
     },
     {
       "help": "Show stream-level commands.",
+      "kind": "meta",
       "leaf_id": "vehicles.stream.help",
       "tokens": [
         "vehicles",
@@ -305,6 +339,7 @@
     },
     {
       "help": "Inspect live memory as a key\u2192value ledger (terminal + local map page).",
+      "kind": "action",
       "leaf_id": "vehicles.stream.memory",
       "tokens": [
         "vehicles",
@@ -314,6 +349,7 @@
     },
     {
       "help": "Show the latest perception output, replacing the terminal view as it updates.",
+      "kind": "action",
       "leaf_id": "vehicles.stream.perception",
       "tokens": [
         "vehicles",
@@ -323,6 +359,7 @@
     },
     {
       "help": "Deploy a versioned autonomy controller release to a physical PiCar.",
+      "kind": "action",
       "leaf_id": "vehicles.update.autonomy",
       "tokens": [
         "vehicles",
@@ -332,6 +369,7 @@
     },
     {
       "help": "Sync the Donkey harness and install its boot-enabled runtime service.",
+      "kind": "action",
       "leaf_id": "vehicles.update.core",
       "tokens": [
         "vehicles",
@@ -341,6 +379,7 @@
     },
     {
       "help": "Stage a decision engine in the local controller bundle.",
+      "kind": "action",
       "leaf_id": "vehicles.update.decision",
       "tokens": [
         "vehicles",
@@ -350,6 +389,7 @@
     },
     {
       "help": "Show update-level commands.",
+      "kind": "meta",
       "leaf_id": "vehicles.update.help",
       "tokens": [
         "vehicles",
@@ -359,6 +399,7 @@
     },
     {
       "help": "Stage a memory implementation in the local controller bundle.",
+      "kind": "action",
       "leaf_id": "vehicles.update.memory",
       "tokens": [
         "vehicles",
@@ -368,6 +409,7 @@
     },
     {
       "help": "Stage a perception algorithm in a vehicle's local controller bundle.",
+      "kind": "action",
       "leaf_id": "vehicles.update.perception",
       "tokens": [
         "vehicles",

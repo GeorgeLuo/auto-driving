@@ -1,6 +1,7 @@
 {
   "entries": [
     {
+      "command_deltas": [],
       "id": "US-01",
       "operator_outcome": "Discover the bounded Chase journey from public help",
       "operator_question": "Can an operator discover the supported passive workflow without knowing the parser or runtime layout?",
@@ -33,9 +34,11 @@
           "--help"
         ]
       ],
+      "source_anchor": "### US-01 \u2014 Help to runnable leaf",
       "source_status": "from #88 durable appendix"
     },
     {
+      "command_deltas": [],
       "id": "US-02",
       "operator_outcome": "Reach a healthy passive camera/perception view and cleanly stop",
       "operator_question": "Can an operator attach to the existing Chase session, see current perception, and leave no worker running without changing simulator state?",
@@ -105,9 +108,26 @@
           "{vehicle_id}"
         ]
       ],
+      "source_anchor": "### US-02 \u2014 Passive Chase perception journey",
       "source_status": "from #88 durable appendix"
     },
     {
+      "command_deltas": [
+        {
+          "current_value": "4",
+          "dimension": "capture_frames",
+          "evidence": "Accepted M007 continuity/offline perception practice; source still binds the multi-apply+compare shape.",
+          "rationale": "Current bounded lab capture uses 4 frames for faster offline apply/compare; #88 source used 60 frames for longer capture runs.",
+          "source_value": "60"
+        },
+        {
+          "current_value": "apply with --record on each algorithm",
+          "dimension": "apply_record_flag",
+          "evidence": "vehicles.perception.apply --record is the supported artifact path used by continuity packages.",
+          "rationale": "Current surface records per-apply artifacts for compare identity and residual linkage; #88 listed bare apply commands.",
+          "source_value": "apply without --record"
+        }
+      ],
       "id": "US-03",
       "operator_outcome": "Capture once and compare perception implementations on the same frames",
       "operator_question": "Which packaged algorithm or ready candidate produces the most useful representation on the exact same captured frames?",
@@ -177,9 +197,11 @@
           "--record"
         ]
       ],
+      "source_anchor": "### US-03 \u2014 Capture once, run many perception implementations",
       "source_status": "from #88 durable appendix"
     },
     {
+      "command_deltas": [],
       "id": "US-04",
       "operator_outcome": "Swap a live algorithm/plugin configuration in the same simulator environment",
       "operator_question": "What visibly changes when an operator swaps perception configuration while preserving the same running simulator environment?",
@@ -266,9 +288,11 @@
           "--open-view"
         ]
       ],
+      "source_anchor": "### US-04 \u2014 Live algorithm/plugin trial",
       "source_status": "from #88 durable appendix"
     },
     {
+      "command_deltas": [],
       "id": "US-05",
       "operator_outcome": "Confirm real perception becomes bounded, attributable memory",
       "operator_question": "Does selected perception become attributable retained evidence, survive brief dropout, expire, and reset without movement?",
@@ -339,9 +363,11 @@
           "--record"
         ]
       ],
+      "source_anchor": "### US-05 \u2014 Ordinary perception-to-memory lifecycle",
       "source_status": "from #88 durable appendix"
     },
     {
+      "command_deltas": [],
       "id": "US-06",
       "operator_outcome": "Ablate motion tracking and observe downstream memory differences",
       "operator_question": "Does motion tracking add useful temporal evidence, or mainly add record churn and capacity pressure?",
@@ -409,9 +435,11 @@
           "{vehicle_id}"
         ]
       ],
+      "source_anchor": "### US-06 \u2014 Motion-tracking ablation with memory",
       "source_status": "from #88 durable appendix"
     },
     {
+      "command_deltas": [],
       "id": "US-07",
       "operator_outcome": "Observe whether slow perception makes temporal memory ineffective",
       "operator_question": "Can an expensive observer keep overlays and memory useful at the requested capture cadence?",
@@ -478,9 +506,11 @@
           "{vehicle_id}"
         ]
       ],
+      "source_anchor": "### US-07 \u2014 Perception backpressure and temporal memory",
       "source_status": "from #88 durable appendix"
     },
     {
+      "command_deltas": [],
       "id": "US-08",
       "operator_outcome": "Recover from suspicious retained evidence",
       "operator_question": "Can an operator clear suspect memory and observe current perception repopulate a new epoch?",
@@ -516,9 +546,11 @@
           "--once"
         ]
       ],
+      "source_anchor": "### US-08 \u2014 Clear suspicious retained evidence",
       "source_status": "from #88 durable appendix"
     },
     {
+      "command_deltas": [],
       "id": "US-09",
       "operator_outcome": "Freeze and reproduce a live memory anomaly",
       "operator_question": "Can an unexpected live memory outcome be reproduced deterministically offline?",
@@ -541,9 +573,11 @@
           "--record"
         ]
       ],
+      "source_anchor": "### US-09 \u2014 Freeze and replay an anomaly",
       "source_status": "from #88 durable appendix"
     },
     {
+      "command_deltas": [],
       "id": "US-10",
       "operator_outcome": "Qualify a candidate on labeled physical-check frames",
       "operator_question": "Does a ready candidate materially improve labeled physical-check behavior without unacceptable regressions?",
@@ -573,6 +607,7 @@
           "floor_continuity"
         ]
       ],
+      "source_anchor": "### US-10 \u2014 Physical labeled qualification",
       "source_status": "from #88 durable appendix"
     }
   ],

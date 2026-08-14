@@ -158,15 +158,15 @@
     },
     "vehicles.operation.startup-check": {
       "open_finding_links": [],
-      "output_contract": "Human and/or --json layer status or command-specific summary",
-      "owning_boundary": "cli/automa_cli",
-      "prerequisites": "Repository checkout; local Metrics UI only when live class applies",
-      "safety_class": "live_mutation",
-      "side_effects": "Read-only status or documentation when used as documented",
+      "output_contract": "Human and/or --json startup-check report; may include applied action results",
+      "owning_boundary": "cli/automa_cli/operations.py",
+      "prerequisites": "Discoverable vehicle; default path applies control pulses unless --dry-run",
+      "safety_class": "hazardous_external",
+      "side_effects": "Default run sends action pulses to the vehicle; --dry-run is inspection-only and is a separate safe usage not implied by the leaf default",
       "usage": [
         "bounded_operation_check"
       ],
-      "validation_class": "live"
+      "validation_class": "unsafe_not_executed"
     },
     "vehicles.perception.apply": {
       "open_finding_links": [

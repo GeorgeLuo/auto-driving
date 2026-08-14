@@ -117,15 +117,32 @@ def validate_argv(
         import contextlib
         import io
 
+        help_indexes = [
+            i for i, tok in enumerate(normalized) if tok in {"-h", "--help"}
+        ]
+        if help_indexes:
+            # Help must be the final token; reject ``--help --bogus`` and similar.
+            if help_indexes[-1] != len(normalized) - 1 or len(help_indexes) != 1:
+                return ArgvReceipt(
+                    template_id=template_id,
+                    argv=list(argv),
+                    leaf_id=leaf_id,
+                    ok=False,
+                    reason="help flag must be sole trailing token without extra args",
+                )
+
         try:
             with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(
                 io.StringIO()
             ):
                 parser.parse_args(list(normalized))
         except SystemExit as exc:
-            # ``--help`` exits 0 after printing help; treat as valid discovery argv.
-            if exc.code in (0, None) and any(
-                tok in {"-h", "--help"} for tok in normalized
+            # ``--help`` exits 0 after printing help; treat as valid discovery argv
+            # only when help is the trailing token (checked above).
+            if (
+                exc.code in (0, None)
+                and help_indexes
+                and help_indexes[-1] == len(normalized) - 1
             ):
                 return ArgvReceipt(
                     template_id=template_id,

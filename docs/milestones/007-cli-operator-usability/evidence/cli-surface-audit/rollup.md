@@ -4,7 +4,7 @@
 - Sequences by disposition: {'passed': 6, 'deferred': 3, 'blocked': 1}
 - Sequences by completeness: {'evidenced': 6, 'template': 4}
 - Passed evidence: cited=6, executed=0
-- Help drift: soft_report_only
+- Help drift: ok
 
 ## Deferred / blocked
 - `US-06` deferred: owner=cli-perception-plugins; unlock=When a stable observe-only ablation sequence is sealed with machine-first and HITL evidence under continuity.plugin_ablation or a successor unit

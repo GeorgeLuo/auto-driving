@@ -481,6 +481,20 @@
     {
       "argv": [
         "vehicles",
+        "stream",
+        "memory",
+        "--id",
+        "chase-sim-chaser",
+        "--once"
+      ],
+      "leaf_id": "vehicles.stream.memory",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-06.cmd-03"
+    },
+    {
+      "argv": [
+        "vehicles",
         "memory",
         "check",
         "--id",
@@ -490,7 +504,7 @@
       "leaf_id": "vehicles.memory.check",
       "ok": true,
       "reason": "ok",
-      "template_id": "US-06.cmd-03"
+      "template_id": "US-06.cmd-04"
     },
     {
       "argv": [
@@ -503,7 +517,7 @@
       "leaf_id": "vehicles.automation.stop",
       "ok": true,
       "reason": "ok",
-      "template_id": "US-06.cmd-04"
+      "template_id": "US-06.cmd-05"
     },
     {
       "argv": [
@@ -517,7 +531,7 @@
       "leaf_id": "vehicles.perception.disable",
       "ok": true,
       "reason": "ok",
-      "template_id": "US-06.cmd-05"
+      "template_id": "US-06.cmd-06"
     },
     {
       "argv": [
@@ -534,7 +548,7 @@
       "leaf_id": "vehicles.automation.run",
       "ok": true,
       "reason": "ok",
-      "template_id": "US-06.cmd-06"
+      "template_id": "US-06.cmd-07"
     },
     {
       "argv": [
@@ -548,7 +562,7 @@
       "leaf_id": "vehicles.memory.check",
       "ok": true,
       "reason": "ok",
-      "template_id": "US-06.cmd-07"
+      "template_id": "US-06.cmd-08"
     },
     {
       "argv": [
@@ -561,7 +575,7 @@
       "leaf_id": "vehicles.automation.stop",
       "ok": true,
       "reason": "ok",
-      "template_id": "US-06.cmd-08"
+      "template_id": "US-06.cmd-09"
     },
     {
       "argv": [
@@ -792,7 +806,7 @@
   ],
   "catalog": {
     "path": "docs/milestones/007-cli-operator-usability/tools/cli-surface-audit/us88_catalog.json",
-    "sha256": "c2361c6ffc983efb64fc367ccc2a5bdc5b5961d14ba37ae700accd3b8f17beb8",
+    "sha256": "9cf4c8bf139183d10ea51c5b576eb47cef1919a161570d704893b3f7372a0e40",
     "source": {
       "comment_id": 5169077892,
       "title": "Prospective README appendix: usage sequences and human confirmation",
@@ -982,7 +996,7 @@
     ],
     "inventory_sha256": "f5c1be987cdd809cf1ed9836df685b4793b3766ad34273a968113f4600586652",
     "meta_count": 10,
-    "overlay_sha256": "aa5b5eba1e3ae84a3508fa07e84f0cc3181236f95df72a08c0f439e7de18c7ac"
+    "overlay_sha256": "ff29e8de57652d97c9ba67734a23528603671e2a3f4586745a35aad453908412"
   },
   "live_residuals": [
     {
@@ -1074,6 +1088,6 @@
       "US-09": "deferred",
       "US-10": "blocked"
     },
-    "registry_sha256": "9204a752e443980631d3197465ae62563657f1853e2b4712efd7f33ce82733dc"
+    "registry_sha256": "c4e214def1af01c96721676a0300ffad6799f4cc7b86a0fdcf2f97aca8a190de"
   }
 }

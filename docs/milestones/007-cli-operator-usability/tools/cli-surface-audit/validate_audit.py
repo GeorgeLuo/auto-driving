@@ -67,6 +67,7 @@ REQUIRED_OVERLAY_FIELDS = (
     "side_effects",
     "safety_class",
     "output_contract",
+    "json_capability",
     "owning_boundary",
     "validation_class",
     "open_finding_links",
@@ -88,55 +89,25 @@ VALIDATION_CLASSES = {
 DETERMINISTIC_LEAVES = {
     "vehicles.memory.replay",
     "vehicles.perception.apply",
+    "vehicles.perception.candidates",
     "vehicles.perception.compare",
+    "vehicles.perception.qualify",
 }
 LEAF_KINDS = {"action", "meta"}
 JSON_CAPABLE_SENTENCE = "Supports --json."
 JSON_ABSENT_SENTENCE = "No --json flag on this leaf."
-_JSON_NEGATIVE_CLAIM = re.compile(
-    r"\bno\s+--json\b|\bwithout\s+--json\b|"
-    r"\bdoes\s+not\s+support\s+--json\b|\blacks\s+--json\b",
-    re.I,
-)
-_JSON_POSITIVE_CLAIM = re.compile(
-    r"\bsupports\s+--json\b|\boptional\s+--json\b",
-    re.I,
-)
+BOILERPLATE_OUTPUT_CONTRACTS = {
+    "Human summary and optional machine payload for this leaf. Supports --json.",
+    "Human summary and optional machine payload for this leaf. No --json flag on this leaf.",
+    "Human summary and optional machine payload for this leaf.",
+}
+BOILERPLATE_PREREQUISITES = {
+    "Repository checkout; Metrics UI when live",
+}
 
 
-def assert_json_output_contract(leaf_id: str, out: Any, *, parser_json: bool) -> None:
-    """Require argparse-derived JSON capability in the human output contract.
-
-    Token presence of ``--json`` is not enough: negative prose on a capable
-    leaf, or positive prose on a non-capable leaf, is a contradiction.
-    """
-
-    if not isinstance(out, str) or not out.strip():
-        raise AuditError(f"overlay {leaf_id}.output_contract must be non-empty")
-    negative = bool(_JSON_NEGATIVE_CLAIM.search(out))
-    positive = bool(_JSON_POSITIVE_CLAIM.search(out))
-    if parser_json:
-        if negative:
-            raise AuditError(
-                f"overlay {leaf_id} output_contract denies --json but argparse "
-                "declares --json"
-            )
-        if JSON_CAPABLE_SENTENCE not in out:
-            raise AuditError(
-                f"overlay {leaf_id} output_contract must include "
-                f"{JSON_CAPABLE_SENTENCE!r} when argparse has --json"
-            )
-    else:
-        if positive:
-            raise AuditError(
-                f"overlay {leaf_id} output_contract claims --json but argparse "
-                "has no --json"
-            )
-        if JSON_ABSENT_SENTENCE not in out:
-            raise AuditError(
-                f"overlay {leaf_id} output_contract must include "
-                f"{JSON_ABSENT_SENTENCE!r} when argparse has no --json"
-            )
+def derived_json_capability(parser_json: bool) -> str:
+    return JSON_CAPABLE_SENTENCE if parser_json else JSON_ABSENT_SENTENCE
 DISPOSITIONS = {"passed", "ready", "blocked", "deferred"}
 COMPLETENESS = {"stub", "template", "catalog_ready", "evidenced"}
 COVERAGE = {"measured", "unmeasured", "not_applicable"}
@@ -321,84 +292,99 @@ def _cmd_prefix(cmd: list[Any], n: int) -> list[str]:
     return [str(part) for part in cmd[:n]]
 
 
-def validate_source_command_shapes(catalog: dict[str, Any]) -> None:
-    """Fail closed if frozen/catalog templates drop #88 narrative steps.
+def _cmd_has(cmd: list[Any], path: list[str], required: list[str]) -> bool:
+    if _cmd_prefix(cmd, len(path)) != path:
+        return False
+    return all(token in [str(part) for part in cmd] for token in required)
 
-    These invariants are derived from ``us88_source.md`` and live outside
-    ``FROZEN_US_TEMPLATES`` so duplicating an omission into both JSON and
-    frozen constants cannot pass.
+
+def _require_ordered_phases(
+    cmds: list[Any],
+    phases: list[tuple[str, list[str], list[str]]],
+    *,
+    where: str,
+) -> None:
+    cursor = 0
+    for name, path, required in phases:
+        found = None
+        for index in range(cursor, len(cmds)):
+            if _cmd_has(cmds[index], path, required):
+                found = index
+                break
+        if found is None:
+            raise AuditError(f"{where} missing ordered phase {name}")
+        cursor = found + 1
+
+
+# Derived from us88_source.md US-05/US-06/US-07 narratives, not from FROZEN_US_TEMPLATES.
+US06_SOURCE_PHASES = [
+    ("baseline_update_perception", ["vehicles", "update", "perception"], ["--algorithm", "visual_observer"]),
+    ("baseline_update_memory", ["vehicles", "update", "memory"], ["--implementation", "bounded_evidence"]),
+    ("baseline_run", ["vehicles", "automation", "run"], ["--observe-only", "--open-view"]),
+    ("baseline_stream_memory", ["vehicles", "stream", "memory"], ["--once"]),
+    ("baseline_check", ["vehicles", "memory", "check"], ["--record"]),
+    ("baseline_stop", ["vehicles", "automation", "stop"], []),
+    ("ablate_disable", ["vehicles", "perception", "disable"], ["motion_tracks"]),
+    ("ablate_run", ["vehicles", "automation", "run"], ["--observe-only", "--open-view"]),
+    ("ablate_check", ["vehicles", "memory", "check"], ["--record"]),
+]
+US07_SOURCE_PHASES = [
+    ("run_interval", ["vehicles", "automation", "run"], ["--interval-s", "--open-view"]),
+    ("inspect1_status", ["vehicles", "automation", "status"], []),
+    ("inspect1_memory", ["vehicles", "stream", "memory"], ["--once"]),
+    ("inspect2_status", ["vehicles", "automation", "status"], []),
+    ("inspect2_memory", ["vehicles", "stream", "memory"], ["--once"]),
+    ("stop", ["vehicles", "automation", "stop"], []),
+    ("post_stop_status", ["vehicles", "automation", "status"], []),
+]
+
+
+def validate_source_command_shapes(catalog: dict[str, Any]) -> None:
+    """Fail closed if templates drop #88 ordered narrative phases.
+
+    Phase lists live outside ``FROZEN_US_TEMPLATES`` so duplicating an
+    omission into catalog JSON and frozen constants cannot pass.
     """
 
     by_id = {entry["id"]: entry for entry in catalog["entries"]}
-
     us06 = by_id["US-06"]
-    cmds = us06["required_command_templates"]
-    checks = [
-        cmd
-        for cmd in cmds
-        if _cmd_prefix(cmd, 3) == ["vehicles", "memory", "check"] and "--record" in cmd
-    ]
-    if len(checks) < 2:
-        raise AuditError(
-            "US-06 source shape requires two memory check --record trials"
-        )
-    try:
-        disable_idx = next(
-            i
-            for i, cmd in enumerate(cmds)
-            if _cmd_prefix(cmd, 3) == ["vehicles", "perception", "disable"]
-            and "motion_tracks" in cmd
-        )
-    except StopIteration as exc:
-        raise AuditError("US-06 source shape requires disable motion_tracks") from exc
+    _require_ordered_phases(
+        us06["required_command_templates"],
+        US06_SOURCE_PHASES,
+        where="US-06",
+    )
     if not any(
-        _cmd_prefix(cmd, 3) == ["vehicles", "automation", "stop"]
-        for cmd in cmds[:disable_idx]
-    ):
-        raise AuditError(
-            "US-06 source shape requires stop of the US-05 baseline before disable"
-        )
-    after = cmds[disable_idx + 1 :]
-    if not any(_cmd_prefix(cmd, 3) == ["vehicles", "automation", "run"] for cmd in after):
-        raise AuditError("US-06 source shape requires restart after disable")
-    if not any(
-        _cmd_prefix(cmd, 3) == ["vehicles", "memory", "check"] for cmd in after
-    ):
-        raise AuditError("US-06 source shape requires repeated memory check after disable")
-    if not any(
-        _cmd_prefix(cmd, 3) == ["vehicles", "perception", "enable"]
-        and "motion_tracks" in cmd
+        _cmd_has(cmd, ["vehicles", "perception", "enable"], ["motion_tracks"])
         for cmd in us06["required_cleanup_templates"]
     ):
         raise AuditError("US-06 source shape requires cleanup restore of motion_tracks")
 
     us07 = by_id["US-07"]
-    cmds = us07["required_command_templates"]
-    try:
-        first_stop = next(
-            i
-            for i, cmd in enumerate(cmds)
-            if _cmd_prefix(cmd, 3) == ["vehicles", "automation", "stop"]
-        )
-    except StopIteration as exc:
-        raise AuditError("US-07 source shape requires an automation stop") from exc
-    pre = cmds[:first_stop]
-    n_status = sum(
-        1 for cmd in pre if _cmd_prefix(cmd, 3) == ["vehicles", "automation", "status"]
+    _require_ordered_phases(
+        us07["required_command_templates"],
+        US07_SOURCE_PHASES,
+        where="US-07",
     )
-    n_mem = sum(
-        1 for cmd in pre if _cmd_prefix(cmd, 3) == ["vehicles", "stream", "memory"]
-    )
-    if n_status < 2 or n_mem < 2:
+
+
+def validate_sequence_source_prerequisites(sequences: dict[str, Any]) -> None:
+    """Bind narrative prerequisites that are not themselves CLI commands."""
+
+    by_id = {row["id"]: row for row in sequences["sequences"]}
+    us06 = " ".join(str(by_id["US-06"].get("prerequisites") or "").lower().split())
+    if "us-05" not in us06 or "motion_tracks" not in us06:
         raise AuditError(
-            "US-07 source shape requires both pre-stop inspection rounds "
-            "(status + memory stream, repeated after an operator interval)"
+            "US-06 prerequisites must name the US-05 baseline and motion_tracks ablation"
         )
-    if not any(
-        _cmd_prefix(cmd, 3) == ["vehicles", "automation", "run"] and "--interval-s" in cmd
-        for cmd in cmds
-    ):
-        raise AuditError("US-07 source shape requires run --interval-s from #88")
+    us07 = " ".join(str(by_id["US-07"].get("prerequisites") or "").lower().split())
+    if "observer" not in us07 and "perception" not in us07:
+        raise AuditError(
+            "US-07 prerequisites must name the preconfigured expensive observer/perception"
+        )
+    if "interval" not in us07:
+        raise AuditError(
+            "US-07 prerequisites must name the operator-chosen inspection interval"
+        )
 
 
 def validate_leaf_inventory_document(
@@ -622,13 +608,40 @@ def validate_overlay(
                 continue
             if field == "output_contract":
                 out = row[field]
-                supports = row.get("supports_json")
-                if not isinstance(supports, bool):
+                if not isinstance(out, str) or not out.strip():
                     raise AuditError(
-                        f"overlay {leaf_id}.supports_json bool is required"
+                        f"overlay {leaf_id}.output_contract must be non-empty"
                     )
-                # Provisional vs overlay boolean; argparse check below is authority.
-                assert_json_output_contract(leaf_id, out, parser_json=supports)
+                if out.strip() in BOILERPLATE_OUTPUT_CONTRACTS:
+                    raise AuditError(
+                        f"overlay {leaf_id}.output_contract is boilerplate filler"
+                    )
+                if "--json" in out:
+                    raise AuditError(
+                        f"overlay {leaf_id}.output_contract must not mention --json; "
+                        "store capability only in json_capability"
+                    )
+                continue
+            if field == "json_capability":
+                cap = row[field]
+                if not isinstance(cap, str) or not cap.strip():
+                    raise AuditError(
+                        f"overlay {leaf_id}.json_capability must be non-empty"
+                    )
+                continue
+            if field == "prerequisites":
+                prereq = row[field]
+                if isinstance(prereq, dict) and prereq.get("value") == "not_applicable":
+                    _na_ok(prereq, field=field, where=f"overlay {leaf_id}")
+                    continue
+                if not isinstance(prereq, str) or not prereq.strip():
+                    raise AuditError(
+                        f"overlay {leaf_id}.prerequisites must be non-empty"
+                    )
+                if prereq.strip() in BOILERPLATE_PREREQUISITES:
+                    raise AuditError(
+                        f"overlay {leaf_id}.prerequisites is boilerplate filler"
+                    )
                 continue
             if field == "owning_boundary":
                 owner = row[field]
@@ -644,6 +657,14 @@ def validate_overlay(
                     "vehicles.update.autonomy": "cli/automa_cli/deploy.py",
                     "simulators.status": "cli/automa_cli/simulators.py",
                     "simulators.ensure": "cli/automa_cli/simulators.py",
+                    "vehicles.memory.replay": "cli/automa_cli/memory.py",
+                    "vehicles.memory.reset": "cli/automa_cli/memory.py",
+                    "vehicles.memory.check": "cli/automa_cli/memory_check.py",
+                    "vehicles.perception.qualify": "cli/automa_cli/physical_qualify.py",
+                    "vehicles.perception.check": "cli/automa_cli/physical_check.py",
+                    "vehicles.perception.viability": "cli/automa_cli/physical_viability.py",
+                    "vehicles.stream.memory": "cli/automa_cli/memory.py",
+                    "vehicles.stream.perception": "cli/automa_cli/streaming.py",
                 }
                 if leaf_id in expected_owners and owner != expected_owners[leaf_id]:
                     raise AuditError(
@@ -657,7 +678,7 @@ def validate_overlay(
                     f"overlay {leaf_id}.{field} must use "
                     "{value: not_applicable, reason: ...} object form"
                 )
-        # Parser/--json parity: derive from argparse, not overlay self-check alone.
+        # Argparse owns JSON capability. Store it structurally, not in prose.
         if "supports_json" not in row:
             raise AuditError(f"overlay {leaf_id} missing supports_json")
         supports = row.get("supports_json")
@@ -670,8 +691,12 @@ def validate_overlay(
                 f"overlay {leaf_id}.supports_json={supports} does not match "
                 f"argparse --json presence={parser_json}"
             )
-        out = row.get("output_contract")
-        assert_json_output_contract(leaf_id, out, parser_json=parser_json)
+        expected_cap = derived_json_capability(parser_json)
+        if row.get("json_capability") != expected_cap:
+            raise AuditError(
+                f"overlay {leaf_id}.json_capability must equal {expected_cap!r} "
+                f"(argparse --json={parser_json})"
+            )
 
         kind = row.get("kind")
         if kind not in LEAF_KINDS:
@@ -691,6 +716,11 @@ def validate_overlay(
                     f"overlay {leaf_id} meta leaf must use validation_class documented_only"
                 )
 
+        if leaf_id == "vehicles.perception.qualify":
+            if row.get("safety_class") != "local_write":
+                raise AuditError(
+                    "overlay vehicles.perception.qualify safety_class must be local_write"
+                )
         vclass = row.get("validation_class")
         if leaf_id in DETERMINISTIC_LEAVES and vclass != "deterministic":
             raise AuditError(
@@ -718,12 +748,19 @@ def validate_sequences(
     rows = sequences.get("sequences")
     if not isinstance(rows, list):
         raise AuditError("sequence_registry.sequences must be a list")
+    root_digest = sequences.get("catalog_digest")
+    if root_digest != catalog_sha:
+        raise AuditError(
+            "sequence_registry.catalog_digest "
+            f"{str(root_digest)[:12]} != catalog {catalog_sha[:12]}"
+        )
     catalog_by_id = {entry["id"]: entry for entry in catalog["entries"]}
     seen: set[str] = set()
     argv_receipts: list[dict[str, Any]] = []
 
     if len(rows) != 10:
         raise AuditError(f"expected 10 sequence rows, got {len(rows)}")
+    validate_sequence_source_prerequisites(sequences)
 
     for row in rows:
         if not isinstance(row, dict):

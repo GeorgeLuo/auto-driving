@@ -397,6 +397,7 @@
         "vehicles.update.perception",
         "vehicles.update.memory",
         "vehicles.automation.run",
+        "vehicles.stream.memory",
         "vehicles.memory.check",
         "vehicles.automation.stop",
         "vehicles.perception.disable"
@@ -430,6 +431,14 @@
           "--frames",
           "0",
           "--open-view"
+        ],
+        [
+          "vehicles",
+          "stream",
+          "memory",
+          "--id",
+          "{vehicle_id}",
+          "--once"
         ],
         [
           "vehicles",

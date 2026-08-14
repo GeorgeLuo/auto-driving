@@ -7,6 +7,7 @@ from pathlib import Path
 
 from docs.milestones.workflow import (
     PlanContractError,
+    _workflow_status_payload,
     apply_handoff,
     start_proposal_branch,
     validate_merged_pr_metadata,
@@ -55,6 +56,20 @@ class MilestonePlanContractTests(unittest.TestCase):
             f"{CLOSEOUT_CRITERION}.*invalid status",
         ):
             validate_plan_text(invalid)
+
+    def test_backtick_wrapped_workflow_state_is_normalized_for_status(self) -> None:
+        wrapped = self.plan_text.replace(
+            "- Workflow state: ready_for_proposal\n",
+            "- Workflow state: `ready_for_proposal`\n",
+            1,
+        )
+
+        state = validate_plan_text(wrapped)
+        payload = _workflow_status_payload(PLAN, state)
+
+        self.assertEqual(state.current.fields["workflow state"], "ready_for_proposal")
+        self.assertEqual(payload["workflow_state"], "ready_for_proposal")
+        self.assertIn("proposal author", payload["next_action"])
 
     def test_missing_current_frontier_owner_is_rejected(self) -> None:
         invalid = self.plan_text.replace(

@@ -3,7 +3,7 @@
   "schema": "m007_sequence_registry_v1",
   "sequences": [
     {
-      "catalog_digest": "2220fabdf91390d2c04ae9448a14a54723a1103d324a31f03c2281b1c7cd5034",
+      "catalog_digest": "c2361c6ffc983efb64fc367ccc2a5bdc5b5961d14ba37ae700accd3b8f17beb8",
       "cleanup": [],
       "commands": [
         [
@@ -53,7 +53,7 @@
       "source_us_id": "US-01"
     },
     {
-      "catalog_digest": "2220fabdf91390d2c04ae9448a14a54723a1103d324a31f03c2281b1c7cd5034",
+      "catalog_digest": "c2361c6ffc983efb64fc367ccc2a5bdc5b5961d14ba37ae700accd3b8f17beb8",
       "cleanup": [
         [
           "vehicles",
@@ -138,7 +138,7 @@
       "source_us_id": "US-02"
     },
     {
-      "catalog_digest": "2220fabdf91390d2c04ae9448a14a54723a1103d324a31f03c2281b1c7cd5034",
+      "catalog_digest": "c2361c6ffc983efb64fc367ccc2a5bdc5b5961d14ba37ae700accd3b8f17beb8",
       "cleanup": [],
       "commands": [
         [
@@ -225,7 +225,7 @@
       "source_us_id": "US-03"
     },
     {
-      "catalog_digest": "2220fabdf91390d2c04ae9448a14a54723a1103d324a31f03c2281b1c7cd5034",
+      "catalog_digest": "c2361c6ffc983efb64fc367ccc2a5bdc5b5961d14ba37ae700accd3b8f17beb8",
       "cleanup": [
         [
           "vehicles",
@@ -326,7 +326,7 @@
       "source_us_id": "US-04"
     },
     {
-      "catalog_digest": "2220fabdf91390d2c04ae9448a14a54723a1103d324a31f03c2281b1c7cd5034",
+      "catalog_digest": "c2361c6ffc983efb64fc367ccc2a5bdc5b5961d14ba37ae700accd3b8f17beb8",
       "cleanup": [
         [
           "vehicles",
@@ -411,7 +411,7 @@
       "source_us_id": "US-05"
     },
     {
-      "catalog_digest": "2220fabdf91390d2c04ae9448a14a54723a1103d324a31f03c2281b1c7cd5034",
+      "catalog_digest": "c2361c6ffc983efb64fc367ccc2a5bdc5b5961d14ba37ae700accd3b8f17beb8",
       "cleanup": [
         [
           "vehicles",
@@ -430,6 +430,50 @@
         ]
       ],
       "commands": [
+        [
+          "vehicles",
+          "update",
+          "perception",
+          "--id",
+          "{vehicle_id}",
+          "--algorithm",
+          "visual_observer"
+        ],
+        [
+          "vehicles",
+          "update",
+          "memory",
+          "--id",
+          "{vehicle_id}",
+          "--implementation",
+          "bounded_evidence"
+        ],
+        [
+          "vehicles",
+          "automation",
+          "run",
+          "--id",
+          "{vehicle_id}",
+          "--observe-only",
+          "--frames",
+          "0",
+          "--open-view"
+        ],
+        [
+          "vehicles",
+          "memory",
+          "check",
+          "--id",
+          "{vehicle_id}",
+          "--record"
+        ],
+        [
+          "vehicles",
+          "automation",
+          "stop",
+          "--id",
+          "{vehicle_id}"
+        ],
         [
           "vehicles",
           "perception",
@@ -476,14 +520,14 @@
       "operator_outcome": "Ablate motion tracking and observe downstream memory differences",
       "operator_question": "Does motion tracking add useful temporal evidence, or mainly add record churn and capacity pressure?",
       "owner": "cli-perception-plugins",
-      "prerequisites": "Plugin disable/enable + two trials",
+      "prerequisites": "US-05 visual_observer baseline, then stop, disable motion_tracks, restart, and repeat memory check --record",
       "primary_confirmation": "Both trials reach readiness and the lifecycle check gives a concise verdict",
       "safety_class": "live_mutation",
       "source_us_id": "US-06",
       "unlock": "Seal continuity.plugin_ablation or successor with HITL"
     },
     {
-      "catalog_digest": "2220fabdf91390d2c04ae9448a14a54723a1103d324a31f03c2281b1c7cd5034",
+      "catalog_digest": "c2361c6ffc983efb64fc367ccc2a5bdc5b5961d14ba37ae700accd3b8f17beb8",
       "cleanup": [
         [
           "vehicles",
@@ -506,6 +550,21 @@
           "--interval-s",
           "0.02",
           "--open-view"
+        ],
+        [
+          "vehicles",
+          "automation",
+          "status",
+          "--id",
+          "{vehicle_id}"
+        ],
+        [
+          "vehicles",
+          "stream",
+          "memory",
+          "--id",
+          "{vehicle_id}",
+          "--once"
         ],
         [
           "vehicles",
@@ -548,14 +607,14 @@
       "operator_outcome": "Observe whether slow perception makes temporal memory ineffective",
       "operator_question": "Can an expensive observer keep overlays and memory useful at the requested capture cadence?",
       "owner": "cli-automation-status",
-      "prerequisites": "Observe backpressure without movement",
+      "prerequisites": "Operator-chosen observation interval between the two pre-stop inspection rounds (automation status + memory stream)",
       "primary_confirmation": "Human automation status exposes captured, processed, and skipped on one run line",
       "safety_class": "live_mutation",
       "source_us_id": "US-07",
       "unlock": "Seal temporal backpressure sequence"
     },
     {
-      "catalog_digest": "2220fabdf91390d2c04ae9448a14a54723a1103d324a31f03c2281b1c7cd5034",
+      "catalog_digest": "c2361c6ffc983efb64fc367ccc2a5bdc5b5961d14ba37ae700accd3b8f17beb8",
       "cleanup": [],
       "commands": [
         [
@@ -610,7 +669,7 @@
       "source_us_id": "US-08"
     },
     {
-      "catalog_digest": "2220fabdf91390d2c04ae9448a14a54723a1103d324a31f03c2281b1c7cd5034",
+      "catalog_digest": "c2361c6ffc983efb64fc367ccc2a5bdc5b5961d14ba37ae700accd3b8f17beb8",
       "cleanup": [],
       "commands": [
         [
@@ -643,7 +702,7 @@
       "unlock": "Seal deterministic replay sequence"
     },
     {
-      "catalog_digest": "2220fabdf91390d2c04ae9448a14a54723a1103d324a31f03c2281b1c7cd5034",
+      "catalog_digest": "c2361c6ffc983efb64fc367ccc2a5bdc5b5961d14ba37ae700accd3b8f17beb8",
       "cleanup": [],
       "commands": [
         [

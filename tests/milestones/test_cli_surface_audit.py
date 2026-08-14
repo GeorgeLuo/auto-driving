@@ -215,6 +215,8 @@ class CliSurfaceAuditTests(unittest.TestCase):
         self.assertIn("Coverage residuals", result["rollup"])
         self.assertIn("unmeasured", result["rollup"])
         self.assertIn("not_applicable", result["rollup"])
+        self.assertIn("action=32", result["rollup"])
+        self.assertIn("meta=10", result["rollup"])
 
     def test_catalog_template_must_match_frozen_authority(self) -> None:
         catalog_path = TOOL / "us88_catalog.json"
@@ -529,6 +531,90 @@ class CliSurfaceAuditTests(unittest.TestCase):
         self.assertTrue(
             all(not mid.endswith(".help") and mid != "help" for mid in report["missing_from_help"])
         )
+
+    def test_output_contract_negative_text_fails_when_parser_has_json(self) -> None:
+        inventory = json.loads((TOOL / "leaf_inventory.json").read_text(encoding="utf-8"))
+        overlay = json.loads((TOOL / "leaf_overlay.json").read_text(encoding="utf-8"))
+        leaf_ids = [row["leaf_id"] for row in inventory["leaves"]]
+        leaf_id = "vehicles.memory.check"
+        self.assertTrue(overlay["leaves"][leaf_id]["supports_json"])
+        overlay["leaves"][leaf_id]["output_contract"] = (
+            "Human summary only. No --json flag on this leaf."
+        )
+        with self.assertRaises(self.validate_audit.AuditError) as ctx:
+            self.validate_audit.validate_overlay(leaf_ids=leaf_ids, overlay=overlay)
+        self.assertIn("denies --json", str(ctx.exception))
+
+    def test_output_contract_positive_text_fails_when_parser_lacks_json(self) -> None:
+        inventory = json.loads((TOOL / "leaf_inventory.json").read_text(encoding="utf-8"))
+        overlay = json.loads((TOOL / "leaf_overlay.json").read_text(encoding="utf-8"))
+        leaf_ids = [row["leaf_id"] for row in inventory["leaves"]]
+        leaf_id = "vehicles.automation.run"
+        self.assertFalse(overlay["leaves"][leaf_id]["supports_json"])
+        overlay["leaves"][leaf_id]["output_contract"] = (
+            "Human summary and optional machine payload for this leaf. Supports --json."
+        )
+        with self.assertRaises(self.validate_audit.AuditError) as ctx:
+            self.validate_audit.validate_overlay(leaf_ids=leaf_ids, overlay=overlay)
+        msg = str(ctx.exception).lower()
+        self.assertTrue("claims --json" in msg or "argparse" in msg, msg)
+
+    def test_us06_source_requires_two_trial_shape(self) -> None:
+        catalog = json.loads((TOOL / "us88_catalog.json").read_text(encoding="utf-8"))
+        us06 = next(row for row in catalog["entries"] if row["id"] == "US-06")
+        cmds = us06["required_command_templates"]
+        checks = [
+            cmd
+            for cmd in cmds
+            if cmd[:3] == ["vehicles", "memory", "check"] and "--record" in cmd
+        ]
+        self.assertGreaterEqual(len(checks), 2)
+        disable_idx = next(
+            i
+            for i, cmd in enumerate(cmds)
+            if cmd[:3] == ["vehicles", "perception", "disable"]
+            and "motion_tracks" in cmd
+        )
+        self.assertTrue(
+            any(cmd[:3] == ["vehicles", "automation", "stop"] for cmd in cmds[:disable_idx])
+        )
+        after = cmds[disable_idx + 1 :]
+        self.assertTrue(any(cmd[:3] == ["vehicles", "automation", "run"] for cmd in after))
+        self.assertTrue(any(cmd[:3] == ["vehicles", "memory", "check"] for cmd in after))
+        # Dropping the baseline trial must fail the source-shape owner, even if
+        # catalog and frozen constants were edited together.
+        us06["required_command_templates"] = cmds[disable_idx:]
+        with self.assertRaises(self.validate_audit.AuditError) as ctx:
+            self.validate_audit.validate_source_command_shapes(catalog)
+        self.assertIn("US-06", str(ctx.exception))
+
+    def test_us07_source_requires_repeated_inspections(self) -> None:
+        catalog = json.loads((TOOL / "us88_catalog.json").read_text(encoding="utf-8"))
+        us07 = next(row for row in catalog["entries"] if row["id"] == "US-07")
+        cmds = us07["required_command_templates"]
+        first_stop = next(
+            i for i, cmd in enumerate(cmds) if cmd[:3] == ["vehicles", "automation", "stop"]
+        )
+        pre = cmds[:first_stop]
+        self.assertGreaterEqual(
+            sum(1 for cmd in pre if cmd[:3] == ["vehicles", "automation", "status"]),
+            2,
+        )
+        self.assertGreaterEqual(
+            sum(1 for cmd in pre if cmd[:3] == ["vehicles", "stream", "memory"]),
+            2,
+        )
+        # Keep run + first status + first stream + stop + post-stop status only.
+        us07["required_command_templates"] = [
+            cmds[0],
+            cmds[1],
+            cmds[2],
+            cmds[first_stop],
+            *cmds[first_stop + 1 :],
+        ]
+        with self.assertRaises(self.validate_audit.AuditError) as ctx:
+            self.validate_audit.validate_source_command_shapes(catalog)
+        self.assertIn("US-07", str(ctx.exception))
 
 
 

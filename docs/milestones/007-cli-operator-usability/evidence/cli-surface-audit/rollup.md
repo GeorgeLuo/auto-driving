@@ -1,6 +1,6 @@
 # M007-08 CLI surface audit rollup
 
-- Leaves: **42** (all classified; residual unclassified: 0)
+- Leaves: **42** (action=32, meta=10; all classified; residual unclassified: 0)
 - Sequences by disposition: {'passed': 6, 'deferred': 3, 'blocked': 1}
 - Sequences by completeness: {'evidenced': 6, 'template': 4}
 - Sequences by coverage: {'measured': 6, 'unmeasured': 3, 'not_applicable': 1}

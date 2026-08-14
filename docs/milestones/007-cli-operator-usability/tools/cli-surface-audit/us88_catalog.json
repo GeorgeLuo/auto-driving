@@ -394,12 +394,58 @@
         ]
       ],
       "required_command_leaves": [
-        "vehicles.perception.disable",
+        "vehicles.update.perception",
+        "vehicles.update.memory",
         "vehicles.automation.run",
         "vehicles.memory.check",
-        "vehicles.automation.stop"
+        "vehicles.automation.stop",
+        "vehicles.perception.disable"
       ],
       "required_command_templates": [
+        [
+          "vehicles",
+          "update",
+          "perception",
+          "--id",
+          "{vehicle_id}",
+          "--algorithm",
+          "visual_observer"
+        ],
+        [
+          "vehicles",
+          "update",
+          "memory",
+          "--id",
+          "{vehicle_id}",
+          "--implementation",
+          "bounded_evidence"
+        ],
+        [
+          "vehicles",
+          "automation",
+          "run",
+          "--id",
+          "{vehicle_id}",
+          "--observe-only",
+          "--frames",
+          "0",
+          "--open-view"
+        ],
+        [
+          "vehicles",
+          "memory",
+          "check",
+          "--id",
+          "{vehicle_id}",
+          "--record"
+        ],
+        [
+          "vehicles",
+          "automation",
+          "stop",
+          "--id",
+          "{vehicle_id}"
+        ],
         [
           "vehicles",
           "perception",
@@ -475,6 +521,21 @@
           "--interval-s",
           "0.02",
           "--open-view"
+        ],
+        [
+          "vehicles",
+          "automation",
+          "status",
+          "--id",
+          "{vehicle_id}"
+        ],
+        [
+          "vehicles",
+          "stream",
+          "memory",
+          "--id",
+          "{vehicle_id}",
+          "--once"
         ],
         [
           "vehicles",
@@ -577,7 +638,15 @@
       "source_status": "from #88 durable appendix"
     },
     {
-      "command_deltas": [],
+      "command_deltas": [
+        {
+          "current_value": "--candidate floor_continuity",
+          "dimension": "qualify_candidate",
+          "evidence": "vehicles.perception.qualify current surface; #88 used an unbound ready-candidate placeholder.",
+          "rationale": "Current packaged ready candidate on the labeled physical-check path is floor_continuity.",
+          "source_value": "--candidate <ready-candidate>"
+        }
+      ],
       "id": "US-10",
       "operator_outcome": "Qualify a candidate on labeled physical-check frames",
       "operator_question": "Does a ready candidate materially improve labeled physical-check behavior without unacceptable regressions?",

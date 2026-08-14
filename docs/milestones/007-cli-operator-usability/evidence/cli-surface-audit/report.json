@@ -691,7 +691,7 @@
   ],
   "catalog": {
     "path": "docs/milestones/007-cli-operator-usability/tools/cli-surface-audit/us88_catalog.json",
-    "sha256": "cc47703d551a01f238afc82af9d42cbc8e06e200c399020200cb9e9b3afb85f1",
+    "sha256": "2220fabdf91390d2c04ae9448a14a54723a1103d324a31f03c2281b1c7cd5034",
     "source": {
       "comment_id": 5169077892,
       "title": "Prospective README appendix: usage sequences and human confirmation",
@@ -809,11 +809,14 @@
     }
   ],
   "help_drift": {
+    "action_leaf_count": 32,
     "authority": "argparse",
     "extra_in_help": [],
     "help_leaf_count": 32,
     "leaf_count": 42,
-    "missing_from_help": [
+    "membership_rule": "kind: meta for help token leaves; action otherwise",
+    "meta_leaf_count": 10,
+    "meta_leaf_ids": [
       "help",
       "simulators.help",
       "vehicles.automation.help",
@@ -825,10 +828,12 @@
       "vehicles.stream.help",
       "vehicles.update.help"
     ],
-    "note": "Help-derived set comes from rendered format_help() choice groups. Membership authority remains argparse; hard equality is not Met-blocking.",
-    "status": "drift_reported"
+    "missing_from_help": [],
+    "note": "Help-derived set comes from rendered format_help() choice groups and excludes help meta nodes. Drift compares action leaves only. Membership authority remains argparse; hard equality is not Met-blocking.",
+    "status": "ok"
   },
   "leaves": {
+    "action_count": 32,
     "count": 42,
     "ids": [
       "help",
@@ -874,8 +879,9 @@
       "vehicles.update.memory",
       "vehicles.update.perception"
     ],
-    "inventory_sha256": "f86a9d6015b229861634404d5c4ceaab15325d397eb02b21918e9806c9b43d4f",
-    "overlay_sha256": "22065cab6b6c1eb25606aef9552054118fd71a1ef70d796da7a11be4d1407395"
+    "inventory_sha256": "f5c1be987cdd809cf1ed9836df685b4793b3766ad34273a968113f4600586652",
+    "meta_count": 10,
+    "overlay_sha256": "395dd60c1f14c8e019e8e7354342d17de9101aa591b5043062463cb90ca4fc9f"
   },
   "live_residuals": [
     {
@@ -967,6 +973,6 @@
       "US-09": "deferred",
       "US-10": "blocked"
     },
-    "registry_sha256": "c6a354853b9211fbd6db934566f30e47a746d60334257a742f0febddad9a4bd4"
+    "registry_sha256": "02db50c99500a5dd177d3bc839b4ab809e1dff3ba88975602270629b974851aa"
   }
 }

@@ -46,13 +46,22 @@ class CliSurfaceAuditTests(unittest.TestCase):
     def test_overlay_omission_fails(self) -> None:
         inventory = json.loads((TOOL / "leaf_inventory.json").read_text(encoding="utf-8"))
         overlay = json.loads((TOOL / "leaf_overlay.json").read_text(encoding="utf-8"))
-        leaf_id = next(iter(overlay["leaves"]))
-        del overlay["leaves"][leaf_id]["safety_class"]
-        with self.assertRaises(self.validate_audit.AuditError):
-            self.validate_audit.validate_overlay(
-                leaf_ids=[row["leaf_id"] for row in inventory["leaves"]],
-                overlay=overlay,
-            )
+        leaf_ids = [row["leaf_id"] for row in inventory["leaves"]]
+        # Prefer an action leaf so meta-only constraints do not mask omissions.
+        leaf_id = next(
+            lid
+            for lid, row in overlay["leaves"].items()
+            if row.get("kind") == "action"
+        )
+        required = self.validate_audit.REQUIRED_OVERLAY_FIELDS + ("supports_json", "kind")
+        for field in required:
+            mutated = json.loads(json.dumps(overlay))
+            del mutated["leaves"][leaf_id][field]
+            with self.assertRaises(self.validate_audit.AuditError):
+                self.validate_audit.validate_overlay(
+                    leaf_ids=leaf_ids,
+                    overlay=mutated,
+                )
 
     def test_unknown_flag_fails_argv_validation(self) -> None:
         receipt = self.argv_validate.validate_argv(
@@ -190,6 +199,18 @@ class CliSurfaceAuditTests(unittest.TestCase):
         self.assertEqual(result["report"]["result"], "pass")
         self.assertEqual(result["report"]["sequences"]["count"], 10)
         self.assertGreaterEqual(result["report"]["leaves"]["count"], 40)
+        self.assertEqual(result["report"]["leaves"]["meta_count"], 10)
+        self.assertEqual(
+            result["report"]["leaves"]["action_count"]
+            + result["report"]["leaves"]["meta_count"],
+            result["report"]["leaves"]["count"],
+        )
+        self.assertEqual(result["report"]["help_drift"]["status"], "ok")
+        self.assertEqual(
+            result["report"]["help_drift"]["action_leaf_count"],
+            result["report"]["leaves"]["action_count"],
+        )
+        self.assertEqual(result["report"]["help_drift"]["missing_from_help"], [])
         self.assertIn("Deferred", result["rollup"])
         self.assertIn("Coverage residuals", result["rollup"])
         self.assertIn("unmeasured", result["rollup"])
@@ -416,6 +437,99 @@ class CliSurfaceAuditTests(unittest.TestCase):
                 overlay=overlay,
                 residuals=residuals["findings"],
             )
+
+    def test_help_meta_kind_tagged(self) -> None:
+        inventory = json.loads((TOOL / "leaf_inventory.json").read_text(encoding="utf-8"))
+        meta = [row for row in inventory["leaves"] if row["kind"] == "meta"]
+        action = [row for row in inventory["leaves"] if row["kind"] == "action"]
+        self.assertEqual(len(meta), 10)
+        self.assertTrue(all(row["tokens"][-1] == "help" for row in meta))
+        self.assertTrue(all(row["tokens"][-1] != "help" for row in action))
+        walk = self.parser_walk.walk_leaves(
+            __import__("cli.automa_cli.app", fromlist=["build_parser"]).build_parser()
+        )
+        self.assertEqual(
+            {leaf.leaf_id: leaf.kind for leaf in walk},
+            {row["leaf_id"]: row["kind"] for row in inventory["leaves"]},
+        )
+
+    def test_supports_json_parser_parity_mutation_fails(self) -> None:
+        inventory = json.loads((TOOL / "leaf_inventory.json").read_text(encoding="utf-8"))
+        overlay = json.loads((TOOL / "leaf_overlay.json").read_text(encoding="utf-8"))
+        leaf_ids = [row["leaf_id"] for row in inventory["leaves"]]
+        leaf_id = "vehicles.memory.check"
+        self.assertTrue(overlay["leaves"][leaf_id]["supports_json"])
+        overlay["leaves"][leaf_id]["supports_json"] = False
+        overlay["leaves"][leaf_id]["output_contract"] = "No --json flag on this leaf."
+        with self.assertRaises(self.validate_audit.AuditError) as ctx:
+            self.validate_audit.validate_overlay(leaf_ids=leaf_ids, overlay=overlay)
+        self.assertIn("argparse", str(ctx.exception).lower())
+
+    def test_deterministic_validation_class_enforced(self) -> None:
+        inventory = json.loads((TOOL / "leaf_inventory.json").read_text(encoding="utf-8"))
+        overlay = json.loads((TOOL / "leaf_overlay.json").read_text(encoding="utf-8"))
+        leaf_ids = [row["leaf_id"] for row in inventory["leaves"]]
+        overlay["leaves"]["vehicles.memory.replay"]["validation_class"] = "live"
+        with self.assertRaises(self.validate_audit.AuditError) as ctx:
+            self.validate_audit.validate_overlay(leaf_ids=leaf_ids, overlay=overlay)
+        self.assertIn("deterministic", str(ctx.exception).lower())
+
+    def test_catalog_anchor_and_delta_required(self) -> None:
+        catalog_path = TOOL / "us88_catalog.json"
+        data = json.loads(catalog_path.read_text(encoding="utf-8"))
+        for entry in data["entries"]:
+            if entry["id"] == "US-03":
+                entry["command_deltas"] = []
+                entry["source_anchor"] = "### US-99 — invented"
+        bad = TOOL / "_tmp_anchor_catalog.json"
+        try:
+            import hashlib
+
+            payload = json.dumps(data, indent=2, sort_keys=True) + "\n"
+            bad.write_text(payload, encoding="utf-8")
+            digest = hashlib.sha256(payload.encode()).hexdigest()
+            anchor = TOOL / "_tmp_anchor_catalog.sha256"
+            anchor.write_text(digest + "\n", encoding="utf-8")
+            with self.assertRaises(self.validate_audit.AuditError) as ctx:
+                self.validate_audit.load_catalog(bad, anchor_path=anchor)
+            self.assertIn("frozen", str(ctx.exception).lower())
+        finally:
+            for path in (bad, TOOL / "_tmp_anchor_catalog.sha256"):
+                if path.exists():
+                    path.unlink()
+
+    def test_overlay_not_applicable_form_matrix(self) -> None:
+        inventory = json.loads((TOOL / "leaf_inventory.json").read_text(encoding="utf-8"))
+        overlay = json.loads((TOOL / "leaf_overlay.json").read_text(encoding="utf-8"))
+        leaf_ids = [row["leaf_id"] for row in inventory["leaves"]]
+        leaf_id = next(
+            lid
+            for lid, row in overlay["leaves"].items()
+            if row.get("kind") == "action"
+        )
+        # Scalar not_applicable on safety_class is already covered; also reject
+        # empty prerequisites and empty side_effects.
+        for field in ("prerequisites", "side_effects"):
+            mutated = json.loads(json.dumps(overlay))
+            mutated["leaves"][leaf_id][field] = ""
+            with self.assertRaises(self.validate_audit.AuditError):
+                self.validate_audit.validate_overlay(leaf_ids=leaf_ids, overlay=mutated)
+            mutated = json.loads(json.dumps(overlay))
+            mutated["leaves"][leaf_id][field] = {
+                "value": "not_applicable",
+                "reason": "",
+            }
+            with self.assertRaises(self.validate_audit.AuditError):
+                self.validate_audit.validate_overlay(leaf_ids=leaf_ids, overlay=mutated)
+
+    def test_help_drift_excludes_meta(self) -> None:
+        report = self.validate_audit.help_drift_report()
+        self.assertEqual(report["meta_leaf_count"], 10)
+        self.assertNotIn("help", report.get("missing_from_help", []))
+        self.assertTrue(
+            all(not mid.endswith(".help") and mid != "help" for mid in report["missing_from_help"])
+        )
+
 
 
 if __name__ == "__main__":

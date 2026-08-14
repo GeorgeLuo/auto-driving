@@ -15,6 +15,22 @@
       ],
       "validation_class": "documented_only"
     },
+    "simulators": {
+      "alias_of": "simulators.help",
+      "json_capability": "No --json flag on this leaf.",
+      "kind": "alias",
+      "open_finding_links": [],
+      "output_contract": "Implicit help alias; same discoverability surface as simulators.help.",
+      "owning_boundary": "cli/automa_cli/app.py",
+      "prerequisites": "Repository checkout",
+      "safety_class": "meta_docs",
+      "side_effects": "Prints the same help as the bound help leaf; no runtime mutation",
+      "supports_json": false,
+      "usage": [
+        "help_discovery"
+      ],
+      "validation_class": "documented_only"
+    },
     "simulators.ensure": {
       "json_capability": "Supports --json.",
       "kind": "action",
@@ -60,6 +76,22 @@
       ],
       "validation_class": "live"
     },
+    "vehicles": {
+      "alias_of": "vehicles.help",
+      "json_capability": "No --json flag on this leaf.",
+      "kind": "alias",
+      "open_finding_links": [],
+      "output_contract": "Implicit help alias; same discoverability surface as vehicles.help.",
+      "owning_boundary": "cli/automa_cli/app.py",
+      "prerequisites": "Repository checkout",
+      "safety_class": "meta_docs",
+      "side_effects": "Prints the same help as the bound help leaf; no runtime mutation",
+      "supports_json": false,
+      "usage": [
+        "help_discovery"
+      ],
+      "validation_class": "documented_only"
+    },
     "vehicles.active": {
       "json_capability": "Supports --json.",
       "kind": "action",
@@ -74,6 +106,22 @@
         "operator_status"
       ],
       "validation_class": "live"
+    },
+    "vehicles.automation": {
+      "alias_of": "vehicles.automation.help",
+      "json_capability": "No --json flag on this leaf.",
+      "kind": "alias",
+      "open_finding_links": [],
+      "output_contract": "Implicit help alias; same discoverability surface as vehicles.automation.help.",
+      "owning_boundary": "cli/automa_cli/app.py",
+      "prerequisites": "Repository checkout",
+      "safety_class": "meta_docs",
+      "side_effects": "Prints the same help as the bound help leaf; no runtime mutation",
+      "supports_json": false,
+      "usage": [
+        "help_discovery"
+      ],
+      "validation_class": "documented_only"
     },
     "vehicles.automation.help": {
       "json_capability": "No --json flag on this leaf.",
@@ -225,6 +273,22 @@
       ],
       "validation_class": "live"
     },
+    "vehicles.memory": {
+      "alias_of": "vehicles.memory.help",
+      "json_capability": "No --json flag on this leaf.",
+      "kind": "alias",
+      "open_finding_links": [],
+      "output_contract": "Implicit help alias; same discoverability surface as vehicles.memory.help.",
+      "owning_boundary": "cli/automa_cli/app.py",
+      "prerequisites": "Repository checkout",
+      "safety_class": "meta_docs",
+      "side_effects": "Prints the same help as the bound help leaf; no runtime mutation",
+      "supports_json": false,
+      "usage": [
+        "help_discovery"
+      ],
+      "validation_class": "documented_only"
+    },
     "vehicles.memory.check": {
       "json_capability": "Supports --json.",
       "kind": "action",
@@ -285,6 +349,22 @@
       ],
       "validation_class": "live"
     },
+    "vehicles.operation": {
+      "alias_of": "vehicles.operation.help",
+      "json_capability": "No --json flag on this leaf.",
+      "kind": "alias",
+      "open_finding_links": [],
+      "output_contract": "Implicit help alias; same discoverability surface as vehicles.operation.help.",
+      "owning_boundary": "cli/automa_cli/app.py",
+      "prerequisites": "Repository checkout",
+      "safety_class": "meta_docs",
+      "side_effects": "Prints the same help as the bound help leaf; no runtime mutation",
+      "supports_json": false,
+      "usage": [
+        "help_discovery"
+      ],
+      "validation_class": "documented_only"
+    },
     "vehicles.operation.help": {
       "json_capability": "No --json flag on this leaf.",
       "kind": "meta",
@@ -314,6 +394,22 @@
         "bounded_operation_check"
       ],
       "validation_class": "unsafe_not_executed"
+    },
+    "vehicles.perception": {
+      "alias_of": "vehicles.perception.help",
+      "json_capability": "No --json flag on this leaf.",
+      "kind": "alias",
+      "open_finding_links": [],
+      "output_contract": "Implicit help alias; same discoverability surface as vehicles.perception.help.",
+      "owning_boundary": "cli/automa_cli/app.py",
+      "prerequisites": "Repository checkout",
+      "safety_class": "meta_docs",
+      "side_effects": "Prints the same help as the bound help leaf; no runtime mutation",
+      "supports_json": false,
+      "usage": [
+        "help_discovery"
+      ],
+      "validation_class": "documented_only"
     },
     "vehicles.perception.apply": {
       "json_capability": "Supports --json.",
@@ -369,7 +465,8 @@
       "kind": "action",
       "open_finding_links": [
         "M007-LIVE-002",
-        "M007-LIVE-003"
+        "M007-LIVE-003",
+        "M007-LIVE-004"
       ],
       "output_contract": "Compact candidate comparison table over the same recorded frames.",
       "owning_boundary": "cli/automa_cli/perception_runs.py",
@@ -548,6 +645,22 @@
         "inspection_stream"
       ],
       "validation_class": "live"
+    },
+    "vehicles.update": {
+      "alias_of": "vehicles.update.help",
+      "json_capability": "No --json flag on this leaf.",
+      "kind": "alias",
+      "open_finding_links": [],
+      "output_contract": "Implicit help alias; same discoverability surface as vehicles.update.help.",
+      "owning_boundary": "cli/automa_cli/app.py",
+      "prerequisites": "Repository checkout",
+      "safety_class": "meta_docs",
+      "side_effects": "Prints the same help as the bound help leaf; no runtime mutation",
+      "supports_json": false,
+      "usage": [
+        "help_discovery"
+      ],
+      "validation_class": "documented_only"
     },
     "vehicles.update.autonomy": {
       "json_capability": "Supports --json.",

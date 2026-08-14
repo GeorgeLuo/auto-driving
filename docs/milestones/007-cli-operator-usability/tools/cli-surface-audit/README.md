@@ -21,8 +21,10 @@ Implements the accepted
 ### Membership rule
 
 Terminal leaves whose last token is `help` are inventory members tagged
-`kind: meta`. All other terminals are `kind: action`. Help-drift compares the
-action set only to the help-derived action set (like-for-like).
+`kind: meta`. Nodes that own optional (non-required) subparsers are also
+public terminals: they are tagged `kind: alias` and bound to their explicit
+help child, then children are still walked. All other terminals are
+`kind: action`. Help-drift compares the action set only.
 
 Evidence output:
 

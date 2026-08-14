@@ -181,11 +181,8 @@ class CliSurfaceAuditTests(unittest.TestCase):
         )
         import hashlib
 
-        digest = hashlib.sha256((ROOT / bad_path).read_bytes()).hexdigest()
+        hashlib.sha256((ROOT / bad_path).read_bytes()).hexdigest()
         claim_map["claims"]["continuity_live_config_swap"]["paths"] = [bad_path]
-        for row in sequences["sequences"]:
-            if row["id"] == "US-04":
-                row["evidence"]["digests"] = {bad_path: digest}
         with self.assertRaises(self.validate_audit.AuditError) as ctx:
             self.validate_audit.validate_semantic_cite(
                 sequences=sequences,
@@ -200,9 +197,11 @@ class CliSurfaceAuditTests(unittest.TestCase):
         self.assertEqual(result["report"]["sequences"]["count"], 10)
         self.assertGreaterEqual(result["report"]["leaves"]["count"], 40)
         self.assertEqual(result["report"]["leaves"]["meta_count"], 10)
+        self.assertEqual(result["report"]["leaves"]["alias_count"], 7)
         self.assertEqual(
             result["report"]["leaves"]["action_count"]
-            + result["report"]["leaves"]["meta_count"],
+            + result["report"]["leaves"]["meta_count"]
+            + result["report"]["leaves"]["alias_count"],
             result["report"]["leaves"]["count"],
         )
         self.assertEqual(result["report"]["help_drift"]["status"], "ok")
@@ -217,6 +216,12 @@ class CliSurfaceAuditTests(unittest.TestCase):
         self.assertIn("not_applicable", result["rollup"])
         self.assertIn("action=32", result["rollup"])
         self.assertIn("meta=10", result["rollup"])
+        self.assertIn("alias=7", result["rollup"])
+        dispositions = result["report"]["sequences"]["dispositions"]
+        self.assertEqual(dispositions["US-01"], "passed")
+        self.assertEqual(dispositions["US-02"], "passed")
+        for us_id in ("US-03", "US-04", "US-05", "US-08"):
+            self.assertNotEqual(dispositions[us_id], "passed")
 
     def test_catalog_template_must_match_frozen_authority(self) -> None:
         catalog_path = TOOL / "us88_catalog.json"
@@ -852,6 +857,88 @@ class CliSurfaceAuditTests(unittest.TestCase):
             self.assertIn("frozen", str(ctx.exception).lower())
         finally:
             result_path.write_text(original, encoding="utf-8")
+
+    def test_optional_subparser_aliases_are_inventoried(self) -> None:
+        from cli.automa_cli.app import build_parser
+
+        parser = build_parser()
+        aliases = [
+            leaf
+            for leaf in self.parser_walk.walk_leaves(parser)
+            if leaf.kind == "alias"
+        ]
+        ids = {leaf.leaf_id for leaf in aliases}
+        self.assertEqual(
+            ids,
+            {
+                "simulators",
+                "vehicles",
+                "vehicles.automation",
+                "vehicles.memory",
+                "vehicles.operation",
+                "vehicles.perception",
+                "vehicles.update",
+            },
+        )
+        self.assertTrue(all(leaf.alias_of and leaf.alias_of.endswith(".help") for leaf in aliases))
+        required_parents = {
+            leaf.leaf_id
+            for leaf in self.parser_walk.walk_leaves(parser)
+            if leaf.leaf_id in {"vehicles.info", "vehicles.stream"}
+        }
+        self.assertEqual(required_parents, set())
+
+    def test_required_subparser_nodes_are_not_aliases(self) -> None:
+        import argparse
+
+        parser = argparse.ArgumentParser()
+        sub = parser.add_subparsers(dest="cmd", required=True)
+        group = sub.add_parser("group")
+        inner = group.add_subparsers(dest="inner", required=True)
+        leaf = inner.add_parser("do")
+        leaf.set_defaults(handler=lambda: None)
+        walked = self.parser_walk.walk_leaves(parser)
+        self.assertEqual([item.leaf_id for item in walked], ["group.do"])
+        optional = argparse.ArgumentParser()
+        osub = optional.add_subparsers(dest="cmd", required=False)
+        ogroup = osub.add_parser("group")
+        ogroup.set_defaults(handler=lambda: None)
+        oinner = ogroup.add_subparsers(dest="inner", required=False)
+        oinner.add_parser("help")
+        oinner.add_parser("do")
+        kinds = {item.leaf_id: item.kind for item in self.parser_walk.walk_leaves(optional)}
+        self.assertEqual(kinds.get("group"), "alias")
+        self.assertEqual(kinds.get("group.help"), "meta")
+        self.assertEqual(kinds.get("group.do"), "action")
+
+    def test_live_residual_overlay_must_be_reciprocal(self) -> None:
+        sequences = json.loads(
+            (TOOL / "sequence_registry.json").read_text(encoding="utf-8")
+        )
+        overlay = json.loads((TOOL / "leaf_overlay.json").read_text(encoding="utf-8"))
+        residuals = json.loads((TOOL / "live_residuals.json").read_text(encoding="utf-8"))
+        overlay["leaves"]["vehicles.perception.compare"]["open_finding_links"] = [
+            "M007-LIVE-002",
+            "M007-LIVE-003",
+        ]
+        with self.assertRaises(self.validate_audit.AuditError) as ctx:
+            self.validate_audit.validate_live_residuals(
+                sequences=sequences,
+                overlay=overlay,
+                residuals=residuals["findings"],
+            )
+        self.assertIn("reciprocal", str(ctx.exception).lower())
+        overlay = json.loads((TOOL / "leaf_overlay.json").read_text(encoding="utf-8"))
+        overlay["leaves"]["vehicles.perception.compare"]["open_finding_links"].append(
+            "M007-LIVE-999"
+        )
+        with self.assertRaises(self.validate_audit.AuditError) as ctx:
+            self.validate_audit.validate_live_residuals(
+                sequences=sequences,
+                overlay=overlay,
+                residuals=residuals["findings"],
+            )
+        self.assertIn("unknown residual", str(ctx.exception).lower())
 
 
 if __name__ == "__main__":

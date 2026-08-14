@@ -99,7 +99,7 @@ DETERMINISTIC_LEAVES = {
     "vehicles.perception.compare",
     "vehicles.perception.qualify",
 }
-LEAF_KINDS = {"action", "meta"}
+LEAF_KINDS = {"action", "meta", "alias"}
 JSON_CAPABLE_SENTENCE = "Supports --json."
 JSON_ABSENT_SENTENCE = "No --json flag on this leaf."
 BOILERPLATE_OUTPUT_CONTRACTS = {
@@ -486,6 +486,16 @@ def validate_leaf_membership(
             raise AuditError(
                 f"inventory {leaf_id}.kind {kind!r} != parser-derived {expected.kind!r}"
             )
+        if kind == "alias":
+            alias_of = row.get("alias_of")
+            if alias_of != expected.alias_of or not alias_of:
+                raise AuditError(
+                    f"inventory {leaf_id}.alias_of must be {expected.alias_of!r}"
+                )
+            if alias_of not in actual_leaves or actual_leaves[alias_of].kind != "meta":
+                raise AuditError(
+                    f"inventory {leaf_id}.alias_of {alias_of!r} must be a meta help leaf"
+                )
         help_text = row.get("help")
         if not isinstance(help_text, str) or not help_text.strip():
             raise AuditError(f"inventory {leaf_id} help must be a non-empty string")
@@ -712,15 +722,23 @@ def validate_overlay(
             raise AuditError(
                 f"overlay {leaf_id}.kind {kind!r} != inventory/parser {expected_kind!r}"
             )
-        if kind == "meta":
+        if kind in {"meta", "alias"}:
             if row.get("safety_class") != "meta_docs":
                 raise AuditError(
-                    f"overlay {leaf_id} meta leaf must use safety_class meta_docs"
+                    f"overlay {leaf_id} {kind} leaf must use safety_class meta_docs"
                 )
             if row.get("validation_class") != "documented_only":
                 raise AuditError(
-                    f"overlay {leaf_id} meta leaf must use validation_class documented_only"
+                    f"overlay {leaf_id} {kind} leaf must use validation_class documented_only"
                 )
+            if kind == "alias":
+                alias_of = row.get("alias_of")
+                if not isinstance(alias_of, str) or not (
+                    alias_of == "help" or alias_of.endswith(".help")
+                ):
+                    raise AuditError(
+                        f"overlay {leaf_id}.alias_of must bind a help leaf"
+                    )
 
         if leaf_id == "vehicles.perception.qualify":
             if row.get("safety_class") != "local_write":
@@ -733,9 +751,9 @@ def validate_overlay(
                 f"overlay {leaf_id}.validation_class must be deterministic "
                 f"(offline/process-local boundary); got {vclass!r}"
             )
-        if kind == "meta" and vclass not in {"documented_only"}:
+        if kind in {"meta", "alias"} and vclass not in {"documented_only"}:
             raise AuditError(
-                f"overlay {leaf_id} meta validation_class must be documented_only"
+                f"overlay {leaf_id} {kind} validation_class must be documented_only"
             )
 
 
@@ -1359,6 +1377,34 @@ def validate_live_residuals(
             if seq not in seq_ids:
                 raise AuditError(f"LIVE {row['id']} unknown sequence {seq}")
 
+    residual_to_leaves: dict[str, set[str]] = {}
+    for row in residuals:
+        residual_to_leaves.setdefault(row["id"], set()).update(
+            row["links"].get("leaves") or []
+        )
+    overlay_to_residuals: dict[str, set[str]] = {}
+    for leaf_id, leaf_row in overlay.get("leaves", {}).items():
+        links = leaf_row.get("open_finding_links") or []
+        if not isinstance(links, list):
+            raise AuditError(f"overlay {leaf_id}.open_finding_links must be a list")
+        overlay_to_residuals[leaf_id] = {str(item) for item in links}
+        unknown = sorted(overlay_to_residuals[leaf_id] - set(residual_to_leaves))
+        if unknown:
+            raise AuditError(
+                f"overlay {leaf_id}.open_finding_links unknown residual ids {unknown}"
+            )
+    leaf_to_residuals: dict[str, set[str]] = {}
+    for residual_id, leaves in residual_to_leaves.items():
+        for leaf_id in leaves:
+            leaf_to_residuals.setdefault(leaf_id, set()).add(residual_id)
+    for leaf_id, expected in leaf_to_residuals.items():
+        actual = overlay_to_residuals.get(leaf_id, set())
+        if actual != expected:
+            raise AuditError(
+                f"LIVE residual linkage not reciprocal for {leaf_id}: "
+                f"residuals={sorted(expected)} overlay={sorted(actual)}"
+            )
+
 
 def build_rollup(
     *,
@@ -1404,7 +1450,8 @@ def build_rollup(
             (
                 f"- Leaves: **{len(leaf_ids)}** "
                 f"(action={help_drift.get('action_leaf_count', '?')}, "
-                f"meta={help_drift.get('meta_leaf_count', '?')}; "
+                f"meta={help_drift.get('meta_leaf_count', '?')}, "
+                f"alias={help_drift.get('alias_leaf_count', '?')}; "
                 "all classified; residual unclassified: 0)"
             ),
             f"- Sequences by disposition: {by_disp}",
@@ -1506,10 +1553,11 @@ def help_drift_report(parser: argparse.ArgumentParser | None = None) -> dict[str
     all_leaves = list(walk_leaves(parser, include_help_meta=True))
     action_ids = {leaf.leaf_id for leaf in all_leaves if leaf.kind == "action"}
     meta_ids = {leaf.leaf_id for leaf in all_leaves if leaf.kind == "meta"}
+    alias_ids = {leaf.leaf_id for leaf in all_leaves if leaf.kind == "alias"}
     help_leaves, invented = help_derived_leaf_ids(parser)
     if not help_leaves:
         raise AuditError("help-derived leaf walk produced no leaves")
-    # Like-for-like: help walk already excludes help meta nodes; compare action only.
+    # Like-for-like: help walk already excludes help meta/alias nodes.
     missing_from_help = sorted(action_ids - help_leaves)
     extra_in_help = sorted((help_leaves - action_ids) | invented)
     status = "ok"
@@ -1518,14 +1566,19 @@ def help_drift_report(parser: argparse.ArgumentParser | None = None) -> dict[str
     return {
         "status": status,
         "authority": "argparse",
-        "membership_rule": "kind: meta for help token leaves; action otherwise",
+        "membership_rule": (
+            "kind: meta for help tokens; kind: alias for optional-subparser "
+            "parent terminals bound to their help child; action otherwise"
+        ),
         "leaf_count": len(all_leaves),
         "action_leaf_count": len(action_ids),
         "meta_leaf_count": len(meta_ids),
+        "alias_leaf_count": len(alias_ids),
         "help_leaf_count": len(help_leaves),
         "missing_from_help": missing_from_help,
         "extra_in_help": extra_in_help,
         "meta_leaf_ids": sorted(meta_ids),
+        "alias_leaf_ids": sorted(alias_ids),
         "note": (
             "Help-derived set comes from rendered format_help() choice groups and "
             "excludes help meta nodes. Drift compares action leaves only. "
@@ -1623,6 +1676,9 @@ def run_audit(*, repo_root: Path = ROOT) -> dict[str, Any]:
             ),
             "meta_count": sum(
                 1 for row in inventory["leaves"] if row.get("kind") == "meta"
+            ),
+            "alias_count": sum(
+                1 for row in inventory["leaves"] if row.get("kind") == "alias"
             ),
             "ids": leaf_ids,
             "inventory_sha256": _sha256_file(repo_root / LEAVES_PATH.relative_to(ROOT)),

@@ -197,32 +197,22 @@
           "--record"
         ]
       ],
-      "completeness": "evidenced",
+      "completeness": "template",
       "coverage": {
-        "evidence": "continuity.offline_perception",
-        "value": "measured"
+        "reason": "Cited #100 offline family is a command subset of the registered US-03 sequence",
+        "value": "unmeasured"
       },
-      "disposition": "passed",
-      "evidence": {
-        "claim_map_id": "continuity_offline_perception",
-        "digests": {
-          "docs/milestones/007-cli-operator-usability/evidence/cli-scenario-continuity/result.json": "72b579bbf29a5dc58cabbb3e03ee325b32330f2b260cddc407589448f34a2c85"
-        },
-        "disposition_set_at": "2026-08-14T09:44:41Z",
-        "disposition_set_by": "GeorgeLuo",
-        "evidence_mode": "cited",
-        "head_claim": "historical",
-        "source_commit": "37b7393fe759f1597860a30d8c10ca5692f1c0cc",
-        "source_pr": 100
-      },
+      "disposition": "deferred",
       "execution": "machine_only",
       "id": "US-03",
       "operator_outcome": "Capture once and compare perception implementations on the same frames",
       "operator_question": "Which packaged algorithm or ready candidate produces the most useful representation on the exact same captured frames?",
+      "owner": "cli-perception-offline",
       "prerequisites": "Chase vehicle; offline capture/apply/compare",
       "primary_confirmation": "Compact human experiment summary / candidate comparison table",
       "safety_class": "local_write",
-      "source_us_id": "US-03"
+      "source_us_id": "US-03",
+      "unlock": "Exact-step #88 US-03 evidence (visual_observer apply + compare) after citation amendment; family aggregate is not enough"
     },
     {
       "catalog_digest": "9cf4c8bf139183d10ea51c5b576eb47cef1919a161570d704893b3f7372a0e40",
@@ -298,32 +288,22 @@
           "--open-view"
         ]
       ],
-      "completeness": "evidenced",
+      "completeness": "template",
       "coverage": {
-        "evidence": "continuity.live_config_swap",
-        "value": "measured"
+        "reason": "Cited #100 live-config family is a command subset of the registered US-04 sequence",
+        "value": "unmeasured"
       },
-      "disposition": "passed",
-      "evidence": {
-        "claim_map_id": "continuity_live_config_swap",
-        "digests": {
-          "docs/milestones/007-cli-operator-usability/evidence/cli-scenario-continuity/result.json": "72b579bbf29a5dc58cabbb3e03ee325b32330f2b260cddc407589448f34a2c85"
-        },
-        "disposition_set_at": "2026-08-14T09:44:41Z",
-        "disposition_set_by": "GeorgeLuo",
-        "evidence_mode": "cited",
-        "head_claim": "historical",
-        "source_commit": "37b7393fe759f1597860a30d8c10ca5692f1c0cc",
-        "source_pr": 100
-      },
+      "disposition": "deferred",
       "execution": "hitl",
       "id": "US-04",
       "operator_outcome": "Swap a live algorithm/plugin configuration in the same simulator environment",
       "operator_question": "What visibly changes when an operator swaps perception configuration while preserving the same running simulator environment?",
+      "owner": "cli-perception-plugins",
       "prerequisites": "Chase vehicle; plugin enable/disable with restart",
       "primary_confirmation": "Restart reaches Ready for:; plugin list matches the staged configuration",
       "safety_class": "live_mutation",
-      "source_us_id": "US-04"
+      "source_us_id": "US-04",
+      "unlock": "Exact-step #88 US-04 evidence (visual_observer swap, disable, second run) after citation amendment"
     },
     {
       "catalog_digest": "9cf4c8bf139183d10ea51c5b576eb47cef1919a161570d704893b3f7372a0e40",
@@ -383,32 +363,22 @@
           "--record"
         ]
       ],
-      "completeness": "evidenced",
+      "completeness": "template",
       "coverage": {
-        "evidence": "continuity.memory_lifecycle",
-        "value": "measured"
+        "reason": "Cited #100 memory family is a command subset of the registered US-05 sequence",
+        "value": "unmeasured"
       },
-      "disposition": "passed",
-      "evidence": {
-        "claim_map_id": "continuity_memory_lifecycle",
-        "digests": {
-          "docs/milestones/007-cli-operator-usability/evidence/cli-scenario-continuity/result.json": "72b579bbf29a5dc58cabbb3e03ee325b32330f2b260cddc407589448f34a2c85"
-        },
-        "disposition_set_at": "2026-08-14T09:44:41Z",
-        "disposition_set_by": "GeorgeLuo",
-        "evidence_mode": "cited",
-        "head_claim": "historical",
-        "source_commit": "37b7393fe759f1597860a30d8c10ca5692f1c0cc",
-        "source_pr": 100
-      },
+      "disposition": "deferred",
       "execution": "hitl",
       "id": "US-05",
       "operator_outcome": "Confirm real perception becomes bounded, attributable memory",
       "operator_question": "Does selected perception become attributable retained evidence, survive brief dropout, expire, and reset without movement?",
+      "owner": "cli-memory-lifecycle",
       "prerequisites": "Chase vehicle; memory stage",
       "primary_confirmation": "Final Memory check: chase-sim-chaser PASS/FAIL",
       "safety_class": "live_mutation",
-      "source_us_id": "US-05"
+      "source_us_id": "US-05",
+      "unlock": "Exact-step #88 US-05 evidence (visual_observer + stream + memory check) after citation amendment"
     },
     {
       "catalog_digest": "9cf4c8bf139183d10ea51c5b576eb47cef1919a161570d704893b3f7372a0e40",
@@ -649,32 +619,22 @@
           "--once"
         ]
       ],
-      "completeness": "evidenced",
+      "completeness": "template",
       "coverage": {
-        "evidence": "continuity.memory_lifecycle",
-        "value": "measured"
+        "reason": "Cited #100 memory family is a command subset of the registered US-08 sequence",
+        "value": "unmeasured"
       },
-      "disposition": "passed",
-      "evidence": {
-        "claim_map_id": "continuity_memory_lifecycle",
-        "digests": {
-          "docs/milestones/007-cli-operator-usability/evidence/cli-scenario-continuity/result.json": "72b579bbf29a5dc58cabbb3e03ee325b32330f2b260cddc407589448f34a2c85"
-        },
-        "disposition_set_at": "2026-08-14T09:44:41Z",
-        "disposition_set_by": "GeorgeLuo",
-        "evidence_mode": "cited",
-        "head_claim": "historical",
-        "source_commit": "37b7393fe759f1597860a30d8c10ca5692f1c0cc",
-        "source_pr": 100
-      },
+      "disposition": "deferred",
       "execution": "machine_only",
       "id": "US-08",
       "operator_outcome": "Recover from suspicious retained evidence",
       "operator_question": "Can an operator clear suspect memory and observe current perception repopulate a new epoch?",
+      "owner": "cli-memory-lifecycle",
       "prerequisites": "Memory stage from US-05 class path",
       "primary_confirmation": "Reset output shows Keys: N -> 0 and Epoch: old -> new",
       "safety_class": "live_mutation",
-      "source_us_id": "US-08"
+      "source_us_id": "US-08",
+      "unlock": "Exact-step #88 US-08 evidence (reset and repopulation) after citation amendment"
     },
     {
       "catalog_digest": "9cf4c8bf139183d10ea51c5b576eb47cef1919a161570d704893b3f7372a0e40",

@@ -1,8 +1,8 @@
 {
   "generator": {
     "name": "parser_walk.walk_leaves",
-    "revision": "75e18bca2551461ac5142a7f2bd3cac8854a08e2",
-    "source_commit": "75e18bca2551461ac5142a7f2bd3cac8854a08e2"
+    "revision": "a989324470e6fc04c9d9678e2337daf47828100b",
+    "source_commit": "a989324470e6fc04c9d9678e2337daf47828100b"
   },
   "leaves": [
     {
@@ -11,6 +11,15 @@
       "leaf_id": "help",
       "tokens": [
         "help"
+      ]
+    },
+    {
+      "alias_of": "simulators.help",
+      "help": "usage: automa simulators [-h] {help,status,ensure} ...",
+      "kind": "alias",
+      "leaf_id": "simulators",
+      "tokens": [
+        "simulators"
       ]
     },
     {
@@ -41,12 +50,31 @@
       ]
     },
     {
+      "alias_of": "vehicles.help",
+      "help": "usage: automa vehicles [-h]",
+      "kind": "alias",
+      "leaf_id": "vehicles",
+      "tokens": [
+        "vehicles"
+      ]
+    },
+    {
       "help": "Discover vehicle endpoints; this does not imply deployment or a running worker.",
       "kind": "action",
       "leaf_id": "vehicles.active",
       "tokens": [
         "vehicles",
         "active"
+      ]
+    },
+    {
+      "alias_of": "vehicles.automation.help",
+      "help": "usage: automa vehicles automation [-h] {help,run,stop,status,restart} ...",
+      "kind": "alias",
+      "leaf_id": "vehicles.automation",
+      "tokens": [
+        "vehicles",
+        "automation"
       ]
     },
     {
@@ -149,6 +177,16 @@
       ]
     },
     {
+      "alias_of": "vehicles.memory.help",
+      "help": "usage: automa vehicles memory [-h] {help,reset,replay,check} ...",
+      "kind": "alias",
+      "leaf_id": "vehicles.memory",
+      "tokens": [
+        "vehicles",
+        "memory"
+      ]
+    },
+    {
       "help": "Run present/dropout/expiry/reset memory lifecycle gates (Chase or Pi).",
       "kind": "action",
       "leaf_id": "vehicles.memory.check",
@@ -189,6 +227,16 @@
       ]
     },
     {
+      "alias_of": "vehicles.operation.help",
+      "help": "usage: automa vehicles operation [-h] {help,startup-check} ...",
+      "kind": "alias",
+      "leaf_id": "vehicles.operation",
+      "tokens": [
+        "vehicles",
+        "operation"
+      ]
+    },
+    {
       "help": "Show operation-level commands.",
       "kind": "meta",
       "leaf_id": "vehicles.operation.help",
@@ -206,6 +254,16 @@
         "vehicles",
         "operation",
         "startup-check"
+      ]
+    },
+    {
+      "alias_of": "vehicles.perception.help",
+      "help": "usage: automa vehicles perception [-h]",
+      "kind": "alias",
+      "leaf_id": "vehicles.perception",
+      "tokens": [
+        "vehicles",
+        "perception"
       ]
     },
     {
@@ -355,6 +413,16 @@
         "vehicles",
         "stream",
         "perception"
+      ]
+    },
+    {
+      "alias_of": "vehicles.update.help",
+      "help": "usage: automa vehicles update [-h]",
+      "kind": "alias",
+      "leaf_id": "vehicles.update",
+      "tokens": [
+        "vehicles",
+        "update"
       ]
     },
     {

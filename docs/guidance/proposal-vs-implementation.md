@@ -11,9 +11,14 @@ in the canonical contract. The contract wins if any wording conflicts.
 
 - `ready_for_proposal`: proposal work may start; product implementation may not.
 - `proposal_in_review`: change the proposal and required plan transition only.
-- `ready_for_implementation`: implement only the exact accepted proposal.
+- `ready_for_implementation`: implement only the exact accepted proposal, or
+  start a bounded proposal amendment.
+- `proposal_amendment_in_review`: change only the additive amendment and plan
+  transition. Implementation is blocked; an in-flight implementation PR must
+  already be paused or closed.
 - `implementation_in_review`: reconcile product, tests, and documentation to
-  that accepted scope.
+  that accepted scope. A recorded `proposal-amendment` escalation may start a
+  contract-only amendment after the implementation PR is paused or closed.
 
 Run the milestone workflow status command instead of inferring the phase from
 conversation history.

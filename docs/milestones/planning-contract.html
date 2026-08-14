@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="1d6343020ed82a750528c9f5ca1d70092d906604670e2c12cc5f3138a3d03e33">
+  <meta name="source-sha256" content="4f948443d76124be82897f11a8c27f6214c295647ff5467ea45f98d1a6146dc9">
   <base target="_blank">
   <title>Milestone Planning And Delivery Contract</title>
   <style>
@@ -709,17 +709,17 @@ loop after proposal acceptance:</p>
 <tr>
 <td><code>ready_for_implementation</code></td>
 <td>The proposal PR and any amendments have accepted exact-head contract reviews, are merged, and have their reviewed heads and merge commits recorded</td>
-<td>Start the implementation branch, or start a bounded proposal amendment when established evidence requires one</td>
+<td>Start the implementation branch, resume a paused implementation after amendment, or start a bounded proposal amendment when established evidence requires one</td>
 </tr>
 <tr>
 <td><code>proposal_amendment_in_review</code></td>
 <td>New evidence requires a bounded correction to the accepted proposal</td>
-<td>Additive amendment document and plan transition only; implementation remains blocked</td>
+<td>Additive amendment document and plan transition only; implementation remains blocked and any in-flight implementation PR must be paused or closed</td>
 </tr>
 <tr>
 <td><code>implementation_in_review</code></td>
 <td>Accepted scope is being implemented or reviewed</td>
-<td>Product, test, and documentation changes described by the accepted proposal</td>
+<td>Product, test, and documentation changes described by the accepted proposal. A recorded <code>proposal-amendment</code> escalation may start a contract-only amendment after the implementation PR is paused or closed.</td>
 </tr>
 </tbody>
 </table>
@@ -1150,12 +1150,44 @@ rechecks the merged PR body and exact-head review receipt before promotion:</p>
   --pr &lt;proposal-pr-number&gt;
 </code></pre>
 <p>Inspect and commit the resulting plan and HTML transition. If known evidence
-requires a bounded contract correction, start an additive amendment instead:</p>
+requires a bounded contract correction, start an additive amendment instead.
+That command is legal from <code>ready_for_implementation</code> and from
+<code>implementation_in_review</code>. When implementation has already started, pass the
+durable <code>proposal-amendment</code> escalation receipt and identify the implementation
+PR as <code>paused</code> (resume policy <code>reconcile</code>) or <code>closed</code> (resume policy
+<code>replace</code>):</p>
 <pre><code class="language-sh">python3 docs/milestones/workflow.py start-proposal-amendment \
   --plan docs/milestones/&lt;number&gt;-&lt;slug&gt;/plan.md \
   --branch m&lt;number&gt;/amend-&lt;slug&gt; \
   --path docs/milestones/&lt;number&gt;-&lt;slug&gt;/proposals/&lt;slug&gt;-amendment.md
 </code></pre>
+<pre><code class="language-sh">python3 docs/milestones/workflow.py start-proposal-amendment \
+  --plan docs/milestones/&lt;number&gt;-&lt;slug&gt;/plan.md \
+  --branch m&lt;number&gt;/amend-&lt;slug&gt; \
+  --path docs/milestones/&lt;number&gt;-&lt;slug&gt;/proposals/&lt;slug&gt;-amendment.md \
+  --implementation-pr &lt;implementation-pr-number&gt; \
+  --implementation-url https://github.com/&lt;owner&gt;/&lt;repo&gt;/pull/&lt;n&gt; \
+  --implementation-head &lt;implementation-head-sha&gt; \
+  --implementation-disposition paused \
+  --resume-policy reconcile \
+  --escalation-receipt https://github.com/&lt;owner&gt;/&lt;repo&gt;/pull/&lt;n&gt;#pullrequestreview-&lt;id&gt;
+</code></pre>
+<p>The amendment PR remains contract-only. Concurrent implementation mutation is
+forbidden while the frontier is <code>proposal_amendment_in_review</code>; validate-pr
+rejects implementation heads in that state. After exact-head review and merge,
+<code>accept-proposal-amendment</code> returns the frontier to <code>ready_for_implementation</code>
+and preserves any paused implementation identity. Then <code>start-implementation</code>
+resumes the recorded branch: <code>reconcile</code> restores the paused PR, <code>replace</code>
+reopens the planned branch for a new implementation PR.</p>
+<p>To reject or abandon an in-review amendment without accepting it:</p>
+<pre><code class="language-sh">python3 docs/milestones/workflow.py abandon-proposal-amendment \
+  --plan docs/milestones/&lt;number&gt;-&lt;slug&gt;/plan.md \
+  --reason &quot;&lt;concrete reason&gt;&quot;
+</code></pre>
+<p>Abandon restores the recorded source state (<code>ready_for_implementation</code> or
+<code>implementation_in_review</code>) and cannot leave amendment branch/path fields
+dangling. A failed amendment is not implementation acceptance and does not
+rewrite the original proposal.</p>
 <p>Apply the same exact-head review rule to the contract-only amendment PR. After
 it merges, record its reviewed head and exact merge acceptance receipt. The
 amendment acceptance command also rechecks the canonical review kind:</p>
@@ -1164,7 +1196,7 @@ amendment acceptance command also rechecks the canonical review kind:</p>
   --pr &lt;amendment-pr-number&gt;
 </code></pre>
 <p>Only when status reports <code>ready_for_implementation</code> may the implementation
-branch start:</p>
+branch start or a paused implementation resume:</p>
 <pre><code class="language-sh">python3 docs/milestones/workflow.py start-implementation \
   --plan docs/milestones/&lt;number&gt;-&lt;slug&gt;/plan.md \
   --branch m&lt;number&gt;/&lt;frontier&gt;

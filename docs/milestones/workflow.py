@@ -499,6 +499,100 @@ def _accepted_proposal_amendments(
     return tuple(records)
 
 
+AMENDMENT_ESCALATION_ROUTE = "proposal-amendment"
+PAUSED_IMPLEMENTATION_RE = re.compile(
+    r"\[#(?P<pr>\d+)\]\((?P<url>https://[^)\s]+)\) on "
+    r"`(?P<branch>m\d{3}/[^`]+)` at `(?P<head>[0-9a-f]{7,40})` "
+    r"\((?P<disposition>paused|closed)\); resume "
+    r"`(?P<resume>reconcile|replace)`; escalation "
+    r"`(?P<route>proposal-amendment)` (?P<receipt>https://\S+)"
+)
+
+
+def format_paused_implementation(
+    *,
+    pr: int,
+    url: str,
+    branch: str,
+    head: str,
+    disposition: str,
+    resume: str,
+    receipt: str,
+) -> str:
+    return (
+        f"[#{pr}]({url}) on `{branch}` at `{head}` ({disposition}); "
+        f"resume `{resume}`; escalation `{AMENDMENT_ESCALATION_ROUTE}` {receipt}"
+    )
+
+
+def parse_paused_implementation(
+    value: str,
+    *,
+    heading: str = "Current Frontier",
+) -> dict[str, str]:
+    match = PAUSED_IMPLEMENTATION_RE.fullmatch(value.strip())
+    if match is None:
+        raise PlanContractError(
+            f"{heading} paused implementation must identify PR, URL, branch, "
+            "head, paused|closed disposition, reconcile|replace resume policy, "
+            "and a durable proposal-amendment escalation receipt"
+        )
+    disposition = match.group("disposition")
+    resume = match.group("resume")
+    if disposition == "paused" and resume != "reconcile":
+        raise PlanContractError(
+            "paused implementation must use resume policy `reconcile`"
+        )
+    if disposition == "closed" and resume != "replace":
+        raise PlanContractError(
+            "closed implementation must use resume policy `replace`"
+        )
+    return match.groupdict()
+
+
+def _validate_paused_implementation_fields(
+    frontier: Frontier,
+    *,
+    workflow_state: str,
+) -> None:
+    raw = frontier.fields.get("paused implementation")
+    source = frontier.fields.get("amendment source state")
+    if workflow_state == "proposal_amendment_in_review":
+        if not source:
+            source = "ready_for_implementation"
+        if source not in {
+            "ready_for_implementation",
+            "implementation_in_review",
+        }:
+            raise PlanContractError(
+                "proposal_amendment_in_review requires amendment source state "
+                "ready_for_implementation or implementation_in_review"
+            )
+        if source == "implementation_in_review":
+            if not raw:
+                raise PlanContractError(
+                    "amendment from implementation_in_review requires a paused "
+                    "implementation receipt"
+                )
+            parse_paused_implementation(raw)
+        elif raw:
+            raise PlanContractError(
+                "ready_for_implementation-sourced amendment cannot name a "
+                "paused implementation"
+            )
+        return
+    if source:
+        raise PlanContractError(
+            f"{workflow_state} cannot retain amendment source state"
+        )
+    if raw and workflow_state != "ready_for_implementation":
+        raise PlanContractError(
+            f"{workflow_state} cannot retain a paused implementation receipt"
+        )
+    if raw:
+        parse_paused_implementation(raw)
+
+
 def validate_plan_text(text: str) -> PlanState:
     title_match = re.match(r"# Milestone (\d{3})\b", text)
     if title_match is None:
@@ -666,6 +760,7 @@ def validate_plan_text(text: str) -> PlanState:
             raise PlanContractError(
                 f"{workflow_state} cannot identify an active review PR"
             )
+        _validate_paused_implementation_fields(current, workflow_state=workflow_state)
         for branch_kind, branch in (
             ("proposal", proposal_branch),
             ("implementation", implementation_branch),
@@ -761,8 +856,14 @@ def validate_plan_text(text: str) -> PlanState:
             "proposal_amendment_in_review",
             "implementation_in_review",
         },
-        "proposal_amendment_in_review": {"ready_for_implementation"},
-        "implementation_in_review": {"accepted"},
+        "proposal_amendment_in_review": {
+            "ready_for_implementation",
+            "implementation_in_review",
+        },
+        "implementation_in_review": {
+            "accepted",
+            "proposal_amendment_in_review",
+        },
     }
     for history_frontier, history_state, history_evidence in workflow_history.rows:
         if not history_frontier or not history_evidence:
@@ -1000,6 +1101,7 @@ def _frontier_body(frontier: Frontier, *, current: bool) -> list[str]:
         ("proposal amendment branch", "Proposal amendment branch"),
         ("proposal amendment path", "Proposal amendment path"),
         ("accepted proposal amendments", "Accepted proposal amendments"),
+        ("amendment source state", "Amendment source state"),
         ("paused implementation", "Paused implementation"),
         ("review kind", "Review kind"),
         ("review question", "Review question"),
@@ -1382,6 +1484,7 @@ def _replace_current_frontier_state(
     accepted_proposal: str | None = None,
     opened_branch_field: str | None = None,
     field_updates: dict[str, str] | None = None,
+    field_removes: tuple[str, ...] = (),
 ) -> str:
     state = validate_plan_text(text)
     if state.status != "Active" or state.current.is_empty:
@@ -1394,6 +1497,8 @@ def _replace_current_frontier_state(
     fields = dict(state.current.fields)
     fields["workflow state"] = new_state
     fields.pop("pr", None)
+    for key in field_removes:
+        fields.pop(key, None)
     if opened_branch_field is not None:
         opened_branch = _frontier_branch(
             state.current,
@@ -1525,6 +1630,15 @@ def start_implementation_branch(
     *,
     repo_root: Path = ROOT,
 ) -> str:
+    paused_raw = state.current.fields.get("paused implementation")
+    if paused_raw and _workflow_state(state.current) == "ready_for_implementation":
+        return _resume_implementation_after_amendment(
+            plan,
+            state,
+            requested_branch,
+            paused_raw=paused_raw,
+            repo_root=repo_root,
+        )
     return _start_frontier_branch(
         plan,
         state,
@@ -1536,6 +1650,78 @@ def start_implementation_branch(
     )
 
 
+def _resume_implementation_after_amendment(
+    plan: Path,
+    state: PlanState,
+    requested_branch: str,
+    *,
+    paused_raw: str,
+    repo_root: Path = ROOT,
+) -> str:
+    repo_root = repo_root.resolve()
+    _validate_plan_location(plan, repo_root=repo_root)
+    paused = parse_paused_implementation(paused_raw)
+    planned = _frontier_branch(
+        state.current,
+        heading="Current Frontier",
+        field="implementation branch",
+    )
+    if requested_branch != planned:
+        raise PlanContractError(
+            f"requested branch {requested_branch!r} does not match {planned!r}"
+        )
+    current_branch = _run_git(
+        ["branch", "--show-current"],
+        cwd=repo_root,
+    ).stdout.strip()
+    if current_branch != state.milestone_branch:
+        raise PlanContractError(
+            f"implementation resume must run on {state.milestone_branch!r}, "
+            f"currently {current_branch!r}"
+        )
+    if _run_git(["status", "--porcelain"], cwd=repo_root).stdout.strip():
+        raise PlanContractError("implementation resume requires a clean worktree")
+    existing = _run_git(
+        ["for-each-ref", "--format=%(refname)", "refs/heads", "refs/remotes"],
+        cwd=repo_root,
+    ).stdout.splitlines()
+    if not any(
+        ref == f"refs/heads/{requested_branch}"
+        or (
+            ref.startswith("refs/remotes/")
+            and ref.endswith(f"/{requested_branch}")
+        )
+        for ref in existing
+    ):
+        raise PlanContractError(
+            f"paused implementation branch is missing: {requested_branch}"
+        )
+    field_updates: dict[str, str] = {}
+    if paused["resume"] == "reconcile":
+        field_updates["pr"] = f"[#{paused['pr']}]({paused['url']})"
+        evidence = (
+            f"Resumed implementation {requested_branch} after proposal amendment "
+            f"(reconcile PR #{paused['pr']})."
+        )
+    else:
+        evidence = (
+            f"Reopened implementation {requested_branch} after proposal amendment "
+            f"(replace closed PR #{paused['pr']})."
+        )
+    original = plan.read_text(encoding="utf-8")
+    updated = _replace_current_frontier_state(
+        original,
+        expected_state="ready_for_implementation",
+        new_state="implementation_in_review",
+        evidence=evidence,
+        field_updates=field_updates,
+        field_removes=("paused implementation",),
+    )
+    _run_git(["switch", requested_branch], cwd=repo_root)
+    plan.write_text(updated, encoding="utf-8")
+    return updated
+
+
 def start_proposal_amendment_branch(
     plan: Path,
     state: PlanState,
@@ -1543,6 +1729,12 @@ def start_proposal_amendment_branch(
     requested_path: str,
     *,
     repo_root: Path = ROOT,
+    implementation_pr: int | None = None,
+    implementation_url: str | None = None,
+    implementation_head: str | None = None,
+    implementation_disposition: str | None = None,
+    resume_policy: str | None = None,
+    escalation_receipt: str | None = None,
 ) -> str:
     repo_root = repo_root.resolve()
     relative_plan = _validate_plan_location(plan, repo_root=repo_root)
@@ -1550,14 +1742,103 @@ def start_proposal_amendment_branch(
         raise PlanContractError(
             "proposal amendment start requires an active current frontier"
         )
-    if _workflow_state(state.current) != "ready_for_implementation":
+    source_state = _workflow_state(state.current)
+    if source_state not in {
+        "ready_for_implementation",
+        "implementation_in_review",
+    }:
         raise PlanContractError(
-            "proposal amendment start requires ready_for_implementation"
+            "proposal amendment start requires ready_for_implementation or "
+            "implementation_in_review"
         )
-    if state.current.fields.get("pr"):
-        raise PlanContractError(
-            "current frontier already has a PR; complete its handoff before amending"
+    impl_branch_name = _frontier_branch(
+        state.current,
+        heading="Current Frontier",
+        field="implementation branch",
+    )
+    existing_refs = _run_git(
+        ["for-each-ref", "--format=%(refname)", "refs/heads", "refs/remotes"],
+        cwd=repo_root,
+    ).stdout.splitlines()
+    implementation_branch_exists = any(
+        ref == f"refs/heads/{impl_branch_name}"
+        or (
+            ref.startswith("refs/remotes/")
+            and ref.endswith(f"/{impl_branch_name}")
         )
+        for ref in existing_refs
+    )
+    in_flight = (
+        source_state == "implementation_in_review" or implementation_branch_exists
+    )
+    extra = {
+        implementation_pr,
+        implementation_url,
+        implementation_head,
+        implementation_disposition,
+        resume_policy,
+        escalation_receipt,
+    }
+    if in_flight:
+        if None in extra or implementation_pr is None:
+            raise PlanContractError(
+                "amendment from implementation_in_review requires "
+                "--implementation-pr, --implementation-url, "
+                "--implementation-head, --implementation-disposition, "
+                "--resume-policy, and --escalation-receipt"
+            )
+        if implementation_disposition == "paused" and resume_policy != "reconcile":
+            raise PlanContractError(
+                "paused implementation amendment must use resume policy reconcile"
+            )
+        if implementation_disposition == "closed" and resume_policy != "replace":
+            raise PlanContractError(
+                "closed implementation amendment must use resume policy replace"
+            )
+        if implementation_disposition not in {"paused", "closed"}:
+            raise PlanContractError(
+                "implementation disposition must be paused or closed"
+            )
+        if resume_policy not in {"reconcile", "replace"}:
+            raise PlanContractError("resume policy must be reconcile or replace")
+        if not str(escalation_receipt).startswith("https://"):
+            raise PlanContractError(
+                "amendment escalation receipt must be a durable https URL"
+            )
+        if not str(implementation_url).startswith("https://"):
+            raise PlanContractError(
+                "implementation URL must be a durable https URL"
+            )
+        if re.fullmatch(r"[0-9a-f]{7,40}", implementation_head or "") is None:
+            raise PlanContractError(
+                "implementation head must be a git commit id"
+            )
+        impl_branch = _frontier_branch(
+            state.current,
+            heading="Current Frontier",
+            field="implementation branch",
+        )
+        paused_value = format_paused_implementation(
+            pr=implementation_pr,
+            url=implementation_url,
+            branch=impl_branch,
+            head=implementation_head or "",
+            disposition=implementation_disposition,
+            resume=resume_policy or "",
+            receipt=escalation_receipt or "",
+        )
+        parse_paused_implementation(paused_value)
+    else:
+        if any(value is not None for value in extra):
+            raise PlanContractError(
+                "ready_for_implementation amendment cannot name a paused "
+                "implementation or escalation receipt"
+            )
+        if state.current.fields.get("pr"):
+            raise PlanContractError(
+                "current frontier already has a PR; complete its handoff "
+                "before amending"
+            )
     if re.fullmatch(
         rf"m{re.escape(state.milestone_number)}/amend-[a-z0-9][a-z0-9-]*",
         requested_branch,
@@ -1623,15 +1904,28 @@ def start_proposal_amendment_branch(
 
     _run_git(["switch", "-c", requested_branch], cwd=repo_root)
     original = plan.read_text(encoding="utf-8")
+    field_updates = {
+        "proposal amendment branch": f"`{requested_branch}`",
+        "proposal amendment path": f"`{amendment_path}`",
+        "amendment source state": (
+            "implementation_in_review" if in_flight else "ready_for_implementation"
+        ),
+    }
+    if in_flight:
+        field_updates["paused implementation"] = paused_value
+        evidence = (
+            f"Started proposal amendment {requested_branch} from "
+            f"implementation_in_review via proposal-amendment escalation "
+            f"{escalation_receipt}."
+        )
+    else:
+        evidence = f"Started proposal amendment {requested_branch}."
     updated = _replace_current_frontier_state(
         original,
-        expected_state="ready_for_implementation",
+        expected_state=source_state,
         new_state="proposal_amendment_in_review",
-        evidence=f"Started proposal amendment {requested_branch}.",
-        field_updates={
-            "proposal amendment branch": f"`{requested_branch}`",
-            "proposal amendment path": f"`{amendment_path}`",
-        },
+        evidence=evidence,
+        field_updates=field_updates,
     )
     plan.write_text(updated, encoding="utf-8")
     return updated
@@ -2732,7 +3026,80 @@ def accept_proposal_amendment(
             f"{_contract_review_receipt_suffix(review_receipt)}."
         ),
         field_updates={"accepted proposal amendments": accepted},
+        field_removes=("amendment source state",),
     )
+
+
+def abandon_proposal_amendment(
+    plan: Path,
+    state: PlanState,
+    *,
+    reason: str,
+    repo_root: Path = ROOT,
+) -> str:
+    repo_root = repo_root.resolve()
+    _validate_plan_location(plan, repo_root=repo_root)
+    if state.status != "Active" or state.current.is_empty:
+        raise PlanContractError(
+            "proposal amendment abandon requires an active current frontier"
+        )
+    if _workflow_state(state.current) != "proposal_amendment_in_review":
+        raise PlanContractError(
+            "proposal amendment abandon requires proposal_amendment_in_review"
+        )
+    if not str(reason).strip() or str(reason).strip().lower() in {
+        "later",
+        "someday",
+        "tbd",
+        "none",
+    }:
+        raise PlanContractError("proposal amendment abandon requires a concrete reason")
+    current_branch = _run_git(
+        ["branch", "--show-current"],
+        cwd=repo_root,
+    ).stdout.strip()
+    if current_branch != state.milestone_branch:
+        raise PlanContractError(
+            f"proposal amendment abandon must run on {state.milestone_branch!r}, "
+            f"currently {current_branch!r}"
+        )
+    if _run_git(["status", "--porcelain"], cwd=repo_root).stdout.strip():
+        raise PlanContractError("proposal amendment abandon requires a clean worktree")
+    source = state.current.fields.get("amendment source state")
+    if source not in {
+        "ready_for_implementation",
+        "implementation_in_review",
+    }:
+        raise PlanContractError(
+            "proposal amendment abandon requires a recorded amendment source state"
+        )
+    field_updates: dict[str, str] = {}
+    field_removes = (
+        "proposal amendment branch",
+        "proposal amendment path",
+        "amendment source state",
+        "paused implementation",
+    )
+    paused = state.current.fields.get("paused implementation")
+    if source == "implementation_in_review":
+        if not paused:
+            raise PlanContractError(
+                "implementation-sourced amendment abandon requires the paused "
+                "implementation receipt"
+            )
+        parsed = parse_paused_implementation(paused)
+        field_updates["pr"] = f"[#{parsed['pr']}]({parsed['url']})"
+    original = plan.read_text(encoding="utf-8")
+    updated = _replace_current_frontier_state(
+        original,
+        expected_state="proposal_amendment_in_review",
+        new_state=source,
+        evidence=f"Abandoned proposal amendment; restored {source}: {reason.strip()}",
+        field_updates=field_updates,
+        field_removes=field_removes,
+    )
+    plan.write_text(updated, encoding="utf-8")
+    return updated
 
 
 def _is_plan_revision_branch(milestone_number: str, branch: str) -> bool:
@@ -2870,7 +3237,8 @@ def validate_review_unit_transition(
     base_state = _workflow_state(base.current)
     head_state = _workflow_state(head.current)
     is_proposal_amendment = (
-        base_state == "ready_for_implementation"
+        base_state
+        in {"ready_for_implementation", "implementation_in_review"}
         and head_state == "proposal_amendment_in_review"
     )
     opened_branch_field = {
@@ -2885,7 +3253,12 @@ def validate_review_unit_transition(
         mutable_fields.add(opened_branch_field)
     if is_proposal_amendment:
         mutable_fields.update(
-            {"proposal amendment branch", "proposal amendment path"}
+            {
+                "proposal amendment branch",
+                "proposal amendment path",
+                "amendment source state",
+                "paused implementation",
+            }
         )
     for field in (
         set(base.current.fields) | set(head.current.fields)
@@ -3356,10 +3729,18 @@ def _workflow_status_payload(plan: Path, state: PlanState) -> dict[str, Any]:
         "ready_for_implementation": (
             "Hand the accepted contract to the implementer, or start an additive "
             "proposal amendment when established evidence requires correction."
+            if not state.current.fields.get("paused implementation")
+            else (
+                "Resume the paused implementation with start-implementation "
+                "(reconcile the existing PR or open a replacement on the planned "
+                "branch, as recorded), or abandon if the amendment was rejected."
+            )
         ),
         "implementation_in_review": (
             "Review the implementation against the accepted proposal. "
-            "An eligible human implement-now discovery may use a HITL adjunct."
+            "An eligible human implement-now discovery may use a HITL adjunct. "
+            "A recorded proposal-amendment escalation may start a contract-only "
+            "amendment after the implementation PR is paused or closed."
         ),
     }
     return {
@@ -3719,6 +4100,13 @@ def _cmd_start_proposal_amendment(
     plan: Path,
     branch: str,
     amendment_path: str,
+    *,
+    implementation_pr: int | None = None,
+    implementation_url: str | None = None,
+    implementation_head: str | None = None,
+    implementation_disposition: str | None = None,
+    resume_policy: str | None = None,
+    escalation_receipt: str | None = None,
 ) -> int:
     plan = plan.resolve()
     state = validate_plan_path(plan)
@@ -3727,14 +4115,31 @@ def _cmd_start_proposal_amendment(
         state,
         branch,
         amendment_path,
+        implementation_pr=implementation_pr,
+        implementation_url=implementation_url,
+        implementation_head=implementation_head,
+        implementation_disposition=implementation_disposition,
+        resume_policy=resume_policy,
+        escalation_receipt=escalation_receipt,
     )
     _render_docs()
     print(f"Proposal amendment branch started: {branch}")
     print(f"Frontier: {state.current.name}")
     print(
         "Next: author only the additive amendment and planning transition; "
-        "the accepted proposal and implementation remain frozen."
+        "the accepted proposal remains frozen and any paused implementation "
+        "must not merge until the amendment is accepted or abandoned."
     )
+    return 0
+
+
+def _cmd_abandon_proposal_amendment(plan: Path, reason: str) -> int:
+    plan = plan.resolve()
+    state = validate_plan_path(plan)
+    abandon_proposal_amendment(plan, state, reason=reason)
+    _render_docs()
+    print(f"Abandoned proposal amendment for {state.current.name}.")
+    print(f"Reason: {reason}")
     return 0
 
 
@@ -3993,6 +4398,25 @@ def main() -> int:
     amendment_start_parser.add_argument("--plan", required=True, type=Path)
     amendment_start_parser.add_argument("--branch", required=True)
     amendment_start_parser.add_argument("--path", required=True)
+    amendment_start_parser.add_argument("--implementation-pr", type=int)
+    amendment_start_parser.add_argument("--implementation-url")
+    amendment_start_parser.add_argument("--implementation-head")
+    amendment_start_parser.add_argument(
+        "--implementation-disposition",
+        choices=("paused", "closed"),
+    )
+    amendment_start_parser.add_argument(
+        "--resume-policy",
+        choices=("reconcile", "replace"),
+    )
+    amendment_start_parser.add_argument("--escalation-receipt")
+
+    amendment_abandon_parser = subparsers.add_parser(
+        "abandon-proposal-amendment",
+        help="reject or abandon an in-review amendment and restore the prior state",
+    )
+    amendment_abandon_parser.add_argument("--plan", required=True, type=Path)
+    amendment_abandon_parser.add_argument("--reason", required=True)
 
     amendment_accept_parser = subparsers.add_parser(
         "accept-proposal-amendment",
@@ -4056,7 +4480,15 @@ def main() -> int:
                 args.plan,
                 args.branch,
                 args.path,
+                implementation_pr=args.implementation_pr,
+                implementation_url=args.implementation_url,
+                implementation_head=args.implementation_head,
+                implementation_disposition=args.implementation_disposition,
+                resume_policy=args.resume_policy,
+                escalation_receipt=args.escalation_receipt,
             )
+        if args.command == "abandon-proposal-amendment":
+            return _cmd_abandon_proposal_amendment(args.plan, args.reason)
         if args.command == "accept-proposal-amendment":
             return _cmd_accept_proposal_amendment(args.plan, args.pr)
         if args.command == "start-implementation":

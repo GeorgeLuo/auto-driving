@@ -14,6 +14,7 @@ from docs.milestones.workflow import (
     _fetch_pr_review_metadata,
     accept_proposal,
     accept_proposal_amendment,
+    abandon_proposal_amendment,
     start_implementation_branch,
     start_proposal_amendment_branch,
     validate_merged_proposal_amendment_metadata,
@@ -2040,6 +2041,247 @@ class ReviewUnitGitDiffTests(unittest.TestCase):
             self.assertEqual(
                 transitioned.current.fields["implementation branch"],
                 f"`{IMPLEMENTATION_BRANCH}`",
+            )
+
+    def _init_plan(self, root: Path, text: str, message: str = "seed plan") -> None:
+        plan = root / PLAN_RELATIVE
+        plan.parent.mkdir(parents=True, exist_ok=True)
+        plan.write_text(text, encoding="utf-8")
+        self._git(root, "init", "-b", MILESTONE_BRANCH)
+        self._git(root, "add", ".")
+        self._git(
+            root,
+            "-c",
+            "user.name=Milestone Test",
+            "-c",
+            "user.email=milestone@example.invalid",
+            "commit",
+            "-m",
+            message,
+        )
+
+    def test_amendment_from_first_implementation_review_requires_escalation(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            plan = root / PLAN_RELATIVE
+            self._init_plan(root, implementation_review_plan_text())
+            with self.assertRaises(PlanContractError) as ctx:
+                start_proposal_amendment_branch(
+                    plan,
+                    validate_plan_text(plan.read_text(encoding="utf-8")),
+                    PROPOSAL_AMENDMENT_BRANCH,
+                    PROPOSAL_AMENDMENT_RELATIVE,
+                    repo_root=root,
+                )
+            self.assertIn("implementation_in_review", str(ctx.exception))
+            self.assertIn("escalation", str(ctx.exception))
+
+    def test_second_cycle_escalation_can_start_amendment_from_implementation(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            plan = root / PLAN_RELATIVE
+            self._init_plan(root, implementation_review_plan_text())
+            start_proposal_amendment_branch(
+                plan,
+                validate_plan_text(plan.read_text(encoding="utf-8")),
+                PROPOSAL_AMENDMENT_BRANCH,
+                PROPOSAL_AMENDMENT_RELATIVE,
+                repo_root=root,
+                implementation_pr=59,
+                implementation_url="https://example.invalid/59",
+                implementation_head="ab" * 20,
+                implementation_disposition="paused",
+                resume_policy="reconcile",
+                escalation_receipt="https://example.invalid/59#pullrequestreview-1",
+            )
+            transitioned = validate_plan_text(plan.read_text(encoding="utf-8"))
+            self.assertEqual(
+                transitioned.current.fields["workflow state"],
+                "proposal_amendment_in_review",
+            )
+            self.assertEqual(
+                transitioned.current.fields["amendment source state"],
+                "implementation_in_review",
+            )
+            paused = transitioned.current.fields["paused implementation"]
+            self.assertIn("#59", paused)
+            self.assertIn("paused", paused)
+            self.assertIn("reconcile", paused)
+
+    def test_open_implementation_pr_cannot_amend_without_pause_or_close(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            plan = root / PLAN_RELATIVE
+            self._init_plan(root, implementation_review_plan_text())
+            with self.assertRaises(PlanContractError):
+                start_proposal_amendment_branch(
+                    plan,
+                    validate_plan_text(plan.read_text(encoding="utf-8")),
+                    PROPOSAL_AMENDMENT_BRANCH,
+                    PROPOSAL_AMENDMENT_RELATIVE,
+                    repo_root=root,
+                )
+
+    def test_abandoned_amendment_restores_implementation_review(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            plan = root / PLAN_RELATIVE
+            self._init_plan(root, implementation_review_plan_text())
+            start_proposal_amendment_branch(
+                plan,
+                validate_plan_text(plan.read_text(encoding="utf-8")),
+                PROPOSAL_AMENDMENT_BRANCH,
+                PROPOSAL_AMENDMENT_RELATIVE,
+                repo_root=root,
+                implementation_pr=59,
+                implementation_url="https://example.invalid/59",
+                implementation_head="ab" * 20,
+                implementation_disposition="paused",
+                resume_policy="reconcile",
+                escalation_receipt="https://example.invalid/59#pullrequestreview-1",
+            )
+            self._git(root, "add", ".")
+            self._git(
+                root,
+                "-c",
+                "user.name=Milestone Test",
+                "-c",
+                "user.email=milestone@example.invalid",
+                "commit",
+                "-m",
+                "start amendment",
+            )
+            self._git(root, "switch", MILESTONE_BRANCH)
+            plan.write_text(
+                self._git(root, "show", f"{PROPOSAL_AMENDMENT_BRANCH}:{PLAN_RELATIVE}")
+            )
+            self._git(root, "add", ".")
+            self._git(
+                root,
+                "-c",
+                "user.name=Milestone Test",
+                "-c",
+                "user.email=milestone@example.invalid",
+                "commit",
+                "-m",
+                "record amendment start on milestone",
+            )
+            abandon_proposal_amendment(
+                plan,
+                validate_plan_text(plan.read_text(encoding="utf-8")),
+                reason="Amendment rejected; resume the implementation unit.",
+                repo_root=root,
+            )
+            restored = validate_plan_text(plan.read_text(encoding="utf-8"))
+            self.assertEqual(
+                restored.current.fields["workflow state"],
+                "implementation_in_review",
+            )
+            self.assertIn("#59", restored.current.fields.get("pr", ""))
+            self.assertFalse(restored.current.fields.get("proposal amendment branch"))
+            self.assertFalse(restored.current.fields.get("paused implementation"))
+
+    def test_accepted_amendment_from_implementation_preserves_paused_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            plan = root / PLAN_RELATIVE
+            self._init_plan(root, implementation_review_plan_text())
+            start_proposal_amendment_branch(
+                plan,
+                validate_plan_text(plan.read_text(encoding="utf-8")),
+                PROPOSAL_AMENDMENT_BRANCH,
+                PROPOSAL_AMENDMENT_RELATIVE,
+                repo_root=root,
+                implementation_pr=59,
+                implementation_url="https://example.invalid/59",
+                implementation_head="ab" * 20,
+                implementation_disposition="paused",
+                resume_policy="reconcile",
+                escalation_receipt="https://example.invalid/59#pullrequestreview-1",
+            )
+            amending = plan.read_text(encoding="utf-8")
+            accepted = accept_proposal_amendment(
+                amending,
+                amendment_pr=70,
+                merge_commit="e" * 40,
+                amendment_url="https://example.invalid/70",
+                review_receipt=_accepted_review_receipt("f" * 40),
+            )
+            state = validate_plan_text(accepted)
+            self.assertEqual(
+                state.current.fields["workflow state"],
+                "ready_for_implementation",
+            )
+            self.assertIn("#59", state.current.fields["paused implementation"])
+            self.assertIn("#70", state.current.fields["accepted proposal amendments"])
+            self.assertFalse(state.current.fields.get("amendment source state"))
+
+    def test_resume_after_amendment_reconciles_paused_implementation(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            plan = root / PLAN_RELATIVE
+            self._init_plan(root, implementation_review_plan_text())
+            self._git(root, "branch", IMPLEMENTATION_BRANCH)
+            start_proposal_amendment_branch(
+                plan,
+                validate_plan_text(plan.read_text(encoding="utf-8")),
+                PROPOSAL_AMENDMENT_BRANCH,
+                PROPOSAL_AMENDMENT_RELATIVE,
+                repo_root=root,
+                implementation_pr=59,
+                implementation_url="https://example.invalid/59",
+                implementation_head="ab" * 20,
+                implementation_disposition="paused",
+                resume_policy="reconcile",
+                escalation_receipt="https://example.invalid/59#pullrequestreview-1",
+            )
+            accepted = accept_proposal_amendment(
+                plan.read_text(encoding="utf-8"),
+                amendment_pr=70,
+                merge_commit="e" * 40,
+                amendment_url="https://example.invalid/70",
+                review_receipt=_accepted_review_receipt("f" * 40),
+            )
+            self._git(root, "add", ".")
+            self._git(
+                root,
+                "-c",
+                "user.name=Milestone Test",
+                "-c",
+                "user.email=milestone@example.invalid",
+                "commit",
+                "-m",
+                "start amendment",
+            )
+            self._git(root, "switch", MILESTONE_BRANCH)
+            plan.write_text(accepted, encoding="utf-8")
+            self._git(root, "add", ".")
+            self._git(
+                root,
+                "-c",
+                "user.name=Milestone Test",
+                "-c",
+                "user.email=milestone@example.invalid",
+                "commit",
+                "-m",
+                "accept amendment",
+            )
+            start_implementation_branch(
+                plan,
+                validate_plan_text(accepted),
+                IMPLEMENTATION_BRANCH,
+                repo_root=root,
+            )
+            resumed = validate_plan_text(plan.read_text(encoding="utf-8"))
+            self.assertEqual(
+                resumed.current.fields["workflow state"],
+                "implementation_in_review",
+            )
+            self.assertIn("#59", resumed.current.fields.get("pr", ""))
+            self.assertFalse(resumed.current.fields.get("paused implementation"))
+            self.assertEqual(
+                self._git(root, "branch", "--show-current"),
+                IMPLEMENTATION_BRANCH,
             )
 
 

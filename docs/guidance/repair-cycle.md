@@ -52,3 +52,9 @@ route before re-review: `replan-current-unit`, `proposal-amendment`,
 `Repair Escalation` names the human decision receipt and resulting disposition.
 A third substantial cycle cannot remain in that review unit; close or supersede
 it through the selected route, preserving a link to its history.
+
+When the recorded route is `proposal-amendment`, start the amendment with
+`workflow.py start-proposal-amendment` even if the frontier is already
+`implementation_in_review`. Pass the escalation receipt and mark the
+implementation PR `paused`/`reconcile` or `closed`/`replace`. Do not merge or
+re-review the implementation under the unamended proposal.

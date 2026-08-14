@@ -588,9 +588,9 @@ loop after proposal acceptance:
 | --- | --- | --- |
 | `ready_for_proposal` | The bounded frontier is ready to hand to a proposal author | Start the proposal branch, or review a necessary pre-proposal plan revision |
 | `proposal_in_review` | A proposal is being authored or reviewed | Proposal document and plan transition only |
-| `ready_for_implementation` | The proposal PR and any amendments have accepted exact-head contract reviews, are merged, and have their reviewed heads and merge commits recorded | Start the implementation branch, or start a bounded proposal amendment when established evidence requires one |
-| `proposal_amendment_in_review` | New evidence requires a bounded correction to the accepted proposal | Additive amendment document and plan transition only; implementation remains blocked |
-| `implementation_in_review` | Accepted scope is being implemented or reviewed | Product, test, and documentation changes described by the accepted proposal |
+| `ready_for_implementation` | The proposal PR and any amendments have accepted exact-head contract reviews, are merged, and have their reviewed heads and merge commits recorded | Start the implementation branch, resume a paused implementation after amendment, or start a bounded proposal amendment when established evidence requires one |
+| `proposal_amendment_in_review` | New evidence requires a bounded correction to the accepted proposal | Additive amendment document and plan transition only; implementation remains blocked and any in-flight implementation PR must be paused or closed |
+| `implementation_in_review` | Accepted scope is being implemented or reviewed | Product, test, and documentation changes described by the accepted proposal. A recorded `proposal-amendment` escalation may start a contract-only amendment after the implementation PR is paused or closed. |
 
 The expected collaboration is explicit:
 
@@ -1037,7 +1037,12 @@ python3 docs/milestones/workflow.py accept-proposal \
 ```
 
 Inspect and commit the resulting plan and HTML transition. If known evidence
-requires a bounded contract correction, start an additive amendment instead:
+requires a bounded contract correction, start an additive amendment instead.
+That command is legal from `ready_for_implementation` and from
+`implementation_in_review`. When implementation has already started, pass the
+durable `proposal-amendment` escalation receipt and identify the implementation
+PR as `paused` (resume policy `reconcile`) or `closed` (resume policy
+`replace`):
 
 ```sh
 python3 docs/milestones/workflow.py start-proposal-amendment \
@@ -1045,6 +1050,40 @@ python3 docs/milestones/workflow.py start-proposal-amendment \
   --branch m<number>/amend-<slug> \
   --path docs/milestones/<number>-<slug>/proposals/<slug>-amendment.md
 ```
+
+```sh
+python3 docs/milestones/workflow.py start-proposal-amendment \
+  --plan docs/milestones/<number>-<slug>/plan.md \
+  --branch m<number>/amend-<slug> \
+  --path docs/milestones/<number>-<slug>/proposals/<slug>-amendment.md \
+  --implementation-pr <implementation-pr-number> \
+  --implementation-url https://github.com/<owner>/<repo>/pull/<n> \
+  --implementation-head <implementation-head-sha> \
+  --implementation-disposition paused \
+  --resume-policy reconcile \
+  --escalation-receipt https://github.com/<owner>/<repo>/pull/<n>#pullrequestreview-<id>
+```
+
+The amendment PR remains contract-only. Concurrent implementation mutation is
+forbidden while the frontier is `proposal_amendment_in_review`; validate-pr
+rejects implementation heads in that state. After exact-head review and merge,
+`accept-proposal-amendment` returns the frontier to `ready_for_implementation`
+and preserves any paused implementation identity. Then `start-implementation`
+resumes the recorded branch: `reconcile` restores the paused PR, `replace`
+reopens the planned branch for a new implementation PR.
+
+To reject or abandon an in-review amendment without accepting it:
+
+```sh
+python3 docs/milestones/workflow.py abandon-proposal-amendment \
+  --plan docs/milestones/<number>-<slug>/plan.md \
+  --reason "<concrete reason>"
+```
+
+Abandon restores the recorded source state (`ready_for_implementation` or
+`implementation_in_review`) and cannot leave amendment branch/path fields
+dangling. A failed amendment is not implementation acceptance and does not
+rewrite the original proposal.
 
 Apply the same exact-head review rule to the contract-only amendment PR. After
 it merges, record its reviewed head and exact merge acceptance receipt. The
@@ -1057,7 +1096,7 @@ python3 docs/milestones/workflow.py accept-proposal-amendment \
 ```
 
 Only when status reports `ready_for_implementation` may the implementation
-branch start:
+branch start or a paused implementation resume:
 
 ```sh
 python3 docs/milestones/workflow.py start-implementation \

@@ -159,6 +159,10 @@ class CompleteImplementationTests(unittest.TestCase):
             "baseRefName": MILESTONE_BRANCH,
             "headRefName": IMPLEMENTATION_BRANCH,
             "mergeCommit": {"oid": merge_commit},
+            "body": (
+                "## Review Kind\n\n"
+                "Deterministic invariant closure\n"
+            ),
         }
 
     def test_cli_help_exposes_completion_command(self) -> None:
@@ -232,6 +236,27 @@ class CompleteImplementationTests(unittest.TestCase):
             payload["headRefName"] = "m900/wrong"
 
             with self.assertRaisesRegex(PlanContractError, "did not use"):
+                complete_implementation(
+                    plan,
+                    64,
+                    repo_root=root,
+                    pr_payload=payload,
+                    render_docs=lambda: html.write_text(
+                        "<p>unexpected</p>\n",
+                        encoding="utf-8",
+                    ),
+                )
+
+            self.assertEqual(self._git(root, "rev-parse", "HEAD"), merge_commit)
+            self.assertEqual(self._git(root, "status", "--porcelain"), "")
+
+    def test_completion_rejects_mismatched_review_kind_without_changes(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root, plan, html, merge_commit = self._repo(Path(temp_dir))
+            payload = self._payload(merge_commit)
+            payload["body"] = "## Review Kind\n\nReview repair\n"
+
+            with self.assertRaisesRegex(PlanContractError, "review kind does not match"):
                 complete_implementation(
                     plan,
                     64,

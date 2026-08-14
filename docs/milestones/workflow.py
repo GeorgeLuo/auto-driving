@@ -7,6 +7,7 @@ import re
 import subprocess
 import sys
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
@@ -42,6 +43,17 @@ WORKFLOW_STATES = {
     "proposal_amendment_in_review",
     "implementation_in_review",
 }
+CONTRACT_REVIEW_RECEIPT_HEADING = "## Contract Review Receipt"
+CONTRACT_REVIEW_RECEIPT_OUTCOMES = {"accepted", "changes_requested"}
+AUTHORIZED_REVIEW_ASSOCIATIONS = {"OWNER", "MEMBER", "COLLABORATOR"}
+ALLOWED_REVIEW_KINDS = {
+    "deterministic invariant closure",
+    "behavioral feature slice",
+    "broad mechanical rollout",
+    "live or external evidence",
+    "review repair",
+    "milestone closeout",
+}
 PROPOSAL_REQUIRED_HEADINGS = (
     "## Review Question",
     "## Proposed Contract",
@@ -53,6 +65,16 @@ PROPOSAL_REQUIRED_HEADINGS = (
     "## File Impact",
     "## Validation Plan",
     "## Expected Handoff",
+)
+UNIVERSAL_CONTRACT_REQUIRED_HEADINGS = (
+    "## Trust And Authority Model",
+    "## Evidence Topology And Capture Strategy",
+)
+UNIVERSAL_CLAIM_PATTERN = re.compile(
+    r"\b(?:bounded|detached|deterministic|exact|fresh)\b"
+    r"|\bfail(?:-|\s+)closed\b"
+    r"|\bno movement\b",
+    re.IGNORECASE,
 )
 PROPOSAL_AMENDMENT_REQUIRED_HEADINGS = (
     "## Review Question",
@@ -87,6 +109,23 @@ IMPLEMENTATION_ADJUNCT_COMPATIBILITY_CHECKS = (
     "No milestone plan, accepted proposal, or accepted amendment changes.",
     "There is one bounded review question and the base is the parent branch.",
 )
+REPAIR_CYCLE_LEDGER_HEADING = "## Repair Cycle Ledger"
+REPAIR_CYCLE_LEDGER_HEADER = (
+    "Cycle",
+    "Review receipt",
+    "Classification",
+    "Repair revision",
+    "Contract impact",
+)
+REPAIR_CYCLE_CLASSIFICATIONS = {"minor", "substantial"}
+REPAIR_ESCALATION_HEADING = "## Repair Escalation"
+REPAIR_ESCALATION_STATUSES = {"not-required", "completed"}
+REPAIR_ESCALATION_ROUTES = {
+    "replan-current-unit",
+    "proposal-amendment",
+    "split-or-replace-review-unit",
+    "abandon-review-unit",
+}
 HANDOFF_TEMPLATE_SCHEMA = "milestone_handoff_template_v1"
 EXAMPLE_RECEIPT: dict[str, Any] = {
     "schema": "milestone_handoff_v1",
@@ -120,6 +159,20 @@ class MarkdownTable:
     heading: str
     header: tuple[str, ...]
     rows: tuple[tuple[str, ...], ...]
+
+
+@dataclass(frozen=True)
+class ContractReviewReceipt:
+    head_oid: str
+    reviewer: str
+    reviewer_association: str
+    submitted_at: str
+
+
+@dataclass(frozen=True)
+class ProposalReviewMetadata:
+    merged_at: str
+    reviews: tuple[dict[str, Any], ...]
 
 
 @dataclass(frozen=True)
@@ -219,6 +272,10 @@ def _normalize_field(label: str) -> str:
     return normalized
 
 
+def _normalize_review_kind(value: str) -> str:
+    return re.sub(r"\s+", " ", value.strip().strip("`*_ ").lower())
+
+
 def parse_frontier(text: str, heading: str) -> Frontier:
     lines = text.splitlines()
     start, end = _section_bounds(lines, heading)
@@ -269,6 +326,11 @@ def _require_frontier_fields(
     for field in required:
         if not frontier.fields.get(field):
             raise PlanContractError(f"{heading} is missing {field!r}")
+    review_kind = _normalize_review_kind(frontier.fields["review kind"])
+    if review_kind not in ALLOWED_REVIEW_KINDS:
+        raise PlanContractError(
+            f"{heading} has unsupported review kind {frontier.fields['review kind']!r}"
+        )
     if not frontier.fields.get("non-goals"):
         raise PlanContractError(f"{heading} is missing 'non-goals'")
 
@@ -360,13 +422,27 @@ def _accepted_proposal(frontier: Frontier, *, heading: str) -> tuple[int, str] |
     raw_value = frontier.fields.get("accepted proposal")
     if not raw_value:
         return None
-    pr_match = re.search(r"#(\d+)", raw_value)
-    sha_match = re.search(r"`([0-9a-f]{7,40})`", raw_value)
-    if pr_match is None or sha_match is None:
+    match = re.fullmatch(
+        r"\[#(\d+)\]\([^)]+\) at `([0-9a-f]{7,40})` "
+        r"\(reviewed head `([0-9a-f]{40})` by `([^`]+)` as "
+        r"`(OWNER|MEMBER|COLLABORATOR)` at `([^`]+)`\)",
+        raw_value,
+    )
+    if match is None:
         raise PlanContractError(
-            f"{heading} accepted proposal must identify a PR and merge commit"
+            f"{heading} accepted proposal must identify a PR, merge commit, "
+            "and authorized exact-head contract review receipt"
         )
-    return int(pr_match.group(1)), sha_match.group(1)
+    _github_timestamp(
+        match.group(6),
+        label=f"{heading} accepted proposal contract review",
+    )
+    if match.group(3) == match.group(2):
+        raise PlanContractError(
+            f"{heading} accepted proposal review head must be the pre-merge PR "
+            "head, not the merge commit"
+        )
+    return int(match.group(1)), match.group(2)
 
 
 def _accepted_proposal_amendments(
@@ -381,13 +457,25 @@ def _accepted_proposal_amendments(
     for raw_record in raw_value.split("; "):
         match = re.fullmatch(
             r"\[#(\d+)\]\([^)]+\) at `([0-9a-f]{7,40})` "
-            r"\(`([^`]+)`\)",
+            r"\(`([^`]+)`\) "
+            r"\(reviewed head `([0-9a-f]{40})` by `([^`]+)` as "
+            r"`(OWNER|MEMBER|COLLABORATOR)` at `([^`]+)`\)",
             raw_record,
         )
         if match is None:
             raise PlanContractError(
                 f"{heading} accepted proposal amendments must identify each "
-                "PR, merge commit, and amendment path"
+                "PR, merge commit, amendment path, and authorized exact-head "
+                "contract review receipt"
+            )
+        _github_timestamp(
+            match.group(7),
+            label=f"{heading} accepted proposal amendment contract review",
+        )
+        if match.group(4) == match.group(2):
+            raise PlanContractError(
+                f"{heading} accepted proposal amendment review head must be the "
+                "pre-merge PR head, not the merge commit"
             )
         path = _proposal_document_path(
             f"`{match.group(3)}`",
@@ -1226,6 +1314,10 @@ def validate_merged_pr_metadata(
         raise PlanContractError(
             f"PR #{receipt['accepted_pr']} did not use {expected_head}"
         )
+    _validate_pr_review_kind(
+        payload.get("body"),
+        expected=state.current.fields["review kind"],
+    )
     merge_commit = payload.get("mergeCommit")
     merge_oid = merge_commit.get("oid") if isinstance(merge_commit, dict) else None
     expected = receipt["accepted_merge_commit"]
@@ -1258,7 +1350,7 @@ def _fetch_pr_metadata(
                 "view",
                 str(pr_number),
                 "--json",
-                "state,mergeCommit,baseRefName,headRefName",
+                "state,mergeCommit,baseRefName,headRefName,body",
             ],
             cwd=repo_root,
             check=True,
@@ -1545,12 +1637,44 @@ def start_proposal_amendment_branch(
     return updated
 
 
+def _contract_sections_claim_universal(
+    text: str,
+    headings: tuple[str, ...],
+) -> bool:
+    lines = text.splitlines()
+    claim_sections: list[str] = []
+    for heading in headings:
+        start, end = _section_bounds(lines, heading)
+        claim_sections.extend(lines[start:end])
+    claims = re.sub(
+        r"<!--.*?-->",
+        "",
+        "\n".join(claim_sections),
+        flags=re.DOTALL,
+    )
+    return UNIVERSAL_CLAIM_PATTERN.search(claims) is not None
+
+
 def validate_proposal_text(text: str) -> None:
     if not text.startswith("# Proposal:"):
         raise PlanContractError("proposal must start with '# Proposal:'")
     for heading in PROPOSAL_REQUIRED_HEADINGS:
         if heading not in text:
             raise PlanContractError(f"proposal is missing {heading}")
+    if _contract_sections_claim_universal(
+        text,
+        ("## Review Question", "## Proposed Contract"),
+    ):
+        for heading in UNIVERSAL_CONTRACT_REQUIRED_HEADINGS:
+            if heading not in text:
+                raise PlanContractError(
+                    f"universal proposal claim requires {heading}"
+                )
+            _required_section_body(
+                text,
+                heading,
+                document="universal proposal",
+            )
     load_handoff_template(text)
 
 
@@ -1562,9 +1686,175 @@ def validate_proposal_amendment_text(text: str) -> None:
     for heading in PROPOSAL_AMENDMENT_REQUIRED_HEADINGS:
         if heading not in text:
             raise PlanContractError(f"proposal amendment is missing {heading}")
+    if _contract_sections_claim_universal(
+        text,
+        ("## Review Question", "## Contract Delta"),
+    ):
+        for heading in UNIVERSAL_CONTRACT_REQUIRED_HEADINGS:
+            if heading not in text:
+                raise PlanContractError(
+                    f"universal proposal amendment claim requires {heading}"
+                )
+            _required_section_body(
+                text,
+                heading,
+                document="universal proposal amendment",
+            )
 
 
-def _required_section_body(text: str, heading: str) -> str:
+def _repair_field(text: str, heading: str, label: str) -> str:
+    lines = text.splitlines()
+    start, end = _section_bounds(lines, heading)
+    section = "\n".join(lines[start:end])
+    matches = re.findall(
+        rf"(?m)^-\s+{re.escape(label)}:\s*(.*?)\s*$",
+        section,
+    )
+    if len(matches) != 1 or not matches[0].strip():
+        raise PlanContractError(
+            f"{heading} must provide exactly one {label!r} field"
+        )
+    return matches[0].strip()
+
+
+def _repair_value(value: str) -> str:
+    return value.strip().strip("`*_ ").lower()
+
+
+def _is_placeholder(value: str) -> bool:
+    return _repair_value(value) in {"", "-", "none", "n/a", "tbd"}
+
+
+def _has_durable_reference(value: str) -> bool:
+    return re.search(r"https?://\S+|#[1-9]\d*", value) is not None
+
+
+def validate_repair_cycle_governance_body(text: str) -> int:
+    """Validate declared repair rounds and the hard escalation threshold.
+
+    The PR body is the durable index for repair review receipts. GitHub review
+    discussion still owns the finding and classification; this validator makes
+    the declared count and required escalation machine-checkable.
+    """
+
+    try:
+        ledger = parse_table(text, REPAIR_CYCLE_LEDGER_HEADING)
+    except PlanContractError as exc:
+        raise PlanContractError(
+            f"PR body must contain {REPAIR_CYCLE_LEDGER_HEADING}"
+        ) from exc
+    if ledger.header != REPAIR_CYCLE_LEDGER_HEADER:
+        raise PlanContractError(
+            "Repair Cycle Ledger must use columns: "
+            + ", ".join(REPAIR_CYCLE_LEDGER_HEADER)
+        )
+    if not ledger.rows:
+        raise PlanContractError("Repair Cycle Ledger must contain a row")
+
+    first_values = tuple(_repair_value(value) for value in ledger.rows[0])
+    if first_values[0] == "none":
+        if len(ledger.rows) != 1 or any(
+            value != "none" for value in first_values
+        ):
+            raise PlanContractError(
+                "the no-repair ledger must contain exactly one all-None row"
+            )
+        substantial_cycles = 0
+    else:
+        substantial_cycles = 0
+        for expected_cycle, row in enumerate(ledger.rows, start=1):
+            cycle, review_receipt, classification, repair_revision, impact = row
+            if _repair_value(cycle) != str(expected_cycle):
+                raise PlanContractError(
+                    "Repair Cycle Ledger cycle numbers must be consecutive from 1"
+                )
+            if not _has_durable_reference(review_receipt):
+                raise PlanContractError(
+                    f"repair cycle {expected_cycle} needs a durable review receipt"
+                )
+            normalized_classification = _repair_value(classification)
+            if normalized_classification not in REPAIR_CYCLE_CLASSIFICATIONS:
+                raise PlanContractError(
+                    f"repair cycle {expected_cycle} classification must be one of: "
+                    + ", ".join(sorted(REPAIR_CYCLE_CLASSIFICATIONS))
+                )
+            normalized_revision = _repair_value(repair_revision)
+            if re.fullmatch(r"[0-9a-f]{7,40}", normalized_revision) is None:
+                raise PlanContractError(
+                    f"repair cycle {expected_cycle} must name its repair revision SHA"
+                )
+            if _is_placeholder(impact):
+                raise PlanContractError(
+                    f"repair cycle {expected_cycle} must summarize contract impact"
+                )
+            if normalized_classification == "substantial":
+                substantial_cycles += 1
+
+    if substantial_cycles > 2:
+        raise PlanContractError(
+            "a third substantial repair cycle cannot remain in the same review unit; "
+            "split, replace, amend, or abandon it"
+        )
+
+    try:
+        status = _repair_value(
+            _repair_field(text, REPAIR_ESCALATION_HEADING, "Status")
+        )
+        decision_receipt = _repair_field(
+            text,
+            REPAIR_ESCALATION_HEADING,
+            "Decision receipt",
+        )
+        route = _repair_value(
+            _repair_field(text, REPAIR_ESCALATION_HEADING, "Route")
+        )
+        disposition = _repair_field(
+            text,
+            REPAIR_ESCALATION_HEADING,
+            "Disposition",
+        )
+    except PlanContractError as exc:
+        raise PlanContractError(
+            f"PR body must contain a completed {REPAIR_ESCALATION_HEADING} section"
+        ) from exc
+
+    if status not in REPAIR_ESCALATION_STATUSES:
+        raise PlanContractError(
+            "Repair Escalation Status must be `not-required` or `completed`"
+        )
+    if substantial_cycles == 2 and status != "completed":
+        raise PlanContractError(
+            "two substantial repair cycles require a completed repair escalation "
+            "before re-review"
+        )
+    if status == "not-required":
+        if not _is_placeholder(decision_receipt) or route != "none":
+            raise PlanContractError(
+                "a not-required repair escalation must keep receipt and route as None"
+            )
+    else:
+        if not _has_durable_reference(decision_receipt):
+            raise PlanContractError(
+                "a completed repair escalation needs a durable decision receipt"
+            )
+        if route not in REPAIR_ESCALATION_ROUTES:
+            raise PlanContractError(
+                "Repair Escalation Route must be one of: "
+                + ", ".join(sorted(REPAIR_ESCALATION_ROUTES))
+            )
+        if _is_placeholder(disposition):
+            raise PlanContractError(
+                "a completed repair escalation must record its disposition"
+            )
+    return substantial_cycles
+
+
+def _required_section_body(
+    text: str,
+    heading: str,
+    *,
+    document: str = "implementation adjunct",
+) -> str:
     lines = text.splitlines()
     start, end = _section_bounds(lines, heading)
     body = "\n".join(lines[start:end]).strip()
@@ -1577,10 +1867,217 @@ def _required_section_body(text: str, heading: str) -> str:
         and not line.strip().startswith("### ")
     ]
     if not meaningful:
-        raise PlanContractError(
-            f"implementation adjunct section {heading} must be completed"
-        )
+        raise PlanContractError(f"{document} section {heading} must be completed")
     return body
+
+
+def _comment_review_receipt_outcome(body: str) -> str | None:
+    if CONTRACT_REVIEW_RECEIPT_HEADING not in body:
+        return None
+    normalized = body.replace("\r\n", "\n").strip()
+    match = re.fullmatch(
+        rf"{re.escape(CONTRACT_REVIEW_RECEIPT_HEADING)}\n\n"
+        r"- Outcome: `(accepted|changes_requested)`",
+        normalized,
+    )
+    if match is None:
+        raise PlanContractError(
+            "contract COMMENT review must contain only the canonical receipt "
+            "with Outcome `accepted` or `changes_requested`"
+        )
+    outcome = match.group(1)
+    if outcome not in CONTRACT_REVIEW_RECEIPT_OUTCOMES:
+        raise PlanContractError("contract review receipt outcome is invalid")
+    return outcome
+
+
+def _github_timestamp(value: Any, *, label: str) -> datetime:
+    if not isinstance(value, str) or not value:
+        raise PlanContractError(f"{label} is missing its timestamp")
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise PlanContractError(f"{label} has an invalid timestamp") from exc
+    if parsed.tzinfo is None:
+        raise PlanContractError(f"{label} timestamp must include a timezone")
+    return parsed
+
+
+def _validate_exact_head_contract_review(
+    payload: dict[str, Any],
+    *,
+    review_metadata: ProposalReviewMetadata,
+    label: str,
+) -> ContractReviewReceipt:
+    head_oid = payload.get("headRefOid")
+    if not isinstance(head_oid, str) or re.fullmatch(r"[0-9a-f]{40}", head_oid) is None:
+        raise PlanContractError(f"{label} has no full head commit")
+    merged_at = _github_timestamp(
+        review_metadata.merged_at,
+        label=f"{label} merge",
+    )
+    reviews = review_metadata.reviews
+
+    decisive_by_reviewer: dict[
+        str,
+        tuple[datetime, int, str, str, str, str],
+    ] = {}
+    for index, review in enumerate(reviews):
+        if not isinstance(review, dict):
+            continue
+        commit = review.get("commit")
+        review_oid = commit.get("oid") if isinstance(commit, dict) else None
+        if review_oid != head_oid:
+            continue
+        author = review.get("author")
+        reviewer = author.get("login") if isinstance(author, dict) else None
+        if not isinstance(reviewer, str) or not reviewer:
+            continue
+        association = str(review.get("authorAssociation") or "").upper()
+        can_push = review.get("authorCanPushToRepository") is True
+        if (
+            association not in AUTHORIZED_REVIEW_ASSOCIATIONS
+            or not can_push
+        ):
+            continue
+        state = str(review.get("state") or "").upper()
+        outcome: str | None = None
+        if state == "APPROVED":
+            outcome = "accepted"
+        elif state == "CHANGES_REQUESTED":
+            outcome = "changes_requested"
+        elif state == "COMMENTED":
+            body = review.get("body")
+            if not isinstance(body, str):
+                raise PlanContractError(f"{label} review body must be text")
+            try:
+                outcome = _comment_review_receipt_outcome(body)
+            except PlanContractError:
+                outcome = "malformed"
+            if outcome is not None and review.get("includesCreatedEdit") is not False:
+                outcome = "malformed"
+        if outcome is None:
+            continue
+        submitted_at = review.get("submittedAt")
+        submitted = _github_timestamp(
+            submitted_at,
+            label=f"{label} decisive review",
+        )
+        if submitted > merged_at:
+            continue
+        assert isinstance(submitted_at, str)
+        decision = (
+            submitted,
+            index,
+            outcome,
+            reviewer,
+            association,
+            submitted_at,
+        )
+        previous = decisive_by_reviewer.get(reviewer)
+        if previous is None or decision[:2] > previous[:2]:
+            decisive_by_reviewer[reviewer] = decision
+
+    if not decisive_by_reviewer:
+        raise PlanContractError(
+            f"{label} has no decisive authorized GitHub review on exact head "
+            f"{head_oid}"
+        )
+    outstanding = sorted(
+        reviewer
+        for reviewer, decision in decisive_by_reviewer.items()
+        if decision[2] == "changes_requested"
+    )
+    if outstanding:
+        raise PlanContractError(
+            f"{label} has outstanding authorized changes requested on exact head "
+            f"{head_oid} by {', '.join(outstanding)}"
+        )
+    malformed = sorted(
+        reviewer
+        for reviewer, decision in decisive_by_reviewer.items()
+        if decision[2] == "malformed"
+    )
+    if malformed:
+        raise PlanContractError(
+            f"{label} has malformed or edited COMMENT receipt on exact head "
+            f"{head_oid} by {', '.join(malformed)}"
+        )
+    accepted = [
+        decision
+        for decision in decisive_by_reviewer.values()
+        if decision[2] == "accepted"
+    ]
+    if not accepted:
+        raise PlanContractError(
+            f"{label} has no accepted authorized review on exact head {head_oid}"
+        )
+    _, _, _, reviewer, association, submitted_at = max(accepted)
+    return ContractReviewReceipt(
+        head_oid=head_oid,
+        reviewer=reviewer,
+        reviewer_association=association,
+        submitted_at=submitted_at,
+    )
+
+
+def _contract_review_receipt_suffix(
+    receipt: ContractReviewReceipt,
+) -> str:
+    if re.fullmatch(r"[0-9a-f]{40}", receipt.head_oid) is None:
+        raise PlanContractError("contract review receipt requires a full head commit")
+    if (
+        not receipt.reviewer
+        or receipt.reviewer_association not in AUTHORIZED_REVIEW_ASSOCIATIONS
+    ):
+        raise PlanContractError("contract review receipt has invalid reviewer authority")
+    _github_timestamp(
+        receipt.submitted_at,
+        label="contract review receipt",
+    )
+    return (
+        f" (reviewed head `{receipt.head_oid}` by `{receipt.reviewer}` as "
+        f"`{receipt.reviewer_association}` at `{receipt.submitted_at}`)"
+    )
+def _pr_review_kind(text: str) -> str:
+    if text.splitlines().count("## Review Kind") != 1:
+        raise PlanContractError(
+            "review-unit PR body must contain exactly one ## Review Kind section"
+        )
+    try:
+        body = _required_section_body(text, "## Review Kind")
+    except PlanContractError as exc:
+        raise PlanContractError(
+            "review-unit PR body must provide a completed ## Review Kind section"
+        ) from exc
+    without_comments = re.sub(r"<!--.*?-->", "", body, flags=re.DOTALL)
+    values = [
+        line.strip().removeprefix("- ").strip()
+        for line in without_comments.splitlines()
+        if line.strip()
+    ]
+    if len(values) != 1:
+        raise PlanContractError(
+            "review-unit PR body ## Review Kind must contain exactly one value"
+        )
+    review_kind = _normalize_review_kind(values[0])
+    if review_kind not in ALLOWED_REVIEW_KINDS:
+        raise PlanContractError(
+            f"review-unit PR body has unsupported review kind {values[0]!r}"
+        )
+    return review_kind
+
+
+def _validate_pr_review_kind(text: Any, *, expected: str) -> None:
+    if not isinstance(text, str):
+        raise PlanContractError("review-unit PR validation requires the PR body")
+    actual = _pr_review_kind(text)
+    normalized_expected = _normalize_review_kind(expected)
+    if actual != normalized_expected:
+        raise PlanContractError(
+            "review-unit PR body review kind does not match the canonical plan: "
+            f"{actual!r} != {normalized_expected!r}"
+        )
 
 
 def _implementation_adjunct_field(section: str, label: str) -> str:
@@ -1736,6 +2233,7 @@ def validate_implementation_adjunct_body(
         raise PlanContractError(
             "implementation adjunct Validation must contain exact commands or results"
         )
+    validate_repair_cycle_governance_body(text)
 
 
 def load_handoff_template(proposal_text: str) -> dict[str, Any]:
@@ -1856,6 +2354,12 @@ def validate_handoff_template_against_plan(
         proposal_pr=proposal_pr,
         merge_commit="b" * 40,
         proposal_url="https://example.invalid/proposal",
+        review_receipt=ContractReviewReceipt(
+            head_oid="a" * 40,
+            reviewer="contract-simulation",
+            reviewer_association="OWNER",
+            submitted_at="2000-01-01T00:00:00+00:00",
+        ),
     )
     implementation_review = _replace_current_frontier_state(
         accepted,
@@ -1881,13 +2385,135 @@ def proposal_allowed_paths(plan: Path, state: PlanState, *, repo_root: Path = RO
     return {plan_relative, html_relative, proposal_relative}
 
 
+def _fetch_pr_review_metadata(
+    pr_number: int,
+    *,
+    repo_root: Path = ROOT,
+) -> ProposalReviewMetadata:
+    query = """
+query(
+  $owner: String!,
+  $name: String!,
+  $number: Int!
+) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      mergedAt
+      reviews(first: 100) {
+        totalCount
+        nodes {
+          author { login }
+          authorAssociation
+          authorCanPushToRepository
+          body
+          commit { oid }
+          includesCreatedEdit
+          state
+          submittedAt
+        }
+      }
+    }
+  }
+}
+""".strip()
+    try:
+        repository = subprocess.run(
+            ["gh", "repo", "view", "--json", "nameWithOwner"],
+            cwd=repo_root,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        repository_payload = json.loads(repository.stdout)
+        if not isinstance(repository_payload, dict):
+            raise PlanContractError("GitHub CLI returned invalid repository metadata")
+        name_with_owner = repository_payload.get("nameWithOwner")
+        if not isinstance(name_with_owner, str) or "/" not in name_with_owner:
+            raise PlanContractError("GitHub CLI returned invalid repository metadata")
+        owner, name = name_with_owner.split("/", 1)
+        result = subprocess.run(
+            [
+                "gh",
+                "api",
+                "graphql",
+                "-F",
+                f"owner={owner}",
+                "-F",
+                f"name={name}",
+                "-F",
+                f"number={pr_number}",
+                "-f",
+                f"query={query}",
+            ],
+            cwd=repo_root,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        response = json.loads(result.stdout)
+    except FileNotFoundError as exc:
+        raise PlanContractError(
+            "GitHub CLI `gh` is required for proposal acceptance"
+        ) from exc
+    except subprocess.CalledProcessError as exc:
+        detail = exc.stderr.strip() or exc.stdout.strip() or str(exc)
+        raise PlanContractError(f"cannot fetch proposal reviews: {detail}") from exc
+    except json.JSONDecodeError as exc:
+        raise PlanContractError("GitHub CLI returned invalid review metadata") from exc
+    try:
+        pull_request = response["data"]["repository"]["pullRequest"]
+        connection = pull_request["reviews"]
+        reviews = connection["nodes"]
+        total_count = connection["totalCount"]
+    except (KeyError, TypeError) as exc:
+        raise PlanContractError(
+            "GitHub CLI returned incomplete review metadata"
+        ) from exc
+    merged_at = pull_request.get("mergedAt")
+    if not isinstance(merged_at, str):
+        raise PlanContractError("GitHub pull request review metadata is incomplete")
+    if not isinstance(total_count, int) or not isinstance(reviews, list):
+        raise PlanContractError("GitHub review connection is invalid")
+    if total_count > 100 or len(reviews) != total_count:
+        raise PlanContractError(
+            "proposal acceptance refuses a review history larger than the "
+            "100-review verification window"
+        )
+    if any(not isinstance(review, dict) for review in reviews):
+        raise PlanContractError("GitHub review connection has invalid review nodes")
+    return ProposalReviewMetadata(
+        merged_at=merged_at,
+        reviews=tuple(reviews),
+    )
+
+
+def _review_metadata_from_payload(
+    payload: dict[str, Any],
+    *,
+    label: str,
+) -> ProposalReviewMetadata:
+    merged_at = payload.get("mergedAt")
+    reviews = payload.get("reviews")
+    if (
+        not isinstance(merged_at, str)
+        or not isinstance(reviews, list)
+        or any(not isinstance(review, dict) for review in reviews)
+    ):
+        raise PlanContractError(f"{label} did not expose complete review metadata")
+    return ProposalReviewMetadata(
+        merged_at=merged_at,
+        reviews=tuple(reviews),
+    )
+
+
 def validate_merged_proposal_metadata(
     payload: dict[str, Any],
     state: PlanState,
     *,
     proposal_pr: int,
     allowed_paths: set[str],
-) -> tuple[str, str]:
+    review_metadata: ProposalReviewMetadata | None = None,
+) -> tuple[str, str, ContractReviewReceipt]:
     if _workflow_state(state.current) != "proposal_in_review":
         raise PlanContractError(
             "proposal acceptance requires workflow state proposal_in_review"
@@ -1907,6 +2533,17 @@ def validate_merged_proposal_metadata(
         raise PlanContractError(
             f"proposal PR #{proposal_pr} did not use {expected_head}"
         )
+    if review_metadata is None:
+        review_metadata = _review_metadata_from_payload(payload, label="proposal PR")
+    review_receipt = _validate_exact_head_contract_review(
+        payload,
+        review_metadata=review_metadata,
+        label=f"proposal PR #{proposal_pr}",
+    )
+    _validate_pr_review_kind(
+        payload.get("body"),
+        expected=state.current.fields["review kind"],
+    )
     merge_commit = payload.get("mergeCommit")
     merge_oid = merge_commit.get("oid") if isinstance(merge_commit, dict) else None
     if not isinstance(merge_oid, str) or re.fullmatch(r"[0-9a-f]{40}", merge_oid) is None:
@@ -1937,7 +2574,11 @@ def validate_merged_proposal_metadata(
         raise PlanContractError(
             f"proposal PR must create or update {proposal_path}"
         )
-    return merge_oid, str(payload.get("url") or f"PR #{proposal_pr}")
+    return (
+        merge_oid,
+        str(payload.get("url") or f"PR #{proposal_pr}"),
+        review_receipt,
+    )
 
 
 def accept_proposal(
@@ -1946,14 +2587,20 @@ def accept_proposal(
     proposal_pr: int,
     merge_commit: str,
     proposal_url: str,
+    review_receipt: ContractReviewReceipt,
 ) -> str:
+    reviewed_suffix = _contract_review_receipt_suffix(review_receipt)
     return _replace_current_frontier_state(
         text,
         expected_state="proposal_in_review",
         new_state="ready_for_implementation",
-        evidence=f"Proposal PR #{proposal_pr} accepted at {merge_commit}.",
+        evidence=(
+            f"Proposal PR #{proposal_pr} accepted at {merge_commit}"
+            f"{reviewed_suffix}."
+        ),
         accepted_proposal=(
             f"[#{proposal_pr}]({proposal_url}) at `{merge_commit}`"
+            f"{reviewed_suffix}"
         ),
     )
 
@@ -1982,7 +2629,8 @@ def validate_merged_proposal_amendment_metadata(
     *,
     amendment_pr: int,
     allowed_paths: set[str],
-) -> tuple[str, str]:
+    review_metadata: ProposalReviewMetadata | None = None,
+) -> tuple[str, str, ContractReviewReceipt]:
     if _workflow_state(state.current) != "proposal_amendment_in_review":
         raise PlanContractError(
             "proposal amendment acceptance requires workflow state "
@@ -2004,6 +2652,20 @@ def validate_merged_proposal_amendment_metadata(
         raise PlanContractError(
             f"proposal amendment PR #{amendment_pr} did not use {expected_head}"
         )
+    if review_metadata is None:
+        review_metadata = _review_metadata_from_payload(
+            payload,
+            label="proposal amendment PR",
+        )
+    review_receipt = _validate_exact_head_contract_review(
+        payload,
+        review_metadata=review_metadata,
+        label=f"proposal amendment PR #{amendment_pr}",
+    )
+    _validate_pr_review_kind(
+        payload.get("body"),
+        expected=state.current.fields["review kind"],
+    )
     merge_commit = payload.get("mergeCommit")
     merge_oid = merge_commit.get("oid") if isinstance(merge_commit, dict) else None
     if not isinstance(merge_oid, str) or re.fullmatch(r"[0-9a-f]{40}", merge_oid) is None:
@@ -2034,7 +2696,11 @@ def validate_merged_proposal_amendment_metadata(
         raise PlanContractError(
             f"proposal amendment PR must create {amendment_path}"
         )
-    return merge_oid, str(payload.get("url") or f"PR #{amendment_pr}")
+    return (
+        merge_oid,
+        str(payload.get("url") or f"PR #{amendment_pr}"),
+        review_receipt,
+    )
 
 
 def accept_proposal_amendment(
@@ -2043,6 +2709,7 @@ def accept_proposal_amendment(
     amendment_pr: int,
     merge_commit: str,
     amendment_url: str,
+    review_receipt: ContractReviewReceipt,
 ) -> str:
     state = validate_plan_text(text)
     amendment_path = _frontier_proposal_amendment_path(
@@ -2053,6 +2720,7 @@ def accept_proposal_amendment(
         f"[#{amendment_pr}]({amendment_url}) at `{merge_commit}` "
         f"(`{amendment_path}`)"
     )
+    receipt += _contract_review_receipt_suffix(review_receipt)
     existing = state.current.fields.get("accepted proposal amendments")
     accepted = f"{existing}; {receipt}" if existing else receipt
     return _replace_current_frontier_state(
@@ -2060,7 +2728,8 @@ def accept_proposal_amendment(
         expected_state="proposal_amendment_in_review",
         new_state="ready_for_implementation",
         evidence=(
-            f"Proposal amendment PR #{amendment_pr} accepted at {merge_commit}."
+            f"Proposal amendment PR #{amendment_pr} accepted at {merge_commit}"
+            f"{_contract_review_receipt_suffix(review_receipt)}."
         ),
         field_updates={"accepted proposal amendments": accepted},
     )
@@ -2180,6 +2849,7 @@ def validate_review_unit_transition(
     head_branch: str,
     proposal_text: str | None = None,
     proposal_amendment_text: str | None = None,
+    pr_body: str | None = None,
 ) -> str:
     base = validate_plan_text(base_text)
     head = validate_plan_text(head_text)
@@ -2293,6 +2963,10 @@ def validate_review_unit_transition(
             )
         if proposal_path not in changed_paths or proposal_text is None:
             raise PlanContractError(f"proposal PR must provide {proposal_path}")
+        _validate_pr_review_kind(
+            pr_body,
+            expected=base.current.fields["review kind"],
+        )
         validate_proposal_text(proposal_text)
         validate_handoff_template_against_plan(proposal_text, head_text)
         transition_kind = "proposal"
@@ -2344,6 +3018,10 @@ def validate_review_unit_transition(
             raise PlanContractError(
                 f"proposal amendment PR must provide {amendment_path}"
             )
+        _validate_pr_review_kind(
+            pr_body,
+            expected=base.current.fields["review kind"],
+        )
         validate_proposal_amendment_text(proposal_amendment_text)
         transition_kind = "proposal_amendment"
     elif base_state == "ready_for_implementation":
@@ -2385,6 +3063,10 @@ def validate_review_unit_transition(
                 "amendments: "
                 + ", ".join(sorted(changed_proposal_paths))
             )
+        _validate_pr_review_kind(
+            pr_body,
+            expected=base.current.fields["review kind"],
+        )
         transition_kind = "implementation"
     else:
         raise PlanContractError(
@@ -2396,6 +3078,8 @@ def validate_review_unit_transition(
         raise PlanContractError(
             "review-unit PR history does not record its workflow transition"
         )
+    if pr_body is not None:
+        validate_repair_cycle_governance_body(pr_body)
     return transition_kind
 
 
@@ -2643,6 +3327,7 @@ def validate_review_unit_git_diff(
         head_branch=head_ref,
         proposal_text=proposal_text,
         proposal_amendment_text=proposal_amendment_text,
+        pr_body=pr_body,
     )
 
 
@@ -2964,7 +3649,9 @@ def _cmd_accept_proposal(plan: Path, proposal_pr: int) -> int:
                 "view",
                 str(proposal_pr),
                 "--json",
-                "state,mergeCommit,baseRefName,headRefName,files,url",
+                (
+                    "state,mergeCommit,baseRefName,headRefName,headRefOid,files,url,body"
+                ),
             ],
             cwd=repo_root,
             check=True,
@@ -2984,11 +3671,16 @@ def _cmd_accept_proposal(plan: Path, proposal_pr: int) -> int:
         raise PlanContractError("GitHub CLI returned invalid proposal metadata") from exc
     if not isinstance(payload, dict):
         raise PlanContractError("GitHub CLI returned invalid proposal metadata")
-    merge_commit, proposal_url = validate_merged_proposal_metadata(
+    review_metadata = _fetch_pr_review_metadata(
+        proposal_pr,
+        repo_root=repo_root,
+    )
+    merge_commit, proposal_url, review_receipt = validate_merged_proposal_metadata(
         payload,
         state,
         proposal_pr=proposal_pr,
         allowed_paths=proposal_allowed_paths(plan, state),
+        review_metadata=review_metadata,
     )
     ancestor = _run_git(
         ["merge-base", "--is-ancestor", merge_commit, "HEAD"],
@@ -3011,6 +3703,7 @@ def _cmd_accept_proposal(plan: Path, proposal_pr: int) -> int:
         proposal_pr=proposal_pr,
         merge_commit=merge_commit,
         proposal_url=proposal_url,
+        review_receipt=review_receipt,
     )
     _write_plan_and_render(plan, original, updated)
     print(f"Accepted proposal PR #{proposal_pr} for {state.current.name}.")
@@ -3069,7 +3762,9 @@ def _cmd_accept_proposal_amendment(plan: Path, amendment_pr: int) -> int:
                 "view",
                 str(amendment_pr),
                 "--json",
-                "state,mergeCommit,baseRefName,headRefName,files,url",
+                (
+                    "state,mergeCommit,baseRefName,headRefName,headRefOid,files,url,body"
+                ),
             ],
             cwd=repo_root,
             check=True,
@@ -3095,11 +3790,18 @@ def _cmd_accept_proposal_amendment(plan: Path, amendment_pr: int) -> int:
         raise PlanContractError(
             "GitHub CLI returned invalid proposal amendment metadata"
         )
-    merge_commit, amendment_url = validate_merged_proposal_amendment_metadata(
-        payload,
-        state,
-        amendment_pr=amendment_pr,
-        allowed_paths=proposal_amendment_allowed_paths(plan, state),
+    review_metadata = _fetch_pr_review_metadata(
+        amendment_pr,
+        repo_root=repo_root,
+    )
+    merge_commit, amendment_url, review_receipt = (
+        validate_merged_proposal_amendment_metadata(
+            payload,
+            state,
+            amendment_pr=amendment_pr,
+            allowed_paths=proposal_amendment_allowed_paths(plan, state),
+            review_metadata=review_metadata,
+        )
     )
     ancestor = _run_git(
         ["merge-base", "--is-ancestor", merge_commit, "HEAD"],
@@ -3120,6 +3822,7 @@ def _cmd_accept_proposal_amendment(plan: Path, amendment_pr: int) -> int:
         amendment_pr=amendment_pr,
         merge_commit=merge_commit,
         amendment_url=amendment_url,
+        review_receipt=review_receipt,
     )
     _write_plan_and_render(plan, original, updated)
     print(f"Accepted proposal amendment PR #{amendment_pr} for {state.current.name}.")
@@ -3194,6 +3897,17 @@ def _pull_request_body_from_event(event_path: Path | None) -> str | None:
     return body
 
 
+def _pull_request_body_from_file(body_path: Path | None) -> str | None:
+    if body_path is None:
+        return None
+    try:
+        return body_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise PlanContractError(
+            f"cannot load pull-request body {body_path}: {exc}"
+        ) from exc
+
+
 def _cmd_validate_pr(
     *,
     base_ref: str,
@@ -3201,13 +3915,19 @@ def _cmd_validate_pr(
     base_sha: str,
     head_sha: str,
     event_path: Path | None,
+    body_path: Path | None,
 ) -> int:
+    pr_body = (
+        _pull_request_body_from_event(event_path)
+        if event_path is not None
+        else _pull_request_body_from_file(body_path)
+    )
     transition = validate_review_unit_git_diff(
         base_ref=base_ref,
         head_ref=head_ref,
         base_sha=base_sha,
         head_sha=head_sha,
-        pr_body=_pull_request_body_from_event(event_path),
+        pr_body=pr_body,
     )
     if transition is None:
         print(f"PR targets {base_ref}; milestone review-unit gate not applicable.")
@@ -3298,10 +4018,19 @@ def main() -> int:
     validate_pr_parser.add_argument("--head-ref", required=True)
     validate_pr_parser.add_argument("--base-sha", required=True)
     validate_pr_parser.add_argument("--head-sha", required=True)
-    validate_pr_parser.add_argument(
+    body_source = validate_pr_parser.add_mutually_exclusive_group()
+    body_source.add_argument(
         "--event-path",
         type=Path,
-        help="GitHub pull_request event JSON used to validate adjunct metadata",
+        help=(
+            "GitHub pull_request event JSON used to validate PR-body receipts "
+            "and adjunct metadata"
+        ),
+    )
+    body_source.add_argument(
+        "--pr-body-file",
+        type=Path,
+        help="local Markdown PR body used to validate review metadata",
     )
 
     subparsers.add_parser(
@@ -3341,6 +4070,7 @@ def main() -> int:
                 base_sha=args.base_sha,
                 head_sha=args.head_sha,
                 event_path=args.event_path,
+                body_path=args.pr_body_file,
             )
         return _cmd_handoff(args.plan, args.receipt)
     except (OSError, PlanContractError, subprocess.CalledProcessError) as exc:

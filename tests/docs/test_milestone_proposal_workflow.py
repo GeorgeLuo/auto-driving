@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+import json
+import re
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from docs.milestones.workflow import (
+    ContractReviewReceipt,
     PlanContractError,
+    _fetch_pr_review_metadata,
     accept_proposal,
     accept_proposal_amendment,
     start_implementation_branch,
@@ -17,6 +22,7 @@ from docs.milestones.workflow import (
     validate_plan_text,
     validate_proposal_amendment_text,
     validate_proposal_text,
+    validate_repair_cycle_governance_body,
     validate_review_unit_transition,
     validate_review_unit_git_diff,
 )
@@ -36,10 +42,76 @@ from tests.docs.milestone_workflow_fixtures import (
     proposal_amendment_text,
     proposal_text,
     ready_plan_text,
+    repair_cycle_governance_body,
 )
 
 PLAN_REVISION_BRANCH = "m900/plan-shadow-proposals"
 REVISED_FRONTIER = "Shadow action proposals"
+REVIEW_KIND = "Deterministic invariant closure"
+
+
+def _review_unit_body(review_kind: str = REVIEW_KIND) -> str:
+    return (
+        "# Synthetic review unit\n\n"
+        "## Review Kind\n\n"
+        f"{review_kind}\n\n"
+        "## Review Question\n\n"
+        "Is the bounded contract acceptable?\n\n"
+        f"{repair_cycle_governance_body()}\n"
+    )
+
+
+def _contract_review(
+    *,
+    head_oid: str,
+    state: str = "COMMENTED",
+    outcome: str = "accepted",
+    submitted_at: str = "2026-08-12T18:00:00Z",
+) -> dict[str, object]:
+    body = (
+        "## Contract Review Receipt\n\n"
+        f"- Outcome: `{outcome}`\n"
+        if state == "COMMENTED"
+        else ""
+    )
+    return {
+        "state": state,
+        "body": body,
+        "commit": {"oid": head_oid},
+        "submittedAt": submitted_at,
+        "author": {"login": "workflow-reviewer"},
+        "authorAssociation": "COLLABORATOR",
+        "authorCanPushToRepository": True,
+        "includesCreatedEdit": False,
+    }
+
+
+def _accepted_review_receipt(
+    head_oid: str = "f" * 40,
+) -> ContractReviewReceipt:
+    return ContractReviewReceipt(
+        head_oid=head_oid,
+        reviewer="workflow-reviewer",
+        reviewer_association="COLLABORATOR",
+        submitted_at="2026-08-12T18:00:00Z",
+    )
+
+
+def _replace_section_body(text: str, heading: str, body: str) -> str:
+    pattern = rf"(?ms)^{re.escape(heading)}\n.*?(?=^## |\Z)"
+    replacement = f"{heading}\n\n{body.strip()}\n\n"
+    updated, count = re.subn(pattern, replacement, text, count=1)
+    if count != 1:
+        raise AssertionError(f"missing fixture section: {heading}")
+    return updated
+
+
+def _remove_section(text: str, heading: str) -> str:
+    pattern = rf"(?ms)^{re.escape(heading)}\n.*?(?=^## |\Z)"
+    updated, count = re.subn(pattern, "", text, count=1)
+    if count != 1:
+        raise AssertionError(f"missing fixture section: {heading}")
+    return updated
 
 
 def _move_to_review(text: str, *, implementation: bool = False) -> str:
@@ -90,6 +162,7 @@ def _accepted_plan() -> str:
         proposal_pr=60,
         merge_commit="a" * 40,
         proposal_url="https://example.invalid/60",
+        review_receipt=_accepted_review_receipt(),
     )
 
 
@@ -133,9 +206,68 @@ def _move_to_amendment_review(
         "\n\n## Accepted Review Units",
         1,
     )
+
+
 class ProposalDocumentTests(unittest.TestCase):
     def test_required_proposal_shape_is_accepted(self) -> None:
         validate_proposal_text(proposal_text())
+
+    def test_universal_claim_requires_trust_and_authority_model(self) -> None:
+        invalid = proposal_text().replace(
+            "## Trust And Authority Model",
+            "## Trust Notes",
+        )
+        with self.assertRaisesRegex(PlanContractError, "Trust And Authority Model"):
+            validate_proposal_text(invalid)
+
+    def test_universal_claim_requires_evidence_topology_and_capture(self) -> None:
+        invalid = proposal_text().replace(
+            "## Evidence Topology And Capture Strategy",
+            "## Evidence Notes",
+        )
+        with self.assertRaisesRegex(
+            PlanContractError,
+            "Evidence Topology And Capture Strategy",
+        ):
+            validate_proposal_text(invalid)
+
+    def test_universal_claim_rejects_an_empty_contractability_section(self) -> None:
+        invalid = _replace_section_body(
+            proposal_text(),
+            "## Trust And Authority Model",
+            "<!-- model pending -->",
+        )
+        with self.assertRaisesRegex(PlanContractError, "must be completed"):
+            validate_proposal_text(invalid)
+
+    def test_non_universal_proposal_does_not_require_contractability_sections(
+        self,
+    ) -> None:
+        ordinary = proposal_text().replace(
+            "Is the evidence policy bounded and deterministic?",
+            "Does the evidence policy assign one structural contract?",
+        )
+        ordinary = _remove_section(
+            ordinary,
+            "## Trust And Authority Model",
+        )
+        ordinary = _remove_section(
+            ordinary,
+            "## Evidence Topology And Capture Strategy",
+        )
+        validate_proposal_text(ordinary)
+
+    def test_universal_language_in_proposed_contract_triggers_the_gate(self) -> None:
+        invalid = proposal_text().replace(
+            "Is the evidence policy bounded and deterministic?",
+            "Does the evidence policy assign one structural contract?",
+        ).replace(
+            "One slot has one structural contract.",
+            "One slot has one exact structural contract.",
+        )
+        invalid = _remove_section(invalid, "## Trust And Authority Model")
+        with self.assertRaisesRegex(PlanContractError, "Trust And Authority Model"):
+            validate_proposal_text(invalid)
 
     def test_missing_validation_plan_is_rejected(self) -> None:
         with self.assertRaisesRegex(PlanContractError, "Validation Plan"):
@@ -151,6 +283,34 @@ class ProposalDocumentTests(unittest.TestCase):
 
     def test_required_proposal_amendment_shape_is_accepted(self) -> None:
         validate_proposal_amendment_text(proposal_amendment_text())
+
+    def test_universal_amendment_requires_contractability_delta(self) -> None:
+        invalid = _remove_section(
+            proposal_amendment_text(),
+            "## Evidence Topology And Capture Strategy",
+        )
+        with self.assertRaisesRegex(
+            PlanContractError,
+            "Evidence Topology And Capture Strategy",
+        ):
+            validate_proposal_amendment_text(invalid)
+
+    def test_non_universal_amendment_does_not_require_contractability_sections(
+        self,
+    ) -> None:
+        ordinary = proposal_amendment_text().replace(
+            "Is bounded lag accepted without weakening attributable evidence?",
+            "Is attributable lag accepted without weakening evidence?",
+        ).replace(
+            "Accept current or bounded-stale observations with an explicit lag value.",
+            "Accept current or recent observations with an explicit lag value.",
+        )
+        ordinary = _remove_section(ordinary, "## Trust And Authority Model")
+        ordinary = _remove_section(
+            ordinary,
+            "## Evidence Topology And Capture Strategy",
+        )
+        validate_proposal_amendment_text(ordinary)
 
     def test_proposal_amendment_requires_contract_delta(self) -> None:
         with self.assertRaisesRegex(PlanContractError, "Contract Delta"):
@@ -197,6 +357,103 @@ class ProposalDocumentTests(unittest.TestCase):
             )
 
 
+class RepairCycleGovernanceTests(unittest.TestCase):
+    def test_initial_review_receipt_is_accepted(self) -> None:
+        self.assertEqual(
+            validate_repair_cycle_governance_body(
+                repair_cycle_governance_body()
+            ),
+            0,
+        )
+
+    def test_one_substantial_cycle_does_not_require_escalation(self) -> None:
+        body = repair_cycle_governance_body(
+            rows=(
+                "| 1 | https://github.example/review/1 | substantial | "
+                "abc1234 | Replaced the enforcement boundary. |"
+            ),
+        )
+
+        self.assertEqual(validate_repair_cycle_governance_body(body), 1)
+
+    def test_second_substantial_cycle_requires_completed_escalation(self) -> None:
+        body = repair_cycle_governance_body(
+            rows=(
+                "| 1 | https://github.example/review/1 | substantial | "
+                "abc1234 | Replaced the enforcement boundary. |\n"
+                "| 2 | https://github.example/review/2 | substantial | "
+                "def5678 | Reframed the failure class. |"
+            ),
+        )
+
+        with self.assertRaisesRegex(
+            PlanContractError,
+            "require a completed repair escalation",
+        ):
+            validate_repair_cycle_governance_body(body)
+
+    def test_second_substantial_cycle_accepts_human_decision_receipt(self) -> None:
+        body = repair_cycle_governance_body(
+            rows=(
+                "| 1 | https://github.example/review/1 | substantial | "
+                "abc1234 | Replaced the enforcement boundary. |\n"
+                "| 2 | https://github.example/review/2 | substantial | "
+                "def5678 | Reframed the failure class. |"
+            ),
+            status="completed",
+            decision_receipt="https://github.example/decision/2",
+            route="replan-current-unit",
+            disposition="Keep the singular question with a reset owner.",
+        )
+
+        self.assertEqual(validate_repair_cycle_governance_body(body), 2)
+
+    def test_minor_cycles_do_not_consume_substantial_cycle_budget(self) -> None:
+        body = repair_cycle_governance_body(
+            rows=(
+                "| 1 | https://github.example/review/1 | minor | "
+                "abc1234 | Corrected evidence formatting. |\n"
+                "| 2 | https://github.example/review/2 | substantial | "
+                "def5678 | Replaced the enforcement boundary. |"
+            ),
+        )
+
+        self.assertEqual(validate_repair_cycle_governance_body(body), 1)
+
+    def test_third_substantial_cycle_must_leave_review_unit(self) -> None:
+        body = repair_cycle_governance_body(
+            rows=(
+                "| 1 | https://github.example/review/1 | substantial | "
+                "abc1234 | Replaced the enforcement boundary. |\n"
+                "| 2 | https://github.example/review/2 | substantial | "
+                "def5678 | Reframed the failure class. |\n"
+                "| 3 | https://github.example/review/3 | substantial | "
+                "fed9876 | Expanded material scope again. |"
+            ),
+            status="completed",
+            decision_receipt="https://github.example/decision/2",
+            route="replan-current-unit",
+            disposition="Keep the singular question with a reset owner.",
+        )
+
+        with self.assertRaisesRegex(
+            PlanContractError,
+            "third substantial repair cycle",
+        ):
+            validate_repair_cycle_governance_body(body)
+
+    def test_cycle_numbers_must_be_consecutive(self) -> None:
+        body = repair_cycle_governance_body(
+            rows=(
+                "| 2 | https://github.example/review/2 | minor | "
+                "def5678 | Corrected evidence formatting. |"
+            ),
+        )
+
+        with self.assertRaisesRegex(PlanContractError, "consecutive from 1"):
+            validate_repair_cycle_governance_body(body)
+
+
 class WorkflowStateContractTests(unittest.TestCase):
     def setUp(self) -> None:
         self.plan = ready_plan_text()
@@ -227,6 +484,27 @@ class WorkflowStateContractTests(unittest.TestCase):
             PlanContractError,
             "latest state does not match",
         ):
+            validate_plan_text(invalid)
+
+    def test_ready_for_implementation_requires_durable_review_receipt(self) -> None:
+        accepted = _accepted_plan()
+        without_receipt = accepted.replace(
+            " (reviewed head `ffffffffffffffffffffffffffffffffffffffff` by "
+            "`workflow-reviewer` as `COLLABORATOR` at "
+            "`2026-08-12T18:00:00Z`)",
+            "",
+            1,
+        )
+        with self.assertRaisesRegex(PlanContractError, "contract review receipt"):
+            validate_plan_text(without_receipt)
+
+    def test_frontier_rejects_unsupported_review_kind(self) -> None:
+        invalid = self.plan.replace(
+            f"- Review kind: {REVIEW_KIND}\n",
+            "- Review kind: Exploratory bundle\n",
+            1,
+        )
+        with self.assertRaisesRegex(PlanContractError, "unsupported review kind"):
             validate_plan_text(invalid)
 
     def test_preproposal_plan_revision_preserves_history(self) -> None:
@@ -267,8 +545,72 @@ class ReviewUnitTransitionTests(unittest.TestCase):
             },
             head_branch=PROPOSAL_BRANCH,
             proposal_text=proposal_text(),
+            pr_body=_review_unit_body(),
         )
         self.assertEqual(transition, "proposal")
+
+    def test_proposal_pr_review_kind_must_match_plan(self) -> None:
+        with self.assertRaisesRegex(PlanContractError, "does not match"):
+            validate_review_unit_transition(
+                self.base,
+                self.proposal_head,
+                plan_path=PLAN_RELATIVE,
+                changed_paths={
+                    PLAN_RELATIVE,
+                    str(Path(PLAN_RELATIVE).with_suffix(".html")),
+                    PROPOSAL_RELATIVE,
+                },
+                head_branch=PROPOSAL_BRANCH,
+                proposal_text=proposal_text(),
+                pr_body=_review_unit_body("Behavioral feature slice"),
+            )
+
+    def test_proposal_pr_requires_one_completed_review_kind(self) -> None:
+        duplicate = _review_unit_body() + "\n## Review Kind\n\nReview repair\n"
+        with self.assertRaisesRegex(PlanContractError, "exactly one"):
+            validate_review_unit_transition(
+                self.base,
+                self.proposal_head,
+                plan_path=PLAN_RELATIVE,
+                changed_paths={PLAN_RELATIVE, PROPOSAL_RELATIVE},
+                head_branch=PROPOSAL_BRANCH,
+                proposal_text=proposal_text(),
+                pr_body=duplicate,
+            )
+
+    def test_proposal_pr_requires_pr_body(self) -> None:
+        with self.assertRaisesRegex(PlanContractError, "requires the PR body"):
+            validate_review_unit_transition(
+                self.base,
+                self.proposal_head,
+                plan_path=PLAN_RELATIVE,
+                changed_paths={PLAN_RELATIVE, PROPOSAL_RELATIVE},
+                head_branch=PROPOSAL_BRANCH,
+                proposal_text=proposal_text(),
+            )
+
+    def test_milestone_review_unit_pr_body_requires_repair_receipts(self) -> None:
+        # Keep a valid Review Kind so the repair-cycle gate is the failing check.
+        body = (
+            "# Synthetic review unit\n\n"
+            f"## Review Kind\n\n{REVIEW_KIND}\n\n"
+            "## Review Question\n\n"
+            "Is the bounded contract acceptable?\n"
+        )
+        with self.assertRaisesRegex(PlanContractError, "Repair Cycle Ledger"):
+            validate_review_unit_transition(
+                self.base,
+                self.proposal_head,
+                plan_path=PLAN_RELATIVE,
+                changed_paths={
+                    PLAN_RELATIVE,
+                    str(Path(PLAN_RELATIVE).with_suffix(".html")),
+                    PROPOSAL_RELATIVE,
+                },
+                head_branch=PROPOSAL_BRANCH,
+                proposal_text=proposal_text(),
+                pr_body=body,
+            )
 
     def test_plan_revision_can_replace_unstarted_frontier(self) -> None:
         transition = validate_review_unit_transition(
@@ -426,6 +768,7 @@ class ReviewUnitTransitionTests(unittest.TestCase):
             },
             head_branch=PROPOSAL_BRANCH,
             proposal_text=proposal_text(),
+            pr_body=_review_unit_body(),
         )
 
         self.assertEqual(transition, "proposal")
@@ -508,6 +851,7 @@ class ReviewUnitTransitionTests(unittest.TestCase):
             },
             head_branch=PROPOSAL_AMENDMENT_BRANCH,
             proposal_amendment_text=proposal_amendment_text(),
+            pr_body=_review_unit_body(),
         )
 
         self.assertEqual(transition, "proposal_amendment")
@@ -537,6 +881,7 @@ class ReviewUnitTransitionTests(unittest.TestCase):
             amendment_pr=61,
             merge_commit="b" * 40,
             amendment_url="https://example.invalid/61",
+            review_receipt=_accepted_review_receipt("e" * 40),
         )
         state = validate_plan_text(accepted)
         self.assertEqual(
@@ -559,8 +904,31 @@ class ReviewUnitTransitionTests(unittest.TestCase):
                 "implementations/memory/bounded_evidence.py",
             },
             head_branch=IMPLEMENTATION_BRANCH,
+            pr_body=_review_unit_body(),
         )
         self.assertEqual(transition, "implementation")
+
+    def test_implementation_pr_review_kind_must_match_plan(self) -> None:
+        accepted = accept_proposal(
+            self.proposal_head,
+            proposal_pr=60,
+            merge_commit="a" * 40,
+            proposal_url="https://example.invalid/60",
+            review_receipt=_accepted_review_receipt(),
+        )
+        implementation_head = _move_to_review(accepted, implementation=True)
+        with self.assertRaisesRegex(PlanContractError, "does not match"):
+            validate_review_unit_transition(
+                accepted,
+                implementation_head,
+                plan_path=PLAN_RELATIVE,
+                changed_paths={
+                    PLAN_RELATIVE,
+                    "implementations/memory/bounded_evidence.py",
+                },
+                head_branch=IMPLEMENTATION_BRANCH,
+                pr_body=_review_unit_body("Review repair"),
+            )
 
     def test_implementation_cannot_modify_accepted_amendment(self) -> None:
         amendment_review = _move_to_amendment_review(_accepted_plan())
@@ -569,6 +937,7 @@ class ReviewUnitTransitionTests(unittest.TestCase):
             amendment_pr=61,
             merge_commit="b" * 40,
             amendment_url="https://example.invalid/61",
+            review_receipt=_accepted_review_receipt("e" * 40),
         )
         implementation_head = _move_to_review(accepted, implementation=True)
 
@@ -591,6 +960,7 @@ class ReviewUnitTransitionTests(unittest.TestCase):
             amendment_pr=61,
             merge_commit="b" * 40,
             amendment_url="https://example.invalid/61",
+            review_receipt=_accepted_review_receipt("e" * 40),
         )
         second_branch = "m900/amend-evidence-policy-timeout"
         second_path = (
@@ -609,6 +979,7 @@ class ReviewUnitTransitionTests(unittest.TestCase):
             changed_paths={PLAN_RELATIVE, second_path},
             head_branch=second_branch,
             proposal_amendment_text=proposal_amendment_text(),
+            pr_body=_review_unit_body(),
         )
         self.assertEqual(transition, "proposal_amendment")
 
@@ -617,6 +988,7 @@ class ReviewUnitTransitionTests(unittest.TestCase):
             amendment_pr=62,
             merge_commit="c" * 40,
             amendment_url="https://example.invalid/62",
+            review_receipt=_accepted_review_receipt("d" * 40),
         )
         receipts = validate_plan_text(second_accepted).current.fields[
             "accepted proposal amendments"
@@ -646,6 +1018,7 @@ class ReviewUnitTransitionTests(unittest.TestCase):
             proposal_pr=60,
             merge_commit="a" * 40,
             proposal_url="https://example.invalid/60",
+            review_receipt=_accepted_review_receipt(),
         )
         implementation_head = _move_to_review(accepted, implementation=True)
         transition = validate_review_unit_transition(
@@ -659,6 +1032,7 @@ class ReviewUnitTransitionTests(unittest.TestCase):
                 "tests/implementations/memory/test_bounded_evidence.py",
             },
             head_branch=IMPLEMENTATION_BRANCH,
+            pr_body=_review_unit_body(),
         )
         self.assertEqual(transition, "implementation")
 
@@ -668,6 +1042,7 @@ class ReviewUnitTransitionTests(unittest.TestCase):
             proposal_pr=60,
             merge_commit="a" * 40,
             proposal_url="https://example.invalid/60",
+            review_receipt=_accepted_review_receipt(),
         )
         annotated = f"`{IMPLEMENTATION_BRANCH}` (planned; not opened)"
         accepted = accepted.replace(f"`{IMPLEMENTATION_BRANCH}`", annotated, 1)
@@ -686,6 +1061,7 @@ class ReviewUnitTransitionTests(unittest.TestCase):
                 "implementations/memory/bounded_evidence.py",
             },
             head_branch=IMPLEMENTATION_BRANCH,
+            pr_body=_review_unit_body(),
         )
 
         self.assertEqual(transition, "implementation")
@@ -696,6 +1072,7 @@ class ReviewUnitTransitionTests(unittest.TestCase):
             proposal_pr=60,
             merge_commit="a" * 40,
             proposal_url="https://example.invalid/60",
+            review_receipt=_accepted_review_receipt(),
         )
         implementation_head = _move_to_review(accepted, implementation=True)
         with self.assertRaisesRegex(
@@ -722,12 +1099,17 @@ class ProposalAcceptanceMetadataTests(unittest.TestCase):
         }
 
     def _payload(self) -> dict[str, object]:
+        head_oid = "c" * 40
         return {
             "state": "MERGED",
             "baseRefName": MILESTONE_BRANCH,
             "headRefName": PROPOSAL_BRANCH,
+            "headRefOid": head_oid,
             "mergeCommit": {"oid": "b" * 40},
+            "mergedAt": "2026-08-12T18:02:00Z",
             "url": "https://example.invalid/60",
+            "body": _review_unit_body(),
+            "reviews": [_contract_review(head_oid=head_oid)],
             "files": [
                 {"path": PLAN_RELATIVE},
                 {"path": str(Path(PLAN_RELATIVE).with_suffix(".html"))},
@@ -736,7 +1118,7 @@ class ProposalAcceptanceMetadataTests(unittest.TestCase):
         }
 
     def test_merged_proposal_records_exact_commit(self) -> None:
-        commit, url = validate_merged_proposal_metadata(
+        commit, url, review_receipt = validate_merged_proposal_metadata(
             self._payload(),
             self.state,
             proposal_pr=60,
@@ -744,6 +1126,312 @@ class ProposalAcceptanceMetadataTests(unittest.TestCase):
         )
         self.assertEqual(commit, "b" * 40)
         self.assertEqual(url, "https://example.invalid/60")
+        self.assertEqual(review_receipt.head_oid, "c" * 40)
+        self.assertEqual(review_receipt.reviewer, "workflow-reviewer")
+        self.assertEqual(review_receipt.reviewer_association, "COLLABORATOR")
+
+    def test_formal_approval_on_exact_head_is_accepted(self) -> None:
+        payload = self._payload()
+        head_oid = payload["headRefOid"]
+        assert isinstance(head_oid, str)
+        payload["reviews"] = [
+            _contract_review(head_oid=head_oid, state="APPROVED")
+        ]
+
+        _, _, review_receipt = validate_merged_proposal_metadata(
+            payload,
+            self.state,
+            proposal_pr=60,
+            allowed_paths=self.allowed,
+        )
+
+        self.assertEqual(review_receipt.head_oid, head_oid)
+
+    def test_review_on_stale_head_does_not_accept_final_head(self) -> None:
+        payload = self._payload()
+        payload["headRefOid"] = "d" * 40
+        with self.assertRaisesRegex(PlanContractError, "no decisive.*exact head"):
+            validate_merged_proposal_metadata(
+                payload,
+                self.state,
+                proposal_pr=60,
+                allowed_paths=self.allowed,
+            )
+
+    def test_latest_decisive_exact_head_review_owns_outcome(self) -> None:
+        payload = self._payload()
+        head_oid = payload["headRefOid"]
+        assert isinstance(head_oid, str)
+        reviews = payload["reviews"]
+        assert isinstance(reviews, list)
+        reviews.append(
+            _contract_review(
+                head_oid=head_oid,
+                state="CHANGES_REQUESTED",
+                submitted_at="2026-08-12T18:01:00Z",
+            )
+        )
+
+        with self.assertRaisesRegex(PlanContractError, "outstanding.*changes"):
+            validate_merged_proposal_metadata(
+                payload,
+                self.state,
+                proposal_pr=60,
+                allowed_paths=self.allowed,
+            )
+
+    def test_one_reviewer_cannot_clear_another_reviewers_changes(self) -> None:
+        payload = self._payload()
+        head_oid = payload["headRefOid"]
+        reviews = payload["reviews"]
+        assert isinstance(head_oid, str)
+        assert isinstance(reviews, list)
+        first = reviews[0]
+        assert isinstance(first, dict)
+        first.update(
+            {
+                "state": "CHANGES_REQUESTED",
+                "body": "",
+                "author": {"login": "reviewer-a"},
+            }
+        )
+        accepted = _contract_review(
+            head_oid=head_oid,
+            state="APPROVED",
+            submitted_at="2026-08-12T18:01:00Z",
+        )
+        accepted["author"] = {"login": "reviewer-b"}
+        reviews.append(accepted)
+
+        with self.assertRaisesRegex(PlanContractError, "reviewer-a"):
+            validate_merged_proposal_metadata(
+                payload,
+                self.state,
+                proposal_pr=60,
+                allowed_paths=self.allowed,
+            )
+
+    def test_same_reviewer_can_clear_their_own_changes_request(self) -> None:
+        payload = self._payload()
+        head_oid = payload["headRefOid"]
+        reviews = payload["reviews"]
+        assert isinstance(head_oid, str)
+        assert isinstance(reviews, list)
+        first = reviews[0]
+        assert isinstance(first, dict)
+        first.update({"state": "CHANGES_REQUESTED", "body": ""})
+        reviews.append(
+            _contract_review(
+                head_oid=head_oid,
+                submitted_at="2026-08-12T18:01:00Z",
+            )
+        )
+
+        _, _, receipt = validate_merged_proposal_metadata(
+            payload,
+            self.state,
+            proposal_pr=60,
+            allowed_paths=self.allowed,
+        )
+
+        self.assertEqual(receipt.reviewer, "workflow-reviewer")
+
+    def test_edited_comment_receipt_is_rejected(self) -> None:
+        payload = self._payload()
+        reviews = payload["reviews"]
+        assert isinstance(reviews, list)
+        review = reviews[0]
+        assert isinstance(review, dict)
+        review["includesCreatedEdit"] = True
+        with self.assertRaisesRegex(PlanContractError, "malformed or edited"):
+            validate_merged_proposal_metadata(
+                payload,
+                self.state,
+                proposal_pr=60,
+                allowed_paths=self.allowed,
+            )
+
+    def test_fetch_fails_closed_when_review_window_would_truncate(self) -> None:
+        response = {
+            "data": {
+                "repository": {
+                    "pullRequest": {
+                        "mergedAt": "2026-08-12T18:02:00Z",
+                        "reviews": {"nodes": [], "totalCount": 101},
+                    }
+                }
+            }
+        }
+        completed = [
+            subprocess.CompletedProcess(
+                args=[],
+                returncode=0,
+                stdout='{"nameWithOwner":"example/repository"}',
+                stderr="",
+            ),
+            subprocess.CompletedProcess(
+                args=[],
+                returncode=0,
+                stdout=json.dumps(response),
+                stderr="",
+            ),
+        ]
+        with mock.patch(
+            "docs.milestones.workflow.subprocess.run",
+            side_effect=completed,
+        ):
+            with self.assertRaisesRegex(PlanContractError, "100-review"):
+                _fetch_pr_review_metadata(60)
+
+    def test_untrusted_review_cannot_accept_contract(self) -> None:
+        payload = self._payload()
+        reviews = payload["reviews"]
+        assert isinstance(reviews, list)
+        review = reviews[0]
+        assert isinstance(review, dict)
+        review["authorAssociation"] = "CONTRIBUTOR"
+        with self.assertRaisesRegex(PlanContractError, "no decisive authorized"):
+            validate_merged_proposal_metadata(
+                payload,
+                self.state,
+                proposal_pr=60,
+                allowed_paths=self.allowed,
+            )
+
+    def test_reviewer_without_current_push_authority_cannot_accept(self) -> None:
+        payload = self._payload()
+        reviews = payload["reviews"]
+        assert isinstance(reviews, list)
+        review = reviews[0]
+        assert isinstance(review, dict)
+        review["authorCanPushToRepository"] = False
+        with self.assertRaisesRegex(PlanContractError, "no decisive authorized"):
+            validate_merged_proposal_metadata(
+                payload,
+                self.state,
+                proposal_pr=60,
+                allowed_paths=self.allowed,
+            )
+
+    def test_malformed_receipt_from_unauthorized_reviewer_is_ignored(self) -> None:
+        payload = self._payload()
+        head_oid = payload["headRefOid"]
+        reviews = payload["reviews"]
+        assert isinstance(head_oid, str)
+        assert isinstance(reviews, list)
+        malformed = _contract_review(
+            head_oid=head_oid,
+            submitted_at="2026-08-12T18:01:00Z",
+        )
+        malformed.update(
+            {
+                "body": "## Contract Review Receipt\n\n- Maybe: `accepted`\n",
+                "author": {"login": "drive-by-reviewer"},
+                "authorAssociation": "CONTRIBUTOR",
+                "authorCanPushToRepository": False,
+            }
+        )
+        reviews.append(malformed)
+
+        _, _, receipt = validate_merged_proposal_metadata(
+            payload,
+            self.state,
+            proposal_pr=60,
+            allowed_paths=self.allowed,
+        )
+
+        self.assertEqual(receipt.reviewer, "workflow-reviewer")
+
+    def test_review_submitted_after_merge_is_rejected(self) -> None:
+        payload = self._payload()
+        reviews = payload["reviews"]
+        assert isinstance(reviews, list)
+        review = reviews[0]
+        assert isinstance(review, dict)
+        review["submittedAt"] = "2026-08-12T18:03:00Z"
+        with self.assertRaisesRegex(PlanContractError, "no decisive authorized"):
+            validate_merged_proposal_metadata(
+                payload,
+                self.state,
+                proposal_pr=60,
+                allowed_paths=self.allowed,
+            )
+
+    def test_embedded_example_receipt_cannot_accept_contract(self) -> None:
+        payload = self._payload()
+        reviews = payload["reviews"]
+        assert isinstance(reviews, list)
+        review = reviews[0]
+        assert isinstance(review, dict)
+        review["body"] = (
+            "I request changes; the following is only an example.\n\n"
+            "## Contract Review Receipt\n\n"
+            "- Outcome: `accepted`\n"
+        )
+        with self.assertRaisesRegex(PlanContractError, "malformed or edited"):
+            validate_merged_proposal_metadata(
+                payload,
+                self.state,
+                proposal_pr=60,
+                allowed_paths=self.allowed,
+            )
+
+    def test_malformed_comment_receipt_is_rejected(self) -> None:
+        payload = self._payload()
+        reviews = payload["reviews"]
+        assert isinstance(reviews, list)
+        review = reviews[0]
+        assert isinstance(review, dict)
+        review["body"] = (
+            "## Contract Review Receipt\n\n"
+            "- Outcome: `accepted`\n"
+            "- Caveat: maybe\n"
+        )
+        with self.assertRaisesRegex(PlanContractError, "malformed or edited"):
+            validate_merged_proposal_metadata(
+                payload,
+                self.state,
+                proposal_pr=60,
+                allowed_paths=self.allowed,
+            )
+
+    def test_later_unedited_receipt_replaces_same_reviewers_malformed_one(self) -> None:
+        payload = self._payload()
+        head_oid = payload["headRefOid"]
+        reviews = payload["reviews"]
+        assert isinstance(head_oid, str)
+        assert isinstance(reviews, list)
+        malformed = reviews[0]
+        assert isinstance(malformed, dict)
+        malformed["body"] = (
+            "## Contract Review Receipt\n\n- Outcome: `accepted`\nextra\n"
+        )
+        reviews.append(
+            _contract_review(
+                head_oid=head_oid,
+                submitted_at="2026-08-12T18:01:00Z",
+            )
+        )
+
+        _, _, receipt = validate_merged_proposal_metadata(
+            payload,
+            self.state,
+            proposal_pr=60,
+            allowed_paths=self.allowed,
+        )
+
+        self.assertEqual(receipt.reviewer, "workflow-reviewer")
+
+    def test_merged_proposal_rejects_mismatched_review_kind(self) -> None:
+        payload = self._payload()
+        payload["body"] = _review_unit_body("Behavioral feature slice")
+        with self.assertRaisesRegex(PlanContractError, "does not match"):
+            validate_merged_proposal_metadata(
+                payload,
+                self.state,
+                proposal_pr=60,
+                allowed_paths=self.allowed,
+            )
 
     def test_merged_proposal_rejects_code_changes(self) -> None:
         payload = self._payload()
@@ -773,12 +1461,17 @@ class ProposalAmendmentAcceptanceMetadataTests(unittest.TestCase):
         }
 
     def _payload(self) -> dict[str, object]:
+        head_oid = "d" * 40
         return {
             "state": "MERGED",
             "baseRefName": MILESTONE_BRANCH,
             "headRefName": PROPOSAL_AMENDMENT_BRANCH,
+            "headRefOid": head_oid,
             "mergeCommit": {"oid": "b" * 40},
+            "mergedAt": "2026-08-12T18:02:00Z",
             "url": "https://example.invalid/61",
+            "body": _review_unit_body(),
+            "reviews": [_contract_review(head_oid=head_oid)],
             "files": [
                 {"path": PLAN_RELATIVE},
                 {"path": str(Path(PLAN_RELATIVE).with_suffix(".html"))},
@@ -787,14 +1480,60 @@ class ProposalAmendmentAcceptanceMetadataTests(unittest.TestCase):
         }
 
     def test_merged_amendment_records_exact_commit(self) -> None:
-        commit, url = validate_merged_proposal_amendment_metadata(
-            self._payload(),
-            self.state,
-            amendment_pr=61,
-            allowed_paths=self.allowed,
+        commit, url, review_receipt = (
+            validate_merged_proposal_amendment_metadata(
+                self._payload(),
+                self.state,
+                amendment_pr=61,
+                allowed_paths=self.allowed,
+            )
         )
         self.assertEqual(commit, "b" * 40)
         self.assertEqual(url, "https://example.invalid/61")
+        self.assertEqual(review_receipt.head_oid, "d" * 40)
+
+    def test_amendment_requires_exact_head_review(self) -> None:
+        payload = self._payload()
+        payload["reviews"] = []
+        with self.assertRaisesRegex(PlanContractError, "no decisive.*exact head"):
+            validate_merged_proposal_amendment_metadata(
+                payload,
+                self.state,
+                amendment_pr=61,
+                allowed_paths=self.allowed,
+            )
+
+    def test_amendment_acceptance_records_review_authority(self) -> None:
+        amendment_review = _move_to_amendment_review(_accepted_plan())
+        receipt = ContractReviewReceipt(
+            head_oid="d" * 40,
+            reviewer="workflow-reviewer",
+            reviewer_association="COLLABORATOR",
+            submitted_at="2026-08-12T18:00:00Z",
+        )
+        accepted = accept_proposal_amendment(
+            amendment_review,
+            amendment_pr=61,
+            merge_commit="b" * 40,
+            amendment_url="https://example.invalid/61",
+            review_receipt=receipt,
+        )
+
+        state = validate_plan_text(accepted)
+        record = state.current.fields["accepted proposal amendments"]
+        self.assertIn("reviewed head", record)
+        self.assertIn("workflow-reviewer", record)
+
+    def test_merged_amendment_rejects_mismatched_review_kind(self) -> None:
+        payload = self._payload()
+        payload["body"] = _review_unit_body("Review repair")
+        with self.assertRaisesRegex(PlanContractError, "does not match"):
+            validate_merged_proposal_amendment_metadata(
+                payload,
+                self.state,
+                amendment_pr=61,
+                allowed_paths=self.allowed,
+            )
 
     def test_merged_amendment_rejects_code_changes(self) -> None:
         payload = self._payload()
@@ -1099,6 +1838,7 @@ class ReviewUnitGitDiffTests(unittest.TestCase):
                 head_ref=PROPOSAL_BRANCH,
                 base_sha=base_sha,
                 head_sha=head_sha,
+                pr_body=_review_unit_body(),
                 repo_root=root,
             )
 
@@ -1199,6 +1939,7 @@ class ReviewUnitGitDiffTests(unittest.TestCase):
                 head_ref=PROPOSAL_AMENDMENT_BRANCH,
                 base_sha=base_sha,
                 head_sha=head_sha,
+                pr_body=_review_unit_body(),
                 repo_root=root,
             )
 
@@ -1264,6 +2005,7 @@ class ReviewUnitGitDiffTests(unittest.TestCase):
                 proposal_pr=60,
                 merge_commit="c" * 40,
                 proposal_url="https://example.invalid/60",
+                review_receipt=_accepted_review_receipt("d" * 40),
             )
             plan.write_text(accepted, encoding="utf-8")
             self._git(root, "init", "-b", MILESTONE_BRANCH)

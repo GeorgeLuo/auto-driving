@@ -5,7 +5,11 @@ import re
 import unittest
 from pathlib import Path
 
-from docs.milestones.workflow import parse_table, validate_plan_path
+from docs.milestones.workflow import (
+    parse_table,
+    validate_plan_path,
+    validate_repair_cycle_governance_body,
+)
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -18,6 +22,7 @@ PR_TEMPLATE = ROOT / ".github" / "pull_request_template.md"
 PROPOSAL_PR_TEMPLATE = (
     ROOT / ".github" / "PULL_REQUEST_TEMPLATE" / "proposal.md"
 )
+PROPOSAL_GUIDANCE = DOCS / "guidance" / "proposal-vs-implementation.md"
 PROPOSAL_AMENDMENT_PR_TEMPLATE = (
     ROOT / ".github" / "PULL_REQUEST_TEMPLATE" / "proposal-amendment.md"
 )
@@ -25,6 +30,8 @@ IMPLEMENTATION_ADJUNCT_PR_TEMPLATE = (
     ROOT / ".github" / "PULL_REQUEST_TEMPLATE" / "implementation-adjunct.md"
 )
 MILESTONE_PR_TEMPLATE = ROOT / ".github" / "PULL_REQUEST_TEMPLATE" / "milestone.md"
+REPAIR_PR_TEMPLATE = ROOT / ".github" / "PULL_REQUEST_TEMPLATE" / "repair.md"
+TEST_WORKFLOW = ROOT / ".github" / "workflows" / "tests.yml"
 
 
 def _active_milestone_section() -> str:
@@ -188,23 +195,61 @@ class MilestonePlanningTests(unittest.TestCase):
             "## Scope",
             "## File Impact",
             "## Scope Reconciliation",
+            "## Repair Cycle Ledger",
+            "## Repair Escalation",
             "## Validation",
         ):
             self.assertIn(heading, text)
+        self.assertIn("matching the canonical milestone plan", text)
 
     def test_proposal_pr_template_forbids_implementation(self) -> None:
         self.assertTrue(PROPOSAL_PR_TEMPLATE.is_file())
         text = PROPOSAL_PR_TEMPLATE.read_text(encoding="utf-8")
         self.assertIn("## Independence Check", text)
+        self.assertIn("## Review Kind", text)
+        self.assertIn("## Invariant Contractability", text)
+        self.assertIn("Trust And Authority Model", text)
+        self.assertIn("Evidence Topology And Capture Strategy", text)
         self.assertIn("No product or runtime implementation changed", text)
         self.assertIn("Proposal artifact", text)
+        self.assertIn("## Contract Review Receipt", text)
+        self.assertIn("current repository push authority", text)
+        self.assertIn("unedited COMMENT review", text)
+        self.assertIn("## Repair Cycle Ledger", text)
+        self.assertIn("## Repair Escalation", text)
+
+    def test_universal_claim_contractability_is_visible_in_author_guidance(
+        self,
+    ) -> None:
+        contract = CONTRACT_SOURCE.read_text(encoding="utf-8")
+        guidance = PROPOSAL_GUIDANCE.read_text(encoding="utf-8")
+        for phrase in (
+            "Trust And Authority Model",
+            "Evidence Topology And Capture Strategy",
+        ):
+            self.assertIn(phrase, contract)
+            self.assertIn(phrase, guidance)
+        normalized_contract = " ".join(contract.split())
+        self.assertIn(
+            "consistency, provenance, and authenticity",
+            normalized_contract,
+        )
+        self.assertIn("canonical capture is ready", guidance)
 
     def test_proposal_amendment_template_preserves_accepted_contract(self) -> None:
         self.assertTrue(PROPOSAL_AMENDMENT_PR_TEMPLATE.is_file())
         text = PROPOSAL_AMENDMENT_PR_TEMPLATE.read_text(encoding="utf-8")
+        self.assertIn("## Review Kind", text)
         self.assertIn("## Evidence Requiring Amendment", text)
+        self.assertIn("## Invariant Contractability", text)
+        self.assertIn("Trust And Authority Model", text)
+        self.assertIn("Evidence Topology And Capture Strategy", text)
         self.assertIn("No accepted proposal or prior amendment was modified", text)
         self.assertIn("No product or runtime implementation changed", text)
+        self.assertIn("## Contract Review Receipt", text)
+        self.assertIn("current repository push authority", text)
+        self.assertIn("## Repair Cycle Ledger", text)
+        self.assertIn("## Repair Escalation", text)
 
     def test_implementation_adjunct_template_records_human_compatibility(self) -> None:
         self.assertTrue(IMPLEMENTATION_ADJUNCT_PR_TEMPLATE.is_file())
@@ -216,6 +261,8 @@ class MilestonePlanningTests(unittest.TestCase):
             "## Review Question",
             "## Compatibility",
             "## Evidence Impact",
+            "## Repair Cycle Ledger",
+            "## Repair Escalation",
             "## Validation",
         ):
             self.assertIn(heading, text)
@@ -229,6 +276,43 @@ class MilestonePlanningTests(unittest.TestCase):
         self.assertIn("Targets: `main`", text)
         self.assertIn("milestone branch", text.lower())
         self.assertIn("## Accepted Review Units", text)
+        self.assertIn("## Repair Cycle Ledger", text)
+        self.assertIn("## Repair Escalation", text)
+
+    def test_repair_template_carries_cycle_and_escalation_receipts(self) -> None:
+        self.assertTrue(REPAIR_PR_TEMPLATE.is_file())
+        text = REPAIR_PR_TEMPLATE.read_text(encoding="utf-8")
+        self.assertIn("## Review Repair Summary", CONTRACT_SOURCE.read_text(encoding="utf-8"))
+        self.assertIn("## Repair Cycle Ledger", text)
+        self.assertIn("## Repair Escalation", text)
+
+    def test_review_unit_template_repair_receipt_defaults_are_valid(self) -> None:
+        for path in (
+            PR_TEMPLATE,
+            PROPOSAL_PR_TEMPLATE,
+            PROPOSAL_AMENDMENT_PR_TEMPLATE,
+            IMPLEMENTATION_ADJUNCT_PR_TEMPLATE,
+            MILESTONE_PR_TEMPLATE,
+            REPAIR_PR_TEMPLATE,
+        ):
+            with self.subTest(path=path):
+                self.assertEqual(
+                    validate_repair_cycle_governance_body(
+                        path.read_text(encoding="utf-8")
+                    ),
+                    0,
+                )
+
+    def test_pr_body_edits_revalidate_repair_receipts(self) -> None:
+        text = TEST_WORKFLOW.read_text(encoding="utf-8")
+        self.assertRegex(text, r"types:.*\bedited\b")
+
+    def test_pr_body_edits_rerun_review_kind_validation(self) -> None:
+        text = TEST_WORKFLOW.read_text(encoding="utf-8")
+        self.assertRegex(
+            text,
+            r"pull_request:\s*\n\s+types: \[[^\]]*edited[^\]]*\]",
+        )
 
     def test_contract_defines_work_unit_terms_and_branch_model(self) -> None:
         text = CONTRACT_SOURCE.read_text(encoding="utf-8")
@@ -260,6 +344,15 @@ class MilestonePlanningTests(unittest.TestCase):
         text = CONTRACT_SOURCE.read_text(encoding="utf-8")
         self.assertIn("Singular Review Question Rule", text)
         self.assertIn('requires “and”', text)
+
+    def test_contract_has_hard_two_cycle_repair_escalation(self) -> None:
+        text = CONTRACT_SOURCE.read_text(encoding="utf-8")
+        normalized = " ".join(text.split())
+        self.assertIn("After the **second substantial** cycle", text)
+        self.assertIn("human operator or meta-manager", normalized)
+        self.assertIn("A third substantial cycle cannot remain", text)
+        self.assertIn("Repair Cycle Ledger", text)
+        self.assertIn("Repair Escalation", text)
 
     def test_contract_assigns_frontier_handoff_to_executable_workflow(self) -> None:
         text = CONTRACT_SOURCE.read_text(encoding="utf-8")

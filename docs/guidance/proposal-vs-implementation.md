@@ -28,6 +28,40 @@ A proposal records the contract, owner, affected paths, adversarial matrix,
 assumptions, non-goals, file impact, validation plan, and expected handoff. It
 contains no implementation.
 
+Before a proposal or amendment merges, a reviewer with current repository push
+authority submits a decisive GitHub review on its exact final head. `APPROVED`
+counts as acceptance. If GitHub prevents self-approval, use a new, unedited
+formal `COMMENTED` review containing only:
+
+```text
+## Contract Review Receipt
+
+- Outcome: `accepted`
+```
+
+Conversation comments do not count, and any later commit requires another
+review. Each authorized reviewer's latest decision on that head must be clear
+of outstanding changes. Merge alone does not promote the frontier; run the
+matching acceptance command so the plan records the reviewer, authority,
+reviewed head, review time, and merge commit.
+
+When the review question or proposed contract uses universal language such as
+`deterministic`, `exact`, or `fail-closed`, complete the proposal's
+`Trust And Authority Model` and `Evidence Topology And Capture Strategy` before
+handoff. Distinguish consistency, provenance, and authenticity; map visible
+claims to authoritative inputs and verification; choose bounded implementation
+evidence or a separate evidence unit; and state when canonical capture is ready.
+Settle uncertain process or library boundaries with bounded feasibility evidence
+or narrow the claim and record the limit. Apply the same sections to a proposal
+amendment that introduces or changes a universal guarantee, scoped to its
+contract delta.
+
+The canonical plan selects one supported review kind for the frontier. Copy
+that value into the single `## Review Kind` section of every proposal, proposal
+amendment, and implementation PR. CI checks it when the PR opens, changes, or
+its description is edited; proposal acceptance, amendment acceptance, and
+implementation completion recheck the merged PR body before promotion.
+
 Implementation links the accepted proposal and merge commit, stays within that
 contract, and reports actual file impact and validation. If the contract must
 change, return to proposal review rather than rewriting acceptance during

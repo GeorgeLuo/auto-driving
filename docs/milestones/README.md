@@ -137,10 +137,32 @@ review burden. Split it into an evidence unit when it needs separate environment
 preparation, repeatable operator procedure, tracked artifacts, or an acceptance
 judgment that could fail while the implementation contract still passes.
 
+For a universal or deterministic implementation claim, the proposal chooses the
+evidence topology before implementation starts. It states whether bounded proof
+remains in the implementation review unit or whether capture and acceptance use
+a later evidence review unit. Do not begin canonical live-artifact capture until
+the proposal's stated capture-readiness conditions hold; repeated capture while
+the artifact schema, authority mapping, semantic verifier, or adversarial
+mutation cases are still changing is contract discovery, not acceptance proof.
+
 ### Repair Cycle
 
 A review finding remains in the existing PR when it still challenges that PR’s
 stated contract.
+
+A **repair cycle** is one consolidated changes-requested verdict followed by an
+author revision that addresses that verdict. Count the round once regardless of
+how many findings, commits, or comments it contains. Repeated discussion against
+the same repair revision is still the same cycle; a later consolidated verdict
+against a newer revision followed by another repair is the next cycle.
+
+The reviewer classifies the cycle in the verdict. It is **substantial** when
+either the verdict contains a P0–P2 contract failure or the repair changes the
+review question, contract, primary owner or abstraction, material scope or file
+impact, external assumptions, or adversarial failure class. Editorial cleanup,
+evidence formatting, and localized P3 corrections are **minor** only when none
+of those conditions applies. A disputed or omitted classification is treated as
+substantial until the reviewer resolves it.
 
 A repair response should identify:
 
@@ -149,6 +171,29 @@ A repair response should identify:
 - adjacent paths audited;
 - regression coverage added;
 - assumptions still unverified.
+
+Every review-unit PR body keeps a `Repair Cycle Ledger` with the verdict receipt,
+classification, repair revision, and contract impact for each cycle. The count
+belongs to the review unit and does not reset after force-push, reopen, or a
+change of author.
+
+After the **second substantial** cycle, stop before requesting re-review. A
+human operator or meta-manager—not the repair author acting alone—must record a
+durable escalation decision and select exactly one route:
+
+- `replan-current-unit` when the accepted contract remains unchanged and the
+  question is still singular, but the owner or implementation approach needs an
+  explicit reset;
+- `proposal-amendment` when the accepted contract must change;
+- `split-or-replace-review-unit` when the question or scope is not singular; or
+- `abandon-review-unit` when the claim should not proceed.
+
+Record that receipt, route, and disposition in `Repair Escalation` before
+re-review. A third substantial cycle cannot remain in the same review unit; it
+must be split, replaced, amended through a replacement implementation review,
+or abandoned. A replacement review unit starts its own count but links the
+decision receipt and superseded PR so the reset is explicit rather than a way to
+erase repair history.
 
 Create a separate repair review unit only when a distinct PR is genuinely
 necessary.
@@ -187,7 +232,7 @@ Closeout must not conceal unfinished implementation or validation.
 | Completion usage | Milestone plan |
 | Exit criteria and status | Milestone plan |
 | Current and next frontier | Milestone plan |
-| Detailed invariant and adversarial matrix | Accepted proposal document |
+| Detailed invariant, trust/authority model, evidence topology, and adversarial matrix | Accepted proposal document |
 | Planned file impact and validation commands | Accepted proposal document |
 | Actual file impact and validation results | Implementation PR |
 | Human user-testing request and implement-now direction | Durable issue and adjunct PR |
@@ -278,10 +323,11 @@ Both branches:
 - contains one primary review question;
 - leaves the milestone branch coherent after merge.
 
-Prefer squash-merging both PRs into the milestone branch. Proposal merge is an
-approval receipt, not implementation acceptance. Merge the final cumulative
-milestone PR into `main` with a **merge commit** so accepted frontier history
-remains visible.
+Prefer squash-merging both PRs into the milestone branch. A proposal's
+exact-head contract review and merge together form its approval receipt; merge
+alone is not proposal acceptance or implementation acceptance. Merge the final
+cumulative milestone PR into `main` with a **merge commit** so accepted
+frontier history remains visible.
 
 ### HITL implementation adjunct branches
 
@@ -400,6 +446,11 @@ commit before implementation starts. Record each accepted additive proposal
 amendment with its artifact path, PR, and merge commit. Add the active PR only
 for the phase currently under review.
 
+The current frontier and any populated next-frontier candidate must use one of
+the supported values in [Review Kinds](#review-kinds). The value is the stable
+review focus for that frontier across its proposal, any proposal amendments,
+and its implementation.
+
 When populated, the **next-frontier candidate** is a pre-implementation
 acceptance contract. It is valid only when it records at least:
 
@@ -516,6 +567,9 @@ paths and tests.
 
 ### Review Kinds
 
+The values below are the complete supported set for canonical milestone plans
+and review-unit PR bodies. Use one value; do not invent a hybrid label.
+
 | Kind | Focus |
 | --- | --- |
 | Deterministic invariant closure | Universal guarantee, owner, bypasses, boundaries, final external values |
@@ -534,7 +588,7 @@ loop after proposal acceptance:
 | --- | --- | --- |
 | `ready_for_proposal` | The bounded frontier is ready to hand to a proposal author | Start the proposal branch, or review a necessary pre-proposal plan revision |
 | `proposal_in_review` | A proposal is being authored or reviewed | Proposal document and plan transition only |
-| `ready_for_implementation` | The proposal PR and any amendments merged and their exact commits are recorded | Start the implementation branch, or start a bounded proposal amendment when established evidence requires one |
+| `ready_for_implementation` | The proposal PR and any amendments have accepted exact-head contract reviews, are merged, and have their reviewed heads and merge commits recorded | Start the implementation branch, or start a bounded proposal amendment when established evidence requires one |
 | `proposal_amendment_in_review` | New evidence requires a bounded correction to the accepted proposal | Additive amendment document and plan transition only; implementation remains blocked |
 | `implementation_in_review` | Accepted scope is being implemented or reviewed | Product, test, and documentation changes described by the accepted proposal |
 
@@ -543,8 +597,9 @@ The expected collaboration is explicit:
 1. the reviewer reports **ready for proposal** and stops;
 2. the operator gives proposal work to the proposal author;
 3. the reviewer reviews and finalizes that proposal without implementation;
-4. proposal merge records acceptance and the reviewer reports **ready for
-   implementation**;
+4. the reviewer records an accepted review on the proposal's exact final head;
+   merge and the acceptance command then record both commits, and the reviewer
+   reports **ready for implementation**;
 5. the operator gives the accepted proposal to the implementer;
 6. implementation review begins only after implementation is complete enough
    to answer the accepted review question.
@@ -552,6 +607,50 @@ The expected collaboration is explicit:
 The proposal author and implementer may be the same person or model, but they
 must operate in separate branches and review phases. The reviewer must not
 silently fill both roles in one change.
+
+### Exact-Head Contract Review Receipts
+
+A proposal or proposal amendment must have an accepted GitHub review attached
+to the PR's final head commit before merge. The review is the contract judgment;
+the subsequent merge establishes repository ancestry. They are separate facts,
+and neither substitutes for the other. An authorized contract reviewer must
+have current repository push authority and an `OWNER`, `MEMBER`, or
+`COLLABORATOR` association when acceptance is recorded.
+
+- An `APPROVED` review records `accepted`.
+- A `CHANGES_REQUESTED` review records `changes_requested`.
+- When GitHub prevents a reviewer from approving their own PR, a new, unedited
+  formal `COMMENTED` review may contain only:
+
+  ```text
+  ## Contract Review Receipt
+
+  - Outcome: `accepted`
+  ```
+
+  Use `changes_requested` instead when the contract is not acceptable.
+- Only formal GitHub reviews count. PR conversation comments are not bound to a
+  commit and never count as contract receipts.
+- For each authorized reviewer, their latest decisive review on the exact head
+  owns their outcome. Promotion requires at least one accepted outcome and no
+  authorized reviewer with an outstanding `changes_requested` outcome.
+- A later commit invalidates every receipt attached to an earlier head and
+  requires another review. A review submitted or edited after merge cannot
+  retroactively authorize promotion.
+
+The proposal acceptance commands verify the complete review history within a
+bounded 100-review window, fail closed if that window would truncate, compare
+`headRefOid` with each review's commit, enforce reviewer authority and
+pre-merge timing, and record the reviewer, authority, review time, reviewed
+head, and merge commit in the canonical plan. A merged PR without that receipt
+remains `proposal_in_review`; do not begin implementation.
+
+Every proposal, proposal amendment, and implementation PR body must provide
+exactly one completed `## Review Kind` section. Its value must be supported and
+must match the current frontier's canonical plan value. This keeps the review
+focus stable across the proposal and implementation phases; changing the kind
+requires a reviewed plan revision before proposal work starts, not a PR-body
+reclassification during delivery.
 
 If the frozen frontier is found to be wrong before proposal work starts, revise
 it in a separate plan-only review unit. Use a
@@ -578,11 +677,18 @@ An amendment document starts with `# Proposal Amendment:` and records Review
 Question, Reason For Amendment, Contract Delta, Ownership, Affected Paths,
 Adversarial Matrix, External Assumptions, Non-Goals, File Impact, and Validation
 Plan. It narrows or corrects the implementation contract; it cannot replace the
-proposal's reviewed Expected Handoff. After merge, record the amendment PR,
-exact merge commit, and artifact path, then return the frontier to
-`ready_for_implementation`. Amendments are cumulative and immutable. The
-implementation PR must link and reconcile the original proposal plus every
-accepted amendment, and CI rejects changes to any of those artifacts.
+proposal's reviewed Expected Handoff. After exact-head contract review and
+merge, record the amendment PR, reviewed head, exact merge commit, and artifact
+path, then return the frontier to `ready_for_implementation`. Amendments are
+cumulative and immutable. The implementation PR must link and reconcile the
+original proposal plus every accepted amendment, and CI rejects changes to any
+of those artifacts.
+
+When an amendment's Review Question or Contract Delta introduces or changes a
+universal invariant, its artifact also completes `## Trust And Authority Model`
+and `## Evidence Topology And Capture Strategy` for that delta. An amendment
+cannot bypass contractability requirements merely because the original proposal
+has already been accepted.
 
 ### Human Discovery During Implementation
 
@@ -635,8 +741,10 @@ Each proposal lives at the current frontier’s declared `proposal path` and use
 `.github/PULL_REQUEST_TEMPLATE/proposal.md`. It records the review question,
 proposed contract, owner, affected paths, adversarial matrix, assumptions,
 non-goals, file impacts, validation plan, and the expected successful handoff.
-It contains no product code, tests of unimplemented behavior, generated runtime
-artifacts, or implementation repair.
+When the review question or proposed contract claims a universal invariant, it
+also records the trust and authority model plus the evidence topology and
+capture strategy defined below. It contains no product code, tests of
+unimplemented behavior, generated runtime artifacts, or implementation repair.
 
 `## Expected Handoff` contains exactly one `json` code block. It uses
 `milestone_handoff_template_v1`, which is the normal handoff receipt without
@@ -689,11 +797,25 @@ Approval does **not** mean the milestone is complete, every improvement belongs
 in this PR, the next frontier is automatically approved, or external
 assumptions are proven.
 
+Every review-unit template includes two shared state receipts:
+
+- `Repair Cycle Ledger`, whose cycle numbers are consecutive and whose review
+  receipt, classification, repair revision, and contract impact are updated
+  before re-review; and
+- `Repair Escalation`, which stays `not-required` until escalation occurs and
+  becomes `completed` with a durable human decision receipt, route, and
+  disposition at the second substantial cycle.
+
+The ledger contains one all-`None` row for an initial review. Do not delete a
+prior row, combine separate verdict rounds, or downgrade a reviewer’s
+classification in order to pass the gate.
+
 ### Proposal PR Template
 
 Use `.github/PULL_REQUEST_TEMPLATE/proposal.md`. The proposal document itself is
 the durable contract; the PR body gives the reviewer its milestone context,
-question, scope, and explicit confirmation that no implementation is present.
+review kind, question, scope, and explicit confirmation that no implementation
+is present. Proposal amendments use the same canonical review kind.
 
 ### Implementation PR Template
 
@@ -714,6 +836,8 @@ Use `.github/pull_request_template.md` (required headings):
 - Scope (in / out)
 - File impact
 - Scope reconciliation
+- Repair cycle ledger
+- Repair escalation
 - Validation
 - Review notes
 
@@ -728,6 +852,30 @@ Words such as `bounded`, `detached`, `deterministic`, `exact`, `fail-closed`,
 examples. Settle invariant, owner, affected paths, adversarial matrix, external
 assumptions, and unverified limits in the proposal. The implementation PR
 reports how the accepted contract was enforced and validated.
+
+When either `## Review Question` or `## Proposed Contract` makes one of those
+claims, the proposal artifact must complete both of these sections before it can
+be accepted:
+
+- `## Trust And Authority Model`: distinguish consistency, provenance, and
+  authenticity guarantees; identify trusted and untrusted actors and inputs;
+  map each externally visible claim to its source of authority; and state the
+  covered and excluded adversaries, including whether same-user mutation is
+  inside the model.
+- `## Evidence Topology And Capture Strategy`: map each claim and explicit
+  non-claim through authoritative raw evidence, derivation, and semantic
+  verifier; choose bounded implementation evidence or a separate evidence review
+  unit; and define capture readiness, freshness, reproducibility, invalidation,
+  and retained-versus-derived artifact boundaries.
+
+If the guarantee depends on process, library, or external-system behavior whose
+ownership is uncertain, cite the smallest feasibility evidence that settles the
+boundary. Otherwise narrow the guarantee and record the behavior as an
+unverified limit; do not leave ownership discovery for implementation. For
+canonical live capture, readiness must at least settle the artifact format,
+authority mapping, semantic verifier, and coordinated mutation cases. A digest
+or self-seal proves internal consistency only unless the trust model identifies
+an independent authenticity root.
 
 Before requesting review:
 
@@ -810,6 +958,9 @@ Severities: `P0` unsafe/destructive; `P1` stated question materially false;
 ## Review Repair Summary
 
 Revision: `<commit>`
+Cycle: `<consecutive integer>`
+Classification: `<minor | substantial>`
+Review receipt: `<durable link to the consolidated verdict>`
 
 ### Finding 1 — <title>
 
@@ -828,9 +979,10 @@ Revision: `<commit>`
 <Additional cases checked after repair>
 ```
 
-One review-and-repair cycle is normal. After two substantial repair cycles for
-the same invariant, reconsider abstraction, enforcement location, PR scope, and
-whether the question is singular.
+One review-and-repair cycle is normal. The second substantial cycle invokes the
+hard escalation rule in [Repair Cycle](#repair-cycle); do not request another
+review until its human decision receipt and disposition are recorded. A third
+substantial cycle cannot remain in the same review unit.
 
 Before every review or re-review request, reconcile the PR description to the
 current diff. Refresh the review question when its wording no longer matches,
@@ -871,8 +1023,12 @@ python3 docs/milestones/workflow.py start-proposal \
 ```
 
 The proposal author commits the proposal artifact, plan transition, and rendered
-HTML, then opens a proposal PR to the milestone branch. After review and merge,
-the maintainer updates the clean milestone branch and records acceptance:
+HTML, then opens a proposal PR to the milestone branch. Its `Review Kind` must
+match the canonical frontier. When the contract is acceptable, submit the
+exact-head GitHub review receipt described above before merging. Any later
+proposal commit requires another receipt. After merge, the maintainer updates
+the clean milestone branch and records acceptance; the acceptance command
+rechecks the merged PR body and exact-head review receipt before promotion:
 
 ```sh
 python3 docs/milestones/workflow.py accept-proposal \
@@ -890,7 +1046,9 @@ python3 docs/milestones/workflow.py start-proposal-amendment \
   --path docs/milestones/<number>-<slug>/proposals/<slug>-amendment.md
 ```
 
-After that contract-only PR merges, record its exact acceptance receipt:
+Apply the same exact-head review rule to the contract-only amendment PR. After
+it merges, record its reviewed head and exact merge acceptance receipt. The
+amendment acceptance command also rechecks the canonical review kind:
 
 ```sh
 python3 docs/milestones/workflow.py accept-proposal-amendment \
@@ -935,11 +1093,12 @@ python3 docs/milestones/workflow.py complete-implementation \
 ```
 
 `complete-implementation` fetches and fast-forwards the milestone branch,
-confirms the implementation PR is merged from the planned branch, fills the
-reviewed template with the PR number and merge SHA, applies the existing
-handoff owner, verifies that only canonical `plan.md` and generated `plan.html`
-changed, commits them, and pushes the milestone branch. It stops at
-`ready_for_proposal`; it never starts the next proposal branch.
+confirms the implementation PR is merged from the planned branch and its body
+still matches the canonical review kind, fills the reviewed template with the
+PR number and merge SHA, applies the existing handoff owner, verifies that only
+canonical `plan.md` and generated `plan.html` changed, commits them, and pushes
+the milestone branch. It stops at `ready_for_proposal`; it never starts the next
+proposal branch.
 
 The lower-level `handoff --receipt <path>` command remains available for a
 reviewed exceptional receipt or recovery, but normal successful completion
@@ -950,32 +1109,54 @@ dirty worktree, the wrong branch, a branch/state mismatch, an unmerged proposal,
 an implementation start without an accepted proposal, an implementation PR
 from the wrong branch, or a merge commit that is not already an ancestor of the
 milestone branch. Proposal acceptance asks GitHub to confirm the exact base,
-head, merge commit, and changed-file allowlist. Implementation completion asks
-GitHub to confirm the implementation PR and commit, then limits criterion
-updates to the current frontier, prevents premature closeout, updates the
-accepted ledger and risks, promotes the reviewed next candidate to
-`ready_for_proposal`, records workflow history, and regenerates HTML.
+head, merge commit, changed-file allowlist, accepted authorized review receipt
+attached to the exact proposal head, and matching review kind. Implementation
+completion asks GitHub to confirm the implementation PR, commit, and matching
+review kind, then limits criterion updates to the current frontier, prevents
+premature closeout, updates the accepted ledger and risks, promotes the
+reviewed next candidate to `ready_for_proposal`, records workflow history, and
+regenerates HTML.
 
-CI runs `workflow.py validate-pr` on every PR. It applies the frontier gate to
-PRs targeting a milestone branch and the adjunct gate to reserved adjunct PRs
-targeting the active plan’s canonical implementation branch. A proposal PR may
-change only its declared proposal document, canonical plan, and generated plan
-HTML. A
+CI runs `workflow.py validate-pr` when a PR is opened, synchronized, reopened,
+or its description is edited. It applies the frontier gate to PRs targeting a
+milestone branch and the adjunct gate to reserved adjunct PRs targeting the
+active plan's canonical implementation branch. Proposal, proposal-amendment,
+and implementation PRs must provide the canonical review kind. A proposal PR
+may change only its declared proposal document, canonical plan, and generated
+plan HTML. A
 proposal amendment PR has the same contract-only boundary and must add a new
 artifact without modifying accepted proposal history. An implementation PR is
 rejected unless its base records an accepted proposal; it may not modify that
 proposal, an accepted amendment, or the frozen frontier. An adjunct PR must use
 the reserved child branch, current parent head, completed HITL template, and
 immutable milestone contract artifacts.
+For each recognized milestone review-unit transition and adjunct, CI also
+validates the PR body’s declared repair ledger and hard escalation receipt. The
+pull-request workflow runs when that body is edited so a newly recorded
+decision can satisfy the gate without an unrelated code commit. The same
+sections remain required human-visible state in cumulative milestone and
+separate repair templates even when those PR topologies are outside the
+transition gate.
 `docs/render_markdown.py` invokes the same plan validator, so hand-edited state
 that omits required fields or history is rejected.
 
-The machine cannot prove which model authored a phase, that a reviewer
-understood a proposal, or that approval was intellectually sound. The operator
-owns those judgments. What the repository does guarantee is that the current
-state and next handoff are visible, the accepted proposal is durable, proposal
-and implementation diffs are separate, and implementation cannot pass CI
-before proposal acceptance.
+CI supplies `validate-pr` with the PR event payload. For an equivalent local
+check, save the current PR description and pass it with
+`--pr-body-file <path>`; a milestone proposal, amendment, or implementation
+cannot receive a complete validation result without its PR body.
+
+The machine cannot discover an unrecorded review round, decide whether a cycle
+was intellectually substantial, prove that the named decision author had sound
+judgment, prove which model authored a phase, prove that a reviewer understood a
+proposal, or prove that approval was intellectually sound. The reviewer and
+operator own those judgments. It can prove that a decisive review was submitted
+on a specific proposal head and preserve that fact separately from merge
+ancestry. The gate also guarantees that declared cycles are consecutive, the
+second declared substantial cycle has an explicit decision receipt and route,
+and a third declared substantial cycle cannot be merged as the same review unit.
+The repository also guarantees that the current state and next handoff are
+visible, the accepted proposal is durable, proposal and implementation diffs
+are separate, and implementation cannot pass CI before proposal acceptance.
 
 The handoff commit is a narrow exception to PR-only changes because it applies
 mechanical post-merge facts that cannot truthfully exist in the merged review

@@ -735,6 +735,35 @@ class CliSurfaceAuditTests(unittest.TestCase):
         self.assertFalse(receipt.ok)
         self.assertIn("invalid tokens before help", receipt.reason)
 
+    def test_help_prefix_uses_supplied_parser(self) -> None:
+        import argparse
+
+        parser = argparse.ArgumentParser()
+        sub = parser.add_subparsers(dest="cmd", required=True)
+        foo = sub.add_parser("foo")
+        foo.add_argument("path")
+        foo.add_argument("--mode", choices=["alpha", "beta"])
+        ok = self.argv_validate.validate_argv(
+            ["foo", "x", "--help"],
+            parser=parser,
+            template_id="alt-help",
+        )
+        self.assertTrue(ok.ok, ok.reason)
+        self.assertEqual(ok.reason, "ok_help")
+        without_help = self.argv_validate.validate_argv(
+            ["foo", "x"],
+            parser=parser,
+            template_id="alt-plain",
+        )
+        self.assertTrue(without_help.ok, without_help.reason)
+        bad = self.argv_validate.validate_argv(
+            ["foo", "x", "--mode", "nope", "--help"],
+            parser=parser,
+            template_id="alt-bad-choice",
+        )
+        self.assertFalse(bad.ok)
+        self.assertIn("invalid tokens before help", bad.reason)
+
     def test_help_valid_positional_prefix_ok(self) -> None:
         receipt = self.argv_validate.validate_argv(
             [

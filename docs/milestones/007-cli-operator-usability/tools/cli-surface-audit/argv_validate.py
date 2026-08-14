@@ -131,7 +131,7 @@ def validate_argv(
                     reason="help flag must be sole trailing token without extra args",
                 )
             prefix = normalized[:-1]
-            prefix_reason = _validate_prefix_before_help(prefix)
+            prefix_reason = _validate_prefix_before_help(prefix, parser)
             if prefix_reason:
                 return ArgvReceipt(
                     template_id=template_id,
@@ -200,20 +200,21 @@ def _relax_parser_for_prefix(parser: argparse.ArgumentParser) -> None:
                 _relax_parser_for_prefix(child)
 
 
-def _validate_prefix_before_help(prefix: list[str]) -> str:
+def _validate_prefix_before_help(
+    prefix: list[str], source_parser: argparse.ArgumentParser
+) -> str:
     """Return a failure reason if the argv prefix is invalid without ``--help``.
 
-    Uses a fresh parser so the live tree is not mutated. Required flags are
-    relaxed because help is a discovery form; unknown tokens, extra
-    positionals, and invalid choices/types still fail.
+    Clones ``source_parser`` so the caller tree is not mutated. Required flags
+    are relaxed because help is a discovery form; unknown tokens, extra
+    positionals, and invalid choices/types still fail against that same tree.
     """
 
     import contextlib
+    import copy
     import io
 
-    from cli.automa_cli.app import build_parser
-
-    probe = build_parser()
+    probe = copy.deepcopy(source_parser)
     _relax_parser_for_prefix(probe)
 
     def _error(message: str) -> None:

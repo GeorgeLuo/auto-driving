@@ -8,6 +8,13 @@
 - Frontier:
 - Proposal artifact: `docs/milestones/<number>-<slug>/proposals/<frontier>.md`
 
+## Review Kind
+
+<!-- One supported value matching the canonical milestone plan exactly:
+     deterministic invariant closure | behavioral feature slice | broad
+     mechanical rollout | live or external evidence | review repair |
+     milestone closeout -->
+
 ## Review Question
 
 <!-- Is this proposal sufficiently bounded, owned, testable, and complete to hand

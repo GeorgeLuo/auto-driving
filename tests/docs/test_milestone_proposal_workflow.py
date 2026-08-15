@@ -403,7 +403,12 @@ class RepairCycleGovernanceTests(unittest.TestCase):
             status="completed",
             decision_receipt="https://github.example/decision/2",
             route="replan-current-unit",
-            disposition="Keep the singular question with a reset owner.",
+            disposition=(
+                "route=replan-current-unit; Keep the singular question with a "
+                "reset owner."
+            ),
+            decision_owner="operator",
+            decision_time="2026-08-14T18:00:00Z",
         )
 
         self.assertEqual(validate_repair_cycle_governance_body(body), 2)
@@ -420,7 +425,7 @@ class RepairCycleGovernanceTests(unittest.TestCase):
 
         self.assertEqual(validate_repair_cycle_governance_body(body), 1)
 
-    def test_third_substantial_cycle_must_leave_review_unit(self) -> None:
+    def test_third_substantial_cycle_can_continue_with_topology_audit(self) -> None:
         body = repair_cycle_governance_body(
             rows=(
                 "| 1 | https://github.example/review/1 | substantial | "
@@ -431,15 +436,227 @@ class RepairCycleGovernanceTests(unittest.TestCase):
                 "fed9876 | Expanded material scope again. |"
             ),
             status="completed",
-            decision_receipt="https://github.example/decision/2",
+            decision_receipt="https://github.example/decision/3",
+            route="continue-current-unit",
+            disposition=(
+                "route=continue-current-unit; Keep the same singular owner and "
+                "contract."
+            ),
+            decision_owner="meta-manager",
+            decision_time="2026-08-14T19:00:00Z",
+            continuation_status="completed",
+            audited_cycle="3",
+            continuation_receipt="https://github.example/decision/3",
+            accepted_contract="unchanged",
+            primary_question="singular",
+            owner_abstraction="unchanged",
+            coherent_diff="yes",
+            prior_findings="all-disposed",
+            cumulative_history="visible-in-current-ledger",
+            fresh_context="https://github.example/review/3-independent",
+            finding_rows=(
+                "| Cycle 1 finding | resolved in `fed9876` |\n"
+                "| Cycle 2 finding | resolved in `fed9876` |"
+            ),
+        )
+
+        self.assertEqual(validate_repair_cycle_governance_body(body), 3)
+
+    def test_third_substantial_cycle_requires_continuation_audit(self) -> None:
+        body = repair_cycle_governance_body(
+            rows=(
+                "| 1 | https://github.example/review/1 | substantial | "
+                "abc1234 | Replaced the enforcement boundary. |\n"
+                "| 2 | https://github.example/review/2 | substantial | "
+                "def5678 | Reframed the failure class. |\n"
+                "| 3 | https://github.example/review/3 | substantial | "
+                "fed9876 | Expanded material scope again. |"
+            ),
+            status="completed",
+            decision_receipt="https://github.example/decision/3",
             route="replan-current-unit",
-            disposition="Keep the singular question with a reset owner.",
+            disposition=(
+                "route=replan-current-unit; Keep the singular question with a "
+                "reset owner."
+            ),
+            decision_owner="operator",
+            decision_time="2026-08-14T19:00:00Z",
         )
 
         with self.assertRaisesRegex(
             PlanContractError,
-            "third substantial repair cycle",
+            "third or later substantial cycle",
         ):
+            validate_repair_cycle_governance_body(body)
+
+    def test_continuation_rejects_changed_topology(self) -> None:
+        body = repair_cycle_governance_body(
+            rows=(
+                "| 1 | https://github.example/review/1 | substantial | "
+                "abc1234 | Replaced the enforcement boundary. |\n"
+                "| 2 | https://github.example/review/2 | substantial | "
+                "def5678 | Reframed the failure class. |\n"
+                "| 3 | https://github.example/review/3 | substantial | "
+                "fed9876 | Expanded material scope again. |"
+            ),
+            status="completed",
+            decision_receipt="https://github.example/decision/3",
+            route="continue-current-unit",
+            disposition="route=continue-current-unit; Continue anyway.",
+            decision_owner="operator",
+            decision_time="2026-08-14T19:00:00Z",
+            continuation_status="completed",
+            audited_cycle="3",
+            continuation_receipt="https://github.example/decision/3",
+            accepted_contract="unchanged",
+            primary_question="not-singular",
+            owner_abstraction="unchanged",
+            coherent_diff="yes",
+            prior_findings="all-disposed",
+            cumulative_history="visible-in-current-ledger",
+            fresh_context="https://github.example/review/3-independent",
+            finding_rows="| Cycle 1 finding | resolved in `fed9876` |",
+        )
+
+        with self.assertRaisesRegex(
+            PlanContractError,
+            "unchanged singular contract",
+        ):
+            validate_repair_cycle_governance_body(body)
+
+    def test_split_route_requires_lineage_and_topology_delta(self) -> None:
+        body = repair_cycle_governance_body(
+            rows=(
+                "| 1 | https://github.example/review/1 | substantial | "
+                "abc1234 | Replaced the enforcement boundary. |\n"
+                "| 2 | https://github.example/review/2 | substantial | "
+                "def5678 | Reframed the failure class. |\n"
+                "| 3 | https://github.example/review/3 | substantial | "
+                "fed9876 | Expanded material scope again. |"
+            ),
+            status="completed",
+            decision_receipt="https://github.example/decision/3",
+            route="split-or-replace-review-unit",
+            disposition=(
+                "route=split-or-replace-review-unit; Carry the independent "
+                "guarantee into a replacement."
+            ),
+            decision_owner="meta-manager",
+            decision_time="2026-08-14T19:00:00Z",
+            continuation_status="completed",
+            audited_cycle="3",
+            continuation_receipt="https://github.example/decision/3",
+            accepted_contract="unchanged",
+            primary_question="not-singular",
+            owner_abstraction="unchanged",
+            coherent_diff="no",
+            prior_findings="not-all-disposed",
+            cumulative_history="https://github.example/lineage/125",
+            replacement_lineage="https://github.example/decision/3",
+            finding_rows=(
+                "| Cycle 1 finding | carried-forward to #127 |\n"
+                "| Cycle 2 finding | resolved in `fed9876` |"
+            ),
+        )
+
+        self.assertEqual(validate_repair_cycle_governance_body(body), 3)
+
+    def test_continuation_decision_must_be_authorized_and_fresh(self) -> None:
+        body = repair_cycle_governance_body(
+            rows=(
+                "| 1 | https://github.example/review/1 | substantial | "
+                "abc1234 | Replaced the enforcement boundary. |\n"
+                "| 2 | https://github.example/review/2 | substantial | "
+                "def5678 | Reframed the failure class. |\n"
+                "| 3 | https://github.example/review/3 | substantial | "
+                "fed9876 | Expanded material scope again. |"
+            ),
+            status="completed",
+            decision_receipt="https://github.example/decision/3",
+            route="continue-current-unit",
+            disposition="route=continue-current-unit; Continue.",
+            decision_owner="repair-author",
+            decision_time="2026-08-14T19:00:00Z",
+            continuation_status="completed",
+            audited_cycle="3",
+            continuation_receipt="https://github.example/decision/3",
+            accepted_contract="unchanged",
+            primary_question="singular",
+            owner_abstraction="unchanged",
+            coherent_diff="yes",
+            prior_findings="all-disposed",
+            cumulative_history="visible-in-current-ledger",
+            fresh_context="None",
+            finding_rows="| Cycle 1 finding | resolved in `fed9876` |",
+        )
+
+        with self.assertRaisesRegex(
+            PlanContractError,
+            "Decision owner/role",
+        ):
+            validate_repair_cycle_governance_body(body)
+
+    def test_p0_continuation_requires_durable_risk_disposition(self) -> None:
+        body = repair_cycle_governance_body(
+            rows=(
+                "| 1 | https://github.example/review/1 | substantial | "
+                "abc1234 | P0 unsafe boundary remains. |\n"
+                "| 2 | https://github.example/review/2 | substantial | "
+                "def5678 | Reframed the failure class. |\n"
+                "| 3 | https://github.example/review/3 | substantial | "
+                "fed9876 | Expanded material scope again. |"
+            ),
+            status="completed",
+            decision_receipt="https://github.example/decision/3",
+            route="continue-current-unit",
+            disposition="route=continue-current-unit; Continue after risk review.",
+            decision_owner="meta-manager",
+            decision_time="2026-08-14T19:00:00Z",
+            continuation_status="completed",
+            audited_cycle="3",
+            continuation_receipt="https://github.example/decision/3",
+            accepted_contract="unchanged",
+            primary_question="singular",
+            owner_abstraction="unchanged",
+            coherent_diff="yes",
+            prior_findings="all-disposed",
+            cumulative_history="visible-in-current-ledger",
+            fresh_context="https://github.example/review/3-independent",
+            finding_rows="| Cycle 1 finding | resolved in `fed9876` |",
+        )
+
+        with self.assertRaisesRegex(PlanContractError, "P0 repair"):
+            validate_repair_cycle_governance_body(body)
+
+    def test_proposal_amendment_requires_changed_contract(self) -> None:
+        body = repair_cycle_governance_body(
+            rows=(
+                "| 1 | https://github.example/review/1 | substantial | "
+                "abc1234 | Replaced the enforcement boundary. |\n"
+                "| 2 | https://github.example/review/2 | substantial | "
+                "def5678 | Reframed the failure class. |\n"
+                "| 3 | https://github.example/review/3 | substantial | "
+                "fed9876 | Expanded material scope again. |"
+            ),
+            status="completed",
+            decision_receipt="https://github.example/decision/3",
+            route="proposal-amendment",
+            disposition="route=proposal-amendment; Amend the accepted contract.",
+            decision_owner="operator",
+            decision_time="2026-08-14T19:00:00Z",
+            continuation_status="completed",
+            audited_cycle="3",
+            continuation_receipt="https://github.example/decision/3",
+            accepted_contract="unchanged",
+            primary_question="singular",
+            owner_abstraction="unchanged",
+            coherent_diff="yes",
+            prior_findings="all-disposed",
+            cumulative_history="visible-in-current-ledger",
+            finding_rows="| Cycle 1 finding | resolved in `fed9876` |",
+        )
+
+        with self.assertRaisesRegex(PlanContractError, "changed accepted contract"):
             validate_repair_cycle_governance_body(body)
 
     def test_cycle_numbers_must_be_consecutive(self) -> None:

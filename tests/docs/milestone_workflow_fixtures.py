@@ -299,6 +299,21 @@ def repair_cycle_governance_body(
     decision_receipt: str = "None",
     route: str = "None",
     disposition: str = "Continue under the current review question.",
+    decision_owner: str = "None",
+    decision_time: str = "None",
+    continuation_status: str = "not-required",
+    audited_cycle: str = "None",
+    continuation_receipt: str = "None",
+    accepted_contract: str = "None",
+    primary_question: str = "None",
+    owner_abstraction: str = "None",
+    coherent_diff: str = "None",
+    prior_findings: str = "None",
+    cumulative_history: str = "None",
+    fresh_context: str = "None",
+    replacement_lineage: str = "None",
+    risk_disposition: str = "None",
+    finding_rows: str = "| None | None |",
 ) -> str:
     return f"""## Repair Cycle Ledger
 
@@ -310,8 +325,31 @@ def repair_cycle_governance_body(
 
 - Status: `{status}`
 - Decision receipt: {decision_receipt}
+- Decision owner/role: {decision_owner}
+- Decision time: {decision_time}
 - Route: {route}
 - Disposition: {disposition}
+
+## Repair Continuation Audit
+
+- Status: `{continuation_status}`
+- Audited substantial cycle: {audited_cycle}
+- Continuation receipt: {continuation_receipt}
+- Accepted contract: {accepted_contract}
+- Primary question: {primary_question}
+- Enforcement owner/abstraction: {owner_abstraction}
+- Coherent diff: {coherent_diff}
+- Prior findings: {prior_findings}
+- Cumulative history: {cumulative_history}
+- Fresh-context review: {fresh_context}
+- Replacement lineage: {replacement_lineage}
+- Risk disposition: {risk_disposition}
+
+### Prior Finding Dispositions
+
+| Finding | Disposition |
+| --- | --- |
+{finding_rows}
 """
 
 

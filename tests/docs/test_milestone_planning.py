@@ -197,6 +197,7 @@ class MilestonePlanningTests(unittest.TestCase):
             "## Scope Reconciliation",
             "## Repair Cycle Ledger",
             "## Repair Escalation",
+            "## Repair Continuation Audit",
             "## Validation",
         ):
             self.assertIn(heading, text)
@@ -217,6 +218,7 @@ class MilestonePlanningTests(unittest.TestCase):
         self.assertIn("unedited COMMENT review", text)
         self.assertIn("## Repair Cycle Ledger", text)
         self.assertIn("## Repair Escalation", text)
+        self.assertIn("## Repair Continuation Audit", text)
 
     def test_universal_claim_contractability_is_visible_in_author_guidance(
         self,
@@ -250,6 +252,7 @@ class MilestonePlanningTests(unittest.TestCase):
         self.assertIn("current repository push authority", text)
         self.assertIn("## Repair Cycle Ledger", text)
         self.assertIn("## Repair Escalation", text)
+        self.assertIn("## Repair Continuation Audit", text)
 
     def test_implementation_adjunct_template_records_human_compatibility(self) -> None:
         self.assertTrue(IMPLEMENTATION_ADJUNCT_PR_TEMPLATE.is_file())
@@ -263,6 +266,7 @@ class MilestonePlanningTests(unittest.TestCase):
             "## Evidence Impact",
             "## Repair Cycle Ledger",
             "## Repair Escalation",
+            "## Repair Continuation Audit",
             "## Validation",
         ):
             self.assertIn(heading, text)
@@ -278,6 +282,7 @@ class MilestonePlanningTests(unittest.TestCase):
         self.assertIn("## Accepted Review Units", text)
         self.assertIn("## Repair Cycle Ledger", text)
         self.assertIn("## Repair Escalation", text)
+        self.assertIn("## Repair Continuation Audit", text)
 
     def test_repair_template_carries_cycle_and_escalation_receipts(self) -> None:
         self.assertTrue(REPAIR_PR_TEMPLATE.is_file())
@@ -285,6 +290,7 @@ class MilestonePlanningTests(unittest.TestCase):
         self.assertIn("## Review Repair Summary", CONTRACT_SOURCE.read_text(encoding="utf-8"))
         self.assertIn("## Repair Cycle Ledger", text)
         self.assertIn("## Repair Escalation", text)
+        self.assertIn("## Repair Continuation Audit", text)
 
     def test_review_unit_template_repair_receipt_defaults_are_valid(self) -> None:
         for path in (
@@ -345,12 +351,15 @@ class MilestonePlanningTests(unittest.TestCase):
         self.assertIn("Singular Review Question Rule", text)
         self.assertIn('requires “and”', text)
 
-    def test_contract_has_hard_two_cycle_repair_escalation(self) -> None:
+    def test_contract_has_evidence_based_repair_continuation_gate(self) -> None:
         text = CONTRACT_SOURCE.read_text(encoding="utf-8")
         normalized = " ".join(text.split())
         self.assertIn("After the **second substantial** cycle", text)
         self.assertIn("human operator or meta-manager", normalized)
-        self.assertIn("A third substantial cycle cannot remain", text)
+        self.assertIn("continue-current-unit", text)
+        self.assertIn("Repair Continuation Audit", text)
+        self.assertIn("fresh-context or", normalized)
+        self.assertIn("a new PR number is never evidence", normalized)
         self.assertIn("Repair Cycle Ledger", text)
         self.assertIn("Repair Escalation", text)
 

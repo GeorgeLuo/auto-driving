@@ -121,11 +121,24 @@ REPAIR_CYCLE_CLASSIFICATIONS = {"minor", "substantial"}
 REPAIR_ESCALATION_HEADING = "## Repair Escalation"
 REPAIR_ESCALATION_STATUSES = {"not-required", "completed"}
 REPAIR_ESCALATION_ROUTES = {
+    "continue-current-unit",
     "replan-current-unit",
     "proposal-amendment",
     "split-or-replace-review-unit",
     "abandon-review-unit",
 }
+REPAIR_CONTINUATION_HEADING = "## Repair Continuation Audit"
+REPAIR_CONTINUATION_STATUS_VALUES = {"not-required", "completed"}
+REPAIR_FINDING_DISPOSITION_HEADING = "### Prior Finding Dispositions"
+REPAIR_FINDING_DISPOSITION_HEADER = ("Finding", "Disposition")
+REPAIR_FINDING_DISPOSITIONS = {
+    "resolved",
+    "deferred",
+    "carried-forward",
+    "superseded",
+    "abandoned",
+}
+REPAIR_DECISION_ROLES = {"operator", "meta-manager"}
 HANDOFF_TEMPLATE_SCHEMA = "milestone_handoff_template_v1"
 EXAMPLE_RECEIPT: dict[str, Any] = {
     "schema": "milestone_handoff_v1",
@@ -1729,12 +1742,288 @@ def _has_durable_reference(value: str) -> bool:
     return re.search(r"https?://\S+|#[1-9]\d*", value) is not None
 
 
+def _is_timestamp(value: str) -> bool:
+    return re.fullmatch(
+        r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2})",
+        value.strip().strip("`*_ "),
+        re.IGNORECASE,
+    ) is not None
+
+
+def _finding_disposition_status(value: str) -> str:
+    normalized = _repair_value(value)
+    return normalized.split(maxsplit=1)[0].rstrip(".,:;")
+
+
+def _validate_prior_finding_dispositions(
+    text: str,
+    *,
+    required: bool,
+    continuation_route: str,
+) -> tuple[str, ...]:
+    try:
+        table = parse_table(text, REPAIR_FINDING_DISPOSITION_HEADING)
+    except PlanContractError as exc:
+        if required:
+            raise PlanContractError(
+                "Repair Continuation Audit must contain a prior finding "
+                "disposition table"
+            ) from exc
+        return ()
+    if table.header != REPAIR_FINDING_DISPOSITION_HEADER:
+        raise PlanContractError(
+            "Prior Finding Dispositions must use columns: "
+            + ", ".join(REPAIR_FINDING_DISPOSITION_HEADER)
+        )
+    if not table.rows:
+        if required:
+            raise PlanContractError(
+                "Prior Finding Dispositions must contain a row"
+            )
+        return ()
+
+    first_values = tuple(_repair_value(value) for value in table.rows[0])
+    if first_values == ("none", "none"):
+        if required:
+            raise PlanContractError(
+                "a completed continuation audit must list every prior finding"
+            )
+        if len(table.rows) != 1:
+            raise PlanContractError(
+                "the no-finding disposition table must contain exactly one row"
+            )
+        return ()
+
+    statuses: list[str] = []
+    for row_number, (finding, disposition) in enumerate(table.rows, start=1):
+        if _is_placeholder(finding) or _is_placeholder(disposition):
+            raise PlanContractError(
+                f"prior finding disposition row {row_number} must name a finding "
+                "and disposition"
+            )
+        status = _finding_disposition_status(disposition)
+        if status not in REPAIR_FINDING_DISPOSITIONS:
+            raise PlanContractError(
+                f"prior finding disposition row {row_number} must begin with one of: "
+                + ", ".join(sorted(REPAIR_FINDING_DISPOSITIONS))
+            )
+        if status in {"deferred", "carried-forward"} and not _has_durable_reference(
+            disposition
+        ):
+            raise PlanContractError(
+                f"prior finding disposition row {row_number} must link its deferred "
+                "finding"
+            )
+        statuses.append(status)
+
+    if continuation_route == "continue-current-unit" and any(
+        status != "resolved" for status in statuses
+    ):
+        raise PlanContractError(
+            "continuation requires every prior finding to be resolved in the "
+            "current review unit"
+        )
+    return tuple(statuses)
+
+
+def _continuation_audit_fields(text: str) -> dict[str, str]:
+    labels = (
+        "Status",
+        "Audited substantial cycle",
+        "Continuation receipt",
+        "Accepted contract",
+        "Primary question",
+        "Enforcement owner/abstraction",
+        "Coherent diff",
+        "Prior findings",
+        "Cumulative history",
+        "Fresh-context review",
+        "Replacement lineage",
+        "Risk disposition",
+    )
+    return {
+        label: _repair_field(text, REPAIR_CONTINUATION_HEADING, label)
+        for label in labels
+    }
+
+
+def _validate_continuation_audit(
+    text: str,
+    *,
+    substantial_cycles: int,
+    route: str,
+    decision_receipt: str,
+    has_p0: bool,
+) -> None:
+    try:
+        fields = _continuation_audit_fields(text)
+    except PlanContractError as exc:
+        raise PlanContractError(
+            f"PR body must contain a completed {REPAIR_CONTINUATION_HEADING} section"
+        ) from exc
+
+    status = _repair_value(fields["Status"])
+    if status not in REPAIR_CONTINUATION_STATUS_VALUES:
+        raise PlanContractError(
+            "Repair Continuation Audit Status must be `not-required` or `completed`"
+        )
+
+    if status == "not-required":
+        if (
+            substantial_cycles > 2
+            or route == "continue-current-unit"
+            or has_p0
+        ):
+            raise PlanContractError(
+                "a continuation audit is required before continuing after a "
+                "substantial repair escalation"
+            )
+        for label, value in fields.items():
+            if label != "Status" and not _is_placeholder(value):
+                raise PlanContractError(
+                    "a not-required continuation audit must keep "
+                    f"{label} as None"
+                )
+        _validate_prior_finding_dispositions(
+            text,
+            required=False,
+            continuation_route=route,
+        )
+        return
+
+    audited_cycle = _repair_value(fields["Audited substantial cycle"])
+    if audited_cycle != str(substantial_cycles):
+        raise PlanContractError(
+            "Repair Continuation Audit must name the current substantial cycle"
+        )
+    continuation_receipt = fields["Continuation receipt"]
+    if not _has_durable_reference(continuation_receipt):
+        raise PlanContractError(
+            "a completed continuation audit needs a durable continuation receipt"
+        )
+    if _repair_value(continuation_receipt) != _repair_value(decision_receipt):
+        raise PlanContractError(
+            "continuation receipt must match the current repair escalation "
+            "decision receipt"
+        )
+
+    accepted_contract = _repair_value(fields["Accepted contract"])
+    primary_question = _repair_value(fields["Primary question"])
+    owner_abstraction = _repair_value(fields["Enforcement owner/abstraction"])
+    coherent_diff = _repair_value(fields["Coherent diff"])
+    prior_findings = _repair_value(fields["Prior findings"])
+    cumulative_history = _repair_value(fields["Cumulative history"])
+    fresh_context = fields["Fresh-context review"]
+    replacement_lineage = fields["Replacement lineage"]
+    risk_disposition = fields["Risk disposition"]
+
+    if accepted_contract not in {"unchanged", "changed"}:
+        raise PlanContractError(
+            "continuation audit Accepted contract must be `unchanged` or `changed`"
+        )
+    if primary_question not in {"singular", "not-singular"}:
+        raise PlanContractError(
+            "continuation audit Primary question must be `singular` or "
+            "`not-singular`"
+        )
+    if owner_abstraction not in {"unchanged", "changed"}:
+        raise PlanContractError(
+            "continuation audit Enforcement owner/abstraction must be "
+            "`unchanged` or `changed`"
+        )
+    if coherent_diff not in {"yes", "no"}:
+        raise PlanContractError(
+            "continuation audit Coherent diff must be `yes` or `no`"
+        )
+    if prior_findings not in {"all-disposed", "not-all-disposed"}:
+        raise PlanContractError(
+            "continuation audit Prior findings must be `all-disposed` or "
+            "`not-all-disposed`"
+        )
+    if cumulative_history != "visible-in-current-ledger" and not _has_durable_reference(
+        cumulative_history
+    ):
+        raise PlanContractError(
+            "continuation audit Cumulative history must be visible in the current "
+            "ledger or link the cumulative history"
+        )
+
+    finding_statuses = _validate_prior_finding_dispositions(
+        text,
+        required=True,
+        continuation_route=route,
+    )
+    if prior_findings == "all-disposed" and any(
+        status in {"deferred", "carried-forward"} for status in finding_statuses
+    ):
+        raise PlanContractError(
+            "all-disposed continuation history cannot contain deferred findings"
+        )
+    if prior_findings == "not-all-disposed" and route == "continue-current-unit":
+        raise PlanContractError(
+            "continuation requires the audit to mark all prior findings disposed"
+        )
+
+    if route == "continue-current-unit":
+        if (
+            accepted_contract != "unchanged"
+            or primary_question != "singular"
+            or owner_abstraction != "unchanged"
+            or coherent_diff != "yes"
+            or prior_findings != "all-disposed"
+        ):
+            raise PlanContractError(
+                "continue-current-unit requires an unchanged singular contract, "
+                "owner, abstraction, coherent diff, and disposed findings"
+            )
+        if not _has_durable_reference(fresh_context):
+            raise PlanContractError(
+                "continuation after the second substantial cycle requires a "
+                "fresh-context or independent review receipt"
+            )
+        if not _is_placeholder(replacement_lineage):
+            raise PlanContractError(
+                "continue-current-unit cannot carry replacement lineage"
+            )
+    elif route == "proposal-amendment":
+        if accepted_contract != "changed":
+            raise PlanContractError(
+                "proposal-amendment requires the continuation audit to record a "
+                "changed accepted contract"
+            )
+    elif route == "split-or-replace-review-unit":
+        if not (
+            primary_question == "not-singular"
+            or owner_abstraction == "changed"
+            or coherent_diff == "no"
+        ):
+            raise PlanContractError(
+                "split-or-replace-review-unit requires a non-singular question, "
+                "changed owner/abstraction, or incoherent diff"
+            )
+        if not _has_durable_reference(replacement_lineage):
+            raise PlanContractError(
+                "a replacement route must link its replacement-lineage decision"
+            )
+    elif route == "abandon-review-unit":
+        if _is_placeholder(risk_disposition):
+            raise PlanContractError(
+                "abandon-review-unit requires an explicit risk disposition"
+            )
+
+    if has_p0 and not _has_durable_reference(risk_disposition):
+        raise PlanContractError(
+            "a P0 repair requires a durable risk disposition before re-review"
+        )
+
+
 def validate_repair_cycle_governance_body(text: str) -> int:
-    """Validate declared repair rounds and the hard escalation threshold.
+    """Validate declared repair rounds and evidence-based continuation.
 
     The PR body is the durable index for repair review receipts. GitHub review
     discussion still owns the finding and classification; this validator makes
-    the declared count and required escalation machine-checkable.
+    the declared count, escalation authority, and continuation topology audit
+    machine-checkable.
     """
 
     try:
@@ -1790,12 +2079,6 @@ def validate_repair_cycle_governance_body(text: str) -> int:
             if normalized_classification == "substantial":
                 substantial_cycles += 1
 
-    if substantial_cycles > 2:
-        raise PlanContractError(
-            "a third substantial repair cycle cannot remain in the same review unit; "
-            "split, replace, amend, or abandon it"
-        )
-
     try:
         status = _repair_value(
             _repair_field(text, REPAIR_ESCALATION_HEADING, "Status")
@@ -1813,6 +2096,16 @@ def validate_repair_cycle_governance_body(text: str) -> int:
             REPAIR_ESCALATION_HEADING,
             "Disposition",
         )
+        decision_owner = _repair_field(
+            text,
+            REPAIR_ESCALATION_HEADING,
+            "Decision owner/role",
+        )
+        decision_time = _repair_field(
+            text,
+            REPAIR_ESCALATION_HEADING,
+            "Decision time",
+        )
     except PlanContractError as exc:
         raise PlanContractError(
             f"PR body must contain a completed {REPAIR_ESCALATION_HEADING} section"
@@ -1828,9 +2121,15 @@ def validate_repair_cycle_governance_body(text: str) -> int:
             "before re-review"
         )
     if status == "not-required":
-        if not _is_placeholder(decision_receipt) or route != "none":
+        if (
+            not _is_placeholder(decision_receipt)
+            or route != "none"
+            or not _is_placeholder(decision_owner)
+            or not _is_placeholder(decision_time)
+        ):
             raise PlanContractError(
-                "a not-required repair escalation must keep receipt and route as None"
+                "a not-required repair escalation must keep receipt, owner, time, "
+                "and route as None"
             )
     else:
         if not _has_durable_reference(decision_receipt):
@@ -1846,6 +2145,52 @@ def validate_repair_cycle_governance_body(text: str) -> int:
             raise PlanContractError(
                 "a completed repair escalation must record its disposition"
             )
+        if _repair_value(decision_owner) not in REPAIR_DECISION_ROLES:
+            raise PlanContractError(
+                "a completed repair escalation Decision owner/role must be "
+                "`operator` or `meta-manager`"
+            )
+        if not _is_timestamp(decision_time):
+            raise PlanContractError(
+                "a completed repair escalation Decision time must be an ISO-8601 "
+                "timestamp"
+            )
+        if f"route={route}" not in _repair_value(disposition):
+            raise PlanContractError(
+                "the escalation disposition must name its selected route as "
+                f"route={route}"
+            )
+
+    if substantial_cycles > 2:
+        if status != "completed":
+            raise PlanContractError(
+                "every substantial cycle beyond the second requires a renewed "
+                "repair escalation decision"
+            )
+        if route == "replan-current-unit":
+            raise PlanContractError(
+                "a third or later substantial cycle requires continuation, "
+                "proposal-amendment, split-or-replace-review-unit, or abandonment"
+            )
+
+    has_p0 = any(
+        re.search(r"\bp0\b", row[4], re.IGNORECASE)
+        for row in ledger.rows
+        if len(row) == len(REPAIR_CYCLE_LEDGER_HEADER)
+    )
+    continuation_present = REPAIR_CONTINUATION_HEADING in text
+    if continuation_present:
+        _validate_continuation_audit(
+            text,
+            substantial_cycles=substantial_cycles,
+            route=route,
+            decision_receipt=decision_receipt,
+            has_p0=has_p0,
+        )
+    elif substantial_cycles > 2 or route == "continue-current-unit" or has_p0:
+        raise PlanContractError(
+            f"PR body must contain {REPAIR_CONTINUATION_HEADING}"
+        )
     return substantial_cycles
 
 

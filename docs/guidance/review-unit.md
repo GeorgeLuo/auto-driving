@@ -23,8 +23,10 @@ Before review, confirm that the PR question is stable, the description matches
 the current diff, validation is exact, limitations are explicit, and the
 adversarial pass is current. Before re-review, also confirm that the repair-cycle
 ledger names the consolidated verdict and repair revision. The second
-substantial cycle requires a completed human escalation receipt; a third cannot
-remain in the same review unit.
+substantial cycle requires a completed human escalation receipt with an explicit
+owner/time and route. A third or later cycle requires a renewed continuation
+topology audit, finding dispositions, cumulative history, and fresh-context
+review, or a route that stops the current unit.
 
 ## Review
 

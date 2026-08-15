@@ -179,7 +179,12 @@ change of author.
 
 After the **second substantial** cycle, stop before requesting re-review. A
 human operator or meta-manager—not the repair author acting alone—must record a
-durable escalation decision and select exactly one route:
+durable escalation decision, name the decision owner and time, and select exactly
+one route:
+
+- `continue-current-unit` when the topology audit below confirms that the
+  existing singular review unit still closes the same contract at the same
+  owner and abstraction;
 
 - `replan-current-unit` when the accepted contract remains unchanged and the
   question is still singular, but the owner or implementation approach needs an
@@ -189,11 +194,29 @@ durable escalation decision and select exactly one route:
 - `abandon-review-unit` when the claim should not proceed.
 
 Record that receipt, route, and disposition in `Repair Escalation` before
-re-review. A third substantial cycle cannot remain in the same review unit; it
-must be split, replaced, amended through a replacement implementation review,
-or abandoned. A replacement review unit starts its own count but links the
-decision receipt and superseded PR so the reset is explicit rather than a way to
-erase repair history.
+re-review. A continuation after the second substantial cycle must also complete
+`Repair Continuation Audit` for the current substantial cycle. The audit confirms
+that the accepted contract is unchanged, the primary question remains singular,
+the enforcement owner and abstraction are unchanged, the diff remains one
+coherent reviewable unit, every prior finding has a disposition, and cumulative
+history is visible in the local ledger or a durable lineage reference. A
+continuation must resolve every prior finding and include a fresh-context or
+independent totality-review receipt. Its continuation receipt must match the
+current escalation receipt.
+
+The audit is renewed before every substantial cycle beyond the second; its
+audited cycle must equal the current substantial count. If the contract changes,
+the question is no longer singular, the owner or abstraction changes, or the diff
+is no longer coherent, continuation fails closed and the selected route must be
+`proposal-amendment` or `split-or-replace-review-unit` as applicable. A P0 pauses
+the unit until an explicit durable risk disposition is recorded; count alone does
+not manufacture a replacement.
+
+Replacement review units remain subject to the replacement-lineage contract in
+issue #118. A replacement route must link its lineage decision and carry forward
+or dispose prior findings; a new PR number is never evidence that reviewability
+improved. A legitimate replacement may reset its local count only when that
+lineage decision is explicit.
 
 Create a separate repair review unit only when a distinct PR is genuinely
 necessary.
@@ -797,14 +820,18 @@ Approval does **not** mean the milestone is complete, every improvement belongs
 in this PR, the next frontier is automatically approved, or external
 assumptions are proven.
 
-Every review-unit template includes two shared state receipts:
+Every review-unit template includes three shared state receipts:
 
 - `Repair Cycle Ledger`, whose cycle numbers are consecutive and whose review
   receipt, classification, repair revision, and contract impact are updated
   before re-review; and
 - `Repair Escalation`, which stays `not-required` until escalation occurs and
-  becomes `completed` with a durable human decision receipt, route, and
-  disposition at the second substantial cycle.
+  becomes `completed` with a durable human decision receipt, decision
+  owner/time, route, and disposition at the second substantial cycle; and
+- `Repair Continuation Audit`, which stays `not-required` until a continuation or
+  replacement decision is needed and then records the audited substantial cycle,
+  topology checks, prior-finding dispositions, cumulative-history reference,
+  fresh-context review, and risk or replacement disposition.
 
 The ledger contains one all-`None` row for an initial review. Do not delete a
 prior row, combine separate verdict rounds, or downgrade a reviewer’s
@@ -838,6 +865,7 @@ Use `.github/pull_request_template.md` (required headings):
 - Scope reconciliation
 - Repair cycle ledger
 - Repair escalation
+- Repair continuation audit
 - Validation
 - Review notes
 
@@ -980,9 +1008,12 @@ Review receipt: `<durable link to the consolidated verdict>`
 ```
 
 One review-and-repair cycle is normal. The second substantial cycle invokes the
-hard escalation rule in [Repair Cycle](#repair-cycle); do not request another
-review until its human decision receipt and disposition are recorded. A third
-substantial cycle cannot remain in the same review unit.
+escalation and topology-audit rules in [Repair Cycle](#repair-cycle); do not
+request another review until the human decision receipt, decision owner/time,
+route, and required audit are recorded. A third or later substantial cycle may
+remain in the same review unit only through a renewed, authorized continuation
+audit; otherwise the selected amendment, split/replacement, or abandonment route
+must stop the unit.
 
 Before every review or re-review request, reconcile the PR description to the
 current diff. Refresh the review question when its wording no longer matches,
@@ -1131,7 +1162,8 @@ proposal, an accepted amendment, or the frozen frontier. An adjunct PR must use
 the reserved child branch, current parent head, completed HITL template, and
 immutable milestone contract artifacts.
 For each recognized milestone review-unit transition and adjunct, CI also
-validates the PR body’s declared repair ledger and hard escalation receipt. The
+validates the PR body’s declared repair ledger, escalation receipt, and
+continuation audit when required. The
 pull-request workflow runs when that body is edited so a newly recorded
 decision can satisfy the gate without an unrelated code commit. The same
 sections remain required human-visible state in cumulative milestone and
@@ -1152,8 +1184,12 @@ proposal, or prove that approval was intellectually sound. The reviewer and
 operator own those judgments. It can prove that a decisive review was submitted
 on a specific proposal head and preserve that fact separately from merge
 ancestry. The gate also guarantees that declared cycles are consecutive, the
-second declared substantial cycle has an explicit decision receipt and route,
-and a third declared substantial cycle cannot be merged as the same review unit.
+second declared substantial cycle has an explicit decision receipt, owner/time,
+route, and disposition, and every later substantial cycle has a renewed route
+decision. A same-unit continuation additionally has to pass the topology audit,
+carry visible finding dispositions and cumulative history, and include a fresh
+independent-context review receipt. A replacement route must carry explicit
+lineage; a new PR number is not reviewability evidence.
 The repository also guarantees that the current state and next handoff are
 visible, the accepted proposal is durable, proposal and implementation diffs
 are separate, and implementation cannot pass CI before proposal acceptance.

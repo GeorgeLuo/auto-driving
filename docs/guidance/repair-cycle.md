@@ -31,8 +31,12 @@ fresh adversarial pass before requesting re-review.
 Do not self-downgrade a disputed or missing classification; treat it as
 substantial until the reviewer resolves it. At the second substantial cycle,
 stop before re-review and hand the unit to the operator or meta-manager for a
-durable escalation decision. The implementing or repair author cannot supply
-that decision alone.
+durable escalation decision with an explicit owner, time, route, and
+disposition. The implementing or repair author cannot supply that decision
+alone. If the selected route is `continue-current-unit`, complete the topology
+audit for the current substantial cycle, list every prior finding disposition,
+preserve cumulative history, and obtain a fresh-context or independent totality
+review receipt. Renew that receipt before every later substantial cycle.
 
 ## Reviewer
 
@@ -47,8 +51,12 @@ failure class. A cycle is minor only for editorial, evidence-formatting, or
 localized P3 work that changes none of those surfaces.
 
 One substantial repair cycle is normal. At the second, require one recorded
-route before re-review: `replan-current-unit`, `proposal-amendment`,
-`split-or-replace-review-unit`, or `abandon-review-unit`. Confirm the PR body’s
-`Repair Escalation` names the human decision receipt and resulting disposition.
-A third substantial cycle cannot remain in that review unit; close or supersede
-it through the selected route, preserving a link to its history.
+route before re-review: `continue-current-unit`, `replan-current-unit`,
+`proposal-amendment`, `split-or-replace-review-unit`, or
+`abandon-review-unit`. Confirm the PR body’s `Repair Escalation` names the
+authorized decision receipt, owner/time, route, and disposition. A third or later
+substantial cycle can remain in that review unit only when the renewed topology
+audit proves the same singular contract, owner, abstraction, coherent diff, and
+disposed findings; otherwise the audit must select amendment, split/replacement,
+or abandonment. Replacement lineage remains governed by issue #118, and a new
+PR number is not evidence of reviewability.

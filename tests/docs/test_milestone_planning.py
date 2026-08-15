@@ -312,6 +312,8 @@ class MilestonePlanningTests(unittest.TestCase):
     def test_pr_body_edits_revalidate_repair_receipts(self) -> None:
         text = TEST_WORKFLOW.read_text(encoding="utf-8")
         self.assertRegex(text, r"types:.*\bedited\b")
+        self.assertIn("pull-requests: read", text)
+        self.assertIn("GH_TOKEN:", text)
 
     def test_pr_body_edits_rerun_review_kind_validation(self) -> None:
         text = TEST_WORKFLOW.read_text(encoding="utf-8")
@@ -358,8 +360,12 @@ class MilestonePlanningTests(unittest.TestCase):
         self.assertIn("human operator or meta-manager", normalized)
         self.assertIn("continue-current-unit", text)
         self.assertIn("Repair Continuation Audit", text)
-        self.assertIn("fresh-context or", normalized)
-        self.assertIn("a new PR number is never evidence", normalized)
+        self.assertIn("fresh-context review", normalized)
+        self.assertIn("new PR number cannot authorize", normalized)
+        self.assertIn("currently fails closed", normalized)
+        self.assertIn("becomes authoritative only after", normalized)
+        self.assertIn("already open at merge do not migrate automatically", normalized)
+        self.assertIn("introducing PR remains governed by its base contract", normalized)
         self.assertIn("Repair Cycle Ledger", text)
         self.assertIn("Repair Escalation", text)
 

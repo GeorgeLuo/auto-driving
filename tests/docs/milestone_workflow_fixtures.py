@@ -294,61 +294,37 @@ Exercise current, bounded-stale, beyond-bound, and malformed observations.
 
 def repair_cycle_governance_body(
     *,
-    rows: str = "| None | None | None | None | None |",
-    status: str = "not-required",
-    decision_receipt: str = "None",
-    route: str = "None",
-    disposition: str = "Continue under the current review question.",
-    decision_owner: str = "None",
-    decision_time: str = "None",
-    continuation_status: str = "not-required",
-    audited_cycle: str = "None",
-    continuation_receipt: str = "None",
-    accepted_contract: str = "None",
-    primary_question: str = "None",
-    owner_abstraction: str = "None",
-    coherent_diff: str = "None",
-    prior_findings: str = "None",
-    cumulative_history: str = "None",
-    fresh_context: str = "None",
-    replacement_lineage: str = "None",
-    risk_disposition: str = "None",
-    finding_rows: str = "| None | None |",
+    rows: str = "| None | None | None | None | None | None |",
+    escalation_rows: str = (
+        "| None | None | None | None | None | None | None | None | None | None |"
+    ),
+    audit_rows: str = (
+        "| None | None | None | None | None | None | None | None | None | None |"
+    ),
+    finding_rows: str = "| None | None | None | None | None |",
 ) -> str:
     return f"""## Repair Cycle Ledger
 
-| Cycle | Review receipt | Classification | Repair revision | Contract impact |
-| --- | --- | --- | --- | --- |
+| Cycle | Review receipt | Classification | Highest severity | Repair revision | Contract impact |
+| --- | --- | --- | --- | --- | --- |
 {rows}
 
 ## Repair Escalation
 
-- Status: `{status}`
-- Decision receipt: {decision_receipt}
-- Decision owner/role: {decision_owner}
-- Decision time: {decision_time}
-- Route: {route}
-- Disposition: {disposition}
+| Substantial cycle | Decision receipt | Decision owner | Decision role | Decision time | Route | Audited head | Fresh-context review | Finding manifest | Disposition |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+{escalation_rows}
 
 ## Repair Continuation Audit
 
-- Status: `{continuation_status}`
-- Audited substantial cycle: {audited_cycle}
-- Continuation receipt: {continuation_receipt}
-- Accepted contract: {accepted_contract}
-- Primary question: {primary_question}
-- Enforcement owner/abstraction: {owner_abstraction}
-- Coherent diff: {coherent_diff}
-- Prior findings: {prior_findings}
-- Cumulative history: {cumulative_history}
-- Fresh-context review: {fresh_context}
-- Replacement lineage: {replacement_lineage}
-- Risk disposition: {risk_disposition}
+| Substantial cycle | Decision receipt | Accepted contract | Primary question | Enforcement owner/abstraction | Coherent diff | Prior findings | Cumulative history | Replacement lineage | Risk disposition |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+{audit_rows}
 
 ### Prior Finding Dispositions
 
-| Finding | Disposition |
-| --- | --- |
+| Substantial cycle | Finding | Disposition | Repair revision | Disposition receipt |
+| --- | --- | --- | --- | --- |
 {finding_rows}
 """
 

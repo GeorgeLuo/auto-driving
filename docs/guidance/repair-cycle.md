@@ -37,14 +37,16 @@ Do not self-downgrade a disputed or missing classification; treat it as
 substantial until the reviewer resolves it. At the second substantial cycle,
 stop before re-review and hand the unit to the operator or meta-manager for a
 canonical exact-head GitHub decision review. Its currently authorized actor must
-differ from the PR author. A second canonical fresh-context totality review must
-follow it on the same head and also come from someone other than the PR author.
-Append both receipts and the GitHub-owned actor/time to `Repair Escalation`, copy
-the decision topology into `Repair Continuation Audit`, and list the exact
-cumulative finding set in `Prior Finding Dispositions`. Bind resolved findings
-to full repair revisions and the decision receipt. Preserve every prior row and
-use distinct receipts for every later substantial cycle. A reviewer-owned P0
-invokes this stop immediately and requires a risk disposition.
+declare either an independent-account or same-account-fresh-context basis. A
+second canonical fresh-context totality review must follow it on the same head
+with the same explicit actor-basis rule. Append both receipts and the
+GitHub-owned actor/time to `Repair Escalation`, copy the decision topology into
+`Repair Continuation Audit`, and list the exact cumulative finding set in `Prior
+Finding Dispositions`. Bind resolved findings to full repair revisions and the
+decision receipt; a carried-forward finding must name its next repair path.
+Preserve every prior row and use distinct receipts for every later substantial
+cycle. A reviewer-owned P0 invokes this stop immediately and requires a risk
+disposition.
 
 ## Reviewer
 
@@ -65,7 +67,8 @@ route before re-review: `continue-current-unit`, `replan-current-unit`,
 GitHub decision actor, submission time, audited head, route, cumulative manifest,
 and fresh-context receipt. A third or later substantial cycle can remain in that
 review unit only when distinct renewed receipts and the topology audit prove the
-same singular contract, owner, abstraction, coherent diff, and resolved exact
-finding set. Replacement lineage remains governed by issue #118; its machine
-route currently fails closed, and a new PR number is not evidence of
-reviewability.
+same singular contract, owner, abstraction, coherent diff, and explicit exact
+finding dispositions. The final completion handoff, not the continuation
+authorization, requires the exact finding set to be resolved. Replacement
+lineage remains governed by issue #118; its machine route currently fails
+closed, and a new PR number is not evidence of reviewability.

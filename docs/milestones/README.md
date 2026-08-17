@@ -211,9 +211,12 @@ submission time, one route, exact audited repair head, fresh-context review URL,
 cumulative finding manifest, and disposition. The decision review must contain
 only the canonical decision fields, be attached to that exact head, come from a
 currently authorized actor other than the PR author, and follow the cycle's
-verdict. A second canonical GitHub review on the same head must follow the
-decision and record a totality fresh-context pass. Its actor must also differ
-from the PR author. A URL, role label, timestamp, or route copied into the PR body
+verdict. The canonical receipt declares whether its actor basis is an
+independent account or a same-account fresh-context agent. A second canonical
+GitHub review on the same head must follow the decision and record a totality
+fresh-context pass. Same-account agents are valid when the receipt declares that
+basis; the receipt does not pretend that one GitHub login is an independent
+authenticity root. A URL, role label, timestamp, or route copied into the PR body
 does not establish any of those facts by itself.
 
 For this executable gate, the review unit's repair author is the PR author. A
@@ -226,6 +229,7 @@ The decision actor submits an unedited `COMMENTED` GitHub review containing only
 
 - Substantial cycle: <ordinal>
 - Decision role: <operator|meta-manager>
+- Actor basis: <independent-account|same-account-fresh-context>
 - Route: <selected route>
 - Audited head: <full repair SHA>
 - Accepted contract: <unchanged|changed>
@@ -248,6 +252,7 @@ containing only:
 
 - Substantial cycle: <same ordinal>
 - Audited head: <same full repair SHA>
+- Actor basis: <independent-account|same-account-fresh-context>
 - Finding manifest: <same ordered comma-separated GitHub finding URLs>
 - Scope: totality
 - Outcome: totality-reviewed
@@ -269,10 +274,12 @@ A reviewer-owned P0 requires the same stop immediately, even before the second
 substantial cycle, and the canonical decision must record a non-empty risk
 disposition. `continue-current-unit` additionally requires an unchanged
 contract, singular question, unchanged owner and abstraction, coherent diff,
-and every cumulative finding resolved. `replan-current-unit` is unavailable
-after the second substantial cycle. Receipt reuse, edited receipts, stale heads,
-ambiguous content, unauthorized or self-authored-only decisions, and invalid
-chronology fail closed.
+and an explicit disposition for every cumulative finding. A deferred or
+carried-forward finding may remain open while the authorized continuation does
+the repair; the completion/merge handoff separately requires every finding to be
+`resolved`. `replan-current-unit` is unavailable after the second substantial
+cycle. Receipt reuse, edited receipts, stale heads, ambiguous content,
+unauthorized actors, an actor-basis mismatch, and invalid chronology fail closed.
 
 Replacement review units remain subject to the replacement-lineage contract in
 issue #118. Until that contract has a structured metadata verifier, the
@@ -284,13 +291,30 @@ This revision becomes authoritative only after the PR introducing it merges
 into the governing base. The introducing PR remains governed by its base
 contract and cannot use the proposed rule to authorize itself. Review units
 already open at merge do not migrate automatically. A migration requires an
-explicit, durable operator or meta-manager GitHub decision receipt for that
-specific PR, naming the prior governing base, adopted contract revision,
-cumulative cycle totals and classifications, exact unresolved-finding manifest,
-and migration point. The PR body must preserve that history. Until both the
-governing base and receipt are updated, the older contract continues to apply;
-this migration decision is a reviewed human boundary, not a claim currently
-made by the repair-receipt validator.
+explicit `## Repair Contract Migration` receipt for that specific PR, naming the
+prior governing base, adopted contract revision, cumulative cycle totals and
+classifications, exact unresolved-finding manifest, migration point, durable
+decision receipt, selected route, and disposition. The PR body must preserve that
+history. The migration boundary is human-authored but its identity, schema, and
+cycle summary are machine-checked; later repair cycles use the new canonical
+receipts.
+
+The migration receipt uses this exact shape:
+
+```text
+## Repair Contract Migration
+
+- PR: #<number>
+- Prior governing base: <full commit SHA>
+- Adopted contract: <full contract merge SHA>
+- Cumulative cycles: <integer>
+- Cumulative classifications: <minor|substantial, ...>
+- Unresolved finding manifest: <ordered comma-separated durable URLs or None>
+- Migration point: <full commit SHA>
+- Decision receipt: <durable GitHub issue-comment URL>
+- Route: <selected route>
+- Disposition: <unambiguous migration decision>
+```
 
 Create a separate repair review unit only when a distinct PR is genuinely
 necessary.
@@ -1264,10 +1288,12 @@ on a specific proposal head and preserve that fact separately from merge
 ancestry. For repair cycles it can prove that declared cycles advance through the
 PR commit order; classification, highest severity, and finding IDs come from the
 linked reviewer-owned GitHub evidence; decision and fresh-context actors have
-current authority and differ from the PR author; receipt content, exact head,
-time, route, manifest, and chronology agree; and every required historical row
-and exact finding disposition remains present. A same-unit continuation also has
-to pass the topology audit with every finding resolved. Replacement currently
+current authority and an actor-basis declaration consistent with the PR author;
+receipt content, exact head, time, route, manifest, and chronology agree; and every
+required historical row and exact finding disposition remains present. An
+authorized same-unit continuation may carry a deferred or carried-forward
+finding, while the completion handoff requires every finding resolved.
+Replacement currently
 fails closed until issue #118 supplies structured lineage verification; a new PR
 number is not reviewability evidence.
 The repository also guarantees that the current state and next handoff are

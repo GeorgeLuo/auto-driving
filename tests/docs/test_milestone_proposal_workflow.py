@@ -242,6 +242,7 @@ def _governed_repair_case(
 
 - Substantial cycle: {substantial_cycle}
 - Decision role: meta-manager
+- Actor basis: independent-account
 - Route: {route}
 - Audited head: {audited_head}
 - Accepted contract: {accepted_contract}
@@ -258,6 +259,7 @@ def _governed_repair_case(
 
 - Substantial cycle: {substantial_cycle}
 - Audited head: {audited_head}
+- Actor basis: independent-account
 - Finding manifest: {manifest_text}
 - Scope: totality
 - Outcome: totality-reviewed"""
@@ -654,6 +656,74 @@ class RepairCycleGovernanceTests(unittest.TestCase):
             2,
         )
 
+    def test_continuation_can_carry_forward_finding_but_completion_rejects(self) -> None:
+        body, metadata = _governed_repair_case(
+            classifications=("substantial", "substantial"),
+            severities=("P1", "P1"),
+            routes={2: "continue-current-unit"},
+        )
+        decision = _metadata_review(metadata, "pullrequestreview-202")
+        decision["body"] = str(decision["body"]).replace(
+            "Prior findings: all-disposed",
+            "Prior findings: not-all-disposed",
+        )
+        body = body.replace(
+            "| 2 | https://github.com/example/repository/pull/60#pullrequestreview-202 | "
+            "unchanged | singular | unchanged | yes | all-disposed |",
+            "| 2 | https://github.com/example/repository/pull/60#pullrequestreview-202 | "
+            "unchanged | singular | unchanged | yes | not-all-disposed |",
+        )
+        body = re.sub(
+            r"(\| 2 \| https://github.com/example/repository/pull/60#discussion_r\d+ \| )"
+            r"resolved( \|) [0-9a-f]+( \| https://github.com/example/repository/pull/60#pullrequestreview-202 \|)",
+            r"\1carried-forward: https://github.com/example/repository/issues/118\2 None\3",
+            body,
+        )
+        self.assertEqual(
+            validate_repair_cycle_governance_body(body, review_metadata=metadata),
+            2,
+        )
+        with self.assertRaisesRegex(PlanContractError, "completion requires"):
+            validate_repair_cycle_governance_body(
+                body,
+                review_metadata=metadata,
+                require_resolved_findings=True,
+            )
+
+    def test_open_review_unit_migration_preserves_historical_cycles(self) -> None:
+        migration = """## Repair Contract Migration
+
+- PR: #60
+- Prior governing base: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+- Adopted contract: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+- Cumulative cycles: 2
+- Cumulative classifications: substantial, substantial
+- Unresolved finding manifest: https://github.com/example/repository/pull/60#discussion_r401
+- Migration point: cccccccccccccccccccccccccccccccccccccccc
+- Decision receipt: https://github.com/example/repository/pull/60#issuecomment-999
+- Route: continue-current-unit
+- Disposition: Continue the existing review unit under the adopted contract.
+"""
+        metadata = RepairReviewMetadata(
+            pull_request_number=60,
+            pull_request_url=REPAIR_PR_URL,
+            pull_request_author=REPAIR_PR_AUTHOR,
+            head_oid="d" * 40,
+            commits=("d" * 40,),
+            reviews=(),
+        )
+        body = repair_cycle_governance_body() + "\n" + migration
+        self.assertEqual(
+            validate_repair_cycle_governance_body(body, review_metadata=metadata),
+            2,
+        )
+        with self.assertRaisesRegex(PlanContractError, "migrated finding"):
+            validate_repair_cycle_governance_body(
+                body,
+                review_metadata=metadata,
+                require_resolved_findings=True,
+            )
+
     def test_minor_cycles_do_not_consume_substantial_cycle_budget(self) -> None:
         body, metadata = _governed_repair_case(
             classifications=("minor", "substantial"),
@@ -813,7 +883,7 @@ class RepairCycleGovernanceTests(unittest.TestCase):
         with self.assertRaisesRegex(PlanContractError, "changed accepted contract"):
             validate_repair_cycle_governance_body(body, review_metadata=metadata)
 
-    def test_decision_actor_must_differ_from_repair_author(self) -> None:
+    def test_same_account_decision_requires_explicit_actor_basis(self) -> None:
         body, metadata = _governed_repair_case(
             classifications=("substantial", "substantial"),
             severities=("P1", "P1"),
@@ -821,8 +891,17 @@ class RepairCycleGovernanceTests(unittest.TestCase):
         metadata = copy.deepcopy(metadata)
         decision = _metadata_review(metadata, "pullrequestreview-202")
         decision["author"] = {"login": REPAIR_PR_AUTHOR}
-        with self.assertRaisesRegex(PlanContractError, "other than the repair author"):
+        with self.assertRaisesRegex(PlanContractError, "Actor basis"):
             validate_repair_cycle_governance_body(body, review_metadata=metadata)
+        decision["body"] = str(decision["body"]).replace(
+            "Actor basis: independent-account",
+            "Actor basis: same-account-fresh-context",
+        )
+        body = body.replace("| operator-reviewer | meta-manager |", f"| {REPAIR_PR_AUTHOR} | meta-manager |")
+        self.assertEqual(
+            validate_repair_cycle_governance_body(body, review_metadata=metadata),
+            2,
+        )
 
     def test_fresh_review_requires_current_authority(self) -> None:
         body, metadata = _governed_repair_case(

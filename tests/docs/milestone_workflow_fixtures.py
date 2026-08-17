@@ -294,24 +294,38 @@ Exercise current, bounded-stale, beyond-bound, and malformed observations.
 
 def repair_cycle_governance_body(
     *,
-    rows: str = "| None | None | None | None | None |",
-    status: str = "not-required",
-    decision_receipt: str = "None",
-    route: str = "None",
-    disposition: str = "Continue under the current review question.",
+    rows: str = "| None | None | None | None | None | None |",
+    escalation_rows: str = (
+        "| None | None | None | None | None | None | None | None | None | None |"
+    ),
+    audit_rows: str = (
+        "| None | None | None | None | None | None | None | None | None | None |"
+    ),
+    finding_rows: str = "| None | None | None | None | None |",
 ) -> str:
     return f"""## Repair Cycle Ledger
 
-| Cycle | Review receipt | Classification | Repair revision | Contract impact |
-| --- | --- | --- | --- | --- |
+| Cycle | Review receipt | Classification | Highest severity | Repair revision | Contract impact |
+| --- | --- | --- | --- | --- | --- |
 {rows}
 
 ## Repair Escalation
 
-- Status: `{status}`
-- Decision receipt: {decision_receipt}
-- Route: {route}
-- Disposition: {disposition}
+| Substantial cycle | Decision receipt | Decision owner | Decision role | Decision time | Route | Audited head | Fresh-context review | Finding manifest | Disposition |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+{escalation_rows}
+
+## Repair Continuation Audit
+
+| Substantial cycle | Decision receipt | Accepted contract | Primary question | Enforcement owner/abstraction | Coherent diff | Prior findings | Cumulative history | Replacement lineage | Risk disposition |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+{audit_rows}
+
+### Prior Finding Dispositions
+
+| Substantial cycle | Finding | Disposition | Repair revision | Disposition receipt |
+| --- | --- | --- | --- | --- |
+{finding_rows}
 """
 
 

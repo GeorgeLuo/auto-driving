@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="1d6343020ed82a750528c9f5ca1d70092d906604670e2c12cc5f3138a3d03e33">
+  <meta name="source-sha256" content="9de5a9e9b1b33f46c1e4a260acbd33f95f370ccf925d39d250d41161e362f552">
   <base target="_blank">
   <title>Milestone Planning And Delivery Contract</title>
   <style>
@@ -203,26 +203,114 @@ substantial until the reviewer resolves it.</p>
 <li>assumptions still unverified.</li>
 </ul>
 <p>Every review-unit PR body keeps a <code>Repair Cycle Ledger</code> with the verdict receipt,
-classification, repair revision, and contract impact for each cycle. The count
-belongs to the review unit and does not reset after force-push, reopen, or a
-change of author.</p>
+classification, highest severity, full repair revision, and contract impact for
+each cycle. The receipt must identify one unedited GitHub review on that PR. Its
+reviewed head, reviewer-owned classification, <code>[P0]</code> through <code>[P3]</code> inline
+finding headings, stable finding URLs, and GitHub submission time are the
+authority; author-written summaries are not. The repair revision must follow the
+reviewed head in the PR commit sequence. The count belongs to the review unit and
+does not reset after force-push, reopen, or a change of author.</p>
+<p>The consolidated verdict body contains exactly one line in the form
+<code>Classification: minor</code> or <code>Classification: substantial</code>. Every inline comment
+attached to that verdict begins with <code>[P0]</code>, <code>[P1]</code>, <code>[P2]</code>, or <code>[P3]</code>; those
+comments are the exact manifest. A verdict may also state
+<code>Highest severity: P&lt;n&gt;</code>, but when present it must equal the highest inline
+severity.</p>
 <p>After the <strong>second substantial</strong> cycle, stop before requesting re-review. A
 human operator or meta-manager—not the repair author acting alone—must record a
-durable escalation decision and select exactly one route:</p>
+durable escalation decision, name the decision owner and time, and select exactly
+one route:</p>
 <ul>
-<li><code>replan-current-unit</code> when the accepted contract remains unchanged and the
+<li>
+<p><code>continue-current-unit</code> when the topology audit below confirms that the
+  existing singular review unit still closes the same contract at the same
+  owner and abstraction;</p>
+</li>
+<li>
+<p><code>replan-current-unit</code> when the accepted contract remains unchanged and the
   question is still singular, but the owner or implementation approach needs an
-  explicit reset;</li>
+  explicit reset;</p>
+</li>
 <li><code>proposal-amendment</code> when the accepted contract must change;</li>
 <li><code>split-or-replace-review-unit</code> when the question or scope is not singular; or</li>
 <li><code>abandon-review-unit</code> when the claim should not proceed.</li>
 </ul>
-<p>Record that receipt, route, and disposition in <code>Repair Escalation</code> before
-re-review. A third substantial cycle cannot remain in the same review unit; it
-must be split, replaced, amended through a replacement implementation review,
-or abandoned. A replacement review unit starts its own count but links the
-decision receipt and superseded PR so the reset is explicit rather than a way to
-erase repair history.</p>
+<p>Before re-review, append the decision to <code>Repair Escalation</code>; never replace an
+earlier decision row. Each row is keyed by substantial-cycle ordinal and copies
+the immutable GitHub review URL, actual reviewer login, declared role, GitHub
+submission time, one route, exact audited repair head, fresh-context review URL,
+cumulative finding manifest, and disposition. The decision review must contain
+only the canonical decision fields, be attached to that exact head, come from a
+currently authorized actor other than the PR author, and follow the cycle's
+verdict. A second canonical GitHub review on the same head must follow the
+decision and record a totality fresh-context pass. Its actor must also differ
+from the PR author. A URL, role label, timestamp, or route copied into the PR body
+does not establish any of those facts by itself.</p>
+<p>For this executable gate, the review unit's repair author is the PR author. A
+different committer on one revision does not let the PR author self-authorize.</p>
+<p>The decision actor submits an unedited <code>COMMENTED</code> GitHub review containing only:</p>
+<pre><code class="language-text">## Repair Continuation Decision
+
+- Substantial cycle: &lt;ordinal&gt;
+- Decision role: &lt;operator|meta-manager&gt;
+- Route: &lt;selected route&gt;
+- Audited head: &lt;full repair SHA&gt;
+- Accepted contract: &lt;unchanged|changed&gt;
+- Primary question: &lt;singular|not-singular&gt;
+- Enforcement owner/abstraction: &lt;unchanged|changed&gt;
+- Coherent diff: &lt;yes|no&gt;
+- Prior findings: &lt;all-disposed|not-all-disposed&gt;
+- Cumulative history: visible-in-current-ledger
+- Finding manifest: &lt;ordered comma-separated GitHub finding URLs&gt;
+- Replacement lineage: None
+- Risk disposition: &lt;disposition or None&gt;
+- Disposition: &lt;unambiguous decision&gt;
+</code></pre>
+<p>The later fresh-context actor submits a separate unedited <code>COMMENTED</code> review
+containing only:</p>
+<pre><code class="language-text">## Repair Fresh-Context Review
+
+- Substantial cycle: &lt;same ordinal&gt;
+- Audited head: &lt;same full repair SHA&gt;
+- Finding manifest: &lt;same ordered comma-separated GitHub finding URLs&gt;
+- Scope: totality
+- Outcome: totality-reviewed
+</code></pre>
+<p>Append the same cycle to <code>Repair Continuation Audit</code>; never rewrite an earlier
+audit row. The audit fields must match the canonical decision review exactly. It
+records whether the accepted contract, primary question, enforcement owner and
+abstraction, and diff topology remain suitable, plus cumulative history,
+replacement lineage, and risk disposition. <code>Prior Finding Dispositions</code> is also
+append-only by substantial cycle. For each required decision it contains the
+exact cumulative set of stable inline-finding URLs—no missing, duplicate, or
+invented rows—and binds every resolved or superseded finding to a later repair
+revision and that cycle's decision receipt.</p>
+<p>The decision and fresh-context receipts are required at the second substantial
+cycle and are renewed with distinct receipts at every later substantial cycle.
+A reviewer-owned P0 requires the same stop immediately, even before the second
+substantial cycle, and the canonical decision must record a non-empty risk
+disposition. <code>continue-current-unit</code> additionally requires an unchanged
+contract, singular question, unchanged owner and abstraction, coherent diff,
+and every cumulative finding resolved. <code>replan-current-unit</code> is unavailable
+after the second substantial cycle. Receipt reuse, edited receipts, stale heads,
+ambiguous content, unauthorized or self-authored-only decisions, and invalid
+chronology fail closed.</p>
+<p>Replacement review units remain subject to the replacement-lineage contract in
+issue #118. Until that contract has a structured metadata verifier, the
+<code>split-or-replace-review-unit</code> machine path fails closed; an arbitrary reference
+or new PR number cannot authorize a count reset or claim cumulative lineage.
+Count alone does not manufacture a replacement.</p>
+<p>This revision becomes authoritative only after the PR introducing it merges
+into the governing base. The introducing PR remains governed by its base
+contract and cannot use the proposed rule to authorize itself. Review units
+already open at merge do not migrate automatically. A migration requires an
+explicit, durable operator or meta-manager GitHub decision receipt for that
+specific PR, naming the prior governing base, adopted contract revision,
+cumulative cycle totals and classifications, exact unresolved-finding manifest,
+and migration point. The PR body must preserve that history. Until both the
+governing base and receipt are updated, the older contract continues to apply;
+this migration decision is a reviewed human boundary, not a claim currently
+made by the repair-receipt validator.</p>
 <p>Create a separate repair review unit only when a distinct PR is genuinely
 necessary.</p>
 <h3>HITL Implementation Adjunct</h3>
@@ -944,18 +1032,21 @@ not rewrite its own acceptance boundary.</p>
 <p>Approval does <strong>not</strong> mean the milestone is complete, every improvement belongs
 in this PR, the next frontier is automatically approved, or external
 assumptions are proven.</p>
-<p>Every review-unit template includes two shared state receipts:</p>
+<p>Every review-unit template includes three shared state receipts:</p>
 <ul>
-<li><code>Repair Cycle Ledger</code>, whose cycle numbers are consecutive and whose review
-  receipt, classification, repair revision, and contract impact are updated
-  before re-review; and</li>
-<li><code>Repair Escalation</code>, which stays <code>not-required</code> until escalation occurs and
-  becomes <code>completed</code> with a durable human decision receipt, route, and
-  disposition at the second substantial cycle.</li>
+<li><code>Repair Cycle Ledger</code>, whose cycle numbers are consecutive and whose exact
+  GitHub verdict receipt, reviewer-owned classification and highest severity,
+  full repair revision, and contract impact are updated before re-review;</li>
+<li>append-only <code>Repair Escalation</code>, with one GitHub-bound authority, time, route,
+  exact-head, fresh-context, finding-manifest, and disposition row for every
+  required substantial cycle; and</li>
+<li>append-only <code>Repair Continuation Audit</code> and <code>Prior Finding Dispositions</code>, which
+  mirror the canonical decision review and preserve exact cumulative findings,
+  repair revisions, decision receipts, topology, history, and risk disposition.</li>
 </ul>
-<p>The ledger contains one all-<code>None</code> row for an initial review. Do not delete a
-prior row, combine separate verdict rounds, or downgrade a reviewer’s
-classification in order to pass the gate.</p>
+<p>Each table contains one all-<code>None</code> row for an initial review. Do not delete or
+rewrite a prior row, combine verdict rounds, downgrade reviewer-owned severity or
+classification, or reuse a decision or fresh-context receipt to pass the gate.</p>
 <h3>Proposal PR Template</h3>
 <p>Use <code>.github/PULL_REQUEST_TEMPLATE/proposal.md</code>. The proposal document itself is
 the durable contract; the PR body gives the reviewer its milestone context,
@@ -981,6 +1072,7 @@ is present. Proposal amendments use the same canonical review kind.</p>
 <li>Scope reconciliation</li>
 <li>Repair cycle ledger</li>
 <li>Repair escalation</li>
+<li>Repair continuation audit</li>
 <li>Validation</li>
 <li>Review notes</li>
 </ul>
@@ -1089,7 +1181,8 @@ dependency lives in another repository.</p>
 Revision: `&lt;commit&gt;`
 Cycle: `&lt;consecutive integer&gt;`
 Classification: `&lt;minor | substantial&gt;`
-Review receipt: `&lt;durable link to the consolidated verdict&gt;`
+Highest severity: `&lt;P0 | P1 | P2 | P3&gt;`
+Review receipt: `&lt;exact GitHub review URL for the consolidated verdict&gt;`
 
 ### Finding 1 — &lt;title&gt;
 
@@ -1108,9 +1201,13 @@ Review receipt: `&lt;durable link to the consolidated verdict&gt;`
 &lt;Additional cases checked after repair&gt;
 </code></pre>
 <p>One review-and-repair cycle is normal. The second substantial cycle invokes the
-hard escalation rule in <a href="#repair-cycle">Repair Cycle</a>; do not request another
-review until its human decision receipt and disposition are recorded. A third
-substantial cycle cannot remain in the same review unit.</p>
+escalation and topology-audit rules in <a href="#repair-cycle">Repair Cycle</a>; do not
+request another review until the exact-head decision and later fresh-context
+GitHub reviews, append-only escalation/audit rows, and exact finding dispositions
+are recorded. A third or later substantial cycle may remain in the same review
+unit only through distinct renewed receipts and a verified continuation audit;
+otherwise amendment or abandonment must stop the unit. Split/replacement remains
+fail-closed until issue #118 has structured lineage verification.</p>
 <p>Before every review or re-review request, reconcile the PR description to the
 current diff. Refresh the review question when its wording no longer matches,
 the enforcement or acceptance owner, affected paths, adversarial matrix, file
@@ -1226,7 +1323,9 @@ proposal, an accepted amendment, or the frozen frontier. An adjunct PR must use
 the reserved child branch, current parent head, completed HITL template, and
 immutable milestone contract artifacts.
 For each recognized milestone review-unit transition and adjunct, CI also
-validates the PR body’s declared repair ledger and hard escalation receipt. The
+fetches GitHub PR reviews, inline comments, authority, and commit order, then
+validates the declared repair ledger, append-only escalation and continuation
+rows, and exact finding dispositions. The
 pull-request workflow runs when that body is edited so a newly recorded
 decision can satisfy the gate without an unrelated code commit. The same
 sections remain required human-visible state in cumulative milestone and
@@ -1237,16 +1336,24 @@ that omits required fields or history is rejected.</p>
 <p>CI supplies <code>validate-pr</code> with the PR event payload. For an equivalent local
 check, save the current PR description and pass it with
 <code>--pr-body-file &lt;path&gt;</code>; a milestone proposal, amendment, or implementation
-cannot receive a complete validation result without its PR body.</p>
+cannot receive a complete validation result without its PR body. A local body
+with declared repair cycles also cannot establish GitHub evidence by itself;
+the event-backed CI path supplies that metadata.</p>
 <p>The machine cannot discover an unrecorded review round, decide whether a cycle
 was intellectually substantial, prove that the named decision author had sound
 judgment, prove which model authored a phase, prove that a reviewer understood a
 proposal, or prove that approval was intellectually sound. The reviewer and
 operator own those judgments. It can prove that a decisive review was submitted
 on a specific proposal head and preserve that fact separately from merge
-ancestry. The gate also guarantees that declared cycles are consecutive, the
-second declared substantial cycle has an explicit decision receipt and route,
-and a third declared substantial cycle cannot be merged as the same review unit.
+ancestry. For repair cycles it can prove that declared cycles advance through the
+PR commit order; classification, highest severity, and finding IDs come from the
+linked reviewer-owned GitHub evidence; decision and fresh-context actors have
+current authority and differ from the PR author; receipt content, exact head,
+time, route, manifest, and chronology agree; and every required historical row
+and exact finding disposition remains present. A same-unit continuation also has
+to pass the topology audit with every finding resolved. Replacement currently
+fails closed until issue #118 supplies structured lineage verification; a new PR
+number is not reviewability evidence.
 The repository also guarantees that the current state and next handoff are
 visible, the accepted proposal is durable, proposal and implementation diffs
 are separate, and implementation cannot pass CI before proposal acceptance.</p>

@@ -14,7 +14,12 @@ Treat one consolidated changes-requested verdict followed by its repair revision
 as one cycle, regardless of the number of findings, comments, or commits. Before
 requesting re-review, add one consecutive row to the PR body’s `Repair Cycle
 Ledger` with the verdict receipt, reviewer-owned `minor` or `substantial`
-classification, repair revision, and contract impact.
+classification and highest severity, full repair revision, and contract impact.
+Use the exact unedited GitHub review URL. The review's attached head and stable
+`[P0]`–`[P3]` inline-comment URLs—not author prose—own the finding manifest.
+Put exactly one `Classification: minor` or `Classification: substantial` line in
+the consolidated verdict body, and begin every attached inline finding with its
+severity.
 
 For each finding, record:
 
@@ -31,8 +36,15 @@ fresh adversarial pass before requesting re-review.
 Do not self-downgrade a disputed or missing classification; treat it as
 substantial until the reviewer resolves it. At the second substantial cycle,
 stop before re-review and hand the unit to the operator or meta-manager for a
-durable escalation decision. The implementing or repair author cannot supply
-that decision alone.
+canonical exact-head GitHub decision review. Its currently authorized actor must
+differ from the PR author. A second canonical fresh-context totality review must
+follow it on the same head and also come from someone other than the PR author.
+Append both receipts and the GitHub-owned actor/time to `Repair Escalation`, copy
+the decision topology into `Repair Continuation Audit`, and list the exact
+cumulative finding set in `Prior Finding Dispositions`. Bind resolved findings
+to full repair revisions and the decision receipt. Preserve every prior row and
+use distinct receipts for every later substantial cycle. A reviewer-owned P0
+invokes this stop immediately and requires a risk disposition.
 
 ## Reviewer
 
@@ -47,8 +59,13 @@ failure class. A cycle is minor only for editorial, evidence-formatting, or
 localized P3 work that changes none of those surfaces.
 
 One substantial repair cycle is normal. At the second, require one recorded
-route before re-review: `replan-current-unit`, `proposal-amendment`,
-`split-or-replace-review-unit`, or `abandon-review-unit`. Confirm the PR body’s
-`Repair Escalation` names the human decision receipt and resulting disposition.
-A third substantial cycle cannot remain in that review unit; close or supersede
-it through the selected route, preserving a link to its history.
+route before re-review: `continue-current-unit`, `replan-current-unit`,
+`proposal-amendment`, `split-or-replace-review-unit`, or
+`abandon-review-unit`. Confirm each append-only escalation row matches the exact
+GitHub decision actor, submission time, audited head, route, cumulative manifest,
+and fresh-context receipt. A third or later substantial cycle can remain in that
+review unit only when distinct renewed receipts and the topology audit prove the
+same singular contract, owner, abstraction, coherent diff, and resolved exact
+finding set. Replacement lineage remains governed by issue #118; its machine
+route currently fails closed, and a new PR number is not evidence of
+reviewability.

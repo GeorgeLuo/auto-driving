@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 import re
 import subprocess
@@ -11,6 +12,8 @@ from pathlib import Path
 from docs.milestones.workflow import (
     ContractReviewReceipt,
     PlanContractError,
+    RepairReviewMetadata,
+    _fetch_pr_repair_review_metadata,
     _fetch_pr_review_metadata,
     accept_proposal,
     accept_proposal_amendment,
@@ -95,6 +98,243 @@ def _accepted_review_receipt(
         reviewer_association="COLLABORATOR",
         submitted_at="2026-08-12T18:00:00Z",
     )
+
+
+REPAIR_PR_URL = "https://github.com/example/repository/pull/60"
+REPAIR_PR_AUTHOR = "repair-author"
+
+
+def _repair_review_record(
+    *,
+    url: str,
+    body: str,
+    head_oid: str,
+    submitted_at: str,
+    actor: str,
+    comments: list[dict[str, str]] | None = None,
+    state: str = "COMMENTED",
+    association: str = "COLLABORATOR",
+    can_push: bool = True,
+) -> dict[str, object]:
+    comment_nodes = comments or []
+    return {
+        "url": url,
+        "state": state,
+        "body": body,
+        "commit": {"oid": head_oid},
+        "submittedAt": submitted_at,
+        "author": {"login": actor},
+        "authorAssociation": association,
+        "authorCanPushToRepository": can_push,
+        "includesCreatedEdit": False,
+        "comments": {
+            "nodes": comment_nodes,
+            "totalCount": len(comment_nodes),
+        },
+    }
+
+
+def _governed_repair_case(
+    *,
+    classifications: tuple[str, ...] = ("substantial",),
+    severities: tuple[str, ...] = ("P1",),
+    routes: dict[int, str] | None = None,
+    risk_dispositions: dict[int, str] | None = None,
+) -> tuple[str, RepairReviewMetadata]:
+    if len(classifications) != len(severities):
+        raise AssertionError("classification and severity fixtures must align")
+    routes = routes or {}
+    risk_dispositions = risk_dispositions or {}
+    commits = [f"{index:x}" * 40 for index in range(1, len(classifications) + 2)]
+    reviews: list[dict[str, object]] = []
+    ledger_rows: list[str] = []
+    findings: list[str] = []
+    substantial_to_cycle: dict[int, int] = {}
+    substantial_count = 0
+    p0_cycles: set[int] = set()
+
+    for cycle, (classification, severity) in enumerate(
+        zip(classifications, severities, strict=True),
+        start=1,
+    ):
+        reviewed_head = commits[cycle - 1]
+        repair_head = commits[cycle]
+        verdict_url = f"{REPAIR_PR_URL}#pullrequestreview-{100 + cycle}"
+        finding_url = f"{REPAIR_PR_URL}#discussion_r{400 + cycle}"
+        reviews.append(
+            _repair_review_record(
+                url=verdict_url,
+                body=(
+                    "Verdict: changes requested\n\n"
+                    f"Classification: {classification}\n"
+                    f"Highest severity: {severity}\n"
+                ),
+                head_oid=reviewed_head,
+                submitted_at=f"2026-08-14T18:{cycle * 10:02d}:00Z",
+                actor="workflow-reviewer",
+                comments=[
+                    {
+                        "url": finding_url,
+                        "body": f"[{severity}] Cycle {cycle} contract finding",
+                    }
+                ],
+            )
+        )
+        findings.append(finding_url)
+        ledger_rows.append(
+            f"| {cycle} | {verdict_url} | {classification} | {severity} | "
+            f"{repair_head} | Cycle {cycle} enforcement repair. |"
+        )
+        if classification == "substantial":
+            substantial_count += 1
+            substantial_to_cycle[substantial_count] = cycle
+            if severity == "P0":
+                p0_cycles.add(substantial_count)
+
+    required_decisions = sorted(set(range(2, substantial_count + 1)) | p0_cycles)
+    escalation_rows: list[str] = []
+    audit_rows: list[str] = []
+    finding_rows: list[str] = []
+    for substantial_cycle in required_decisions:
+        cycle = substantial_to_cycle[substantial_cycle]
+        audited_head = commits[cycle]
+        manifest = tuple(findings[:cycle])
+        manifest_text = ", ".join(manifest)
+        route = routes.get(
+            substantial_cycle,
+            "replan-current-unit" if substantial_cycle <= 2 else "continue-current-unit",
+        )
+        decision_url = f"{REPAIR_PR_URL}#pullrequestreview-{200 + substantial_cycle}"
+        fresh_url = f"{REPAIR_PR_URL}#pullrequestreview-{300 + substantial_cycle}"
+        decision_actor = "operator-reviewer"
+        decision_time = f"2026-08-14T18:{cycle * 10 + 1:02d}:00Z"
+        accepted_contract = "changed" if route == "proposal-amendment" else "unchanged"
+        primary_question = (
+            "not-singular" if route == "split-or-replace-review-unit" else "singular"
+        )
+        owner_abstraction = (
+            "changed" if route in {"replan-current-unit", "split-or-replace-review-unit"}
+            else "unchanged"
+        )
+        coherent_diff = "no" if route == "split-or-replace-review-unit" else "yes"
+        replacement_lineage = (
+            f"{REPAIR_PR_URL}#issuecomment-999"
+            if route == "split-or-replace-review-unit"
+            else "None"
+        )
+        cumulative_p0 = any(
+            severities[index - 1] == "P0" for index in range(1, cycle + 1)
+        )
+        risk_disposition = risk_dispositions.get(
+            substantial_cycle,
+            (
+                "P0 risk accepted for bounded re-review."
+                if cumulative_p0
+                else (
+                    "Review unit abandoned with risk recorded."
+                    if route == "abandon-review-unit"
+                    else "None"
+                )
+            ),
+        )
+        disposition = f"Authorized {route} for the audited topology."
+        decision_body = f"""## Repair Continuation Decision
+
+- Substantial cycle: {substantial_cycle}
+- Decision role: meta-manager
+- Route: {route}
+- Audited head: {audited_head}
+- Accepted contract: {accepted_contract}
+- Primary question: {primary_question}
+- Enforcement owner/abstraction: {owner_abstraction}
+- Coherent diff: {coherent_diff}
+- Prior findings: all-disposed
+- Cumulative history: visible-in-current-ledger
+- Finding manifest: {manifest_text}
+- Replacement lineage: {replacement_lineage}
+- Risk disposition: {risk_disposition}
+- Disposition: {disposition}"""
+        fresh_body = f"""## Repair Fresh-Context Review
+
+- Substantial cycle: {substantial_cycle}
+- Audited head: {audited_head}
+- Finding manifest: {manifest_text}
+- Scope: totality
+- Outcome: totality-reviewed"""
+        reviews.extend(
+            [
+                _repair_review_record(
+                    url=decision_url,
+                    body=decision_body,
+                    head_oid=audited_head,
+                    submitted_at=decision_time,
+                    actor=decision_actor,
+                ),
+                _repair_review_record(
+                    url=fresh_url,
+                    body=fresh_body,
+                    head_oid=audited_head,
+                    submitted_at=f"2026-08-14T18:{cycle * 10 + 2:02d}:00Z",
+                    actor="fresh-reviewer",
+                ),
+            ]
+        )
+        escalation_rows.append(
+            f"| {substantial_cycle} | {decision_url} | {decision_actor} | "
+            f"meta-manager | {decision_time} | {route} | {audited_head} | "
+            f"{fresh_url} | {manifest_text} | {disposition} |"
+        )
+        audit_rows.append(
+            f"| {substantial_cycle} | {decision_url} | {accepted_contract} | "
+            f"{primary_question} | {owner_abstraction} | {coherent_diff} | "
+            "all-disposed | visible-in-current-ledger | "
+            f"{replacement_lineage} | {risk_disposition} |"
+        )
+        for finding in manifest:
+            finding_rows.append(
+                f"| {substantial_cycle} | {finding} | resolved | {audited_head} | "
+                f"{decision_url} |"
+            )
+
+    body = repair_cycle_governance_body(
+        rows="\n".join(ledger_rows),
+        escalation_rows=(
+            "\n".join(escalation_rows)
+            if escalation_rows
+            else "| None | None | None | None | None | None | None | None | None | None |"
+        ),
+        audit_rows=(
+            "\n".join(audit_rows)
+            if audit_rows
+            else "| None | None | None | None | None | None | None | None | None | None |"
+        ),
+        finding_rows=(
+            "\n".join(finding_rows)
+            if finding_rows
+            else "| None | None | None | None | None |"
+        ),
+    )
+    metadata = RepairReviewMetadata(
+        pull_request_number=60,
+        pull_request_url=REPAIR_PR_URL,
+        pull_request_author=REPAIR_PR_AUTHOR,
+        head_oid=commits[-1],
+        commits=tuple(commits),
+        reviews=tuple(reviews),
+    )
+    return body, metadata
+
+
+def _metadata_review(
+    metadata: RepairReviewMetadata,
+    url_suffix: str,
+) -> dict[str, object]:
+    matches = [
+        review for review in metadata.reviews if str(review.get("url", "")).endswith(url_suffix)
+    ]
+    if len(matches) != 1:
+        raise AssertionError(f"fixture review not found: {url_suffix}")
+    return matches[0]
 
 
 def _replace_section_body(text: str, heading: str, body: str) -> str:
@@ -366,92 +606,419 @@ class RepairCycleGovernanceTests(unittest.TestCase):
             0,
         )
 
-    def test_one_substantial_cycle_does_not_require_escalation(self) -> None:
-        body = repair_cycle_governance_body(
-            rows=(
-                "| 1 | https://github.example/review/1 | substantial | "
-                "abc1234 | Replaced the enforcement boundary. |"
-            ),
-        )
-
-        self.assertEqual(validate_repair_cycle_governance_body(body), 1)
-
-    def test_second_substantial_cycle_requires_completed_escalation(self) -> None:
-        body = repair_cycle_governance_body(
-            rows=(
-                "| 1 | https://github.example/review/1 | substantial | "
-                "abc1234 | Replaced the enforcement boundary. |\n"
-                "| 2 | https://github.example/review/2 | substantial | "
-                "def5678 | Reframed the failure class. |"
-            ),
-        )
-
-        with self.assertRaisesRegex(
-            PlanContractError,
-            "require a completed repair escalation",
-        ):
+    def test_declared_cycle_requires_github_metadata(self) -> None:
+        body, _ = _governed_repair_case()
+        with self.assertRaisesRegex(PlanContractError, "structured GitHub"):
             validate_repair_cycle_governance_body(body)
 
-    def test_second_substantial_cycle_accepts_human_decision_receipt(self) -> None:
-        body = repair_cycle_governance_body(
-            rows=(
-                "| 1 | https://github.example/review/1 | substantial | "
-                "abc1234 | Replaced the enforcement boundary. |\n"
-                "| 2 | https://github.example/review/2 | substantial | "
-                "def5678 | Reframed the failure class. |"
-            ),
-            status="completed",
-            decision_receipt="https://github.example/decision/2",
-            route="replan-current-unit",
-            disposition="Keep the singular question with a reset owner.",
+    def test_one_substantial_cycle_is_bound_to_exact_review_evidence(self) -> None:
+        body, metadata = _governed_repair_case()
+        self.assertEqual(
+            validate_repair_cycle_governance_body(body, review_metadata=metadata),
+            1,
         )
 
-        self.assertEqual(validate_repair_cycle_governance_body(body), 2)
+    def test_arbitrary_review_reference_is_rejected(self) -> None:
+        body, metadata = _governed_repair_case()
+        body = body.replace(
+            f"{REPAIR_PR_URL}#pullrequestreview-101",
+            "#1",
+            1,
+        )
+        with self.assertRaisesRegex(PlanContractError, "review on PR"):
+            validate_repair_cycle_governance_body(body, review_metadata=metadata)
+
+    def test_second_substantial_cycle_requires_decision_history(self) -> None:
+        body, metadata = _governed_repair_case(
+            classifications=("substantial", "substantial"),
+            severities=("P1", "P1"),
+        )
+        escalation_row = next(
+            line for line in body.splitlines() if line.startswith("| 2 |") and "-202" in line
+        )
+        body = body.replace(
+            escalation_row,
+            "| None | None | None | None | None | None | None | None | None | None |",
+            1,
+        )
+        with self.assertRaisesRegex(PlanContractError, "keyed|required substantial"):
+            validate_repair_cycle_governance_body(body, review_metadata=metadata)
+
+    def test_second_substantial_cycle_accepts_authorized_exact_head_receipts(self) -> None:
+        body, metadata = _governed_repair_case(
+            classifications=("substantial", "substantial"),
+            severities=("P1", "P1"),
+        )
+        self.assertEqual(
+            validate_repair_cycle_governance_body(body, review_metadata=metadata),
+            2,
+        )
 
     def test_minor_cycles_do_not_consume_substantial_cycle_budget(self) -> None:
-        body = repair_cycle_governance_body(
-            rows=(
-                "| 1 | https://github.example/review/1 | minor | "
-                "abc1234 | Corrected evidence formatting. |\n"
-                "| 2 | https://github.example/review/2 | substantial | "
-                "def5678 | Replaced the enforcement boundary. |"
-            ),
+        body, metadata = _governed_repair_case(
+            classifications=("minor", "substantial"),
+            severities=("P3", "P1"),
+        )
+        self.assertEqual(
+            validate_repair_cycle_governance_body(body, review_metadata=metadata),
+            1,
         )
 
-        self.assertEqual(validate_repair_cycle_governance_body(body), 1)
-
-    def test_third_substantial_cycle_must_leave_review_unit(self) -> None:
-        body = repair_cycle_governance_body(
-            rows=(
-                "| 1 | https://github.example/review/1 | substantial | "
-                "abc1234 | Replaced the enforcement boundary. |\n"
-                "| 2 | https://github.example/review/2 | substantial | "
-                "def5678 | Reframed the failure class. |\n"
-                "| 3 | https://github.example/review/3 | substantial | "
-                "fed9876 | Expanded material scope again. |"
-            ),
-            status="completed",
-            decision_receipt="https://github.example/decision/2",
-            route="replan-current-unit",
-            disposition="Keep the singular question with a reset owner.",
+    def test_minor_cycle_after_threshold_preserves_prior_exact_head_decision(self) -> None:
+        body, metadata = _governed_repair_case(
+            classifications=("substantial", "substantial", "minor"),
+            severities=("P1", "P1", "P3"),
+        )
+        self.assertEqual(
+            validate_repair_cycle_governance_body(body, review_metadata=metadata),
+            2,
         )
 
-        with self.assertRaisesRegex(
-            PlanContractError,
-            "third substantial repair cycle",
-        ):
-            validate_repair_cycle_governance_body(body)
+    def test_later_substantial_cycles_preserve_every_decision_and_audit(self) -> None:
+        body, metadata = _governed_repair_case(
+            classifications=("substantial", "substantial", "substantial"),
+            severities=("P1", "P1", "P1"),
+        )
+        self.assertEqual(
+            validate_repair_cycle_governance_body(body, review_metadata=metadata),
+            3,
+        )
+
+    def test_fourth_substantial_cycle_requires_another_distinct_renewal(self) -> None:
+        body, metadata = _governed_repair_case(
+            classifications=(
+                "substantial",
+                "substantial",
+                "substantial",
+                "substantial",
+            ),
+            severities=("P1", "P1", "P1", "P1"),
+        )
+        self.assertEqual(
+            validate_repair_cycle_governance_body(body, review_metadata=metadata),
+            4,
+        )
+
+    def test_later_cycle_cannot_reuse_a_decision_receipt(self) -> None:
+        body, metadata = _governed_repair_case(
+            classifications=("substantial", "substantial", "substantial"),
+            severities=("P1", "P1", "P1"),
+        )
+        body = body.replace("pullrequestreview-203", "pullrequestreview-202")
+        with self.assertRaisesRegex(PlanContractError, "unique per cycle"):
+            validate_repair_cycle_governance_body(body, review_metadata=metadata)
+
+    def test_later_cycle_cannot_drop_an_earlier_decision(self) -> None:
+        body, metadata = _governed_repair_case(
+            classifications=("substantial", "substantial", "substantial"),
+            severities=("P1", "P1", "P1"),
+        )
+        row = next(
+            line for line in body.splitlines() if line.startswith("| 2 |") and "-202" in line
+        )
+        body = body.replace(f"{row}\n", "", 1)
+        with self.assertRaisesRegex(PlanContractError, "preserve one immutable row"):
+            validate_repair_cycle_governance_body(body, review_metadata=metadata)
+
+    def test_authorized_actor_cannot_rewrite_a_cycle_decision(self) -> None:
+        body, metadata = _governed_repair_case(
+            classifications=("substantial", "substantial"),
+            severities=("P1", "P1"),
+        )
+        replacement = copy.deepcopy(
+            _metadata_review(metadata, "pullrequestreview-202")
+        )
+        replacement["url"] = f"{REPAIR_PR_URL}#pullrequestreview-902"
+        replacement["submittedAt"] = "2026-08-14T18:23:00Z"
+        metadata = RepairReviewMetadata(
+            pull_request_number=metadata.pull_request_number,
+            pull_request_url=metadata.pull_request_url,
+            pull_request_author=metadata.pull_request_author,
+            head_oid=metadata.head_oid,
+            commits=metadata.commits,
+            reviews=metadata.reviews + (replacement,),
+        )
+        with self.assertRaisesRegex(PlanContractError, "rewritten or duplicate"):
+            validate_repair_cycle_governance_body(body, review_metadata=metadata)
+
+    def test_dispositions_must_use_exact_reviewer_owned_findings(self) -> None:
+        body, metadata = _governed_repair_case(
+            classifications=("substantial", "substantial"),
+            severities=("P1", "P1"),
+        )
+        prefix, suffix = body.rsplit("discussion_r401", 1)
+        body = prefix + "discussion_r999" + suffix
+        with self.assertRaisesRegex(PlanContractError, "not reviewer-owned"):
+            validate_repair_cycle_governance_body(body, review_metadata=metadata)
+
+    def test_dispositions_cannot_omit_a_prior_finding(self) -> None:
+        body, metadata = _governed_repair_case(
+            classifications=("substantial", "substantial"),
+            severities=("P1", "P1"),
+        )
+        row = next(
+            line
+            for line in body.splitlines()
+            if line.startswith("| 2 |") and "discussion_r401" in line and "resolved" in line
+        )
+        body = body.replace(f"{row}\n", "", 1)
+        with self.assertRaisesRegex(PlanContractError, "exact cumulative finding"):
+            validate_repair_cycle_governance_body(body, review_metadata=metadata)
+
+    def test_split_route_fails_closed_pending_structured_lineage(self) -> None:
+        body, metadata = _governed_repair_case(
+            classifications=("substantial", "substantial", "substantial"),
+            severities=("P1", "P1", "P1"),
+            routes={3: "split-or-replace-review-unit"},
+        )
+        with self.assertRaisesRegex(PlanContractError, "issue #118"):
+            validate_repair_cycle_governance_body(body, review_metadata=metadata)
+
+    def test_same_unit_continuation_rejects_changed_topology(self) -> None:
+        body, metadata = _governed_repair_case(
+            classifications=("substantial", "substantial", "substantial"),
+            severities=("P1", "P1", "P1"),
+        )
+        body = body.replace(
+            "| 3 | https://github.com/example/repository/pull/60#pullrequestreview-203 | unchanged | singular |",
+            "| 3 | https://github.com/example/repository/pull/60#pullrequestreview-203 | unchanged | not-singular |",
+            1,
+        )
+        metadata = copy.deepcopy(metadata)
+        decision = _metadata_review(metadata, "pullrequestreview-203")
+        decision["body"] = str(decision["body"]).replace(
+            "- Primary question: singular",
+            "- Primary question: not-singular",
+        )
+        with self.assertRaisesRegex(PlanContractError, "unchanged singular contract"):
+            validate_repair_cycle_governance_body(body, review_metadata=metadata)
+
+    def test_proposal_amendment_route_requires_changed_contract(self) -> None:
+        body, metadata = _governed_repair_case(
+            classifications=("substantial", "substantial", "substantial"),
+            severities=("P1", "P1", "P1"),
+            routes={3: "proposal-amendment"},
+        )
+        body = body.replace(
+            "| 3 | https://github.com/example/repository/pull/60#pullrequestreview-203 | changed |",
+            "| 3 | https://github.com/example/repository/pull/60#pullrequestreview-203 | unchanged |",
+            1,
+        )
+        metadata = copy.deepcopy(metadata)
+        decision = _metadata_review(metadata, "pullrequestreview-203")
+        decision["body"] = str(decision["body"]).replace(
+            "- Accepted contract: changed",
+            "- Accepted contract: unchanged",
+        )
+        with self.assertRaisesRegex(PlanContractError, "changed accepted contract"):
+            validate_repair_cycle_governance_body(body, review_metadata=metadata)
+
+    def test_decision_actor_must_differ_from_repair_author(self) -> None:
+        body, metadata = _governed_repair_case(
+            classifications=("substantial", "substantial"),
+            severities=("P1", "P1"),
+        )
+        metadata = copy.deepcopy(metadata)
+        decision = _metadata_review(metadata, "pullrequestreview-202")
+        decision["author"] = {"login": REPAIR_PR_AUTHOR}
+        with self.assertRaisesRegex(PlanContractError, "other than the repair author"):
+            validate_repair_cycle_governance_body(body, review_metadata=metadata)
+
+    def test_fresh_review_requires_current_authority(self) -> None:
+        body, metadata = _governed_repair_case(
+            classifications=("substantial", "substantial"),
+            severities=("P1", "P1"),
+        )
+        metadata = copy.deepcopy(metadata)
+        fresh = _metadata_review(metadata, "pullrequestreview-302")
+        fresh["authorCanPushToRepository"] = False
+        with self.assertRaisesRegex(PlanContractError, "not currently authorized"):
+            validate_repair_cycle_governance_body(body, review_metadata=metadata)
+
+    def test_decision_must_be_attached_to_exact_audited_head(self) -> None:
+        body, metadata = _governed_repair_case(
+            classifications=("substantial", "substantial"),
+            severities=("P1", "P1"),
+        )
+        metadata = copy.deepcopy(metadata)
+        decision = _metadata_review(metadata, "pullrequestreview-202")
+        decision["commit"] = {"oid": metadata.commits[1]}
+        with self.assertRaisesRegex(PlanContractError, "exact audited head"):
+            validate_repair_cycle_governance_body(body, review_metadata=metadata)
+
+    def test_author_written_decision_time_cannot_override_github_time(self) -> None:
+        body, metadata = _governed_repair_case(
+            classifications=("substantial", "substantial"),
+            severities=("P1", "P1"),
+        )
+        body = body.replace("2026-08-14T18:21:00Z", "2026-99-99T99:99:99Z", 1)
+        with self.assertRaisesRegex(PlanContractError, "must match GitHub"):
+            validate_repair_cycle_governance_body(body, review_metadata=metadata)
+
+    def test_fresh_review_receipt_cannot_be_reused_as_decision(self) -> None:
+        body, metadata = _governed_repair_case(
+            classifications=("substantial", "substantial"),
+            severities=("P1", "P1"),
+        )
+        body = body.replace("pullrequestreview-302", "pullrequestreview-202", 1)
+        with self.assertRaisesRegex(PlanContractError, "unique per cycle"):
+            validate_repair_cycle_governance_body(body, review_metadata=metadata)
+
+    def test_fresh_review_must_follow_decision(self) -> None:
+        body, metadata = _governed_repair_case(
+            classifications=("substantial", "substantial"),
+            severities=("P1", "P1"),
+        )
+        metadata = copy.deepcopy(metadata)
+        fresh = _metadata_review(metadata, "pullrequestreview-302")
+        fresh["submittedAt"] = "2026-08-14T18:20:00Z"
+        with self.assertRaisesRegex(PlanContractError, "must follow"):
+            validate_repair_cycle_governance_body(body, review_metadata=metadata)
+
+    def test_reviewer_owned_p0_requires_risk_disposition(self) -> None:
+        body, metadata = _governed_repair_case(
+            classifications=("substantial",),
+            severities=("P0",),
+            risk_dispositions={1: "None"},
+        )
+        with self.assertRaisesRegex(PlanContractError, "reviewer-owned P0"):
+            validate_repair_cycle_governance_body(body, review_metadata=metadata)
+
+    def test_missing_reviewer_severity_fails_closed(self) -> None:
+        body, metadata = _governed_repair_case(
+            classifications=("substantial",),
+            severities=("P0",),
+        )
+        metadata = copy.deepcopy(metadata)
+        verdict = _metadata_review(metadata, "pullrequestreview-101")
+        comments = verdict["comments"]
+        assert isinstance(comments, dict)
+        nodes = comments["nodes"]
+        assert isinstance(nodes, list)
+        nodes[0]["body"] = "Unsafe boundary without a structured severity"
+        with self.assertRaisesRegex(PlanContractError, "reviewer-owned.*severity"):
+            validate_repair_cycle_governance_body(body, review_metadata=metadata)
+
+    def test_negated_p0_impact_does_not_create_reviewer_severity(self) -> None:
+        body, metadata = _governed_repair_case()
+        body = body.replace(
+            "Cycle 1 enforcement repair.",
+            "No P0 remains after the enforcement repair.",
+        )
+        self.assertEqual(
+            validate_repair_cycle_governance_body(body, review_metadata=metadata),
+            1,
+        )
+
+    def test_ledger_severity_must_match_reviewer_manifest(self) -> None:
+        body, metadata = _governed_repair_case(
+            classifications=("substantial",),
+            severities=("P0",),
+        )
+        body = body.replace("| substantial | P0 |", "| substantial | P1 |", 1)
+        with self.assertRaisesRegex(PlanContractError, "highest severity"):
+            validate_repair_cycle_governance_body(body, review_metadata=metadata)
+
+    def test_reviewer_severity_declaration_cannot_conflict_with_findings(self) -> None:
+        body, metadata = _governed_repair_case(
+            classifications=("substantial",),
+            severities=("P0",),
+        )
+        metadata = copy.deepcopy(metadata)
+        verdict = _metadata_review(metadata, "pullrequestreview-101")
+        verdict["body"] = str(verdict["body"]).replace(
+            "Highest severity: P0",
+            "Highest severity: P1",
+        )
+        with self.assertRaisesRegex(PlanContractError, "conflicts"):
+            validate_repair_cycle_governance_body(body, review_metadata=metadata)
 
     def test_cycle_numbers_must_be_consecutive(self) -> None:
-        body = repair_cycle_governance_body(
-            rows=(
-                "| 2 | https://github.example/review/2 | minor | "
-                "def5678 | Corrected evidence formatting. |"
-            ),
-        )
-
+        body, metadata = _governed_repair_case()
+        body = body.replace("| 1 |", "| 2 |", 1)
         with self.assertRaisesRegex(PlanContractError, "consecutive from 1"):
-            validate_repair_cycle_governance_body(body)
+            validate_repair_cycle_governance_body(body, review_metadata=metadata)
+
+
+class RepairMetadataFetchTests(unittest.TestCase):
+    def _response(self) -> dict[str, object]:
+        body, metadata = _governed_repair_case()
+        del body
+        return {
+            "data": {
+                "repository": {
+                    "pullRequest": {
+                        "number": metadata.pull_request_number,
+                        "url": metadata.pull_request_url,
+                        "headRefOid": metadata.head_oid,
+                        "author": {"login": metadata.pull_request_author},
+                        "commits": {
+                            "totalCount": len(metadata.commits),
+                            "nodes": [
+                                {"commit": {"oid": oid}} for oid in metadata.commits
+                            ],
+                        },
+                        "reviews": {
+                            "totalCount": len(metadata.reviews),
+                            "nodes": list(metadata.reviews),
+                        },
+                    }
+                }
+            }
+        }
+
+    def test_fetch_exposes_pr_identity_commits_reviews_and_findings(self) -> None:
+        completed = [
+            subprocess.CompletedProcess(
+                args=[],
+                returncode=0,
+                stdout='{"nameWithOwner":"example/repository"}',
+                stderr="",
+            ),
+            subprocess.CompletedProcess(
+                args=[],
+                returncode=0,
+                stdout=json.dumps(self._response()),
+                stderr="",
+            ),
+        ]
+        with mock.patch(
+            "docs.milestones.workflow.subprocess.run",
+            side_effect=completed,
+        ):
+            metadata = _fetch_pr_repair_review_metadata(60)
+
+        self.assertEqual(metadata.pull_request_author, REPAIR_PR_AUTHOR)
+        self.assertEqual(metadata.head_oid, metadata.commits[-1])
+        verdict = _metadata_review(metadata, "pullrequestreview-101")
+        comments = verdict["comments"]
+        assert isinstance(comments, dict)
+        self.assertEqual(comments["totalCount"], 1)
+
+    def test_fetch_fails_closed_when_review_history_would_truncate(self) -> None:
+        response = self._response()
+        pull_request = response["data"]["repository"]["pullRequest"]  # type: ignore[index]
+        pull_request["reviews"] = {"totalCount": 101, "nodes": []}  # type: ignore[index]
+        completed = [
+            subprocess.CompletedProcess(
+                args=[],
+                returncode=0,
+                stdout='{"nameWithOwner":"example/repository"}',
+                stderr="",
+            ),
+            subprocess.CompletedProcess(
+                args=[],
+                returncode=0,
+                stdout=json.dumps(response),
+                stderr="",
+            ),
+        ]
+        with mock.patch(
+            "docs.milestones.workflow.subprocess.run",
+            side_effect=completed,
+        ):
+            with self.assertRaisesRegex(PlanContractError, "100-review"):
+                _fetch_pr_repair_review_metadata(60)
 
 
 class WorkflowStateContractTests(unittest.TestCase):

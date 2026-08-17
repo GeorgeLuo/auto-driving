@@ -170,6 +170,23 @@ REPAIR_FINDING_DISPOSITIONS = {
 REPAIR_DECISION_ROLES = {"operator", "meta-manager"}
 REPAIR_DECISION_RECEIPT_HEADING = "## Repair Continuation Decision"
 REPAIR_FRESH_REVIEW_RECEIPT_HEADING = "## Repair Fresh-Context Review"
+REPAIR_CONTRACT_MIGRATION_HEADING = "## Repair Contract Migration"
+REPAIR_CONTRACT_MIGRATION_FIELDS = (
+    "PR",
+    "Prior governing base",
+    "Adopted contract",
+    "Cumulative cycles",
+    "Cumulative classifications",
+    "Unresolved finding manifest",
+    "Migration point",
+    "Decision receipt",
+    "Route",
+    "Disposition",
+)
+REPAIR_ACTOR_BASES = {
+    "independent-account",
+    "same-account-fresh-context",
+}
 HANDOFF_TEMPLATE_SCHEMA = "milestone_handoff_template_v1"
 EXAMPLE_RECEIPT: dict[str, Any] = {
     "schema": "milestone_handoff_v1",
@@ -1973,6 +1990,7 @@ def _canonical_decision_fields(body: Any) -> dict[str, str]:
         labels=(
             "Substantial cycle",
             "Decision role",
+            "Actor basis",
             "Route",
             "Audited head",
             "Accepted contract",
@@ -1996,11 +2014,35 @@ def _canonical_fresh_review_fields(body: Any) -> dict[str, str]:
         labels=(
             "Substantial cycle",
             "Audited head",
+            "Actor basis",
             "Finding manifest",
             "Scope",
             "Outcome",
         ),
     )
+
+
+def _validate_repair_actor_basis(
+    fields: dict[str, str],
+    *,
+    reviewer: str,
+    pull_request_author: str,
+    label: str,
+) -> None:
+    basis = _repair_value(fields["Actor basis"])
+    if basis not in REPAIR_ACTOR_BASES:
+        raise PlanContractError(
+            f"{label} Actor basis must be `independent-account` or "
+            "`same-account-fresh-context`"
+        )
+    same_account = reviewer.casefold() == pull_request_author.casefold()
+    expected = (
+        "same-account-fresh-context" if same_account else "independent-account"
+    )
+    if basis != expected:
+        raise PlanContractError(
+            f"{label} Actor basis must be `{expected}` for its GitHub actor"
+        )
 
 
 def _canonical_receipts_for_cycle(
@@ -2020,7 +2062,6 @@ def _canonical_receipts_for_cycle(
         actor = author.get("login") if isinstance(author, dict) else None
         if (
             not isinstance(actor, str)
-            or actor.casefold() == metadata.pull_request_author.casefold()
             or str(review.get("authorAssociation") or "").upper()
             not in AUTHORIZED_REVIEW_ASSOCIATIONS
             or review.get("authorCanPushToRepository") is not True
@@ -2031,6 +2072,12 @@ def _canonical_receipts_for_cycle(
             _canonical_decision_fields(body)
             if heading == REPAIR_DECISION_RECEIPT_HEADING
             else _canonical_fresh_review_fields(body)
+        )
+        _validate_repair_actor_basis(
+            fields,
+            reviewer=actor,
+            pull_request_author=metadata.pull_request_author,
+            label=heading,
         )
         if _repair_value(fields["Substantial cycle"]) != str(substantial_cycle):
             continue
@@ -2044,6 +2091,95 @@ def _canonical_receipts_for_cycle(
             raise PlanContractError(f"{heading} receipt has no GitHub URL")
         receipts.append(url)
     return tuple(receipts)
+
+
+def _canonical_migration_fields(text: str) -> dict[str, str] | None:
+    if REPAIR_CONTRACT_MIGRATION_HEADING not in text:
+        return None
+    lines = text.splitlines()
+    start, end = _section_bounds(lines, REPAIR_CONTRACT_MIGRATION_HEADING)
+    body = "\n".join(
+        [REPAIR_CONTRACT_MIGRATION_HEADING, *lines[start:end]]
+    )
+    fields = _parse_canonical_repair_receipt(
+        body,
+        heading=REPAIR_CONTRACT_MIGRATION_HEADING,
+        labels=REPAIR_CONTRACT_MIGRATION_FIELDS,
+    )
+    if not re.fullmatch(r"#[1-9]\d*", fields["PR"]):
+        raise PlanContractError(
+            "Repair Contract Migration PR must name the migrated pull request"
+        )
+    for label in ("Prior governing base", "Adopted contract", "Migration point"):
+        if re.fullmatch(r"[0-9a-f]{40}", fields[label].lower()) is None:
+            raise PlanContractError(
+                f"Repair Contract Migration {label} must be a full commit SHA"
+            )
+    cycles_match = re.fullmatch(r"(\d+)", fields["Cumulative cycles"])
+    if cycles_match is None:
+        raise PlanContractError(
+            "Repair Contract Migration Cumulative cycles must be a non-negative integer"
+        )
+    cumulative_cycles = int(cycles_match.group(1))
+    classifications = tuple(
+        _repair_value(item)
+        for item in fields["Cumulative classifications"].split(",")
+        if item.strip()
+    )
+    if len(classifications) != cumulative_cycles or any(
+        item not in REPAIR_CYCLE_CLASSIFICATIONS for item in classifications
+    ):
+        raise PlanContractError(
+            "Repair Contract Migration Cumulative classifications must list one "
+            "minor or substantial value for every cumulative cycle"
+        )
+    manifest = _manifest_items(
+        fields["Unresolved finding manifest"],
+        label="Repair Contract Migration Unresolved finding manifest",
+    )
+    if any(not item.startswith("https://") for item in manifest):
+        raise PlanContractError(
+            "Repair Contract Migration finding manifest must contain durable URLs"
+        )
+    decision_receipt = fields["Decision receipt"]
+    if not decision_receipt.startswith("https://"):
+        raise PlanContractError(
+            "Repair Contract Migration Decision receipt must be a durable URL"
+        )
+    route = _repair_value(fields["Route"])
+    if route not in REPAIR_ESCALATION_ROUTES:
+        raise PlanContractError(
+            "Repair Contract Migration Route must be one of: "
+            + ", ".join(sorted(REPAIR_ESCALATION_ROUTES))
+        )
+    if _is_placeholder(fields["Disposition"]):
+        raise PlanContractError(
+            "Repair Contract Migration Disposition must state the durable decision"
+        )
+    return {
+        **fields,
+        "cumulative_cycles_int": str(cumulative_cycles),
+        "substantial_cycles_int": str(
+            sum(item == "substantial" for item in classifications)
+        ),
+        "cumulative_classifications_tuple": ",".join(classifications),
+        "unresolved_manifest_tuple": ",".join(manifest),
+    }
+
+
+def _validate_repair_migration_identity(
+    fields: dict[str, str],
+    metadata: RepairReviewMetadata,
+) -> None:
+    pr_number = int(fields["PR"].removeprefix("#"))
+    if pr_number != metadata.pull_request_number:
+        raise PlanContractError(
+            "Repair Contract Migration PR must match the validated pull request"
+        )
+    if not fields["Decision receipt"].startswith(metadata.pull_request_url):
+        raise PlanContractError(
+            "Repair Contract Migration Decision receipt must belong to the migrated PR"
+        )
 
 
 def _parse_repair_state_tables(
@@ -2086,15 +2222,40 @@ def validate_repair_cycle_governance_body(
     text: str,
     *,
     review_metadata: RepairReviewMetadata | None = None,
+    require_resolved_findings: bool = False,
 ) -> int:
-    """Validate repair history against immutable GitHub review evidence."""
+    """Validate repair history against immutable GitHub review evidence.
 
+    A continuation gate may authorize more work while a finding is carried
+    forward. The completion path passes ``require_resolved_findings=True`` so
+    that an authorized continuation cannot be mistaken for a merge-ready unit.
+    """
+
+    migration = _canonical_migration_fields(text)
     ledger, escalation, audit, dispositions = _parse_repair_state_tables(text)
     first_values = tuple(_repair_value(value) for value in ledger.rows[0])
+    if migration is not None:
+        if review_metadata is None:
+            raise PlanContractError(
+                "Repair Contract Migration requires structured GitHub repair metadata"
+            )
+        _validate_repair_migration_identity(migration, review_metadata)
     if first_values[0] == "none":
         _require_all_none_row(ledger, label="Repair Cycle Ledger")
         _validate_empty_repair_state(escalation, audit, dispositions)
-        return 0
+        if (
+            require_resolved_findings
+            and migration is not None
+            and migration["unresolved_manifest_tuple"]
+        ):
+            raise PlanContractError(
+                "completion requires every migrated finding to be resolved"
+            )
+        return (
+            int(migration["substantial_cycles_int"])
+            if migration is not None
+            else 0
+        )
     if review_metadata is None:
         raise PlanContractError(
             "declared repair cycles require structured GitHub review metadata"
@@ -2107,7 +2268,25 @@ def validate_repair_cycle_governance_body(
 
     cycle_evidence: list[dict[str, Any]] = []
     finding_origins: dict[str, dict[str, Any]] = {}
-    substantial_cycles = 0
+    historical_cycles = (
+        int(migration["cumulative_cycles"])
+        if migration is not None
+        else 0
+    )
+    historical_substantial_cycles = (
+        int(migration["substantial_cycles_int"])
+        if migration is not None
+        else 0
+    )
+    if migration is not None:
+        for finding in migration["unresolved_manifest_tuple"].split(","):
+            if finding:
+                finding_origins[finding] = {
+                    "severity": "P1",
+                    "repair_revision": migration["Migration point"].lower(),
+                    "review_index": -1,
+                }
+    substantial_cycles = historical_substantial_cycles
     previous_repair_index = -1
     previous_review_time: datetime | None = None
     verdict_receipts: set[str] = set()
@@ -2116,7 +2295,7 @@ def validate_repair_cycle_governance_body(
     evidence_by_substantial: dict[int, dict[str, Any]] = {}
     p0_substantial_cycles: set[int] = set()
 
-    for expected_cycle, row in enumerate(ledger.rows, start=1):
+    for expected_cycle, row in enumerate(ledger.rows, start=historical_cycles + 1):
         (
             cycle,
             review_receipt,
@@ -2127,7 +2306,12 @@ def validate_repair_cycle_governance_body(
         ) = row
         if _repair_value(cycle) != str(expected_cycle):
             raise PlanContractError(
-                "Repair Cycle Ledger cycle numbers must be consecutive from 1"
+                (
+                    "Repair Cycle Ledger cycle numbers must continue after the "
+                    "migration history"
+                    if migration is not None
+                    else "Repair Cycle Ledger cycle numbers must be consecutive from 1"
+                )
             )
         if _is_placeholder(impact):
             raise PlanContractError(
@@ -2208,13 +2392,16 @@ def validate_repair_cycle_governance_body(
             if verified_severity == "P0":
                 p0_substantial_cycles.add(substantial_cycles)
 
-    if cycle_evidence[-1]["repair_revision"] != review_metadata.head_oid:
+    if cycle_evidence and cycle_evidence[-1]["repair_revision"] != review_metadata.head_oid:
         raise PlanContractError(
             "the latest repair revision must be the exact current PR head"
         )
 
+    decision_start = historical_substantial_cycles + 1
+    if migration is None:
+        decision_start = max(2, decision_start)
     required_decision_cycles = tuple(
-        sorted(set(range(2, substantial_cycles + 1)) | p0_substantial_cycles)
+        sorted(set(range(decision_start, substantial_cycles + 1)) | p0_substantial_cycles)
     )
     if not required_decision_cycles:
         _validate_empty_repair_state(escalation, audit, dispositions)
@@ -2261,7 +2448,7 @@ def validate_repair_cycle_governance_body(
             decision_url,
             label=f"substantial cycle {expected_substantial} decision",
             allowed_states={"COMMENTED"},
-            require_independent=True,
+            require_independent=False,
         )
         if _canonical_receipts_for_cycle(
             review_metadata,
@@ -2273,6 +2460,12 @@ def validate_repair_cycle_governance_body(
                 "decision receipt; rewritten or duplicate decisions fail closed"
             )
         decision_fields = _canonical_decision_fields(decision_review.get("body"))
+        _validate_repair_actor_basis(
+            decision_fields,
+            reviewer=actor,
+            pull_request_author=review_metadata.pull_request_author,
+            label=f"substantial cycle {expected_substantial} decision",
+        )
         evidence = evidence_by_substantial[expected_substantial]
         expected_head = evidence["repair_revision"]
         expected_manifest = findings_by_substantial[expected_substantial]
@@ -2343,7 +2536,7 @@ def validate_repair_cycle_governance_body(
             fresh_url,
             label=f"substantial cycle {expected_substantial} fresh-context review",
             allowed_states={"COMMENTED"},
-            require_independent=True,
+            require_independent=False,
         )
         if _canonical_receipts_for_cycle(
             review_metadata,
@@ -2355,6 +2548,19 @@ def validate_repair_cycle_governance_body(
                 "fresh-context receipt; rewritten or duplicate reviews fail closed"
             )
         fresh_fields = _canonical_fresh_review_fields(fresh_review.get("body"))
+        fresh_author = fresh_review.get("author")
+        fresh_actor = fresh_author.get("login") if isinstance(fresh_author, dict) else None
+        if not isinstance(fresh_actor, str):
+            raise PlanContractError(
+                f"substantial cycle {expected_substantial} fresh-context review "
+                "has no GitHub actor"
+            )
+        _validate_repair_actor_basis(
+            fresh_fields,
+            reviewer=fresh_actor,
+            pull_request_author=review_metadata.pull_request_author,
+            label=f"substantial cycle {expected_substantial} fresh-context review",
+        )
         if _review_commit_oid(
             fresh_review,
             label=f"substantial cycle {expected_substantial} fresh-context review",
@@ -2594,12 +2800,25 @@ def validate_repair_cycle_governance_body(
                 "Repair Continuation Audit Prior findings conflicts with the exact "
                 "finding dispositions"
             )
-        if decision_records[substantial_cycle]["route"] == "continue-current-unit" and any(
-            status != "resolved" for status in statuses.values()
+        if (
+            decision_records[substantial_cycle]["route"] == "continue-current-unit"
+            and any(
+                status in {"deferred", "carried-forward"}
+                and finding_origins.get(finding, {}).get("severity") == "P0"
+                for finding, status in statuses.items()
+            )
         ):
             raise PlanContractError(
-                "continue-current-unit requires every reviewer-owned finding to be "
-                "resolved"
+                "continue-current-unit cannot carry forward a reviewer-owned P0"
+            )
+        if (
+            require_resolved_findings
+            and decision_records[substantial_cycle]["route"] == "continue-current-unit"
+            and any(status != "resolved" for status in statuses.values())
+        ):
+            raise PlanContractError(
+                "completion requires every reviewer-owned finding in a "
+                "continue-current-unit review to be resolved"
             )
     return substantial_cycles
 
@@ -4410,6 +4629,17 @@ def complete_implementation(
         if pr_payload is not None
         else _fetch_pr_metadata(accepted_pr, repo_root=repo_root)
     )
+    pr_body = payload.get("body")
+    if isinstance(pr_body, str) and _repair_body_declares_cycles(pr_body):
+        repair_metadata = _fetch_pr_repair_review_metadata(
+            accepted_pr,
+            repo_root=repo_root,
+        )
+        validate_repair_cycle_governance_body(
+            pr_body,
+            review_metadata=repair_metadata,
+            require_resolved_findings=True,
+        )
     merge_commit = payload.get("mergeCommit")
     merge_oid = merge_commit.get("oid") if isinstance(merge_commit, dict) else None
     if not isinstance(merge_oid, str) or re.fullmatch(r"[0-9a-f]{40}", merge_oid) is None:
@@ -4832,7 +5062,11 @@ def _pull_request_number_from_event(event_path: Path) -> int:
 
 
 def _repair_body_declares_cycles(text: str | None) -> bool:
-    if not text or REPAIR_CYCLE_LEDGER_HEADING not in text:
+    if not text:
+        return False
+    if REPAIR_CONTRACT_MIGRATION_HEADING in text:
+        return True
+    if REPAIR_CYCLE_LEDGER_HEADING not in text:
         return False
     ledger = parse_table(text, REPAIR_CYCLE_LEDGER_HEADING)
     if not ledger.rows:

@@ -192,10 +192,24 @@ accepted contract is wrong, amend the proposal. If the unit is not singular,
 stop and re-scope. Do not treat another repair round as evidence that the
 process must escalate.
 
-Completion fails if the current head has an outstanding `CHANGES_REQUESTED`
-review, or if a migration receipt still lists unresolved findings.
-`split-or-replace-review-unit` remains fail-closed pending the replacement
-lineage contract in issue #118. A new PR number does not reset review history.
+Review and implementation use the same GitHub account, so GitHub will not emit
+`CHANGES_REQUESTED` or `APPROVED` on these PRs. The only action-forcing signal
+is an unedited exact-head `COMMENTED` review containing only:
+
+```text
+## Contract Review Receipt
+
+- Outcome: `accepted`
+```
+
+or `changes_requested`. Inline findings, want/reject notes, and `## Concerns`
+are documentary. They may be rendered later. They do not force repair and do
+not block or authorize `complete-implementation`.
+
+Completion requires that exact-head receipt to be `accepted`, with no later
+exact-head `changes_requested` receipt. A migration's unresolved-finding
+manifest is history, not a lock. `split-or-replace-review-unit` remains
+fail-closed pending issue #118. A new PR number does not reset review history.
 
 This revision becomes authoritative only after the PR introducing it merges
 into the governing base. The introducing PR remains governed by its base
@@ -1145,10 +1159,11 @@ The reviewer and operator own those judgments. It can prove that a decisive
 review was submitted on a specific proposal head and preserve that fact
 separately from merge ancestry. For repair cycles it can prove that declared
 cycles advance through the PR commit order and that classification and severity
-come from the linked reviewer-owned GitHub evidence. Completion fails while the
-current head still has `CHANGES_REQUESTED`. Replacement currently fails closed
-until issue #118 supplies structured lineage verification; a new PR number is
-not reviewability evidence.
+come from the linked reviewer-owned GitHub evidence. Completion requires an
+exact-head `Contract Review Receipt` with `Outcome: accepted`. Inline comments
+and concern lists do not complete or block a unit. Replacement currently fails
+closed until issue #118 supplies structured lineage verification; a new PR
+number is not reviewability evidence.
 The repository also guarantees that the current state and next handoff are
 visible, the accepted proposal is durable, proposal and implementation diffs
 are separate, and implementation cannot pass CI before proposal acceptance.

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="a205a694b13985db06bf48eb544aaf6c89699753fc2840124c44b484b87bf24b">
+  <meta name="source-sha256" content="30fe29bcd956e95e8abc85b341eac932f193314bd180b3f8ec73bb77c4eb9fcf">
   <base target="_blank">
   <title>Milestone Planning And Delivery Contract</title>
   <style>
@@ -216,10 +216,20 @@ repair is ordinary work when it still addresses the accepted question. If the
 accepted contract is wrong, amend the proposal. If the unit is not singular,
 stop and re-scope. Do not treat another repair round as evidence that the
 process must escalate.</p>
-<p>Completion fails if the current head has an outstanding <code>CHANGES_REQUESTED</code>
-review, or if a migration receipt still lists unresolved findings.
-<code>split-or-replace-review-unit</code> remains fail-closed pending the replacement
-lineage contract in issue #118. A new PR number does not reset review history.</p>
+<p>Review and implementation use the same GitHub account, so GitHub will not emit
+<code>CHANGES_REQUESTED</code> or <code>APPROVED</code> on these PRs. The only action-forcing signal
+is an unedited exact-head <code>COMMENTED</code> review containing only:</p>
+<pre><code class="language-text">## Contract Review Receipt
+
+- Outcome: `accepted`
+</code></pre>
+<p>or <code>changes_requested</code>. Inline findings, want/reject notes, and <code>## Concerns</code>
+are documentary. They may be rendered later. They do not force repair and do
+not block or authorize <code>complete-implementation</code>.</p>
+<p>Completion requires that exact-head receipt to be <code>accepted</code>, with no later
+exact-head <code>changes_requested</code> receipt. A migration's unresolved-finding
+manifest is history, not a lock. <code>split-or-replace-review-unit</code> remains
+fail-closed pending issue #118. A new PR number does not reset review history.</p>
 <p>This revision becomes authoritative only after the PR introducing it merges
 into the governing base. The introducing PR remains governed by its base
 contract and cannot use the proposed rule to authorize itself. Review units
@@ -1230,10 +1240,11 @@ The reviewer and operator own those judgments. It can prove that a decisive
 review was submitted on a specific proposal head and preserve that fact
 separately from merge ancestry. For repair cycles it can prove that declared
 cycles advance through the PR commit order and that classification and severity
-come from the linked reviewer-owned GitHub evidence. Completion fails while the
-current head still has <code>CHANGES_REQUESTED</code>. Replacement currently fails closed
-until issue #118 supplies structured lineage verification; a new PR number is
-not reviewability evidence.
+come from the linked reviewer-owned GitHub evidence. Completion requires an
+exact-head <code>Contract Review Receipt</code> with <code>Outcome: accepted</code>. Inline comments
+and concern lists do not complete or block a unit. Replacement currently fails
+closed until issue #118 supplies structured lineage verification; a new PR
+number is not reviewability evidence.
 The repository also guarantees that the current state and next handoff are
 visible, the accepted proposal is durable, proposal and implementation diffs
 are separate, and implementation cannot pass CI before proposal acceptance.</p>

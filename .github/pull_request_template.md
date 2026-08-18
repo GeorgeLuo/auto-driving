@@ -39,6 +39,11 @@ Result:
 # test count and result
 ```
 
+## Concerns
+
+<!-- Documentary only. Organize leftover notes here if useful. They do not
+     force repair and do not block completion. -->
+
 ## Repair Cycle Ledger
 
 <!-- Add one row for each consolidated changes-requested verdict followed by a

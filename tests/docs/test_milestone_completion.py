@@ -8,6 +8,7 @@ from pathlib import Path
 
 from docs.milestones.workflow import (
     PlanContractError,
+    RepairReviewMetadata,
     complete_implementation,
     load_handoff_template,
     materialize_handoff_receipt,
@@ -165,6 +166,33 @@ class CompleteImplementationTests(unittest.TestCase):
             ),
         }
 
+    def _accepted_review_metadata(self) -> RepairReviewMetadata:
+        head = "a" * 40
+        return RepairReviewMetadata(
+            pull_request_number=64,
+            pull_request_url="https://example.invalid/64",
+            pull_request_author="repair-author",
+            head_oid=head,
+            commits=(head,),
+            reviews=(
+                {
+                    "url": "https://example.invalid/64#pullrequestreview-1",
+                    "state": "COMMENTED",
+                    "body": (
+                        "## Contract Review Receipt\n\n"
+                        "- Outcome: `accepted`\n"
+                    ),
+                    "commit": {"oid": head},
+                    "submittedAt": "2026-08-14T19:30:00Z",
+                    "author": {"login": "workflow-reviewer"},
+                    "authorAssociation": "COLLABORATOR",
+                    "authorCanPushToRepository": True,
+                    "includesCreatedEdit": False,
+                    "comments": {"nodes": [], "totalCount": 0},
+                },
+            ),
+        )
+
     def test_cli_help_exposes_completion_command(self) -> None:
         script = (
             Path(__file__).resolve().parents[2]
@@ -195,6 +223,7 @@ class CompleteImplementationTests(unittest.TestCase):
                 64,
                 repo_root=root,
                 pr_payload=self._payload(merge_commit),
+                repair_review_metadata=self._accepted_review_metadata(),
                 render_docs=render,
             )
 
@@ -241,6 +270,7 @@ class CompleteImplementationTests(unittest.TestCase):
                     64,
                     repo_root=root,
                     pr_payload=payload,
+                    repair_review_metadata=self._accepted_review_metadata(),
                     render_docs=lambda: html.write_text(
                         "<p>unexpected</p>\n",
                         encoding="utf-8",
@@ -262,6 +292,7 @@ class CompleteImplementationTests(unittest.TestCase):
                     64,
                     repo_root=root,
                     pr_payload=payload,
+                    repair_review_metadata=self._accepted_review_metadata(),
                     render_docs=lambda: html.write_text(
                         "<p>unexpected</p>\n",
                         encoding="utf-8",

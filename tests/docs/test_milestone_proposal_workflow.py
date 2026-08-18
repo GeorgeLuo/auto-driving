@@ -134,6 +134,45 @@ def _repair_review_record(
     }
 
 
+def _contract_receipt_review(
+    *,
+    head_oid: str,
+    outcome: str,
+    actor: str = "workflow-reviewer",
+    submitted_at: str = "2026-08-14T19:30:00Z",
+) -> dict[str, object]:
+    return _repair_review_record(
+        url=f"{REPAIR_PR_URL}#pullrequestreview-800",
+        body=(
+            "## Contract Review Receipt\n\n"
+            f"- Outcome: `{outcome}`\n"
+        ),
+        head_oid=head_oid,
+        submitted_at=submitted_at,
+        actor=actor,
+    )
+
+
+def _with_head_receipt(
+    metadata: RepairReviewMetadata,
+    outcome: str,
+) -> RepairReviewMetadata:
+    return RepairReviewMetadata(
+        pull_request_number=metadata.pull_request_number,
+        pull_request_url=metadata.pull_request_url,
+        pull_request_author=metadata.pull_request_author,
+        head_oid=metadata.head_oid,
+        commits=metadata.commits,
+        reviews=metadata.reviews
+        + (
+            _contract_receipt_review(
+                head_oid=metadata.head_oid,
+                outcome=outcome,
+            ),
+        ),
+    )
+
+
 def _governed_repair_case(
     *,
     classifications: tuple[str, ...] = ("substantial",),
@@ -534,20 +573,34 @@ class RepairCycleGovernanceTests(unittest.TestCase):
             2,
         )
 
-    def test_completion_rejects_changes_requested_on_head(self) -> None:
+    def test_completion_requires_accepted_receipt_not_inline_findings(self) -> None:
         body, metadata = _governed_repair_case(
-            classifications=("substantial", "substantial"),
-            severities=("P1", "P1"),
-            head_changes_requested=True,
+            classifications=("substantial",),
+            severities=("P1",),
         )
-        self.assertEqual(
-            validate_repair_cycle_governance_body(body, review_metadata=metadata),
-            2,
-        )
-        with self.assertRaisesRegex(PlanContractError, "CHANGES_REQUESTED"):
+        with self.assertRaisesRegex(PlanContractError, "Outcome: accepted"):
             validate_repair_cycle_governance_body(
                 body,
                 review_metadata=metadata,
+                require_resolved_findings=True,
+            )
+        accepted = _with_head_receipt(metadata, "accepted")
+        self.assertEqual(
+            validate_repair_cycle_governance_body(
+                body,
+                review_metadata=accepted,
+                require_resolved_findings=True,
+            ),
+            1,
+        )
+
+    def test_completion_rejects_changes_requested_receipt(self) -> None:
+        body, metadata = _governed_repair_case()
+        rejected = _with_head_receipt(metadata, "changes_requested")
+        with self.assertRaisesRegex(PlanContractError, "changes_requested"):
+            validate_repair_cycle_governance_body(
+                body,
+                review_metadata=rejected,
                 require_resolved_findings=True,
             )
 
@@ -578,12 +631,21 @@ class RepairCycleGovernanceTests(unittest.TestCase):
             validate_repair_cycle_governance_body(body, review_metadata=metadata),
             2,
         )
-        with self.assertRaisesRegex(PlanContractError, "migrated finding"):
+        with self.assertRaisesRegex(PlanContractError, "Outcome: accepted"):
             validate_repair_cycle_governance_body(
                 body,
                 review_metadata=metadata,
                 require_resolved_findings=True,
             )
+        accepted = _with_head_receipt(metadata, "accepted")
+        self.assertEqual(
+            validate_repair_cycle_governance_body(
+                body,
+                review_metadata=accepted,
+                require_resolved_findings=True,
+            ),
+            2,
+        )
 
     def test_minor_cycles_do_not_consume_substantial_cycle_budget(self) -> None:
         body, metadata = _governed_repair_case(

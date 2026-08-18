@@ -20,6 +20,11 @@ Repair the failure class at its owner, not only the reported example. Re-check
 prior findings and the accepted matrix. Do not invent a new adversarial pass.
 There is no cycle-count stop.
 
+Same-account review cannot use GitHub `CHANGES_REQUESTED`. An unedited
+`COMMENTED` review containing only `## Contract Review Receipt` and
+`Outcome: accepted` or `changes_requested` is the verdict. Other comments are
+concerns and do not force action.
+
 ## Reviewer
 
 Verify each prior finding against the repair evidence, then review the current

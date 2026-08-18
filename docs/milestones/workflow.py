@@ -2182,13 +2182,80 @@ def _parse_repair_ledger(text: str) -> MarkdownTable:
     return table
 
 
-def _head_has_changes_requested(metadata: RepairReviewMetadata) -> bool:
-    for review in metadata.reviews:
+def _exact_head_contract_decisions(
+    metadata: RepairReviewMetadata,
+) -> dict[str, str]:
+    """Latest decisive exact-head receipt per authorized reviewer.
+
+    Documentary COMMENTED reviews without a Contract Review Receipt are ignored.
+    """
+
+    decisions: dict[str, tuple[datetime, int, str]] = {}
+    for index, review in enumerate(metadata.reviews):
+        if not isinstance(review, dict):
+            continue
         commit = review.get("commit")
         oid = commit.get("oid") if isinstance(commit, dict) else None
-        if oid == metadata.head_oid and review.get("state") == "CHANGES_REQUESTED":
-            return True
-    return False
+        if oid != metadata.head_oid:
+            continue
+        author = review.get("author")
+        reviewer = author.get("login") if isinstance(author, dict) else None
+        if not isinstance(reviewer, str) or not reviewer:
+            continue
+        association = str(review.get("authorAssociation") or "").upper()
+        can_push = review.get("authorCanPushToRepository") is True
+        if association not in AUTHORIZED_REVIEW_ASSOCIATIONS or not can_push:
+            continue
+        state = str(review.get("state") or "").upper()
+        outcome: str | None = None
+        if state == "APPROVED":
+            outcome = "accepted"
+        elif state == "CHANGES_REQUESTED":
+            outcome = "changes_requested"
+        elif state == "COMMENTED":
+            body = review.get("body")
+            if not isinstance(body, str) or CONTRACT_REVIEW_RECEIPT_HEADING not in body:
+                continue
+            try:
+                outcome = _comment_review_receipt_outcome(body)
+            except PlanContractError:
+                raise PlanContractError(
+                    "exact-head COMMENT receipt must contain only the canonical "
+                    "Contract Review Receipt"
+                ) from None
+            if review.get("includesCreatedEdit") is not False:
+                raise PlanContractError(
+                    "exact-head COMMENT receipt must be unedited"
+                )
+        if outcome is None:
+            continue
+        submitted = _github_timestamp(
+            review.get("submittedAt"),
+            label="exact-head contract review",
+        )
+        previous = decisions.get(reviewer)
+        if previous is None or (submitted, index) > previous[:2]:
+            decisions[reviewer] = (submitted, index, outcome)
+    return {reviewer: item[2] for reviewer, item in decisions.items()}
+
+
+def _require_exact_head_accepted(metadata: RepairReviewMetadata) -> None:
+    decisions = _exact_head_contract_decisions(metadata)
+    outstanding = sorted(
+        reviewer
+        for reviewer, outcome in decisions.items()
+        if outcome == "changes_requested"
+    )
+    if outstanding:
+        raise PlanContractError(
+            "completion requires no exact-head Contract Review Receipt with "
+            f"Outcome: changes_requested (outstanding: {', '.join(outstanding)})"
+        )
+    if "accepted" not in decisions.values():
+        raise PlanContractError(
+            "completion requires an exact-head Contract Review Receipt with "
+            "Outcome: accepted"
+        )
 
 
 def validate_repair_cycle_governance_body(
@@ -2199,9 +2266,9 @@ def validate_repair_cycle_governance_body(
 ) -> int:
     """Validate repair history against GitHub review evidence.
 
-    The ledger is history. There is no cycle-count stop. Completion fails when
-    the current head still has ``CHANGES_REQUESTED`` or a migration still lists
-    unresolved findings.
+    The ledger is history. There is no cycle-count stop. Completion requires an
+    exact-head Contract Review Receipt with Outcome accepted. Documentary
+    comments and a migration unresolved-finding list do not complete or block.
     """
 
     migration = _canonical_migration_fields(text)
@@ -2220,14 +2287,12 @@ def validate_repair_cycle_governance_body(
             if migration is not None
             else 0
         )
-        if (
-            require_resolved_findings
-            and migration is not None
-            and migration["unresolved_manifest_tuple"]
-        ):
-            raise PlanContractError(
-                "completion requires every migrated finding to be resolved"
-            )
+        if require_resolved_findings:
+            if review_metadata is None:
+                raise PlanContractError(
+                    "completion requires structured GitHub review metadata"
+                )
+            _require_exact_head_accepted(review_metadata)
         return substantial_cycles
     if review_metadata is None:
         raise PlanContractError(
@@ -2341,15 +2406,7 @@ def validate_repair_cycle_governance_body(
         )
 
     if require_resolved_findings:
-        if migration is not None and migration["unresolved_manifest_tuple"]:
-            raise PlanContractError(
-                "completion requires every migrated finding to be resolved"
-            )
-        if _head_has_changes_requested(review_metadata):
-            raise PlanContractError(
-                "completion requires the current head to have no outstanding "
-                "CHANGES_REQUESTED review"
-            )
+        _require_exact_head_accepted(review_metadata)
     return substantial_cycles
 
 
@@ -4125,6 +4182,7 @@ def complete_implementation(
     *,
     repo_root: Path = ROOT,
     pr_payload: dict[str, Any] | None = None,
+    repair_review_metadata: RepairReviewMetadata | None = None,
     render_docs: Callable[[], None] | None = None,
     push: bool = True,
 ) -> PlanState:
@@ -4166,11 +4224,12 @@ def complete_implementation(
         else _fetch_pr_metadata(accepted_pr, repo_root=repo_root)
     )
     pr_body = payload.get("body")
-    if isinstance(pr_body, str) and _repair_body_declares_cycles(pr_body):
-        repair_metadata = _fetch_pr_repair_review_metadata(
-            accepted_pr,
-            repo_root=repo_root,
-        )
+    repair_metadata = repair_review_metadata or _fetch_pr_repair_review_metadata(
+        accepted_pr,
+        repo_root=repo_root,
+    )
+    _require_exact_head_accepted(repair_metadata)
+    if isinstance(pr_body, str) and REPAIR_CYCLE_LEDGER_HEADING in pr_body:
         validate_repair_cycle_governance_body(
             pr_body,
             review_metadata=repair_metadata,

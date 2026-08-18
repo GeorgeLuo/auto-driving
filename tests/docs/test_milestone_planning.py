@@ -351,6 +351,8 @@ class MilestonePlanningTests(unittest.TestCase):
         normalized = " ".join(text.split())
         self.assertIn("There is no cycle count that pauses review", text)
         self.assertIn("Closed implementation review", text)
+        self.assertIn("Outcome: `accepted`", text)
+        self.assertIn("documentary", text.lower())
         self.assertIn("a new PR number is not reviewability evidence", normalized)
         self.assertIn("currently fails closed", normalized)
         self.assertIn("becomes authoritative only after", normalized)

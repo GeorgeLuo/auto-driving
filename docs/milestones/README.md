@@ -207,7 +207,9 @@ are documentary. They may be rendered later. They do not force repair and do
 not block or authorize `complete-implementation`.
 
 Completion requires that exact-head receipt to be `accepted`, with no later
-exact-head `changes_requested` receipt. A migration's unresolved-finding
+exact-head `changes_requested` receipt. The receipt head must be the
+implementation tip at merge time; a later push to the implementation branch
+cannot authorize handoff of an older merge. A migration's unresolved-finding
 manifest is history, not a lock. `split-or-replace-review-unit` remains
 fail-closed pending issue #118. A new PR number does not reset review history.
 

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="30fe29bcd956e95e8abc85b341eac932f193314bd180b3f8ec73bb77c4eb9fcf">
+  <meta name="source-sha256" content="13a9dfe81fbe43c10b356c84d48e34c3845ad6ea184220170e6ce918a9867551">
   <base target="_blank">
   <title>Milestone Planning And Delivery Contract</title>
   <style>
@@ -227,7 +227,9 @@ is an unedited exact-head <code>COMMENTED</code> review containing only:</p>
 are documentary. They may be rendered later. They do not force repair and do
 not block or authorize <code>complete-implementation</code>.</p>
 <p>Completion requires that exact-head receipt to be <code>accepted</code>, with no later
-exact-head <code>changes_requested</code> receipt. A migration's unresolved-finding
+exact-head <code>changes_requested</code> receipt. The receipt head must be the
+implementation tip at merge time; a later push to the implementation branch
+cannot authorize handoff of an older merge. A migration's unresolved-finding
 manifest is history, not a lock. <code>split-or-replace-review-unit</code> remains
 fail-closed pending issue #118. A new PR number does not reset review history.</p>
 <p>This revision becomes authoritative only after the PR introducing it merges

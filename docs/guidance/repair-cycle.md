@@ -23,7 +23,8 @@ There is no cycle-count stop.
 Same-account review cannot use GitHub `CHANGES_REQUESTED`. An unedited
 `COMMENTED` review containing only `## Contract Review Receipt` and
 `Outcome: accepted` or `changes_requested` is the verdict. Other comments are
-concerns and do not force action.
+concerns and do not force action. Completion binds that receipt to the
+implementation tip at merge time.
 
 ## Reviewer
 

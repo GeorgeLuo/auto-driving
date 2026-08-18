@@ -13,6 +13,7 @@ from docs.milestones.workflow import (
     ContractReviewReceipt,
     PlanContractError,
     RepairReviewMetadata,
+    _require_merged_head_unchanged,
     _fetch_pr_repair_review_metadata,
     _fetch_pr_review_metadata,
     accept_proposal,
@@ -593,6 +594,32 @@ class RepairCycleGovernanceTests(unittest.TestCase):
             ),
             1,
         )
+
+    def test_completion_rejects_head_moved_after_merge(self) -> None:
+        _, metadata = _governed_repair_case()
+        stale = RepairReviewMetadata(
+            pull_request_number=metadata.pull_request_number,
+            pull_request_url=metadata.pull_request_url,
+            pull_request_author=metadata.pull_request_author,
+            head_oid=metadata.head_oid,
+            commits=metadata.commits,
+            reviews=metadata.reviews,
+            merged_at="2026-08-14T18:00:00Z",
+            head_committed_at="2026-08-14T19:00:00Z",
+        )
+        with self.assertRaisesRegex(PlanContractError, "head changed after merge"):
+            _require_merged_head_unchanged(stale)
+        frozen = RepairReviewMetadata(
+            pull_request_number=metadata.pull_request_number,
+            pull_request_url=metadata.pull_request_url,
+            pull_request_author=metadata.pull_request_author,
+            head_oid=metadata.head_oid,
+            commits=metadata.commits,
+            reviews=metadata.reviews,
+            merged_at="2026-08-14T19:00:00Z",
+            head_committed_at="2026-08-14T18:00:00Z",
+        )
+        _require_merged_head_unchanged(frozen)
 
     def test_completion_rejects_changes_requested_receipt(self) -> None:
         body, metadata = _governed_repair_case()

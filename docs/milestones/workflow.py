@@ -239,6 +239,8 @@ class RepairReviewMetadata:
     head_oid: str
     commits: tuple[str, ...]
     reviews: tuple[dict[str, Any], ...]
+    merged_at: str | None = None
+    head_committed_at: str | None = None
 
 
 @dataclass(frozen=True)
@@ -2239,6 +2241,27 @@ def _exact_head_contract_decisions(
     return {reviewer: item[2] for reviewer, item in decisions.items()}
 
 
+def _require_merged_head_unchanged(metadata: RepairReviewMetadata) -> None:
+    """Refuse a post-merge implementation tip as the completion receipt head."""
+
+    if metadata.merged_at is None:
+        return
+    if metadata.head_committed_at is None:
+        raise PlanContractError(
+            "merged implementation PR is missing head commit time"
+        )
+    merged = _github_timestamp(metadata.merged_at, label="mergedAt")
+    head_time = _github_timestamp(
+        metadata.head_committed_at,
+        label="implementation head commit",
+    )
+    if head_time > merged:
+        raise PlanContractError(
+            "PR head changed after merge; completion cannot accept a receipt "
+            "on a later implementation tip while recording the older merge"
+        )
+
+
 def _require_exact_head_accepted(metadata: RepairReviewMetadata) -> None:
     decisions = _exact_head_contract_decisions(metadata)
     outstanding = sorted(
@@ -2966,10 +2989,11 @@ query(
       number
       url
       headRefOid
+      mergedAt
       author { login }
       commits(first: 100) {
         totalCount
-        nodes { commit { oid } }
+        nodes { commit { oid committedDate } }
       }
       reviews(first: 100) {
         totalCount
@@ -3073,6 +3097,7 @@ query(
             "with the 100-commit verification window"
         )
     commits: list[str] = []
+    head_committed_at: str | None = None
     for node in commit_nodes:
         commit = node.get("commit") if isinstance(node, dict) else None
         oid = commit.get("oid") if isinstance(commit, dict) else None
@@ -3084,6 +3109,9 @@ query(
     number = pull_request.get("number")
     url = pull_request.get("url")
     head_oid = pull_request.get("headRefOid")
+    merged_at = pull_request.get("mergedAt")
+    if merged_at is not None and not isinstance(merged_at, str):
+        raise PlanContractError("GitHub pull request repair metadata is incomplete")
     if (
         number != pr_number
         or not isinstance(url, str)
@@ -3092,6 +3120,15 @@ query(
         or any(not isinstance(review, dict) for review in reviews)
     ):
         raise PlanContractError("GitHub pull request repair metadata is incomplete")
+    for node in commit_nodes:
+        commit = node.get("commit") if isinstance(node, dict) else None
+        if not isinstance(commit, dict):
+            continue
+        if commit.get("oid") == head_oid:
+            committed = commit.get("committedDate")
+            if isinstance(committed, str):
+                head_committed_at = committed
+            break
     return RepairReviewMetadata(
         pull_request_number=number,
         pull_request_url=url,
@@ -3099,6 +3136,8 @@ query(
         head_oid=head_oid,
         commits=tuple(commits),
         reviews=tuple(reviews),
+        merged_at=merged_at,
+        head_committed_at=head_committed_at,
     )
 
 
@@ -4229,6 +4268,7 @@ def complete_implementation(
         repo_root=repo_root,
     )
     _require_exact_head_accepted(repair_metadata)
+    _require_merged_head_unchanged(repair_metadata)
     if isinstance(pr_body, str) and REPAIR_CYCLE_LEDGER_HEADING in pr_body:
         validate_repair_cycle_governance_body(
             pr_body,

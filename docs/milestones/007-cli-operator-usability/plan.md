@@ -130,7 +130,7 @@ deletion; it does not retroactively widen the accepted primary journey.
 
 **Complete CLI surface and sequence audit**
 
-- Workflow state: ready_for_implementation
+- Workflow state: implementation_in_review
 - Proposal branch: `m007/cli-surface-audit-proposal`
 - Implementation branch: `m007/cli-surface-audit`
 - Proposal path: `docs/milestones/007-cli-operator-usability/proposals/cli-surface-audit.md`
@@ -190,6 +190,7 @@ deletion; it does not retroactively widen the accepted primary journey.
 | Complete CLI surface and sequence audit | ready_for_proposal | Promoted after implementation PR #107. |
 | Complete CLI surface and sequence audit | proposal_in_review | Started m007/cli-surface-audit-proposal. |
 | Complete CLI surface and sequence audit | ready_for_implementation | Proposal PR #113 accepted at 75072a9e9270d8c8e8f866c39a52f6bdce0d56ca (reviewed head `44158825e8b8f9566617702e31a570d169d339b2` by `GeorgeLuo` as `OWNER` at `2026-08-14T07:32:32Z`). |
+| Complete CLI surface and sequence audit | implementation_in_review | Started m007/cli-surface-audit. |
 
 ## Accepted Review Units
 

@@ -19,14 +19,12 @@ canonical contract. The contract wins if any wording conflicts.
 
 ## Readiness
 
+Promote a frontier only when the operator can name the want and one reject
+condition. An empty next-frontier slot is honest when that want is unknown.
+
 Before review, confirm that the PR question is stable, the description matches
-the current diff, validation is exact, limitations are explicit, and the
-adversarial pass is current. Before re-review, also confirm that the repair-cycle
-ledger names the consolidated verdict and repair revision. The second
-substantial cycle requires a completed human escalation receipt with an explicit
-owner/time and route. A third or later cycle requires a renewed continuation
-topology audit, finding dispositions, cumulative history, and fresh-context
-review, or a route that stops the current unit.
+the current diff, and validation is exact. Before re-review, confirm that the
+repair-cycle ledger names the consolidated verdict and repair revision.
 
 ## Review
 
@@ -34,9 +32,11 @@ review, or a route that stops the current unit.
    explanation of itself.
 2. Report findings first, ordered by severity, with a concrete reproduction and
    required outcome.
-3. After repairs, verify prior findings and then review the current PR in
-   totality.
-4. Give one consolidated verdict. Approval accepts this review question, not
+3. After a proposal is accepted, raise P0–P2 only for accepted-matrix cases or
+   a false review question. New failure classes are amendment or residual.
+4. After repairs, verify prior findings and then review the current PR against
+   that same closed contract.
+5. Give one consolidated verdict. Approval accepts this review question, not
    the milestone or unrelated future work.
 
 Use the canonical

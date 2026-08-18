@@ -27,3 +27,8 @@ evidence from comments or commit history.
 
 For universal claims, validate the final value after normalization, storage,
 serialization, or transport, not only the first internal representation.
+
+Prefer tests that enter through the public door of the owner: committed
+artifacts or the documented command, not the helper added by the last repair.
+A named mutation should fail closed without depending on a function name or
+error substring.

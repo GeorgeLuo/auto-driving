@@ -156,10 +156,11 @@ how many findings, commits, or comments it contains.
 
 The reviewer classifies the cycle in the verdict. It is **substantial** when
 either the verdict contains a P0–P2 contract failure or the repair changes the
-review question, contract, primary owner or abstraction, material scope or file
-impact, external assumptions, or adversarial failure class. Editorial cleanup,
-evidence formatting, and localized P3 corrections are **minor** only when none
-of those conditions applies. A disputed or omitted classification is treated as
+review question, contract, external assumptions, or adversarial failure class.
+Moving internals or touching more files while the accepted artifacts and Met
+predicates stay true is not substantial. Editorial cleanup, evidence
+formatting, and localized P3 corrections are **minor** only when none of those
+conditions applies. A disputed or omitted classification is treated as
 substantial until the reviewer resolves it.
 
 Every review-unit PR body keeps a `Repair Cycle Ledger` with the verdict receipt,
@@ -180,7 +181,9 @@ attached to that verdict begins with `[P0]`, `[P1]`, `[P2]`, or `[P3]`.
 After a proposal is accepted, implementation review may raise P0–P2 only when
 the case is already in the accepted proposal's adversarial matrix or it
 falsifies the stated review question. Any other observation is P3 or a later
-want. A new failure class discovered during fill is a proposal amendment or an
+want. Two leftover shapes in the same owner, or a request to collapse
+internals, are P3 unless the accepted question named one type as the claim. A
+new failure class discovered during fill is a proposal amendment or an
 explicit residual, not proof that the current implementation is false.
 
 Do not invent a broader matrix during re-review. Re-check prior findings and
@@ -236,6 +239,26 @@ explicit `## Repair Contract Migration` receipt for that specific PR:
 
 Create a separate repair review unit only when a distinct PR is genuinely
 necessary.
+
+#### Late implementer collapse
+
+After the accepted tests are green and the review question is answerable, and
+before requesting review, the implementer may treat those tests as the black
+box and collapse two shapes in the same owner against them. Do this once, not
+during fill and not after each repair.
+
+Drive the tests through the public door: committed artifacts or the documented
+command in, pass or fail on the named mutation out. Do not pin helper names or
+error substrings as the contract.
+
+The pass is implementer-owned and documentary. It has no receipt, ledger row,
+or CI gate. Leftover two-shapes are `## Concerns`, not a completion lock.
+
+If the collapse would change artifacts, Met predicates, or the review
+question, stop. That is an amendment or a later want, not sanitation.
+
+During a repair cycle, add the missing case at that public door and the
+cheapest close. Do not re-own the module in the finding diff.
 
 ### HITL Implementation Adjunct
 
@@ -896,7 +919,9 @@ Before requesting review:
 
 1. Test the accepted failure class and adjacent paths named in the proposal
    matrix, not only the first reproduction.
-2. Enforce at the owning boundary.
+2. Enforce the claim at the owning boundary. Do not use this step to demand a
+   mid-cycle rewrite of internals; the late implementer collapse is optional
+   and not a review finding.
 3. Validate the final externally visible value after normalize/store/serialize.
 4. Prove cross-system assumptions against the relevant live system before
    presenting them as observed.

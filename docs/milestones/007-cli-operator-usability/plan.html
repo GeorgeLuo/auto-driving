@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="3904f6171c714584a959912e253d78442ffb98a9cd51fe8495076567cd4749e6">
+  <meta name="source-sha256" content="c72e0f0a568cf5ee64b6ec0fed5fad81614819c523b57956d35575886a7660ce">
   <base target="_blank">
   <title>Milestone plan — 007-cli-operator-usability</title>
   <style>
@@ -85,7 +85,7 @@
 </tr>
 <tr>
 <td>Current frontier</td>
-<td>Complete CLI surface and sequence audit</td>
+<td>Capability disposition outside CLI journeys</td>
 </tr>
 <tr>
 <td>Started</td>
@@ -336,8 +336,8 @@ deletion; it does not retroactively widen the accepted primary journey.</p>
 <tr>
 <td>M007-08</td>
 <td>A complete generated-and-reviewed inventory maps every public CLI leaf to realistic usage patterns, prerequisites, side effects, safety class, output contract, owning boundary, and deterministic/live validation status without requiring unsafe execution, and reconciles every #88 US-01 through US-10 proposed sequence into a committed registry with stable identity, current commands and prerequisites, primary human confirmation, cleanup, coverage treatment, and explicit disposition; blocked/deferred entries name an owner and unlock condition</td>
-<td>Unmet</td>
-<td>Follows declared scenario catalogs and the accepted coverage collector; US-06, US-07, and US-09 still lack committed sequence/disposition entries, and the US-10 deferral must become a durable owned registry entry; machine-first/HITL evidence for executable realistic patterns is required, not optional commentary</td>
+<td>Met</td>
+<td>PR #122 delivers complete-to-parser leaf accounting with all M007-08 leaf dimensions, #88-bound US-01..US-10 reconciliation with argv-valid current commands, semantic cite/execute passed rules, required coverage treatment, and visible residuals for deferred work and known LIVE defects</td>
 </tr>
 <tr>
 <td>M007-09</td>
@@ -355,23 +355,9 @@ deletion; it does not retroactively widen the accepted primary journey.</p>
 </table>
 <h2>Current Delivery</h2>
 <h3>Current Frontier</h3>
-<p><strong>Complete CLI surface and sequence audit</strong></p>
-<ul>
-<li>Workflow state: implementation_in_review</li>
-<li>Proposal branch: <code>m007/cli-surface-audit-proposal</code></li>
-<li>Implementation branch: <code>m007/cli-surface-audit</code></li>
-<li>Proposal path: <code>docs/milestones/007-cli-operator-usability/proposals/cli-surface-audit.md</code></li>
-<li>Accepted proposal: <a href="https://github.com/GeorgeLuo/auto-driving/pull/113">#113</a> at <code>75072a9e9270d8c8e8f866c39a52f6bdce0d56ca</code> (reviewed head <code>44158825e8b8f9566617702e31a570d169d339b2</code> by <code>GeorgeLuo</code> as <code>OWNER</code> at <code>2026-08-14T07:32:32Z</code>)</li>
-<li>Review kind: Broad mechanical rollout</li>
-<li>Review question: Can one committed CLI usage registry prove complete parser-leaf and #88 US-01 through US-10 accounting, with every public leaf mapped to realistic usage, prerequisites, side effects and safety, expected output, owning boundary, and deterministic or live validation, and every sequence assigned stable commands, confirmation, cleanup, coverage treatment, and an explicit passed, ready, blocked, or deferred disposition with owned unlock conditions, while machine-first and HITL evidence covers safe executable patterns without running hazardous or external entries unsafely?</li>
-<li>Acceptance owner: Parser-derived CLI leaf inventory, committed usage and sequence registry, completeness/schema validators, and runner-backed machine/HITL audit evidence</li>
-<li>Exit criteria affected: M007-08</li>
-<li>Prerequisite: M007-07 is <code>Met</code>; the accepted named-command and journey-coverage collector/report, primary journey, and scenario-continuity catalogs are stable audit inputs</li>
-<li>Milestone-level non-goal: Capability disposition under M007-09, product repair, new CLI features, removal, unsafe execution for coverage, reopening M007-10, a numeric coverage gate, or milestone closeout</li>
-</ul>
-<h3>Next-Frontier Candidate</h3>
 <p><strong>Capability disposition outside CLI journeys</strong></p>
 <ul>
+<li>Workflow state: ready_for_proposal</li>
 <li>Proposal branch: <code>m007/capability-disposition-proposal</code></li>
 <li>Implementation branch: <code>m007/capability-disposition</code></li>
 <li>Proposal path: <code>docs/milestones/007-cli-operator-usability/proposals/capability-disposition.md</code></li>
@@ -380,7 +366,13 @@ deletion; it does not retroactively widen the accepted primary journey.</p>
 <li>Acceptance owner: Capability grouping from leaf inventory, sequence registry, and #107 reachability; owned expose/retain/remove candidate record</li>
 <li>Exit criteria affected: M007-09</li>
 <li>Prerequisite: M007-08 is <code>Met</code>; complete-to-parser leaf inventory, US-01 through US-10 dispositions, and journey-coverage attribution are stable inputs</li>
-<li>Non-goals: Executing the expose/retain/remove product work itself, numeric coverage gates, reopening M007-08 accounting, or milestone closeout</li>
+<li>Milestone-level non-goal: Executing the expose/retain/remove product work itself, numeric coverage gates, reopening M007-08 accounting, or milestone closeout</li>
+</ul>
+<h3>Next-Frontier Candidate</h3>
+<p><strong>None</strong></p>
+<ul>
+<li>Reason: Capability disposition outside CLI journeys (M007-09) is promoted only after this audit marks M007-08 Met with complete leaf and US-01 through US-10 accounting and visible residuals.</li>
+<li>Revisit when: Every capability group outside declared journeys has an owned expose, retain, or remove candidate before closeout.</li>
 </ul>
 <h2>Workflow History</h2>
 <table>
@@ -547,6 +539,16 @@ deletion; it does not retroactively widen the accepted primary journey.</p>
 <td>implementation_in_review</td>
 <td>Started m007/cli-surface-audit.</td>
 </tr>
+<tr>
+<td>Complete CLI surface and sequence audit</td>
+<td>accepted</td>
+<td>Implementation PR #122 merged at 5c09fb32dc196b79e90c2a54fde78b896b41cb49.</td>
+</tr>
+<tr>
+<td>Capability disposition outside CLI journeys</td>
+<td>ready_for_proposal</td>
+<td>Promoted after implementation PR #122.</td>
+</tr>
 </tbody>
 </table>
 <h2>Accepted Review Units</h2>
@@ -588,6 +590,13 @@ deletion; it does not retroactively widen the accepted primary journey.</p>
 <td>Accepted</td>
 <td>M007-07</td>
 <td>Reproducible branch-aware owned-Python CLI journey coverage in PR #107: a digest-bound command/context manifest; unpredictable collection-bound shard provenance; pre-interpreter ambient Coverage.py refusal and session-contained effective configuration; isolated foreground, subprocess, and SIGTERM-flushed background-worker collection; complete expected-context and process receipts; canonical requirements/interpreter/all-distribution identity; raw plus bootstrap/shared/command-specific statement and arc attribution; immutable timestamp receipts and an exact byte-stable public-API report digest; terminal cleanup; explicit correctness/dead-code/numeric-gate non-claims; and tracked pass evidence under docs/milestones/007-cli-operator-usability/evidence/cli-journey-coverage/</td>
+</tr>
+<tr>
+<td>#122</td>
+<td>Can one committed CLI usage registry prove complete parser-leaf and #88 US-01 through US-10 accounting, with every public leaf mapped to realistic usage, prerequisites, side effects and safety, expected output, owning boundary, and deterministic or live validation, and every sequence assigned stable commands, confirmation, cleanup, coverage treatment, and an explicit passed, ready, blocked, or deferred disposition with owned unlock conditions, while machine-first and HITL evidence covers safe executable patterns without running hazardous or external entries unsafely?</td>
+<td>Accepted</td>
+<td>M007-08</td>
+<td>Complete CLI surface and sequence audit in PR #122: argparse-derived leaf inventory with mandatory overlay dimensions; committed #88 catalog authority snapshot and US-01 through US-10 registry bound to it; parser-aware argv validation; semantic hybrid passed citation (rejecting incomplete rehearsals) or new execute evidence; required coverage treatment enums; validators and cross-checks; help-drift report; linked LIVE residuals without product repair; rendered residual rollup; tracked evidence under docs/milestones/007-cli-operator-usability/evidence/cli-surface-audit/</td>
 </tr>
 </tbody>
 </table>
@@ -632,14 +641,14 @@ deletion; it does not retroactively widen the accepted primary journey.</p>
 <td>Inventory every leaf, but execute only declared safe patterns; record prerequisites and non-executed live/hazardous classifications explicitly</td>
 </tr>
 <tr>
-<td>US-06, US-07, and US-09 have family IDs but no committed sequence/disposition entries, while US-10 is only plan-level deferred</td>
-<td>The milestone could close with proposed operator journeys silently absent from the durable corpus</td>
-<td>M007-08 must reconcile US-01 through US-10 into one committed registry; blocked/deferred entries require an owner and concrete unlock condition, without requiring unsafe execution</td>
-</tr>
-<tr>
 <td>Confirmed exploratory product defects from PR #88 remain deferred without owners</td>
 <td>Safe multi-apply and honest readiness cues stay broken while process work advances</td>
 <td>Scenario continuity must dispose #89 / M007-LIVE-001..005 (repair, external-issue, or explicit non-blocking deferral with owner) rather than re-parking them under later audit</td>
+</tr>
+<tr>
+<td>Cited sequence passed status is historical, not continuous HEAD verification</td>
+<td>Regressions after #88/#100 may not be visible in the audit registry until a separate re-proof</td>
+<td>Optional live smoke or product-unit re-proof when journeys are reopened; residual risk at closeout</td>
 </tr>
 </tbody>
 </table>

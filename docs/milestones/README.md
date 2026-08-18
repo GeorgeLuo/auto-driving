@@ -152,9 +152,7 @@ stated contract.
 
 A **repair cycle** is one consolidated changes-requested verdict followed by an
 author revision that addresses that verdict. Count the round once regardless of
-how many findings, commits, or comments it contains. Repeated discussion against
-the same repair revision is still the same cycle; a later consolidated verdict
-against a newer revision followed by another repair is the next cycle.
+how many findings, commits, or comments it contains.
 
 The reviewer classifies the cycle in the verdict. It is **substantial** when
 either the verdict contains a P0–P2 contract failure or the repair changes the
@@ -164,142 +162,62 @@ evidence formatting, and localized P3 corrections are **minor** only when none
 of those conditions applies. A disputed or omitted classification is treated as
 substantial until the reviewer resolves it.
 
-A repair response should identify:
-
-- root cause;
-- owning enforcement boundary changed;
-- adjacent paths audited;
-- regression coverage added;
-- assumptions still unverified.
-
 Every review-unit PR body keeps a `Repair Cycle Ledger` with the verdict receipt,
 classification, highest severity, full repair revision, and contract impact for
 each cycle. The receipt must identify one unedited GitHub review on that PR. Its
 reviewed head, reviewer-owned classification, `[P0]` through `[P3]` inline
 finding headings, stable finding URLs, and GitHub submission time are the
-authority; author-written summaries are not. The repair revision must follow the
-reviewed head in the PR commit sequence. The count belongs to the review unit and
-does not reset after force-push, reopen, or a change of author.
+authority. The repair revision must follow the reviewed head. The count belongs
+to the review unit and does not reset after force-push, reopen, or a change of
+author.
 
 The consolidated verdict body contains exactly one line in the form
 `Classification: minor` or `Classification: substantial`. Every inline comment
-attached to that verdict begins with `[P0]`, `[P1]`, `[P2]`, or `[P3]`; those
-comments are the exact manifest. A verdict may also state
-`Highest severity: P<n>`, but when present it must equal the highest inline
-severity.
+attached to that verdict begins with `[P0]`, `[P1]`, `[P2]`, or `[P3]`.
 
-After the **second substantial** cycle, stop before requesting re-review. A
-human operator or meta-manager—not the repair author acting alone—must record a
-durable escalation decision, name the decision owner and time, and select exactly
-one route:
+#### Closed implementation review
 
-- `continue-current-unit` when the topology audit below confirms that the
-  existing singular review unit still closes the same contract at the same
-  owner and abstraction;
+After a proposal is accepted, implementation review may raise P0–P2 only when
+the case is already in the accepted proposal's adversarial matrix or it
+falsifies the stated review question. Any other observation is P3 or a later
+want. A new failure class discovered during fill is a proposal amendment or an
+explicit residual, not proof that the current implementation is false.
 
-- `replan-current-unit` when the accepted contract remains unchanged and the
-  question is still singular, but the owner or implementation approach needs an
-  explicit reset;
-- `proposal-amendment` when the accepted contract must change;
-- `split-or-replace-review-unit` when the question or scope is not singular; or
-- `abandon-review-unit` when the claim should not proceed.
+Do not invent a broader matrix during re-review. Re-check prior findings and
+the accepted matrix only.
 
-Before re-review, append the decision to `Repair Escalation`; never replace an
-earlier decision row. Each row is keyed by substantial-cycle ordinal and copies
-the immutable GitHub review URL, actual reviewer login, declared role, GitHub
-submission time, one route, exact audited repair head, fresh-context review URL,
-cumulative finding manifest, and disposition. The decision review must contain
-only the canonical decision fields, be attached to that exact head, come from a
-currently authorized actor other than the PR author, and follow the cycle's
-verdict. The canonical receipt declares whether its actor basis is an
-independent account or a same-account fresh-context agent. A second canonical
-GitHub review on the same head must follow the decision and record a totality
-fresh-context pass. Same-account agents are valid when the receipt declares that
-basis; the receipt does not pretend that one GitHub login is an independent
-authenticity root. A URL, role label, timestamp, or route copied into the PR body
-does not establish any of those facts by itself.
+#### Stop after two substantial cycles
 
-For this executable gate, the review unit's repair author is the PR author. A
-different committer on one revision does not let the PR author self-authorize.
-
-The decision actor submits an unedited `COMMENTED` GitHub review containing only:
+After the **second substantial** cycle, or immediately on a reviewer-owned P0,
+stop before requesting another review. A human operator or meta-manager records
+one durable stop on the PR body:
 
 ```text
-## Repair Continuation Decision
+## Repair Stop
 
-- Substantial cycle: <ordinal>
-- Decision role: <operator|meta-manager>
-- Actor basis: <independent-account|same-account-fresh-context>
-- Route: <selected route>
-- Audited head: <full repair SHA>
-- Accepted contract: <unchanged|changed>
-- Primary question: <singular|not-singular>
-- Enforcement owner/abstraction: <unchanged|changed>
-- Coherent diff: <yes|no>
-- Prior findings: <all-disposed|not-all-disposed>
-- Cumulative history: visible-in-current-ledger
-- Finding manifest: <ordered comma-separated GitHub finding URLs>
-- Replacement lineage: None
-- Risk disposition: <disposition or None>
-- Disposition: <unambiguous decision>
+- Route: <continue-current-unit|proposal-amendment|split-or-replace-review-unit|abandon-review-unit>
+- By: <operator|meta-manager>
 ```
 
-The later fresh-context actor submits a separate unedited `COMMENTED` review
-containing only:
+`continue-current-unit` means the accepted question is still singular and the
+next repair stays in this PR. `proposal-amendment` means the accepted contract
+must change. `abandon-review-unit` means the claim should not proceed.
+`split-or-replace-review-unit` remains fail-closed pending the replacement
+lineage contract in issue #118.
 
-```text
-## Repair Fresh-Context Review
+Do not require a second GitHub review, actor-basis declaration, fresh-context
+totality pass, or mirror audit tables. The ledger plus this one-line stop are
+the repair record.
 
-- Substantial cycle: <same ordinal>
-- Audited head: <same full repair SHA>
-- Actor basis: <independent-account|same-account-fresh-context>
-- Finding manifest: <same ordered comma-separated GitHub finding URLs>
-- Scope: totality
-- Outcome: totality-reviewed
-```
-
-Append the same cycle to `Repair Continuation Audit`; never rewrite an earlier
-audit row. The audit fields must match the canonical decision review exactly. It
-records whether the accepted contract, primary question, enforcement owner and
-abstraction, and diff topology remain suitable, plus cumulative history,
-replacement lineage, and risk disposition. `Prior Finding Dispositions` is also
-append-only by substantial cycle. For each required decision it contains the
-exact cumulative set of stable inline-finding URLs—no missing, duplicate, or
-invented rows—and binds every resolved or superseded finding to a later repair
-revision and that cycle's decision receipt.
-
-The decision and fresh-context receipts are required at the second substantial
-cycle and are renewed with distinct receipts at every later substantial cycle.
-A reviewer-owned P0 requires the same stop immediately, even before the second
-substantial cycle, and the canonical decision must record a non-empty risk
-disposition. `continue-current-unit` additionally requires an unchanged
-contract, singular question, unchanged owner and abstraction, coherent diff,
-and an explicit disposition for every cumulative finding. A deferred or
-carried-forward finding may remain open while the authorized continuation does
-the repair; the completion/merge handoff separately requires every finding to be
-`resolved`. `replan-current-unit` is unavailable after the second substantial
-cycle. Receipt reuse, edited receipts, stale heads, ambiguous content,
-unauthorized actors, an actor-basis mismatch, and invalid chronology fail closed.
-
-Replacement review units remain subject to the replacement-lineage contract in
-issue #118. Until that contract has a structured metadata verifier, the
-`split-or-replace-review-unit` machine path fails closed; an arbitrary reference
-or new PR number cannot authorize a count reset or claim cumulative lineage.
-Count alone does not manufacture a replacement.
+Completion still fails if the current head has an outstanding
+`CHANGES_REQUESTED` review, or if a migration receipt still lists unresolved
+findings.
 
 This revision becomes authoritative only after the PR introducing it merges
 into the governing base. The introducing PR remains governed by its base
 contract and cannot use the proposed rule to authorize itself. Review units
 already open at merge do not migrate automatically. A migration requires an
-explicit `## Repair Contract Migration` receipt for that specific PR, naming the
-prior governing base, adopted contract revision, cumulative cycle totals and
-classifications, exact unresolved-finding manifest, migration point, durable
-decision receipt, selected route, and disposition. The PR body must preserve that
-history. The migration boundary is human-authored but its identity, schema, and
-cycle summary are machine-checked; later repair cycles use the new canonical
-receipts.
-
-The migration receipt uses this exact shape:
+explicit `## Repair Contract Migration` receipt for that specific PR:
 
 ```text
 ## Repair Contract Migration
@@ -918,21 +836,11 @@ Approval does **not** mean the milestone is complete, every improvement belongs
 in this PR, the next frontier is automatically approved, or external
 assumptions are proven.
 
-Every review-unit template includes three shared state receipts:
-
-- `Repair Cycle Ledger`, whose cycle numbers are consecutive and whose exact
-  GitHub verdict receipt, reviewer-owned classification and highest severity,
-  full repair revision, and contract impact are updated before re-review;
-- append-only `Repair Escalation`, with one GitHub-bound authority, time, route,
-  exact-head, fresh-context, finding-manifest, and disposition row for every
-  required substantial cycle; and
-- append-only `Repair Continuation Audit` and `Prior Finding Dispositions`, which
-  mirror the canonical decision review and preserve exact cumulative findings,
-  repair revisions, decision receipts, topology, history, and risk disposition.
-
-Each table contains one all-`None` row for an initial review. Do not delete or
-rewrite a prior row, combine verdict rounds, downgrade reviewer-owned severity or
-classification, or reuse a decision or fresh-context receipt to pass the gate.
+Every review-unit template includes a `Repair Cycle Ledger`. Cycle numbers are
+consecutive. Do not delete or rewrite a prior row, combine verdict rounds, or
+downgrade reviewer-owned severity or classification. After the second
+substantial cycle or any P0, add `## Repair Stop` instead of extra receipt
+tables.
 
 ### Proposal PR Template
 
@@ -949,38 +857,25 @@ Use `.github/pull_request_template.md` (required headings):
 - Accepted proposal
 - Review kind
 - Review question
-- User or operator impact
-- Deliverable
-- Invariant or acceptance contract
-- Enforcement or acceptance owner
-- Affected paths
-- Adversarial matrix
-- External assumptions
-- Unverified limits
-- Scope (in / out)
-- File impact
-- Scope reconciliation
-- Repair cycle ledger
-- Repair escalation
-- Repair continuation audit
 - Validation
-- Review notes
+- Repair cycle ledger
 
-Detailed matrices, file impacts, and validation design originate in the
-accepted proposal. The implementation PR reconciles them to observed work
-without silently changing them.
+The accepted proposal owns the matrix, owner, assumptions, limits, and intended
+file impact. The implementation PR links that proposal, reports exact
+validation, and notes a drift only when the diff departed from it. Do not
+restate the contract in the PR body.
 
 ### Invariant Closure (When Claiming Universals)
 
 Words such as `bounded`, `detached`, `deterministic`, `exact`, `fail-closed`,
-`fresh`, and `no movement` are universal guarantees, not positive-path
-examples. Settle invariant, owner, affected paths, adversarial matrix, external
-assumptions, and unverified limits in the proposal. The implementation PR
-reports how the accepted contract was enforced and validated.
+`fresh`, and `no movement` are universal guarantees when the review kind is
+**deterministic invariant closure**. They are not a hidden trigger on other
+kinds. A mechanical rollout or behavioral slice that uses those words in passing
+does not become an authenticity exam.
 
-When either `## Review Question` or `## Proposed Contract` makes one of those
-claims, the proposal artifact must complete both of these sections before it can
-be accepted:
+When the canonical review kind is `deterministic invariant closure`, the
+proposal artifact must complete both of these sections before it can be
+accepted:
 
 - `## Trust And Authority Model`: distinguish consistency, provenance, and
   authenticity guarantees; identify trusted and untrusted actors and inputs;
@@ -996,20 +891,18 @@ be accepted:
 If the guarantee depends on process, library, or external-system behavior whose
 ownership is uncertain, cite the smallest feasibility evidence that settles the
 boundary. Otherwise narrow the guarantee and record the behavior as an
-unverified limit; do not leave ownership discovery for implementation. For
-canonical live capture, readiness must at least settle the artifact format,
-authority mapping, semantic verifier, and coordinated mutation cases. A digest
-or self-seal proves internal consistency only unless the trust model identifies
-an independent authenticity root.
+unverified limit; do not leave ownership discovery for implementation.
 
 Before requesting review:
 
-1. Test the failure class and adjacent paths, not only the first reproduction.
+1. Test the accepted failure class and adjacent paths named in the proposal
+   matrix, not only the first reproduction.
 2. Enforce at the owning boundary.
 3. Validate the final externally visible value after normalize/store/serialize.
 4. Prove cross-system assumptions against the relevant live system before
    presenting them as observed.
-5. Perform one fresh adversarial pass after a repair before re-review.
+5. After a repair, re-check prior findings and the accepted matrix. Do not run
+   a fresh open-ended adversarial pass.
 
 ### Externally Owned Capability Gaps
 
@@ -1075,7 +968,8 @@ dependency lives in another repository.
 ```
 
 Severities: `P0` unsafe/destructive; `P1` stated question materially false;
-`P2` meaningful adjacent gap (normally fix before merge); `P3` nonblocking.
+`P2` an accepted-matrix case that fails (normally fix before merge); `P3`
+nonblocking or a new want outside the accepted contract.
 
 ### Author Repair Response
 
@@ -1099,28 +993,16 @@ Review receipt: `<exact GitHub review URL for the consolidated verdict>`
 ## Validation
 
 <commands and results>
-
-## Fresh Adversarial Pass
-
-<Additional cases checked after repair>
 ```
 
-One review-and-repair cycle is normal. The second substantial cycle invokes the
-escalation and topology-audit rules in [Repair Cycle](#repair-cycle); do not
-request another review until the exact-head decision and later fresh-context
-GitHub reviews, append-only escalation/audit rows, and exact finding dispositions
-are recorded. A third or later substantial cycle may remain in the same review
-unit only through distinct renewed receipts and a verified continuation audit;
-otherwise amendment or abandonment must stop the unit. Split/replacement remains
-fail-closed until issue #118 has structured lineage verification.
+One review-and-repair cycle is normal. After the second substantial cycle,
+record `## Repair Stop` and do not request another review until the operator
+chooses a route. Split/replacement remains fail-closed until issue #118 has
+structured lineage verification.
 
 Before every review or re-review request, reconcile the PR description to the
-current diff. Refresh the review question when its wording no longer matches,
-the enforcement or acceptance owner, affected paths, adversarial matrix, file
-impact, external assumptions, unverified limits, and exact validation results.
-Summarize meaningful scope deepening and state whether it still closes the same
-claim. Do not make the reviewer reconstruct the actual contract from commit
-history.
+current diff and refresh exact validation results. Do not expand the accepted
+matrix in the PR body.
 
 ### Cumulative Milestone PR
 
@@ -1262,13 +1144,10 @@ the reserved child branch, current parent head, completed HITL template, and
 immutable milestone contract artifacts.
 For each recognized milestone review-unit transition and adjunct, CI also
 fetches GitHub PR reviews, inline comments, authority, and commit order, then
-validates the declared repair ledger, append-only escalation and continuation
-rows, and exact finding dispositions. The
-pull-request workflow runs when that body is edited so a newly recorded
-decision can satisfy the gate without an unrelated code commit. The same
-sections remain required human-visible state in cumulative milestone and
-separate repair templates even when those PR topologies are outside the
-transition gate.
+validates the declared repair ledger and, after the second substantial cycle or
+a P0, the one-line `## Repair Stop`. The pull-request workflow runs when that
+body is edited so a newly recorded stop can satisfy the gate without an
+unrelated code commit.
 `docs/render_markdown.py` invokes the same plan validator, so hand-edited state
 that omits required fields or history is rejected.
 
@@ -1280,22 +1159,17 @@ with declared repair cycles also cannot establish GitHub evidence by itself;
 the event-backed CI path supplies that metadata.
 
 The machine cannot discover an unrecorded review round, decide whether a cycle
-was intellectually substantial, prove that the named decision author had sound
-judgment, prove which model authored a phase, prove that a reviewer understood a
-proposal, or prove that approval was intellectually sound. The reviewer and
-operator own those judgments. It can prove that a decisive review was submitted
-on a specific proposal head and preserve that fact separately from merge
-ancestry. For repair cycles it can prove that declared cycles advance through the
-PR commit order; classification, highest severity, and finding IDs come from the
-linked reviewer-owned GitHub evidence; decision and fresh-context actors have
-current authority and an actor-basis declaration consistent with the PR author;
-receipt content, exact head, time, route, manifest, and chronology agree; and every
-required historical row and exact finding disposition remains present. An
-authorized same-unit continuation may carry a deferred or carried-forward
-finding, while the completion handoff requires every finding resolved.
-Replacement currently
-fails closed until issue #118 supplies structured lineage verification; a new PR
-number is not reviewability evidence.
+was intellectually substantial, prove which model authored a phase, prove that a
+reviewer understood a proposal, or prove that approval was intellectually sound.
+The reviewer and operator own those judgments. It can prove that a decisive
+review was submitted on a specific proposal head and preserve that fact
+separately from merge ancestry. For repair cycles it can prove that declared
+cycles advance through the PR commit order, that classification and severity
+come from the linked reviewer-owned GitHub evidence, and that a required
+`## Repair Stop` names an allowed route. Completion fails while the current
+head still has `CHANGES_REQUESTED`. Replacement currently fails closed until
+issue #118 supplies structured lineage verification; a new PR number is not
+reviewability evidence.
 The repository also guarantees that the current state and next handoff are
 visible, the accepted proposal is durable, proposal and implementation diffs
 are separate, and implementation cannot pass CI before proposal acceptance.

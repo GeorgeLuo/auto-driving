@@ -1,7 +1,7 @@
 # Adversarial Matrix
 
-**When to load:** When a proposal or review makes a universal guarantee, audits
-an enforcement boundary, or needs a fresh adversarial pass after repair.
+**When to load:** When a proposal or review makes a universal guarantee or
+audits an enforcement boundary.
 
 **Authority:** This summarizes
 [Invariant Closure](../milestones/README.md#invariant-closure-when-claiming-universals)
@@ -12,7 +12,8 @@ in the canonical contract. The contract wins if any wording conflicts.
 Record the exact claim, owning boundary, affected paths, transformations,
 bypasses, external assumptions, and unverified limits. Terms such as `bounded`,
 `detached`, `deterministic`, `exact`, `fail-closed`, `fresh`, and `no movement`
-require class-level proof.
+require class-level proof only when the review kind is deterministic invariant
+closure.
 
 ## Case Families
 
@@ -29,5 +30,5 @@ Consider only families relevant to the claim:
 - cross-component assumptions and bypasses around the owner.
 
 Every accepted matrix row needs a direct test or an explicit explanation of
-which stronger test subsumes it. After repair, add cases derived from the root
-cause rather than rerunning only the original reproduction.
+which stronger test subsumes it. After repair, re-check the accepted rows
+rather than inventing a new matrix.

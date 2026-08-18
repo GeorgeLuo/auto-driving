@@ -70,12 +70,7 @@ UNIVERSAL_CONTRACT_REQUIRED_HEADINGS = (
     "## Trust And Authority Model",
     "## Evidence Topology And Capture Strategy",
 )
-UNIVERSAL_CLAIM_PATTERN = re.compile(
-    r"\b(?:bounded|detached|deterministic|exact|fresh)\b"
-    r"|\bfail(?:-|\s+)closed\b"
-    r"|\bno movement\b",
-    re.IGNORECASE,
-)
+INVARIANT_CLOSURE_KIND = "deterministic invariant closure"
 PROPOSAL_AMENDMENT_REQUIRED_HEADINGS = (
     "## Review Question",
     "## Reason For Amendment",
@@ -119,6 +114,13 @@ REPAIR_CYCLE_LEDGER_HEADER = (
     "Contract impact",
 )
 REPAIR_CYCLE_CLASSIFICATIONS = {"minor", "substantial"}
+REPAIR_STOP_HEADING = "## Repair Stop"
+REPAIR_STOP_ROUTES = {
+    "continue-current-unit",
+    "proposal-amendment",
+    "split-or-replace-review-unit",
+    "abandon-review-unit",
+}
 REPAIR_ESCALATION_HEADING = "## Repair Escalation"
 REPAIR_ESCALATION_HEADER = (
     "Substantial cycle",
@@ -1708,48 +1710,45 @@ def start_proposal_amendment_branch(
     return updated
 
 
-def _contract_sections_claim_universal(
-    text: str,
-    headings: tuple[str, ...],
-) -> bool:
-    lines = text.splitlines()
-    claim_sections: list[str] = []
-    for heading in headings:
-        start, end = _section_bounds(lines, heading)
-        claim_sections.extend(lines[start:end])
-    claims = re.sub(
-        r"<!--.*?-->",
-        "",
-        "\n".join(claim_sections),
-        flags=re.DOTALL,
-    )
-    return UNIVERSAL_CLAIM_PATTERN.search(claims) is not None
+def _optional_document_review_kind(text: str) -> str | None:
+    if "## Review Kind" not in text:
+        return None
+    try:
+        return _pr_review_kind(text)
+    except PlanContractError:
+        return None
 
 
-def validate_proposal_text(text: str) -> None:
+def _requires_invariant_contract(kind: str | None) -> bool:
+    if not kind:
+        return False
+    return _normalize_review_kind(kind) == INVARIANT_CLOSURE_KIND
+
+
+def _require_invariant_contract_sections(text: str, *, document: str) -> None:
+    for heading in UNIVERSAL_CONTRACT_REQUIRED_HEADINGS:
+        if heading not in text:
+            raise PlanContractError(
+                f"{document} review kind {INVARIANT_CLOSURE_KIND} requires {heading}"
+            )
+        _required_section_body(text, heading, document=document)
+
+
+def validate_proposal_text(text: str, *, review_kind: str | None = None) -> None:
     if not text.startswith("# Proposal:"):
         raise PlanContractError("proposal must start with '# Proposal:'")
     for heading in PROPOSAL_REQUIRED_HEADINGS:
         if heading not in text:
             raise PlanContractError(f"proposal is missing {heading}")
-    if _contract_sections_claim_universal(
-        text,
-        ("## Review Question", "## Proposed Contract"),
-    ):
-        for heading in UNIVERSAL_CONTRACT_REQUIRED_HEADINGS:
-            if heading not in text:
-                raise PlanContractError(
-                    f"universal proposal claim requires {heading}"
-                )
-            _required_section_body(
-                text,
-                heading,
-                document="universal proposal",
-            )
+    kind = review_kind or _optional_document_review_kind(text)
+    if _requires_invariant_contract(kind):
+        _require_invariant_contract_sections(text, document="universal proposal")
     load_handoff_template(text)
 
 
-def validate_proposal_amendment_text(text: str) -> None:
+def validate_proposal_amendment_text(
+    text: str, *, review_kind: str | None = None
+) -> None:
     if not text.startswith("# Proposal Amendment:"):
         raise PlanContractError(
             "proposal amendment must start with '# Proposal Amendment:'"
@@ -1757,20 +1756,11 @@ def validate_proposal_amendment_text(text: str) -> None:
     for heading in PROPOSAL_AMENDMENT_REQUIRED_HEADINGS:
         if heading not in text:
             raise PlanContractError(f"proposal amendment is missing {heading}")
-    if _contract_sections_claim_universal(
-        text,
-        ("## Review Question", "## Contract Delta"),
-    ):
-        for heading in UNIVERSAL_CONTRACT_REQUIRED_HEADINGS:
-            if heading not in text:
-                raise PlanContractError(
-                    f"universal proposal amendment claim requires {heading}"
-                )
-            _required_section_body(
-                text,
-                heading,
-                document="universal proposal amendment",
-            )
+    kind = review_kind or _optional_document_review_kind(text)
+    if _requires_invariant_contract(kind):
+        _require_invariant_contract_sections(
+            text, document="universal proposal amendment"
+        )
 
 
 def _repair_value(value: str) -> str:
@@ -2182,40 +2172,46 @@ def _validate_repair_migration_identity(
         )
 
 
-def _parse_repair_state_tables(
-    text: str,
-) -> tuple[MarkdownTable, MarkdownTable, MarkdownTable, MarkdownTable]:
-    headings_and_headers = (
-        (REPAIR_CYCLE_LEDGER_HEADING, REPAIR_CYCLE_LEDGER_HEADER),
-        (REPAIR_ESCALATION_HEADING, REPAIR_ESCALATION_HEADER),
-        (REPAIR_CONTINUATION_HEADING, REPAIR_CONTINUATION_HEADER),
-        (REPAIR_FINDING_DISPOSITION_HEADING, REPAIR_FINDING_DISPOSITION_HEADER),
-    )
-    tables: list[MarkdownTable] = []
-    for heading, header in headings_and_headers:
-        try:
-            table = parse_table(text, heading)
-        except PlanContractError as exc:
-            raise PlanContractError(f"PR body must contain {heading}") from exc
-        if table.header != header:
-            raise PlanContractError(
-                f"{heading.removeprefix('##').strip()} must use columns: "
-                + ", ".join(header)
-            )
-        if not table.rows:
-            raise PlanContractError(f"{heading} must contain a row")
-        tables.append(table)
-    return tables[0], tables[1], tables[2], tables[3]
+def _parse_repair_ledger(text: str) -> MarkdownTable:
+    try:
+        table = parse_table(text, REPAIR_CYCLE_LEDGER_HEADING)
+    except PlanContractError as exc:
+        raise PlanContractError(
+            f"PR body must contain {REPAIR_CYCLE_LEDGER_HEADING}"
+        ) from exc
+    if table.header != REPAIR_CYCLE_LEDGER_HEADER:
+        raise PlanContractError(
+            "Repair Cycle Ledger must use columns: "
+            + ", ".join(REPAIR_CYCLE_LEDGER_HEADER)
+        )
+    if not table.rows:
+        raise PlanContractError("Repair Cycle Ledger must contain a row")
+    return table
 
 
-def _validate_empty_repair_state(
-    escalation: MarkdownTable,
-    audit: MarkdownTable,
-    dispositions: MarkdownTable,
-) -> None:
-    _require_all_none_row(escalation, label="Repair Escalation")
-    _require_all_none_row(audit, label="Repair Continuation Audit")
-    _require_all_none_row(dispositions, label="Prior Finding Dispositions")
+def _parse_repair_stop(text: str) -> dict[str, str] | None:
+    if REPAIR_STOP_HEADING not in text:
+        return None
+    body = _required_section_body(text, REPAIR_STOP_HEADING, document="repair stop")
+    fields: dict[str, str] = {}
+    for raw in body.splitlines():
+        match = re.fullmatch(r"-\s+(Route|By):\s*(.+?)\s*", raw.strip())
+        if match:
+            fields[match.group(1).lower()] = _plain_receipt_value(match.group(2))
+    if set(fields) != {"route", "by"}:
+        raise PlanContractError(
+            "Repair Stop must contain only `- Route:` and `- By:`"
+        )
+    return fields
+
+
+def _head_has_changes_requested(metadata: RepairReviewMetadata) -> bool:
+    for review in metadata.reviews:
+        commit = review.get("commit")
+        oid = commit.get("oid") if isinstance(commit, dict) else None
+        if oid == metadata.head_oid and review.get("state") == "CHANGES_REQUESTED":
+            return True
+    return False
 
 
 def validate_repair_cycle_governance_body(
@@ -2224,15 +2220,15 @@ def validate_repair_cycle_governance_body(
     review_metadata: RepairReviewMetadata | None = None,
     require_resolved_findings: bool = False,
 ) -> int:
-    """Validate repair history against immutable GitHub review evidence.
+    """Validate repair history against GitHub review evidence.
 
-    A continuation gate may authorize more work while a finding is carried
-    forward. The completion path passes ``require_resolved_findings=True`` so
-    that an authorized continuation cannot be mistaken for a merge-ready unit.
+    After two substantial cycles, or on a P0, the PR body must record
+    ``## Repair Stop``. Completion fails when the current head still has
+    ``CHANGES_REQUESTED`` or a migration still lists unresolved findings.
     """
 
     migration = _canonical_migration_fields(text)
-    ledger, escalation, audit, dispositions = _parse_repair_state_tables(text)
+    ledger = _parse_repair_ledger(text)
     first_values = tuple(_repair_value(value) for value in ledger.rows[0])
     if migration is not None:
         if review_metadata is None:
@@ -2242,7 +2238,18 @@ def validate_repair_cycle_governance_body(
         _validate_repair_migration_identity(migration, review_metadata)
     if first_values[0] == "none":
         _require_all_none_row(ledger, label="Repair Cycle Ledger")
-        _validate_empty_repair_state(escalation, audit, dispositions)
+        substantial_cycles = (
+            int(migration["substantial_cycles_int"])
+            if migration is not None
+            else 0
+        )
+        if substantial_cycles >= 2:
+            stop = _parse_repair_stop(text)
+            if stop is None:
+                raise PlanContractError(
+                    "second substantial cycle requires ## Repair Stop"
+                )
+            _validate_repair_stop(stop)
         if (
             require_resolved_findings
             and migration is not None
@@ -2251,11 +2258,7 @@ def validate_repair_cycle_governance_body(
             raise PlanContractError(
                 "completion requires every migrated finding to be resolved"
             )
-        return (
-            int(migration["substantial_cycles_int"])
-            if migration is not None
-            else 0
-        )
+        return substantial_cycles
     if review_metadata is None:
         raise PlanContractError(
             "declared repair cycles require structured GitHub review metadata"
@@ -2266,34 +2269,21 @@ def validate_repair_cycle_governance_body(
         raise PlanContractError("GitHub repair metadata has no pull-request author")
     commit_indexes = _metadata_commit_indexes(review_metadata)
 
-    cycle_evidence: list[dict[str, Any]] = []
-    finding_origins: dict[str, dict[str, Any]] = {}
     historical_cycles = (
         int(migration["cumulative_cycles"])
         if migration is not None
         else 0
     )
-    historical_substantial_cycles = (
+    substantial_cycles = (
         int(migration["substantial_cycles_int"])
         if migration is not None
         else 0
     )
-    if migration is not None:
-        for finding in migration["unresolved_manifest_tuple"].split(","):
-            if finding:
-                finding_origins[finding] = {
-                    "severity": "P1",
-                    "repair_revision": migration["Migration point"].lower(),
-                    "review_index": -1,
-                }
-    substantial_cycles = historical_substantial_cycles
     previous_repair_index = -1
     previous_review_time: datetime | None = None
     verdict_receipts: set[str] = set()
-    cumulative_findings: list[str] = []
-    findings_by_substantial: dict[int, tuple[str, ...]] = {}
-    evidence_by_substantial: dict[int, dict[str, Any]] = {}
-    p0_substantial_cycles: set[int] = set()
+    saw_p0 = False
+    last_repair = ""
 
     for expected_cycle, row in enumerate(ledger.rows, start=historical_cycles + 1):
         (
@@ -2328,7 +2318,7 @@ def validate_repair_cycle_governance_body(
             allowed_states={"COMMENTED", "CHANGES_REQUESTED"},
             require_independent=False,
         )
-        verified_classification, verified_severity, finding_urls = (
+        verified_classification, verified_severity, _finding_urls = (
             _review_finding_evidence(
                 review,
                 label=f"repair cycle {expected_cycle} verdict",
@@ -2372,455 +2362,53 @@ def validate_repair_cycle_governance_body(
             raise PlanContractError("repair verdict chronology must advance")
         previous_repair_index = repair_index
         previous_review_time = submitted
-        evidence: dict[str, Any] = {
-            "severity": verified_severity,
-            "review_time": submitted,
-            "review_index": review_index,
-            "repair_revision": revision,
-        }
-        cycle_evidence.append(evidence)
-        for finding in finding_urls:
-            if finding in finding_origins:
-                raise PlanContractError("reviewer-owned finding URLs cannot be reused")
-            finding_origins[finding] = evidence
-            cumulative_findings.append(finding)
+        last_repair = revision
         if verified_classification == "substantial":
             substantial_cycles += 1
-            evidence["substantial_cycle"] = substantial_cycles
-            evidence_by_substantial[substantial_cycles] = evidence
-            findings_by_substantial[substantial_cycles] = tuple(cumulative_findings)
-            if verified_severity == "P0":
-                p0_substantial_cycles.add(substantial_cycles)
+        if verified_severity == "P0":
+            saw_p0 = True
 
-    if cycle_evidence and cycle_evidence[-1]["repair_revision"] != review_metadata.head_oid:
+    if last_repair and last_repair != review_metadata.head_oid:
         raise PlanContractError(
             "the latest repair revision must be the exact current PR head"
         )
 
-    decision_start = historical_substantial_cycles + 1
-    if migration is None:
-        decision_start = max(2, decision_start)
-    required_decision_cycles = tuple(
-        sorted(set(range(decision_start, substantial_cycles + 1)) | p0_substantial_cycles)
-    )
-    if not required_decision_cycles:
-        _validate_empty_repair_state(escalation, audit, dispositions)
-        return substantial_cycles
+    if substantial_cycles >= 2 or saw_p0:
+        stop = _parse_repair_stop(text)
+        if stop is None:
+            raise PlanContractError(
+                "second substantial cycle or reviewer-owned P0 requires ## Repair Stop"
+            )
+        _validate_repair_stop(stop)
 
-    if len(escalation.rows) != len(required_decision_cycles):
-        raise PlanContractError(
-            "Repair Escalation must preserve one immutable row for every required "
-            "substantial cycle"
-        )
-    decision_records: dict[int, dict[str, Any]] = {}
-    used_receipts = set(verdict_receipts)
-    for row, expected_substantial in zip(
-        escalation.rows,
-        required_decision_cycles,
-        strict=True,
-    ):
-        (
-            substantial_cycle,
-            decision_receipt,
-            decision_owner,
-            decision_role,
-            decision_time,
-            route,
-            audited_head,
-            fresh_review_receipt,
-            finding_manifest,
-            disposition,
-        ) = row
-        if _repair_value(substantial_cycle) != str(expected_substantial):
+    if require_resolved_findings:
+        if migration is not None and migration["unresolved_manifest_tuple"]:
             raise PlanContractError(
-                "Repair Escalation rows must be keyed to each required substantial "
-                "cycle in order"
+                "completion requires every migrated finding to be resolved"
             )
-        decision_url = _plain_receipt_value(decision_receipt)
-        fresh_url = _plain_receipt_value(fresh_review_receipt)
-        if decision_url in used_receipts or fresh_url in used_receipts or decision_url == fresh_url:
+        if _head_has_changes_requested(review_metadata):
             raise PlanContractError(
-                "decision and fresh-context review receipts must be unique per cycle"
-            )
-        used_receipts.update({decision_url, fresh_url})
-        decision_review, actor, submitted_at, submitted = _verified_repair_review(
-            review_metadata,
-            decision_url,
-            label=f"substantial cycle {expected_substantial} decision",
-            allowed_states={"COMMENTED"},
-            require_independent=False,
-        )
-        if _canonical_receipts_for_cycle(
-            review_metadata,
-            heading=REPAIR_DECISION_RECEIPT_HEADING,
-            substantial_cycle=expected_substantial,
-        ) != (decision_url,):
-            raise PlanContractError(
-                "each substantial cycle must preserve exactly one canonical "
-                "decision receipt; rewritten or duplicate decisions fail closed"
-            )
-        decision_fields = _canonical_decision_fields(decision_review.get("body"))
-        _validate_repair_actor_basis(
-            decision_fields,
-            reviewer=actor,
-            pull_request_author=review_metadata.pull_request_author,
-            label=f"substantial cycle {expected_substantial} decision",
-        )
-        evidence = evidence_by_substantial[expected_substantial]
-        expected_head = evidence["repair_revision"]
-        expected_manifest = findings_by_substantial[expected_substantial]
-        normalized_route = _repair_value(route)
-        normalized_role = _repair_value(decision_role)
-        if normalized_route not in REPAIR_ESCALATION_ROUTES:
-            raise PlanContractError(
-                "Repair Escalation Route must be one of: "
-                + ", ".join(sorted(REPAIR_ESCALATION_ROUTES))
-            )
-        if normalized_role not in REPAIR_DECISION_ROLES:
-            raise PlanContractError(
-                "Repair Escalation Decision role must be `operator` or `meta-manager`"
-            )
-        if _plain_receipt_value(decision_owner).casefold() != actor.casefold():
-            raise PlanContractError(
-                "Repair Escalation Decision owner must match the GitHub decision actor"
-            )
-        if _plain_receipt_value(decision_time) != submitted_at:
-            raise PlanContractError(
-                "Repair Escalation Decision time must match GitHub submittedAt"
-            )
-        if _plain_receipt_value(audited_head).lower() != expected_head:
-            raise PlanContractError(
-                "Repair Escalation Audited head must equal that cycle's repair revision"
-            )
-        if _review_commit_oid(
-            decision_review,
-            label=f"substantial cycle {expected_substantial} decision",
-        ) != expected_head:
-            raise PlanContractError(
-                "repair continuation decision must be attached to the exact audited head"
-            )
-        if submitted <= evidence["review_time"]:
-            raise PlanContractError(
-                "repair continuation decision must follow its changes-requested verdict"
-            )
-        if _manifest_items(
-            finding_manifest,
-            label="Repair Escalation Finding manifest",
-        ) != expected_manifest:
-            raise PlanContractError(
-                "Repair Escalation Finding manifest must equal the cumulative "
-                "reviewer-owned findings"
-            )
-        field_expectations = {
-            "Substantial cycle": str(expected_substantial),
-            "Decision role": normalized_role,
-            "Route": normalized_route,
-            "Audited head": expected_head,
-            "Finding manifest": ", ".join(expected_manifest),
-            "Disposition": _plain_receipt_value(disposition),
-        }
-        for label, expected in field_expectations.items():
-            actual = decision_fields[label]
-            if label in {"Decision role", "Route"}:
-                actual = _repair_value(actual)
-            elif label == "Audited head":
-                actual = actual.lower()
-            if actual != expected:
-                raise PlanContractError(
-                    f"Repair Escalation {label} must match its canonical GitHub "
-                    "decision receipt"
-                )
-
-        fresh_review, _, _, fresh_submitted = _verified_repair_review(
-            review_metadata,
-            fresh_url,
-            label=f"substantial cycle {expected_substantial} fresh-context review",
-            allowed_states={"COMMENTED"},
-            require_independent=False,
-        )
-        if _canonical_receipts_for_cycle(
-            review_metadata,
-            heading=REPAIR_FRESH_REVIEW_RECEIPT_HEADING,
-            substantial_cycle=expected_substantial,
-        ) != (fresh_url,):
-            raise PlanContractError(
-                "each substantial cycle must preserve exactly one canonical "
-                "fresh-context receipt; rewritten or duplicate reviews fail closed"
-            )
-        fresh_fields = _canonical_fresh_review_fields(fresh_review.get("body"))
-        fresh_author = fresh_review.get("author")
-        fresh_actor = fresh_author.get("login") if isinstance(fresh_author, dict) else None
-        if not isinstance(fresh_actor, str):
-            raise PlanContractError(
-                f"substantial cycle {expected_substantial} fresh-context review "
-                "has no GitHub actor"
-            )
-        _validate_repair_actor_basis(
-            fresh_fields,
-            reviewer=fresh_actor,
-            pull_request_author=review_metadata.pull_request_author,
-            label=f"substantial cycle {expected_substantial} fresh-context review",
-        )
-        if _review_commit_oid(
-            fresh_review,
-            label=f"substantial cycle {expected_substantial} fresh-context review",
-        ) != expected_head:
-            raise PlanContractError(
-                "fresh-context review must be attached to the exact audited head"
-            )
-        if fresh_submitted <= submitted:
-            raise PlanContractError(
-                "fresh-context totality review must follow the continuation decision"
-            )
-        expected_fresh_fields = {
-            "Substantial cycle": str(expected_substantial),
-            "Audited head": expected_head,
-            "Finding manifest": ", ".join(expected_manifest),
-            "Scope": "totality",
-            "Outcome": "totality-reviewed",
-        }
-        for label, expected in expected_fresh_fields.items():
-            actual = fresh_fields[label]
-            if label == "Audited head":
-                actual = actual.lower()
-            else:
-                actual = _repair_value(actual) if label in {"Scope", "Outcome"} else actual
-            if actual != expected:
-                raise PlanContractError(
-                    f"fresh-context review {label} does not match the audited cycle"
-                )
-        decision_records[expected_substantial] = {
-            "url": decision_url,
-            "route": normalized_route,
-            "head": expected_head,
-            "fields": decision_fields,
-        }
-
-    if len(audit.rows) != len(required_decision_cycles):
-        raise PlanContractError(
-            "Repair Continuation Audit must preserve one row for every required "
-            "substantial cycle"
-        )
-    audit_records: dict[int, dict[str, str]] = {}
-    for row, expected_substantial in zip(audit.rows, required_decision_cycles, strict=True):
-        (
-            substantial_cycle,
-            decision_receipt,
-            accepted_contract,
-            primary_question,
-            owner_abstraction,
-            coherent_diff,
-            prior_findings,
-            cumulative_history,
-            replacement_lineage,
-            risk_disposition,
-        ) = row
-        if _repair_value(substantial_cycle) != str(expected_substantial):
-            raise PlanContractError(
-                "Repair Continuation Audit rows must be keyed to required "
-                "substantial cycles in order"
-            )
-        decision = decision_records[expected_substantial]
-        if _plain_receipt_value(decision_receipt) != decision["url"]:
-            raise PlanContractError(
-                "Repair Continuation Audit decision receipt must match Repair Escalation"
-            )
-        normalized = {
-            "Accepted contract": _repair_value(accepted_contract),
-            "Primary question": _repair_value(primary_question),
-            "Enforcement owner/abstraction": _repair_value(owner_abstraction),
-            "Coherent diff": _repair_value(coherent_diff),
-            "Prior findings": _repair_value(prior_findings),
-            "Cumulative history": _plain_receipt_value(cumulative_history),
-            "Replacement lineage": _plain_receipt_value(replacement_lineage),
-            "Risk disposition": _plain_receipt_value(risk_disposition),
-        }
-        fields = decision["fields"]
-        for label, actual in normalized.items():
-            expected = fields[label]
-            if label in {
-                "Accepted contract",
-                "Primary question",
-                "Enforcement owner/abstraction",
-                "Coherent diff",
-                "Prior findings",
-            }:
-                expected = _repair_value(expected)
-            if actual != expected:
-                raise PlanContractError(
-                    f"Repair Continuation Audit {label} must match its canonical "
-                    "GitHub decision receipt"
-                )
-        route = decision["route"]
-        if normalized["Accepted contract"] not in {"unchanged", "changed"}:
-            raise PlanContractError("continuation audit has invalid Accepted contract")
-        if normalized["Primary question"] not in {"singular", "not-singular"}:
-            raise PlanContractError("continuation audit has invalid Primary question")
-        if normalized["Enforcement owner/abstraction"] not in {"unchanged", "changed"}:
-            raise PlanContractError(
-                "continuation audit has invalid Enforcement owner/abstraction"
-            )
-        if normalized["Coherent diff"] not in {"yes", "no"}:
-            raise PlanContractError("continuation audit has invalid Coherent diff")
-        if normalized["Prior findings"] not in {"all-disposed", "not-all-disposed"}:
-            raise PlanContractError("continuation audit has invalid Prior findings")
-        if normalized["Cumulative history"] != "visible-in-current-ledger":
-            raise PlanContractError(
-                "continuation audit Cumulative history must remain "
-                "visible-in-current-ledger"
-            )
-        if route == "split-or-replace-review-unit":
-            raise PlanContractError(
-                "split-or-replace-review-unit fails closed until issue #118's "
-                "structured replacement-lineage verifier is implemented"
-            )
-        if not _is_placeholder(normalized["Replacement lineage"]):
-            raise PlanContractError(
-                "non-replacement routes cannot carry replacement lineage"
-            )
-        if route == "continue-current-unit" and (
-            normalized["Accepted contract"] != "unchanged"
-            or normalized["Primary question"] != "singular"
-            or normalized["Enforcement owner/abstraction"] != "unchanged"
-            or normalized["Coherent diff"] != "yes"
-        ):
-            raise PlanContractError(
-                "continue-current-unit requires an unchanged singular contract, "
-                "owner, abstraction, and coherent diff"
-            )
-        if route == "replan-current-unit" and expected_substantial > 2:
-            raise PlanContractError(
-                "a third or later substantial cycle cannot use replan-current-unit"
-            )
-        if route == "proposal-amendment" and normalized["Accepted contract"] != "changed":
-            raise PlanContractError(
-                "proposal-amendment requires a changed accepted contract"
-            )
-        if route == "abandon-review-unit" and _is_placeholder(
-            normalized["Risk disposition"]
-        ):
-            raise PlanContractError(
-                "abandon-review-unit requires an explicit risk disposition"
-            )
-        if (
-            any(
-                evidence["severity"] == "P0"
-                and evidence.get("substantial_cycle", 0) <= expected_substantial
-                for evidence in cycle_evidence
-            )
-            and _is_placeholder(normalized["Risk disposition"])
-        ):
-            raise PlanContractError(
-                "a reviewer-owned P0 pauses re-review until the authorized decision "
-                "records a risk disposition"
-            )
-        audit_records[expected_substantial] = normalized
-
-    expected_disposition_rows = sum(
-        len(findings_by_substantial[cycle]) for cycle in required_decision_cycles
-    )
-    if len(dispositions.rows) != expected_disposition_rows:
-        raise PlanContractError(
-            "Prior Finding Dispositions must contain the exact cumulative finding "
-            "manifest for every required decision"
-        )
-    disposition_groups: dict[int, dict[str, str]] = {
-        cycle: {} for cycle in required_decision_cycles
-    }
-    for row_number, row in enumerate(dispositions.rows, start=1):
-        cycle, finding, disposition, repair_revision, disposition_receipt = row
-        try:
-            substantial_cycle = int(_repair_value(cycle))
-        except ValueError as exc:
-            raise PlanContractError(
-                f"prior finding disposition row {row_number} has invalid cycle"
-            ) from exc
-        if substantial_cycle not in disposition_groups:
-            raise PlanContractError(
-                f"prior finding disposition row {row_number} names an unknown cycle"
-            )
-        finding_url = _plain_receipt_value(finding)
-        if finding_url in disposition_groups[substantial_cycle]:
-            raise PlanContractError(
-                f"prior finding disposition row {row_number} duplicates a finding"
-            )
-        expected_manifest = findings_by_substantial[substantial_cycle]
-        if finding_url not in expected_manifest:
-            raise PlanContractError(
-                f"prior finding disposition row {row_number} is not reviewer-owned"
-            )
-        status = _finding_disposition_status(disposition)
-        if status not in REPAIR_FINDING_DISPOSITIONS:
-            raise PlanContractError(
-                f"prior finding disposition row {row_number} must begin with one of: "
-                + ", ".join(sorted(REPAIR_FINDING_DISPOSITIONS))
-            )
-        if _plain_receipt_value(disposition_receipt) != decision_records[substantial_cycle]["url"]:
-            raise PlanContractError(
-                f"prior finding disposition row {row_number} must bind to that "
-                "cycle's authorized decision receipt"
-            )
-        revision = _plain_receipt_value(repair_revision).lower()
-        if status in {"resolved", "superseded"}:
-            revision_index = commit_indexes.get(revision)
-            origin = finding_origins[finding_url]
-            decision_index = commit_indexes[decision_records[substantial_cycle]["head"]]
-            if (
-                re.fullmatch(r"[0-9a-f]{40}", revision) is None
-                or revision_index is None
-                or revision_index <= origin["review_index"]
-                or revision_index > decision_index
-            ):
-                raise PlanContractError(
-                    f"prior finding disposition row {row_number} must bind its "
-                    "resolution to a later repair revision in the audited lineage"
-                )
-        elif not _is_placeholder(revision):
-            raise PlanContractError(
-                f"prior finding disposition row {row_number} must use None for an "
-                "unresolved repair revision"
-            )
-        disposition_groups[substantial_cycle][finding_url] = status
-
-    for substantial_cycle in required_decision_cycles:
-        statuses = disposition_groups[substantial_cycle]
-        expected_manifest = findings_by_substantial[substantial_cycle]
-        if tuple(statuses) != expected_manifest:
-            raise PlanContractError(
-                "Prior Finding Dispositions must preserve the reviewer-owned finding "
-                "manifest in exact order"
-            )
-        all_disposed = all(
-            status not in {"deferred", "carried-forward"}
-            for status in statuses.values()
-        )
-        declared = audit_records[substantial_cycle]["Prior findings"]
-        if declared != ("all-disposed" if all_disposed else "not-all-disposed"):
-            raise PlanContractError(
-                "Repair Continuation Audit Prior findings conflicts with the exact "
-                "finding dispositions"
-            )
-        if (
-            decision_records[substantial_cycle]["route"] == "continue-current-unit"
-            and any(
-                status in {"deferred", "carried-forward"}
-                and finding_origins.get(finding, {}).get("severity") == "P0"
-                for finding, status in statuses.items()
-            )
-        ):
-            raise PlanContractError(
-                "continue-current-unit cannot carry forward a reviewer-owned P0"
-            )
-        if (
-            require_resolved_findings
-            and decision_records[substantial_cycle]["route"] == "continue-current-unit"
-            and any(status != "resolved" for status in statuses.values())
-        ):
-            raise PlanContractError(
-                "completion requires every reviewer-owned finding in a "
-                "continue-current-unit review to be resolved"
+                "completion requires the current head to have no outstanding "
+                "CHANGES_REQUESTED review"
             )
     return substantial_cycles
+
+
+def _validate_repair_stop(stop: dict[str, str]) -> None:
+    route = stop["route"]
+    actor = stop["by"]
+    if route not in REPAIR_STOP_ROUTES:
+        raise PlanContractError(
+            "Repair Stop Route must be one of: " + ", ".join(sorted(REPAIR_STOP_ROUTES))
+        )
+    if actor not in REPAIR_DECISION_ROLES:
+        raise PlanContractError("Repair Stop By must be `operator` or `meta-manager`")
+    if route == "split-or-replace-review-unit":
+        raise PlanContractError(
+            "split-or-replace-review-unit fails closed until issue #118's "
+            "structured replacement-lineage verifier is implemented"
+        )
+
 
 
 def _required_section_body(
@@ -4098,7 +3686,10 @@ def validate_review_unit_transition(
             pr_body,
             expected=base.current.fields["review kind"],
         )
-        validate_proposal_text(proposal_text)
+        validate_proposal_text(
+            proposal_text,
+            review_kind=base.current.fields["review kind"],
+        )
         validate_handoff_template_against_plan(proposal_text, head_text)
         transition_kind = "proposal"
     elif is_proposal_amendment:
@@ -4153,7 +3744,10 @@ def validate_review_unit_transition(
             pr_body,
             expected=base.current.fields["review kind"],
         )
-        validate_proposal_amendment_text(proposal_amendment_text)
+        validate_proposal_amendment_text(
+            proposal_amendment_text,
+            review_kind=base.current.fields["review kind"],
+        )
         transition_kind = "proposal_amendment"
     elif base_state == "ready_for_implementation":
         if head_state != "implementation_in_review":

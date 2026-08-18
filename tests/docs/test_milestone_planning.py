@@ -187,20 +187,14 @@ class MilestonePlanningTests(unittest.TestCase):
         for heading in (
             "## Milestone Context",
             "## Accepted Proposal",
-            "## Integrated HITL Adjuncts",
             "## Review Kind",
             "## Review Question",
-            "## Invariant Or Acceptance Contract",
-            "## Adversarial Matrix",
-            "## Scope",
-            "## File Impact",
-            "## Scope Reconciliation",
             "## Repair Cycle Ledger",
-            "## Repair Escalation",
-            "## Repair Continuation Audit",
             "## Validation",
         ):
             self.assertIn(heading, text)
+        self.assertNotIn("## Repair Escalation", text)
+        self.assertNotIn("## Repair Continuation Audit", text)
         self.assertIn("matching the canonical milestone plan", text)
 
     def test_proposal_pr_template_forbids_implementation(self) -> None:
@@ -208,7 +202,7 @@ class MilestonePlanningTests(unittest.TestCase):
         text = PROPOSAL_PR_TEMPLATE.read_text(encoding="utf-8")
         self.assertIn("## Independence Check", text)
         self.assertIn("## Review Kind", text)
-        self.assertIn("## Invariant Contractability", text)
+        self.assertIn("## Operator Want", text)
         self.assertIn("Trust And Authority Model", text)
         self.assertIn("Evidence Topology And Capture Strategy", text)
         self.assertIn("No product or runtime implementation changed", text)
@@ -217,8 +211,8 @@ class MilestonePlanningTests(unittest.TestCase):
         self.assertIn("current repository push authority", text)
         self.assertIn("unedited COMMENT review", text)
         self.assertIn("## Repair Cycle Ledger", text)
-        self.assertIn("## Repair Escalation", text)
-        self.assertIn("## Repair Continuation Audit", text)
+        self.assertNotIn("## Repair Escalation", text)
+        self.assertNotIn("## Repair Continuation Audit", text)
 
     def test_universal_claim_contractability_is_visible_in_author_guidance(
         self,
@@ -243,7 +237,7 @@ class MilestonePlanningTests(unittest.TestCase):
         text = PROPOSAL_AMENDMENT_PR_TEMPLATE.read_text(encoding="utf-8")
         self.assertIn("## Review Kind", text)
         self.assertIn("## Evidence Requiring Amendment", text)
-        self.assertIn("## Invariant Contractability", text)
+        self.assertIn("## Operator Want", text)
         self.assertIn("Trust And Authority Model", text)
         self.assertIn("Evidence Topology And Capture Strategy", text)
         self.assertIn("No accepted proposal or prior amendment was modified", text)
@@ -251,8 +245,8 @@ class MilestonePlanningTests(unittest.TestCase):
         self.assertIn("## Contract Review Receipt", text)
         self.assertIn("current repository push authority", text)
         self.assertIn("## Repair Cycle Ledger", text)
-        self.assertIn("## Repair Escalation", text)
-        self.assertIn("## Repair Continuation Audit", text)
+        self.assertNotIn("## Repair Escalation", text)
+        self.assertNotIn("## Repair Continuation Audit", text)
 
     def test_implementation_adjunct_template_records_human_compatibility(self) -> None:
         self.assertTrue(IMPLEMENTATION_ADJUNCT_PR_TEMPLATE.is_file())
@@ -265,11 +259,10 @@ class MilestonePlanningTests(unittest.TestCase):
             "## Compatibility",
             "## Evidence Impact",
             "## Repair Cycle Ledger",
-            "## Repair Escalation",
-            "## Repair Continuation Audit",
             "## Validation",
         ):
             self.assertIn(heading, text)
+        self.assertNotIn("## Repair Escalation", text)
         self.assertIn("Requested disposition: `implement-now`", text)
         self.assertIn("parent contract remains true without this adjunct", text)
         self.assertIn("Base implementation branch", text)
@@ -281,16 +274,16 @@ class MilestonePlanningTests(unittest.TestCase):
         self.assertIn("milestone branch", text.lower())
         self.assertIn("## Accepted Review Units", text)
         self.assertIn("## Repair Cycle Ledger", text)
-        self.assertIn("## Repair Escalation", text)
-        self.assertIn("## Repair Continuation Audit", text)
+        self.assertNotIn("## Repair Escalation", text)
+        self.assertNotIn("## Repair Continuation Audit", text)
 
     def test_repair_template_carries_cycle_and_escalation_receipts(self) -> None:
         self.assertTrue(REPAIR_PR_TEMPLATE.is_file())
         text = REPAIR_PR_TEMPLATE.read_text(encoding="utf-8")
         self.assertIn("## Review Repair Summary", CONTRACT_SOURCE.read_text(encoding="utf-8"))
         self.assertIn("## Repair Cycle Ledger", text)
-        self.assertIn("## Repair Escalation", text)
-        self.assertIn("## Repair Continuation Audit", text)
+        self.assertNotIn("## Repair Escalation", text)
+        self.assertNotIn("## Repair Continuation Audit", text)
 
     def test_review_unit_template_repair_receipt_defaults_are_valid(self) -> None:
         for path in (
@@ -359,15 +352,15 @@ class MilestonePlanningTests(unittest.TestCase):
         self.assertIn("After the **second substantial** cycle", text)
         self.assertIn("human operator or meta-manager", normalized)
         self.assertIn("continue-current-unit", text)
-        self.assertIn("Repair Continuation Audit", text)
-        self.assertIn("fresh-context review", normalized)
-        self.assertIn("new PR number cannot authorize", normalized)
+        self.assertIn("## Repair Stop", text)
+        self.assertIn("Closed implementation review", text)
+        self.assertIn("a new PR number is not reviewability evidence", normalized)
         self.assertIn("currently fails closed", normalized)
         self.assertIn("becomes authoritative only after", normalized)
         self.assertIn("already open at merge do not migrate automatically", normalized)
         self.assertIn("introducing PR remains governed by its base contract", normalized)
         self.assertIn("Repair Cycle Ledger", text)
-        self.assertIn("Repair Escalation", text)
+        self.assertNotIn("Repair Escalation", text)
 
     def test_contract_assigns_frontier_handoff_to_executable_workflow(self) -> None:
         text = CONTRACT_SOURCE.read_text(encoding="utf-8")

@@ -138,18 +138,13 @@ def _governed_repair_case(
     *,
     classifications: tuple[str, ...] = ("substantial",),
     severities: tuple[str, ...] = ("P1",),
-    routes: dict[int, str] | None = None,
     head_changes_requested: bool = False,
 ) -> tuple[str, RepairReviewMetadata]:
     if len(classifications) != len(severities):
         raise AssertionError("classification and severity fixtures must align")
-    routes = routes or {}
     commits = [f"{index:x}" * 40 for index in range(1, len(classifications) + 2)]
     reviews: list[dict[str, object]] = []
     ledger_rows: list[str] = []
-    substantial_to_cycle: dict[int, int] = {}
-    substantial_count = 0
-    saw_p0 = False
 
     for cycle, (classification, severity) in enumerate(
         zip(classifications, severities, strict=True),
@@ -182,21 +177,6 @@ def _governed_repair_case(
             f"| {cycle} | {verdict_url} | {classification} | {severity} | "
             f"{repair_head} | Cycle {cycle} enforcement repair. |"
         )
-        if classification == "substantial":
-            substantial_count += 1
-            substantial_to_cycle[substantial_count] = cycle
-        if severity == "P0":
-            saw_p0 = True
-
-    stop = None
-    if substantial_count >= 2 or saw_p0:
-        last_substantial = max(substantial_to_cycle) if substantial_to_cycle else 1
-        route = routes.get(last_substantial, "continue-current-unit")
-        stop = (
-            "## Repair Stop\n\n"
-            f"- Route: {route}\n"
-            "- By: meta-manager\n"
-        )
 
     if head_changes_requested:
         reviews.append(
@@ -218,7 +198,6 @@ def _governed_repair_case(
 
     body = repair_cycle_governance_body(
         rows="\n".join(ledger_rows),
-        stop=stop,
     )
     metadata = RepairReviewMetadata(
         pull_request_number=60,
@@ -544,20 +523,12 @@ class RepairCycleGovernanceTests(unittest.TestCase):
         with self.assertRaisesRegex(PlanContractError, "review on PR"):
             validate_repair_cycle_governance_body(body, review_metadata=metadata)
 
-    def test_second_substantial_cycle_requires_repair_stop(self) -> None:
+    def test_second_substantial_cycle_does_not_require_a_stop(self) -> None:
         body, metadata = _governed_repair_case(
             classifications=("substantial", "substantial"),
             severities=("P1", "P1"),
         )
-        body = body.replace("## Repair Stop", "## Repair Notes")
-        with self.assertRaisesRegex(PlanContractError, "Repair Stop"):
-            validate_repair_cycle_governance_body(body, review_metadata=metadata)
-
-    def test_second_substantial_cycle_accepts_repair_stop(self) -> None:
-        body, metadata = _governed_repair_case(
-            classifications=("substantial", "substantial"),
-            severities=("P1", "P1"),
-        )
+        self.assertNotIn("## Repair Stop", body)
         self.assertEqual(
             validate_repair_cycle_governance_body(body, review_metadata=metadata),
             2,
@@ -602,11 +573,7 @@ class RepairCycleGovernanceTests(unittest.TestCase):
             commits=("d" * 40,),
             reviews=(),
         )
-        body = (
-            repair_cycle_governance_body()
-            + "\n## Repair Stop\n\n- Route: continue-current-unit\n- By: operator\n\n"
-            + migration
-        )
+        body = repair_cycle_governance_body() + "\n" + migration
         self.assertEqual(
             validate_repair_cycle_governance_body(body, review_metadata=metadata),
             2,
@@ -638,7 +605,7 @@ class RepairCycleGovernanceTests(unittest.TestCase):
             2,
         )
 
-    def test_later_substantial_cycles_reuse_one_repair_stop(self) -> None:
+    def test_later_substantial_cycles_remain_ordinary_repairs(self) -> None:
         body, metadata = _governed_repair_case(
             classifications=("substantial", "substantial", "substantial"),
             severities=("P1", "P1", "P1"),
@@ -647,25 +614,6 @@ class RepairCycleGovernanceTests(unittest.TestCase):
             validate_repair_cycle_governance_body(body, review_metadata=metadata),
             3,
         )
-        self.assertEqual(body.count("## Repair Stop"), 1)
-
-    def test_split_route_fails_closed_pending_structured_lineage(self) -> None:
-        body, metadata = _governed_repair_case(
-            classifications=("substantial", "substantial", "substantial"),
-            severities=("P1", "P1", "P1"),
-            routes={3: "split-or-replace-review-unit"},
-        )
-        with self.assertRaisesRegex(PlanContractError, "issue #118"):
-            validate_repair_cycle_governance_body(body, review_metadata=metadata)
-
-    def test_reviewer_owned_p0_requires_repair_stop(self) -> None:
-        body, metadata = _governed_repair_case(
-            classifications=("substantial",),
-            severities=("P0",),
-        )
-        body = body.replace("## Repair Stop", "## Repair Notes")
-        with self.assertRaisesRegex(PlanContractError, "Repair Stop"):
-            validate_repair_cycle_governance_body(body, review_metadata=metadata)
 
     def test_missing_reviewer_severity_fails_closed(self) -> None:
         body, metadata = _governed_repair_case(

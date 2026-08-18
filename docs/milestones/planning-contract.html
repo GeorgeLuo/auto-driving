@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="d6f2008309251fa9ec2720262aa8cba846aa9a0c5d70b012c9d0447950b944fa">
+  <meta name="source-sha256" content="a205a694b13985db06bf48eb544aaf6c89699753fc2840124c44b484b87bf24b">
   <base target="_blank">
   <title>Milestone Planning And Delivery Contract</title>
   <style>
@@ -211,26 +211,15 @@ want. A new failure class discovered during fill is a proposal amendment or an
 explicit residual, not proof that the current implementation is false.</p>
 <p>Do not invent a broader matrix during re-review. Re-check prior findings and
 the accepted matrix only.</p>
-<h4>Stop after two substantial cycles</h4>
-<p>After the <strong>second substantial</strong> cycle, or immediately on a reviewer-owned P0,
-stop before requesting another review. A human operator or meta-manager records
-one durable stop on the PR body:</p>
-<pre><code class="language-text">## Repair Stop
-
-- Route: &lt;continue-current-unit|proposal-amendment|split-or-replace-review-unit|abandon-review-unit&gt;
-- By: &lt;operator|meta-manager&gt;
-</code></pre>
-<p><code>continue-current-unit</code> means the accepted question is still singular and the
-next repair stays in this PR. <code>proposal-amendment</code> means the accepted contract
-must change. <code>abandon-review-unit</code> means the claim should not proceed.
+<p>There is no cycle count that pauses review. A second or later substantial
+repair is ordinary work when it still addresses the accepted question. If the
+accepted contract is wrong, amend the proposal. If the unit is not singular,
+stop and re-scope. Do not treat another repair round as evidence that the
+process must escalate.</p>
+<p>Completion fails if the current head has an outstanding <code>CHANGES_REQUESTED</code>
+review, or if a migration receipt still lists unresolved findings.
 <code>split-or-replace-review-unit</code> remains fail-closed pending the replacement
-lineage contract in issue #118.</p>
-<p>Do not require a second GitHub review, actor-basis declaration, fresh-context
-totality pass, or mirror audit tables. The ledger plus this one-line stop are
-the repair record.</p>
-<p>Completion still fails if the current head has an outstanding
-<code>CHANGES_REQUESTED</code> review, or if a migration receipt still lists unresolved
-findings.</p>
+lineage contract in issue #118. A new PR number does not reset review history.</p>
 <p>This revision becomes authoritative only after the PR introducing it merges
 into the governing base. The introducing PR remains governed by its base
 contract and cannot use the proposed rule to authorize itself. Review units
@@ -972,9 +961,8 @@ in this PR, the next frontier is automatically approved, or external
 assumptions are proven.</p>
 <p>Every review-unit template includes a <code>Repair Cycle Ledger</code>. Cycle numbers are
 consecutive. Do not delete or rewrite a prior row, combine verdict rounds, or
-downgrade reviewer-owned severity or classification. After the second
-substantial cycle or any P0, add <code>## Repair Stop</code> instead of extra receipt
-tables.</p>
+downgrade reviewer-owned severity or classification. The ledger is history, not
+a throttle.</p>
 <h3>Proposal PR Template</h3>
 <p>Use <code>.github/PULL_REQUEST_TEMPLATE/proposal.md</code>. The proposal document itself is
 the durable contract; the PR body gives the reviewer its milestone context,
@@ -1110,10 +1098,8 @@ Review receipt: `&lt;exact GitHub review URL for the consolidated verdict&gt;`
 
 &lt;commands and results&gt;
 </code></pre>
-<p>One review-and-repair cycle is normal. After the second substantial cycle,
-record <code>## Repair Stop</code> and do not request another review until the operator
-chooses a route. Split/replacement remains fail-closed until issue #118 has
-structured lineage verification.</p>
+<p>Repair as many times as the accepted question still requires. Split/replacement
+remains fail-closed until issue #118 has structured lineage verification.</p>
 <p>Before every review or re-review request, reconcile the PR description to the
 current diff and refresh exact validation results. Do not expand the accepted
 matrix in the PR body.</p>
@@ -1226,10 +1212,9 @@ the reserved child branch, current parent head, completed HITL template, and
 immutable milestone contract artifacts.
 For each recognized milestone review-unit transition and adjunct, CI also
 fetches GitHub PR reviews, inline comments, authority, and commit order, then
-validates the declared repair ledger and, after the second substantial cycle or
-a P0, the one-line <code>## Repair Stop</code>. The pull-request workflow runs when that
-body is edited so a newly recorded stop can satisfy the gate without an
-unrelated code commit.
+validates the declared repair ledger against GitHub review evidence. The
+pull-request workflow runs when that body is edited so a newly recorded ledger
+row can satisfy the gate without an unrelated code commit.
 <code>docs/render_markdown.py</code> invokes the same plan validator, so hand-edited state
 that omits required fields or history is rejected.</p>
 <p>CI supplies <code>validate-pr</code> with the PR event payload. For an equivalent local
@@ -1244,12 +1229,11 @@ reviewer understood a proposal, or prove that approval was intellectually sound.
 The reviewer and operator own those judgments. It can prove that a decisive
 review was submitted on a specific proposal head and preserve that fact
 separately from merge ancestry. For repair cycles it can prove that declared
-cycles advance through the PR commit order, that classification and severity
-come from the linked reviewer-owned GitHub evidence, and that a required
-<code>## Repair Stop</code> names an allowed route. Completion fails while the current
-head still has <code>CHANGES_REQUESTED</code>. Replacement currently fails closed until
-issue #118 supplies structured lineage verification; a new PR number is not
-reviewability evidence.
+cycles advance through the PR commit order and that classification and severity
+come from the linked reviewer-owned GitHub evidence. Completion fails while the
+current head still has <code>CHANGES_REQUESTED</code>. Replacement currently fails closed
+until issue #118 supplies structured lineage verification; a new PR number is
+not reviewability evidence.
 The repository also guarantees that the current state and next handoff are
 visible, the accepted proposal is durable, proposal and implementation diffs
 are separate, and implementation cannot pass CI before proposal acceptance.</p>

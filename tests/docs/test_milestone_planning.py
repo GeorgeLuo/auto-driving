@@ -349,10 +349,7 @@ class MilestonePlanningTests(unittest.TestCase):
     def test_contract_has_evidence_based_repair_continuation_gate(self) -> None:
         text = CONTRACT_SOURCE.read_text(encoding="utf-8")
         normalized = " ".join(text.split())
-        self.assertIn("After the **second substantial** cycle", text)
-        self.assertIn("human operator or meta-manager", normalized)
-        self.assertIn("continue-current-unit", text)
-        self.assertIn("## Repair Stop", text)
+        self.assertIn("There is no cycle count that pauses review", text)
         self.assertIn("Closed implementation review", text)
         self.assertIn("a new PR number is not reviewability evidence", normalized)
         self.assertIn("currently fails closed", normalized)

@@ -44,8 +44,7 @@ Result:
 <!-- Add one row for each consolidated changes-requested verdict followed by a
      repair revision. Classification and highest severity come from the linked
      GitHub review. Use full 40-character repair SHAs. Keep the sole all-None
-     row until the first repair cycle. After the second substantial cycle or
-     any P0, add ## Repair Stop instead of extra receipt tables. -->
+     row until the first repair cycle. -->
 
 | Cycle | Review receipt | Classification | Highest severity | Repair revision | Contract impact |
 | --- | --- | --- | --- | --- | --- |

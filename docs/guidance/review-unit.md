@@ -24,8 +24,7 @@ condition. An empty next-frontier slot is honest when that want is unknown.
 
 Before review, confirm that the PR question is stable, the description matches
 the current diff, and validation is exact. Before re-review, confirm that the
-repair-cycle ledger names the consolidated verdict and repair revision. After
-the second substantial cycle, also confirm `## Repair Stop`.
+repair-cycle ledger names the consolidated verdict and repair revision.
 
 ## Review
 

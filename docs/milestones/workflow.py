@@ -114,13 +114,6 @@ REPAIR_CYCLE_LEDGER_HEADER = (
     "Contract impact",
 )
 REPAIR_CYCLE_CLASSIFICATIONS = {"minor", "substantial"}
-REPAIR_STOP_HEADING = "## Repair Stop"
-REPAIR_STOP_ROUTES = {
-    "continue-current-unit",
-    "proposal-amendment",
-    "split-or-replace-review-unit",
-    "abandon-review-unit",
-}
 REPAIR_ESCALATION_HEADING = "## Repair Escalation"
 REPAIR_ESCALATION_HEADER = (
     "Substantial cycle",
@@ -2189,22 +2182,6 @@ def _parse_repair_ledger(text: str) -> MarkdownTable:
     return table
 
 
-def _parse_repair_stop(text: str) -> dict[str, str] | None:
-    if REPAIR_STOP_HEADING not in text:
-        return None
-    body = _required_section_body(text, REPAIR_STOP_HEADING, document="repair stop")
-    fields: dict[str, str] = {}
-    for raw in body.splitlines():
-        match = re.fullmatch(r"-\s+(Route|By):\s*(.+?)\s*", raw.strip())
-        if match:
-            fields[match.group(1).lower()] = _plain_receipt_value(match.group(2))
-    if set(fields) != {"route", "by"}:
-        raise PlanContractError(
-            "Repair Stop must contain only `- Route:` and `- By:`"
-        )
-    return fields
-
-
 def _head_has_changes_requested(metadata: RepairReviewMetadata) -> bool:
     for review in metadata.reviews:
         commit = review.get("commit")
@@ -2222,9 +2199,9 @@ def validate_repair_cycle_governance_body(
 ) -> int:
     """Validate repair history against GitHub review evidence.
 
-    After two substantial cycles, or on a P0, the PR body must record
-    ``## Repair Stop``. Completion fails when the current head still has
-    ``CHANGES_REQUESTED`` or a migration still lists unresolved findings.
+    The ledger is history. There is no cycle-count stop. Completion fails when
+    the current head still has ``CHANGES_REQUESTED`` or a migration still lists
+    unresolved findings.
     """
 
     migration = _canonical_migration_fields(text)
@@ -2243,13 +2220,6 @@ def validate_repair_cycle_governance_body(
             if migration is not None
             else 0
         )
-        if substantial_cycles >= 2:
-            stop = _parse_repair_stop(text)
-            if stop is None:
-                raise PlanContractError(
-                    "second substantial cycle requires ## Repair Stop"
-                )
-            _validate_repair_stop(stop)
         if (
             require_resolved_findings
             and migration is not None
@@ -2282,7 +2252,6 @@ def validate_repair_cycle_governance_body(
     previous_repair_index = -1
     previous_review_time: datetime | None = None
     verdict_receipts: set[str] = set()
-    saw_p0 = False
     last_repair = ""
 
     for expected_cycle, row in enumerate(ledger.rows, start=historical_cycles + 1):
@@ -2365,21 +2334,11 @@ def validate_repair_cycle_governance_body(
         last_repair = revision
         if verified_classification == "substantial":
             substantial_cycles += 1
-        if verified_severity == "P0":
-            saw_p0 = True
 
     if last_repair and last_repair != review_metadata.head_oid:
         raise PlanContractError(
             "the latest repair revision must be the exact current PR head"
         )
-
-    if substantial_cycles >= 2 or saw_p0:
-        stop = _parse_repair_stop(text)
-        if stop is None:
-            raise PlanContractError(
-                "second substantial cycle or reviewer-owned P0 requires ## Repair Stop"
-            )
-        _validate_repair_stop(stop)
 
     if require_resolved_findings:
         if migration is not None and migration["unresolved_manifest_tuple"]:
@@ -2392,23 +2351,6 @@ def validate_repair_cycle_governance_body(
                 "CHANGES_REQUESTED review"
             )
     return substantial_cycles
-
-
-def _validate_repair_stop(stop: dict[str, str]) -> None:
-    route = stop["route"]
-    actor = stop["by"]
-    if route not in REPAIR_STOP_ROUTES:
-        raise PlanContractError(
-            "Repair Stop Route must be one of: " + ", ".join(sorted(REPAIR_STOP_ROUTES))
-        )
-    if actor not in REPAIR_DECISION_ROLES:
-        raise PlanContractError("Repair Stop By must be `operator` or `meta-manager`")
-    if route == "split-or-replace-review-unit":
-        raise PlanContractError(
-            "split-or-replace-review-unit fails closed until issue #118's "
-            "structured replacement-lineage verifier is implemented"
-        )
-
 
 
 def _required_section_body(

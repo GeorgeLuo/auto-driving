@@ -18,11 +18,7 @@ contract impact.
 
 Repair the failure class at its owner, not only the reported example. Re-check
 prior findings and the accepted matrix. Do not invent a new adversarial pass.
-
-After the second substantial cycle, or on a reviewer-owned P0, stop and record
-`## Repair Stop` with one route. Do not request another review until the
-operator chooses `continue-current-unit`, `proposal-amendment`,
-`split-or-replace-review-unit`, or `abandon-review-unit`.
+There is no cycle-count stop.
 
 ## Reviewer
 

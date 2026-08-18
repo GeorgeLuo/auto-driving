@@ -830,7 +830,21 @@
       ],
       "source_commit": "caf335797b71df1323736a2054934b7c211418b0",
       "source_pr": 88,
-      "source_result_schema": "m007_live_cli_acceptance_v1"
+      "source_result_schema": "m007_live_cli_acceptance_v1",
+      "trace": {
+        "cleanup_matches": [],
+        "cleanup_predicates": 0,
+        "command_matches": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "confirmation_predicates": 1,
+        "mode": "ordered_subsequence",
+        "outcomes_path": "ordered_command_outcomes",
+        "placeholder_bindings": {}
+      }
     },
     {
       "claim_map_id": "us02_passive_journey",
@@ -848,7 +862,27 @@
       ],
       "source_commit": "caf335797b71df1323736a2054934b7c211418b0",
       "source_pr": 88,
-      "source_result_schema": "m007_live_cli_acceptance_v1"
+      "source_result_schema": "m007_live_cli_acceptance_v1",
+      "trace": {
+        "cleanup_matches": [
+          11
+        ],
+        "cleanup_predicates": 2,
+        "command_matches": [
+          4,
+          6,
+          8,
+          9,
+          11,
+          12
+        ],
+        "confirmation_predicates": 1,
+        "mode": "ordered_subsequence",
+        "outcomes_path": "ordered_command_outcomes",
+        "placeholder_bindings": {
+          "vehicle_id": "chase-sim-chaser"
+        }
+      }
     }
   ],
   "help_drift": {

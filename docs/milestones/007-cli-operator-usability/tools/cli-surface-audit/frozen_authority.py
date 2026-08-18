@@ -645,6 +645,75 @@ FROZEN_CLAIM_MAP: dict[str, Any] = {'schema': 'm007_claim_map_v1',
                                                      'contains_where': {'step_id': 'status-stopped',
                                                                         'step_status': 'pass'}}]}}}
 
+# Every cited pass also needs a trace authority. Keep this separate from the
+# generated-looking claim literal above so a registry edit cannot silently
+# weaken exact command, confirmation, or cleanup coverage.
+FROZEN_CLAIM_TRACE_SPECS: dict[str, Any] = {
+    "continuity_live_config_swap": {
+        "mode": "ordered_subsequence",
+        "outcomes_path": "ordered_command_outcomes",
+        "command_field": "command",
+        "permitted_cleanup_overlaps": [],
+        "success": {"step_status": "pass", "exit_code": 0},
+        "confirmation_predicates": [
+            {"path": "visual_hitl.result", "equals": "pass"}
+        ],
+        "cleanup_predicates": [{"path": "restore_ok", "equals": True}],
+    },
+    "continuity_memory_lifecycle": {
+        "mode": "ordered_subsequence",
+        "outcomes_path": "ordered_command_outcomes",
+        "command_field": "command",
+        "permitted_cleanup_overlaps": [],
+        "success": {"step_status": "pass", "exit_code": 0},
+        "confirmation_predicates": [{"path": "verdict", "equals": "pass"}],
+        "cleanup_predicates": [{"path": "restore_ok", "equals": True}],
+    },
+    "continuity_offline_perception": {
+        "mode": "ordered_subsequence",
+        "outcomes_path": "ordered_command_outcomes",
+        "command_field": "command",
+        "permitted_cleanup_overlaps": [],
+        "success": {"step_status": "pass", "exit_code": 0},
+        "confirmation_predicates": [
+            {"path": "recorded_review_hitl.result", "equals": "pass"}
+        ],
+        "cleanup_predicates": [{"path": "restore_ok", "equals": True}],
+    },
+    "us01_help_discovery": {
+        "mode": "ordered_subsequence",
+        "outcomes_path": "ordered_command_outcomes",
+        "command_field": "command",
+        "permitted_cleanup_overlaps": [],
+        "success": {"step_status": "pass", "exit_code": 0},
+        "confirmation_predicates": [
+            {
+                "path": "gates",
+                "contains_where": {"id": "help_discoverability", "status": "pass"},
+            }
+        ],
+        "cleanup_predicates": [],
+    },
+    "us02_passive_journey": {
+        "mode": "ordered_subsequence",
+        "outcomes_path": "ordered_command_outcomes",
+        "command_field": "command",
+        "permitted_cleanup_overlaps": [
+            {"cleanup_index": 0, "journey_command_index": 4}
+        ],
+        "success": {"step_status": "pass", "exit_code": 0},
+        "confirmation_predicates": [
+            {"path": "gates", "contains_where": {"id": "startup", "status": "pass"}}
+        ],
+        "cleanup_predicates": [
+            {"path": "cleanup.worker_stopped", "equals": True},
+            {"path": "cleanup.final_status_exit_code", "equals": 0},
+        ],
+    },
+}
+for _claim_id, _trace_spec in FROZEN_CLAIM_TRACE_SPECS.items():
+    FROZEN_CLAIM_MAP["claims"][_claim_id]["trace"] = _trace_spec
+
 FROZEN_LIVE_LEDGER_SHA256 = "b946f1c3bdcf6f7bc23c043e8bfd528ea33caae105b931effe5f618255a817b5"
 LIVE_LEDGER_RELPATH = "docs/milestones/007-cli-operator-usability/evidence/live-cli-acceptance/exploratory-findings.md"
 FROZEN_LIVE_RESIDUALS: dict[str, Any] = {'M007-LIVE-001': {'classification': 'usability_defect',

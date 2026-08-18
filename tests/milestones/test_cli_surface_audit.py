@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import shlex
 import sys
 import unittest
 from pathlib import Path
@@ -25,6 +26,34 @@ def _load(name: str, path: Path):
     sys.modules[name] = mod
     spec.loader.exec_module(mod)
     return mod
+
+
+def _trace_command(
+    template: list[str],
+    *,
+    vehicle_id: str = "chase-sim-chaser",
+    src_dir: str = "/tmp/trace-source-a",
+) -> str:
+    replacements = {"{vehicle_id}": vehicle_id, "{src_dir}": src_dir}
+    argv = [replacements.get(str(token), str(token)) for token in template]
+    return shlex.join(["./cli/automa", *argv])
+
+
+def _trace_outcome(
+    template: list[str],
+    *,
+    vehicle_id: str = "chase-sim-chaser",
+    src_dir: str = "/tmp/trace-source-a",
+) -> dict[str, object]:
+    return {
+        "command": _trace_command(
+            template,
+            vehicle_id=vehicle_id,
+            src_dir=src_dir,
+        ),
+        "step_status": "pass",
+        "exit_code": 0,
+    }
 
 
 class CliSurfaceAuditTests(unittest.TestCase):
@@ -802,6 +831,157 @@ class CliSurfaceAuditTests(unittest.TestCase):
         with self.assertRaises(self.validate_audit.AuditError) as ctx:
             self.validate_audit.eval_cite_predicates("US-01", claim, parsed)
         self.assertIn("help", str(ctx.exception).lower())
+
+    def test_cite_exact_trace_rejects_subset_fixture(self) -> None:
+        sequences = json.loads(
+            (TOOL / "sequence_registry.json").read_text(encoding="utf-8")
+        )
+        claim_map = json.loads((TOOL / "claim_map.json").read_text(encoding="utf-8"))
+        row = next(row for row in sequences["sequences"] if row["id"] == "US-02")
+        claim = claim_map["claims"]["us02_passive_journey"]
+        result_path = (
+            ROOT
+            / "docs/milestones/007-cli-operator-usability/evidence/"
+            "live-cli-acceptance/result.json"
+        )
+        parsed = json.loads(result_path.read_text(encoding="utf-8"))
+        # This is the family/subset shape that previously could be promoted by
+        # aggregate predicates: remove one required registered command while
+        # keeping the result and every other step green.
+        parsed["ordered_command_outcomes"] = [
+            outcome
+            for outcome in parsed["ordered_command_outcomes"]
+            if outcome.get("command")
+            != "./cli/automa vehicles automation run --id chase-sim-chaser "
+            "--observe-only --frames 0 --open-view"
+        ]
+        with self.assertRaises(self.validate_audit.AuditError) as ctx:
+            self.validate_audit.validate_exact_step_trace(
+                "US-02",
+                row,
+                claim,
+                parsed,
+            )
+        message = str(ctx.exception).lower()
+        self.assertIn("exact trace", message)
+        self.assertIn("missing successful registered command", message)
+
+    def test_cleanup_requires_distinct_post_sequence_event(self) -> None:
+        sequences = json.loads(
+            (TOOL / "sequence_registry.json").read_text(encoding="utf-8")
+        )
+        claim_map = json.loads((TOOL / "claim_map.json").read_text(encoding="utf-8"))
+        row = next(row for row in sequences["sequences"] if row["id"] == "US-04")
+        claim = claim_map["claims"]["continuity_live_config_swap"]
+        # The final automation stop is omitted, but the restore command remains
+        # after the journey. The old matcher reused the earlier journey stop
+        # and incorrectly accepted this trace.
+        outcomes = [_trace_outcome(command) for command in row["commands"]]
+        outcomes.append(_trace_outcome(row["cleanup"][1]))
+        parsed = {
+            "ordered_command_outcomes": outcomes,
+            "visual_hitl": {"result": "pass"},
+            "restore_ok": True,
+        }
+        with self.assertRaises(self.validate_audit.AuditError) as ctx:
+            self.validate_audit.validate_exact_step_trace(
+                "US-04",
+                row,
+                claim,
+                parsed,
+            )
+        message = str(ctx.exception).lower()
+        self.assertIn("distinct post-sequence cleanup", message)
+
+    def test_trace_rejects_mixed_repeated_vehicle_placeholder(self) -> None:
+        sequences = json.loads(
+            (TOOL / "sequence_registry.json").read_text(encoding="utf-8")
+        )
+        claim_map = json.loads((TOOL / "claim_map.json").read_text(encoding="utf-8"))
+        row = next(row for row in sequences["sequences"] if row["id"] == "US-04")
+        claim = claim_map["claims"]["continuity_live_config_swap"]
+        outcomes = [_trace_outcome(command) for command in row["commands"]]
+        outcomes.append(_trace_outcome(row["cleanup"][0]))
+        outcomes.append(
+            _trace_outcome(row["cleanup"][1], vehicle_id="other-vehicle")
+        )
+        parsed = {
+            "ordered_command_outcomes": outcomes,
+            "visual_hitl": {"result": "pass"},
+            "restore_ok": True,
+        }
+        with self.assertRaises(self.validate_audit.AuditError) as ctx:
+            self.validate_audit.validate_exact_step_trace(
+                "US-04",
+                row,
+                claim,
+                parsed,
+            )
+        self.assertIn("placeholder identity", str(ctx.exception).lower())
+
+    def test_trace_rejects_mixed_repeated_source_placeholder(self) -> None:
+        sequences = json.loads(
+            (TOOL / "sequence_registry.json").read_text(encoding="utf-8")
+        )
+        claim_map = json.loads((TOOL / "claim_map.json").read_text(encoding="utf-8"))
+        row = next(row for row in sequences["sequences"] if row["id"] == "US-03")
+        claim = claim_map["claims"]["continuity_offline_perception"]
+        outcomes = [
+            _trace_outcome(
+                command,
+                src_dir="/tmp/trace-source-b" if index == 3 else "/tmp/trace-source-a",
+            )
+            for index, command in enumerate(row["commands"])
+        ]
+        parsed = {
+            "ordered_command_outcomes": outcomes,
+            "recorded_review_hitl": {"result": "pass"},
+            "restore_ok": True,
+        }
+        with self.assertRaises(self.validate_audit.AuditError) as ctx:
+            self.validate_audit.validate_exact_step_trace(
+                "US-03",
+                row,
+                claim,
+                parsed,
+            )
+        self.assertIn("placeholder identity", str(ctx.exception).lower())
+
+    def test_family_aggregate_cannot_promote_us03_without_exact_trace(self) -> None:
+        import hashlib
+
+        sequences = json.loads(
+            (TOOL / "sequence_registry.json").read_text(encoding="utf-8")
+        )
+        claim_map = json.loads((TOOL / "claim_map.json").read_text(encoding="utf-8"))
+        result_rel = (
+            "docs/milestones/007-cli-operator-usability/evidence/"
+            "cli-scenario-continuity/result.json"
+        )
+        result_path = ROOT / result_rel
+        claim = claim_map["claims"]["continuity_offline_perception"]
+        row = next(row for row in sequences["sequences"] if row["id"] == "US-03")
+        row["disposition"] = "passed"
+        row["completeness"] = "evidenced"
+        row["evidence"] = {
+            "claim_map_id": "continuity_offline_perception",
+            "digests": {result_rel: hashlib.sha256(result_path.read_bytes()).hexdigest()},
+            "disposition_set_at": "2026-08-17T00:00:00Z",
+            "disposition_set_by": "GeorgeLuo",
+            "evidence_mode": "cited",
+            "head_claim": "historical",
+            "source_commit": claim["source_commit"],
+            "source_pr": claim["source_pr"],
+        }
+        with self.assertRaises(self.validate_audit.AuditError) as ctx:
+            self.validate_audit.validate_semantic_cite(
+                sequences=sequences,
+                claim_map=claim_map,
+                repo_root=ROOT,
+            )
+        message = str(ctx.exception).lower()
+        self.assertIn("exact trace", message)
+        self.assertIn("ordered outcome list", message)
 
     def test_live_residual_fabricated_identity_fails(self) -> None:
         sequences = json.loads(

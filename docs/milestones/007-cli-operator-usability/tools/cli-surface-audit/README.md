@@ -12,9 +12,9 @@ Implements the accepted
 | `leaf_inventory.json` | Argparse-derived public leaf membership (`kind: action` \| `meta`) |
 | `leaf_overlay.json` | Mandatory classification overlay; `supports_json` must match argparse |
 | `sequence_registry.json` | US registry bound to catalog digest with dispositions |
-| `claim_map.json` | Semantic citation predicates for hybrid `passed` |
+| `claim_map.json` | Semantic citation predicates and ordered exact-step trace bindings for hybrid `passed` |
 | `live_residuals.json` | Linked `M007-LIVE-*` residuals |
-| `frozen_authority.py` | Code-frozen templates, claim map, and #88 source identity |
+| `frozen_authority.py` | Code-frozen templates, claim/trace map, and #88 source identity |
 | `validate_audit.py` | Fail-closed finalizer |
 | `parser_walk.py` / `argv_validate.py` | Membership walk (help → `kind: meta`) and parser-aware argv checks |
 
@@ -45,6 +45,15 @@ Exit `0` and `result: pass` are required for Met.
 ## Non-claims
 
 - Cited `passed` is historical, not HEAD re-verification.
+- A cited family aggregate cannot promote a row unless its frozen result also
+  contains every registered command in order, plus the declared confirmation
+  and cleanup predicates; extra diagnostic commands do not replace a missing
+  registered step.
+- Cleanup must be a distinct post-sequence event. The only frozen overlap is
+  US-02's cleanup stop reusing its explicitly identified journey stop; earlier
+  matching commands cannot satisfy another row's cleanup.
+- Repeated command placeholders bind one concrete identity across the whole
+  trace and cleanup, so mixed vehicle IDs or source directories fail closed.
 - Deferred/blocked US rows are accountable residuals, not green.
 - Coverage treatment is not a percentage gate.
 - No product repair of LIVE defects in this unit.

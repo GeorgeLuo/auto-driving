@@ -12,7 +12,12 @@ from pathlib import Path
 from typing import Any
 
 try:
-    from .argv_validate import ArgvValidationError, normalize_placeholders, validate_argv
+    from .argv_validate import (
+        ArgvValidationError,
+        argv_from_shell_line,
+        normalize_placeholders,
+        validate_argv,
+    )
     from .frozen_authority import (
         CANONICAL_US88_SOURCE,
         FROZEN_CITE_PATH_DIGESTS,
@@ -32,7 +37,12 @@ try:
         walk_leaves,
     )
 except ImportError:  # script / path execution
-    from argv_validate import ArgvValidationError, normalize_placeholders, validate_argv
+    from argv_validate import (
+        ArgvValidationError,
+        argv_from_shell_line,
+        normalize_placeholders,
+        validate_argv,
+    )
     from frozen_authority import (
         CANONICAL_US88_SOURCE,
         FROZEN_CITE_PATH_DIGESTS,
@@ -1089,6 +1099,341 @@ def _json_path(path: str | list[str], data: Any) -> Any:
     return cur
 
 
+def _strip_program_name(argv: list[str]) -> list[str]:
+    """Remove the public CLI executable prefix from an evidence argv."""
+
+    if not argv:
+        return argv
+    first = argv[0]
+    if first in {"automa", "./cli/automa", "cli/automa"} or Path(first).name == "automa":
+        return argv[1:]
+    return argv
+
+
+_TRACE_PLACEHOLDER_RE = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)\}")
+
+
+def _trace_placeholder_bindings(
+    expected: list[str],
+    actual: list[str],
+    bindings: dict[str, str] | None = None,
+) -> dict[str, str] | None:
+    """Match tokens and extend a consistent binding for every placeholder."""
+
+    if len(actual) != len(expected):
+        return None
+    candidate = dict(bindings or {})
+    for expected_token, actual_token in zip(expected, actual):
+        placeholder = _TRACE_PLACEHOLDER_RE.fullmatch(expected_token)
+        if placeholder:
+            name = placeholder.group(1)
+            prior = candidate.get(name)
+            if prior is not None and prior != actual_token:
+                return None
+            candidate[name] = actual_token
+            continue
+        if expected_token != actual_token:
+            return None
+    return candidate
+
+
+def _trace_tokens_shape_matches(expected: list[str], actual: list[str]) -> bool:
+    """Match fixed tokens while ignoring bindings, for conflict diagnostics."""
+
+    if len(actual) != len(expected):
+        return False
+    return all(
+        _TRACE_PLACEHOLDER_RE.fullmatch(expected_token)
+        or expected_token == actual_token
+        for expected_token, actual_token in zip(expected, actual)
+    )
+
+
+def _trace_command_bindings(
+    template: list[Any],
+    evidence_command: Any,
+    bindings: dict[str, str] | None = None,
+) -> dict[str, str] | None:
+    """Match a shell command and return the extended placeholder bindings."""
+
+    if not isinstance(evidence_command, str) or not evidence_command.strip():
+        return None
+    try:
+        actual = _strip_program_name(argv_from_shell_line(evidence_command))
+    except (ValueError, TypeError):
+        return None
+    expected = _strip_program_name([str(token) for token in template])
+    return _trace_placeholder_bindings(expected, actual, bindings)
+
+
+def _trace_command_shape_matches(template: list[Any], evidence_command: Any) -> bool:
+    """Return whether fixed command tokens match, ignoring identity values."""
+
+    if not isinstance(evidence_command, str) or not evidence_command.strip():
+        return False
+    try:
+        actual = _strip_program_name(argv_from_shell_line(evidence_command))
+    except (ValueError, TypeError):
+        return False
+    expected = _strip_program_name([str(token) for token in template])
+    return _trace_tokens_shape_matches(expected, actual)
+
+
+def _trace_command_matches(
+    template: list[Any],
+    evidence_command: Any,
+    bindings: dict[str, str] | None = None,
+) -> bool:
+    """Match an evidence command to a registry template and bindings."""
+
+    return _trace_command_bindings(template, evidence_command, bindings) is not None
+
+
+def _trace_tokens_match(
+    expected: list[str],
+    actual: list[str],
+    bindings: dict[str, str] | None = None,
+) -> bool:
+    """Compare tokenized templates, binding repeated placeholders consistently."""
+
+    return _trace_placeholder_bindings(expected, actual, bindings) is not None
+
+
+def validate_exact_step_trace(
+    us_id: str,
+    row: dict[str, Any],
+    claim: dict[str, Any],
+    parsed: Any,
+) -> dict[str, Any]:
+    """Require a cited result to prove the row's ordered commands and cues.
+
+    A family aggregate is not an exact scenario trace. The frozen claim map
+    therefore names an ordered outcome list and semantic confirmation/cleanup
+    predicates. Every registered command must occur in order as a successful
+    outcome; extra diagnostic commands are allowed, but a strict subset is not.
+    """
+
+    trace = claim.get("trace")
+    if not isinstance(trace, dict):
+        raise AuditError(f"{us_id} cite claim must declare an exact trace contract")
+    if trace.get("mode") != "ordered_subsequence":
+        raise AuditError(
+            f"{us_id} cite trace mode must be ordered_subsequence until a reviewed "
+            "equivalence artifact is implemented"
+        )
+    outcomes_path = trace.get("outcomes_path")
+    command_field = str(trace.get("command_field") or "").strip()
+    success_fields = trace.get("success")
+    if not outcomes_path or not command_field:
+        raise AuditError(f"{us_id} cite trace must name outcomes_path and command_field")
+    if not isinstance(success_fields, dict) or not success_fields:
+        raise AuditError(f"{us_id} cite trace success fields must be non-empty")
+    try:
+        outcomes = _json_path(outcomes_path, parsed)
+    except AuditError as exc:
+        raise AuditError(
+            f"{us_id} cite exact trace missing ordered outcome list at "
+            f"{outcomes_path!r}: {exc}"
+        ) from exc
+    if not isinstance(outcomes, list):
+        raise AuditError(
+            f"{us_id} cite exact trace missing ordered outcome list at {outcomes_path!r}"
+        )
+
+    def is_successful(outcome: Any) -> bool:
+        return isinstance(outcome, dict) and all(
+            outcome.get(field) == expected
+            for field, expected in success_fields.items()
+        )
+
+    commands = row.get("commands")
+    if not isinstance(commands, list) or not commands:
+        raise AuditError(f"{us_id} exact trace requires non-empty registered commands")
+    command_matches: list[int] = []
+    cursor = 0
+    placeholder_bindings: dict[str, str] = {}
+    for command_index, template in enumerate(commands):
+        if not isinstance(template, list) or not template:
+            raise AuditError(f"{us_id} command {command_index} is not an argv template")
+        found: int | None = None
+        for outcome_index in range(cursor, len(outcomes)):
+            outcome = outcomes[outcome_index]
+            if not isinstance(outcome, dict):
+                continue
+            if not is_successful(outcome):
+                continue
+            candidate_bindings = _trace_command_bindings(
+                template,
+                outcome.get(command_field),
+                placeholder_bindings,
+            )
+            if candidate_bindings is None:
+                if _trace_command_shape_matches(template, outcome.get(command_field)):
+                    raise AuditError(
+                        f"{us_id} cite exact trace has inconsistent placeholder "
+                        f"identity at registered command {command_index}"
+                    )
+                continue
+            found = outcome_index
+            placeholder_bindings = candidate_bindings
+            break
+        if found is None:
+            raise AuditError(
+                f"{us_id} cite exact trace is missing successful registered command "
+                f"{command_index}; family/subset evidence cannot promote this row"
+            )
+        command_matches.append(found)
+        cursor = found + 1
+
+    cleanup_matches: list[int] = []
+    cleanup = row.get("cleanup") or []
+    if not isinstance(cleanup, list):
+        raise AuditError(f"{us_id} exact trace cleanup must be an argv list")
+    permitted_overlaps = trace.get("permitted_cleanup_overlaps")
+    if not isinstance(permitted_overlaps, list):
+        raise AuditError(
+            f"{us_id} cite trace permitted_cleanup_overlaps must be a list"
+        )
+    overlap_by_cleanup: dict[int, int] = {}
+    for overlap in permitted_overlaps:
+        if not isinstance(overlap, dict):
+            raise AuditError(f"{us_id} cite trace cleanup overlap must be an object")
+        if set(overlap) != {"cleanup_index", "journey_command_index"}:
+            raise AuditError(
+                f"{us_id} cite trace cleanup overlap must name only cleanup_index "
+                "and journey_command_index"
+            )
+        cleanup_index = overlap.get("cleanup_index")
+        journey_command_index = overlap.get("journey_command_index")
+        if (
+            isinstance(cleanup_index, bool)
+            or not isinstance(cleanup_index, int)
+            or isinstance(journey_command_index, bool)
+            or not isinstance(journey_command_index, int)
+            or cleanup_index < 0
+            or journey_command_index < 0
+        ):
+            raise AuditError(
+                f"{us_id} cite trace cleanup overlap indexes must be non-negative integers"
+            )
+        if cleanup_index in overlap_by_cleanup:
+            raise AuditError(
+                f"{us_id} cite trace cleanup overlap repeats cleanup index {cleanup_index}"
+            )
+        if cleanup_index >= len(cleanup) or journey_command_index >= len(commands):
+            raise AuditError(
+                f"{us_id} cite trace cleanup overlap index is outside the registered sequence"
+            )
+        cleanup_template = _strip_program_name(
+            [str(token) for token in cleanup[cleanup_index]]
+        )
+        journey_template = _strip_program_name(
+            [str(token) for token in commands[journey_command_index]]
+        )
+        if cleanup_template != journey_template:
+            raise AuditError(
+                f"{us_id} cite trace cleanup overlap must name an identical "
+                "registered journey command"
+            )
+        overlap_by_cleanup[cleanup_index] = journey_command_index
+
+    cleanup_cursor = 0
+    last_command = command_matches[-1]
+    for cleanup_index, template in enumerate(cleanup):
+        if not isinstance(template, list) or not template:
+            raise AuditError(f"{us_id} cleanup {cleanup_index} is not an argv template")
+        found: int | None = None
+        identity_conflict = False
+        # Prefer a distinct post-sequence cleanup event. This is the normal
+        # case for plugin restore/stop commands.
+        for outcome_index in range(max(last_command + 1, cleanup_cursor), len(outcomes)):
+            outcome = outcomes[outcome_index]
+            if not isinstance(outcome, dict) or not is_successful(outcome):
+                continue
+            if not _trace_command_shape_matches(template, outcome.get(command_field)):
+                continue
+            candidate_bindings = _trace_command_bindings(
+                template,
+                outcome.get(command_field),
+                placeholder_bindings,
+            )
+            if candidate_bindings is None:
+                identity_conflict = True
+                continue
+            found = outcome_index
+            placeholder_bindings = candidate_bindings
+            break
+        if identity_conflict:
+            raise AuditError(
+                f"{us_id} cite exact trace has inconsistent placeholder identity "
+                f"in cleanup command {cleanup_index}"
+            )
+        if found is None:
+            overlap_command_index = overlap_by_cleanup.get(cleanup_index)
+            if overlap_command_index is not None:
+                overlap_outcome_index = command_matches[overlap_command_index]
+                overlap_outcome = outcomes[overlap_outcome_index]
+                candidate_bindings = _trace_command_bindings(
+                    template,
+                    overlap_outcome.get(command_field)
+                    if isinstance(overlap_outcome, dict)
+                    else None,
+                    placeholder_bindings,
+                )
+                if (
+                    isinstance(overlap_outcome, dict)
+                    and is_successful(overlap_outcome)
+                    and candidate_bindings is not None
+                    and overlap_outcome_index >= cleanup_cursor
+                ):
+                    found = overlap_outcome_index
+                    placeholder_bindings = candidate_bindings
+            if found is None:
+                if overlap_command_index is None:
+                    raise AuditError(
+                        f"{us_id} cite exact trace is missing distinct post-sequence "
+                        f"cleanup command {cleanup_index}; family/subset evidence "
+                        "cannot promote this row"
+                    )
+                raise AuditError(
+                    f"{us_id} cite exact trace is missing its permitted cleanup "
+                    f"overlap {cleanup_index}; placeholder identity or successful "
+                    "journey evidence is inconsistent"
+                )
+        if found is None:
+            raise AuditError(
+                f"{us_id} cite exact trace is missing successful cleanup command "
+                f"{cleanup_index}; family/subset evidence cannot promote this row"
+            )
+        cleanup_matches.append(found)
+        cleanup_cursor = found + 1
+
+    confirmation_predicates = trace.get("confirmation_predicates")
+    cleanup_predicates = trace.get("cleanup_predicates")
+    if not isinstance(confirmation_predicates, list) or not confirmation_predicates:
+        raise AuditError(f"{us_id} cite trace must bind primary confirmation predicates")
+    if not isinstance(cleanup_predicates, list):
+        raise AuditError(f"{us_id} cite trace cleanup_predicates must be a list")
+    for predicate in confirmation_predicates:
+        if not isinstance(predicate, dict):
+            raise AuditError(f"{us_id} cite trace confirmation predicate must be an object")
+        _eval_cite_predicate(us_id, predicate, parsed)
+    for predicate in cleanup_predicates:
+        if not isinstance(predicate, dict):
+            raise AuditError(f"{us_id} cite trace cleanup predicate must be an object")
+        _eval_cite_predicate(us_id, predicate, parsed)
+
+    return {
+        "mode": trace["mode"],
+        "outcomes_path": outcomes_path,
+        "command_matches": command_matches,
+        "cleanup_matches": cleanup_matches,
+        "confirmation_predicates": len(confirmation_predicates),
+        "cleanup_predicates": len(cleanup_predicates),
+        "placeholder_bindings": dict(sorted(placeholder_bindings.items())),
+    }
+
+
 def validate_frozen_claim_map(claim_map: dict[str, Any]) -> None:
     """Require claim_map.json to match the independent frozen authority constant."""
 
@@ -1101,6 +1446,51 @@ def validate_frozen_claim_map(claim_map: dict[str, Any]) -> None:
         preds = claim.get("predicates") or []
         if not preds:
             raise AuditError(f"frozen claim {claim_id} has empty predicates")
+        trace = claim.get("trace")
+        if not isinstance(trace, dict):
+            raise AuditError(f"frozen claim {claim_id} must declare an exact trace")
+        if trace.get("mode") != "ordered_subsequence":
+            raise AuditError(
+                f"frozen claim {claim_id} must use ordered_subsequence trace mode"
+            )
+        if not str(trace.get("outcomes_path") or "").strip():
+            raise AuditError(f"frozen claim {claim_id} trace outcomes_path is required")
+        if not str(trace.get("command_field") or "").strip():
+            raise AuditError(f"frozen claim {claim_id} trace command_field is required")
+        if not isinstance(trace.get("success"), dict) or not trace["success"]:
+            raise AuditError(f"frozen claim {claim_id} trace success fields are required")
+        confirmation = trace.get("confirmation_predicates")
+        cleanup = trace.get("cleanup_predicates")
+        if not isinstance(confirmation, list) or not confirmation:
+            raise AuditError(
+                f"frozen claim {claim_id} trace confirmation predicates are required"
+            )
+        if not isinstance(cleanup, list):
+            raise AuditError(
+                f"frozen claim {claim_id} trace cleanup predicates must be a list"
+            )
+        overlaps = trace.get("permitted_cleanup_overlaps")
+        if not isinstance(overlaps, list):
+            raise AuditError(
+                f"frozen claim {claim_id} trace permitted_cleanup_overlaps must be a list"
+            )
+        for overlap in overlaps:
+            if not isinstance(overlap, dict) or set(overlap) != {
+                "cleanup_index",
+                "journey_command_index",
+            }:
+                raise AuditError(
+                    f"frozen claim {claim_id} trace cleanup overlap is invalid"
+                )
+            if any(
+                isinstance(overlap[field], bool)
+                or not isinstance(overlap[field], int)
+                or overlap[field] < 0
+                for field in ("cleanup_index", "journey_command_index")
+            ):
+                raise AuditError(
+                    f"frozen claim {claim_id} trace cleanup overlap indexes are invalid"
+                )
         for rel in claim.get("paths") or []:
             if rel not in FROZEN_CITE_PATH_DIGESTS:
                 raise AuditError(
@@ -1244,6 +1634,7 @@ def validate_semantic_cite(
         if extra:
             raise AuditError(f"{us_id} evidence.digests has unknown paths {extra}")
         eval_cite_predicates(us_id, claim, parsed)
+        trace_receipt = validate_exact_step_trace(us_id, row, claim, parsed)
         actual_schema = parsed.get("schema") if isinstance(parsed, dict) else None
         if actual_schema != expected_schema:
             raise AuditError(
@@ -1268,6 +1659,7 @@ def validate_semantic_cite(
                 "source_result_schema": expected_schema,
                 "disposition_set_by": actor,
                 "disposition_set_at": when,
+                "trace": trace_receipt,
             }
         )
     return receipts

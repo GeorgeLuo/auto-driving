@@ -45,7 +45,29 @@
       ],
       "source_commit": "37b7393fe759f1597860a30d8c10ca5692f1c0cc",
       "source_pr": 100,
-      "source_result_schema": "m007_cli_scenario_continuity_v0"
+      "source_result_schema": "m007_cli_scenario_continuity_v0",
+      "trace": {
+        "mode": "ordered_subsequence",
+        "outcomes_path": "ordered_command_outcomes",
+        "command_field": "command",
+        "permitted_cleanup_overlaps": [],
+        "success": {
+          "step_status": "pass",
+          "exit_code": 0
+        },
+        "confirmation_predicates": [
+          {
+            "path": "visual_hitl.result",
+            "equals": "pass"
+          }
+        ],
+        "cleanup_predicates": [
+          {
+            "path": "restore_ok",
+            "equals": true
+          }
+        ]
+      }
     },
     "continuity_memory_lifecycle": {
       "allowed_us_ids": [
@@ -89,7 +111,29 @@
       ],
       "source_commit": "37b7393fe759f1597860a30d8c10ca5692f1c0cc",
       "source_pr": 100,
-      "source_result_schema": "m007_cli_scenario_continuity_v0"
+      "source_result_schema": "m007_cli_scenario_continuity_v0",
+      "trace": {
+        "mode": "ordered_subsequence",
+        "outcomes_path": "ordered_command_outcomes",
+        "command_field": "command",
+        "permitted_cleanup_overlaps": [],
+        "success": {
+          "step_status": "pass",
+          "exit_code": 0
+        },
+        "confirmation_predicates": [
+          {
+            "path": "verdict",
+            "equals": "pass"
+          }
+        ],
+        "cleanup_predicates": [
+          {
+            "path": "restore_ok",
+            "equals": true
+          }
+        ]
+      }
     },
     "continuity_offline_perception": {
       "allowed_us_ids": [
@@ -132,7 +176,29 @@
       ],
       "source_commit": "37b7393fe759f1597860a30d8c10ca5692f1c0cc",
       "source_pr": 100,
-      "source_result_schema": "m007_cli_scenario_continuity_v0"
+      "source_result_schema": "m007_cli_scenario_continuity_v0",
+      "trace": {
+        "mode": "ordered_subsequence",
+        "outcomes_path": "ordered_command_outcomes",
+        "command_field": "command",
+        "permitted_cleanup_overlaps": [],
+        "success": {
+          "step_status": "pass",
+          "exit_code": 0
+        },
+        "confirmation_predicates": [
+          {
+            "path": "recorded_review_hitl.result",
+            "equals": "pass"
+          }
+        ],
+        "cleanup_predicates": [
+          {
+            "path": "restore_ok",
+            "equals": true
+          }
+        ]
+      }
     },
     "us01_help_discovery": {
       "allowed_us_ids": [
@@ -181,7 +247,27 @@
       ],
       "source_commit": "caf335797b71df1323736a2054934b7c211418b0",
       "source_pr": 88,
-      "source_result_schema": "m007_live_cli_acceptance_v1"
+      "source_result_schema": "m007_live_cli_acceptance_v1",
+      "trace": {
+        "mode": "ordered_subsequence",
+        "outcomes_path": "ordered_command_outcomes",
+        "command_field": "command",
+        "permitted_cleanup_overlaps": [],
+        "success": {
+          "step_status": "pass",
+          "exit_code": 0
+        },
+        "confirmation_predicates": [
+          {
+            "path": "gates",
+            "contains_where": {
+              "id": "help_discoverability",
+              "status": "pass"
+            }
+          }
+        ],
+        "cleanup_predicates": []
+      }
     },
     "us02_passive_journey": {
       "allowed_us_ids": [
@@ -256,7 +342,41 @@
       ],
       "source_commit": "caf335797b71df1323736a2054934b7c211418b0",
       "source_pr": 88,
-      "source_result_schema": "m007_live_cli_acceptance_v1"
+      "source_result_schema": "m007_live_cli_acceptance_v1",
+      "trace": {
+        "mode": "ordered_subsequence",
+        "outcomes_path": "ordered_command_outcomes",
+        "command_field": "command",
+        "permitted_cleanup_overlaps": [
+          {
+            "cleanup_index": 0,
+            "journey_command_index": 4
+          }
+        ],
+        "success": {
+          "step_status": "pass",
+          "exit_code": 0
+        },
+        "confirmation_predicates": [
+          {
+            "path": "gates",
+            "contains_where": {
+              "id": "startup",
+              "status": "pass"
+            }
+          }
+        ],
+        "cleanup_predicates": [
+          {
+            "path": "cleanup.worker_stopped",
+            "equals": true
+          },
+          {
+            "path": "cleanup.final_status_exit_code",
+            "equals": 0
+          }
+        ]
+      }
     }
   },
   "schema": "m007_claim_map_v1",

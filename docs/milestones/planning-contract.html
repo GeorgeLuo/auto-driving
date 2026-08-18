@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="2a06437f9ca31eb6b90e03f800e724ec3279262884673968957fe0584a6f0bd1">
+  <meta name="source-sha256" content="231411ae1f06f3ea7be56c701011694df2083a015bcbd22677bfc20ccbb6712a">
   <base target="_blank">
   <title>Milestone Planning And Delivery Contract</title>
   <style>
@@ -188,10 +188,11 @@ how many findings, commits, or comments it contains.</p>
 <p>The reviewer classifies the cycle in the verdict. It is <strong>substantial</strong> when
 either the verdict contains a P0–P2 contract failure or the repair changes the
 review question, contract, external assumptions, or adversarial failure class.
-Moving internals or touching more files while the accepted artifacts and Met
-predicates stay true is not substantial. Editorial cleanup, evidence
-formatting, and localized P3 corrections are <strong>minor</strong> only when none of those
-conditions applies. A disputed or omitted classification is treated as
+Collapsing two shapes inside the accepted owner, while artifacts and Met
+predicates stay true, is not substantial. Moving enforcement to a different
+named owner is a contract change. Editorial cleanup, evidence formatting, and
+localized P3 corrections are <strong>minor</strong> only when none of those conditions
+applies. A disputed or omitted classification is treated as
 substantial until the reviewer resolves it.</p>
 <p>Every review-unit PR body keeps a <code>Repair Cycle Ledger</code> with the verdict receipt,
 classification, highest severity, full repair revision, and contract impact for
@@ -265,10 +266,12 @@ command in, pass or fail on the named mutation out. Do not pin helper names or
 error substrings as the contract.</p>
 <p>The pass is implementer-owned and documentary. It has no receipt, ledger row,
 or CI gate. Leftover two-shapes are <code>## Concerns</code>, not a completion lock.</p>
-<p>If the collapse would change artifacts, Met predicates, or the review
-question, stop. That is an amendment or a later want, not sanitation.</p>
+<p>If the collapse would change artifacts, Met predicates, the review question,
+or the named owner, stop. That is an amendment or a later want, not
+sanitation.</p>
 <p>During a repair cycle, add the missing case at that public door and the
-cheapest close. Do not re-own the module in the finding diff.</p>
+cheapest close. Do not move enforcement to a different named owner in the
+finding diff.</p>
 <h3>HITL Implementation Adjunct</h3>
 <p>A <strong>HITL implementation adjunct</strong> is an exceptional child review unit for a
 bounded change first requested by a human during hands-on testing after an

@@ -17,9 +17,9 @@ body's `Repair Cycle Ledger` with the verdict receipt, reviewer-owned `minor` or
 contract impact.
 
 Add the missing case at the public test door and the cheapest close. Do not
-re-own the module in the finding diff. Re-check prior findings and the
-accepted matrix. Do not invent a new adversarial pass. There is no
-cycle-count stop.
+move enforcement to a different named owner in the finding diff. Re-check
+prior findings and the accepted matrix. Do not invent a new adversarial pass.
+There is no cycle-count stop.
 
 Same-account review cannot use GitHub `CHANGES_REQUESTED`. An unedited
 `COMMENTED` review containing only `## Contract Review Receipt` and
@@ -37,6 +37,7 @@ one type. Everything else is P3 or a later want.
 
 Classify a cycle as substantial when its verdict contains a P0–P2 contract
 failure or its repair changes the review question, contract, external
-assumption, or adversarial failure class. A same-question collapse that keeps
-artifacts and Met predicates unchanged is not substantial because internals
-or paths moved.
+assumption, or adversarial failure class. A same-question collapse inside
+the accepted owner that keeps artifacts and Met predicates unchanged is not
+substantial. Moving enforcement to a different named owner is a contract
+change.

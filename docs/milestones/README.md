@@ -157,10 +157,11 @@ how many findings, commits, or comments it contains.
 The reviewer classifies the cycle in the verdict. It is **substantial** when
 either the verdict contains a P0–P2 contract failure or the repair changes the
 review question, contract, external assumptions, or adversarial failure class.
-Moving internals or touching more files while the accepted artifacts and Met
-predicates stay true is not substantial. Editorial cleanup, evidence
-formatting, and localized P3 corrections are **minor** only when none of those
-conditions applies. A disputed or omitted classification is treated as
+Collapsing two shapes inside the accepted owner, while artifacts and Met
+predicates stay true, is not substantial. Moving enforcement to a different
+named owner is a contract change. Editorial cleanup, evidence formatting, and
+localized P3 corrections are **minor** only when none of those conditions
+applies. A disputed or omitted classification is treated as
 substantial until the reviewer resolves it.
 
 Every review-unit PR body keeps a `Repair Cycle Ledger` with the verdict receipt,
@@ -254,11 +255,13 @@ error substrings as the contract.
 The pass is implementer-owned and documentary. It has no receipt, ledger row,
 or CI gate. Leftover two-shapes are `## Concerns`, not a completion lock.
 
-If the collapse would change artifacts, Met predicates, or the review
-question, stop. That is an amendment or a later want, not sanitation.
+If the collapse would change artifacts, Met predicates, the review question,
+or the named owner, stop. That is an amendment or a later want, not
+sanitation.
 
 During a repair cycle, add the missing case at that public door and the
-cheapest close. Do not re-own the module in the finding diff.
+cheapest close. Do not move enforcement to a different named owner in the
+finding diff.
 
 ### HITL Implementation Adjunct
 

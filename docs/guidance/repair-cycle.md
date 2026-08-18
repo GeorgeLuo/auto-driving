@@ -16,7 +16,8 @@ body's `Repair Cycle Ledger` with the verdict receipt, reviewer-owned `minor` or
 `substantial` classification and highest severity, full repair revision, and
 contract impact.
 
-Repair the failure class at its owner, not only the reported example. Re-check
+Add the missing case at the public test door and the cheapest close. Do not
+move enforcement to a different named owner in the finding diff. Re-check
 prior findings and the accepted matrix. Do not invent a new adversarial pass.
 There is no cycle-count stop.
 
@@ -30,10 +31,13 @@ implementation tip at merge time.
 
 Verify each prior finding against the repair evidence, then review the current
 diff against the accepted proposal. Raise P0–P2 only when the case is in the
-accepted matrix or falsifies the stated review question. Everything else is P3
-or a later want.
+accepted matrix or falsifies the stated review question. Leftover two-shapes
+and requests to collapse internals are P3 unless the accepted question named
+one type. Everything else is P3 or a later want.
 
 Classify a cycle as substantial when its verdict contains a P0–P2 contract
-failure or its repair changes the review question, contract, primary owner or
-abstraction, material scope or file impact, external assumption, or adversarial
-failure class.
+failure or its repair changes the review question, contract, external
+assumption, or adversarial failure class. A same-question collapse inside
+the accepted owner that keeps artifacts and Met predicates unchanged is not
+substantial. Moving enforcement to a different named owner is a contract
+change.

@@ -34,32 +34,28 @@ REPAIR_PR_TEMPLATE = ROOT / ".github" / "PULL_REQUEST_TEMPLATE" / "repair.md"
 TEST_WORKFLOW = ROOT / ".github" / "workflows" / "tests.yml"
 
 
-def _active_milestone_section() -> str:
-    guide = GUIDE.read_text(encoding="utf-8")
+def _plan_header_status(plan_md: Path) -> str:
     match = re.search(
-        r"^## Active Milestone\s*\n(?P<body>.*?)(?=^## |\Z)",
-        guide,
-        re.MULTILINE | re.DOTALL,
+        r"^\| Status \| ([^|]+) \|",
+        plan_md.read_text(encoding="utf-8"),
+        re.MULTILINE,
     )
-    if not match:
-        raise AssertionError("docs/README.md must contain an Active Milestone section")
-    return match.group("body")
+    if match is None:
+        return ""
+    return match.group(1).strip().strip("`")
 
 
 def _active_plan_paths() -> tuple[Path, Path] | None:
-    section = _active_milestone_section()
-    if re.search(r"^\*\*None\.\*\*", section, re.MULTILINE):
+    active: list[tuple[Path, Path]] = []
+    for plan_md in sorted(MILESTONES.glob("*/plan.md")):
+        if _plan_header_status(plan_md).casefold().startswith("active"):
+            active.append((plan_md, plan_md.with_suffix(".html")))
+    if len(active) > 1:
+        names = ", ".join(str(path.relative_to(ROOT)) for path, _ in active)
+        raise AssertionError(f"multiple active milestone plans: {names}")
+    if not active:
         return None
-    match = re.search(
-        r"milestones/(\d+-[^)\s]+)/plan\.html",
-        section,
-    )
-    if not match:
-        raise AssertionError("docs/README.md must link an active milestone plan.html")
-    slug = match.group(1)
-    plan_md = MILESTONES / slug / "plan.md"
-    plan_html = MILESTONES / slug / "plan.html"
-    return plan_md, plan_html
+    return active[0]
 
 
 class MilestonePlanningTests(unittest.TestCase):
@@ -159,25 +155,29 @@ class MilestonePlanningTests(unittest.TestCase):
 
     def test_docs_guide_is_navigation_only_for_progress(self) -> None:
         guide = GUIDE.read_text(encoding="utf-8")
-        self.assertIn("Active Milestone", guide)
-        # Must not restate detailed package progress or remaining-for-closeout.
+        self.assertIn("workflow.py status", guide)
+        self.assertIn("completed.md", guide)
+        self.assertNotIn("## Active Milestone", guide)
+        self.assertNotIn("## Immediate Pre-Plan", guide)
         lowered = guide.lower()
         for banned in (
             "remaining for closeout",
             "package 5a",
             "package 5b",
             "required remediation order",
+            "| current frontier |",
+            "| status | active",
         ):
             self.assertNotIn(banned, lowered)
 
-    def test_docs_guide_identifies_an_active_milestone_or_explicit_none(self) -> None:
-        section = _active_milestone_section()
+    def test_docs_guide_does_not_name_an_active_or_none_milestone(self) -> None:
+        guide = GUIDE.read_text(encoding="utf-8")
+        self.assertNotIn("**None.**", guide)
+        self.assertIn("plan.md", guide)
         paths = _active_plan_paths()
         if paths is None:
-            self.assertRegex(section, r"^\s*\*\*None\.\*\*")
             return
         plan_md, plan_html = paths
-        self.assertNotIn("**None.**", section)
         self.assertTrue(plan_md.is_file())
         self.assertTrue(plan_html.is_file())
 

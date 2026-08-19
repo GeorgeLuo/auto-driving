@@ -58,8 +58,10 @@ directory:
 3. Read [`tests/README.md`](tests/README.md) before changing behavior. It explains
    test ownership, focused module runs, and the explicit simulator and Pi
    boundaries.
-4. Use [`docs/README.md`](docs/README.md) for the active milestone, current
+4. Use [`docs/README.md`](docs/README.md) for documentation navigation,
    architecture references, completed milestone context, and research notes.
+   Current milestone status comes from `plan.md` and
+   `python3 docs/milestones/workflow.py status --plan <plan>`.
 5. Treat `runtime/` and `lab/` as generated state. Start from tracked source and
    the CLI rather than using files in those directories as an API.
 
@@ -458,8 +460,8 @@ and is prepared through `./cli/automa simulators ensure`.
 
 ## Architecture and Planning
 
-- [`docs/README.md`](docs/README.md) identifies the active milestone and the
-  reading order for current work.
+- [`docs/README.md`](docs/README.md) is documentation navigation and the
+  reading order. It is not the milestone status authority.
 - [`docs/reference/onboard-autonomy-flow.html`](docs/reference/onboard-autonomy-flow.html) explains
   the onboard perception, decision, and action flow.
 - [`docs/reference/donkey-server-functionality.html`](docs/reference/donkey-server-functionality.html)

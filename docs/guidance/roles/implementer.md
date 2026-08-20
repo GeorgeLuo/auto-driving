@@ -22,13 +22,15 @@ proposal.
 
 ## Phase
 
-- In `ready_for_proposal`, author the proposal and required plan transition
-  only. Load [proposal-vs-implementation.md](../proposal-vs-implementation.md)
+- In `ready_for_proposal`, author the proposal, required plan transition, and
+  any remaining-path or not-yet-started map-node edits. Load
+  [proposal-vs-implementation.md](../proposal-vs-implementation.md)
   and [review-unit.md](../review-unit.md).
 - In `ready_for_implementation`, implement only the accepted proposal. Load
   [proposal-vs-implementation.md](../proposal-vs-implementation.md) and
   [validation.md](../validation.md). After the accepted tests are green, one
-  public-door collapse is allowed; do not sanitize during fill.
+  public-door collapse is allowed; do not sanitize during fill. Do not edit
+  the frontier map.
 - When addressing findings in the existing PR, load
   [repair-cycle.md](../repair-cycle.md), [validation.md](../validation.md), and
   the relevant adversarial cases.

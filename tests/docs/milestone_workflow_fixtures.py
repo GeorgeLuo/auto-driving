@@ -80,6 +80,23 @@ def ready_plan_text() -> str:
 - Prerequisite: Every other criterion is Met
 - Milestone-level non-goal: New runtime behavior
 
+### Frontier Map
+
+- Path: `{CURRENT_FRONTIER}` → `{NEXT_FRONTIER}`
+- Cadence: linked-list
+
+#### Node: {NEXT_FRONTIER}
+
+- Proposal branch: `{NEXT_PROPOSAL_BRANCH}`
+- Implementation branch: `{NEXT_IMPLEMENTATION_BRANCH}`
+- Proposal path: `docs/milestones/900-workflow-fixture/proposals/closeout.md`
+- Review kind: Milestone closeout
+- Review question: Is the synthetic milestone complete?
+- Acceptance owner: Synthetic closeout
+- Exit criteria affected: {CLOSEOUT_CRITERION}
+- Prerequisite: Every other criterion is Met
+- Non-goals: New runtime behavior
+
 ## Workflow History
 
 | Frontier | State | Evidence |

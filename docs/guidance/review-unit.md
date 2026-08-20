@@ -20,7 +20,9 @@ canonical contract. The contract wins if any wording conflicts.
 ## Readiness
 
 Promote a frontier only when the operator can name the want and one reject
-condition. An empty next-frontier slot is honest when that want is unknown.
+condition. Remaining-path edits belong on the current proposal, not a
+plan-revision PR. An empty successor is honest when that want is unknown or
+closeout is current. Do not delete a contracted node to make room.
 
 Before review, confirm that the PR question is stable, the description matches
 the current diff, and validation is exact. Before re-review, confirm that the

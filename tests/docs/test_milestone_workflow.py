@@ -303,6 +303,77 @@ class MilestonePlanContractTests(unittest.TestCase):
         with self.assertRaisesRegex(PlanContractError, "review kind does not match"):
             validate_merged_pr_metadata(wrong_kind, state, receipt)
 
+    def test_active_plan_requires_frontier_map(self) -> None:
+        start = self.plan_text.index("### Frontier Map")
+        end = self.plan_text.index("## Workflow History")
+        missing = self.plan_text[:start] + self.plan_text[end:]
+        with self.assertRaisesRegex(PlanContractError, "missing ### Frontier Map"):
+            validate_plan_text(missing)
+
+    def test_frontier_map_path_must_start_with_current(self) -> None:
+        invalid = self.plan_text.replace(
+            f"- Path: `{CURRENT_FRONTIER}` → `{NEXT_FRONTIER}`",
+            f"- Path: `{NEXT_FRONTIER}` → `{CURRENT_FRONTIER}`",
+            1,
+        )
+        with self.assertRaisesRegex(PlanContractError, "must start with the current"):
+            validate_plan_text(invalid)
+
+    def test_handoff_keeps_remaining_path_nodes(self) -> None:
+        inserted = "Capability inventory"
+        longer = self.open_plan_text.replace(
+            f"- Path: `{CURRENT_FRONTIER}` → `{NEXT_FRONTIER}`",
+            f"- Path: `{CURRENT_FRONTIER}` → `{inserted}` → `{NEXT_FRONTIER}`",
+            1,
+        )
+        node = f"""
+#### Node: {inserted}
+
+- Proposal branch: `m900/inventory-proposal`
+- Implementation branch: `m900/inventory`
+- Proposal path: `docs/milestones/900-workflow-fixture/proposals/inventory.md`
+- Review kind: Deterministic invariant closure
+- Review question: Are unreached regions grouped?
+- Acceptance owner: Inventory validator
+- Exit criteria affected: M900-02
+- Prerequisite: Current policy is accepted
+- Non-goals: Product deletion
+"""
+        longer = longer.replace(
+            f"#### Node: {NEXT_FRONTIER}",
+            node + f"#### Node: {NEXT_FRONTIER}",
+            1,
+        )
+        next_block = """**Capability inventory**
+
+- Proposal branch: `m900/inventory-proposal`
+- Implementation branch: `m900/inventory`
+- Proposal path: `docs/milestones/900-workflow-fixture/proposals/inventory.md`
+- Review kind: Deterministic invariant closure
+- Review question: Are unreached regions grouped?
+- Acceptance owner: Inventory validator
+- Exit criteria affected: M900-02
+- Prerequisite: Current policy is accepted
+- Non-goals: Product deletion
+"""
+        start = longer.index("### Next-Frontier Candidate")
+        end = longer.index("### Frontier Map")
+        longer = (
+            longer[:start]
+            + "### Next-Frontier Candidate\n\n"
+            + next_block
+            + "\n"
+            + longer[end:]
+        )
+        updated = apply_handoff(longer, _receipt())
+        state = validate_plan_text(updated)
+        self.assertEqual(state.current.name, inserted)
+        self.assertEqual(state.next_frontier.name, NEXT_FRONTIER)
+        self.assertEqual(
+            state.frontier_map.path,
+            (inserted, NEXT_FRONTIER),
+        )
+
 
 class MilestoneHandoffGitOrderingTests(unittest.TestCase):
     def _git(self, root: Path, *args: str) -> str:

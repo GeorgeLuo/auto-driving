@@ -36,6 +36,8 @@ NEXT_FRONTIER_FIELDS = (
     "implementation branch",
     "proposal path",
 )
+ALLOWED_FRONTIER_CADENCES = {"linked-list"}
+PATH_ARROW = re.compile(r"\s*(?:→|->)\s*")
 WORKFLOW_STATES = {
     "ready_for_proposal",
     "proposal_in_review",
@@ -254,12 +256,35 @@ class Frontier:
 
 
 @dataclass(frozen=True)
+class FrontierMap:
+    path: tuple[str, ...]
+    cadence: str
+    nodes: tuple[Frontier, ...]
+    off_path: tuple[Frontier, ...]
+
+    def records(self) -> tuple[Frontier, ...]:
+        return (*self.nodes, *self.off_path)
+
+    def record_names(self) -> set[str]:
+        return {node.name for node in self.records() if node.name}
+
+
+EMPTY_FRONTIER_MAP = FrontierMap(
+    path=(),
+    cadence="linked-list",
+    nodes=(),
+    off_path=(),
+)
+
+
+@dataclass(frozen=True)
 class PlanState:
     milestone_number: str
     status: str
     milestone_branch: str
     current: Frontier
     next_frontier: Frontier
+    frontier_map: FrontierMap
     criteria: MarkdownTable
     ledger: MarkdownTable
     workflow_history: MarkdownTable
@@ -365,6 +390,235 @@ def parse_frontier(text: str, heading: str) -> Frontier:
     if name is None and not any(line.strip() == "**None**" for line in lines[start:end]):
         raise PlanContractError(f"{heading} must identify a frontier name or **None**")
     return Frontier(name=name, fields=fields)
+
+
+def _parse_frontier_fields(lines: list[str]) -> dict[str, str]:
+    fields: dict[str, str] = {}
+    for line in lines:
+        stripped = line.strip()
+        field_match = re.match(r"-\s+\*\*?([^*:]+)\*\*?:\s*(.*)", stripped)
+        if field_match is None:
+            field_match = re.match(r"-\s+([^:]+):\s*(.*)", stripped)
+        if field_match:
+            fields[_normalize_field(field_match.group(1))] = field_match.group(2).strip()
+    return fields
+
+
+def _parse_path_value(raw: str, *, heading: str) -> tuple[str, ...]:
+    stripped = raw.strip()
+    if stripped.lower() == "none":
+        return ()
+    names: list[str] = []
+    for part in PATH_ARROW.split(stripped):
+        name = part.strip().strip("`")
+        if not name:
+            raise PlanContractError(f"{heading} path has an empty name")
+        names.append(name)
+    if not names:
+        raise PlanContractError(f"{heading} path must be 'none' or a named walk")
+    return tuple(names)
+
+
+def parse_frontier_map(text: str) -> FrontierMap | None:
+    lines = text.splitlines()
+    try:
+        start, end = _section_bounds(lines, "### Frontier Map")
+    except PlanContractError:
+        return None
+    body = lines[start:end]
+    path_value: str | None = None
+    cadence: str | None = None
+    for line in body:
+        stripped = line.strip()
+        path_match = re.match(r"-\s+Path:\s*(.*)$", stripped, re.IGNORECASE)
+        if path_match:
+            path_value = path_match.group(1).strip()
+            continue
+        cadence_match = re.match(r"-\s+Cadence:\s*(.*)$", stripped, re.IGNORECASE)
+        if cadence_match:
+            cadence = cadence_match.group(1).strip().strip("`").lower()
+    if path_value is None:
+        raise PlanContractError("Frontier Map is missing 'Path'")
+    if cadence is None:
+        raise PlanContractError("Frontier Map is missing 'Cadence'")
+    if cadence not in ALLOWED_FRONTIER_CADENCES:
+        raise PlanContractError(f"Frontier Map has unsupported cadence {cadence!r}")
+    path = _parse_path_value(path_value, heading="Frontier Map")
+
+    nodes: list[Frontier] = []
+    off_path: list[Frontier] = []
+    index = 0
+    while index < len(body):
+        stripped = body[index].strip()
+        node_match = re.fullmatch(r"####\s+Node:\s+(.+)", stripped)
+        off_match = re.fullmatch(r"####\s+Off-path:\s+(.+)", stripped)
+        if node_match is None and off_match is None:
+            index += 1
+            continue
+        heading_index = index
+        index += 1
+        while index < len(body) and not body[index].strip().startswith("#### "):
+            index += 1
+        record_fields = _parse_frontier_fields(body[heading_index + 1 : index])
+        if node_match:
+            name = node_match.group(1).strip()
+            nodes.append(Frontier(name=name, fields=record_fields))
+        else:
+            name = off_match.group(1).strip() if off_match else ""
+            off_path.append(Frontier(name=name, fields=record_fields))
+    return FrontierMap(
+        path=path,
+        cadence=cadence,
+        nodes=tuple(nodes),
+        off_path=tuple(off_path),
+    )
+
+
+def _contracted_fields(frontier: Frontier) -> dict[str, str]:
+    skip = {"off-path reason", "workflow state", "pr", "accepted proposal"}
+    return {
+        key: value
+        for key, value in frontier.fields.items()
+        if key not in skip
+    }
+
+
+def _validate_frontier_map(
+    frontier_map: FrontierMap | None,
+    *,
+    status: str,
+    current: Frontier,
+    next_frontier: Frontier,
+    known_ids: set[str],
+    expected_review_prefix: str,
+) -> FrontierMap:
+    if status != "Active":
+        if frontier_map is None:
+            return EMPTY_FRONTIER_MAP
+        if frontier_map.path or frontier_map.nodes:
+            raise PlanContractError(
+                f"{status} milestone Frontier Map path must be none without queued nodes"
+            )
+        return frontier_map
+    if frontier_map is None:
+        raise PlanContractError("Active milestone is missing ### Frontier Map")
+    if current.is_empty:
+        raise PlanContractError("Active milestone must have a current frontier")
+    if not frontier_map.path:
+        raise PlanContractError("Active Frontier Map path cannot be none")
+    if frontier_map.path[0] != current.name:
+        raise PlanContractError(
+            "Frontier Map path must start with the current frontier name"
+        )
+    seen_names: set[str] = {current.name}
+    node_by_name = {node.name: node for node in frontier_map.nodes}
+    off_by_name = {node.name: node for node in frontier_map.off_path}
+    for collection, kind in (
+        (frontier_map.nodes, "Node"),
+        (frontier_map.off_path, "Off-path"),
+    ):
+        names: set[str] = set()
+        for node in collection:
+            if not node.name:
+                raise PlanContractError(f"Frontier Map {kind} is missing a name")
+            if node.name in names or node.name in seen_names:
+                raise PlanContractError(
+                    f"Frontier Map has duplicate node {node.name!r}"
+                )
+            names.add(node.name)
+            seen_names.add(node.name)
+            _require_frontier_fields(
+                node,
+                heading=f"Frontier Map {kind}: {node.name}",
+                current=False,
+            )
+            _frontier_criterion_ids(
+                node,
+                heading=f"Frontier Map {kind}: {node.name}",
+                known_ids=known_ids,
+            )
+            if kind == "Off-path" and not node.fields.get("off-path reason"):
+                raise PlanContractError(
+                    f"Frontier Map Off-path: {node.name} is missing 'off-path reason'"
+                )
+            if kind == "Node" and node.fields.get("off-path reason"):
+                raise PlanContractError(
+                    f"Frontier Map Node: {node.name} cannot have an off-path reason"
+                )
+            proposal_branch = _frontier_branch(
+                node,
+                heading=f"Frontier Map {kind}: {node.name}",
+                field="proposal branch",
+            )
+            implementation_branch = _frontier_branch(
+                node,
+                heading=f"Frontier Map {kind}: {node.name}",
+                field="implementation branch",
+            )
+            if proposal_branch == implementation_branch:
+                raise PlanContractError(
+                    f"Frontier Map {kind}: {node.name} proposal and "
+                    "implementation branches must differ"
+                )
+            _frontier_proposal_path(
+                node,
+                heading=f"Frontier Map {kind}: {node.name}",
+            )
+            for branch_kind, branch in (
+                ("proposal", proposal_branch),
+                ("implementation", implementation_branch),
+            ):
+                if not branch.startswith(expected_review_prefix):
+                    raise PlanContractError(
+                        f"Frontier Map {kind}: {node.name} {branch_kind} branch "
+                        f"must start with {expected_review_prefix!r}"
+                    )
+            for field in ("workflow state", "accepted proposal", "pr"):
+                if node.fields.get(field):
+                    raise PlanContractError(
+                        f"Frontier Map {kind}: {node.name} is queued and cannot "
+                        f"contain {field}"
+                    )
+    remaining = frontier_map.path[1:]
+    for name in remaining:
+        if name not in node_by_name:
+            raise PlanContractError(
+                f"Frontier Map path names {name!r} without a matching #### Node"
+            )
+        if name in off_by_name:
+            raise PlanContractError(
+                f"Frontier Map path node {name!r} cannot also be off-path"
+            )
+    extra_nodes = set(node_by_name) - set(remaining)
+    if extra_nodes:
+        raise PlanContractError(
+            "Frontier Map Node sections must match remaining path names: "
+            + ", ".join(sorted(name or "" for name in extra_nodes))
+        )
+    closeout_indexes = [
+        index
+        for index, name in enumerate(remaining)
+        if _normalize_review_kind(node_by_name[name].fields["review kind"])
+        == "milestone closeout"
+    ]
+    if closeout_indexes and closeout_indexes != [len(remaining) - 1]:
+        raise PlanContractError("Frontier Map closeout node must be last on the path")
+    if remaining:
+        if next_frontier.is_empty or next_frontier.name != remaining[0]:
+            raise PlanContractError(
+                "Next-Frontier Candidate must match the Frontier Map successor"
+            )
+        if _contracted_fields(next_frontier) != _contracted_fields(
+            node_by_name[remaining[0]]
+        ):
+            raise PlanContractError(
+                "Next-Frontier Candidate fields must match its Frontier Map Node"
+            )
+    elif not next_frontier.is_empty:
+        raise PlanContractError(
+            "Next-Frontier Candidate must be None when the Frontier Map has no successor"
+        )
+    return frontier_map
 
 
 def _header_values(text: str) -> dict[str, str]:
@@ -791,6 +1045,15 @@ def validate_plan_text(text: str) -> PlanState:
     if status in {"Blocked", "closed"} and not next_frontier.is_empty:
         raise PlanContractError(f"{status} milestone cannot have a next candidate")
 
+    frontier_map = _validate_frontier_map(
+        parse_frontier_map(text),
+        status=status,
+        current=current,
+        next_frontier=next_frontier,
+        known_ids=seen_ids,
+        expected_review_prefix=expected_review_prefix,
+    )
+
     header_current = header.get("Current frontier", "")
     expected_current = current.name or "None"
     if not header_current.startswith(expected_current):
@@ -919,6 +1182,7 @@ def validate_plan_text(text: str) -> PlanState:
         milestone_branch=milestone_branch,
         current=current,
         next_frontier=next_frontier,
+        frontier_map=frontier_map,
         criteria=criteria,
         ledger=ledger,
         workflow_history=workflow_history,
@@ -935,9 +1199,14 @@ def validate_plan_path(path: Path) -> PlanState:
     resolved_path = path.resolve()
     repo_root = resolved_path.parents[3]
     expected_proposal_parent = resolved_path.parent / "proposals"
+    map_records = [
+        (f"Frontier Map Node: {node.name}", node)
+        for node in state.frontier_map.records()
+    ]
     for heading, frontier in (
         ("Current Frontier", state.current),
         ("Next-Frontier Candidate", state.next_frontier),
+        *map_records,
     ):
         if frontier.is_empty:
             continue
@@ -1014,6 +1283,59 @@ def _replace_frontier(text: str, heading: str, body_lines: list[str]) -> str:
     heading_index = section_start - 1
     replacement = [heading, "", *body_lines, ""]
     return "\n".join(lines[:heading_index] + replacement + lines[section_end:]) + "\n"
+
+
+def _map_record_body(node: Frontier, *, off_path: bool) -> list[str]:
+    heading = f"#### Off-path: {node.name}" if off_path else f"#### Node: {node.name}"
+    lines = [heading, ""]
+    preferred = (
+        ("proposal branch", "Proposal branch"),
+        ("implementation branch", "Implementation branch"),
+        ("proposal path", "Proposal path"),
+        ("review kind", "Review kind"),
+        ("review question", "Review question"),
+        ("acceptance owner", "Acceptance owner"),
+        ("exit criteria affected", "Exit criteria affected"),
+        ("prerequisite", "Prerequisite"),
+        ("non-goals", "Non-goals"),
+        ("off-path reason", "Off-path reason"),
+    )
+    for key, label in preferred:
+        value = node.fields.get(key)
+        if value:
+            lines.append(f"- {label}: {value}")
+    return lines
+
+
+def _frontier_map_body(frontier_map: FrontierMap) -> list[str]:
+    if frontier_map.path:
+        path_value = " → ".join(f"`{name}`" for name in frontier_map.path)
+    else:
+        path_value = "none"
+    lines = [
+        f"- Path: {path_value}",
+        f"- Cadence: {frontier_map.cadence}",
+    ]
+    for node in frontier_map.nodes:
+        lines.extend(["", *_map_record_body(node, off_path=False)])
+    for node in frontier_map.off_path:
+        lines.extend(["", *_map_record_body(node, off_path=True)])
+    return lines
+
+
+def _replace_frontier_map(text: str, frontier_map: FrontierMap) -> str:
+    body = _frontier_map_body(frontier_map)
+    try:
+        return _replace_frontier(text, "### Frontier Map", body)
+    except PlanContractError:
+        lines = text.splitlines()
+        current_heading = "### Current Frontier"
+        try:
+            insert_at = lines.index(current_heading)
+        except ValueError as exc:
+            raise PlanContractError("missing section ### Current Frontier") from exc
+        replacement = ["### Frontier Map", "", *body, ""]
+        return "\n".join(lines[:insert_at] + replacement + lines[insert_at:]) + "\n"
 
 
 def _replace_header_value(text: str, field: str, value: str) -> str:
@@ -1246,7 +1568,34 @@ def apply_handoff(text: str, receipt_payload: dict[str, Any]) -> str:
                     "cannot promote milestone closeout while criteria remain unmet: "
                     + ", ".join(blocking)
                 )
-        new_next = _empty_next_frontier_from_receipt(receipt.get("next_frontier"))
+        _empty_next_frontier_from_receipt(receipt.get("next_frontier"))
+        remaining_path = state.frontier_map.path[1:]
+        if not remaining_path or remaining_path[0] != new_current.name:
+            raise PlanContractError(
+                "Frontier Map successor does not match Next-Frontier Candidate"
+            )
+        new_path = remaining_path
+        new_nodes = tuple(
+            node
+            for node in state.frontier_map.nodes
+            if node.name != new_current.name
+        )
+        if len(new_path) > 1:
+            successor_name = new_path[1]
+            try:
+                new_next = next(node for node in new_nodes if node.name == successor_name)
+            except StopIteration as exc:
+                raise PlanContractError(
+                    f"Frontier Map is missing Node {successor_name!r} after promotion"
+                ) from exc
+        else:
+            new_next = _empty_next_frontier_from_receipt(receipt.get("next_frontier"))
+        new_map = FrontierMap(
+            path=new_path,
+            cadence=state.frontier_map.cadence,
+            nodes=new_nodes,
+            off_path=state.frontier_map.off_path,
+        )
         text = _replace_header_value(text, "Status", "Active")
         text = _replace_header_value(text, "Current frontier", new_current.name or "None")
         text = _append_workflow_history(
@@ -1268,6 +1617,7 @@ def apply_handoff(text: str, receipt_payload: dict[str, Any]) -> str:
         )
         text = _replace_header_value(text, "Status", "Blocked")
         text = _replace_header_value(text, "Current frontier", "None (blocked)")
+        new_map = EMPTY_FRONTIER_MAP
     else:
         if state.current.fields.get("review kind", "").lower() != "milestone closeout":
             raise PlanContractError("close outcome requires a milestone closeout frontier")
@@ -1291,6 +1641,7 @@ def apply_handoff(text: str, receipt_payload: dict[str, Any]) -> str:
         )
         text = _replace_header_value(text, "Status", "closed")
         text = _replace_header_value(text, "Current frontier", "None (closed)")
+        new_map = EMPTY_FRONTIER_MAP
 
     text = _replace_frontier(
         text,
@@ -1302,6 +1653,7 @@ def apply_handoff(text: str, receipt_payload: dict[str, Any]) -> str:
         "### Next-Frontier Candidate",
         _frontier_body(new_next, current=False),
     )
+    text = _replace_frontier_map(text, new_map)
     validate_plan_text(text)
     return text
 
@@ -3596,6 +3948,23 @@ def _validate_plan_revision_transition(
     return "plan_revision"
 
 
+def _validate_proposal_map_edits(base: PlanState, head: PlanState) -> None:
+    if not head.frontier_map.path or head.frontier_map.path[0] != head.current.name:
+        raise PlanContractError(
+            "proposal PR Frontier Map path must start with the current frontier"
+        )
+    missing = base.frontier_map.record_names() - head.frontier_map.record_names()
+    if missing:
+        raise PlanContractError(
+            "proposal PR cannot delete contracted frontier nodes: "
+            + ", ".join(sorted(name for name in missing if name))
+        )
+    if head.current.name in head.frontier_map.record_names():
+        raise PlanContractError(
+            "proposal PR cannot place the current frontier on the remaining map"
+        )
+
+
 def validate_review_unit_transition(
     base_text: str,
     head_text: str,
@@ -3622,10 +3991,18 @@ def validate_review_unit_transition(
         )
     if base.current.name != head.current.name:
         raise PlanContractError("review-unit PR cannot replace the current frontier")
-    if base.next_frontier != head.next_frontier:
-        raise PlanContractError("review-unit PR cannot change the queued frontier")
     base_state = _workflow_state(base.current)
     head_state = _workflow_state(head.current)
+    is_opening_proposal = (
+        base_state == "ready_for_proposal" and head_state == "proposal_in_review"
+    )
+    if is_opening_proposal:
+        _validate_proposal_map_edits(base, head)
+    else:
+        if base.next_frontier != head.next_frontier:
+            raise PlanContractError("review-unit PR cannot change the queued frontier")
+        if base.frontier_map != head.frontier_map:
+            raise PlanContractError("review-unit PR cannot change the frontier map")
     is_proposal_amendment = (
         base_state == "ready_for_implementation"
         and head_state == "proposal_amendment_in_review"

@@ -34,6 +34,7 @@ from tests.docs.milestone_workflow_fixtures import (
     CURRENT_CRITERION,
     CURRENT_FRONTIER,
     IMPLEMENTATION_ADJUNCT_BRANCH,
+    NEXT_FRONTIER,
     IMPLEMENTATION_BRANCH,
     MILESTONE_BRANCH,
     PLAN_RELATIVE,
@@ -307,6 +308,10 @@ def _revise_plan(text: str) -> str:
     ).replace(
         f"**{CURRENT_FRONTIER}**",
         f"**{REVISED_FRONTIER}**",
+        1,
+    ).replace(
+        f"- Path: `{CURRENT_FRONTIER}` → `{NEXT_FRONTIER}`",
+        f"- Path: `{REVISED_FRONTIER}` → `{NEXT_FRONTIER}`",
         1,
     ).replace(
         "Does repeated evidence follow one deterministic contract?",
@@ -935,6 +940,140 @@ class ReviewUnitTransitionTests(unittest.TestCase):
             pr_body=_review_unit_body(),
         )
         self.assertEqual(transition, "proposal")
+
+    def test_proposal_pr_may_rewire_remaining_path(self) -> None:
+        inserted = "Capability inventory"
+        head = self.proposal_head.replace(
+            f"- Path: `{CURRENT_FRONTIER}` → `{NEXT_FRONTIER}`",
+            f"- Path: `{CURRENT_FRONTIER}` → `{inserted}` → `{NEXT_FRONTIER}`",
+            1,
+        )
+        node = f"""
+#### Node: {inserted}
+
+- Proposal branch: `m900/inventory-proposal`
+- Implementation branch: `m900/inventory`
+- Proposal path: `docs/milestones/900-workflow-fixture/proposals/inventory.md`
+- Review kind: Deterministic invariant closure
+- Review question: Are unreached regions grouped?
+- Acceptance owner: Inventory validator
+- Exit criteria affected: M900-02
+- Prerequisite: Current policy is accepted
+- Non-goals: Product deletion
+"""
+        head = head.replace(
+            f"#### Node: {NEXT_FRONTIER}",
+            node + f"#### Node: {NEXT_FRONTIER}",
+            1,
+        )
+        next_block = f"""**{inserted}**
+
+- Proposal branch: `m900/inventory-proposal`
+- Implementation branch: `m900/inventory`
+- Proposal path: `docs/milestones/900-workflow-fixture/proposals/inventory.md`
+- Review kind: Deterministic invariant closure
+- Review question: Are unreached regions grouped?
+- Acceptance owner: Inventory validator
+- Exit criteria affected: M900-02
+- Prerequisite: Current policy is accepted
+- Non-goals: Product deletion
+"""
+        start = head.index("### Next-Frontier Candidate")
+        end = head.index("### Frontier Map")
+        head = (
+            head[:start]
+            + "### Next-Frontier Candidate\n\n"
+            + next_block
+            + "\n"
+            + head[end:]
+        )
+        transition = validate_review_unit_transition(
+            self.base,
+            head,
+            plan_path=PLAN_RELATIVE,
+            changed_paths={
+                PLAN_RELATIVE,
+                str(Path(PLAN_RELATIVE).with_suffix(".html")),
+                PROPOSAL_RELATIVE,
+            },
+            head_branch=PROPOSAL_BRANCH,
+            proposal_text=proposal_text(),
+            pr_body=_review_unit_body(),
+        )
+        self.assertEqual(transition, "proposal")
+
+    def test_proposal_pr_cannot_delete_contracted_nodes(self) -> None:
+        head = self.proposal_head.replace(
+            f"- Path: `{CURRENT_FRONTIER}` → `{NEXT_FRONTIER}`",
+            f"- Path: `{CURRENT_FRONTIER}`",
+            1,
+        )
+        start = head.index("#### Node:")
+        end = head.index("## Workflow History")
+        head = head[:start] + head[end:]
+        start = head.index("### Next-Frontier Candidate")
+        end = head.index("### Frontier Map")
+        head = (
+            head[:start]
+            + "### Next-Frontier Candidate\n\n**None**\n\n"
+            "- Reason: No successor is contracted yet.\n"
+            "- Revisit when: Closeout is queued on a later proposal.\n\n"
+            + head[end:]
+        )
+        with self.assertRaisesRegex(
+            PlanContractError,
+            "cannot delete contracted frontier nodes",
+        ):
+            validate_review_unit_transition(
+                self.base,
+                head,
+                plan_path=PLAN_RELATIVE,
+                changed_paths={
+                    PLAN_RELATIVE,
+                    str(Path(PLAN_RELATIVE).with_suffix(".html")),
+                    PROPOSAL_RELATIVE,
+                },
+                head_branch=PROPOSAL_BRANCH,
+                proposal_text=proposal_text(),
+                pr_body=_review_unit_body(),
+            )
+
+    def test_implementation_pr_cannot_change_frontier_map(self) -> None:
+        base = _accepted_plan()
+        parked = """
+#### Off-path: Parked later unit
+
+- Proposal branch: `m900/parked-proposal`
+- Implementation branch: `m900/parked`
+- Proposal path: `docs/milestones/900-workflow-fixture/proposals/parked.md`
+- Review kind: Deterministic invariant closure
+- Review question: Should this remain off-path?
+- Acceptance owner: Parked owner
+- Exit criteria affected: M900-02
+- Prerequisite: Current policy is accepted
+- Non-goals: Product deletion
+- Off-path reason: Discovered during implementation and parked
+"""
+        head = _move_to_review(base, implementation=True).replace(
+            "\n## Workflow History",
+            parked + "\n## Workflow History",
+            1,
+        )
+        with self.assertRaisesRegex(
+            PlanContractError,
+            "cannot change the frontier map",
+        ):
+            validate_review_unit_transition(
+                base,
+                head,
+                plan_path=PLAN_RELATIVE,
+                changed_paths={
+                    PLAN_RELATIVE,
+                    "implementations/memory/bounded_evidence.py",
+                },
+                head_branch=IMPLEMENTATION_BRANCH,
+                pr_body=_review_unit_body(),
+            )
 
     def test_proposal_pr_review_kind_must_match_plan(self) -> None:
         with self.assertRaisesRegex(PlanContractError, "does not match"):

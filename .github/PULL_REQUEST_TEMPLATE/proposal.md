@@ -8,6 +8,10 @@
 - Frontier:
 - Proposal artifact: `docs/milestones/<number>-<slug>/proposals/<frontier>.md`
 
+<!-- Remaining-path and not-yet-started map-node edits belong on this PR, not a
+     plan-revision PR. Do not delete contracted nodes. Path edits are not a
+     second review question. -->
+
 ## Review Kind
 
 <!-- One supported value matching the canonical milestone plan exactly:

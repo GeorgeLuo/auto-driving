@@ -110,6 +110,7 @@ class MilestonePlanningTests(unittest.TestCase):
             "## Current Delivery",
             "### Current Frontier",
             "### Next-Frontier Candidate",
+            "### Frontier Map",
             "## Workflow History",
             "## Accepted Review Units",
             "## Open Risks And Unverified Assumptions",
@@ -216,6 +217,7 @@ class MilestonePlanningTests(unittest.TestCase):
         self.assertIn("## Review Kind", text)
         self.assertIn("## Operator Want", text)
         self.assertIn("## Evidence rendering", text)
+        self.assertIn("Remaining-path and not-yet-started map-node edits", text)
         self.assertIn("- Evidence directory (if yes):", text)
         self.assertIn("repository-relative directory path", text)
         self.assertIn("Trust And Authority Model", text)
@@ -405,16 +407,19 @@ class MilestonePlanningTests(unittest.TestCase):
         )
         self.assertIn("docs/milestones/workflow.py start-implementation", text)
         self.assertIn("merge commit that is not already an ancestor", normalized)
-        self.assertIn("promotes the reviewed next candidate", normalized)
+        self.assertIn("Promote the existing path successor to current", text)
 
     def test_contract_requires_next_frontier_minimal_acceptance_contract(self) -> None:
         text = CONTRACT_SOURCE.read_text(encoding="utf-8")
         normalized = " ".join(text.split())
         self.assertIn("pre-implementation acceptance contract", text)
-        self.assertIn("frozen before the proposal branch opens", normalized)
+        self.assertIn("frozen when that node becomes current", normalized)
         self.assertIn("enforcement or acceptance owner", text)
         self.assertIn("A name plus a vague “likely question” alone is not a candidate", text)
-        self.assertIn("empty next-frontier slot", text)
+        self.assertIn("empty successor", text)
+        self.assertIn("### Frontier Map", text)
+        self.assertIn("linked-list", text)
+        self.assertIn("cannot delete a contracted node", text)
 
     def test_contract_requires_one_primary_completion_demonstration(self) -> None:
         text = CONTRACT_SOURCE.read_text(encoding="utf-8")

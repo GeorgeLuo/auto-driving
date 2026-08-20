@@ -10,10 +10,12 @@ in the canonical contract. The contract wins if any wording conflicts.
 ## Phase Boundary
 
 - `ready_for_proposal`: proposal work may start; product implementation may not.
-- `proposal_in_review`: change the proposal and required plan transition only.
+- `proposal_in_review`: change the proposal, required plan transition, remaining
+  path, and not-yet-started map nodes. Do not change the current frontier
+  identity.
 - `ready_for_implementation`: implement only the exact accepted proposal.
 - `implementation_in_review`: reconcile product, tests, and documentation to
-  that accepted scope.
+  that accepted scope. Do not edit the frontier map or successor.
 
 Run the milestone workflow status command instead of inferring the phase from
 conversation history.
@@ -26,7 +28,9 @@ or model may fill both roles, but only in separate branches and review phases.
 
 A proposal records the contract, owner, affected paths, adversarial matrix,
 assumptions, non-goals, file impact, validation plan, and expected handoff. It
-contains no implementation.
+contains no implementation. It may add frontier-map nodes, rewire the remaining
+path, or move a not-yet-started node off-path. Those edits are not a second
+review question. It must not delete a contracted node.
 
 Before a proposal or amendment merges, a reviewer with current repository push
 authority submits a decisive GitHub review on its exact final head. `APPROVED`
@@ -65,6 +69,7 @@ contract, and reports actual file impact and validation. Once the accepted
 tests are green, the implementer may collapse two shapes in the same owner
 against those tests without changing the contract. If the unit mints a sealed
 signal, commit derived HTML of those bytes next to it in the proposal-declared
-per-frontier evidence directory unless the operator accepted a skip. If the
-contract must change, return to proposal review rather than rewriting
-acceptance during implementation.
+per-frontier evidence directory unless the operator accepted a skip. Do not
+rewire the remaining path, add a frontier, or change process rules during
+implementation. If the contract must change, return to proposal review rather
+than rewriting acceptance during implementation.

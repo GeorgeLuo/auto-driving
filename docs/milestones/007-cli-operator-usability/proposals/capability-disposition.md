@@ -1,0 +1,347 @@
+# Proposal: Capability disposition outside CLI journeys
+
+| Field | Value |
+| --- | --- |
+| Milestone | 007 CLI Operator Usability |
+| Frontier | Capability disposition outside CLI journeys |
+| Proposal branch | `m007/capability-disposition-proposal` |
+| Implementation branch | `m007/capability-disposition` |
+| Exit criterion | M007-09 |
+| Review kind | Deterministic invariant closure |
+
+## Review Question
+
+Can owned production code not reached by the declared CLI journey set be
+grouped by capability and reconciled with tests, other entrypoints, dynamic or
+platform paths, and ownership so every group is flagged to expose through CLI,
+retain with an explicit owner and reason, or remove through separately reviewed
+work, without authorizing feature or deletion solely by a coverage percentage?
+
+This unit is **accountable disposition of unreached owned code**, not product
+change. The milestone walks away knowing every such group has an owned
+`expose`, `retain`, or `remove` candidate. It does not implement those
+candidates.
+
+## Glossary (contract terms)
+
+| Term | Meaning |
+| --- | --- |
+| **Owned production code** | Tracked Python under the #107 owned roots (the same roots the journey-coverage collector measures). Tests, docs, generated runtime, and lab candidates are not this set. |
+| **Declared CLI journey set** | The command/journey contexts sealed in the accepted M007-07 `report.json` (primary journey plus the three required continuity families). |
+| **Reached** | Attributed as executed in that #107 report for at least one declared-journey context. |
+| **Unreached** | Owned production code with no executed attribution in that report. |
+| **Capability group** | A named cluster of unreached regions that share one product capability and one owner. Not a per-line dump. |
+| **Disposition** | Exactly one of `expose`, `retain`, or `remove`. `remove` is a candidate for later review, not a delete in this unit. |
+| **Reachability authority** | The sealed #107 report bytes. Percentages in that report are informational and never Met. |
+
+## Proposed Contract
+
+### Acceptance statement
+
+An implementation answers the review question only when **all** of the
+following hold:
+
+1. **Unreached set is derived, not invented.** Membership of unreached owned
+   production code is computed from the sealed #107 report plus the owned-root
+   inventory that report already names. A human overlay cannot add a file the
+   owned roots do not contain, or drop a file the report shows unreached.
+2. **Every unreached region belongs to exactly one capability group.** Omission
+   fails Met. Double-assignment fails Met. Empty "nothing unreached" is allowed
+   only when the derived set is empty.
+3. **Every group is reconciled.** Each group records how it relates to tests,
+   non-CLI entrypoints, dynamic or platform paths, and an explicit owner.
+   Silence is not reconciliation. `not_applicable` requires a reason.
+4. **Every group has one disposition and a reason that is not a percentage.**
+   `expose` = candidate to add or surface through CLI. `retain` = keep with
+   owner and why CLI journeys need not reach it. `remove` = candidate for a
+   later deletion review. A coverage ratio, line count, or "unexecuted" clause
+   alone is not a legal reason.
+5. **This unit does not perform the product work.** No CLI feature, no
+   deletion, no move of production code to satisfy a disposition. Those are
+   later review units.
+6. **Validators and focused tests** enforce derivation, grouping completeness,
+   required reconcile fields, and the percentage ban, including omission and
+   "percent-as-reason" negative fixtures. A rollup that looks complete is not
+   Met without those tests.
+
+### Artifact shape
+
+| Artifact | Authority | Contents |
+| --- | --- | --- |
+| **Reachability input** | Sealed M007-07 `report.json` | Owned roots, per-file executed/unexecuted attribution for the declared journey set |
+| **Leaf/sequence context** | M007-08 inventory and registry | CLI-facing names and owners used when grouping; read-only |
+| **Capability record** | This unit | Groups, members, reconcile fields, disposition, owner, reason |
+| **Pass report / rollup** | This unit | Derived unreached counts, group list, residuals, explicit non-claims |
+
+Exact repository paths and schema version ids are fixed in implementation under:
+
+```text
+docs/milestones/007-cli-operator-usability/tools/capability-disposition/
+docs/milestones/007-cli-operator-usability/evidence/capability-disposition/
+```
+
+### Disposition rules
+
+| Disposition | Meaning in this unit | Forbidden here |
+| --- | --- | --- |
+| `expose` | Named CLI gap; later unit may add a leaf | Adding the leaf now |
+| `retain` | Keep; journeys need not reach it; owner+reason required | Using "untested" as the only reason |
+| `remove` | Candidate for a later deletion review | Deleting or quarantining the code now |
+
+M007-06 closeout may cite this record. It may not treat a `remove` candidate as
+already deleted.
+
+## Trust And Authority Model
+
+This unit's universal language applies to **complete grouping and fail-closed
+disposition of unreached owned production code**. It does not claim that
+unreached code is dead, that reached code is correct, or that a percentage is
+a product decision.
+
+| Guarantee class | What this unit claims | What it does not claim |
+| --- | --- | --- |
+| **Consistency** | The unreached set equals owned-root files/regions with no #107 executed attribution; every member is in one group; every group has legal reconcile fields and a non-percentage reason | That #107 attribution remains true after later product commits without a new capture |
+| **Provenance** | Groups name their members by repository path; the record stores the #107 report identity (path + digest) used for derivation; dispositions name an owner | That the owner field proves who should implement a later expose/remove unit |
+| **Authenticity** | Validators authenticate the derived set against the sealed report and reject percentage-only reasons | That `retain` or `remove` is the right product call beyond the recorded reason; review still owns judgment quality |
+
+**Trusted inputs:** sealed M007-07 report; #107 owned-root list; M007-08 leaf
+inventory and sequence registry as CLI-context labels; this unit's schemas.
+
+**Untrusted / non-authoritative for Met:** coverage percentages; chat claims
+that "everyone knows this is lab-only"; test-run coverage as a substitute for
+the declared journey set; a later HEAD that no longer matches the sealed
+report.
+
+**Claim → authority map:**
+
+| Claim | Authority |
+| --- | --- |
+| File is owned production | #107 owned roots |
+| File is reached by declared journeys | Executed attribution in sealed #107 report |
+| File is unreached | Complement of that attribution inside owned roots |
+| Group membership complete | Derived unreached set equals union of group members |
+| Tests / entrypoints / platform | Reconcile fields on the group (human, schema-enforced) |
+| Disposition | Group field; percentage-only reasons fail |
+| Product expose/delete done | Out of scope; later units |
+
+**Adversaries covered:** omitting an unreached owned file; inventing members
+outside owned roots; assigning a file to two groups; treating test execution as
+journey reachability; authorizing `remove` or `expose` from a percentage;
+shipping a rollup with blank owner/reason; performing the product change in
+this PR.
+
+**Adversaries excluded / residual:** same-user later mutation of product code
+that does not refresh #107 (record stays historical); subjective quality of a
+`retain` reason beyond required fields; whether a later unit actually lands.
+
+## Evidence Topology And Capture Strategy
+
+| Claim / non-claim | Authoritative raw evidence | Derivation | Semantic verifier |
+| --- | --- | --- | --- |
+| Unreached membership | Sealed #107 report + owned roots | Complement of executed attribution | Set equality with group members |
+| Group completeness | Capability record | Union of members | No remainder, no extra, no overlap |
+| Reconcile fields present | Group schema | Required keys | Omission / empty / missing-reason N/A fail |
+| Reason is not a percentage | Group reason text | Parse/reject % and ratio-only clauses | Negative fixture |
+| CLI context labels | M007-08 inventory/registry | Optional join by path/owner | Unknown leaf ids fail if cited |
+| Non-claim: dead code | — | — | Explicit rollup non-claim |
+| Non-claim: HEAD still matches #107 | — | — | Record report digest; drift is residual |
+
+**Capture strategy:**
+
+- **Bounded implementation evidence** only: deterministic derivation, schema,
+  and adversarial fixtures. No new live CLI or coverage recapture is required
+  for Met.
+- **#107 recapture** is out of scope unless the sealed report cannot be read.
+  Then stop and amend; do not invent reachability.
+- **Freshness:** store the #107 report path and digest. Product HEAD drift
+  after that digest is residual, not silent Met.
+- **Retained artifacts:** capability record, pass report, rollup, test
+  fixtures. Derived CI logs are not sole authority.
+
+Canonical live recapture of journeys is **explicitly unnecessary** for Met.
+
+## Ownership
+
+| Concern | Owner |
+| --- | --- |
+| Unreached membership | Derivation from sealed #107 report and owned roots |
+| Capability grouping and reasons | Human review; schema-enforced required fields |
+| Percentage ban and completeness | This unit's validators |
+| CLI leaf/sequence labels | Read-only M007-08 artifacts |
+| Implementing `expose` / `remove` | **Out of scope** — later review units |
+| Re-measuring journeys | **Out of scope** — M007-07 remains sealed |
+| Re-opening leaf inventory | **Out of scope** — M007-08 |
+| Milestone closeout | **Out of scope** — M007-06 |
+
+The capability-disposition validator/record suite is the single Met owner. A
+coverage percentage, a leaf dump, or an informal "we will delete this later"
+note cannot independently mark M007-09 Met.
+
+## Affected Paths
+
+- `#107` evidence
+  `docs/milestones/007-cli-operator-usability/evidence/cli-journey-coverage/report.json`
+  is a **read input**. This unit does not rewrite it.
+- M007-08
+  `docs/milestones/007-cli-operator-usability/tools/cli-surface-audit/`
+  inventory and registry are **read inputs** for CLI-facing labels.
+- New
+  `docs/milestones/007-cli-operator-usability/tools/capability-disposition/`
+  owns derivation, schema, validators, rollup, README.
+- New
+  `docs/milestones/007-cli-operator-usability/evidence/capability-disposition/`
+  owns the capability record, pass report, and residual rollup.
+- `tests/milestones/` owns deterministic derivation, completeness, and
+  percentage-ban tests.
+- `autonomy/`, `implementations/`, and `cli/automa_cli/` are **read inputs**
+  for path identity only. No product behavior change.
+
+## Adversarial Matrix
+
+| Case | Required result |
+| --- | --- |
+| Owned file has no #107 executed attribution and is in no group | Met fails |
+| Group member path is outside #107 owned roots | Reject |
+| Same unreached path appears in two groups | Reject |
+| Derived unreached set is non-empty but record says none | Met fails |
+| Reached file listed as unreached | Met fails |
+| Test-only execution used to mark a file journey-reached | Reject; tests reconcile `retain`, they are not the journey set |
+| Group omits tests / entrypoints / platform / owner | Met fails |
+| `not_applicable` reconcile field without reason | Met fails |
+| Disposition reason is only a coverage percentage or "unexecuted" | Reject (required negative fixture) |
+| `remove` group accompanied by deleting the production file | Out of scope; fail the independence of this unit |
+| `expose` group accompanied by a new CLI leaf | Out of scope |
+| Rollup hides groups with `remove` | Met fails |
+| Sealed #107 digest in the record does not match on-disk report | Met fails |
+| Implementation rewrites #107 report to shrink unreached set | Forbidden |
+| M007-08 inventory rewritten to make grouping easier | Out of scope; amend or separate unit |
+| Issues #89–#108 treated as this unit's Met | Out of scope; later wants |
+
+## External Assumptions
+
+- The sealed M007-07 report remains readable and is the reachability authority
+  for this unit. If it is missing or unverifiable, stop; do not recapture as a
+  side quest.
+- #107 owned roots still name the production set this milestone cares about.
+- M007-08 leaf inventory and sequence registry remain the CLI-facing labels.
+- Non-CLI entrypoints (tests, Pi deploy, lab plugins, Metrics UI) exist and
+  may justify `retain`; they do not expand the declared journey set.
+- Dynamic import and platform-only modules may be unreached for honest
+  reasons; they still need a group.
+
+## Non-Goals
+
+- Executing expose, retain-as-refactor, or remove in production code.
+- Numeric coverage gates or expanding #107 measurement.
+- Reopening M007-08 accounting or M007-07 capture.
+- Product repair of LIVE defects or issues #89–#108.
+- Milestone closeout (M007-06).
+- Claiming unreached code is dead.
+- A second coverage collector.
+
+## File Impact
+
+### Proposal PR only
+
+| Path | Change |
+| --- | --- |
+| `docs/milestones/007-cli-operator-usability/proposals/capability-disposition.md` | This contract |
+| `docs/milestones/007-cli-operator-usability/plan.md` / `plan.html` | `proposal_in_review` transition |
+
+### Expected implementation PR
+
+| Path | Change |
+| --- | --- |
+| `docs/milestones/007-cli-operator-usability/tools/capability-disposition/` | Derivation, schema, validators, rollup, README |
+| `docs/milestones/007-cli-operator-usability/evidence/capability-disposition/` | Capability record, pass report, residual rollup |
+| `tests/milestones/` | Completeness, overlap, digest, percentage-ban fixtures |
+| Plan handoff on success | M007-09 Met; next-frontier remains empty toward closeout |
+
+No planned product changes under `autonomy/`, `implementations/`, or
+`cli/automa_cli/`.
+
+## Validation Plan
+
+### Proposal PR
+
+```sh
+python3 docs/milestones/workflow.py validate \
+  docs/milestones/007-cli-operator-usability/plan.md
+python3 docs/render_markdown.py --check
+python3 -m unittest \
+  tests.docs.test_milestone_proposal_workflow \
+  tests.docs.test_milestone_planning
+python3 docs/milestones/workflow.py validate-pr \
+  --base-ref milestone/007-cli-operator-usability \
+  --head-ref m007/capability-disposition-proposal \
+  --base-sha <merge-base> \
+  --head-sha <head> \
+  --pr-body-file <path-to-pr-body>
+git diff --check
+```
+
+Reviewers confirm proposal-only paths, review kind **deterministic invariant
+closure**, Trust/Evidence sections, and no implementation payload.
+
+### Implementation PR (after acceptance)
+
+Deterministic:
+
+- unreached set ≡ complement of #107 executed attribution inside owned roots;
+- every unreached path in exactly one group;
+- required reconcile fields;
+- percentage-only reason rejected;
+- digest of sealed #107 report matches the record;
+- rollup lists every group including `remove`;
+- no production path diffs.
+
+No live recapture.
+
+## Expected Handoff
+
+Post-merge successful implementation template:
+
+```json
+{
+  "schema": "milestone_handoff_template_v1",
+  "outcome": "advance",
+  "result": "Accepted",
+  "durable_evidence": "Capability disposition outside CLI journeys in PR #{pr}: unreached owned production code derived from sealed M007-07 report; every region in exactly one capability group; tests/entrypoints/platform/owner reconciled; expose/retain/remove candidates with non-percentage reasons; validators reject omission and percentage-as-authorization; tracked evidence under docs/milestones/007-cli-operator-usability/evidence/capability-disposition/",
+  "criterion_updates": {
+    "M007-09": {
+      "status": "Met",
+      "evidence": "PR #{pr} groups unreached owned production code from the sealed journey-coverage report, reconciles tests/entrypoints/dynamic-or-platform paths and ownership, and records an owned expose, retain, or remove candidate for every group without using a coverage percentage as authorization"
+    }
+  },
+  "risk_remove": [
+    "Coverage absence is not proof that code is dead"
+  ],
+  "risk_upsert": [
+    {
+      "risk": "Capability dispositions are historical to the sealed M007-07 report",
+      "consequence": "Later product commits can change what is unreached without updating the candidate record",
+      "resolution": "Closeout cites the record digest; a later unit recaptures #107 if reachability must be refreshed"
+    }
+  ],
+  "next_frontier": {
+    "state": "none",
+    "reason": "M007-09 leaves owned expose/retain/remove candidates. Closeout (M007-06) is the remaining milestone unit when the operator is ready; it does not execute those candidates.",
+    "revisit_when": "Operator starts milestone closeout, or a later unit implements a named expose or remove candidate."
+  }
+}
+```
+
+### Sequence after this proposal merges
+
+1. Merge this proposal into `milestone/007-cli-operator-usability`.
+2. Run `workflow.py accept-proposal` with exact-head review receipt.
+3. Start `m007/capability-disposition` and implement only this contract.
+4. Pass deterministic validation. Do not recapture journeys.
+5. On complete Met, accept implementation with an empty next-frontier toward
+   closeout. Otherwise stop without promotion.
+
+## Review Kind
+
+**Deterministic invariant closure** — complete grouping of unreached owned
+production code and fail-closed rejection of percentage-as-authorization.
+Met is an owned candidate record, not product expose/retain/remove.

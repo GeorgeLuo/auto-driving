@@ -395,17 +395,13 @@ class MilestonePlanningTests(unittest.TestCase):
         self.assertIn("Frontier handoff:", text)
         self.assertIn("docs/milestones/workflow.py complete-implementation", text)
         self.assertIn("handoff --receipt <path>", text)
-        self.assertIn("docs/milestones/workflow.py start-proposal", text)
         self.assertIn("docs/milestones/workflow.py accept-proposal", text)
-        self.assertIn(
-            "docs/milestones/workflow.py start-proposal-amendment",
-            text,
-        )
         self.assertIn(
             "docs/milestones/workflow.py accept-proposal-amendment",
             text,
         )
-        self.assertIn("docs/milestones/workflow.py start-implementation", text)
+        self.assertIn("git switch -c", text)
+        self.assertIn("optional helpers", text)
         self.assertIn("merge commit that is not already an ancestor", normalized)
         self.assertIn("sets current to idle", text)
 

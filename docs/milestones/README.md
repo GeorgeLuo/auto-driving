@@ -1130,27 +1130,25 @@ python3 docs/milestones/workflow.py status \
   --plan docs/milestones/<number>-<slug>/plan.md
 ```
 
-When it reports idle current or `ready_for_proposal`, the next proposal PR
-selects current from the work order (or introduces the first node). Use a
+When it reports idle current or `ready_for_proposal`, open a git branch and a
+proposal PR that selects current from the work order (or introduces the first
+node). Git creates the branch. `workflow.py start-proposal` is optional. Use a
 `m<number>/plan-<slug>` branch only for milestone-level facts (objective,
 exit-criterion IDs, action policy). Remaining-path, skip-successor, and
 closeout-selection edits belong on the proposal PR.
 
-When it reports `ready_for_proposal`, create only the proposal branch:
-
 ```sh
-python3 docs/milestones/workflow.py start-proposal \
-  --plan docs/milestones/<number>-<slug>/plan.md \
-  --branch m<number>/<frontier>-proposal
+git fetch origin
+git switch -c m<number>/<frontier>-proposal origin/milestone/<number>-<slug>
 ```
 
-The proposal author commits the proposal artifact, plan transition, and rendered
-HTML, then opens a proposal PR to the milestone branch. Its `Review Kind` must
-match the canonical frontier. When the contract is acceptable, submit the
+Commit the proposal artifact, plan transition (including work-order edits), and
+rendered HTML, then open the PR to the milestone branch. Its `Review Kind` must
+match the selected frontier. When the contract is acceptable, submit the
 exact-head GitHub review receipt described above before merging. Any later
 proposal commit requires another receipt. After merge, the maintainer updates
-the clean milestone branch and records acceptance; the acceptance command
-rechecks the merged PR body and exact-head review receipt before promotion:
+the milestone branch and records acceptance; the acceptance command rechecks
+the merged PR body and exact-head review receipt before promotion:
 
 ```sh
 python3 docs/milestones/workflow.py accept-proposal \
@@ -1159,13 +1157,11 @@ python3 docs/milestones/workflow.py accept-proposal \
 ```
 
 Inspect and commit the resulting plan and HTML transition. If known evidence
-requires a bounded contract correction, start an additive amendment instead:
+requires a bounded contract correction, open an additive amendment git branch
+and PR instead of a `start-proposal-amendment` wrapper:
 
 ```sh
-python3 docs/milestones/workflow.py start-proposal-amendment \
-  --plan docs/milestones/<number>-<slug>/plan.md \
-  --branch m<number>/amend-<slug> \
-  --path docs/milestones/<number>-<slug>/proposals/<slug>-amendment.md
+git switch -c m<number>/amend-<slug> origin/milestone/<number>-<slug>
 ```
 
 Apply the same exact-head review rule to the contract-only amendment PR. After
@@ -1178,13 +1174,11 @@ python3 docs/milestones/workflow.py accept-proposal-amendment \
   --pr <amendment-pr-number>
 ```
 
-Only when status reports `ready_for_implementation` may the implementation
-branch start:
+Only when status reports `ready_for_implementation` may implementation start.
+Create that git branch the same way; `start-implementation` is optional:
 
 ```sh
-python3 docs/milestones/workflow.py start-implementation \
-  --plan docs/milestones/<number>-<slug>/plan.md \
-  --branch m<number>/<frontier>
+git switch -c m<number>/<frontier> origin/milestone/<number>-<slug>
 ```
 
 If explicit human testing then produces an eligible implement-now request,
@@ -1205,8 +1199,8 @@ After the implementation PR is accepted:
 
 1. squash-merge it into the milestone branch;
 2. from a clean local milestone branch, run the completion command below;
-3. confirm its reported frontier and workflow state;
-4. open the new current frontier’s proposal branch only after completion.
+3. confirm current is idle and the work order still holds remaining nodes;
+4. open the next proposal PR from git when ready; do not wait on `start-proposal`.
 
 ```sh
 python3 docs/milestones/workflow.py complete-implementation \
@@ -1215,29 +1209,26 @@ python3 docs/milestones/workflow.py complete-implementation \
 ```
 
 `complete-implementation` fetches and fast-forwards the milestone branch,
-confirms the implementation PR is merged from the planned branch and its body
-still matches the canonical review kind, fills the reviewed template with the
-PR number and merge SHA, applies the existing handoff owner, verifies that only
-canonical `plan.md` and generated `plan.html` changed, commits them, and pushes
-the milestone branch. It stops at `ready_for_proposal`; it never starts the next
-proposal branch.
+confirms the implementation PR is merged and its body still matches the
+canonical review kind, fills the reviewed template with the PR number and merge
+SHA, applies the existing handoff owner, verifies that only canonical `plan.md`
+and generated `plan.html` changed, commits them, and pushes the milestone
+branch. It returns current to idle. It does not start the next proposal.
 
 The lower-level `handoff --receipt <path>` command remains available for a
 reviewed exceptional receipt or recovery, but normal successful completion
 must not reconstruct acceptance judgment after merge.
 
-The helper, rather than agent memory, enforces the local order. It refuses a
-dirty worktree, the wrong branch, a branch/state mismatch, an unmerged proposal,
-an implementation start without an accepted proposal, an implementation PR
-from the wrong branch, or a merge commit that is not already an ancestor of the
-milestone branch. Proposal acceptance asks GitHub to confirm the exact base,
-head, merge commit, changed-file allowlist, accepted authorized review receipt
-attached to the exact proposal head, and matching review kind. Implementation
-completion asks GitHub to confirm the implementation PR, commit, and matching
-review kind, then limits criterion updates to the current frontier, prevents
-premature closeout, updates the accepted ledger and risks, returns current
-to idle without deleting remaining map nodes, records workflow history, and
-regenerates HTML.
+Git creates and switches review-unit branches. Do not require
+`start-proposal`, `start-proposal-amendment`, or `start-implementation` to
+enter a state; those commands are optional helpers. An existing branch is
+usable. CI `validate-pr` is the gate on the PR. Post-merge `accept-proposal`,
+`accept-proposal-amendment`, and `complete-implementation` record receipts
+that cannot exist until merge: GitHub identity, exact-head review, ancestry,
+ledger, and idle return. They may refuse a dirty milestone worktree because
+they commit plan HTML, and they refuse a merge commit that is not already an
+ancestor of the milestone branch. They do not police how the review-unit
+branch was created.
 
 CI runs `workflow.py validate-pr` when a PR is opened, synchronized, reopened,
 or its description is edited. It applies the frontier gate to PRs targeting a
@@ -1249,7 +1240,7 @@ plan HTML. A
 proposal amendment PR has the same contract-only boundary and must add a new
 artifact without modifying accepted proposal history. An implementation PR is
 rejected unless its base records an accepted proposal; it may not modify that
-proposal, an accepted amendment, or the frozen frontier. An adjunct PR must use
+proposal, an accepted amendment, or the work-order map. An adjunct PR must use
 the reserved child branch, current parent head, completed HITL template, and
 immutable milestone contract artifacts.
 For each recognized milestone review-unit transition and adjunct, CI also

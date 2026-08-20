@@ -598,7 +598,7 @@ class MilestoneHandoffGitOrderingTests(unittest.TestCase):
                 repo_root=ROOT,
             )
 
-    def test_start_rejects_existing_remote_tracking_branch(self) -> None:
+    def test_start_reuses_an_existing_local_branch(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             plan = root / PLAN_RELATIVE
@@ -617,21 +617,23 @@ class MilestoneHandoffGitOrderingTests(unittest.TestCase):
                 "-m",
                 "frontier handoff",
             )
-            self._git(
-                root,
-                "update-ref",
-                f"refs/remotes/origin/{PROPOSAL_BRANCH}",
-                "HEAD",
-            )
+            self._git(root, "switch", "-c", PROPOSAL_BRANCH)
             state = validate_plan_text(current)
-
-            with self.assertRaisesRegex(PlanContractError, "branch already exists"):
-                start_proposal_branch(
-                    plan,
-                    state,
-                    PROPOSAL_BRANCH,
-                    repo_root=root,
-                )
+            start_proposal_branch(
+                plan,
+                state,
+                PROPOSAL_BRANCH,
+                repo_root=root,
+            )
+            self.assertEqual(
+                self._git(root, "branch", "--show-current"),
+                PROPOSAL_BRANCH,
+            )
+            transitioned = validate_plan_text(plan.read_text(encoding="utf-8"))
+            self.assertEqual(
+                transitioned.current.fields["workflow state"],
+                "proposal_in_review",
+            )
 
 
 if __name__ == "__main__":

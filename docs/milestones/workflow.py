@@ -1836,6 +1836,28 @@ def _replace_current_frontier_state(
     return updated
 
 
+def _checkout_review_branch(requested_branch: str, *, repo_root: Path) -> None:
+    current_branch = _run_git(
+        ["branch", "--show-current"],
+        cwd=repo_root,
+    ).stdout.strip()
+    if current_branch == requested_branch:
+        return
+    if _run_git(["status", "--porcelain"], cwd=repo_root).stdout.strip():
+        raise PlanContractError(
+            "switching to a review-unit branch requires a clean worktree"
+        )
+    local = _run_git(
+        ["show-ref", "--verify", "--quiet", f"refs/heads/{requested_branch}"],
+        cwd=repo_root,
+        check=False,
+    )
+    if local.returncode == 0:
+        _run_git(["switch", requested_branch], cwd=repo_root)
+        return
+    _run_git(["switch", "-c", requested_branch], cwd=repo_root)
+
+
 def _start_frontier_branch(
     plan: Path,
     state: PlanState,
@@ -1875,32 +1897,7 @@ def _start_frontier_branch(
         raise PlanContractError(
             f"requested branch {requested_branch!r} does not match {planned_branch!r}"
         )
-
-    current_branch = _run_git(
-        ["branch", "--show-current"],
-        cwd=repo_root,
-    ).stdout.strip()
-    if current_branch != state.milestone_branch:
-        raise PlanContractError(
-            f"branch start must run on {state.milestone_branch!r}, "
-            f"currently {current_branch!r}"
-        )
-    if _run_git(["status", "--porcelain"], cwd=repo_root).stdout.strip():
-        raise PlanContractError("branch start requires a clean worktree")
-    existing_refs = _run_git(
-        ["for-each-ref", "--format=%(refname)", "refs/heads", "refs/remotes"],
-        cwd=repo_root,
-    ).stdout.splitlines()
-    if any(
-        ref == f"refs/heads/{requested_branch}"
-        or (
-            ref.startswith("refs/remotes/")
-            and ref.endswith(f"/{requested_branch}")
-        )
-        for ref in existing_refs
-    ):
-        raise PlanContractError(f"branch already exists: {requested_branch}")
-    _run_git(["switch", "-c", requested_branch], cwd=repo_root)
+    _checkout_review_branch(requested_branch, repo_root=repo_root)
     original = plan.read_text(encoding="utf-8")
     updated = _replace_current_frontier_state(
         original,
@@ -1969,31 +1966,7 @@ def _start_proposal_from_idle(
         )
     repo_root = repo_root.resolve()
     _validate_plan_location(plan, repo_root=repo_root)
-    current_branch = _run_git(
-        ["branch", "--show-current"],
-        cwd=repo_root,
-    ).stdout.strip()
-    if current_branch != state.milestone_branch:
-        raise PlanContractError(
-            f"branch start must run on {state.milestone_branch!r}, "
-            f"currently {current_branch!r}"
-        )
-    if _run_git(["status", "--porcelain"], cwd=repo_root).stdout.strip():
-        raise PlanContractError("branch start requires a clean worktree")
-    existing_refs = _run_git(
-        ["for-each-ref", "--format=%(refname)", "refs/heads", "refs/remotes"],
-        cwd=repo_root,
-    ).stdout.splitlines()
-    if any(
-        ref == f"refs/heads/{requested_branch}"
-        or (
-            ref.startswith("refs/remotes/")
-            and ref.endswith(f"/{requested_branch}")
-        )
-        for ref in existing_refs
-    ):
-        raise PlanContractError(f"branch already exists: {requested_branch}")
-    _run_git(["switch", "-c", requested_branch], cwd=repo_root)
+    _checkout_review_branch(requested_branch, repo_root=repo_root)
     original = plan.read_text(encoding="utf-8")
     remaining = state.frontier_map.path[1:]
     remaining_nodes = tuple(
@@ -2122,32 +2095,7 @@ def start_proposal_amendment_branch(
             "proposal amendment must use a new additive artifact path"
         )
 
-    current_branch = _run_git(
-        ["branch", "--show-current"],
-        cwd=repo_root,
-    ).stdout.strip()
-    if current_branch != state.milestone_branch:
-        raise PlanContractError(
-            f"proposal amendment start must run on {state.milestone_branch!r}, "
-            f"currently {current_branch!r}"
-        )
-    if _run_git(["status", "--porcelain"], cwd=repo_root).stdout.strip():
-        raise PlanContractError("proposal amendment start requires a clean worktree")
-    existing_refs = _run_git(
-        ["for-each-ref", "--format=%(refname)", "refs/heads", "refs/remotes"],
-        cwd=repo_root,
-    ).stdout.splitlines()
-    if any(
-        ref == f"refs/heads/{requested_branch}"
-        or (
-            ref.startswith("refs/remotes/")
-            and ref.endswith(f"/{requested_branch}")
-        )
-        for ref in existing_refs
-    ):
-        raise PlanContractError(f"branch already exists: {requested_branch}")
-
-    _run_git(["switch", "-c", requested_branch], cwd=repo_root)
+    _checkout_review_branch(requested_branch, repo_root=repo_root)
     original = plan.read_text(encoding="utf-8")
     updated = _replace_current_frontier_state(
         original,
@@ -4160,10 +4108,6 @@ def validate_review_unit_transition(
                 raise PlanContractError(
                     f"review-unit PR changed frozen {opened_branch_field} identity"
                 )
-            if head.current.fields[opened_branch_field] != f"`{base_branch}`":
-                raise PlanContractError(
-                    f"opened {opened_branch_field} must be the canonical branch name"
-                )
     if base.criteria != head.criteria:
         raise PlanContractError(
             "review-unit PR cannot pre-claim exit-criterion changes"
@@ -4203,10 +4147,6 @@ def validate_review_unit_transition(
         if head_branch != expected_branch:
             raise PlanContractError(
                 f"proposal PR must use {expected_branch}, not {head_branch}"
-            )
-        if head.current.fields["proposal branch"] != f"`{expected_branch}`":
-            raise PlanContractError(
-                "opened proposal branch must be the canonical branch name"
             )
         plan_html = str(Path(plan_path).with_suffix(".html"))
         allowed_paths = {plan_path, plan_html, proposal_path}
@@ -4602,18 +4542,24 @@ def validate_review_unit_git_diff(
 
 def _workflow_status_payload(plan: Path, state: PlanState) -> dict[str, Any]:
     if state.current.is_empty:
+        remaining = ", ".join(state.frontier_map.path) or "none"
         return {
             "milestone": state.milestone_number,
             "status": state.status,
             "frontier": None,
             "workflow_state": None,
-            "next_action": state.current.fields.get("revisit when"),
+            "work_order": remaining,
+            "next_action": (
+                state.current.fields.get("revisit when")
+                or "Open a proposal PR that selects current from the work order, "
+                "or introduces the first node. Git creates the branch."
+            ),
             "plan": str(plan),
         }
     workflow_state = _workflow_state(state.current)
     next_actions = {
         "ready_for_proposal": (
-            "Hand the frozen frontier contract to a proposal author. "
+            "Open a proposal git branch and PR. start-proposal is optional. "
             "Do not start implementation."
         ),
         "proposal_in_review": (
@@ -4623,8 +4569,9 @@ def _workflow_status_payload(plan: Path, state: PlanState) -> dict[str, Any]:
             "Review the additive proposal amendment. Implementation remains blocked."
         ),
         "ready_for_implementation": (
-            "Hand the accepted contract to the implementer, or start an additive "
-            "proposal amendment when established evidence requires correction."
+            "Open an implementation git branch and PR, or an additive amendment "
+            "PR when established evidence requires correction. "
+            "start-implementation is optional."
         ),
         "implementation_in_review": (
             "Review the implementation against the accepted proposal. "
@@ -4873,15 +4820,10 @@ def _cmd_complete_implementation(plan: Path, accepted_pr: int) -> int:
     print(f"Frontier: {completed.current.name or 'None'}")
     workflow_state = _workflow_state(completed.current)
     print(f"Workflow state: {workflow_state or 'none'}")
-    if workflow_state == "ready_for_proposal":
-        proposal_branch = _frontier_branch(
-            completed.current,
-            heading="Current Frontier",
-            field="proposal branch",
-        )
+    if completed.current.is_empty:
         print(
-            "Next: python3 docs/milestones/workflow.py start-proposal "
-            f"--plan {plan} --branch {proposal_branch}"
+            "Next: open a proposal PR that selects current from the work order. "
+            "Git creates the branch; start-proposal is optional."
         )
     return 0
 
@@ -4992,8 +4934,8 @@ def _cmd_accept_proposal(plan: Path, proposal_pr: int) -> int:
     print(f"Accepted proposal PR #{proposal_pr} for {state.current.name}.")
     print("Workflow state: ready_for_implementation")
     print(
-        "Next: hand the accepted proposal to the implementer, then use "
-        "start-implementation."
+        "Next: open an implementation git branch and PR. "
+        "start-implementation is optional."
     )
     return 0
 
@@ -5111,8 +5053,8 @@ def _cmd_accept_proposal_amendment(plan: Path, amendment_pr: int) -> int:
     print(f"Accepted proposal amendment PR #{amendment_pr} for {state.current.name}.")
     print("Workflow state: ready_for_implementation")
     print(
-        "Next: hand the accepted proposal plus amendments to the implementer, "
-        "then use start-implementation."
+        "Next: open an implementation git branch and PR. "
+        "start-implementation is optional."
     )
     return 0
 

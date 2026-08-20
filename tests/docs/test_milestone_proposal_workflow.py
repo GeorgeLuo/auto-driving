@@ -18,6 +18,7 @@ from docs.milestones.workflow import (
     _require_merged_head_unchanged,
     _fetch_pr_repair_review_metadata,
     _fetch_pr_review_metadata,
+    _cmd_validate_pr,
     accept_proposal,
     accept_proposal_amendment,
     start_implementation_branch,
@@ -933,6 +934,29 @@ class ReviewUnitTransitionTests(unittest.TestCase):
         )
         self.assertEqual(transition, "proposal")
 
+    def test_opening_proposal_can_edit_current_before_contract_receipt(self) -> None:
+        changed = self.proposal_head.replace(
+            "Does repeated evidence follow one deterministic contract?",
+            "Does the revised evidence follow one deterministic contract?",
+            1,
+        )
+
+        transition = validate_review_unit_transition(
+            self.base,
+            changed,
+            plan_path=PLAN_RELATIVE,
+            changed_paths={
+                PLAN_RELATIVE,
+                str(Path(PLAN_RELATIVE).with_suffix(".html")),
+                PROPOSAL_RELATIVE,
+            },
+            head_branch=PROPOSAL_BRANCH,
+            proposal_text=proposal_text(),
+            pr_body=_review_unit_body(),
+        )
+
+        self.assertEqual(transition, "proposal")
+
     def test_proposal_pr_may_rewire_remaining_path(self) -> None:
         inserted = "Capability inventory"
         head = self.proposal_head.replace(
@@ -1414,24 +1438,29 @@ class ReviewUnitTransitionTests(unittest.TestCase):
                 proposal_text=proposal_text(),
             )
 
-    def test_proposal_pr_cannot_rewrite_frozen_non_goals(self) -> None:
+    def test_opening_proposal_can_rewrite_non_goals_before_contract_receipt(
+        self,
+    ) -> None:
         changed_contract = self.proposal_head.replace(
             "Semantic identity",
             "Anything the implementer chooses",
             1,
         )
-        with self.assertRaisesRegex(
-            PlanContractError,
-            "changed frozen frontier field 'non-goals'",
-        ):
-            validate_review_unit_transition(
-                self.base,
-                changed_contract,
-                plan_path=PLAN_RELATIVE,
-                changed_paths={PLAN_RELATIVE, PROPOSAL_RELATIVE},
-                head_branch=PROPOSAL_BRANCH,
-                proposal_text=proposal_text(),
-            )
+        transition = validate_review_unit_transition(
+            self.base,
+            changed_contract,
+            plan_path=PLAN_RELATIVE,
+            changed_paths={
+                PLAN_RELATIVE,
+                str(Path(PLAN_RELATIVE).with_suffix(".html")),
+                PROPOSAL_RELATIVE,
+            },
+            head_branch=PROPOSAL_BRANCH,
+            proposal_text=proposal_text(),
+            pr_body=_review_unit_body(),
+        )
+
+        self.assertEqual(transition, "proposal")
 
     def test_proposal_amendment_is_additive_contract_only(self) -> None:
         accepted = _accepted_plan()
@@ -2441,6 +2470,94 @@ class ReviewUnitGitDiffTests(unittest.TestCase):
 
             self.assertEqual(transition, "proposal")
 
+    def test_git_diff_gate_freezes_current_against_first_receipt_head(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            plan = root / PLAN_RELATIVE
+            plan.parent.mkdir(parents=True)
+            plan.write_text(ready_plan_text(), encoding="utf-8")
+            self._git(root, "init", "-b", MILESTONE_BRANCH)
+            self._git(root, "add", ".")
+            self._git(
+                root,
+                "-c",
+                "user.name=Milestone Test",
+                "-c",
+                "user.email=milestone@example.invalid",
+                "commit",
+                "-m",
+                "ready for proposal",
+            )
+            base_sha = self._git(root, "rev-parse", "HEAD")
+            self._git(root, "switch", "-c", PROPOSAL_BRANCH)
+            plan.write_text(
+                _move_to_review(plan.read_text(encoding="utf-8")),
+                encoding="utf-8",
+            )
+            proposal = root / PROPOSAL_RELATIVE
+            proposal.parent.mkdir(parents=True)
+            proposal.write_text(proposal_text(), encoding="utf-8")
+            self._git(root, "add", ".")
+            self._git(
+                root,
+                "-c",
+                "user.name=Milestone Test",
+                "-c",
+                "user.email=milestone@example.invalid",
+                "commit",
+                "-m",
+                "open proposal",
+            )
+            first_head = self._git(root, "rev-parse", "HEAD")
+
+            plan.write_text(
+                plan.read_text(encoding="utf-8").replace(
+                    "Does repeated evidence follow one deterministic contract?",
+                    "Did the review question move after the receipt?",
+                    1,
+                ),
+                encoding="utf-8",
+            )
+            self._git(root, "add", PLAN_RELATIVE)
+            self._git(
+                root,
+                "-c",
+                "user.name=Milestone Test",
+                "-c",
+                "user.email=milestone@example.invalid",
+                "commit",
+                "-m",
+                "retarget current after receipt",
+            )
+            second_head = self._git(root, "rev-parse", "HEAD")
+            metadata = RepairReviewMetadata(
+                pull_request_number=60,
+                pull_request_url=REPAIR_PR_URL,
+                pull_request_author=REPAIR_PR_AUTHOR,
+                head_oid=second_head,
+                commits=(base_sha, first_head, second_head),
+                reviews=(
+                    _contract_receipt_review(
+                        head_oid=first_head,
+                        outcome="changes_requested",
+                    ),
+                ),
+            )
+
+            with self.assertRaisesRegex(
+                PlanContractError,
+                "cannot change frozen current field 'review question'",
+            ):
+                validate_review_unit_git_diff(
+                    base_ref=MILESTONE_BRANCH,
+                    head_ref=PROPOSAL_BRANCH,
+                    base_sha=base_sha,
+                    head_sha=second_head,
+                    pr_body=_review_unit_body(),
+                    repair_review_metadata=metadata,
+                    repo_root=root,
+                )
+
     def test_git_diff_gate_opens_proposal_from_idle(self) -> None:
         from tests.docs.test_milestone_workflow import _select_work_order_head
 
@@ -2763,6 +2880,52 @@ Plan validation.
                 transitioned.current.fields["implementation branch"],
                 f"`{IMPLEMENTATION_BRANCH}`",
             )
+
+
+class ValidatePrCommandTests(unittest.TestCase):
+    def test_event_validation_fetches_zero_cycle_review_history(self) -> None:
+        metadata = RepairReviewMetadata(
+            pull_request_number=60,
+            pull_request_url=REPAIR_PR_URL,
+            pull_request_author=REPAIR_PR_AUTHOR,
+            head_oid="a" * 40,
+            commits=("a" * 40,),
+            reviews=(),
+        )
+        payload = {
+            "pull_request": {
+                "number": 60,
+                "body": _review_unit_body(),
+            }
+        }
+        with tempfile.TemporaryDirectory() as temp_dir:
+            event_path = Path(temp_dir) / "event.json"
+            event_path.write_text(json.dumps(payload), encoding="utf-8")
+            with (
+                mock.patch(
+                    "docs.milestones.workflow._fetch_pr_repair_review_metadata",
+                    return_value=metadata,
+                ) as fetch_metadata,
+                mock.patch(
+                    "docs.milestones.workflow.validate_review_unit_git_diff",
+                    return_value="proposal",
+                ) as validate_diff,
+            ):
+                result = _cmd_validate_pr(
+                    base_ref=MILESTONE_BRANCH,
+                    head_ref=PROPOSAL_BRANCH,
+                    base_sha="b" * 40,
+                    head_sha="a" * 40,
+                    event_path=event_path,
+                    body_path=None,
+                )
+
+        self.assertEqual(result, 0)
+        fetch_metadata.assert_called_once_with(60)
+        self.assertIs(
+            validate_diff.call_args.kwargs["repair_review_metadata"],
+            metadata,
+        )
 
 
 if __name__ == "__main__":

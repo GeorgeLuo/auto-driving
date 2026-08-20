@@ -16,6 +16,7 @@ from tests.docs.milestone_workflow_fixtures import (
     NEXT_FRONTIER,
     handoff_receipt,
     implementation_review_plan_text,
+    ready_plan_text,
 )
 
 
@@ -117,7 +118,6 @@ class MilestonePlanningTests(unittest.TestCase):
             "## Current Delivery",
             "### Current Frontier",
             "### Next-Frontier Candidate",
-            "### Frontier Map",
             "## Workflow History",
             "## Accepted Review Units",
             "## Open Risks And Unverified Assumptions",
@@ -125,6 +125,29 @@ class MilestonePlanningTests(unittest.TestCase):
             "## Closeout",
         ):
             self.assertIn(heading, text, f"missing section {heading}")
+        if "### Frontier Map" not in text:
+            state = validate_plan_path(plan_md)
+            expected_path = (
+                (state.next_frontier.name,)
+                if not state.next_frontier.is_empty
+                else ()
+            )
+            self.assertEqual(state.frontier_map.path, expected_path)
+
+    def test_legacy_active_plan_shape_uses_bounded_map_adoption(self) -> None:
+        source = ready_plan_text()
+        start = source.index("### Frontier Map")
+        end = source.index("## Workflow History", start)
+        legacy = source[:start] + source[end:]
+
+        self.assertNotIn("### Frontier Map", legacy)
+        state = validate_plan_text(legacy)
+        self.assertEqual(state.status, "Active")
+        self.assertEqual(state.frontier_map.path, (NEXT_FRONTIER,))
+        self.assertEqual(
+            tuple(node.name for node in state.frontier_map.nodes),
+            (NEXT_FRONTIER,),
+        )
 
     def test_completion_usage_starts_with_primary_demonstration(self) -> None:
         paths = _active_plan_paths()

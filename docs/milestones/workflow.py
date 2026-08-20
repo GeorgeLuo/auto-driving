@@ -4226,13 +4226,14 @@ def validate_review_unit_transition(
             {"proposal amendment branch", "proposal amendment path"}
         )
     if same_current:
-        for field in (
-            set(base.current.fields) | set(head.current.fields)
-        ) - mutable_fields:
-            if base.current.fields.get(field) != head.current.fields.get(field):
-                raise PlanContractError(
-                    f"review-unit PR changed frozen frontier field {field!r}"
-                )
+        if not is_opening_proposal:
+            for field in (
+                set(base.current.fields) | set(head.current.fields)
+            ) - mutable_fields:
+                if base.current.fields.get(field) != head.current.fields.get(field):
+                    raise PlanContractError(
+                        f"review-unit PR changed frozen frontier field {field!r}"
+                    )
         if opened_branch_field is not None:
             base_branch = _frontier_branch(
                 base.current,
@@ -5327,7 +5328,13 @@ def _cmd_validate_pr(
         else _pull_request_body_from_file(body_path)
     )
     repair_review_metadata: RepairReviewMetadata | None = None
-    if event_path is not None and _repair_body_declares_cycles(pr_body):
+    if event_path is not None and (
+        base_ref.startswith("milestone/")
+        or _repair_body_declares_cycles(pr_body)
+    ):
+        # An opening proposal can be receipt-frozen even when its ledger still
+        # has the zero-cycle row. Milestone-base validation must therefore load
+        # the bounded GitHub history before the transition is checked.
         pr_number = _pull_request_number_from_event(event_path)
         repair_review_metadata = _fetch_pr_repair_review_metadata(pr_number)
         if repair_review_metadata.head_oid != head_sha:

@@ -182,10 +182,11 @@ attached to that verdict begins with `[P0]`, `[P1]`, `[P2]`, or `[P3]`.
 After a proposal is accepted, implementation review may raise P0–P2 only when
 the case is already in the accepted proposal's adversarial matrix or it
 falsifies the stated review question. Any other observation is P3 or a later
-want. Two leftover shapes in the same owner, or a request to collapse
-internals, are P3 unless the accepted question named one type as the claim. A
-new failure class discovered during fill is a proposal amendment or an
-explicit residual, not proof that the current implementation is false.
+want. Two leftover shapes in the same owner, a request to collapse
+internals, or a request to add or polish derived evidence HTML are P3 unless
+the operator required that page or the accepted question named one type as
+the claim. A new failure class discovered during fill is a proposal amendment
+or an explicit residual, not proof that the current implementation is false.
 
 Do not invent a broader matrix during re-review. Re-check prior findings and
 the accepted matrix only.
@@ -263,6 +264,33 @@ During a repair cycle, add the missing case at that public door and the
 cheapest close. Do not move enforcement to a different named owner in the
 finding diff.
 
+#### Derived evidence rendering
+
+When an implementation mints a durable machine-readable signal (report,
+inventory, registry, disposition record, or equivalent), also commit a derived
+HTML view of those bytes. A frontier that renders one or more signals uses one
+stable evidence directory and records its repository-relative path in the
+proposal's `Evidence rendering` section. Put the committed records and their
+pages beneath that directory, with each page next to the record it presents.
+The record stays the authority. The page, when produced, is a view of that
+committed record, not a fixture or sample. Page format and the internal
+record-to-page relation stay underspecified until a real frontier teaches what
+is useful. Do not invent same-stem, in-page link, or manifest rules in advance.
+
+Skip the page only with a one-line reason in the proposal. Need, and whether
+a skip is enough, are owned by the operator (or someone the operator
+explicitly deputizes). Reviewers and implementers do not decide that a page
+is required, sufficient, or good-looking.
+
+This default has no receipt, ledger row, or CI gate. Missing, crude, or absent
+HTML is `## Concerns` unless the operator already required that page. Do not
+fail Met on layout. Do not treat volume or coverage on the page as a gate.
+Do not build a frontier-picker website in this rule; an index may be composed
+later from the committed pages.
+
+Units that mint no sealed signal (proposal-only, plan revision, docs-only)
+need no page and no skip reason.
+
 ### HITL Implementation Adjunct
 
 A **HITL implementation adjunct** is an exceptional child review unit for a
@@ -300,6 +328,8 @@ Closeout must not conceal unfinished implementation or validation.
 | Detailed invariant, trust/authority model, evidence topology, and adversarial matrix | Accepted proposal document |
 | Planned file impact and validation commands | Accepted proposal document |
 | Actual file impact and validation results | Implementation PR |
+| Derived HTML of a sealed implementation signal | Proposal-declared per-frontier evidence directory, next to the committed record |
+| Operator skip of that HTML | Proposal; operator-accepted |
 | Human user-testing request and implement-now direction | Durable issue and adjunct PR |
 | Review findings and repair history | Review-unit PR |
 | Accepted result of a merged PR | One-row plan ledger |

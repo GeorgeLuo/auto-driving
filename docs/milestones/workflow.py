@@ -4175,8 +4175,19 @@ def validate_review_unit_transition(
         )
     base_state = _workflow_state(base.current) if not base.current.is_empty else ""
     head_state = _workflow_state(head.current) if not head.current.is_empty else ""
-    is_opening_proposal = head_state == "proposal_in_review" and (
-        base.current.is_empty or base_state == "ready_for_proposal"
+    if (
+        head_state == "proposal_in_review"
+        and base.current.is_empty
+        and base.status != "Active"
+    ):
+        raise PlanContractError(
+            "opening proposal requires an Active milestone, not "
+            f"{base.status}"
+        )
+    is_opening_proposal = (
+        base.status == "Active"
+        and head_state == "proposal_in_review"
+        and (base.current.is_empty or base_state == "ready_for_proposal")
     )
     if is_opening_proposal:
         _validate_proposal_map_edits(base, head)
@@ -4643,7 +4654,8 @@ def validate_review_unit_git_diff(
     proposal_text: str | None = None
     proposal_amendment_text: str | None = None
     opening_proposal = (
-        (
+        base.status == "Active"
+        and (
             base.current.is_empty
             or _workflow_state(base.current) == "ready_for_proposal"
         )

@@ -12,6 +12,7 @@ from pathlib import Path
 from docs.milestones.workflow import (
     ContractReviewReceipt,
     Frontier,
+    FrontierMap,
     PlanContractError,
     apply_handoff,
     RepairReviewMetadata,
@@ -32,6 +33,10 @@ from docs.milestones.workflow import (
     validate_repair_cycle_governance_body,
     validate_review_unit_transition,
     validate_review_unit_git_diff,
+    _frontier_body,
+    _replace_frontier,
+    _replace_frontier_map,
+    _replace_header_value,
 )
 from tests.docs.milestone_workflow_fixtures import (
     CURRENT_CRITERION,
@@ -302,6 +307,32 @@ def _move_to_review(text: str, *, implementation: bool = False) -> str:
         f"\n| {state.current.name} | {new_state} | Review branch started. |"
         "\n\n## Accepted Review Units",
         1,
+    )
+
+
+def _terminal_plan(text: str, status: str) -> str:
+    empty = Frontier(
+        name=None,
+        fields={
+            "reason": f"{status} milestone is not proposal-eligible.",
+            "revisit when": "A separate activation or resume route is defined.",
+        },
+    )
+    updated = _replace_header_value(text, "Status", status)
+    updated = _replace_header_value(updated, "Current frontier", "None")
+    updated = _replace_frontier(
+        updated,
+        "### Current Frontier",
+        _frontier_body(empty, current=True),
+    )
+    updated = _replace_frontier(
+        updated,
+        "### Next-Frontier Candidate",
+        _frontier_body(empty, current=False),
+    )
+    return _replace_frontier_map(
+        updated,
+        FrontierMap(path=(), cadence="linked-list", nodes=(), off_path=()),
     )
 
 
@@ -917,6 +948,27 @@ class ReviewUnitTransitionTests(unittest.TestCase):
     def setUp(self) -> None:
         self.base = ready_plan_text()
         self.proposal_head = _move_to_review(self.base)
+
+    def test_opening_proposal_rejects_non_active_empty_base(self) -> None:
+        for status in ("Blocked", "pre-plan", "closed"):
+            with self.subTest(status=status):
+                with self.assertRaisesRegex(
+                    PlanContractError,
+                    "opening proposal requires an Active milestone",
+                ):
+                    validate_review_unit_transition(
+                        _terminal_plan(self.base, status),
+                        self.proposal_head,
+                        plan_path=PLAN_RELATIVE,
+                        changed_paths={
+                            PLAN_RELATIVE,
+                            str(Path(PLAN_RELATIVE).with_suffix(".html")),
+                            PROPOSAL_RELATIVE,
+                        },
+                        head_branch=PROPOSAL_BRANCH,
+                        proposal_text=proposal_text(),
+                        pr_body=_review_unit_body(),
+                    )
 
     def test_proposal_pr_is_documentation_only(self) -> None:
         transition = validate_review_unit_transition(
@@ -2469,6 +2521,62 @@ class ReviewUnitGitDiffTests(unittest.TestCase):
             )
 
             self.assertEqual(transition, "proposal")
+
+    def test_git_diff_gate_rejects_opening_from_non_active_empty_base(self) -> None:
+        for status in ("Blocked", "pre-plan", "closed"):
+            with self.subTest(status=status), tempfile.TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir)
+                plan = root / PLAN_RELATIVE
+                plan.parent.mkdir(parents=True)
+                plan.write_text(
+                    _terminal_plan(ready_plan_text(), status),
+                    encoding="utf-8",
+                )
+                self._git(root, "init", "-b", MILESTONE_BRANCH)
+                self._git(root, "add", ".")
+                self._git(
+                    root,
+                    "-c",
+                    "user.name=Milestone Test",
+                    "-c",
+                    "user.email=milestone@example.invalid",
+                    "commit",
+                    "-m",
+                    f"create {status} milestone",
+                )
+                base_sha = self._git(root, "rev-parse", "HEAD")
+                self._git(root, "switch", "-c", PROPOSAL_BRANCH)
+                plan.write_text(
+                    _move_to_review(ready_plan_text()),
+                    encoding="utf-8",
+                )
+                proposal = root / PROPOSAL_RELATIVE
+                proposal.parent.mkdir(parents=True)
+                proposal.write_text(proposal_text(), encoding="utf-8")
+                self._git(root, "add", ".")
+                self._git(
+                    root,
+                    "-c",
+                    "user.name=Milestone Test",
+                    "-c",
+                    "user.email=milestone@example.invalid",
+                    "commit",
+                    "-m",
+                    "attempt proposal from terminal state",
+                )
+
+                with self.assertRaisesRegex(
+                    PlanContractError,
+                    "opening proposal requires an Active milestone",
+                ):
+                    validate_review_unit_git_diff(
+                        base_ref=MILESTONE_BRANCH,
+                        head_ref=PROPOSAL_BRANCH,
+                        base_sha=base_sha,
+                        head_sha=self._git(root, "rev-parse", "HEAD"),
+                        pr_body=_review_unit_body(),
+                        repo_root=root,
+                    )
 
     def test_git_diff_gate_freezes_current_against_first_receipt_head(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

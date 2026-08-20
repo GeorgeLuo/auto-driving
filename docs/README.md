@@ -4,40 +4,27 @@ This directory separates current reference material, future-facing synthesis,
 agent operating guidance, and milestone history. Use the selective reading
 order below instead of loading the full process contract for every task.
 
-## Active Milestone
+## Milestone state
 
-**Milestone 007 — CLI Operator Usability**
+Canonical status, frontier, and next action live in each
+`docs/milestones/<number>-<slug>/plan.md`. This page is navigation only. Do not
+copy those fields here.
 
-| Field | Value |
-| --- | --- |
-| Status | Active (ad-hoc usability milestone) |
-| Plan | [plan.html](milestones/007-cli-operator-usability/plan.html) · [plan.md](milestones/007-cli-operator-usability/plan.md) |
-| Cumulative PR | [#81](https://github.com/GeorgeLuo/auto-driving/pull/81) (draft) |
-| Current frontier | Simulator-to-perception CLI journey |
+```sh
+python3 docs/milestones/workflow.py status \
+  --plan docs/milestones/<number>-<slug>/plan.md
+```
 
-Detailed exit criteria, workflow state, and risks live only in the milestone
-plan. This milestone is a narrow operator-usability chain; it does not absorb
-or re-scope Milestone 006 or its paused implementation PR.
-
-Current operator reference:
-[Chase simulator-to-perception CLI journey](reference/cli-simulator-perception-journey.md).
-
-## Immediate Pre-Plan (Not Active)
-
-**None.**
-
-## Recently Closed
-
-**Milestone 005 — Evidence Memory Foundation** is closed.
-Closeout: [005 closeout](milestones/005-evidence-memory-foundation/closeout.md).
-
-**Milestone 004 — Physical Perception Parity** is closed.
-Closeout: [004 closeout](milestones/004-physical-perception-parity/closeout.md).
+Plans: [milestones/](milestones/). Closed ledger:
+[completed.md](milestones/completed.md). Contract:
+[README.md](milestones/README.md) ·
+[planning-contract.html](milestones/planning-contract.html).
 
 ## Reading Order
 
 1. Short default [agent surface](guidance/agent-surface.md).
-2. Active milestone plan when one is listed above.
+2. The canonical `plan.md` for the milestone under work; run the status command
+   above rather than reading a copy from this page.
 3. Only the role- or task-specific files selected by the agent surface.
 4. Full [planning and delivery contract](milestones/README.md)
    ([rendered](milestones/planning-contract.html)) when resolving ambiguity,

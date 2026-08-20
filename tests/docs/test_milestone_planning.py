@@ -18,6 +18,10 @@ MILESTONES = DOCS / "milestones"
 CONTRACT_SOURCE = MILESTONES / "README.md"
 CONTRACT_RENDER = MILESTONES / "planning-contract.html"
 GUIDE = DOCS / "README.md"
+ROOT_README = ROOT / "README.md"
+STALE_MILESTONE_STATUS = re.compile(
+    r"(?im)is the (active|queued) .+ milestone"
+)
 PR_TEMPLATE = ROOT / ".github" / "pull_request_template.md"
 PROPOSAL_PR_TEMPLATE = (
     ROOT / ".github" / "PULL_REQUEST_TEMPLATE" / "proposal.md"
@@ -34,32 +38,28 @@ REPAIR_PR_TEMPLATE = ROOT / ".github" / "PULL_REQUEST_TEMPLATE" / "repair.md"
 TEST_WORKFLOW = ROOT / ".github" / "workflows" / "tests.yml"
 
 
-def _active_milestone_section() -> str:
-    guide = GUIDE.read_text(encoding="utf-8")
+def _plan_header_status(plan_md: Path) -> str:
     match = re.search(
-        r"^## Active Milestone\s*\n(?P<body>.*?)(?=^## |\Z)",
-        guide,
-        re.MULTILINE | re.DOTALL,
+        r"^\| Status \| ([^|]+) \|",
+        plan_md.read_text(encoding="utf-8"),
+        re.MULTILINE,
     )
-    if not match:
-        raise AssertionError("docs/README.md must contain an Active Milestone section")
-    return match.group("body")
+    if match is None:
+        return ""
+    return match.group(1).strip().strip("`")
 
 
 def _active_plan_paths() -> tuple[Path, Path] | None:
-    section = _active_milestone_section()
-    if re.search(r"^\*\*None\.\*\*", section, re.MULTILINE):
+    active: list[tuple[Path, Path]] = []
+    for plan_md in sorted(MILESTONES.glob("*/plan.md")):
+        if _plan_header_status(plan_md).casefold().startswith("active"):
+            active.append((plan_md, plan_md.with_suffix(".html")))
+    if len(active) > 1:
+        names = ", ".join(str(path.relative_to(ROOT)) for path, _ in active)
+        raise AssertionError(f"multiple active milestone plans: {names}")
+    if not active:
         return None
-    match = re.search(
-        r"milestones/(\d+-[^)\s]+)/plan\.html",
-        section,
-    )
-    if not match:
-        raise AssertionError("docs/README.md must link an active milestone plan.html")
-    slug = match.group(1)
-    plan_md = MILESTONES / slug / "plan.md"
-    plan_html = MILESTONES / slug / "plan.html"
-    return plan_md, plan_html
+    return active[0]
 
 
 class MilestonePlanningTests(unittest.TestCase):
@@ -159,27 +159,39 @@ class MilestonePlanningTests(unittest.TestCase):
 
     def test_docs_guide_is_navigation_only_for_progress(self) -> None:
         guide = GUIDE.read_text(encoding="utf-8")
-        self.assertIn("Active Milestone", guide)
-        # Must not restate detailed package progress or remaining-for-closeout.
+        self.assertIn("workflow.py status", guide)
+        self.assertIn("completed.md", guide)
+        self.assertNotIn("## Active Milestone", guide)
+        self.assertNotIn("## Immediate Pre-Plan", guide)
         lowered = guide.lower()
         for banned in (
             "remaining for closeout",
             "package 5a",
             "package 5b",
             "required remediation order",
+            "| current frontier |",
+            "| status | active",
         ):
             self.assertNotIn(banned, lowered)
 
-    def test_docs_guide_identifies_an_active_milestone_or_explicit_none(self) -> None:
-        section = _active_milestone_section()
+    def test_docs_guide_does_not_name_an_active_or_none_milestone(self) -> None:
+        guide = GUIDE.read_text(encoding="utf-8")
+        self.assertNotIn("**None.**", guide)
+        self.assertIn("plan.md", guide)
+        self.assertIsNone(STALE_MILESTONE_STATUS.search(guide))
         paths = _active_plan_paths()
         if paths is None:
-            self.assertRegex(section, r"^\s*\*\*None\.\*\*")
             return
         plan_md, plan_html = paths
-        self.assertNotIn("**None.**", section)
         self.assertTrue(plan_md.is_file())
         self.assertTrue(plan_html.is_file())
+
+    def test_root_readme_does_not_claim_milestone_status(self) -> None:
+        readme = ROOT_README.read_text(encoding="utf-8")
+        self.assertIsNone(STALE_MILESTONE_STATUS.search(readme))
+        self.assertNotIn("## Active Milestone", readme)
+        self.assertIn("docs/README.md", readme)
+        self.assertIn("completed.md", readme)
 
     def test_review_unit_pr_template_has_required_headings(self) -> None:
         self.assertTrue(PR_TEMPLATE.is_file())
@@ -187,20 +199,14 @@ class MilestonePlanningTests(unittest.TestCase):
         for heading in (
             "## Milestone Context",
             "## Accepted Proposal",
-            "## Integrated HITL Adjuncts",
             "## Review Kind",
             "## Review Question",
-            "## Invariant Or Acceptance Contract",
-            "## Adversarial Matrix",
-            "## Scope",
-            "## File Impact",
-            "## Scope Reconciliation",
             "## Repair Cycle Ledger",
-            "## Repair Escalation",
-            "## Repair Continuation Audit",
             "## Validation",
         ):
             self.assertIn(heading, text)
+        self.assertNotIn("## Repair Escalation", text)
+        self.assertNotIn("## Repair Continuation Audit", text)
         self.assertIn("matching the canonical milestone plan", text)
 
     def test_proposal_pr_template_forbids_implementation(self) -> None:
@@ -208,7 +214,7 @@ class MilestonePlanningTests(unittest.TestCase):
         text = PROPOSAL_PR_TEMPLATE.read_text(encoding="utf-8")
         self.assertIn("## Independence Check", text)
         self.assertIn("## Review Kind", text)
-        self.assertIn("## Invariant Contractability", text)
+        self.assertIn("## Operator Want", text)
         self.assertIn("Trust And Authority Model", text)
         self.assertIn("Evidence Topology And Capture Strategy", text)
         self.assertIn("No product or runtime implementation changed", text)
@@ -217,8 +223,8 @@ class MilestonePlanningTests(unittest.TestCase):
         self.assertIn("current repository push authority", text)
         self.assertIn("unedited COMMENT review", text)
         self.assertIn("## Repair Cycle Ledger", text)
-        self.assertIn("## Repair Escalation", text)
-        self.assertIn("## Repair Continuation Audit", text)
+        self.assertNotIn("## Repair Escalation", text)
+        self.assertNotIn("## Repair Continuation Audit", text)
 
     def test_universal_claim_contractability_is_visible_in_author_guidance(
         self,
@@ -243,7 +249,7 @@ class MilestonePlanningTests(unittest.TestCase):
         text = PROPOSAL_AMENDMENT_PR_TEMPLATE.read_text(encoding="utf-8")
         self.assertIn("## Review Kind", text)
         self.assertIn("## Evidence Requiring Amendment", text)
-        self.assertIn("## Invariant Contractability", text)
+        self.assertIn("## Operator Want", text)
         self.assertIn("Trust And Authority Model", text)
         self.assertIn("Evidence Topology And Capture Strategy", text)
         self.assertIn("No accepted proposal or prior amendment was modified", text)
@@ -251,8 +257,8 @@ class MilestonePlanningTests(unittest.TestCase):
         self.assertIn("## Contract Review Receipt", text)
         self.assertIn("current repository push authority", text)
         self.assertIn("## Repair Cycle Ledger", text)
-        self.assertIn("## Repair Escalation", text)
-        self.assertIn("## Repair Continuation Audit", text)
+        self.assertNotIn("## Repair Escalation", text)
+        self.assertNotIn("## Repair Continuation Audit", text)
 
     def test_implementation_adjunct_template_records_human_compatibility(self) -> None:
         self.assertTrue(IMPLEMENTATION_ADJUNCT_PR_TEMPLATE.is_file())
@@ -265,11 +271,10 @@ class MilestonePlanningTests(unittest.TestCase):
             "## Compatibility",
             "## Evidence Impact",
             "## Repair Cycle Ledger",
-            "## Repair Escalation",
-            "## Repair Continuation Audit",
             "## Validation",
         ):
             self.assertIn(heading, text)
+        self.assertNotIn("## Repair Escalation", text)
         self.assertIn("Requested disposition: `implement-now`", text)
         self.assertIn("parent contract remains true without this adjunct", text)
         self.assertIn("Base implementation branch", text)
@@ -281,16 +286,16 @@ class MilestonePlanningTests(unittest.TestCase):
         self.assertIn("milestone branch", text.lower())
         self.assertIn("## Accepted Review Units", text)
         self.assertIn("## Repair Cycle Ledger", text)
-        self.assertIn("## Repair Escalation", text)
-        self.assertIn("## Repair Continuation Audit", text)
+        self.assertNotIn("## Repair Escalation", text)
+        self.assertNotIn("## Repair Continuation Audit", text)
 
     def test_repair_template_carries_cycle_and_escalation_receipts(self) -> None:
         self.assertTrue(REPAIR_PR_TEMPLATE.is_file())
         text = REPAIR_PR_TEMPLATE.read_text(encoding="utf-8")
         self.assertIn("## Review Repair Summary", CONTRACT_SOURCE.read_text(encoding="utf-8"))
         self.assertIn("## Repair Cycle Ledger", text)
-        self.assertIn("## Repair Escalation", text)
-        self.assertIn("## Repair Continuation Audit", text)
+        self.assertNotIn("## Repair Escalation", text)
+        self.assertNotIn("## Repair Continuation Audit", text)
 
     def test_review_unit_template_repair_receipt_defaults_are_valid(self) -> None:
         for path in (
@@ -356,18 +361,22 @@ class MilestonePlanningTests(unittest.TestCase):
     def test_contract_has_evidence_based_repair_continuation_gate(self) -> None:
         text = CONTRACT_SOURCE.read_text(encoding="utf-8")
         normalized = " ".join(text.split())
-        self.assertIn("After the **second substantial** cycle", text)
-        self.assertIn("human operator or meta-manager", normalized)
-        self.assertIn("continue-current-unit", text)
-        self.assertIn("Repair Continuation Audit", text)
-        self.assertIn("fresh-context review", normalized)
-        self.assertIn("new PR number cannot authorize", normalized)
+        self.assertIn("There is no cycle count that pauses review", text)
+        self.assertIn("Closed implementation review", text)
+        self.assertIn("Late implementer collapse", text)
+        self.assertIn("leftover shapes", text)
+        self.assertIn("inside the accepted owner", text)
+        self.assertIn("different named owner", text)
+        self.assertNotIn("Moving internals or touching more files", text)
+        self.assertIn("Outcome: `accepted`", text)
+        self.assertIn("documentary", text.lower())
+        self.assertIn("a new PR number is not reviewability evidence", normalized)
         self.assertIn("currently fails closed", normalized)
         self.assertIn("becomes authoritative only after", normalized)
         self.assertIn("already open at merge do not migrate automatically", normalized)
         self.assertIn("introducing PR remains governed by its base contract", normalized)
         self.assertIn("Repair Cycle Ledger", text)
-        self.assertIn("Repair Escalation", text)
+        self.assertNotIn("Repair Escalation", text)
 
     def test_contract_assigns_frontier_handoff_to_executable_workflow(self) -> None:
         text = CONTRACT_SOURCE.read_text(encoding="utf-8")

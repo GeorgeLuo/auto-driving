@@ -45,16 +45,14 @@ of outstanding changes. Merge alone does not promote the frontier; run the
 matching acceptance command so the plan records the reviewer, authority,
 reviewed head, review time, and merge commit.
 
-When the review question or proposed contract uses universal language such as
-`deterministic`, `exact`, or `fail-closed`, complete the proposal's
-`Trust And Authority Model` and `Evidence Topology And Capture Strategy` before
-handoff. Distinguish consistency, provenance, and authenticity; map visible
-claims to authoritative inputs and verification; choose bounded implementation
-evidence or a separate evidence unit; and state when canonical capture is ready.
-Settle uncertain process or library boundaries with bounded feasibility evidence
-or narrow the claim and record the limit. Apply the same sections to a proposal
-amendment that introduces or changes a universal guarantee, scoped to its
-contract delta.
+When the review kind is `deterministic invariant closure`, complete the
+proposal's `Trust And Authority Model` and `Evidence Topology And Capture Strategy`
+before handoff. Distinguish consistency, provenance, and authenticity;
+map visible claims to authoritative inputs and verification; choose bounded
+implementation evidence or a separate evidence unit; and state when canonical capture is ready. A mechanical rollout or behavioral slice does not gain those
+sections because the prose uses `exact` or `fail-closed`. Apply the same
+sections to a proposal amendment only when that amendment's review kind is
+deterministic invariant closure.
 
 The canonical plan selects one supported review kind for the frontier. Copy
 that value into the single `## Review Kind` section of every proposal, proposal
@@ -63,6 +61,8 @@ its description is edited; proposal acceptance, amendment acceptance, and
 implementation completion recheck the merged PR body before promotion.
 
 Implementation links the accepted proposal and merge commit, stays within that
-contract, and reports actual file impact and validation. If the contract must
+contract, and reports actual file impact and validation. Once the accepted
+tests are green, the implementer may collapse two shapes in the same owner
+against those tests without changing the contract. If the contract must
 change, return to proposal review rather than rewriting acceptance during
 implementation.

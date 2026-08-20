@@ -552,9 +552,13 @@ and a successor slot derived from the remaining path.
   can put them back without re-authoring.
 
 The path does **not** include the current pointer. Current, if set, must not
-also appear as a remaining or off-path node. The successor slot is `path[0]`,
-or **None** when the path is empty. Closeout, if on the path, is last. Active
-plans require this section. Closed and blocked plans may use `Path: none`.
+also appear as a remaining or off-path node. Path names cannot repeat. The
+successor slot is `path[0]`, or **None** when the path is empty. Closeout, if
+on the path, is last. Active and blocked plans require this section, except a
+one-time legacy read: if `### Frontier Map` is missing, Current plus
+Next-Frontier Candidate is the old shape (current pointer and at most one
+remaining node). The next proposal PR must write the real map. Closed plans
+use `Path: none` with no queued or off-path nodes.
 
 ```markdown
 ### Frontier Map
@@ -607,9 +611,11 @@ PR** is the review surface for the work order. While opening a proposal
   introduced node).
 
 Those edits are not a second review question and must not block accepting a
-bounded selected unit. After the proposal is open, current identity, question,
-owner, and kind stay frozen except for the normal `proposal_in_review`
-transition fields. Remaining-path edits may continue on that same proposal.
+bounded selected unit. Until an exact-head contract receipt exists on the PR,
+the proposal may retarget current from the work order. After a receipt, later
+commits cannot change current identity, question, owner, or kind. Remaining-path
+edits may continue. CI compares that freeze to the plan at the first receipt
+commit, not only to the milestone base.
 
 The proposal cannot delete a contracted node. Implementation, amendment, and
 repair PRs may not edit the map or current identity. The mechanical handoff
@@ -647,8 +653,9 @@ Windows:
 | Opening proposal | May rewire, add, or select | Becomes path[0] or a new node |
 | Implementation | Frozen | Frozen |
 | After `advance` | Unchanged remaining path | Idle |
-| Closeout selected | Empty remaining path | Closeout |
-| After `close` | `Path: none` | Idle / closed |
+| `block` | Keeps queued and off-path nodes | Idle / blocked |
+| Closeout selected | Remaining path must be empty | Closeout |
+| After `close` | `Path: none` | Closed |
 
 ### 7. Workflow History
 
@@ -801,11 +808,12 @@ reclassification during delivery.
 
 If milestone-level facts are wrong (objective, completion usage, exit-criterion
 identity, action policy), revise them in a separate plan-only review unit. Use
-a `m<number>/plan-<slug>` branch, keep the workflow state
-`ready_for_proposal` or idle, and change only canonical `plan.md` plus generated
-`plan.html`. Preserve accepted review-unit evidence and every existing `Met`
-criterion, append one Workflow History row whose evidence begins
-`Plan revision:`, and do not add a proposal, tests, or product code.
+a `m<number>/plan-<slug>` branch, keep idle or `ready_for_proposal`, and change
+only canonical `plan.md` plus generated `plan.html`. Do not change current,
+next, or the work order. Preserve accepted review-unit evidence and every
+existing `Met` criterion, append one Workflow History row whose evidence
+begins `Plan revision:` (frontier `Idle` / state `idle` when current is idle),
+and do not add a proposal, tests, or product code.
 
 Retargeting remaining work, skipping a queued successor, inserting a unit, or
 selecting closeout belongs on the next proposal PR via the work-order artifact.

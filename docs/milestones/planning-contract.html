@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="4d66c43bcfe7ae2cfaaa7461ea74e6fd8db764488d162b9e1047664392118ddd">
+  <meta name="source-sha256" content="86053f31cb1deaa181ac146dd263b446668c721c3b87370a1cafd2ca090f59f5">
   <base target="_blank">
   <title>Milestone Planning And Delivery Contract</title>
   <style>
@@ -610,9 +610,13 @@ and a successor slot derived from the remaining path.</p>
   can put them back without re-authoring.</li>
 </ul>
 <p>The path does <strong>not</strong> include the current pointer. Current, if set, must not
-also appear as a remaining or off-path node. The successor slot is <code>path[0]</code>,
-or <strong>None</strong> when the path is empty. Closeout, if on the path, is last. Active
-plans require this section. Closed and blocked plans may use <code>Path: none</code>.</p>
+also appear as a remaining or off-path node. Path names cannot repeat. The
+successor slot is <code>path[0]</code>, or <strong>None</strong> when the path is empty. Closeout, if
+on the path, is last. Active and blocked plans require this section, except a
+one-time legacy read: if <code>### Frontier Map</code> is missing, Current plus
+Next-Frontier Candidate is the old shape (current pointer and at most one
+remaining node). The next proposal PR must write the real map. Closed plans
+use <code>Path: none</code> with no queued or off-path nodes.</p>
 <pre><code class="language-markdown">### Frontier Map
 
 - Path: `Successor` → `Milestone closeout`
@@ -660,9 +664,11 @@ PR</strong> is the review surface for the work order. While opening a proposal
   introduced node).</li>
 </ul>
 <p>Those edits are not a second review question and must not block accepting a
-bounded selected unit. After the proposal is open, current identity, question,
-owner, and kind stay frozen except for the normal <code>proposal_in_review</code>
-transition fields. Remaining-path edits may continue on that same proposal.</p>
+bounded selected unit. Until an exact-head contract receipt exists on the PR,
+the proposal may retarget current from the work order. After a receipt, later
+commits cannot change current identity, question, owner, or kind. Remaining-path
+edits may continue. CI compares that freeze to the plan at the first receipt
+commit, not only to the milestone base.</p>
 <p>The proposal cannot delete a contracted node. Implementation, amendment, and
 repair PRs may not edit the map or current identity. The mechanical handoff
 may not invent a node or start the next unit.</p>
@@ -716,14 +722,19 @@ artifact (or introduces the first/next node, including closeout).</p>
 <td>Idle</td>
 </tr>
 <tr>
+<td><code>block</code></td>
+<td>Keeps queued and off-path nodes</td>
+<td>Idle / blocked</td>
+</tr>
+<tr>
 <td>Closeout selected</td>
-<td>Empty remaining path</td>
+<td>Remaining path must be empty</td>
 <td>Closeout</td>
 </tr>
 <tr>
 <td>After <code>close</code></td>
 <td><code>Path: none</code></td>
-<td>Idle / closed</td>
+<td>Closed</td>
 </tr>
 </tbody>
 </table>
@@ -935,11 +946,12 @@ requires a reviewed plan revision before proposal work starts, not a PR-body
 reclassification during delivery.</p>
 <p>If milestone-level facts are wrong (objective, completion usage, exit-criterion
 identity, action policy), revise them in a separate plan-only review unit. Use
-a <code>m&lt;number&gt;/plan-&lt;slug&gt;</code> branch, keep the workflow state
-<code>ready_for_proposal</code> or idle, and change only canonical <code>plan.md</code> plus generated
-<code>plan.html</code>. Preserve accepted review-unit evidence and every existing <code>Met</code>
-criterion, append one Workflow History row whose evidence begins
-<code>Plan revision:</code>, and do not add a proposal, tests, or product code.</p>
+a <code>m&lt;number&gt;/plan-&lt;slug&gt;</code> branch, keep idle or <code>ready_for_proposal</code>, and change
+only canonical <code>plan.md</code> plus generated <code>plan.html</code>. Do not change current,
+next, or the work order. Preserve accepted review-unit evidence and every
+existing <code>Met</code> criterion, append one Workflow History row whose evidence
+begins <code>Plan revision:</code> (frontier <code>Idle</code> / state <code>idle</code> when current is idle),
+and do not add a proposal, tests, or product code.</p>
 <p>Retargeting remaining work, skipping a queued successor, inserting a unit, or
 selecting closeout belongs on the next proposal PR via the work-order artifact.
 Do not use a plan-revision PR for that. Do not implement a queued successor

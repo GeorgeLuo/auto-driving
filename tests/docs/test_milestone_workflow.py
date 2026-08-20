@@ -211,6 +211,18 @@ class MilestonePlanContractTests(unittest.TestCase):
         self.assertTrue(state.next_frontier.is_empty)
         self.assertEqual(state.frontier_map.path, ())
 
+    def test_block_keeps_remaining_work_order(self) -> None:
+        receipt = _receipt()
+        receipt["outcome"] = "block"
+        receipt["blocked_reason"] = "Need operator input"
+        receipt["revisit_when"] = "Operator unblocks"
+        updated = apply_handoff(self.open_plan_text, receipt)
+        state = validate_plan_text(updated)
+        self.assertEqual(state.status, "Blocked")
+        self.assertTrue(state.current.is_empty)
+        self.assertEqual(state.next_frontier.name, NEXT_FRONTIER)
+        self.assertEqual(state.frontier_map.path, (NEXT_FRONTIER,))
+
     def test_handoff_returns_to_idle_and_keeps_remaining_work_order(self) -> None:
         updated = apply_handoff(self.open_plan_text, _receipt())
         state = validate_plan_text(updated)
@@ -390,12 +402,22 @@ class MilestonePlanContractTests(unittest.TestCase):
         with self.assertRaisesRegex(PlanContractError, "review kind does not match"):
             validate_merged_pr_metadata(wrong_kind, state, receipt)
 
-    def test_active_plan_requires_frontier_map(self) -> None:
+    def test_missing_frontier_map_is_legacy_current_plus_next(self) -> None:
         start = self.plan_text.index("### Frontier Map")
         end = self.plan_text.index("## Workflow History")
         missing = self.plan_text[:start] + self.plan_text[end:]
-        with self.assertRaisesRegex(PlanContractError, "missing ### Frontier Map"):
-            validate_plan_text(missing)
+        state = validate_plan_text(missing)
+        self.assertEqual(state.frontier_map.path, (NEXT_FRONTIER,))
+        self.assertEqual(state.next_frontier.name, NEXT_FRONTIER)
+
+    def test_path_cannot_repeat_a_node_name(self) -> None:
+        invalid = self.plan_text.replace(
+            f"- Path: `{NEXT_FRONTIER}`",
+            f"- Path: `{NEXT_FRONTIER}` → `{NEXT_FRONTIER}`",
+            1,
+        )
+        with self.assertRaisesRegex(PlanContractError, "cannot repeat a node name"):
+            validate_plan_text(invalid)
 
     def test_current_cannot_appear_on_remaining_path(self) -> None:
         invalid = self.plan_text.replace(

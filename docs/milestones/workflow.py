@@ -444,6 +444,8 @@ def parse_frontier_map(text: str) -> FrontierMap | None:
     if cadence not in ALLOWED_FRONTIER_CADENCES:
         raise PlanContractError(f"Frontier Map has unsupported cadence {cadence!r}")
     path = _parse_path_value(path_value, heading="Frontier Map")
+    if len(path) != len(set(path)):
+        raise PlanContractError("Frontier Map path cannot repeat a node name")
 
     nodes: list[Frontier] = []
     off_path: list[Frontier] = []
@@ -483,6 +485,18 @@ def _contracted_fields(frontier: Frontier) -> dict[str, str]:
     }
 
 
+def _legacy_frontier_map(next_frontier: Frontier) -> FrontierMap:
+    if next_frontier.is_empty or not next_frontier.name:
+        return FrontierMap(path=(), cadence="linked-list", nodes=(), off_path=())
+    node = Frontier(name=next_frontier.name, fields=dict(next_frontier.fields))
+    return FrontierMap(
+        path=(next_frontier.name,),
+        cadence="linked-list",
+        nodes=(node,),
+        off_path=(),
+    )
+
+
 def _validate_frontier_map(
     frontier_map: FrontierMap | None,
     *,
@@ -492,16 +506,16 @@ def _validate_frontier_map(
     known_ids: set[str],
     expected_review_prefix: str,
 ) -> FrontierMap:
-    if status != "Active":
+    if status in {"closed", "pre-plan"}:
         if frontier_map is None:
             return EMPTY_FRONTIER_MAP
-        if frontier_map.path or frontier_map.nodes:
+        if frontier_map.path or frontier_map.nodes or frontier_map.off_path:
             raise PlanContractError(
                 f"{status} milestone Frontier Map path must be none without queued nodes"
             )
         return frontier_map
     if frontier_map is None:
-        raise PlanContractError("Active milestone is missing ### Frontier Map")
+        frontier_map = _legacy_frontier_map(next_frontier)
     seen_names: set[str] = set()
     if current.name:
         seen_names.add(current.name)
@@ -1038,8 +1052,8 @@ def validate_plan_text(text: str) -> PlanState:
         raise PlanContractError("Blocked milestone must use an empty current frontier")
     if status in {"pre-plan", "closed"} and not current.is_empty:
         raise PlanContractError(f"{status} milestone cannot have an active current frontier")
-    if status in {"Blocked", "closed"} and not next_frontier.is_empty:
-        raise PlanContractError(f"{status} milestone cannot have a next candidate")
+    if status == "closed" and not next_frontier.is_empty:
+        raise PlanContractError("closed milestone cannot have a next candidate")
 
     frontier_map = _validate_frontier_map(
         parse_frontier_map(text),
@@ -1068,6 +1082,10 @@ def validate_plan_text(text: str) -> PlanState:
             raise PlanContractError(
                 "cannot select milestone closeout while criteria remain unmet: "
                 + ", ".join(blocking)
+            )
+        if frontier_map.path:
+            raise PlanContractError(
+                "cannot select milestone closeout while the remaining path is nonempty"
             )
 
     header_current = header.get("Current frontier", "")
@@ -1099,7 +1117,7 @@ def validate_plan_text(text: str) -> PlanState:
     workflow_history = parse_table(text, "## Workflow History")
     if workflow_history.header != ("Frontier", "State", "Evidence"):
         raise PlanContractError("Workflow History table has an unexpected header")
-    allowed_history_states = WORKFLOW_STATES | {"accepted"}
+    allowed_history_states = WORKFLOW_STATES | {"accepted", "idle"}
     prior_history_row: tuple[str, str, str] | None = None
     expected_transitions = {
         "ready_for_proposal": {"proposal_in_review"},
@@ -1149,9 +1167,10 @@ def validate_plan_text(text: str) -> PlanState:
                 and history_evidence.startswith("Plan revision:")
             ):
                 pass
-            elif prior_state in {"accepted", "ready_for_proposal"} and history_state in {
+            elif prior_state in {"accepted", "ready_for_proposal", "idle"} and history_state in {
                 "ready_for_proposal",
                 "proposal_in_review",
+                "idle",
             }:
                 pass
             else:
@@ -1610,7 +1629,29 @@ def apply_handoff(text: str, receipt_payload: dict[str, Any]) -> str:
         )
         text = _replace_header_value(text, "Status", "Blocked")
         text = _replace_header_value(text, "Current frontier", "None (blocked)")
-        new_map = EMPTY_FRONTIER_MAP
+        remaining_path = tuple(
+            name
+            for name in state.frontier_map.path
+            if name != state.current.name
+        )
+        new_nodes = tuple(
+            node for node in state.frontier_map.nodes if node.name in remaining_path
+        )
+        new_map = FrontierMap(
+            path=remaining_path,
+            cadence=state.frontier_map.cadence,
+            nodes=new_nodes,
+            off_path=state.frontier_map.off_path,
+        )
+        if remaining_path:
+            new_next = next(
+                node for node in new_nodes if node.name == remaining_path[0]
+            )
+        else:
+            new_next = Frontier(
+                name=None,
+                fields={"reason": reason, "revisit when": revisit},
+            )
     else:
         if state.current.fields.get("review kind", "").lower() != "milestone closeout":
             raise PlanContractError("close outcome requires a milestone closeout frontier")
@@ -1619,6 +1660,10 @@ def apply_handoff(text: str, receipt_payload: dict[str, Any]) -> str:
             raise PlanContractError(
                 "cannot close milestone while criteria remain unmet: "
                 + ", ".join(non_met)
+            )
+        if state.frontier_map.path:
+            raise PlanContractError(
+                "cannot close milestone while the remaining path is nonempty"
             )
         reason = f"Milestone closed after PR #{accepted_pr}."
         new_current = Frontier(
@@ -2645,6 +2690,54 @@ def _exact_head_contract_decisions(
         if previous is None or (submitted, index) > previous[:2]:
             decisions[reviewer] = (submitted, index, outcome)
     return {reviewer: item[2] for reviewer, item in decisions.items()}
+
+
+def _first_contract_receipt_commit(
+    metadata: RepairReviewMetadata | None,
+) -> str | None:
+    if metadata is None:
+        return None
+    found: list[tuple[datetime, int, str]] = []
+    for index, review in enumerate(metadata.reviews):
+        if not isinstance(review, dict):
+            continue
+        commit = review.get("commit")
+        oid = commit.get("oid") if isinstance(commit, dict) else None
+        if not isinstance(oid, str) or not oid:
+            continue
+        author = review.get("author")
+        reviewer = author.get("login") if isinstance(author, dict) else None
+        if not isinstance(reviewer, str) or not reviewer:
+            continue
+        association = str(review.get("authorAssociation") or "").upper()
+        can_push = review.get("authorCanPushToRepository") is True
+        if association not in AUTHORIZED_REVIEW_ASSOCIATIONS or not can_push:
+            continue
+        state = str(review.get("state") or "").upper()
+        outcome: str | None = None
+        if state == "APPROVED":
+            outcome = "accepted"
+        elif state == "CHANGES_REQUESTED":
+            outcome = "changes_requested"
+        elif state == "COMMENTED":
+            body = review.get("body")
+            if not isinstance(body, str) or CONTRACT_REVIEW_RECEIPT_HEADING not in body:
+                continue
+            try:
+                outcome = _comment_review_receipt_outcome(body)
+            except PlanContractError:
+                continue
+        if outcome is None:
+            continue
+        submitted = _github_timestamp(
+            review.get("submittedAt"),
+            label="contract receipt",
+        )
+        found.append((submitted, index, oid))
+    if not found:
+        return None
+    found.sort()
+    return found[0][2]
 
 
 def _require_merged_head_unchanged(metadata: RepairReviewMetadata) -> None:
@@ -3919,12 +4012,10 @@ def _validate_plan_revision_transition(
     changed_paths: set[str],
     head_branch: str,
 ) -> str:
+    base_idle = base.current.is_empty
+    head_idle = head.current.is_empty
     base_state = _workflow_state(base.current)
     head_state = _workflow_state(head.current)
-    if base_state != "ready_for_proposal" or head_state != "ready_for_proposal":
-        raise PlanContractError(
-            "plan revision requires ready_for_proposal before and after review"
-        )
     if not _is_plan_revision_branch(base.milestone_number, head_branch):
         raise PlanContractError(
             "plan revision branch must match "
@@ -3938,11 +4029,41 @@ def _validate_plan_revision_transition(
         raise PlanContractError(
             "plan revision cannot change milestone identity, branch, or status"
         )
+    started_states = {
+        "proposal_in_review",
+        "ready_for_implementation",
+        "proposal_amendment_in_review",
+        "implementation_in_review",
+    }
     for state in (base, head):
-        if "pr" in state.current.fields or "accepted proposal" in state.current.fields:
+        if _workflow_state(state.current) in started_states:
             raise PlanContractError(
                 "plan revision is unavailable after proposal work has started"
             )
+        if (
+            not state.current.is_empty
+            and (
+                "pr" in state.current.fields
+                or "accepted proposal" in state.current.fields
+            )
+        ):
+            raise PlanContractError(
+                "plan revision is unavailable after proposal work has started"
+            )
+    if base_idle != head_idle:
+        raise PlanContractError("plan revision cannot change idle versus current")
+    if not base_idle and (
+        base_state != "ready_for_proposal" or head_state != "ready_for_proposal"
+    ):
+        raise PlanContractError(
+            "plan revision requires idle or ready_for_proposal before and after review"
+        )
+    if base.current != head.current:
+        raise PlanContractError("plan revision cannot change the current frontier")
+    if base.next_frontier != head.next_frontier:
+        raise PlanContractError("plan revision cannot change the queued frontier")
+    if base.frontier_map != head.frontier_map:
+        raise PlanContractError("plan revision cannot change the work order")
 
     plan_html = str(Path(plan_path).with_suffix(".html"))
     required_paths = {plan_path, plan_html}
@@ -3990,14 +4111,19 @@ def _validate_plan_revision_transition(
             "plan revision must append exactly one workflow-history entry"
         )
     last_frontier, last_state, last_evidence = head_history[-1]
-    if (
-        last_frontier != head.current.name
-        or last_state != "ready_for_proposal"
-        or not last_evidence.startswith("Plan revision:")
-    ):
+    if not last_evidence.startswith("Plan revision:"):
         raise PlanContractError(
-            "plan revision history must name the current frontier, remain "
-            "ready_for_proposal, and begin its evidence with 'Plan revision:'"
+            "plan revision history must begin its evidence with 'Plan revision:'"
+        )
+    if head_idle:
+        if last_frontier != "Idle" or last_state != "idle":
+            raise PlanContractError(
+                "idle plan revision history must use frontier Idle and state idle"
+            )
+    elif last_frontier != head.current.name or last_state != "ready_for_proposal":
+        raise PlanContractError(
+            "plan revision history must name the current frontier and remain "
+            "ready_for_proposal"
         )
     return "plan_revision"
 
@@ -4035,6 +4161,7 @@ def validate_review_unit_transition(
     proposal_amendment_text: str | None = None,
     pr_body: str | None = None,
     repair_review_metadata: RepairReviewMetadata | None = None,
+    frozen_current: Frontier | None = None,
 ) -> str:
     base = validate_plan_text(base_text)
     head = validate_plan_text(head_text)
@@ -4053,6 +4180,19 @@ def validate_review_unit_transition(
     )
     if is_opening_proposal:
         _validate_proposal_map_edits(base, head)
+        if parse_frontier_map(head_text) is None:
+            raise PlanContractError("proposal PR must write ### Frontier Map")
+        if frozen_current is not None and not frozen_current.is_empty:
+            if head.current.name != frozen_current.name:
+                raise PlanContractError(
+                    "proposal PR cannot change current after a contract receipt"
+                )
+            for field in ("review kind", "review question", "acceptance owner"):
+                if head.current.fields.get(field) != frozen_current.fields.get(field):
+                    raise PlanContractError(
+                        "proposal PR cannot change frozen current field "
+                        f"{field!r} after a contract receipt"
+                    )
     else:
         if base.current.is_empty or head.current.is_empty:
             raise PlanContractError("review-unit PR requires an active current frontier")
@@ -4501,12 +4641,17 @@ def validate_review_unit_git_diff(
     head = validate_plan_text(head_text)
     proposal_text: str | None = None
     proposal_amendment_text: str | None = None
-    if (
-        _workflow_state(base.current) == "ready_for_proposal"
+    opening_proposal = (
+        (
+            base.current.is_empty
+            or _workflow_state(base.current) == "ready_for_proposal"
+        )
+        and _workflow_state(head.current) == "proposal_in_review"
         and not _is_plan_revision_branch(base.milestone_number, head_ref)
-    ):
+    )
+    if opening_proposal:
         proposal_path = _frontier_proposal_path(
-            base.current,
+            head.current,
             heading="Current Frontier",
         )
         proposal_text = _git_text_at(
@@ -4527,6 +4672,12 @@ def validate_review_unit_git_diff(
             amendment_path,
             repo_root=repo_root,
         )
+    frozen_current = None
+    receipt_sha = _first_contract_receipt_commit(repair_review_metadata)
+    if receipt_sha and receipt_sha != head_sha:
+        frozen_current = validate_plan_text(
+            _git_text_at(receipt_sha, plan_path, repo_root=repo_root)
+        ).current
     return validate_review_unit_transition(
         base_text,
         head_text,
@@ -4537,6 +4688,7 @@ def validate_review_unit_git_diff(
         proposal_amendment_text=proposal_amendment_text,
         pr_body=pr_body,
         repair_review_metadata=repair_review_metadata,
+        frozen_current=frozen_current,
     )
 
 

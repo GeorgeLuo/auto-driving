@@ -31,9 +31,10 @@ implementation tip at merge time.
 
 Verify each prior finding against the repair evidence, then review the current
 diff against the accepted proposal. Raise P0–P2 only when the case is in the
-accepted matrix or falsifies the stated review question. Leftover two-shapes
-and requests to collapse internals are P3 unless the accepted question named
-one type. Everything else is P3 or a later want.
+accepted matrix or falsifies the stated review question. Leftover two-shapes,
+requests to collapse internals, and requests to add or polish derived
+evidence HTML are P3 unless the operator required that page or the accepted
+question named one type. Everything else is P3 or a later want.
 
 Classify a cycle as substantial when its verdict contains a P0–P2 contract
 failure or its repair changes the review question, contract, external

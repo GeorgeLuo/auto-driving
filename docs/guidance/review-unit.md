@@ -33,9 +33,10 @@ repair-cycle ledger names the consolidated verdict and repair revision.
 2. Report findings first, ordered by severity, with a concrete reproduction and
    required outcome.
 3. After a proposal is accepted, raise P0–P2 only for accepted-matrix cases or
-   a false review question. Leftover two-shapes and requests to collapse
-   internals are P3 unless the accepted question named one type. New failure
-   classes are amendment or residual.
+   a false review question. Leftover two-shapes, requests to collapse
+   internals, and requests to add or polish derived evidence HTML are P3
+   unless the operator required that page or the accepted question named one
+   type. New failure classes are amendment or residual.
 4. After repairs, verify prior findings and then review the current PR against
    that same closed contract.
 5. Give one consolidated verdict. Approval accepts this review question, not

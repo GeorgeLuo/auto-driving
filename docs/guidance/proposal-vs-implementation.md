@@ -63,6 +63,7 @@ implementation completion recheck the merged PR body before promotion.
 Implementation links the accepted proposal and merge commit, stays within that
 contract, and reports actual file impact and validation. Once the accepted
 tests are green, the implementer may collapse two shapes in the same owner
-against those tests without changing the contract. If the contract must
-change, return to proposal review rather than rewriting acceptance during
-implementation.
+against those tests without changing the contract. If the unit mints a sealed
+signal, commit derived HTML of those bytes next to it unless the operator
+accepted a skip. If the contract must change, return to proposal review
+rather than rewriting acceptance during implementation.

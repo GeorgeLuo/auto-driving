@@ -14,7 +14,9 @@ Produce the smallest complete deliverable that answers the accepted review
 question. Prefer existing ownership boundaries and explicit validation over
 new framework surface while filling. Once the accepted tests are green, one
 collapse of two shapes in the same owner against those tests is allowed. Do
-not change the acceptance contract while implementing it.
+not change the acceptance contract while implementing it. If the unit mints a
+sealed machine-readable signal, commit derived HTML of those bytes next to
+it unless the operator accepted a skip.
 
 ## Phase
 

@@ -25,6 +25,16 @@
 - Want:
 - Reject if:
 
+## Evidence rendering
+
+<!-- Documentary. Default: implementation commits derived HTML of each sealed
+     machine-readable signal next to that artifact. The record stays
+     authority. Skip only with a reason the operator accepts. Reviewers do
+     not decide need. Not a CI heading. -->
+
+- Derived HTML: yes / skip
+- Skip reason (if skip):
+
 <!-- Want is the outcome you would recognize. Reject if is one thing that makes
      this the wrong unit. If the review kind is deterministic invariant
      closure, the proposal artifact must also complete Trust And Authority Model

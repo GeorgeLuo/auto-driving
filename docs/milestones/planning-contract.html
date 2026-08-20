@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="af9d6d311516438b39b207203438d4673702af7197aaca889b7c260846a88b2d">
+  <meta name="source-sha256" content="7bea458e56d9ecafeb5dbc48e65c6147844e45004261477b1affafea5859d13b">
   <base target="_blank">
   <title>Milestone Planning And Delivery Contract</title>
   <style>
@@ -276,12 +276,14 @@ finding diff.</p>
 <h4>Derived evidence rendering</h4>
 <p>When an implementation mints a durable machine-readable signal (report,
 inventory, registry, disposition record, or equivalent), also commit a derived
-HTML view of those bytes. Prefer one evidence directory per frontier. A shared
-directory is acceptable and can be split later. Put the page next to the
-record it presents. The record stays the authority. The page, when produced,
-is a view of that committed record, not a fixture or sample. Format stays
-underspecified until a real frontier teaches what is useful. Do not invent
-same-stem, in-page link, or manifest rules in advance.</p>
+HTML view of those bytes. A frontier that renders one or more signals uses one
+stable evidence directory and records its repository-relative path in the
+proposal's <code>Evidence rendering</code> section. Put the committed records and their
+pages beneath that directory, with each page next to the record it presents.
+The record stays the authority. The page, when produced, is a view of that
+committed record, not a fixture or sample. Page format and the internal
+record-to-page relation stay underspecified until a real frontier teaches what
+is useful. Do not invent same-stem, in-page link, or manifest rules in advance.</p>
 <p>Skip the page only with a one-line reason in the proposal. Need, and whether
 a skip is enough, are owned by the operator (or someone the operator
 explicitly deputizes). Reviewers and implementers do not decide that a page
@@ -352,7 +354,7 @@ milestone or pre-plan should be activated.</p>
 </tr>
 <tr>
 <td>Derived HTML of a sealed implementation signal</td>
-<td>That unit's evidence directory, next to the record</td>
+<td>Proposal-declared per-frontier evidence directory, next to the committed record</td>
 </tr>
 <tr>
 <td>Operator skip of that HTML</td>

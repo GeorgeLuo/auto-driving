@@ -268,12 +268,14 @@ finding diff.
 
 When an implementation mints a durable machine-readable signal (report,
 inventory, registry, disposition record, or equivalent), also commit a derived
-HTML view of those bytes. Prefer one evidence directory per frontier. A shared
-directory is acceptable and can be split later. Put the page next to the
-record it presents. The record stays the authority. The page, when produced,
-is a view of that committed record, not a fixture or sample. Format stays
-underspecified until a real frontier teaches what is useful. Do not invent
-same-stem, in-page link, or manifest rules in advance.
+HTML view of those bytes. A frontier that renders one or more signals uses one
+stable evidence directory and records its repository-relative path in the
+proposal's `Evidence rendering` section. Put the committed records and their
+pages beneath that directory, with each page next to the record it presents.
+The record stays the authority. The page, when produced, is a view of that
+committed record, not a fixture or sample. Page format and the internal
+record-to-page relation stay underspecified until a real frontier teaches what
+is useful. Do not invent same-stem, in-page link, or manifest rules in advance.
 
 Skip the page only with a one-line reason in the proposal. Need, and whether
 a skip is enough, are owned by the operator (or someone the operator
@@ -326,7 +328,7 @@ Closeout must not conceal unfinished implementation or validation.
 | Detailed invariant, trust/authority model, evidence topology, and adversarial matrix | Accepted proposal document |
 | Planned file impact and validation commands | Accepted proposal document |
 | Actual file impact and validation results | Implementation PR |
-| Derived HTML of a sealed implementation signal | That unit's evidence directory, next to the record |
+| Derived HTML of a sealed implementation signal | Proposal-declared per-frontier evidence directory, next to the committed record |
 | Operator skip of that HTML | Proposal; operator-accepted |
 | Human user-testing request and implement-now direction | Durable issue and adjunct PR |
 | Review findings and repair history | Review-unit PR |

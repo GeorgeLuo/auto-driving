@@ -16,8 +16,9 @@ new framework surface while filling. Once the accepted tests are green, one
 collapse of two shapes in the same owner against those tests is allowed. Do
 not change the acceptance contract while implementing it. If the unit mints a
 sealed machine-readable signal, commit derived HTML of those committed record
-bytes next to it unless the operator accepted a skip. Prefer a per-frontier
-evidence directory; sharing one directory is fine until a split is useful.
+bytes next to it unless the operator accepted a skip. Use the stable
+per-frontier evidence directory recorded by repository-relative path in the
+proposal.
 
 ## Phase
 

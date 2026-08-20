@@ -35,5 +35,6 @@ error substring.
 
 If derived evidence HTML is committed, it must be regenerable from the
 committed frontier record it presents, not from a fixture that is not that
-record. Do not treat missing HTML, layout, or on-page volume as a validation
+record, and live beside that record in the proposal-declared frontier evidence
+directory. Do not treat missing HTML, layout, or on-page volume as a validation
 failure unless the operator required that page.

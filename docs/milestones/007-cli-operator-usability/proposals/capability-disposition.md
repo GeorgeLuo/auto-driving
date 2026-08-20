@@ -72,6 +72,7 @@ following hold:
 | **Leaf/sequence context** | M007-08 inventory and registry | CLI-facing names and owners used when grouping; read-only |
 | **Capability record** | This unit | Groups, members, reconcile fields, disposition, owner, reason |
 | **Pass report / rollup** | This unit | Derived unreached counts, group list, residuals, explicit non-claims |
+| **Derived HTML** | Same bytes as the record | Human view of groups and dispositions; not authority; layout is not Met |
 
 Exact repository paths and schema version ids are fixed in implementation under:
 
@@ -155,8 +156,8 @@ that does not refresh #107 (record stays historical); subjective quality of a
   Then stop and amend; do not invent reachability.
 - **Freshness:** store the #107 report path and digest. Product HEAD drift
   after that digest is residual, not silent Met.
-- **Retained artifacts:** capability record, pass report, rollup, test
-  fixtures. Derived CI logs are not sole authority.
+- **Retained artifacts:** capability record, pass report, rollup, derived
+  HTML of that record, test fixtures. Derived CI logs are not sole authority.
 
 Canonical live recapture of journeys is **explicitly unnecessary** for Met.
 
@@ -253,7 +254,7 @@ note cannot independently mark M007-09 Met.
 | Path | Change |
 | --- | --- |
 | `docs/milestones/007-cli-operator-usability/tools/capability-disposition/` | Derivation, schema, validators, rollup, README |
-| `docs/milestones/007-cli-operator-usability/evidence/capability-disposition/` | Capability record, pass report, residual rollup |
+| `docs/milestones/007-cli-operator-usability/evidence/capability-disposition/` | Capability record, pass report, residual rollup, derived HTML of that record |
 | `tests/milestones/` | Completeness, overlap, digest, percentage-ban fixtures |
 | Plan handoff on success | M007-09 Met; next-frontier remains empty toward closeout |
 
@@ -293,6 +294,7 @@ Deterministic:
 - percentage-only reason rejected;
 - digest of sealed #107 report matches the record;
 - rollup lists every group including `remove`;
+- derived HTML regenerates from the sealed record (layout is not Met);
 - no production path diffs.
 
 No live recapture.
@@ -306,7 +308,7 @@ Post-merge successful implementation template:
   "schema": "milestone_handoff_template_v1",
   "outcome": "advance",
   "result": "Accepted",
-  "durable_evidence": "Capability disposition outside CLI journeys in PR #{pr}: unreached owned production code derived from sealed M007-07 report; every region in exactly one capability group; tests/entrypoints/platform/owner reconciled; expose/retain/remove candidates with non-percentage reasons; validators reject omission and percentage-as-authorization; tracked evidence under docs/milestones/007-cli-operator-usability/evidence/capability-disposition/",
+  "durable_evidence": "Capability disposition outside CLI journeys in PR #{pr}: unreached owned production code derived from sealed M007-07 report; every region in exactly one capability group; tests/entrypoints/platform/owner reconciled; expose/retain/remove candidates with non-percentage reasons; validators reject omission and percentage-as-authorization; derived HTML of that record; tracked evidence under docs/milestones/007-cli-operator-usability/evidence/capability-disposition/",
   "criterion_updates": {
     "M007-09": {
       "status": "Met",

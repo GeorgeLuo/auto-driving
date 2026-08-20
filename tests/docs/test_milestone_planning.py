@@ -18,6 +18,10 @@ MILESTONES = DOCS / "milestones"
 CONTRACT_SOURCE = MILESTONES / "README.md"
 CONTRACT_RENDER = MILESTONES / "planning-contract.html"
 GUIDE = DOCS / "README.md"
+ROOT_README = ROOT / "README.md"
+STALE_MILESTONE_STATUS = re.compile(
+    r"(?im)is the (active|queued) .+ milestone"
+)
 PR_TEMPLATE = ROOT / ".github" / "pull_request_template.md"
 PROPOSAL_PR_TEMPLATE = (
     ROOT / ".github" / "PULL_REQUEST_TEMPLATE" / "proposal.md"
@@ -174,12 +178,20 @@ class MilestonePlanningTests(unittest.TestCase):
         guide = GUIDE.read_text(encoding="utf-8")
         self.assertNotIn("**None.**", guide)
         self.assertIn("plan.md", guide)
+        self.assertIsNone(STALE_MILESTONE_STATUS.search(guide))
         paths = _active_plan_paths()
         if paths is None:
             return
         plan_md, plan_html = paths
         self.assertTrue(plan_md.is_file())
         self.assertTrue(plan_html.is_file())
+
+    def test_root_readme_does_not_claim_milestone_status(self) -> None:
+        readme = ROOT_README.read_text(encoding="utf-8")
+        self.assertIsNone(STALE_MILESTONE_STATUS.search(readme))
+        self.assertNotIn("## Active Milestone", readme)
+        self.assertIn("docs/README.md", readme)
+        self.assertIn("completed.md", readme)
 
     def test_review_unit_pr_template_has_required_headings(self) -> None:
         self.assertTrue(PR_TEMPLATE.is_file())

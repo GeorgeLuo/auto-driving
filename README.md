@@ -468,10 +468,6 @@ and is prepared through `./cli/automa simulators ensure`.
   describes the physical Donkey server boundary.
 - [`docs/milestones/completed.md`](docs/milestones/completed.md) is the concise
   append-only history of closed work.
-- [`docs/milestones/004-physical-perception-parity/plan.html`](docs/milestones/004-physical-perception-parity/plan.html)
-  is the active physical-perception milestone.
-- [`docs/milestones/005-evidence-memory-foundation/plan.html`](docs/milestones/005-evidence-memory-foundation/plan.html)
-  is the queued evidence-memory milestone.
 
 Dependency direction is intentional:
 

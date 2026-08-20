@@ -26,7 +26,9 @@ journeys actually execute, audit every CLI leaf into an explicit usage pattern,
 reconcile every proposed #88 sequence into a committed definition and
 disposition, and classify production capabilities those journeys do not reach
 so later work can expose, retain, or remove them through evidence rather than
-accumulation.
+accumulation. Then leave a committed HTML map of public CLI branches and
+attributed owned-code volume so that record is inspectable without treating
+volume as a gate.
 Failures must identify the owning boundary without requiring knowledge of
 internal WebSocket paths, runtime files, or process topology; coverage remains
 an investigative signal rather than a claim that executed code is correct or
@@ -44,6 +46,7 @@ unexecuted code is dead.
 | Trace source use by CLI journey | Clean repository state with the existing branch-aware owned-Python coverage configuration | Record named CLI commands and multi-command journeys with stable contexts, combine foreground and Python subprocess/background-worker data, and compare the result with a measured CLI bootstrap/import baseline | A reproducible report attributes executed statements and branches to command/journey contexts, separates shared import/bootstrap cost from command-specific behavior, preserves source revision and command identity, and imposes no aggregate percentage gate | M007-07 |
 | Audit the complete CLI surface | Parser/help surface and journey-coverage collector accepted | Enumerate every public CLI leaf and map it to realistic operator/developer usage patterns, prerequisites, side effects, safety class, expected output, owning boundary, and deterministic or live validation; reconcile every #88 US-01 through US-10 candidate into the same committed sequence registry | Every leaf is assigned to at least one named realistic pattern or explicitly classified unsupported/deprecated; every proposed sequence has a stable definition and explicit `passed`, `ready`, `blocked`, or `deferred` disposition, with owner and unlock condition for blocked/deferred work; hazardous or external leaves are documented without being run unsafely | M007-08 |
 | Disposition code outside CLI journeys | Accepted leaf inventory, realistic usage patterns, aggregate journey coverage, and existing deterministic-test coverage | Group unexecuted owned source regions by capability and owner, then review CLI reachability, other entrypoints, tests, dynamic loading, and platform constraints | Every uncovered capability group is flagged as a candidate to expose through CLI, retain as non-CLI with an explicit owner/reason, or remove; no feature or deletion is authorized solely by a coverage percentage | M007-09 |
+| Inspect CLI coverage on a branch map | Sealed journey-coverage report, leaf inventory, and capability-disposition record | Open the committed HTML map and walk public CLI branches, attributed volume, and unreached remainder | Every public leaf branch is visible; reached vs unreached owned-code volume is labeled; M007-09 dispositions appear on unreached groups; no percentage is a pass/fail gate | M007-11 |
 
 ### Primary Demonstration Command Sequence
 
@@ -108,6 +111,7 @@ deletion; it does not retroactively widen the accepted primary journey.
 | Branch-aware, subprocess-complete owned-Python coverage attributed to named CLI command and journey contexts | Treating import-time execution as feature use, measuring Metrics UI JavaScript in the Python report, or setting an arbitrary repository-wide coverage gate |
 | Complete CLI-leaf inventory and realistic usage-pattern catalog, including prerequisites, side-effect/safety classification, and committed reconciliation of all #88 US-01 through US-10 candidates | Executing hardware-, movement-, destructive-, or external-state commands merely to increase coverage |
 | Capability-level review of owned source not reached by declared CLI journeys | Automatically deleting uncovered code, exposing every internal primitive, or pre-authorizing feature/removal changes before separate review |
+| Committed HTML map of public CLI branches and attributed owned-code volume derived from sealed coverage, leaf, and disposition records | Treating volume as a coverage gate, recapturing journeys, changing production CLI, or implementing expose/remove candidates |
 
 ## Exit Criteria
 
@@ -118,10 +122,11 @@ deletion; it does not retroactively widen the accepted primary journey.
 | M007-03 | Observation-only automation can publish a current camera/perception browser view when sensor image and frame identity are valid even if evaluator-only control reference data is unavailable; workflows that require that reference fail closed with an explicit missing-reference status | Met | Passive observation-only sensor/perception startup preserves scenario/playback/control/input state, separates optional evaluator reference, and keeps reference-dependent operations fail-closed in PR #84 |
 | M007-04 | Startup, status, and view commands use bounded operation-level timeout semantics, preserve stable human/JSON error categories, and provide current help/README examples for the complete journey and its recovery paths | Met | Bounded shared readiness deadlines, stable actionable error categories, cross-command gate agreement, open-view workflow, parser-valid cross-level help and recovery, README, and durable operator guide in PR #84 |
 | M007-05 | A tracked live acceptance unit against the current local Metrics UI contract proves one observation-only processed frame, healthy loopback view, exact layer states, no applied movement, and no default recording; contract drift fails rather than skipping | Met | Tracked live acceptance in PR #88 proves one current correlated camera/perception frame, healthy loopback rendering, truthful layer states, observation-only no-applied-control authority, protected-state preservation, no default run history, and stopped-worker cleanup against exact recorded auto-driving and Metrics UI commits |
-| M007-06 | Closeout confirms the primary demonstration, reconciles durable CLI documentation, records the accepted journey-coverage and full-leaf audit outcomes, verifies every #88 US-01 through US-10 candidate has a committed definition and disposition, and states every retained/unexposed capability and remaining external simulator, PiRacer, remote-view, or non-idle-control limit | Unmet | Closeout only after M007-01 through M007-05 and M007-07 through M007-10; no proposed sequence may remain unlisted or ownerless |
+| M007-06 | Closeout confirms the primary demonstration, reconciles durable CLI documentation, records the accepted journey-coverage and full-leaf audit outcomes, verifies every #88 US-01 through US-10 candidate has a committed definition and disposition, and states every retained/unexposed capability and remaining external simulator, PiRacer, remote-view, or non-idle-control limit | Unmet | Closeout only after M007-01 through M007-05 and M007-07 through M007-11; no proposed sequence may remain unlisted or ownerless |
 | M007-07 | A reproducible CLI journey-coverage collector attributes owned-Python statement and branch execution to named commands and multi-command journeys across foreground and Python subprocess/background-worker boundaries, separates bootstrap/import footprint from command-specific behavior, records exact source/command identity, and remains informational | Met | PR #107 provides a versioned manifest and collection-bound pass report attributing branch-aware owned-Python execution to the accepted primary and continuity command/journey contexts across foreground and background Python processes, with pre-interpreter environment isolation, canonical dependency identity, bootstrap classification, immutable receipts, exact digest semantics, completeness/freshness checks, cleanup, and no correctness, dead-code, or percentage-gate claim |
 | M007-08 | A complete generated-and-reviewed inventory maps every public CLI leaf to realistic usage patterns, prerequisites, side effects, safety class, output contract, owning boundary, and deterministic/live validation status without requiring unsafe execution, and reconciles every #88 US-01 through US-10 proposed sequence into a committed registry with stable identity, current commands and prerequisites, primary human confirmation, cleanup, coverage treatment, and explicit disposition; blocked/deferred entries name an owner and unlock condition | Met | PR #122 delivers complete-to-parser leaf accounting with all M007-08 leaf dimensions, #88-bound US-01..US-10 reconciliation with argv-valid current commands, semantic cite/execute passed rules, required coverage treatment, and visible residuals for deferred work and known LIVE defects |
 | M007-09 | Owned production code not reached by the declared CLI journey set is grouped by capability and reconciled with tests, other entrypoints, dynamic/platform paths, and ownership; every group is flagged to expose through CLI, retain with explicit reason, or remove through separately reviewed work | Unmet | Follows the accepted CLI-leaf and usage-pattern audit |
+| M007-11 | A committed HTML map derived from the sealed journey-coverage report, CLI leaf inventory, and capability-disposition record lets an operator inspect public CLI branches and attributed owned-code volume, including unreached remainder and dispositions, without treating volume as a gate or changing production code | Unmet | Follows M007-07, M007-08, and M007-09 records; presentation only |
 | M007-10 | Beyond the accepted primary six-step journey, the live CLI session runner declares and executes a representative set of safe realistic multi-command sequences drawn from the #88 candidate catalog families (offline perception feedback; live configuration/plugin swap with restoration; perception→memory lifecycle; and, where prerequisites allow, ablation, temporal backpressure, and deterministic replay)—each with machine-first execution, one primary human-scannable confirmation (concise CLI verdict or launched frontend/generated review surface; never raw JSON or a record path alone), unconditional cleanup/restoration, durable finding disposition, and only the bounded product or operator-facing repairs those sequences prove | Met | PR #100 passes required family aggregates with safety preflight, machine-first/HITL confirmations, US-04 restorable restore verification, offline source lineage, deterministic evidence freshness finalizer, and only bounded-table repairs |
 
 ## Current Delivery
@@ -143,10 +148,17 @@ deletion; it does not retroactively widen the accepted primary journey.
 
 ### Next-Frontier Candidate
 
-**None**
+**CLI coverage and leaf map**
 
-- Reason: Capability disposition outside CLI journeys (M007-09) is promoted only after this audit marks M007-08 Met with complete leaf and US-01 through US-10 accounting and visible residuals.
-- Revisit when: Every capability group outside declared journeys has an owned expose, retain, or remove candidate before closeout.
+- Proposal branch: `m007/coverage-map-proposal`
+- Implementation branch: `m007/coverage-map`
+- Proposal path: `docs/milestones/007-cli-operator-usability/proposals/coverage-map.md`
+- Review kind: Broad mechanical rollout
+- Review question: Can a committed HTML map derived from the sealed M007-07 coverage report, M007-08 leaf inventory, and M007-09 capability record show every public CLI branch and the owned-code volume attributed to it, including unreached remainder and dispositions, without treating volume as a Met gate or changing production code?
+- Acceptance owner: Deterministic generator and committed HTML over sealed coverage, leaf, and disposition artifacts
+- Exit criteria affected: M007-11
+- Prerequisite: M007-09 is `Met`; sealed #107 report, leaf inventory, and capability record are stable inputs
+- Non-goals: Numeric coverage gates, journey recapture, production CLI changes, implementing expose/remove candidates, or milestone closeout
 
 ## Workflow History
 
@@ -185,6 +197,7 @@ deletion; it does not retroactively widen the accepted primary journey.
 | Complete CLI surface and sequence audit | implementation_in_review | Started m007/cli-surface-audit. |
 | Complete CLI surface and sequence audit | accepted | Implementation PR #122 merged at 5c09fb32dc196b79e90c2a54fde78b896b41cb49. |
 | Capability disposition outside CLI journeys | ready_for_proposal | Promoted after implementation PR #122. |
+| Capability disposition outside CLI journeys | ready_for_proposal | Plan revision: queue a CLI coverage and leaf map as the reviewed successor after capability disposition; add M007-11; keep closeout after that map. |
 
 ## Accepted Review Units
 
@@ -228,6 +241,7 @@ deletion; it does not retroactively widen the accepted primary journey.
 | 2026-08-06 | Reuse the live CLI session runner as the continuity evidence system | Do not invent a second harness; expand catalogs and procedure on the accepted runner, keep large feature programs (#90/#91) and full leaf audit out of the continuity unit |
 | 2026-08-07 | Freeze M007-10 acceptance breadth to the #88 candidate scenario families and confirmation standard | A plan-level “reviewed set” without representative families or human-scannable confirmation could pass with a trivial machine-only help/status catalog; the proposal may choose exact commands and repair order but must not invent a thinner gate |
 | 2026-08-11 | Require every #88 US-01 through US-10 proposal to have a committed definition and disposition before M007 closeout | PR #100 correctly accepted a representative scenario set under M007-10; the later complete inventory must prevent optional or deferred candidates from disappearing without reopening that accepted contract or forcing unsafe execution |
+| 2026-08-20 | Queue a CLI coverage and leaf HTML map as its own frontier after capability disposition and before closeout | Operators should inspect CLI branches and attributed volume from sealed records; volume is not a gate; closeout remains a separate whole-milestone judgment |
 
 ## Closeout
 
@@ -250,6 +264,9 @@ Closeout will produce:
   blocked or deferred entries;
 - an owned capability disposition record for code outside declared CLI
   journeys, with any exposure or removal work linked as separate review units;
+- a committed HTML map of public CLI branches and attributed owned-code
+  volume, including unreached remainder and dispositions, derived from those
+  sealed records;
 - a residual-risk statement covering external contract drift, PiRacer parity,
   browser launch, remote views, movement authority, dynamic/platform-only paths,
   and the limits of coverage as a code-value signal.

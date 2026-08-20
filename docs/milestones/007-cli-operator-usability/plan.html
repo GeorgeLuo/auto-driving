@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="c72e0f0a568cf5ee64b6ec0fed5fad81614819c523b57956d35575886a7660ce">
+  <meta name="source-sha256" content="7c0f81989b8d007d599baef4f6ba8e2d3135dce2063d468d020740464b3ba740">
   <base target="_blank">
   <title>Milestone plan — 007-cli-operator-usability</title>
   <style>
@@ -112,7 +112,9 @@ journeys actually execute, audit every CLI leaf into an explicit usage pattern,
 reconcile every proposed #88 sequence into a committed definition and
 disposition, and classify production capabilities those journeys do not reach
 so later work can expose, retain, or remove them through evidence rather than
-accumulation.
+accumulation. Then leave a committed HTML map of public CLI branches and
+attributed owned-code volume so that record is inspectable without treating
+volume as a gate.
 Failures must identify the owning boundary without requiring knowledge of
 internal WebSocket paths, runtime files, or process topology; coverage remains
 an investigative signal rather than a claim that executed code is correct or
@@ -184,6 +186,13 @@ unexecuted code is dead.</p>
 <td>Group unexecuted owned source regions by capability and owner, then review CLI reachability, other entrypoints, tests, dynamic loading, and platform constraints</td>
 <td>Every uncovered capability group is flagged as a candidate to expose through CLI, retain as non-CLI with an explicit owner/reason, or remove; no feature or deletion is authorized solely by a coverage percentage</td>
 <td>M007-09</td>
+</tr>
+<tr>
+<td>Inspect CLI coverage on a branch map</td>
+<td>Sealed journey-coverage report, leaf inventory, and capability-disposition record</td>
+<td>Open the committed HTML map and walk public CLI branches, attributed volume, and unreached remainder</td>
+<td>Every public leaf branch is visible; reached vs unreached owned-code volume is labeled; M007-09 dispositions appear on unreached groups; no percentage is a pass/fail gate</td>
+<td>M007-11</td>
 </tr>
 </tbody>
 </table>
@@ -278,6 +287,10 @@ deletion; it does not retroactively widen the accepted primary journey.</p>
 <td>Capability-level review of owned source not reached by declared CLI journeys</td>
 <td>Automatically deleting uncovered code, exposing every internal primitive, or pre-authorizing feature/removal changes before separate review</td>
 </tr>
+<tr>
+<td>Committed HTML map of public CLI branches and attributed owned-code volume derived from sealed coverage, leaf, and disposition records</td>
+<td>Treating volume as a coverage gate, recapturing journeys, changing production CLI, or implementing expose/remove candidates</td>
+</tr>
 </tbody>
 </table>
 <h2>Exit Criteria</h2>
@@ -325,7 +338,7 @@ deletion; it does not retroactively widen the accepted primary journey.</p>
 <td>M007-06</td>
 <td>Closeout confirms the primary demonstration, reconciles durable CLI documentation, records the accepted journey-coverage and full-leaf audit outcomes, verifies every #88 US-01 through US-10 candidate has a committed definition and disposition, and states every retained/unexposed capability and remaining external simulator, PiRacer, remote-view, or non-idle-control limit</td>
 <td>Unmet</td>
-<td>Closeout only after M007-01 through M007-05 and M007-07 through M007-10; no proposed sequence may remain unlisted or ownerless</td>
+<td>Closeout only after M007-01 through M007-05 and M007-07 through M007-11; no proposed sequence may remain unlisted or ownerless</td>
 </tr>
 <tr>
 <td>M007-07</td>
@@ -344,6 +357,12 @@ deletion; it does not retroactively widen the accepted primary journey.</p>
 <td>Owned production code not reached by the declared CLI journey set is grouped by capability and reconciled with tests, other entrypoints, dynamic/platform paths, and ownership; every group is flagged to expose through CLI, retain with explicit reason, or remove through separately reviewed work</td>
 <td>Unmet</td>
 <td>Follows the accepted CLI-leaf and usage-pattern audit</td>
+</tr>
+<tr>
+<td>M007-11</td>
+<td>A committed HTML map derived from the sealed journey-coverage report, CLI leaf inventory, and capability-disposition record lets an operator inspect public CLI branches and attributed owned-code volume, including unreached remainder and dispositions, without treating volume as a gate or changing production code</td>
+<td>Unmet</td>
+<td>Follows M007-07, M007-08, and M007-09 records; presentation only</td>
 </tr>
 <tr>
 <td>M007-10</td>
@@ -369,10 +388,17 @@ deletion; it does not retroactively widen the accepted primary journey.</p>
 <li>Milestone-level non-goal: Executing the expose/retain/remove product work itself, numeric coverage gates, reopening M007-08 accounting, or milestone closeout</li>
 </ul>
 <h3>Next-Frontier Candidate</h3>
-<p><strong>None</strong></p>
+<p><strong>CLI coverage and leaf map</strong></p>
 <ul>
-<li>Reason: Capability disposition outside CLI journeys (M007-09) is promoted only after this audit marks M007-08 Met with complete leaf and US-01 through US-10 accounting and visible residuals.</li>
-<li>Revisit when: Every capability group outside declared journeys has an owned expose, retain, or remove candidate before closeout.</li>
+<li>Proposal branch: <code>m007/coverage-map-proposal</code></li>
+<li>Implementation branch: <code>m007/coverage-map</code></li>
+<li>Proposal path: <code>docs/milestones/007-cli-operator-usability/proposals/coverage-map.md</code></li>
+<li>Review kind: Broad mechanical rollout</li>
+<li>Review question: Can a committed HTML map derived from the sealed M007-07 coverage report, M007-08 leaf inventory, and M007-09 capability record show every public CLI branch and the owned-code volume attributed to it, including unreached remainder and dispositions, without treating volume as a Met gate or changing production code?</li>
+<li>Acceptance owner: Deterministic generator and committed HTML over sealed coverage, leaf, and disposition artifacts</li>
+<li>Exit criteria affected: M007-11</li>
+<li>Prerequisite: M007-09 is <code>Met</code>; sealed #107 report, leaf inventory, and capability record are stable inputs</li>
+<li>Non-goals: Numeric coverage gates, journey recapture, production CLI changes, implementing expose/remove candidates, or milestone closeout</li>
 </ul>
 <h2>Workflow History</h2>
 <table>
@@ -548,6 +574,11 @@ deletion; it does not retroactively widen the accepted primary journey.</p>
 <td>Capability disposition outside CLI journeys</td>
 <td>ready_for_proposal</td>
 <td>Promoted after implementation PR #122.</td>
+</tr>
+<tr>
+<td>Capability disposition outside CLI journeys</td>
+<td>ready_for_proposal</td>
+<td>Plan revision: queue a CLI coverage and leaf map as the reviewed successor after capability disposition; add M007-11; keep closeout after that map.</td>
 </tr>
 </tbody>
 </table>
@@ -737,6 +768,11 @@ deletion; it does not retroactively widen the accepted primary journey.</p>
 <td>Require every #88 US-01 through US-10 proposal to have a committed definition and disposition before M007 closeout</td>
 <td>PR #100 correctly accepted a representative scenario set under M007-10; the later complete inventory must prevent optional or deferred candidates from disappearing without reopening that accepted contract or forcing unsafe execution</td>
 </tr>
+<tr>
+<td>2026-08-20</td>
+<td>Queue a CLI coverage and leaf HTML map as its own frontier after capability disposition and before closeout</td>
+<td>Operators should inspect CLI branches and attributed volume from sealed records; volume is not a gate; closeout remains a separate whole-milestone judgment</td>
+</tr>
 </tbody>
 </table>
 <h2>Closeout</h2>
@@ -758,6 +794,9 @@ deletion; it does not retroactively widen the accepted primary journey.</p>
   blocked or deferred entries;</li>
 <li>an owned capability disposition record for code outside declared CLI
   journeys, with any exposure or removal work linked as separate review units;</li>
+<li>a committed HTML map of public CLI branches and attributed owned-code
+  volume, including unreached remainder and dispositions, derived from those
+  sealed records;</li>
 <li>a residual-risk statement covering external contract drift, PiRacer parity,
   browser launch, remote views, movement authority, dynamic/platform-only paths,
   and the limits of coverage as a code-value signal.</li>

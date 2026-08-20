@@ -366,6 +366,8 @@ class MilestonePlanningTests(unittest.TestCase):
         self.assertIn("Closed implementation review", text)
         self.assertIn("Late implementer collapse", text)
         self.assertIn("Derived evidence rendering", text)
+        self.assertIn("one evidence directory per frontier", text)
+        self.assertIn("Do not invent", text)
         self.assertIn("operator", text.lower())
         self.assertIn("leftover shapes", text)
         self.assertIn("inside the accepted owner", text)

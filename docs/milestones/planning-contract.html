@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="8404705cdb20d127f4881d6438b1a4b42fc20eefdaeb23d2cc273d418872fd46">
+  <meta name="source-sha256" content="af9d6d311516438b39b207203438d4673702af7197aaca889b7c260846a88b2d">
   <base target="_blank">
   <title>Milestone Planning And Delivery Contract</title>
   <style>
@@ -276,9 +276,12 @@ finding diff.</p>
 <h4>Derived evidence rendering</h4>
 <p>When an implementation mints a durable machine-readable signal (report,
 inventory, registry, disposition record, or equivalent), also commit a derived
-HTML view of those bytes next to that artifact under the unit's evidence
-directory. The record stays the authority. The page is a human view and a
-recombination input later. Format stays underspecified until a unit names one.</p>
+HTML view of those bytes. Prefer one evidence directory per frontier. A shared
+directory is acceptable and can be split later. Put the page next to the
+record it presents. The record stays the authority. The page, when produced,
+is a view of that committed record, not a fixture or sample. Format stays
+underspecified until a real frontier teaches what is useful. Do not invent
+same-stem, in-page link, or manifest rules in advance.</p>
 <p>Skip the page only with a one-line reason in the proposal. Need, and whether
 a skip is enough, are owned by the operator (or someone the operator
 explicitly deputizes). Reviewers and implementers do not decide that a page

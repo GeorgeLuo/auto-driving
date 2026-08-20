@@ -33,6 +33,7 @@ artifacts or the documented command, not the helper added by the last repair.
 A named mutation should fail closed without depending on a function name or
 error substring.
 
-If derived evidence HTML is committed, it must be regenerable from the sealed
-record it presents. Do not treat missing HTML, layout, or on-page volume as a
-validation failure unless the operator required that page.
+If derived evidence HTML is committed, it must be regenerable from the
+committed frontier record it presents, not from a fixture that is not that
+record. Do not treat missing HTML, layout, or on-page volume as a validation
+failure unless the operator required that page.

@@ -268,9 +268,12 @@ finding diff.
 
 When an implementation mints a durable machine-readable signal (report,
 inventory, registry, disposition record, or equivalent), also commit a derived
-HTML view of those bytes next to that artifact under the unit's evidence
-directory. The record stays the authority. The page is a human view and a
-recombination input later. Format stays underspecified until a unit names one.
+HTML view of those bytes. Prefer one evidence directory per frontier. A shared
+directory is acceptable and can be split later. Put the page next to the
+record it presents. The record stays the authority. The page, when produced,
+is a view of that committed record, not a fixture or sample. Format stays
+underspecified until a real frontier teaches what is useful. Do not invent
+same-stem, in-page link, or manifest rules in advance.
 
 Skip the page only with a one-line reason in the proposal. Need, and whether
 a skip is enough, are owned by the operator (or someone the operator

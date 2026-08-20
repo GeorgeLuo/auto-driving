@@ -81,6 +81,12 @@ docs/milestones/007-cli-operator-usability/tools/capability-disposition/
 docs/milestones/007-cli-operator-usability/evidence/capability-disposition/
 ```
 
+`docs/milestones/007-cli-operator-usability/evidence/capability-disposition/`
+is this frontier's declared per-frontier evidence directory. Implementation
+commits the sealed capability record, pass report, residual rollup, and
+derived HTML of those records in that directory. Derived HTML: yes. The
+record stays authority; layout is not Met.
+
 ### Disposition rules
 
 | Disposition | Meaning in this unit | Forbidden here |

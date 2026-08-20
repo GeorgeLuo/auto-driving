@@ -19,10 +19,12 @@ canonical contract. The contract wins if any wording conflicts.
 
 ## Readiness
 
-Promote a frontier only when the operator can name the want and one reject
-condition. Remaining-path edits belong on the current proposal, not a
-plan-revision PR. An empty successor is honest when that want is unknown or
-closeout is current. Do not delete a contracted node to make room.
+Select a frontier as current only when the operator can name the want and one
+reject condition. Remaining-path edits and current selection belong on the
+proposal via the work-order artifact, not a plan-revision PR. Completing a unit
+returns to idle; do not implement a successor merely because it was queued.
+An empty remaining path is honest at milestone start and after a unit when
+nothing further is contracted. Do not delete a contracted node to make room.
 
 Before review, confirm that the PR question is stable, the description matches
 the current diff, and validation is exact. Before re-review, confirm that the

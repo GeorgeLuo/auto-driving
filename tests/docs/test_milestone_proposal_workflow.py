@@ -310,10 +310,6 @@ def _revise_plan(text: str) -> str:
         f"**{REVISED_FRONTIER}**",
         1,
     ).replace(
-        f"- Path: `{CURRENT_FRONTIER}` → `{NEXT_FRONTIER}`",
-        f"- Path: `{REVISED_FRONTIER}` → `{NEXT_FRONTIER}`",
-        1,
-    ).replace(
         "Does repeated evidence follow one deterministic contract?",
         "Can independent plugins emit attributable shadow action proposals?",
         1,
@@ -944,8 +940,8 @@ class ReviewUnitTransitionTests(unittest.TestCase):
     def test_proposal_pr_may_rewire_remaining_path(self) -> None:
         inserted = "Capability inventory"
         head = self.proposal_head.replace(
-            f"- Path: `{CURRENT_FRONTIER}` → `{NEXT_FRONTIER}`",
-            f"- Path: `{CURRENT_FRONTIER}` → `{inserted}` → `{NEXT_FRONTIER}`",
+            f"- Path: `{NEXT_FRONTIER}`",
+            f"- Path: `{inserted}` → `{NEXT_FRONTIER}`",
             1,
         )
         node = f"""
@@ -1004,8 +1000,8 @@ class ReviewUnitTransitionTests(unittest.TestCase):
 
     def test_proposal_pr_cannot_delete_contracted_nodes(self) -> None:
         head = self.proposal_head.replace(
-            f"- Path: `{CURRENT_FRONTIER}` → `{NEXT_FRONTIER}`",
-            f"- Path: `{CURRENT_FRONTIER}`",
+            f"- Path: `{NEXT_FRONTIER}`",
+            "- Path: none",
             1,
         )
         start = head.index("#### Node:")

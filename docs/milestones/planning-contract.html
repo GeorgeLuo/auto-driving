@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="c44da8134c126c21cb4cec00572ea730fc73676a87e867838e74c8080633bd04">
+  <meta name="source-sha256" content="95ae272649c7e79ba2c910375fdf4cc5e2ee6579ba59aa97d2444d740ff14b61">
   <base target="_blank">
   <title>Milestone Planning And Delivery Contract</title>
   <style>
@@ -85,8 +85,8 @@ should require only a handful of milestone-plan edits:</p>
 <li>add one accepted-review-unit ledger row;</li>
 <li>update affected exit criteria;</li>
 <li>update unresolved risks;</li>
-<li>promote the successor already on the remaining path;</li>
-<li>leave remaining contracted nodes in place (do not delete them to make room).</li>
+<li>leave remaining work-order nodes in place (do not delete them to make room);</li>
+<li>return to idle so the next proposal selects current from the work order.</li>
 </ol>
 <p>Do not preserve redundant sections merely because they already exist.</p>
 <h2>Work-Unit Model</h2>
@@ -112,35 +112,37 @@ should require only a handful of milestone-plan edits:</p>
 <p>It identifies the milestone claim ready for active attention.</p>
 <p>The plan contains:</p>
 <ul>
-<li>a <strong>frontier map</strong> of named nodes;</li>
-<li>exactly one <strong>current</strong> node while the milestone is active;</li>
-<li>a <strong>remaining path</strong> through that map;</li>
-<li><strong>off-path</strong> nodes that were contracted but are not on the remaining path.</li>
+<li>a <strong>work order</strong> (<code>### Frontier Map</code>): durable named nodes and their remaining
+  walk;</li>
+<li>a <strong>current</strong> pointer, which may be idle (<code>**None**</code>);</li>
+<li><strong>off-path</strong> nodes that were contracted but are not on the remaining walk.</li>
 </ul>
-<p>The current cadence is a <strong>linked list</strong>: current → zero or more successors →
-closeout. Treat the map as a graph of durable nodes whose active walk is that
-list. Do not add branches, joins, or a picker until a real unit needs them.</p>
+<p>The work order is the sequence artifact. Current is selected from it. Completing
+a unit does <strong>not</strong> force work on its predecessor's successor.</p>
+<p>The current cadence is a <strong>linked list</strong> of remaining unstarted nodes. Treat the
+map as a graph of durable nodes whose active walk is that list. Do not add
+branches, joins, or a picker until a real unit needs them.</p>
 <p>Nodes persist. Introducing a frontier, or rewiring the remaining path, must not
 delete a previously contracted node. Move it off-path instead. Accepted work
-stays in the review-unit ledger; the map is for nodes that are current, still
-queued, or off-path.</p>
+stays in the review-unit ledger; the map is for nodes that are still queued or
+off-path. The current node is the pointer, not a second copy on the path.</p>
 <p>The frontier determines priority and readiness. It is not a detailed speculative
 roadmap and not a ticket backlog of uncontracted names.</p>
-<p>A node on the remaining path after current is not a name stub. It defines a
-minimal pre-implementation acceptance contract so promotion can open a proposal
-branch against a frozen scope rather than inventing the unit during coding.
-Full adversarial matrices, file impact, and exact validation are settled in
-that node's own proposal. A title with a vague likely question cannot sit on
-the path.</p>
-<p>Promote work to the <strong>current</strong> frontier only when it is:</p>
+<p>A node on the remaining path is not a name stub. It defines a minimal
+pre-implementation acceptance contract so a later proposal can select it as
+current. Full adversarial matrices, file impact, and exact validation are
+settled in that node's own proposal. A title with a vague likely question
+cannot sit on the path.</p>
+<p>Select a node as <strong>current</strong> only when it is:</p>
 <ol>
 <li><strong>contractable now</strong> through one review question; and</li>
 <li><strong>reviewable in one careful human pass</strong>.</li>
 </ol>
-<p>An empty successor (next slot <strong>None</strong>) is required while closeout is current.
-It is also honest when a named blocker prevents a contracted successor; then
-<code>advance</code> cannot run. Do not invent speculative scope merely to keep the path
-populated.</p>
+<p>Idle current is the normal state at milestone start, after a unit is accepted,
+and when the remaining path is empty. An empty remaining path is not a
+deadlock: the next proposal may introduce a node (including closeout). <code>advance</code>
+does not require a successor. Closeout is selected as current when the operator
+is ready to close, not because the previous unit queued it.</p>
 <p>Human review attention is the throughput limit. Prefer fewer sequential units
 that close a contractable edge over many named subdivisions that multiply
 handoffs.</p>
@@ -595,25 +597,25 @@ creating another feature-goal section.</p>
 progress, or completion-percentage sections. Those must be derivable from this
 table.</p>
 <h3>6. Current Delivery</h3>
-<p>Exactly one current frontier while a milestone is active, a frontier map of
-durable nodes, and one successor slot derived from the remaining path.</p>
-<p><strong>Frontier map</strong> records:</p>
+<p>A frontier map (the work-order artifact), a current pointer that may be idle,
+and a successor slot derived from the remaining path.</p>
+<p><strong>Frontier map</strong> records remaining unstarted work:</p>
 <ul>
-<li><strong>Path:</strong> current name, then remaining successors, in order, using <code>→</code>.
-  Cadence is <code>linked-list</code> until a later contract names another walk.</li>
-<li><strong>Node:</strong> one subsection per remaining successor, using the minimal
+<li><strong>Path:</strong> ordered remaining nodes, using <code>→</code>. Cadence is <code>linked-list</code>.
+  <code>Path: none</code> is legal while idle, including a fresh milestone.</li>
+<li><strong>Node:</strong> one subsection per remaining path name, using the minimal
   acceptance fields below.</li>
 <li><strong>Off-path:</strong> contracted nodes not on the remaining path, with the same
   fields plus an off-path reason. They remain on the map so a later proposal
   can put them back without re-authoring.</li>
 </ul>
-<p>The first path name must match the current frontier. The successor slot must
-match the second path name, or <strong>None</strong> when the path is only the current
-node. Closeout, if on the path, is last. Active plans require this section.
-Closed and blocked plans may use <code>Path: none</code>.</p>
+<p>The path does <strong>not</strong> include the current pointer. Current, if set, must not
+also appear as a remaining or off-path node. The successor slot is <code>path[0]</code>,
+or <strong>None</strong> when the path is empty. Closeout, if on the path, is last. Active
+plans require this section. Closed and blocked plans may use <code>Path: none</code>.</p>
 <pre><code class="language-markdown">### Frontier Map
 
-- Path: `Current unit` → `Successor` → `Milestone closeout`
+- Path: `Successor` → `Milestone closeout`
 - Cadence: linked-list
 
 #### Node: Successor
@@ -646,18 +648,24 @@ least:</p>
 <li><strong>prerequisite;</strong></li>
 <li><strong>concise non-goals</strong> (what must not leak into that unit).</li>
 </ul>
-<p>It is not started and must not yet have either branch or a PR. The acceptance
-boundary—question, owner, non-goals, and affected exit criteria—is frozen when
-that node becomes current and its proposal branch opens. Until then, the
-<strong>current proposal PR</strong> may add nodes, rewire the remaining path, move a
-not-yet-started node off-path, or update a not-yet-started node's minimal
-contract. Those path edits ride on the proposal. They are not a second review
-question and must not block accepting a bounded current unit. The current
-frontier's identity, question, owner, and kind stay frozen on that proposal
-except for the normal <code>proposal_in_review</code> transition fields.</p>
-<p>The current proposal cannot delete a contracted node. Implementation,
-amendment, and repair PRs may not edit the map or successor. The mechanical
-handoff may not invent a node.</p>
+<p>It is not started and must not yet have either branch or a PR. The <strong>proposal
+PR</strong> is the review surface for the work order. While opening a proposal
+(idle or <code>ready_for_proposal</code> → <code>proposal_in_review</code>), it may:</p>
+<ul>
+<li>add nodes;</li>
+<li>rewire the remaining path;</li>
+<li>move a not-yet-started node off-path;</li>
+<li>update a not-yet-started node's minimal contract;</li>
+<li>select current from the artifact (path[0] after that rewire, or a newly
+  introduced node).</li>
+</ul>
+<p>Those edits are not a second review question and must not block accepting a
+bounded selected unit. After the proposal is open, current identity, question,
+owner, and kind stay frozen except for the normal <code>proposal_in_review</code>
+transition fields. Remaining-path edits may continue on that same proposal.</p>
+<p>The proposal cannot delete a contracted node. Implementation, amendment, and
+repair PRs may not edit the map or current identity. The mechanical handoff
+may not invent a node or start the next unit.</p>
 <p>A name plus a vague “likely question” alone is not a candidate. Use an explicit
 empty successor instead:</p>
 <pre><code class="language-markdown">### Next-Frontier Candidate
@@ -667,20 +675,58 @@ empty successor instead:</p>
 - Reason: &lt;why another contract is not justified now&gt;
 - Revisit when: &lt;named evidence, decision, or closeout result&gt;
 </code></pre>
-<p>The empty successor opens no proposal or implementation branch. It is the
-required terminal state while closeout is current, and it may also be used
-while a named blocker prevents honest candidate selection.</p>
-<p><strong>Frontier handoff:</strong> closing the current frontier (accepting its review unit)
-always updates Current Delivery so the plan still answers “what is active?”
-and “what may be next?”. Promote the existing path successor to current (its
-pre-implementation contract becomes the current unit’s acceptance boundary).
-The rest of the remaining path stays. Do not wipe later contracted nodes, and
-do not invent one. The handoff receipt's <code>next_frontier.state</code> remains <code>none</code>
-because the map, not the receipt, owns successors. Do not leave Current
-Delivery without a current frontier while the milestone is active: closeout
-becomes current when it is the active review unit, and a bounded decision or
-evidence unit becomes current when more evidence is required to choose
-implementation work.</p>
+<p>The empty successor opens no proposal or implementation branch. It is honest
+at milestone start, after the last remaining node is selected as current, and
+when no further unit is contracted yet. It is required after closeout is
+current. It does not block <code>advance</code>.</p>
+<p><strong>Frontier handoff:</strong> accepting the current review unit records the ledger,
+criteria, and risks, then sets current to idle. Remaining work-order nodes
+stay. Do not promote a successor, wipe later contracted nodes, or invent one.
+The receipt's <code>next_frontier.state</code> remains <code>none</code> because the map, not the
+receipt, owns remaining work. The next proposal selects current from that
+artifact (or introduces the first/next node, including closeout).</p>
+<p>Windows:</p>
+<table>
+<thead>
+<tr>
+<th>Window</th>
+<th>Work order</th>
+<th>Current</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Fresh milestone</td>
+<td><code>Path: none</code> or unstarted nodes</td>
+<td>Idle</td>
+</tr>
+<tr>
+<td>Opening proposal</td>
+<td>May rewire, add, or select</td>
+<td>Becomes path[0] or a new node</td>
+</tr>
+<tr>
+<td>Implementation</td>
+<td>Frozen</td>
+<td>Frozen</td>
+</tr>
+<tr>
+<td>After <code>advance</code></td>
+<td>Unchanged remaining path</td>
+<td>Idle</td>
+</tr>
+<tr>
+<td>Closeout selected</td>
+<td>Empty remaining path</td>
+<td>Closeout</td>
+</tr>
+<tr>
+<td>After <code>close</code></td>
+<td><code>Path: none</code></td>
+<td>Idle / closed</td>
+</tr>
+</tbody>
+</table>
 <h3>7. Workflow History</h3>
 <p>Append-only state-transition ledger:</p>
 <table>
@@ -699,9 +745,12 @@ implementation work.</p>
 </tr>
 </tbody>
 </table>
-<p>The latest row must match the current frontier and its machine-readable workflow
-state. Preserve proposal acceptance and implementation acceptance as separate
-events.</p>
+<p>While current is set, the latest row must match that frontier and its
+machine-readable workflow state. Idle current (milestone start or after
+<code>advance</code>) need not match a live pointer; the latest row may be <code>accepted</code>.
+A new frontier may start at <code>proposal_in_review</code> when selected from the work
+order after <code>accepted</code> or idle. Preserve proposal acceptance and implementation
+acceptance as separate events.</p>
 <h3>8. Accepted Review Units</h3>
 <p>Append-only one-row-per-merged-PR ledger:</p>
 <table>
@@ -884,21 +933,17 @@ must match the current frontier's canonical plan value. This keeps the review
 focus stable across the proposal and implementation phases; changing the kind
 requires a reviewed plan revision before proposal work starts, not a PR-body
 reclassification during delivery.</p>
-<p>If the frozen <strong>current</strong> frontier is found to be wrong before proposal work
-starts, revise it in a separate plan-only review unit. Use a
-<code>m&lt;number&gt;/plan-&lt;slug&gt;</code> branch, keep the workflow state
-<code>ready_for_proposal</code>, and change only canonical <code>plan.md</code> plus generated
+<p>If milestone-level facts are wrong (objective, completion usage, exit-criterion
+identity, action policy), revise them in a separate plan-only review unit. Use
+a <code>m&lt;number&gt;/plan-&lt;slug&gt;</code> branch, keep the workflow state
+<code>ready_for_proposal</code> or idle, and change only canonical <code>plan.md</code> plus generated
 <code>plan.html</code>. Preserve accepted review-unit evidence and every existing <code>Met</code>
 criterion, append one Workflow History row whose evidence begins
-<code>Plan revision:</code>, and do not add a proposal, tests, or product code. The merged
-revision returns to the normal <code>ready_for_proposal</code> handoff; it does not count
-as proposal acceptance or authorize implementation.</p>
-<p>Plan revision is for milestone-level facts: objective, completion usage,
-exit-criterion identity, action policy, or replacing the current frontier
-before its proposal starts. It is not the ordinary way to insert a unit before
-closeout or to retarget the remaining path. Those edits belong on the current
-proposal PR. Prefer an empty successor over a plan-revision PR that only queues
-closeout early and will be replaced later.</p>
+<code>Plan revision:</code>, and do not add a proposal, tests, or product code.</p>
+<p>Retargeting remaining work, skipping a queued successor, inserting a unit, or
+selecting closeout belongs on the next proposal PR via the work-order artifact.
+Do not use a plan-revision PR for that. Do not implement a queued successor
+merely because the previous unit completed.</p>
 <p>If the accepted proposal is later shown to be materially insufficient, amend
 it before implementation acceptance instead of rewriting history or knowingly
 shipping the same gap into another frontier. Existing evidence of a
@@ -1212,14 +1257,11 @@ child PR matrix.</p>
 <pre><code class="language-sh">python3 docs/milestones/workflow.py status \
   --plan docs/milestones/&lt;number&gt;-&lt;slug&gt;/plan.md
 </code></pre>
-<p>When it reports <code>ready_for_proposal</code> but the <strong>current</strong> frontier identity,
-milestone objective, exit-criterion IDs, or action policy need review, create a
-<code>m&lt;number&gt;/plan-&lt;slug&gt;</code> branch and open a plan-only PR to the milestone branch.
-CI recognizes that reserved branch shape and rejects changes outside canonical
-<code>plan.md</code> and generated <code>plan.html</code>. After that PR merges, inspect status again
-and hand the revised frontier to the proposal author. Remaining-path and
-closeout-queue edits wait for that proposal PR unless the current unit itself
-is wrong.</p>
+<p>When it reports idle current or <code>ready_for_proposal</code>, the next proposal PR
+selects current from the work order (or introduces the first node). Use a
+<code>m&lt;number&gt;/plan-&lt;slug&gt;</code> branch only for milestone-level facts (objective,
+exit-criterion IDs, action policy). Remaining-path, skip-successor, and
+closeout-selection edits belong on the proposal PR.</p>
 <p>When it reports <code>ready_for_proposal</code>, create only the proposal branch:</p>
 <pre><code class="language-sh">python3 docs/milestones/workflow.py start-proposal \
   --plan docs/milestones/&lt;number&gt;-&lt;slug&gt;/plan.md \
@@ -1296,9 +1338,9 @@ head, merge commit, changed-file allowlist, accepted authorized review receipt
 attached to the exact proposal head, and matching review kind. Implementation
 completion asks GitHub to confirm the implementation PR, commit, and matching
 review kind, then limits criterion updates to the current frontier, prevents
-premature closeout, updates the accepted ledger and risks, promotes the
-path successor to <code>ready_for_proposal</code> without deleting remaining map nodes,
-records workflow history, and regenerates HTML.</p>
+premature closeout, updates the accepted ledger and risks, returns current
+to idle without deleting remaining map nodes, records workflow history, and
+regenerates HTML.</p>
 <p>CI runs <code>workflow.py validate-pr</code> when a PR is opened, synchronized, reopened,
 or its description is edited. It applies the frontier gate to PRs targeting a
 milestone branch and the adjunct gate to reserved adjunct PRs targeting the
@@ -1346,13 +1388,13 @@ unit beforehand. It must not introduce code, widen an acceptance contract,
 invent an unreviewed candidate, delete remaining map nodes, or change
 milestone scope. If the handoff needs judgment beyond the already reviewed
 plan state, stop; do not invent the successor in the receipt.</p>
-<p>The current proposal PR is the window to add nodes, rewire the remaining path,
-and update not-yet-started node contracts. That is not a second review
-question; current-PR acceptance does not depend on the rest of the milestone
-path being perfect. Implementation stays inside the accepted current contract
-and must not edit the map. After a successor is promoted, its own proposal may
-rewire what follows. When no successor is contractable, leave it empty rather
-than forcing one.</p>
+<p>The proposal PR is the window to edit the work-order artifact and to select
+current from it. That is not a second review question; current-PR acceptance
+does not depend on the rest of the milestone path being perfect.
+Implementation stays inside the accepted current contract and must not edit
+the map. After acceptance, current is idle; the next proposal may reorder,
+skip, or introduce the next node. When no successor is contracted, leave the
+path empty rather than forcing one.</p>
 <p>At milestone closeout:</p>
 <ol>
 <li>complete <code>closeout.md</code>;</li>

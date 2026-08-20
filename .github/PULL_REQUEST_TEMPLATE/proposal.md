@@ -8,9 +8,10 @@
 - Frontier:
 - Proposal artifact: `docs/milestones/<number>-<slug>/proposals/<frontier>.md`
 
-<!-- Remaining-path and not-yet-started map-node edits belong on this PR, not a
-     plan-revision PR. Do not delete contracted nodes. Path edits are not a
-     second review question. -->
+<!-- The work-order artifact (frontier map) is reviewed here. This PR may
+     rewire remaining path, add nodes, and select current from that artifact.
+     Completing the previous unit does not force this unit. Do not delete
+     contracted nodes. Path edits are not a second review question. -->
 
 ## Review Kind
 

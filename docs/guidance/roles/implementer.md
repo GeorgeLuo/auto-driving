@@ -22,9 +22,9 @@ proposal.
 
 ## Phase
 
-- In `ready_for_proposal`, author the proposal, required plan transition, and
-  any remaining-path or not-yet-started map-node edits. Load
-  [proposal-vs-implementation.md](../proposal-vs-implementation.md)
+- When current is idle or `ready_for_proposal`, author the proposal, required
+  plan transition, work-order edits, and current selection from that artifact.
+  Load [proposal-vs-implementation.md](../proposal-vs-implementation.md)
   and [review-unit.md](../review-unit.md).
 - In `ready_for_implementation`, implement only the accepted proposal. Load
   [proposal-vs-implementation.md](../proposal-vs-implementation.md) and

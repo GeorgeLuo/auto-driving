@@ -9,10 +9,11 @@ in the canonical contract. The contract wins if any wording conflicts.
 
 ## Phase Boundary
 
-- `ready_for_proposal`: proposal work may start; product implementation may not.
+- Idle current or `ready_for_proposal`: proposal work may start; product
+  implementation may not. The proposal selects current from the work order.
 - `proposal_in_review`: change the proposal, required plan transition, remaining
-  path, and not-yet-started map nodes. Do not change the current frontier
-  identity.
+  path, and not-yet-started map nodes. Current identity is frozen after the
+  proposal opens.
 - `ready_for_implementation`: implement only the exact accepted proposal.
 - `implementation_in_review`: reconcile product, tests, and documentation to
   that accepted scope. Do not edit the frontier map or successor.
@@ -28,9 +29,10 @@ or model may fill both roles, but only in separate branches and review phases.
 
 A proposal records the contract, owner, affected paths, adversarial matrix,
 assumptions, non-goals, file impact, validation plan, and expected handoff. It
-contains no implementation. It may add frontier-map nodes, rewire the remaining
-path, or move a not-yet-started node off-path. Those edits are not a second
-review question. It must not delete a contracted node.
+contains no implementation. It is the review surface for the work-order
+artifact: it may add nodes, rewire the remaining path, move a not-yet-started
+node off-path, and select current from that artifact. Those edits are not a
+second review question. It must not delete a contracted node.
 
 Before a proposal or amendment merges, a reviewer with current repository push
 authority submits a decisive GitHub review on its exact final head. `APPROVED`

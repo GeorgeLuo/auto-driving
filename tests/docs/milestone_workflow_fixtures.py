@@ -82,7 +82,7 @@ def ready_plan_text() -> str:
 
 ### Frontier Map
 
-- Path: `{CURRENT_FRONTIER}` → `{NEXT_FRONTIER}`
+- Path: `{NEXT_FRONTIER}`
 - Cadence: linked-list
 
 #### Node: {NEXT_FRONTIER}
@@ -185,8 +185,8 @@ def handoff_template() -> dict[str, object]:
         "risk_upsert": [],
         "next_frontier": {
             "state": "none",
-            "reason": "Closeout is current.",
-            "revisit_when": "Closeout decides what follows.",
+            "reason": "Between frontiers; remaining work is on the map.",
+            "revisit_when": "The next proposal selects a node from the work order.",
         },
     }
 

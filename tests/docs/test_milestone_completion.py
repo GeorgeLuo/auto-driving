@@ -227,11 +227,9 @@ class CompleteImplementationTests(unittest.TestCase):
                 render_docs=render,
             )
 
-            self.assertEqual(completed.current.name, NEXT_FRONTIER)
-            self.assertEqual(
-                completed.current.fields["workflow state"],
-                "ready_for_proposal",
-            )
+            self.assertTrue(completed.current.is_empty)
+            self.assertEqual(completed.next_frontier.name, NEXT_FRONTIER)
+            self.assertEqual(completed.frontier_map.path, (NEXT_FRONTIER,))
             self.assertEqual(self._git(root, "status", "--porcelain"), "")
             self.assertEqual(
                 self._git(root, "log", "-1", "--format=%s"),

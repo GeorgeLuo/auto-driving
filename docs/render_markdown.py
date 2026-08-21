@@ -13,7 +13,11 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from docs.milestones.workflow import PlanContractError, validate_plan_path
+from docs.milestones.workflow import (
+    PlanContractError,
+    render_plan_text,
+    validate_plan_path,
+)
 
 try:
     import markdown
@@ -60,8 +64,13 @@ def render_document(document: RenderedMarkdown) -> str:
     source_text = document.source.read_text(encoding="utf-8")
     digest = source_digest(source_text)
     source_href = Path(os.path.relpath(document.source, document.target.parent)).as_posix()
+    rendered_text = (
+        render_plan_text(source_text)
+        if document.source.name == "plan.md"
+        else source_text
+    )
     body = markdown.markdown(
-        source_text,
+        rendered_text,
         extensions=("extra", "sane_lists", "tables"),
         output_format="html5",
     )

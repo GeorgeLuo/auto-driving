@@ -6,9 +6,17 @@ import unittest
 from pathlib import Path
 
 from docs.milestones.workflow import (
+    apply_handoff,
     parse_table,
     validate_plan_path,
+    validate_plan_text,
     validate_repair_cycle_governance_body,
+)
+from tests.docs.milestone_workflow_fixtures import (
+    NEXT_FRONTIER,
+    handoff_receipt,
+    implementation_review_plan_text,
+    ready_plan_text,
 )
 
 
@@ -109,7 +117,6 @@ class MilestonePlanningTests(unittest.TestCase):
             "## Exit Criteria",
             "## Current Delivery",
             "### Current Frontier",
-            "### Next-Frontier Candidate",
             "## Workflow History",
             "## Accepted Review Units",
             "## Open Risks And Unverified Assumptions",
@@ -117,6 +124,30 @@ class MilestonePlanningTests(unittest.TestCase):
             "## Closeout",
         ):
             self.assertIn(heading, text, f"missing section {heading}")
+        if "### Frontier Map" not in text:
+            self.assertIn("### Next-Frontier Candidate", text)
+            state = validate_plan_path(plan_md)
+            expected_path = (
+                (state.next_frontier.name,)
+                if not state.next_frontier.is_empty
+                else ()
+            )
+            self.assertEqual(state.frontier_map.path, expected_path)
+
+    def test_legacy_active_plan_shape_uses_bounded_map_adoption(self) -> None:
+        source = ready_plan_text()
+        start = source.index("### Frontier Map")
+        end = source.index("## Workflow History", start)
+        legacy = source[:start] + source[end:]
+
+        self.assertNotIn("### Frontier Map", legacy)
+        state = validate_plan_text(legacy)
+        self.assertEqual(state.status, "Active")
+        self.assertEqual(state.frontier_map.path, (NEXT_FRONTIER,))
+        self.assertEqual(
+            tuple(node.name for node in state.frontier_map.nodes),
+            (NEXT_FRONTIER,),
+        )
 
     def test_completion_usage_starts_with_primary_demonstration(self) -> None:
         paths = _active_plan_paths()
@@ -140,11 +171,12 @@ class MilestonePlanningTests(unittest.TestCase):
             return
         plan_md, _ = paths
         state = validate_plan_path(plan_md)
-        self.assertFalse(state.current.is_empty)
-        # Terminal closeout may leave next empty; otherwise at most one named next.
+        if state.current.is_empty:
+            self.assertTrue(state.current.fields.get("reason"))
+        else:
+            self.assertTrue(state.current.fields["review question"])
         if not state.next_frontier.is_empty:
             self.assertTrue(state.next_frontier.fields["review question"])
-        self.assertTrue(state.current.fields["review question"])
         self.assertTrue(state.milestone_branch.startswith("milestone/"))
 
     def test_active_plan_exit_criteria_use_stable_ids(self) -> None:
@@ -216,6 +248,7 @@ class MilestonePlanningTests(unittest.TestCase):
         self.assertIn("## Review Kind", text)
         self.assertIn("## Operator Want", text)
         self.assertIn("## Evidence rendering", text)
+        self.assertIn("work-order artifact", text)
         self.assertIn("- Evidence directory (if yes):", text)
         self.assertIn("repository-relative directory path", text)
         self.assertIn("Trust And Authority Model", text)
@@ -393,28 +426,27 @@ class MilestonePlanningTests(unittest.TestCase):
         self.assertIn("Frontier handoff:", text)
         self.assertIn("docs/milestones/workflow.py complete-implementation", text)
         self.assertIn("handoff --receipt <path>", text)
-        self.assertIn("docs/milestones/workflow.py start-proposal", text)
         self.assertIn("docs/milestones/workflow.py accept-proposal", text)
-        self.assertIn(
-            "docs/milestones/workflow.py start-proposal-amendment",
-            text,
-        )
         self.assertIn(
             "docs/milestones/workflow.py accept-proposal-amendment",
             text,
         )
-        self.assertIn("docs/milestones/workflow.py start-implementation", text)
+        self.assertIn("git switch -c", text)
+        self.assertIn("optional helpers", text)
         self.assertIn("merge commit that is not already an ancestor", normalized)
-        self.assertIn("promotes the reviewed next candidate", normalized)
+        self.assertIn("sets current to idle", text)
 
     def test_contract_requires_next_frontier_minimal_acceptance_contract(self) -> None:
         text = CONTRACT_SOURCE.read_text(encoding="utf-8")
         normalized = " ".join(text.split())
         self.assertIn("pre-implementation acceptance contract", text)
-        self.assertIn("frozen before the proposal branch opens", normalized)
+        self.assertIn("select current from the artifact", normalized)
         self.assertIn("enforcement or acceptance owner", text)
         self.assertIn("A name plus a vague “likely question” alone is not a candidate", text)
-        self.assertIn("empty next-frontier slot", text)
+        self.assertIn("empty remaining path", text)
+        self.assertIn("### Frontier Map", text)
+        self.assertIn("linked-list", text)
+        self.assertIn("cannot delete a contracted node", text)
 
     def test_contract_requires_one_primary_completion_demonstration(self) -> None:
         text = CONTRACT_SOURCE.read_text(encoding="utf-8")
@@ -427,7 +459,9 @@ class MilestonePlanningTests(unittest.TestCase):
             return
         plan_md, _ = paths
         state = validate_plan_path(plan_md)
-        frontiers = [state.current]
+        frontiers = []
+        if not state.current.is_empty:
+            frontiers.append(state.current)
         if not state.next_frontier.is_empty:
             frontiers.append(state.next_frontier)
         for frontier in frontiers:
@@ -443,13 +477,24 @@ class MilestonePlanningTests(unittest.TestCase):
                 "non-goals",
             ):
                 self.assertTrue(frontier.fields[field], f"missing frontier field {field}")
-        # Active frontier may be anywhere in the proposal/implementation machine.
         from docs.milestones.workflow import WORKFLOW_STATES
 
-        self.assertIn(
-            state.current.fields["workflow state"],
-            WORKFLOW_STATES,
+        if state.current.is_empty:
+            self.assertTrue(state.current.fields.get("reason"))
+        else:
+            self.assertIn(
+                state.current.fields["workflow state"],
+                WORKFLOW_STATES,
+            )
+
+    def test_repository_accepts_active_idle_current(self) -> None:
+        state = validate_plan_text(
+            apply_handoff(implementation_review_plan_text(), handoff_receipt())
         )
+        self.assertEqual(state.status, "Active")
+        self.assertTrue(state.current.is_empty)
+        self.assertEqual(state.next_frontier.name, NEXT_FRONTIER)
+        self.assertEqual(state.frontier_map.path, (NEXT_FRONTIER,))
 
 
 if __name__ == "__main__":

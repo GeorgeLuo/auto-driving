@@ -11,11 +11,15 @@ from pathlib import Path
 
 from docs.milestones.workflow import (
     ContractReviewReceipt,
+    Frontier,
+    FrontierMap,
     PlanContractError,
+    apply_handoff,
     RepairReviewMetadata,
     _require_merged_head_unchanged,
     _fetch_pr_repair_review_metadata,
     _fetch_pr_review_metadata,
+    _cmd_validate_pr,
     accept_proposal,
     accept_proposal_amendment,
     start_implementation_branch,
@@ -29,6 +33,10 @@ from docs.milestones.workflow import (
     validate_repair_cycle_governance_body,
     validate_review_unit_transition,
     validate_review_unit_git_diff,
+    _frontier_body,
+    _replace_frontier,
+    _replace_frontier_map,
+    _replace_header_value,
 )
 from tests.docs.milestone_workflow_fixtures import (
     CURRENT_CRITERION,
@@ -36,11 +44,14 @@ from tests.docs.milestone_workflow_fixtures import (
     IMPLEMENTATION_ADJUNCT_BRANCH,
     IMPLEMENTATION_BRANCH,
     MILESTONE_BRANCH,
+    NEXT_FRONTIER,
+    NEXT_PROPOSAL_BRANCH,
     PLAN_RELATIVE,
     PROPOSAL_AMENDMENT_BRANCH,
     PROPOSAL_AMENDMENT_RELATIVE,
     PROPOSAL_BRANCH,
     PROPOSAL_RELATIVE,
+    handoff_receipt,
     implementation_adjunct_body,
     implementation_review_plan_text,
     proposal_amendment_text,
@@ -299,24 +310,42 @@ def _move_to_review(text: str, *, implementation: bool = False) -> str:
     )
 
 
+def _terminal_plan(text: str, status: str) -> str:
+    empty = Frontier(
+        name=None,
+        fields={
+            "reason": f"{status} milestone is not proposal-eligible.",
+            "revisit when": "A separate activation or resume route is defined.",
+        },
+    )
+    updated = _replace_header_value(text, "Status", status)
+    updated = _replace_header_value(updated, "Current frontier", "None")
+    updated = _replace_frontier(
+        updated,
+        "### Current Frontier",
+        _frontier_body(empty, current=True),
+    )
+    updated = _replace_frontier(
+        updated,
+        "### Next-Frontier Candidate",
+        _frontier_body(empty, current=False),
+    )
+    return _replace_frontier_map(
+        updated,
+        FrontierMap(path=(), cadence="linked-list", nodes=(), off_path=()),
+    )
+
+
 def _revise_plan(text: str) -> str:
     revised = text.replace(
-        f"| Current frontier | {CURRENT_FRONTIER} |",
-        f"| Current frontier | {REVISED_FRONTIER} |",
-        1,
-    ).replace(
-        f"**{CURRENT_FRONTIER}**",
-        f"**{REVISED_FRONTIER}**",
-        1,
-    ).replace(
-        "Does repeated evidence follow one deterministic contract?",
-        "Can independent plugins emit attributable shadow action proposals?",
+        "| Process state is local | Restart continuity is absent | Explicit non-goal |",
+        "| Process state is local | Restart continuity is absent | Documented handoff |",
         1,
     )
     return revised.replace(
         "\n\n## Accepted Review Units",
-        f"\n| {REVISED_FRONTIER} | ready_for_proposal | "
-        "Plan revision: scope replaced before proposal authoring. |"
+        f"\n| {CURRENT_FRONTIER} | ready_for_proposal | "
+        "Plan revision: documented the handoff risk. |"
         "\n\n## Accepted Review Units",
         1,
     )
@@ -897,7 +926,7 @@ class WorkflowStateContractTests(unittest.TestCase):
     def test_preproposal_plan_revision_preserves_history(self) -> None:
         state = validate_plan_text(_revise_plan(self.plan))
 
-        self.assertEqual(state.current.name, REVISED_FRONTIER)
+        self.assertEqual(state.current.name, CURRENT_FRONTIER)
         self.assertEqual(
             state.workflow_history.rows[-2:],
             (
@@ -907,9 +936,9 @@ class WorkflowStateContractTests(unittest.TestCase):
                     "Synthetic frontier is ready.",
                 ),
                 (
-                    REVISED_FRONTIER,
+                    CURRENT_FRONTIER,
                     "ready_for_proposal",
-                    "Plan revision: scope replaced before proposal authoring.",
+                    "Plan revision: documented the handoff risk.",
                 ),
             ),
         )
@@ -919,6 +948,27 @@ class ReviewUnitTransitionTests(unittest.TestCase):
     def setUp(self) -> None:
         self.base = ready_plan_text()
         self.proposal_head = _move_to_review(self.base)
+
+    def test_opening_proposal_rejects_non_active_empty_base(self) -> None:
+        for status in ("Blocked", "pre-plan", "closed"):
+            with self.subTest(status=status):
+                with self.assertRaisesRegex(
+                    PlanContractError,
+                    "opening proposal requires an Active milestone",
+                ):
+                    validate_review_unit_transition(
+                        _terminal_plan(self.base, status),
+                        self.proposal_head,
+                        plan_path=PLAN_RELATIVE,
+                        changed_paths={
+                            PLAN_RELATIVE,
+                            str(Path(PLAN_RELATIVE).with_suffix(".html")),
+                            PROPOSAL_RELATIVE,
+                        },
+                        head_branch=PROPOSAL_BRANCH,
+                        proposal_text=proposal_text(),
+                        pr_body=_review_unit_body(),
+                    )
 
     def test_proposal_pr_is_documentation_only(self) -> None:
         transition = validate_review_unit_transition(
@@ -935,6 +985,163 @@ class ReviewUnitTransitionTests(unittest.TestCase):
             pr_body=_review_unit_body(),
         )
         self.assertEqual(transition, "proposal")
+
+    def test_opening_proposal_can_edit_current_before_contract_receipt(self) -> None:
+        changed = self.proposal_head.replace(
+            "Does repeated evidence follow one deterministic contract?",
+            "Does the revised evidence follow one deterministic contract?",
+            1,
+        )
+
+        transition = validate_review_unit_transition(
+            self.base,
+            changed,
+            plan_path=PLAN_RELATIVE,
+            changed_paths={
+                PLAN_RELATIVE,
+                str(Path(PLAN_RELATIVE).with_suffix(".html")),
+                PROPOSAL_RELATIVE,
+            },
+            head_branch=PROPOSAL_BRANCH,
+            proposal_text=proposal_text(),
+            pr_body=_review_unit_body(),
+        )
+
+        self.assertEqual(transition, "proposal")
+
+    def test_proposal_pr_may_rewire_remaining_path(self) -> None:
+        inserted = "Capability inventory"
+        head = self.proposal_head.replace(
+            f"- Path: `{NEXT_FRONTIER}`",
+            f"- Path: `{inserted}` → `{NEXT_FRONTIER}`",
+            1,
+        )
+        node = f"""
+#### Node: {inserted}
+
+- Proposal branch: `m900/inventory-proposal`
+- Implementation branch: `m900/inventory`
+- Proposal path: `docs/milestones/900-workflow-fixture/proposals/inventory.md`
+- Review kind: Deterministic invariant closure
+- Review question: Are unreached regions grouped?
+- Acceptance owner: Inventory validator
+- Exit criteria affected: M900-02
+- Prerequisite: Current policy is accepted
+- Non-goals: Product deletion
+"""
+        head = head.replace(
+            f"#### Node: {NEXT_FRONTIER}",
+            node + f"#### Node: {NEXT_FRONTIER}",
+            1,
+        )
+        next_block = f"""**{inserted}**
+
+- Proposal branch: `m900/inventory-proposal`
+- Implementation branch: `m900/inventory`
+- Proposal path: `docs/milestones/900-workflow-fixture/proposals/inventory.md`
+- Review kind: Deterministic invariant closure
+- Review question: Are unreached regions grouped?
+- Acceptance owner: Inventory validator
+- Exit criteria affected: M900-02
+- Prerequisite: Current policy is accepted
+- Non-goals: Product deletion
+"""
+        start = head.index("### Next-Frontier Candidate")
+        end = head.index("### Frontier Map")
+        head = (
+            head[:start]
+            + "### Next-Frontier Candidate\n\n"
+            + next_block
+            + "\n"
+            + head[end:]
+        )
+        transition = validate_review_unit_transition(
+            self.base,
+            head,
+            plan_path=PLAN_RELATIVE,
+            changed_paths={
+                PLAN_RELATIVE,
+                str(Path(PLAN_RELATIVE).with_suffix(".html")),
+                PROPOSAL_RELATIVE,
+            },
+            head_branch=PROPOSAL_BRANCH,
+            proposal_text=proposal_text(),
+            pr_body=_review_unit_body(),
+        )
+        self.assertEqual(transition, "proposal")
+
+    def test_proposal_pr_cannot_delete_contracted_nodes(self) -> None:
+        head = self.proposal_head.replace(
+            f"- Path: `{NEXT_FRONTIER}`",
+            "- Path: none",
+            1,
+        )
+        start = head.index("#### Node:")
+        end = head.index("## Workflow History")
+        head = head[:start] + head[end:]
+        start = head.index("### Next-Frontier Candidate")
+        end = head.index("### Frontier Map")
+        head = (
+            head[:start]
+            + "### Next-Frontier Candidate\n\n**None**\n\n"
+            "- Reason: No successor is contracted yet.\n"
+            "- Revisit when: Closeout is queued on a later proposal.\n\n"
+            + head[end:]
+        )
+        with self.assertRaisesRegex(
+            PlanContractError,
+            "cannot delete contracted frontier nodes",
+        ):
+            validate_review_unit_transition(
+                self.base,
+                head,
+                plan_path=PLAN_RELATIVE,
+                changed_paths={
+                    PLAN_RELATIVE,
+                    str(Path(PLAN_RELATIVE).with_suffix(".html")),
+                    PROPOSAL_RELATIVE,
+                },
+                head_branch=PROPOSAL_BRANCH,
+                proposal_text=proposal_text(),
+                pr_body=_review_unit_body(),
+            )
+
+    def test_implementation_pr_cannot_change_frontier_map(self) -> None:
+        base = _accepted_plan()
+        parked = """
+#### Off-path: Parked later unit
+
+- Proposal branch: `m900/parked-proposal`
+- Implementation branch: `m900/parked`
+- Proposal path: `docs/milestones/900-workflow-fixture/proposals/parked.md`
+- Review kind: Deterministic invariant closure
+- Review question: Should this remain off-path?
+- Acceptance owner: Parked owner
+- Exit criteria affected: M900-02
+- Prerequisite: Current policy is accepted
+- Non-goals: Product deletion
+- Off-path reason: Discovered during implementation and parked
+"""
+        head = _move_to_review(base, implementation=True).replace(
+            "\n## Workflow History",
+            parked + "\n## Workflow History",
+            1,
+        )
+        with self.assertRaisesRegex(
+            PlanContractError,
+            "cannot change the frontier map",
+        ):
+            validate_review_unit_transition(
+                base,
+                head,
+                plan_path=PLAN_RELATIVE,
+                changed_paths={
+                    PLAN_RELATIVE,
+                    "implementations/memory/bounded_evidence.py",
+                },
+                head_branch=IMPLEMENTATION_BRANCH,
+                pr_body=_review_unit_body(),
+            )
 
     def test_proposal_pr_review_kind_must_match_plan(self) -> None:
         with self.assertRaisesRegex(PlanContractError, "does not match"):
@@ -999,7 +1206,55 @@ class ReviewUnitTransitionTests(unittest.TestCase):
                 pr_body=body,
             )
 
-    def test_plan_revision_can_replace_unstarted_frontier(self) -> None:
+    def test_proposal_pr_must_write_frontier_map(self) -> None:
+        start = self.proposal_head.index("### Frontier Map")
+        end = self.proposal_head.index("## Workflow History")
+        head = self.proposal_head[:start] + self.proposal_head[end:]
+        with self.assertRaisesRegex(
+            PlanContractError,
+            "proposal PR must write ### Frontier Map",
+        ):
+            validate_review_unit_transition(
+                self.base,
+                head,
+                plan_path=PLAN_RELATIVE,
+                changed_paths={
+                    PLAN_RELATIVE,
+                    str(Path(PLAN_RELATIVE).with_suffix(".html")),
+                    PROPOSAL_RELATIVE,
+                },
+                head_branch=PROPOSAL_BRANCH,
+                proposal_text=proposal_text(),
+                pr_body=_review_unit_body(),
+            )
+
+    def test_proposal_cannot_change_current_after_contract_receipt(self) -> None:
+        frozen = validate_plan_text(self.proposal_head).current
+        changed = self.proposal_head.replace(
+            "Does repeated evidence follow one deterministic contract?",
+            "Did the review question move after the receipt?",
+            1,
+        )
+        with self.assertRaisesRegex(
+            PlanContractError,
+            "cannot change frozen current field 'review question'",
+        ):
+            validate_review_unit_transition(
+                self.base,
+                changed,
+                plan_path=PLAN_RELATIVE,
+                changed_paths={
+                    PLAN_RELATIVE,
+                    str(Path(PLAN_RELATIVE).with_suffix(".html")),
+                    PROPOSAL_RELATIVE,
+                },
+                head_branch=PROPOSAL_BRANCH,
+                proposal_text=proposal_text(),
+                pr_body=_review_unit_body(),
+                frozen_current=frozen,
+            )
+
+    def test_plan_revision_can_edit_milestone_facts(self) -> None:
         transition = validate_review_unit_transition(
             self.base,
             _revise_plan(self.base),
@@ -1012,6 +1267,37 @@ class ReviewUnitTransitionTests(unittest.TestCase):
         )
 
         self.assertEqual(transition, "plan_revision")
+
+    def test_plan_revision_cannot_change_current_or_work_order(self) -> None:
+        renamed = self.base.replace(
+            f"| Current frontier | {CURRENT_FRONTIER} |",
+            f"| Current frontier | {REVISED_FRONTIER} |",
+            1,
+        ).replace(
+            f"**{CURRENT_FRONTIER}**",
+            f"**{REVISED_FRONTIER}**",
+            1,
+        ).replace(
+            "\n\n## Accepted Review Units",
+            f"\n| {REVISED_FRONTIER} | ready_for_proposal | "
+            "Plan revision: renamed the current frontier. |"
+            "\n\n## Accepted Review Units",
+            1,
+        )
+        with self.assertRaisesRegex(
+            PlanContractError,
+            "cannot change the current frontier",
+        ):
+            validate_review_unit_transition(
+                self.base,
+                renamed,
+                plan_path=PLAN_RELATIVE,
+                changed_paths={
+                    PLAN_RELATIVE,
+                    str(Path(PLAN_RELATIVE).with_suffix(".html")),
+                },
+                head_branch=PLAN_REVISION_BRANCH,
+            )
 
     def test_plan_revision_normalizes_markdown_formatted_workflow_state(self) -> None:
         formatted_base = self.base.replace(
@@ -1066,7 +1352,7 @@ class ReviewUnitTransitionTests(unittest.TestCase):
         started = _move_to_review(self.base)
         with self.assertRaisesRegex(
             PlanContractError,
-            "requires ready_for_proposal before and after review",
+            "unavailable after proposal work has started",
         ):
             validate_review_unit_transition(
                 started,
@@ -1126,7 +1412,7 @@ class ReviewUnitTransitionTests(unittest.TestCase):
     def test_plan_revision_requires_reserved_branch(self) -> None:
         with self.assertRaisesRegex(
             PlanContractError,
-            "cannot replace the current frontier",
+            "cannot pre-claim risk resolution",
         ):
             validate_review_unit_transition(
                 self.base,
@@ -1204,24 +1490,29 @@ class ReviewUnitTransitionTests(unittest.TestCase):
                 proposal_text=proposal_text(),
             )
 
-    def test_proposal_pr_cannot_rewrite_frozen_non_goals(self) -> None:
+    def test_opening_proposal_can_rewrite_non_goals_before_contract_receipt(
+        self,
+    ) -> None:
         changed_contract = self.proposal_head.replace(
             "Semantic identity",
             "Anything the implementer chooses",
             1,
         )
-        with self.assertRaisesRegex(
-            PlanContractError,
-            "changed frozen frontier field 'non-goals'",
-        ):
-            validate_review_unit_transition(
-                self.base,
-                changed_contract,
-                plan_path=PLAN_RELATIVE,
-                changed_paths={PLAN_RELATIVE, PROPOSAL_RELATIVE},
-                head_branch=PROPOSAL_BRANCH,
-                proposal_text=proposal_text(),
-            )
+        transition = validate_review_unit_transition(
+            self.base,
+            changed_contract,
+            plan_path=PLAN_RELATIVE,
+            changed_paths={
+                PLAN_RELATIVE,
+                str(Path(PLAN_RELATIVE).with_suffix(".html")),
+                PROPOSAL_RELATIVE,
+            },
+            head_branch=PROPOSAL_BRANCH,
+            proposal_text=proposal_text(),
+            pr_body=_review_unit_body(),
+        )
+
+        self.assertEqual(transition, "proposal")
 
     def test_proposal_amendment_is_additive_contract_only(self) -> None:
         accepted = _accepted_plan()
@@ -2231,6 +2522,275 @@ class ReviewUnitGitDiffTests(unittest.TestCase):
 
             self.assertEqual(transition, "proposal")
 
+    def test_git_diff_gate_rejects_opening_from_non_active_empty_base(self) -> None:
+        for status in ("Blocked", "pre-plan", "closed"):
+            with self.subTest(status=status), tempfile.TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir)
+                plan = root / PLAN_RELATIVE
+                plan.parent.mkdir(parents=True)
+                plan.write_text(
+                    _terminal_plan(ready_plan_text(), status),
+                    encoding="utf-8",
+                )
+                self._git(root, "init", "-b", MILESTONE_BRANCH)
+                self._git(root, "add", ".")
+                self._git(
+                    root,
+                    "-c",
+                    "user.name=Milestone Test",
+                    "-c",
+                    "user.email=milestone@example.invalid",
+                    "commit",
+                    "-m",
+                    f"create {status} milestone",
+                )
+                base_sha = self._git(root, "rev-parse", "HEAD")
+                self._git(root, "switch", "-c", PROPOSAL_BRANCH)
+                plan.write_text(
+                    _move_to_review(ready_plan_text()),
+                    encoding="utf-8",
+                )
+                proposal = root / PROPOSAL_RELATIVE
+                proposal.parent.mkdir(parents=True)
+                proposal.write_text(proposal_text(), encoding="utf-8")
+                self._git(root, "add", ".")
+                self._git(
+                    root,
+                    "-c",
+                    "user.name=Milestone Test",
+                    "-c",
+                    "user.email=milestone@example.invalid",
+                    "commit",
+                    "-m",
+                    "attempt proposal from terminal state",
+                )
+
+                with self.assertRaisesRegex(
+                    PlanContractError,
+                    "opening proposal requires an Active milestone",
+                ):
+                    validate_review_unit_git_diff(
+                        base_ref=MILESTONE_BRANCH,
+                        head_ref=PROPOSAL_BRANCH,
+                        base_sha=base_sha,
+                        head_sha=self._git(root, "rev-parse", "HEAD"),
+                        pr_body=_review_unit_body(),
+                        repo_root=root,
+                    )
+
+    def test_git_diff_gate_freezes_current_against_first_receipt_head(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            plan = root / PLAN_RELATIVE
+            plan.parent.mkdir(parents=True)
+            plan.write_text(ready_plan_text(), encoding="utf-8")
+            self._git(root, "init", "-b", MILESTONE_BRANCH)
+            self._git(root, "add", ".")
+            self._git(
+                root,
+                "-c",
+                "user.name=Milestone Test",
+                "-c",
+                "user.email=milestone@example.invalid",
+                "commit",
+                "-m",
+                "ready for proposal",
+            )
+            base_sha = self._git(root, "rev-parse", "HEAD")
+            self._git(root, "switch", "-c", PROPOSAL_BRANCH)
+            plan.write_text(
+                _move_to_review(plan.read_text(encoding="utf-8")),
+                encoding="utf-8",
+            )
+            proposal = root / PROPOSAL_RELATIVE
+            proposal.parent.mkdir(parents=True)
+            proposal.write_text(proposal_text(), encoding="utf-8")
+            self._git(root, "add", ".")
+            self._git(
+                root,
+                "-c",
+                "user.name=Milestone Test",
+                "-c",
+                "user.email=milestone@example.invalid",
+                "commit",
+                "-m",
+                "open proposal",
+            )
+            first_head = self._git(root, "rev-parse", "HEAD")
+
+            plan.write_text(
+                plan.read_text(encoding="utf-8").replace(
+                    "Does repeated evidence follow one deterministic contract?",
+                    "Did the review question move after the receipt?",
+                    1,
+                ),
+                encoding="utf-8",
+            )
+            self._git(root, "add", PLAN_RELATIVE)
+            self._git(
+                root,
+                "-c",
+                "user.name=Milestone Test",
+                "-c",
+                "user.email=milestone@example.invalid",
+                "commit",
+                "-m",
+                "retarget current after receipt",
+            )
+            second_head = self._git(root, "rev-parse", "HEAD")
+            metadata = RepairReviewMetadata(
+                pull_request_number=60,
+                pull_request_url=REPAIR_PR_URL,
+                pull_request_author=REPAIR_PR_AUTHOR,
+                head_oid=second_head,
+                commits=(base_sha, first_head, second_head),
+                reviews=(
+                    _contract_receipt_review(
+                        head_oid=first_head,
+                        outcome="changes_requested",
+                    ),
+                ),
+            )
+
+            with self.assertRaisesRegex(
+                PlanContractError,
+                "cannot change frozen current field 'review question'",
+            ):
+                validate_review_unit_git_diff(
+                    base_ref=MILESTONE_BRANCH,
+                    head_ref=PROPOSAL_BRANCH,
+                    base_sha=base_sha,
+                    head_sha=second_head,
+                    pr_body=_review_unit_body(),
+                    repair_review_metadata=metadata,
+                    repo_root=root,
+                )
+
+    def test_git_diff_gate_opens_proposal_from_idle(self) -> None:
+        from tests.docs.test_milestone_workflow import _select_work_order_head
+
+        closeout_proposal = """# Proposal: Milestone closeout
+
+## Review Kind
+
+Milestone closeout
+
+## Review Question
+
+Is the synthetic milestone complete?
+
+## Proposed Contract
+
+Close the fixture.
+
+## Ownership
+
+Closeout.
+
+## Affected Paths
+
+Plan.
+
+## Adversarial Matrix
+
+| Case | Expected |
+| --- | --- |
+| Unmet criterion | Fail |
+
+## External Assumptions
+
+None.
+
+## Non-Goals
+
+New runtime.
+
+## File Impact
+
+closeout.md
+
+## Validation Plan
+
+Plan validation.
+
+## Expected Handoff
+
+```json
+{
+  "schema": "milestone_handoff_template_v1",
+  "outcome": "close",
+  "result": "Accepted",
+  "durable_evidence": "closeout.md",
+  "criterion_updates": {
+    "M900-03": {
+      "status": "Met",
+      "evidence": "Closed in PR #{pr}"
+    }
+  },
+  "risk_remove": [],
+  "risk_upsert": [],
+  "next_frontier": {
+    "state": "none",
+    "reason": "Closed.",
+    "revisit_when": "Next milestone."
+  }
+}
+```
+"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            plan = root / PLAN_RELATIVE
+            plan.parent.mkdir(parents=True)
+            idle = apply_handoff(
+                implementation_review_plan_text(),
+                handoff_receipt(),
+            )
+            plan.write_text(idle, encoding="utf-8")
+            self._git(root, "init", "-b", MILESTONE_BRANCH)
+            self._git(root, "add", ".")
+            self._git(
+                root,
+                "-c",
+                "user.name=Milestone Test",
+                "-c",
+                "user.email=milestone@example.invalid",
+                "commit",
+                "-m",
+                "idle after implementation",
+            )
+            base_sha = self._git(root, "rev-parse", "HEAD")
+            self._git(root, "switch", "-c", NEXT_PROPOSAL_BRANCH)
+            plan.write_text(
+                _select_work_order_head(idle, workflow_state="proposal_in_review"),
+                encoding="utf-8",
+            )
+            proposal = (
+                root
+                / "docs/milestones/900-workflow-fixture/proposals/closeout.md"
+            )
+            proposal.parent.mkdir(parents=True, exist_ok=True)
+            proposal.write_text(closeout_proposal, encoding="utf-8")
+            self._git(root, "add", ".")
+            self._git(
+                root,
+                "-c",
+                "user.name=Milestone Test",
+                "-c",
+                "user.email=milestone@example.invalid",
+                "commit",
+                "-m",
+                "select closeout from idle work order",
+            )
+            transition = validate_review_unit_git_diff(
+                base_ref=MILESTONE_BRANCH,
+                head_ref=NEXT_PROPOSAL_BRANCH,
+                base_sha=base_sha,
+                head_sha=self._git(root, "rev-parse", "HEAD"),
+                pr_body=_review_unit_body("Milestone closeout"),
+                repo_root=root,
+            )
+            self.assertEqual(transition, "proposal")
+
     def test_git_diff_gate_recognizes_plan_revision(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -2428,6 +2988,52 @@ class ReviewUnitGitDiffTests(unittest.TestCase):
                 transitioned.current.fields["implementation branch"],
                 f"`{IMPLEMENTATION_BRANCH}`",
             )
+
+
+class ValidatePrCommandTests(unittest.TestCase):
+    def test_event_validation_fetches_zero_cycle_review_history(self) -> None:
+        metadata = RepairReviewMetadata(
+            pull_request_number=60,
+            pull_request_url=REPAIR_PR_URL,
+            pull_request_author=REPAIR_PR_AUTHOR,
+            head_oid="a" * 40,
+            commits=("a" * 40,),
+            reviews=(),
+        )
+        payload = {
+            "pull_request": {
+                "number": 60,
+                "body": _review_unit_body(),
+            }
+        }
+        with tempfile.TemporaryDirectory() as temp_dir:
+            event_path = Path(temp_dir) / "event.json"
+            event_path.write_text(json.dumps(payload), encoding="utf-8")
+            with (
+                mock.patch(
+                    "docs.milestones.workflow._fetch_pr_repair_review_metadata",
+                    return_value=metadata,
+                ) as fetch_metadata,
+                mock.patch(
+                    "docs.milestones.workflow.validate_review_unit_git_diff",
+                    return_value="proposal",
+                ) as validate_diff,
+            ):
+                result = _cmd_validate_pr(
+                    base_ref=MILESTONE_BRANCH,
+                    head_ref=PROPOSAL_BRANCH,
+                    base_sha="b" * 40,
+                    head_sha="a" * 40,
+                    event_path=event_path,
+                    body_path=None,
+                )
+
+        self.assertEqual(result, 0)
+        fetch_metadata.assert_called_once_with(60)
+        self.assertIs(
+            validate_diff.call_args.kwargs["repair_review_metadata"],
+            metadata,
+        )
 
 
 if __name__ == "__main__":

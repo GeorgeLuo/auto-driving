@@ -130,10 +130,11 @@ deletion; it does not retroactively widen the accepted primary journey.
 
 **Capability disposition outside CLI journeys**
 
-- Workflow state: proposal_in_review
+- Workflow state: ready_for_implementation
 - Proposal branch: `m007/capability-disposition-proposal`
 - Implementation branch: `m007/capability-disposition`
 - Proposal path: `docs/milestones/007-cli-operator-usability/proposals/capability-disposition.md`
+- Accepted proposal: [#133](https://github.com/GeorgeLuo/auto-driving/pull/133) at `569d59de2faaca59dab5f5fa04d3da366c9d211c` (reviewed head `7e30872f32a123f56556167c0c428a9506474dbb` by `GeorgeLuo` as `OWNER` at `2026-08-21T06:37:57Z`)
 - Review kind: Deterministic invariant closure
 - Review question: Can owned production code not reached by the declared CLI journey set be grouped by capability and reconciled with tests, other entrypoints, dynamic or platform paths, and ownership so every group is flagged to expose through CLI, retain with an explicit owner and reason, or remove through separately reviewed work, without authorizing feature or deletion solely by a coverage percentage?
 - Acceptance owner: Capability grouping from leaf inventory, sequence registry, and #107 reachability; owned expose/retain/remove candidate record
@@ -191,6 +192,7 @@ deletion; it does not retroactively widen the accepted primary journey.
 | Complete CLI surface and sequence audit | accepted | Implementation PR #122 merged at 5c09fb32dc196b79e90c2a54fde78b896b41cb49. |
 | Capability disposition outside CLI journeys | ready_for_proposal | Promoted after implementation PR #122. |
 | Capability disposition outside CLI journeys | proposal_in_review | Started m007/capability-disposition-proposal. |
+| Capability disposition outside CLI journeys | ready_for_implementation | Proposal PR #133 accepted at 569d59de2faaca59dab5f5fa04d3da366c9d211c (reviewed head `7e30872f32a123f56556167c0c428a9506474dbb` by `GeorgeLuo` as `OWNER` at `2026-08-21T06:37:57Z`). |
 
 ## Accepted Review Units
 

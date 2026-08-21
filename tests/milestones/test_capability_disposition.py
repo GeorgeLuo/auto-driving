@@ -292,20 +292,57 @@ class CapabilityDispositionTests(unittest.TestCase):
             "retain": 68,
             "remove": 0,
         })
+        self.assertEqual(projection["journey_overview"]["surface"], {
+            "leaf_total": 49,
+            "leaf_kind_counts": {"action": 32, "alias": 7, "meta": 10},
+            "measured_leaf_count": 11,
+            "unmeasured_leaf_count": 38,
+            "measured_leaf_ids": [
+                "help",
+                "vehicles.automation.help",
+                "vehicles.automation.run",
+                "vehicles.automation.stop",
+                "vehicles.help",
+                "vehicles.memory.check",
+                "vehicles.perception.apply",
+                "vehicles.perception.run",
+                "vehicles.status",
+                "vehicles.update.memory",
+                "vehicles.update.perception",
+            ],
+            "measured_leaf_kind_counts": {"action": 8, "meta": 3},
+        })
+        self.assertEqual(
+            [journey["id"] for journey in projection["journey_overview"]["journeys"]],
+            [
+                "primary",
+                "continuity.offline_perception",
+                "continuity.live_config_swap",
+                "continuity.memory_lifecycle",
+            ],
+        )
+        self.assertEqual(projection["journey_overview"]["sequences"]["coverage"], {
+            "measured": 2,
+            "not_applicable": 1,
+            "unmeasured": 7,
+        })
         cd.validate_dashboard_html(
             ROOT / cd.DASHBOARD_REL,
             self.record,
             self.sealed,
+            self.context["authority"],
         )
 
     def test_dashboard_group_omission_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "dashboard.html"
             path.write_text(
-                cd.render_dashboard_html(self.record, self.sealed),
+                cd.render_dashboard_html(self.record, self.sealed, self.context["authority"]),
                 encoding="utf-8",
             )
-            cd.validate_dashboard_html(path, self.record, self.sealed)
+            cd.validate_dashboard_html(
+                path, self.record, self.sealed, self.context["authority"]
+            )
             source = path.read_text(encoding="utf-8")
             marker = '<button type="button" class="group-row'
             start = source.index(marker)

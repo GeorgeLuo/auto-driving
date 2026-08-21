@@ -81,7 +81,7 @@ GROUPING_SCHEMA = "m007_capability_grouping_v1"
 RECORD_SCHEMA = "m007_capability_disposition_v1"
 REPORT_SCHEMA = "m007_capability_disposition_report_v1"
 RESIDUALS_SCHEMA = "m007_capability_disposition_residuals_v1"
-DASHBOARD_SCHEMA = "m007_capability_dashboard_v1"
+DASHBOARD_SCHEMA = "m007_capability_dashboard_v2"
 
 FROZEN_REPORT_SHA256 = (
     "51801c7686b247055114109e7462d13cb6702a1c8dcd8990a168f68357015789"
@@ -1231,10 +1231,159 @@ def _attr(value: Any) -> str:
     return html.escape(str(value), quote=True)
 
 
+def _dashboard_argv_tokens(argv: Any) -> tuple[str, ...]:
+    if not isinstance(argv, list) or any(not isinstance(item, str) for item in argv):
+        return ()
+    tokens = list(argv)
+    if tokens and PurePosixPath(tokens[0]).name == "automa":
+        tokens = tokens[1:]
+    return tuple(tokens)
+
+
+def _dashboard_leaf_rows(authority: Mapping[str, Any]) -> list[tuple[tuple[str, ...], str, str]]:
+    inventory = authority["documents"]["leaf_inventory"]
+    rows = [
+        (
+            tuple(row["tokens"]),
+            row["leaf_id"],
+            row["kind"],
+        )
+        for row in inventory["leaves"]
+    ]
+    return sorted(rows, key=lambda row: (-len(row[0]), row[1]))
+
+
+def _dashboard_leaf_for_argv(
+    argv: Any,
+    leaf_rows: Iterable[tuple[tuple[str, ...], str, str]],
+) -> tuple[str, str] | None:
+    tokens = _dashboard_argv_tokens(argv)
+    for prefix, leaf_id, kind in leaf_rows:
+        if tokens[: len(prefix)] == prefix:
+            return leaf_id, kind
+    return None
+
+
+def _dashboard_journey_overview(
+    sealed: Mapping[str, Any],
+    authority: Mapping[str, Any],
+) -> dict[str, Any]:
+    report = sealed["report"]
+    leaf_rows = _dashboard_leaf_rows(authority)
+    leaf_kind_counts = Counter(kind for _tokens, _leaf_id, kind in leaf_rows)
+    leaf_kind_by_id = {leaf_id: kind for _tokens, leaf_id, kind in leaf_rows}
+    measured_leaf_ids: set[str] = set()
+    commands_by_journey: dict[str, list[Mapping[str, Any]]] = {}
+    for command in report["commands"]:
+        if command.get("role") != "journey_command":
+            continue
+        logical_context_id = command.get("logical_context_id", "")
+        parts = logical_context_id.split("/")
+        if len(parts) < 4 or parts[0:2] != ["m007", "journey"]:
+            continue
+        journey_id = parts[2]
+        commands_by_journey.setdefault(journey_id, []).append(command)
+        match = _dashboard_leaf_for_argv(command.get("argv_template"), leaf_rows)
+        if match is not None:
+            measured_leaf_ids.add(match[0])
+
+    journey_labels = {
+        "primary": "Primary operator journey",
+        "continuity.offline_perception": "Offline perception continuity",
+        "continuity.live_config_swap": "Live configuration continuity",
+        "continuity.memory_lifecycle": "Memory lifecycle continuity",
+    }
+    rollups = [
+        rollup
+        for rollup in report["aggregates"]["rollups"]
+        if rollup.get("kind") == "journey"
+    ]
+    journey_order = {
+        "primary": 0,
+        "continuity.offline_perception": 1,
+        "continuity.live_config_swap": 2,
+        "continuity.memory_lifecycle": 3,
+    }
+    rollups.sort(key=lambda rollup: (journey_order.get(rollup["id"], 99), rollup["id"]))
+    journeys: list[dict[str, Any]] = []
+    for rollup in rollups:
+        journey_id = rollup["id"]
+        leaf_ids = set()
+        for command in commands_by_journey.get(journey_id, []):
+            match = _dashboard_leaf_for_argv(command.get("argv_template"), leaf_rows)
+            if match is not None:
+                leaf_ids.add(match[0])
+        journeys.append(
+            {
+                "id": journey_id,
+                "name": journey_labels.get(journey_id, journey_id),
+                "context_count": rollup["contexts"],
+                "command_count": len(commands_by_journey.get(journey_id, [])),
+                "leaf_ids": sorted(leaf_ids),
+                "leaf_count": len(leaf_ids),
+                "source_file_count": rollup["file_count"],
+                "executed_lines": rollup["executed_lines"],
+                "executed_arcs": rollup["executed_arcs"],
+                "logical_context_ids": sorted(rollup["logical_context_ids"]),
+            }
+        )
+
+    sequences = authority["documents"]["sequence_registry"]["sequences"]
+    sequence_rows: list[dict[str, Any]] = []
+    sequence_dispositions: Counter[str] = Counter()
+    sequence_coverage: Counter[str] = Counter()
+    for sequence in sorted(sequences, key=lambda row: row["id"]):
+        sequence_leaf_ids = set()
+        for command in sequence["commands"]:
+            match = _dashboard_leaf_for_argv(["./cli/automa", *command], leaf_rows)
+            if match is not None:
+                sequence_leaf_ids.add(match[0])
+        disposition = sequence["disposition"]
+        coverage = sequence["coverage"]["value"]
+        sequence_dispositions[disposition] += 1
+        sequence_coverage[coverage] += 1
+        sequence_rows.append(
+            {
+                "id": sequence["id"],
+                "operator_outcome": sequence["operator_outcome"],
+                "disposition": disposition,
+                "coverage": coverage,
+                "execution": sequence["execution"],
+                "command_count": len(sequence["commands"]),
+                "leaf_ids": sorted(sequence_leaf_ids),
+            }
+        )
+
+    leaf_total = len(leaf_rows)
+    return {
+        "surface": {
+            "leaf_total": leaf_total,
+            "leaf_kind_counts": dict(sorted(leaf_kind_counts.items())),
+            "measured_leaf_count": len(measured_leaf_ids),
+            "unmeasured_leaf_count": leaf_total - len(measured_leaf_ids),
+            "measured_leaf_ids": sorted(measured_leaf_ids),
+            "measured_leaf_kind_counts": dict(
+                sorted(Counter(leaf_kind_by_id[leaf_id] for leaf_id in measured_leaf_ids).items())
+            ),
+        },
+        "journeys": journeys,
+        "sequences": {
+            "total": len(sequence_rows),
+            "dispositions": dict(sorted(sequence_dispositions.items())),
+            "coverage": dict(sorted(sequence_coverage.items())),
+            "measured_count": sequence_coverage.get("measured", 0),
+            "rows": sequence_rows,
+        },
+    }
+
+
 def _dashboard_projection(
     record: Mapping[str, Any],
     sealed: Mapping[str, Any],
+    authority: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
+    if authority is None:
+        authority = load_m007_08_authority()
     candidate_paths = set(record["residuals"]["candidate_member_paths"])
     source_paths = set(sealed["source_paths"])
     report_paths = set(sealed["files"])
@@ -1303,6 +1452,7 @@ def _dashboard_projection(
             disposition: disposition_counts.get(disposition, 0)
             for disposition in ("expose", "retain", "remove")
         },
+        "journey_overview": _dashboard_journey_overview(sealed, authority),
         "groups": groups,
     }
 
@@ -1381,30 +1531,122 @@ def _dashboard_detail_markup(group: Mapping[str, Any]) -> str:
     )
 
 
+def _dashboard_journey_detail_markup(
+    journey: Mapping[str, Any],
+    *,
+    leaf_total: int,
+    source_total: int,
+) -> str:
+    leaf_ids = "".join(f"<li><code>{_attr(leaf_id)}</code></li>" for leaf_id in journey["leaf_ids"])
+    context_ids = "".join(
+        f"<li><code>{_attr(context_id)}</code></li>"
+        for context_id in journey["logical_context_ids"]
+    )
+    leaf_list = leaf_ids or '<li><span class="muted">None</span></li>'
+    return (
+        f"<h2>{_attr(journey['name'])}</h2>"
+        f'<p class="detail-lede">{journey["leaf_count"]} of {leaf_total} CLI leaf IDs appear in '
+        f"{journey['command_count']} measured journey commands. The rollup touches "
+        f"{journey['source_file_count']} of {source_total} owned source paths.</p>"
+        '<dl class="detail-facts">'
+        f'<div><dt>Contexts</dt><dd>{journey["context_count"]}</dd></div>'
+        f'<div><dt>CLI leaves</dt><dd>{journey["leaf_count"]} / {leaf_total}</dd></div>'
+        f'<div><dt>Source paths</dt><dd>{journey["source_file_count"]} / {source_total}</dd></div>'
+        f'<div><dt>Lines</dt><dd>{journey["executed_lines"]:,} executed entries</dd></div>'
+        f'<div><dt>Arcs</dt><dd>{journey["executed_arcs"]:,} executed entries</dd></div>'
+        "</dl>"
+        '<details class="reconciliation"><summary>CLI leaf IDs</summary>'
+        f"<ul>{leaf_list}</ul></details>"
+        '<details class="reconciliation"><summary>Measured context IDs</summary>'
+        f"<ul>{context_ids}</ul></details>"
+    )
+
+
 def render_dashboard_html(
     record: Mapping[str, Any],
     sealed: Mapping[str, Any],
+    authority: Mapping[str, Any] | None = None,
 ) -> str:
-    projection = _dashboard_projection(record, sealed)
+    projection = _dashboard_projection(record, sealed, authority)
     embedded = _dashboard_script_json(projection)
     membership = projection["membership"]
     source_status = projection["source_status"]
     dispositions = projection["dispositions"]
-    total_members = membership["source_members"]
-    total_candidates = membership["candidate_members"]
+    journey_overview = projection["journey_overview"]
+    surface = journey_overview["surface"]
+    sequences = journey_overview["sequences"]
+    journeys = journey_overview["journeys"]
     max_group_members = max(group["member_count"] for group in projection["groups"])
     first_group = projection["groups"][0]
+    first_journey = journeys[0]
 
     metric_markup = "".join(
         [
-            f'<div class="metric"><span>Source members</span><strong>{membership["source_members"]}</strong><small>sealed Python paths</small></div>',
-            f'<div class="metric"><span>Journey contexts</span><strong>{membership["journey_contexts"]}</strong><small>admitted CLI contexts</small></div>',
-            f'<div class="metric"><span>Candidate members</span><strong>{membership["candidate_members"]}</strong><small>assigned to groups</small></div>',
-            f'<div class="metric"><span>Capability groups</span><strong>{len(projection["groups"])}</strong><small>owned review units</small></div>',
-            f'<div class="metric"><span>Statement entries</span><strong>{membership["unreached_statements"]:,}</strong><small>descriptive region count</small></div>',
-            f'<div class="metric"><span>Arc entries</span><strong>{membership["unreached_arcs"]:,}</strong><small>descriptive branch count</small></div>',
+            f'<div class="metric"><span>CLI leaves</span><strong>{surface["leaf_total"]}</strong><small>{surface["leaf_kind_counts"].get("action", 0)} action · {surface["leaf_kind_counts"].get("meta", 0)} meta · {surface["leaf_kind_counts"].get("alias", 0)} alias</small></div>',
+            f'<div class="metric"><span>Measured leaves</span><strong>{surface["measured_leaf_count"]} / {surface["leaf_total"]}</strong><small>unique IDs in journey commands</small></div>',
+            f'<div class="metric"><span>Measured journeys</span><strong>{len(journeys)}</strong><small>{membership["journey_contexts"]} admitted contexts</small></div>',
+            f'<div class="metric"><span>Registered sequences</span><strong>{sequences["total"]}</strong><small>{sequences["measured_count"]} measured exactly</small></div>',
+            f'<div class="metric"><span>Owned source paths</span><strong>{membership["source_members"]}</strong><small>sealed Python universe</small></div>',
+            f'<div class="metric"><span>Outside-journey candidates</span><strong>{membership["candidate_members"]}</strong><small>later disposition groups</small></div>',
         ]
     )
+    surface_total = surface["leaf_total"]
+    surface_measured = surface["measured_leaf_count"]
+    surface_segments = (
+        f'<span class="segment surface-measured" style="width:{_dashboard_percentage(surface_measured, surface_total)}%" '
+        f'aria-label="{surface_measured} CLI leaf IDs in measured journey commands"></span>'
+        f'<span class="segment surface-unmeasured" style="width:{_dashboard_percentage(surface["unmeasured_leaf_count"], surface_total)}%" '
+        f'aria-label="{surface["unmeasured_leaf_count"]} CLI leaf IDs not in measured journey commands"></span>'
+    )
+    surface_legend = (
+        f'<li><span class="swatch surface-measured"></span><strong>{surface_measured}</strong> '
+        "in measured journey commands</li>"
+        f'<li><span class="swatch surface-unmeasured"></span><strong>{surface["unmeasured_leaf_count"]}</strong> '
+        "not in measured command set</li>"
+    )
+    kind_breakdown = " · ".join(
+        f'{kind}: {surface["measured_leaf_kind_counts"].get(kind, 0)} / {count}'
+        for kind, count in surface["leaf_kind_counts"].items()
+    )
+    sequence_disposition_order = ("passed", "deferred", "blocked")
+    sequence_disposition_segments = "".join(
+        f'<span class="segment sequence-{_attr(disposition)}" '
+        f'style="width:{_dashboard_percentage(sequences["dispositions"].get(disposition, 0), sequences["total"])}%" '
+        f'aria-label="{_attr(disposition)}: {sequences["dispositions"].get(disposition, 0)} sequences"></span>'
+        for disposition in sequence_disposition_order
+    )
+    sequence_disposition_legend = "".join(
+        f'<li><span class="swatch sequence-{_attr(disposition)}"></span>'
+        f'<strong>{sequences["dispositions"].get(disposition, 0)}</strong> {_attr(disposition)}</li>'
+        for disposition in sequence_disposition_order
+    )
+    sequence_rows = "".join(
+        "<details class=\"sequence-row\">"
+        f'<summary><code>{_attr(sequence["id"])}</code>'
+        f'<span class="sequence-name">{_attr(sequence["operator_outcome"])}</span>'
+        f'<span class="sequence-pill sequence-{_attr(sequence["disposition"])}">{_attr(sequence["disposition"])}</span>'
+        f'<span class="sequence-coverage">{_attr(sequence["coverage"])}</span></summary>'
+        f'<div class="sequence-detail"><p>{sequence["command_count"]} declared commands · '
+        f'{len(sequence["leaf_ids"])} leaf IDs in the definition.</p>'
+        f'<p class="muted">Leaf IDs: <code>{_attr(", ".join(sequence["leaf_ids"]) or "None")}</code></p></div>'
+        "</details>"
+        for sequence in sequences["rows"]
+    )
+    journey_rows = []
+    for index, journey in enumerate(journeys):
+        width = 100 * journey["leaf_count"] / surface_total if surface_total else 0
+        journey_rows.append(
+            f'<button type="button" class="journey-row" data-journey-id="{_attr(journey["id"])}" '
+            f'aria-pressed="{str(index == 0).lower()}" aria-label="{_attr(journey["name"])}: '
+            f'{journey["leaf_count"]} of {surface_total} CLI leaf IDs, '
+            f'{journey["source_file_count"]} of {membership["source_members"]} source paths">'
+            f'<span class="journey-name"><strong>{_attr(journey["name"])}</strong>'
+            f'<small>{journey["context_count"]} contexts · {journey["command_count"]} commands</small></span>'
+            f'<span class="journey-bar-cell"><span class="bar-track"><span class="bar-fill journey-fill" style="width:{width:.3f}%"></span></span></span>'
+            f'<span class="journey-value">{journey["leaf_count"]} / {surface_total}</span>'
+            f'<span class="journey-source">{journey["source_file_count"]} / {membership["source_members"]}</span>'
+            "</button>"
+        )
     disposition_total = sum(dispositions.values())
     disposition_segments = "".join(
         f'<span class="segment disposition-{_attr(disposition)}" '
@@ -1456,6 +1698,12 @@ def render_dashboard_html(
   --muted: #5e6a78;
   --border: #d7dde5;
   --focus: #1e6bb8;
+  --journey: #356f8f;
+  --surface-measured: #4b8a68;
+  --surface-unmeasured: #a9b2bd;
+  --sequence-passed: #4b8a68;
+  --sequence-deferred: #b4873f;
+  --sequence-blocked: #8d3f55;
   --expose: #b4512b;
   --retain: #356f8f;
   --remove: #8d3f55;
@@ -1474,6 +1722,12 @@ def render_dashboard_html(
     --muted: #aab5c1;
     --border: #3a4653;
     --focus: #6bb5f0;
+    --journey: #73b5d5;
+    --surface-measured: #78c39a;
+    --surface-unmeasured: #697583;
+    --sequence-passed: #78c39a;
+    --sequence-deferred: #e1bd73;
+    --sequence-blocked: #e28aa2;
     --expose: #e48a61;
     --retain: #73b5d5;
     --remove: #e28aa2;
@@ -1491,7 +1745,7 @@ body {
   font: 15px/1.5 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 a { color: var(--focus); }
-code, .metric strong, .group-value, .member-counts { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+code, .metric strong, .group-value, .journey-value, .journey-source, .member-counts { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .dashboard { max-width: 1240px; margin: 0 auto; padding: 32px clamp(16px, 4vw, 48px) 64px; }
 .eyebrow { color: var(--muted); font-size: .78rem; letter-spacing: .08em; text-transform: uppercase; }
 h1, h2, h3 { line-height: 1.2; }
@@ -1506,16 +1760,46 @@ h3 { margin: 1.3rem 0 .65rem; font-size: .98rem; }
 .metric span { font-size: .82rem; }
 .metric strong { display: block; margin: 3px 0; font-size: 1.5rem; }
 .metric small { font-size: .72rem; }
-.visual-grid { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(300px, .7fr); gap: 18px; align-items: start; }
+.visual-grid, .overview-grid { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(300px, .7fr); gap: 18px; align-items: start; }
 .panel { min-width: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 18px; }
 .panel-header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .muted { color: var(--muted); }
 .caption { color: var(--muted); font-size: .86rem; margin: 0 0 14px; }
+.section-heading { margin: 34px 0 14px; }
+.axis { display: flex; justify-content: space-between; color: var(--muted); font-size: .74rem; margin: 7px 0 4px; }
+.surface-measured, .swatch.surface-measured, .segment.surface-measured { background: var(--surface-measured); }
+.surface-unmeasured, .swatch.surface-unmeasured, .segment.surface-unmeasured { background: var(--surface-unmeasured); }
+.sequence-passed, .swatch.sequence-passed, .segment.sequence-passed { background: var(--sequence-passed); }
+.sequence-deferred, .swatch.sequence-deferred, .segment.sequence-deferred { background: var(--sequence-deferred); }
+.sequence-blocked, .swatch.sequence-blocked, .segment.sequence-blocked { background: var(--sequence-blocked); }
+.surface-kind-note { margin: 10px 0 0; color: var(--muted); font-size: .8rem; }
+.journey-chart { display: grid; gap: 5px; }
+.journey-head, .journey-row { display: grid; grid-template-columns: minmax(185px, 1.2fr) minmax(130px, 2fr) 64px 74px; gap: 10px; align-items: center; }
+.journey-head { color: var(--muted); font-size: .76rem; padding: 0 7px 4px; }
+.journey-head span:nth-child(2) { grid-column: 2 / 4; }
+.journey-row { width: 100%; padding: 8px 7px; color: var(--text); text-align: left; background: transparent; border: 0; border-radius: 6px; cursor: pointer; }
+.journey-row:hover, .journey-row[aria-pressed="true"] { background: var(--surface-alt); }
+.journey-row[aria-pressed="true"] { outline: 2px solid var(--focus); outline-offset: -2px; }
+.journey-name { min-width: 0; }
+.journey-name strong, .journey-name small { display: block; overflow-wrap: anywhere; }
+.journey-name small { color: var(--muted); font-size: .76rem; }
+.journey-bar-cell { min-width: 0; }
+.journey-fill { background: var(--journey); }
+.journey-value, .journey-source { text-align: right; font-weight: 600; white-space: nowrap; }
+.sequence-list { display: grid; gap: 5px; margin-top: 12px; }
+.sequence-row { border-top: 1px solid var(--border); }
+.sequence-row summary { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto auto; gap: 8px; align-items: center; cursor: pointer; padding: 8px 0; }
+.sequence-row summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.sequence-name { min-width: 0; overflow-wrap: anywhere; }
+.sequence-pill { padding: 2px 6px; border-radius: 999px; color: var(--on-series); font: 600 .7rem ui-monospace, monospace; }
+.sequence-coverage { color: var(--muted); font: .76rem ui-monospace, monospace; }
+.sequence-detail { border-top: 1px solid var(--border); padding: 4px 0 6px 56px; font-size: .82rem; }
+.sequence-detail p { margin: 5px 0; }
 .group-chart { display: grid; gap: 5px; }
 .group-row { display: grid; grid-template-columns: minmax(165px, 1.3fr) minmax(100px, 2fr) 44px; gap: 10px; align-items: center; width: 100%; padding: 8px 7px; color: var(--text); text-align: left; background: transparent; border: 0; border-radius: 6px; cursor: pointer; }
 .group-row:hover { background: var(--surface-alt); }
 .group-row[aria-pressed="true"] { outline: 2px solid var(--focus); outline-offset: -2px; background: var(--surface-alt); }
-.group-row:focus-visible, .member summary:focus-visible, .reconciliation summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.group-row:focus-visible, .journey-row:focus-visible, .member summary:focus-visible, .reconciliation summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 .group-name { min-width: 0; overflow-wrap: anywhere; }
 .bar-track { display: block; height: 16px; overflow: hidden; background: var(--surface-alt); border-radius: 3px; }
 .bar-fill { display: block; height: 100%; min-width: 2px; background: var(--retain); border-radius: inherit; }
@@ -1555,8 +1839,8 @@ h3 { margin: 1.3rem 0 .65rem; font-size: .98rem; }
 .member-detail p { margin: 7px 0; }
 .member-detail code { white-space: pre-wrap; word-break: break-word; }
 .residual-note { margin: 16px 0 0; padding: 10px 12px; background: var(--surface-alt); color: var(--muted); font-size: .82rem; }
-@media (max-width: 1040px) { .metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); } .visual-grid { grid-template-columns: 1fr; } }
-@media (max-width: 560px) { .dashboard { padding-top: 22px; } .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } .metric strong { font-size: 1.25rem; } .group-row { grid-template-columns: 1fr 48px; } .group-name { grid-column: 1 / -1; } .bar-track { grid-column: 1; } .group-value { grid-column: 2; grid-row: 2; } .detail-facts div { grid-template-columns: 1fr; gap: 2px; } }
+@media (max-width: 1040px) { .metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); } .visual-grid, .overview-grid { grid-template-columns: 1fr; } }
+@media (max-width: 560px) { .dashboard { padding-top: 22px; } .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } .metric strong { font-size: 1.25rem; } .group-row { grid-template-columns: 1fr 48px; } .group-name { grid-column: 1 / -1; } .bar-track { grid-column: 1; } .group-value { grid-column: 2; grid-row: 2; } .journey-head { display: none; } .journey-row { grid-template-columns: 1fr 70px; } .journey-name { grid-column: 1 / -1; } .journey-bar-cell { grid-column: 1; } .journey-value { grid-column: 2; grid-row: 2; } .journey-source { grid-column: 1 / -1; text-align: left; font-size: .78rem; } .sequence-row summary { grid-template-columns: 42px minmax(0, 1fr) auto; } .sequence-coverage { grid-column: 2; } .detail-facts div { grid-template-columns: 1fr; gap: 2px; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; } }
 """
     script = r"""
@@ -1565,6 +1849,8 @@ h3 { margin: 1.3rem 0 .65rem; font-size: .98rem; }
   const data = JSON.parse(document.getElementById("dashboard-data").textContent);
   const detail = document.getElementById("group-detail");
   const buttons = Array.from(document.querySelectorAll("button.group-row"));
+  const journeyDetail = document.getElementById("journey-detail");
+  const journeyButtons = Array.from(document.querySelectorAll("button.journey-row"));
 
   function escapeHtml(value) {
     return String(value).replace(/[&<>\"']/g, function (character) {
@@ -1575,6 +1861,14 @@ h3 { margin: 1.3rem 0 .65rem; font-size: .98rem; }
   function listMarkup(values, formatter) {
     if (!values.length) return "None";
     return values.map(formatter).join(", ");
+  }
+
+  function journeyDetailMarkup(journey) {
+    const leafIds = journey.leaf_ids.length
+      ? "<ul>" + journey.leaf_ids.map(function (leafId) { return "<li><code>" + escapeHtml(leafId) + "</code></li>"; }).join("") + "</ul>"
+      : "<span class=\"muted\">None</span>";
+    const contextIds = journey.logical_context_ids.map(function (contextId) { return "<li><code>" + escapeHtml(contextId) + "</code></li>"; }).join("");
+    return "<h2>" + escapeHtml(journey.name) + "</h2><p class=\"detail-lede\">" + journey.leaf_count + " of " + data.journey_overview.surface.leaf_total + " CLI leaf IDs appear in " + journey.command_count + " measured journey commands. The rollup touches " + journey.source_file_count + " of " + data.membership.source_members + " owned source paths.</p><dl class=\"detail-facts\"><div><dt>Contexts</dt><dd>" + journey.context_count + "</dd></div><div><dt>CLI leaves</dt><dd>" + journey.leaf_count + " / " + data.journey_overview.surface.leaf_total + "</dd></div><div><dt>Source paths</dt><dd>" + journey.source_file_count + " / " + data.membership.source_members + "</dd></div><div><dt>Lines</dt><dd>" + journey.executed_lines.toLocaleString() + " executed entries</dd></div><div><dt>Arcs</dt><dd>" + journey.executed_arcs.toLocaleString() + " executed entries</dd></div></dl><details class=\"reconciliation\"><summary>CLI leaf IDs</summary>" + leafIds + "</details><details class=\"reconciliation\"><summary>Measured context IDs</summary><ul>" + contextIds + "</ul></details>";
   }
 
   function detailMarkup(group) {
@@ -1604,8 +1898,21 @@ h3 { margin: 1.3rem 0 .65rem; font-size: .98rem; }
     detail.dataset.initialGroupId = groupId;
   }
 
+  function selectJourney(journeyId) {
+    const journey = data.journey_overview.journeys.find(function (candidate) { return candidate.id === journeyId; });
+    if (!journey) return;
+    journeyButtons.forEach(function (button) {
+      button.setAttribute("aria-pressed", String(button.dataset.journeyId === journeyId));
+    });
+    journeyDetail.innerHTML = journeyDetailMarkup(journey);
+    journeyDetail.dataset.initialJourneyId = journeyId;
+  }
+
   buttons.forEach(function (button) {
     button.addEventListener("click", function () { selectGroup(button.dataset.groupId); });
+  });
+  journeyButtons.forEach(function (button) {
+    button.addEventListener("click", function () { selectJourney(button.dataset.journeyId); });
   });
 }());
 """
@@ -1618,13 +1925,31 @@ h3 { margin: 1.3rem 0 .65rem; font-size: .98rem; }
         f"<style>{style}</style></head><body>",
         '<main class="dashboard" id="capability-dashboard">',
         '<header><div class="eyebrow">M007-09 · derived evidence view</div>',
-        "<h1>Capability disposition outside CLI journeys</h1>",
-        '<p class="lede">A visual summary of the sealed source universe, candidate capabilities, and later-review dispositions. It describes the record; it does not authorize product changes.</p>',
-        '<p class="notice">Unreached does not mean dead. Counts and charts are descriptive evidence only; the canonical record and its validators remain authoritative. <a href="record.html">Open the complete audit ledger</a> · <a href="record.json">Open record.json</a></p></header>',
+        "<h1>CLI surface reached by declared journeys</h1>",
+        '<p class="lede">Start with the operator question: which CLI leaf IDs appear in the measured usage journeys, and what owned source surface do those journeys touch? The capability disposition is the follow-up for code outside those journeys.</p>',
+        '<p class="notice">This view joins sealed M007-07 journey attribution with frozen M007-08 CLI-surface inputs. Counts are descriptive evidence only: they do not claim behavioral correctness, dead code, or authorize product changes. <a href="../cli-journey-coverage/README.md">Open journey coverage evidence</a> · <a href="../cli-surface-audit/rollup.md">Open CLI surface audit</a> · <a href="record.html">Open the complete audit ledger</a> · <a href="record.json">Open record.json</a></p></header>',
         f'<section class="metrics" aria-label="Record summary">{metric_markup}</section>',
+        '<section class="overview-grid">',
+        '<div class="panel"><div class="panel-header"><h2>CLI surface in measured journeys</h2><span class="muted">11 of 49 leaf IDs appear</span></div>',
+        '<p class="caption">The stacked bar uses the full 49-leaf inventory. “In measured commands” means the leaf ID appears in one of the 22 admitted M007-07 journey command contexts; it is not a correctness score.</p>',
+        f'<div class="axis" aria-hidden="true"><span>0</span><span>{surface_total} leaf IDs</span></div>',
+        f'<div class="stacked-bar" id="surface-chart" role="img" aria-label="CLI surface: {surface_measured} of {surface_total} leaf IDs appear in measured journey commands">{surface_segments}</div><ul class="legend">{surface_legend}</ul>',
+        f'<p class="surface-kind-note">Measured by leaf kind: {_attr(kind_breakdown)}. The remaining leaf IDs are not in the measured command set.</p>',
+        '<div class="composition"><h3>Registered usage sequence status</h3><p class="caption">These are the exact M007-08 sequence definitions. A related continuity family can have source coverage without making its exact registered sequence measured.</p>',
+        f'<div class="stacked-bar" id="sequence-chart" role="img" aria-label="Registered usage sequences: {sequences["dispositions"].get("passed", 0)} passed, {sequences["dispositions"].get("deferred", 0)} deferred, {sequences["dispositions"].get("blocked", 0)} blocked">{sequence_disposition_segments}</div><ul class="legend">{sequence_disposition_legend}</ul>',
+        f'<div class="sequence-list" role="list">{sequence_rows}</div></div>',
+        '<div class="composition"><h3>Measured journeys</h3><p class="caption">Each row uses the same 49-leaf denominator. The source-path value is a raw rollup count out of the 96-path owned universe.</p>',
+        '<div class="journey-chart" id="journey-chart" role="list">',
+        '<div class="journey-head" aria-hidden="true"><span>Journey</span><span>Distinct CLI leaf IDs in journey</span><span>Source paths</span></div>',
+        f'{"".join(journey_rows)}</div></div>',
+        '</div>',
+        f'<aside class="panel" id="journey-detail" data-initial-journey-id="{_attr(first_journey["id"])}" aria-live="polite">{_dashboard_journey_detail_markup(first_journey, leaf_total=surface_total, source_total=membership["source_members"])}</aside>',
+        '</section>',
+        '<div class="section-heading"><h2>What sits outside the measured journeys?</h2><p class="caption">These are peer review buckets of candidate source members, not a hierarchy or workflow. Use them to inspect why unreached code is retained or flagged for later CLI exposure.</p></div>',
         '<section class="visual-grid">',
-        '<div class="panel"><div class="panel-header"><h2>Candidate members by capability group</h2><span class="muted">Select a bar for details</span></div>',
-        '<p class="caption">Each bar is a group of source members, not a severity score.</p>',
+        '<div class="panel"><div class="panel-header"><h2>Candidate source members by disposition group</h2><span class="muted">Select a bar for details</span></div>',
+        f'<p class="caption">Each bar is a peer group of source members. Bar scale: 0–{max_group_members} candidate members; the number at right is the raw count.</p>',
+        f'<div class="axis" aria-hidden="true"><span>0</span><span>{max_group_members} members</span></div>',
         f'<div class="group-chart" id="group-chart" role="list">{"".join(group_rows)}</div>',
         f'<p class="chart-foot">Residuals: {membership["unassigned_members"]} unassigned members · {membership["unresolved_region_refs"]} unresolved region references.</p>',
         '<div class="composition"><h3>Disposition mix</h3><p class="caption">Member allocation across later-review candidates.</p>',
@@ -1773,8 +2098,10 @@ class _DashboardHTMLParser(HTMLParser):
         self.data_chunks: list[str] = []
         self.in_data = False
         self.group_ids: list[str] = []
+        self.journey_ids: list[str] = []
         self.element_ids: set[str] = set()
         self.initial_group_id: str | None = None
+        self.initial_journey_id: str | None = None
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         values = dict(attrs)
@@ -1789,8 +2116,14 @@ class _DashboardHTMLParser(HTMLParser):
             group_id = values.get("data-group-id")
             if group_id is not None:
                 self.group_ids.append(group_id)
+        if tag == "button" and "journey-row" in (values.get("class") or "").split():
+            journey_id = values.get("data-journey-id")
+            if journey_id is not None:
+                self.journey_ids.append(journey_id)
         if element_id == "group-detail":
             self.initial_group_id = values.get("data-initial-group-id")
+        if element_id == "journey-detail":
+            self.initial_journey_id = values.get("data-initial-journey-id")
 
     def handle_endtag(self, tag: str) -> None:
         if tag == "script" and self.in_data:
@@ -1805,6 +2138,7 @@ def validate_dashboard_html(
     path: Path,
     record: Mapping[str, Any],
     sealed: Mapping[str, Any],
+    authority: Mapping[str, Any] | None = None,
 ) -> None:
     try:
         source = path.read_text(encoding="utf-8")
@@ -1820,15 +2154,27 @@ def validate_dashboard_html(
         projection = json.loads("".join(parser.data_chunks))
     except json.JSONDecodeError as exc:
         _fail(f"dashboard data projection is invalid JSON: {exc}")
-    if projection != _dashboard_projection(record, sealed):
+    expected_projection = _dashboard_projection(record, sealed, authority)
+    if projection != expected_projection:
         _fail("dashboard data projection does not match the record")
     expected_groups = [group["id"] for group in record["groups"]]
+    expected_journeys = [
+        journey["id"] for journey in expected_projection["journey_overview"]["journeys"]
+    ]
     if parser.group_ids != expected_groups:
         _fail("dashboard group chart is incomplete or reordered")
+    if parser.journey_ids != expected_journeys:
+        _fail("dashboard journey chart is incomplete or reordered")
     if parser.initial_group_id != expected_groups[0]:
         _fail("dashboard initial group selection is not canonical")
+    if parser.initial_journey_id != expected_journeys[0]:
+        _fail("dashboard initial journey selection is not canonical")
     required_ids = {
         "capability-dashboard",
+        "surface-chart",
+        "sequence-chart",
+        "journey-chart",
+        "journey-detail",
         "group-chart",
         "disposition-chart",
         "source-status-chart",
@@ -1893,11 +2239,13 @@ def build_evidence(repo_root: Path = ROOT) -> dict[str, Any]:
     rollup_path.write_text(render_rollup(record, context["sealed"]), encoding="utf-8")
     html_path.write_text(render_html(record), encoding="utf-8")
     dashboard_path.write_text(
-        render_dashboard_html(record, context["sealed"]),
+        render_dashboard_html(record, context["sealed"], context["authority"]),
         encoding="utf-8",
     )
     validate_html(html_path, record)
-    validate_dashboard_html(dashboard_path, record, context["sealed"])
+    validate_dashboard_html(
+        dashboard_path, record, context["sealed"], context["authority"]
+    )
     return {
         "record": record,
         "report": pass_report,
@@ -1933,7 +2281,12 @@ def validate_evidence(repo_root: Path = ROOT) -> dict[str, Any]:
     if not rollup_path.is_file() or rollup_path.read_text(encoding="utf-8") != render_rollup(record, context["sealed"]):
         _fail("rollup differs from the deterministic derivation")
     validate_html(repo_root / HTML_REL, record)
-    validate_dashboard_html(repo_root / DASHBOARD_REL, record, context["sealed"])
+    validate_dashboard_html(
+        repo_root / DASHBOARD_REL,
+        record,
+        context["sealed"],
+        context["authority"],
+    )
     return {
         "result": "pass",
         "record_sha256": record["integrity"]["record_sha256"],

@@ -69,6 +69,10 @@ HTML_REL = (
     "docs/milestones/007-cli-operator-usability/evidence/"
     "capability-disposition/record.html"
 )
+DASHBOARD_REL = (
+    "docs/milestones/007-cli-operator-usability/evidence/"
+    "capability-disposition/dashboard.html"
+)
 
 SOURCE_ROOTS = ["autonomy", "implementations", "cli/automa_cli"]
 JOURNEY_PREFIX = "m007/journey/"
@@ -77,6 +81,7 @@ GROUPING_SCHEMA = "m007_capability_grouping_v1"
 RECORD_SCHEMA = "m007_capability_disposition_v1"
 REPORT_SCHEMA = "m007_capability_disposition_report_v1"
 RESIDUALS_SCHEMA = "m007_capability_disposition_residuals_v1"
+DASHBOARD_SCHEMA = "m007_capability_dashboard_v1"
 
 FROZEN_REPORT_SHA256 = (
     "51801c7686b247055114109e7462d13cb6702a1c8dcd8990a168f68357015789"
@@ -1226,6 +1231,417 @@ def _attr(value: Any) -> str:
     return html.escape(str(value), quote=True)
 
 
+def _dashboard_projection(
+    record: Mapping[str, Any],
+    sealed: Mapping[str, Any],
+) -> dict[str, Any]:
+    candidate_paths = set(record["residuals"]["candidate_member_paths"])
+    source_paths = set(sealed["source_paths"])
+    report_paths = set(sealed["files"])
+    source_status = {
+        "fully_reached": len(source_paths - candidate_paths),
+        "candidate_partial": len(candidate_paths & report_paths),
+        "candidate_absent": len(candidate_paths - report_paths),
+    }
+    disposition_counts = Counter(
+        group["disposition"]
+        for group in record["groups"]
+        for _member in group["members"]
+    )
+    groups: list[dict[str, Any]] = []
+    total_statements = 0
+    total_arcs = 0
+    for group in record["groups"]:
+        members: list[dict[str, Any]] = []
+        statement_count = 0
+        arc_count = 0
+        for member in group["members"]:
+            statements = list(member["unreached_statements"])
+            arcs = [list(arc) for arc in member["unreached_arcs"]]
+            statement_count += len(statements)
+            arc_count += len(arcs)
+            members.append(
+                {
+                    "path": member["path"],
+                    "source_sha256": member["source_sha256"],
+                    "unreached_statements": statements,
+                    "unreached_arcs": arcs,
+                }
+            )
+        total_statements += statement_count
+        total_arcs += arc_count
+        groups.append(
+            {
+                "id": group["id"],
+                "name": group["name"],
+                "member_count": len(members),
+                "statement_count": statement_count,
+                "arc_count": arc_count,
+                "disposition": group["disposition"],
+                "owner": _copy(group["owner"]),
+                "reason": _copy(group["reason"]),
+                "reconcile": _copy(group["reconcile"]),
+                "members": members,
+            }
+        )
+    return {
+        "schema": DASHBOARD_SCHEMA,
+        "record_sha256": record["integrity"]["record_sha256"],
+        "membership": {
+            "source_members": len(source_paths),
+            "journey_contexts": len(sealed["admitted_contexts"]),
+            "journey_report_files": len(sealed["files"]),
+            "candidate_members": len(candidate_paths),
+            "assigned_members": len(record["residuals"]["assigned_member_paths"]),
+            "unassigned_members": len(record["residuals"]["unassigned_member_paths"]),
+            "unresolved_region_refs": len(record["residuals"]["unresolved_region_refs"]),
+            "unreached_statements": total_statements,
+            "unreached_arcs": total_arcs,
+        },
+        "source_status": source_status,
+        "dispositions": {
+            disposition: disposition_counts.get(disposition, 0)
+            for disposition in ("expose", "retain", "remove")
+        },
+        "groups": groups,
+    }
+
+
+def _dashboard_script_json(value: Mapping[str, Any]) -> str:
+    """Return canonical JSON safe to place inside an application/json script."""
+
+    return (
+        canonical_json_bytes(value)
+        .decode("utf-8")
+        .replace("&", "\\u0026")
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+    )
+
+
+def _dashboard_percentage(value: int, total: int) -> str:
+    if total == 0 or value == 0:
+        return "0"
+    return f"{100 * value / total:.3f}".rstrip("0").rstrip(".")
+
+
+def _dashboard_detail_markup(group: Mapping[str, Any]) -> str:
+    dimensions = []
+    for dimension, item in group["reconcile"].items():
+        refs = item["refs"]
+        reference_markup = (
+            "<ul>"
+            + "".join(f"<li><code>{_attr(ref)}</code></li>" for ref in refs)
+            + "</ul>"
+            if refs
+            else "<span class=\"muted\">No typed references.</span>"
+        )
+        dimensions.append(
+            "<li>"
+            f"<strong>{_attr(dimension)}</strong>: "
+            f"<code>{_attr(item['status'])}</code> {reference_markup}"
+            "</li>"
+        )
+    members = []
+    for member in group["members"]:
+        statements = member["unreached_statements"]
+        arcs = member["unreached_arcs"]
+        statement_text = ", ".join(str(value) for value in statements) or "None"
+        arc_text = ", ".join(f"{arc[0]} → {arc[1]}" for arc in arcs) or "None"
+        members.append(
+            "<details class=\"member\" "
+            f"data-member-path=\"{_attr(member['path'])}\">"
+            "<summary>"
+            f"<code>{_attr(member['path'])}</code>"
+            f"<span class=\"member-counts\">{len(statements)} statements · "
+            f"{len(arcs)} arcs</span>"
+            "</summary>"
+            "<div class=\"member-detail\">"
+            f"<p class=\"muted\">Source SHA-256: <code>{_attr(member['source_sha256'])}</code></p>"
+            f"<p><strong>Statement lines:</strong> <code>{_attr(statement_text)}</code></p>"
+            f"<p><strong>Branch arcs:</strong> <code>{_attr(arc_text)}</code></p>"
+            "</div></details>"
+        )
+    return (
+        f"<h2>{_attr(group['name'])}</h2>"
+        f"<p class=\"detail-lede\"><span class=\"disposition-pill disposition-"
+        f"{_attr(group['disposition'])}\">{_attr(group['disposition'])}</span> "
+        f"{group['member_count']} candidate members, {group['statement_count']} "
+        f"statement entries, and {group['arc_count']} arc entries.</p>"
+        "<dl class=\"detail-facts\">"
+        f"<div><dt>Owner</dt><dd><code>{_attr(group['owner']['kind'])}:"
+        f"{_attr(group['owner']['ref'])}</code></dd></div>"
+        f"<div><dt>Reason</dt><dd><code>{_attr(group['reason']['code'])}</code> "
+        f"{_attr(group['reason']['detail'])}</dd></div>"
+        "</dl>"
+        "<details class=\"reconciliation\"><summary>Reconciliation evidence</summary>"
+        f"<ul>{''.join(dimensions)}</ul></details>"
+        f"<h3>Members ({group['member_count']})</h3>"
+        f"<div class=\"members\">{''.join(members)}</div>"
+    )
+
+
+def render_dashboard_html(
+    record: Mapping[str, Any],
+    sealed: Mapping[str, Any],
+) -> str:
+    projection = _dashboard_projection(record, sealed)
+    embedded = _dashboard_script_json(projection)
+    membership = projection["membership"]
+    source_status = projection["source_status"]
+    dispositions = projection["dispositions"]
+    total_members = membership["source_members"]
+    total_candidates = membership["candidate_members"]
+    max_group_members = max(group["member_count"] for group in projection["groups"])
+    first_group = projection["groups"][0]
+
+    metric_markup = "".join(
+        [
+            f'<div class="metric"><span>Source members</span><strong>{membership["source_members"]}</strong><small>sealed Python paths</small></div>',
+            f'<div class="metric"><span>Journey contexts</span><strong>{membership["journey_contexts"]}</strong><small>admitted CLI contexts</small></div>',
+            f'<div class="metric"><span>Candidate members</span><strong>{membership["candidate_members"]}</strong><small>assigned to groups</small></div>',
+            f'<div class="metric"><span>Capability groups</span><strong>{len(projection["groups"])}</strong><small>owned review units</small></div>',
+            f'<div class="metric"><span>Statement entries</span><strong>{membership["unreached_statements"]:,}</strong><small>descriptive region count</small></div>',
+            f'<div class="metric"><span>Arc entries</span><strong>{membership["unreached_arcs"]:,}</strong><small>descriptive branch count</small></div>',
+        ]
+    )
+    disposition_total = sum(dispositions.values())
+    disposition_segments = "".join(
+        f'<span class="segment disposition-{_attr(disposition)}" '
+        f'style="width:{_dashboard_percentage(count, disposition_total)}%" '
+        f'aria-label="{_attr(disposition)}: {count} members"></span>'
+        for disposition, count in dispositions.items()
+    )
+    disposition_legend = "".join(
+        f'<li><span class="swatch disposition-{_attr(disposition)}"></span>'
+        f'<strong>{count}</strong> {_attr(disposition)}</li>'
+        for disposition, count in dispositions.items()
+    )
+    status_total = sum(source_status.values())
+    source_segments = "".join(
+        f'<span class="segment status-{_attr(status)}" '
+        f'style="width:{_dashboard_percentage(count, status_total)}%" '
+        f'aria-label="{_attr(status)}: {count} files"></span>'
+        for status, count in source_status.items()
+    )
+    source_legend_labels = {
+        "fully_reached": "fully journey-reached",
+        "candidate_partial": "candidate paths present in report",
+        "candidate_absent": "absent from journey report",
+    }
+    source_legend = "".join(
+        f'<li><span class="swatch status-{_attr(status)}"></span>'
+        f'<strong>{count}</strong> {_attr(source_legend_labels[status])}</li>'
+        for status, count in source_status.items()
+    )
+    group_rows = []
+    for index, group in enumerate(projection["groups"]):
+        width = 100 * group["member_count"] / max_group_members
+        group_rows.append(
+            f'<button type="button" class="group-row disposition-{_attr(group["disposition"])}" '
+            f'data-group-id="{_attr(group["id"])}" aria-pressed="{str(index == 0).lower()}" '
+            f'aria-label="{_attr(group["name"])}: {group["member_count"]} members">'
+            f'<span class="group-name">{_attr(group["name"])}</span>'
+            f'<span class="bar-track"><span class="bar-fill" style="width:{width:.3f}%"></span></span>'
+            f'<span class="group-value">{group["member_count"]}</span>'
+            "</button>"
+        )
+    style = """
+:root {
+  color-scheme: light;
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --surface-alt: #eef1f5;
+  --text: #17202a;
+  --muted: #5e6a78;
+  --border: #d7dde5;
+  --focus: #1e6bb8;
+  --expose: #b4512b;
+  --retain: #356f8f;
+  --remove: #8d3f55;
+  --fully: #4b8a68;
+  --partial: #356f8f;
+  --absent: #a9b2bd;
+  --on-series: #ffffff;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #101419;
+    --surface: #171d24;
+    --surface-alt: #232b35;
+    --text: #edf1f5;
+    --muted: #aab5c1;
+    --border: #3a4653;
+    --focus: #6bb5f0;
+    --expose: #e48a61;
+    --retain: #73b5d5;
+    --remove: #e28aa2;
+    --fully: #78c39a;
+    --partial: #73b5d5;
+    --absent: #697583;
+    --on-series: #ffffff;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.5 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+a { color: var(--focus); }
+code, .metric strong, .group-value, .member-counts { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.dashboard { max-width: 1240px; margin: 0 auto; padding: 32px clamp(16px, 4vw, 48px) 64px; }
+.eyebrow { color: var(--muted); font-size: .78rem; letter-spacing: .08em; text-transform: uppercase; }
+h1, h2, h3 { line-height: 1.2; }
+h1 { margin: .25rem 0 .5rem; font-size: clamp(1.8rem, 4vw, 2.6rem); }
+h2 { margin: 0 0 .45rem; font-size: 1.15rem; }
+h3 { margin: 1.3rem 0 .65rem; font-size: .98rem; }
+.lede { max-width: 840px; color: var(--muted); margin: 0; }
+.notice { margin: 18px 0 26px; padding: 12px 14px; border-left: 4px solid var(--retain); background: var(--surface); color: var(--muted); }
+.metrics { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; margin: 22px 0 28px; }
+.metric { min-width: 0; padding: 13px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 9px; }
+.metric span, .metric small { display: block; color: var(--muted); }
+.metric span { font-size: .82rem; }
+.metric strong { display: block; margin: 3px 0; font-size: 1.5rem; }
+.metric small { font-size: .72rem; }
+.visual-grid { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(300px, .7fr); gap: 18px; align-items: start; }
+.panel { min-width: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 18px; }
+.panel-header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.muted { color: var(--muted); }
+.caption { color: var(--muted); font-size: .86rem; margin: 0 0 14px; }
+.group-chart { display: grid; gap: 5px; }
+.group-row { display: grid; grid-template-columns: minmax(165px, 1.3fr) minmax(100px, 2fr) 44px; gap: 10px; align-items: center; width: 100%; padding: 8px 7px; color: var(--text); text-align: left; background: transparent; border: 0; border-radius: 6px; cursor: pointer; }
+.group-row:hover { background: var(--surface-alt); }
+.group-row[aria-pressed="true"] { outline: 2px solid var(--focus); outline-offset: -2px; background: var(--surface-alt); }
+.group-row:focus-visible, .member summary:focus-visible, .reconciliation summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.group-name { min-width: 0; overflow-wrap: anywhere; }
+.bar-track { display: block; height: 16px; overflow: hidden; background: var(--surface-alt); border-radius: 3px; }
+.bar-fill { display: block; height: 100%; min-width: 2px; background: var(--retain); border-radius: inherit; }
+.disposition-expose .bar-fill, .swatch.disposition-expose, .segment.disposition-expose { background: var(--expose); }
+.disposition-retain .bar-fill, .swatch.disposition-retain, .segment.disposition-retain { background: var(--retain); }
+.disposition-remove .bar-fill, .swatch.disposition-remove, .segment.disposition-remove { background: var(--remove); }
+.group-value { text-align: right; font-weight: 600; }
+.chart-foot { margin: 14px 0 0; color: var(--muted); font-size: .8rem; }
+.composition { margin-top: 24px; }
+.stacked-bar { display: flex; width: 100%; height: 18px; overflow: hidden; background: var(--surface-alt); border-radius: 4px; }
+.segment { display: block; min-width: 0; }
+.legend { display: flex; flex-wrap: wrap; gap: 7px 16px; margin: 10px 0 0; padding: 0; list-style: none; color: var(--muted); font-size: .82rem; }
+.legend li { display: flex; align-items: center; gap: 6px; }
+.swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
+.status-fully_reached, .swatch.status-fully_reached, .segment.status-fully_reached { background: var(--fully); }
+.status-candidate_partial, .swatch.status-candidate_partial, .segment.status-candidate_partial { background: var(--partial); }
+.status-candidate_absent, .swatch.status-candidate_absent, .segment.status-candidate_absent { background: var(--absent); }
+.detail-lede { margin: 0 0 16px; color: var(--muted); }
+.disposition-pill { display: inline-block; padding: 2px 7px; border-radius: 999px; color: var(--on-series); font: 600 .75rem ui-monospace, monospace; text-transform: uppercase; }
+.disposition-pill.disposition-expose { background: var(--expose); }
+.disposition-pill.disposition-retain { background: var(--retain); }
+.disposition-pill.disposition-remove { background: var(--remove); }
+.detail-facts { display: grid; gap: 8px; margin: 0; }
+.detail-facts div { display: grid; grid-template-columns: 72px 1fr; gap: 10px; }
+.detail-facts dt { color: var(--muted); }
+.detail-facts dd { margin: 0; overflow-wrap: anywhere; }
+.reconciliation { margin: 16px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.reconciliation summary, .member summary { cursor: pointer; padding: 9px 0; }
+.reconciliation ul { margin: 0 0 10px; padding-left: 20px; }
+.reconciliation li { margin: 5px 0; }
+.reconciliation li ul { margin: 3px 0; }
+.members { display: grid; gap: 6px; }
+.member { border: 1px solid var(--border); border-radius: 6px; padding: 0 10px; }
+.member summary { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.member-counts { color: var(--muted); font-size: .76rem; }
+.member-detail { border-top: 1px solid var(--border); padding: 8px 0 4px; overflow-wrap: anywhere; }
+.member-detail p { margin: 7px 0; }
+.member-detail code { white-space: pre-wrap; word-break: break-word; }
+.residual-note { margin: 16px 0 0; padding: 10px 12px; background: var(--surface-alt); color: var(--muted); font-size: .82rem; }
+@media (max-width: 1040px) { .metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); } .visual-grid { grid-template-columns: 1fr; } }
+@media (max-width: 560px) { .dashboard { padding-top: 22px; } .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } .metric strong { font-size: 1.25rem; } .group-row { grid-template-columns: 1fr 48px; } .group-name { grid-column: 1 / -1; } .bar-track { grid-column: 1; } .group-value { grid-column: 2; grid-row: 2; } .detail-facts div { grid-template-columns: 1fr; gap: 2px; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; } }
+"""
+    script = r"""
+(function () {
+  "use strict";
+  const data = JSON.parse(document.getElementById("dashboard-data").textContent);
+  const detail = document.getElementById("group-detail");
+  const buttons = Array.from(document.querySelectorAll("button.group-row"));
+
+  function escapeHtml(value) {
+    return String(value).replace(/[&<>\"']/g, function (character) {
+      return {"&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;"}[character];
+    });
+  }
+
+  function listMarkup(values, formatter) {
+    if (!values.length) return "None";
+    return values.map(formatter).join(", ");
+  }
+
+  function detailMarkup(group) {
+    const dimensions = Object.entries(group.reconcile).map(function (entry) {
+      const dimension = entry[0];
+      const item = entry[1];
+      const refs = item.refs.length
+        ? "<ul>" + item.refs.map(function (ref) { return "<li><code>" + escapeHtml(ref) + "</code></li>"; }).join("") + "</ul>"
+        : "<span class=\"muted\">No typed references.</span>";
+      return "<li><strong>" + escapeHtml(dimension) + "</strong>: <code>" + escapeHtml(item.status) + "</code> " + refs + "</li>";
+    }).join("");
+    const members = group.members.map(function (member) {
+      const statements = listMarkup(member.unreached_statements, function (value) { return escapeHtml(value); });
+      const arcs = listMarkup(member.unreached_arcs, function (arc) { return escapeHtml(arc[0] + " → " + arc[1]); });
+      return "<details class=\"member\" data-member-path=\"" + escapeHtml(member.path) + "\"><summary><code>" + escapeHtml(member.path) + "</code><span class=\"member-counts\">" + member.unreached_statements.length + " statements · " + member.unreached_arcs.length + " arcs</span></summary><div class=\"member-detail\"><p class=\"muted\">Source SHA-256: <code>" + escapeHtml(member.source_sha256) + "</code></p><p><strong>Statement lines:</strong> <code>" + statements + "</code></p><p><strong>Branch arcs:</strong> <code>" + arcs + "</code></p></div></details>";
+    }).join("");
+    return "<h2>" + escapeHtml(group.name) + "</h2><p class=\"detail-lede\"><span class=\"disposition-pill disposition-" + escapeHtml(group.disposition) + "\">" + escapeHtml(group.disposition) + "</span> " + group.member_count + " candidate members, " + group.statement_count + " statement entries, and " + group.arc_count + " arc entries.</p><dl class=\"detail-facts\"><div><dt>Owner</dt><dd><code>" + escapeHtml(group.owner.kind + ":" + group.owner.ref) + "</code></dd></div><div><dt>Reason</dt><dd><code>" + escapeHtml(group.reason.code) + "</code> " + escapeHtml(group.reason.detail) + "</dd></div></dl><details class=\"reconciliation\"><summary>Reconciliation evidence</summary><ul>" + dimensions + "</ul></details><h3>Members (" + group.member_count + ")</h3><div class=\"members\">" + members + "</div>";
+  }
+
+  function selectGroup(groupId) {
+    const group = data.groups.find(function (candidate) { return candidate.id === groupId; });
+    if (!group) return;
+    buttons.forEach(function (button) {
+      button.setAttribute("aria-pressed", String(button.dataset.groupId === groupId));
+    });
+    detail.innerHTML = detailMarkup(group);
+    detail.dataset.initialGroupId = groupId;
+  }
+
+  buttons.forEach(function (button) {
+    button.addEventListener("click", function () { selectGroup(button.dataset.groupId); });
+  });
+}());
+"""
+    lines = [
+        "<!doctype html>",
+        '<html lang="en"><head><meta charset="utf-8">',
+        f'<meta name="record-sha256" content="{_attr(record["integrity"]["record_sha256"])}">',
+        '<meta name="viewport" content="width=device-width, initial-scale=1">',
+        "<title>M007-09 capability disposition dashboard</title>",
+        f"<style>{style}</style></head><body>",
+        '<main class="dashboard" id="capability-dashboard">',
+        '<header><div class="eyebrow">M007-09 · derived evidence view</div>',
+        "<h1>Capability disposition outside CLI journeys</h1>",
+        '<p class="lede">A visual summary of the sealed source universe, candidate capabilities, and later-review dispositions. It describes the record; it does not authorize product changes.</p>',
+        '<p class="notice">Unreached does not mean dead. Counts and charts are descriptive evidence only; the canonical record and its validators remain authoritative. <a href="record.html">Open the complete audit ledger</a> · <a href="record.json">Open record.json</a></p></header>',
+        f'<section class="metrics" aria-label="Record summary">{metric_markup}</section>',
+        '<section class="visual-grid">',
+        '<div class="panel"><div class="panel-header"><h2>Candidate members by capability group</h2><span class="muted">Select a bar for details</span></div>',
+        '<p class="caption">Each bar is a group of source members, not a severity score.</p>',
+        f'<div class="group-chart" id="group-chart" role="list">{"".join(group_rows)}</div>',
+        f'<p class="chart-foot">Residuals: {membership["unassigned_members"]} unassigned members · {membership["unresolved_region_refs"]} unresolved region references.</p>',
+        '<div class="composition"><h3>Disposition mix</h3><p class="caption">Member allocation across later-review candidates.</p>',
+        f'<div class="stacked-bar" id="disposition-chart" role="img" aria-label="Disposition mix: {dispositions["expose"]} expose, {dispositions["retain"]} retain, {dispositions["remove"]} remove">{disposition_segments}</div><ul class="legend">{disposition_legend}</ul></div>',
+        '<div class="composition"><h3>Source-status composition</h3><p class="caption">How the 96 source members relate to the journey report.</p>',
+        f'<div class="stacked-bar" id="source-status-chart" role="img" aria-label="Source status: {source_status["fully_reached"]} fully journey-reached, {source_status["candidate_partial"]} candidate paths present in the report, {source_status["candidate_absent"]} absent from the journey report">{source_segments}</div><ul class="legend">{source_legend}</ul></div>',
+        '</div>',
+        f'<aside class="panel" id="group-detail" data-initial-group-id="{_attr(first_group["id"])}" aria-live="polite">{_dashboard_detail_markup(first_group)}</aside>',
+        '</section>',
+        '<p class="residual-note">The snapshot is bound to the sealed M007-07 journey report, the historical source-analysis runtime, and the M007-08 input manifest. Later source changes require a refreshed disposition review.</p>',
+        f'<script type="application/json" id="dashboard-data">{embedded}</script>',
+        f"<script>{script}</script>",
+        '</main></body></html>',
+    ]
+    return "\n".join(lines) + "\n"
+
+
 def render_html(record: Mapping[str, Any]) -> str:
     embedded = html.escape(canonical_json_bytes(record).decode("utf-8"))
     lines = [
@@ -1350,6 +1766,78 @@ def validate_html(path: Path, record: Mapping[str, Any]) -> None:
         _fail("derived HTML member projection is incomplete or changed")
 
 
+class _DashboardHTMLParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.record_sha256: str | None = None
+        self.data_chunks: list[str] = []
+        self.in_data = False
+        self.group_ids: list[str] = []
+        self.element_ids: set[str] = set()
+        self.initial_group_id: str | None = None
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        values = dict(attrs)
+        element_id = values.get("id")
+        if element_id:
+            self.element_ids.add(element_id)
+        if tag == "meta" and values.get("name") == "record-sha256":
+            self.record_sha256 = values.get("content")
+        if tag == "script" and values.get("id") == "dashboard-data":
+            self.in_data = True
+        if tag == "button" and "group-row" in (values.get("class") or "").split():
+            group_id = values.get("data-group-id")
+            if group_id is not None:
+                self.group_ids.append(group_id)
+        if element_id == "group-detail":
+            self.initial_group_id = values.get("data-initial-group-id")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "script" and self.in_data:
+            self.in_data = False
+
+    def handle_data(self, data: str) -> None:
+        if self.in_data:
+            self.data_chunks.append(data)
+
+
+def validate_dashboard_html(
+    path: Path,
+    record: Mapping[str, Any],
+    sealed: Mapping[str, Any],
+) -> None:
+    try:
+        source = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        _fail(f"cannot read derived dashboard HTML: {exc}")
+    parser = _DashboardHTMLParser()
+    parser.feed(source)
+    if parser.record_sha256 != record["integrity"]["record_sha256"]:
+        _fail("dashboard record digest metadata does not match record.json")
+    if not parser.data_chunks:
+        _fail("dashboard does not expose its canonical data projection")
+    try:
+        projection = json.loads("".join(parser.data_chunks))
+    except json.JSONDecodeError as exc:
+        _fail(f"dashboard data projection is invalid JSON: {exc}")
+    if projection != _dashboard_projection(record, sealed):
+        _fail("dashboard data projection does not match the record")
+    expected_groups = [group["id"] for group in record["groups"]]
+    if parser.group_ids != expected_groups:
+        _fail("dashboard group chart is incomplete or reordered")
+    if parser.initial_group_id != expected_groups[0]:
+        _fail("dashboard initial group selection is not canonical")
+    required_ids = {
+        "capability-dashboard",
+        "group-chart",
+        "disposition-chart",
+        "source-status-chart",
+        "group-detail",
+    }
+    if not required_ids <= parser.element_ids:
+        _fail("dashboard is missing a required visual projection")
+
+
 def _build_context(repo_root: Path) -> dict[str, Any]:
     sealed = load_sealed_report(repo_root)
     source_analysis_path = repo_root / SOURCE_ANALYSIS_REL
@@ -1395,6 +1883,7 @@ def build_evidence(repo_root: Path = ROOT) -> dict[str, Any]:
     residuals_path = repo_root / RESIDUALS_REL
     rollup_path = repo_root / ROLLUP_REL
     html_path = repo_root / HTML_REL
+    dashboard_path = repo_root / DASHBOARD_REL
     write_canonical(record_path, record)
     pass_report = _make_pass_report(record, context["sealed"])
     residuals = _make_residuals(record)
@@ -1403,7 +1892,12 @@ def build_evidence(repo_root: Path = ROOT) -> dict[str, Any]:
     rollup_path.parent.mkdir(parents=True, exist_ok=True)
     rollup_path.write_text(render_rollup(record, context["sealed"]), encoding="utf-8")
     html_path.write_text(render_html(record), encoding="utf-8")
+    dashboard_path.write_text(
+        render_dashboard_html(record, context["sealed"]),
+        encoding="utf-8",
+    )
     validate_html(html_path, record)
+    validate_dashboard_html(dashboard_path, record, context["sealed"])
     return {
         "record": record,
         "report": pass_report,
@@ -1411,6 +1905,7 @@ def build_evidence(repo_root: Path = ROOT) -> dict[str, Any]:
         "record_path": record_path,
         "report_path": report_path,
         "html_path": html_path,
+        "dashboard_path": dashboard_path,
     }
 
 
@@ -1438,6 +1933,7 @@ def validate_evidence(repo_root: Path = ROOT) -> dict[str, Any]:
     if not rollup_path.is_file() or rollup_path.read_text(encoding="utf-8") != render_rollup(record, context["sealed"]):
         _fail("rollup differs from the deterministic derivation")
     validate_html(repo_root / HTML_REL, record)
+    validate_dashboard_html(repo_root / DASHBOARD_REL, record, context["sealed"])
     return {
         "result": "pass",
         "record_sha256": record["integrity"]["record_sha256"],

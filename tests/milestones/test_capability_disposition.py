@@ -277,6 +277,46 @@ class CapabilityDispositionTests(unittest.TestCase):
             with self.assertRaises(cd.CapabilityDispositionError):
                 cd.validate_html(path, self.record)
 
+    def test_dashboard_matches_record_projection(self) -> None:
+        projection = cd._dashboard_projection(self.record, self.sealed)
+        self.assertEqual(projection["membership"]["source_members"], 96)
+        self.assertEqual(projection["membership"]["journey_contexts"], 22)
+        self.assertEqual(projection["membership"]["candidate_members"], 93)
+        self.assertEqual(projection["source_status"], {
+            "fully_reached": 3,
+            "candidate_partial": 60,
+            "candidate_absent": 33,
+        })
+        self.assertEqual(projection["dispositions"], {
+            "expose": 25,
+            "retain": 68,
+            "remove": 0,
+        })
+        cd.validate_dashboard_html(
+            ROOT / cd.DASHBOARD_REL,
+            self.record,
+            self.sealed,
+        )
+
+    def test_dashboard_group_omission_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "dashboard.html"
+            path.write_text(
+                cd.render_dashboard_html(self.record, self.sealed),
+                encoding="utf-8",
+            )
+            cd.validate_dashboard_html(path, self.record, self.sealed)
+            source = path.read_text(encoding="utf-8")
+            marker = '<button type="button" class="group-row'
+            start = source.index(marker)
+            end = source.index(">", start)
+            button = source[start:end]
+            group_id = self.record["groups"][0]["id"]
+            button = button.replace(f' data-group-id="{group_id}"', "")
+            path.write_text(source[:start] + button + source[end:], encoding="utf-8")
+            with self.assertRaises(cd.CapabilityDispositionError):
+                cd.validate_dashboard_html(path, self.record, self.sealed)
+
     def test_canonical_grouping_is_committed(self) -> None:
         grouping_path = ROOT / cd.GROUPING_REL
         raw = grouping_path.read_bytes()

@@ -277,18 +277,45 @@ EMPTY_FRONTIER_MAP = FrontierMap(
 )
 
 
+def _empty_successor_view() -> Frontier:
+    return Frontier(
+        name=None,
+        fields={
+            "reason": "No remaining work-order node is contracted.",
+            "revisit when": "The next proposal may introduce a node.",
+        },
+    )
+
+
+def _frontier_map_successor(frontier_map: FrontierMap) -> Frontier:
+    if not frontier_map.path:
+        return _empty_successor_view()
+    nodes_by_name = {node.name: node for node in frontier_map.nodes}
+    successor = nodes_by_name.get(frontier_map.path[0])
+    if successor is None:
+        raise PlanContractError(
+            f"Frontier Map is missing Node {frontier_map.path[0]!r}"
+        )
+    return successor
+
+
 @dataclass(frozen=True)
 class PlanState:
     milestone_number: str
     status: str
     milestone_branch: str
     current: Frontier
-    next_frontier: Frontier
     frontier_map: FrontierMap
     criteria: MarkdownTable
     ledger: MarkdownTable
     workflow_history: MarkdownTable
     risks: MarkdownTable
+
+    @property
+    def next_frontier(self) -> Frontier:
+        """Compatibility view derived from the canonical remaining map."""
+
+        return _frontier_map_successor(self.frontier_map)
 
 
 def _workflow_state(frontier: Frontier) -> str:
@@ -373,7 +400,6 @@ def parse_frontier(text: str, heading: str) -> Frontier:
     lines = text.splitlines()
     start, end = _section_bounds(lines, heading)
     name: str | None = None
-    fields: dict[str, str] = {}
     for line in lines[start:end]:
         stripped = line.strip()
         name_match = re.fullmatch(r"\*\*(.+)\*\*", stripped)
@@ -381,18 +407,16 @@ def parse_frontier(text: str, heading: str) -> Frontier:
             raw_name = name_match.group(1).strip()
             name = None if raw_name.lower() == "none" else raw_name
             continue
-        field_match = re.match(r"-\s+\*\*?([^*:]+)\*\*?:\s*(.*)", stripped)
-        if field_match is None:
-            field_match = re.match(r"-\s+([^:]+):\s*(.*)", stripped)
-        if field_match:
-            fields[_normalize_field(field_match.group(1))] = field_match.group(2).strip()
 
     if name is None and not any(line.strip() == "**None**" for line in lines[start:end]):
         raise PlanContractError(f"{heading} must identify a frontier name or **None**")
-    return Frontier(name=name, fields=fields)
+    return Frontier(
+        name=name,
+        fields=_parse_frontier_fields(lines[start:end]),
+    )
 
 
-def _parse_frontier_fields(lines: list[str]) -> dict[str, str]:
+def _parse_frontier_fields(lines: Iterable[str]) -> dict[str, str]:
     fields: dict[str, str] = {}
     for line in lines:
         stripped = line.strip()
@@ -502,20 +526,24 @@ def _validate_frontier_map(
     *,
     status: str,
     current: Frontier,
-    next_frontier: Frontier,
+    declared_successor: Frontier,
     known_ids: set[str],
     expected_review_prefix: str,
 ) -> FrontierMap:
     if status in {"closed", "pre-plan"}:
+        if not declared_successor.is_empty:
+            raise PlanContractError(
+                f"{status} milestone must have no successor or queued nodes"
+            )
         if frontier_map is None:
             return EMPTY_FRONTIER_MAP
         if frontier_map.path or frontier_map.nodes or frontier_map.off_path:
             raise PlanContractError(
-                f"{status} milestone Frontier Map path must be none without queued nodes"
+                f"{status} milestone must have no successor or queued nodes"
             )
         return frontier_map
     if frontier_map is None:
-        frontier_map = _legacy_frontier_map(next_frontier)
+        frontier_map = _legacy_frontier_map(declared_successor)
     seen_names: set[str] = set()
     if current.name:
         seen_names.add(current.name)
@@ -615,18 +643,20 @@ def _validate_frontier_map(
     ]
     if closeout_indexes and closeout_indexes != [len(remaining) - 1]:
         raise PlanContractError("Frontier Map closeout node must be last on the path")
+    successor = _frontier_map_successor(frontier_map)
     if remaining:
-        if next_frontier.is_empty or next_frontier.name != remaining[0]:
+        if (
+            declared_successor.is_empty
+            or declared_successor.name != successor.name
+        ):
             raise PlanContractError(
                 "Next-Frontier Candidate must match the Frontier Map successor"
             )
-        if _contracted_fields(next_frontier) != _contracted_fields(
-            node_by_name[remaining[0]]
-        ):
+        if _contracted_fields(declared_successor) != _contracted_fields(successor):
             raise PlanContractError(
                 "Next-Frontier Candidate fields must match its Frontier Map Node"
             )
-    elif not next_frontier.is_empty:
+    elif not declared_successor.is_empty:
         raise PlanContractError(
             "Next-Frontier Candidate must be None when the Frontier Map has no successor"
         )
@@ -891,14 +921,14 @@ def validate_plan_text(text: str) -> PlanState:
             )
 
     current = parse_frontier(text, "### Current Frontier")
-    next_frontier = parse_frontier(text, "### Next-Frontier Candidate")
+    declared_successor = parse_frontier(text, "### Next-Frontier Candidate")
     _require_frontier_fields(
         current,
         heading="Current Frontier",
         current=True,
     )
     _require_frontier_fields(
-        next_frontier,
+        declared_successor,
         heading="Next-Frontier Candidate",
         current=False,
     )
@@ -908,7 +938,7 @@ def validate_plan_text(text: str) -> PlanState:
         known_ids=seen_ids,
     )
     _frontier_criterion_ids(
-        next_frontier,
+        declared_successor,
         heading="Next-Frontier Candidate",
         known_ids=seen_ids,
     )
@@ -1009,11 +1039,11 @@ def validate_plan_text(text: str) -> PlanState:
                     f"Current Frontier {branch_kind} branch must start with "
                     f"{expected_review_prefix!r}"
                 )
-    if not next_frontier.is_empty:
+    if not declared_successor.is_empty:
         forbidden_next_fields = {
             field
             for field in ("workflow state", "accepted proposal", "pr")
-            if next_frontier.fields.get(field)
+            if declared_successor.fields.get(field)
         }
         if forbidden_next_fields:
             raise PlanContractError(
@@ -1021,12 +1051,12 @@ def validate_plan_text(text: str) -> PlanState:
                 + ", ".join(sorted(forbidden_next_fields))
             )
         next_proposal_branch = _frontier_branch(
-            next_frontier,
+            declared_successor,
             heading="Next-Frontier Candidate",
             field="proposal branch",
         )
         next_implementation_branch = _frontier_branch(
-            next_frontier,
+            declared_successor,
             heading="Next-Frontier Candidate",
             field="implementation branch",
         )
@@ -1035,7 +1065,7 @@ def validate_plan_text(text: str) -> PlanState:
                 "Next-Frontier Candidate proposal and implementation branches must differ"
             )
         _frontier_proposal_path(
-            next_frontier,
+            declared_successor,
             heading="Next-Frontier Candidate",
         )
         for branch_kind, branch in (
@@ -1052,14 +1082,14 @@ def validate_plan_text(text: str) -> PlanState:
         raise PlanContractError("Blocked milestone must use an empty current frontier")
     if status in {"pre-plan", "closed"} and not current.is_empty:
         raise PlanContractError(f"{status} milestone cannot have an active current frontier")
-    if status == "closed" and not next_frontier.is_empty:
+    if status == "closed" and not declared_successor.is_empty:
         raise PlanContractError("closed milestone cannot have a next candidate")
 
     frontier_map = _validate_frontier_map(
         parse_frontier_map(text),
         status=status,
         current=current,
-        next_frontier=next_frontier,
+        declared_successor=declared_successor,
         known_ids=seen_ids,
         expected_review_prefix=expected_review_prefix,
     )
@@ -1221,7 +1251,6 @@ def validate_plan_text(text: str) -> PlanState:
         status=status,
         milestone_branch=milestone_branch,
         current=current,
-        next_frontier=next_frontier,
         frontier_map=frontier_map,
         criteria=criteria,
         ledger=ledger,
@@ -1491,6 +1520,31 @@ def _normalize_receipt(receipt: dict[str, Any]) -> dict[str, Any]:
     return receipt
 
 
+def _remaining_work_order_after_handoff(
+    state: PlanState,
+    *,
+    empty_successor: Frontier,
+) -> tuple[FrontierMap, Frontier]:
+    remaining_path = tuple(
+        name for name in state.frontier_map.path if name != state.current.name
+    )
+    new_nodes = tuple(
+        node for node in state.frontier_map.nodes if node.name in remaining_path
+    )
+    new_map = FrontierMap(
+        path=remaining_path,
+        cadence=state.frontier_map.cadence,
+        nodes=new_nodes,
+        off_path=state.frontier_map.off_path,
+    )
+    successor = (
+        _frontier_map_successor(new_map)
+        if new_map.path
+        else empty_successor
+    )
+    return new_map, successor
+
+
 def apply_handoff(text: str, receipt_payload: dict[str, Any]) -> str:
     receipt = _normalize_receipt(receipt_payload)
     state = validate_plan_text(text)
@@ -1589,30 +1643,9 @@ def apply_handoff(text: str, receipt_payload: dict[str, Any]) -> str:
                 "revisit when": idle.fields["revisit when"],
             },
         )
-        remaining_path = tuple(
-            name
-            for name in state.frontier_map.path
-            if name != state.current.name
-        )
-        new_nodes = tuple(
-            node for node in state.frontier_map.nodes if node.name in remaining_path
-        )
-        if remaining_path:
-            try:
-                new_next = next(
-                    node for node in new_nodes if node.name == remaining_path[0]
-                )
-            except StopIteration as exc:
-                raise PlanContractError(
-                    f"Frontier Map is missing Node {remaining_path[0]!r} after handoff"
-                ) from exc
-        else:
-            new_next = idle
-        new_map = FrontierMap(
-            path=remaining_path,
-            cadence=state.frontier_map.cadence,
-            nodes=new_nodes,
-            off_path=state.frontier_map.off_path,
+        new_map, new_next = _remaining_work_order_after_handoff(
+            state,
+            empty_successor=idle,
         )
         text = _replace_header_value(text, "Status", "Active")
         text = _replace_header_value(text, "Current frontier", "None (idle)")
@@ -1623,35 +1656,16 @@ def apply_handoff(text: str, receipt_payload: dict[str, Any]) -> str:
             name=None,
             fields={"reason": reason, "revisit when": revisit},
         )
-        new_next = Frontier(
+        blocked = Frontier(
             name=None,
             fields={"reason": reason, "revisit when": revisit},
         )
+        new_map, new_next = _remaining_work_order_after_handoff(
+            state,
+            empty_successor=blocked,
+        )
         text = _replace_header_value(text, "Status", "Blocked")
         text = _replace_header_value(text, "Current frontier", "None (blocked)")
-        remaining_path = tuple(
-            name
-            for name in state.frontier_map.path
-            if name != state.current.name
-        )
-        new_nodes = tuple(
-            node for node in state.frontier_map.nodes if node.name in remaining_path
-        )
-        new_map = FrontierMap(
-            path=remaining_path,
-            cadence=state.frontier_map.cadence,
-            nodes=new_nodes,
-            off_path=state.frontier_map.off_path,
-        )
-        if remaining_path:
-            new_next = next(
-                node for node in new_nodes if node.name == remaining_path[0]
-            )
-        else:
-            new_next = Frontier(
-                name=None,
-                fields={"reason": reason, "revisit when": revisit},
-            )
     else:
         if state.current.fields.get("review kind", "").lower() != "milestone closeout":
             raise PlanContractError("close outcome requires a milestone closeout frontier")

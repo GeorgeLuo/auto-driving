@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from dataclasses import replace
+from pathlib import Path
 import subprocess
 import tempfile
 import unittest
-from pathlib import Path
 
 from docs.milestones.workflow import (
     Frontier,
@@ -409,6 +410,24 @@ class MilestonePlanContractTests(unittest.TestCase):
         state = validate_plan_text(missing)
         self.assertEqual(state.frontier_map.path, (NEXT_FRONTIER,))
         self.assertEqual(state.next_frontier.name, NEXT_FRONTIER)
+
+    def test_next_frontier_view_is_derived_from_map_head(self) -> None:
+        state = validate_plan_text(self.plan_text)
+        replacement = Frontier(
+            name="Replacement successor",
+            fields={"review question": "A replacement is visible."},
+        )
+        updated = replace(
+            state,
+            frontier_map=FrontierMap(
+                path=(replacement.name,),
+                cadence=state.frontier_map.cadence,
+                nodes=(replacement,),
+                off_path=state.frontier_map.off_path,
+            ),
+        )
+
+        self.assertEqual(updated.next_frontier, replacement)
 
     def test_path_cannot_repeat_a_node_name(self) -> None:
         invalid = self.plan_text.replace(

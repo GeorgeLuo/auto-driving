@@ -102,16 +102,69 @@ admitted support-cleanup context.
 For each source-universe path, implementation consumes the corresponding
 possible statement and branch-arc sets from the verified source-analysis
 artifact. The artifact has exactly `schema`, `inputs`, and `files` at its top
-level; each file has exactly `path`, `source_sha256`, `possible_statements`,
-and `possible_arcs`, with sorted unique canonical values and no execution or
-disposition fields. The artifact's source/config/runtime envelope must match
-the sealed values above. For a path absent from `report.files`, the executed
-line and arc sets are empty. Otherwise they are the unions of that path's
-context-level `executed_lines` and `executed_arcs` only for the admitted
-journey contexts.
+level; `inputs` has exactly `source_identity`, `coverage_analysis`, and
+`source_analysis_runtime`; and each file has exactly `path`, `source_sha256`,
+`possible_statements`, and `possible_arcs`, with sorted unique canonical values
+and no execution or disposition fields. The artifact's source/config/runtime
+envelope must match the sealed values above. For a path absent from
+`report.files`, the executed line and arc sets are empty. Otherwise they are
+the unions of that path's context-level `executed_lines` and `executed_arcs`
+only for the admitted journey contexts.
 The derived unreached sets are therefore deterministic even for an entirely
 unrepresented file, a partially reached file, or a file with a missing branch
 arc.
+
+The closed source-analysis artifact shape is:
+
+```json
+{
+  "schema": "m007_capability_source_analysis_v1",
+  "inputs": {
+    "source_identity": {
+      "commit": "<frozen source commit>",
+      "relevant_tree_sha256": "<frozen relevant tree sha256>",
+      "owned_source_roots": ["autonomy", "implementations", "cli/automa_cli"]
+    },
+    "coverage_analysis": {
+      "version": "7.15.2",
+      "config_path": ".coveragerc",
+      "config_sha256": "<frozen .coveragerc sha256>",
+      "branch": true,
+      "relative_files": true,
+      "omit": ["*/__init__.py"]
+    },
+    "source_analysis_runtime": {
+      "implementation": "CPython",
+      "full_version": "<frozen interpreter full version>",
+      "abi": "cpython-311-darwin",
+      "cache_tag": "cpython-311",
+      "executable_basename": "python3.11",
+      "executable_sha256": "<frozen executable sha256>",
+      "executable_path_sha256": "<frozen executable path sha256>"
+    }
+  },
+  "files": [
+    {
+      "path": "autonomy/example.py",
+      "source_sha256": "<sealed source sha256>",
+      "possible_statements": [1, 2],
+      "possible_arcs": [[-1, 1], [1, 2], [2, -1]]
+    }
+  ]
+}
+```
+
+The artifact's `inputs` objects have exactly the keys and frozen values shown
+above; their projections are identical to the corresponding record fields.
+`files` contains exactly one entry for every path in the sealed source
+universe, including paths with empty possible-region arrays, and is sorted by
+the canonical repository-relative path. `possible_statements` is a sorted
+array of unique integer line numbers. `possible_arcs` is a sorted array of
+unique two-integer `[from_line, to_line]` arrays, ordered lexicographically;
+negative entry/exit endpoints are retained. No other tuple or object encoding
+is valid. The artifact uses the canonical JSON byte rules defined below, and
+the recorded source-analysis SHA is the SHA-256 of its complete canonical file
+bytes, including exactly one trailing LF.
 
 ### Acceptance statement
 
@@ -160,11 +213,12 @@ following hold:
    deletion, no move of production code to satisfy a disposition. Those are
    later review units.
 6. **Validators and focused tests** enforce derivation, grouping completeness,
-   the journey-role selector, the closed record envelope, required reconcile
-   fields, typed reference resolution, semantic HTML completeness, and the
-   metric-resistant reason grammar, including omission and
-   "percent-as-reason" negative fixtures. A rollup that looks complete is not
-   Met without those tests.
+   the journey-role selector, the closed source-analysis artifact and record
+   envelopes, exact region tuple encoding and canonical digests, required
+   reconcile fields and authority-resolved refs, typed reference resolution,
+   semantic HTML completeness, and the metric-resistant reason grammar,
+   including omission and "percent-as-reason" negative fixtures. A rollup that
+   looks complete is not Met without those tests.
 
 ### Artifact shape
 
@@ -202,14 +256,14 @@ input to the derivation:
       "reconcile": {
         "tests": {"status": "not_applicable", "refs": [], "reason": "No test entrypoint owns this capability."},
         "non_cli_entrypoints": {"status": "not_applicable", "refs": [], "reason": "No other entrypoint is declared."},
-        "dynamic_paths": {"status": "present", "refs": ["autonomy/example.py"], "reason": ""},
+        "dynamic_paths": {"status": "present", "refs": ["repo_path:autonomy/example.py"], "reason": ""},
         "platform_paths": {"status": "not_applicable", "refs": [], "reason": "No platform boundary is declared."}
       },
       "owner": {"kind": "repo_path", "ref": "autonomy/example.py"},
       "disposition": "retain",
       "reason": {
         "code": "dynamic_path",
-        "reference": {"kind": "reconciliation_ref", "dimension": "dynamic_paths", "ref": "autonomy/example.py"},
+        "reference": {"kind": "reconciliation_ref", "dimension": "dynamic_paths", "ref": "repo_path:autonomy/example.py"},
         "detail": "Loaded through the runtime plugin boundary and owned there."
       }
     }
@@ -227,16 +281,27 @@ normalized sealed repository-relative paths, sorted canonically, and the
 union of `member_paths` must equal the derived candidate-path set with no
 omission, duplicate, or extra path. The grouping input contains no
 source hashes, region arrays, reached data, residuals, or alternate free-text
-fields. Its committed bytes are UTF-8 canonical JSON using the same
-`sort_keys: true`, `separators: [",", ":"]`, and exactly-one-trailing-LF
-rules as the record; `inputs.grouping_input.sha256` is the SHA-256 of those
+fields. Its committed bytes use the exact canonical-byte rules below;
+`inputs.grouping_input.sha256` is the SHA-256 of those complete canonical file
 bytes.
+
+All committed JSON artifacts in this proposal use the same canonical-byte
+contract: values are limited to JSON null, booleans, integers, strings, arrays,
+and objects; floats and non-finite numbers are forbidden. Serialize with
+Python `json.dumps` using `ensure_ascii=False`, `allow_nan=False`,
+`sort_keys=True`, and `separators=(",", ":")`; encode as UTF-8. A canonical
+file has exactly one trailing LF. The record digest instead hashes the
+canonical projection with `integrity.record_sha256` omitted and no trailing
+LF, then the full record is written with one trailing LF. Grouping and
+source-analysis digests hash their complete canonical file bytes, including
+that trailing LF. No pretty-printing, alternate Unicode escaping, float
+coercion, or reordered set-derived arrays are valid.
 
 ```json
 {
   "schema": "m007_capability_disposition_v1",
   "integrity": {
-    "canonical_json": {"sort_keys": true, "separators": [",", ":"], "trailing_lf": 1},
+    "canonical_json": {"ensure_ascii": false, "allow_nan": false, "sort_keys": true, "separators": [",", ":"], "trailing_lf": 1},
     "digest_projection_omits": ["integrity.record_sha256"],
     "record_sha256": "<sha256 of the canonical record projection>"
   },
@@ -378,28 +443,45 @@ alternate free-text fields that influence Met:
 ```json
 {
   "reconcile": {
-    "tests": {"status": "present", "refs": ["tests/..."], "reason": ""},
+    "tests": {"status": "present", "refs": ["repo_path:tests/..."], "reason": ""},
     "non_cli_entrypoints": {"status": "not_applicable", "refs": [], "reason": "..."},
-    "dynamic_paths": {"status": "present", "refs": ["autonomy/..."], "reason": ""},
+    "dynamic_paths": {"status": "present", "refs": ["repo_path:autonomy/..."], "reason": ""},
     "platform_paths": {"status": "not_applicable", "refs": [], "reason": "..."}
   },
   "owner": {"kind": "repo_path", "ref": "implementations/..."},
   "disposition": "retain",
   "reason": {
     "code": "dynamic_path",
-    "reference": {"kind": "reconciliation_ref", "dimension": "dynamic_paths", "ref": "autonomy/..."},
+    "reference": {"kind": "reconciliation_ref", "dimension": "dynamic_paths", "ref": "repo_path:autonomy/..."},
     "detail": "Loaded through the runtime plugin boundary and owned there."
   }
 }
 ```
 
 `reconcile` has exactly the four named dimensions. A `present` object has a
-non-empty `refs` list of stable repository-relative paths or declared
-entrypoint/artifact identifiers and has no meaningful `reason` (the serialized
-value is the empty string). A `not_applicable` object has `refs: []` and a
-non-empty explanation in `reason`. The two statuses are the complete vocabulary;
-`unknown`, `pending`, and blank values fail. The validator rejects missing or
-extra dimension keys and duplicate references after normalization.
+non-empty `refs` list whose entries use one of these closed forms:
+
+- `repo_path:<path>` — a normalized POSIX repository-relative path that exists
+  in the frozen source tree; `tests` refs must resolve below `tests/`, while
+  the other dimensions must resolve to a sealed source path or a frozen
+  M007-08 artifact/entrypoint path.
+- `m007_08_sequence:<sequence_id>@<registry_sha256>` — an exact sequence ID
+  and the digest of the frozen sequence registry.
+- `m007_08_owner:<owner_value>@<artifact_sha256>` — an exact owner or
+  `ledger_owner` value and the digest of one of the six frozen M007-08
+  artifacts.
+
+The path and manifest forms are resolved against the frozen inputs; an
+unqualified value such as `README.md` or `reviewed`, an unknown sequence or
+owner, a wrong digest, an absolute path, and a path containing `..` fail.
+Refs are unique and sorted by their canonical string. A `present` object has
+no meaningful `reason` (the serialized value is the empty string). A
+`not_applicable` object has `refs: []` and a non-empty explanation in `reason`.
+The two statuses are the complete vocabulary; `unknown`, `pending`, and blank
+values fail. The validator rejects missing or extra dimension keys and
+duplicate or unresolved references. A `reconciliation_ref` reason must match
+one of the exact refs in the same dimension, and that dimension must have
+status `present`; it cannot point to a `not_applicable` explanation.
 
 `owner.kind = repo_path` means `owner.ref` is an existing sealed source file or
 directory within the owned roots and contains at least one group member.
@@ -414,7 +496,7 @@ override the code. The only accepted reference forms are:
 
 - `source_member`: an exact sealed source-member path and SHA;
 - `reconciliation_ref`: a dimension plus an exact reference in that group's
-  reconciliation object;
+  `present` reconciliation object;
 - `m007_08_sequence`: an exact sequence ID resolved through the frozen
   sequence-registry path and digest; or
 - `m007_08_owner`: an exact `owner` or `ledger_owner` value resolved through a
@@ -568,9 +650,9 @@ that does not refresh #107 (record stays historical); subjective quality of a
 | Claim / non-claim | Authoritative raw evidence | Derivation | Semantic verifier |
 | --- | --- | --- | --- |
 | Unreached membership | Sealed #107 report + verified `source_analysis.json` | Possible statements/arcs minus role-selected executed unions, with file-absence handling | Exact path/SHA/member-region equality plus the 22-context role fixture |
-| Source-analysis integrity | Sealed source/config/runtime envelope and committed artifact | Canonical artifact digest and per-file possible-region projection | Closed schema, input identity, complete path set, per-file SHA, and sorted statement/arc parity |
+| Source-analysis integrity | Sealed source/config/runtime envelope and committed artifact | Canonical artifact digest and per-file possible-region projection | Closed schema/input envelope, exact statement/arc tuple encoding, complete path set, per-file SHA, canonical bytes, and sorted parity |
 | Group completeness | Capability record | Union of member rows and exact region sets | No remainder, no extra, no overlap, including partial/branch mutations |
-| Reconcile fields present | Closed group schema | Four dimension objects plus owner object | Omission / unknown status / empty / missing-reason mutation tests |
+| Reconcile fields present | Closed group schema | Four dimension objects plus owner object | Closed ref forms and authority resolution plus omission / unknown status / empty / missing-reason mutation tests |
 | Reason is not a metric authorization | Structured reason object | Closed code/typed reference plus normalized detail grammar | Percentage, digit/word-number ratio, line/branch count, and forbidden-token negatives for every disposition |
 | CLI context labels | Frozen M007-08 input manifest | Optional join by path/owner/sequence | Unknown IDs, stale digests, or out-of-manifest refs fail |
 | Grouping input | Committed `grouping.json` | Closed group assignments and human disposition fields | Schema, canonical digest, candidate-set parity, duplicate/extra/omitted-path rejection |
@@ -648,12 +730,14 @@ note cannot independently mark M007-09 Met.
 | Partial file loses one possible statement from `unreached_statements` | Reject |
 | Missing branch arc is absent from `unreached_arcs` | Reject |
 | Sealed report digest, source commit/tree, coverage/runtime identity, source-analysis artifact schema/digest/input envelope, M007-08 input digest, or per-file SHA does not match | Met fails |
-| Source-analysis artifact is missing, has unknown keys, an incomplete path set, unsorted/duplicate regions, or possible regions inconsistent with its source SHA | Fail closed; no record or Met |
+| Source-analysis artifact is missing, has unknown keys or input keys, an incomplete path set, a non-integer statement, a non-two-integer arc, alternate canonical bytes, unsorted/duplicate regions, or possible regions inconsistent with its source SHA | Fail closed; no record or Met |
 | `cli/automa_cli/app.py:1662` is executed only in support cleanup/precondition/supplemental contexts | It remains unreached; support context cannot satisfy the journey-role union |
 | A cleanup command appears only in an accepted sequence's `cleanup` array and not as a declared journey command | Exclude it from the admitted role set |
 | Test-only execution used to mark a file journey-reached | Reject; tests reconcile `retain`, they are not the journey set |
 | Group omits one of `tests`, `non_cli_entrypoints`, `dynamic_paths`, or `platform_paths` | Met fails |
 | Reconciliation uses an unknown status, blank ref, duplicate ref, or `present` with no ref | Met fails |
+| Reconciliation uses an unqualified path/identifier, an unresolved or wrong-digest manifest ref, or a path outside its dimension's authority | Met fails |
+| A `reconciliation_ref` points to another dimension, another group, or a `not_applicable` object | Reject |
 | `not_applicable` reconciliation field has a ref, no reason, or a blank reason | Met fails |
 | Owner is a free string, placeholder, unknown M007-08 label, or unrelated repo path | Reject |
 | Disposition/reason code pair is invalid, reason keys are unknown, reference is untyped, or reference does not resolve through the frozen authority | Reject |
@@ -752,6 +836,7 @@ Deterministic:
 - the admitted journey-role set is exactly the frozen `m007/journey/` context
   set, with bootstrap/support exclusion and the `app.py:1662` regression case;
 - the frozen M007-08 input manifest, source-analysis artifact schema/digest,
+  exact input envelope and statement/arc tuple encoding, canonical bytes,
   source/config/runtime envelope, complete path set, per-file SHA values, and
   possible regions match the record; the historical CPython 3.11.7 runtime
   identity is provenance for that artifact, while CI consumes the committed
@@ -760,7 +845,8 @@ Deterministic:
   containing a missing possible statement/arc;
 - every member path appears in exactly one group with exact missing statement
   and arc sets, including wholly absent files, partial files, and branch arcs;
-- the four reconciliation dimensions have closed statuses and stable refs;
+- the four reconciliation dimensions have closed statuses, typed authority-
+  resolved refs, and causal references that target only `present` dimensions;
 - owner form and owner reference validate against the sealed source/M007-08
   inputs;
 - the closed reason code/typed-reference/detail grammar rejects metric

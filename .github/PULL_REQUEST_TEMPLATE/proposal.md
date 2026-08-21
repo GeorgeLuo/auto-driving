@@ -8,6 +8,11 @@
 - Frontier:
 - Proposal artifact: `docs/milestones/<number>-<slug>/proposals/<frontier>.md`
 
+<!-- The work-order artifact (frontier map) is reviewed here. This PR may
+     rewire remaining path, add nodes, and select current from that artifact.
+     Completing the previous unit does not force this unit. Do not delete
+     contracted nodes. Path edits are not a second review question. -->
+
 ## Review Kind
 
 <!-- One supported value matching the canonical milestone plan exactly:

@@ -81,7 +81,40 @@ GROUPING_SCHEMA = "m007_capability_grouping_v1"
 RECORD_SCHEMA = "m007_capability_disposition_v1"
 REPORT_SCHEMA = "m007_capability_disposition_report_v1"
 RESIDUALS_SCHEMA = "m007_capability_disposition_residuals_v1"
-DASHBOARD_SCHEMA = "m007_capability_dashboard_v2"
+DASHBOARD_SCHEMA = "m007_capability_dashboard_v3"
+
+DASHBOARD_COVERAGE_CLASSES = (
+    {
+        "id": "discover-observe",
+        "name": "Discover and observe",
+        "summary": "Find the supported workflow and inspect a healthy observation-only view.",
+        "sequence_ids": ("US-01", "US-02"),
+    },
+    {
+        "id": "perception-workflows",
+        "name": "Perception configuration and comparison",
+        "summary": "Configure, compare, and swap perception implementations.",
+        "sequence_ids": ("US-03", "US-04"),
+    },
+    {
+        "id": "memory-behavior",
+        "name": "Perception-to-memory behavior",
+        "summary": "Observe how perception becomes retained evidence under lifecycle and timing changes.",
+        "sequence_ids": ("US-05", "US-06", "US-07"),
+    },
+    {
+        "id": "memory-recovery",
+        "name": "Memory recovery and replay",
+        "summary": "Recover suspicious memory state and reproduce an anomaly offline.",
+        "sequence_ids": ("US-08", "US-09"),
+    },
+    {
+        "id": "physical-qualification",
+        "name": "Physical qualification",
+        "summary": "Qualify a candidate against labeled physical-check frames.",
+        "sequence_ids": ("US-10",),
+    },
+)
 
 FROZEN_REPORT_SHA256 = (
     "51801c7686b247055114109e7462d13cb6702a1c8dcd8990a168f68357015789"
@@ -1264,74 +1297,18 @@ def _dashboard_leaf_for_argv(
     return None
 
 
-def _dashboard_journey_overview(
-    sealed: Mapping[str, Any],
+def _dashboard_sequence_rows(
     authority: Mapping[str, Any],
-) -> dict[str, Any]:
-    report = sealed["report"]
+) -> list[dict[str, Any]]:
     leaf_rows = _dashboard_leaf_rows(authority)
-    leaf_kind_counts = Counter(kind for _tokens, _leaf_id, kind in leaf_rows)
-    leaf_kind_by_id = {leaf_id: kind for _tokens, leaf_id, kind in leaf_rows}
-    measured_leaf_ids: set[str] = set()
-    commands_by_journey: dict[str, list[Mapping[str, Any]]] = {}
-    for command in report["commands"]:
-        if command.get("role") != "journey_command":
-            continue
-        logical_context_id = command.get("logical_context_id", "")
-        parts = logical_context_id.split("/")
-        if len(parts) < 4 or parts[0:2] != ["m007", "journey"]:
-            continue
-        journey_id = parts[2]
-        commands_by_journey.setdefault(journey_id, []).append(command)
-        match = _dashboard_leaf_for_argv(command.get("argv_template"), leaf_rows)
-        if match is not None:
-            measured_leaf_ids.add(match[0])
-
-    journey_labels = {
-        "primary": "Primary operator journey",
-        "continuity.offline_perception": "Offline perception continuity",
-        "continuity.live_config_swap": "Live configuration continuity",
-        "continuity.memory_lifecycle": "Memory lifecycle continuity",
-    }
-    rollups = [
-        rollup
-        for rollup in report["aggregates"]["rollups"]
-        if rollup.get("kind") == "journey"
-    ]
-    journey_order = {
-        "primary": 0,
-        "continuity.offline_perception": 1,
-        "continuity.live_config_swap": 2,
-        "continuity.memory_lifecycle": 3,
-    }
-    rollups.sort(key=lambda rollup: (journey_order.get(rollup["id"], 99), rollup["id"]))
-    journeys: list[dict[str, Any]] = []
-    for rollup in rollups:
-        journey_id = rollup["id"]
-        leaf_ids = set()
-        for command in commands_by_journey.get(journey_id, []):
-            match = _dashboard_leaf_for_argv(command.get("argv_template"), leaf_rows)
-            if match is not None:
-                leaf_ids.add(match[0])
-        journeys.append(
-            {
-                "id": journey_id,
-                "name": journey_labels.get(journey_id, journey_id),
-                "context_count": rollup["contexts"],
-                "command_count": len(commands_by_journey.get(journey_id, [])),
-                "leaf_ids": sorted(leaf_ids),
-                "leaf_count": len(leaf_ids),
-                "source_file_count": rollup["file_count"],
-                "executed_lines": rollup["executed_lines"],
-                "executed_arcs": rollup["executed_arcs"],
-                "logical_context_ids": sorted(rollup["logical_context_ids"]),
-            }
-        )
-
-    sequences = authority["documents"]["sequence_registry"]["sequences"]
     sequence_rows: list[dict[str, Any]] = []
-    sequence_dispositions: Counter[str] = Counter()
-    sequence_coverage: Counter[str] = Counter()
+    status_by_disposition = {
+        "passed": "covered",
+        "ready": "ready",
+        "deferred": "not_covered",
+        "blocked": "blocked",
+    }
+    sequences = authority["documents"]["sequence_registry"]["sequences"]
     for sequence in sorted(sequences, key=lambda row: row["id"]):
         sequence_leaf_ids = set()
         for command in sequence["commands"]:
@@ -1339,41 +1316,88 @@ def _dashboard_journey_overview(
             if match is not None:
                 sequence_leaf_ids.add(match[0])
         disposition = sequence["disposition"]
-        coverage = sequence["coverage"]["value"]
-        sequence_dispositions[disposition] += 1
-        sequence_coverage[coverage] += 1
         sequence_rows.append(
             {
                 "id": sequence["id"],
                 "operator_outcome": sequence["operator_outcome"],
+                "operator_question": sequence["operator_question"],
+                "primary_confirmation": sequence["primary_confirmation"],
                 "disposition": disposition,
-                "coverage": coverage,
+                "status": status_by_disposition.get(disposition, disposition),
+                "coverage": sequence["coverage"]["value"],
+                "coverage_reason": sequence["coverage"].get("reason"),
                 "execution": sequence["execution"],
+                "safety_class": sequence["safety_class"],
+                "completeness": sequence["completeness"],
+                "prerequisites": sequence["prerequisites"],
+                "owner": sequence.get("owner"),
+                "unlock": sequence.get("unlock"),
                 "command_count": len(sequence["commands"]),
                 "leaf_ids": sorted(sequence_leaf_ids),
             }
         )
+    return sequence_rows
 
-    leaf_total = len(leaf_rows)
+
+def _dashboard_coverage_overview(
+    sequence_rows: Iterable[Mapping[str, Any]],
+) -> dict[str, Any]:
+    all_sequence_rows = list(sequence_rows)
+    sequences = {sequence["id"]: sequence for sequence in all_sequence_rows}
+    expected_ids = [
+        sequence_id
+        for coverage_class in DASHBOARD_COVERAGE_CLASSES
+        for sequence_id in coverage_class["sequence_ids"]
+    ]
+    if len(sequences) != len(all_sequence_rows) or len(set(expected_ids)) != len(expected_ids):
+        raise CapabilityDispositionError("dashboard coverage sequence IDs are not unique")
+    if set(sequences) != set(expected_ids):
+        raise CapabilityDispositionError(
+            "dashboard coverage classes do not account for every registered sequence"
+        )
+
+    classes: list[dict[str, Any]] = []
+    for coverage_class in DASHBOARD_COVERAGE_CLASSES:
+        class_rows = [
+            sequences[sequence_id] for sequence_id in coverage_class["sequence_ids"]
+        ]
+        statuses = [row["status"] for row in class_rows]
+        if all(status == "covered" for status in statuses):
+            status = "covered"
+        elif any(status == "blocked" for status in statuses) and not any(
+            candidate == "covered" for candidate in statuses
+        ):
+            status = "blocked"
+        elif any(status == "covered" for status in statuses):
+            status = "partial"
+        elif any(status == "ready" for status in statuses):
+            status = "ready"
+        else:
+            status = "not_covered"
+        classes.append(
+            {
+                "id": coverage_class["id"],
+                "name": coverage_class["name"],
+                "summary": coverage_class["summary"],
+                "status": status,
+                "sequence_ids": list(coverage_class["sequence_ids"]),
+                "sequences": class_rows,
+                "next_steps": [
+                    {
+                        "sequence_id": row["id"],
+                        "owner": row["owner"],
+                        "unlock": row["unlock"],
+                    }
+                    for row in class_rows
+                    if row["status"] != "covered"
+                ],
+            }
+        )
     return {
-        "surface": {
-            "leaf_total": leaf_total,
-            "leaf_kind_counts": dict(sorted(leaf_kind_counts.items())),
-            "measured_leaf_count": len(measured_leaf_ids),
-            "unmeasured_leaf_count": leaf_total - len(measured_leaf_ids),
-            "measured_leaf_ids": sorted(measured_leaf_ids),
-            "measured_leaf_kind_counts": dict(
-                sorted(Counter(leaf_kind_by_id[leaf_id] for leaf_id in measured_leaf_ids).items())
-            ),
-        },
-        "journeys": journeys,
-        "sequences": {
-            "total": len(sequence_rows),
-            "dispositions": dict(sorted(sequence_dispositions.items())),
-            "coverage": dict(sorted(sequence_coverage.items())),
-            "measured_count": sequence_coverage.get("measured", 0),
-            "rows": sequence_rows,
-        },
+        "classes": classes,
+        "covered_class_count": sum(item["status"] == "covered" for item in classes),
+        "open_class_count": sum(item["status"] in {"not_covered", "partial", "ready"} for item in classes),
+        "blocked_class_count": sum(item["status"] == "blocked" for item in classes),
     }
 
 
@@ -1452,7 +1476,9 @@ def _dashboard_projection(
             disposition: disposition_counts.get(disposition, 0)
             for disposition in ("expose", "retain", "remove")
         },
-        "journey_overview": _dashboard_journey_overview(sealed, authority),
+        "coverage_overview": _dashboard_coverage_overview(
+            _dashboard_sequence_rows(authority)
+        ),
         "groups": groups,
     }
 
@@ -1531,34 +1557,56 @@ def _dashboard_detail_markup(group: Mapping[str, Any]) -> str:
     )
 
 
-def _dashboard_journey_detail_markup(
-    journey: Mapping[str, Any],
-    *,
-    leaf_total: int,
-    source_total: int,
-) -> str:
-    leaf_ids = "".join(f"<li><code>{_attr(leaf_id)}</code></li>" for leaf_id in journey["leaf_ids"])
-    context_ids = "".join(
-        f"<li><code>{_attr(context_id)}</code></li>"
-        for context_id in journey["logical_context_ids"]
-    )
-    leaf_list = leaf_ids or '<li><span class="muted">None</span></li>'
+def _dashboard_coverage_status_label(status: str) -> str:
+    return {
+        "covered": "covered",
+        "partial": "partially covered",
+        "ready": "ready to run",
+        "not_covered": "not yet covered",
+        "blocked": "blocked",
+    }.get(status, status.replace("_", " "))
+
+
+def _dashboard_coverage_detail_markup(coverage_class: Mapping[str, Any]) -> str:
+    sequence_markup = []
+    for sequence in coverage_class["sequences"]:
+        status_label = _dashboard_coverage_status_label(sequence["status"])
+        if sequence["status"] == "covered":
+            next_markup = (
+                '<p class="next-step next-step-covered">Exact sequence evidence is present.</p>'
+            )
+        else:
+            owner = sequence["owner"] or "No owner recorded"
+            unlock = sequence["unlock"] or sequence["prerequisites"]
+            next_markup = (
+                '<div class="next-step">'
+                f'<strong>Next unlock</strong><p>{_attr(unlock)}</p>'
+                f'<p class="muted">Owner: <code>{_attr(owner)}</code></p>'
+                "</div>"
+            )
+        sequence_markup.append(
+            '<details class="coverage-sequence"'
+            f'{" open" if sequence["status"] != "covered" else ""}>'
+            "<summary>"
+            f'<code>{_attr(sequence["id"])}</code>'
+            f'<span class="coverage-sequence-name">{_attr(sequence["operator_outcome"])}</span>'
+            f'<span class="status-pill coverage-status-{_attr(sequence["status"])}">{_attr(status_label)}</span>'
+            "</summary>"
+            '<div class="coverage-sequence-detail">'
+            f'<p><strong>Operator question:</strong> {_attr(sequence["operator_question"])}</p>'
+            f'<p><strong>Confirmation:</strong> {_attr(sequence["primary_confirmation"])}</p>'
+            f'<p class="muted"><strong>Evidence:</strong> {_attr(sequence["coverage_reason"] or sequence["coverage"])}.</p>'
+            f'<dl class="detail-facts"><div><dt>Prerequisites</dt><dd>{_attr(sequence["prerequisites"])}</dd></div>'
+            f'<div><dt>CLI leaves</dt><dd><code>{_attr(", ".join(sequence["leaf_ids"]) or "None")}</code></dd></div>'
+            f'<div><dt>Execution</dt><dd><code>{_attr(sequence["execution"])}</code> · {_attr(sequence["safety_class"])}</dd></div></dl>'
+            f"{next_markup}</div></details>"
+        )
     return (
-        f"<h2>{_attr(journey['name'])}</h2>"
-        f'<p class="detail-lede">{journey["leaf_count"]} of {leaf_total} CLI leaf IDs appear in '
-        f"{journey['command_count']} measured journey commands. The rollup touches "
-        f"{journey['source_file_count']} of {source_total} owned source paths.</p>"
-        '<dl class="detail-facts">'
-        f'<div><dt>Contexts</dt><dd>{journey["context_count"]}</dd></div>'
-        f'<div><dt>CLI leaves</dt><dd>{journey["leaf_count"]} / {leaf_total}</dd></div>'
-        f'<div><dt>Source paths</dt><dd>{journey["source_file_count"]} / {source_total}</dd></div>'
-        f'<div><dt>Lines</dt><dd>{journey["executed_lines"]:,} executed entries</dd></div>'
-        f'<div><dt>Arcs</dt><dd>{journey["executed_arcs"]:,} executed entries</dd></div>'
-        "</dl>"
-        '<details class="reconciliation"><summary>CLI leaf IDs</summary>'
-        f"<ul>{leaf_list}</ul></details>"
-        '<details class="reconciliation"><summary>Measured context IDs</summary>'
-        f"<ul>{context_ids}</ul></details>"
+        f'<h2>{_attr(coverage_class["name"])}</h2>'
+        f'<p class="detail-lede"><span class="status-pill coverage-status-{_attr(coverage_class["status"])}">'
+        f'{_attr(_dashboard_coverage_status_label(coverage_class["status"]))}</span> '
+        f'{_attr(coverage_class["summary"])}</p>'
+        f'<div class="coverage-sequence-list">{"".join(sequence_markup)}</div>'
     )
 
 
@@ -1572,81 +1620,57 @@ def render_dashboard_html(
     membership = projection["membership"]
     source_status = projection["source_status"]
     dispositions = projection["dispositions"]
-    journey_overview = projection["journey_overview"]
-    surface = journey_overview["surface"]
-    sequences = journey_overview["sequences"]
-    journeys = journey_overview["journeys"]
-    max_group_members = max(group["member_count"] for group in projection["groups"])
+    coverage_classes = projection["coverage_overview"]["classes"]
+    first_coverage_class = coverage_classes[0]
     first_group = projection["groups"][0]
-    first_journey = journeys[0]
 
-    metric_markup = "".join(
-        [
-            f'<div class="metric"><span>CLI leaves</span><strong>{surface["leaf_total"]}</strong><small>{surface["leaf_kind_counts"].get("action", 0)} action · {surface["leaf_kind_counts"].get("meta", 0)} meta · {surface["leaf_kind_counts"].get("alias", 0)} alias</small></div>',
-            f'<div class="metric"><span>Measured leaves</span><strong>{surface["measured_leaf_count"]} / {surface["leaf_total"]}</strong><small>unique IDs in journey commands</small></div>',
-            f'<div class="metric"><span>Measured journeys</span><strong>{len(journeys)}</strong><small>{membership["journey_contexts"]} admitted contexts</small></div>',
-            f'<div class="metric"><span>Registered sequences</span><strong>{sequences["total"]}</strong><small>{sequences["measured_count"]} measured exactly</small></div>',
-            f'<div class="metric"><span>Owned source paths</span><strong>{membership["source_members"]}</strong><small>sealed Python universe</small></div>',
-            f'<div class="metric"><span>Outside-journey candidates</span><strong>{membership["candidate_members"]}</strong><small>later disposition groups</small></div>',
-        ]
-    )
-    surface_total = surface["leaf_total"]
-    surface_measured = surface["measured_leaf_count"]
-    surface_segments = (
-        f'<span class="segment surface-measured" style="width:{_dashboard_percentage(surface_measured, surface_total)}%" '
-        f'aria-label="{surface_measured} CLI leaf IDs in measured journey commands"></span>'
-        f'<span class="segment surface-unmeasured" style="width:{_dashboard_percentage(surface["unmeasured_leaf_count"], surface_total)}%" '
-        f'aria-label="{surface["unmeasured_leaf_count"]} CLI leaf IDs not in measured journey commands"></span>'
-    )
-    surface_legend = (
-        f'<li><span class="swatch surface-measured"></span><strong>{surface_measured}</strong> '
-        "in measured journey commands</li>"
-        f'<li><span class="swatch surface-unmeasured"></span><strong>{surface["unmeasured_leaf_count"]}</strong> '
-        "not in measured command set</li>"
-    )
-    kind_breakdown = " · ".join(
-        f'{kind}: {surface["measured_leaf_kind_counts"].get(kind, 0)} / {count}'
-        for kind, count in surface["leaf_kind_counts"].items()
-    )
-    sequence_disposition_order = ("passed", "deferred", "blocked")
-    sequence_disposition_segments = "".join(
-        f'<span class="segment sequence-{_attr(disposition)}" '
-        f'style="width:{_dashboard_percentage(sequences["dispositions"].get(disposition, 0), sequences["total"])}%" '
-        f'aria-label="{_attr(disposition)}: {sequences["dispositions"].get(disposition, 0)} sequences"></span>'
-        for disposition in sequence_disposition_order
-    )
-    sequence_disposition_legend = "".join(
-        f'<li><span class="swatch sequence-{_attr(disposition)}"></span>'
-        f'<strong>{sequences["dispositions"].get(disposition, 0)}</strong> {_attr(disposition)}</li>'
-        for disposition in sequence_disposition_order
-    )
-    sequence_rows = "".join(
-        "<details class=\"sequence-row\">"
-        f'<summary><code>{_attr(sequence["id"])}</code>'
-        f'<span class="sequence-name">{_attr(sequence["operator_outcome"])}</span>'
-        f'<span class="sequence-pill sequence-{_attr(sequence["disposition"])}">{_attr(sequence["disposition"])}</span>'
-        f'<span class="sequence-coverage">{_attr(sequence["coverage"])}</span></summary>'
-        f'<div class="sequence-detail"><p>{sequence["command_count"]} declared commands · '
-        f'{len(sequence["leaf_ids"])} leaf IDs in the definition.</p>'
-        f'<p class="muted">Leaf IDs: <code>{_attr(", ".join(sequence["leaf_ids"]) or "None")}</code></p></div>'
-        "</details>"
-        for sequence in sequences["rows"]
-    )
-    journey_rows = []
-    for index, journey in enumerate(journeys):
-        width = 100 * journey["leaf_count"] / surface_total if surface_total else 0
-        journey_rows.append(
-            f'<button type="button" class="journey-row" data-journey-id="{_attr(journey["id"])}" '
-            f'aria-pressed="{str(index == 0).lower()}" aria-label="{_attr(journey["name"])}: '
-            f'{journey["leaf_count"]} of {surface_total} CLI leaf IDs, '
-            f'{journey["source_file_count"]} of {membership["source_members"]} source paths">'
-            f'<span class="journey-name"><strong>{_attr(journey["name"])}</strong>'
-            f'<small>{journey["context_count"]} contexts · {journey["command_count"]} commands</small></span>'
-            f'<span class="journey-bar-cell"><span class="bar-track"><span class="bar-fill journey-fill" style="width:{width:.3f}%"></span></span></span>'
-            f'<span class="journey-value">{journey["leaf_count"]} / {surface_total}</span>'
-            f'<span class="journey-source">{journey["source_file_count"]} / {membership["source_members"]}</span>'
+    coverage_rows = []
+    for index, coverage_class in enumerate(coverage_classes):
+        sequence_cells = "".join(
+            f'<span class="coverage-cell coverage-status-{_attr(sequence["status"])}" '
+            f'role="img" aria-label="{_attr(sequence["id"])}: '
+            f'{_attr(_dashboard_coverage_status_label(sequence["status"]))}">'
+            f'<code>{_attr(sequence["id"])}</code></span>'
+            for sequence in coverage_class["sequences"]
+        )
+        coverage_rows.append(
+            f'<button type="button" class="coverage-class-row" '
+            f'data-coverage-class-id="{_attr(coverage_class["id"])}" '
+            f'aria-pressed="{str(index == 0).lower()}" '
+            f'aria-label="{_attr(coverage_class["name"])}: '
+            f'{_attr(_dashboard_coverage_status_label(coverage_class["status"]))}">'
+            f'<span class="coverage-class-name"><strong>{_attr(coverage_class["name"])}</strong>'
+            f'<small>{_attr(coverage_class["summary"])}</small></span>'
+            f'<span class="coverage-sequence-cells">{sequence_cells}</span>'
+            f'<span class="coverage-state coverage-status-{_attr(coverage_class["status"])}">'
+            f'{_attr(_dashboard_coverage_status_label(coverage_class["status"]))}</span>'
             "</button>"
         )
+
+    covered_classes = [
+        item["name"] for item in coverage_classes if item["status"] == "covered"
+    ]
+    open_classes = [
+        item["name"]
+        for item in coverage_classes
+        if item["status"] in {"not_covered", "partial", "ready"}
+    ]
+    blocked_classes = [
+        item["name"] for item in coverage_classes if item["status"] == "blocked"
+    ]
+    bottom_line_parts = []
+    if covered_classes:
+        bottom_line_parts.append(f'<strong>Covered:</strong> {_attr(", ".join(covered_classes))}.')
+    if open_classes:
+        bottom_line_parts.append(
+            f'<strong>Not yet covered:</strong> {_attr(", ".join(open_classes))}.'
+        )
+    if blocked_classes:
+        bottom_line_parts.append(
+            f'<strong>Blocked:</strong> {_attr(", ".join(blocked_classes))}.'
+        )
+    coverage_bottom_line = " ".join(bottom_line_parts)
+
     disposition_total = sum(dispositions.values())
     disposition_segments = "".join(
         f'<span class="segment disposition-{_attr(disposition)}" '
@@ -1659,10 +1683,10 @@ def render_dashboard_html(
         f'<strong>{count}</strong> {_attr(disposition)}</li>'
         for disposition, count in dispositions.items()
     )
-    status_total = sum(source_status.values())
+    source_total = sum(source_status.values())
     source_segments = "".join(
         f'<span class="segment status-{_attr(status)}" '
-        f'style="width:{_dashboard_percentage(count, status_total)}%" '
+        f'style="width:{_dashboard_percentage(count, source_total)}%" '
         f'aria-label="{_attr(status)}: {count} files"></span>'
         for status, count in source_status.items()
     )
@@ -1678,16 +1702,18 @@ def render_dashboard_html(
     )
     group_rows = []
     for index, group in enumerate(projection["groups"]):
-        width = 100 * group["member_count"] / max_group_members
         group_rows.append(
-            f'<button type="button" class="group-row disposition-{_attr(group["disposition"])}" '
+            f'<button type="button" class="group-row" '
             f'data-group-id="{_attr(group["id"])}" aria-pressed="{str(index == 0).lower()}" '
             f'aria-label="{_attr(group["name"])}: {group["member_count"]} members">'
-            f'<span class="group-name">{_attr(group["name"])}</span>'
-            f'<span class="bar-track"><span class="bar-fill" style="width:{width:.3f}%"></span></span>'
-            f'<span class="group-value">{group["member_count"]}</span>'
+            f'<span class="group-name"><strong>{_attr(group["name"])}</strong>'
+            f'<small>{_attr(group["reason"]["code"])}</small></span>'
+            f'<span class="group-disposition disposition-pill disposition-{_attr(group["disposition"])}">'
+            f'{_attr(group["disposition"])}</span>'
+            f'<span class="group-value">{group["member_count"]} members</span>'
             "</button>"
         )
+
     style = """
 :root {
   color-scheme: light;
@@ -1698,19 +1724,16 @@ def render_dashboard_html(
   --muted: #5e6a78;
   --border: #d7dde5;
   --focus: #1e6bb8;
-  --journey: #356f8f;
-  --surface-measured: #4b8a68;
-  --surface-unmeasured: #a9b2bd;
-  --sequence-passed: #4b8a68;
-  --sequence-deferred: #b4873f;
-  --sequence-blocked: #8d3f55;
+  --covered: #4b8a68;
+  --partial: #356f8f;
+  --not-covered: #b4873f;
+  --blocked: #8d3f55;
   --expose: #b4512b;
   --retain: #356f8f;
   --remove: #8d3f55;
   --fully: #4b8a68;
-  --partial: #356f8f;
+  --partial-file: #356f8f;
   --absent: #a9b2bd;
-  --on-series: #ffffff;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -1722,19 +1745,16 @@ def render_dashboard_html(
     --muted: #aab5c1;
     --border: #3a4653;
     --focus: #6bb5f0;
-    --journey: #73b5d5;
-    --surface-measured: #78c39a;
-    --surface-unmeasured: #697583;
-    --sequence-passed: #78c39a;
-    --sequence-deferred: #e1bd73;
-    --sequence-blocked: #e28aa2;
+    --covered: #78c39a;
+    --partial: #73b5d5;
+    --not-covered: #e1bd73;
+    --blocked: #e28aa2;
     --expose: #e48a61;
     --retain: #73b5d5;
     --remove: #e28aa2;
     --fully: #78c39a;
-    --partial: #73b5d5;
+    --partial-file: #73b5d5;
     --absent: #697583;
-    --on-series: #ffffff;
   }
 }
 * { box-sizing: border-box; }
@@ -1745,68 +1765,69 @@ body {
   font: 15px/1.5 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 a { color: var(--focus); }
-code, .metric strong, .group-value, .journey-value, .journey-source, .member-counts { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-.dashboard { max-width: 1240px; margin: 0 auto; padding: 32px clamp(16px, 4vw, 48px) 64px; }
+code, .group-value, .member-counts { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.dashboard { max-width: 1160px; margin: 0 auto; padding: 32px clamp(16px, 4vw, 48px) 64px; }
 .eyebrow { color: var(--muted); font-size: .78rem; letter-spacing: .08em; text-transform: uppercase; }
 h1, h2, h3 { line-height: 1.2; }
 h1 { margin: .25rem 0 .5rem; font-size: clamp(1.8rem, 4vw, 2.6rem); }
 h2 { margin: 0 0 .45rem; font-size: 1.15rem; }
 h3 { margin: 1.3rem 0 .65rem; font-size: .98rem; }
-.lede { max-width: 840px; color: var(--muted); margin: 0; }
-.notice { margin: 18px 0 26px; padding: 12px 14px; border-left: 4px solid var(--retain); background: var(--surface); color: var(--muted); }
-.metrics { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; margin: 22px 0 28px; }
-.metric { min-width: 0; padding: 13px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 9px; }
-.metric span, .metric small { display: block; color: var(--muted); }
-.metric span { font-size: .82rem; }
-.metric strong { display: block; margin: 3px 0; font-size: 1.5rem; }
-.metric small { font-size: .72rem; }
-.visual-grid, .overview-grid { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(300px, .7fr); gap: 18px; align-items: start; }
+.lede { max-width: 900px; color: var(--muted); margin: 0; }
+.notice { margin: 18px 0 26px; padding: 12px 14px; border-left: 4px solid var(--partial); background: var(--surface); color: var(--muted); }
+.coverage-bottom-line { margin: 22px 0 14px; padding: 14px 16px; background: var(--surface); border-left: 4px solid var(--covered); }
 .panel { min-width: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 18px; }
 .panel-header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.muted { color: var(--muted); }
-.caption { color: var(--muted); font-size: .86rem; margin: 0 0 14px; }
-.section-heading { margin: 34px 0 14px; }
-.axis { display: flex; justify-content: space-between; color: var(--muted); font-size: .74rem; margin: 7px 0 4px; }
-.surface-measured, .swatch.surface-measured, .segment.surface-measured { background: var(--surface-measured); }
-.surface-unmeasured, .swatch.surface-unmeasured, .segment.surface-unmeasured { background: var(--surface-unmeasured); }
-.sequence-passed, .swatch.sequence-passed, .segment.sequence-passed { background: var(--sequence-passed); }
-.sequence-deferred, .swatch.sequence-deferred, .segment.sequence-deferred { background: var(--sequence-deferred); }
-.sequence-blocked, .swatch.sequence-blocked, .segment.sequence-blocked { background: var(--sequence-blocked); }
-.surface-kind-note { margin: 10px 0 0; color: var(--muted); font-size: .8rem; }
-.journey-chart { display: grid; gap: 5px; }
-.journey-head, .journey-row { display: grid; grid-template-columns: minmax(185px, 1.2fr) minmax(130px, 2fr) 64px 74px; gap: 10px; align-items: center; }
-.journey-head { color: var(--muted); font-size: .76rem; padding: 0 7px 4px; }
-.journey-head span:nth-child(2) { grid-column: 2 / 4; }
-.journey-row { width: 100%; padding: 8px 7px; color: var(--text); text-align: left; background: transparent; border: 0; border-radius: 6px; cursor: pointer; }
-.journey-row:hover, .journey-row[aria-pressed="true"] { background: var(--surface-alt); }
-.journey-row[aria-pressed="true"] { outline: 2px solid var(--focus); outline-offset: -2px; }
-.journey-name { min-width: 0; }
-.journey-name strong, .journey-name small { display: block; overflow-wrap: anywhere; }
-.journey-name small { color: var(--muted); font-size: .76rem; }
-.journey-bar-cell { min-width: 0; }
-.journey-fill { background: var(--journey); }
-.journey-value, .journey-source { text-align: right; font-weight: 600; white-space: nowrap; }
-.sequence-list { display: grid; gap: 5px; margin-top: 12px; }
-.sequence-row { border-top: 1px solid var(--border); }
-.sequence-row summary { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto auto; gap: 8px; align-items: center; cursor: pointer; padding: 8px 0; }
-.sequence-row summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
-.sequence-name { min-width: 0; overflow-wrap: anywhere; }
-.sequence-pill { padding: 2px 6px; border-radius: 999px; color: var(--on-series); font: 600 .7rem ui-monospace, monospace; }
-.sequence-coverage { color: var(--muted); font: .76rem ui-monospace, monospace; }
-.sequence-detail { border-top: 1px solid var(--border); padding: 4px 0 6px 56px; font-size: .82rem; }
-.sequence-detail p { margin: 5px 0; }
+.muted, .caption { color: var(--muted); }
+.caption { font-size: .86rem; margin: 0 0 14px; }
+.coverage-map { display: grid; gap: 5px; }
+.coverage-class-row { display: grid; grid-template-columns: minmax(210px, 1.15fr) minmax(180px, 1fr) minmax(125px, .55fr); gap: 12px; align-items: center; width: 100%; padding: 12px 10px; color: var(--text); text-align: left; background: transparent; border: 0; border-radius: 7px; cursor: pointer; }
+.coverage-class-row:hover, .coverage-class-row[aria-pressed="true"] { background: var(--surface-alt); }
+.coverage-class-row[aria-pressed="true"] { outline: 2px solid var(--focus); outline-offset: -2px; }
+.coverage-class-name { min-width: 0; }
+.coverage-class-name strong, .coverage-class-name small { display: block; overflow-wrap: anywhere; }
+.coverage-class-name small { color: var(--muted); font-size: .8rem; }
+.coverage-sequence-cells { display: flex; flex-wrap: wrap; gap: 5px; }
+.coverage-cell { display: inline-flex; align-items: center; justify-content: center; min-width: 52px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 5px; }
+.coverage-cell code { font-size: .78rem; }
+.coverage-state, .status-pill { display: inline-block; width: fit-content; padding: 4px 8px; border: 1px solid; border-radius: 999px; font-size: .78rem; font-weight: 600; }
+.coverage-state { justify-self: start; }
+.coverage-status-covered { color: var(--covered); border-color: var(--covered); }
+.coverage-status-partial { color: var(--partial); border-color: var(--partial); }
+.coverage-status-not_covered, .coverage-status-ready { color: var(--not-covered); border-color: var(--not-covered); }
+.coverage-status-blocked { color: var(--blocked); border-color: var(--blocked); }
+.coverage-cell.coverage-status-covered { background: var(--surface-alt); }
+.coverage-cell.coverage-status-partial { background: var(--surface-alt); }
+.coverage-cell.coverage-status-not_covered, .coverage-cell.coverage-status-ready { background: var(--surface-alt); }
+.coverage-cell.coverage-status-blocked { background: var(--surface-alt); }
+.coverage-legend { display: flex; flex-wrap: wrap; gap: 7px 16px; margin: 12px 0 0; padding: 0; list-style: none; color: var(--muted); font-size: .82rem; }
+.coverage-legend li { display: flex; align-items: center; gap: 6px; }
+.coverage-legend .swatch { border: 1px solid; }
+.coverage-detail { margin-top: 18px; }
+.coverage-sequence-list { display: grid; gap: 6px; }
+.coverage-sequence { border-top: 1px solid var(--border); }
+.coverage-sequence summary { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; gap: 8px; align-items: center; cursor: pointer; padding: 10px 0; }
+.coverage-sequence summary:focus-visible, .group-row:focus-visible, .coverage-class-row:focus-visible, .member summary:focus-visible, .reconciliation summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.coverage-sequence-name { min-width: 0; overflow-wrap: anywhere; }
+.coverage-sequence-detail { padding: 2px 0 12px 60px; font-size: .86rem; }
+.coverage-sequence-detail p { margin: 7px 0; }
+.next-step { margin-top: 12px; padding: 10px 12px; background: var(--surface-alt); }
+.next-step p { margin: 3px 0; }
+.next-step-covered { color: var(--covered); }
+.supporting-details { margin-top: 34px; }
+.supporting-details > summary { cursor: pointer; color: var(--focus); font-weight: 600; }
+.visual-grid { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(300px, .7fr); gap: 18px; align-items: start; margin-top: 14px; }
 .group-chart { display: grid; gap: 5px; }
-.group-row { display: grid; grid-template-columns: minmax(165px, 1.3fr) minmax(100px, 2fr) 44px; gap: 10px; align-items: center; width: 100%; padding: 8px 7px; color: var(--text); text-align: left; background: transparent; border: 0; border-radius: 6px; cursor: pointer; }
-.group-row:hover { background: var(--surface-alt); }
-.group-row[aria-pressed="true"] { outline: 2px solid var(--focus); outline-offset: -2px; background: var(--surface-alt); }
-.group-row:focus-visible, .journey-row:focus-visible, .member summary:focus-visible, .reconciliation summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.group-row { display: grid; grid-template-columns: minmax(165px, 1.3fr) auto 100px; gap: 10px; align-items: center; width: 100%; padding: 9px 7px; color: var(--text); text-align: left; background: transparent; border: 0; border-radius: 6px; cursor: pointer; }
+.group-row:hover, .group-row[aria-pressed="true"] { background: var(--surface-alt); }
+.group-row[aria-pressed="true"] { outline: 2px solid var(--focus); outline-offset: -2px; }
 .group-name { min-width: 0; overflow-wrap: anywhere; }
-.bar-track { display: block; height: 16px; overflow: hidden; background: var(--surface-alt); border-radius: 3px; }
-.bar-fill { display: block; height: 100%; min-width: 2px; background: var(--retain); border-radius: inherit; }
-.disposition-expose .bar-fill, .swatch.disposition-expose, .segment.disposition-expose { background: var(--expose); }
-.disposition-retain .bar-fill, .swatch.disposition-retain, .segment.disposition-retain { background: var(--retain); }
-.disposition-remove .bar-fill, .swatch.disposition-remove, .segment.disposition-remove { background: var(--remove); }
+.group-name strong, .group-name small { display: block; overflow-wrap: anywhere; }
+.group-name small { color: var(--muted); font-size: .76rem; }
 .group-value { text-align: right; font-weight: 600; }
+.group-disposition { justify-self: start; }
+.disposition-expose { color: var(--expose); border-color: var(--expose); }
+.disposition-retain { color: var(--retain); border-color: var(--retain); }
+.disposition-remove { color: var(--remove); border-color: var(--remove); }
 .chart-foot { margin: 14px 0 0; color: var(--muted); font-size: .8rem; }
 .composition { margin-top: 24px; }
 .stacked-bar { display: flex; width: 100%; height: 18px; overflow: hidden; background: var(--surface-alt); border-radius: 4px; }
@@ -1814,16 +1835,15 @@ h3 { margin: 1.3rem 0 .65rem; font-size: .98rem; }
 .legend { display: flex; flex-wrap: wrap; gap: 7px 16px; margin: 10px 0 0; padding: 0; list-style: none; color: var(--muted); font-size: .82rem; }
 .legend li { display: flex; align-items: center; gap: 6px; }
 .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
+.swatch.disposition-expose, .segment.disposition-expose { background: var(--expose); }
+.swatch.disposition-retain, .segment.disposition-retain { background: var(--retain); }
+.swatch.disposition-remove, .segment.disposition-remove { background: var(--remove); }
 .status-fully_reached, .swatch.status-fully_reached, .segment.status-fully_reached { background: var(--fully); }
-.status-candidate_partial, .swatch.status-candidate_partial, .segment.status-candidate_partial { background: var(--partial); }
+.status-candidate_partial, .swatch.status-candidate_partial, .segment.status-candidate_partial { background: var(--partial-file); }
 .status-candidate_absent, .swatch.status-candidate_absent, .segment.status-candidate_absent { background: var(--absent); }
 .detail-lede { margin: 0 0 16px; color: var(--muted); }
-.disposition-pill { display: inline-block; padding: 2px 7px; border-radius: 999px; color: var(--on-series); font: 600 .75rem ui-monospace, monospace; text-transform: uppercase; }
-.disposition-pill.disposition-expose { background: var(--expose); }
-.disposition-pill.disposition-retain { background: var(--retain); }
-.disposition-pill.disposition-remove { background: var(--remove); }
 .detail-facts { display: grid; gap: 8px; margin: 0; }
-.detail-facts div { display: grid; grid-template-columns: 72px 1fr; gap: 10px; }
+.detail-facts div { display: grid; grid-template-columns: 92px 1fr; gap: 10px; }
 .detail-facts dt { color: var(--muted); }
 .detail-facts dd { margin: 0; overflow-wrap: anywhere; }
 .reconciliation { margin: 16px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
@@ -1839,36 +1859,47 @@ h3 { margin: 1.3rem 0 .65rem; font-size: .98rem; }
 .member-detail p { margin: 7px 0; }
 .member-detail code { white-space: pre-wrap; word-break: break-word; }
 .residual-note { margin: 16px 0 0; padding: 10px 12px; background: var(--surface-alt); color: var(--muted); font-size: .82rem; }
-@media (max-width: 1040px) { .metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); } .visual-grid, .overview-grid { grid-template-columns: 1fr; } }
-@media (max-width: 560px) { .dashboard { padding-top: 22px; } .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } .metric strong { font-size: 1.25rem; } .group-row { grid-template-columns: 1fr 48px; } .group-name { grid-column: 1 / -1; } .bar-track { grid-column: 1; } .group-value { grid-column: 2; grid-row: 2; } .journey-head { display: none; } .journey-row { grid-template-columns: 1fr 70px; } .journey-name { grid-column: 1 / -1; } .journey-bar-cell { grid-column: 1; } .journey-value { grid-column: 2; grid-row: 2; } .journey-source { grid-column: 1 / -1; text-align: left; font-size: .78rem; } .sequence-row summary { grid-template-columns: 42px minmax(0, 1fr) auto; } .sequence-coverage { grid-column: 2; } .detail-facts div { grid-template-columns: 1fr; gap: 2px; } }
+@media (max-width: 1040px) { .visual-grid { grid-template-columns: 1fr; } }
+@media (max-width: 720px) { .coverage-class-row { grid-template-columns: 1fr; gap: 8px; } .coverage-state { justify-self: start; } }
+@media (max-width: 560px) { .dashboard { padding-top: 22px; } .coverage-sequence summary { grid-template-columns: 42px minmax(0, 1fr); } .coverage-sequence summary .status-pill { grid-column: 2; } .group-row { grid-template-columns: 1fr auto; } .group-name { grid-column: 1 / -1; } .group-value { grid-column: 2; grid-row: 2; } .detail-facts div { grid-template-columns: 1fr; gap: 2px; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; } }
 """
     script = r"""
 (function () {
-  "use strict";
   const data = JSON.parse(document.getElementById("dashboard-data").textContent);
-  const detail = document.getElementById("group-detail");
-  const buttons = Array.from(document.querySelectorAll("button.group-row"));
-  const journeyDetail = document.getElementById("journey-detail");
-  const journeyButtons = Array.from(document.querySelectorAll("button.journey-row"));
+  const coverageDetail = document.getElementById("coverage-detail");
+  const coverageButtons = Array.from(document.querySelectorAll("button.coverage-class-row"));
+  const groupDetail = document.getElementById("group-detail");
+  const groupButtons = Array.from(document.querySelectorAll("button.group-row"));
 
   function escapeHtml(value) {
-    return String(value).replace(/[&<>\"']/g, function (character) {
+    return String(value).replace(/[&<>"']/g, function (character) {
       return {"&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;"}[character];
     });
   }
 
   function listMarkup(values, formatter) {
-    if (!values.length) return "None";
     return values.map(formatter).join(", ");
   }
 
-  function journeyDetailMarkup(journey) {
-    const leafIds = journey.leaf_ids.length
-      ? "<ul>" + journey.leaf_ids.map(function (leafId) { return "<li><code>" + escapeHtml(leafId) + "</code></li>"; }).join("") + "</ul>"
-      : "<span class=\"muted\">None</span>";
-    const contextIds = journey.logical_context_ids.map(function (contextId) { return "<li><code>" + escapeHtml(contextId) + "</code></li>"; }).join("");
-    return "<h2>" + escapeHtml(journey.name) + "</h2><p class=\"detail-lede\">" + journey.leaf_count + " of " + data.journey_overview.surface.leaf_total + " CLI leaf IDs appear in " + journey.command_count + " measured journey commands. The rollup touches " + journey.source_file_count + " of " + data.membership.source_members + " owned source paths.</p><dl class=\"detail-facts\"><div><dt>Contexts</dt><dd>" + journey.context_count + "</dd></div><div><dt>CLI leaves</dt><dd>" + journey.leaf_count + " / " + data.journey_overview.surface.leaf_total + "</dd></div><div><dt>Source paths</dt><dd>" + journey.source_file_count + " / " + data.membership.source_members + "</dd></div><div><dt>Lines</dt><dd>" + journey.executed_lines.toLocaleString() + " executed entries</dd></div><div><dt>Arcs</dt><dd>" + journey.executed_arcs.toLocaleString() + " executed entries</dd></div></dl><details class=\"reconciliation\"><summary>CLI leaf IDs</summary>" + leafIds + "</details><details class=\"reconciliation\"><summary>Measured context IDs</summary><ul>" + contextIds + "</ul></details>";
+  function statusLabel(status) {
+    return {
+      covered: "covered",
+      partial: "partially covered",
+      ready: "ready to run",
+      not_covered: "not yet covered",
+      blocked: "blocked"
+    }[status] || status.replace(/_/g, " ");
+  }
+
+  function coverageDetailMarkup(coverageClass) {
+    const sequences = coverageClass.sequences.map(function (sequence) {
+      const nextMarkup = sequence.status === "covered"
+        ? "<p class=\"next-step next-step-covered\">Exact sequence evidence is present.</p>"
+        : "<div class=\"next-step\"><strong>Next unlock</strong><p>" + escapeHtml(sequence.unlock || sequence.prerequisites) + "</p><p class=\"muted\">Owner: <code>" + escapeHtml(sequence.owner || "No owner recorded") + "</code></p></div>";
+      return "<details class=\"coverage-sequence\"" + (sequence.status === "covered" ? "" : " open") + "><summary><code>" + escapeHtml(sequence.id) + "</code><span class=\"coverage-sequence-name\">" + escapeHtml(sequence.operator_outcome) + "</span><span class=\"status-pill coverage-status-" + escapeHtml(sequence.status) + "\">" + escapeHtml(statusLabel(sequence.status)) + "</span></summary><div class=\"coverage-sequence-detail\"><p><strong>Operator question:</strong> " + escapeHtml(sequence.operator_question) + "</p><p><strong>Confirmation:</strong> " + escapeHtml(sequence.primary_confirmation) + "</p><p class=\"muted\"><strong>Evidence:</strong> " + escapeHtml(sequence.coverage_reason || sequence.coverage) + ".</p><dl class=\"detail-facts\"><div><dt>Prerequisites</dt><dd>" + escapeHtml(sequence.prerequisites) + "</dd></div><div><dt>CLI leaves</dt><dd><code>" + escapeHtml(sequence.leaf_ids.join(", ") || "None") + "</code></dd></div><div><dt>Execution</dt><dd><code>" + escapeHtml(sequence.execution) + "</code> · " + escapeHtml(sequence.safety_class) + "</dd></div></dl>" + nextMarkup + "</div></details>";
+    }).join("");
+    return "<h2>" + escapeHtml(coverageClass.name) + "</h2><p class=\"detail-lede\"><span class=\"status-pill coverage-status-" + escapeHtml(coverageClass.status) + "\">" + escapeHtml(statusLabel(coverageClass.status)) + "</span> " + escapeHtml(coverageClass.summary) + "</p><div class=\"coverage-sequence-list\">" + sequences + "</div>";
   }
 
   function detailMarkup(group) {
@@ -1885,34 +1916,34 @@ h3 { margin: 1.3rem 0 .65rem; font-size: .98rem; }
       const arcs = listMarkup(member.unreached_arcs, function (arc) { return escapeHtml(arc[0] + " → " + arc[1]); });
       return "<details class=\"member\" data-member-path=\"" + escapeHtml(member.path) + "\"><summary><code>" + escapeHtml(member.path) + "</code><span class=\"member-counts\">" + member.unreached_statements.length + " statements · " + member.unreached_arcs.length + " arcs</span></summary><div class=\"member-detail\"><p class=\"muted\">Source SHA-256: <code>" + escapeHtml(member.source_sha256) + "</code></p><p><strong>Statement lines:</strong> <code>" + statements + "</code></p><p><strong>Branch arcs:</strong> <code>" + arcs + "</code></p></div></details>";
     }).join("");
-    return "<h2>" + escapeHtml(group.name) + "</h2><p class=\"detail-lede\"><span class=\"disposition-pill disposition-" + escapeHtml(group.disposition) + "\">" + escapeHtml(group.disposition) + "</span> " + group.member_count + " candidate members, " + group.statement_count + " statement entries, and " + group.arc_count + " arc entries.</p><dl class=\"detail-facts\"><div><dt>Owner</dt><dd><code>" + escapeHtml(group.owner.kind + ":" + group.owner.ref) + "</code></dd></div><div><dt>Reason</dt><dd><code>" + escapeHtml(group.reason.code) + "</code> " + escapeHtml(group.reason.detail) + "</dd></div></dl><details class=\"reconciliation\"><summary>Reconciliation evidence</summary><ul>" + dimensions + "</ul></details><h3>Members (" + group.member_count + ")</h3><div class=\"members\">" + members + "</div>";
+    return "<h2>" + escapeHtml(group.name) + "</h2><p class=\"detail-lede\"><span class=\"status-pill disposition-" + escapeHtml(group.disposition) + "\">" + escapeHtml(group.disposition) + "</span> " + group.member_count + " candidate members, " + group.statement_count + " statement entries, and " + group.arc_count + " arc entries.</p><dl class=\"detail-facts\"><div><dt>Owner</dt><dd><code>" + escapeHtml(group.owner.kind + ":" + group.owner.ref) + "</code></dd></div><div><dt>Reason</dt><dd><code>" + escapeHtml(group.reason.code) + "</code> " + escapeHtml(group.reason.detail) + "</dd></div></dl><details class=\"reconciliation\"><summary>Reconciliation evidence</summary><ul>" + dimensions + "</ul></details><h3>Members (" + group.member_count + ")</h3><div class=\"members\">" + members + "</div>";
+  }
+
+  function selectCoverageClass(classId) {
+    const coverageClass = data.coverage_overview.classes.find(function (candidate) { return candidate.id === classId; });
+    if (!coverageClass) return;
+    coverageButtons.forEach(function (button) {
+      button.setAttribute("aria-pressed", String(button.dataset.coverageClassId === classId));
+    });
+    coverageDetail.innerHTML = coverageDetailMarkup(coverageClass);
+    coverageDetail.dataset.initialCoverageClassId = classId;
   }
 
   function selectGroup(groupId) {
     const group = data.groups.find(function (candidate) { return candidate.id === groupId; });
     if (!group) return;
-    buttons.forEach(function (button) {
+    groupButtons.forEach(function (button) {
       button.setAttribute("aria-pressed", String(button.dataset.groupId === groupId));
     });
-    detail.innerHTML = detailMarkup(group);
-    detail.dataset.initialGroupId = groupId;
+    groupDetail.innerHTML = detailMarkup(group);
+    groupDetail.dataset.initialGroupId = groupId;
   }
 
-  function selectJourney(journeyId) {
-    const journey = data.journey_overview.journeys.find(function (candidate) { return candidate.id === journeyId; });
-    if (!journey) return;
-    journeyButtons.forEach(function (button) {
-      button.setAttribute("aria-pressed", String(button.dataset.journeyId === journeyId));
-    });
-    journeyDetail.innerHTML = journeyDetailMarkup(journey);
-    journeyDetail.dataset.initialJourneyId = journeyId;
-  }
-
-  buttons.forEach(function (button) {
-    button.addEventListener("click", function () { selectGroup(button.dataset.groupId); });
+  coverageButtons.forEach(function (button) {
+    button.addEventListener("click", function () { selectCoverageClass(button.dataset.coverageClassId); });
   });
-  journeyButtons.forEach(function (button) {
-    button.addEventListener("click", function () { selectJourney(button.dataset.journeyId); });
+  groupButtons.forEach(function (button) {
+    button.addEventListener("click", function () { selectGroup(button.dataset.groupId); });
   });
 }());
 """
@@ -1921,45 +1952,42 @@ h3 { margin: 1.3rem 0 .65rem; font-size: .98rem; }
         '<html lang="en"><head><meta charset="utf-8">',
         f'<meta name="record-sha256" content="{_attr(record["integrity"]["record_sha256"])}">',
         '<meta name="viewport" content="width=device-width, initial-scale=1">',
-        "<title>M007-09 capability disposition dashboard</title>",
+        "<title>M007-09 operator capability coverage</title>",
         f"<style>{style}</style></head><body>",
         '<main class="dashboard" id="capability-dashboard">',
         '<header><div class="eyebrow">M007-09 · derived evidence view</div>',
-        "<h1>CLI surface reached by declared journeys</h1>",
-        '<p class="lede">Start with the operator question: which CLI leaf IDs appear in the measured usage journeys, and what owned source surface do those journeys touch? The capability disposition is the follow-up for code outside those journeys.</p>',
-        '<p class="notice">This view joins sealed M007-07 journey attribution with frozen M007-08 CLI-surface inputs. Counts are descriptive evidence only: they do not claim behavioral correctness, dead code, or authorize product changes. <a href="../cli-journey-coverage/README.md">Open journey coverage evidence</a> · <a href="../cli-surface-audit/rollup.md">Open CLI surface audit</a> · <a href="record.html">Open the complete audit ledger</a> · <a href="record.json">Open record.json</a></p></header>',
-        f'<section class="metrics" aria-label="Record summary">{metric_markup}</section>',
-        '<section class="overview-grid">',
-        '<div class="panel"><div class="panel-header"><h2>CLI surface in measured journeys</h2><span class="muted">11 of 49 leaf IDs appear</span></div>',
-        '<p class="caption">The stacked bar uses the full 49-leaf inventory. “In measured commands” means the leaf ID appears in one of the 22 admitted M007-07 journey command contexts; it is not a correctness score.</p>',
-        f'<div class="axis" aria-hidden="true"><span>0</span><span>{surface_total} leaf IDs</span></div>',
-        f'<div class="stacked-bar" id="surface-chart" role="img" aria-label="CLI surface: {surface_measured} of {surface_total} leaf IDs appear in measured journey commands">{surface_segments}</div><ul class="legend">{surface_legend}</ul>',
-        f'<p class="surface-kind-note">Measured by leaf kind: {_attr(kind_breakdown)}. The remaining leaf IDs are not in the measured command set.</p>',
-        '<div class="composition"><h3>Registered usage sequence status</h3><p class="caption">These are the exact M007-08 sequence definitions. A related continuity family can have source coverage without making its exact registered sequence measured.</p>',
-        f'<div class="stacked-bar" id="sequence-chart" role="img" aria-label="Registered usage sequences: {sequences["dispositions"].get("passed", 0)} passed, {sequences["dispositions"].get("deferred", 0)} deferred, {sequences["dispositions"].get("blocked", 0)} blocked">{sequence_disposition_segments}</div><ul class="legend">{sequence_disposition_legend}</ul>',
-        f'<div class="sequence-list" role="list">{sequence_rows}</div></div>',
-        '<div class="composition"><h3>Measured journeys</h3><p class="caption">Each row uses the same 49-leaf denominator. The source-path value is a raw rollup count out of the 96-path owned universe.</p>',
-        '<div class="journey-chart" id="journey-chart" role="list">',
-        '<div class="journey-head" aria-hidden="true"><span>Journey</span><span>Distinct CLI leaf IDs in journey</span><span>Source paths</span></div>',
-        f'{"".join(journey_rows)}</div></div>',
-        '</div>',
-        f'<aside class="panel" id="journey-detail" data-initial-journey-id="{_attr(first_journey["id"])}" aria-live="polite">{_dashboard_journey_detail_markup(first_journey, leaf_total=surface_total, source_total=membership["source_members"])}</aside>',
+        "<h1>Operator capability coverage</h1>",
+        '<p class="lede">The bottom line is organized around intended operator outcomes: what is covered, what is not yet covered, and what is blocked. Each cell is a registered M007-08 usage sequence; the source-disposition record is supporting evidence below.</p>',
+        '<p class="notice">This view does not infer missing product requirements from executed code. “Covered” means the exact registered sequence has passed measured evidence. Related family coverage does not promote a deferred sequence. <a href="../cli-surface-audit/rollup.md">Open the sequence rollup</a> · <a href="../cli-surface-audit/sequence_registry.json">Open the sequence registry</a> · <a href="../cli-journey-coverage/README.md">Open journey coverage evidence</a> · <a href="record.html">Open the complete audit ledger</a> · <a href="record.json">Open record.json</a></p></header>',
+        f'<p class="coverage-bottom-line"><strong>Bottom line:</strong> {coverage_bottom_line}</p>',
+        '<section class="panel" aria-labelledby="coverage-map-heading">',
+        '<div class="panel-header"><h2 id="coverage-map-heading">Coverage by intended capability</h2><span class="muted">Select a class for the next unlock</span></div>',
+        '<p class="caption">The class names are a presentation grouping of the ten registered operator outcomes. They are not a new product scope or a claim that all source code belongs to an operator journey.</p>',
+        f'<div class="coverage-map" id="coverage-map" role="list">{"".join(coverage_rows)}</div>',
+        '<ul class="coverage-legend" aria-label="Coverage status legend">',
+        '<li><span class="swatch coverage-status-covered"></span>Covered</li>',
+        '<li><span class="swatch coverage-status-partial"></span>Partially covered</li>',
+        '<li><span class="swatch coverage-status-not_covered"></span>Not yet covered</li>',
+        '<li><span class="swatch coverage-status-blocked"></span>Blocked</li>',
+        '</ul>',
         '</section>',
-        '<div class="section-heading"><h2>What sits outside the measured journeys?</h2><p class="caption">These are peer review buckets of candidate source members, not a hierarchy or workflow. Use them to inspect why unreached code is retained or flagged for later CLI exposure.</p></div>',
+        f'<aside class="panel coverage-detail" id="coverage-detail" data-initial-coverage-class-id="{_attr(first_coverage_class["id"])}" aria-live="polite">{_dashboard_coverage_detail_markup(first_coverage_class)}</aside>',
+        '<details class="supporting-details">',
+        '<summary>Supporting source-disposition evidence</summary>',
+        '<p class="caption">This is the M007-09 source-side explanation for capabilities outside the declared journeys. It identifies candidates and ownership; it does not decide which work should be prioritized.</p>',
         '<section class="visual-grid">',
-        '<div class="panel"><div class="panel-header"><h2>Candidate source members by disposition group</h2><span class="muted">Select a bar for details</span></div>',
-        f'<p class="caption">Each bar is a peer group of source members. Bar scale: 0–{max_group_members} candidate members; the number at right is the raw count.</p>',
-        f'<div class="axis" aria-hidden="true"><span>0</span><span>{max_group_members} members</span></div>',
+        '<div class="panel"><div class="panel-header"><h2>Capability groups</h2><span class="muted">Select a group for evidence</span></div>',
         f'<div class="group-chart" id="group-chart" role="list">{"".join(group_rows)}</div>',
         f'<p class="chart-foot">Residuals: {membership["unassigned_members"]} unassigned members · {membership["unresolved_region_refs"]} unresolved region references.</p>',
         '<div class="composition"><h3>Disposition mix</h3><p class="caption">Member allocation across later-review candidates.</p>',
         f'<div class="stacked-bar" id="disposition-chart" role="img" aria-label="Disposition mix: {dispositions["expose"]} expose, {dispositions["retain"]} retain, {dispositions["remove"]} remove">{disposition_segments}</div><ul class="legend">{disposition_legend}</ul></div>',
-        '<div class="composition"><h3>Source-status composition</h3><p class="caption">How the 96 source members relate to the journey report.</p>',
+        '<div class="composition"><h3>Source-status composition</h3><p class="caption">How the sealed source members relate to the journey report.</p>',
         f'<div class="stacked-bar" id="source-status-chart" role="img" aria-label="Source status: {source_status["fully_reached"]} fully journey-reached, {source_status["candidate_partial"]} candidate paths present in the report, {source_status["candidate_absent"]} absent from the journey report">{source_segments}</div><ul class="legend">{source_legend}</ul></div>',
         '</div>',
         f'<aside class="panel" id="group-detail" data-initial-group-id="{_attr(first_group["id"])}" aria-live="polite">{_dashboard_detail_markup(first_group)}</aside>',
         '</section>',
-        '<p class="residual-note">The snapshot is bound to the sealed M007-07 journey report, the historical source-analysis runtime, and the M007-08 input manifest. Later source changes require a refreshed disposition review.</p>',
+        '</details>',
+        '<p class="residual-note">The coverage denominator is the frozen M007-08 sequence registry. The supporting source view is bound to the sealed M007-07 report, historical source-analysis runtime, and M007-08 input manifest. Later source changes require a refreshed disposition review.</p>',
         f'<script type="application/json" id="dashboard-data">{embedded}</script>',
         f"<script>{script}</script>",
         '</main></body></html>',
@@ -2098,10 +2126,10 @@ class _DashboardHTMLParser(HTMLParser):
         self.data_chunks: list[str] = []
         self.in_data = False
         self.group_ids: list[str] = []
-        self.journey_ids: list[str] = []
+        self.coverage_class_ids: list[str] = []
         self.element_ids: set[str] = set()
         self.initial_group_id: str | None = None
-        self.initial_journey_id: str | None = None
+        self.initial_coverage_class_id: str | None = None
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         values = dict(attrs)
@@ -2116,14 +2144,14 @@ class _DashboardHTMLParser(HTMLParser):
             group_id = values.get("data-group-id")
             if group_id is not None:
                 self.group_ids.append(group_id)
-        if tag == "button" and "journey-row" in (values.get("class") or "").split():
-            journey_id = values.get("data-journey-id")
-            if journey_id is not None:
-                self.journey_ids.append(journey_id)
+        if tag == "button" and "coverage-class-row" in (values.get("class") or "").split():
+            coverage_class_id = values.get("data-coverage-class-id")
+            if coverage_class_id is not None:
+                self.coverage_class_ids.append(coverage_class_id)
         if element_id == "group-detail":
             self.initial_group_id = values.get("data-initial-group-id")
-        if element_id == "journey-detail":
-            self.initial_journey_id = values.get("data-initial-journey-id")
+        if element_id == "coverage-detail":
+            self.initial_coverage_class_id = values.get("data-initial-coverage-class-id")
 
     def handle_endtag(self, tag: str) -> None:
         if tag == "script" and self.in_data:
@@ -2158,23 +2186,22 @@ def validate_dashboard_html(
     if projection != expected_projection:
         _fail("dashboard data projection does not match the record")
     expected_groups = [group["id"] for group in record["groups"]]
-    expected_journeys = [
-        journey["id"] for journey in expected_projection["journey_overview"]["journeys"]
+    expected_coverage_classes = [
+        coverage_class["id"]
+        for coverage_class in expected_projection["coverage_overview"]["classes"]
     ]
     if parser.group_ids != expected_groups:
         _fail("dashboard group chart is incomplete or reordered")
-    if parser.journey_ids != expected_journeys:
-        _fail("dashboard journey chart is incomplete or reordered")
+    if parser.coverage_class_ids != expected_coverage_classes:
+        _fail("dashboard coverage map is incomplete or reordered")
     if parser.initial_group_id != expected_groups[0]:
         _fail("dashboard initial group selection is not canonical")
-    if parser.initial_journey_id != expected_journeys[0]:
-        _fail("dashboard initial journey selection is not canonical")
+    if parser.initial_coverage_class_id != expected_coverage_classes[0]:
+        _fail("dashboard initial coverage selection is not canonical")
     required_ids = {
         "capability-dashboard",
-        "surface-chart",
-        "sequence-chart",
-        "journey-chart",
-        "journey-detail",
+        "coverage-map",
+        "coverage-detail",
         "group-chart",
         "disposition-chart",
         "source-status-chart",

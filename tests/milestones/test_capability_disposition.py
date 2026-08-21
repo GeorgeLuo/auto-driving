@@ -292,40 +292,31 @@ class CapabilityDispositionTests(unittest.TestCase):
             "retain": 68,
             "remove": 0,
         })
-        self.assertEqual(projection["journey_overview"]["surface"], {
-            "leaf_total": 49,
-            "leaf_kind_counts": {"action": 32, "alias": 7, "meta": 10},
-            "measured_leaf_count": 11,
-            "unmeasured_leaf_count": 38,
-            "measured_leaf_ids": [
-                "help",
-                "vehicles.automation.help",
-                "vehicles.automation.run",
-                "vehicles.automation.stop",
-                "vehicles.help",
-                "vehicles.memory.check",
-                "vehicles.perception.apply",
-                "vehicles.perception.run",
-                "vehicles.status",
-                "vehicles.update.memory",
-                "vehicles.update.perception",
-            ],
-            "measured_leaf_kind_counts": {"action": 8, "meta": 3},
-        })
         self.assertEqual(
-            [journey["id"] for journey in projection["journey_overview"]["journeys"]],
+            [coverage_class["id"] for coverage_class in projection["coverage_overview"]["classes"]],
             [
-                "primary",
-                "continuity.offline_perception",
-                "continuity.live_config_swap",
-                "continuity.memory_lifecycle",
+                "discover-observe",
+                "perception-workflows",
+                "memory-behavior",
+                "memory-recovery",
+                "physical-qualification",
             ],
         )
-        self.assertEqual(projection["journey_overview"]["sequences"]["coverage"], {
-            "measured": 2,
-            "not_applicable": 1,
-            "unmeasured": 7,
-        })
+        self.assertEqual(
+            [coverage_class["status"] for coverage_class in projection["coverage_overview"]["classes"]],
+            ["covered", "not_covered", "not_covered", "not_covered", "blocked"],
+        )
+        self.assertEqual(
+            projection["coverage_overview"]["classes"][1]["next_steps"][0],
+            {
+                "sequence_id": "US-03",
+                "owner": "cli-perception-offline",
+                "unlock": (
+                    "Exact-step #88 US-03 evidence (visual_observer apply + compare) "
+                    "after citation amendment; family aggregate is not enough"
+                ),
+            },
+        )
         cd.validate_dashboard_html(
             ROOT / cd.DASHBOARD_REL,
             self.record,
@@ -350,6 +341,24 @@ class CapabilityDispositionTests(unittest.TestCase):
             button = source[start:end]
             group_id = self.record["groups"][0]["id"]
             button = button.replace(f' data-group-id="{group_id}"', "")
+            path.write_text(source[:start] + button + source[end:], encoding="utf-8")
+            with self.assertRaises(cd.CapabilityDispositionError):
+                cd.validate_dashboard_html(path, self.record, self.sealed)
+
+    def test_dashboard_coverage_class_omission_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "dashboard.html"
+            path.write_text(
+                cd.render_dashboard_html(self.record, self.sealed, self.context["authority"]),
+                encoding="utf-8",
+            )
+            source = path.read_text(encoding="utf-8")
+            marker = '<button type="button" class="coverage-class-row"'
+            start = source.index(marker)
+            end = source.index(">", start)
+            button = source[start:end]
+            class_id = "discover-observe"
+            button = button.replace(f' data-coverage-class-id="{class_id}"', "")
             path.write_text(source[:start] + button + source[end:], encoding="utf-8")
             with self.assertRaises(cd.CapabilityDispositionError):
                 cd.validate_dashboard_html(path, self.record, self.sealed)

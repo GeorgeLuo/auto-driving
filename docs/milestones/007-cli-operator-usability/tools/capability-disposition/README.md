@@ -35,7 +35,7 @@ does not match the accepted proposal.
 | `evidence/capability-disposition/residuals.json` | Explicit empty residuals plus all disposition candidates |
 | `evidence/capability-disposition/rollup.md` | Derived human rollup; not authority |
 | `evidence/capability-disposition/record.html` | Semantic HTML projection of the committed record |
-| `evidence/capability-disposition/dashboard.html` | Offline visual overview of CLI leaf reachability, measured journey rollups, registered sequence status, and capability-disposition drill-down |
+| `evidence/capability-disposition/dashboard.html` | Offline operator-capability coverage roadmap with sequence status, next-unlock detail, and supporting capability-disposition evidence |
 
 The record contains 93 candidate source members. The three fully journey-
 reached files are not candidates; the 33 owned Python paths absent from the

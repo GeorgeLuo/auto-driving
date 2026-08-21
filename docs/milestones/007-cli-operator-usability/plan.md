@@ -145,8 +145,13 @@ deletion; it does not retroactively widen the accepted primary journey.
 
 **None**
 
-- Reason: Capability disposition outside CLI journeys (M007-09) is promoted only after this audit marks M007-08 Met with complete leaf and US-01 through US-10 accounting and visible residuals.
-- Revisit when: Every capability group outside declared journeys has an owned expose, retain, or remove candidate before closeout.
+- Reason: No remaining work-order node is contracted.
+- Revisit when: The next proposal may introduce a node.
+
+### Frontier Map
+
+- Path: none
+- Cadence: linked-list
 
 ## Workflow History
 

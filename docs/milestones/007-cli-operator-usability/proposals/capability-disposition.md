@@ -168,6 +168,50 @@ closed reconciliation, owner, disposition, and reason fields, but it may not
 provide source hashes, possible regions, reached regions, or residual counts.
 Those values are derived from the frozen inputs.
 
+The grouping input itself has one closed shape and is the only human-authored
+input to the derivation:
+
+```json
+{
+  "schema": "m007_capability_grouping_v1",
+  "groups": [
+    {
+      "id": "stable-capability-id",
+      "name": "Human capability label",
+      "member_paths": ["autonomy/example.py"],
+      "reconcile": {
+        "tests": {"status": "not_applicable", "refs": [], "reason": "No test entrypoint owns this capability."},
+        "non_cli_entrypoints": {"status": "not_applicable", "refs": [], "reason": "No other entrypoint is declared."},
+        "dynamic_paths": {"status": "present", "refs": ["autonomy/example.py"], "reason": ""},
+        "platform_paths": {"status": "not_applicable", "refs": [], "reason": "No platform boundary is declared."}
+      },
+      "owner": {"kind": "repo_path", "ref": "autonomy/example.py"},
+      "disposition": "retain",
+      "reason": {
+        "code": "dynamic_path",
+        "reference": {"kind": "reconciliation_ref", "dimension": "dynamic_paths", "ref": "autonomy/example.py"},
+        "detail": "Loaded through the runtime plugin boundary and owned there."
+      }
+    }
+  ]
+}
+```
+
+The grouping top level has exactly `schema` and `groups`; each group has
+exactly `id`, `name`, `member_paths`, `reconcile`, `owner`, `disposition`,
+and `reason`. `id` and `name` are non-empty strings. Group IDs are non-empty
+stable strings, unique after Unicode NFKC normalization and case-folding, and
+groups are sorted by ID. Each group has at least one member; the group list
+may be empty only when the derived candidate set is empty. Member paths are
+normalized sealed repository-relative paths, sorted canonically, and the
+union of `member_paths` must equal the derived candidate-path set with no
+omission, duplicate, or extra path. The grouping input contains no
+source hashes, region arrays, reached data, residuals, or alternate free-text
+fields. Its committed bytes are UTF-8 canonical JSON using the same
+`sort_keys: true`, `separators: [",", ":"]`, and exactly-one-trailing-LF
+rules as the record; `inputs.grouping_input.sha256` is the SHA-256 of those
+bytes.
+
 ```json
 {
   "schema": "m007_capability_disposition_v1",
@@ -187,13 +231,75 @@ Those values are derived from the frozen inputs.
         "admitted_context_count": 22,
         "excluded_prefixes": ["m007/bootstrap/", "m007/support/"]
       },
-      "source_analysis_runtime": {"implementation": "CPython", "full_version": "3.11.7"}
+      "source_identity": {
+        "commit": "7931fa9a995af5626fabef818f9e28b98c73e299",
+        "relevant_tree_sha256": "e9e708b083bd203e1ca6b058404869e838ea5ad8dc1e7c9466302b9ab873bbe0",
+        "owned_source_roots": ["autonomy", "implementations", "cli/automa_cli"]
+      },
+      "coverage_analysis": {
+        "version": "7.15.2",
+        "config_path": ".coveragerc",
+        "config_sha256": "67c08cb411118105b4ce373cda5e5a5d559e91fe221b0f35a9c3be011fdc106a",
+        "branch": true,
+        "relative_files": true,
+        "omit": ["*/__init__.py"]
+      },
+      "source_analysis_runtime": {
+        "implementation": "CPython",
+        "full_version": "3.11.7 (main, Dec 15 2023, 12:09:56) [Clang 14.0.6 ]",
+        "abi": "cpython-311-darwin",
+        "cache_tag": "cpython-311",
+        "executable_basename": "python3.11",
+        "executable_sha256": "32da055a5f026c1615772517ef6dd70df85fc486862ecf571bec5915897c8b74",
+        "executable_path_sha256": "225380e24ac6bf74d3c88512e50f100ef45cae27e9f30d66f376b5f968894c5e"
+      }
     },
     "m007_08": {
-      "input_manifest": [{"path": "<one frozen M007-08 path>", "sha256": "<matching digest>"}],
-      "catalog_digest": "9cf4c8bf139183d10ea51c5b576eb47cef1919a161570d704893b3f7372a0e40"
+      "input_manifest": [
+        {
+          "id": "audit_report",
+          "path": "docs/milestones/007-cli-operator-usability/evidence/cli-surface-audit/report.json",
+          "schema": "m007_cli_surface_audit_v1",
+          "sha256": "11cf7c7696f4995bcc433eff6b5f1d67b4e269e39ad825177d664a5add722b6d"
+        },
+        {
+          "id": "leaf_inventory",
+          "path": "docs/milestones/007-cli-operator-usability/tools/cli-surface-audit/leaf_inventory.json",
+          "schema": "m007_leaf_inventory_v1",
+          "sha256": "21efc3a9af9bb551e2bd3b0b949f5ddcc50d7748888d97cd360070983d40d3c4"
+        },
+        {
+          "id": "leaf_overlay",
+          "path": "docs/milestones/007-cli-operator-usability/tools/cli-surface-audit/leaf_overlay.json",
+          "schema": "m007_leaf_overlay_v1",
+          "sha256": "41e284ea7284f7ae2c74f312a0dde391330813c6e188cd7e16a391f1d69f869f"
+        },
+        {
+          "id": "live_residuals",
+          "path": "docs/milestones/007-cli-operator-usability/tools/cli-surface-audit/live_residuals.json",
+          "schema": "m007_live_residuals_v1",
+          "sha256": "a8a0f2c53d230fc56b20fcc0c27391a09e750529028d84922a8a7b67513ca60c"
+        },
+        {
+          "id": "sequence_registry",
+          "path": "docs/milestones/007-cli-operator-usability/tools/cli-surface-audit/sequence_registry.json",
+          "schema": "m007_sequence_registry_v1",
+          "sha256": "005ef8c7d4a715e72ba721e29ba5e4df7c22e301668fdd0bc1b280da125308c2",
+          "catalog_digest": "9cf4c8bf139183d10ea51c5b576eb47cef1919a161570d704893b3f7372a0e40"
+        },
+        {
+          "id": "us88_catalog",
+          "path": "docs/milestones/007-cli-operator-usability/tools/cli-surface-audit/us88_catalog.json",
+          "schema": "m007_us88_catalog_v1",
+          "sha256": "9cf4c8bf139183d10ea51c5b576eb47cef1919a161570d704893b3f7372a0e40"
+        }
+      ]
     },
-    "grouping_input": {"path": "docs/milestones/007-cli-operator-usability/tools/capability-disposition/grouping.json", "sha256": "<grouping input digest>"}
+    "grouping_input": {
+      "schema": "m007_capability_grouping_v1",
+      "path": "docs/milestones/007-cli-operator-usability/tools/capability-disposition/grouping.json",
+      "sha256": "<sha256 of the canonical grouping JSON bytes>"
+    }
   },
   "residuals": {
     "candidate_member_paths": ["<sorted derived paths>"],
@@ -224,6 +330,16 @@ requires `candidate_member_paths` to equal the derived candidate set,
 `unassigned_member_paths` and `unresolved_region_refs` to be empty for Met.
 The record digest is computed over the canonical projection before
 `integrity.record_sha256` is inserted.
+
+The six `m007_08.input_manifest` entries above are exact, complete, and sorted
+by `id`: the validator rejects an omitted, extra, path-mismatched,
+schema-mismatched, or digest-mismatched entry. The `source_identity`,
+`coverage_analysis`, and
+`source_analysis_runtime` objects are also closed projections of the frozen
+values in the sealed M007-07 report; their omission or drift fails Met. The
+record's group fields are copied from the validated grouping input, while
+source hashes, regions, residuals, and all input identity fields are derived
+and cannot be supplied by that input.
 
 ### Capability record schema
 
@@ -395,6 +511,7 @@ that does not refresh #107 (record stays historical); subjective quality of a
 | Reconcile fields present | Closed group schema | Four dimension objects plus owner object | Omission / unknown status / empty / missing-reason mutation tests |
 | Reason is not a metric authorization | Structured reason object | Closed code/typed reference plus normalized detail grammar | Percentage, ratio, line/branch count, and `unexecuted` negatives for every disposition |
 | CLI context labels | Frozen M007-08 input manifest | Optional join by path/owner/sequence | Unknown IDs, stale digests, or out-of-manifest refs fail |
+| Grouping input | Committed `grouping.json` | Closed group assignments and human disposition fields | Schema, canonical digest, candidate-set parity, duplicate/extra/omitted-path rejection |
 | Record and HTML identity | Capability record bytes | Canonical envelope and semantic HTML projection | Input/member/residual/group parity check |
 | Non-claim: dead code | — | — | Explicit rollup non-claim |
 | Non-claim: HEAD still matches #107 | — | — | Record report digest; drift is residual |
@@ -472,7 +589,11 @@ note cannot independently mark M007-09 Met.
 | Owner is a free string, placeholder, unknown M007-08 label, or unrelated repo path | Reject |
 | Disposition/reason code pair is invalid, reason keys are unknown, reference is untyped, or reference does not resolve through the frozen authority | Reject |
 | Reason detail or a `not_applicable` reason contains a percentage, numeric ratio, line/branch/statement/arc count, or forbidden metric token | Reject for `expose`, `retain`, and `remove` |
-| Record omits top-level input identity, record digest, candidate/assigned residuals, or canonical group/member fields | Met fails |
+| Grouping input omits its closed schema, uses an unknown key, contains source/region/residual fields, or has an invalid canonical digest | Reject |
+| Grouping input omits, duplicates, or adds a candidate path outside the derived candidate set | Met fails |
+| Grouping input has a blank ID/name, an empty group, or a non-canonical group/member ordering | Reject |
+| M007-08 input manifest omits, adds, reorders, or changes one of the six frozen entries | Met fails |
+| Record omits top-level input identity, source/config/runtime identity, record digest, candidate/assigned residuals, or canonical group/member fields | Met fails |
 | Derived HTML omits an input, residual, group, member, owner, reconciliation, disposition, or typed reason field present in the record | Met fails |
 | `remove` group accompanied by deleting the production file | Out of scope; fail the independence of this unit |
 | `expose` group accompanied by a new CLI leaf | Out of scope |
@@ -570,6 +691,8 @@ Deterministic:
   inputs;
 - the closed reason code/typed-reference/detail grammar rejects metric
   laundering for every disposition;
+- the committed grouping input matches its closed schema, canonical digest,
+  exact candidate-path parity, and the six-entry M007-08 input manifest;
 - the record envelope, canonical ordering, residual parity, and record digest
   validate;
 - digest of sealed #107 report matches the record;

@@ -130,7 +130,7 @@ deletion; it does not retroactively widen the accepted primary journey.
 
 **Capability disposition outside CLI journeys**
 
-- Workflow state: ready_for_proposal
+- Workflow state: proposal_in_review
 - Proposal branch: `m007/capability-disposition-proposal`
 - Implementation branch: `m007/capability-disposition`
 - Proposal path: `docs/milestones/007-cli-operator-usability/proposals/capability-disposition.md`
@@ -145,8 +145,13 @@ deletion; it does not retroactively widen the accepted primary journey.
 
 **None**
 
-- Reason: Capability disposition outside CLI journeys (M007-09) is promoted only after this audit marks M007-08 Met with complete leaf and US-01 through US-10 accounting and visible residuals.
-- Revisit when: Every capability group outside declared journeys has an owned expose, retain, or remove candidate before closeout.
+- Reason: No remaining work-order node is contracted.
+- Revisit when: The next proposal may introduce a node.
+
+### Frontier Map
+
+- Path: none
+- Cadence: linked-list
 
 ## Workflow History
 
@@ -185,6 +190,7 @@ deletion; it does not retroactively widen the accepted primary journey.
 | Complete CLI surface and sequence audit | implementation_in_review | Started m007/cli-surface-audit. |
 | Complete CLI surface and sequence audit | accepted | Implementation PR #122 merged at 5c09fb32dc196b79e90c2a54fde78b896b41cb49. |
 | Capability disposition outside CLI journeys | ready_for_proposal | Promoted after implementation PR #122. |
+| Capability disposition outside CLI journeys | proposal_in_review | Started m007/capability-disposition-proposal. |
 
 ## Accepted Review Units
 

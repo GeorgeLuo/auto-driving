@@ -52,6 +52,7 @@ source happens to be checked out when implementation starts:
 | Source revision | `subject.source_identity.commit = 7931fa9a995af5626fabef818f9e28b98c73e299`; relevant-file tree `e9e708b083bd203e1ca6b058404869e838ea5ad8dc1e7c9466302b9ab873bbe0` |
 | Coverage analysis | `subject.coverage_version = 7.15.2`, with the sealed `.coveragerc` settings `branch = True`, `relative_files = True`, the three declared source roots, and `omit = */__init__.py` |
 | Source-analysis runtime | `dependency_environment.interpreter`: CPython 3.11.7, `abi = cpython-311-darwin`, `cache_tag = cpython-311`, `executable_basename = python3.11`, `executable_sha256 = 32da055a5f026c1615772517ef6dd70df85fc486862ecf571bec5915897c8b74`, and `executable_path_sha256 = 225380e24ac6bf74d3c88512e50f100ef45cae27e9f30d66f376b5f968894c5e` |
+| Source-analysis artifact | `docs/milestones/007-cli-operator-usability/tools/capability-disposition/source_analysis.json`, schema `m007_capability_source_analysis_v1`; its canonical SHA-256 is recorded in the capability record |
 | File universe | Exact sorted paths from `subject.source_identity.relevant.files` whose normalized path is a `.py` file equal to or below one of `inputs.owned_source_roots`; each path's SHA must match `inputs.relevant_file_sha256` |
 | M007-08 audit report | `docs/milestones/007-cli-operator-usability/evidence/cli-surface-audit/report.json`, schema `m007_cli_surface_audit_v1`, SHA-256 `11cf7c7696f4995bcc433eff6b5f1d67b4e269e39ad825177d664a5add722b6d` |
 | M007-08 leaf inventory | `docs/milestones/007-cli-operator-usability/tools/cli-surface-audit/leaf_inventory.json`, schema `m007_leaf_inventory_v1`, SHA-256 `21efc3a9af9bb551e2bd3b0b949f5ddcc50d7748888d97cd360070983d40d3c4` |
@@ -62,12 +63,26 @@ source happens to be checked out when implementation starts:
 
 The implementation records the report path, report digest, source commit, and
 relevant-file tree digest and fails closed if any of them, the source hashes,
-the coverage version, runtime identity, admitted role selector, M007-08 input
-manifest, or the owned roots differ. The sealed report currently
+the coverage version, source-analysis artifact identity, historical runtime
+identity, admitted role selector, M007-08 input manifest, or the owned roots
+differ. The sealed report currently
 contains 96 owned Python paths while `report.files` contains 63 paths; the 33
 owned paths absent from `report.files` are intentionally part of the source
 universe and must not disappear from the capability record. `report.files` is
 used only to obtain per-context execution evidence.
+
+The frozen source-analysis runtime is provenance for the sealed M007-07
+capture; it is not a requirement that the M007-09 validator execute that
+Darwin binary on every host. The implementation creates
+`source_analysis.json` once under that exact runtime, Coverage.py 7.15.2, the
+frozen `.coveragerc`, and the frozen source commit. The artifact is a closed,
+canonical projection of possible statement and arc regions, bound to every
+source/config/runtime identity above. Its digest and input envelope are
+validated in CI, so the Ubuntu proposal/implementation workflow consumes the
+sealed analysis instead of silently recomputing it under a different
+interpreter. If the artifact is absent, malformed, or cannot be verified
+against those inputs, the implementation stops; it does not recapture #107 or
+copy a new runtime identity into the record.
 
 ### Journey-role derivation
 
@@ -84,12 +99,16 @@ command set; an entry in `manifest.support_commands.cleanup` or an M007-08
 sequence's `cleanup` array alone does not promote it. The current report has no
 admitted support-cleanup context.
 
-For each source-universe path, implementation obtains the possible statement
-and branch-arc sets by analyzing the source at the frozen commit with the
-sealed coverage.py/configuration identity. For a path absent from
-`report.files`, the executed line and arc sets are empty. Otherwise they are
-the unions of that path's context-level `executed_lines` and `executed_arcs`
-only for the admitted journey contexts.
+For each source-universe path, implementation consumes the corresponding
+possible statement and branch-arc sets from the verified source-analysis
+artifact. The artifact has exactly `schema`, `inputs`, and `files` at its top
+level; each file has exactly `path`, `source_sha256`, `possible_statements`,
+and `possible_arcs`, with sorted unique canonical values and no execution or
+disposition fields. The artifact's source/config/runtime envelope must match
+the sealed values above. For a path absent from `report.files`, the executed
+line and arc sets are empty. Otherwise they are the unions of that path's
+context-level `executed_lines` and `executed_arcs` only for the admitted
+journey contexts.
 The derived unreached sets are therefore deterministic even for an entirely
 unrepresented file, a partially reached file, or a file with a missing branch
 arc.
@@ -152,6 +171,7 @@ following hold:
 | Artifact | Authority | Contents |
 | --- | --- | --- |
 | **Reachability input** | Sealed M007-07 `report.json` | Owned roots, per-file executed/unexecuted attribution for the declared journey set |
+| **Source-analysis input** | Sealed `source_analysis.json` generated under the frozen M007-07 runtime | Possible statements/arcs for the frozen source universe; no execution, grouping, or disposition data |
 | **Leaf/sequence context** | Frozen M007-08 input manifest above | CLI-facing names, owners, sequence IDs, and residual labels used when grouping; read-only |
 | **Capability record** | This unit | Groups, members, reconcile fields, disposition, owner, reason |
 | **Pass report / rollup** | This unit | Derived unreached counts, group list, residuals, explicit non-claims |
@@ -254,6 +274,11 @@ bytes.
         "executable_path_sha256": "225380e24ac6bf74d3c88512e50f100ef45cae27e9f30d66f376b5f968894c5e"
       }
     },
+    "source_analysis": {
+      "schema": "m007_capability_source_analysis_v1",
+      "path": "docs/milestones/007-cli-operator-usability/tools/capability-disposition/source_analysis.json",
+      "sha256": "<sha256 of the canonical source-analysis JSON bytes>"
+    },
     "m007_08": {
       "input_manifest": [
         {
@@ -337,6 +362,10 @@ schema-mismatched, or digest-mismatched entry. The `source_identity`,
 `coverage_analysis`, and
 `source_analysis_runtime` objects are also closed projections of the frozen
 values in the sealed M007-07 report; their omission or drift fails Met. The
+`source_analysis` artifact is a sealed derived input: its schema, path, digest,
+source/config/runtime envelope, complete source-path set, per-file SHA values,
+and possible statement/arc sets must validate before derivation. The validator
+does not substitute a current host interpreter for the recorded runtime. The
 record's group fields are copied from the validated grouping input, while
 source hashes, regions, residuals, and all input identity fields are derived
 and cannot be supplied by that input.
@@ -408,15 +437,47 @@ reference to an M007-07 metric artifact cannot authorize a disposition.
 
 All human-authored causal context (`reason.detail` and a
 `not_applicable` reconciliation `reason`) is normalized with Unicode NFKC,
-case-folding, and whitespace collapse. The validator rejects it when it
-contains `%`, `\b\d+(?:\.\d+)?\s*(?:percent|percentage)\b`, a numeric ratio
-matching `\b\d+(?:\.\d+)?\s*(?:/|:)\s*\d+(?:\.\d+)?\b`, a numeric
-line/branch/statement/arc count in either order, or any of the tokens
-`coverage`, `unexecuted`, `unreached`, `untested`, `not covered`,
-`never executed`, `line count`, `branch count`, `statement count`, or
-`arc count`. The code and typed reference, not any free-text field, determine
-the disposition. The same negative corpus runs against `expose`, `retain`,
-and `remove`.
+case-folding, and whitespace collapse before validation. For this grammar,
+ASCII spaces and hyphens are equivalent separators for lexical matching, so
+`one in four`, `one-in-four`, `one out of four`, `one out-of-four`,
+`not-covered`, and `twenty-one lines` are covered by the same rules. Define the
+closed lexical forms as follows:
+
+```text
+SEP         := one or more ASCII spaces or hyphens
+OPT_SEP     := zero or more ASCII spaces or hyphens
+DECIMAL     := [0-9]+("."[0-9]+)?
+NUMBER_WORD := zero | one | two | three | four | five | six | seven | eight |
+               nine | ten | eleven | twelve | thirteen | fourteen | fifteen |
+               sixteen | seventeen | eighteen | nineteen | twenty | thirty |
+               forty | fifty | sixty | seventy | eighty | ninety | hundred |
+               thousand
+NUMBER      := DECIMAL | NUMBER_WORD (SEP NUMBER_WORD)*
+UNIT        := line | lines | branch | branches | statement | statements |
+               arc | arcs
+RATIO       := NUMBER OPT_SEP ("/" | ":") OPT_SEP NUMBER |
+               NUMBER SEP ("to" | "in" | "of") SEP NUMBER |
+               NUMBER SEP "out" SEP "of" SEP NUMBER
+COUNT       := NUMBER OPT_SEP UNIT | UNIT OPT_SEP NUMBER
+```
+
+The validator rejects the normalized value when it contains any of the
+following closed forms:
+
+- `%`, `percent`, `percentage`, or `per cent`, with or without a `NUMBER`;
+- `RATIO` (including digit, word-number, space, hyphen, `in`, and `out of`
+  variants);
+- `COUNT` (line/branch/statement/arc counts, including number words); or
+- `coverage`, `covered`, `unexecuted`, `un-executed`, `un-reached`, `unreached`,
+  `untested`, `un-tested`, `not covered`, `not-covered`, `not reached`,
+  `not-reached`, `never executed`, `never-executed`, `line count`, `branch
+  count`, `statement count`, or `arc count`.
+
+The `NUMBER` and `UNIT` forms are lexical definitions, not implementation
+examples, so the same negative corpus must reject digit, word-number, hyphen,
+`in`, and `out of` variants for `expose`, `retain`, and `remove`. The code and
+typed reference, not any free-text field, determine the disposition; `NUMBER`,
+ratio operators, and `UNIT` must be matched as whole lexical tokens.
 
 Exact repository paths and schema version ids are fixed in implementation under:
 
@@ -458,12 +519,12 @@ a product decision.
 | Guarantee class | What this unit claims | What it does not claim |
 | --- | --- | --- |
 | **Consistency** | The member-path set is the frozen source universe's unreached complement under the closed journey-role selector, with exact statement and arc subtraction; every member is in one group; every group has the four closed reconciliation objects and a legal reason object | That #107 attribution remains true after later product commits without a new capture |
-| **Provenance** | The record stores the report digest, source commit/tree, per-member source SHA, coverage/runtime identity, admitted-role selector, exact M007-08 input manifest, grouping-input digest, and record digest | That the owner field proves who should implement a later expose/remove unit |
-| **Authenticity** | Validators authenticate source/member/region equality, role-scoped execution, closed reconciliation statuses and owner forms, typed reference resolution, semantic HTML projection, and the metric-resistant reason grammar against the sealed inputs | That `retain` or `remove` is the right product call beyond the recorded reason; review still owns judgment quality |
+| **Provenance** | The record stores the report digest, source commit/tree, per-member source SHA, coverage/runtime identity, source-analysis artifact schema/path/digest, admitted-role selector, exact M007-08 input manifest, grouping-input digest, and record digest | That the owner field proves who should implement a later expose/remove unit |
+| **Authenticity** | Validators authenticate source/member/region equality against the verified source-analysis artifact, role-scoped execution, closed reconciliation statuses and owner forms, typed reference resolution, semantic HTML projection, and the metric-resistant reason grammar against the sealed inputs | That `retain` or `remove` is the right product call beyond the recorded reason; review still owns judgment quality |
 
 **Trusted inputs:** sealed M007-07 report; #107 owned-root list; the exact
-M007-08 input manifest above; the frozen source-analysis runtime; this unit's
-grouping schema and record schema.
+M007-08 input manifest above; the verified source-analysis artifact and its
+frozen runtime envelope; this unit's grouping schema and record schema.
 
 **Untrusted / non-authoritative for Met:** coverage percentages; chat claims
 that "everyone knows this is lab-only"; test-run coverage as a substitute for
@@ -477,7 +538,7 @@ report.
 | File is owned production | Frozen source-universe paths and per-path SHA values |
 | File is reached | Presence of an admitted `m007/journey/` context for that path; support/bootstrap presence is insufficient |
 | Statement/arc is reached | Union of context-level `executed_lines` / `executed_arcs` after the closed journey-role selector |
-| File/region is unreached | Possible source regions minus the corresponding executed union |
+| File/region is unreached | Possible source regions from the verified source-analysis artifact minus the corresponding executed union |
 | Group membership complete | Derived member rows and exact region sets equal the union of group members with no overlap |
 | Tests / entrypoints / platform | The four separate `reconcile` objects and their stable refs |
 | Explicit owner | Closed `repo_path` or `m007_08_owner` object |
@@ -491,12 +552,12 @@ outside the sealed source universe; assigning a file or region to two groups;
 dropping a partial-file statement or branch arc; using test execution as
 journey reachability; allowing a support-only context such as
 `cli/automa_cli/app.py:1662` to count as journey reachability; accepting a
-source/hash/report/runtime/M007-08 input mismatch; authorizing a disposition
-from a percentage, ratio, line/branch count, or `unexecuted` clause; accepting
-an untyped or out-of-authority causal reference; omitting record/residual
-fields from HTML; collapsing reconciliation into one free-text field; shipping
-a rollup with blank or placeholder owner/reason; performing the product change
-in this PR.
+source/hash/report/runtime/source-analysis/M007-08 input mismatch; authorizing
+a disposition from a percentage, digit/word-number ratio, line/branch count,
+or forbidden metric clause; accepting an untyped or out-of-authority causal
+reference; omitting record/residual fields from HTML; collapsing reconciliation
+into one free-text field; shipping a rollup with blank or placeholder
+owner/reason; performing the product change in this PR.
 
 **Adversaries excluded / residual:** same-user later mutation of product code
 that does not refresh #107 (record stays historical); subjective quality of a
@@ -506,10 +567,11 @@ that does not refresh #107 (record stays historical); subjective quality of a
 
 | Claim / non-claim | Authoritative raw evidence | Derivation | Semantic verifier |
 | --- | --- | --- | --- |
-| Unreached membership | Sealed #107 report + frozen source inventory/config | Possible statements/arcs minus role-selected executed unions, with file-absence handling | Exact path/SHA/member-region equality plus the 22-context role fixture |
+| Unreached membership | Sealed #107 report + verified `source_analysis.json` | Possible statements/arcs minus role-selected executed unions, with file-absence handling | Exact path/SHA/member-region equality plus the 22-context role fixture |
+| Source-analysis integrity | Sealed source/config/runtime envelope and committed artifact | Canonical artifact digest and per-file possible-region projection | Closed schema, input identity, complete path set, per-file SHA, and sorted statement/arc parity |
 | Group completeness | Capability record | Union of member rows and exact region sets | No remainder, no extra, no overlap, including partial/branch mutations |
 | Reconcile fields present | Closed group schema | Four dimension objects plus owner object | Omission / unknown status / empty / missing-reason mutation tests |
-| Reason is not a metric authorization | Structured reason object | Closed code/typed reference plus normalized detail grammar | Percentage, ratio, line/branch count, and `unexecuted` negatives for every disposition |
+| Reason is not a metric authorization | Structured reason object | Closed code/typed reference plus normalized detail grammar | Percentage, digit/word-number ratio, line/branch count, and forbidden-token negatives for every disposition |
 | CLI context labels | Frozen M007-08 input manifest | Optional join by path/owner/sequence | Unknown IDs, stale digests, or out-of-manifest refs fail |
 | Grouping input | Committed `grouping.json` | Closed group assignments and human disposition fields | Schema, canonical digest, candidate-set parity, duplicate/extra/omitted-path rejection |
 | Record and HTML identity | Capability record bytes | Canonical envelope and semantic HTML projection | Input/member/residual/group parity check |
@@ -521,12 +583,17 @@ that does not refresh #107 (record stays historical); subjective quality of a
 - **Bounded implementation evidence** only: deterministic derivation, schema,
   and adversarial fixtures. No new live CLI or coverage recapture is required
   for Met.
+- **Source-analysis capture:** generate `source_analysis.json` once under the
+  frozen runtime and commit that sealed artifact with the implementation. CI
+  validates its digest and input envelope; it does not regenerate the artifact
+  under another interpreter.
 - **#107 recapture** is out of scope unless the sealed report cannot be read.
   Then stop and amend; do not invent reachability.
 - **Freshness:** store the #107 report path and digest. Product HEAD drift
   after that digest is residual, not silent Met.
-- **Retained artifacts:** capability record, pass report, rollup, derived
-  HTML of that record, test fixtures. Derived CI logs are not sole authority.
+- **Retained artifacts:** source-analysis artifact, capability record, pass
+  report, rollup, derived HTML of that record, and test fixtures. Derived CI
+  logs are not sole authority.
 
 Canonical live recapture of journeys is **explicitly unnecessary** for Met.
 
@@ -559,7 +626,8 @@ note cannot independently mark M007-09 Met.
   inputs** for CLI-facing labels, owners, and sequence references.
 - New
   `docs/milestones/007-cli-operator-usability/tools/capability-disposition/`
-  owns the grouping input, derivation, schema, validators, rollup, README.
+  owns the sealed source-analysis artifact, its capture/verification guidance,
+  grouping input, derivation, schema, validators, rollup, and README.
 - New
   `docs/milestones/007-cli-operator-usability/evidence/capability-disposition/`
   owns the capability record, pass report, and residual rollup.
@@ -579,7 +647,8 @@ note cannot independently mark M007-09 Met.
 | Reached statement/arc is listed as unreached, or an unreached statement/arc is omitted | Met fails |
 | Partial file loses one possible statement from `unreached_statements` | Reject |
 | Missing branch arc is absent from `unreached_arcs` | Reject |
-| Sealed report digest, source commit/tree, coverage/runtime identity, M007-08 input digest, or per-file SHA does not match | Met fails |
+| Sealed report digest, source commit/tree, coverage/runtime identity, source-analysis artifact schema/digest/input envelope, M007-08 input digest, or per-file SHA does not match | Met fails |
+| Source-analysis artifact is missing, has unknown keys, an incomplete path set, unsorted/duplicate regions, or possible regions inconsistent with its source SHA | Fail closed; no record or Met |
 | `cli/automa_cli/app.py:1662` is executed only in support cleanup/precondition/supplemental contexts | It remains unreached; support context cannot satisfy the journey-role union |
 | A cleanup command appears only in an accepted sequence's `cleanup` array and not as a declared journey command | Exclude it from the admitted role set |
 | Test-only execution used to mark a file journey-reached | Reject; tests reconcile `retain`, they are not the journey set |
@@ -588,7 +657,7 @@ note cannot independently mark M007-09 Met.
 | `not_applicable` reconciliation field has a ref, no reason, or a blank reason | Met fails |
 | Owner is a free string, placeholder, unknown M007-08 label, or unrelated repo path | Reject |
 | Disposition/reason code pair is invalid, reason keys are unknown, reference is untyped, or reference does not resolve through the frozen authority | Reject |
-| Reason detail or a `not_applicable` reason contains a percentage, numeric ratio, line/branch/statement/arc count, or forbidden metric token | Reject for `expose`, `retain`, and `remove` |
+| Reason detail or a `not_applicable` reason contains a percentage, digit/word-number ratio (`one in four`, `one-in-four`, `one out of four`, or `one out-of-four`), line/branch/statement/arc count, or forbidden metric token | Reject for `expose`, `retain`, and `remove` |
 | Grouping input omits its closed schema, uses an unknown key, contains source/region/residual fields, or has an invalid canonical digest | Reject |
 | Grouping input omits, duplicates, or adds a candidate path outside the derived candidate set | Met fails |
 | Grouping input has a blank ID/name, an empty group, or a non-canonical group/member ordering | Reject |
@@ -611,9 +680,10 @@ note cannot independently mark M007-09 Met.
   `m007/journey/` role selector; bootstrap and support contexts do not become
   journey execution because they happen to appear in `report.files`.
 - #107 owned roots still name the production set this milestone cares about.
-- The frozen M007-08 input manifest and source-analysis runtime remain
-  readable and unchanged; drift fails closed rather than selecting a nearby
-  inventory or interpreter.
+- The frozen M007-08 input manifest and committed source-analysis artifact remain
+  readable and unchanged. Its source/config/runtime envelope and digest must
+  match; drift fails closed rather than selecting a nearby inventory or
+  interpreter. CI validates the artifact and does not recapture it.
 - Non-CLI entrypoints (tests, Pi deploy, lab plugins, Metrics UI) exist and
   may justify `retain`; they do not expand the declared journey set.
 - Dynamic import and platform-only modules may be unreached for honest
@@ -627,7 +697,7 @@ note cannot independently mark M007-09 Met.
 - Product repair of LIVE defects or issues #89–#108.
 - Milestone closeout (M007-06).
 - Claiming unreached code is dead.
-- A second coverage collector.
+- A second live journey-coverage collector or journey recapture.
 
 ## File Impact
 
@@ -642,7 +712,7 @@ note cannot independently mark M007-09 Met.
 
 | Path | Change |
 | --- | --- |
-| `docs/milestones/007-cli-operator-usability/tools/capability-disposition/` | Derivation, schema, validators, rollup, README |
+| `docs/milestones/007-cli-operator-usability/tools/capability-disposition/` | Sealed source-analysis artifact, capture/verification guidance, derivation, schema, validators, rollup, README |
 | `docs/milestones/007-cli-operator-usability/evidence/capability-disposition/` | Capability record, pass report, residual rollup, derived HTML of that record |
 | `tests/milestones/` | Completeness, overlap, digest, percentage-ban fixtures |
 | Plan handoff on success | M007-09 Met; next-frontier remains empty toward closeout |
@@ -677,11 +747,15 @@ closure**, Trust/Evidence sections, and no implementation payload.
 
 Deterministic:
 
-- frozen source universe and per-file hashes match the sealed report;
+- frozen source universe and per-file hashes match the sealed report and the
+  verified source-analysis artifact;
 - the admitted journey-role set is exactly the frozen `m007/journey/` context
   set, with bootstrap/support exclusion and the `app.py:1662` regression case;
-- the frozen M007-08 input manifest and CPython 3.11.7 source-analysis runtime
-  identity match the record;
+- the frozen M007-08 input manifest, source-analysis artifact schema/digest,
+  source/config/runtime envelope, complete path set, per-file SHA values, and
+  possible regions match the record; the historical CPython 3.11.7 runtime
+  identity is provenance for that artifact, while CI consumes the committed
+  artifact rather than recomputing it;
 - unreached member paths ≡ source-universe paths absent from `report.files` or
   containing a missing possible statement/arc;
 - every member path appears in exactly one group with exact missing statement

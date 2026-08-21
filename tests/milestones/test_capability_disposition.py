@@ -358,6 +358,37 @@ class CapabilityDispositionTests(unittest.TestCase):
             with self.assertRaises(cd.CapabilityDispositionError):
                 cd.validate_dashboard_html(path, self.record, self.sealed)
 
+    def test_dashboard_command_tree_preserves_recursive_sequence_status(self) -> None:
+        projection = cd._dashboard_projection(self.record, self.sealed)
+        tree = projection["command_tree"]
+
+        def find(command: str, node: dict) -> dict:
+            if node["command"] == command:
+                return node
+            for child in node["children"]:
+                try:
+                    return find(command, child)
+                except AssertionError:
+                    continue
+            raise AssertionError(f"missing command tree node: {command}")
+
+        self.assertEqual(tree["command"], "automa")
+        self.assertEqual(tree["status"], "partial")
+        self.assertEqual(
+            [child["token"] for child in tree["children"]],
+            ["help", "simulators", "vehicles"],
+        )
+        self.assertEqual(find("automa help", tree)["status"], "covered")
+        self.assertEqual(find("automa simulators", tree)["status"], "uncovered")
+        self.assertEqual(
+            find("automa vehicles perception compare", tree)["status"],
+            "planned",
+        )
+        self.assertEqual(
+            find("automa vehicles perception qualify", tree)["status"],
+            "blocked",
+        )
+
     def test_dashboard_coverage_class_omission_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "dashboard.html"
@@ -373,6 +404,23 @@ class CapabilityDispositionTests(unittest.TestCase):
             class_id = "discover-observe"
             button = button.replace(f' data-coverage-class-id="{class_id}"', "")
             path.write_text(source[:start] + button + source[end:], encoding="utf-8")
+            with self.assertRaises(cd.CapabilityDispositionError):
+                cd.validate_dashboard_html(path, self.record, self.sealed)
+
+    def test_dashboard_command_tree_omission_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "dashboard.html"
+            path.write_text(
+                cd.render_dashboard_html(self.record, self.sealed, self.context["authority"]),
+                encoding="utf-8",
+            )
+            source = path.read_text(encoding="utf-8")
+            marker = '<li class="command-tree-node" data-command-path="automa"'
+            start = source.index(marker)
+            end = source.index(">", start)
+            node = source[start:end]
+            node = node.replace(' data-command-path="automa"', "")
+            path.write_text(source[:start] + node + source[end:], encoding="utf-8")
             with self.assertRaises(cd.CapabilityDispositionError):
                 cd.validate_dashboard_html(path, self.record, self.sealed)
 

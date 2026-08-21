@@ -81,7 +81,7 @@ GROUPING_SCHEMA = "m007_capability_grouping_v1"
 RECORD_SCHEMA = "m007_capability_disposition_v1"
 REPORT_SCHEMA = "m007_capability_disposition_report_v1"
 RESIDUALS_SCHEMA = "m007_capability_disposition_residuals_v1"
-DASHBOARD_SCHEMA = "m007_capability_dashboard_v3"
+DASHBOARD_SCHEMA = "m007_capability_dashboard_v4"
 
 DASHBOARD_COVERAGE_CLASSES = (
     {
@@ -1401,6 +1401,108 @@ def _dashboard_coverage_overview(
     }
 
 
+def _dashboard_command_leaf_status(statuses: Iterable[str]) -> str:
+    values = set(statuses)
+    if "covered" in values:
+        return "covered"
+    if "ready" in values or "not_covered" in values:
+        return "planned"
+    if "blocked" in values:
+        return "blocked"
+    return "uncovered"
+
+
+def _dashboard_command_node_status(statuses: Iterable[str]) -> str:
+    values = set(statuses)
+    if not values:
+        return "uncovered"
+    if len(values) == 1:
+        return next(iter(values))
+    return "partial"
+
+
+def _dashboard_command_tree(
+    authority: Mapping[str, Any],
+    sequence_rows: Iterable[Mapping[str, Any]],
+) -> dict[str, Any]:
+    leaf_rows = _dashboard_leaf_rows(authority)
+    sequence_by_leaf_id: dict[str, list[tuple[str, str]]] = {}
+    for sequence in sequence_rows:
+        for leaf_id in sequence["leaf_ids"]:
+            sequence_by_leaf_id.setdefault(leaf_id, []).append(
+                (sequence["id"], sequence["status"])
+            )
+
+    def make_node(token: str, path: list[str]) -> dict[str, Any]:
+        return {
+            "token": token,
+            "path": path,
+            "children": {},
+            "direct_leaf_ids": set(),
+            "direct_kinds": {},
+            "direct_sequence_ids": set(),
+            "direct_statuses": set(),
+        }
+
+    root = make_node("automa", [])
+    for tokens, leaf_id, kind in leaf_rows:
+        node = root
+        path: list[str] = []
+        for token in tokens:
+            path.append(token)
+            children = node["children"]
+            if token not in children:
+                children[token] = make_node(token, list(path))
+            node = children[token]
+        node["direct_leaf_ids"].add(leaf_id)
+        node["direct_kinds"][leaf_id] = kind
+        for sequence_id, status in sequence_by_leaf_id.get(leaf_id, []):
+            node["direct_sequence_ids"].add(sequence_id)
+            node["direct_statuses"].add(status)
+
+    def materialize(node: Mapping[str, Any]) -> dict[str, Any]:
+        children = [
+            materialize(node["children"][token])
+            for token in sorted(node["children"])
+        ]
+        leaf_statuses: dict[str, str] = {
+            leaf_id: _dashboard_command_leaf_status(node["direct_statuses"])
+            for leaf_id in node["direct_leaf_ids"]
+        }
+        sequence_ids = set(node["direct_sequence_ids"])
+        for child in children:
+            leaf_statuses.update(child.pop("_leaf_statuses"))
+            sequence_ids.update(child["sequence_ids"])
+        path = list(node["path"])
+        command = " ".join(["automa", *path])
+        direct_leaf_ids = sorted(node["direct_leaf_ids"])
+        direct_leaf_id = direct_leaf_ids[0] if len(direct_leaf_ids) == 1 else None
+        result = {
+            "token": node["token"],
+            "path": path,
+            "command": command,
+            "status": _dashboard_command_node_status(leaf_statuses.values()),
+            "leaf_id": direct_leaf_id,
+            "kind": node["direct_kinds"].get(direct_leaf_id),
+            "leaf_ids": sorted(leaf_statuses),
+            "sequence_ids": sorted(sequence_ids),
+            "children": children,
+            "_leaf_statuses": leaf_statuses,
+        }
+        return result
+
+    tree = materialize(root)
+    tree.pop("_leaf_statuses")
+    return tree
+
+
+def _dashboard_command_tree_paths(node: Mapping[str, Any]) -> list[str]:
+    paths = [node["command"]]
+    for child in node["children"]:
+        paths.extend(_dashboard_command_tree_paths(child))
+    return paths
+
+
 def _dashboard_projection(
     record: Mapping[str, Any],
     sealed: Mapping[str, Any],
@@ -1457,6 +1559,7 @@ def _dashboard_projection(
                 "members": members,
             }
         )
+    sequence_rows = _dashboard_sequence_rows(authority)
     return {
         "schema": DASHBOARD_SCHEMA,
         "record_sha256": record["integrity"]["record_sha256"],
@@ -1476,9 +1579,8 @@ def _dashboard_projection(
             disposition: disposition_counts.get(disposition, 0)
             for disposition in ("expose", "retain", "remove")
         },
-        "coverage_overview": _dashboard_coverage_overview(
-            _dashboard_sequence_rows(authority)
-        ),
+        "coverage_overview": _dashboard_coverage_overview(sequence_rows),
+        "command_tree": _dashboard_command_tree(authority, sequence_rows),
         "groups": groups,
     }
 
@@ -1610,6 +1712,50 @@ def _dashboard_coverage_detail_markup(coverage_class: Mapping[str, Any]) -> str:
     )
 
 
+def _dashboard_command_status_label(status: str) -> str:
+    return {
+        "covered": "covered by measured sequence",
+        "partial": "mixed coverage",
+        "planned": "registered, not measured",
+        "blocked": "blocked sequence",
+        "uncovered": "not in a registered sequence",
+    }.get(status, status.replace("_", " "))
+
+
+def _dashboard_command_tree_markup(node: Mapping[str, Any]) -> str:
+    status = node["status"]
+    status_label = _dashboard_command_status_label(status)
+    children = node["children"]
+    if children:
+        child_markup = "".join(
+            _dashboard_command_tree_markup(child) for child in children
+        )
+        control = (
+            '<button type="button" class="command-node command-node-toggle '
+            f'command-status-{_attr(status)}" aria-expanded="false" '
+            f'aria-label="{_attr(node["command"])}: {_attr(status_label)}; '
+            f'{len(children)} subcommands">'
+            '<span class="command-chevron" aria-hidden="true">▸</span>'
+            f'<code class="command-word">{_attr(node["token"])}</code>'
+            f'<span class="command-state">{_attr(status_label)}</span>'
+            "</button>"
+            f'<ul class="command-children" hidden>{child_markup}</ul>'
+        )
+    else:
+        control = (
+            f'<span class="command-node command-node-leaf command-status-{_attr(status)}" '
+            f'aria-label="{_attr(node["command"])}: {_attr(status_label)}">'
+            '<span class="command-chevron command-chevron-spacer" aria-hidden="true">·</span>'
+            f'<code class="command-word">{_attr(node["token"])}</code>'
+            f'<span class="command-state">{_attr(status_label)}</span>'
+            "</span>"
+        )
+    return (
+        f'<li class="command-tree-node" data-command-path="{_attr(node["command"])}" '
+        f'data-command-status="{_attr(status)}">{control}</li>'
+    )
+
+
 def render_dashboard_html(
     record: Mapping[str, Any],
     sealed: Mapping[str, Any],
@@ -1621,6 +1767,7 @@ def render_dashboard_html(
     source_status = projection["source_status"]
     dispositions = projection["dispositions"]
     coverage_classes = projection["coverage_overview"]["classes"]
+    command_tree = projection["command_tree"]
     first_coverage_class = coverage_classes[0]
     first_group = projection["groups"][0]
 
@@ -1779,6 +1926,32 @@ h3 { margin: 1.3rem 0 .65rem; font-size: .98rem; }
 .panel-header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .muted, .caption { color: var(--muted); }
 .caption { font-size: .86rem; margin: 0 0 14px; }
+.command-explorer-panel { margin-top: 18px; }
+.command-tree, .command-children { list-style: none; margin: 0; padding: 0; }
+.command-tree { margin-top: 12px; }
+.command-children { margin: 3px 0 3px 17px; padding-left: 15px; border-left: 1px solid var(--border); }
+.command-tree-node { margin: 2px 0; }
+.command-node { display: flex; align-items: center; gap: 8px; width: fit-content; max-width: 100%; padding: 4px 7px; color: var(--text); text-align: left; background: transparent; border: 0; border-radius: 5px; }
+.command-node-toggle { cursor: pointer; }
+.command-node-toggle:hover { background: var(--surface-alt); }
+.command-node-toggle:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.command-chevron { flex: 0 0 15px; color: var(--muted); font-size: .95rem; }
+.command-chevron-spacer { text-align: center; }
+.command-word { font-size: .95rem; }
+.command-state { color: var(--muted); font-size: .76rem; overflow-wrap: anywhere; }
+.command-status-covered .command-word { color: var(--covered); }
+.command-status-partial .command-word { color: var(--partial); }
+.command-status-planned .command-word { color: var(--not-covered); }
+.command-status-blocked .command-word { color: var(--blocked); }
+.command-status-uncovered .command-word { color: var(--muted); }
+.command-legend { display: flex; flex-wrap: wrap; gap: 7px 16px; margin: 12px 0 0; padding: 0; list-style: none; color: var(--muted); font-size: .82rem; }
+.command-legend li { display: flex; align-items: center; gap: 6px; }
+.command-legend .swatch { border: 1px solid; }
+.command-legend .swatch.command-status-covered { background: var(--covered); }
+.command-legend .swatch.command-status-partial { background: var(--partial); }
+.command-legend .swatch.command-status-planned { background: var(--not-covered); }
+.command-legend .swatch.command-status-blocked { background: var(--blocked); }
+.command-legend .swatch.command-status-uncovered { background: var(--muted); }
 .coverage-map { display: grid; gap: 5px; }
 .coverage-class-row { display: grid; grid-template-columns: minmax(210px, 1.15fr) minmax(180px, 1fr) minmax(125px, .55fr); gap: 12px; align-items: center; width: 100%; padding: 12px 10px; color: var(--text); text-align: left; background: transparent; border: 0; border-radius: 7px; cursor: pointer; }
 .coverage-class-row:hover, .coverage-class-row[aria-pressed="true"] { background: var(--surface-alt); }
@@ -1871,6 +2044,7 @@ h3 { margin: 1.3rem 0 .65rem; font-size: .98rem; }
   const coverageButtons = Array.from(document.querySelectorAll("button.coverage-class-row"));
   const groupDetail = document.getElementById("group-detail");
   const groupButtons = Array.from(document.querySelectorAll("button.group-row"));
+  const commandExplorer = document.getElementById("command-explorer");
 
   function escapeHtml(value) {
     return String(value).replace(/[&<>"']/g, function (character) {
@@ -1939,6 +2113,20 @@ h3 { margin: 1.3rem 0 .65rem; font-size: .98rem; }
     groupDetail.dataset.initialGroupId = groupId;
   }
 
+  commandExplorer.addEventListener("click", function (event) {
+    const button = event.target.closest("button.command-node-toggle");
+    if (!button || !commandExplorer.contains(button)) return;
+    const node = button.parentElement;
+    const children = Array.from(node.children).find(function (child) {
+      return child.classList.contains("command-children");
+    });
+    if (!children) return;
+    const expanded = button.getAttribute("aria-expanded") === "true";
+    button.setAttribute("aria-expanded", String(!expanded));
+    children.hidden = expanded;
+    button.querySelector(".command-chevron").textContent = expanded ? "▸" : "▾";
+  });
+
   coverageButtons.forEach(function (button) {
     button.addEventListener("click", function () { selectCoverageClass(button.dataset.coverageClassId); });
   });
@@ -1960,6 +2148,18 @@ h3 { margin: 1.3rem 0 .65rem; font-size: .98rem; }
         '<p class="lede">The bottom line is organized around intended operator outcomes: what is covered, what is not yet covered, and what is blocked. Each cell is a registered M007-08 usage sequence; the source-disposition record is supporting evidence below.</p>',
         '<p class="notice">This view does not infer missing product requirements from executed code. “Covered” means the exact registered sequence has passed measured evidence. Related family coverage does not promote a deferred sequence. <a href="../cli-surface-audit/rollup.md">Open the sequence rollup</a> · <a href="../cli-surface-audit/sequence_registry.json">Open the sequence registry</a> · <a href="../cli-journey-coverage/README.md">Open journey coverage evidence</a> · <a href="record.html">Open the complete audit ledger</a> · <a href="record.json">Open record.json</a></p></header>',
         f'<p class="coverage-bottom-line"><strong>Bottom line:</strong> {coverage_bottom_line}</p>',
+        '<section class="panel command-explorer-panel" aria-labelledby="command-explorer-heading">',
+        '<div class="panel-header"><h2 id="command-explorer-heading">Explore the CLI command tree</h2><span class="muted">Click a word to open its subcommands</span></div>',
+        '<p class="caption">The tree follows the CLI hierarchy. A leaf is covered only when a measured sequence reaches that exact command; parent words summarize the mix below them.</p>',
+        f'<div class="command-explorer" id="command-explorer" aria-label="Recursive CLI command coverage"><ul class="command-tree">{_dashboard_command_tree_markup(command_tree)}</ul></div>',
+        '<ul class="command-legend" aria-label="CLI command coverage legend">',
+        '<li><span class="swatch command-status-covered"></span>Covered by measured sequence</li>',
+        '<li><span class="swatch command-status-partial"></span>Mixed coverage</li>',
+        '<li><span class="swatch command-status-planned"></span>Registered, not measured</li>',
+        '<li><span class="swatch command-status-blocked"></span>Blocked sequence</li>',
+        '<li><span class="swatch command-status-uncovered"></span>Not in a registered sequence</li>',
+        '</ul>',
+        '</section>',
         '<section class="panel" aria-labelledby="coverage-map-heading">',
         '<div class="panel-header"><h2 id="coverage-map-heading">Coverage by intended capability</h2><span class="muted">Select a class for the next unlock</span></div>',
         '<p class="caption">The class names are a presentation grouping of the ten registered operator outcomes. They are not a new product scope or a claim that all source code belongs to an operator journey.</p>',
@@ -2127,6 +2327,7 @@ class _DashboardHTMLParser(HTMLParser):
         self.in_data = False
         self.group_ids: list[str] = []
         self.coverage_class_ids: list[str] = []
+        self.command_paths: list[str] = []
         self.element_ids: set[str] = set()
         self.initial_group_id: str | None = None
         self.initial_coverage_class_id: str | None = None
@@ -2148,6 +2349,9 @@ class _DashboardHTMLParser(HTMLParser):
             coverage_class_id = values.get("data-coverage-class-id")
             if coverage_class_id is not None:
                 self.coverage_class_ids.append(coverage_class_id)
+        command_path = values.get("data-command-path")
+        if command_path is not None:
+            self.command_paths.append(command_path)
         if element_id == "group-detail":
             self.initial_group_id = values.get("data-initial-group-id")
         if element_id == "coverage-detail":
@@ -2194,6 +2398,10 @@ def validate_dashboard_html(
         _fail("dashboard group chart is incomplete or reordered")
     if parser.coverage_class_ids != expected_coverage_classes:
         _fail("dashboard coverage map is incomplete or reordered")
+    if parser.command_paths != _dashboard_command_tree_paths(
+        expected_projection["command_tree"]
+    ):
+        _fail("dashboard command tree is incomplete or reordered")
     if parser.initial_group_id != expected_groups[0]:
         _fail("dashboard initial group selection is not canonical")
     if parser.initial_coverage_class_id != expected_coverage_classes[0]:
@@ -2202,6 +2410,7 @@ def validate_dashboard_html(
         "capability-dashboard",
         "coverage-map",
         "coverage-detail",
+        "command-explorer",
         "group-chart",
         "disposition-chart",
         "source-status-chart",

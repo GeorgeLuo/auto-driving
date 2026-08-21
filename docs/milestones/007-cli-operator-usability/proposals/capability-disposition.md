@@ -28,34 +28,89 @@ candidates.
 | --- | --- |
 | **Owned production code** | Tracked Python under the #107 owned roots (the same roots the journey-coverage collector measures). Tests, docs, generated runtime, and lab candidates are not this set. |
 | **Declared CLI journey set** | The command/journey contexts sealed in the accepted M007-07 `report.json` (primary journey plus the three required continuity families). |
-| **Reached** | Attributed as executed in that #107 report for at least one declared-journey context. |
-| **Unreached** | Owned production code with no executed attribution in that report. |
+| **Sealed source universe** | The sorted `.py` paths in `subject.source_identity.relevant.files` that are under `inputs.owned_source_roots`, with the per-path SHA-256 values in `inputs.relevant_file_sha256`. This is larger than `report.files`; `report.files` is execution evidence, not the universe. |
+| **Source member** | One owned source path plus its sealed source SHA and exact unreached statement/arc sets. A wholly absent path is still a member, even when coverage reports no executable region for it. |
+| **Statement region** | A canonical `(path, line)` pair in the executable-statement set produced by the sealed coverage.py source analysis. |
+| **Arc region** | A canonical `(path, from_line, to_line)` pair in the possible branch-arc set produced by that analysis. Negative entry/exit endpoints are retained as coverage.py reports them. |
+| **Reached** | A statement or arc present in the union of `executed_lines` or `executed_arcs` across the report's declared-journey contexts for that path. A file path is reached only when it occurs in `report.files`. |
+| **Unreached** | A source member whose path is absent from `report.files`, or whose possible statement/arc sets contain a region absent from the corresponding executed union. |
 | **Capability group** | A named cluster of unreached regions that share one product capability and one owner. Not a per-line dump. |
 | **Disposition** | Exactly one of `expose`, `retain`, or `remove`. `remove` is a candidate for later review, not a delete in this unit. |
 | **Reachability authority** | The sealed #107 report bytes. Percentages in that report are informational and never Met. |
 
 ## Proposed Contract
 
+### Sealed input identity
+
+This proposal is bound to the current sealed M007-07 report, not to whatever
+source happens to be checked out when implementation starts:
+
+| Input | Frozen value or rule |
+| --- | --- |
+| Report | `docs/milestones/007-cli-operator-usability/evidence/cli-journey-coverage/report.json`, `integrity.report_sha256 = 51801c7686b247055114109e7462d13cb6702a1c8dcd8990a168f68357015789` |
+| Source revision | `subject.source_identity.commit = 7931fa9a995af5626fabef818f9e28b98c73e299`; relevant-file tree `e9e708b083bd203e1ca6b058404869e838ea5ad8dc1e7c9466302b9ab873bbe0` |
+| Coverage analysis | `subject.coverage_version = 7.15.2`, with the sealed `.coveragerc` settings `branch = True`, `relative_files = True`, the three declared source roots, and `omit = */__init__.py` |
+| File universe | Exact sorted paths from `subject.source_identity.relevant.files` whose normalized path is a `.py` file equal to or below one of `inputs.owned_source_roots`; each path's SHA must match `inputs.relevant_file_sha256` |
+
+The implementation records the report path, report digest, source commit, and
+relevant-file tree digest and fails closed if any of them, the source hashes,
+the coverage version, or the owned roots differ. The sealed report currently
+contains 96 owned Python paths while `report.files` contains 63 paths; the 33
+owned paths absent from `report.files` are intentionally part of the source
+universe and must not disappear from the capability record. `report.files` is
+used only to obtain per-context execution evidence.
+
+For each source-universe path, implementation obtains the possible statement
+and branch-arc sets by analyzing the source at the frozen commit with the
+sealed coverage.py/configuration identity. For a path absent from
+`report.files`, the executed line and arc sets are empty. Otherwise they are
+the unions of that path's context-level `executed_lines` and `executed_arcs`.
+The derived unreached sets are therefore deterministic even for an entirely
+unrepresented file, a partially reached file, or a file with a missing branch
+arc.
+
 ### Acceptance statement
 
 An implementation answers the review question only when **all** of the
 following hold:
 
-1. **Unreached set is derived, not invented.** Membership of unreached owned
-   production code is computed from the sealed #107 report plus the owned-root
-   inventory that report already names. A human overlay cannot add a file the
-   owned roots do not contain, or drop a file the report shows unreached.
-2. **Every unreached region belongs to exactly one capability group.** Omission
-   fails Met. Double-assignment fails Met. Empty "nothing unreached" is allowed
-   only when the derived set is empty.
-3. **Every group is reconciled.** Each group records how it relates to tests,
-   non-CLI entrypoints, dynamic or platform paths, and an explicit owner.
-   Silence is not reconciliation. `not_applicable` requires a reason.
-4. **Every group has one disposition and a reason that is not a percentage.**
+1. **Unreached set is derived, not invented.** Membership is computed from the
+   frozen source universe and the sealed report. A human overlay cannot add a
+   path outside that universe or drop a path the source/reachability derivation
+   marks as unreached. `report.files` is never used as the source universe.
+2. **Every unreached region belongs to exactly one capability group.** Each
+   capability-record member is a source path with its sealed SHA,
+   `unreached_statements`, and `unreached_arcs`. The member-path set must equal
+   the derived candidate-path set exactly; each path occurs once; and each
+   statement/arc set must equal possible regions minus the report's executed
+   union. A path absent from `report.files` remains a member even if its
+   possible-region sets are empty. Omission, partial-file loss, and
+   branch-arc loss fail Met. Empty "nothing unreached" is allowed only when
+   the derived candidate set is empty.
+3. **Every group is reconciled.** Each group has separate, required
+   `tests`, `non_cli_entrypoints`, `dynamic_paths`, and `platform_paths`
+   reconciliation objects. Each object uses only `present` or
+   `not_applicable`: `present` requires one or more stable references and no
+   empty reason; `not_applicable` requires an empty reference list and a
+   non-empty reason. Unknown statuses, missing objects, blank references, and
+   missing `not_applicable` reasons fail. The owner is a structured object
+   whose `kind` is `repo_path` or `m007_08_owner`; a `repo_path` must be an
+   existing sealed source path/directory containing a member, and an
+   `m007_08_owner` must exactly match an owner value in the read-only M007-08
+   inventory/registry. An arbitrary non-empty string is not an owner.
+4. **Every group has one disposition and a mechanically decidable reason.**
    `expose` = candidate to add or surface through CLI. `retain` = keep with
    owner and why CLI journeys need not reach it. `remove` = candidate for a
-   later deletion review. A coverage ratio, line count, or "unexecuted" clause
-   alone is not a legal reason.
+   later deletion review. The reason is a closed `code` plus a stable
+   `reference` and non-empty `detail`; `code` must be `cli_gap` for `expose`,
+   `non_cli_entrypoint`, `dynamic_path`, or `platform_path` for `retain`, and
+   `separate_removal_review` for `remove`. The detail is normalized with
+   Unicode NFKC and case-folding and is rejected if it contains `%`, a
+   percentage/ratio expression, a numeric line/branch/statement/arc count,
+   `coverage`, `unexecuted`, `unreached`, `untested`, `not covered`, or
+   `never executed`. Unknown reason keys and a free-text reason scalar are
+   rejected. Thus surrounding prose cannot launder a metric into causal
+   authorization; the same negative corpus is exercised for every disposition.
 5. **This unit does not perform the product work.** No CLI feature, no
    deletion, no move of production code to satisfy a disposition. Those are
    later review units.
@@ -73,6 +128,54 @@ following hold:
 | **Capability record** | This unit | Groups, members, reconcile fields, disposition, owner, reason |
 | **Pass report / rollup** | This unit | Derived unreached counts, group list, residuals, explicit non-claims |
 | **Derived HTML** | Same bytes as the record | Human view of groups and dispositions; not authority; layout is not Met |
+
+### Capability record schema
+
+Every group uses the following closed shape; implementations may add no
+alternate free-text fields that influence Met:
+
+```json
+{
+  "reconcile": {
+    "tests": {"status": "present", "refs": ["tests/..."], "reason": ""},
+    "non_cli_entrypoints": {"status": "not_applicable", "refs": [], "reason": "..."},
+    "dynamic_paths": {"status": "present", "refs": ["autonomy/..."], "reason": ""},
+    "platform_paths": {"status": "not_applicable", "refs": [], "reason": "..."}
+  },
+  "owner": {"kind": "repo_path", "ref": "implementations/..."},
+  "disposition": "retain",
+  "reason": {
+    "code": "dynamic_path",
+    "reference": "autonomy/...",
+    "detail": "Loaded through the runtime plugin boundary and owned there."
+  }
+}
+```
+
+`reconcile` has exactly the four named dimensions. A `present` object has a
+non-empty `refs` list of stable repository-relative paths or declared
+entrypoint/artifact identifiers and has no meaningful `reason` (the serialized
+value is the empty string). A `not_applicable` object has `refs: []` and a
+non-empty explanation in `reason`. The two statuses are the complete vocabulary;
+`unknown`, `pending`, and blank values fail. The validator rejects missing or
+extra dimension keys and duplicate references after normalization.
+
+`owner.kind = repo_path` means `owner.ref` is an existing sealed source file or
+directory within the owned roots and contains at least one group member.
+`owner.kind = m007_08_owner` means `owner.ref` is an exact owner or
+`ledger_owner` value in the read-only M007-08 sequence registry or audit
+report. These are the only owner forms, so a placeholder such as `x`, `team`,
+or `unknown` cannot satisfy ownership by being non-empty.
+
+The `reason` object is the only disposition rationale. Its closed code/reference
+pair is the causal reason; `detail` provides human context but cannot override
+the code. `reference` must resolve to a stable ref in the same group's
+reconciliation data, the sealed source universe, or the M007-08 inventory.
+After NFKC normalization and case-folding, the validator rejects `detail` when
+it contains a percent sign, a numeric percentage or ratio, a numeric
+line/branch/statement/arc count, or any of `coverage`, `unexecuted`,
+`unreached`, `untested`, `not covered`, or `never executed`. The implementation
+test matrix runs each forbidden form against `expose`, `retain`, and `remove`.
 
 Exact repository paths and schema version ids are fixed in implementation under:
 
@@ -107,9 +210,9 @@ a product decision.
 
 | Guarantee class | What this unit claims | What it does not claim |
 | --- | --- | --- |
-| **Consistency** | The unreached set equals owned-root files/regions with no #107 executed attribution; every member is in one group; every group has legal reconcile fields and a non-percentage reason | That #107 attribution remains true after later product commits without a new capture |
-| **Provenance** | Groups name their members by repository path; the record stores the #107 report identity (path + digest) used for derivation; dispositions name an owner | That the owner field proves who should implement a later expose/remove unit |
-| **Authenticity** | Validators authenticate the derived set against the sealed report and reject percentage-only reasons | That `retain` or `remove` is the right product call beyond the recorded reason; review still owns judgment quality |
+| **Consistency** | The member-path set is the frozen source universe's unreached complement, with exact statement and arc subtraction; every member is in one group; every group has the four closed reconciliation objects and a legal reason object | That #107 attribution remains true after later product commits without a new capture |
+| **Provenance** | The record stores the report digest, source commit/tree, per-member source SHA, and coverage identity used for derivation; owner and reason references resolve to named repository/M007-08 boundaries | That the owner field proves who should implement a later expose/remove unit |
+| **Authenticity** | Validators authenticate source/member/region equality, closed reconciliation statuses and owner forms, and the metric-resistant reason grammar against the sealed inputs | That `retain` or `remove` is the right product call beyond the recorded reason; review still owns judgment quality |
 
 **Trusted inputs:** sealed M007-07 report; #107 owned-root list; M007-08 leaf
 inventory and sequence registry as CLI-context labels; this unit's schemas.
@@ -123,19 +226,24 @@ report.
 
 | Claim | Authority |
 | --- | --- |
-| File is owned production | #107 owned roots |
-| File is reached by declared journeys | Executed attribution in sealed #107 report |
-| File is unreached | Complement of that attribution inside owned roots |
-| Group membership complete | Derived unreached set equals union of group members |
-| Tests / entrypoints / platform | Reconcile fields on the group (human, schema-enforced) |
-| Disposition | Group field; percentage-only reasons fail |
+| File is owned production | Frozen source-universe paths and per-path SHA values |
+| File is reached | Path presence in `report.files` |
+| Statement/arc is reached | Union of context-level `executed_lines` / `executed_arcs` |
+| File/region is unreached | Possible source regions minus the corresponding executed union |
+| Group membership complete | Derived member rows and exact region sets equal the union of group members with no overlap |
+| Tests / entrypoints / platform | The four separate `reconcile` objects and their stable refs |
+| Explicit owner | Closed `repo_path` or `m007_08_owner` object |
+| Disposition | Closed group field plus code/reference/detail reason object; metric grammar rejects authorization laundering |
 | Product expose/delete done | Out of scope; later units |
 
 **Adversaries covered:** omitting an unreached owned file; inventing members
-outside owned roots; assigning a file to two groups; treating test execution as
-journey reachability; authorizing `remove` or `expose` from a percentage;
-shipping a rollup with blank owner/reason; performing the product change in
-this PR.
+outside the sealed source universe; assigning a file or region to two groups;
+dropping a partial-file statement or branch arc; using test execution as
+journey reachability; accepting a source/hash/report mismatch; authorizing a
+disposition from a percentage, ratio, line/branch count, or `unexecuted`
+clause; collapsing reconciliation into one free-text field; shipping a rollup
+with blank or placeholder owner/reason; performing the product change in this
+PR.
 
 **Adversaries excluded / residual:** same-user later mutation of product code
 that does not refresh #107 (record stays historical); subjective quality of a
@@ -145,10 +253,10 @@ that does not refresh #107 (record stays historical); subjective quality of a
 
 | Claim / non-claim | Authoritative raw evidence | Derivation | Semantic verifier |
 | --- | --- | --- | --- |
-| Unreached membership | Sealed #107 report + owned roots | Complement of executed attribution | Set equality with group members |
-| Group completeness | Capability record | Union of members | No remainder, no extra, no overlap |
-| Reconcile fields present | Group schema | Required keys | Omission / empty / missing-reason N/A fail |
-| Reason is not a percentage | Group reason text | Parse/reject % and ratio-only clauses | Negative fixture |
+| Unreached membership | Sealed #107 report + frozen source inventory/config | Possible statements/arcs minus executed unions, with file-absence handling | Exact path/SHA/member-region equality |
+| Group completeness | Capability record | Union of member rows and exact region sets | No remainder, no extra, no overlap, including partial/branch mutations |
+| Reconcile fields present | Closed group schema | Four dimension objects plus owner object | Omission / unknown status / empty / missing-reason mutation tests |
+| Reason is not a metric authorization | Structured reason object | Closed code/reference plus normalized detail grammar | Percentage, ratio, line/branch count, and `unexecuted` negatives for every disposition |
 | CLI context labels | M007-08 inventory/registry | Optional join by path/owner | Unknown leaf ids fail if cited |
 | Non-claim: dead code | — | — | Explicit rollup non-claim |
 | Non-claim: HEAD still matches #107 | — | — | Record report digest; drift is residual |
@@ -207,19 +315,24 @@ note cannot independently mark M007-09 Met.
 
 | Case | Required result |
 | --- | --- |
-| Owned file has no #107 executed attribution and is in no group | Met fails |
-| Group member path is outside #107 owned roots | Reject |
+| Owned path is present in the sealed source inventory but absent from `report.files` and in no group | Met fails; the path must have a member row even if its possible-region sets are empty |
+| Group member path is outside the frozen source universe or has the wrong source SHA | Reject |
 | Same unreached path appears in two groups | Reject |
 | Derived unreached set is non-empty but record says none | Met fails |
-| Reached file listed as unreached | Met fails |
+| Reached statement/arc is listed as unreached, or an unreached statement/arc is omitted | Met fails |
+| Partial file loses one possible statement from `unreached_statements` | Reject |
+| Missing branch arc is absent from `unreached_arcs` | Reject |
+| Sealed report digest, source commit/tree, coverage identity, or per-file SHA does not match | Met fails |
 | Test-only execution used to mark a file journey-reached | Reject; tests reconcile `retain`, they are not the journey set |
-| Group omits tests / entrypoints / platform / owner | Met fails |
-| `not_applicable` reconcile field without reason | Met fails |
-| Disposition reason is only a coverage percentage or "unexecuted" | Reject (required negative fixture) |
+| Group omits one of `tests`, `non_cli_entrypoints`, `dynamic_paths`, or `platform_paths` | Met fails |
+| Reconciliation uses an unknown status, blank ref, duplicate ref, or `present` with no ref | Met fails |
+| `not_applicable` reconciliation field has a ref, no reason, or a blank reason | Met fails |
+| Owner is a free string, placeholder, unknown M007-08 label, or unrelated repo path | Reject |
+| Disposition/reason code pair is invalid, reason keys are unknown, or reference does not resolve | Reject |
+| Reason detail contains a percentage, numeric ratio, line/branch/statement/arc count, or `unexecuted` clause | Reject for `expose`, `retain`, and `remove` |
 | `remove` group accompanied by deleting the production file | Out of scope; fail the independence of this unit |
 | `expose` group accompanied by a new CLI leaf | Out of scope |
 | Rollup hides groups with `remove` | Met fails |
-| Sealed #107 digest in the record does not match on-disk report | Met fails |
 | Implementation rewrites #107 report to shrink unreached set | Forbidden |
 | M007-08 inventory rewritten to make grouping easier | Out of scope; amend or separate unit |
 | Issues #89–#108 treated as this unit's Met | Out of scope; later wants |
@@ -294,10 +407,16 @@ closure**, Trust/Evidence sections, and no implementation payload.
 
 Deterministic:
 
-- unreached set ≡ complement of #107 executed attribution inside owned roots;
-- every unreached path in exactly one group;
-- required reconcile fields;
-- percentage-only reason rejected;
+- frozen source universe and per-file hashes match the sealed report;
+- unreached member paths ≡ source-universe paths absent from `report.files` or
+  containing a missing possible statement/arc;
+- every member path appears in exactly one group with exact missing statement
+  and arc sets, including wholly absent files, partial files, and branch arcs;
+- the four reconciliation dimensions have closed statuses and stable refs;
+- owner form and owner reference validate against the sealed source/M007-08
+  inputs;
+- the closed reason code/reference/detail grammar rejects metric laundering for
+  every disposition;
 - digest of sealed #107 report matches the record;
 - rollup lists every group including `remove`;
 - derived HTML regenerates from the sealed record (layout is not Met);

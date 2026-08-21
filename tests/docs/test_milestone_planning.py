@@ -117,7 +117,6 @@ class MilestonePlanningTests(unittest.TestCase):
             "## Exit Criteria",
             "## Current Delivery",
             "### Current Frontier",
-            "### Next-Frontier Candidate",
             "## Workflow History",
             "## Accepted Review Units",
             "## Open Risks And Unverified Assumptions",
@@ -126,6 +125,7 @@ class MilestonePlanningTests(unittest.TestCase):
         ):
             self.assertIn(heading, text, f"missing section {heading}")
         if "### Frontier Map" not in text:
+            self.assertIn("### Next-Frontier Candidate", text)
             state = validate_plan_path(plan_md)
             expected_path = (
                 (state.next_frontier.name,)

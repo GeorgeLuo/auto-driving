@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="86053f31cb1deaa181ac146dd263b446668c721c3b87370a1cafd2ca090f59f5">
+  <meta name="source-sha256" content="33a1c08936e4d5c873613267ef06d630d87d4a9392106f58550e51a3383eb31e">
   <base target="_blank">
   <title>Milestone Planning And Delivery Contract</title>
   <style>
@@ -617,6 +617,10 @@ one-time legacy read: if <code>### Frontier Map</code> is missing, Current plus
 Next-Frontier Candidate is the old shape (current pointer and at most one
 remaining node). The next proposal PR must write the real map. Closed plans
 use <code>Path: none</code> with no queued or off-path nodes.</p>
+<p>For mapped plans, <code>### Next-Frontier Candidate</code> is a generated successor view:
+validation derives it from <code>Frontier Map</code> path[0], and Markdown rendering
+regenerates the view from that node. Only the bounded no-map legacy adapter
+parses that section as input.</p>
 <pre><code class="language-markdown">### Frontier Map
 
 - Path: `Successor` → `Milestone closeout`

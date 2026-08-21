@@ -20,6 +20,7 @@ from docs.milestones.workflow import (
     _replace_frontier,
     _replace_frontier_map,
     _replace_header_value,
+    render_plan_text,
 )
 from tests.docs.milestone_workflow_fixtures import (
     BASELINE_SHA,
@@ -145,16 +146,60 @@ class MilestonePlanContractTests(unittest.TestCase):
             validate_plan_text(invalid)
 
     def test_next_frontier_branch_must_use_milestone_prefix(self) -> None:
-        invalid = self.plan_text.replace(
+        start = self.plan_text.index("### Frontier Map")
+        end = self.plan_text.index("## Workflow History", start)
+        legacy = self.plan_text[:start] + self.plan_text[end:]
+        invalid = legacy.replace(
             f"- Implementation branch: `{NEXT_IMPLEMENTATION_BRANCH}`\n",
             "- Implementation branch: `agent/closeout`\n",
         )
 
         with self.assertRaisesRegex(
             PlanContractError,
-            "Next-Frontier Candidate implementation branch",
+            "implementation branch must start",
         ):
             validate_plan_text(invalid)
+
+    def test_mapped_plan_derives_successor_without_markdown_view(self) -> None:
+        start = self.plan_text.index("### Next-Frontier Candidate")
+        end = self.plan_text.index("### Frontier Map", start)
+        without_view = self.plan_text[:start] + self.plan_text[end:]
+
+        state = validate_plan_text(without_view)
+        self.assertEqual(state.next_frontier.name, NEXT_FRONTIER)
+        rendered = render_plan_text(without_view)
+        self.assertIn("### Next-Frontier Candidate", rendered)
+        self.assertIn(f"**{NEXT_FRONTIER}**", rendered)
+
+    def test_mapped_plan_ignores_stale_markdown_successor_view(self) -> None:
+        start = self.plan_text.index("### Next-Frontier Candidate")
+        end = self.plan_text.index("### Frontier Map", start)
+        view = self.plan_text[start:end].replace(
+            "- Review question: Is the synthetic milestone complete?",
+            "- Review question: Stale duplicate state",
+        )
+        stale = self.plan_text[:start] + view + self.plan_text[end:]
+
+        state = validate_plan_text(stale)
+        self.assertEqual(
+            state.next_frontier.fields["review question"],
+            "Is the synthetic milestone complete?",
+        )
+        rendered = render_plan_text(stale)
+        self.assertIn(
+            "- Review question: Is the synthetic milestone complete?",
+            rendered,
+        )
+
+    def test_handoff_renders_successor_view_for_mapped_plan(self) -> None:
+        start = self.open_plan_text.index("### Next-Frontier Candidate")
+        end = self.open_plan_text.index("### Frontier Map", start)
+        without_view = self.open_plan_text[:start] + self.open_plan_text[end:]
+
+        updated = apply_handoff(without_view, _receipt())
+        state = validate_plan_text(updated)
+        self.assertEqual(state.next_frontier.name, NEXT_FRONTIER)
+        self.assertIn("### Next-Frontier Candidate", updated)
 
     def test_milestone_branch_must_match_milestone_number(self) -> None:
         invalid = self.plan_text.replace(

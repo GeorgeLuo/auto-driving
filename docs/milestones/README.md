@@ -560,6 +560,11 @@ Next-Frontier Candidate is the old shape (current pointer and at most one
 remaining node). The next proposal PR must write the real map. Closed plans
 use `Path: none` with no queued or off-path nodes.
 
+For mapped plans, `### Next-Frontier Candidate` is a generated successor view:
+validation derives it from `Frontier Map` path[0], and Markdown rendering
+regenerates the view from that node. Only the bounded no-map legacy adapter
+parses that section as input.
+
 ```markdown
 ### Frontier Map
 

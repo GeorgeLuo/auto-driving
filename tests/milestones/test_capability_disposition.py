@@ -307,6 +307,19 @@ class CapabilityDispositionTests(unittest.TestCase):
             ["covered", "not_covered", "not_covered", "not_covered", "blocked"],
         )
         self.assertEqual(
+            [
+                sequence["id"]
+                for coverage_class in projection["coverage_overview"]["classes"]
+                for sequence in coverage_class["sequences"]
+            ],
+            [
+                sequence["id"]
+                for sequence in self.context["authority"]["documents"][
+                    "sequence_registry"
+                ]["sequences"]
+            ],
+        )
+        self.assertEqual(
             projection["coverage_overview"]["classes"][1]["next_steps"][0],
             {
                 "sequence_id": "US-03",

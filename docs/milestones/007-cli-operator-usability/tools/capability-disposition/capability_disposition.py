@@ -1733,6 +1733,7 @@ def _dashboard_command_tree_markup(node: Mapping[str, Any]) -> str:
         control = (
             '<button type="button" class="command-node command-node-toggle '
             f'command-status-{_attr(status)}" aria-expanded="false" '
+            f'data-command-path="{_attr(node["command"])}" '
             f'aria-label="{_attr(node["command"])}: {_attr(status_label)}; '
             f'{len(children)} subcommands">'
             '<span class="command-chevron" aria-hidden="true">▸</span>'
@@ -1756,6 +1757,85 @@ def _dashboard_command_tree_markup(node: Mapping[str, Any]) -> str:
     )
 
 
+def _dashboard_command_leaf_nodes(
+    node: Mapping[str, Any],
+) -> list[Mapping[str, Any]]:
+    leaves = []
+    if node["leaf_id"] is not None:
+        leaves.append(node)
+    for child in node["children"]:
+        leaves.extend(_dashboard_command_leaf_nodes(child))
+    return leaves
+
+
+def _dashboard_command_detail_markup(
+    node: Mapping[str, Any],
+    sequence_details_by_id: Mapping[str, Mapping[str, Any]],
+) -> str:
+    status = node["status"]
+    status_label = _dashboard_command_status_label(status)
+    leaf_nodes = _dashboard_command_leaf_nodes(node)
+    if node["leaf_id"] is not None:
+        inventory_summary = f'<code>{_attr(node["leaf_id"])}</code>'
+    else:
+        inventory_summary = f'{len(node["leaf_ids"])} inventoried leaf commands'
+    sequence_rows = []
+    for sequence_id in node["sequence_ids"]:
+        detail = sequence_details_by_id.get(sequence_id)
+        if detail is None:
+            continue
+        sequence = detail["sequence"]
+        sequence_status = _dashboard_coverage_status_label(sequence["status"])
+        if sequence["status"] == "covered":
+            next_step = "Exact sequence evidence is present."
+        else:
+            owner = sequence["owner"] or "No owner recorded"
+            unlock = sequence["unlock"] or sequence["prerequisites"]
+            next_step = (
+                f'Owner: <code>{_attr(owner)}</code> · '
+                f'Next unlock: {_attr(unlock)}'
+            )
+        sequence_rows.append(
+            '<li class="command-sequence-row">'
+            f'<div><code>{_attr(sequence["id"])}</code> '
+            f'<span class="status-pill coverage-status-{_attr(sequence["status"])}">'
+            f'{_attr(sequence_status)}</span></div>'
+            f'<p><strong>{_attr(sequence["operator_outcome"])}</strong></p>'
+            f'<p class="muted">{_attr(detail["coverage_class_name"])} · '
+            f'{_attr(sequence["operator_question"])}</p>'
+            f'<p class="muted">{next_step}</p>'
+            '</li>'
+        )
+    if sequence_rows:
+        sequence_markup = f'<ul class="command-sequences">{"".join(sequence_rows)}</ul>'
+    else:
+        sequence_markup = '<p class="muted">No registered sequence reaches this branch.</p>'
+
+    uncovered = [
+        leaf["command"] for leaf in leaf_nodes if leaf["status"] == "uncovered"
+    ]
+    if uncovered:
+        preview = uncovered[:6]
+        suffix = f' · +{len(uncovered) - len(preview)} more' if len(uncovered) > len(preview) else ""
+        gap_markup = (
+            f'<p class="command-gap"><strong>Uncovered leaves:</strong> '
+            f'<code>{_attr(", ".join(preview))}</code>{_attr(suffix)}</p>'
+        )
+    else:
+        gap_markup = '<p class="command-gap command-gap-covered">No uncovered leaves in this subtree.</p>'
+    return (
+        f'<h3>{_attr(node["command"])}</h3>'
+        f'<p class="detail-lede"><span class="command-status-pill command-status-{_attr(status)}">'
+        f'{_attr(status_label)}</span></p>'
+        '<dl class="detail-facts">'
+        f'<div><dt>Inventory</dt><dd>{inventory_summary}</dd></div>'
+        f'<div><dt>Sequences</dt><dd><code>{_attr(", ".join(node["sequence_ids"]) or "None")}</code></dd></div>'
+        '</dl>'
+        '<h4>Sequences touching this subtree</h4>'
+        f'{sequence_markup}{gap_markup}'
+    )
+
+
 def render_dashboard_html(
     record: Mapping[str, Any],
     sealed: Mapping[str, Any],
@@ -1768,6 +1848,14 @@ def render_dashboard_html(
     dispositions = projection["dispositions"]
     coverage_classes = projection["coverage_overview"]["classes"]
     command_tree = projection["command_tree"]
+    sequence_details_by_id = {
+        sequence["id"]: {
+            "sequence": sequence,
+            "coverage_class_name": coverage_class["name"],
+        }
+        for coverage_class in coverage_classes
+        for sequence in coverage_class["sequences"]
+    }
     first_coverage_class = coverage_classes[0]
     first_group = projection["groups"][0]
 
@@ -1927,6 +2015,10 @@ h3 { margin: 1.3rem 0 .65rem; font-size: .98rem; }
 .muted, .caption { color: var(--muted); }
 .caption { font-size: .86rem; margin: 0 0 14px; }
 .command-explorer-panel { margin-top: 18px; }
+.command-explorer-layout { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(280px, .95fr); gap: 18px; align-items: start; }
+.command-detail { min-width: 0; border-left: 1px solid var(--border); padding-left: 18px; }
+.command-detail h3 { margin-top: 0; overflow-wrap: anywhere; }
+.command-detail h4 { margin: 20px 0 8px; font-size: .9rem; }
 .command-tree, .command-children { list-style: none; margin: 0; padding: 0; }
 .command-tree { margin-top: 12px; }
 .command-children { margin: 3px 0 3px 17px; padding-left: 15px; border-left: 1px solid var(--border); }
@@ -1934,6 +2026,7 @@ h3 { margin: 1.3rem 0 .65rem; font-size: .98rem; }
 .command-node { display: flex; align-items: center; gap: 8px; width: fit-content; max-width: 100%; padding: 4px 7px; color: var(--text); text-align: left; background: transparent; border: 0; border-radius: 5px; }
 .command-node-toggle { cursor: pointer; }
 .command-node-toggle:hover { background: var(--surface-alt); }
+.command-node-toggle[aria-current="true"] { background: var(--surface-alt); outline: 2px solid var(--focus); outline-offset: -2px; }
 .command-node-toggle:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 .command-chevron { flex: 0 0 15px; color: var(--muted); font-size: .95rem; }
 .command-chevron-spacer { text-align: center; }
@@ -1952,6 +2045,17 @@ h3 { margin: 1.3rem 0 .65rem; font-size: .98rem; }
 .command-legend .swatch.command-status-planned { background: var(--not-covered); }
 .command-legend .swatch.command-status-blocked { background: var(--blocked); }
 .command-legend .swatch.command-status-uncovered { background: var(--muted); }
+.command-status-pill { display: inline-block; padding: 4px 8px; border: 1px solid; border-radius: 999px; font-size: .78rem; font-weight: 600; }
+.command-status-pill.command-status-covered { color: var(--covered); border-color: var(--covered); }
+.command-status-pill.command-status-partial { color: var(--partial); border-color: var(--partial); }
+.command-status-pill.command-status-planned { color: var(--not-covered); border-color: var(--not-covered); }
+.command-status-pill.command-status-blocked { color: var(--blocked); border-color: var(--blocked); }
+.command-status-pill.command-status-uncovered { color: var(--muted); border-color: var(--muted); }
+.command-sequences { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.command-sequence-row { border-top: 1px solid var(--border); padding: 9px 0 4px; }
+.command-sequence-row p { margin: 5px 0; overflow-wrap: anywhere; }
+.command-gap { margin: 14px 0 0; padding: 9px 10px; background: var(--surface-alt); font-size: .82rem; overflow-wrap: anywhere; }
+.command-gap-covered { color: var(--covered); }
 .coverage-map { display: grid; gap: 5px; }
 .coverage-class-row { display: grid; grid-template-columns: minmax(210px, 1.15fr) minmax(180px, 1fr) minmax(125px, .55fr); gap: 12px; align-items: center; width: 100%; padding: 12px 10px; color: var(--text); text-align: left; background: transparent; border: 0; border-radius: 7px; cursor: pointer; }
 .coverage-class-row:hover, .coverage-class-row[aria-pressed="true"] { background: var(--surface-alt); }
@@ -2032,7 +2136,7 @@ h3 { margin: 1.3rem 0 .65rem; font-size: .98rem; }
 .member-detail p { margin: 7px 0; }
 .member-detail code { white-space: pre-wrap; word-break: break-word; }
 .residual-note { margin: 16px 0 0; padding: 10px 12px; background: var(--surface-alt); color: var(--muted); font-size: .82rem; }
-@media (max-width: 1040px) { .visual-grid { grid-template-columns: 1fr; } }
+@media (max-width: 1040px) { .visual-grid, .command-explorer-layout { grid-template-columns: 1fr; } .command-detail { border-left: 0; border-top: 1px solid var(--border); padding: 18px 0 0; } }
 @media (max-width: 720px) { .coverage-class-row { grid-template-columns: 1fr; gap: 8px; } .coverage-state { justify-self: start; } }
 @media (max-width: 560px) { .dashboard { padding-top: 22px; } .coverage-sequence summary { grid-template-columns: 42px minmax(0, 1fr); } .coverage-sequence summary .status-pill { grid-column: 2; } .group-row { grid-template-columns: 1fr auto; } .group-name { grid-column: 1 / -1; } .group-value { grid-column: 2; grid-row: 2; } .detail-facts div { grid-template-columns: 1fr; gap: 2px; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; } }
@@ -2045,6 +2149,10 @@ h3 { margin: 1.3rem 0 .65rem; font-size: .98rem; }
   const groupDetail = document.getElementById("group-detail");
   const groupButtons = Array.from(document.querySelectorAll("button.group-row"));
   const commandExplorer = document.getElementById("command-explorer");
+  const commandDetail = document.getElementById("command-detail");
+  const commandButtons = Array.from(document.querySelectorAll("button.command-node-toggle"));
+  const commandNodes = new Map();
+  const sequencesById = new Map();
 
   function escapeHtml(value) {
     return String(value).replace(/[&<>"']/g, function (character) {
@@ -2066,6 +2174,30 @@ h3 { margin: 1.3rem 0 .65rem; font-size: .98rem; }
     }[status] || status.replace(/_/g, " ");
   }
 
+  function commandStatusLabel(status) {
+    return {
+      covered: "covered by measured sequence",
+      partial: "mixed coverage",
+      planned: "registered, not measured",
+      blocked: "blocked sequence",
+      uncovered: "not in a registered sequence"
+    }[status] || status.replace(/_/g, " ");
+  }
+
+  function indexCommandNodes(node) {
+    commandNodes.set(node.command, node);
+    node.children.forEach(indexCommandNodes);
+  }
+
+  indexCommandNodes(data.command_tree);
+  data.coverage_overview.classes.forEach(function (coverageClass) {
+    coverageClass.sequences.forEach(function (sequence) {
+      sequencesById.set(sequence.id, Object.assign({}, sequence, {
+        coverage_class_name: coverageClass.name
+      }));
+    });
+  });
+
   function coverageDetailMarkup(coverageClass) {
     const sequences = coverageClass.sequences.map(function (sequence) {
       const nextMarkup = sequence.status === "covered"
@@ -2074,6 +2206,39 @@ h3 { margin: 1.3rem 0 .65rem; font-size: .98rem; }
       return "<details class=\"coverage-sequence\"" + (sequence.status === "covered" ? "" : " open") + "><summary><code>" + escapeHtml(sequence.id) + "</code><span class=\"coverage-sequence-name\">" + escapeHtml(sequence.operator_outcome) + "</span><span class=\"status-pill coverage-status-" + escapeHtml(sequence.status) + "\">" + escapeHtml(statusLabel(sequence.status)) + "</span></summary><div class=\"coverage-sequence-detail\"><p><strong>Operator question:</strong> " + escapeHtml(sequence.operator_question) + "</p><p><strong>Confirmation:</strong> " + escapeHtml(sequence.primary_confirmation) + "</p><p class=\"muted\"><strong>Evidence:</strong> " + escapeHtml(sequence.coverage_reason || sequence.coverage) + ".</p><dl class=\"detail-facts\"><div><dt>Prerequisites</dt><dd>" + escapeHtml(sequence.prerequisites) + "</dd></div><div><dt>CLI leaves</dt><dd><code>" + escapeHtml(sequence.leaf_ids.join(", ") || "None") + "</code></dd></div><div><dt>Execution</dt><dd><code>" + escapeHtml(sequence.execution) + "</code> · " + escapeHtml(sequence.safety_class) + "</dd></div></dl>" + nextMarkup + "</div></details>";
     }).join("");
     return "<h2>" + escapeHtml(coverageClass.name) + "</h2><p class=\"detail-lede\"><span class=\"status-pill coverage-status-" + escapeHtml(coverageClass.status) + "\">" + escapeHtml(statusLabel(coverageClass.status)) + "</span> " + escapeHtml(coverageClass.summary) + "</p><div class=\"coverage-sequence-list\">" + sequences + "</div>";
+  }
+
+  function commandLeafNodes(node) {
+    const leaves = node.leaf_id ? [node] : [];
+    node.children.forEach(function (child) {
+      leaves.push.apply(leaves, commandLeafNodes(child));
+    });
+    return leaves;
+  }
+
+  function commandDetailMarkup(node) {
+    const sequenceRows = node.sequence_ids.map(function (sequenceId) {
+      return sequencesById.get(sequenceId);
+    }).filter(Boolean);
+    const sequenceMarkup = sequenceRows.length
+      ? "<ul class=\"command-sequences\">" + sequenceRows.map(function (sequence) {
+        const nextStep = sequence.status === "covered"
+          ? "Exact sequence evidence is present."
+          : "Owner: <code>" + escapeHtml(sequence.owner || "No owner recorded") + "</code> · Next unlock: " + escapeHtml(sequence.unlock || sequence.prerequisites);
+        return "<li class=\"command-sequence-row\"><div><code>" + escapeHtml(sequence.id) + "</code> <span class=\"status-pill coverage-status-" + escapeHtml(sequence.status) + "\">" + escapeHtml(statusLabel(sequence.status)) + "</span></div><p><strong>" + escapeHtml(sequence.operator_outcome) + "</strong></p><p class=\"muted\">" + escapeHtml(sequence.coverage_class_name) + " · " + escapeHtml(sequence.operator_question) + "</p><p class=\"muted\">" + nextStep + "</p></li>";
+      }).join("") + "</ul>"
+      : "<p class=\"muted\">No registered sequence reaches this branch.</p>";
+    const leaves = commandLeafNodes(node);
+    const uncovered = leaves.filter(function (leaf) { return leaf.status === "uncovered"; }).map(function (leaf) { return leaf.command; });
+    const uncoveredPreview = uncovered.slice(0, 6).join(", ");
+    const uncoveredSuffix = uncovered.length > 6 ? " · +" + (uncovered.length - 6) + " more" : "";
+    const gapMarkup = uncovered.length
+      ? "<p class=\"command-gap\"><strong>Uncovered leaves:</strong> <code>" + escapeHtml(uncoveredPreview) + "</code>" + escapeHtml(uncoveredSuffix) + "</p>"
+      : "<p class=\"command-gap command-gap-covered\">No uncovered leaves in this subtree.</p>";
+    const inventory = node.leaf_id
+      ? "<code>" + escapeHtml(node.leaf_id) + "</code>"
+      : node.leaf_ids.length + " inventoried leaf commands";
+    return "<h3>" + escapeHtml(node.command) + "</h3><p class=\"detail-lede\"><span class=\"command-status-pill command-status-" + escapeHtml(node.status) + "\">" + escapeHtml(commandStatusLabel(node.status)) + "</span></p><dl class=\"detail-facts\"><div><dt>Inventory</dt><dd>" + inventory + "</dd></div><div><dt>Sequences</dt><dd><code>" + escapeHtml(node.sequence_ids.join(", ") || "None") + "</code></dd></div></dl><h4>Sequences touching this subtree</h4>" + sequenceMarkup + gapMarkup;
   }
 
   function detailMarkup(group) {
@@ -2113,11 +2278,25 @@ h3 { margin: 1.3rem 0 .65rem; font-size: .98rem; }
     groupDetail.dataset.initialGroupId = groupId;
   }
 
+  function selectCommand(command) {
+    const node = commandNodes.get(command);
+    if (!node) return;
+    commandButtons.forEach(function (button) {
+      if (button.dataset.commandPath === command) {
+        button.setAttribute("aria-current", "true");
+      } else {
+        button.removeAttribute("aria-current");
+      }
+    });
+    commandDetail.innerHTML = commandDetailMarkup(node);
+    commandDetail.dataset.initialCommandPath = command;
+  }
+
   commandExplorer.addEventListener("click", function (event) {
     const button = event.target.closest("button.command-node-toggle");
     if (!button || !commandExplorer.contains(button)) return;
-    const node = button.parentElement;
-    const children = Array.from(node.children).find(function (child) {
+    const nodeElement = button.parentElement;
+    const children = Array.from(nodeElement.children).find(function (child) {
       return child.classList.contains("command-children");
     });
     if (!children) return;
@@ -2125,6 +2304,7 @@ h3 { margin: 1.3rem 0 .65rem; font-size: .98rem; }
     button.setAttribute("aria-expanded", String(!expanded));
     children.hidden = expanded;
     button.querySelector(".command-chevron").textContent = expanded ? "▸" : "▾";
+    selectCommand(button.dataset.commandPath);
   });
 
   coverageButtons.forEach(function (button) {
@@ -2133,6 +2313,7 @@ h3 { margin: 1.3rem 0 .65rem; font-size: .98rem; }
   groupButtons.forEach(function (button) {
     button.addEventListener("click", function () { selectGroup(button.dataset.groupId); });
   });
+  selectCommand("automa");
 }());
 """
     lines = [
@@ -2151,7 +2332,10 @@ h3 { margin: 1.3rem 0 .65rem; font-size: .98rem; }
         '<section class="panel command-explorer-panel" aria-labelledby="command-explorer-heading">',
         '<div class="panel-header"><h2 id="command-explorer-heading">Explore the CLI command tree</h2><span class="muted">Click a word to open its subcommands</span></div>',
         '<p class="caption">The tree follows the CLI hierarchy. A leaf is covered only when a measured sequence reaches that exact command; parent words summarize the mix below them.</p>',
+        '<div class="command-explorer-layout">',
         f'<div class="command-explorer" id="command-explorer" aria-label="Recursive CLI command coverage"><ul class="command-tree">{_dashboard_command_tree_markup(command_tree)}</ul></div>',
+        f'<aside class="command-detail" id="command-detail" data-initial-command-path="{_attr(command_tree["command"])}" aria-live="polite">{_dashboard_command_detail_markup(command_tree, sequence_details_by_id)}</aside>',
+        '</div>',
         '<ul class="command-legend" aria-label="CLI command coverage legend">',
         '<li><span class="swatch command-status-covered"></span>Covered by measured sequence</li>',
         '<li><span class="swatch command-status-partial"></span>Mixed coverage</li>',
@@ -2331,6 +2515,7 @@ class _DashboardHTMLParser(HTMLParser):
         self.element_ids: set[str] = set()
         self.initial_group_id: str | None = None
         self.initial_coverage_class_id: str | None = None
+        self.initial_command_path: str | None = None
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         values = dict(attrs)
@@ -2350,12 +2535,14 @@ class _DashboardHTMLParser(HTMLParser):
             if coverage_class_id is not None:
                 self.coverage_class_ids.append(coverage_class_id)
         command_path = values.get("data-command-path")
-        if command_path is not None:
+        if tag == "li" and command_path is not None:
             self.command_paths.append(command_path)
         if element_id == "group-detail":
             self.initial_group_id = values.get("data-initial-group-id")
         if element_id == "coverage-detail":
             self.initial_coverage_class_id = values.get("data-initial-coverage-class-id")
+        if element_id == "command-detail":
+            self.initial_command_path = values.get("data-initial-command-path")
 
     def handle_endtag(self, tag: str) -> None:
         if tag == "script" and self.in_data:
@@ -2406,11 +2593,14 @@ def validate_dashboard_html(
         _fail("dashboard initial group selection is not canonical")
     if parser.initial_coverage_class_id != expected_coverage_classes[0]:
         _fail("dashboard initial coverage selection is not canonical")
+    if parser.initial_command_path != expected_projection["command_tree"]["command"]:
+        _fail("dashboard initial command selection is not canonical")
     required_ids = {
         "capability-dashboard",
         "coverage-map",
         "coverage-detail",
         "command-explorer",
+        "command-detail",
         "group-chart",
         "disposition-chart",
         "source-status-chart",

@@ -389,6 +389,19 @@ class CapabilityDispositionTests(unittest.TestCase):
             "blocked",
         )
 
+    def test_dashboard_command_detail_maps_branch_metadata(self) -> None:
+        authority = self.context["authority"]
+        html = cd.render_dashboard_html(self.record, self.sealed, authority)
+        self.assertIn(
+            'id="command-detail" data-initial-command-path="automa"',
+            html,
+        )
+        self.assertIn("Sequences touching this subtree", html)
+        self.assertIn("US-01", html)
+        self.assertIn("Exact sequence evidence is present.", html)
+        self.assertIn("Owner: <code>cli-perception-offline</code>", html)
+        self.assertIn("Uncovered leaves:", html)
+
     def test_dashboard_coverage_class_omission_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "dashboard.html"

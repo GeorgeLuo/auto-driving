@@ -546,6 +546,13 @@ def load_sealed_report(repo_root: Path = ROOT) -> dict[str, Any]:
     manifest = report.get("inputs", {}).get("manifest")
     if manifest != {"path": MANIFEST_REL, "sha256": FROZEN_MANIFEST_SHA256}:
         _fail("sealed M007-07 manifest identity changed")
+    manifest_path = repo_root / MANIFEST_REL
+    try:
+        manifest_digest = sha256_file(manifest_path)
+    except OSError as exc:
+        _fail(f"sealed M007-07 manifest is missing or unreadable: {exc}")
+    if manifest_digest != FROZEN_MANIFEST_SHA256:
+        _fail("sealed M007-07 manifest bytes changed")
     source_paths = _source_files_from_report(report, repo_root)
     admitted, files = _validate_report_contexts(report, source_paths)
     return {
@@ -666,8 +673,22 @@ def validate_source_analysis(
     return sha256_bytes(canonical_file_bytes(dict(artifact)))
 
 
+def _owner_values(value: Any) -> set[str]:
+    values: set[str] = set()
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if key in {"owner", "ledger_owner"} and isinstance(child, str) and child:
+                values.add(child)
+            values.update(_owner_values(child))
+    elif isinstance(value, list):
+        for child in value:
+            values.update(_owner_values(child))
+    return values
+
+
 def load_m007_08_authority(repo_root: Path = ROOT) -> dict[str, Any]:
     documents: dict[str, Any] = {}
+    owners_by_path: dict[str, set[str]] = {}
     for entry in FROZEN_M007_08_MANIFEST:
         path = repo_root / entry["path"]
         actual = sha256_file(path) if path.is_file() else None
@@ -677,26 +698,22 @@ def load_m007_08_authority(repo_root: Path = ROOT) -> dict[str, Any]:
         if not isinstance(document, dict) or document.get("schema") != entry["schema"]:
             _fail(f"frozen M007-08 input schema changed: {entry['id']}")
         documents[entry["id"]] = document
+        owners_by_path[entry["path"]] = _owner_values(document)
     registry = documents["sequence_registry"]
     if registry.get("catalog_digest") != "9cf4c8bf139183d10ea51c5b576eb47cef1919a161570d704893b3f7372a0e40":
         _fail("frozen sequence registry catalog digest changed")
     sequence_ids = {row.get("id") for row in registry.get("sequences", []) if isinstance(row, dict)}
-    owners: set[str] = set()
-    for row in registry.get("sequences", []):
-        if isinstance(row, dict):
-            for field in ("owner", "ledger_owner"):
-                if isinstance(row.get(field), str) and row[field]:
-                    owners.add(row[field])
-    audit_report = documents["audit_report"]
-    for key in ("owner", "ledger_owner"):
-        value = audit_report.get(key)
-        if isinstance(value, str) and value:
-            owners.add(value)
+    owners = set().union(*owners_by_path.values()) if owners_by_path else set()
     return {
         "documents": documents,
         "entries": _copy(FROZEN_M007_08_MANIFEST),
         "paths": {entry["path"] for entry in FROZEN_M007_08_MANIFEST},
         "digests": {entry["path"]: entry["sha256"] for entry in FROZEN_M007_08_MANIFEST},
+        "owners_by_path": owners_by_path,
+        "owners_by_digest": {
+            entry["sha256"]: owners_by_path[entry["path"]]
+            for entry in FROZEN_M007_08_MANIFEST
+        },
         "sequence_ids": {value for value in sequence_ids if isinstance(value, str)},
         "owners": owners,
     }
@@ -748,6 +765,8 @@ def _validate_authority_ref(
             _fail(f"{where} names an unknown M007-08 owner")
         if digest not in authority["digests"].values():
             _fail(f"{where} has the wrong M007-08 artifact digest")
+        if owner not in authority["owners_by_digest"].get(digest, set()):
+            _fail(f"{where} owner is not present in the cited M007-08 artifact")
 
 
 def _normalize_reason_text(value: str) -> str:
@@ -914,10 +933,16 @@ def _validate_reason(
     elif kind == "m007_08_owner":
         _exact_keys(reference, ("kind", "value", "artifact_path", "artifact_sha256"), where + ".reference")
         path = reference.get("artifact_path")
-        if path not in authority["paths"] or authority["digests"].get(path) != reference.get("artifact_sha256"):
+        if (
+            not isinstance(path, str)
+            or path not in authority["paths"]
+            or authority["digests"].get(path) != reference.get("artifact_sha256")
+        ):
             _fail(f"{where}.reference M007-08 artifact is not frozen")
         if reference.get("value") not in authority["owners"]:
             _fail(f"{where}.reference owner value is not frozen")
+        if reference.get("value") not in authority["owners_by_path"].get(path, set()):
+            _fail(f"{where}.reference owner is not present in the cited M007-08 artifact")
 
 
 def validate_grouping(

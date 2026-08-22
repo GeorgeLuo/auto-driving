@@ -41,6 +41,30 @@ class CapabilityDispositionTests(unittest.TestCase):
             grouping_sha256=cls.context["grouping_sha256"],
         )
 
+    @staticmethod
+    def _stage_sealed_report_root(root: Path) -> Path:
+        for name in ("autonomy", "implementations", "cli"):
+            (root / name).symlink_to(ROOT / name, target_is_directory=True)
+        (root / ".coveragerc").symlink_to(ROOT / ".coveragerc")
+        for relative in (cd.REPORT_REL, cd.MANIFEST_REL):
+            destination = root / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes((ROOT / relative).read_bytes())
+        return root / cd.MANIFEST_REL
+
+    def test_sealed_manifest_drift_fails_closed(self) -> None:
+        for mutation in ("changed", "missing"):
+            with self.subTest(mutation=mutation):
+                with tempfile.TemporaryDirectory() as directory:
+                    root = Path(directory)
+                    manifest_path = self._stage_sealed_report_root(root)
+                    if mutation == "changed":
+                        manifest_path.write_bytes(manifest_path.read_bytes() + b"\n")
+                    else:
+                        manifest_path.unlink()
+                    with self.assertRaises(cd.CapabilityDispositionError):
+                        cd.load_sealed_report(root)
+
     def test_committed_evidence_passes(self) -> None:
         result = cd.validate_evidence(ROOT)
         self.assertEqual(result["result"], "pass")
@@ -172,6 +196,59 @@ class CapabilityDispositionTests(unittest.TestCase):
                 candidate_paths=set(self.candidates),
                 authority=self.context["authority"],
             )
+
+    def test_m007_owner_reference_must_match_cited_artifact(self) -> None:
+        authority = self.context["authority"]
+        leaf_path = next(
+            entry["path"]
+            for entry in cd.FROZEN_M007_08_MANIFEST
+            if entry["id"] == "leaf_inventory"
+        )
+        leaf_digest = authority["digests"][leaf_path]
+        owner = "cli-perception-offline"
+        cross_artifact_ref = f"m007_08_owner:{owner}@{leaf_digest}"
+        self.assertIn(owner, authority["owners"])
+        self.assertNotIn(owner, authority["owners_by_path"][leaf_path])
+
+        for location in ("reconcile", "reason"):
+            with self.subTest(location=location):
+                mutated = copy.deepcopy(self.grouping)
+                group = mutated["groups"][0]
+                if location == "reconcile":
+                    group["reconcile"]["non_cli_entrypoints"] = {
+                        "status": "present",
+                        "refs": [cross_artifact_ref],
+                        "reason": "",
+                    }
+                    group["reason"] = {
+                        "code": "non_cli_entrypoint",
+                        "reference": {
+                            "kind": "reconciliation_ref",
+                            "dimension": "non_cli_entrypoints",
+                            "ref": cross_artifact_ref,
+                        },
+                        "detail": "The capability remains owned by a non-CLI runtime boundary.",
+                    }
+                else:
+                    group["disposition"] = "remove"
+                    group["reason"] = {
+                        "code": "separate_removal_review",
+                        "reference": {
+                            "kind": "m007_08_owner",
+                            "value": owner,
+                            "artifact_path": leaf_path,
+                            "artifact_sha256": leaf_digest,
+                        },
+                        "detail": "Candidate for a separately reviewed deletion.",
+                    }
+                with self.assertRaises(cd.CapabilityDispositionError):
+                    cd.validate_grouping(
+                        mutated,
+                        repo_root=ROOT,
+                        source_paths=self.sealed["source_paths"],
+                        candidate_paths=set(self.candidates),
+                        authority=authority,
+                    )
 
     def test_free_text_reason_reference_fails_closed(self) -> None:
         mutated = copy.deepcopy(self.grouping)

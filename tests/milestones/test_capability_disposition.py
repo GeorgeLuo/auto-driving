@@ -6,6 +6,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -200,6 +201,10 @@ class CapabilityDispositionTests(unittest.TestCase):
             "coverage",
             "not-covered",
             "never executed",
+            "un-executed",
+            "un executed",
+            "un-tested",
+            "un tested",
         )
         for value in bad_values:
             with self.subTest(value=value):
@@ -207,8 +212,18 @@ class CapabilityDispositionTests(unittest.TestCase):
                     cd.validate_non_metric_text(value, "reason.detail")
 
     def test_metric_reason_is_rejected_in_a_group(self) -> None:
-        for index, disposition in ((3, "expose"), (0, "retain"), (0, "remove")):
-            with self.subTest(disposition=disposition):
+        cases = (
+            (3, "expose", "The owner has 20 percent of the surface."),
+            (0, "retain", "The owner has 20 percent of the surface."),
+            (0, "remove", "The owner has 20 percent of the surface."),
+            (0, "retain", "Keep this un-executed helper at the runtime boundary."),
+            (3, "expose", "Name this un-tested operator surface later."),
+            (0, "remove", "Keep this un-tested helper at the runtime boundary."),
+            (0, "retain", "Keep this un executed helper at the runtime boundary."),
+            (3, "expose", "Name this un tested operator surface later."),
+        )
+        for index, disposition, detail in cases:
+            with self.subTest(disposition=disposition, detail=detail):
                 mutated = copy.deepcopy(self.grouping)
                 group = mutated["groups"][index]
                 group["disposition"] = disposition
@@ -221,10 +236,10 @@ class CapabilityDispositionTests(unittest.TestCase):
                             "path": path,
                             "source_sha256": self.sealed["source_paths"][path],
                         },
-                        "detail": "The owner has 20 percent of the surface.",
+                        "detail": detail,
                     }
                 else:
-                    group["reason"]["detail"] = "The owner has 20 percent of the surface."
+                    group["reason"]["detail"] = detail
                 with self.assertRaises(cd.CapabilityDispositionError):
                     cd.validate_grouping(
                         mutated,
@@ -233,6 +248,17 @@ class CapabilityDispositionTests(unittest.TestCase):
                         candidate_paths=set(self.candidates),
                         authority=self.context["authority"],
                     )
+
+    def test_validate_evidence_does_not_require_dashboard_layout(self) -> None:
+        with mock.patch.object(
+            cd,
+            "validate_dashboard_html",
+            side_effect=AssertionError("dashboard layout must not own Met"),
+        ):
+            result = cd.validate_evidence(ROOT)
+        self.assertEqual(result["result"], "pass")
+        self.assertEqual(result["candidate_member_count"], 93)
+        self.assertEqual(result["group_count"], 10)
 
     def test_source_analysis_missing_arc_fails_closed(self) -> None:
         mutated = copy.deepcopy(self.artifact)

@@ -755,9 +755,9 @@ RATIO_RE = re.compile(
 )
 COUNT_RE = re.compile(rf"(?<!\w)(?:{NUMBER}\s*{UNIT}|{UNIT}\s*{NUMBER})(?!\w)")
 FORBIDDEN_TEXT_RE = re.compile(
-    r"\b(?:coverage|covered|unexecuted|un reached|unreached|untested|"
-    r"not covered|not reached|never executed|line count|branch count|"
-    r"statement count|arc count)\b"
+    r"\b(?:coverage|covered|unexecuted|un executed|un reached|unreached|"
+    r"untested|un tested|not covered|not reached|never executed|"
+    r"line count|branch count|statement count|arc count)\b"
 )
 
 
@@ -2726,9 +2726,6 @@ def build_evidence(repo_root: Path = ROOT) -> dict[str, Any]:
         encoding="utf-8",
     )
     validate_html(html_path, record)
-    validate_dashboard_html(
-        dashboard_path, record, context["sealed"], context["authority"]
-    )
     return {
         "record": record,
         "report": pass_report,
@@ -2764,12 +2761,6 @@ def validate_evidence(repo_root: Path = ROOT) -> dict[str, Any]:
     if not rollup_path.is_file() or rollup_path.read_text(encoding="utf-8") != render_rollup(record, context["sealed"]):
         _fail("rollup differs from the deterministic derivation")
     validate_html(repo_root / HTML_REL, record)
-    validate_dashboard_html(
-        repo_root / DASHBOARD_REL,
-        record,
-        context["sealed"],
-        context["authority"],
-    )
     return {
         "result": "pass",
         "record_sha256": record["integrity"]["record_sha256"],

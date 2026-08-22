@@ -518,6 +518,26 @@ class CapabilityDispositionTests(unittest.TestCase):
             'id="command-detail" data-initial-command-path="automa"',
             html,
         )
+        self.assertIn(
+            '<div class="command-selection" id="command-selection" aria-live="polite">'
+            '<span class="muted">CLI command:</span> <code>./cli/automa</code></div>',
+            html,
+        )
+        self.assertLess(
+            html.index('<div class="command-selection"'),
+            html.index('<div class="command-explorer-layout">'),
+        )
+        self.assertIn(
+            'const commandSelection = document.getElementById("command-selection");',
+            html,
+        )
+        self.assertIn('function commandSelectionMarkup(node)', html)
+        self.assertIn('commandSelection.innerHTML = commandSelectionMarkup(node);', html)
+        self.assertNotIn('command-detail-command', html)
+        self.assertEqual(
+            cd._dashboard_cli_command("automa vehicles status"),
+            "./cli/automa vehicles status",
+        )
         self.assertIn("Sequences touching this subtree", html)
         self.assertIn("US-01", html)
         self.assertIn("Exact sequence evidence is present.", html)

@@ -32,6 +32,18 @@ implement an expose or remove candidate.
 | `implementation-runtime` | 3 | `retain` | `repo_path:implementations/runtime` | `platform_path` |
 | `implementation-vehicle` | 9 | `retain` | `repo_path:implementations/vehicle` | `platform_path` |
 
+## Dispositions
+
+These labels are candidate dispositions for later review, not actions
+performed by M007-09. Definitions follow the [accepted M007-09
+proposal](../../proposals/capability-disposition.md).
+
+| Disposition | Meaning in this unit |
+| --- | --- |
+| `expose` | Candidate to add or surface through the CLI in a later unit; this unit does not add the leaf. |
+| `retain` | Keep outside the declared CLI journeys with an explicit owner and reason; this is not CLI coverage. |
+| `remove` | Candidate for a separately reviewed deletion; this unit does not delete or quarantine the code. |
+
 ## Non-claims
 
 - The record does not claim that unreached code is dead.

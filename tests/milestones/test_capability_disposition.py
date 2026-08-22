@@ -303,6 +303,25 @@ class CapabilityDispositionTests(unittest.TestCase):
             with self.assertRaises(cd.CapabilityDispositionError):
                 cd.validate_html(path, self.record)
 
+    def test_disposition_definitions_are_present_in_derived_views(self) -> None:
+        views = {
+            "record": cd.render_html(self.record),
+            "dashboard": cd.render_dashboard_html(
+                self.record, self.sealed, self.context["authority"]
+            ),
+            "rollup": cd.render_rollup(self.record, self.sealed),
+        }
+        for name, view in views.items():
+            with self.subTest(view=name):
+                if name == "rollup":
+                    self.assertIn("## Dispositions", view)
+                    self.assertIn("Definitions follow the [accepted M007-09", view)
+                else:
+                    self.assertIn("What expose, retain, and remove mean", view)
+                    self.assertIn("Open the accepted M007-09 proposal", view)
+                for _disposition, meaning in cd.DISPOSITION_DEFINITIONS:
+                    self.assertIn(meaning, view)
+
     def test_dashboard_matches_record_projection(self) -> None:
         projection = cd._dashboard_projection(self.record, self.sealed)
         self.assertEqual(projection["membership"]["source_members"], 96)

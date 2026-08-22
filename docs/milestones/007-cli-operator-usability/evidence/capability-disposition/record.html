@@ -6,6 +6,7 @@
 <h1>M007-09 capability disposition</h1>
 <p>Record digest: <code>81ce4993fe8624bbc818bcad7142dafb78e2be1ef6c45a6115ae535a51477e6f</code></p>
 <p class="candidate">Unreached does not mean dead; dispositions are later-review candidates.</p>
+<details class="disposition-definitions"><summary>What expose, retain, and remove mean</summary><p>These are candidate dispositions for later review, not actions performed by M007-09. <a href="../../proposals/capability-disposition.md">Open the accepted M007-09 proposal</a> for the governing contract.</p><dl><dt><code>expose</code></dt><dd>Candidate to add or surface through the CLI in a later unit; this unit does not add the leaf.</dd><dt><code>retain</code></dt><dd>Keep outside the declared CLI journeys with an explicit owner and reason; this is not CLI coverage.</dd><dt><code>remove</code></dt><dd>Candidate for a separately reviewed deletion; this unit does not delete or quarantine the code.</dd></dl></details>
 <section data-group-id="autonomy-decision-runtime">
 <h2>Autonomy decision and runtime boundaries</h2>
 <p>Disposition: <code>retain</code>; owner: <code>repo_path:autonomy</code>; reason: <code>non_cli_entrypoint</code> The capability remains owned by a non-CLI runtime boundary.</p>

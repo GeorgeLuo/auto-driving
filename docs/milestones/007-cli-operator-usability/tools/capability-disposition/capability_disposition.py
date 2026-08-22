@@ -232,6 +232,20 @@ DIMENSIONS = (
     "platform_paths",
 )
 DISPOSITIONS = {"expose", "retain", "remove"}
+DISPOSITION_DEFINITIONS = (
+    (
+        "expose",
+        "Candidate to add or surface through the CLI in a later unit; this unit does not add the leaf.",
+    ),
+    (
+        "retain",
+        "Keep outside the declared CLI journeys with an explicit owner and reason; this is not CLI coverage.",
+    ),
+    (
+        "remove",
+        "Candidate for a separately reviewed deletion; this unit does not delete or quarantine the code.",
+    ),
+)
 REASON_CODES = {
     "cli_gap",
     "non_cli_entrypoint",
@@ -1248,6 +1262,23 @@ def render_rollup(record: Mapping[str, Any], sealed: Mapping[str, Any]) -> str:
     lines.extend(
         [
             "",
+            "## Dispositions",
+            "",
+            "These labels are candidate dispositions for later review, not actions",
+            "performed by M007-09. Definitions follow the [accepted M007-09",
+            "proposal](../../proposals/capability-disposition.md).",
+            "",
+            "| Disposition | Meaning in this unit |",
+            "| --- | --- |",
+        ]
+    )
+    lines.extend(
+        f"| `{disposition}` | {meaning} |"
+        for disposition, meaning in DISPOSITION_DEFINITIONS
+    )
+    lines.extend(
+        [
+            "",
             "## Non-claims",
             "",
             "- The record does not claim that unreached code is dead.",
@@ -1262,6 +1293,24 @@ def render_rollup(record: Mapping[str, Any], sealed: Mapping[str, Any]) -> str:
 
 def _attr(value: Any) -> str:
     return html.escape(str(value), quote=True)
+
+
+def _disposition_definitions_markup(proposal_href: str) -> str:
+    rows = "".join(
+        f"<dt><code>{_attr(disposition)}</code></dt>"
+        f"<dd>{_attr(meaning)}</dd>"
+        for disposition, meaning in DISPOSITION_DEFINITIONS
+    )
+    return (
+        '<details class="disposition-definitions">'
+        '<summary>What expose, retain, and remove mean</summary>'
+        '<p>These are candidate dispositions for later review, not actions '
+        'performed by M007-09. '
+        f'<a href="{_attr(proposal_href)}">Open the accepted M007-09 proposal</a> '
+        'for the governing contract.</p>'
+        f"<dl>{rows}</dl>"
+        "</details>"
+    )
 
 
 def _dashboard_argv_tokens(argv: Any) -> tuple[str, ...]:
@@ -2026,6 +2075,12 @@ h3 { margin: 1.3rem 0 .65rem; font-size: .98rem; }
 .dashboard-explainer > summary, .section-explainer > summary, .source-explorer-disclosure > summary { cursor: pointer; color: var(--focus); font-size: .84rem; }
 .dashboard-explainer > summary { font-weight: 600; }
 .section-explainer .caption, .source-explorer-disclosure .caption { margin-top: 10px; }
+.disposition-definitions { margin: 14px 0; }
+.disposition-definitions > summary { cursor: pointer; color: var(--focus); font-size: .84rem; }
+.disposition-definitions > p { margin: 10px 0; color: var(--muted); font-size: .84rem; }
+.disposition-definitions dl { display: grid; grid-template-columns: minmax(82px, .2fr) 1fr; gap: 7px 12px; margin: 0; font-size: .84rem; }
+.disposition-definitions dt { font-weight: 600; }
+.disposition-definitions dd { margin: 0; color: var(--muted); }
 .panel { min-width: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 18px; }
 .panel-header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .muted, .caption { color: var(--muted); }
@@ -2105,7 +2160,7 @@ h3 { margin: 1.3rem 0 .65rem; font-size: .98rem; }
 .coverage-sequence-list { display: grid; gap: 6px; }
 .coverage-sequence { border-top: 1px solid var(--border); }
 .coverage-sequence summary { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; gap: 8px; align-items: center; cursor: pointer; padding: 10px 0; }
-.dashboard-explainer > summary:focus-visible, .section-explainer > summary:focus-visible, .source-explorer-disclosure > summary:focus-visible, .detail-disclosure > summary:focus-visible, .inline-disclosure > summary:focus-visible, .coverage-sequence summary:focus-visible, .group-row:focus-visible, .coverage-class-row:focus-visible, .member summary:focus-visible, .reconciliation summary:focus-visible, .source-members > summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.dashboard-explainer > summary:focus-visible, .section-explainer > summary:focus-visible, .source-explorer-disclosure > summary:focus-visible, .disposition-definitions > summary:focus-visible, .detail-disclosure > summary:focus-visible, .inline-disclosure > summary:focus-visible, .coverage-sequence summary:focus-visible, .group-row:focus-visible, .coverage-class-row:focus-visible, .member summary:focus-visible, .reconciliation summary:focus-visible, .source-members > summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 .coverage-sequence-name { min-width: 0; overflow-wrap: anywhere; }
 .coverage-sequence-detail { padding: 2px 0 12px 60px; font-size: .86rem; }
 .coverage-sequence-detail p { margin: 7px 0; }
@@ -2160,7 +2215,7 @@ h3 { margin: 1.3rem 0 .65rem; font-size: .98rem; }
 .residual-note { margin: 16px 0 0; padding: 10px 12px; background: var(--surface-alt); color: var(--muted); font-size: .82rem; }
 @media (max-width: 1040px) { .command-explorer-layout, .coverage-explorer-layout, .source-explorer-layout { grid-template-columns: 1fr; } .command-detail, .coverage-detail, .source-detail { border-left: 0; border-top: 1px solid var(--border); padding: 18px 0 0; } }
 @media (max-width: 720px) { .coverage-class-row { grid-template-columns: 1fr; gap: 8px; } .coverage-state { justify-self: start; } }
-@media (max-width: 560px) { .dashboard { padding-top: 22px; } .coverage-sequence summary { grid-template-columns: 42px minmax(0, 1fr); } .coverage-sequence summary .status-pill { grid-column: 2; } .group-row { grid-template-columns: 1fr auto; } .group-name { grid-column: 1 / -1; } .group-value { grid-column: 2; grid-row: 2; } .detail-facts div { grid-template-columns: 1fr; gap: 2px; } }
+@media (max-width: 560px) { .dashboard { padding-top: 22px; } .coverage-sequence summary { grid-template-columns: 42px minmax(0, 1fr); } .coverage-sequence summary .status-pill { grid-column: 2; } .group-row { grid-template-columns: 1fr auto; } .group-name { grid-column: 1 / -1; } .group-value { grid-column: 2; grid-row: 2; } .detail-facts div { grid-template-columns: 1fr; gap: 2px; } .disposition-definitions dl { grid-template-columns: 1fr; gap: 2px; } .disposition-definitions dd { margin-bottom: 7px; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; } }
 """
     script = r"""
@@ -2400,6 +2455,7 @@ h3 { margin: 1.3rem 0 .65rem; font-size: .98rem; }
         '<details class="source-explorer-disclosure">',
         '<summary>Open source capability groups</summary>',
         '<p class="caption">This is the M007-09 source-side explanation for capabilities outside the declared journeys. It identifies candidates and ownership; it does not decide which work should be prioritized.</p>',
+        _disposition_definitions_markup("../../proposals/capability-disposition.md"),
         '<div class="source-explorer-layout">',
         '<div class="source-explorer-list">',
         f'<div class="group-chart" id="group-chart" role="list">{"".join(group_rows)}</div>',
@@ -2435,6 +2491,7 @@ def render_html(record: Mapping[str, Any]) -> str:
         "<h1>M007-09 capability disposition</h1>",
         f"<p>Record digest: <code>{_attr(record['integrity']['record_sha256'])}</code></p>",
         "<p class=\"candidate\">Unreached does not mean dead; dispositions are later-review candidates.</p>",
+        _disposition_definitions_markup("../../proposals/capability-disposition.md"),
     ]
     for group in record["groups"]:
         lines.extend(

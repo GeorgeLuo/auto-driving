@@ -1842,6 +1842,10 @@ def _dashboard_command_leaf_nodes(
     return leaves
 
 
+def _dashboard_cli_command(command: str) -> str:
+    return "./cli/" + command
+
+
 def _dashboard_command_detail_markup(
     node: Mapping[str, Any],
     sequence_details_by_id: Mapping[str, Mapping[str, Any]],
@@ -1909,7 +1913,6 @@ def _dashboard_command_detail_markup(
     else:
         gap_markup = '<p class="command-gap command-gap-covered">No uncovered leaves in this subtree.</p>'
     return (
-        f'<h3>{_attr(node["command"])}</h3>'
         f'<p class="detail-lede"><span class="command-status-pill command-status-{_attr(status)}">'
         f'{_attr(status_label)}</span></p>'
         '<dl class="detail-facts">'
@@ -2111,6 +2114,8 @@ h3 { margin: 1.3rem 0 .65rem; font-size: .98rem; }
 .muted, .caption { color: var(--muted); }
 .caption { font-size: .86rem; margin: 0 0 14px; }
 .command-explorer-panel { margin-top: 18px; }
+.command-selection { margin: 16px 0; padding: 10px 12px; background: var(--surface-alt); border: 1px solid var(--border); border-radius: 6px; overflow-wrap: anywhere; }
+.command-selection code { font-size: 1.04em; }
 .command-explorer-layout { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(280px, .95fr); gap: 18px; align-items: start; }
 .command-detail { min-width: 0; border-left: 1px solid var(--border); padding-left: 18px; }
 .command-detail h3 { margin-top: 0; overflow-wrap: anywhere; }
@@ -2251,6 +2256,7 @@ h3 { margin: 1.3rem 0 .65rem; font-size: .98rem; }
   const groupDetail = document.getElementById("group-detail");
   const groupButtons = Array.from(document.querySelectorAll("button.group-row"));
   const commandExplorer = document.getElementById("command-explorer");
+  const commandSelection = document.getElementById("command-selection");
   const commandDetail = document.getElementById("command-detail");
   const commandButtons = Array.from(document.querySelectorAll("button.command-node"));
   const commandNodes = new Map();
@@ -2318,6 +2324,11 @@ h3 { margin: 1.3rem 0 .65rem; font-size: .98rem; }
     return leaves;
   }
 
+  function commandSelectionMarkup(node) {
+    const cliCommand = "./cli/" + node.command;
+    return "<span class=\"muted\">CLI command:</span> <code>" + escapeHtml(cliCommand) + "</code>";
+  }
+
   function commandDetailMarkup(node) {
     const sequenceRows = node.sequence_ids.map(function (sequenceId) {
       return sequencesById.get(sequenceId);
@@ -2343,7 +2354,7 @@ h3 { margin: 1.3rem 0 .65rem; font-size: .98rem; }
     const inventory = node.leaf_id
       ? "<code>" + escapeHtml(node.leaf_id) + "</code>"
       : node.leaf_ids.length + " inventoried leaf commands";
-    return "<h3>" + escapeHtml(node.command) + "</h3><p class=\"detail-lede\"><span class=\"command-status-pill command-status-" + escapeHtml(node.status) + "\">" + escapeHtml(commandStatusLabel(node.status)) + "</span></p><dl class=\"detail-facts\"><div><dt>Inventory</dt><dd>" + inventory + "</dd></div><div><dt>Sequences</dt><dd><code>" + escapeHtml(node.sequence_ids.join(", ") || "None") + "</code></dd></div></dl>" + sequenceMarkup + gapMarkup;
+    return "<p class=\"detail-lede\"><span class=\"command-status-pill command-status-" + escapeHtml(node.status) + "\">" + escapeHtml(commandStatusLabel(node.status)) + "</span></p><dl class=\"detail-facts\"><div><dt>Inventory</dt><dd>" + inventory + "</dd></div><div><dt>Sequences</dt><dd><code>" + escapeHtml(node.sequence_ids.join(", ") || "None") + "</code></dd></div></dl>" + sequenceMarkup + gapMarkup;
   }
 
   function detailMarkup(group) {
@@ -2393,6 +2404,7 @@ h3 { margin: 1.3rem 0 .65rem; font-size: .98rem; }
         button.removeAttribute("aria-current");
       }
     });
+    commandSelection.innerHTML = commandSelectionMarkup(node);
     commandDetail.innerHTML = commandDetailMarkup(node);
     commandDetail.dataset.initialCommandPath = command;
   }
@@ -2447,6 +2459,7 @@ h3 { margin: 1.3rem 0 .65rem; font-size: .98rem; }
         '<section class="panel command-explorer-panel" aria-labelledby="command-explorer-heading">',
         '<div class="panel-header"><h2 id="command-explorer-heading">Explore the CLI command tree</h2><span class="muted">Open branches or inspect terminal commands</span></div>',
         '<details class="section-explainer"><summary>About the command tree</summary><p class="caption">The tree follows the CLI hierarchy. A leaf is covered only when a measured sequence reaches that exact command; parent words summarize the mix below them.</p></details>',
+        f'<div class="command-selection" id="command-selection" aria-live="polite"><span class="muted">CLI command:</span> <code>{_attr(_dashboard_cli_command(command_tree["command"]))}</code></div>',
         '<div class="command-explorer-layout">',
         f'<div class="command-explorer" id="command-explorer" aria-label="Recursive CLI command coverage"><ul class="command-tree">{_dashboard_command_tree_markup(command_tree)}</ul></div>',
         f'<aside class="command-detail" id="command-detail" data-initial-command-path="{_attr(command_tree["command"])}" aria-live="polite">{_dashboard_command_detail_markup(command_tree, sequence_details_by_id)}</aside>',
@@ -2738,6 +2751,7 @@ def validate_dashboard_html(
         "coverage-map-heading",
         "coverage-detail",
         "command-explorer",
+        "command-selection",
         "command-detail",
         "source-capability-heading",
         "group-chart",

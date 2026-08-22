@@ -1654,8 +1654,8 @@ def _dashboard_detail_markup(group: Mapping[str, Any]) -> str:
         "</dl>"
         "<details class=\"reconciliation\"><summary>Reconciliation evidence</summary>"
         f"<ul>{''.join(dimensions)}</ul></details>"
-        f"<h3>Members ({group['member_count']})</h3>"
-        f"<div class=\"members\">{''.join(members)}</div>"
+        f"<details class=\"source-members\"><summary>Members ({group['member_count']})</summary>"
+        f"<div class=\"members\">{''.join(members)}</div></details>"
     )
 
 
@@ -1685,10 +1685,9 @@ def _dashboard_coverage_detail_markup(coverage_class: Mapping[str, Any]) -> str:
                 f'<strong>Next unlock</strong><p>{_attr(unlock)}</p>'
                 f'<p class="muted">Owner: <code>{_attr(owner)}</code></p>'
                 "</div>"
-            )
+        )
         sequence_markup.append(
-            '<details class="coverage-sequence"'
-            f'{" open" if sequence["status"] != "covered" else ""}>'
+            '<details class="coverage-sequence">'
             "<summary>"
             f'<code>{_attr(sequence["id"])}</code>'
             f'<span class="coverage-sequence-name">{_attr(sequence["operator_outcome"])}</span>'
@@ -1808,7 +1807,11 @@ def _dashboard_command_detail_markup(
             '</li>'
         )
     if sequence_rows:
-        sequence_markup = f'<ul class="command-sequences">{"".join(sequence_rows)}</ul>'
+        sequence_markup = (
+            '<details class="detail-disclosure">'
+            f'<summary>Sequences touching this subtree ({len(sequence_rows)})</summary>'
+            f'<ul class="command-sequences">{"".join(sequence_rows)}</ul></details>'
+        )
     else:
         sequence_markup = '<p class="muted">No registered sequence reaches this branch.</p>'
 
@@ -1817,11 +1820,18 @@ def _dashboard_command_detail_markup(
     ]
     if uncovered:
         preview = uncovered[:6]
-        suffix = f' · +{len(uncovered) - len(preview)} more' if len(uncovered) > len(preview) else ""
         gap_markup = (
             f'<p class="command-gap"><strong>Uncovered leaves:</strong> '
-            f'<code>{_attr(", ".join(preview))}</code>{_attr(suffix)}</p>'
+            f'<code>{_attr(", ".join(preview))}</code></p>'
         )
+        remaining = uncovered[len(preview):]
+        if remaining:
+            gap_markup += (
+                '<details class="inline-disclosure">'
+                f'<summary>+{len(remaining)} more uncovered leaves</summary>'
+                f'<p class="command-gap"><code>{_attr(", ".join(remaining))}</code></p>'
+                '</details>'
+            )
     else:
         gap_markup = '<p class="command-gap command-gap-covered">No uncovered leaves in this subtree.</p>'
     return (
@@ -1832,7 +1842,6 @@ def _dashboard_command_detail_markup(
         f'<div><dt>Inventory</dt><dd>{inventory_summary}</dd></div>'
         f'<div><dt>Sequences</dt><dd><code>{_attr(", ".join(node["sequence_ids"]) or "None")}</code></dd></div>'
         '</dl>'
-        '<h4>Sequences touching this subtree</h4>'
         f'{sequence_markup}{gap_markup}'
     )
 
@@ -2011,6 +2020,12 @@ h3 { margin: 1.3rem 0 .65rem; font-size: .98rem; }
 .lede { max-width: 900px; color: var(--muted); margin: 0; }
 .notice { margin: 18px 0 26px; padding: 12px 14px; border-left: 4px solid var(--partial); background: var(--surface); color: var(--muted); }
 .coverage-bottom-line { margin: 22px 0 14px; padding: 14px 16px; background: var(--surface); border-left: 4px solid var(--covered); }
+.dashboard-toc { display: flex; flex-wrap: wrap; gap: 7px 14px; align-items: baseline; margin: 18px 0 10px; color: var(--muted); font-size: .86rem; }
+.dashboard-toc strong { color: var(--text); }
+.dashboard-explainer, .section-explainer, .source-explorer-disclosure { margin: 14px 0; }
+.dashboard-explainer > summary, .section-explainer > summary, .source-explorer-disclosure > summary { cursor: pointer; color: var(--focus); font-size: .84rem; }
+.dashboard-explainer > summary { font-weight: 600; }
+.section-explainer .caption, .source-explorer-disclosure .caption { margin-top: 10px; }
 .panel { min-width: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 18px; }
 .panel-header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .muted, .caption { color: var(--muted); }
@@ -2055,6 +2070,10 @@ h3 { margin: 1.3rem 0 .65rem; font-size: .98rem; }
 .command-sequences { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
 .command-sequence-row { border-top: 1px solid var(--border); padding: 9px 0 4px; }
 .command-sequence-row p { margin: 5px 0; overflow-wrap: anywhere; }
+.detail-disclosure, .source-members { margin-top: 16px; border-top: 1px solid var(--border); }
+.detail-disclosure > summary, .source-members > summary { cursor: pointer; padding: 9px 0; color: var(--focus); font-weight: 600; }
+.inline-disclosure { margin-top: 6px; }
+.inline-disclosure > summary { cursor: pointer; color: var(--focus); font-size: .82rem; }
 .command-gap { margin: 14px 0 0; padding: 9px 10px; background: var(--surface-alt); font-size: .82rem; overflow-wrap: anywhere; }
 .command-gap-covered { color: var(--covered); }
 .coverage-map { display: grid; gap: 5px; }
@@ -2077,23 +2096,25 @@ h3 { margin: 1.3rem 0 .65rem; font-size: .98rem; }
 .coverage-cell.coverage-status-partial { background: var(--surface-alt); }
 .coverage-cell.coverage-status-not_covered, .coverage-cell.coverage-status-ready { background: var(--surface-alt); }
 .coverage-cell.coverage-status-blocked { background: var(--surface-alt); }
+.coverage-explorer-layout { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(300px, .95fr); gap: 18px; align-items: start; }
+.coverage-explorer-list { min-width: 0; }
 .coverage-legend { display: flex; flex-wrap: wrap; gap: 7px 16px; margin: 12px 0 0; padding: 0; list-style: none; color: var(--muted); font-size: .82rem; }
 .coverage-legend li { display: flex; align-items: center; gap: 6px; }
 .coverage-legend .swatch { border: 1px solid; }
-.coverage-detail { margin-top: 18px; }
+.coverage-detail { min-width: 0; border-left: 1px solid var(--border); padding-left: 18px; }
 .coverage-sequence-list { display: grid; gap: 6px; }
 .coverage-sequence { border-top: 1px solid var(--border); }
 .coverage-sequence summary { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; gap: 8px; align-items: center; cursor: pointer; padding: 10px 0; }
-.coverage-sequence summary:focus-visible, .group-row:focus-visible, .coverage-class-row:focus-visible, .member summary:focus-visible, .reconciliation summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.dashboard-explainer > summary:focus-visible, .section-explainer > summary:focus-visible, .source-explorer-disclosure > summary:focus-visible, .detail-disclosure > summary:focus-visible, .inline-disclosure > summary:focus-visible, .coverage-sequence summary:focus-visible, .group-row:focus-visible, .coverage-class-row:focus-visible, .member summary:focus-visible, .reconciliation summary:focus-visible, .source-members > summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 .coverage-sequence-name { min-width: 0; overflow-wrap: anywhere; }
 .coverage-sequence-detail { padding: 2px 0 12px 60px; font-size: .86rem; }
 .coverage-sequence-detail p { margin: 7px 0; }
 .next-step { margin-top: 12px; padding: 10px 12px; background: var(--surface-alt); }
 .next-step p { margin: 3px 0; }
 .next-step-covered { color: var(--covered); }
-.supporting-details { margin-top: 34px; }
-.supporting-details > summary { cursor: pointer; color: var(--focus); font-weight: 600; }
-.visual-grid { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(300px, .7fr); gap: 18px; align-items: start; margin-top: 14px; }
+.source-explorer-layout { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(300px, .7fr); gap: 18px; align-items: start; margin-top: 14px; }
+.source-explorer-list, .source-detail { min-width: 0; }
+.source-detail { border-left: 1px solid var(--border); padding-left: 18px; }
 .group-chart { display: grid; gap: 5px; }
 .group-row { display: grid; grid-template-columns: minmax(165px, 1.3fr) auto 100px; gap: 10px; align-items: center; width: 100%; padding: 9px 7px; color: var(--text); text-align: left; background: transparent; border: 0; border-radius: 6px; cursor: pointer; }
 .group-row:hover, .group-row[aria-pressed="true"] { background: var(--surface-alt); }
@@ -2137,7 +2158,7 @@ h3 { margin: 1.3rem 0 .65rem; font-size: .98rem; }
 .member-detail p { margin: 7px 0; }
 .member-detail code { white-space: pre-wrap; word-break: break-word; }
 .residual-note { margin: 16px 0 0; padding: 10px 12px; background: var(--surface-alt); color: var(--muted); font-size: .82rem; }
-@media (max-width: 1040px) { .visual-grid, .command-explorer-layout { grid-template-columns: 1fr; } .command-detail { border-left: 0; border-top: 1px solid var(--border); padding: 18px 0 0; } }
+@media (max-width: 1040px) { .command-explorer-layout, .coverage-explorer-layout, .source-explorer-layout { grid-template-columns: 1fr; } .command-detail, .coverage-detail, .source-detail { border-left: 0; border-top: 1px solid var(--border); padding: 18px 0 0; } }
 @media (max-width: 720px) { .coverage-class-row { grid-template-columns: 1fr; gap: 8px; } .coverage-state { justify-self: start; } }
 @media (max-width: 560px) { .dashboard { padding-top: 22px; } .coverage-sequence summary { grid-template-columns: 42px minmax(0, 1fr); } .coverage-sequence summary .status-pill { grid-column: 2; } .group-row { grid-template-columns: 1fr auto; } .group-name { grid-column: 1 / -1; } .group-value { grid-column: 2; grid-row: 2; } .detail-facts div { grid-template-columns: 1fr; gap: 2px; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; } }
@@ -2204,7 +2225,7 @@ h3 { margin: 1.3rem 0 .65rem; font-size: .98rem; }
       const nextMarkup = sequence.status === "covered"
         ? "<p class=\"next-step next-step-covered\">Exact sequence evidence is present.</p>"
         : "<div class=\"next-step\"><strong>Next unlock</strong><p>" + escapeHtml(sequence.unlock || sequence.prerequisites) + "</p><p class=\"muted\">Owner: <code>" + escapeHtml(sequence.owner || "No owner recorded") + "</code></p></div>";
-      return "<details class=\"coverage-sequence\"" + (sequence.status === "covered" ? "" : " open") + "><summary><code>" + escapeHtml(sequence.id) + "</code><span class=\"coverage-sequence-name\">" + escapeHtml(sequence.operator_outcome) + "</span><span class=\"status-pill coverage-status-" + escapeHtml(sequence.status) + "\">" + escapeHtml(statusLabel(sequence.status)) + "</span></summary><div class=\"coverage-sequence-detail\"><p><strong>Operator question:</strong> " + escapeHtml(sequence.operator_question) + "</p><p><strong>Confirmation:</strong> " + escapeHtml(sequence.primary_confirmation) + "</p><p class=\"muted\"><strong>Evidence:</strong> " + escapeHtml(sequence.coverage_reason || sequence.coverage) + ".</p><dl class=\"detail-facts\"><div><dt>Prerequisites</dt><dd>" + escapeHtml(sequence.prerequisites) + "</dd></div><div><dt>CLI leaves</dt><dd><code>" + escapeHtml(sequence.leaf_ids.join(", ") || "None") + "</code></dd></div><div><dt>Execution</dt><dd><code>" + escapeHtml(sequence.execution) + "</code> · " + escapeHtml(sequence.safety_class) + "</dd></div></dl>" + nextMarkup + "</div></details>";
+      return "<details class=\"coverage-sequence\"><summary><code>" + escapeHtml(sequence.id) + "</code><span class=\"coverage-sequence-name\">" + escapeHtml(sequence.operator_outcome) + "</span><span class=\"status-pill coverage-status-" + escapeHtml(sequence.status) + "\">" + escapeHtml(statusLabel(sequence.status)) + "</span></summary><div class=\"coverage-sequence-detail\"><p><strong>Operator question:</strong> " + escapeHtml(sequence.operator_question) + "</p><p><strong>Confirmation:</strong> " + escapeHtml(sequence.primary_confirmation) + "</p><p class=\"muted\"><strong>Evidence:</strong> " + escapeHtml(sequence.coverage_reason || sequence.coverage) + ".</p><dl class=\"detail-facts\"><div><dt>Prerequisites</dt><dd>" + escapeHtml(sequence.prerequisites) + "</dd></div><div><dt>CLI leaves</dt><dd><code>" + escapeHtml(sequence.leaf_ids.join(", ") || "None") + "</code></dd></div><div><dt>Execution</dt><dd><code>" + escapeHtml(sequence.execution) + "</code> · " + escapeHtml(sequence.safety_class) + "</dd></div></dl>" + nextMarkup + "</div></details>";
     }).join("");
     return "<h2>" + escapeHtml(coverageClass.name) + "</h2><p class=\"detail-lede\"><span class=\"status-pill coverage-status-" + escapeHtml(coverageClass.status) + "\">" + escapeHtml(statusLabel(coverageClass.status)) + "</span> " + escapeHtml(coverageClass.summary) + "</p><div class=\"coverage-sequence-list\">" + sequences + "</div>";
   }
@@ -2222,24 +2243,27 @@ h3 { margin: 1.3rem 0 .65rem; font-size: .98rem; }
       return sequencesById.get(sequenceId);
     }).filter(Boolean);
     const sequenceMarkup = sequenceRows.length
-      ? "<ul class=\"command-sequences\">" + sequenceRows.map(function (sequence) {
+      ? "<details class=\"detail-disclosure\"><summary>Sequences touching this subtree (" + sequenceRows.length + ")</summary><ul class=\"command-sequences\">" + sequenceRows.map(function (sequence) {
         const nextStep = sequence.status === "covered"
           ? "Exact sequence evidence is present."
           : "Owner: <code>" + escapeHtml(sequence.owner || "No owner recorded") + "</code> · Next unlock: " + escapeHtml(sequence.unlock || sequence.prerequisites);
         return "<li class=\"command-sequence-row\"><div><code>" + escapeHtml(sequence.id) + "</code> <span class=\"status-pill coverage-status-" + escapeHtml(sequence.status) + "\">" + escapeHtml(statusLabel(sequence.status)) + "</span></div><p><strong>" + escapeHtml(sequence.operator_outcome) + "</strong></p><p class=\"muted\">" + escapeHtml(sequence.coverage_class_name) + " · " + escapeHtml(sequence.operator_question) + "</p><p class=\"muted\">" + nextStep + "</p></li>";
-      }).join("") + "</ul>"
+      }).join("") + "</ul></details>"
       : "<p class=\"muted\">No registered sequence reaches this branch.</p>";
     const leaves = commandLeafNodes(node);
     const uncovered = leaves.filter(function (leaf) { return leaf.status === "uncovered"; }).map(function (leaf) { return leaf.command; });
     const uncoveredPreview = uncovered.slice(0, 6).join(", ");
-    const uncoveredSuffix = uncovered.length > 6 ? " · +" + (uncovered.length - 6) + " more" : "";
+    const uncoveredRemaining = uncovered.slice(6).join(", ");
+    const uncoveredMoreMarkup = uncovered.length > 6
+      ? "<details class=\"inline-disclosure\"><summary>+" + (uncovered.length - 6) + " more uncovered leaves</summary><p class=\"command-gap\"><code>" + escapeHtml(uncoveredRemaining) + "</code></p></details>"
+      : "";
     const gapMarkup = uncovered.length
-      ? "<p class=\"command-gap\"><strong>Uncovered leaves:</strong> <code>" + escapeHtml(uncoveredPreview) + "</code>" + escapeHtml(uncoveredSuffix) + "</p>"
+      ? "<p class=\"command-gap\"><strong>Uncovered leaves:</strong> <code>" + escapeHtml(uncoveredPreview) + "</code></p>" + uncoveredMoreMarkup
       : "<p class=\"command-gap command-gap-covered\">No uncovered leaves in this subtree.</p>";
     const inventory = node.leaf_id
       ? "<code>" + escapeHtml(node.leaf_id) + "</code>"
       : node.leaf_ids.length + " inventoried leaf commands";
-    return "<h3>" + escapeHtml(node.command) + "</h3><p class=\"detail-lede\"><span class=\"command-status-pill command-status-" + escapeHtml(node.status) + "\">" + escapeHtml(commandStatusLabel(node.status)) + "</span></p><dl class=\"detail-facts\"><div><dt>Inventory</dt><dd>" + inventory + "</dd></div><div><dt>Sequences</dt><dd><code>" + escapeHtml(node.sequence_ids.join(", ") || "None") + "</code></dd></div></dl><h4>Sequences touching this subtree</h4>" + sequenceMarkup + gapMarkup;
+    return "<h3>" + escapeHtml(node.command) + "</h3><p class=\"detail-lede\"><span class=\"command-status-pill command-status-" + escapeHtml(node.status) + "\">" + escapeHtml(commandStatusLabel(node.status)) + "</span></p><dl class=\"detail-facts\"><div><dt>Inventory</dt><dd>" + inventory + "</dd></div><div><dt>Sequences</dt><dd><code>" + escapeHtml(node.sequence_ids.join(", ") || "None") + "</code></dd></div></dl>" + sequenceMarkup + gapMarkup;
   }
 
   function detailMarkup(group) {
@@ -2256,7 +2280,7 @@ h3 { margin: 1.3rem 0 .65rem; font-size: .98rem; }
       const arcs = listMarkup(member.unreached_arcs, function (arc) { return escapeHtml(arc[0] + " → " + arc[1]); });
       return "<details class=\"member\" data-member-path=\"" + escapeHtml(member.path) + "\"><summary><code>" + escapeHtml(member.path) + "</code><span class=\"member-counts\">" + member.unreached_statements.length + " statements · " + member.unreached_arcs.length + " arcs</span></summary><div class=\"member-detail\"><p class=\"muted\">Source SHA-256: <code>" + escapeHtml(member.source_sha256) + "</code></p><p><strong>Statement lines:</strong> <code>" + statements + "</code></p><p><strong>Branch arcs:</strong> <code>" + arcs + "</code></p></div></details>";
     }).join("");
-    return "<h2>" + escapeHtml(group.name) + "</h2><p class=\"detail-lede\"><span class=\"status-pill disposition-" + escapeHtml(group.disposition) + "\">" + escapeHtml(group.disposition) + "</span> " + group.member_count + " candidate members, " + group.statement_count + " statement entries, and " + group.arc_count + " arc entries.</p><dl class=\"detail-facts\"><div><dt>Owner</dt><dd><code>" + escapeHtml(group.owner.kind + ":" + group.owner.ref) + "</code></dd></div><div><dt>Reason</dt><dd><code>" + escapeHtml(group.reason.code) + "</code> " + escapeHtml(group.reason.detail) + "</dd></div></dl><details class=\"reconciliation\"><summary>Reconciliation evidence</summary><ul>" + dimensions + "</ul></details><h3>Members (" + group.member_count + ")</h3><div class=\"members\">" + members + "</div>";
+    return "<h2>" + escapeHtml(group.name) + "</h2><p class=\"detail-lede\"><span class=\"status-pill disposition-" + escapeHtml(group.disposition) + "\">" + escapeHtml(group.disposition) + "</span> " + group.member_count + " candidate members, " + group.statement_count + " statement entries, and " + group.arc_count + " arc entries.</p><dl class=\"detail-facts\"><div><dt>Owner</dt><dd><code>" + escapeHtml(group.owner.kind + ":" + group.owner.ref) + "</code></dd></div><div><dt>Reason</dt><dd><code>" + escapeHtml(group.reason.code) + "</code> " + escapeHtml(group.reason.detail) + "</dd></div></dl><details class=\"reconciliation\"><summary>Reconciliation evidence</summary><ul>" + dimensions + "</ul></details><details class=\"source-members\"><summary>Members (" + group.member_count + ")</summary><div class=\"members\">" + members + "</div></details>";
   }
 
   function selectCoverageClass(classId) {
@@ -2327,13 +2351,22 @@ h3 { margin: 1.3rem 0 .65rem; font-size: .98rem; }
         f"<style>{style}</style></head><body>",
         '<main class="dashboard" id="capability-dashboard">',
         '<header><div class="eyebrow">M007-09 · derived evidence view</div>',
-        "<h1>Operator capability coverage</h1>",
-        '<p class="lede">The bottom line is organized around intended operator outcomes: what is covered, what is not yet covered, and what is blocked. Each cell is a registered M007-08 usage sequence; the source-disposition record is supporting evidence below.</p>',
-        '<p class="notice">This view does not infer missing product requirements from executed code. “Covered” means the exact registered sequence has passed measured evidence. Related family coverage does not promote a deferred sequence. <a href="../cli-surface-audit/rollup.md">Open the sequence rollup</a> · <a href="../cli-surface-audit/sequence_registry.json">Open the sequence registry</a> · <a href="../cli-journey-coverage/README.md">Open journey coverage evidence</a> · <a href="record.html">Open the complete audit ledger</a> · <a href="record.json">Open record.json</a></p></header>',
+        "<h1>Operator capability coverage</h1></header>",
+        '<details class="dashboard-explainer">',
+        '<summary>How to read this dashboard</summary>',
+        '<p class="lede">The bottom line is organized around intended operator outcomes: what is covered, what is not yet covered, and what is blocked. Each cell is a registered M007-08 usage sequence; the source capability view is a separate evidence layer below.</p>',
+        '<p class="notice">This view does not infer missing product requirements from executed code. “Covered” means the exact registered sequence has passed measured evidence. Related family coverage does not promote a deferred sequence. <a href="../cli-surface-audit/rollup.md">Open the sequence rollup</a> · <a href="../cli-surface-audit/sequence_registry.json">Open the sequence registry</a> · <a href="../cli-journey-coverage/README.md">Open journey coverage evidence</a> · <a href="record.html">Open the complete audit ledger</a> · <a href="record.json">Open record.json</a></p>',
+        '</details>',
+        '<nav class="dashboard-toc" id="dashboard-toc" aria-label="Dashboard sections">',
+        '<strong>Jump to:</strong>',
+        '<a href="#command-explorer-heading" data-dashboard-toc="#command-explorer-heading">CLI command tree</a>',
+        '<a href="#coverage-map-heading" data-dashboard-toc="#coverage-map-heading">Operator outcome coverage</a>',
+        '<a href="#source-capability-heading" data-dashboard-toc="#source-capability-heading">Source capability and disposition</a>',
+        '</nav>',
         f'<p class="coverage-bottom-line"><strong>Bottom line:</strong> {coverage_bottom_line}</p>',
         '<section class="panel command-explorer-panel" aria-labelledby="command-explorer-heading">',
         '<div class="panel-header"><h2 id="command-explorer-heading">Explore the CLI command tree</h2><span class="muted">Open branches or inspect terminal commands</span></div>',
-        '<p class="caption">The tree follows the CLI hierarchy. A leaf is covered only when a measured sequence reaches that exact command; parent words summarize the mix below them.</p>',
+        '<details class="section-explainer"><summary>About the command tree</summary><p class="caption">The tree follows the CLI hierarchy. A leaf is covered only when a measured sequence reaches that exact command; parent words summarize the mix below them.</p></details>',
         '<div class="command-explorer-layout">',
         f'<div class="command-explorer" id="command-explorer" aria-label="Recursive CLI command coverage"><ul class="command-tree">{_dashboard_command_tree_markup(command_tree)}</ul></div>',
         f'<aside class="command-detail" id="command-detail" data-initial-command-path="{_attr(command_tree["command"])}" aria-live="polite">{_dashboard_command_detail_markup(command_tree, sequence_details_by_id)}</aside>',
@@ -2347,8 +2380,10 @@ h3 { margin: 1.3rem 0 .65rem; font-size: .98rem; }
         '</ul>',
         '</section>',
         '<section class="panel" aria-labelledby="coverage-map-heading">',
-        '<div class="panel-header"><h2 id="coverage-map-heading">Coverage by intended capability</h2><span class="muted">Select a class for the next unlock</span></div>',
-        '<p class="caption">The class names are a presentation grouping of the ten registered operator outcomes. They are not a new product scope or a claim that all source code belongs to an operator journey.</p>',
+        '<div class="panel-header"><h2 id="coverage-map-heading">Coverage by intended operator outcome</h2><span class="muted">Select a class for the next unlock</span></div>',
+        '<details class="section-explainer"><summary>About operator outcome coverage</summary><p class="caption">The class names are a presentation grouping of the ten registered operator outcomes. They are not a new product scope or a claim that all source code belongs to an operator journey.</p></details>',
+        '<div class="coverage-explorer-layout">',
+        '<div class="coverage-explorer-list">',
         f'<div class="coverage-map" id="coverage-map" role="list">{"".join(coverage_rows)}</div>',
         '<ul class="coverage-legend" aria-label="Coverage status legend">',
         '<li><span class="swatch coverage-status-covered"></span>Covered</li>',
@@ -2356,13 +2391,17 @@ h3 { margin: 1.3rem 0 .65rem; font-size: .98rem; }
         '<li><span class="swatch coverage-status-not_covered"></span>Not yet covered</li>',
         '<li><span class="swatch coverage-status-blocked"></span>Blocked</li>',
         '</ul>',
+        '</div>',
+        f'<aside class="coverage-detail" id="coverage-detail" data-initial-coverage-class-id="{_attr(first_coverage_class["id"])}" aria-live="polite">{_dashboard_coverage_detail_markup(first_coverage_class)}</aside>',
+        '</div>',
         '</section>',
-        f'<aside class="panel coverage-detail" id="coverage-detail" data-initial-coverage-class-id="{_attr(first_coverage_class["id"])}" aria-live="polite">{_dashboard_coverage_detail_markup(first_coverage_class)}</aside>',
-        '<details class="supporting-details">',
-        '<summary>Supporting source-disposition evidence</summary>',
+        '<section class="panel source-capability-panel" aria-labelledby="source-capability-heading">',
+        '<div class="panel-header"><h2 id="source-capability-heading">Source capability and disposition</h2><span class="muted">Select a source group for evidence</span></div>',
+        '<details class="source-explorer-disclosure">',
+        '<summary>Open source capability groups</summary>',
         '<p class="caption">This is the M007-09 source-side explanation for capabilities outside the declared journeys. It identifies candidates and ownership; it does not decide which work should be prioritized.</p>',
-        '<section class="visual-grid">',
-        '<div class="panel"><div class="panel-header"><h2>Capability groups</h2><span class="muted">Select a group for evidence</span></div>',
+        '<div class="source-explorer-layout">',
+        '<div class="source-explorer-list">',
         f'<div class="group-chart" id="group-chart" role="list">{"".join(group_rows)}</div>',
         f'<p class="chart-foot">Residuals: {membership["unassigned_members"]} unassigned members · {membership["unresolved_region_refs"]} unresolved region references.</p>',
         '<div class="composition"><h3>Disposition mix</h3><p class="caption">Member allocation across later-review candidates.</p>',
@@ -2370,10 +2409,11 @@ h3 { margin: 1.3rem 0 .65rem; font-size: .98rem; }
         '<div class="composition"><h3>Source-status composition</h3><p class="caption">How the sealed source members relate to the journey report.</p>',
         f'<div class="stacked-bar" id="source-status-chart" role="img" aria-label="Source status: {source_status["fully_reached"]} fully journey-reached, {source_status["candidate_partial"]} candidate paths present in the report, {source_status["candidate_absent"]} absent from the journey report">{source_segments}</div><ul class="legend">{source_legend}</ul></div>',
         '</div>',
-        f'<aside class="panel" id="group-detail" data-initial-group-id="{_attr(first_group["id"])}" aria-live="polite">{_dashboard_detail_markup(first_group)}</aside>',
-        '</section>',
+        f'<aside class="source-detail" id="group-detail" data-initial-group-id="{_attr(first_group["id"])}" aria-live="polite">{_dashboard_detail_markup(first_group)}</aside>',
+        '</div>',
         '</details>',
-        '<p class="residual-note">The coverage denominator is the frozen M007-08 sequence registry. The supporting source view is bound to the sealed M007-07 report, historical source-analysis runtime, and M007-08 input manifest. Later source changes require a refreshed disposition review.</p>',
+        '</section>',
+        '<p class="residual-note">The coverage denominator is the frozen M007-08 sequence registry. The source capability view is bound to the sealed M007-07 report, historical source-analysis runtime, and M007-08 input manifest. Later source changes require a refreshed disposition review.</p>',
         f'<script type="application/json" id="dashboard-data">{embedded}</script>',
         f"<script>{script}</script>",
         '</main></body></html>',
@@ -2514,6 +2554,7 @@ class _DashboardHTMLParser(HTMLParser):
         self.group_ids: list[str] = []
         self.coverage_class_ids: list[str] = []
         self.command_paths: list[str] = []
+        self.toc_targets: list[str] = []
         self.element_ids: set[str] = set()
         self.initial_group_id: str | None = None
         self.initial_coverage_class_id: str | None = None
@@ -2539,6 +2580,9 @@ class _DashboardHTMLParser(HTMLParser):
         command_path = values.get("data-command-path")
         if tag == "li" and command_path is not None:
             self.command_paths.append(command_path)
+        toc_target = values.get("data-dashboard-toc")
+        if toc_target is not None:
+            self.toc_targets.append(toc_target)
         if element_id == "group-detail":
             self.initial_group_id = values.get("data-initial-group-id")
         if element_id == "coverage-detail":
@@ -2587,6 +2631,13 @@ def validate_dashboard_html(
         _fail("dashboard group chart is incomplete or reordered")
     if parser.coverage_class_ids != expected_coverage_classes:
         _fail("dashboard coverage map is incomplete or reordered")
+    expected_toc_targets = [
+        "#command-explorer-heading",
+        "#coverage-map-heading",
+        "#source-capability-heading",
+    ]
+    if parser.toc_targets != expected_toc_targets:
+        _fail("dashboard table of contents is incomplete or reordered")
     if parser.command_paths != _dashboard_command_tree_paths(
         expected_projection["command_tree"]
     ):
@@ -2599,10 +2650,14 @@ def validate_dashboard_html(
         _fail("dashboard initial command selection is not canonical")
     required_ids = {
         "capability-dashboard",
+        "dashboard-toc",
+        "command-explorer-heading",
         "coverage-map",
+        "coverage-map-heading",
         "coverage-detail",
         "command-explorer",
         "command-detail",
+        "source-capability-heading",
         "group-chart",
         "disposition-chart",
         "source-status-chart",

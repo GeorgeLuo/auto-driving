@@ -410,6 +410,21 @@ class CapabilityDispositionTests(unittest.TestCase):
         self.assertIn('querySelectorAll("button.command-node")', html)
         self.assertIn('closest("button.command-node")', html)
 
+    def test_dashboard_uses_two_column_sections_and_top_navigation(self) -> None:
+        html = cd.render_dashboard_html(self.record, self.sealed, self.context["authority"])
+        self.assertIn('id="dashboard-toc"', html)
+        self.assertIn('data-dashboard-toc="#command-explorer-heading"', html)
+        self.assertIn('data-dashboard-toc="#coverage-map-heading"', html)
+        self.assertIn('data-dashboard-toc="#source-capability-heading"', html)
+        self.assertIn("Coverage by intended operator outcome", html)
+        self.assertIn("Source capability and disposition", html)
+        self.assertIn('class="coverage-explorer-layout"', html)
+        self.assertIn('class="source-explorer-layout"', html)
+        self.assertIn('<details class="dashboard-explainer">', html)
+        self.assertIn('<details class="section-explainer">', html)
+        self.assertIn('<details class="source-explorer-disclosure">', html)
+        self.assertIn('more uncovered leaves</summary>', html)
+
     def test_dashboard_coverage_class_omission_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "dashboard.html"

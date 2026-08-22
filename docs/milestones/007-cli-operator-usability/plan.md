@@ -130,7 +130,7 @@ deletion; it does not retroactively widen the accepted primary journey.
 
 **Capability disposition outside CLI journeys**
 
-- Workflow state: ready_for_implementation
+- Workflow state: implementation_in_review
 - Proposal branch: `m007/capability-disposition-proposal`
 - Implementation branch: `m007/capability-disposition`
 - Proposal path: `docs/milestones/007-cli-operator-usability/proposals/capability-disposition.md`
@@ -193,6 +193,7 @@ deletion; it does not retroactively widen the accepted primary journey.
 | Capability disposition outside CLI journeys | ready_for_proposal | Promoted after implementation PR #122. |
 | Capability disposition outside CLI journeys | proposal_in_review | Started m007/capability-disposition-proposal. |
 | Capability disposition outside CLI journeys | ready_for_implementation | Proposal PR #133 accepted at 569d59de2faaca59dab5f5fa04d3da366c9d211c (reviewed head `7e30872f32a123f56556167c0c428a9506474dbb` by `GeorgeLuo` as `OWNER` at `2026-08-21T06:37:57Z`). |
+| Capability disposition outside CLI journeys | implementation_in_review | Started m007/capability-disposition. |
 
 ## Accepted Review Units
 

@@ -401,6 +401,14 @@ class CapabilityDispositionTests(unittest.TestCase):
         self.assertIn("Exact sequence evidence is present.", html)
         self.assertIn("Owner: <code>cli-perception-offline</code>", html)
         self.assertIn("Uncovered leaves:", html)
+        self.assertIn(
+            '<button type="button" class="command-node command-node-leaf ',
+            html,
+        )
+        self.assertNotIn('<span class="command-node command-node-leaf', html)
+        self.assertIn('data-command-path="automa help"', html)
+        self.assertIn('querySelectorAll("button.command-node")', html)
+        self.assertIn('closest("button.command-node")', html)
 
     def test_dashboard_coverage_class_omission_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

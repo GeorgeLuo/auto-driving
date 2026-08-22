@@ -1744,12 +1744,13 @@ def _dashboard_command_tree_markup(node: Mapping[str, Any]) -> str:
         )
     else:
         control = (
-            f'<span class="command-node command-node-leaf command-status-{_attr(status)}" '
+            '<button type="button" class="command-node command-node-leaf '
+            f'command-status-{_attr(status)}" data-command-path="{_attr(node["command"])}" '
             f'aria-label="{_attr(node["command"])}: {_attr(status_label)}">'
             '<span class="command-chevron command-chevron-spacer" aria-hidden="true">·</span>'
             f'<code class="command-word">{_attr(node["token"])}</code>'
             f'<span class="command-state">{_attr(status_label)}</span>'
-            "</span>"
+            "</button>"
         )
     return (
         f'<li class="command-tree-node" data-command-path="{_attr(node["command"])}" '
@@ -2024,10 +2025,10 @@ h3 { margin: 1.3rem 0 .65rem; font-size: .98rem; }
 .command-children { margin: 3px 0 3px 17px; padding-left: 15px; border-left: 1px solid var(--border); }
 .command-tree-node { margin: 2px 0; }
 .command-node { display: flex; align-items: center; gap: 8px; width: fit-content; max-width: 100%; padding: 4px 7px; color: var(--text); text-align: left; background: transparent; border: 0; border-radius: 5px; }
-.command-node-toggle { cursor: pointer; }
-.command-node-toggle:hover { background: var(--surface-alt); }
-.command-node-toggle[aria-current="true"] { background: var(--surface-alt); outline: 2px solid var(--focus); outline-offset: -2px; }
-.command-node-toggle:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.command-node-toggle, .command-node-leaf { cursor: pointer; }
+.command-node:hover { background: var(--surface-alt); }
+.command-node[aria-current="true"] { background: var(--surface-alt); outline: 2px solid var(--focus); outline-offset: -2px; }
+.command-node:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 .command-chevron { flex: 0 0 15px; color: var(--muted); font-size: .95rem; }
 .command-chevron-spacer { text-align: center; }
 .command-word { font-size: .95rem; }
@@ -2150,7 +2151,7 @@ h3 { margin: 1.3rem 0 .65rem; font-size: .98rem; }
   const groupButtons = Array.from(document.querySelectorAll("button.group-row"));
   const commandExplorer = document.getElementById("command-explorer");
   const commandDetail = document.getElementById("command-detail");
-  const commandButtons = Array.from(document.querySelectorAll("button.command-node-toggle"));
+  const commandButtons = Array.from(document.querySelectorAll("button.command-node"));
   const commandNodes = new Map();
   const sequencesById = new Map();
 
@@ -2293,17 +2294,18 @@ h3 { margin: 1.3rem 0 .65rem; font-size: .98rem; }
   }
 
   commandExplorer.addEventListener("click", function (event) {
-    const button = event.target.closest("button.command-node-toggle");
+    const button = event.target.closest("button.command-node");
     if (!button || !commandExplorer.contains(button)) return;
     const nodeElement = button.parentElement;
     const children = Array.from(nodeElement.children).find(function (child) {
       return child.classList.contains("command-children");
     });
-    if (!children) return;
-    const expanded = button.getAttribute("aria-expanded") === "true";
-    button.setAttribute("aria-expanded", String(!expanded));
-    children.hidden = expanded;
-    button.querySelector(".command-chevron").textContent = expanded ? "▸" : "▾";
+    if (children) {
+      const expanded = button.getAttribute("aria-expanded") === "true";
+      button.setAttribute("aria-expanded", String(!expanded));
+      children.hidden = expanded;
+      button.querySelector(".command-chevron").textContent = expanded ? "▸" : "▾";
+    }
     selectCommand(button.dataset.commandPath);
   });
 
@@ -2330,7 +2332,7 @@ h3 { margin: 1.3rem 0 .65rem; font-size: .98rem; }
         '<p class="notice">This view does not infer missing product requirements from executed code. “Covered” means the exact registered sequence has passed measured evidence. Related family coverage does not promote a deferred sequence. <a href="../cli-surface-audit/rollup.md">Open the sequence rollup</a> · <a href="../cli-surface-audit/sequence_registry.json">Open the sequence registry</a> · <a href="../cli-journey-coverage/README.md">Open journey coverage evidence</a> · <a href="record.html">Open the complete audit ledger</a> · <a href="record.json">Open record.json</a></p></header>',
         f'<p class="coverage-bottom-line"><strong>Bottom line:</strong> {coverage_bottom_line}</p>',
         '<section class="panel command-explorer-panel" aria-labelledby="command-explorer-heading">',
-        '<div class="panel-header"><h2 id="command-explorer-heading">Explore the CLI command tree</h2><span class="muted">Click a word to open its subcommands</span></div>',
+        '<div class="panel-header"><h2 id="command-explorer-heading">Explore the CLI command tree</h2><span class="muted">Open branches or inspect terminal commands</span></div>',
         '<p class="caption">The tree follows the CLI hierarchy. A leaf is covered only when a measured sequence reaches that exact command; parent words summarize the mix below them.</p>',
         '<div class="command-explorer-layout">',
         f'<div class="command-explorer" id="command-explorer" aria-label="Recursive CLI command coverage"><ul class="command-tree">{_dashboard_command_tree_markup(command_tree)}</ul></div>',

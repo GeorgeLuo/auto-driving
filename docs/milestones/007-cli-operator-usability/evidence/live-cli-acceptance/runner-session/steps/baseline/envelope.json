@@ -1,0 +1,21 @@
+{
+  "browser_view": null,
+  "commands": [],
+  "gate_ids": [],
+  "human": {
+    "finding_requested": false,
+    "interactive": true,
+    "notes": "",
+    "visual": "pass"
+  },
+  "id": "baseline",
+  "kind": "baseline",
+  "machine_evidence": {},
+  "machine_ok": true,
+  "machine_summary": "origin=http://localhost:5050; auto_driving=caf335797b71df1323736a2054934b7c211418b0; worktree=clean",
+  "primary_cue": "Metrics UI open in Chrome; Chase visible; no unwanted Automa worker",
+  "question": "Is the starting environment identifiable and safe to exercise?",
+  "required_for_verdict": true,
+  "safety": "read",
+  "status": "pass"
+}

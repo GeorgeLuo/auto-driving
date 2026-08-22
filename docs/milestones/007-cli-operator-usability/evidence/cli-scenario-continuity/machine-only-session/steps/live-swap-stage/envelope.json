@@ -1,0 +1,80 @@
+{
+  "browser_view": null,
+  "commands": [
+    {
+      "argv": [
+        "./cli/automa",
+        "vehicles",
+        "update",
+        "perception",
+        "--id",
+        "chase-sim-chaser",
+        "--algorithm",
+        "lightweight_observer"
+      ],
+      "command": "./cli/automa vehicles update perception --id chase-sim-chaser --algorithm lightweight_observer",
+      "elapsed_ms": 956,
+      "ended_at_utc": "2026-08-11T18:16:42.466481Z",
+      "exit_code": 0,
+      "started_at_utc": "2026-08-11T18:16:41.509528Z",
+      "stderr_path": "steps/live-swap-stage/cmd-00.stderr.txt",
+      "stdout_path": "steps/live-swap-stage/cmd-00.stdout.txt"
+    },
+    {
+      "argv": [
+        "./cli/automa",
+        "vehicles",
+        "automation",
+        "run",
+        "--id",
+        "chase-sim-chaser",
+        "--observe-only",
+        "--frames",
+        "0",
+        "--open-view"
+      ],
+      "command": "./cli/automa vehicles automation run --id chase-sim-chaser --observe-only --frames 0 --open-view",
+      "elapsed_ms": 2548,
+      "ended_at_utc": "2026-08-11T18:16:45.015502Z",
+      "exit_code": 0,
+      "started_at_utc": "2026-08-11T18:16:42.467562Z",
+      "stderr_path": "steps/live-swap-stage/cmd-01.stderr.txt",
+      "stdout_path": "steps/live-swap-stage/cmd-01.stdout.txt"
+    },
+    {
+      "argv": [
+        "./cli/automa",
+        "vehicles",
+        "status",
+        "--id",
+        "chase-sim-chaser"
+      ],
+      "command": "./cli/automa vehicles status --id chase-sim-chaser",
+      "elapsed_ms": 1431,
+      "ended_at_utc": "2026-08-11T18:16:46.450457Z",
+      "exit_code": 0,
+      "started_at_utc": "2026-08-11T18:16:45.018710Z",
+      "stderr_path": "steps/live-swap-stage/cmd-02.stderr.txt",
+      "stdout_path": "steps/live-swap-stage/cmd-02.stdout.txt"
+    }
+  ],
+  "family_id": "continuity.live_config_swap",
+  "gate_ids": [],
+  "human": {
+    "finding_requested": false,
+    "interactive": false,
+    "notes": "non-interactive session",
+    "visual": "skip"
+  },
+  "id": "live-swap-stage",
+  "kind": "command",
+  "machine_evidence": {},
+  "machine_ok": true,
+  "machine_summary": "",
+  "primary_cue": "Ready for: inspect perception; worker running; observe_only",
+  "question": "Can we restage perception and reach observation-only readiness with a healthy view?",
+  "required_for_verdict": true,
+  "safety": "live_mutation",
+  "status": "skip",
+  "visual_required": true
+}

@@ -13,7 +13,10 @@ from autonomy.perception import PERCEPTION_TEXT_SCHEMA, PerceptionText
 from autonomy.perception.mappers import PluginPerceptionMapper
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
 from cli.automa_cli import perception as perception_module
-from cli.automa_cli.perception_evaluation import evaluate_perception_frames
+from cli.automa_cli.perception_evaluation import (
+    evaluate_perception_frames,
+    write_review_html,
+)
 from cli.automa_cli.perception_runs import (
     CommandResult,
     _source_image_paths,
@@ -50,6 +53,86 @@ class FakeFrameCar:
 
 
 class PerceptionRunTests(unittest.TestCase):
+    def test_recorded_review_uses_a_view_selector_and_frame_player(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            frames = []
+            for index in range(2):
+                source = root / f"source_{index}.png"
+                overlay = root / f"overlay_{index}.png"
+                Image.new("RGB", (48, 32), (25 + index, 35, 45)).save(source)
+                Image.new("RGB", (48, 32), (45, 35 + index, 25)).save(overlay)
+                frames.append(
+                    {
+                        "frame_id": f"frame_00000{index}<unsafe>",
+                        "image_path": str(source),
+                        "status": "ok",
+                        "thing_count": 1,
+                        "duration_ms": 4.5,
+                        "perception": {
+                            "artifacts": {
+                                "floor/overlay": str(overlay),
+                                "floor/summary": str(root / "summary.json"),
+                            }
+                        },
+                    }
+                )
+            report = {
+                "run_id": 'review"><script>alert(1)</script>',
+                "mapper": {"algorithm": "lightweight_observer"},
+                "summary": {
+                    "frames": 2,
+                    "failed_frames": 0,
+                    "latency_ms": {"steady_median": 4.5},
+                    "memory_mb": {"peak_rss": 12.0},
+                    "representation_health": {
+                        "score": 1.0,
+                        "interpretation": "Representation only.",
+                    },
+                },
+                "frames": frames,
+            }
+
+            path = write_review_html(root, report)
+            page = path.read_text(encoding="utf-8")
+
+        self.assertIn('<select id="view-mode">', page)
+        self.assertIn('<option value="source">Source only</option>', page)
+        self.assertIn('<option value="processed">Processed only</option>', page)
+        self.assertIn('<option value="side-by-side">Source + processed</option>', page)
+        self.assertIn('id="play-toggle"', page)
+        self.assertIn('id="frame-scrubber" type="range" min="0" max="1"', page)
+        self.assertEqual(
+            page.count('<article class="frame" data-review-frame'),
+            2,
+        )
+        self.assertEqual(page.count('data-view-kind="source"'), 2)
+        self.assertEqual(page.count('data-view-kind="processed"'), 2)
+        self.assertIn("window.setInterval", page)
+        self.assertIn("frame_000000&lt;unsafe&gt;", page)
+        self.assertNotIn('<script>alert(1)</script>', page)
+
+    def test_review_player_disables_motion_when_no_frames_exist(self) -> None:
+        report = {
+            "run_id": "empty",
+            "mapper": {"algorithm": "lightweight_observer"},
+            "summary": {
+                "frames": 0,
+                "failed_frames": 0,
+                "latency_ms": {"steady_median": 0.0},
+                "memory_mb": {"peak_rss": 0.0},
+                "representation_health": {},
+            },
+            "frames": [],
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            page = write_review_html(Path(tmp), report).read_text(encoding="utf-8")
+
+        self.assertIn('id="play-toggle" type="button" aria-pressed="false" disabled', page)
+        self.assertIn('id="frame-scrubber" type="range" min="0" max="0"', page)
+        self.assertIn("No recorded frames are available.", page)
+        self.assertIn(">0 / 0</output>", page)
+
     def test_apply_accepts_one_image_and_reports_candidate_overrides(self) -> None:
         class FakeCandidateMapper:
             init_args: tuple[str, dict[str, object] | None] | None = None

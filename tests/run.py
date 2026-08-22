@@ -115,6 +115,16 @@ def prepare_live_pi(*, base_url: str, timeout_s: float) -> bool:
     return True
 
 
+
+def _iter_tests(suite: unittest.TestSuite):
+    """Yield individual TestCase instances from a possibly nested suite."""
+
+    for item in suite:
+        if isinstance(item, unittest.TestSuite):
+            yield from _iter_tests(item)
+        else:
+            yield item
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -134,11 +144,25 @@ def main(argv: list[str] | None = None) -> int:
     ):
         return 2
 
-    suite = unittest.defaultTestLoader.discover(
+    loader = unittest.defaultTestLoader
+    suite = loader.discover(
         str(TESTS_DIR),
         pattern="test_*.py",
         top_level_dir=str(ROOT),
     )
+    milestones_dir = TESTS_DIR / "milestones"
+    if milestones_dir.is_dir():
+        milestone_suite = loader.discover(
+            str(milestones_dir),
+            pattern="test_*.py",
+            top_level_dir=str(ROOT),
+        )
+        seen = {t.id() for t in _iter_tests(suite)}
+        for test in _iter_tests(milestone_suite):
+            tid = test.id()
+            if tid not in seen:
+                suite.addTest(test)
+                seen.add(tid)
     result = unittest.TextTestRunner(verbosity=2).run(suite)
     return 0 if result.wasSuccessful() else 1
 

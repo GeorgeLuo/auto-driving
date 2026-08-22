@@ -1,0 +1,19 @@
+Known Chase vehicles: 1
+
+Vehicle: chase-sim-chaser
+Endpoint: http://localhost:5050/ -> ws://localhost:5050/ws/control
+simulator_server: reachable
+simulator_frontend: connected
+chase_game: ready
+vehicle: discoverable
+passive_capture: available
+automation_deployment: deployed
+automation_worker: stopped
+perception_view: stale
+authority: control_source=programmatic, action_policy=observe_only, control_application=not_applied
+evaluator_reference: available
+Not ready for: inspect perception
+Next action: ./cli/automa vehicles automation run --id chase-sim-chaser --observe-only --frames 0 --open-view
+
+Other local deployments: 1
+- piracer: ./cli/automa vehicles automation status --id piracer

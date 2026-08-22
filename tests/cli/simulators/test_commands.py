@@ -8,6 +8,7 @@ from pathlib import Path
 
 from tests.support.cli_runner import run_automa
 from tests.support.fake_browser import fake_browser_environment, read_browser_calls
+from tests.support.fake_metrics_ui import fake_metrics_ui_server
 from tests.support.fake_simeval import fake_simeval_environment, read_simeval_calls
 
 
@@ -31,21 +32,22 @@ def _run_fake_forms(
         human_env = {**human_env, **fake_browser_environment(human_root)}
         machine_env = {**machine_env, **fake_browser_environment(machine_root)}
 
-    human = run_automa(
-        "simulators",
-        command,
-        *options,
-        extra_env=human_env,
-        check=check,
-    )
-    machine = run_automa(
-        "simulators",
-        command,
-        *options,
-        "--json",
-        extra_env=machine_env,
-        check=check,
-    )
+    with fake_metrics_ui_server() as ws_url:
+        human = run_automa(
+            "simulators",
+            command,
+            *options,
+            extra_env={**human_env, "CHASE_UI_WS_URL": ws_url},
+            check=check,
+        )
+        machine = run_automa(
+            "simulators",
+            command,
+            *options,
+            "--json",
+            extra_env={**machine_env, "CHASE_UI_WS_URL": ws_url},
+            check=check,
+        )
     return human, machine, json.loads(machine.stdout)
 
 
@@ -147,10 +149,32 @@ class SimulatorEnsureTests(unittest.TestCase):
         self.assertTrue(result["usable"])
         self.assertFalse(result["launch_attempted"])
         self.assertFalse(result["launched"])
+        self.assertTrue(payload["chase_readiness"]["ready"])
+        self.assertEqual(
+            payload["readiness"],
+            {
+                "schema": "automa_cli_readiness_v1",
+                "status": "ready",
+                "ready_for": "inspect vehicle status and stage perception",
+                "checked_at_ms": payload["readiness"]["checked_at_ms"],
+                "gates": payload["chase_readiness"]["layers"],
+                "blocking_layer": None,
+            },
+        )
+        self.assertEqual(
+            payload["chase_readiness"]["layers"]["passive_capture"]["state"],
+            "available",
+        )
         self.assertNotIn(["deploy", "start"], calls)
         self.assertIn(["ui", "subapp", "--app", "play"], calls)
         self.assertIn("result: ready", human.stdout)
         self.assertIn("usable: yes", human.stdout)
+        self.assertIn("shared Chase environment gate: yes", human.stdout)
+        self.assertIn("atomic passive capture: available", human.stdout)
+        self.assertIn(
+            "Ready for: inspect vehicle status and stage perception",
+            human.stdout,
+        )
         self.assertNotIn("Commands:", human.stdout)
         self.assertNotIn("processAlive", human.stdout)
 
@@ -189,12 +213,13 @@ class SimulatorEnsureTests(unittest.TestCase):
                 **fake_simeval_environment(root, "online_no_frontend_then_open"),
                 **fake_browser_environment(root),
             }
-            machine = run_automa(
-                "simulators",
-                "ensure",
-                "--json",
-                extra_env=env,
-            )
+            with fake_metrics_ui_server() as ws_url:
+                machine = run_automa(
+                    "simulators",
+                    "ensure",
+                    "--json",
+                    extra_env={**env, "CHASE_UI_WS_URL": ws_url},
+                )
             payload = json.loads(machine.stdout)
             browser_calls = read_browser_calls(root)
 
@@ -211,12 +236,13 @@ class SimulatorEnsureTests(unittest.TestCase):
                 **fake_simeval_environment(root, "online_frontend_stale_until_open"),
                 **fake_browser_environment(root),
             }
-            machine = run_automa(
-                "simulators",
-                "ensure",
-                "--json",
-                extra_env=env,
-            )
+            with fake_metrics_ui_server() as ws_url:
+                machine = run_automa(
+                    "simulators",
+                    "ensure",
+                    "--json",
+                    extra_env={**env, "CHASE_UI_WS_URL": ws_url},
+                )
             payload = json.loads(machine.stdout)
             browser_calls = read_browser_calls(root)
             calls = read_simeval_calls(root)
@@ -261,12 +287,13 @@ class SimulatorEnsureTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             env = fake_simeval_environment(root, "offline_then_launch")
-            machine = run_automa(
-                "simulators",
-                "ensure",
-                "--json",
-                extra_env=env,
-            )
+            with fake_metrics_ui_server() as ws_url:
+                machine = run_automa(
+                    "simulators",
+                    "ensure",
+                    "--json",
+                    extra_env={**env, "CHASE_UI_WS_URL": ws_url},
+                )
             payload = json.loads(machine.stdout)
             calls = read_simeval_calls(root)
 

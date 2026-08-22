@@ -1,0 +1,1093 @@
+{
+  "argv_receipts": [
+    {
+      "argv": [
+        "help"
+      ],
+      "leaf_id": "help",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-01.cmd-00"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "help"
+      ],
+      "leaf_id": "vehicles.help",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-01.cmd-01"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "automation",
+        "help"
+      ],
+      "leaf_id": "vehicles.automation.help",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-01.cmd-02"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "automation",
+        "run",
+        "--help"
+      ],
+      "leaf_id": "vehicles.automation.run",
+      "ok": true,
+      "reason": "ok_help",
+      "template_id": "US-01.cmd-03"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "status",
+        "--chase-url",
+        "http://localhost:5050"
+      ],
+      "leaf_id": "vehicles.status",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-02.cmd-00"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "update",
+        "perception",
+        "--id",
+        "chase-sim-chaser",
+        "--algorithm",
+        "lightweight_observer"
+      ],
+      "leaf_id": "vehicles.update.perception",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-02.cmd-01"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "automation",
+        "run",
+        "--id",
+        "chase-sim-chaser",
+        "--observe-only",
+        "--frames",
+        "0",
+        "--open-view"
+      ],
+      "leaf_id": "vehicles.automation.run",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-02.cmd-02"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "status",
+        "--id",
+        "chase-sim-chaser"
+      ],
+      "leaf_id": "vehicles.status",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-02.cmd-03"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "automation",
+        "stop",
+        "--id",
+        "chase-sim-chaser"
+      ],
+      "leaf_id": "vehicles.automation.stop",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-02.cmd-04"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "status",
+        "--id",
+        "chase-sim-chaser"
+      ],
+      "leaf_id": "vehicles.status",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-02.cmd-05"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "automation",
+        "stop",
+        "--id",
+        "chase-sim-chaser"
+      ],
+      "leaf_id": "vehicles.automation.stop",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-02.cleanup-00"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "update",
+        "perception",
+        "--id",
+        "chase-sim-chaser",
+        "--algorithm",
+        "lightweight_observer"
+      ],
+      "leaf_id": "vehicles.update.perception",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-03.cmd-00"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "perception",
+        "run",
+        "--id",
+        "chase-sim-chaser",
+        "--frames",
+        "4",
+        "--interval-s",
+        "0.25",
+        "--record"
+      ],
+      "leaf_id": "vehicles.perception.run",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-03.cmd-01"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "perception",
+        "apply",
+        "/tmp/m007-audit-src",
+        "--algorithm",
+        "lightweight_observer",
+        "--record"
+      ],
+      "leaf_id": "vehicles.perception.apply",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-03.cmd-02"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "perception",
+        "apply",
+        "/tmp/m007-audit-src",
+        "--algorithm",
+        "sim_debug",
+        "--record"
+      ],
+      "leaf_id": "vehicles.perception.apply",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-03.cmd-03"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "perception",
+        "apply",
+        "/tmp/m007-audit-src",
+        "--algorithm",
+        "visual_observer",
+        "--record"
+      ],
+      "leaf_id": "vehicles.perception.apply",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-03.cmd-04"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "perception",
+        "compare",
+        "/tmp/m007-audit-src",
+        "--record"
+      ],
+      "leaf_id": "vehicles.perception.compare",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-03.cmd-05"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "automation",
+        "stop",
+        "--id",
+        "chase-sim-chaser"
+      ],
+      "leaf_id": "vehicles.automation.stop",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-04.cmd-00"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "update",
+        "perception",
+        "--id",
+        "chase-sim-chaser",
+        "--algorithm",
+        "visual_observer"
+      ],
+      "leaf_id": "vehicles.update.perception",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-04.cmd-01"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "automation",
+        "run",
+        "--id",
+        "chase-sim-chaser",
+        "--observe-only",
+        "--frames",
+        "0",
+        "--open-view"
+      ],
+      "leaf_id": "vehicles.automation.run",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-04.cmd-02"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "automation",
+        "stop",
+        "--id",
+        "chase-sim-chaser"
+      ],
+      "leaf_id": "vehicles.automation.stop",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-04.cmd-03"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "perception",
+        "disable",
+        "--id",
+        "chase-sim-chaser",
+        "motion_tracks"
+      ],
+      "leaf_id": "vehicles.perception.disable",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-04.cmd-04"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "automation",
+        "run",
+        "--id",
+        "chase-sim-chaser",
+        "--observe-only",
+        "--frames",
+        "0",
+        "--open-view"
+      ],
+      "leaf_id": "vehicles.automation.run",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-04.cmd-05"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "automation",
+        "stop",
+        "--id",
+        "chase-sim-chaser"
+      ],
+      "leaf_id": "vehicles.automation.stop",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-04.cleanup-00"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "perception",
+        "enable",
+        "--id",
+        "chase-sim-chaser",
+        "motion_tracks"
+      ],
+      "leaf_id": "vehicles.perception.enable",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-04.cleanup-01"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "update",
+        "perception",
+        "--id",
+        "chase-sim-chaser",
+        "--algorithm",
+        "visual_observer"
+      ],
+      "leaf_id": "vehicles.update.perception",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-05.cmd-00"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "update",
+        "memory",
+        "--id",
+        "chase-sim-chaser",
+        "--implementation",
+        "bounded_evidence"
+      ],
+      "leaf_id": "vehicles.update.memory",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-05.cmd-01"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "automation",
+        "run",
+        "--id",
+        "chase-sim-chaser",
+        "--observe-only",
+        "--frames",
+        "0",
+        "--open-view"
+      ],
+      "leaf_id": "vehicles.automation.run",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-05.cmd-02"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "stream",
+        "memory",
+        "--id",
+        "chase-sim-chaser",
+        "--once"
+      ],
+      "leaf_id": "vehicles.stream.memory",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-05.cmd-03"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "memory",
+        "check",
+        "--id",
+        "chase-sim-chaser",
+        "--record"
+      ],
+      "leaf_id": "vehicles.memory.check",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-05.cmd-04"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "automation",
+        "stop",
+        "--id",
+        "chase-sim-chaser"
+      ],
+      "leaf_id": "vehicles.automation.stop",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-05.cleanup-00"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "update",
+        "perception",
+        "--id",
+        "chase-sim-chaser",
+        "--algorithm",
+        "visual_observer"
+      ],
+      "leaf_id": "vehicles.update.perception",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-06.cmd-00"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "update",
+        "memory",
+        "--id",
+        "chase-sim-chaser",
+        "--implementation",
+        "bounded_evidence"
+      ],
+      "leaf_id": "vehicles.update.memory",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-06.cmd-01"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "automation",
+        "run",
+        "--id",
+        "chase-sim-chaser",
+        "--observe-only",
+        "--frames",
+        "0",
+        "--open-view"
+      ],
+      "leaf_id": "vehicles.automation.run",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-06.cmd-02"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "stream",
+        "memory",
+        "--id",
+        "chase-sim-chaser",
+        "--once"
+      ],
+      "leaf_id": "vehicles.stream.memory",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-06.cmd-03"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "memory",
+        "check",
+        "--id",
+        "chase-sim-chaser",
+        "--record"
+      ],
+      "leaf_id": "vehicles.memory.check",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-06.cmd-04"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "automation",
+        "stop",
+        "--id",
+        "chase-sim-chaser"
+      ],
+      "leaf_id": "vehicles.automation.stop",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-06.cmd-05"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "perception",
+        "disable",
+        "--id",
+        "chase-sim-chaser",
+        "motion_tracks"
+      ],
+      "leaf_id": "vehicles.perception.disable",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-06.cmd-06"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "automation",
+        "run",
+        "--id",
+        "chase-sim-chaser",
+        "--observe-only",
+        "--frames",
+        "0",
+        "--open-view"
+      ],
+      "leaf_id": "vehicles.automation.run",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-06.cmd-07"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "memory",
+        "check",
+        "--id",
+        "chase-sim-chaser",
+        "--record"
+      ],
+      "leaf_id": "vehicles.memory.check",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-06.cmd-08"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "automation",
+        "stop",
+        "--id",
+        "chase-sim-chaser"
+      ],
+      "leaf_id": "vehicles.automation.stop",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-06.cmd-09"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "automation",
+        "stop",
+        "--id",
+        "chase-sim-chaser"
+      ],
+      "leaf_id": "vehicles.automation.stop",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-06.cleanup-00"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "perception",
+        "enable",
+        "--id",
+        "chase-sim-chaser",
+        "motion_tracks"
+      ],
+      "leaf_id": "vehicles.perception.enable",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-06.cleanup-01"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "automation",
+        "run",
+        "--id",
+        "chase-sim-chaser",
+        "--observe-only",
+        "--frames",
+        "0",
+        "--interval-s",
+        "0.02",
+        "--open-view"
+      ],
+      "leaf_id": "vehicles.automation.run",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-07.cmd-00"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "automation",
+        "status",
+        "--id",
+        "chase-sim-chaser"
+      ],
+      "leaf_id": "vehicles.automation.status",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-07.cmd-01"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "stream",
+        "memory",
+        "--id",
+        "chase-sim-chaser",
+        "--once"
+      ],
+      "leaf_id": "vehicles.stream.memory",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-07.cmd-02"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "automation",
+        "status",
+        "--id",
+        "chase-sim-chaser"
+      ],
+      "leaf_id": "vehicles.automation.status",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-07.cmd-03"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "stream",
+        "memory",
+        "--id",
+        "chase-sim-chaser",
+        "--once"
+      ],
+      "leaf_id": "vehicles.stream.memory",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-07.cmd-04"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "automation",
+        "stop",
+        "--id",
+        "chase-sim-chaser"
+      ],
+      "leaf_id": "vehicles.automation.stop",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-07.cmd-05"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "automation",
+        "status",
+        "--id",
+        "chase-sim-chaser"
+      ],
+      "leaf_id": "vehicles.automation.status",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-07.cmd-06"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "automation",
+        "stop",
+        "--id",
+        "chase-sim-chaser"
+      ],
+      "leaf_id": "vehicles.automation.stop",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-07.cleanup-00"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "stream",
+        "memory",
+        "--id",
+        "chase-sim-chaser",
+        "--once"
+      ],
+      "leaf_id": "vehicles.stream.memory",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-08.cmd-00"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "memory",
+        "reset",
+        "--id",
+        "chase-sim-chaser"
+      ],
+      "leaf_id": "vehicles.memory.reset",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-08.cmd-01"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "stream",
+        "memory",
+        "--id",
+        "chase-sim-chaser",
+        "--once"
+      ],
+      "leaf_id": "vehicles.stream.memory",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-08.cmd-02"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "memory",
+        "replay",
+        "/tmp/m007-audit-record",
+        "--id",
+        "chase-sim-chaser",
+        "--implementation",
+        "bounded_evidence",
+        "--record"
+      ],
+      "leaf_id": "vehicles.memory.replay",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-09.cmd-00"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "perception",
+        "check",
+        "--id",
+        "chase-sim-chaser",
+        "--record"
+      ],
+      "leaf_id": "vehicles.perception.check",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-10.cmd-00"
+    },
+    {
+      "argv": [
+        "vehicles",
+        "perception",
+        "qualify",
+        "--from-check-run",
+        "/tmp/m007-audit-record",
+        "--candidate",
+        "floor_continuity"
+      ],
+      "leaf_id": "vehicles.perception.qualify",
+      "ok": true,
+      "reason": "ok",
+      "template_id": "US-10.cmd-01"
+    }
+  ],
+  "catalog": {
+    "path": "docs/milestones/007-cli-operator-usability/tools/cli-surface-audit/us88_catalog.json",
+    "sha256": "9cf4c8bf139183d10ea51c5b576eb47cef1919a161570d704893b3f7372a0e40",
+    "source": {
+      "comment_id": 5169077892,
+      "title": "Prospective README appendix: usage sequences and human confirmation",
+      "url": "https://github.com/GeorgeLuo/auto-driving/pull/88#issuecomment-5169077892"
+    }
+  },
+  "cite_receipts": [
+    {
+      "claim_map_id": "us01_help_discovery",
+      "disposition_set_at": "2026-08-14T09:44:41Z",
+      "disposition_set_by": "GeorgeLuo",
+      "head_claim": "historical",
+      "id": "US-01",
+      "mode": "cited",
+      "ok": true,
+      "paths": [
+        {
+          "path": "docs/milestones/007-cli-operator-usability/evidence/live-cli-acceptance/result.json",
+          "sha256": "d9656ddb1bad6720bf3b6dd5d2d2fbc5f0d1c2204c9e82883c56e9772d53dcf1"
+        }
+      ],
+      "source_commit": "caf335797b71df1323736a2054934b7c211418b0",
+      "source_pr": 88,
+      "source_result_schema": "m007_live_cli_acceptance_v1",
+      "trace": {
+        "cleanup_matches": [],
+        "cleanup_predicates": 0,
+        "command_matches": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "confirmation_predicates": 1,
+        "mode": "ordered_subsequence",
+        "outcomes_path": "ordered_command_outcomes",
+        "placeholder_bindings": {}
+      }
+    },
+    {
+      "claim_map_id": "us02_passive_journey",
+      "disposition_set_at": "2026-08-14T09:44:41Z",
+      "disposition_set_by": "GeorgeLuo",
+      "head_claim": "historical",
+      "id": "US-02",
+      "mode": "cited",
+      "ok": true,
+      "paths": [
+        {
+          "path": "docs/milestones/007-cli-operator-usability/evidence/live-cli-acceptance/result.json",
+          "sha256": "d9656ddb1bad6720bf3b6dd5d2d2fbc5f0d1c2204c9e82883c56e9772d53dcf1"
+        }
+      ],
+      "source_commit": "caf335797b71df1323736a2054934b7c211418b0",
+      "source_pr": 88,
+      "source_result_schema": "m007_live_cli_acceptance_v1",
+      "trace": {
+        "cleanup_matches": [
+          11
+        ],
+        "cleanup_predicates": 2,
+        "command_matches": [
+          4,
+          6,
+          8,
+          9,
+          11,
+          12
+        ],
+        "confirmation_predicates": 1,
+        "mode": "ordered_subsequence",
+        "outcomes_path": "ordered_command_outcomes",
+        "placeholder_bindings": {
+          "vehicle_id": "chase-sim-chaser"
+        }
+      }
+    }
+  ],
+  "help_drift": {
+    "action_leaf_count": 32,
+    "alias_leaf_count": 7,
+    "alias_leaf_ids": [
+      "simulators",
+      "vehicles",
+      "vehicles.automation",
+      "vehicles.memory",
+      "vehicles.operation",
+      "vehicles.perception",
+      "vehicles.update"
+    ],
+    "authority": "argparse",
+    "extra_in_help": [],
+    "help_leaf_count": 32,
+    "leaf_count": 49,
+    "membership_rule": "kind: meta for help tokens; kind: alias for optional-subparser parent terminals bound to their help child; action otherwise",
+    "meta_leaf_count": 10,
+    "meta_leaf_ids": [
+      "help",
+      "simulators.help",
+      "vehicles.automation.help",
+      "vehicles.help",
+      "vehicles.info.help",
+      "vehicles.memory.help",
+      "vehicles.operation.help",
+      "vehicles.perception.help",
+      "vehicles.stream.help",
+      "vehicles.update.help"
+    ],
+    "missing_from_help": [],
+    "note": "Help-derived set comes from rendered format_help() choice groups and excludes help meta nodes. Drift compares action leaves only. Membership authority remains argparse; hard equality is not Met-blocking.",
+    "status": "ok"
+  },
+  "leaves": {
+    "action_count": 32,
+    "alias_count": 7,
+    "count": 49,
+    "ids": [
+      "help",
+      "simulators",
+      "simulators.ensure",
+      "simulators.help",
+      "simulators.status",
+      "vehicles",
+      "vehicles.active",
+      "vehicles.automation",
+      "vehicles.automation.help",
+      "vehicles.automation.restart",
+      "vehicles.automation.run",
+      "vehicles.automation.status",
+      "vehicles.automation.stop",
+      "vehicles.help",
+      "vehicles.info.decision",
+      "vehicles.info.help",
+      "vehicles.info.memory",
+      "vehicles.info.perception",
+      "vehicles.memory",
+      "vehicles.memory.check",
+      "vehicles.memory.help",
+      "vehicles.memory.replay",
+      "vehicles.memory.reset",
+      "vehicles.operation",
+      "vehicles.operation.help",
+      "vehicles.operation.startup-check",
+      "vehicles.perception",
+      "vehicles.perception.apply",
+      "vehicles.perception.candidates",
+      "vehicles.perception.check",
+      "vehicles.perception.compare",
+      "vehicles.perception.disable",
+      "vehicles.perception.enable",
+      "vehicles.perception.help",
+      "vehicles.perception.qualify",
+      "vehicles.perception.run",
+      "vehicles.perception.setup",
+      "vehicles.perception.viability",
+      "vehicles.status",
+      "vehicles.stream.help",
+      "vehicles.stream.memory",
+      "vehicles.stream.perception",
+      "vehicles.update",
+      "vehicles.update.autonomy",
+      "vehicles.update.core",
+      "vehicles.update.decision",
+      "vehicles.update.help",
+      "vehicles.update.memory",
+      "vehicles.update.perception"
+    ],
+    "inventory_sha256": "21efc3a9af9bb551e2bd3b0b949f5ddcc50d7748888d97cd360070983d40d3c4",
+    "meta_count": 10,
+    "overlay_sha256": "41e284ea7284f7ae2c74f312a0dde391330813c6e188cd7e16a391f1d69f869f"
+  },
+  "live_residuals": [
+    {
+      "classification": "usability_defect",
+      "disposition": "deferred",
+      "id": "M007-LIVE-001",
+      "ledger_owner": "Automa CLI perception apply run-id / artifact naming",
+      "links": {
+        "leaves": [
+          "vehicles.perception.apply"
+        ],
+        "sequences": [
+          "US-03"
+        ]
+      },
+      "one_line": "Apply run-id collision overwrites sibling artifacts",
+      "owner": "cli-perception-apply",
+      "severity": "P2"
+    },
+    {
+      "classification": "usability_defect",
+      "disposition": "deferred",
+      "id": "M007-LIVE-002",
+      "ledger_owner": "Lab candidate readiness inventory vs compare path resolution",
+      "links": {
+        "leaves": [
+          "vehicles.perception.candidates",
+          "vehicles.perception.compare"
+        ],
+        "sequences": [
+          "US-03"
+        ]
+      },
+      "one_line": "Candidates \u201cready\u201d \u2260 compare model path",
+      "owner": "lab-candidates-compare",
+      "severity": "P2"
+    },
+    {
+      "classification": "usability_defect",
+      "disposition": "deferred",
+      "id": "M007-LIVE-003",
+      "ledger_owner": "Automa CLI compare human formatting",
+      "links": {
+        "leaves": [
+          "vehicles.perception.compare"
+        ],
+        "sequences": [
+          "US-03"
+        ]
+      },
+      "one_line": "Failed compare dumps full JSON on human surface",
+      "owner": "cli-perception-compare",
+      "severity": "P3"
+    },
+    {
+      "classification": "enhancement_candidate",
+      "disposition": "deferred",
+      "id": "M007-LIVE-004",
+      "ledger_owner": "Perception review artifact UX",
+      "links": {
+        "leaves": [
+          "vehicles.perception.compare"
+        ],
+        "sequences": [
+          "US-03"
+        ]
+      },
+      "one_line": "Want consolidated multi-engine review / open-review",
+      "owner": "cli-perception-review-ux",
+      "severity": "P3"
+    },
+    {
+      "classification": "usability_defect",
+      "disposition": "deferred",
+      "id": "M007-LIVE-005",
+      "ledger_owner": "Perception run default human vs JSON surfaces",
+      "links": {
+        "leaves": [
+          "vehicles.perception.run"
+        ],
+        "sequences": [
+          "US-03"
+        ]
+      },
+      "one_line": "`perception run --json` buries review path",
+      "owner": "cli-perception-run",
+      "severity": "P3"
+    }
+  ],
+  "non_claims": {
+    "coverage_gate": false,
+    "head_reverification": false,
+    "product_repair": false,
+    "template_is_roadmap": false
+  },
+  "result": "pass",
+  "schema": "m007_cli_surface_audit_v1",
+  "sequences": {
+    "count": 10,
+    "dispositions": {
+      "US-01": "passed",
+      "US-02": "passed",
+      "US-03": "deferred",
+      "US-04": "deferred",
+      "US-05": "deferred",
+      "US-06": "deferred",
+      "US-07": "deferred",
+      "US-08": "deferred",
+      "US-09": "deferred",
+      "US-10": "blocked"
+    },
+    "registry_sha256": "005ef8c7d4a715e72ba721e29ba5e4df7c22e301668fdd0bc1b280da125308c2"
+  }
+}

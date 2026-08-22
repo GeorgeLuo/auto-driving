@@ -96,7 +96,8 @@ The command groups intentionally distinguish different kinds of state:
 
 | Command | Reads or changes |
 |---|---|
-| `vehicles active` | Probes live PiCar and Chase endpoints. |
+| `vehicles active` | Probes discoverable PiCar and Chase endpoints; does not imply deployment, worker, or view state. |
+| `vehicles status` | Reads the complete Chase simulator, vehicle, deployment, worker, capture, and view state without changing it; other local deployments are listed separately with their inspection command. |
 | `vehicles update perception` | Packages code and stages a vehicle perception activation locally. |
 | `vehicles update decision` | Packages code and stages a decision activation locally. |
 | `vehicles update memory` | Packages code and stages a vehicle memory activation locally (default `bounded_evidence`). |
@@ -125,25 +126,36 @@ Use `help` at a command-group level and `--help` for final command options:
 
 ## Chase Simulator Workflow
 
-Prepare the simulator and verify that the Play/Chase frontend is connected:
+The supported passive path starts from the Metrics UI URL and preserves the
+operator's current simulator session:
 
 ```sh
-./cli/automa simulators ensure
+./cli/automa vehicles status --chase-url http://localhost:5050
+./cli/automa vehicles update perception \
+  --id chase-sim-chaser \
+  --algorithm lightweight_observer
+./cli/automa vehicles automation run \
+  --id chase-sim-chaser \
+  --observe-only \
+  --frames 0 \
+  --open-view
+./cli/automa vehicles status --id chase-sim-chaser
+./cli/automa vehicles automation stop --id chase-sim-chaser
+./cli/automa vehicles status --id chase-sim-chaser
+```
+
+See the
+[Chase simulator-to-perception CLI journey](docs/reference/cli-simulator-perception-journey.md)
+for the layer vocabulary, timeout semantics, and exact recovery behavior.
+
+`vehicles status`, staging, observation-only startup, viewing, and cleanup do
+not select a scenario, change playback or control/input state, or apply vehicle
+movement. To explicitly prepare the repository's known demonstration
+environment, opt into the configuration-changing command:
+
+```sh
 ./cli/automa simulators ensure --scenario chaser-depth-obstacles
-./cli/automa vehicles active
 ```
-
-`simulators ensure` succeeds only after the selected scenario and Chase debug
-state remain reachable through a short post-setup stability probe.
-
-Stage the simulator color-control algorithm. A fresh controller bundle also
-receives the explicit idle decision activation:
-
-```sh
-./cli/automa vehicles update perception --id chase-sim-chaser --algorithm sim_debug
-```
-
-Use `vehicles update decision` when deliberately changing the selected engine.
 
 Inspect the machine-readable contracts declared by the staged code:
 
@@ -152,8 +164,8 @@ Inspect the machine-readable contracts declared by the staged code:
 ./cli/automa vehicles info decision --id chase-sim-chaser
 ```
 
-Start the controller worker in the background. It takes Chase WS control by
-default, but the current decision engine emits only idle control:
+The control-taking form remains available for deliberately requested controller
+work, but it is not the passive perception journey:
 
 ```sh
 ./cli/automa vehicles automation run --id chase-sim-chaser
@@ -163,10 +175,10 @@ default, but the current decision engine emits only idle control:
 ./cli/automa vehicles stream perception --id piracer
 ```
 
-`automation run` and `automation restart` wait until the worker has captured
-its first camera frame and published the view. They return a nonzero result and
-persist the startup reason in `state.json` when discovery, model loading, or
-camera startup fails; a spawned PID alone is not reported as success.
+`automation run` waits for a camera frame, the completed perception result for
+that frame, and a healthy view belonging to the same worker generation. It
+returns a nonzero result and preserves the exact capture code/path when those
+gates fail; a spawned PID alone is not reported as success.
 
 While the automation worker is running, `vehicles info perception` reports a
 loopback URL for a live frame-and-data view. The page polls the worker's
@@ -190,7 +202,8 @@ Useful run options:
 - `--frames N` makes a bounded capture run.
 - `--interval-s` sets the camera capture cadence; it defaults to `0.25` seconds.
 - `--interval-s 0` captures as quickly as the vehicle interface allows.
-- `--observe-only` leaves movement authority with the simulator.
+- `--observe-only` preserves the current simulator session and applies no control.
+- `--open-view` opens the browser only after the correlated view is healthy.
 - `--record` keeps timestamped frame and perception artifacts.
 - `--log` persists worker output. No worker log is written by default.
 
@@ -232,6 +245,9 @@ Guided stationary physical placement check (PiCar only; never commands movement)
 ```
 
 Results land under `lab/runs/perception-check/<run-id>/` with `review.html` when `--record` is set.
+Recorded perception experiment reviews provide source, processed, and combined
+view modes plus play/pause and frame scrubbing; the review remains a local,
+dependency-free HTML artifact alongside its recorded images.
 
 Offline strategy qualification on a recorded check run:
 

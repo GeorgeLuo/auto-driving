@@ -1,0 +1,491 @@
+{
+  "generator": {
+    "name": "parser_walk.walk_leaves",
+    "revision": "a989324470e6fc04c9d9678e2337daf47828100b",
+    "source_commit": "a989324470e6fc04c9d9678e2337daf47828100b"
+  },
+  "leaves": [
+    {
+      "help": "Show top-level commands and common examples.",
+      "kind": "meta",
+      "leaf_id": "help",
+      "tokens": [
+        "help"
+      ]
+    },
+    {
+      "alias_of": "simulators.help",
+      "help": "usage: automa simulators [-h] {help,status,ensure} ...",
+      "kind": "alias",
+      "leaf_id": "simulators",
+      "tokens": [
+        "simulators"
+      ]
+    },
+    {
+      "help": "Explicitly launch/configure a known simulator environment.",
+      "kind": "action",
+      "leaf_id": "simulators.ensure",
+      "tokens": [
+        "simulators",
+        "ensure"
+      ]
+    },
+    {
+      "help": "Show simulator-level commands.",
+      "kind": "meta",
+      "leaf_id": "simulators.help",
+      "tokens": [
+        "simulators",
+        "help"
+      ]
+    },
+    {
+      "help": "Show whether SimEval has an online simulator deployment.",
+      "kind": "action",
+      "leaf_id": "simulators.status",
+      "tokens": [
+        "simulators",
+        "status"
+      ]
+    },
+    {
+      "alias_of": "vehicles.help",
+      "help": "usage: automa vehicles [-h]",
+      "kind": "alias",
+      "leaf_id": "vehicles",
+      "tokens": [
+        "vehicles"
+      ]
+    },
+    {
+      "help": "Discover vehicle endpoints; this does not imply deployment or a running worker.",
+      "kind": "action",
+      "leaf_id": "vehicles.active",
+      "tokens": [
+        "vehicles",
+        "active"
+      ]
+    },
+    {
+      "alias_of": "vehicles.automation.help",
+      "help": "usage: automa vehicles automation [-h] {help,run,stop,status,restart} ...",
+      "kind": "alias",
+      "leaf_id": "vehicles.automation",
+      "tokens": [
+        "vehicles",
+        "automation"
+      ]
+    },
+    {
+      "help": "Show automation-level commands.",
+      "kind": "meta",
+      "leaf_id": "vehicles.automation.help",
+      "tokens": [
+        "vehicles",
+        "automation",
+        "help"
+      ]
+    },
+    {
+      "help": "Restart the automation worker and verify its first camera frame.",
+      "kind": "action",
+      "leaf_id": "vehicles.automation.restart",
+      "tokens": [
+        "vehicles",
+        "automation",
+        "restart"
+      ]
+    },
+    {
+      "help": "Start a worker and verify one correlated camera/perception publication.",
+      "kind": "action",
+      "leaf_id": "vehicles.automation.run",
+      "tokens": [
+        "vehicles",
+        "automation",
+        "run"
+      ]
+    },
+    {
+      "help": "Show locally deployed automation runtimes and worker status.",
+      "kind": "action",
+      "leaf_id": "vehicles.automation.status",
+      "tokens": [
+        "vehicles",
+        "automation",
+        "status"
+      ]
+    },
+    {
+      "help": "Stop the background automation loop for a vehicle.",
+      "kind": "action",
+      "leaf_id": "vehicles.automation.stop",
+      "tokens": [
+        "vehicles",
+        "automation",
+        "stop"
+      ]
+    },
+    {
+      "help": "Show vehicle-level commands.",
+      "kind": "meta",
+      "leaf_id": "vehicles.help",
+      "tokens": [
+        "vehicles",
+        "help"
+      ]
+    },
+    {
+      "help": "Show the locally staged decision engine and stage schema.",
+      "kind": "action",
+      "leaf_id": "vehicles.info.decision",
+      "tokens": [
+        "vehicles",
+        "info",
+        "decision"
+      ]
+    },
+    {
+      "help": "Show info-level commands.",
+      "kind": "meta",
+      "leaf_id": "vehicles.info.help",
+      "tokens": [
+        "vehicles",
+        "info",
+        "help"
+      ]
+    },
+    {
+      "help": "Show the locally staged memory implementation and bounds.",
+      "kind": "action",
+      "leaf_id": "vehicles.info.memory",
+      "tokens": [
+        "vehicles",
+        "info",
+        "memory"
+      ]
+    },
+    {
+      "help": "Show the staged perception schema and current published view URL.",
+      "kind": "action",
+      "leaf_id": "vehicles.info.perception",
+      "tokens": [
+        "vehicles",
+        "info",
+        "perception"
+      ]
+    },
+    {
+      "alias_of": "vehicles.memory.help",
+      "help": "usage: automa vehicles memory [-h] {help,reset,replay,check} ...",
+      "kind": "alias",
+      "leaf_id": "vehicles.memory",
+      "tokens": [
+        "vehicles",
+        "memory"
+      ]
+    },
+    {
+      "help": "Run present/dropout/expiry/reset memory lifecycle gates (Chase or Pi).",
+      "kind": "action",
+      "leaf_id": "vehicles.memory.check",
+      "tokens": [
+        "vehicles",
+        "memory",
+        "check"
+      ]
+    },
+    {
+      "help": "Show memory-level commands.",
+      "kind": "meta",
+      "leaf_id": "vehicles.memory.help",
+      "tokens": [
+        "vehicles",
+        "memory",
+        "help"
+      ]
+    },
+    {
+      "help": "Replay a fixed observation sequence through staged memory offline.",
+      "kind": "action",
+      "leaf_id": "vehicles.memory.replay",
+      "tokens": [
+        "vehicles",
+        "memory",
+        "replay"
+      ]
+    },
+    {
+      "help": "Reset live memory to a new empty epoch on Chase or PiCar.",
+      "kind": "action",
+      "leaf_id": "vehicles.memory.reset",
+      "tokens": [
+        "vehicles",
+        "memory",
+        "reset"
+      ]
+    },
+    {
+      "alias_of": "vehicles.operation.help",
+      "help": "usage: automa vehicles operation [-h] {help,startup-check} ...",
+      "kind": "alias",
+      "leaf_id": "vehicles.operation",
+      "tokens": [
+        "vehicles",
+        "operation"
+      ]
+    },
+    {
+      "help": "Show operation-level commands.",
+      "kind": "meta",
+      "leaf_id": "vehicles.operation.help",
+      "tokens": [
+        "vehicles",
+        "operation",
+        "help"
+      ]
+    },
+    {
+      "help": "Send bounded action pulses and verify camera changes around each command.",
+      "kind": "action",
+      "leaf_id": "vehicles.operation.startup-check",
+      "tokens": [
+        "vehicles",
+        "operation",
+        "startup-check"
+      ]
+    },
+    {
+      "alias_of": "vehicles.perception.help",
+      "help": "usage: automa vehicles perception [-h]",
+      "kind": "alias",
+      "leaf_id": "vehicles.perception",
+      "tokens": [
+        "vehicles",
+        "perception"
+      ]
+    },
+    {
+      "help": "Apply perception to an existing image or image directory.",
+      "kind": "action",
+      "leaf_id": "vehicles.perception.apply",
+      "tokens": [
+        "vehicles",
+        "perception",
+        "apply"
+      ]
+    },
+    {
+      "help": "Show experimental perception candidates and readiness.",
+      "kind": "action",
+      "leaf_id": "vehicles.perception.candidates",
+      "tokens": [
+        "vehicles",
+        "perception",
+        "candidates"
+      ]
+    },
+    {
+      "help": "Run a guided stationary physical perception placement check.",
+      "kind": "action",
+      "leaf_id": "vehicles.perception.check",
+      "tokens": [
+        "vehicles",
+        "perception",
+        "check"
+      ]
+    },
+    {
+      "help": "Compare all ready lab candidates on one image sequence.",
+      "kind": "action",
+      "leaf_id": "vehicles.perception.compare",
+      "tokens": [
+        "vehicles",
+        "perception",
+        "compare"
+      ]
+    },
+    {
+      "help": "Disable one plugin in the locally staged perception activation.",
+      "kind": "action",
+      "leaf_id": "vehicles.perception.disable",
+      "tokens": [
+        "vehicles",
+        "perception",
+        "disable"
+      ]
+    },
+    {
+      "help": "Enable one plugin in the locally staged perception activation.",
+      "kind": "action",
+      "leaf_id": "vehicles.perception.enable",
+      "tokens": [
+        "vehicles",
+        "perception",
+        "enable"
+      ]
+    },
+    {
+      "help": "Show perception-level commands.",
+      "kind": "meta",
+      "leaf_id": "vehicles.perception.help",
+      "tokens": [
+        "vehicles",
+        "perception",
+        "help"
+      ]
+    },
+    {
+      "help": "Compare packaged control vs one lab candidate on labeled physical-check frames.",
+      "kind": "action",
+      "leaf_id": "vehicles.perception.qualify",
+      "tokens": [
+        "vehicles",
+        "perception",
+        "qualify"
+      ]
+    },
+    {
+      "help": "Observe a short perception sequence from an active vehicle.",
+      "kind": "action",
+      "leaf_id": "vehicles.perception.run",
+      "tokens": [
+        "vehicles",
+        "perception",
+        "run"
+      ]
+    },
+    {
+      "help": "Prepare one isolated perception candidate.",
+      "kind": "action",
+      "leaf_id": "vehicles.perception.setup",
+      "tokens": [
+        "vehicles",
+        "perception",
+        "setup"
+      ]
+    },
+    {
+      "help": "Measure onboard physical observation cadence and freshness for a PiCar.",
+      "kind": "action",
+      "leaf_id": "vehicles.perception.viability",
+      "tokens": [
+        "vehicles",
+        "perception",
+        "viability"
+      ]
+    },
+    {
+      "help": "Show simulator, vehicle, deployment, worker, and perception-view state.",
+      "kind": "action",
+      "leaf_id": "vehicles.status",
+      "tokens": [
+        "vehicles",
+        "status"
+      ]
+    },
+    {
+      "help": "Show stream-level commands.",
+      "kind": "meta",
+      "leaf_id": "vehicles.stream.help",
+      "tokens": [
+        "vehicles",
+        "stream",
+        "help"
+      ]
+    },
+    {
+      "help": "Inspect live memory as a key\u2192value ledger (terminal + local map page).",
+      "kind": "action",
+      "leaf_id": "vehicles.stream.memory",
+      "tokens": [
+        "vehicles",
+        "stream",
+        "memory"
+      ]
+    },
+    {
+      "help": "Show the latest perception output, replacing the terminal view as it updates.",
+      "kind": "action",
+      "leaf_id": "vehicles.stream.perception",
+      "tokens": [
+        "vehicles",
+        "stream",
+        "perception"
+      ]
+    },
+    {
+      "alias_of": "vehicles.update.help",
+      "help": "usage: automa vehicles update [-h]",
+      "kind": "alias",
+      "leaf_id": "vehicles.update",
+      "tokens": [
+        "vehicles",
+        "update"
+      ]
+    },
+    {
+      "help": "Deploy a versioned autonomy controller release to a physical PiCar.",
+      "kind": "action",
+      "leaf_id": "vehicles.update.autonomy",
+      "tokens": [
+        "vehicles",
+        "update",
+        "autonomy"
+      ]
+    },
+    {
+      "help": "Sync the Donkey harness and install its boot-enabled runtime service.",
+      "kind": "action",
+      "leaf_id": "vehicles.update.core",
+      "tokens": [
+        "vehicles",
+        "update",
+        "core"
+      ]
+    },
+    {
+      "help": "Stage a decision engine in the local controller bundle.",
+      "kind": "action",
+      "leaf_id": "vehicles.update.decision",
+      "tokens": [
+        "vehicles",
+        "update",
+        "decision"
+      ]
+    },
+    {
+      "help": "Show update-level commands.",
+      "kind": "meta",
+      "leaf_id": "vehicles.update.help",
+      "tokens": [
+        "vehicles",
+        "update",
+        "help"
+      ]
+    },
+    {
+      "help": "Stage a memory implementation in the local controller bundle.",
+      "kind": "action",
+      "leaf_id": "vehicles.update.memory",
+      "tokens": [
+        "vehicles",
+        "update",
+        "memory"
+      ]
+    },
+    {
+      "help": "Stage a perception algorithm in a vehicle's local controller bundle.",
+      "kind": "action",
+      "leaf_id": "vehicles.update.perception",
+      "tokens": [
+        "vehicles",
+        "update",
+        "perception"
+      ]
+    }
+  ],
+  "program": "automa",
+  "schema": "m007_leaf_inventory_v1"
+}

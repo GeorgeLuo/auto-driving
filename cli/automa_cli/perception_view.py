@@ -35,6 +35,8 @@ class PerceptionViewServer:
         automation_dir: Path,
         host: str = VIEW_HOST,
         port: int | None = None,
+        run_id: str | None = None,
+        worker_pid: int | None = None,
     ) -> None:
         if host not in {"127.0.0.1", "localhost", "::1"}:
             raise ValueError("perception view must bind to a loopback address")
@@ -42,6 +44,8 @@ class PerceptionViewServer:
         self.automation_dir = automation_dir
         self.host = host
         self.preferred_port = _vehicle_view_port(vehicle_id) if port is None else int(port)
+        self.run_id = run_id
+        self.worker_pid = int(worker_pid) if isinstance(worker_pid, int) else os.getpid()
         self.record_path = automation_dir / VIEW_RECORD_NAME
         self._lock = threading.Lock()
         self._httpd: ThreadingHTTPServer | None = None
@@ -124,6 +128,8 @@ class PerceptionViewServer:
         return {
             "schema": VIEW_SCHEMA,
             "vehicle_id": self.vehicle_id,
+            "run_id": self.run_id,
+            "worker_pid": self.worker_pid,
             "status": status,
             "available": status == "running" and self._httpd is not None,
             "url": self.url,
@@ -303,7 +309,13 @@ class _PerceptionViewHandler(BaseHTTPRequestHandler):
         return None
 
 
-def get_perception_view_status(automation_dir: Path, *, timeout_s: float = 0.25) -> dict[str, Any]:
+def get_perception_view_status(
+    automation_dir: Path,
+    *,
+    timeout_s: float = 0.25,
+    expected_run_id: str | None = None,
+    expected_worker_pid: int | None = None,
+) -> dict[str, Any]:
     record_path = automation_dir / VIEW_RECORD_NAME
     record = _read_json(record_path)
     if not isinstance(record, dict):
@@ -323,6 +335,18 @@ def get_perception_view_status(automation_dir: Path, *, timeout_s: float = 0.25)
             "status": "unavailable",
             "reason": "perception view record has no valid loopback URL",
         }
+    generation_error = _view_generation_error(
+        record,
+        expected_run_id=expected_run_id,
+        expected_worker_pid=expected_worker_pid,
+    )
+    if generation_error is not None:
+        return {
+            **record,
+            "available": False,
+            "status": "stale",
+            "reason": generation_error,
+        }
     try:
         with urlopen(urljoin(url, "api/health"), timeout=max(0.05, timeout_s)) as response:
             health = json.loads(response.read().decode("utf-8"))
@@ -340,6 +364,30 @@ def get_perception_view_status(automation_dir: Path, *, timeout_s: float = 0.25)
             "status": "unavailable",
             "reason": "perception view returned an invalid health response",
         }
+    generation_error = _view_generation_error(
+        health,
+        expected_run_id=expected_run_id,
+        expected_worker_pid=expected_worker_pid,
+    )
+    if generation_error is not None:
+        return {
+            **record,
+            **health,
+            "available": False,
+            "status": "stale",
+            "reason": generation_error,
+        }
+    if not perception_view_ready(health):
+        return {
+            **record,
+            **health,
+            "available": False,
+            "status": "warming",
+            "reason": (
+                "perception view has not published one correlated camera and "
+                "perception frame"
+            ),
+        }
     return {
         **record,
         **health,
@@ -347,6 +395,42 @@ def get_perception_view_status(automation_dir: Path, *, timeout_s: float = 0.25)
         "status": "running",
         "reason": None,
     }
+
+
+def perception_view_ready(payload: dict[str, Any]) -> bool:
+    """True only for one current correlated camera/perception publication."""
+
+    return bool(
+        payload.get("available")
+        and payload.get("url")
+        and payload.get("has_frame")
+        and payload.get("has_perception")
+        and payload.get("latest_frame_id")
+        and payload.get("latest_frame_id")
+        == payload.get("latest_perception_frame_id")
+    )
+
+
+def _view_generation_error(
+    payload: dict[str, Any],
+    *,
+    expected_run_id: str | None,
+    expected_worker_pid: int | None,
+) -> str | None:
+    if expected_run_id is not None and payload.get("run_id") != expected_run_id:
+        return (
+            "perception view belongs to a stale worker generation: "
+            f"expected run_id={expected_run_id!r}, got {payload.get('run_id')!r}"
+        )
+    if (
+        expected_worker_pid is not None
+        and payload.get("worker_pid") != expected_worker_pid
+    ):
+        return (
+            "perception view belongs to a stale worker process: "
+            f"expected pid={expected_worker_pid}, got {payload.get('worker_pid')!r}"
+        )
+    return None
 
 
 def _publication_payload(

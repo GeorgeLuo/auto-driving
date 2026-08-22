@@ -107,7 +107,26 @@ class PerceptionCommandTests(unittest.TestCase):
                 vehicle_id=vehicle_id,
                 automation_dir=automation_dir,
                 port=0,
+                run_id="test-run",
+                worker_pid=os.getpid(),
             ).start()
+            frame_path = Path(tmp) / "current-frame.png"
+            Image.new("RGB", (16, 12), (20, 40, 60)).save(frame_path)
+            frame_record = {
+                "frame_id": "frame_000002",
+                "frame_index": 2,
+                "captured_at_ms": 1000,
+                "perception": {"things": [], "signals": []},
+                "sensor_snapshot": {
+                    "readings": {
+                        "front_camera": {
+                            "metadata": {"content_type": "image/png"},
+                        }
+                    }
+                },
+            }
+            server.publish_frame(frame_path=frame_path, frame_record=frame_record)
+            server.publish_perception(frame_record=frame_record)
             expected_url = server.url
             try:
                 text_result = run_automa(

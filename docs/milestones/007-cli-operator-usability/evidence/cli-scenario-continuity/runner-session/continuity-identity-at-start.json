@@ -1,0 +1,37 @@
+{
+  "catalog_path": "<repo>/docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/catalogs/m007-continuity.yaml",
+  "catalog_sha256": "c3a91dd86354f185d17b13cbc1500edfa343ad05340eece335065b0e2233bd12",
+  "continuity_contract_sha256": "8cc8c22bc355f8001e46f00995815d924a4299c419c61bf2a3e40d40e61ceb4b",
+  "metrics_ui": {
+    "branch": "m002/04-passive-observation",
+    "commit": "722e070fdc9f4ee89d13f947bf3996e62dcb2783",
+    "diff_identity": null,
+    "linked_pr": null,
+    "named_diff": null,
+    "path": "Stream-Metrics-UI",
+    "worktree_state": "clean"
+  },
+  "metrics_ui_required": false,
+  "product_collection_errors": {},
+  "product_sha256": {
+    "autonomy/": "6431a4fccd949ccaea2cbc66bf2a310dfabc454ac439ba737f524832c23efd99",
+    "cli/automa": "a88ec0f9081e8447150b4a1e322517c4b73e0c1a4fa92e70c17fffde544291ce",
+    "cli/automa_cli/": "02d6e349f941d14afa26be54a45fb4d62d5272a7a3f75131d1fe97b96d81e75c",
+    "cli/automa_cli/app.py": "7ab58f01eb1cb7ee6176173cee6f6d55d027ee42b5fc079c1eefeafe2a91ab85",
+    "cli/automa_cli/automation.py": "33fc472820d82db2c9387e7bb3707c620b7b5117157f15f681ef861178eebc03",
+    "cli/automa_cli/bundles.py": "d275bd901bc48a29a271ba68c873670981439a483a62e667db046321ad17f695",
+    "cli/automa_cli/decision.py": "7e20cdb5a779814b9922c52719e04302b56454e071a6d6252a64cc12f24e6d7f",
+    "cli/automa_cli/lab_plugins.py": "a0096127eca99a2ea2f2f605af9e6581eb0321c9548fd81c2eedeea414944273",
+    "cli/automa_cli/memory.py": "1b4e8489f324a61556e6220dff2628e4cb4d6adbb8dbfd95c9706a3bc5cf19a0",
+    "cli/automa_cli/memory_check.py": "de1f7a135f965620db0b334b168ff8c70b8bf4cee23dc2aa8cf4eb2cf919242a",
+    "cli/automa_cli/operations.py": "bf331de5ad5164204752098875473d3ea387ad0101aae9aba35d6d245d19faac",
+    "cli/automa_cli/perception.py": "5a72976a55c17239ae17cd32eb3eb348f3d2ceee46fb518dbe8ad90bcacbcab3",
+    "cli/automa_cli/perception_runs.py": "3addb04981cff7c04dbd25570f74f75e03be6bbab78431537278c8ad2147e5f9",
+    "cli/automa_cli/perception_view.py": "53cedb315a2a18ec2c25f8c9e5623406d0f0d622fe7d69d2c534cd1595524a0a",
+    "cli/automa_cli/streaming.py": "f42ba7c32d84bc8dcd69558ac47b82f2ef9f5d15f803b778f3a08deff32155ae",
+    "cli/automa_cli/vehicles.py": "7dbb09e7585506dc54e2ca0360b478269f64da2d27471c38b6bdc7450aca0de4",
+    "implementations/": "a87006c3f975546c377659babdfe50bb50a7d9cee607626d538145133e64cac3"
+  },
+  "runner_sha256": "45da4ea9f2ccf66b27709e63061c8d1cddcac1ce768a757eb723b92246baff05",
+  "schema": "continuity_identity_bundle_v0"
+}

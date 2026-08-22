@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="e95cd24ce72aa0c58ea77752f9af1b00b078a1a958ebd8e8ff47ae193cd99fbc">
+  <meta name="source-sha256" content="18e59a127c0a8c51c8a82689afb0e1d32e7825897851fe420ad41eb70d28b140">
   <base target="_blank">
   <title>Milestone plan — 007-cli-operator-usability</title>
   <style>
@@ -85,7 +85,7 @@
 </tr>
 <tr>
 <td>Current frontier</td>
-<td>Capability disposition outside CLI journeys</td>
+<td>None (idle)</td>
 </tr>
 <tr>
 <td>Started</td>
@@ -342,8 +342,8 @@ deletion; it does not retroactively widen the accepted primary journey.</p>
 <tr>
 <td>M007-09</td>
 <td>Owned production code not reached by the declared CLI journey set is grouped by capability and reconciled with tests, other entrypoints, dynamic/platform paths, and ownership; every group is flagged to expose through CLI, retain with explicit reason, or remove through separately reviewed work</td>
-<td>Unmet</td>
-<td>Follows the accepted CLI-leaf and usage-pattern audit</td>
+<td>Met</td>
+<td>PR #138 groups unreached owned production code from the sealed journey-coverage report, reconciles tests/entrypoints/dynamic-or-platform paths and ownership, and records an owned expose, retain, or remove candidate for every group without using a coverage percentage as authorization</td>
 </tr>
 <tr>
 <td>M007-10</td>
@@ -355,19 +355,10 @@ deletion; it does not retroactively widen the accepted primary journey.</p>
 </table>
 <h2>Current Delivery</h2>
 <h3>Current Frontier</h3>
-<p><strong>Capability disposition outside CLI journeys</strong></p>
+<p><strong>None</strong></p>
 <ul>
-<li>Workflow state: implementation_in_review</li>
-<li>Proposal branch: <code>m007/capability-disposition-proposal</code></li>
-<li>Implementation branch: <code>m007/capability-disposition</code></li>
-<li>Proposal path: <code>docs/milestones/007-cli-operator-usability/proposals/capability-disposition.md</code></li>
-<li>Accepted proposal: <a href="https://github.com/GeorgeLuo/auto-driving/pull/133">#133</a> at <code>569d59de2faaca59dab5f5fa04d3da366c9d211c</code> (reviewed head <code>7e30872f32a123f56556167c0c428a9506474dbb</code> by <code>GeorgeLuo</code> as <code>OWNER</code> at <code>2026-08-21T06:37:57Z</code>)</li>
-<li>Review kind: Deterministic invariant closure</li>
-<li>Review question: Can owned production code not reached by the declared CLI journey set be grouped by capability and reconciled with tests, other entrypoints, dynamic or platform paths, and ownership so every group is flagged to expose through CLI, retain with an explicit owner and reason, or remove through separately reviewed work, without authorizing feature or deletion solely by a coverage percentage?</li>
-<li>Acceptance owner: Capability grouping from leaf inventory, sequence registry, and #107 reachability; owned expose/retain/remove candidate record</li>
-<li>Exit criteria affected: M007-09</li>
-<li>Prerequisite: M007-08 is <code>Met</code>; complete-to-parser leaf inventory, US-01 through US-10 dispositions, and journey-coverage attribution are stable inputs</li>
-<li>Milestone-level non-goal: Executing the expose/retain/remove product work itself, numeric coverage gates, reopening M007-08 accounting, or milestone closeout</li>
+<li>Reason: M007-09 leaves owned expose/retain/remove candidates. Closeout (M007-06) is the remaining milestone unit when the operator is ready; it does not execute those candidates.</li>
+<li>Revisit when: Operator starts milestone closeout, or a later unit implements a named expose or remove candidate.</li>
 </ul>
 <h3>Next-Frontier Candidate</h3>
 <p><strong>None</strong></p>
@@ -570,6 +561,11 @@ deletion; it does not retroactively widen the accepted primary journey.</p>
 <td>implementation_in_review</td>
 <td>Started m007/capability-disposition.</td>
 </tr>
+<tr>
+<td>Capability disposition outside CLI journeys</td>
+<td>accepted</td>
+<td>Implementation PR #138 merged at 460e2827bd6b586e75bc698593be064f4c10e6f9.</td>
+</tr>
 </tbody>
 </table>
 <h2>Accepted Review Units</h2>
@@ -619,6 +615,13 @@ deletion; it does not retroactively widen the accepted primary journey.</p>
 <td>M007-08</td>
 <td>Complete CLI surface and sequence audit in PR #122: argparse-derived leaf inventory with mandatory overlay dimensions; committed #88 catalog authority snapshot and US-01 through US-10 registry bound to it; parser-aware argv validation; semantic hybrid passed citation (rejecting incomplete rehearsals) or new execute evidence; required coverage treatment enums; validators and cross-checks; help-drift report; linked LIVE residuals without product repair; rendered residual rollup; tracked evidence under docs/milestones/007-cli-operator-usability/evidence/cli-surface-audit/</td>
 </tr>
+<tr>
+<td>#138</td>
+<td>Can owned production code not reached by the declared CLI journey set be grouped by capability and reconciled with tests, other entrypoints, dynamic or platform paths, and ownership so every group is flagged to expose through CLI, retain with an explicit owner and reason, or remove through separately reviewed work, without authorizing feature or deletion solely by a coverage percentage?</td>
+<td>Accepted</td>
+<td>M007-09</td>
+<td>Capability disposition outside CLI journeys in PR #138: unreached owned production code derived from sealed M007-07 report; every region in exactly one capability group; tests/entrypoints/platform/owner reconciled; expose/retain/remove candidates with non-percentage reasons; validators reject omission and percentage-as-authorization; derived HTML of that record; tracked evidence under docs/milestones/007-cli-operator-usability/evidence/capability-disposition/</td>
+</tr>
 </tbody>
 </table>
 <h2>Open Risks And Unverified Assumptions</h2>
@@ -652,11 +655,6 @@ deletion; it does not retroactively widen the accepted primary journey.</p>
 <td>Keep view health authoritative; browser launch is explicit and reports its own non-fatal result and URL</td>
 </tr>
 <tr>
-<td>Coverage absence is not proof that code is dead</td>
-<td>Hardware paths, dynamic plugins, libraries, and non-CLI entrypoints could be removed or exposed incorrectly</td>
-<td>Reconcile uncovered regions with tests, entrypoints, dynamic loading, platform constraints, and an explicit owner before disposition</td>
-</tr>
-<tr>
 <td>Running every CLI leaf can be unsafe or environment-dependent</td>
 <td>A coverage target could encourage movement, destructive operations, hardware access, or misleading skips</td>
 <td>Inventory every leaf, but execute only declared safe patterns; record prerequisites and non-executed live/hazardous classifications explicitly</td>
@@ -670,6 +668,11 @@ deletion; it does not retroactively widen the accepted primary journey.</p>
 <td>Cited sequence passed status is historical, not continuous HEAD verification</td>
 <td>Regressions after #88/#100 may not be visible in the audit registry until a separate re-proof</td>
 <td>Optional live smoke or product-unit re-proof when journeys are reopened; residual risk at closeout</td>
+</tr>
+<tr>
+<td>Capability dispositions are historical to the sealed M007-07 report</td>
+<td>Later product commits can change what is unreached without updating the candidate record</td>
+<td>Closeout cites the record digest; a later unit recaptures #107 if reachability must be refreshed</td>
 </tr>
 </tbody>
 </table>

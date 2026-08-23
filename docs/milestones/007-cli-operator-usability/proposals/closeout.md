@@ -70,6 +70,10 @@ M007 closes only when all of the following hold:
    integrity checks and full deterministic validation. It does not recapture
    live Chase/Pi evidence merely to refresh dates, redefine accepted verdicts,
    or turn historical coverage into a HEAD claim.
+   M007-07 integrity is checked under the exact merged PR #107 head that owns
+   its source ancestry, then the verified report is byte-compared with the
+   report carried by the closeout head. It is not reinterpreted through the
+   current-head freshness gate after the implementation was squash-merged.
 6. **Residual work remains visible.** Open issues #89, #90, and #91; the five
    owned `M007-LIVE-*` residuals; deferred/blocked US rows; and the
    `cli-operator-surfaces` expose candidate remain explicit follow-on work.
@@ -100,7 +104,7 @@ durable judgment. It does not replace them with prose summaries as authority.
 | Durable operator guide | `docs/reference/cli-simulator-perception-journey.md`, linked from root `README.md` |
 | Live CLI acceptance | `result: pass`; auto-driving `caf335797b71df1323736a2054934b7c211418b0`; Metrics UI `722e070fdc9f4ee89d13f947bf3996e62dcb2783`; bounded-stale lag 15 within bound 24; no acceptance findings |
 | Scenario continuity | `result: pass` at behavior head `37b7393fe759f1597860a30d8c10ca5692f1c0cc`; required offline-perception, live-config-swap, and memory-lifecycle families passed; named HITL, cleanup, restore, and finalizer passed |
-| Journey coverage | Report digest `51801c7686b247055114109e7462d13cb6702a1c8dcd8990a168f68357015789`; source commit `7931fa9a995af5626fabef818f9e28b98c73e299`; 34 commands/contexts, 37 shards, 63 represented owned files; behavioral verdict not evaluated |
+| Journey coverage | PR #107 head `fda10c6b6f7fe98c7904d0b9bbfa1bc45c6b671b`; report digest `51801c7686b247055114109e7462d13cb6702a1c8dcd8990a168f68357015789`; source commit `7931fa9a995af5626fabef818f9e28b98c73e299`; 34 commands/contexts, 37 shards, 63 represented owned files; behavioral verdict not evaluated |
 | CLI surface audit | 49 leaves: 32 action, 10 meta, 7 alias; sequence dispositions 2 passed, 7 deferred, 1 blocked; zero unclassified leaves; help drift `ok` |
 | Capability disposition | Record digest `81ce4993fe8624bbc818bcad7142dafb78e2be1ef6c45a6115ae535a51477e6f`; 96 sealed source members, 93 candidates, 93 assigned, zero residual membership errors; 10 groups |
 
@@ -305,6 +309,7 @@ The handoff commit changes only `plan.md` and `plan.html`.
 | Closeout runs hazardous, movement, destructive, external, or Pi leaves merely to refresh proof | Reject |
 | Closeout claims PiRacer parity, remote hosting, autonomous movement, or non-idle safety | Reject |
 | Existing evidence JSON or HTML is regenerated just to obtain a newer timestamp | Reject; preserve accepted bytes |
+| M007-07 `verify-report` is run from the squash-merged milestone/closeout head | Reject; resolve the exact frozen PR #107 head, verify under that original ancestry, and require byte equality with the closeout report |
 | `closeout.md` omits an active-plan risk before Phase B removes it | Reject |
 | Cumulative PR #81 retains its stale “None yet” accepted-unit body | Reject Phase A completeness |
 | Implementation PR claims cumulative PR #81 is ready or merged | Reject; that is Phase C |
@@ -406,10 +411,31 @@ no terminal plan mutation.
 ```sh
 PYTHONDONTWRITEBYTECODE=1 python3 tests/run.py
 
-export M007_COVERAGE_PYTHON="$(python3 -c 'import sys; print(sys.executable)')"
-docs/milestones/007-cli-operator-usability/tools/cli-journey-coverage/coverage_session \
-  verify-report \
-  docs/milestones/007-cli-operator-usability/evidence/cli-journey-coverage/report.json
+set -euo pipefail
+M007_ACCEPTED_COVERAGE_HEAD='fda10c6b6f7fe98c7904d0b9bbfa1bc45c6b671b'
+M007_COVERAGE_REPORT='docs/milestones/007-cli-operator-usability/evidence/cli-journey-coverage/report.json'
+M007_VERIFY_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/m007-coverage-verify.XXXXXX")"
+M007_VERIFY_WORKTREE="$M007_VERIFY_ROOT/accepted-head"
+cleanup_m007_verify() {
+  git worktree remove --force "$M007_VERIFY_WORKTREE" >/dev/null 2>&1 || true
+  rmdir "$M007_VERIFY_ROOT" >/dev/null 2>&1 || true
+}
+trap cleanup_m007_verify EXIT
+
+git fetch --no-tags origin pull/107/head
+M007_FETCHED_HEAD="$(git rev-parse FETCH_HEAD)"
+test "$M007_FETCHED_HEAD" = "$M007_ACCEPTED_COVERAGE_HEAD"
+git worktree add --detach "$M007_VERIFY_WORKTREE" "$M007_ACCEPTED_COVERAGE_HEAD"
+cmp "$M007_COVERAGE_REPORT" "$M007_VERIFY_WORKTREE/$M007_COVERAGE_REPORT"
+(
+  cd "$M007_VERIFY_WORKTREE"
+  export PYTHONDONTWRITEBYTECODE=1
+  export M007_COVERAGE_PYTHON="$(python3 -c 'import sys; print(sys.executable)')"
+  docs/milestones/007-cli-operator-usability/tools/cli-journey-coverage/coverage_session \
+    verify-report "$M007_COVERAGE_REPORT"
+)
+cleanup_m007_verify
+trap - EXIT
 
 python3 docs/milestones/007-cli-operator-usability/tools/cli-surface-audit/validate_audit.py
 python3 docs/milestones/007-cli-operator-usability/tools/capability-disposition/capability_disposition.py validate
@@ -425,11 +451,14 @@ python3 docs/milestones/workflow.py validate-pr \
 git diff --check
 ```
 
-The implementation records exact results at its final head. It additionally
+The implementation records exact results at its final head. The M007-07 check
+must resolve `pull/107/head` to the frozen full commit, pass the accepted
+verifier under that commit's original ancestry, and prove byte equality between
+that verified report and the report at the closeout head. It additionally
 checks that accepted evidence paths exist, frozen digests and summary facts
 match this contract, the durable guide agrees with parser/help output, Phase A
-left accepted evidence bytes unchanged, and cumulative PR #81's updated body
-matches the closeout judgment.
+left all other accepted evidence bytes unchanged, and cumulative PR #81's
+updated body matches the closeout judgment.
 
 No live simulator, browser, PiRacer, movement, or evidence recapture is required
 unless an accepted authority is missing or contradicted; that condition blocks

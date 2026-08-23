@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="18e59a127c0a8c51c8a82689afb0e1d32e7825897851fe420ad41eb70d28b140">
+  <meta name="source-sha256" content="b3f1a4e8bfdb76847b73748737788f03cd7bb4a724722be8f23802b3f5fa7214">
   <base target="_blank">
   <title>Milestone plan — 007-cli-operator-usability</title>
   <style>
@@ -85,7 +85,7 @@
 </tr>
 <tr>
 <td>Current frontier</td>
-<td>None (idle)</td>
+<td>Milestone closeout</td>
 </tr>
 <tr>
 <td>Started</td>
@@ -355,10 +355,18 @@ deletion; it does not retroactively widen the accepted primary journey.</p>
 </table>
 <h2>Current Delivery</h2>
 <h3>Current Frontier</h3>
-<p><strong>None</strong></p>
+<p><strong>Milestone closeout</strong></p>
 <ul>
-<li>Reason: M007-09 leaves owned expose/retain/remove candidates. Closeout (M007-06) is the remaining milestone unit when the operator is ready; it does not execute those candidates.</li>
-<li>Revisit when: Operator starts milestone closeout, or a later unit implements a named expose or remove candidate.</li>
+<li>Workflow state: proposal_in_review</li>
+<li>Proposal branch: <code>m007/closeout-proposal</code></li>
+<li>Implementation branch: <code>m007/closeout</code></li>
+<li>Proposal path: <code>docs/milestones/007-cli-operator-usability/proposals/closeout.md</code></li>
+<li>Review kind: Milestone closeout</li>
+<li>Review question: Is milestone 007 complete as a whole—its supported CLI journeys remain documented, every exit criterion is backed by accepted evidence, every #88 US-01 through US-10 sequence and every unreached capability has an accountable disposition, residual limits are explicit, and the cumulative milestone is ready for whole-milestone review without hiding follow-on product work?</li>
+<li>Acceptance owner: Whole-milestone closeout judgment in <code>closeout.md</code>, completed ledger and durable CLI documentation reconciliation, terminal workflow handoff, and cumulative PR #81 readiness surface</li>
+<li>Exit criteria affected: M007-06</li>
+<li>Prerequisite: M007-01 through M007-05 and M007-07 through M007-10 are <code>Met</code>; accepted review units #84, #88, #100, #107, #122, and #138 and their tracked evidence remain the authority</li>
+<li>Milestone-level non-goal: Product or runtime change, evidence recapture for recency, executing deferred/hazardous work, implementing capability candidates or issues #89–#91, editing M006, or marking the cumulative PR ready before terminal handoff</li>
 </ul>
 <h3>Next-Frontier Candidate</h3>
 <p><strong>None</strong></p>
@@ -565,6 +573,11 @@ deletion; it does not retroactively widen the accepted primary journey.</p>
 <td>Capability disposition outside CLI journeys</td>
 <td>accepted</td>
 <td>Implementation PR #138 merged at 460e2827bd6b586e75bc698593be064f4c10e6f9.</td>
+</tr>
+<tr>
+<td>Milestone closeout</td>
+<td>proposal_in_review</td>
+<td>Started m007/closeout-proposal.</td>
 </tr>
 </tbody>
 </table>

@@ -5,7 +5,7 @@
 | Status | Active |
 | Milestone branch | `milestone/007-cli-operator-usability` |
 | Cumulative PR | [#81](https://github.com/GeorgeLuo/auto-driving/pull/81) (draft until whole-milestone closeout) |
-| Current frontier | None (idle) |
+| Current frontier | Milestone closeout |
 | Started | 2026-07-29 |
 | Action policy | Observation-only; no applied vehicle movement |
 
@@ -128,10 +128,18 @@ deletion; it does not retroactively widen the accepted primary journey.
 
 ### Current Frontier
 
-**None**
+**Milestone closeout**
 
-- Reason: M007-09 leaves owned expose/retain/remove candidates. Closeout (M007-06) is the remaining milestone unit when the operator is ready; it does not execute those candidates.
-- Revisit when: Operator starts milestone closeout, or a later unit implements a named expose or remove candidate.
+- Workflow state: proposal_in_review
+- Proposal branch: `m007/closeout-proposal`
+- Implementation branch: `m007/closeout`
+- Proposal path: `docs/milestones/007-cli-operator-usability/proposals/closeout.md`
+- Review kind: Milestone closeout
+- Review question: Is milestone 007 complete as a whole—its supported CLI journeys remain documented, every exit criterion is backed by accepted evidence, every #88 US-01 through US-10 sequence and every unreached capability has an accountable disposition, residual limits are explicit, and the cumulative milestone is ready for whole-milestone review without hiding follow-on product work?
+- Acceptance owner: Whole-milestone closeout judgment in `closeout.md`, completed ledger and durable CLI documentation reconciliation, terminal workflow handoff, and cumulative PR #81 readiness surface
+- Exit criteria affected: M007-06
+- Prerequisite: M007-01 through M007-05 and M007-07 through M007-10 are `Met`; accepted review units #84, #88, #100, #107, #122, and #138 and their tracked evidence remain the authority
+- Milestone-level non-goal: Product or runtime change, evidence recapture for recency, executing deferred/hazardous work, implementing capability candidates or issues #89–#91, editing M006, or marking the cumulative PR ready before terminal handoff
 
 ### Next-Frontier Candidate
 
@@ -186,6 +194,7 @@ deletion; it does not retroactively widen the accepted primary journey.
 | Capability disposition outside CLI journeys | ready_for_implementation | Proposal PR #133 accepted at 569d59de2faaca59dab5f5fa04d3da366c9d211c (reviewed head `7e30872f32a123f56556167c0c428a9506474dbb` by `GeorgeLuo` as `OWNER` at `2026-08-21T06:37:57Z`). |
 | Capability disposition outside CLI journeys | implementation_in_review | Started m007/capability-disposition. |
 | Capability disposition outside CLI journeys | accepted | Implementation PR #138 merged at 460e2827bd6b586e75bc698593be064f4c10e6f9. |
+| Milestone closeout | proposal_in_review | Started m007/closeout-proposal. |
 
 ## Accepted Review Units
 

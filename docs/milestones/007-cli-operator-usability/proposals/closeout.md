@@ -37,15 +37,17 @@ pre-claiming terminal plan mutations owned by the post-merge handoff.
 
 | Phase | When | Owner | Permitted change |
 | --- | --- | --- | --- |
-| **A. Closeout implementation PR** (`m007/closeout` → milestone) | After this proposal is accepted | Implementer | Durable closeout judgment, completed ledger, navigation and bounded CLI-document reconciliation, cumulative PR #81 body/final-validation preparation, and optional non-terminal plan prose |
+| **A. Closeout implementation PR** (`m007/closeout` → milestone) | After this proposal is accepted | Implementer | Durable closeout judgment, navigation and bounded CLI-document reconciliation, cumulative PR #81 body/final-validation preparation, and optional non-terminal plan prose. Do not append `completed.md`. |
 | **B. Post-merge handoff** | After the implementation PR is squash-merged to a clean milestone branch | `workflow.py complete-implementation --pr <implementation-pr>` | Mechanical M007-06 `Met`, risk removal, Status `closed`, empty frontier, accepted-ledger row, workflow history, and generated `plan.html` from this proposal's Expected Handoff |
-| **C. Whole-milestone integration** | After the handoff commit reaches the milestone tip | Operator | Mark cumulative PR #81 ready, review M007 as a whole, merge it to `main` with a merge commit, tag `milestone-007`, clean obsolete branches, then resume M006 through its own branch and workflow |
+| **C. Whole-milestone integration** | After the handoff commit reaches the milestone tip | Operator | Mark cumulative PR #81 ready and review M007 as a whole. On accept: merge #81 to `main` with a merge commit, append `completed.md`, tag `milestone-007`, clean obsolete branches, then resume M006. On reject: follow Phase C reject recovery below; do not merge, tag, delete branches, or resume M006. |
 
 Phase A must leave M007 `Active`, M007-06 `Unmet`, the closeout frontier
-present, the open-risk table intact, and the accepted-review-unit ledger
-unchanged. Phase B alone applies the reviewed terminal facts. Phase C is not
-evidence supplied by the implementation PR and cannot be claimed by
-`complete-implementation`.
+present, the open-risk table intact, the accepted-review-unit ledger
+unchanged, and `completed.md` without an M007 row. Phase B alone applies the
+reviewed success-path terminal facts. Phase C is not evidence supplied by the
+implementation PR and cannot be claimed by `complete-implementation`. Phase C
+may still reject after Phase B; that reject uses the recovery receipt below,
+never the Expected Handoff `outcome: close` template.
 
 ### Whole-milestone acceptance rule
 
@@ -65,7 +67,9 @@ M007 closes only when all of the following hold:
    sets Status `closed`, and empties the in-milestone frontier.
 4. **Phase C reviews the cumulative milestone.** Cumulative PR #81 must be
    updated from its stale initial body, marked ready only after Phase B, and
-   reviewed as the whole-milestone surface before merge to `main`.
+   reviewed as the whole-milestone surface before merge to `main`. A Phase C
+   reject does not merge #81 and must restore Active M007 with M007-06 `Unmet`
+   using the recovery procedure below so follow-on work is not hidden.
 5. **Accepted evidence is cited, not re-authored.** Closeout performs offline
    integrity checks and full deterministic validation. It does not recapture
    live Chase/Pi evidence merely to refresh dates, redefine accepted verdicts,
@@ -92,7 +96,7 @@ M007 closes only when all of the following hold:
 | M007-07 | PR #107 and `evidence/cli-journey-coverage/report.json` | Reproducible named-context branch-aware coverage with exact capture identities and no correctness, dead-code, or percentage-gate claim |
 | M007-08 | PR #122 and `evidence/cli-surface-audit/` | Forty-nine parser leaves accounted for; all US-01 through US-10 rows defined and dispositioned; deferred/blocked rows remain honest and owned |
 | M007-09 | PR #138 and `evidence/capability-disposition/record.json` | Ninety-three candidate source members assigned to ten owned groups; nine `retain`, one `expose`, zero `remove`; disposition is historical and not implementation authorization |
-| M007-06 | Phase A closeout judgment plus Phase B handoff | Documentation, accepted evidence, sequence and capability accounting, residual limits, cumulative PR identity, and next-focus decision are durable before terminal Met |
+| M007-06 | Phase A closeout judgment plus Phase B handoff, remaining Unmet if Phase C rejects | Documentation, accepted evidence, sequence and capability accounting, residual limits, cumulative PR identity, and next-focus decision are durable before a success-path terminal Met; Phase C may still restore Unmet |
 
 ### Frozen evidence inventory for closeout
 
@@ -189,11 +193,13 @@ No M006 branch, plan, evidence, or product file changes under `m007/closeout`.
 #### Phase A — implementation PR
 
 1. Create `docs/milestones/007-cli-operator-usability/closeout.md` with the
-   required sections below.
-2. Append the M007 entry to `docs/milestones/completed.md` without changing
-   prior entries.
-3. Update `docs/README.md` navigation only as needed for a closing/closed M007;
-   do not copy milestone status or architecture into it.
+   required sections below. Word Outcome so Phase B has not yet run and
+   `completed.md` has not yet gained an M007 row.
+2. Do not append `docs/milestones/completed.md`. That file is append-only and
+   must not list M007 as completed while the milestone can still return to
+   Active.
+3. Update `docs/README.md` navigation only if a link is missing; do not copy
+   milestone status or claim M007 is closed.
 4. Reconcile root `README.md` and
    `docs/reference/cli-simulator-perception-journey.md` against the accepted
    command/help surface. Modify only factual documentation drift; do not change
@@ -224,20 +230,97 @@ The handoff commit changes only `plan.md` and `plan.html`.
 
 #### Phase C — operator integration
 
+**Accept path** (only when the #81 totality review finds no blocking work):
+
 1. Mark cumulative PR #81 ready.
 2. Review M007 objective, completion usage, all accepted units, closeout
    judgment, final validation, and residual limits as a whole.
 3. Merge #81 into `main` with a merge commit and tag that mainline merge
    `milestone-007`.
-4. Remove obsolete M007 milestone/proposal/implementation branches only after
+4. Append the M007 row to `docs/milestones/completed.md` on `main` without
+   changing prior entries. This is the first M007 completed-ledger write.
+5. Remove obsolete M007 milestone/proposal/implementation branches only after
    the merge is durable.
-5. Resume M006 through its own canonical branch and workflow; do not carry M006
+6. Resume M006 through its own canonical branch and workflow; do not carry M006
    changes in the M007 cumulative merge beyond already-shared ancestry.
+
+**Reject recovery** (required when the #81 totality review finds blocking
+work after Phase B). Do these steps in order. Do not invent a different
+restore.
+
+1. Do not merge #81. Convert it back to draft if it was marked ready. Do not
+   tag `milestone-007`, delete M007 branches, or resume M006 as if M007 closed.
+2. Record the blocking finding on #81 at that head: closeout-contract or
+   judgment defect versus a named exit criterion, owner, and required new
+   review unit.
+3. On `milestone/007-cli-operator-usability`, revert only the Phase B commit
+   whose message is `Record PR <closeout-implementation-pr> milestone
+   handoff`. That commit must touch only `plan.md` and `plan.html`. Do not
+   revert the closeout implementation squash-merge.
+4. After that revert, Status is `Active`, current is Milestone closeout in
+   `implementation_in_review`, M007-06 is `Unmet`, and the eight plan risks
+   are restored. `closeout.md` remains as a non-terminal packet. `completed.md`
+   still has no M007 row.
+5. Fill the Phase C reject recovery receipt below with that closeout
+   implementation PR number and its full squash-merge SHA. Do not copy this
+   receipt into Expected Handoff. Do not pass it to `complete-implementation`.
+6. From a clean checkout of the milestone branch, apply it with:
+
+   ```sh
+   python3 docs/milestones/workflow.py handoff \
+     --plan docs/milestones/007-cli-operator-usability/plan.md \
+     --receipt <filled-recovery-receipt.json>
+   ```
+
+   Review the plan diff, then commit `plan.md` and `plan.html` together.
+7. The recovery receipt `outcome` is `advance`, not `close`. It must leave
+   M007-06 `Unmet`, remove no risks, and return current to idle so a later
+   proposal can select work. The closeout implementation squash-merge stays
+   in ancestry; the ledger row records that merge with a reject result, not
+   whole-milestone acceptance. M007-06 remaining `Unmet` is the authority
+   that closeout is not done.
+8. Route the finding:
+   - Closeout-contract or `closeout.md` judgment defect: next proposal is a
+     new closeout review unit. It may revise `closeout.md`. It cannot reuse
+     the already-ledgered implementation PR number.
+   - Product or evidence gap: next proposal is a new owned review unit for
+     that criterion. Leave M007-06 `Unmet`. Do not start another closeout
+     until that unit is accepted.
+9. Keep #81 draft. A later successful closeout Phase A updates its body
+   again.
+
+#### Phase C reject recovery receipt
+
+This block is **not** the Expected Handoff. `complete-implementation` must
+not load it. Fill `accepted_pr` and `accepted_merge_commit` at recovery time
+with the merged closeout implementation PR. `accepted_pr` must be a positive
+integer and `accepted_merge_commit` must be that PR's full squash-merge SHA.
+
+```json
+{
+  "schema": "milestone_handoff_v1",
+  "accepted_pr": 0,
+  "accepted_merge_commit": "0000000000000000000000000000000000000000",
+  "outcome": "advance",
+  "result": "Cumulative review rejected; closeout packet retained; M007-06 remains Unmet",
+  "durable_evidence": "Phase C rejected whole-milestone acceptance on PR #81; Phase B close commit reverted; exceptional advance receipt returned current to idle without marking M007-06 Met",
+  "criterion_updates": {},
+  "risk_remove": [],
+  "risk_upsert": [],
+  "next_frontier": {
+    "state": "none",
+    "reason": "Whole-milestone review rejected after terminal handoff. Current is idle so the next proposal can select a repair or new owned unit.",
+    "revisit_when": "A new proposal routes the Phase C blocking finding."
+  }
+}
+```
 
 ### Required `closeout.md` sections
 
 - **Outcome** — close date, whole-milestone result, action policy, and the
-  distinction between Phase A judgment and Phase B terminal mutation.
+  distinction between Phase A judgment, Phase B terminal mutation, and Phase C
+  cumulative accept. Must not claim `completed.md` already lists M007, and
+  must not treat Phase B as whole-milestone acceptance.
 - **Durable Decisions** — passive attachment, layer-state vocabulary,
   observation-only authority, explicit external recovery, machine-first/HITL
   sequencing, informational coverage, complete leaf accounting, and owned
@@ -257,8 +340,9 @@ The handoff commit changes only `plan.md` and `plan.html`.
   `cli-operator-surfaces` expose candidate, and the decision to resume M006.
 - **Cumulative PR Identity** — #81, base `main`, head milestone branch, and
   “ready after Phase B” responsibility.
-- **References** — plan, completed ledger, durable operator guide, accepted
-  implementation PRs, and tracked evidence directories.
+- **References** — plan, durable operator guide, accepted implementation PRs,
+  and tracked evidence directories. Link `completed.md` as a Phase C output
+  after #81 merges, not as a Phase A authority.
 
 ### Evidence rendering
 
@@ -274,21 +358,25 @@ The handoff commit changes only `plan.md` and `plan.html`.
 | Whole-milestone judgment and residual restatement | Phase A `closeout.md` |
 | Durable CLI documentation reconciliation | Phase A root README + reference guide audit |
 | Evidence identities and accepted-result mapping | Accepted M007 ledger/artifacts; Phase A cites them |
-| M007-06 Met, risk clear, terminal status, empty frontier | Phase B `complete-implementation` using Expected Handoff |
-| Completed ledger and documentation navigation | Phase A |
-| Cumulative PR #81 body and final validation | Phase A; readiness/merge remain Phase C |
+| M007-06 Met, risk clear, terminal status, empty frontier | Phase B `complete-implementation` using Expected Handoff; Phase C reject restores Unmet via revert plus exceptional `advance` receipt |
+| Completed ledger | Phase C accept path after #81 merges; not Phase A |
+| Documentation navigation | Phase A, without claiming closed |
+| Cumulative PR #81 body and final validation | Phase A; readiness/merge remain Phase C accept; Phase C reject returns #81 to draft |
+| Phase C reject restoration | Revert Phase B handoff commit, then `workflow.py handoff --receipt` with the recovery receipt |
 | M006 next-focus state | Canonical M006 plan; Phase A cites, Phase C resumes separately |
 | Follow-on product issues/capability exposure | Later proposals; outside closeout |
 
 ## Affected Paths
 
 - Successful Phase A creates the closeout judgment and updates only the
-  documentation/ledger paths declared below; product and evidence authorities
-  remain byte-stable.
+  documentation paths declared below; product and evidence authorities
+  remain byte-stable. `completed.md` is unchanged.
 - Successful Phase B changes only the M007 plan and generated plan HTML through
   the reviewed handoff.
 - Successful Phase C changes GitHub/cross-milestone state only after whole-
-  milestone review.
+  milestone review and appends `completed.md` only after #81 merges.
+- A Phase C reject reverts only the Phase B plan commit, applies the
+  exceptional `advance` receipt, and leaves M007-06 `Unmet`.
 - Any non-closeout criterion no longer `Met`, missing authority, or unsupported
   completion claim blocks closeout.
 
@@ -315,6 +403,11 @@ The handoff commit changes only `plan.md` and `plan.html`.
 | Implementation PR claims cumulative PR #81 is ready or merged | Reject; that is Phase C |
 | M007 closeout edits or implements M006 | Reject cross-milestone scope leak |
 | Phase C starts before the terminal handoff commit | Reject; cumulative readiness follows Phase B |
+| Phase C finds blocking work after Phase B | Do not merge #81, tag, delete branches, or resume M006; revert only the Phase B handoff commit; apply the exceptional `advance` receipt; leave M007-06 `Unmet`; route the gap |
+| Phase C reject reuses Expected Handoff or `complete-implementation` (`outcome: close`) | Reject; recovery is `handoff --receipt` with `outcome: advance` |
+| Phase C reject leaves Status `closed` or M007-06 `Met` | Reject; restoration failed |
+| Phase A appends an M007 `completed.md` row | Reject; that append-only ledger is Phase C accept only |
+| Recovery receipt omits `next_frontier.state: none`, updates M007-06, or removes risks | Reject |
 
 ## External Assumptions
 
@@ -347,6 +440,9 @@ The handoff commit changes only `plan.md` and `plan.html`.
   authority, semantic correctness, or dead code.
 - Editing, activating, or implementing M006 under the M007 branch.
 - Marking/merging cumulative PR #81 or deleting branches before Phase B.
+- Appending `completed.md` during Phase A, or listing M007 as completed while
+  it can still return to Active.
+- Using the success `outcome: close` template as Phase C reject recovery.
 
 ## File Impact
 
@@ -362,8 +458,7 @@ The handoff commit changes only `plan.md` and `plan.html`.
 | Path | Change |
 | --- | --- |
 | `docs/milestones/007-cli-operator-usability/closeout.md` | Create durable whole-milestone judgment |
-| `docs/milestones/completed.md` | Append M007 entry only |
-| `docs/README.md` | Navigation only, if needed |
+| `docs/README.md` | Navigation only, if needed; do not claim closed |
 | `README.md` | Reconcile durable journey link/summary only if audit finds drift |
 | `docs/reference/cli-simulator-perception-journey.md` | Reconcile accepted command/help facts only if audit finds drift |
 | M007 `plan.md` / `plan.html` | Optional non-terminal prose only; normal start-implementation state transition remains workflow-owned |
@@ -379,8 +474,10 @@ No Phase A changes are permitted below `autonomy/`, `implementations/`, `cli/`,
 
 ### Phase C external changes
 
-- Cumulative PR #81 ready/review/merge, tag, branch cleanup, then separate M006
-  workflow resumption.
+- Accept: cumulative PR #81 ready/review/merge, `completed.md` append, tag,
+  branch cleanup, then separate M006 workflow resumption.
+- Reject: keep #81 draft; revert Phase B; exceptional `advance` receipt;
+  new proposal from idle. No `completed.md` row.
 
 ## Validation Plan
 
@@ -403,8 +500,9 @@ git diff --check
 ```
 
 Review confirms proposal-only paths, one whole-milestone question, Review Kind
-`Milestone closeout`, the three-phase boundary, exact residual accounting, and
-no terminal plan mutation.
+`Milestone closeout`, the three-phase boundary, Phase C reject recovery,
+exact residual accounting, and no terminal plan mutation. Expected Handoff
+remains the sole `outcome: close` template.
 
 ### Phase A implementation PR
 
@@ -457,8 +555,9 @@ verifier under that commit's original ancestry, and prove byte equality between
 that verified report and the report at the closeout head. It additionally
 checks that accepted evidence paths exist, frozen digests and summary facts
 match this contract, the durable guide agrees with parser/help output, Phase A
-left all other accepted evidence bytes unchanged, and cumulative PR #81's
-updated body matches the closeout judgment.
+left all other accepted evidence bytes unchanged, did not append
+`completed.md`, and cumulative PR #81's updated body matches the closeout
+judgment.
 
 No live simulator, browser, PiRacer, movement, or evidence recapture is required
 unless an accepted authority is missing or contradicted; that condition blocks
@@ -476,8 +575,22 @@ python3 docs/milestones/workflow.py status \
 ```
 
 Phase B must report M007 closed with every criterion `Met`, no current or
-remaining frontier, and an accepted closeout ledger row. Phase C then performs
-the whole-milestone review/merge/tag and branch cleanup.
+remaining frontier, and an accepted closeout ledger row. Phase C accept then
+merges #81, appends `completed.md`, tags, and cleans branches.
+
+If Phase C rejects, do not run `complete-implementation` again. Revert the
+Phase B handoff commit, fill the recovery receipt, and run:
+
+```sh
+python3 docs/milestones/workflow.py handoff \
+  --plan docs/milestones/007-cli-operator-usability/plan.md \
+  --receipt <filled-recovery-receipt.json>
+python3 docs/milestones/workflow.py status \
+  --plan docs/milestones/007-cli-operator-usability/plan.md
+```
+
+Recovery must report Status `Active`, current idle, M007-06 `Unmet`, the eight
+risks restored, and no M007 `completed.md` row.
 
 ## Expected Handoff
 
@@ -488,7 +601,7 @@ Post-merge successful closeout implementation template:
   "schema": "milestone_handoff_template_v1",
   "outcome": "close",
   "result": "Accepted",
-  "durable_evidence": "M007 closeout judgment in closeout.md; completed.md 007 entry; durable CLI documentation reconciled; accepted journey, live, coverage, audit, and capability evidence mapped; sequence/capability residuals and M006 resume decision recorded; cumulative PR #81 prepared for post-handoff whole-milestone review in implementation PR #{pr}",
+  "durable_evidence": "M007 closeout judgment in closeout.md; durable CLI documentation reconciled; accepted journey, live, coverage, audit, and capability evidence mapped; sequence/capability residuals and M006 resume decision recorded; cumulative PR #81 prepared for post-handoff whole-milestone review in implementation PR #{pr}; completed.md deferred to Phase C accept",
   "criterion_updates": {
     "M007-06": {
       "status": "Met",
@@ -519,8 +632,11 @@ Post-merge successful closeout implementation template:
 4. After exact-head implementation acceptance, squash-merge the closeout PR.
 5. Run `complete-implementation` to apply Phase B and commit only the generated
    terminal plan transition.
-6. Perform Phase C: mark #81 ready, review/merge with a merge commit, tag
-   `milestone-007`, clean M007 branches, then resume M006 separately.
+6. Perform Phase C. On accept: mark #81 ready, merge with a merge commit,
+   append `completed.md`, tag `milestone-007`, clean M007 branches, then
+   resume M006 separately. On reject: keep #81 draft, revert the Phase B
+   handoff commit, apply the exceptional `advance` receipt, and open the
+   next proposal from idle.
 
 ## Review Kind
 

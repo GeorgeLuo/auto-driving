@@ -126,3 +126,37 @@ dependency remain documented limits rather than 005 blockers.
 Full record: [plan](005-evidence-memory-foundation/plan.md) ·
 [plan.html](005-evidence-memory-foundation/plan.html) and
 [closeout](005-evidence-memory-foundation/closeout.md).
+
+## 007 - CLI Operator Usability
+
+Closeout packet prepared: 2026-08-24
+
+Whole-milestone acceptance: pending cumulative PR
+[#81](https://github.com/GeorgeLuo/auto-driving/pull/81).
+
+Delivered one discoverable, observation-only Chase simulator-to-perception CLI
+journey with explicit layer states and recovery, accepted live and realistic
+scenario evidence, reproducible named-context coverage, complete public-leaf and
+US-01 through US-10 accounting, and owned dispositions for capabilities outside
+the declared journeys. No M007 path grants non-idle movement authority.
+
+Durable decisions: attach passively without hidden simulator reconfiguration;
+separate simulator, vehicle, deployment, worker, view, and evaluator-reference
+state; keep machine-first/HITL evidence bounded and cleanup-owned; treat coverage
+as informational; keep all deferred sequences and live findings owned; and
+require separately reviewed work before exposing or removing a capability.
+
+Remaining work: open issues #89–#91, five owned `M007-LIVE-*` residuals, seven
+deferred and one blocked US sequence, unsupported PiRacer/remote/non-idle claims,
+and the `cli-operator-surfaces` expose candidate remain explicit follow-on work.
+After successful whole-milestone acceptance, operator focus returns separately
+to the active M006 cross-environment shadow-evidence frontier.
+
+Full record: [plan](007-cli-operator-usability/plan.md) ·
+[plan.html](007-cli-operator-usability/plan.html) and
+[closeout](007-cli-operator-usability/closeout.md).
+
+This is the retained Phase A closeout packet inside cumulative PR #81. It does
+not claim that #81 has merged into `main` or that tag `milestone-007` exists.
+Phase B must first apply the reviewed terminal plan handoff, and Phase C must
+then accept #81 as a whole.

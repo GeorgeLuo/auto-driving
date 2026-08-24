@@ -130,10 +130,11 @@ deletion; it does not retroactively widen the accepted primary journey.
 
 **Milestone closeout**
 
-- Workflow state: proposal_in_review
+- Workflow state: ready_for_implementation
 - Proposal branch: `m007/closeout-proposal`
 - Implementation branch: `m007/closeout`
 - Proposal path: `docs/milestones/007-cli-operator-usability/proposals/closeout.md`
+- Accepted proposal: [#143](https://github.com/GeorgeLuo/auto-driving/pull/143) at `2ab7955b953f1d5863ee032db38271ca50d111a7` (reviewed head `c9b7185df1f2ddba8c74b735e082881dd9501c45` by `GeorgeLuo` as `OWNER` at `2026-08-24T18:18:59Z`)
 - Review kind: Milestone closeout
 - Review question: Is milestone 007 complete as a whole—its supported CLI journeys remain documented, every exit criterion is backed by accepted evidence, every #88 US-01 through US-10 sequence and every unreached capability has an accountable disposition, residual limits are explicit, and the cumulative milestone is ready for whole-milestone review without hiding follow-on product work?
 - Acceptance owner: Whole-milestone closeout judgment in `closeout.md`, completed ledger and durable CLI documentation reconciliation, terminal workflow handoff, and cumulative PR #81 readiness surface
@@ -195,6 +196,7 @@ deletion; it does not retroactively widen the accepted primary journey.
 | Capability disposition outside CLI journeys | implementation_in_review | Started m007/capability-disposition. |
 | Capability disposition outside CLI journeys | accepted | Implementation PR #138 merged at 460e2827bd6b586e75bc698593be064f4c10e6f9. |
 | Milestone closeout | proposal_in_review | Started m007/closeout-proposal. |
+| Milestone closeout | ready_for_implementation | Proposal PR #143 accepted at 2ab7955b953f1d5863ee032db38271ca50d111a7 (reviewed head `c9b7185df1f2ddba8c74b735e082881dd9501c45` by `GeorgeLuo` as `OWNER` at `2026-08-24T18:18:59Z`). |
 
 ## Accepted Review Units
 

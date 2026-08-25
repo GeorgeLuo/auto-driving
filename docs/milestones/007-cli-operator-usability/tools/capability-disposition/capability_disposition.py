@@ -925,7 +925,7 @@ def _validate_authority_ref(
                 _fail(f"{where} test reference must be below tests/")
         elif path not in source_paths and path not in authority["paths"]:
             _fail(f"{where} does not resolve through a sealed authority: {path}")
-        if not (repo_root / path).exists():
+        if path not in source_paths and not (repo_root / path).exists():
             _fail(f"{where} points to a missing path: {path}")
     elif kind == "m007_08_sequence":
         if "@" not in value:

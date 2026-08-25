@@ -84,6 +84,20 @@ class CapabilityDispositionTests(unittest.TestCase):
             (expected_row["possible_statements"], expected_row["possible_arcs"]),
         )
 
+    def test_historical_validation_ignores_deleted_current_product_source_file(self) -> None:
+        deleted = ROOT / "autonomy" / "runtime" / "engine.py"
+        original_exists = Path.exists
+
+        def exists(path: Path) -> bool:
+            if path == deleted:
+                return False
+            return original_exists(path)
+
+        with mock.patch.object(Path, "exists", new=exists):
+            result = cd.validate_evidence(ROOT)
+        self.assertEqual(result["result"], "pass")
+        self.assertEqual(result["record_sha256"], "81ce4993fe8624bbc818bcad7142dafb78e2be1ef6c45a6115ae535a51477e6f")
+
     def test_frozen_config_hash_mismatch_fails_before_git_resolution(self) -> None:
         report = cd.load_canonical_json(ROOT / cd.REPORT_REL)
         mutated = copy.deepcopy(report)

@@ -5,7 +5,7 @@ import json
 import math
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, TextIO
 
 from .automation import (
     get_vehicle_automation_status,
@@ -1610,12 +1610,55 @@ def _handle_vehicles_stream_help(args: argparse.Namespace) -> int:
     return 0
 
 
-def _handle_vehicles_active(args: argparse.Namespace) -> int:
-    if not math.isfinite(args.timeout_s) or args.timeout_s <= 0:
+_TIMEOUT_INPUT_ERROR = "timeout_invalid"
+_TIMEOUT_INPUT_CONSTRAINT = "finite number greater than zero"
+_TIMEOUT_INPUT_RECOVERY = "Provide a finite --timeout-s greater than zero."
+
+
+def _validate_timeout_input(
+    timeout_s: float,
+    *,
+    command: str,
+    json_output: bool,
+    human_stream: TextIO,
+) -> bool:
+    """Reject malformed command-envelope timeouts before dispatching work."""
+
+    if math.isfinite(timeout_s) and timeout_s > 0:
+        return True
+
+    message = f"{command}: --timeout-s must be a {_TIMEOUT_INPUT_CONSTRAINT}"
+    if json_output:
         print(
-            "automa vehicles active: --timeout-s must be a finite number greater than zero",
-            file=sys.stderr,
+            json.dumps(
+                {
+                    "schema": "automa_cli_error_v1",
+                    "error": _TIMEOUT_INPUT_ERROR,
+                    "layer": "input",
+                    "message": message,
+                    "details": {
+                        "argument": "--timeout-s",
+                        "constraint": _TIMEOUT_INPUT_CONSTRAINT,
+                    },
+                    "recovery": _TIMEOUT_INPUT_RECOVERY,
+                    "exit_code": 2,
+                },
+                indent=2,
+                sort_keys=True,
+            )
         )
+    else:
+        print(message, file=human_stream)
+    return False
+
+
+def _handle_vehicles_active(args: argparse.Namespace) -> int:
+    if not _validate_timeout_input(
+        args.timeout_s,
+        command="automa vehicles active",
+        json_output=args.json,
+        human_stream=sys.stderr,
+    ):
         return 2
     include_inactive = not args.active_only
     payload = discover_active_vehicles(
@@ -1636,15 +1679,16 @@ def _handle_vehicles_active(args: argparse.Namespace) -> int:
 
 
 def _handle_vehicles_status(args: argparse.Namespace) -> int:
+    if not _validate_timeout_input(
+        args.timeout_s,
+        command="automa vehicles status",
+        json_output=args.json,
+        human_stream=sys.stderr,
+    ):
+        return 2
     if args.chase_url is not None and args.chase_ws_url is not None:
         print(
             "automa vehicles status: --chase-url and --chase-ws-url cannot be used together",
-            file=sys.stderr,
-        )
-        return 2
-    if not math.isfinite(args.timeout_s) or args.timeout_s <= 0:
-        print(
-            "automa vehicles status: --timeout-s must be a finite number greater than zero",
             file=sys.stderr,
         )
         return 2
@@ -1686,6 +1730,13 @@ def _vehicle_status_exit_code(payload: dict[str, Any]) -> int:
 
 
 def _handle_vehicles_automation_run(args: argparse.Namespace) -> int:
+    if not _validate_timeout_input(
+        args.timeout_s,
+        command="automa vehicles automation run",
+        json_output=False,
+        human_stream=sys.stdout,
+    ):
+        return 2
     if args.foreground:
         result = run_vehicle_automation(
             vehicle_id=args.vehicle_id,
@@ -2123,6 +2174,13 @@ def _handle_vehicles_perception_disable(args: argparse.Namespace) -> int:
 
 
 def _handle_vehicles_update_perception(args: argparse.Namespace) -> int:
+    if not _validate_timeout_input(
+        args.timeout_s,
+        command="automa vehicles update perception",
+        json_output=args.json,
+        human_stream=sys.stdout,
+    ):
+        return 2
     result = update_vehicle_perception(
         vehicle_id=args.vehicle_id,
         algorithm=args.algorithm,

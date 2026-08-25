@@ -16,13 +16,14 @@ import hashlib
 import html
 import json
 import re
+import subprocess
 import sys
 import sysconfig
 import unicodedata
 from collections import Counter
 from html.parser import HTMLParser
 from pathlib import Path, PurePosixPath
-from typing import Any, Iterable, Mapping
+from typing import Any, Callable, Iterable, Mapping
 
 from coverage import __version__ as COVERAGE_VERSION
 from coverage.parser import PythonParser
@@ -364,6 +365,8 @@ def load_canonical_json(path: Path) -> Any:
 def _normalized_path(value: Any, where: str) -> str:
     if not isinstance(value, str) or not value:
         _fail(f"{where} must be a non-empty POSIX path")
+    if "\x00" in value:
+        _fail(f"{where} must not contain NUL")
     if "\\" in value:
         _fail(f"{where} must use POSIX separators")
     pure = PurePosixPath(value)
@@ -381,6 +384,131 @@ def _under(path: str, root: str) -> bool:
 
 def _is_source_path(path: str, source_paths: Mapping[str, str]) -> bool:
     return path in source_paths
+
+
+class FrozenGitSource:
+    """Resolve and verify source/config bytes from the sealed Git commit.
+
+    The optional byte-reader and Git-runner seams are intentionally narrow and
+    exist only so the resolver's failure modes can be tested without changing
+    the repository object database. Production validation uses the exact
+    local Git object addressed by ``FROZEN_SOURCE_COMMIT``.
+    """
+
+    def __init__(
+        self,
+        repo_root: Path,
+        *,
+        blob_reader: Callable[[str], bytes] | None = None,
+        git_runner: Callable[..., Any] | None = None,
+    ) -> None:
+        self.repo_root = Path(repo_root).resolve()
+        self._blob_reader = blob_reader
+        self._git_runner = git_runner or subprocess.run
+        self._expected_hashes: dict[str, str] = {}
+        self._cache: dict[str, bytes] = {}
+
+    def bind(self, expected_hashes: Mapping[str, str]) -> None:
+        admitted: dict[str, str] = {}
+        for path, digest in expected_hashes.items():
+            normalized = _normalized_path(path, "frozen source path")
+            if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+                _fail(f"frozen source hash is malformed for {normalized}")
+            if normalized in admitted:
+                _fail(f"duplicate frozen source path: {normalized}")
+            admitted[normalized] = digest
+        if not admitted:
+            _fail("frozen source admission set is empty")
+        if self._expected_hashes and self._expected_hashes != admitted:
+            _fail("frozen source admission set changed")
+        self._expected_hashes = admitted
+
+    def expected_sha256(self, path: str) -> str:
+        normalized = _normalized_path(path, "frozen source path")
+        digest = self._expected_hashes.get(normalized)
+        if digest is None:
+            _fail(f"frozen source path is not admitted: {normalized}")
+        return digest
+
+    def _run_git(self, args: list[str]) -> Any:
+        command = ["git", "--no-replace-objects", *args]
+        try:
+            return self._git_runner(
+                command,
+                cwd=self.repo_root,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            _fail(f"cannot invoke Git for frozen source resolution: {exc}")
+
+    def _read_git_blob(self, path: str) -> bytes:
+        commit_spec = f"{FROZEN_SOURCE_COMMIT}^{{commit}}"
+        commit_result = self._run_git(["cat-file", "-e", commit_spec])
+        if commit_result.returncode != 0:
+            _fail(f"frozen source commit is missing or unusable: {FROZEN_SOURCE_COMMIT}")
+        if commit_result.stdout != b"" or commit_result.stderr != b"":
+            _fail(f"frozen source commit resolution was not exact: {FROZEN_SOURCE_COMMIT}")
+
+        object_spec = f"{FROZEN_SOURCE_COMMIT}:{path}"
+        type_result = self._run_git(["cat-file", "-t", object_spec])
+        if type_result.returncode != 0:
+            error = type_result.stderr.lower() if isinstance(type_result.stderr, bytes) else b""
+            if any(
+                marker in error
+                for marker in (b"does not exist", b"not a valid object", b"missing")
+            ):
+                _fail(f"frozen source blob is missing: {path}")
+            _fail(f"frozen source object is unreadable: {path}")
+        if type_result.stderr != b"" or type_result.stdout != b"blob\n":
+            object_type = (
+                type_result.stdout.decode("ascii", errors="replace").strip()
+                if isinstance(type_result.stdout, bytes)
+                else ""
+            )
+            if object_type and object_type != "blob":
+                _fail(f"frozen source path is not a blob: {path} ({object_type})")
+            _fail(f"frozen source object type is unreadable: {path}")
+
+        blob_result = self._run_git(["cat-file", "blob", object_spec])
+        if blob_result.returncode != 0 or blob_result.stderr != b"":
+            _fail(f"frozen source blob is unreadable: {path}")
+        if not isinstance(blob_result.stdout, bytes):
+            _fail(f"frozen source blob output is malformed: {path}")
+        return blob_result.stdout
+
+    def read(self, path: str, expected_sha256: str | None = None) -> bytes:
+        normalized = _normalized_path(path, "frozen source path")
+        admitted = self._expected_hashes.get(normalized)
+        if admitted is None:
+            _fail(f"frozen source path is not admitted: {normalized}")
+        if expected_sha256 is not None and expected_sha256 != admitted:
+            _fail(f"frozen source hash authority changed for {normalized}")
+        if normalized in self._cache:
+            return self._cache[normalized]
+
+        try:
+            raw = (
+                self._blob_reader(normalized)
+                if self._blob_reader is not None
+                else self._read_git_blob(normalized)
+            )
+        except CapabilityDispositionError:
+            raise
+        except Exception as exc:  # injected readers must fail through the bounded validator
+            _fail(f"frozen source blob is unreadable: {normalized}: {exc}")
+        if not isinstance(raw, bytes):
+            _fail(f"frozen source blob output is malformed: {normalized}")
+        actual = sha256_bytes(raw)
+        if actual != admitted:
+            _fail(
+                f"frozen source hash mismatch for {normalized}: "
+                f"expected {admitted}, got {actual}"
+            )
+        self._cache[normalized] = raw
+        return raw
 
 
 def _is_init(path: str) -> bool:
@@ -414,7 +542,12 @@ def _validate_arc_list(value: Any, where: str) -> list[tuple[int, int]]:
     return arcs
 
 
-def _source_files_from_report(report: Mapping[str, Any], repo_root: Path) -> dict[str, str]:
+def _source_files_from_report(
+    report: Mapping[str, Any],
+    repo_root: Path,
+    *,
+    source_reader: FrozenGitSource | None = None,
+) -> dict[str, str]:
     subject = report.get("subject")
     if not isinstance(subject, dict):
         _fail("journey report subject is missing")
@@ -436,6 +569,7 @@ def _source_files_from_report(report: Mapping[str, Any], repo_root: Path) -> dic
         _fail("journey report relevant file hashes are missing")
 
     paths: dict[str, str] = {}
+    config_rows: list[tuple[str, str]] = []
     for row in relevant["files"]:
         if not isinstance(row, dict) or set(row) != {"path", "sha256"}:
             _fail("journey report relevant file row is malformed")
@@ -443,6 +577,8 @@ def _source_files_from_report(report: Mapping[str, Any], repo_root: Path) -> dic
         digest = row.get("sha256")
         if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
             _fail(f"journey report source hash is malformed for {path}")
+        if path == ".coveragerc":
+            config_rows.append((path, digest))
         if path.endswith(".py") and any(_under(path, root) for root in SOURCE_ROOTS):
             if path in paths:
                 _fail(f"duplicate source path in sealed universe: {path}")
@@ -454,13 +590,18 @@ def _source_files_from_report(report: Mapping[str, Any], repo_root: Path) -> dic
     if any(relevant_hashes.get(path) != digest for path, digest in paths.items()):
         _fail("journey report source hash map does not match its source universe")
 
-    coveragerc = repo_root / ".coveragerc"
-    if not coveragerc.is_file() or sha256_file(coveragerc) != FROZEN_COVERAGE_CONFIG_SHA256:
-        _fail(".coveragerc does not match the sealed M007-07 configuration")
-    for path, digest in paths.items():
-        file_path = repo_root / path
-        if not file_path.is_file() or sha256_file(file_path) != digest:
-            _fail(f"sealed source file changed or is missing: {path}")
+    if config_rows != [(".coveragerc", FROZEN_COVERAGE_CONFIG_SHA256)]:
+        _fail("sealed .coveragerc identity does not match the M007-07 configuration")
+    if relevant_hashes.get(".coveragerc") != FROZEN_COVERAGE_CONFIG_SHA256:
+        _fail("journey report .coveragerc hash map does not match its source identity")
+
+    reader = source_reader or FrozenGitSource(repo_root)
+    if reader.repo_root != Path(repo_root).resolve():
+        _fail("frozen source resolver repository root does not match validation root")
+    historical_hashes = {".coveragerc": FROZEN_COVERAGE_CONFIG_SHA256, **paths}
+    reader.bind(historical_hashes)
+    for path, digest in historical_hashes.items():
+        reader.read(path, digest)
     return paths
 
 
@@ -524,7 +665,11 @@ def _validate_report_contexts(
     return admitted, by_path
 
 
-def load_sealed_report(repo_root: Path = ROOT) -> dict[str, Any]:
+def load_sealed_report(
+    repo_root: Path = ROOT,
+    *,
+    source_reader: FrozenGitSource | None = None,
+) -> dict[str, Any]:
     path = repo_root / REPORT_REL
     report = load_canonical_json(path)
     if not isinstance(report, dict) or report.get("schema") != "m007_cli_journey_coverage_v1":
@@ -553,12 +698,14 @@ def load_sealed_report(repo_root: Path = ROOT) -> dict[str, Any]:
         _fail(f"sealed M007-07 manifest is missing or unreadable: {exc}")
     if manifest_digest != FROZEN_MANIFEST_SHA256:
         _fail("sealed M007-07 manifest bytes changed")
-    source_paths = _source_files_from_report(report, repo_root)
+    reader = source_reader or FrozenGitSource(repo_root)
+    source_paths = _source_files_from_report(report, repo_root, source_reader=reader)
     admitted, files = _validate_report_contexts(report, source_paths)
     return {
         "report": report,
         "report_path": path,
         "source_paths": source_paths,
+        "source_reader": reader,
         "admitted_contexts": admitted,
         "files": files,
     }
@@ -572,10 +719,31 @@ def _source_analysis_inputs() -> dict[str, Any]:
     }
 
 
-def _possible_regions(path: str, repo_root: Path) -> tuple[list[int], list[list[int]]]:
-    if _is_init(path):
+def _possible_regions(
+    path: str,
+    repo_root: Path,
+    *,
+    source_paths: Mapping[str, str] | None = None,
+    source_reader: FrozenGitSource | None = None,
+) -> tuple[list[int], list[list[int]]]:
+    normalized = _normalized_path(path, "sealed source path")
+    if source_paths is not None and normalized not in source_paths:
+        _fail(f"source-analysis path is outside the sealed source universe: {normalized}")
+    if _is_init(normalized):
         return [], []
-    source = (repo_root / path).read_text(encoding="utf-8")
+    reader = source_reader
+    if reader is None:
+        reader = FrozenGitSource(repo_root)
+        if source_paths is None:
+            _fail(f"no sealed source hash is available for {normalized}")
+        reader.bind(source_paths)
+    expected_sha256 = source_paths.get(normalized) if source_paths is not None else None
+    if expected_sha256 is None:
+        expected_sha256 = reader.expected_sha256(normalized)
+    try:
+        source = reader.read(normalized, expected_sha256).decode("utf-8")
+    except UnicodeDecodeError as exc:
+        _fail(f"frozen source is not valid UTF-8 for {normalized}: {exc}")
     parser = PythonParser(text=source, filename=path)
     try:
         parser.parse_source()
@@ -618,7 +786,12 @@ def capture_source_analysis(
         _fail("active interpreter does not match the frozen M007-07 source-analysis runtime")
     files = []
     for path, source_sha256 in sealed["source_paths"].items():
-        statements, arcs = _possible_regions(path, repo_root)
+        statements, arcs = _possible_regions(
+            path,
+            repo_root,
+            source_paths=sealed["source_paths"],
+            source_reader=sealed["source_reader"],
+        )
         files.append(
             {
                 "path": path,
@@ -641,6 +814,8 @@ def validate_source_analysis(
     artifact: Mapping[str, Any],
     repo_root: Path,
     source_paths: Mapping[str, str],
+    *,
+    source_reader: FrozenGitSource | None = None,
 ) -> str:
     _exact_keys(artifact, ("schema", "inputs", "files"), "source_analysis")
     if artifact.get("schema") != SOURCE_ANALYSIS_SCHEMA:
@@ -663,7 +838,12 @@ def validate_source_analysis(
             _fail(f"source-analysis source hash does not match the sealed source: {path}")
         _validate_int_list(row.get("possible_statements"), f"{path}.possible_statements")
         _validate_arc_list(row.get("possible_arcs"), f"{path}.possible_arcs")
-        expected_statements, expected_arcs = _possible_regions(path, repo_root)
+        expected_statements, expected_arcs = _possible_regions(
+            path,
+            repo_root,
+            source_paths=source_paths,
+            source_reader=source_reader,
+        )
         if row["possible_statements"] != expected_statements:
             _fail(f"source-analysis statement projection changed for {path}")
         if row["possible_arcs"] != expected_arcs:
@@ -745,7 +925,7 @@ def _validate_authority_ref(
                 _fail(f"{where} test reference must be below tests/")
         elif path not in source_paths and path not in authority["paths"]:
             _fail(f"{where} does not resolve through a sealed authority: {path}")
-        if not (repo_root / path).exists():
+        if path not in source_paths and not (repo_root / path).exists():
             _fail(f"{where} points to a missing path: {path}")
     elif kind == "m007_08_sequence":
         if "@" not in value:
@@ -2763,12 +2943,19 @@ def validate_dashboard_html(
         _fail("dashboard is missing a required visual projection")
 
 
-def _build_context(repo_root: Path) -> dict[str, Any]:
-    sealed = load_sealed_report(repo_root)
+def _build_context(
+    repo_root: Path,
+    *,
+    source_reader: FrozenGitSource | None = None,
+) -> dict[str, Any]:
+    sealed = load_sealed_report(repo_root, source_reader=source_reader)
     source_analysis_path = repo_root / SOURCE_ANALYSIS_REL
     artifact = load_canonical_json(source_analysis_path)
     source_analysis_sha256 = validate_source_analysis(
-        artifact, repo_root, sealed["source_paths"]
+        artifact,
+        repo_root,
+        sealed["source_paths"],
+        source_reader=sealed["source_reader"],
     )
     authority = load_m007_08_authority(repo_root)
     grouping_path = repo_root / GROUPING_REL

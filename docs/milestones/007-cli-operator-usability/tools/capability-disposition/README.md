@@ -22,7 +22,12 @@ python3 docs/milestones/007-cli-operator-usability/tools/capability-disposition/
 `capture-source-analysis` is a one-time capture operation. CI and ordinary
 validation consume the committed artifact and fail closed if its source,
 configuration, runtime, path, SHA, statement, arc, or canonical-byte envelope
-does not match the accepted proposal.
+does not match the accepted proposal. Historical source and `.coveragerc`
+bytes are resolved from the exact frozen M007-07 Git commit recorded by the
+sealed report and verified against its per-file SHA-256 map; current product
+checkout bytes are not used as a freshness predicate. The local Git object
+database must contain that commit, or validation fails closed without falling
+back to the current branch, index, working tree, or network.
 
 ## Artifacts
 

@@ -65,6 +65,115 @@ class CapabilityDispositionTests(unittest.TestCase):
                     with self.assertRaises(cd.CapabilityDispositionError):
                         cd.load_sealed_report(root)
 
+    def test_historical_validation_ignores_current_product_source_drift(self) -> None:
+        path = "cli/automa_cli/app.py"
+        frozen_sha256 = self.sealed["source_paths"][path]
+        self.assertNotEqual(cd.sha256_file(ROOT / path), frozen_sha256)
+
+        current = cd._build_context(ROOT)
+        frozen_source = current["sealed"]["source_reader"].read(path, frozen_sha256)
+        expected_row = next(row for row in self.artifact["files"] if row["path"] == path)
+        self.assertNotEqual((ROOT / path).read_bytes(), frozen_source)
+        self.assertEqual(
+            cd._possible_regions(
+                path,
+                ROOT,
+                source_paths=self.sealed["source_paths"],
+                source_reader=current["sealed"]["source_reader"],
+            ),
+            (expected_row["possible_statements"], expected_row["possible_arcs"]),
+        )
+
+    def test_frozen_config_hash_mismatch_fails_before_git_resolution(self) -> None:
+        report = cd.load_canonical_json(ROOT / cd.REPORT_REL)
+        mutated = copy.deepcopy(report)
+        row = next(
+            row
+            for row in mutated["subject"]["source_identity"]["relevant"]["files"]
+            if row["path"] == ".coveragerc"
+        )
+        row["sha256"] = "0" * 64
+        reader = cd.FrozenGitSource(
+            ROOT,
+            blob_reader=mock.Mock(side_effect=AssertionError("Git must not be called")),
+        )
+        with self.assertRaisesRegex(
+            cd.CapabilityDispositionError, "sealed \.coveragerc identity"
+        ):
+            cd._source_files_from_report(mutated, ROOT, source_reader=reader)
+
+    def test_frozen_source_rejects_unsafe_and_unadmitted_paths(self) -> None:
+        reader = cd.FrozenGitSource(
+            ROOT,
+            blob_reader=mock.Mock(side_effect=AssertionError("resolver must not be called")),
+        )
+        reader.bind({"cli/automa_cli/app.py": "0" * 64})
+        for path in (
+            "/tmp/app.py",
+            "../cli/automa_cli/app.py",
+            "cli\\automa_cli\\app.py",
+            "cli/automa_cli/app.py\x00",
+            "cli/automa_cli/not-admitted.py",
+        ):
+            with self.subTest(path=path):
+                with self.assertRaises(cd.CapabilityDispositionError):
+                    reader.read(path)
+
+    def test_frozen_source_hash_mismatch_fails_before_parsing(self) -> None:
+        path = "cli/automa_cli/app.py"
+        reader = cd.FrozenGitSource(ROOT, blob_reader=lambda _path: b"not the frozen source")
+        reader.bind({path: cd.sha256_bytes(b"expected frozen source")})
+        with self.assertRaisesRegex(
+            cd.CapabilityDispositionError, "frozen source hash mismatch"
+        ):
+            reader.read(path)
+
+    def test_frozen_git_resolution_failure_classes_fail_closed(self) -> None:
+        path = "cli/automa_cli/app.py"
+        expected_sha256 = cd.sha256_bytes(b"frozen source")
+
+        def result(returncode: int = 0, stdout: bytes = b"", stderr: bytes = b"") -> mock.Mock:
+            return mock.Mock(returncode=returncode, stdout=stdout, stderr=stderr)
+
+        cases = (
+            (
+                "missing commit",
+                [result(returncode=1, stderr=b"missing commit")],
+                "frozen source commit is missing",
+            ),
+            (
+                "missing blob",
+                [result(), result(returncode=1, stderr=b"missing path")],
+                "frozen source blob is missing",
+            ),
+            (
+                "non-blob path",
+                [result(), result(stdout=b"tree\n")],
+                "frozen source path is not a blob",
+            ),
+            (
+                "unreadable blob",
+                [result(), result(stdout=b"blob\n"), result(returncode=1, stderr=b"corrupt")],
+                "frozen source blob is unreadable",
+            ),
+            (
+                "partial blob output",
+                [result(), result(stdout=b"blob\n"), result(stdout=b"frozen", stderr=b"warning")],
+                "frozen source blob is unreadable",
+            ),
+        )
+        for name, responses, message in cases:
+            with self.subTest(failure=name):
+                runner = mock.Mock(side_effect=responses)
+                reader = cd.FrozenGitSource(ROOT, git_runner=runner)
+                reader.bind({path: expected_sha256})
+                with self.assertRaisesRegex(cd.CapabilityDispositionError, message):
+                    reader.read(path)
+                commands = [call.args[0] for call in runner.call_args_list]
+                self.assertEqual(commands[0][0:4], ["git", "--no-replace-objects", "cat-file", "-e"])
+                if len(commands) > 1:
+                    self.assertIn(f"{cd.FROZEN_SOURCE_COMMIT}:{path}", commands[1])
+
     def test_committed_evidence_passes(self) -> None:
         result = cd.validate_evidence(ROOT)
         self.assertEqual(result["result"], "pass")

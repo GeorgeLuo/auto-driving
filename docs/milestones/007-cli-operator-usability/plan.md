@@ -5,7 +5,7 @@
 | Status | Active |
 | Milestone branch | `milestone/007-cli-operator-usability` |
 | Cumulative PR | [#81](https://github.com/GeorgeLuo/auto-driving/pull/81) (draft until whole-milestone closeout) |
-| Current frontier | Timeout input-envelope consistency |
+| Current frontier | None (idle) |
 | Started | 2026-07-29 |
 | Action policy | Observation-only; no applied vehicle movement |
 
@@ -116,7 +116,7 @@ deletion; it does not retroactively widen the accepted primary journey.
 | M007-01 | Automa exposes and documents one consistent operator state model that distinguishes simulator availability, simulator frontend readiness, vehicle discoverability, local automation deployment, worker liveness, and perception-view availability in concise human output and complete `--json` output | Met | Consistent simulator, vehicle, deployment, worker, view, and evaluator-reference state vocabulary plus shared next-step readiness gates in human and JSON CLI surfaces in PR #84 |
 | M007-02 | An operator starting from `http://localhost:5050` can prepare the supported Chase scenario and discover `chase-sim-chaser` without manually deriving `/ws/control`; disconnected, stale, wrong-game, and unavailable-camera states name the failed boundary and exact recovery | Met | Local HTTP URL normalization, passive Chase discovery, explicit-only configured preparation, and exact frontend/game/camera/capability recovery in PR #84 |
 | M007-03 | Observation-only automation can publish a current camera/perception browser view when sensor image and frame identity are valid even if evaluator-only control reference data is unavailable; workflows that require that reference fail closed with an explicit missing-reference status | Met | Passive observation-only sensor/perception startup preserves scenario/playback/control/input state, separates optional evaluator reference, and keeps reference-dependent operations fail-closed in PR #84 |
-| M007-04 | Startup, status, and view commands use bounded operation-level timeout semantics, preserve stable human/JSON error categories, and provide current help/README examples for the complete journey and its recovery paths | Met | Bounded shared readiness deadlines, stable actionable error categories, cross-command gate agreement, open-view workflow, parser-valid cross-level help and recovery, README, and durable operator guide in PR #84 |
+| M007-04 | Startup, status, and view commands use bounded operation-level timeout semantics, preserve stable human/JSON error categories, and provide current help/README examples for the complete journey and its recovery paths | Met | PR #146 closes the Phase C timeout input-envelope finding at the shared CLI boundary: every affected primary consumer rejects non-positive and non-finite timeout values before discovery, staging, or worker/view work, with stable exit-2 errors and no traceback, while valid bounded timeout behavior is preserved. |
 | M007-05 | A tracked live acceptance unit against the current local Metrics UI contract proves one observation-only processed frame, healthy loopback view, exact layer states, no applied movement, and no default recording; contract drift fails rather than skipping | Met | Tracked live acceptance in PR #88 proves one current correlated camera/perception frame, healthy loopback rendering, truthful layer states, observation-only no-applied-control authority, protected-state preservation, no default run history, and stopped-worker cleanup against exact recorded auto-driving and Metrics UI commits |
 | M007-06 | Closeout confirms the primary demonstration, reconciles durable CLI documentation, records the accepted journey-coverage and full-leaf audit outcomes, verifies every #88 US-01 through US-10 candidate has a committed definition and disposition, and states every retained/unexposed capability and remaining external simulator, PiRacer, remote-view, or non-idle-control limit | Unmet | Closeout only after M007-01 through M007-05 and M007-07 through M007-10; no proposed sequence may remain unlisted or ownerless |
 | M007-07 | A reproducible CLI journey-coverage collector attributes owned-Python statement and branch execution to named commands and multi-command journeys across foreground and Python subprocess/background-worker boundaries, separates bootstrap/import footprint from command-specific behavior, records exact source/command identity, and remains informational | Met | PR #107 provides a versioned manifest and collection-bound pass report attributing branch-aware owned-Python execution to the accepted primary and continuity command/journey contexts across foreground and background Python processes, with pre-interpreter environment isolation, canonical dependency identity, bootstrap classification, immutable receipts, exact digest semantics, completeness/freshness checks, cleanup, and no correctness, dead-code, or percentage-gate claim |
@@ -128,22 +128,10 @@ deletion; it does not retroactively widen the accepted primary journey.
 
 ### Current Frontier
 
-**Timeout input-envelope consistency**
+**None**
 
-- Workflow state: implementation_in_review
-- Proposal branch: `m007/timeout-input-envelope-proposal`
-- Implementation branch: `m007/timeout-input-envelope`
-- Proposal path: `docs/milestones/007-cli-operator-usability/proposals/timeout-input-envelope.md`
-- Accepted proposal: [#145](https://github.com/GeorgeLuo/auto-driving/pull/145) at `02f0d9fc1cf5b85fde4a118f4f7e87b8464ff01c` (reviewed head `b3997bec7e074acaf1cc9b33e6e8f17f887968c7` by `GeorgeLuo` as `OWNER` at `2026-08-25T06:19:37Z`)
-- Proposal amendment branch: `m007/amend-historical-capability-validation`
-- Proposal amendment path: `docs/milestones/007-cli-operator-usability/proposals/historical-capability-validation-amendment.md`
-- Accepted proposal amendments: [#147](https://github.com/GeorgeLuo/auto-driving/pull/147) at `2027edcf1ecef71938a818145531a1a861724fee` (`docs/milestones/007-cli-operator-usability/proposals/historical-capability-validation-amendment.md`) (reviewed head `18457f0a6d8172ecc0dc9fa4eddd5d5117b6b0ae` by `GeorgeLuo` as `OWNER` at `2026-08-25T08:09:07Z`)
-- Review kind: Review repair
-- Review question: Do all affected primary CLI commands reject non-positive and non-finite timeout inputs through one stable input/error boundary before execution, without tracebacks, while preserving valid timeout behavior?
-- Acceptance owner: Shared CLI timeout-input/error boundary used by `cli/automa_cli/app.py` handlers
-- Exit criteria affected: `M007-04`
-- Prerequisite: Phase C timeout finding from PR #81 is reproduced and remains routed as a new owned product review unit from the restored Active/idle milestone.
-- Milestone-level non-goal: No timeout-budget redesign, readiness-gate redesign, or repair of the separate PiRacer and Chase image-envelope findings.
+- Reason: The timeout repair is promoted and the milestone remains idle; the separate Phase C PiRacer and Chase image-envelope findings remain outside this unit.
+- Revisit when: A later proposal is justified by the remaining Phase C finding or by a new milestone acceptance decision.
 
 ### Next-Frontier Candidate
 
@@ -207,6 +195,7 @@ deletion; it does not retroactively widen the accepted primary journey.
 | Timeout input-envelope consistency | proposal_amendment_in_review | Started proposal amendment m007/amend-historical-capability-validation. |
 | Timeout input-envelope consistency | ready_for_implementation | Proposal amendment PR #147 accepted at 2027edcf1ecef71938a818145531a1a861724fee (reviewed head `18457f0a6d8172ecc0dc9fa4eddd5d5117b6b0ae` by `GeorgeLuo` as `OWNER` at `2026-08-25T08:09:07Z`). |
 | Timeout input-envelope consistency | implementation_in_review | Started m007/timeout-input-envelope. |
+| Timeout input-envelope consistency | accepted | Implementation PR #146 merged at f6d221c0c602e648efc4bdd355c909a9bca3fa12. |
 
 ## Accepted Review Units
 
@@ -219,6 +208,7 @@ deletion; it does not retroactively widen the accepted primary journey.
 | #122 | Can one committed CLI usage registry prove complete parser-leaf and #88 US-01 through US-10 accounting, with every public leaf mapped to realistic usage, prerequisites, side effects and safety, expected output, owning boundary, and deterministic or live validation, and every sequence assigned stable commands, confirmation, cleanup, coverage treatment, and an explicit passed, ready, blocked, or deferred disposition with owned unlock conditions, while machine-first and HITL evidence covers safe executable patterns without running hazardous or external entries unsafely? | Accepted | M007-08 | Complete CLI surface and sequence audit in PR #122: argparse-derived leaf inventory with mandatory overlay dimensions; committed #88 catalog authority snapshot and US-01 through US-10 registry bound to it; parser-aware argv validation; semantic hybrid passed citation (rejecting incomplete rehearsals) or new execute evidence; required coverage treatment enums; validators and cross-checks; help-drift report; linked LIVE residuals without product repair; rendered residual rollup; tracked evidence under docs/milestones/007-cli-operator-usability/evidence/cli-surface-audit/ |
 | #138 | Can owned production code not reached by the declared CLI journey set be grouped by capability and reconciled with tests, other entrypoints, dynamic or platform paths, and ownership so every group is flagged to expose through CLI, retain with an explicit owner and reason, or remove through separately reviewed work, without authorizing feature or deletion solely by a coverage percentage? | Accepted | M007-09 | Capability disposition outside CLI journeys in PR #138: unreached owned production code derived from sealed M007-07 report; every region in exactly one capability group; tests/entrypoints/platform/owner reconciled; expose/retain/remove candidates with non-percentage reasons; validators reject omission and percentage-as-authorization; derived HTML of that record; tracked evidence under docs/milestones/007-cli-operator-usability/evidence/capability-disposition/ |
 | #144 | Is milestone 007 complete as a whole—its supported CLI journeys remain documented, every exit criterion is backed by accepted evidence, every #88 US-01 through US-10 sequence and every unreached capability has an accountable disposition, residual limits are explicit, and the cumulative milestone is ready for whole-milestone review without hiding follow-on product work? | Cumulative review rejected; closeout packet retained; M007-06 remains Unmet | M007-06 | Phase C rejected whole-milestone acceptance on PR #81; Phase B close commit reverted; completed.md gained an append-only withdrawal section; exceptional advance receipt returned current to idle without marking M007-06 Met |
+| #146 | Do all affected primary CLI commands reject non-positive and non-finite timeout inputs through one stable input/error boundary before execution, without tracebacks, while preserving valid timeout behavior? | Accepted | `M007-04` | Timeout input-envelope consistency in PR #146: vehicles status, vehicles automation run, and vehicles update perception reject zero, negative, NaN, and infinite --timeout-s values before command work with stable exit-2 human or existing machine-readable errors and no traceback; finite positive and default timeout behavior remains unchanged; focused regressions and the repository suite pass. |
 
 ## Open Risks And Unverified Assumptions
 

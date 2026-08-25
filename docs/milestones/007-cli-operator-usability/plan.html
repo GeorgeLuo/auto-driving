@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="cf4e3465bf6af0c489ccb8b5c05fd223b61446bcf55924bf564848bd53e6954b">
+  <meta name="source-sha256" content="56989d4270483ab8289adacaec195a089b9f327300b0d3f8620881d3582dc744">
   <base target="_blank">
   <title>Milestone plan — 007-cli-operator-usability</title>
   <style>
@@ -357,10 +357,11 @@ deletion; it does not retroactively widen the accepted primary journey.</p>
 <h3>Current Frontier</h3>
 <p><strong>Timeout input-envelope consistency</strong></p>
 <ul>
-<li>Workflow state: proposal_in_review</li>
+<li>Workflow state: ready_for_implementation</li>
 <li>Proposal branch: <code>m007/timeout-input-envelope-proposal</code></li>
 <li>Implementation branch: <code>m007/timeout-input-envelope</code></li>
 <li>Proposal path: <code>docs/milestones/007-cli-operator-usability/proposals/timeout-input-envelope.md</code></li>
+<li>Accepted proposal: <a href="https://github.com/GeorgeLuo/auto-driving/pull/145">#145</a> at <code>02f0d9fc1cf5b85fde4a118f4f7e87b8464ff01c</code> (reviewed head <code>b3997bec7e074acaf1cc9b33e6e8f17f887968c7</code> by <code>GeorgeLuo</code> as <code>OWNER</code> at <code>2026-08-25T06:19:37Z</code>)</li>
 <li>Review kind: Review repair</li>
 <li>Review question: Do all affected primary CLI commands reject non-positive and non-finite timeout inputs through one stable input/error boundary before execution, without tracebacks, while preserving valid timeout behavior?</li>
 <li>Acceptance owner: Shared CLI timeout-input/error boundary used by <code>cli/automa_cli/app.py</code> handlers</li>
@@ -598,6 +599,11 @@ deletion; it does not retroactively widen the accepted primary journey.</p>
 <td>Timeout input-envelope consistency</td>
 <td>proposal_in_review</td>
 <td>Started m007/timeout-input-envelope-proposal.</td>
+</tr>
+<tr>
+<td>Timeout input-envelope consistency</td>
+<td>ready_for_implementation</td>
+<td>Proposal PR #145 accepted at 02f0d9fc1cf5b85fde4a118f4f7e87b8464ff01c (reviewed head <code>b3997bec7e074acaf1cc9b33e6e8f17f887968c7</code> by <code>GeorgeLuo</code> as <code>OWNER</code> at <code>2026-08-25T06:19:37Z</code>).</td>
 </tr>
 </tbody>
 </table>

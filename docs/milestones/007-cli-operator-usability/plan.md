@@ -130,10 +130,11 @@ deletion; it does not retroactively widen the accepted primary journey.
 
 **Timeout input-envelope consistency**
 
-- Workflow state: proposal_in_review
+- Workflow state: ready_for_implementation
 - Proposal branch: `m007/timeout-input-envelope-proposal`
 - Implementation branch: `m007/timeout-input-envelope`
 - Proposal path: `docs/milestones/007-cli-operator-usability/proposals/timeout-input-envelope.md`
+- Accepted proposal: [#145](https://github.com/GeorgeLuo/auto-driving/pull/145) at `02f0d9fc1cf5b85fde4a118f4f7e87b8464ff01c` (reviewed head `b3997bec7e074acaf1cc9b33e6e8f17f887968c7` by `GeorgeLuo` as `OWNER` at `2026-08-25T06:19:37Z`)
 - Review kind: Review repair
 - Review question: Do all affected primary CLI commands reject non-positive and non-finite timeout inputs through one stable input/error boundary before execution, without tracebacks, while preserving valid timeout behavior?
 - Acceptance owner: Shared CLI timeout-input/error boundary used by `cli/automa_cli/app.py` handlers
@@ -199,6 +200,7 @@ deletion; it does not retroactively widen the accepted primary journey.
 | Milestone closeout | implementation_in_review | Started m007/closeout. |
 | Milestone closeout | accepted | Implementation PR #144 merged at ab72c7befdca8d69fe12f9d8c6d1ce554aeb5818. |
 | Timeout input-envelope consistency | proposal_in_review | Started m007/timeout-input-envelope-proposal. |
+| Timeout input-envelope consistency | ready_for_implementation | Proposal PR #145 accepted at 02f0d9fc1cf5b85fde4a118f4f7e87b8464ff01c (reviewed head `b3997bec7e074acaf1cc9b33e6e8f17f887968c7` by `GeorgeLuo` as `OWNER` at `2026-08-25T06:19:37Z`). |
 
 ## Accepted Review Units
 

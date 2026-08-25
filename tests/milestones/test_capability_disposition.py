@@ -132,7 +132,7 @@ class CapabilityDispositionTests(unittest.TestCase):
         path = "cli/automa_cli/app.py"
         expected_sha256 = cd.sha256_bytes(b"frozen source")
 
-        def result(returncode: int = 0, stdout: bytes = b"", stderr: bytes = b"") -> mock.Mock:
+        def result(returncode: int = 0, stdout: object = b"", stderr: object = b"") -> mock.Mock:
             return mock.Mock(returncode=returncode, stdout=stdout, stderr=stderr)
 
         cases = (
@@ -150,6 +150,16 @@ class CapabilityDispositionTests(unittest.TestCase):
                 "non-blob path",
                 [result(), result(stdout=b"tree\n")],
                 "frozen source path is not a blob",
+            ),
+            (
+                "missing type output",
+                [result(), result(stdout=None)],
+                "frozen source object type is unreadable",
+            ),
+            (
+                "non-bytes type output",
+                [result(), result(stdout="blob\n")],
+                "frozen source object type is unreadable",
             ),
             (
                 "unreadable blob",

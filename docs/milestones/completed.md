@@ -160,3 +160,15 @@ This is the retained Phase A closeout packet inside cumulative PR #81. It does
 not claim that #81 has merged into `main` or that tag `milestone-007` exists.
 Phase B must first apply the reviewed terminal plan handoff, and Phase C must
 then accept #81 as a whole.
+
+## 007 CLI Operator Usability — cumulative review withdrawn
+
+Cumulative PR [#81](https://github.com/GeorgeLuo/auto-driving/pull/81) was not
+merged into `main`. Its Phase C review at cumulative head
+`ee2e3056f77bee9a4511877829eb9c46b52d0aa2` recorded a substantial
+`changes_requested` verdict because product-boundary findings require new
+owned review units.
+
+The preceding 007 entry is retained as the Phase A closeout packet; it is not
+mainline milestone closure. M007-06 remains `Unmet` while the milestone returns
+to active planning.

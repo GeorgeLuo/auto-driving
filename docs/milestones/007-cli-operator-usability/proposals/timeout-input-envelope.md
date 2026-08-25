@@ -12,11 +12,9 @@
 
 ## Review Question
 
-Can the primary M007 commands that consume the shared Chase readiness timeout
-reject zero, negative, NaN, and infinite values through one owned CLI
-input/error boundary before any command work, returning stable exit-2 human or
-existing machine-readable errors without a Python traceback, while preserving
-the current operation-level deadline behavior for finite positive values?
+Do all affected primary CLI commands reject non-positive and non-finite timeout
+inputs through one stable input/error boundary before execution, without
+tracebacks, while preserving valid timeout behavior?
 
 This is a new product review unit because PR #81 is a closed-plan cumulative
 review surface. The timeout finding must be repaired and reviewed on its owning

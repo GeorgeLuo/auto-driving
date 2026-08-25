@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="6cedf4d32bd148e5ed2fb325d294cf91caa1257e9275a12f795adff2a70d2f33">
+  <meta name="source-sha256" content="a122dc7ccdb423bbeb3af410664a78e44ab60542f3bb5194abf1bf866cda8e19">
   <base target="_blank">
   <title>Milestone plan — 007-cli-operator-usability</title>
   <style>
@@ -357,13 +357,14 @@ deletion; it does not retroactively widen the accepted primary journey.</p>
 <h3>Current Frontier</h3>
 <p><strong>Timeout input-envelope consistency</strong></p>
 <ul>
-<li>Workflow state: proposal_amendment_in_review</li>
+<li>Workflow state: ready_for_implementation</li>
 <li>Proposal branch: <code>m007/timeout-input-envelope-proposal</code></li>
 <li>Implementation branch: <code>m007/timeout-input-envelope</code></li>
 <li>Proposal path: <code>docs/milestones/007-cli-operator-usability/proposals/timeout-input-envelope.md</code></li>
 <li>Accepted proposal: <a href="https://github.com/GeorgeLuo/auto-driving/pull/145">#145</a> at <code>02f0d9fc1cf5b85fde4a118f4f7e87b8464ff01c</code> (reviewed head <code>b3997bec7e074acaf1cc9b33e6e8f17f887968c7</code> by <code>GeorgeLuo</code> as <code>OWNER</code> at <code>2026-08-25T06:19:37Z</code>)</li>
 <li>Proposal amendment branch: <code>m007/amend-historical-capability-validation</code></li>
 <li>Proposal amendment path: <code>docs/milestones/007-cli-operator-usability/proposals/historical-capability-validation-amendment.md</code></li>
+<li>Accepted proposal amendments: <a href="https://github.com/GeorgeLuo/auto-driving/pull/147">#147</a> at <code>2027edcf1ecef71938a818145531a1a861724fee</code> (<code>docs/milestones/007-cli-operator-usability/proposals/historical-capability-validation-amendment.md</code>) (reviewed head <code>18457f0a6d8172ecc0dc9fa4eddd5d5117b6b0ae</code> by <code>GeorgeLuo</code> as <code>OWNER</code> at <code>2026-08-25T08:09:07Z</code>)</li>
 <li>Review kind: Review repair</li>
 <li>Review question: Do all affected primary CLI commands reject non-positive and non-finite timeout inputs through one stable input/error boundary before execution, without tracebacks, while preserving valid timeout behavior?</li>
 <li>Acceptance owner: Shared CLI timeout-input/error boundary used by <code>cli/automa_cli/app.py</code> handlers</li>
@@ -611,6 +612,11 @@ deletion; it does not retroactively widen the accepted primary journey.</p>
 <td>Timeout input-envelope consistency</td>
 <td>proposal_amendment_in_review</td>
 <td>Started proposal amendment m007/amend-historical-capability-validation.</td>
+</tr>
+<tr>
+<td>Timeout input-envelope consistency</td>
+<td>ready_for_implementation</td>
+<td>Proposal amendment PR #147 accepted at 2027edcf1ecef71938a818145531a1a861724fee (reviewed head <code>18457f0a6d8172ecc0dc9fa4eddd5d5117b6b0ae</code> by <code>GeorgeLuo</code> as <code>OWNER</code> at <code>2026-08-25T08:09:07Z</code>).</td>
 </tr>
 </tbody>
 </table>

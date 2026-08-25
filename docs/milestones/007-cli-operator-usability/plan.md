@@ -5,7 +5,7 @@
 | Status | Active |
 | Milestone branch | `milestone/007-cli-operator-usability` |
 | Cumulative PR | [#81](https://github.com/GeorgeLuo/auto-driving/pull/81) (draft until whole-milestone closeout) |
-| Current frontier | None (idle) |
+| Current frontier | Timeout input-envelope consistency |
 | Started | 2026-07-29 |
 | Action policy | Observation-only; no applied vehicle movement |
 
@@ -128,10 +128,18 @@ deletion; it does not retroactively widen the accepted primary journey.
 
 ### Current Frontier
 
-**None**
+**Timeout input-envelope consistency**
 
-- Reason: Whole-milestone review rejected after terminal handoff. Current is idle so the next proposal can select a repair or new owned unit.
-- Revisit when: A new proposal routes the Phase C blocking finding.
+- Workflow state: proposal_in_review
+- Proposal branch: `m007/timeout-input-envelope-proposal`
+- Implementation branch: `m007/timeout-input-envelope`
+- Proposal path: `docs/milestones/007-cli-operator-usability/proposals/timeout-input-envelope.md`
+- Review kind: Review repair
+- Review question: Do all affected primary CLI commands reject non-positive and non-finite timeout inputs through one stable input/error boundary before execution, without tracebacks, while preserving valid timeout behavior?
+- Acceptance owner: Shared CLI timeout-input/error boundary used by `cli/automa_cli/app.py` handlers
+- Exit criteria affected: `M007-04`
+- Prerequisite: Phase C timeout finding from PR #81 is reproduced and remains routed as a new owned product review unit from the restored Active/idle milestone.
+- Milestone-level non-goal: No timeout-budget redesign, readiness-gate redesign, or repair of the separate PiRacer and Chase image-envelope findings.
 
 ### Next-Frontier Candidate
 
@@ -190,6 +198,7 @@ deletion; it does not retroactively widen the accepted primary journey.
 | Milestone closeout | ready_for_implementation | Proposal PR #143 accepted at 2ab7955b953f1d5863ee032db38271ca50d111a7 (reviewed head `c9b7185df1f2ddba8c74b735e082881dd9501c45` by `GeorgeLuo` as `OWNER` at `2026-08-24T18:18:59Z`). |
 | Milestone closeout | implementation_in_review | Started m007/closeout. |
 | Milestone closeout | accepted | Implementation PR #144 merged at ab72c7befdca8d69fe12f9d8c6d1ce554aeb5818. |
+| Timeout input-envelope consistency | proposal_in_review | Started m007/timeout-input-envelope-proposal. |
 
 ## Accepted Review Units
 

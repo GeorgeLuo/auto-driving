@@ -462,7 +462,7 @@ class FrozenGitSource:
             ):
                 _fail(f"frozen source blob is missing: {path}")
             _fail(f"frozen source object is unreadable: {path}")
-        if type_result.stderr != b"" or type_result.stdout not in (b"blob", b"blob\n"):
+        if type_result.stderr != b"" or type_result.stdout != b"blob\n":
             object_type = (
                 type_result.stdout.decode("ascii", errors="replace").strip()
                 if isinstance(type_result.stdout, bytes)

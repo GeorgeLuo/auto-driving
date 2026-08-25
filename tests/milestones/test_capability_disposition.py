@@ -166,6 +166,11 @@ class CapabilityDispositionTests(unittest.TestCase):
                 "frozen source path is not a blob",
             ),
             (
+                "truncated type output",
+                [result(), result(stdout=b"blob")],
+                "frozen source object type is unreadable",
+            ),
+            (
                 "missing type output",
                 [result(), result(stdout=None)],
                 "frozen source object type is unreadable",

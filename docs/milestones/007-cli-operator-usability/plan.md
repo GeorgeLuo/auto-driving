@@ -130,7 +130,7 @@ deletion; it does not retroactively widen the accepted primary journey.
 
 **Milestone closeout**
 
-- Workflow state: ready_for_implementation
+- Workflow state: implementation_in_review
 - Proposal branch: `m007/closeout-proposal`
 - Implementation branch: `m007/closeout`
 - Proposal path: `docs/milestones/007-cli-operator-usability/proposals/closeout.md`
@@ -197,6 +197,7 @@ deletion; it does not retroactively widen the accepted primary journey.
 | Capability disposition outside CLI journeys | accepted | Implementation PR #138 merged at 460e2827bd6b586e75bc698593be064f4c10e6f9. |
 | Milestone closeout | proposal_in_review | Started m007/closeout-proposal. |
 | Milestone closeout | ready_for_implementation | Proposal PR #143 accepted at 2ab7955b953f1d5863ee032db38271ca50d111a7 (reviewed head `c9b7185df1f2ddba8c74b735e082881dd9501c45` by `GeorgeLuo` as `OWNER` at `2026-08-24T18:18:59Z`). |
+| Milestone closeout | implementation_in_review | Started m007/closeout. |
 
 ## Accepted Review Units
 

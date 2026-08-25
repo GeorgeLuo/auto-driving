@@ -135,7 +135,7 @@ deletion; it does not retroactively widen the accepted primary journey.
 - Implementation branch: `m007/timeout-input-envelope`
 - Proposal path: `docs/milestones/007-cli-operator-usability/proposals/timeout-input-envelope.md`
 - Review kind: Review repair
-- Review question: Do all affected primary CLI commands reject non-positive and non-finite timeout inputs through one stable input/error boundary before execution, without tracebacks, while preserving valid timeout behavior?
+- Review question: Can the primary M007 commands that consume the shared Chase readiness timeout reject zero, negative, NaN, and infinite values through one owned CLI input/error boundary before any command work, returning stable exit-2 human or existing machine-readable errors without a Python traceback, while preserving the current operation-level deadline behavior for finite positive values?
 - Acceptance owner: Shared CLI timeout-input/error boundary used by `cli/automa_cli/app.py` handlers
 - Exit criteria affected: `M007-04`
 - Prerequisite: Phase C timeout finding from PR #81 is reproduced and remains routed as a new owned product review unit from the restored Active/idle milestone.

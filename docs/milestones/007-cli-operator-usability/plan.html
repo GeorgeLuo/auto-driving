@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="cf4e3465bf6af0c489ccb8b5c05fd223b61446bcf55924bf564848bd53e6954b">
+  <meta name="source-sha256" content="df1ff2ce609af017cd9589225fdf10fac934964481207f7eca203acd4355b4c7">
   <base target="_blank">
   <title>Milestone plan — 007-cli-operator-usability</title>
   <style>
@@ -362,7 +362,7 @@ deletion; it does not retroactively widen the accepted primary journey.</p>
 <li>Implementation branch: <code>m007/timeout-input-envelope</code></li>
 <li>Proposal path: <code>docs/milestones/007-cli-operator-usability/proposals/timeout-input-envelope.md</code></li>
 <li>Review kind: Review repair</li>
-<li>Review question: Do all affected primary CLI commands reject non-positive and non-finite timeout inputs through one stable input/error boundary before execution, without tracebacks, while preserving valid timeout behavior?</li>
+<li>Review question: Can the primary M007 commands that consume the shared Chase readiness timeout reject zero, negative, NaN, and infinite values through one owned CLI input/error boundary before any command work, returning stable exit-2 human or existing machine-readable errors without a Python traceback, while preserving the current operation-level deadline behavior for finite positive values?</li>
 <li>Acceptance owner: Shared CLI timeout-input/error boundary used by <code>cli/automa_cli/app.py</code> handlers</li>
 <li>Exit criteria affected: <code>M007-04</code></li>
 <li>Prerequisite: Phase C timeout finding from PR #81 is reproduced and remains routed as a new owned product review unit from the restored Active/idle milestone.</li>

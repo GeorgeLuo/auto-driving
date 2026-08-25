@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="4d9db1bbc2737864248bed00d50bf258af4312d1da7984a12620f433005d0152">
+  <meta name="source-sha256" content="cf4e3465bf6af0c489ccb8b5c05fd223b61446bcf55924bf564848bd53e6954b">
   <base target="_blank">
   <title>Milestone plan — 007-cli-operator-usability</title>
   <style>
@@ -85,7 +85,7 @@
 </tr>
 <tr>
 <td>Current frontier</td>
-<td>None (idle)</td>
+<td>Timeout input-envelope consistency</td>
 </tr>
 <tr>
 <td>Started</td>
@@ -355,10 +355,18 @@ deletion; it does not retroactively widen the accepted primary journey.</p>
 </table>
 <h2>Current Delivery</h2>
 <h3>Current Frontier</h3>
-<p><strong>None</strong></p>
+<p><strong>Timeout input-envelope consistency</strong></p>
 <ul>
-<li>Reason: Whole-milestone review rejected after terminal handoff. Current is idle so the next proposal can select a repair or new owned unit.</li>
-<li>Revisit when: A new proposal routes the Phase C blocking finding.</li>
+<li>Workflow state: proposal_in_review</li>
+<li>Proposal branch: <code>m007/timeout-input-envelope-proposal</code></li>
+<li>Implementation branch: <code>m007/timeout-input-envelope</code></li>
+<li>Proposal path: <code>docs/milestones/007-cli-operator-usability/proposals/timeout-input-envelope.md</code></li>
+<li>Review kind: Review repair</li>
+<li>Review question: Do all affected primary CLI commands reject non-positive and non-finite timeout inputs through one stable input/error boundary before execution, without tracebacks, while preserving valid timeout behavior?</li>
+<li>Acceptance owner: Shared CLI timeout-input/error boundary used by <code>cli/automa_cli/app.py</code> handlers</li>
+<li>Exit criteria affected: <code>M007-04</code></li>
+<li>Prerequisite: Phase C timeout finding from PR #81 is reproduced and remains routed as a new owned product review unit from the restored Active/idle milestone.</li>
+<li>Milestone-level non-goal: No timeout-budget redesign, readiness-gate redesign, or repair of the separate PiRacer and Chase image-envelope findings.</li>
 </ul>
 <h3>Next-Frontier Candidate</h3>
 <p><strong>None</strong></p>
@@ -585,6 +593,11 @@ deletion; it does not retroactively widen the accepted primary journey.</p>
 <td>Milestone closeout</td>
 <td>accepted</td>
 <td>Implementation PR #144 merged at ab72c7befdca8d69fe12f9d8c6d1ce554aeb5818.</td>
+</tr>
+<tr>
+<td>Timeout input-envelope consistency</td>
+<td>proposal_in_review</td>
+<td>Started m007/timeout-input-envelope-proposal.</td>
 </tr>
 </tbody>
 </table>

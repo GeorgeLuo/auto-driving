@@ -5,7 +5,7 @@
 | Status | Active |
 | Milestone branch | `milestone/007-cli-operator-usability` |
 | Cumulative PR | [#81](https://github.com/GeorgeLuo/auto-driving/pull/81) (draft until whole-milestone closeout) |
-| Current frontier | Milestone closeout |
+| Current frontier | None (idle) |
 | Started | 2026-07-29 |
 | Action policy | Observation-only; no applied vehicle movement |
 
@@ -128,19 +128,10 @@ deletion; it does not retroactively widen the accepted primary journey.
 
 ### Current Frontier
 
-**Milestone closeout**
+**None**
 
-- Workflow state: implementation_in_review
-- Proposal branch: `m007/closeout-proposal`
-- Implementation branch: `m007/closeout`
-- Proposal path: `docs/milestones/007-cli-operator-usability/proposals/closeout.md`
-- Accepted proposal: [#143](https://github.com/GeorgeLuo/auto-driving/pull/143) at `2ab7955b953f1d5863ee032db38271ca50d111a7` (reviewed head `c9b7185df1f2ddba8c74b735e082881dd9501c45` by `GeorgeLuo` as `OWNER` at `2026-08-24T18:18:59Z`)
-- Review kind: Milestone closeout
-- Review question: Is milestone 007 complete as a whole—its supported CLI journeys remain documented, every exit criterion is backed by accepted evidence, every #88 US-01 through US-10 sequence and every unreached capability has an accountable disposition, residual limits are explicit, and the cumulative milestone is ready for whole-milestone review without hiding follow-on product work?
-- Acceptance owner: Whole-milestone closeout judgment in `closeout.md`, completed ledger and durable CLI documentation reconciliation, terminal workflow handoff, and cumulative PR #81 readiness surface
-- Exit criteria affected: M007-06
-- Prerequisite: M007-01 through M007-05 and M007-07 through M007-10 are `Met`; accepted review units #84, #88, #100, #107, #122, and #138 and their tracked evidence remain the authority
-- Milestone-level non-goal: Product or runtime change, evidence recapture for recency, executing deferred/hazardous work, implementing capability candidates or issues #89–#91, editing M006, or marking the cumulative PR ready before terminal handoff
+- Reason: Whole-milestone review rejected after terminal handoff. Current is idle so the next proposal can select a repair or new owned unit.
+- Revisit when: A new proposal routes the Phase C blocking finding.
 
 ### Next-Frontier Candidate
 
@@ -198,6 +189,7 @@ deletion; it does not retroactively widen the accepted primary journey.
 | Milestone closeout | proposal_in_review | Started m007/closeout-proposal. |
 | Milestone closeout | ready_for_implementation | Proposal PR #143 accepted at 2ab7955b953f1d5863ee032db38271ca50d111a7 (reviewed head `c9b7185df1f2ddba8c74b735e082881dd9501c45` by `GeorgeLuo` as `OWNER` at `2026-08-24T18:18:59Z`). |
 | Milestone closeout | implementation_in_review | Started m007/closeout. |
+| Milestone closeout | accepted | Implementation PR #144 merged at ab72c7befdca8d69fe12f9d8c6d1ce554aeb5818. |
 
 ## Accepted Review Units
 
@@ -209,6 +201,7 @@ deletion; it does not retroactively widen the accepted primary journey.
 | #107 | Can a developer record reproducible branch-aware owned-Python coverage for named CLI commands and multi-command journeys across foreground and Python subprocess/background-worker execution while separating bootstrap/import footprint from command-specific behavior and avoiding false correctness or dead-code claims? | Accepted | M007-07 | Reproducible branch-aware owned-Python CLI journey coverage in PR #107: a digest-bound command/context manifest; unpredictable collection-bound shard provenance; pre-interpreter ambient Coverage.py refusal and session-contained effective configuration; isolated foreground, subprocess, and SIGTERM-flushed background-worker collection; complete expected-context and process receipts; canonical requirements/interpreter/all-distribution identity; raw plus bootstrap/shared/command-specific statement and arc attribution; immutable timestamp receipts and an exact byte-stable public-API report digest; terminal cleanup; explicit correctness/dead-code/numeric-gate non-claims; and tracked pass evidence under docs/milestones/007-cli-operator-usability/evidence/cli-journey-coverage/ |
 | #122 | Can one committed CLI usage registry prove complete parser-leaf and #88 US-01 through US-10 accounting, with every public leaf mapped to realistic usage, prerequisites, side effects and safety, expected output, owning boundary, and deterministic or live validation, and every sequence assigned stable commands, confirmation, cleanup, coverage treatment, and an explicit passed, ready, blocked, or deferred disposition with owned unlock conditions, while machine-first and HITL evidence covers safe executable patterns without running hazardous or external entries unsafely? | Accepted | M007-08 | Complete CLI surface and sequence audit in PR #122: argparse-derived leaf inventory with mandatory overlay dimensions; committed #88 catalog authority snapshot and US-01 through US-10 registry bound to it; parser-aware argv validation; semantic hybrid passed citation (rejecting incomplete rehearsals) or new execute evidence; required coverage treatment enums; validators and cross-checks; help-drift report; linked LIVE residuals without product repair; rendered residual rollup; tracked evidence under docs/milestones/007-cli-operator-usability/evidence/cli-surface-audit/ |
 | #138 | Can owned production code not reached by the declared CLI journey set be grouped by capability and reconciled with tests, other entrypoints, dynamic or platform paths, and ownership so every group is flagged to expose through CLI, retain with an explicit owner and reason, or remove through separately reviewed work, without authorizing feature or deletion solely by a coverage percentage? | Accepted | M007-09 | Capability disposition outside CLI journeys in PR #138: unreached owned production code derived from sealed M007-07 report; every region in exactly one capability group; tests/entrypoints/platform/owner reconciled; expose/retain/remove candidates with non-percentage reasons; validators reject omission and percentage-as-authorization; derived HTML of that record; tracked evidence under docs/milestones/007-cli-operator-usability/evidence/capability-disposition/ |
+| #144 | Is milestone 007 complete as a whole—its supported CLI journeys remain documented, every exit criterion is backed by accepted evidence, every #88 US-01 through US-10 sequence and every unreached capability has an accountable disposition, residual limits are explicit, and the cumulative milestone is ready for whole-milestone review without hiding follow-on product work? | Cumulative review rejected; closeout packet retained; M007-06 remains Unmet | M007-06 | Phase C rejected whole-milestone acceptance on PR #81; Phase B close commit reverted; completed.md gained an append-only withdrawal section; exceptional advance receipt returned current to idle without marking M007-06 Met |
 
 ## Open Risks And Unverified Assumptions
 

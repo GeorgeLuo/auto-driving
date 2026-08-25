@@ -2,10 +2,10 @@
 
 | Field | Value |
 | --- | --- |
-| Status | Active |
+| Status | closed |
 | Milestone branch | `milestone/007-cli-operator-usability` |
 | Cumulative PR | [#81](https://github.com/GeorgeLuo/auto-driving/pull/81) (draft until whole-milestone closeout) |
-| Current frontier | Milestone closeout |
+| Current frontier | None (closed) |
 | Started | 2026-07-29 |
 | Action policy | Observation-only; no applied vehicle movement |
 
@@ -118,7 +118,7 @@ deletion; it does not retroactively widen the accepted primary journey.
 | M007-03 | Observation-only automation can publish a current camera/perception browser view when sensor image and frame identity are valid even if evaluator-only control reference data is unavailable; workflows that require that reference fail closed with an explicit missing-reference status | Met | Passive observation-only sensor/perception startup preserves scenario/playback/control/input state, separates optional evaluator reference, and keeps reference-dependent operations fail-closed in PR #84 |
 | M007-04 | Startup, status, and view commands use bounded operation-level timeout semantics, preserve stable human/JSON error categories, and provide current help/README examples for the complete journey and its recovery paths | Met | Bounded shared readiness deadlines, stable actionable error categories, cross-command gate agreement, open-view workflow, parser-valid cross-level help and recovery, README, and durable operator guide in PR #84 |
 | M007-05 | A tracked live acceptance unit against the current local Metrics UI contract proves one observation-only processed frame, healthy loopback view, exact layer states, no applied movement, and no default recording; contract drift fails rather than skipping | Met | Tracked live acceptance in PR #88 proves one current correlated camera/perception frame, healthy loopback rendering, truthful layer states, observation-only no-applied-control authority, protected-state preservation, no default run history, and stopped-worker cleanup against exact recorded auto-driving and Metrics UI commits |
-| M007-06 | Closeout confirms the primary demonstration, reconciles durable CLI documentation, records the accepted journey-coverage and full-leaf audit outcomes, verifies every #88 US-01 through US-10 candidate has a committed definition and disposition, and states every retained/unexposed capability and remaining external simulator, PiRacer, remote-view, or non-idle-control limit | Unmet | Closeout only after M007-01 through M007-05 and M007-07 through M007-10; no proposed sequence may remain unlisted or ownerless |
+| M007-06 | Closeout confirms the primary demonstration, reconciles durable CLI documentation, records the accepted journey-coverage and full-leaf audit outcomes, verifies every #88 US-01 through US-10 candidate has a committed definition and disposition, and states every retained/unexposed capability and remaining external simulator, PiRacer, remote-view, or non-idle-control limit | Met | Closeout confirms the supported primary journey and durable CLI documentation, maps accepted coverage and full-leaf audit evidence, verifies accountable US-01 through US-10 and capability dispositions, and records external simulator, PiRacer, remote-view, non-idle-control, deferred-product, and historical-measurement limits in PR #144 |
 | M007-07 | A reproducible CLI journey-coverage collector attributes owned-Python statement and branch execution to named commands and multi-command journeys across foreground and Python subprocess/background-worker boundaries, separates bootstrap/import footprint from command-specific behavior, records exact source/command identity, and remains informational | Met | PR #107 provides a versioned manifest and collection-bound pass report attributing branch-aware owned-Python execution to the accepted primary and continuity command/journey contexts across foreground and background Python processes, with pre-interpreter environment isolation, canonical dependency identity, bootstrap classification, immutable receipts, exact digest semantics, completeness/freshness checks, cleanup, and no correctness, dead-code, or percentage-gate claim |
 | M007-08 | A complete generated-and-reviewed inventory maps every public CLI leaf to realistic usage patterns, prerequisites, side effects, safety class, output contract, owning boundary, and deterministic/live validation status without requiring unsafe execution, and reconciles every #88 US-01 through US-10 proposed sequence into a committed registry with stable identity, current commands and prerequisites, primary human confirmation, cleanup, coverage treatment, and explicit disposition; blocked/deferred entries name an owner and unlock condition | Met | PR #122 delivers complete-to-parser leaf accounting with all M007-08 leaf dimensions, #88-bound US-01..US-10 reconciliation with argv-valid current commands, semantic cite/execute passed rules, required coverage treatment, and visible residuals for deferred work and known LIVE defects |
 | M007-09 | Owned production code not reached by the declared CLI journey set is grouped by capability and reconciled with tests, other entrypoints, dynamic/platform paths, and ownership; every group is flagged to expose through CLI, retain with explicit reason, or remove through separately reviewed work | Met | PR #138 groups unreached owned production code from the sealed journey-coverage report, reconciles tests/entrypoints/dynamic-or-platform paths and ownership, and records an owned expose, retain, or remove candidate for every group without using a coverage percentage as authorization |
@@ -128,19 +128,10 @@ deletion; it does not retroactively widen the accepted primary journey.
 
 ### Current Frontier
 
-**Milestone closeout**
+**None**
 
-- Workflow state: implementation_in_review
-- Proposal branch: `m007/closeout-proposal`
-- Implementation branch: `m007/closeout`
-- Proposal path: `docs/milestones/007-cli-operator-usability/proposals/closeout.md`
-- Accepted proposal: [#143](https://github.com/GeorgeLuo/auto-driving/pull/143) at `2ab7955b953f1d5863ee032db38271ca50d111a7` (reviewed head `c9b7185df1f2ddba8c74b735e082881dd9501c45` by `GeorgeLuo` as `OWNER` at `2026-08-24T18:18:59Z`)
-- Review kind: Milestone closeout
-- Review question: Is milestone 007 complete as a whole—its supported CLI journeys remain documented, every exit criterion is backed by accepted evidence, every #88 US-01 through US-10 sequence and every unreached capability has an accountable disposition, residual limits are explicit, and the cumulative milestone is ready for whole-milestone review without hiding follow-on product work?
-- Acceptance owner: Whole-milestone closeout judgment in `closeout.md`, completed ledger and durable CLI documentation reconciliation, terminal workflow handoff, and cumulative PR #81 readiness surface
-- Exit criteria affected: M007-06
-- Prerequisite: M007-01 through M007-05 and M007-07 through M007-10 are `Met`; accepted review units #84, #88, #100, #107, #122, and #138 and their tracked evidence remain the authority
-- Milestone-level non-goal: Product or runtime change, evidence recapture for recency, executing deferred/hazardous work, implementing capability candidates or issues #89–#91, editing M006, or marking the cumulative PR ready before terminal handoff
+- Reason: Milestone closed after PR #144.
+- Revisit when: No in-milestone work remains.
 
 ### Next-Frontier Candidate
 
@@ -198,6 +189,7 @@ deletion; it does not retroactively widen the accepted primary journey.
 | Milestone closeout | proposal_in_review | Started m007/closeout-proposal. |
 | Milestone closeout | ready_for_implementation | Proposal PR #143 accepted at 2ab7955b953f1d5863ee032db38271ca50d111a7 (reviewed head `c9b7185df1f2ddba8c74b735e082881dd9501c45` by `GeorgeLuo` as `OWNER` at `2026-08-24T18:18:59Z`). |
 | Milestone closeout | implementation_in_review | Started m007/closeout. |
+| Milestone closeout | accepted | Implementation PR #144 merged at ab72c7befdca8d69fe12f9d8c6d1ce554aeb5818. |
 
 ## Accepted Review Units
 
@@ -209,19 +201,12 @@ deletion; it does not retroactively widen the accepted primary journey.
 | #107 | Can a developer record reproducible branch-aware owned-Python coverage for named CLI commands and multi-command journeys across foreground and Python subprocess/background-worker execution while separating bootstrap/import footprint from command-specific behavior and avoiding false correctness or dead-code claims? | Accepted | M007-07 | Reproducible branch-aware owned-Python CLI journey coverage in PR #107: a digest-bound command/context manifest; unpredictable collection-bound shard provenance; pre-interpreter ambient Coverage.py refusal and session-contained effective configuration; isolated foreground, subprocess, and SIGTERM-flushed background-worker collection; complete expected-context and process receipts; canonical requirements/interpreter/all-distribution identity; raw plus bootstrap/shared/command-specific statement and arc attribution; immutable timestamp receipts and an exact byte-stable public-API report digest; terminal cleanup; explicit correctness/dead-code/numeric-gate non-claims; and tracked pass evidence under docs/milestones/007-cli-operator-usability/evidence/cli-journey-coverage/ |
 | #122 | Can one committed CLI usage registry prove complete parser-leaf and #88 US-01 through US-10 accounting, with every public leaf mapped to realistic usage, prerequisites, side effects and safety, expected output, owning boundary, and deterministic or live validation, and every sequence assigned stable commands, confirmation, cleanup, coverage treatment, and an explicit passed, ready, blocked, or deferred disposition with owned unlock conditions, while machine-first and HITL evidence covers safe executable patterns without running hazardous or external entries unsafely? | Accepted | M007-08 | Complete CLI surface and sequence audit in PR #122: argparse-derived leaf inventory with mandatory overlay dimensions; committed #88 catalog authority snapshot and US-01 through US-10 registry bound to it; parser-aware argv validation; semantic hybrid passed citation (rejecting incomplete rehearsals) or new execute evidence; required coverage treatment enums; validators and cross-checks; help-drift report; linked LIVE residuals without product repair; rendered residual rollup; tracked evidence under docs/milestones/007-cli-operator-usability/evidence/cli-surface-audit/ |
 | #138 | Can owned production code not reached by the declared CLI journey set be grouped by capability and reconciled with tests, other entrypoints, dynamic or platform paths, and ownership so every group is flagged to expose through CLI, retain with an explicit owner and reason, or remove through separately reviewed work, without authorizing feature or deletion solely by a coverage percentage? | Accepted | M007-09 | Capability disposition outside CLI journeys in PR #138: unreached owned production code derived from sealed M007-07 report; every region in exactly one capability group; tests/entrypoints/platform/owner reconciled; expose/retain/remove candidates with non-percentage reasons; validators reject omission and percentage-as-authorization; derived HTML of that record; tracked evidence under docs/milestones/007-cli-operator-usability/evidence/capability-disposition/ |
+| #144 | Is milestone 007 complete as a whole—its supported CLI journeys remain documented, every exit criterion is backed by accepted evidence, every #88 US-01 through US-10 sequence and every unreached capability has an accountable disposition, residual limits are explicit, and the cumulative milestone is ready for whole-milestone review without hiding follow-on product work? | Accepted | M007-06 | M007 closeout judgment in closeout.md; completed.md 007 entry; durable CLI documentation reconciled; accepted journey, live, coverage, audit, and capability evidence mapped; sequence/capability residuals and M006 resume decision recorded; cumulative PR #81 prepared for post-handoff whole-milestone review in implementation PR #144 |
 
 ## Open Risks And Unverified Assumptions
 
 | Risk or assumption | Consequence | Resolution path |
 | --- | --- | --- |
-| Metrics UI may evolve independently of this repository | Unit fixtures can remain green while live atomic-capture payloads drift | Freeze the consumed sensor/reference distinction, add reference-less fixtures, and require a non-skipping opt-in live contract unit |
-| A browser tab can be visibly open before its Play WebSocket role is registered | A one-second probe can report a false unavailable state with no useful recovery | Distinguish server/frontend/game/camera states and use one bounded operation deadline with exact recovery |
-| Evaluator reference data is useful for scoring but is not sensor input | Requiring it for camera capture prevents legitimate observation-only perception; accepting malformed identity would weaken correlation | Validate sensor identity independently, model evaluator reference as optional/unavailable, and keep reference-required scoring fail-closed |
-| Browser opening is platform-dependent | An otherwise healthy worker could be reported failed because the OS cannot launch a browser | Keep view health authoritative; browser launch is explicit and reports its own non-fatal result and URL |
-| Running every CLI leaf can be unsafe or environment-dependent | A coverage target could encourage movement, destructive operations, hardware access, or misleading skips | Inventory every leaf, but execute only declared safe patterns; record prerequisites and non-executed live/hazardous classifications explicitly |
-| Confirmed exploratory product defects from PR #88 remain deferred without owners | Safe multi-apply and honest readiness cues stay broken while process work advances | Scenario continuity must dispose #89 / M007-LIVE-001..005 (repair, external-issue, or explicit non-blocking deferral with owner) rather than re-parking them under later audit |
-| Cited sequence passed status is historical, not continuous HEAD verification | Regressions after #88/#100 may not be visible in the audit registry until a separate re-proof | Optional live smoke or product-unit re-proof when journeys are reopened; residual risk at closeout |
-| Capability dispositions are historical to the sealed M007-07 report | Later product commits can change what is unreached without updating the candidate record | Closeout cites the record digest; a later unit recaptures #107 if reachability must be refreshed |
 
 ## Milestone Decisions
 

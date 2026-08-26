@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import base64
 import math
 import time
 from pathlib import Path
 from typing import Any
-from urllib.parse import unquote_to_bytes
 
 from .defaults import DEFAULT_CHASE_UI_WS_URL, get_default_chase_ui_ws_url
 from .frame_identity import (
@@ -596,7 +594,11 @@ class ChaseSimCar(CarInterface):
                 include_image=include_image,
             )
 
-        sensor = validate_chase_sensor_capture(capture, expected_actor_id="chaser")
+        sensor = validate_chase_sensor_capture(
+            capture,
+            expected_actor_id="chaser",
+            include_validated_bytes=include_image,
+        )
         evaluator = evaluate_chase_evaluator_reference(capture, sensor=sensor)
 
         after_state = self._passive_phase(
@@ -680,6 +682,13 @@ class ChaseSimCar(CarInterface):
         self._last_passive_capture = {
             key: value for key, value in result.items() if key != "image"
         }
+        stored_sensor = self._last_passive_capture.get("sensor")
+        if isinstance(stored_sensor, dict) and isinstance(stored_sensor.get("image"), dict):
+            stored_sensor = dict(stored_sensor)
+            stored_image = dict(stored_sensor["image"])
+            stored_image.pop("validated_bytes", None)
+            stored_sensor["image"] = stored_image
+            self._last_passive_capture["sensor"] = stored_sensor
         return result
 
     def _passive_receipt_result(
@@ -771,6 +780,7 @@ class ChaseSimCar(CarInterface):
             sensor = validate_chase_sensor_capture(
                 capture,
                 expected_actor_id="chaser",
+                include_validated_bytes=include_image,
             )
             evaluator = evaluate_chase_evaluator_reference(capture, sensor=sensor)
             evaluator_status = {
@@ -937,6 +947,13 @@ class ChaseSimCar(CarInterface):
             for key, value in result.items()
             if key != "image"
         }
+        stored_sensor = self._last_passive_capture.get("sensor")
+        if isinstance(stored_sensor, dict) and isinstance(stored_sensor.get("image"), dict):
+            stored_sensor = dict(stored_sensor)
+            stored_image = dict(stored_sensor["image"])
+            stored_image.pop("validated_bytes", None)
+            stored_sensor["image"] = stored_image
+            self._last_passive_capture["sensor"] = stored_sensor
         return result
 
     def _passive_phase(
@@ -1021,7 +1038,6 @@ class ChaseSimCar(CarInterface):
     def _capture_front_camera(self, path: Path, endpoint: str) -> dict[str, Any]:
         """Capture one atomic image/identity/evaluator-reference response."""
 
-        path.parent.mkdir(parents=True, exist_ok=True)
         passive = self.inspect_passive_capture(
             timeout_s=self.timeout_s,
             include_image=True,
@@ -1053,38 +1069,37 @@ class ChaseSimCar(CarInterface):
                 path="sensor.image",
                 message="validated image payload is unavailable",
             )
-        width = int(sensor["image"]["width"])
-        height = int(sensor["image"]["height"])
-
-        byte_count = 0
-        suffix = path.suffix.lower()
-        if isinstance(image.get("dataUrl"), str) and image["dataUrl"]:
-            content_type, data = _decode_data_url(image["dataUrl"])
-            byte_count = len(data)
-            path.write_bytes(data)
-        elif isinstance(image.get("svg"), str) and image["svg"].strip():
-            # Validated captures require raster dataUrl; keep a structured error
-            # if an unvalidated/legacy payload still reaches the write path.
+        sensor_image = sensor.get("image")
+        if not isinstance(sensor_image, dict):
             raise ChaseCaptureValidationError(
                 code="capture_image_invalid",
-                path="sensor.image.svg",
-                message=(
-                    "SVG-only captures are not accepted for "
-                    f"{suffix or 'the requested output'}; provide a decodable "
-                    "raster dataUrl compatible with the worker .png output"
-                ),
+                path="sensor.image",
+                message="validated image envelope is unavailable",
             )
-        else:
+        width = int(sensor_image["width"])
+        height = int(sensor_image["height"])
+
+        validated_bytes = sensor_image.get("validated_bytes")
+        if not isinstance(validated_bytes, bytes):
+            if isinstance(image.get("svg"), str) and image["svg"].strip():
+                raise ChaseCaptureValidationError(
+                    code="capture_image_invalid",
+                    path="sensor.image.svg",
+                    message=(
+                        "SVG-only captures are not accepted for "
+                        f"{path.suffix.lower() or 'the requested output'}; provide a decodable "
+                        "raster dataUrl compatible with the worker .png output"
+                    ),
+                )
             raise ChaseCaptureValidationError(
                 code="capture_image_invalid",
                 path="sensor.image.dataUrl",
-                message=(
-                    "Chase atomic evaluation capture has no raster image encoding "
-                    f"compatible with {suffix or 'the requested output'}"
-                ),
+                message="validated raster bytes are unavailable",
             )
-        if byte_count == 0 and path.exists():
-            byte_count = path.stat().st_size
+        path.parent.mkdir(parents=True, exist_ok=True)
+        byte_count = len(validated_bytes)
+        content_type = sensor_image["content_type"]
+        path.write_bytes(validated_bytes)
 
         frame_index = int(sensor["simulator_frame_index"])
         simulation_epoch = str(sensor["simulation_epoch"])
@@ -1161,13 +1176,3 @@ class ChaseSimCar(CarInterface):
             request=request.to_dict(),
             metadata=snapshot_metadata,
         )
-
-
-def _decode_data_url(data_url: str) -> tuple[str, bytes]:
-    header, _, payload = data_url.partition(",")
-    if not payload:
-        return "application/octet-stream", data_url.encode("utf-8")
-    content_type = header.removeprefix("data:").split(";", 1)[0] or "application/octet-stream"
-    if ";base64" in header:
-        return content_type, base64.b64decode(payload)
-    return content_type, unquote_to_bytes(payload)

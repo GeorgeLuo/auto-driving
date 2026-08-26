@@ -119,6 +119,7 @@ def validate_chase_sensor_capture(
     capture: dict[str, Any] | None,
     *,
     expected_actor_id: str = "chaser",
+    include_validated_bytes: bool = False,
 ) -> dict[str, Any]:
     """Validate required sensor/image identity independently from evaluator data."""
 
@@ -197,7 +198,13 @@ def validate_chase_sensor_capture(
     data_url = image.get("dataUrl")
     svg = image.get("svg")
     if isinstance(data_url, str) and data_url:
-        _validate_data_url(data_url)
+        validated_image = _validate_image_envelope(
+            image,
+            data_url,
+            width=width,
+            height=height,
+            include_validated_bytes=include_validated_bytes,
+        )
         encoding = "data_url"
     elif isinstance(svg, str) and svg.strip():
         # Metrics UI may advertise SVG as a fallback image type, but Automa's
@@ -226,12 +233,7 @@ def validate_chase_sensor_capture(
         "simulator_frame_index": frame_index,
         "frame_id": format_chase_frame_id(frame_index),
         "playback_advanced": False,
-        "image": {
-            "width": width,
-            "height": height,
-            "encoding": encoding,
-            "content_type": _image_content_type(image),
-        },
+        "image": {"encoding": encoding, **validated_image},
     }
 
 
@@ -549,24 +551,114 @@ def _capture_error(code: str, path: str, message: str) -> None:
     raise ChaseCaptureValidationError(code=code, path=path, message=message)
 
 
-def _validate_data_url(data_url: str) -> None:
-    header, separator, payload = data_url.partition(",")
-    if separator != "," or not header.startswith("data:") or not payload:
+_RASTER_MIME_BY_FORMAT = {
+    "PNG": "image/png",
+    "JPEG": "image/jpeg",
+    "GIF": "image/gif",
+    "WEBP": "image/webp",
+}
+
+
+def _validate_image_envelope(
+    image: dict[str, Any],
+    data_url: str,
+    *,
+    width: int,
+    height: int,
+    include_validated_bytes: bool,
+) -> dict[str, Any]:
+    decoded = _decode_data_url_payload(data_url)
+    try:
+        with Image.open(BytesIO(decoded)) as raster:
+            raster.load()
+            decoded_size = raster.size
+            decoded_format = str(raster.format or "").upper()
+    except Exception as exc:  # Pillow raises many format-specific errors
+        _capture_error(
+            "capture_image_invalid",
+            "sensor.image.dataUrl",
+            f"decoded payload is not a valid image: {exc}",
+        )
+
+    decoded_mime = _RASTER_MIME_BY_FORMAT.get(decoded_format)
+    if decoded_mime is None:
+        _capture_error(
+            "capture_image_invalid",
+            "sensor.image.dataUrl",
+            f"decoded raster format {decoded_format or 'unknown'!r} is not supported",
+        )
+    data_url_mime = _data_url_mime(data_url)
+    if data_url_mime != decoded_mime:
+        _capture_error(
+            "capture_image_invalid",
+            "sensor.image.dataUrl",
+            f"declared MIME {data_url_mime!r} does not match decoded {decoded_mime!r}",
+        )
+    if decoded_size != (width, height):
+        _capture_error(
+            "capture_image_invalid",
+            "sensor.image",
+            f"declared dimensions {(width, height)!r} do not match decoded {decoded_size!r}",
+        )
+
+    if "contentType" in image:
+        declared = image["contentType"]
+        if not isinstance(declared, str):
+            _capture_error(
+                "capture_image_invalid",
+                "sensor.image.contentType",
+                "expected a string when present",
+            )
+        declared = declared.strip()
+        if declared:
+            canonical_declared = declared.lower()
+            if ";" in canonical_declared or canonical_declared != decoded_mime:
+                _capture_error(
+                    "capture_image_invalid",
+                    "sensor.image.contentType",
+                    f"declared content type {declared!r} does not match {decoded_mime!r}",
+                )
+
+    validated = {
+        "width": decoded_size[0],
+        "height": decoded_size[1],
+        "content_type": decoded_mime,
+        "raster_format": decoded_format,
+    }
+    if include_validated_bytes:
+        validated["validated_bytes"] = decoded
+    return validated
+
+
+def _data_url_mime(data_url: str) -> str:
+    header, separator, _ = data_url.partition(",")
+    if separator != "," or not header.lower().startswith("data:"):
         _capture_error(
             "capture_image_invalid",
             "sensor.image.dataUrl",
             "expected a non-empty data URL",
         )
-    if ";base64" not in header:
-        try:
-            decoded = unquote_to_bytes(payload)
-        except (TypeError, ValueError) as exc:
-            _capture_error(
-                "capture_image_invalid",
-                "sensor.image.dataUrl",
-                f"invalid URL-encoded payload: {exc}",
-            )
-    else:
+    mime = header[5:].split(";", 1)[0].strip().lower()
+    if mime not in _RASTER_MIME_BY_FORMAT.values():
+        _capture_error(
+            "capture_image_invalid",
+            "sensor.image.dataUrl",
+            f"unsupported raster MIME {mime or 'missing'!r}",
+        )
+    return mime
+
+
+def _decode_data_url_payload(data_url: str) -> bytes:
+    header, separator, payload = data_url.partition(",")
+    if separator != "," or not header.lower().startswith("data:") or not payload:
+        _capture_error(
+            "capture_image_invalid",
+            "sensor.image.dataUrl",
+            "expected a non-empty data URL",
+        )
+    _data_url_mime(data_url)
+    parameters = [part.strip().lower() for part in header[5:].split(";")[1:]]
+    if "base64" in parameters:
         try:
             decoded = base64.b64decode(payload, validate=True)
         except (ValueError, binascii.Error) as exc:
@@ -575,31 +667,22 @@ def _validate_data_url(data_url: str) -> None:
                 "sensor.image.dataUrl",
                 f"invalid base64 payload: {exc}",
             )
+    else:
+        try:
+            decoded = unquote_to_bytes(payload)
+        except (TypeError, ValueError) as exc:
+            _capture_error(
+                "capture_image_invalid",
+                "sensor.image.dataUrl",
+                f"invalid URL-encoded payload: {exc}",
+            )
     if not decoded:
         _capture_error(
             "capture_image_invalid",
             "sensor.image.dataUrl",
             "decoded payload is empty",
         )
-    try:
-        with Image.open(BytesIO(decoded)) as image:
-            image.load()
-    except Exception as exc:  # Pillow raises many format-specific errors
-        _capture_error(
-            "capture_image_invalid",
-            "sensor.image.dataUrl",
-            f"decoded payload is not a valid image: {exc}",
-        )
-
-
-def _image_content_type(image: dict[str, Any]) -> str:
-    explicit = _nonempty_string(image.get("contentType"))
-    if explicit is not None:
-        return explicit
-    data_url = image.get("dataUrl")
-    if isinstance(data_url, str) and data_url.startswith("data:"):
-        return data_url.removeprefix("data:").split(";", 1)[0].split(",", 1)[0]
-    return "image/svg+xml" if isinstance(image.get("svg"), str) else "application/octet-stream"
+    return decoded
 
 
 def _evaluator_invalid(path: str, message: str) -> dict[str, Any]:

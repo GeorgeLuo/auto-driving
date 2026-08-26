@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+import base64
+from io import BytesIO
 from pathlib import Path
 from unittest import mock
+
+from PIL import Image
 
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReadRequest
 from implementations.vehicle.chase_sim.car import (
@@ -182,6 +186,88 @@ def _with_passive_receipt(
 
 
 class ChaseFrameIdentityTests(unittest.TestCase):
+    def _raster_data_url(self, image_format: str, mime: str) -> str:
+        output = BytesIO()
+        Image.new("RGB", (2, 3), (20, 40, 60)).save(output, format=image_format)
+        encoded = base64.b64encode(output.getvalue()).decode("ascii")
+        return f"data:{mime};base64,{encoded}"
+
+    def test_sensor_image_envelope_rejects_dimensions_mime_and_content_type_mismatches(self) -> None:
+        cases = (
+            ("width", 2, "sensor.image"),
+            ("height", 2, "sensor.image"),
+            ("dataUrl", _PNG_DATA_URL.replace("image/png", "image/jpeg"), "sensor.image.dataUrl"),
+            ("contentType", "image/jpeg", "sensor.image.contentType"),
+            ("contentType", None, "sensor.image.contentType"),
+            ("contentType", "image/png; charset=utf-8", "sensor.image.contentType"),
+        )
+        for field, value, path in cases:
+            with self.subTest(field=field, value=value):
+                capture = _atomic_capture()
+                capture["sensor"]["image"][field] = value
+                with self.assertRaises(ChaseCaptureValidationError) as raised:
+                    validate_chase_sensor_capture(capture)
+                self.assertEqual(raised.exception.code, "capture_image_invalid")
+                self.assertEqual(raised.exception.path, path)
+
+    def test_sensor_image_envelope_rejects_raster_format_and_unlisted_mime(self) -> None:
+        capture = _atomic_capture()
+        capture["sensor"]["image"]["dataUrl"] = self._raster_data_url("JPEG", "image/png")
+        capture["sensor"]["image"]["width"] = 2
+        capture["sensor"]["image"]["height"] = 3
+        with self.assertRaises(ChaseCaptureValidationError) as raised:
+            validate_chase_sensor_capture(capture)
+        self.assertEqual(raised.exception.code, "capture_image_invalid")
+        self.assertEqual(raised.exception.path, "sensor.image.dataUrl")
+
+        capture = _atomic_capture()
+        capture["sensor"]["image"]["dataUrl"] = self._raster_data_url("BMP", "image/bmp")
+        with self.assertRaises(ChaseCaptureValidationError) as raised:
+            validate_chase_sensor_capture(capture)
+        self.assertEqual(raised.exception.code, "capture_image_invalid")
+        self.assertEqual(raised.exception.path, "sensor.image.dataUrl")
+
+    def test_sensor_image_envelope_accepts_case_and_omitted_content_type(self) -> None:
+        capture = _atomic_capture()
+        capture["sensor"]["image"].pop("contentType")
+        capture["sensor"]["image"]["dataUrl"] = _PNG_DATA_URL.replace(
+            "data:image/png;", "data:IMAGE/PNG;charset=utf-8;"
+        )
+        sensor = validate_chase_sensor_capture(capture, include_validated_bytes=True)
+        self.assertEqual(sensor["image"]["content_type"], "image/png")
+        self.assertEqual(sensor["image"]["raster_format"], "PNG")
+        self.assertIsInstance(sensor["image"]["validated_bytes"], bytes)
+
+    def test_sensor_image_envelope_accepts_all_supported_raster_mappings(self) -> None:
+        for image_format, mime in (
+            ("PNG", "image/png"),
+            ("JPEG", "image/jpeg"),
+            ("GIF", "image/gif"),
+            ("WEBP", "image/webp"),
+        ):
+            with self.subTest(image_format=image_format):
+                capture = _atomic_capture()
+                capture["sensor"]["image"]["width"] = 2
+                capture["sensor"]["image"]["height"] = 3
+                capture["sensor"]["image"]["dataUrl"] = self._raster_data_url(
+                    image_format,
+                    mime.upper(),
+                )
+                capture["sensor"]["image"]["contentType"] = mime.upper()
+                sensor = validate_chase_sensor_capture(
+                    capture,
+                    include_validated_bytes=True,
+                )
+                self.assertEqual(sensor["image"]["content_type"], mime)
+                self.assertEqual(sensor["image"]["raster_format"], image_format)
+                self.assertIsInstance(sensor["image"]["validated_bytes"], bytes)
+
+    def test_sensor_image_envelope_accepts_empty_content_type_as_omitted(self) -> None:
+        capture = _atomic_capture()
+        capture["sensor"]["image"]["contentType"] = "   "
+        sensor = validate_chase_sensor_capture(capture)
+        self.assertEqual(sensor["image"]["content_type"], "image/png")
+
     def test_builds_bounded_shadow_reference_from_atomic_capture(self) -> None:
         self.assertEqual(format_chase_frame_id(42), "chase_frame_000042")
         shadow = build_chase_shadow_reference(_atomic_capture())
@@ -348,6 +434,23 @@ class ChaseFrameIdentityTests(unittest.TestCase):
         self.assertEqual(raised.exception.path, "sensor.image.svg")
         self.assertIn(".png", raised.exception.detail)
 
+    def test_invalid_capture_is_rejected_before_output_write(self) -> None:
+        car = ChaseSimCar(ws_url="ws://example.test/ws", timeout_s=0.5)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "nested" / "frame.png"
+            with mock.patch.object(
+                car,
+                "inspect_passive_capture",
+                side_effect=ChaseCaptureValidationError(
+                    code="capture_image_invalid",
+                    path="sensor.image",
+                    message="decoded dimensions do not match declaration",
+                ),
+            ), self.assertRaises(ChaseCaptureValidationError):
+                car._capture_front_camera(path, endpoint="atomic-evaluation-capture")
+            self.assertFalse(path.exists())
+            self.assertFalse(path.parent.exists())
+
     def test_alignment_requires_epoch_and_strictly_increasing_frames(self) -> None:
         shadow = build_chase_shadow_reference(_atomic_capture(frame_index=7))
         assert shadow is not None
@@ -418,6 +521,8 @@ class ChaseFrameIdentityTests(unittest.TestCase):
             image_exists = Path(
                 snapshot.readings[FRONT_CAMERA_SENSOR_ID].path or ""
             ).is_file()
+            image_path = Path(snapshot.readings[FRONT_CAMERA_SENSOR_ID].path or "")
+            image_bytes = image_path.read_bytes()
 
         query.assert_called_once_with(
             CHASE_ATOMIC_EVALUATION_QUERY,
@@ -438,6 +543,14 @@ class ChaseFrameIdentityTests(unittest.TestCase):
         self.assertEqual(reading.metadata["identity_pairing"], "atomic_evaluation_capture")
         self.assertEqual(reading.metadata["simulation_epoch"], "chase-run:test")
         self.assertTrue(image_exists)
+        self.assertEqual(
+            image_bytes,
+            base64.b64decode(_PNG_DATA_URL.split(",", 1)[1]),
+        )
+        self.assertEqual(
+            snapshot.readings[FRONT_CAMERA_SENSOR_ID].metadata["content_type"],
+            "image/png",
+        )
         self.assertNotIn("shadow_reference", snapshot.metadata)
         self.assertNotIn("visibleWallCount", str(snapshot.to_dict()))
         self.assertNotIn("actor-control-reference", str(snapshot.to_dict()))

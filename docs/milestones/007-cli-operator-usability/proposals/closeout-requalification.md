@@ -72,7 +72,12 @@ Phase A updates the retained `closeout.md` rather than creating a new packet.
 It must add rejected cumulative PR #81 head
 `ee2e3056f77bee9a4511877829eb9c46b52d0aa2` and restore head
 `9f758d9927d8b870b1d3d2219441fd7410d64b47`, cite the existing withdrawal and
-restore receipts, and cite #146/#154/#155,
+restore receipts — the rejected-review receipt
+[`#81 changes_requested`](https://github.com/GeorgeLuo/auto-driving/pull/81#pullrequestreview-5015145766)
+and the accepted Phase B handoff receipt
+[`#144 accepted`](https://github.com/GeorgeLuo/auto-driving/pull/144#pullrequestreview-5015032543),
+with restore commit `9f758d9927d8b870b1d3d2219441fd7410d64b47` preserved
+verbatim — and cite #146/#154/#155,
 update repaired criterion evidence, and record exact current validation. It
 must not relabel #144 as accepted cumulative closure or change accepted
 evidence bytes.

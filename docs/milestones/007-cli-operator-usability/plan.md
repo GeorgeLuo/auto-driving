@@ -130,10 +130,11 @@ deletion; it does not retroactively widen the accepted primary journey.
 
 **PiRacer perception-inspection compatibility**
 
-- Workflow state: proposal_in_review
+- Workflow state: ready_for_implementation
 - Proposal branch: `m007/piracer-perception-inspection-compatibility-proposal`
 - Implementation branch: `m007/piracer-perception-inspection-compatibility`
 - Proposal path: `docs/milestones/007-cli-operator-usability/proposals/piracer-perception-inspection-compatibility.md`
+- Accepted proposal: [#152](https://github.com/GeorgeLuo/auto-driving/pull/152) at `a30e4db059abfc2032253666d94eb9a6487ead38` (reviewed head `f581de64c01295393235e4311535df227ceb7656` by `GeorgeLuo` as `OWNER` at `2026-08-26T02:16:07Z`)
 - Review kind: Review repair
 - Review question: Can `vehicles info perception --id piracer` retain successful offline inspection of a locally staged `active.json` while also enriching that result with reachable live PiRacer observation and local-view state, without making a PiRacer network outage invalidate the offline inspection path?
 - Acceptance owner: `cli/automa_cli/perception.py`
@@ -205,6 +206,7 @@ deletion; it does not retroactively widen the accepted primary journey.
 | Timeout input-envelope consistency | implementation_in_review | Started m007/timeout-input-envelope. |
 | Timeout input-envelope consistency | accepted | Implementation PR #146 merged at f6d221c0c602e648efc4bdd355c909a9bca3fa12. |
 | PiRacer perception-inspection compatibility | proposal_in_review | Started m007/piracer-perception-inspection-compatibility-proposal. |
+| PiRacer perception-inspection compatibility | ready_for_implementation | Proposal PR #152 accepted at a30e4db059abfc2032253666d94eb9a6487ead38 (reviewed head `f581de64c01295393235e4311535df227ceb7656` by `GeorgeLuo` as `OWNER` at `2026-08-26T02:16:07Z`). |
 
 ## Accepted Review Units
 

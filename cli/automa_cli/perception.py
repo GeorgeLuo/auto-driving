@@ -9,6 +9,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
+from urllib.parse import urlparse
 
 from autonomy.perception import (
     build_perception_request,
@@ -147,15 +148,15 @@ def get_vehicle_perception_info(
     bundle = controller_bundle_paths(vehicle_runtime_dir)
     manifest_path = Path(bundle["perception_runtime_dir"]) / "active.json"
     has_local_activation = manifest_path.exists()
-    live: dict[str, Any] = {}
+    # Discovery is an enrichment read for staged inspection, not a gate.  It
+    # must still run when active.json exists so a reachable PiRacer cannot be
+    # silently hidden behind the local activation record.
+    live = _resolve_live_vehicle(vehicle_id, timeout_s=timeout_s)
     live_vehicle: dict[str, Any] | None = None
-    live_provider = None
-    if not has_local_activation:
-        live = _resolve_live_vehicle(vehicle_id, timeout_s=timeout_s)
-        live_vehicle = (
-            live.get("vehicle") if isinstance(live.get("vehicle"), dict) else None
-        )
-        live_provider = live_vehicle.get("provider") if live_vehicle is not None else None
+    live_vehicle = (
+        live.get("vehicle") if isinstance(live.get("vehicle"), dict) else None
+    )
+    live_provider = live_vehicle.get("provider") if live_vehicle is not None else None
 
     if not has_local_activation and live_provider != "picar":
         return CommandResult(
@@ -303,11 +304,11 @@ def get_vehicle_perception_info(
         live_view = payload["live_observation"].get("published_view")
         if isinstance(live_view, dict) and live_view.get("available"):
             payload["published_view"] = live_view
-    elif live.get("error"):
-        payload["live_observation"] = {
-            "available": False,
-            "error": live.get("error"),
-        }
+    else:
+        payload["live_observation"] = _unavailable_live_observation(
+            live,
+            vehicle=live_vehicle,
+        )
 
     if json_output:
         return CommandResult(0, json.dumps(payload, indent=2, sort_keys=True))
@@ -1281,9 +1282,13 @@ def _format_published_view(value: Any) -> str:
 
 
 def _format_live_observation(live: dict[str, Any]) -> str:
+    view = live.get("published_view") if isinstance(live.get("published_view"), dict) else {}
     if not live.get("available"):
-        error = live.get("error") or "physical observation is unavailable"
-        return f"Live onboard observation: unavailable ({error})"
+        error = live.get("error") or live.get("reason") or "physical observation is unavailable"
+        lines = [f"Live onboard observation: unavailable ({error})"]
+        if view:
+            lines.append(_format_live_view(view))
+        return "\n".join(lines)
     frame = live.get("frame") if isinstance(live.get("frame"), dict) else {}
     control = live.get("control") if isinstance(live.get("control"), dict) else {}
     lines = [
@@ -1299,15 +1304,42 @@ def _format_live_observation(live: dict[str, Any]) -> str:
         f"- endpoint: {live.get('base_url', 'unknown')}{LATEST_JSON_PATH}",
         f"- frame endpoint: {live.get('base_url', 'unknown')}{LATEST_FRAME_PATH}",
     ]
-    view = live.get("published_view") if isinstance(live.get("published_view"), dict) else {}
-    if view.get("available") and view.get("url"):
-        lines.append(f"- local view: {view['url']}")
-    else:
-        lines.append(
-            "- local view: not running; "
-            "`./cli/automa vehicles stream perception --id <vehicle_id>` starts it"
-        )
+    lines.append(_format_live_view(view))
     return "\n".join(lines)
+
+
+def _format_live_view(view: dict[str, Any]) -> str:
+    if view.get("available") and view.get("url"):
+        return f"- local view: {view['url']}"
+    reason = view.get("reason") or "physical perception view is unavailable"
+    return (
+        f"- local view: unavailable ({reason}); "
+        "`./cli/automa vehicles stream perception --id <vehicle_id>` starts it"
+    )
+
+
+def _unavailable_live_observation(
+    live: dict[str, Any],
+    *,
+    vehicle: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Describe missing live enrichment without invalidating staged data."""
+
+    provider = vehicle.get("provider") if isinstance(vehicle, dict) else None
+    reason = live.get("error")
+    if not isinstance(reason, str) or not reason:
+        if provider is not None:
+            reason = f"discovered provider {provider!r} is not a PiRacer"
+        else:
+            reason = "vehicle is not currently reachable"
+    result: dict[str, Any] = {
+        "available": False,
+        "provider": provider,
+        "reason": reason,
+    }
+    if isinstance(live.get("error"), str) and live["error"]:
+        result["error"] = live["error"]
+    return result
 
 
 def _resolve_live_vehicle(vehicle_id: str, *, timeout_s: float) -> dict[str, Any]:
@@ -1336,7 +1368,23 @@ def _live_physical_observation_info(
     if not base_url:
         return {
             "available": False,
+            "provider": "picar",
             "error": f"Vehicle {vehicle_id!r} has no picar base_url connection.",
+        }
+    try:
+        parsed_base_url = urlparse(base_url)
+        usable_base_url = (
+            parsed_base_url.scheme in {"http", "https"}
+            and bool(parsed_base_url.netloc)
+        )
+    except ValueError:
+        usable_base_url = False
+    if not usable_base_url:
+        return {
+            "available": False,
+            "provider": "picar",
+            "base_url": base_url,
+            "error": f"Vehicle {vehicle_id!r} has an invalid picar base_url connection.",
         }
     view = physical_view_status(vehicle_id)
     try:
@@ -1344,14 +1392,16 @@ def _live_physical_observation_info(
     except ConnectionError as exc:
         return {
             "available": False,
+            "provider": "picar",
             "base_url": base_url,
             "error": str(exc),
             "published_view": view,
             "runtime_dir": display_path(physical_observation_dir(vehicle_id)),
         }
     frame = publication.get("frame") if isinstance(publication.get("frame"), dict) else None
-    return {
+    result = {
         "available": True,
+        "provider": "picar",
         "base_url": base_url,
         "health": publication.get("health"),
         "ok": publication.get("ok"),
@@ -1369,6 +1419,17 @@ def _live_physical_observation_info(
         "published_view": view,
         "runtime_dir": display_path(physical_observation_dir(vehicle_id)),
     }
+    if publication.get("health") not in {"healthy", "stale"}:
+        error = publication.get("error")
+        result["available"] = False
+        result["reason"] = (
+            error
+            if isinstance(error, str) and error.strip()
+            else f"physical observation health is {publication.get('health')!r}"
+        )
+        if isinstance(error, str) and error.strip():
+            result["error"] = error
+    return result
 
 
 def _perception_view_with_automation_status(

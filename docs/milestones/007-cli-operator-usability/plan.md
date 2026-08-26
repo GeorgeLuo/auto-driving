@@ -130,7 +130,7 @@ deletion; it does not retroactively widen the accepted primary journey.
 
 **PiRacer perception-inspection compatibility**
 
-- Workflow state: ready_for_implementation
+- Workflow state: implementation_in_review
 - Proposal branch: `m007/piracer-perception-inspection-compatibility-proposal`
 - Implementation branch: `m007/piracer-perception-inspection-compatibility`
 - Proposal path: `docs/milestones/007-cli-operator-usability/proposals/piracer-perception-inspection-compatibility.md`
@@ -207,6 +207,7 @@ deletion; it does not retroactively widen the accepted primary journey.
 | Timeout input-envelope consistency | accepted | Implementation PR #146 merged at f6d221c0c602e648efc4bdd355c909a9bca3fa12. |
 | PiRacer perception-inspection compatibility | proposal_in_review | Started m007/piracer-perception-inspection-compatibility-proposal. |
 | PiRacer perception-inspection compatibility | ready_for_implementation | Proposal PR #152 accepted at a30e4db059abfc2032253666d94eb9a6487ead38 (reviewed head `f581de64c01295393235e4311535df227ceb7656` by `GeorgeLuo` as `OWNER` at `2026-08-26T02:16:07Z`). |
+| PiRacer perception-inspection compatibility | implementation_in_review | Started m007/piracer-perception-inspection-compatibility. |
 
 ## Accepted Review Units
 

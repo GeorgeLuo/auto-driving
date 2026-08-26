@@ -1,0 +1,78 @@
+{
+  "browser": {
+    "name": "Chrome",
+    "version": "150.0.7871.188"
+  },
+  "canonical_acceptance": true,
+  "canonical_acceptance_reason": "canonical acceptance catalog",
+  "catalog_source": "<repo>/docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/catalogs/m007-acceptance.yaml",
+  "execution_mode": "interactive_live",
+  "metrics_ui_origin": "http://localhost:5050",
+  "operating_system": "macOS-26.5.1-arm64-arm-64bit",
+  "operator": "gluo",
+  "precondition_cleanup": {
+    "attempted": false,
+    "deployment_before": "deployed",
+    "error": null,
+    "needed": false,
+    "ok": true,
+    "pid_liveness": {
+      "47071": false
+    },
+    "pids_before": [
+      47071
+    ],
+    "status_exit_code": 0,
+    "stop_exit_code": null,
+    "view_before": "stale",
+    "worker_state_after": "stopped",
+    "worker_state_before": "stopped"
+  },
+  "python": "3.11.7",
+  "recorded_at_utc": "2026-08-05T23:47:54.250402Z",
+  "recording_before": [
+    "automation-20260630-214835",
+    "automation-20260630-214933"
+  ],
+  "repositories": {
+    "auto_driving": {
+      "branch": "m007/live-cli-acceptance",
+      "commit": "caf335797b71df1323736a2054934b7c211418b0",
+      "diff_identity": null,
+      "github_owner": "GeorgeLuo",
+      "github_repo": "auto-driving",
+      "path": "auto-driving",
+      "status_porcelain": [],
+      "untracked_files": [],
+      "untracked_sha256": {},
+      "worktree_state": "clean"
+    },
+    "metrics_ui": {
+      "branch": "m002/04-passive-observation",
+      "commit": "722e070fdc9f4ee89d13f947bf3996e62dcb2783",
+      "diff_identity": null,
+      "github_owner": "GeorgeLuo",
+      "github_repo": "metrics-ui",
+      "path": "Stream-Metrics-UI",
+      "status_porcelain": [],
+      "untracked_files": [],
+      "untracked_sha256": {},
+      "worktree_state": "clean"
+    }
+  },
+  "session_visible": {
+    "control_input": null,
+    "control_source": "programmatic",
+    "game_id": "chase",
+    "playback": {
+      "frameIndex": 388928,
+      "pendingAction": false,
+      "phase": "running"
+    },
+    "scenario_id": "default",
+    "simulation_epoch": "chase-run:bbbab2ec-9f73-4d68-9ca1-f578348061ae"
+  },
+  "vehicle_id": "chase-sim-chaser",
+  "worktree_diff_path": null,
+  "worktree_reviewables": {}
+}

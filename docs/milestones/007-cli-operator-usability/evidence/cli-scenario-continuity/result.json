@@ -1,0 +1,320 @@
+{
+  "artifacts": [
+    {
+      "path": "README.md",
+      "sha256": "5884de738946d4ce3c18c2320a4fd9cf9454180da7c1d4d251046dc18f3158b4"
+    },
+    {
+      "path": "runner-session/result.json",
+      "sha256": "ab8afa1ce914a2f0c3b163f888bc9f246f9ff25399f92e152f3363c5d8596255"
+    },
+    {
+      "path": "runner-session/continuity-preflight.json",
+      "sha256": "6aa6556a7336aeab789499b60d2d8c7a1fe9f08ba62dc897a905612e5552031d"
+    },
+    {
+      "path": "runner-session/us04-activation-restore.json",
+      "sha256": "3ce81330f99b714e3db230c20c2638918ff9183c1d8e23aa39a1b0a2d3188e98"
+    },
+    {
+      "path": "runner-session/us04-activation-snapshot-meta.json",
+      "sha256": "183eacfc892e69a9035037fa4c589536a2bb55256b949e75448429f2e2cdd975"
+    },
+    {
+      "path": "runner-session/us04-snapshot-restore-compare.json",
+      "sha256": "3c283cd97838e4e6e12c9a406d69d0902f99acf0a4f0c4d41521d48bdfe803a3"
+    },
+    {
+      "path": "runner-session/offline-source-lineage.json",
+      "sha256": "a869115e2ae7329da4401f1b158686ccf12e961e6a812abbdc71635abeb4e020"
+    },
+    {
+      "path": "runner-session/human-notes.md",
+      "sha256": "8a6aa65532927e83423acd22bdc6f89f89d9468500d7ca5f2522ec90c5314381"
+    },
+    {
+      "path": "runner-session/digests.json",
+      "sha256": "845f270fb90f4adc02a5216c1285b01e13cb0a8b04a4f224f17b47fee9ce088f"
+    },
+    {
+      "path": "runner-session/browser-view.png",
+      "sha256": "69b9dabe0af3ad339a3bc2c02c44cf6b6221c08ad20337bd87d3948364d08620"
+    },
+    {
+      "path": "machine-only-session/result.json",
+      "sha256": "02e9ae527346580a6587bf74915036591ccce65ea409eff565eaf01854f3f50a"
+    },
+    {
+      "path": "machine-only-session/continuity-preflight.json",
+      "sha256": "6aa6556a7336aeab789499b60d2d8c7a1fe9f08ba62dc897a905612e5552031d"
+    },
+    {
+      "path": "machine-only-session/us04-activation-restore.json",
+      "sha256": "40be4db8cf6662903d65120aa257f449a9021028a6fcc72515ee82f2ff98e530"
+    },
+    {
+      "path": "machine-only-session/us04-snapshot-restore-compare.json",
+      "sha256": "3c283cd97838e4e6e12c9a406d69d0902f99acf0a4f0c4d41521d48bdfe803a3"
+    },
+    {
+      "path": "machine-only-session/offline-source-lineage.json",
+      "sha256": "56916bc3d243e1fe56c58da35384f02056411350a61c8c06ed5cc7fc4c6b5541"
+    },
+    {
+      "path": "machine-only-session/human-notes.md",
+      "sha256": "17784556f41798479919325ad9d042e25c2187d5f68dcbb854fd6a188748e36f"
+    },
+    {
+      "path": "machine-only-session/digests.json",
+      "sha256": "22f785c03d879ee98ae66b9086ac50cb1c40416528b3e8bf097000e45779d08f"
+    }
+  ],
+  "family_aggregates": {
+    "continuity.live_config_swap": "passed",
+    "continuity.memory_lifecycle": "passed",
+    "continuity.offline_perception": "passed"
+  },
+  "finalizer": {
+    "ok": true,
+    "reason": "evidence freshness finalizer ok"
+  },
+  "findings": [],
+  "hitl_complete": true,
+  "incomplete_reason": null,
+  "integrated_hitl_adjunct": {
+    "affected_paths": [
+      "README.md",
+      "cli/automa_cli/perception_evaluation.py",
+      "tests/cli/perception/test_runs.py"
+    ],
+    "contract_reconciliation": "additive implementation-discovered need; accepted frontier remains true without the adjunct",
+    "issue": 101,
+    "merge_commit": "37b7393fe759f1597860a30d8c10ca5692f1c0cc",
+    "pull_request": 103,
+    "result": "pass"
+  },
+  "machine_preflight": {
+    "evaluated_steps": [
+      "offline-capture",
+      "offline-apply-a",
+      "offline-apply-b",
+      "live-swap-stage",
+      "live-swap-stop",
+      "memory-lifecycle"
+    ],
+    "failures": [],
+    "summary": "6 required step(s) machine-green",
+    "verdict": "pass"
+  },
+  "metrics_ui": {
+    "branch": "m002/04-passive-observation",
+    "commit": "722e070fdc9f4ee89d13f947bf3996e62dcb2783",
+    "diff_identity": null,
+    "linked_pr": null,
+    "named_diff": null,
+    "path": "Stream-Metrics-UI",
+    "worktree_state": "clean"
+  },
+  "metrics_ui_freshness": "independently_finalized_interactive",
+  "metrics_ui_required": true,
+  "recorded_review_hitl": {
+    "evidence": "runner-session/steps/offline-capture/envelope.json",
+    "notes": "The operator exercised source/processed/combined selection, timeline scrubbing, and play/pause on the fresh four-frame recording.",
+    "operator": "GeorgeLuo",
+    "result": "pass",
+    "step_id": "offline-capture"
+  },
+  "repairs": [
+    {
+      "disposition": "repaired at the owning snapshot/restore boundary",
+      "evidence": "machine-only-session plus runner-session",
+      "id": "review-4899909647-us04-p1",
+      "implementation": "cfd1a3d",
+      "review": "https://github.com/GeorgeLuo/auto-driving/pull/100#pullrequestreview-4899909647",
+      "scope": "US-04 managed activation and manifest identity"
+    },
+    {
+      "direct_renderer_tests": 2,
+      "disposition": "bounded additive adjunct integrated; no live-view or continuity-contract change",
+      "id": "issue-101-pr-103-recorded-review",
+      "implementation": "37b7393",
+      "issue": "https://github.com/GeorgeLuo/auto-driving/issues/101",
+      "pull_request": "https://github.com/GeorgeLuo/auto-driving/pull/103",
+      "scope": "recorded-review playback adjunct"
+    },
+    {
+      "disposition": "repaired in tracked evidence packaging; distinct finalized machine-only manifest added",
+      "evidence": "machine-only-session/result.json and machine-only-session/digests.json",
+      "id": "review-4909716246-p1",
+      "review": "https://github.com/GeorgeLuo/auto-driving/pull/100#pullrequestreview-4909716246",
+      "scope": "separate machine-only evidence session"
+    },
+    {
+      "disposition": "claims narrowed to 22 command/run tests with 2 direct renderer tests; explicit empty-view behavior documented; #88 anchor and repair ledger added",
+      "evidence": "README.md and result.json",
+      "id": "review-4909716246-p2",
+      "review": "https://github.com/GeorgeLuo/auto-driving/pull/100#pullrequestreview-4909716246",
+      "scope": "recorded-review claims and reconciliation records"
+    },
+    {
+      "disposition": "replaced the later machine-only package with the retained pre-HITL session; no HITL rerun required",
+      "evidence": "machine-only-session/result.json and machine-only-session/digests.json",
+      "id": "review-4911549038-p1",
+      "review": "https://github.com/GeorgeLuo/auto-driving/pull/100#pullrequestreview-4911549038",
+      "scope": "machine-first evidence ordering"
+    },
+    {
+      "disposition": "removed the unsupported one-frame phrase, renamed the 22-test receipt field, and corrected the prior-review link",
+      "evidence": "README.md and result.json",
+      "id": "review-4911549038-p2",
+      "review": "https://github.com/GeorgeLuo/auto-driving/pull/100#pullrequestreview-4911549038",
+      "scope": "receipt wording and review-reconciliation metadata"
+    }
+  ],
+  "required_family_ids": [
+    "continuity.offline_perception",
+    "continuity.live_config_swap",
+    "continuity.memory_lifecycle"
+  ],
+  "restore_ok": true,
+  "result": "pass",
+  "review_repair": {
+    "activation_symlink_regression": true,
+    "behavior_head": "37b7393",
+    "behavior_head_full": "37b7393fe759f1597860a30d8c10ca5692f1c0cc",
+    "bundle_manifest_symlink_regression": true,
+    "byte_safe_tree_path_identity": true,
+    "complete_cli_runtime_render_surface": true,
+    "continuity_contract_sha256": "8cc8c22bc355f8001e46f00995815d924a4299c419c61bf2a3e40d40e61ceb4b",
+    "continuity_contract_tests": 69,
+    "continuity_hitl_runbook": true,
+    "continuity_repair_head": "cfd1a3d5f1435f705cb6c4c365ae241048906224",
+    "direct_recorded_review_renderer_tests": 2,
+    "discovered_tests": 605,
+    "empty_view_semantics_explicit": true,
+    "focused_continuity_tests": 112,
+    "full_deterministic_suite": "605 tests OK, 2 expected skips",
+    "hitl_operator": "GeorgeLuo",
+    "inaccessible_subtree_regression": true,
+    "inner_digest_entries": 55,
+    "integrated_hitl_adjunct_issue": 101,
+    "integrated_hitl_adjunct_pr": 103,
+    "interactive_hitl": true,
+    "interrupt_after_trial_mutation": true,
+    "machine_only_inner_digest_entries": 54,
+    "machine_only_result": "incomplete",
+    "machine_only_session_separate": true,
+    "machine_readiness_gate": true,
+    "machine_session": "6/6 required steps green",
+    "managed_file_identity_gate": true,
+    "managed_file_receipt_compare": true,
+    "milestone_tests": 112,
+    "milestones_in_default_suite": true,
+    "named_operator_required": true,
+    "nested_symlink_regression": true,
+    "optional_absence_residue_regression": true,
+    "outer_artifact_entries": 17,
+    "posthoc_freshness_finalizer": true,
+    "product_collection_errors_empty": true,
+    "product_collection_errors_gate": true,
+    "product_file_type_mode_identity": true,
+    "product_tree_root_identity": true,
+    "prospective_catalog_anchor": "https://github.com/GeorgeLuo/auto-driving/pull/88#issuecomment-5169077892",
+    "quoted_untracked_path_identity": true,
+    "recorded_review_claims_narrowed": true,
+    "recorded_review_playback": true,
+    "regular_mode_regression": true,
+    "repair_ledger": true,
+    "required_nonvisual_skip_block": true,
+    "root_relative_cache_exclusion": true,
+    "root_symlink_regression": true,
+    "runner_sha256": "45da4ea9f2ccf66b27709e63061c8d1cddcac1ce768a757eb723b92246baff05",
+    "session_runner_tests": 43,
+    "snapshot_schema_v3": true,
+    "source_cache_restored_identity_gate": true,
+    "symlink_preserving_snapshot_restore": true,
+    "tree_collection_fail_closed": true,
+    "tree_path_collision_identity": true,
+    "tree_root_symlink_identity": true,
+    "unreadable_regular_file_regression": true,
+    "untracked_executable_mode_identity": true,
+    "untracked_symlink_target_identity": true,
+    "us04_snapshot_meta_schema_v3": true,
+    "visual_evidence": "runner-session/browser-view.png",
+    "focused_perception_command_run_tests": 22,
+    "machine_only_ended_at_utc": "2026-08-11T18:17:03.128773Z",
+    "machine_only_runner_head": "37b7393fe759f1597860a30d8c10ca5692f1c0cc",
+    "machine_only_started_at_utc": "2026-08-11T18:16:19.664233Z",
+    "machine_only_precedes_hitl": true
+  },
+  "schema": "m007_cli_scenario_continuity_v0",
+  "session": {
+    "catalog": {
+      "id": "m007-continuity",
+      "max_frame_lag": null,
+      "title": "M007 realistic CLI scenario continuity",
+      "track": "continuity"
+    },
+    "execution_mode": "interactive_live",
+    "operator": "GeorgeLuo",
+    "path": "runner-session",
+    "timestamps": {
+      "ended_at_utc": "2026-08-11T18:30:35.517277Z",
+      "local_timezone": [
+        "PST",
+        "PDT"
+      ],
+      "started_at_utc": "2026-08-11T18:17:57.556173Z"
+    }
+  },
+  "session_manifests": [
+    {
+      "behavior_head": "37b7393fe759f1597860a30d8c10ca5692f1c0cc",
+      "digest_manifest_path": "machine-only-session/digests.json",
+      "digest_sha256": "22f785c03d879ee98ae66b9086ac50cb1c40416528b3e8bf097000e45779d08f",
+      "execution_mode": "machine_only_live",
+      "finalizer": {
+        "ok": true,
+        "reason": "evidence freshness finalizer ok"
+      },
+      "id": "machine-only-rehearsal",
+      "inner_digest_entries": 54,
+      "machine_preflight": "pass",
+      "manifest_path": "machine-only-session/result.json",
+      "operator": null,
+      "result": "incomplete",
+      "result_sha256": "02e9ae527346580a6587bf74915036591ccce65ea409eff565eaf01854f3f50a",
+      "runner_head": "37b7393fe759f1597860a30d8c10ca5692f1c0cc",
+      "started_at_utc": "2026-08-11T18:16:19.664233Z",
+      "ended_at_utc": "2026-08-11T18:17:03.128773Z",
+      "precedes_session_id": "named-hitl"
+    },
+    {
+      "behavior_head": "37b7393fe759f1597860a30d8c10ca5692f1c0cc",
+      "digest_manifest_path": "runner-session/digests.json",
+      "digest_sha256": "845f270fb90f4adc02a5216c1285b01e13cb0a8b04a4f224f17b47fee9ce088f",
+      "execution_mode": "interactive_live",
+      "finalizer": {
+        "ok": true,
+        "reason": "evidence freshness finalizer ok"
+      },
+      "id": "named-hitl",
+      "inner_digest_entries": 55,
+      "machine_preflight": "pass",
+      "manifest_path": "runner-session/result.json",
+      "operator": "GeorgeLuo",
+      "result": "pass",
+      "result_sha256": "ab8afa1ce914a2f0c3b163f888bc9f246f9ff25399f92e152f3363c5d8596255",
+      "runner_head": "37b7393fe759f1597860a30d8c10ca5692f1c0cc"
+    }
+  ],
+  "verdict": "pass",
+  "verdict_reason": null,
+  "visual_hitl": {
+    "notes": "The operator answered pass after inspecting the fresh live Automa view for a nonblank, intelligible expected perception overlay/readiness cue.",
+    "operator": "GeorgeLuo",
+    "result": "pass",
+    "screenshot": "runner-session/browser-view.png",
+    "step_id": "live-swap-stage"
+  }
+}

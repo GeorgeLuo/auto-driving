@@ -9,6 +9,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
+from urllib.parse import urlparse
 
 from autonomy.perception import (
     build_perception_request,
@@ -43,7 +44,14 @@ from .physical_observation import (
     physical_view_status,
     picar_base_url,
 )
-from .vehicles import discover_active_vehicles, find_vehicle_by_id, format_active_vehicles_snapshot
+from .vehicles import (
+    DEFAULT_CHASE_READINESS_TIMEOUT_S,
+    READINESS_SCHEMA,
+    discover_active_vehicles,
+    find_vehicle_by_id,
+    format_active_vehicles_snapshot,
+    get_vehicle_status,
+)
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -136,14 +144,19 @@ def get_vehicle_perception_info(
     json_output: bool = False,
     timeout_s: float = 3.0,
 ) -> CommandResult:
-    live = _resolve_live_vehicle(vehicle_id, timeout_s=timeout_s)
-    live_vehicle = live.get("vehicle") if isinstance(live.get("vehicle"), dict) else None
-    live_provider = live_vehicle.get("provider") if live_vehicle is not None else None
-
     vehicle_runtime_dir = RUNTIME_ROOT / safe_path_part(vehicle_id)
     bundle = controller_bundle_paths(vehicle_runtime_dir)
     manifest_path = Path(bundle["perception_runtime_dir"]) / "active.json"
     has_local_activation = manifest_path.exists()
+    # Discovery is an enrichment read for staged inspection, not a gate.  It
+    # must still run when active.json exists so a reachable PiRacer cannot be
+    # silently hidden behind the local activation record.
+    live = _resolve_live_vehicle(vehicle_id, timeout_s=timeout_s)
+    live_vehicle: dict[str, Any] | None = None
+    live_vehicle = (
+        live.get("vehicle") if isinstance(live.get("vehicle"), dict) else None
+    )
+    live_provider = live_vehicle.get("provider") if live_vehicle is not None else None
 
     if not has_local_activation and live_provider != "picar":
         return CommandResult(
@@ -291,11 +304,11 @@ def get_vehicle_perception_info(
         live_view = payload["live_observation"].get("published_view")
         if isinstance(live_view, dict) and live_view.get("available"):
             payload["published_view"] = live_view
-    elif live.get("error"):
-        payload["live_observation"] = {
-            "available": False,
-            "error": live.get("error"),
-        }
+    else:
+        payload["live_observation"] = _unavailable_live_observation(
+            live,
+            vehicle=live_vehicle,
+        )
 
     if json_output:
         return CommandResult(0, json.dumps(payload, indent=2, sort_keys=True))
@@ -426,7 +439,7 @@ def update_vehicle_perception(
     vehicle_id: str,
     algorithm: str | None = None,
     candidate_id: str | None = None,
-    timeout_s: float = 1.0,
+    timeout_s: float = DEFAULT_CHASE_READINESS_TIMEOUT_S,
     restart: bool = False,
     dry_run: bool = False,
     json_output: bool = False,
@@ -610,17 +623,120 @@ def update_vehicle_perception(
         sample_paths=sample_paths,
         restart=restart,
     )
-    if json_output:
-        return CommandResult(0, json.dumps(payload, indent=2, sort_keys=True))
-    return CommandResult(
-        0,
-        _success_message(
+    readiness = None
+    next_action = None
+    readiness_exit_code = 0
+    if provider == "chase-sim" and not restart and candidate_id is None:
+        connection = (
+            vehicle.get("connection")
+            if isinstance(vehicle.get("connection"), dict)
+            else {}
+        )
+        ws_url = (
+            connection.get("ws_url")
+            if isinstance(connection.get("ws_url"), str)
+            else None
+        )
+        status = get_vehicle_status(
             vehicle_id=vehicle_id,
-            algorithm=activation_name,
-            bundle_root=Path(bundle["root_dir"]),
-            manifest_path=manifest_path,
-            sample_paths=sample_paths,
+            chase_ws_url=ws_url,
+            timeout_s=timeout_s,
+        )
+        readiness, next_action = _automation_run_readiness(status)
+        payload["readiness"] = readiness
+        payload["next_action"] = next_action
+        if readiness["status"] != "ready":
+            readiness_exit_code = 2
+    if json_output:
+        return CommandResult(
+            readiness_exit_code,
+            json.dumps(payload, indent=2, sort_keys=True),
+        )
+    message = _success_message(
+        vehicle_id=vehicle_id,
+        algorithm=activation_name,
+        bundle_root=Path(bundle["root_dir"]),
+        manifest_path=manifest_path,
+        sample_paths=sample_paths,
+    )
+    if readiness is not None:
+        label = "Ready for" if readiness["status"] == "ready" else "Not ready for"
+        message += f"\n{label}: {readiness['ready_for']}"
+        if isinstance(next_action, dict):
+            recovery = next_action.get("command")
+            if recovery is None:
+                recovery = json.dumps(next_action.get("external_change"), sort_keys=True)
+            message += f"\nNext action: {recovery}"
+    return CommandResult(
+        readiness_exit_code,
+        message,
+    )
+
+
+def _automation_run_readiness(
+    status: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    layers = status.get("layers") if isinstance(status.get("layers"), dict) else {}
+    required = (
+        "simulator_server",
+        "simulator_frontend",
+        "chase_game",
+        "vehicle",
+        "passive_capture",
+        "automation_deployment",
+    )
+    expected = {
+        "simulator_server": "reachable",
+        "simulator_frontend": "connected",
+        "chase_game": "ready",
+        "vehicle": "discoverable",
+        "passive_capture": "available",
+        "automation_deployment": "deployed",
+    }
+    blocking_layer = next(
+        (
+            name
+            for name in required
+            if not isinstance(layers.get(name), dict)
+            or layers[name].get("state") != expected[name]
         ),
+        None,
+    )
+    ready = blocking_layer is None
+    if ready:
+        vehicle_id = str(status.get("vehicle_id") or "chase-sim-chaser")
+        next_action = {
+            "reason": "worker_stopped",
+            "command": (
+                "./cli/automa vehicles automation run "
+                f"--id {vehicle_id} --observe-only --frames 0 --open-view"
+            ),
+            "external_change": None,
+            "expected_state": "automation_worker=running, perception_view=available",
+        }
+    else:
+        next_action = (
+            status.get("next_action")
+            if isinstance(status.get("next_action"), dict)
+            else None
+        )
+    return (
+        {
+            "schema": READINESS_SCHEMA,
+            "status": "ready" if ready else "blocked",
+            "ready_for": "observation-only automation",
+            "checked_at_ms": status.get("checked_at_ms"),
+            "gates": {
+                name: (
+                    status.get("readiness", {}).get("gates", {}).get(name)
+                    if isinstance(status.get("readiness"), dict)
+                    else None
+                )
+                for name in required
+            },
+            "blocking_layer": blocking_layer,
+        },
+        next_action,
     )
 
 
@@ -1166,9 +1282,13 @@ def _format_published_view(value: Any) -> str:
 
 
 def _format_live_observation(live: dict[str, Any]) -> str:
+    view = live.get("published_view") if isinstance(live.get("published_view"), dict) else {}
     if not live.get("available"):
-        error = live.get("error") or "physical observation is unavailable"
-        return f"Live onboard observation: unavailable ({error})"
+        error = live.get("error") or live.get("reason") or "physical observation is unavailable"
+        lines = [f"Live onboard observation: unavailable ({error})"]
+        if view:
+            lines.append(_format_live_view(view))
+        return "\n".join(lines)
     frame = live.get("frame") if isinstance(live.get("frame"), dict) else {}
     control = live.get("control") if isinstance(live.get("control"), dict) else {}
     lines = [
@@ -1184,15 +1304,42 @@ def _format_live_observation(live: dict[str, Any]) -> str:
         f"- endpoint: {live.get('base_url', 'unknown')}{LATEST_JSON_PATH}",
         f"- frame endpoint: {live.get('base_url', 'unknown')}{LATEST_FRAME_PATH}",
     ]
-    view = live.get("published_view") if isinstance(live.get("published_view"), dict) else {}
-    if view.get("available") and view.get("url"):
-        lines.append(f"- local view: {view['url']}")
-    else:
-        lines.append(
-            "- local view: not running; "
-            "`./cli/automa vehicles stream perception --id <vehicle_id>` starts it"
-        )
+    lines.append(_format_live_view(view))
     return "\n".join(lines)
+
+
+def _format_live_view(view: dict[str, Any]) -> str:
+    if view.get("available") and view.get("url"):
+        return f"- local view: {view['url']}"
+    reason = view.get("reason") or "physical perception view is unavailable"
+    return (
+        f"- local view: unavailable ({reason}); "
+        "`./cli/automa vehicles stream perception --id <vehicle_id>` starts it"
+    )
+
+
+def _unavailable_live_observation(
+    live: dict[str, Any],
+    *,
+    vehicle: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Describe missing live enrichment without invalidating staged data."""
+
+    provider = vehicle.get("provider") if isinstance(vehicle, dict) else None
+    reason = live.get("error")
+    if not isinstance(reason, str) or not reason:
+        if provider is not None:
+            reason = f"discovered provider {provider!r} is not a PiRacer"
+        else:
+            reason = "vehicle is not currently reachable"
+    result: dict[str, Any] = {
+        "available": False,
+        "provider": provider,
+        "reason": reason,
+    }
+    if isinstance(live.get("error"), str) and live["error"]:
+        result["error"] = live["error"]
+    return result
 
 
 def _resolve_live_vehicle(vehicle_id: str, *, timeout_s: float) -> dict[str, Any]:
@@ -1221,7 +1368,23 @@ def _live_physical_observation_info(
     if not base_url:
         return {
             "available": False,
+            "provider": "picar",
             "error": f"Vehicle {vehicle_id!r} has no picar base_url connection.",
+        }
+    try:
+        parsed_base_url = urlparse(base_url)
+        usable_base_url = (
+            parsed_base_url.scheme in {"http", "https"}
+            and bool(parsed_base_url.netloc)
+        )
+    except ValueError:
+        usable_base_url = False
+    if not usable_base_url:
+        return {
+            "available": False,
+            "provider": "picar",
+            "base_url": base_url,
+            "error": f"Vehicle {vehicle_id!r} has an invalid picar base_url connection.",
         }
     view = physical_view_status(vehicle_id)
     try:
@@ -1229,14 +1392,16 @@ def _live_physical_observation_info(
     except ConnectionError as exc:
         return {
             "available": False,
+            "provider": "picar",
             "base_url": base_url,
             "error": str(exc),
             "published_view": view,
             "runtime_dir": display_path(physical_observation_dir(vehicle_id)),
         }
     frame = publication.get("frame") if isinstance(publication.get("frame"), dict) else None
-    return {
+    result = {
         "available": True,
+        "provider": "picar",
         "base_url": base_url,
         "health": publication.get("health"),
         "ok": publication.get("ok"),
@@ -1254,6 +1419,17 @@ def _live_physical_observation_info(
         "published_view": view,
         "runtime_dir": display_path(physical_observation_dir(vehicle_id)),
     }
+    if publication.get("health") not in {"healthy", "stale"}:
+        error = publication.get("error")
+        result["available"] = False
+        result["reason"] = (
+            error
+            if isinstance(error, str) and error.strip()
+            else f"physical observation health is {publication.get('health')!r}"
+        )
+        if isinstance(error, str) and error.strip():
+            result["error"] = error
+    return result
 
 
 def _perception_view_with_automation_status(
@@ -1273,7 +1449,12 @@ def _perception_view_with_automation_status(
         "state_path": display_path(automation_dir / "state.json"),
         "error": state.get("error") if isinstance(state.get("error"), str) else None,
     }
-    view = get_perception_view_status(automation_dir)
+    run_id = state.get("run_id") if isinstance(state.get("run_id"), str) else None
+    view = get_perception_view_status(
+        automation_dir,
+        expected_run_id=run_id,
+        expected_worker_pid=pid if isinstance(pid, int) else None,
+    )
     if view.get("available"):
         return view, runtime
     if status in {"launching", "starting"}:

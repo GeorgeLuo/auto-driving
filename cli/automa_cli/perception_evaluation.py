@@ -11,6 +11,140 @@ from .paths import display_path
 
 IGNORED_EVIDENCE_KINDS = {"sensor_frame", "prepared_sensor_frame"}
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
+_REVIEW_STYLES = """
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #f5f7f4; color: #17211f; font: 15px/1.45 system-ui, sans-serif; }
+    button, input, select { font: inherit; }
+    main { width: min(1240px, calc(100% - 28px)); margin: 0 auto; padding: 28px 0 50px; }
+    h1, h2, p { margin: 0; }
+    h1 { font-size: 30px; }
+    h2 { font-size: 18px; margin-bottom: 10px; }
+    .summary, .player { margin: 18px 0; padding: 16px; border: 1px solid #c9d5ce; background: white; }
+    .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 10px; margin-top: 12px; }
+    .metric { padding: 10px; background: #edf1ee; }
+    .metric strong { display: block; font-size: 20px; }
+    .controls { display: none; align-items: end; flex-wrap: wrap; gap: 10px 14px; margin-bottom: 10px; }
+    .has-js .controls { display: flex; }
+    .control { display: grid; gap: 4px; color: #44514d; font-size: 12px; font-weight: 650; }
+    .control select, .control input { min-height: 38px; }
+    .control select { padding: 6px 30px 6px 9px; border: 1px solid #9ba9a3; background: white; color: #17211f; }
+    .play-toggle { min-height: 38px; padding: 6px 16px; border: 1px solid #245f4c;
+      border-radius: 3px; background: #245f4c; color: white; cursor: pointer; }
+    .play-toggle:hover { background: #174737; }
+    .play-toggle:focus-visible, select:focus-visible, input:focus-visible {
+      outline: 3px solid #e3a72f; outline-offset: 2px; }
+    .scrub-control { flex: 1 1 280px; }
+    .scrub-row { display: flex; align-items: center; gap: 10px; }
+    .scrub-row input { width: 100%; min-width: 160px; accent-color: #245f4c; }
+    .position { min-width: 4.5em; color: #17211f; font-variant-numeric: tabular-nums; }
+    .hint { margin-bottom: 14px; color: #596762; font-size: 13px; }
+    .frames { display: grid; gap: 14px; }
+    .frame { border: 1px solid #c9d5ce; background: #fbfcfb; padding: 12px; }
+    .images { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
+    figure { margin: 0; min-width: 0; }
+    img { display: block; width: 100%; height: min(58vh, 540px); object-fit: contain;
+      background: #17211f; }
+    figcaption { margin-top: 4px; color: #596762; font-size: 12px; overflow-wrap: anywhere; }
+    .details, .empty-view { color: #596762; font-size: 13px; margin-bottom: 8px; }
+    .empty-view { padding: 24px; border: 1px dashed #9ba9a3; text-align: center; }
+    [hidden] { display: none !important; }
+    @media (max-width: 620px) {
+      main { width: min(100% - 18px, 1240px); padding-top: 18px; }
+      .summary, .player { padding: 12px; }
+      .images { grid-template-columns: 1fr; }
+      img { height: auto; max-height: 62vh; }
+    }
+"""
+_REVIEW_PLAYER_SCRIPT = """
+(() => {
+  document.documentElement.classList.add("has-js");
+  const frames = Array.from(document.querySelectorAll("[data-review-frame]"));
+  const viewMode = document.querySelector("#view-mode");
+  const playToggle = document.querySelector("#play-toggle");
+  const playbackRate = document.querySelector("#playback-rate");
+  const scrubber = document.querySelector("#frame-scrubber");
+  const position = document.querySelector("#frame-position");
+  let frameIndex = 0;
+  let timer = null;
+
+  function stopPlayback() {
+    if (timer !== null) {
+      window.clearInterval(timer);
+      timer = null;
+    }
+    playToggle.textContent = "Play";
+    playToggle.setAttribute("aria-pressed", "false");
+  }
+
+  function showFrame(nextIndex) {
+    if (frames.length === 0) {
+      position.value = "0 / 0";
+      return;
+    }
+    frameIndex = (nextIndex + frames.length) % frames.length;
+    frames.forEach((frame, index) => {
+      frame.hidden = index !== frameIndex;
+      frame.setAttribute("aria-current", index === frameIndex ? "true" : "false");
+    });
+    scrubber.value = String(frameIndex);
+    position.value = `${frameIndex + 1} / ${frames.length}`;
+  }
+
+  function applyViewMode() {
+    const mode = viewMode.value;
+    frames.forEach((frame) => {
+      let visibleImages = 0;
+      frame.querySelectorAll("figure[data-view-kind]").forEach((figure) => {
+        const visible = mode === "side-by-side" || figure.dataset.viewKind === mode;
+        figure.hidden = !visible;
+        visibleImages += visible ? 1 : 0;
+      });
+      const empty = frame.querySelector("[data-empty-view]");
+      if (empty) {
+        empty.hidden = visibleImages !== 0;
+      }
+    });
+  }
+
+  function startPlayback() {
+    if (frames.length < 2) {
+      return;
+    }
+    stopPlayback();
+    playToggle.textContent = "Pause";
+    playToggle.setAttribute("aria-pressed", "true");
+    const intervalMs = 800 / Number(playbackRate.value || 1);
+    timer = window.setInterval(() => showFrame(frameIndex + 1), intervalMs);
+  }
+
+  viewMode.addEventListener("change", applyViewMode);
+  playToggle.addEventListener("click", () => {
+    if (timer === null) {
+      startPlayback();
+    } else {
+      stopPlayback();
+    }
+  });
+  playbackRate.addEventListener("change", () => {
+    if (timer !== null) {
+      startPlayback();
+    }
+  });
+  scrubber.addEventListener("input", () => {
+    stopPlayback();
+    showFrame(Number(scrubber.value));
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      stopPlayback();
+    }
+  });
+
+  applyViewMode();
+  showFrame(0);
+})();
+"""
 
 
 def evaluate_perception_frames(frames: list[dict[str, Any]]) -> dict[str, Any]:
@@ -94,7 +228,13 @@ def write_review_html(run_dir: Path, report: dict[str, Any]) -> Path:
     path = run_dir / "review.html"
     summary = report["summary"]
     quality = summary.get("representation_health") or {}
-    frame_sections = "\n".join(_frame_section(frame) for frame in report.get("frames", []))
+    frames = report.get("frames", [])
+    frame_sections = "\n".join(
+        _frame_section(frame, index=index)
+        for index, frame in enumerate(frames)
+    )
+    if not frame_sections:
+        frame_sections = '<p class="empty-view">No recorded frames are available.</p>'
     path.write_text(
         f"""<!doctype html>
 <html lang="en">
@@ -103,24 +243,7 @@ def write_review_html(run_dir: Path, report: dict[str, Any]) -> Path:
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Perception Review: {html.escape(str(report.get('run_id') or 'run'))}</title>
   <style>
-    * {{ box-sizing: border-box; }}
-    body {{ margin: 0; background: #f5f7f4; color: #17211f; font: 15px/1.45 system-ui, sans-serif; }}
-    main {{ width: min(1240px, calc(100% - 28px)); margin: 0 auto; padding: 28px 0 50px; }}
-    h1, h2, p {{ margin: 0; }}
-    h1 {{ font-size: 30px; }}
-    h2 {{ font-size: 18px; margin-bottom: 10px; }}
-    .summary {{ margin: 18px 0; padding: 16px; border: 1px solid #c9d5ce; background: white; }}
-    .metrics {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-      gap: 10px; margin-top: 12px; }}
-    .metric {{ padding: 10px; background: #edf1ee; }}
-    .metric strong {{ display: block; font-size: 20px; }}
-    .frames {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 14px; }}
-    article {{ border: 1px solid #c9d5ce; background: white; padding: 12px; }}
-    .images {{ display: grid; gap: 8px; }}
-    figure {{ margin: 0; }}
-    img {{ display: block; width: 100%; height: auto; background: #17211f; }}
-    figcaption {{ margin-top: 4px; color: #596762; font-size: 12px; overflow-wrap: anywhere; }}
-    .details {{ color: #596762; font-size: 13px; margin-bottom: 8px; }}
+{_REVIEW_STYLES}
   </style>
 </head>
 <body>
@@ -138,8 +261,16 @@ def write_review_html(run_dir: Path, report: dict[str, Any]) -> Path:
       {_metric('Peak RSS', f"{summary.get('memory_mb', {}).get('peak_rss', 0):.1f} MiB")}
     </div>
   </section>
-  <section class="frames">{frame_sections}</section>
+  <section class="player" aria-labelledby="playback-heading">
+    <h2 id="playback-heading">Frame Playback</h2>
+    {_player_controls(len(frames))}
+    <p class="hint">Choose source frames, processed outputs, or both. Play or scrub through one frame at a time.</p>
+    <div class="frames" id="review-frames">{frame_sections}</div>
+  </section>
 </main>
+<script>
+{_REVIEW_PLAYER_SCRIPT}
+</script>
 </body>
 </html>
 """,
@@ -248,28 +379,63 @@ def _number(value: Any, digits: int) -> str:
         return "n/a"
 
 
-def _frame_section(frame: dict[str, Any]) -> str:
-    images: list[tuple[str, Path]] = []
+def _player_controls(frame_count: int) -> str:
+    last_frame = max(frame_count - 1, 0)
+    disabled = " disabled" if frame_count < 2 else ""
+    position = f"1 / {frame_count}" if frame_count else "0 / 0"
+    return f"""<div class="controls" aria-label="Playback controls">
+      <label class="control">View type
+        <select id="view-mode">
+          <option value="side-by-side">Source + processed</option>
+          <option value="source">Source only</option>
+          <option value="processed">Processed only</option>
+        </select>
+      </label>
+      <button class="play-toggle" id="play-toggle" type="button" aria-pressed="false"{disabled}>Play</button>
+      <label class="control">Playback speed
+        <select id="playback-rate"{disabled}>
+          <option value="0.5">0.5×</option>
+          <option value="1" selected>1×</option>
+          <option value="2">2×</option>
+        </select>
+      </label>
+      <label class="control scrub-control">Frame
+        <span class="scrub-row">
+          <input id="frame-scrubber" type="range" min="0" max="{last_frame}" value="0" step="1"{disabled}>
+          <output class="position" id="frame-position" for="frame-scrubber">{position}</output>
+        </span>
+      </label>
+    </div>"""
+
+
+def _frame_section(frame: dict[str, Any], *, index: int) -> str:
+    images: list[tuple[str, Path, str]] = []
     source = frame.get("image_path")
     if isinstance(source, str) and Path(source).is_file():
-        images.append(("source", Path(source)))
+        images.append(("source", Path(source), "source"))
     perception = frame.get("perception")
     artifacts = perception.get("artifacts") if isinstance(perception, dict) else None
     if isinstance(artifacts, dict):
         for name, artifact in sorted(artifacts.items()):
             path = Path(str(artifact))
             if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS:
-                images.append((name, path))
+                images.append((name, path, "processed"))
+    frame_label = str(frame.get("frame_id") or "frame")
     figures = "".join(
-        f'<figure><img loading="lazy" src="{html.escape(path.resolve().as_uri())}" '
-        f'alt="{html.escape(label)}"><figcaption>{html.escape(label)}: '
+        f'<figure data-view-kind="{view_kind}"><img loading="lazy" decoding="async" '
+        f'src="{html.escape(path.resolve().as_uri())}" '
+        f'alt="{html.escape(frame_label)} — {html.escape(label)}"><figcaption>{html.escape(label)}: '
         f'{html.escape(display_path(path))}</figcaption></figure>'
-        for label, path in images
+        for label, path, view_kind in images
     )
+    empty_hidden = " hidden" if images else ""
     return (
-        f'<article><h2>{html.escape(str(frame.get("frame_id") or "frame"))}</h2>'
+        f'<article class="frame" data-review-frame data-frame-index="{index}">'
+        f'<h2>{html.escape(frame_label)}</h2>'
         f'<p class="details">status={html.escape(str(frame.get("status")))} '
         f'things={int(frame.get("thing_count") or 0)} '
         f'latency={float(frame.get("duration_ms") or 0):.1f} ms</p>'
-        f'<div class="images">{figures}</div></article>'
+        f'<div class="images">{figures}</div>'
+        f'<p class="empty-view" data-empty-view{empty_hidden}>'
+        "No images are available for this view type.</p></article>"
     )

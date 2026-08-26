@@ -40,7 +40,8 @@ class PerceptionViewTests(unittest.TestCase):
                 )
 
                 status = get_perception_view_status(root / "automation")
-                self.assertTrue(status["available"])
+                self.assertFalse(status["available"])
+                self.assertEqual(status["status"], "warming")
                 self.assertEqual(status["schema"], VIEW_SCHEMA)
                 self.assertEqual(status["latest_frame_id"], "frame_000004")
 
@@ -54,6 +55,9 @@ class PerceptionViewTests(unittest.TestCase):
                 self.assertIsNone(payload["perception"])
 
                 server.publish_perception(frame_record=frame_record)
+                status = get_perception_view_status(root / "automation")
+                self.assertTrue(status["available"])
+                self.assertEqual(status["status"], "running")
                 with urlopen(f"{server.url}api/latest", timeout=1.0) as response:
                     payload = json.loads(response.read().decode("utf-8"))
                 self.assertEqual(payload["overlay"]["status"], "current")
@@ -144,6 +148,37 @@ class PerceptionViewTests(unittest.TestCase):
             status = get_perception_view_status(root)
             self.assertFalse(status["available"])
             self.assertEqual(status["status"], "unavailable")
+
+    def test_view_health_rejects_a_different_worker_generation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            server = PerceptionViewServer(
+                vehicle_id="test-vehicle",
+                automation_dir=root,
+                port=0,
+                run_id="run-current",
+                worker_pid=4242,
+            ).start()
+            try:
+                status = get_perception_view_status(
+                    root,
+                    expected_run_id="run-other",
+                    expected_worker_pid=4242,
+                )
+                self.assertFalse(status["available"])
+                self.assertEqual(status["status"], "stale")
+                self.assertIn("run_id", status["reason"])
+
+                status = get_perception_view_status(
+                    root,
+                    expected_run_id="run-current",
+                    expected_worker_pid=9999,
+                )
+                self.assertFalse(status["available"])
+                self.assertEqual(status["status"], "stale")
+                self.assertIn("pid", status["reason"])
+            finally:
+                server.stop()
 
 
 def _frame_record() -> dict:

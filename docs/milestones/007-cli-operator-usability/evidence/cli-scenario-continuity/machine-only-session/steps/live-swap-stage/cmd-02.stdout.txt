@@ -1,0 +1,13 @@
+Vehicle: chase-sim-chaser
+Endpoint: http://localhost:5050/ -> ws://localhost:5050/ws/control
+simulator_server: reachable
+simulator_frontend: connected
+chase_game: ready
+vehicle: discoverable
+passive_capture: available
+automation_deployment: deployed
+automation_worker: running
+perception_view: available
+authority: control_source=programmatic, action_policy=observe_only, control_application=not_applied
+evaluator_reference: available
+Ready for: inspect perception and stop automation

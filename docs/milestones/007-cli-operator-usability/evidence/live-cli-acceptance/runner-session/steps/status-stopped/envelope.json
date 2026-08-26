@@ -1,0 +1,59 @@
+{
+  "browser_view": null,
+  "commands": [
+    {
+      "argv": [
+        "./cli/automa",
+        "vehicles",
+        "status",
+        "--id",
+        "chase-sim-chaser"
+      ],
+      "command": "./cli/automa vehicles status --id chase-sim-chaser",
+      "elapsed_ms": 760,
+      "ended_at_utc": "2026-08-05T23:49:44.627234Z",
+      "exit_code": 0,
+      "started_at_utc": "2026-08-05T23:49:43.866777Z",
+      "stderr_path": "steps/status-stopped/cmd-00.stderr.txt",
+      "stdout_path": "steps/status-stopped/cmd-00.stdout.txt"
+    },
+    {
+      "argv": [
+        "./cli/automa",
+        "vehicles",
+        "status",
+        "--id",
+        "chase-sim-chaser",
+        "--json"
+      ],
+      "captures_to": "stopped-status.json",
+      "command": "./cli/automa vehicles status --id chase-sim-chaser --json",
+      "elapsed_ms": 655,
+      "ended_at_utc": "2026-08-05T23:49:45.283078Z",
+      "exit_code": 0,
+      "started_at_utc": "2026-08-05T23:49:44.628096Z",
+      "stderr_path": "steps/status-stopped/cmd-01.stderr.txt",
+      "stdout_path": "steps/status-stopped/cmd-01.stdout.txt"
+    }
+  ],
+  "gate_ids": [
+    "cleanup",
+    "default_recording"
+  ],
+  "human": {
+    "finding_requested": false,
+    "interactive": true,
+    "notes": "",
+    "visual": "pass"
+  },
+  "id": "status-stopped",
+  "kind": "command",
+  "machine_evidence": {},
+  "machine_ok": true,
+  "machine_summary": "stopped_layers: stopped layers healthy; default_recording: no new automation run directories; preservation: protected session fields preserved (stable projection)",
+  "primary_cue": "worker stopped; perception_view stale or unavailable; next action reprints run",
+  "question": "Does final status report stopped worker and stale/unavailable view?",
+  "required_for_verdict": true,
+  "safety": "read",
+  "status": "pass"
+}

@@ -9,6 +9,7 @@ omit =
     */__init__.py
 patch =
     subprocess
+sigterm = True
 
 [report]
 precision = 1

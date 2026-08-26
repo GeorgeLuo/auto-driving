@@ -126,3 +126,65 @@ dependency remain documented limits rather than 005 blockers.
 Full record: [plan](005-evidence-memory-foundation/plan.md) ·
 [plan.html](005-evidence-memory-foundation/plan.html) and
 [closeout](005-evidence-memory-foundation/closeout.md).
+
+## 007 - CLI Operator Usability
+
+Closeout packet prepared: 2026-08-24
+
+Whole-milestone acceptance: pending cumulative PR
+[#81](https://github.com/GeorgeLuo/auto-driving/pull/81).
+
+Delivered one discoverable, observation-only Chase simulator-to-perception CLI
+journey with explicit layer states and recovery, accepted live and realistic
+scenario evidence, reproducible named-context coverage, complete public-leaf and
+US-01 through US-10 accounting, and owned dispositions for capabilities outside
+the declared journeys. No M007 path grants non-idle movement authority.
+
+Durable decisions: attach passively without hidden simulator reconfiguration;
+separate simulator, vehicle, deployment, worker, view, and evaluator-reference
+state; keep machine-first/HITL evidence bounded and cleanup-owned; treat coverage
+as informational; keep all deferred sequences and live findings owned; and
+require separately reviewed work before exposing or removing a capability.
+
+Remaining work: open issues #89–#91, five owned `M007-LIVE-*` residuals, seven
+deferred and one blocked US sequence, unsupported PiRacer/remote/non-idle claims,
+and the `cli-operator-surfaces` expose candidate remain explicit follow-on work.
+After successful whole-milestone acceptance, operator focus returns separately
+to the active M006 cross-environment shadow-evidence frontier.
+
+Full record: [plan](007-cli-operator-usability/plan.md) ·
+[plan.html](007-cli-operator-usability/plan.html) and
+[closeout](007-cli-operator-usability/closeout.md).
+
+This is the retained Phase A closeout packet inside cumulative PR #81. It does
+not claim that #81 has merged into `main` or that tag `milestone-007` exists.
+Phase B must first apply the reviewed terminal plan handoff, and Phase C must
+then accept #81 as a whole.
+
+## 007 CLI Operator Usability — cumulative review withdrawn
+
+Cumulative PR [#81](https://github.com/GeorgeLuo/auto-driving/pull/81) was not
+merged into `main`. Its Phase C review at cumulative head
+`ee2e3056f77bee9a4511877829eb9c46b52d0aa2` recorded a substantial
+`changes_requested` verdict because product-boundary findings require new
+owned review units.
+
+The preceding 007 entry is retained as the Phase A closeout packet; it is not
+mainline milestone closure. M007-06 remains `Unmet` while the milestone returns
+to active planning.
+
+## 007 CLI Operator Usability — cumulative review requalified
+
+After the append-only withdrawal, accepted repairs
+[#146](https://github.com/GeorgeLuo/auto-driving/pull/146),
+[#154](https://github.com/GeorgeLuo/auto-driving/pull/154), and
+[#155](https://github.com/GeorgeLuo/auto-driving/pull/155) closed the three
+Phase C product findings. The retained Phase A packet in
+[closeout.md](007-cli-operator-usability/closeout.md) was updated in place to
+cite the rejected cumulative head
+`ee2e3056f77bee9a4511877829eb9c46b52d0aa2`, restore head
+`9f758d9927d8b870b1d3d2219441fd7410d64b47`, and those repair receipts.
+
+Whole-milestone acceptance remains pending cumulative PR
+[#81](https://github.com/GeorgeLuo/auto-driving/pull/81). This section does not
+claim a `main` merge or tag `milestone-007`.

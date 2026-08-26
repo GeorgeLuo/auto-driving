@@ -5,7 +5,7 @@
 | Status | Active |
 | Milestone branch | `milestone/007-cli-operator-usability` |
 | Cumulative PR | [#81](https://github.com/GeorgeLuo/auto-driving/pull/81) (draft until whole-milestone closeout) |
-| Current frontier | None (idle) |
+| Current frontier | PiRacer perception-inspection compatibility |
 | Started | 2026-07-29 |
 | Action policy | Observation-only; no applied vehicle movement |
 
@@ -128,10 +128,18 @@ deletion; it does not retroactively widen the accepted primary journey.
 
 ### Current Frontier
 
-**None**
+**PiRacer perception-inspection compatibility**
 
-- Reason: The timeout repair is promoted and the milestone remains idle; the separate Phase C PiRacer and Chase image-envelope findings remain outside this unit.
-- Revisit when: A later proposal is justified by the remaining Phase C finding or by a new milestone acceptance decision.
+- Workflow state: proposal_in_review
+- Proposal branch: `m007/piracer-perception-inspection-compatibility-proposal`
+- Implementation branch: `m007/piracer-perception-inspection-compatibility`
+- Proposal path: `docs/milestones/007-cli-operator-usability/proposals/piracer-perception-inspection-compatibility.md`
+- Review kind: Review repair
+- Review question: Can `vehicles info perception --id piracer` retain successful offline inspection of a locally staged `active.json` while also enriching that result with reachable live PiRacer observation and local-view state, without making a PiRacer network outage invalidate the offline inspection path?
+- Acceptance owner: `cli/automa_cli/perception.py`
+- Exit criteria affected: `M007-06`
+- Prerequisite: Phase C PiRacer perception-inspection finding from PR #81 is reproduced and remains routed as a new owned product review unit from the restored Active/idle milestone.
+- Milestone-level non-goal: No PiRacer hardware/deployment redesign, no repair of PR #81, and no repair of the separate Chase image-envelope finding.
 
 ### Next-Frontier Candidate
 
@@ -196,6 +204,7 @@ deletion; it does not retroactively widen the accepted primary journey.
 | Timeout input-envelope consistency | ready_for_implementation | Proposal amendment PR #147 accepted at 2027edcf1ecef71938a818145531a1a861724fee (reviewed head `18457f0a6d8172ecc0dc9fa4eddd5d5117b6b0ae` by `GeorgeLuo` as `OWNER` at `2026-08-25T08:09:07Z`). |
 | Timeout input-envelope consistency | implementation_in_review | Started m007/timeout-input-envelope. |
 | Timeout input-envelope consistency | accepted | Implementation PR #146 merged at f6d221c0c602e648efc4bdd355c909a9bca3fa12. |
+| PiRacer perception-inspection compatibility | proposal_in_review | Started m007/piracer-perception-inspection-compatibility-proposal. |
 
 ## Accepted Review Units
 

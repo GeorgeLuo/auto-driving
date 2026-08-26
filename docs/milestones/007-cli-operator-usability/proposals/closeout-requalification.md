@@ -58,9 +58,9 @@ The three Phase C findings must be rechecked at their accepted owners:
 
 | Finding | Accepted repair | Required result |
 | --- | --- | --- |
-| Primary commands leaked malformed timeout `ValueError` | PR #146; reviewed head `787f9f967c6b0ed276036943a5122e11c4a424be`; milestone merge `f6d221c0c602e648efc4bdd355c909a9bca3fa12` | Zero, negative, NaN, and infinity fail before command work with stable exit 2 errors and no traceback |
-| Staged PiRacer inspection hid reachable live state/view | PR #154; reviewed head `d6120956a5a14ccbbb754b89379e79e6f8ccf4d4`; milestone merge `1b08ff596df9b2a9ad23ef1d2947ccf85cb0f551` | Offline staged inspection remains available and reachable live observation/view enriches it without making outage fatal |
-| Chase accepted decoded dimension and MIME/format mismatches | PR #155; reviewed head `23982845948a61346953d285aba2eaeb5de34418`; milestone merge `ff6c00f2ac98a40f2aab9cfa198fc9bb3d0da386` | Declared dimensions, data-URL MIME, declared content type, and decoded raster agree before write/publish; invalid cases fail `capture_image_invalid` |
+| Primary commands leaked malformed timeout `ValueError` | PR #146; reviewed head `787f9f967c6b0ed276036943a5122e11c4a424be`; milestone merge `f6d221c0c602e648efc4bdd355c909a9bca3fa12` | `vehicles status`, `vehicles automation run`, and `vehicles update perception` reject `0`, negative, `nan`, `-nan`, `inf`, `+inf`, and `-inf` before dispatch with exit 2, stable human/JSON input errors, no traceback or side effect; finite positive and default timeout behavior remains unchanged |
+| Staged PiRacer inspection hid reachable live state/view | PR #154; reviewed head `d6120956a5a14ccbbb754b89379e79e6f8ccf4d4`; milestone merge `1b08ff596df9b2a9ad23ef1d2947ccf85cb0f551` | `vehicles info perception --id piracer` preserves valid offline staged `active.json`, enriches it with reachable live observation and local-view state, reports staged/live availability consistently in human and JSON output, and treats live outage as unavailable live state without staging, worker, control, or input actions |
+| Chase accepted decoded dimension and MIME/format mismatches | PR #155; reviewed head `23982845948a61346953d285aba2eaeb5de34418`; milestone merge `ff6c00f2ac98a40f2aab9cfa198fc9bb3d0da386` | Decoded dimensions, raster format, data-URL MIME, and declared content type agree before write/publish; invalid cases fail `capture_image_invalid` before publication; supported PNG/JPEG/GIF/WEBP captures and optional evaluator-reference independence remain intact |
 
 M007-03 therefore cites #84 plus #155; M007-04 cites #84 plus #146; the
 PiRacer inspection portion of M007-06 cites #154. M007-06 remains `Partial`
@@ -69,7 +69,10 @@ until the Phase B handoff.
 ### Delta 2: retained closeout packet
 
 Phase A updates the retained `closeout.md` rather than creating a new packet.
-It must add the rejected PR #81 head and restore history, cite #146/#154/#155,
+It must add rejected cumulative PR #81 head
+`ee2e3056f77bee9a4511877829eb9c46b52d0aa2` and restore head
+`9f758d9927d8b870b1d3d2219441fd7410d64b47`, cite the existing withdrawal and
+restore receipts, and cite #146/#154/#155,
 update repaired criterion evidence, and record exact current validation. It
 must not relabel #144 as accepted cumulative closure or change accepted
 evidence bytes.
@@ -207,10 +210,15 @@ PYTHONDONTWRITEBYTECODE=1 python3 tests/run.py
 ```
 
 It must also verify exact repair receipts/ancestry, the original Phase C
-inputs, append-only ledger order, retained-packet reconciliation, actual PR
-#81 body, and the unchanged #143 evidence authorities. Record exact final
-counts, skips, identities, and non-claims. Phase B/C validation remains
-unchanged from #143.
+inputs, append-only ledger order, retained-packet reconciliation including the
+rejection and restore identities above, actual PR #81 body, and the unchanged
+#143 evidence authorities. The focused commands must exercise the public-door
+`--timeout-s` cases and no-dispatch assertions from #146, staged/local-plus-
+reachable/unavailable-live human-and-JSON cases from #154, and decoded
+dimension/raster/MIME/content-type mismatch, supported-raster, optional-
+reference, and pre-publication cases from #155. Record exact final counts,
+skips, identities, and non-claims. Phase B/C validation remains unchanged from
+#143.
 
 ## Expected Handoff
 

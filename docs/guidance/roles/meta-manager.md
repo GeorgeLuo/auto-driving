@@ -24,6 +24,18 @@ explicitly reassigns the operation and the workflow permits it.
   [validation.md](../validation.md).
 - For proposal or implementation readiness, load
   [proposal-vs-implementation.md](../proposal-vs-implementation.md).
+- For closeout or a request to assess, ready, or merge the cumulative
+  milestone PR, run the plan `status` command first and load the closeout
+  section of [review-unit.md](../review-unit.md). Phase C is permitted only
+  after the closeout implementation is accepted and `complete-implementation`
+  has closed the plan. A draft cumulative PR, an unmet closeout criterion, or
+  a current frontier still in proposal or implementation is not merge-ready.
+- Before calling a proposal merge-ready, confirm an unedited exact-head
+  `accepted` contract receipt on the current `headRefOid`. Merge does not
+  substitute for that receipt.
+- Do not mix process, contract, or agent-guidance edits into a closeout
+  implementation. File them as later work. They are a different review
+  question.
 - For workflow changes or unresolved process ambiguity, load the full contract.
 
 Report the current state, evidence-backed verdict, unresolved gaps, and exactly

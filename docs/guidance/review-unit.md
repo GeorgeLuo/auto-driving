@@ -48,3 +48,30 @@ repair-cycle ledger names the consolidated verdict and repair revision.
 
 Use the canonical
 [review finding format](../milestones/README.md#review-finding-format).
+
+## Closeout and cumulative PR
+
+Closeout asks whether the milestone is complete as a whole. Canonical sequence:
+[Closeout](../milestones/README.md#closeout),
+[Cumulative Milestone PR](../milestones/README.md#cumulative-milestone-pr),
+and [Merge And Promotion Procedure](../milestones/README.md#merge-and-promotion-procedure).
+
+The closeout implementation PR targets the milestone branch. The cumulative PR
+targets `main`.
+
+- **Phase A** publishes `closeout.md`, append-only completed-ledger text,
+  bounded docs reconciliation, and the draft cumulative PR body. It must not
+  mark the closeout criterion `Met`, close the plan, or mark the cumulative PR
+  ready.
+- **Phase B** is `workflow.py complete-implementation` after that
+  implementation PR merges.
+- **Phase C** marks the cumulative PR ready and reviews the milestone as a
+  whole. Packet or documentation defects repair on the cumulative PR. A finding
+  that falsifies an already-Met criterion uses the append-only reject restore;
+  do not product-fix on the cumulative PR.
+
+Approval of a closeout implementation accepts that packet, not mainline merge.
+An agent asked to assess or merge the cumulative PR must run the plan status
+command first. Phase C is not permitted while the plan is still open, the
+closeout criterion is unmet, the cumulative PR is draft, or another frontier
+is in proposal or implementation.

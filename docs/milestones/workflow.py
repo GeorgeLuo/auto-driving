@@ -2640,9 +2640,19 @@ def _exact_head_contract_decisions(
         state = str(review.get("state") or "").upper()
         outcome: str | None = None
         if state == "APPROVED":
-            outcome = "accepted"
+            outcome = (
+                "accepted"
+                if review.get("includesCreatedEdit") is False
+                else "malformed"
+            )
         elif state == "CHANGES_REQUESTED":
-            outcome = "changes_requested"
+            outcome = (
+                "changes_requested"
+                if review.get("includesCreatedEdit") is False
+                else "malformed"
+            )
+        elif state == "DISMISSED":
+            outcome = "dismissed"
         elif state == "COMMENTED":
             body = review.get("body")
             if not isinstance(body, str) or CONTRACT_REVIEW_RECEIPT_HEADING not in body:
@@ -2705,6 +2715,8 @@ def _first_contract_receipt_commit(
                 outcome = _comment_review_receipt_outcome(body)
             except PlanContractError:
                 continue
+        if review.get("includesCreatedEdit") is not False:
+            continue
         if outcome is None:
             continue
         submitted = _github_timestamp(
@@ -2739,7 +2751,11 @@ def _require_merged_head_unchanged(metadata: RepairReviewMetadata) -> None:
         )
 
 
-def _require_exact_head_accepted(metadata: RepairReviewMetadata) -> None:
+def _require_exact_head_accepted(
+    metadata: RepairReviewMetadata,
+    *,
+    label: str = "completion",
+) -> None:
     decisions = _exact_head_contract_decisions(metadata)
     outstanding = sorted(
         reviewer
@@ -2748,12 +2764,32 @@ def _require_exact_head_accepted(metadata: RepairReviewMetadata) -> None:
     )
     if outstanding:
         raise PlanContractError(
-            "completion requires no exact-head Contract Review Receipt with "
+            f"{label} requires no exact-head Contract Review Receipt with "
             f"Outcome: changes_requested (outstanding: {', '.join(outstanding)})"
+        )
+    malformed = sorted(
+        reviewer
+        for reviewer, outcome in decisions.items()
+        if outcome == "malformed"
+    )
+    if malformed:
+        raise PlanContractError(
+            f"{label} requires an unedited exact-head Contract Review Receipt "
+            f"(malformed or edited review by {', '.join(malformed)})"
+        )
+    dismissed = sorted(
+        reviewer
+        for reviewer, outcome in decisions.items()
+        if outcome == "dismissed"
+    )
+    if dismissed:
+        raise PlanContractError(
+            f"{label} requires an active exact-head Contract Review Receipt "
+            f"(dismissed review by {', '.join(dismissed)})"
         )
     if "accepted" not in decisions.values():
         raise PlanContractError(
-            "completion requires an exact-head Contract Review Receipt with "
+            f"{label} requires an exact-head Contract Review Receipt with "
             "Outcome: accepted"
         )
 
@@ -3004,9 +3040,19 @@ def _validate_exact_head_contract_review(
         state = str(review.get("state") or "").upper()
         outcome: str | None = None
         if state == "APPROVED":
-            outcome = "accepted"
+            outcome = (
+                "accepted"
+                if review.get("includesCreatedEdit") is False
+                else "malformed"
+            )
         elif state == "CHANGES_REQUESTED":
-            outcome = "changes_requested"
+            outcome = (
+                "changes_requested"
+                if review.get("includesCreatedEdit") is False
+                else "malformed"
+            )
+        elif state == "DISMISSED":
+            outcome = "dismissed"
         elif state == "COMMENTED":
             body = review.get("body")
             if not isinstance(body, str):
@@ -3063,6 +3109,16 @@ def _validate_exact_head_contract_review(
         raise PlanContractError(
             f"{label} has malformed or edited COMMENT receipt on exact head "
             f"{head_oid} by {', '.join(malformed)}"
+        )
+    dismissed = sorted(
+        reviewer
+        for reviewer, decision in decisive_by_reviewer.items()
+        if decision[2] == "dismissed"
+    )
+    if dismissed:
+        raise PlanContractError(
+            f"{label} has a dismissed GitHub review on exact head "
+            f"{head_oid} by {', '.join(dismissed)}"
         )
     accepted = [
         decision
@@ -5342,6 +5398,15 @@ def _cmd_validate_pr(
     if transition is None:
         print(f"PR targets {base_ref}; milestone review-unit gate not applicable.")
     else:
+        if transition in {"proposal", "proposal_amendment"}:
+            if repair_review_metadata is None:
+                raise PlanContractError(
+                    "proposal merge gate requires event-backed GitHub review metadata"
+                )
+            _require_exact_head_accepted(
+                repair_review_metadata,
+                label="proposal merge",
+            )
         print(f"Valid {transition} PR transition into {base_ref}.")
     return 0
 

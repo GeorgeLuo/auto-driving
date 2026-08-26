@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="20db5afa698a8547a70f3be61c12195b5a45d60924e3e2b5237dec53858977e9">
+  <meta name="source-sha256" content="14eb1cb404828e69cf759a45857d0cae608ee5e9af76b9e7ba6179c2d4a1448c">
   <base target="_blank">
   <title>Milestone plan — 007-cli-operator-usability</title>
   <style>
@@ -85,7 +85,7 @@
 </tr>
 <tr>
 <td>Current frontier</td>
-<td>None (idle)</td>
+<td>PiRacer perception-inspection compatibility</td>
 </tr>
 <tr>
 <td>Started</td>
@@ -355,10 +355,18 @@ deletion; it does not retroactively widen the accepted primary journey.</p>
 </table>
 <h2>Current Delivery</h2>
 <h3>Current Frontier</h3>
-<p><strong>None</strong></p>
+<p><strong>PiRacer perception-inspection compatibility</strong></p>
 <ul>
-<li>Reason: The timeout repair is promoted and the milestone remains idle; the separate Phase C PiRacer and Chase image-envelope findings remain outside this unit.</li>
-<li>Revisit when: A later proposal is justified by the remaining Phase C finding or by a new milestone acceptance decision.</li>
+<li>Workflow state: proposal_in_review</li>
+<li>Proposal branch: <code>m007/piracer-perception-inspection-compatibility-proposal</code></li>
+<li>Implementation branch: <code>m007/piracer-perception-inspection-compatibility</code></li>
+<li>Proposal path: <code>docs/milestones/007-cli-operator-usability/proposals/piracer-perception-inspection-compatibility.md</code></li>
+<li>Review kind: Review repair</li>
+<li>Review question: Can <code>vehicles info perception --id piracer</code> retain successful offline inspection of a locally staged <code>active.json</code> while also enriching that result with reachable live PiRacer observation and local-view state, without making a PiRacer network outage invalidate the offline inspection path?</li>
+<li>Acceptance owner: <code>cli/automa_cli/perception.py</code></li>
+<li>Exit criteria affected: <code>M007-06</code></li>
+<li>Prerequisite: Phase C PiRacer perception-inspection finding from PR #81 is reproduced and remains routed as a new owned product review unit from the restored Active/idle milestone.</li>
+<li>Milestone-level non-goal: No PiRacer hardware/deployment redesign, no repair of PR #81, and no repair of the separate Chase image-envelope finding.</li>
 </ul>
 <h3>Next-Frontier Candidate</h3>
 <p><strong>None</strong></p>
@@ -615,6 +623,11 @@ deletion; it does not retroactively widen the accepted primary journey.</p>
 <td>Timeout input-envelope consistency</td>
 <td>accepted</td>
 <td>Implementation PR #146 merged at f6d221c0c602e648efc4bdd355c909a9bca3fa12.</td>
+</tr>
+<tr>
+<td>PiRacer perception-inspection compatibility</td>
+<td>proposal_in_review</td>
+<td>Started m007/piracer-perception-inspection-compatibility-proposal.</td>
 </tr>
 </tbody>
 </table>

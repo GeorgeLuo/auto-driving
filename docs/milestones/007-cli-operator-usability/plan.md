@@ -5,7 +5,7 @@
 | Status | Active |
 | Milestone branch | `milestone/007-cli-operator-usability` |
 | Cumulative PR | [#81](https://github.com/GeorgeLuo/auto-driving/pull/81) (draft until whole-milestone closeout) |
-| Current frontier | None (idle) |
+| Current frontier | Milestone closeout requalification |
 | Started | 2026-07-29 |
 | Action policy | Observation-only; no applied vehicle movement |
 
@@ -128,10 +128,18 @@ deletion; it does not retroactively widen the accepted primary journey.
 
 ### Current Frontier
 
-**None**
+**Milestone closeout requalification**
 
-- Reason: The Chase image-envelope repair is promoted and the milestone remains idle; no further Phase C product unit is contracted by this handoff.
-- Revisit when: A later proposal is justified by a remaining finding or a new milestone acceptance decision.
+- Workflow state: proposal_in_review
+- Proposal branch: `m007/closeout-requalification-proposal`
+- Implementation branch: `m007/closeout-requalification`
+- Proposal path: `docs/milestones/007-cli-operator-usability/proposals/closeout-requalification.md`
+- Review kind: Milestone closeout
+- Review question: After the three Phase C product-boundary findings have been repaired through accepted review units #146, #154, and #155, is milestone 007 complete as a whole, with its retained closeout packet reconciled to those repairs, every exit criterion backed by accepted evidence, residual limits preserved, and cumulative PR #81 ready for a fresh whole-milestone review?
+- Acceptance owner: Requalified whole-milestone judgment in `closeout.md`, append-only completed-ledger history, durable CLI documentation reconciliation, terminal workflow handoff, and cumulative PR #81 readiness surface
+- Exit criteria affected: M007-06
+- Prerequisite: M007-01 through M007-05 and M007-07 through M007-10 are `Met`; accepted repair units #146, #154, and #155 are present after the rejected cumulative review; the retained Phase A packet and withdrawal record remain append-only authority
+- Milestone-level non-goal: Product or runtime change, evidence recapture for recency, rewriting the rejected #143/#144 history, executing deferred or hazardous work, implementing capability candidates or issues #89 through #91, editing M006, or marking cumulative PR #81 ready before terminal handoff
 
 ### Next-Frontier Candidate
 
@@ -204,6 +212,7 @@ deletion; it does not retroactively widen the accepted primary journey.
 | Chase capture image-envelope closure | ready_for_implementation | Proposal PR #150 accepted at 90488b42d093a355925acda545b61e72406807dd (reviewed head `0377d5886487a337aee874ea20cdbe10e1df041b` by `GeorgeLuo` as `OWNER` at `2026-08-26T03:02:28Z`). |
 | Chase capture image-envelope closure | implementation_in_review | Started m007/chase-capture-image-envelope. |
 | Chase capture image-envelope closure | accepted | Implementation PR #155 merged at ff6c00f2ac98a40f2aab9cfa198fc9bb3d0da386. |
+| Milestone closeout requalification | proposal_in_review | Started m007/closeout-requalification-proposal. |
 
 ## Accepted Review Units
 

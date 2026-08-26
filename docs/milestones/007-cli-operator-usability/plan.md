@@ -5,7 +5,7 @@
 | Status | Active |
 | Milestone branch | `milestone/007-cli-operator-usability` |
 | Cumulative PR | [#81](https://github.com/GeorgeLuo/auto-driving/pull/81) (draft until whole-milestone closeout) |
-| Current frontier | None (idle) |
+| Current frontier | Chase capture image-envelope closure |
 | Started | 2026-07-29 |
 | Action policy | Observation-only; no applied vehicle movement |
 
@@ -128,10 +128,18 @@ deletion; it does not retroactively widen the accepted primary journey.
 
 ### Current Frontier
 
-**None**
+**Chase capture image-envelope closure**
 
-- Reason: The PiRacer inspection repair is promoted and the milestone remains idle; the separate Phase C Chase image-envelope finding remains outside this unit.
-- Revisit when: A later proposal is justified by the remaining Phase C finding or by a new milestone acceptance decision.
+- Workflow state: proposal_in_review
+- Proposal branch: `m007/chase-capture-image-envelope-proposal`
+- Implementation branch: `m007/chase-capture-image-envelope`
+- Proposal path: `docs/milestones/007-cli-operator-usability/proposals/chase-capture-image-envelope.md`
+- Review kind: Review repair
+- Review question: Does the Chase adapter reject every sensor image whose decoded dimensions or raster format disagree with the declared image envelope, and reject mismatched data-URL MIME or declared content type, while preserving valid raster captures and the independent optional evaluator-reference contract?
+- Acceptance owner: `implementations/vehicle/chase_sim/frame_identity.py`
+- Exit criteria affected: `M007-03`
+- Prerequisite: Phase C Chase image-envelope finding from PR #81 is reproduced and remains routed as a new owned product review unit from the restored Active/idle milestone.
+- Milestone-level non-goal: No Metrics UI/codec redesign, no evaluator-reference requirement for sensor capture, no repair of PR #81, and no repair of the accepted PiRacer inspection unit.
 
 ### Next-Frontier Candidate
 
@@ -200,6 +208,7 @@ deletion; it does not retroactively widen the accepted primary journey.
 | PiRacer perception-inspection compatibility | ready_for_implementation | Proposal PR #152 accepted at a30e4db059abfc2032253666d94eb9a6487ead38 (reviewed head `f581de64c01295393235e4311535df227ceb7656` by `GeorgeLuo` as `OWNER` at `2026-08-26T02:16:07Z`). |
 | PiRacer perception-inspection compatibility | implementation_in_review | Started m007/piracer-perception-inspection-compatibility. |
 | PiRacer perception-inspection compatibility | accepted | Implementation PR #154 merged at 1b08ff596df9b2a9ad23ef1d2947ccf85cb0f551. |
+| Chase capture image-envelope closure | proposal_in_review | Started m007/chase-capture-image-envelope-proposal. |
 
 ## Accepted Review Units
 

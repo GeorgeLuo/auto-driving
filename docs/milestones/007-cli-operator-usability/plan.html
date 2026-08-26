@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="a880ab5617a9292c386b810b5dbf9427a8d8de135fc44c6550af8b07571a5a1d">
+  <meta name="source-sha256" content="348bb393693ef6ea58f7ce6dad3756243598ef5902d428ae266e56ac5e6e9472">
   <base target="_blank">
   <title>Milestone plan — 007-cli-operator-usability</title>
   <style>
@@ -85,7 +85,7 @@
 </tr>
 <tr>
 <td>Current frontier</td>
-<td>None (idle)</td>
+<td>Chase capture image-envelope closure</td>
 </tr>
 <tr>
 <td>Started</td>
@@ -355,10 +355,18 @@ deletion; it does not retroactively widen the accepted primary journey.</p>
 </table>
 <h2>Current Delivery</h2>
 <h3>Current Frontier</h3>
-<p><strong>None</strong></p>
+<p><strong>Chase capture image-envelope closure</strong></p>
 <ul>
-<li>Reason: The PiRacer inspection repair is promoted and the milestone remains idle; the separate Phase C Chase image-envelope finding remains outside this unit.</li>
-<li>Revisit when: A later proposal is justified by the remaining Phase C finding or by a new milestone acceptance decision.</li>
+<li>Workflow state: proposal_in_review</li>
+<li>Proposal branch: <code>m007/chase-capture-image-envelope-proposal</code></li>
+<li>Implementation branch: <code>m007/chase-capture-image-envelope</code></li>
+<li>Proposal path: <code>docs/milestones/007-cli-operator-usability/proposals/chase-capture-image-envelope.md</code></li>
+<li>Review kind: Review repair</li>
+<li>Review question: Does the Chase adapter reject every sensor image whose decoded dimensions or raster format disagree with the declared image envelope, and reject mismatched data-URL MIME or declared content type, while preserving valid raster captures and the independent optional evaluator-reference contract?</li>
+<li>Acceptance owner: <code>implementations/vehicle/chase_sim/frame_identity.py</code></li>
+<li>Exit criteria affected: <code>M007-03</code></li>
+<li>Prerequisite: Phase C Chase image-envelope finding from PR #81 is reproduced and remains routed as a new owned product review unit from the restored Active/idle milestone.</li>
+<li>Milestone-level non-goal: No Metrics UI/codec redesign, no evaluator-reference requirement for sensor capture, no repair of PR #81, and no repair of the accepted PiRacer inspection unit.</li>
 </ul>
 <h3>Next-Frontier Candidate</h3>
 <p><strong>None</strong></p>
@@ -635,6 +643,11 @@ deletion; it does not retroactively widen the accepted primary journey.</p>
 <td>PiRacer perception-inspection compatibility</td>
 <td>accepted</td>
 <td>Implementation PR #154 merged at 1b08ff596df9b2a9ad23ef1d2947ccf85cb0f551.</td>
+</tr>
+<tr>
+<td>Chase capture image-envelope closure</td>
+<td>proposal_in_review</td>
+<td>Started m007/chase-capture-image-envelope-proposal.</td>
 </tr>
 </tbody>
 </table>

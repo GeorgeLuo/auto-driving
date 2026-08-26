@@ -1,17 +1,20 @@
 # Milestone 007 Closeout: CLI Operator Usability
 
-Status: Phase A closeout packet prepared 2026-08-24
+Status: Phase A closeout packet prepared 2026-08-24; requalified 2026-08-26
 
-Milestone 007 remains `Active`, M007-06 remains `Unmet`, and cumulative PR
+Milestone 007 remains `Active`, M007-06 remains `Partial`, and cumulative PR
 [#81](https://github.com/GeorgeLuo/auto-driving/pull/81) remains draft and
-unmerged. This document is the durable Phase A judgment. The mechanical Phase B
-handoff and the independent Phase C whole-milestone review remain required.
+unmerged. This document is the retained Phase A judgment, updated in place
+after the rejected cumulative review and accepted repairs #146, #154, and
+#155. The mechanical Phase B handoff and the independent Phase C
+whole-milestone review remain required.
 
 ## Outcome
 
-Closeout judgment date: **2026-08-24**. The whole-milestone result is ready for
-the reviewed terminal handoff and cumulative review at the accepted evidence
-boundaries; it is not yet terminally closed or whole-milestone accepted.
+Original closeout judgment date: **2026-08-24**. Requalification date:
+**2026-08-26**. The whole-milestone result is ready for the reviewed terminal
+handoff and a fresh cumulative review at the accepted evidence boundaries; it
+is not yet terminally closed or whole-milestone accepted.
 
 The accepted M007 review units support closing the CLI Operator Usability
 milestone at their recorded evidence boundaries. They delivered a discoverable
@@ -22,10 +25,19 @@ and an owned disposition for production capabilities outside those journeys.
 The Phase 0 review of proposal #143 found no product or evidence gap requiring a
 new in-milestone work node.
 
+Phase C later rejected cumulative PR #81. That rejection is retained history,
+not a reason to rewrite the original packet or to treat implementation
+[#144](https://github.com/GeorgeLuo/auto-driving/pull/144) as accepted
+cumulative closure. Accepted repairs #146, #154, and #155 closed the three
+blocking product findings. This requalified Phase A rechecks those owners,
+reconciles the retained packet and append-only ledger, and refreshes draft
+PR #81 without marking it ready.
+
 This is not yet whole-milestone acceptance:
 
-- **Phase A** publishes this judgment, the candidate completed-ledger entry,
-  documentation reconciliation, and the updated draft #81 review surface.
+- **Phase A** publishes this requalified judgment, the append-only
+  requalification ledger section, documentation reconciliation, and the
+  updated draft #81 review surface.
 - **Phase B**, only after this implementation PR is accepted and squash-merged,
   applies the reviewed handoff that marks M007-06 `Met`, removes the eight plan
   risk rows, sets Status `closed`, and leaves no in-milestone frontier.
@@ -35,6 +47,38 @@ This is not yet whole-milestone acceptance:
 The action policy remains observation-only. No accepted M007 live path applied
 vehicle movement, and this closeout makes no autonomous-movement, non-idle
 control, PiRacer parity, or remote-hosting claim.
+
+## Rejected Cumulative Review And Restore
+
+These identities are the durable rejection/restore anchors. They are preserved
+verbatim and are not a later `main` merge or `milestone-007` tag.
+
+| Fact | Identity |
+| --- | --- |
+| Rejected cumulative PR #81 head | `ee2e3056f77bee9a4511877829eb9c46b52d0aa2` |
+| Restore head | `9f758d9927d8b870b1d3d2219441fd7410d64b47` |
+| Rejected-review receipt | [`#81 changes_requested`](https://github.com/GeorgeLuo/auto-driving/pull/81#pullrequestreview-5015145766) |
+| Accepted Phase B handoff receipt for #144 | [`#144 accepted`](https://github.com/GeorgeLuo/auto-driving/pull/144#pullrequestreview-5015032543) |
+| Restore commit | `9f758d9927d8b870b1d3d2219441fd7410d64b47` |
+
+[#144](https://github.com/GeorgeLuo/auto-driving/pull/144) remains in milestone
+ancestry as the original Phase A packet implementation. Its plan ledger result
+is `Cumulative review rejected; closeout packet retained; M007-06 remains
+Unmet`. That is not whole-milestone acceptance.
+
+## Accepted Repair Ancestry
+
+The three Phase C product findings were rechecked at their accepted owners:
+
+| Finding | Accepted repair | Required result preserved here |
+| --- | --- | --- |
+| Primary commands leaked malformed timeout `ValueError` | [#146](https://github.com/GeorgeLuo/auto-driving/pull/146); reviewed head `787f9f967c6b0ed276036943a5122e11c4a424be`; milestone merge `f6d221c0c602e648efc4bdd355c909a9bca3fa12` | `vehicles status`, `vehicles automation run`, and `vehicles update perception` reject `0`, negative, `nan`, `-nan`, `inf`, `+inf`, and `-inf` before dispatch with exit 2, stable human/JSON input errors, no traceback or side effect; finite positive and default timeout behavior remains unchanged |
+| Staged PiRacer inspection hid reachable live state/view | [#154](https://github.com/GeorgeLuo/auto-driving/pull/154); reviewed head `d6120956a5a14ccbbb754b89379e79e6f8ccf4d4`; milestone merge `1b08ff596df9b2a9ad23ef1d2947ccf85cb0f551` | `vehicles info perception --id piracer` preserves valid offline staged `active.json`, enriches it with reachable live observation and local-view state, reports staged/live availability consistently in human and JSON output, and treats live outage as unavailable live state without staging, worker, control, or input actions |
+| Chase accepted decoded dimension and MIME/format mismatches | [#155](https://github.com/GeorgeLuo/auto-driving/pull/155); reviewed head `23982845948a61346953d285aba2eaeb5de34418`; milestone merge `ff6c00f2ac98a40f2aab9cfa198fc9bb3d0da386` | Decoded dimensions, raster format, data-URL MIME, and declared content type agree before write/publish; invalid cases fail `capture_image_invalid` before publication; supported PNG/JPEG/GIF/WEBP captures and optional evaluator-reference independence remain intact |
+
+M007-03 therefore cites #84 plus #155. M007-04 cites #84 plus #146. The PiRacer
+inspection portion of M007-06 cites #154. M007-06 remains `Partial` until the
+Phase B handoff.
 
 ## Durable Decisions
 
@@ -49,7 +93,9 @@ control, PiRacer parity, or remote-hosting claim.
   healthy.
 - Camera/frame identity is independent from evaluator-only control reference.
   Sensor-only observation remains available without evaluator reference;
-  reference-dependent scoring stays fail-closed.
+  reference-dependent scoring stays fail-closed. Declared image dimensions,
+  raster format, data-URL MIME, and content type must agree before write or
+  publish.
 - Observation-only authority is explicit and testable. A processed frame and a
   healthy view do not confer movement authority, and recording remains opt-in.
 - External simulator recovery is explicit. Missing frontend, game, capture, or
@@ -119,13 +165,15 @@ Supporting workflows remain available within their documented boundaries:
 
 | Criteria | Accepted unit | Demonstrated result | Durable authority and limit |
 | --- | --- | --- | --- |
-| M007-01–M007-04 | [#84](https://github.com/GeorgeLuo/auto-driving/pull/84) | One supported passive Chase workflow; distinct layer states; exact recovery; bounded operation timeout; preserved scenario/playback/control/input | [Operator guide](../../reference/cli-simulator-perception-journey.md); local Chase only, no implicit simulator preparation |
+| M007-01–M007-02 | [#84](https://github.com/GeorgeLuo/auto-driving/pull/84) | One supported passive Chase workflow; distinct layer states; exact recovery; preserved scenario/playback/control/input | [Operator guide](../../reference/cli-simulator-perception-journey.md); local Chase only, no implicit simulator preparation |
+| M007-03 | [#84](https://github.com/GeorgeLuo/auto-driving/pull/84) plus [#155](https://github.com/GeorgeLuo/auto-driving/pull/155) | Observation-only publication when sensor image and frame identity are valid without evaluator reference; invalid decoded dimensions, raster format, data-URL MIME, or declared content type fail `capture_image_invalid` before write/publish | [Operator guide](../../reference/cli-simulator-perception-journey.md); Chase adapter envelope closed in #155; optional evaluator-reference independence preserved |
+| M007-04 | [#84](https://github.com/GeorgeLuo/auto-driving/pull/84) plus [#146](https://github.com/GeorgeLuo/auto-driving/pull/146) | Bounded operation timeout with stable human/JSON errors; `vehicles status`, `vehicles automation run`, and `vehicles update perception` reject non-positive and non-finite `--timeout-s` before dispatch | [Operator guide](../../reference/cli-simulator-perception-journey.md); timeout input-envelope closed in #146 |
 | M007-05 | [#88](https://github.com/GeorgeLuo/auto-driving/pull/88) | `pass` at auto-driving `caf335797b71df1323736a2054934b7c211418b0` and Metrics UI `722e070fdc9f4ee89d13f947bf3996e62dcb2783`; 148 processed frames; healthy loopback view; no movement, no default recording, protected state preserved, worker cleaned up | `evidence/live-cli-acceptance/result.json`; accepted correlation was bounded-stale lag 15 within bound 24, not exact-current and not a current-environment guarantee |
 | M007-10 | [#100](https://github.com/GeorgeLuo/auto-driving/pull/100) | `result: pass` at behavior head `37b7393fe759f1597860a30d8c10ca5692f1c0cc`; required `continuity.offline_perception`, `continuity.live_config_swap`, and `continuity.memory_lifecycle` families passed; machine-first/HITL, activation restoration, cleanup, and freshness finalizer passed | `evidence/cli-scenario-continuity/result.json`; optional families and exact-step sequence claims remain residual |
 | M007-07 | [#107](https://github.com/GeorgeLuo/auto-driving/pull/107) | Reproducible branch-aware owned-Python attribution for 34 commands/contexts, 37 raw shards, and 63 represented owned files at source commit `7931fa9a995af5626fabef818f9e28b98c73e299` | `evidence/cli-journey-coverage/report.json`, digest `51801c7686b247055114109e7462d13cb6702a1c8dcd8990a168f68357015789`; behavioral correctness not evaluated |
 | M007-08 | [#122](https://github.com/GeorgeLuo/auto-driving/pull/122) | All 49 parser leaves accounted for: 32 action, 10 meta, 7 alias; zero unclassified leaves; all US-01 through US-10 rows defined and dispositioned; help drift `ok` | `evidence/cli-surface-audit/report.json`; deferred and blocked rows remain below with owners and unlocks |
 | M007-09 | [#138](https://github.com/GeorgeLuo/auto-driving/pull/138) | 96 sealed source members, 93 candidates, all 93 assigned across ten owned groups; nine `retain`, one `expose`, zero `remove`; zero residual membership errors | `evidence/capability-disposition/record.json`, digest `81ce4993fe8624bbc818bcad7142dafb78e2be1ef6c45a6115ae535a51477e6f`; historical disposition, not implementation authorization |
-| M007-06 | This Phase A judgment plus the later Phase B handoff | Documentation, evidence identities, complete sequence/capability accounting, residual limits, #81 identity, and the next-focus decision are durable | Remains `Unmet` in Phase A; only the accepted closeout implementation handoff may mark it `Met` |
+| M007-06 | This requalified Phase A judgment plus the later Phase B handoff; PiRacer inspection portion cites [#154](https://github.com/GeorgeLuo/auto-driving/pull/154) | Documentation, evidence identities, complete sequence/capability accounting, residual limits, rejected-review history, #146/#154/#155 ancestry, #81 identity, and the next-focus decision are durable; staged PiRacer inspection remains available offline while reachable live state/view is reported without making live outage fail the offline path | Remains `Partial` in Phase A; only the accepted closeout implementation handoff may mark it `Met` |
 
 ## Sequence And Capability Accounting
 
@@ -186,7 +234,7 @@ candidate, and zero are removal candidates.
 | Frontend registration timing | Browser presence and Play WebSocket readiness can differ; bounded readiness and exact recovery mitigate but do not eliminate external timing variance |
 | Evaluator reference boundary | Sensor-only observation remains valid without evaluator reference; reference-dependent evidence remains fail-closed |
 | Browser launch and remote view | View health is authoritative; OS browser launch is non-fatal and platform-dependent; public or non-loopback remote hosting is unsupported |
-| PiRacer and hazardous leaves | M007 did not run hardware, movement, destructive, or external-state leaves merely for coverage; US-10 remains blocked on labeled physical data |
+| PiRacer and hazardous leaves | M007 did not run hardware, movement, destructive, or external-state leaves merely for coverage; US-10 remains blocked on labeled physical data. #154 closed the staged-inspection regression without claiming live PiRacer parity |
 | Applied movement and non-idle control | Every accepted M007 live path is observation-only; no autonomous-movement safety or non-idle authority is claimed |
 | Deferred product usability | Open issue [#89](https://github.com/GeorgeLuo/auto-driving/issues/89) and `M007-LIVE-001..005` remain owned defects/candidates; [#90](https://github.com/GeorgeLuo/auto-driving/issues/90) and [#91](https://github.com/GeorgeLuo/auto-driving/issues/91) remain larger same-frame experiment and transactional live-trial features |
 | Historical sequence evidence | Cited `passed` sequences are historical, not continuous verification of later heads |
@@ -202,9 +250,10 @@ product work.
 
 ## Validation
 
-Phase A was validated in a coherent Python 3.11.7 environment with the
-interpreter directory prepended to `PATH`, so the runner and every subprocess
-resolved the same interpreter and the declared PyYAML/coverage dependencies:
+### Original Phase A (2026-08-24)
+
+The original packet was validated in a coherent Python 3.11.7 environment with
+the interpreter directory prepended to `PATH`:
 
 ```sh
 PATH=/opt/homebrew/anaconda3/bin:$PATH \
@@ -220,24 +269,67 @@ accepted-head and closeout-head reports, and returned `result: pass` with
 report digest
 `51801c7686b247055114109e7462d13cb6702a1c8dcd8990a168f68357015789`.
 
+Accepted live artifacts were cited, not rerun. That original run did not launch
+a simulator/browser, contact PiRacer, command movement, or regenerate accepted
+evidence for recency.
+
+### Requalification Phase A (2026-08-26)
+
+Requalification used the same coherent Python 3.11.7 interpreter path as the
+original packet. Focused public-door tests for the three accepted repairs:
+
+```sh
+PATH=/opt/homebrew/anaconda3/bin:$PATH \
+  PYTHONDONTWRITEBYTECODE=1 python3 -m unittest \
+  tests.cli.vehicles.test_timeout_input \
+  tests.cli.perception.test_commands \
+  tests.implementations.vehicle.test_chase_frame_identity
+```
+
+Result: `Ran 54 tests`; `OK`. Those modules cover the #146 `--timeout-s` cases
+(`0`, `-1`, `nan`, `-nan`, `inf`, `+inf`, `-inf`) and no-dispatch assertions
+for `vehicles status`, `vehicles automation run`, and `vehicles update
+perception`; the #154 staged/local-plus-reachable and unavailable-live
+human/JSON PiRacer inspection cases; and the #155 decoded
+dimension/raster/MIME/content-type mismatch, supported-raster, optional
+evaluator-reference, and pre-publication cases.
+
+Inherited suite and evidence commands:
+
+```sh
+PATH=/opt/homebrew/anaconda3/bin:$PATH \
+  PYTHONDONTWRITEBYTECODE=1 python3 tests/run.py
+```
+
+Result: `Ran 844 tests`; `OK (skipped=2)`, with zero failures or errors and two
+expected live-environment skips.
+
+The frozen M007-07 verifier again resolved `pull/107/head` to
+`fda10c6b6f7fe98c7904d0b9bbfa1bc45c6b671b`, proved byte equality between the
+accepted-head and requalification-head reports, and returned `result: pass`
+with report digest
+`51801c7686b247055114109e7462d13cb6702a1c8dcd8990a168f68357015789`.
+
 The remaining accepted validators returned:
 
 - CLI surface audit: `result: pass`, 49 leaves.
 - Capability disposition: `result: pass`, 93 candidate members across ten
   groups, record digest
   `81ce4993fe8624bbc818bcad7142dafb78e2be1ef6c45a6115ae535a51477e6f`.
-- Milestone workflow validation, generated-Markdown check, implementation-PR
-  transition validation, and `git diff --check`: pass.
+- Milestone workflow validation, generated-Markdown check, and
+  `git diff --check`: pass.
 - Parser/help audit for root help, vehicle help, automation help, run/status,
   and perception-update surfaces: pass. The root README, docs navigation, and
   durable operator guide already agree with those surfaces, so no prose change
   was needed.
-- Accepted evidence, tooling, product, and test paths: present and byte-stable
-  against the milestone base; frozen JSON identities and proposal facts match.
+- Product, test, accepted evidence, tooling, and prior-proposal paths: present
+  and byte-stable against the milestone base; frozen JSON identities and
+  proposal facts match.
 
-Accepted live artifacts were cited, not rerun. Closeout did not launch a
+Accepted live artifacts were cited, not rerun. Requalification did not launch a
 simulator/browser, contact PiRacer, command movement, or regenerate accepted
-evidence for recency.
+evidence for recency. The three original Phase C findings do not reproduce at
+this head.
 
 ## Deferred Work
 
@@ -251,8 +343,10 @@ evidence for recency.
   change.
 - After successful Phase C only, resume the independently active M006
   `Cross-environment shadow proposal evidence` frontier, currently
-  `ready_for_proposal`. Its action policy permits proposal intent but keeps
-  applied vehicle control at zero. No M006 artifact changes in this M007 unit.
+  `ready_for_proposal`. Canonical M006 remains Active on
+  `milestone/006-decision-facing-perception-readiness` with action policy
+  “proposals may contain movement intent; applied vehicle control remains zero
+  for the entire milestone.” No M006 artifact changes in this M007 unit.
 
 ## Cumulative PR Identity
 
@@ -261,7 +355,9 @@ evidence for recency.
 | Cumulative PR | [#81](https://github.com/GeorgeLuo/auto-driving/pull/81) |
 | Base | `main` |
 | Head | `milestone/007-cli-operator-usability` |
-| Phase A state | Draft and unmerged; body reconciled to this judgment and exact final validation |
+| Rejected review head | `ee2e3056f77bee9a4511877829eb9c46b52d0aa2` |
+| Restore head | `9f758d9927d8b870b1d3d2219441fd7410d64b47` |
+| Phase A state | Draft and unmerged; body reconciled to this requalified judgment and exact final validation |
 | Readiness owner | Phase C marks #81 ready only after the Phase B terminal handoff commit reaches the milestone tip |
 | Acceptance | Independent exact-head whole-milestone review in Phase C; only acceptance permits merge to `main` and tag `milestone-007` |
 
@@ -273,15 +369,22 @@ targets `main`.
 - Milestone plan: [plan.md](plan.md) · [plan.html](plan.html)
 - Accepted closeout proposal: [#143](https://github.com/GeorgeLuo/auto-driving/pull/143)
   at merge `2ab7955b953f1d5863ee032db38271ca50d111a7`
-- Completed ledger candidate: [completed.md](../completed.md)
+- Accepted closeout requalification proposal: [#156](https://github.com/GeorgeLuo/auto-driving/pull/156)
+  at merge `1eadd8abedf66d6575cf22f137219989343f1e88`
+- Retained original Phase A implementation: [#144](https://github.com/GeorgeLuo/auto-driving/pull/144)
+  at merge `ab72c7befdca8d69fe12f9d8c6d1ce554aeb5818` (not cumulative acceptance)
+- Completed ledger: [completed.md](../completed.md)
 - Durable operator guide:
   [cli-simulator-perception-journey.md](../../reference/cli-simulator-perception-journey.md)
 - Accepted implementation units: [#84](https://github.com/GeorgeLuo/auto-driving/pull/84),
   [#88](https://github.com/GeorgeLuo/auto-driving/pull/88),
   [#100](https://github.com/GeorgeLuo/auto-driving/pull/100),
   [#107](https://github.com/GeorgeLuo/auto-driving/pull/107),
-  [#122](https://github.com/GeorgeLuo/auto-driving/pull/122), and
-  [#138](https://github.com/GeorgeLuo/auto-driving/pull/138)
+  [#122](https://github.com/GeorgeLuo/auto-driving/pull/122),
+  [#138](https://github.com/GeorgeLuo/auto-driving/pull/138),
+  [#146](https://github.com/GeorgeLuo/auto-driving/pull/146),
+  [#154](https://github.com/GeorgeLuo/auto-driving/pull/154), and
+  [#155](https://github.com/GeorgeLuo/auto-driving/pull/155)
 - Tracked evidence: [live acceptance](evidence/live-cli-acceptance/),
   [scenario continuity](evidence/cli-scenario-continuity/),
   [journey coverage](evidence/cli-journey-coverage/),

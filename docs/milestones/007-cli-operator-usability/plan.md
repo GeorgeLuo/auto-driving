@@ -130,7 +130,7 @@ deletion; it does not retroactively widen the accepted primary journey.
 
 **Milestone closeout requalification**
 
-- Workflow state: ready_for_implementation
+- Workflow state: implementation_in_review
 - Proposal branch: `m007/closeout-requalification-proposal`
 - Implementation branch: `m007/closeout-requalification`
 - Proposal path: `docs/milestones/007-cli-operator-usability/proposals/closeout-requalification.md`
@@ -215,6 +215,7 @@ deletion; it does not retroactively widen the accepted primary journey.
 | Chase capture image-envelope closure | accepted | Implementation PR #155 merged at ff6c00f2ac98a40f2aab9cfa198fc9bb3d0da386. |
 | Milestone closeout requalification | proposal_in_review | Started m007/closeout-requalification-proposal. |
 | Milestone closeout requalification | ready_for_implementation | Proposal PR #156 accepted at 1eadd8abedf66d6575cf22f137219989343f1e88 (reviewed head `f68be7578784b7fb207d468f4c8e87decea7980c` by `GeorgeLuo` as `OWNER` at `2026-08-26T07:09:35Z`). |
+| Milestone closeout requalification | implementation_in_review | Started m007/closeout-requalification. |
 
 ## Accepted Review Units
 
@@ -267,6 +268,11 @@ deletion; it does not retroactively widen the accepted primary journey.
 ## Closeout
 
 Blocked until every exit criterion is `Met`.
+
+The retained Phase A packet is
+[`closeout.md`](closeout.md), requalified after the rejected cumulative review
+and accepted repairs #146, #154, and #155. Terminal Status and M007-06 `Met`
+facts remain Phase B. Phase C reviews cumulative PR #81.
 
 Closeout will produce:
 

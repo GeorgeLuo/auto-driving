@@ -172,3 +172,19 @@ owned review units.
 The preceding 007 entry is retained as the Phase A closeout packet; it is not
 mainline milestone closure. M007-06 remains `Unmet` while the milestone returns
 to active planning.
+
+## 007 CLI Operator Usability — cumulative review requalified
+
+After the append-only withdrawal, accepted repairs
+[#146](https://github.com/GeorgeLuo/auto-driving/pull/146),
+[#154](https://github.com/GeorgeLuo/auto-driving/pull/154), and
+[#155](https://github.com/GeorgeLuo/auto-driving/pull/155) closed the three
+Phase C product findings. The retained Phase A packet in
+[closeout.md](007-cli-operator-usability/closeout.md) was updated in place to
+cite the rejected cumulative head
+`ee2e3056f77bee9a4511877829eb9c46b52d0aa2`, restore head
+`9f758d9927d8b870b1d3d2219441fd7410d64b47`, and those repair receipts.
+
+Whole-milestone acceptance remains pending cumulative PR
+[#81](https://github.com/GeorgeLuo/auto-driving/pull/81). This section does not
+claim a `main` merge or tag `milestone-007`.

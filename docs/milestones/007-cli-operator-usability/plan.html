@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="2b6e9c0a657bb14b553c8f0b4cb3118d6c8dfb940156250ce3bd8e2ff566b62c">
+  <meta name="source-sha256" content="c1f63ff9672454d21a264b30372ccb384c6cf70df8651b296dc4bae14ed770ce">
   <base target="_blank">
   <title>Milestone plan — 007-cli-operator-usability</title>
   <style>
@@ -85,7 +85,7 @@
 </tr>
 <tr>
 <td>Current frontier</td>
-<td>Chase capture image-envelope closure</td>
+<td>None (idle)</td>
 </tr>
 <tr>
 <td>Started</td>
@@ -307,7 +307,7 @@ deletion; it does not retroactively widen the accepted primary journey.</p>
 <td>M007-03</td>
 <td>Observation-only automation can publish a current camera/perception browser view when sensor image and frame identity are valid even if evaluator-only control reference data is unavailable; workflows that require that reference fail closed with an explicit missing-reference status</td>
 <td>Met</td>
-<td>Passive observation-only sensor/perception startup preserves scenario/playback/control/input state, separates optional evaluator reference, and keeps reference-dependent operations fail-closed in PR #84</td>
+<td>PR #155 closes the Phase C invalid-dimensions/encoding row at the Chase adapter boundary: decoded dimensions and raster format agree with the data-URL MIME and any present content-type declaration, invalid captures fail as capture_image_invalid before publication, and valid reference-less sensor capture remains available.</td>
 </tr>
 <tr>
 <td>M007-04</td>
@@ -355,19 +355,10 @@ deletion; it does not retroactively widen the accepted primary journey.</p>
 </table>
 <h2>Current Delivery</h2>
 <h3>Current Frontier</h3>
-<p><strong>Chase capture image-envelope closure</strong></p>
+<p><strong>None</strong></p>
 <ul>
-<li>Workflow state: implementation_in_review</li>
-<li>Proposal branch: <code>m007/chase-capture-image-envelope-proposal</code></li>
-<li>Implementation branch: <code>m007/chase-capture-image-envelope</code></li>
-<li>Proposal path: <code>docs/milestones/007-cli-operator-usability/proposals/chase-capture-image-envelope.md</code></li>
-<li>Accepted proposal: <a href="https://github.com/GeorgeLuo/auto-driving/pull/150">#150</a> at <code>90488b42d093a355925acda545b61e72406807dd</code> (reviewed head <code>0377d5886487a337aee874ea20cdbe10e1df041b</code> by <code>GeorgeLuo</code> as <code>OWNER</code> at <code>2026-08-26T03:02:28Z</code>)</li>
-<li>Review kind: Review repair</li>
-<li>Review question: Does the Chase adapter reject every sensor image whose decoded dimensions or raster format disagree with the declared image envelope, and reject mismatched data-URL MIME or declared content type, while preserving valid raster captures and the independent optional evaluator-reference contract?</li>
-<li>Acceptance owner: <code>implementations/vehicle/chase_sim/frame_identity.py</code></li>
-<li>Exit criteria affected: <code>M007-03</code></li>
-<li>Prerequisite: Phase C Chase image-envelope finding from PR #81 is reproduced and remains routed as a new owned product review unit from the restored Active/idle milestone.</li>
-<li>Milestone-level non-goal: No Metrics UI/codec redesign, no evaluator-reference requirement for sensor capture, no repair of PR #81, and no repair of the accepted PiRacer inspection unit.</li>
+<li>Reason: The Chase image-envelope repair is promoted and the milestone remains idle; no further Phase C product unit is contracted by this handoff.</li>
+<li>Revisit when: A later proposal is justified by a remaining finding or a new milestone acceptance decision.</li>
 </ul>
 <h3>Next-Frontier Candidate</h3>
 <p><strong>None</strong></p>
@@ -660,6 +651,11 @@ deletion; it does not retroactively widen the accepted primary journey.</p>
 <td>implementation_in_review</td>
 <td>Started m007/chase-capture-image-envelope.</td>
 </tr>
+<tr>
+<td>Chase capture image-envelope closure</td>
+<td>accepted</td>
+<td>Implementation PR #155 merged at ff6c00f2ac98a40f2aab9cfa198fc9bb3d0da386.</td>
+</tr>
 </tbody>
 </table>
 <h2>Accepted Review Units</h2>
@@ -736,6 +732,13 @@ deletion; it does not retroactively widen the accepted primary journey.</p>
 <td>Accepted</td>
 <td><code>M007-06</code></td>
 <td>PiRacer perception-inspection compatibility in PR #154: local staged inspection remains available offline while reachable PiRacer observation and physical view state are surfaced through the owned perception CLI boundary, with deterministic local-activation plus reachable-Pi regression coverage.</td>
+</tr>
+<tr>
+<td>#155</td>
+<td>Does the Chase adapter reject every sensor image whose decoded dimensions or raster format disagree with the declared image envelope, and reject mismatched data-URL MIME or declared content type, while preserving valid raster captures and the independent optional evaluator-reference contract?</td>
+<td>Accepted</td>
+<td><code>M007-03</code></td>
+<td>Chase capture image-envelope closure in PR #155: frame_identity.py rejects decoded dimension, raster-format, data-URL MIME, and declared content-type mismatches before write/publish with direct regressions, while valid sensor captures and optional evaluator-reference behavior remain intact.</td>
 </tr>
 </tbody>
 </table>

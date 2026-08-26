@@ -5,7 +5,7 @@
 | Status | Active |
 | Milestone branch | `milestone/007-cli-operator-usability` |
 | Cumulative PR | [#81](https://github.com/GeorgeLuo/auto-driving/pull/81) (draft until whole-milestone closeout) |
-| Current frontier | Chase capture image-envelope closure |
+| Current frontier | None (idle) |
 | Started | 2026-07-29 |
 | Action policy | Observation-only; no applied vehicle movement |
 
@@ -115,7 +115,7 @@ deletion; it does not retroactively widen the accepted primary journey.
 | --- | --- | --- | --- |
 | M007-01 | Automa exposes and documents one consistent operator state model that distinguishes simulator availability, simulator frontend readiness, vehicle discoverability, local automation deployment, worker liveness, and perception-view availability in concise human output and complete `--json` output | Met | Consistent simulator, vehicle, deployment, worker, view, and evaluator-reference state vocabulary plus shared next-step readiness gates in human and JSON CLI surfaces in PR #84 |
 | M007-02 | An operator starting from `http://localhost:5050` can prepare the supported Chase scenario and discover `chase-sim-chaser` without manually deriving `/ws/control`; disconnected, stale, wrong-game, and unavailable-camera states name the failed boundary and exact recovery | Met | Local HTTP URL normalization, passive Chase discovery, explicit-only configured preparation, and exact frontend/game/camera/capability recovery in PR #84 |
-| M007-03 | Observation-only automation can publish a current camera/perception browser view when sensor image and frame identity are valid even if evaluator-only control reference data is unavailable; workflows that require that reference fail closed with an explicit missing-reference status | Met | Passive observation-only sensor/perception startup preserves scenario/playback/control/input state, separates optional evaluator reference, and keeps reference-dependent operations fail-closed in PR #84 |
+| M007-03 | Observation-only automation can publish a current camera/perception browser view when sensor image and frame identity are valid even if evaluator-only control reference data is unavailable; workflows that require that reference fail closed with an explicit missing-reference status | Met | PR #155 closes the Phase C invalid-dimensions/encoding row at the Chase adapter boundary: decoded dimensions and raster format agree with the data-URL MIME and any present content-type declaration, invalid captures fail as capture_image_invalid before publication, and valid reference-less sensor capture remains available. |
 | M007-04 | Startup, status, and view commands use bounded operation-level timeout semantics, preserve stable human/JSON error categories, and provide current help/README examples for the complete journey and its recovery paths | Met | PR #146 closes the Phase C timeout input-envelope finding at the shared CLI boundary: every affected primary consumer rejects non-positive and non-finite timeout values before discovery, staging, or worker/view work, with stable exit-2 errors and no traceback, while valid bounded timeout behavior is preserved. |
 | M007-05 | A tracked live acceptance unit against the current local Metrics UI contract proves one observation-only processed frame, healthy loopback view, exact layer states, no applied movement, and no default recording; contract drift fails rather than skipping | Met | Tracked live acceptance in PR #88 proves one current correlated camera/perception frame, healthy loopback rendering, truthful layer states, observation-only no-applied-control authority, protected-state preservation, no default run history, and stopped-worker cleanup against exact recorded auto-driving and Metrics UI commits |
 | M007-06 | Closeout confirms the primary demonstration, reconciles durable CLI documentation, records the accepted journey-coverage and full-leaf audit outcomes, verifies every #88 US-01 through US-10 candidate has a committed definition and disposition, and states every retained/unexposed capability and remaining external simulator, PiRacer, remote-view, or non-idle-control limit | Partial | PR #154 closes the staged PiRacer inspection regression with local/offline, reachable-Pi, and unavailable-live coverage while preserving the existing read-only contract; M007-06 remains Partial until the separate whole-milestone closeout records the primary journey, all accepted-unit evidence, and residual limits. |
@@ -128,19 +128,10 @@ deletion; it does not retroactively widen the accepted primary journey.
 
 ### Current Frontier
 
-**Chase capture image-envelope closure**
+**None**
 
-- Workflow state: implementation_in_review
-- Proposal branch: `m007/chase-capture-image-envelope-proposal`
-- Implementation branch: `m007/chase-capture-image-envelope`
-- Proposal path: `docs/milestones/007-cli-operator-usability/proposals/chase-capture-image-envelope.md`
-- Accepted proposal: [#150](https://github.com/GeorgeLuo/auto-driving/pull/150) at `90488b42d093a355925acda545b61e72406807dd` (reviewed head `0377d5886487a337aee874ea20cdbe10e1df041b` by `GeorgeLuo` as `OWNER` at `2026-08-26T03:02:28Z`)
-- Review kind: Review repair
-- Review question: Does the Chase adapter reject every sensor image whose decoded dimensions or raster format disagree with the declared image envelope, and reject mismatched data-URL MIME or declared content type, while preserving valid raster captures and the independent optional evaluator-reference contract?
-- Acceptance owner: `implementations/vehicle/chase_sim/frame_identity.py`
-- Exit criteria affected: `M007-03`
-- Prerequisite: Phase C Chase image-envelope finding from PR #81 is reproduced and remains routed as a new owned product review unit from the restored Active/idle milestone.
-- Milestone-level non-goal: No Metrics UI/codec redesign, no evaluator-reference requirement for sensor capture, no repair of PR #81, and no repair of the accepted PiRacer inspection unit.
+- Reason: The Chase image-envelope repair is promoted and the milestone remains idle; no further Phase C product unit is contracted by this handoff.
+- Revisit when: A later proposal is justified by a remaining finding or a new milestone acceptance decision.
 
 ### Next-Frontier Candidate
 
@@ -212,6 +203,7 @@ deletion; it does not retroactively widen the accepted primary journey.
 | Chase capture image-envelope closure | proposal_in_review | Started m007/chase-capture-image-envelope-proposal. |
 | Chase capture image-envelope closure | ready_for_implementation | Proposal PR #150 accepted at 90488b42d093a355925acda545b61e72406807dd (reviewed head `0377d5886487a337aee874ea20cdbe10e1df041b` by `GeorgeLuo` as `OWNER` at `2026-08-26T03:02:28Z`). |
 | Chase capture image-envelope closure | implementation_in_review | Started m007/chase-capture-image-envelope. |
+| Chase capture image-envelope closure | accepted | Implementation PR #155 merged at ff6c00f2ac98a40f2aab9cfa198fc9bb3d0da386. |
 
 ## Accepted Review Units
 
@@ -226,6 +218,7 @@ deletion; it does not retroactively widen the accepted primary journey.
 | #144 | Is milestone 007 complete as a whole—its supported CLI journeys remain documented, every exit criterion is backed by accepted evidence, every #88 US-01 through US-10 sequence and every unreached capability has an accountable disposition, residual limits are explicit, and the cumulative milestone is ready for whole-milestone review without hiding follow-on product work? | Cumulative review rejected; closeout packet retained; M007-06 remains Unmet | M007-06 | Phase C rejected whole-milestone acceptance on PR #81; Phase B close commit reverted; completed.md gained an append-only withdrawal section; exceptional advance receipt returned current to idle without marking M007-06 Met |
 | #146 | Do all affected primary CLI commands reject non-positive and non-finite timeout inputs through one stable input/error boundary before execution, without tracebacks, while preserving valid timeout behavior? | Accepted | `M007-04` | Timeout input-envelope consistency in PR #146: vehicles status, vehicles automation run, and vehicles update perception reject zero, negative, NaN, and infinite --timeout-s values before command work with stable exit-2 human or existing machine-readable errors and no traceback; finite positive and default timeout behavior remains unchanged; focused regressions and the repository suite pass. |
 | #154 | Can `vehicles info perception --id piracer` retain successful offline inspection of a locally staged `active.json` while also enriching that result with reachable live PiRacer observation and local-view state, without making a PiRacer network outage invalidate the offline inspection path? | Accepted | `M007-06` | PiRacer perception-inspection compatibility in PR #154: local staged inspection remains available offline while reachable PiRacer observation and physical view state are surfaced through the owned perception CLI boundary, with deterministic local-activation plus reachable-Pi regression coverage. |
+| #155 | Does the Chase adapter reject every sensor image whose decoded dimensions or raster format disagree with the declared image envelope, and reject mismatched data-URL MIME or declared content type, while preserving valid raster captures and the independent optional evaluator-reference contract? | Accepted | `M007-03` | Chase capture image-envelope closure in PR #155: frame_identity.py rejects decoded dimension, raster-format, data-URL MIME, and declared content-type mismatches before write/publish with direct regressions, while valid sensor captures and optional evaluator-reference behavior remain intact. |
 
 ## Open Risks And Unverified Assumptions
 

@@ -29,6 +29,13 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Fetch sealed historical source
+        run: |
+          git fetch --no-tags origin \
+            7931fa9a995af5626fabef818f9e28b98c73e299
+          git cat-file -e \
+            7931fa9a995af5626fabef818f9e28b98c73e299^{commit}
+
       - name: Set up Python
         uses: actions/setup-python@v6
         with:

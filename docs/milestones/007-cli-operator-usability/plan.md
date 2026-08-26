@@ -130,10 +130,11 @@ deletion; it does not retroactively widen the accepted primary journey.
 
 **Chase capture image-envelope closure**
 
-- Workflow state: proposal_in_review
+- Workflow state: ready_for_implementation
 - Proposal branch: `m007/chase-capture-image-envelope-proposal`
 - Implementation branch: `m007/chase-capture-image-envelope`
 - Proposal path: `docs/milestones/007-cli-operator-usability/proposals/chase-capture-image-envelope.md`
+- Accepted proposal: [#150](https://github.com/GeorgeLuo/auto-driving/pull/150) at `90488b42d093a355925acda545b61e72406807dd` (reviewed head `0377d5886487a337aee874ea20cdbe10e1df041b` by `GeorgeLuo` as `OWNER` at `2026-08-26T03:02:28Z`)
 - Review kind: Review repair
 - Review question: Does the Chase adapter reject every sensor image whose decoded dimensions or raster format disagree with the declared image envelope, and reject mismatched data-URL MIME or declared content type, while preserving valid raster captures and the independent optional evaluator-reference contract?
 - Acceptance owner: `implementations/vehicle/chase_sim/frame_identity.py`
@@ -209,6 +210,7 @@ deletion; it does not retroactively widen the accepted primary journey.
 | PiRacer perception-inspection compatibility | implementation_in_review | Started m007/piracer-perception-inspection-compatibility. |
 | PiRacer perception-inspection compatibility | accepted | Implementation PR #154 merged at 1b08ff596df9b2a9ad23ef1d2947ccf85cb0f551. |
 | Chase capture image-envelope closure | proposal_in_review | Started m007/chase-capture-image-envelope-proposal. |
+| Chase capture image-envelope closure | ready_for_implementation | Proposal PR #150 accepted at 90488b42d093a355925acda545b61e72406807dd (reviewed head `0377d5886487a337aee874ea20cdbe10e1df041b` by `GeorgeLuo` as `OWNER` at `2026-08-26T03:02:28Z`). |
 
 ## Accepted Review Units
 

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="327fa7c5aa9a53d793e811c5eb0d4603d7a35149d0b3ba6d2e1de34dabe6e613">
+  <meta name="source-sha256" content="06273b3ad50906d7a6fcd0065513ea5ad6eeb19086c2ee38a58f8f9d283c0d84">
   <base target="_blank">
   <title>Milestone plan — 007-cli-operator-usability</title>
   <style>
@@ -73,7 +73,7 @@
 <tbody>
 <tr>
 <td>Status</td>
-<td>Active</td>
+<td>closed</td>
 </tr>
 <tr>
 <td>Milestone branch</td>
@@ -85,7 +85,7 @@
 </tr>
 <tr>
 <td>Current frontier</td>
-<td>Milestone closeout requalification</td>
+<td>None (closed)</td>
 </tr>
 <tr>
 <td>Started</td>
@@ -324,8 +324,8 @@ deletion; it does not retroactively widen the accepted primary journey.</p>
 <tr>
 <td>M007-06</td>
 <td>Closeout confirms the primary demonstration, reconciles durable CLI documentation, records the accepted journey-coverage and full-leaf audit outcomes, verifies every #88 US-01 through US-10 candidate has a committed definition and disposition, and states every retained/unexposed capability and remaining external simulator, PiRacer, remote-view, or non-idle-control limit</td>
-<td>Partial</td>
-<td>PR #154 closes the staged PiRacer inspection regression with local/offline, reachable-Pi, and unavailable-live coverage while preserving the existing read-only contract; M007-06 remains Partial until the separate whole-milestone closeout records the primary journey, all accepted-unit evidence, and residual limits.</td>
+<td>Met</td>
+<td>Requalified closeout preserves rejected-review history, confirms accepted repairs #146/#154/#155, and revalidates the inherited primary-journey, documentation, evidence, US-01 through US-10, capability, and residual accounting in PR #159</td>
 </tr>
 <tr>
 <td>M007-07</td>
@@ -355,19 +355,10 @@ deletion; it does not retroactively widen the accepted primary journey.</p>
 </table>
 <h2>Current Delivery</h2>
 <h3>Current Frontier</h3>
-<p><strong>Milestone closeout requalification</strong></p>
+<p><strong>None</strong></p>
 <ul>
-<li>Workflow state: implementation_in_review</li>
-<li>Proposal branch: <code>m007/closeout-requalification-proposal</code></li>
-<li>Implementation branch: <code>m007/closeout-requalification</code></li>
-<li>Proposal path: <code>docs/milestones/007-cli-operator-usability/proposals/closeout-requalification.md</code></li>
-<li>Accepted proposal: <a href="https://github.com/GeorgeLuo/auto-driving/pull/156">#156</a> at <code>1eadd8abedf66d6575cf22f137219989343f1e88</code> (reviewed head <code>f68be7578784b7fb207d468f4c8e87decea7980c</code> by <code>GeorgeLuo</code> as <code>OWNER</code> at <code>2026-08-26T07:09:35Z</code>)</li>
-<li>Review kind: Milestone closeout</li>
-<li>Review question: After accepted repairs #146, #154, and #155, is the prior M007 closeout contract still sufficient when its retained packet, append-only withdrawal history, and cumulative PR #81 are reconciled to those repairs?</li>
-<li>Acceptance owner: Requalified whole-milestone judgment in <code>closeout.md</code>, append-only completed-ledger history, durable CLI documentation reconciliation, terminal workflow handoff, and cumulative PR #81 readiness surface</li>
-<li>Exit criteria affected: M007-06</li>
-<li>Prerequisite: M007-01 through M007-05 and M007-07 through M007-10 are <code>Met</code>; accepted repair units #146, #154, and #155 are present after the rejected cumulative review; the retained Phase A packet and withdrawal record remain append-only authority</li>
-<li>Milestone-level non-goal: Product or runtime change, evidence recapture for recency, rewriting the rejected #143/#144 history, executing deferred or hazardous work, implementing capability candidates or issues #89 through #91, editing M006, or marking cumulative PR #81 ready before terminal handoff</li>
+<li>Reason: Milestone closed after PR #159.</li>
+<li>Revisit when: No in-milestone work remains.</li>
 </ul>
 <h3>Next-Frontier Candidate</h3>
 <p><strong>None</strong></p>
@@ -680,6 +671,11 @@ deletion; it does not retroactively widen the accepted primary journey.</p>
 <td>implementation_in_review</td>
 <td>Started m007/closeout-requalification.</td>
 </tr>
+<tr>
+<td>Milestone closeout requalification</td>
+<td>accepted</td>
+<td>Implementation PR #159 merged at efd2c59a12f9f64b221b290f7cf3e1629af9f52c.</td>
+</tr>
 </tbody>
 </table>
 <h2>Accepted Review Units</h2>
@@ -764,6 +760,13 @@ deletion; it does not retroactively widen the accepted primary journey.</p>
 <td><code>M007-03</code></td>
 <td>Chase capture image-envelope closure in PR #155: frame_identity.py rejects decoded dimension, raster-format, data-URL MIME, and declared content-type mismatches before write/publish with direct regressions, while valid sensor captures and optional evaluator-reference behavior remain intact.</td>
 </tr>
+<tr>
+<td>#159</td>
+<td>After accepted repairs #146, #154, and #155, is the prior M007 closeout contract still sufficient when its retained packet, append-only withdrawal history, and cumulative PR #81 are reconciled to those repairs?</td>
+<td>Accepted</td>
+<td>M007-06</td>
+<td>Requalified M007 closeout judgment in closeout.md; original packet and withdrawal preserved; completed.md requalification appended; accepted repairs #146, #154, and #155 reconciled; inherited #143 evidence, residuals, and next-focus decision verified; cumulative PR #81 prepared for fresh whole-milestone review in implementation PR #159</td>
+</tr>
 </tbody>
 </table>
 <h2>Open Risks And Unverified Assumptions</h2>
@@ -777,44 +780,9 @@ deletion; it does not retroactively widen the accepted primary journey.</p>
 </thead>
 <tbody>
 <tr>
-<td>Metrics UI may evolve independently of this repository</td>
-<td>Unit fixtures can remain green while live atomic-capture payloads drift</td>
-<td>Freeze the consumed sensor/reference distinction, add reference-less fixtures, and require a non-skipping opt-in live contract unit</td>
-</tr>
-<tr>
-<td>A browser tab can be visibly open before its Play WebSocket role is registered</td>
-<td>A one-second probe can report a false unavailable state with no useful recovery</td>
-<td>Distinguish server/frontend/game/camera states and use one bounded operation deadline with exact recovery</td>
-</tr>
-<tr>
-<td>Evaluator reference data is useful for scoring but is not sensor input</td>
-<td>Requiring it for camera capture prevents legitimate observation-only perception; accepting malformed identity would weaken correlation</td>
-<td>Validate sensor identity independently, model evaluator reference as optional/unavailable, and keep reference-required scoring fail-closed</td>
-</tr>
-<tr>
-<td>Browser opening is platform-dependent</td>
-<td>An otherwise healthy worker could be reported failed because the OS cannot launch a browser</td>
-<td>Keep view health authoritative; browser launch is explicit and reports its own non-fatal result and URL</td>
-</tr>
-<tr>
-<td>Running every CLI leaf can be unsafe or environment-dependent</td>
-<td>A coverage target could encourage movement, destructive operations, hardware access, or misleading skips</td>
-<td>Inventory every leaf, but execute only declared safe patterns; record prerequisites and non-executed live/hazardous classifications explicitly</td>
-</tr>
-<tr>
-<td>Confirmed exploratory product defects from PR #88 remain deferred without owners</td>
-<td>Safe multi-apply and honest readiness cues stay broken while process work advances</td>
-<td>Scenario continuity must dispose #89 / M007-LIVE-001..005 (repair, external-issue, or explicit non-blocking deferral with owner) rather than re-parking them under later audit</td>
-</tr>
-<tr>
-<td>Cited sequence passed status is historical, not continuous HEAD verification</td>
-<td>Regressions after #88/#100 may not be visible in the audit registry until a separate re-proof</td>
-<td>Optional live smoke or product-unit re-proof when journeys are reopened; residual risk at closeout</td>
-</tr>
-<tr>
-<td>Capability dispositions are historical to the sealed M007-07 report</td>
-<td>Later product commits can change what is unreached without updating the candidate record</td>
-<td>Closeout cites the record digest; a later unit recaptures #107 if reachability must be refreshed</td>
+<td></td>
+<td></td>
+<td></td>
 </tr>
 </tbody>
 </table>

@@ -5,7 +5,7 @@
 | Status | Active |
 | Milestone branch | `milestone/007-cli-operator-usability` |
 | Cumulative PR | [#81](https://github.com/GeorgeLuo/auto-driving/pull/81) (draft until whole-milestone closeout) |
-| Current frontier | PiRacer perception-inspection compatibility |
+| Current frontier | None (idle) |
 | Started | 2026-07-29 |
 | Action policy | Observation-only; no applied vehicle movement |
 
@@ -118,7 +118,7 @@ deletion; it does not retroactively widen the accepted primary journey.
 | M007-03 | Observation-only automation can publish a current camera/perception browser view when sensor image and frame identity are valid even if evaluator-only control reference data is unavailable; workflows that require that reference fail closed with an explicit missing-reference status | Met | Passive observation-only sensor/perception startup preserves scenario/playback/control/input state, separates optional evaluator reference, and keeps reference-dependent operations fail-closed in PR #84 |
 | M007-04 | Startup, status, and view commands use bounded operation-level timeout semantics, preserve stable human/JSON error categories, and provide current help/README examples for the complete journey and its recovery paths | Met | PR #146 closes the Phase C timeout input-envelope finding at the shared CLI boundary: every affected primary consumer rejects non-positive and non-finite timeout values before discovery, staging, or worker/view work, with stable exit-2 errors and no traceback, while valid bounded timeout behavior is preserved. |
 | M007-05 | A tracked live acceptance unit against the current local Metrics UI contract proves one observation-only processed frame, healthy loopback view, exact layer states, no applied movement, and no default recording; contract drift fails rather than skipping | Met | Tracked live acceptance in PR #88 proves one current correlated camera/perception frame, healthy loopback rendering, truthful layer states, observation-only no-applied-control authority, protected-state preservation, no default run history, and stopped-worker cleanup against exact recorded auto-driving and Metrics UI commits |
-| M007-06 | Closeout confirms the primary demonstration, reconciles durable CLI documentation, records the accepted journey-coverage and full-leaf audit outcomes, verifies every #88 US-01 through US-10 candidate has a committed definition and disposition, and states every retained/unexposed capability and remaining external simulator, PiRacer, remote-view, or non-idle-control limit | Unmet | Closeout only after M007-01 through M007-05 and M007-07 through M007-10; no proposed sequence may remain unlisted or ownerless |
+| M007-06 | Closeout confirms the primary demonstration, reconciles durable CLI documentation, records the accepted journey-coverage and full-leaf audit outcomes, verifies every #88 US-01 through US-10 candidate has a committed definition and disposition, and states every retained/unexposed capability and remaining external simulator, PiRacer, remote-view, or non-idle-control limit | Partial | PR #154 closes the staged PiRacer inspection regression with local/offline, reachable-Pi, and unavailable-live coverage while preserving the existing read-only contract; M007-06 remains Partial until the separate whole-milestone closeout records the primary journey, all accepted-unit evidence, and residual limits. |
 | M007-07 | A reproducible CLI journey-coverage collector attributes owned-Python statement and branch execution to named commands and multi-command journeys across foreground and Python subprocess/background-worker boundaries, separates bootstrap/import footprint from command-specific behavior, records exact source/command identity, and remains informational | Met | PR #107 provides a versioned manifest and collection-bound pass report attributing branch-aware owned-Python execution to the accepted primary and continuity command/journey contexts across foreground and background Python processes, with pre-interpreter environment isolation, canonical dependency identity, bootstrap classification, immutable receipts, exact digest semantics, completeness/freshness checks, cleanup, and no correctness, dead-code, or percentage-gate claim |
 | M007-08 | A complete generated-and-reviewed inventory maps every public CLI leaf to realistic usage patterns, prerequisites, side effects, safety class, output contract, owning boundary, and deterministic/live validation status without requiring unsafe execution, and reconciles every #88 US-01 through US-10 proposed sequence into a committed registry with stable identity, current commands and prerequisites, primary human confirmation, cleanup, coverage treatment, and explicit disposition; blocked/deferred entries name an owner and unlock condition | Met | PR #122 delivers complete-to-parser leaf accounting with all M007-08 leaf dimensions, #88-bound US-01..US-10 reconciliation with argv-valid current commands, semantic cite/execute passed rules, required coverage treatment, and visible residuals for deferred work and known LIVE defects |
 | M007-09 | Owned production code not reached by the declared CLI journey set is grouped by capability and reconciled with tests, other entrypoints, dynamic/platform paths, and ownership; every group is flagged to expose through CLI, retain with explicit reason, or remove through separately reviewed work | Met | PR #138 groups unreached owned production code from the sealed journey-coverage report, reconciles tests/entrypoints/dynamic-or-platform paths and ownership, and records an owned expose, retain, or remove candidate for every group without using a coverage percentage as authorization |
@@ -128,19 +128,10 @@ deletion; it does not retroactively widen the accepted primary journey.
 
 ### Current Frontier
 
-**PiRacer perception-inspection compatibility**
+**None**
 
-- Workflow state: implementation_in_review
-- Proposal branch: `m007/piracer-perception-inspection-compatibility-proposal`
-- Implementation branch: `m007/piracer-perception-inspection-compatibility`
-- Proposal path: `docs/milestones/007-cli-operator-usability/proposals/piracer-perception-inspection-compatibility.md`
-- Accepted proposal: [#152](https://github.com/GeorgeLuo/auto-driving/pull/152) at `a30e4db059abfc2032253666d94eb9a6487ead38` (reviewed head `f581de64c01295393235e4311535df227ceb7656` by `GeorgeLuo` as `OWNER` at `2026-08-26T02:16:07Z`)
-- Review kind: Review repair
-- Review question: Can `vehicles info perception --id piracer` retain successful offline inspection of a locally staged `active.json` while also enriching that result with reachable live PiRacer observation and local-view state, without making a PiRacer network outage invalidate the offline inspection path?
-- Acceptance owner: `cli/automa_cli/perception.py`
-- Exit criteria affected: `M007-06`
-- Prerequisite: Phase C PiRacer perception-inspection finding from PR #81 is reproduced and remains routed as a new owned product review unit from the restored Active/idle milestone.
-- Milestone-level non-goal: No PiRacer hardware/deployment redesign, no repair of PR #81, and no repair of the separate Chase image-envelope finding.
+- Reason: The PiRacer inspection repair is promoted and the milestone remains idle; the separate Phase C Chase image-envelope finding remains outside this unit.
+- Revisit when: A later proposal is justified by the remaining Phase C finding or by a new milestone acceptance decision.
 
 ### Next-Frontier Candidate
 
@@ -208,6 +199,7 @@ deletion; it does not retroactively widen the accepted primary journey.
 | PiRacer perception-inspection compatibility | proposal_in_review | Started m007/piracer-perception-inspection-compatibility-proposal. |
 | PiRacer perception-inspection compatibility | ready_for_implementation | Proposal PR #152 accepted at a30e4db059abfc2032253666d94eb9a6487ead38 (reviewed head `f581de64c01295393235e4311535df227ceb7656` by `GeorgeLuo` as `OWNER` at `2026-08-26T02:16:07Z`). |
 | PiRacer perception-inspection compatibility | implementation_in_review | Started m007/piracer-perception-inspection-compatibility. |
+| PiRacer perception-inspection compatibility | accepted | Implementation PR #154 merged at 1b08ff596df9b2a9ad23ef1d2947ccf85cb0f551. |
 
 ## Accepted Review Units
 
@@ -221,6 +213,7 @@ deletion; it does not retroactively widen the accepted primary journey.
 | #138 | Can owned production code not reached by the declared CLI journey set be grouped by capability and reconciled with tests, other entrypoints, dynamic or platform paths, and ownership so every group is flagged to expose through CLI, retain with an explicit owner and reason, or remove through separately reviewed work, without authorizing feature or deletion solely by a coverage percentage? | Accepted | M007-09 | Capability disposition outside CLI journeys in PR #138: unreached owned production code derived from sealed M007-07 report; every region in exactly one capability group; tests/entrypoints/platform/owner reconciled; expose/retain/remove candidates with non-percentage reasons; validators reject omission and percentage-as-authorization; derived HTML of that record; tracked evidence under docs/milestones/007-cli-operator-usability/evidence/capability-disposition/ |
 | #144 | Is milestone 007 complete as a whole—its supported CLI journeys remain documented, every exit criterion is backed by accepted evidence, every #88 US-01 through US-10 sequence and every unreached capability has an accountable disposition, residual limits are explicit, and the cumulative milestone is ready for whole-milestone review without hiding follow-on product work? | Cumulative review rejected; closeout packet retained; M007-06 remains Unmet | M007-06 | Phase C rejected whole-milestone acceptance on PR #81; Phase B close commit reverted; completed.md gained an append-only withdrawal section; exceptional advance receipt returned current to idle without marking M007-06 Met |
 | #146 | Do all affected primary CLI commands reject non-positive and non-finite timeout inputs through one stable input/error boundary before execution, without tracebacks, while preserving valid timeout behavior? | Accepted | `M007-04` | Timeout input-envelope consistency in PR #146: vehicles status, vehicles automation run, and vehicles update perception reject zero, negative, NaN, and infinite --timeout-s values before command work with stable exit-2 human or existing machine-readable errors and no traceback; finite positive and default timeout behavior remains unchanged; focused regressions and the repository suite pass. |
+| #154 | Can `vehicles info perception --id piracer` retain successful offline inspection of a locally staged `active.json` while also enriching that result with reachable live PiRacer observation and local-view state, without making a PiRacer network outage invalidate the offline inspection path? | Accepted | `M007-06` | PiRacer perception-inspection compatibility in PR #154: local staged inspection remains available offline while reachable PiRacer observation and physical view state are surfaced through the owned perception CLI boundary, with deterministic local-activation plus reachable-Pi regression coverage. |
 
 ## Open Risks And Unverified Assumptions
 

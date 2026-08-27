@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="297b7e817714268fa29f94880d2de9b6528df4a03d370fa008c62cd839169cfb">
+  <meta name="source-sha256" content="0eea692bc8ed5f283876694e8254c0c0439b715887f526eb53e94934d297f3bf">
   <base target="_blank">
   <title>Milestone plan — 008-cli-decision-workbench</title>
   <style>
@@ -367,19 +367,14 @@ coverage or a frontend framework migration.</p>
 <td>Inventory only the selected slice's publications and views, then reuse, consolidate, or define one source and explicit adaptations before adding parallel behavior</td>
 </tr>
 <tr>
-<td>Existing image-directory perception and memory replay are separate surfaces rather than an explicit multi-run workbench session</td>
-<td>Repeated replay, cancellation, stale state, or reset may be confusing even if a single frame works</td>
-<td>Let the selected replay slice define the smallest persistent session and run/frame identity that keeps source, state, failure, and reset legible</td>
+<td>The current live page server is associated with a worker rather than an explicit multi-run workbench session</td>
+<td>Repeated runs, cancellation, stale state, or cleanup may be confusing even if a single run works</td>
+<td>Let the slice proposal define the smallest persistent session and run identity that keeps state, failure, and cleanup legible</td>
 </tr>
 <tr>
-<td>Video and live feeds are candidate adapters, not proven CLI input contracts</td>
-<td>Committing to either could create a workbench-only ingestion path or unclear ordering/timestamp semantics</td>
-<td>First deliver the image-directory replay adapter; propose video or live input only when it maps authoritatively to the shared feed contract</td>
-</tr>
-<tr>
-<td>POC-fit visual controls or replay CLI helpers may be discovered during implementation</td>
-<td>Unbounded “one more feature” requests could delay the proof of usefulness or create a second journey</td>
-<td>Admit only changes within the accepted POC-completion envelope, record them in the assessment, and send other requests to a later proposal</td>
+<td>Arbitrary capture or video upload is a candidate interaction, not a proven CLI input</td>
+<td>Committing to upload could create a workbench-only ingestion path or unnecessary conversion work</td>
+<td>First assess the recorded-source contracts already accepted in M007; add input sequencing only when it is useful and authoritative from the CLI as well</td>
 </tr>
 <tr>
 <td>The smallest reliable CLI-to-workbench invocation boundary is not yet chosen</td>

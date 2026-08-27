@@ -351,6 +351,16 @@ def _revise_plan(text: str) -> str:
     )
 
 
+def _idle_plan_with_revision() -> str:
+    idle = _terminal_plan(ready_plan_text(), "Active")
+    return idle.replace(
+        "\n\n## Accepted Review Units",
+        "\n| Idle | idle | Plan revision: established the idle baseline. |"
+        "\n\n## Accepted Review Units",
+        1,
+    )
+
+
 def _accepted_plan() -> str:
     return accept_proposal(
         _move_to_review(ready_plan_text()),
@@ -939,6 +949,44 @@ class WorkflowStateContractTests(unittest.TestCase):
                     CURRENT_FRONTIER,
                     "ready_for_proposal",
                     "Plan revision: documented the handoff risk.",
+                ),
+            ),
+        )
+
+    def test_consecutive_idle_plan_revisions_preserve_history(self) -> None:
+        base = _idle_plan_with_revision()
+        revised = base.replace(
+            "\n\n## Accepted Review Units",
+            "\n| Idle | idle | Plan revision: refined milestone facts. |"
+            "\n\n## Accepted Review Units",
+            1,
+        )
+
+        state = validate_plan_text(revised)
+        transition = validate_review_unit_transition(
+            base,
+            revised,
+            plan_path=PLAN_RELATIVE,
+            changed_paths={
+                PLAN_RELATIVE,
+                str(Path(PLAN_RELATIVE).with_suffix(".html")),
+            },
+            head_branch=PLAN_REVISION_BRANCH,
+        )
+
+        self.assertEqual(transition, "plan_revision")
+        self.assertEqual(
+            state.workflow_history.rows[-2:],
+            (
+                (
+                    "Idle",
+                    "idle",
+                    "Plan revision: established the idle baseline.",
+                ),
+                (
+                    "Idle",
+                    "idle",
+                    "Plan revision: refined milestone facts.",
                 ),
             ),
         )

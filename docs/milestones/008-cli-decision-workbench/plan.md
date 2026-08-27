@@ -70,10 +70,10 @@ coverage or a frontend framework migration.
 - Implementation branch: `m008/perception-memory-workbench`
 - Proposal path: `docs/milestones/008-cli-decision-workbench/proposals/perception-memory-workbench.md`
 - Review kind: Behavioral feature slice
-- Review question: Can an operator run the accepted M007 perception-to-memory lifecycle sequence from a local workbench and inspect the real CLI lifecycle, results, and cleanup without shell commands, mock data, hidden simulator changes, or a second execution authority?
-- Acceptance owner: Workbench scenario runner and CLI machine-readable boundary
+- Review question: Can an operator use a local workbench to replay a supported ordered image source through the existing perception-to-`Observation`-to-memory pipeline, inspect real capture overlays and memory effects, and control the bounded replay without shell commands, mock data, hidden simulator changes, or a second execution authority?
+- Acceptance owner: Workbench replay runner and CLI machine-readable boundary
 - Exit criteria affected: M008-01, M008-02, M008-04
-- Prerequisite: The accepted M007 continuity catalog and CLI sequence runner are available on `main`, and a supported local observation-only run can be prepared.
+- Prerequisite: The current image-directory perception application, perception-to-`Observation` seam, and bounded-memory implementation are available on `main`, and a supported local image source can be read.
 - Milestone-level non-goal: Full M006 shadow-decision evidence, all M007 scenarios, engine or CLI redesign, Metrics UI redesign, movement, or remote hosting.
 
 ### Next-Frontier Candidate

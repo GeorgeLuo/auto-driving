@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="f7e9a4ef8c866092984b09c0a2b0d8fe499c3e6d2e2671bf20dfa24ab7eab029">
+  <meta name="source-sha256" content="57312248d19f8f84980a21af05107a521a4d8571f11f4a8e97befafb0ee987ef">
   <base target="_blank">
   <title>Milestone plan — 008-cli-decision-workbench</title>
   <style>
@@ -252,10 +252,10 @@ coverage or a frontend framework migration.</p>
 <li>Implementation branch: <code>m008/perception-memory-workbench</code></li>
 <li>Proposal path: <code>docs/milestones/008-cli-decision-workbench/proposals/perception-memory-workbench.md</code></li>
 <li>Review kind: Behavioral feature slice</li>
-<li>Review question: Can an operator run the accepted M007 perception-to-memory lifecycle sequence from a local workbench and inspect the real CLI lifecycle, results, and cleanup without shell commands, mock data, hidden simulator changes, or a second execution authority?</li>
-<li>Acceptance owner: Workbench scenario runner and CLI machine-readable boundary</li>
+<li>Review question: Can an operator use a local workbench to replay a supported ordered image source through the existing perception-to-<code>Observation</code>-to-memory pipeline, inspect real capture overlays and memory effects, and control the bounded replay without shell commands, mock data, hidden simulator changes, or a second execution authority?</li>
+<li>Acceptance owner: Workbench replay runner and CLI machine-readable boundary</li>
 <li>Exit criteria affected: M008-01, M008-02, M008-04</li>
-<li>Prerequisite: The accepted M007 continuity catalog and CLI sequence runner are available on <code>main</code>, and a supported local observation-only run can be prepared.</li>
+<li>Prerequisite: The current image-directory perception application, perception-to-<code>Observation</code> seam, and bounded-memory implementation are available on <code>main</code>, and a supported local image source can be read.</li>
 <li>Milestone-level non-goal: Full M006 shadow-decision evidence, all M007 scenarios, engine or CLI redesign, Metrics UI redesign, movement, or remote hosting.</li>
 </ul>
 <h3>Next-Frontier Candidate</h3>

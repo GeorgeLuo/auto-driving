@@ -18,6 +18,21 @@ contract wins if any wording conflicts.
 5. Run live or external checks only when the review question requires them;
    record environmental assumptions and non-claims.
 
+## Normal usage boundary
+
+The repository's documented callers are its primary customers. Exercise those
+public entry points broadly across their regular happy-path usage before
+generalizing for hypothetical callers or states. Keep business logic narrow:
+reject unsupported inputs or states explicitly using the existing domain
+exception/error contract. Let the outer CLI or API boundary translate that
+rejection into its established structured error form where needed.
+
+Tests should cover representative regular usage and the rejection boundary
+that protects it. Add an off-path case only when regular usage can reach it,
+the accepted contract claims it, or safety, integrity, and ownership require
+it; an exception for unsupported usage is a valid expected result, not a
+missing feature.
+
 ## Evidence
 
 Report exact commands, pass/fail status, test counts, skips, and relevant

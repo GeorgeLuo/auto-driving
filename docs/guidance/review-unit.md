@@ -16,6 +16,13 @@ canonical contract. The contract wins if any wording conflicts.
   substantial live evidence from deterministic implementation.
 - Keep coordinated files together when they close one contract at one owning
   boundary.
+- Treat the repository's documented callers and regular paths as the primary
+  compatibility surface. Do not widen a review for hypothetical external
+  callers unless the proposal explicitly claims that compatibility.
+- Review the happy path and the smallest explicit rejection boundary for
+  unsupported usage. An edge case is a finding only when regular usage can
+  reach it, a stated safety or integrity contract requires it, or the accepted
+  question includes it.
 
 ## Readiness
 
@@ -45,6 +52,9 @@ repair-cycle ledger names the consolidated verdict and repair revision.
    that same closed contract.
 5. Give one consolidated verdict. Approval accepts this review question, not
    the milestone or unrelated future work.
+6. Close review when the regular path and declared rejection boundary pass. Do
+   not create a repair cycle solely for hypothetical compatibility or a
+   possible improvement outside the accepted question.
 
 Use the canonical
 [review finding format](../milestones/README.md#review-finding-format).

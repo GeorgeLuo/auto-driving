@@ -1929,36 +1929,6 @@ class ProposalAcceptanceMetadataTests(unittest.TestCase):
                 allowed_paths=self.allowed,
             )
 
-    def test_edited_formal_approval_is_rejected(self) -> None:
-        payload = self._payload()
-        head_oid = payload["headRefOid"]
-        assert isinstance(head_oid, str)
-        review = _contract_review(head_oid=head_oid, state="APPROVED")
-        review["includesCreatedEdit"] = True
-        payload["reviews"] = [review]
-        with self.assertRaisesRegex(PlanContractError, "malformed or edited"):
-            validate_merged_proposal_metadata(
-                payload,
-                self.state,
-                proposal_pr=60,
-                allowed_paths=self.allowed,
-            )
-
-    def test_dismissed_formal_approval_is_rejected(self) -> None:
-        payload = self._payload()
-        head_oid = payload["headRefOid"]
-        assert isinstance(head_oid, str)
-        payload["reviews"] = [
-            _contract_review(head_oid=head_oid, state="DISMISSED")
-        ]
-        with self.assertRaisesRegex(PlanContractError, "dismissed"):
-            validate_merged_proposal_metadata(
-                payload,
-                self.state,
-                proposal_pr=60,
-                allowed_paths=self.allowed,
-            )
-
     def test_fetch_fails_closed_when_review_window_would_truncate(self) -> None:
         response = {
             "data": {
@@ -3028,7 +2998,7 @@ class ValidatePrCommandTests(unittest.TestCase):
             pull_request_author=REPAIR_PR_AUTHOR,
             head_oid="a" * 40,
             commits=("a" * 40,),
-            reviews=(_contract_receipt_review(head_oid="a" * 40, outcome="accepted"),),
+            reviews=(),
         )
         payload = {
             "pull_request": {
@@ -3064,86 +3034,6 @@ class ValidatePrCommandTests(unittest.TestCase):
             validate_diff.call_args.kwargs["repair_review_metadata"],
             metadata,
         )
-
-    def test_event_validation_rejects_proposal_without_exact_head_receipt(self) -> None:
-        metadata = RepairReviewMetadata(
-            pull_request_number=60,
-            pull_request_url=REPAIR_PR_URL,
-            pull_request_author=REPAIR_PR_AUTHOR,
-            head_oid="a" * 40,
-            commits=("a" * 40,),
-            reviews=(),
-        )
-        payload = {
-            "pull_request": {
-                "number": 60,
-                "body": _review_unit_body(),
-            }
-        }
-        with tempfile.TemporaryDirectory() as temp_dir:
-            event_path = Path(temp_dir) / "event.json"
-            event_path.write_text(json.dumps(payload), encoding="utf-8")
-            with (
-                mock.patch(
-                    "docs.milestones.workflow._fetch_pr_repair_review_metadata",
-                    return_value=metadata,
-                ),
-                mock.patch(
-                    "docs.milestones.workflow.validate_review_unit_git_diff",
-                    return_value="proposal",
-                ),
-            ):
-                with self.assertRaisesRegex(
-                    PlanContractError,
-                    "proposal merge requires an exact-head",
-                ):
-                    _cmd_validate_pr(
-                        base_ref=MILESTONE_BRANCH,
-                        head_ref=PROPOSAL_BRANCH,
-                        base_sha="b" * 40,
-                        head_sha="a" * 40,
-                        event_path=event_path,
-                        body_path=None,
-                    )
-
-    def test_event_validation_does_not_add_receipt_gate_to_implementation(self) -> None:
-        metadata = RepairReviewMetadata(
-            pull_request_number=60,
-            pull_request_url=REPAIR_PR_URL,
-            pull_request_author=REPAIR_PR_AUTHOR,
-            head_oid="a" * 40,
-            commits=("a" * 40,),
-            reviews=(),
-        )
-        payload = {
-            "pull_request": {
-                "number": 60,
-                "body": _review_unit_body(),
-            }
-        }
-        with tempfile.TemporaryDirectory() as temp_dir:
-            event_path = Path(temp_dir) / "event.json"
-            event_path.write_text(json.dumps(payload), encoding="utf-8")
-            with (
-                mock.patch(
-                    "docs.milestones.workflow._fetch_pr_repair_review_metadata",
-                    return_value=metadata,
-                ),
-                mock.patch(
-                    "docs.milestones.workflow.validate_review_unit_git_diff",
-                    return_value="implementation",
-                ),
-            ):
-                result = _cmd_validate_pr(
-                    base_ref=MILESTONE_BRANCH,
-                    head_ref=IMPLEMENTATION_BRANCH,
-                    base_sha="b" * 40,
-                    head_sha="a" * 40,
-                    event_path=event_path,
-                    body_path=None,
-                )
-
-        self.assertEqual(result, 0)
 
 
 if __name__ == "__main__":

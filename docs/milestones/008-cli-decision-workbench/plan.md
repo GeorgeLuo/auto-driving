@@ -30,8 +30,8 @@ coverage or a frontend framework migration.
 
 | Workflow | Starting state | Execution | Success signal | Criteria |
 | --- | --- | --- | --- | --- |
-| Primary demonstration | The long-lived local workbench is open and the selected source, perception, and memory prerequisites are available | Provide or choose the supported input, adjust processing settings when the selected slice exposes them, run or replay the authoritative sequence, follow live state and metadata, inspect the result, and clean up without closing the page | One recorded operator acceptance confirms that the perception-memory task is minimally useful; the page remains available for another run; useful progress, outcome, and next-action signals are visible without shell commands or raw JSON; the server uses the same sequence behavior as the CLI | M008-03, M008-04, M008-05, M008-06 |
-| Recover a blocked run | A declared operator-reachable prerequisite, input, external capability, sequence step, or worker fails | Inspect the failed boundary and named next action, make the external change or clean up, then retry from the persistent workbench | The selected slice's declared failure and recovery state remains visible; the workbench does not silently reconfigure the simulator, apply movement, or leave an unintended worker or session mutation | M008-06 |
+| Primary demonstration | The long-lived local workbench is open and the selected source, perception, and memory prerequisites are available | Provide or choose the supported input, use the declared replay controls, run or replay the authoritative sequence, follow state and metadata, inspect the result, and reset or start another run without closing the page | One recorded operator acceptance confirms that the perception-memory task is minimally useful; the page remains available for another run; useful progress, outcome, and next-action signals are visible without shell commands or raw JSON; the server uses the same sequence behavior as the CLI | M008-03, M008-04, M008-05, M008-06 |
+| Recover a blocked run | A declared operator-reachable source, input, adapter, or sequence step fails | Inspect the failed boundary and named next action, make the external change or reset the isolated replay state, then retry from the persistent workbench | The selected slice's declared failure and recovery state remains visible; the workbench does not silently substitute another source, reconfigure a simulator, apply movement, or leave unintended replay state | M008-06 |
 
 ## Scope Boundaries
 
@@ -78,15 +78,34 @@ coverage or a frontend framework migration.
 
 ### Next-Frontier Candidate
 
-**None**
+**Replay workbench POC acceptance**
 
-- Reason: No remaining work-order node is contracted.
-- Revisit when: The next proposal may introduce a node.
+- Proposal branch: `m008/replay-workbench-acceptance-proposal`
+- Implementation branch: `m008/replay-workbench-acceptance`
+- Proposal path: `docs/milestones/008-cli-decision-workbench/proposals/replay-workbench-acceptance.md`
+- Review kind: Live or external evidence
+- Review question: Can an operator use the implemented image-replay workbench to inspect real perception overlays and memory effects, control the declared replay, and affirm that this one local workflow is minimally useful at its delivered display granularity?
+- Acceptance owner: Operator acceptance record and replay-workbench evidence boundary
+- Exit criteria affected: M008-03, M008-05, M008-06
+- Prerequisite: The accepted Perception-memory workbench journey implementation is available with its declared supported source, visual/control contract, and durable assessment.
+- Non-goals: Product expansion beyond the accepted POC-completion envelope, video/live adapters, new processing semantics, or a substitute for an actual operator acceptance.
 
 ### Frontier Map
 
-- Path: none
+- Path: `Replay workbench POC acceptance`
 - Cadence: linked-list
+
+#### Node: Replay workbench POC acceptance
+
+- Proposal branch: `m008/replay-workbench-acceptance-proposal`
+- Implementation branch: `m008/replay-workbench-acceptance`
+- Proposal path: `docs/milestones/008-cli-decision-workbench/proposals/replay-workbench-acceptance.md`
+- Review kind: Live or external evidence
+- Review question: Can an operator use the implemented image-replay workbench to inspect real perception overlays and memory effects, control the declared replay, and affirm that this one local workflow is minimally useful at its delivered display granularity?
+- Acceptance owner: Operator acceptance record and replay-workbench evidence boundary
+- Exit criteria affected: M008-03, M008-05, M008-06
+- Prerequisite: The accepted Perception-memory workbench journey implementation is available with its declared supported source, visual/control contract, and durable assessment.
+- Non-goals: Product expansion beyond the accepted POC-completion envelope, video/live adapters, new processing semantics, or a substitute for an actual operator acceptance.
 
 ## Workflow History
 
@@ -109,8 +128,9 @@ coverage or a frontend framework migration.
 | --- | --- | --- |
 | M007 sequences were accepted as CLI journeys, not proven as workbench features | A sequence may be technically runnable yet have weak user value, poor reuse, or signals that do not support a usable interface | Bound the assessment to the current perception-memory source and let operator acceptance select one slice before implementation expands |
 | Frontend pieces used by the selected slice may be split between long-running perception-memory routes and generated per-run review pages | A new workbench could duplicate signal meaning, rendering behavior, or lifecycle state and drift from the CLI-launched pages | Inventory only the selected slice's publications and views, then reuse, consolidate, or define one source and explicit adaptations before adding parallel behavior |
-| The current live page server is associated with a worker rather than an explicit multi-run workbench session | Repeated runs, cancellation, stale state, or cleanup may be confusing even if a single run works | Let the slice proposal define the smallest persistent session and run identity that keeps state, failure, and cleanup legible |
-| Arbitrary capture or video upload is a candidate interaction, not a proven CLI input | Committing to upload could create a workbench-only ingestion path or unnecessary conversion work | First assess the recorded-source contracts already accepted in M007; add input sequencing only when it is useful and authoritative from the CLI as well |
+| Existing image-directory perception and memory replay are separate surfaces rather than an explicit multi-run workbench session | Repeated replay, cancellation, stale state, or reset may be confusing even if a single frame works | Let the selected replay slice define the smallest persistent session and run/frame identity that keeps source, state, failure, and reset legible |
+| Video and live feeds are candidate adapters, not proven CLI input contracts | Committing to either could create a workbench-only ingestion path or unclear ordering/timestamp semantics | First deliver the image-directory replay adapter; propose video or live input only when it maps authoritatively to the shared feed contract |
+| POC-fit visual controls or replay CLI helpers may be discovered during implementation | Unbounded “one more feature” requests could delay the proof of usefulness or create a second journey | Admit only changes within the accepted POC-completion envelope, record them in the assessment, and send other requests to a later proposal |
 | The smallest reliable CLI-to-workbench invocation boundary is not yet chosen | A premature subprocess, service, or in-process API decision could create work before the selected feature needs are understood | Let the proposal choose the smallest boundary over one authoritative server-side sequence implementation and structured result contract |
 | The full M006 shadow decision surfaces are accepted on the M006 branch but are not in `main` | A baseline candidate that needs the full shadow proposal lifecycle cannot be implemented from the current M008 base | Keep M006 ownership separate and mark the candidate unavailable or deferred until its CLI contract is available; do not duplicate it in M008 |
 | Human-friendly presentation and the minimally useful display granularity are operator judgments | Freezing a visual layout too early creates rework, while leaving acceptance implicit makes feasibility impossible to close | Record one affirmative operator judgment against the primary demonstration; later refinement is residual unless it falsifies that acceptance |
@@ -128,6 +148,7 @@ coverage or a frontend framework migration.
 | 2026-08-27 | Make one operator-accepted workbench slice and a durable gap assessment sufficient for M008 | A second-feature quota would create work beyond the current feasibility question; reuse is assessed in sequence and page boundaries rather than feature count |
 | 2026-08-27 | Evolve a long-lived local page from the selected existing CLI-launched pages and signals, using one authoritative server-side sequence implementation | The workbench must stay aligned with the CLI and remain available across runs without requiring a CLI subprocess or duplicating business logic in the browser |
 | 2026-08-27 | Keep React and broad frontend-framework migration out of M008 | The current Python loopback server and plain HTML, CSS, and JavaScript can prove the useful product slice before a framework decision is warranted |
+| 2026-08-27 | Treat the first image-replay workbench as a POC with a bounded completion envelope and a queued operator-acceptance unit | Visual/interface refinement and narrowly necessary replay CLI support may evolve inside one journey; new adapters, semantics, authority, or operator goals require a later proposal rather than an endless review loop |
 
 ## Closeout
 

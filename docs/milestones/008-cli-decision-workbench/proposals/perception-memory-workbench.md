@@ -77,8 +77,10 @@ browser-created observation, raw-JSON shortcut, or separate memory reducer.
 
 The first slice fixes `lightweight_observer` perception and `bounded_evidence`
 memory. The page cannot request an arbitrary argv, algorithm, mapper setting,
-source adapter, simulator operation, or memory implementation. Changing those
-choices is a later product decision, not an unbounded control surface here.
+source adapter, simulator operation, or memory implementation. Those semantic
+choices, the supported image-directory input, and the perception →
+`Observation` → memory authority are fixed; presentation and the bounded replay
+interface are not a pixel or command-spelling freeze.
 
 ### Useful visual workbench and controls
 
@@ -107,6 +109,58 @@ source, progress, outcome, failure, recovery, and cleanup facts as the API;
 `--json` is the machine surface. A video or live-feed adapter later maps to the
 same normalized-feed and state contract, never a parallel page workflow.
 
+### Bounded POC-completion envelope
+
+The implementation is expected to refine the visual workbench and may add
+small supporting replay actions, CLI flags/subcommands, or internal sequence
+steps that are not enumerated above when they make the one selected journey
+workable and legible. Such an addition remains in this review unit only when it
+satisfies every condition below:
+
+1. It serves the same operator question: replay one supported ordered image
+   source, inspect its real perception overlays and memory effects, and control
+   that replay.
+2. It keeps the image-directory adapter, fixed packaged perception and memory
+   choices, normalized-feed contract, and server-owned perception →
+   `Observation` → memory pipeline intact.
+3. It is reachable through the same `automa vehicles workbench replay` command
+   family and loopback state contract; it adds neither a second execution
+   authority nor a browser-only feature.
+4. It remains observation-only, introduces no vehicle/simulator/worker/Metrics
+   dependency or mutation, and has a focused deterministic test plus an entry
+   in the durable assessment describing why it was needed for the POC.
+
+Permitted examples include refining overlay/ledger layout and accessibility,
+adding a bounded seek or frame-navigation control, adding a replay-command
+option that exposes an already-supported state/action, or extracting a
+CLI-owned helper needed to traverse the same pipeline. They are implementation
+choices in one command family, not independent product features.
+
+An addition is outside this envelope if it adds video or live ingestion, a new
+algorithm or comparison question, a different source/recording contract,
+changed perception/observation/memory semantics, external authority, or a
+second operator goal. It requires a later proposal rather than an expanding
+implementation review. The assessment records every envelope addition and
+every deferred request so reviewers can decide it by these conditions instead
+of reopening the primary question.
+
+### POC finish and evidence boundary
+
+The implementation's deliverable is a POC-ready workbench: a supported source
+can be replayed end to end; its server-produced capture overlays, ordered
+progress, memory effect, failure/recovery state, and declared controls are
+legible; the CLI and page share the same authoritative state; and the page
+remains usable for another run. It does not by itself claim an operator finds
+the POC satisfactory.
+
+The queued `Replay workbench POC acceptance` evidence unit performs one guided
+operator demonstration against those conditions. It records either one
+affirmative minimal-usefulness judgment or a named blocker. A missing stated
+condition returns as a repair; a POC-envelope addition is evaluated against the
+four conditions above; any other request is a separately proposed frontier.
+The evidence session is therefore an acceptance decision, not an unbounded
+visual-polish queue.
+
 ### Long-lived, local lifecycle boundary
 
 The server is loopback-only, remains available across completed, failed,
@@ -123,12 +177,13 @@ of a run; source files are read-only. No vehicle activation, worker, simulator
 configuration, Metrics UI operation, movement, control authority, or default
 recording is part of this slice.
 
-The implementation adds only this one CLI-useful replay entrypoint, common
-normalized-feed seam, and visual workbench journey. It does not redefine the
-M007 catalog or treat historical M007 results as current M008 acceptance. A
-later operator-acceptance/evidence unit owns M008-03, M008-05, and M008-06
-proof; this unit supplies the deterministic visual slice and one-source
-pipeline boundary needed for that review.
+The implementation adds only this one CLI-useful replay command family, common
+normalized-feed seam, and visual workbench journey, including only the bounded
+POC-completion additions defined above. It does not redefine the M007 catalog
+or treat historical M007 results as current M008 acceptance. The queued
+operator-acceptance/evidence unit owns M008-03, M008-05, and M008-06 proof;
+this unit supplies the deterministic visual slice and one-source pipeline
+boundary needed for that review.
 
 ## Ownership
 
@@ -138,6 +193,7 @@ pipeline boundary needed for that review.
 | CLI parse, human output, and `--json` machine boundary | `cli/automa_cli/app.py` plus workbench command module | CLI cannot diverge from the browser's sequence or expose arbitrary execution. |
 | Page rendering and loopback routes | Workbench loopback server and plain page | Render server-owned state and named next actions; no business-logic duplication in JavaScript. |
 | Perception → `Observation` → memory pipeline and existing views | Existing CLI and decision-cycle owners | Reuse public/function contracts and visual semantics; do not fork business logic. |
+| POC-completion additions and residual disposition | Workbench replay runner with the durable assessment | Admit only additions meeting all four envelope conditions; record each addition or defer it as a later frontier. |
 | Candidate assessment and gap disposition | M008 assessment artifact | Preserve the bounded source-grounded selection and residuals through closeout. |
 
 ## Affected Paths
@@ -172,6 +228,7 @@ artifacts, or assessment result is included in this proposal PR.
 | Implementation reconfigures a vehicle/simulator, starts a worker, sends movement/control, uses Metrics, or turns on recording to make the slice work | Reject as out of contract; deterministic tests cover the permitted replay operations. |
 | Existing `/` or `/memory` pages are copied into a second feature definition | Reuse state meaning through the common server contract or document the single adaptation boundary; duplicate lifecycle logic fails review. |
 | Browser-produced overlays or ledger entries disagree with the processed frame | Render only server-produced perception/memory values and presentation shape; browser code cannot substitute pipeline results. |
+| A purported POC refinement adds a new source, semantic pipeline, external authority, or a second operator goal | Reject it from this implementation review and record the named later-proposal disposition. |
 | Generated report path, stdout, or JSON is the only result signal | Fail review: page and CLI provide concise progress, outcome, cleanup, and recovery signals. |
 
 ## External Assumptions
@@ -235,6 +292,9 @@ Deterministic coverage must prove:
 - parser help and both CLI modes use the same runner; `--json` is structured
   and contains no alternate replay authority;
 - API rejects malformed/unknown requests and never accepts raw argv;
+- each visual/control or CLI addition claimed as POC completion is recorded in
+  the assessment and demonstrably meets the envelope's same-journey,
+  same-authority, fixed-semantics, and observation-only conditions;
 - image-directory normalization honors manifest order when present and
   documented lexical order otherwise; it produces stable source/frame identity
   and rejects empty, invalid, ambiguous, duplicate, and over-limit input before
@@ -282,7 +342,7 @@ lifecycle proof for the remaining criteria.
     },
     "M008-02": {
       "status": "Met",
-      "evidence": "PR #{pr} selects workbench.image_replay.v1 as the one CLI-useful reusable composed journey with declared feed inputs, overlays, controls, safety, recovery, and cleanup."
+      "evidence": "PR #{pr} selects workbench.image_replay.v1 as the one CLI-useful reusable composed journey with declared feed inputs, overlays, controls, safety, recovery, cleanup, and a bounded POC-completion envelope."
     },
     "M008-04": {
       "status": "Met",
@@ -303,8 +363,8 @@ lifecycle proof for the remaining criteria.
   ],
   "next_frontier": {
     "state": "none",
-    "reason": "No later frontier is contracted until the selected workbench implementation establishes its assessment and one-source replay/visual boundary.",
-    "revisit_when": "After implementation, select a bounded operator-acceptance/evidence frontier for the remaining workbench persistence, usefulness, and lifecycle proof, including whether to add a video or live adapter."
+    "reason": "The plan already queues the bounded Replay workbench POC acceptance evidence unit after implementation; the handoff must not invent another successor.",
+    "revisit_when": "After the queued evidence unit, select closeout or a separately proposed residual only if its acceptance decision or durable assessment requires it."
   }
 }
 ```

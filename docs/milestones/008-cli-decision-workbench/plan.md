@@ -1,4 +1,4 @@
-# Milestone 008 — M007 Scenario Workbench
+# Milestone 008 — Perception-Memory Workbench Feasibility
 
 | Field | Value |
 | --- | --- |
@@ -13,48 +13,52 @@ Shared planning contract: [README.md](../README.md) · [planning-contract.html](
 
 ## Objective
 
-Establish which M007 CLI sequences function as useful operator features when
-presented in a workbench, then build the visual interfaces that make those
-features usable. The workbench lets a person recognize a feature's purpose,
-provide its inputs, follow its progress, interpret its meaningful signals and
-outcome, and recover or clean up without translating raw commands or runtime
-topology. The exact visual forms may be learned through use, while the core
-engine and CLI remain the execution authority and the milestone still closes
-with a bounded set of real, human-usable workbench features.
+Determine the smallest operator-useful and reusable perception-memory feature
+slice that can be expressed through CLI-owned sequences, then deliver it in a
+long-lived local workbench page. The workbench server runs those authoritative
+sequences and supplies structured state and signals; the browser presents the
+feature without reimplementing its business logic. A bounded audit of the
+relevant M007 sequences, current CLI capabilities, and existing CLI-launched
+pages may select existing candidates or define a limited number of new
+sequences when they are independently useful from both the CLI and the
+workbench. The exact visual form may be learned through operator use. M008
+closes with one usable slice and a durable assessment of CLI, sequence, and
+signal gaps rather than broad scenario coverage or a frontend framework
+migration.
 
 ## Completion Usage
 
 | Workflow | Starting state | Execution | Success signal | Criteria |
 | --- | --- | --- | --- | --- |
-| Primary demonstration | One M007 sequence selected by the baseline has its required local environment available | Open the workbench, choose the feature, provide its inputs, run it, interpret its task-specific visual signals and result, then recover or clean up as needed | The sequence functions as a coherent feature rather than a displayed command list: a person can understand what happened and what to do next without using the shell, while the real CLI path executes safely underneath | M008-03, M008-04, M008-05, M008-07 |
-| Evaluate M007 feature candidates | Accepted M007 sequence registry, catalogs, and evidence | Examine the sequence families through their user goal, required inputs, side effects, state transitions, outputs, human signals, recovery, cleanup, and visual needs | A bounded baseline states which sequences can become useful workbench features now, what interface each needs, and why the remaining sequences are not selected yet | M008-01, M008-02 |
-| Use another workbench feature | A meaningfully different M007 sequence selected by the baseline is available | Choose and run it through the same workbench | The common workbench still handles discovery, execution state, recovery, and cleanup while a task-appropriate interface conveys this feature's distinct signals | M008-03, M008-04, M008-06, M008-07 |
-| Recover a blocked feature | A prerequisite, external capability, CLI command, or worker is unavailable | Inspect the failed step and follow the workbench recovery, or make the named external change, then retry | The failed boundary and next action remain visible; the workbench does not silently reconfigure the simulator, apply movement, or leave a worker running | M008-07 |
+| Primary demonstration | The long-lived local workbench is open and the selected source, perception, and memory prerequisites are available | Provide or choose the supported input, tune the selected processing configuration, run or replay the CLI-owned sequence, follow live state and metadata, inspect the result, and clean up without closing the page | The operator judges one perception-memory task minimally useful; the page remains available for another run; useful progress, outcome, and next-action signals are visible without shell commands or raw JSON; the server uses the real CLI-owned path safely underneath | M008-03, M008-04, M008-05, M008-06 |
+| Assess candidate sequences | Accepted M007 perception-memory journeys, current CLI capabilities, and existing CLI-launched live and review pages | Evaluate a bounded candidate set for operator usefulness, composability, input and state requirements, signal quality, CLI completeness, side effects, recovery, cleanup, and workbench fit | The assessment selects an authoritative sequence set for the slice, or defines only the limited missing sequences that are useful from both CLI and workbench, and records remaining gaps without automatically creating a backlog | M008-01, M008-02, M008-07 |
+| Keep existing pages aligned | Existing CLI-launched perception and memory pages and their structured publications are available | Evolve, reuse, consolidate, or explicitly adapt those signals as the long-lived workbench is built | Signal meaning and sequence behavior have one authority, so changing the feature does not require maintaining separate CLI-page and workbench business definitions | M008-03, M008-04 |
+| Recover a blocked run | A prerequisite, input, external capability, CLI step, or worker is unavailable or fails | Inspect the failed boundary and named next action, make the external change or clean up, then retry from the persistent workbench | Failure and recovery remain visible; the workbench does not silently reconfigure the simulator, apply movement, or leave an unintended worker or session mutation | M008-06 |
 
 ## Scope Boundaries
 
 | In scope | Out of scope |
 | --- | --- |
-| A baseline evaluation of M007 sequence families as candidate workbench features, grounded in their accepted catalogs and evidence | Treating every CLI leaf or M007 candidate as a required frontend feature |
-| A bounded set selected from that baseline and implemented as real features in a local human-facing workbench | A generic workflow builder, speculative frontend backlog, or feature count chosen for coverage alone |
-| A common workbench for feature discovery, inputs, execution state, recovery, and cleanup, with task-appropriate interfaces for each selected feature's signals | Flattening every feature into raw stdout, JSON, logs, or one generic visualization |
-| Real CLI execution and machine-readable results beneath the interface, with the core engine and CLI retaining authority | Reimplementing perception, memory, decision, orchestration, or safety logic in the frontend |
-| Interface shapes that can evolve as the baseline and hands-on use reveal what people need to see | Freezing a final design system, animation set, or layout before the features teach what is useful |
-| Explicit dependency and unavailable states where a selected feature needs behavior not present on the M008 base | Completing M006 cross-environment evidence, changing its decision policy, or copying unfinished M006 work into M008 |
-| A maintainable local UI under this repository's frontend surface | Redesigning the external Metrics UI, remote or public hosting, authentication, desktop packaging, or movement authority |
+| A bounded audit of M007 perception-memory sequences, the current CLI feature set, and existing CLI-launched live and review pages | An exhaustive M007 sequence-family or CLI-leaf inventory, or treating every candidate as a required frontend feature |
+| An authoritative sequence set for one useful feature slice, selected from existing behavior or completed with a limited number of independently CLI-useful sequences | A second-feature quota, a generic workflow builder, speculative frontend backlog, or feature count chosen for coverage alone |
+| One long-lived local workbench page and server that remain available across runs and expose useful input, execution, result, recovery, and cleanup state | Treating per-run generated reports, raw stdout, JSON, logs, or command transcripts as the workbench product surface |
+| Server-side use of CLI-owned sequences and structured results, with the core engine and CLI retaining execution and business-rule authority | Reimplementing sequence, perception, memory, decision, orchestration, or safety logic in browser code |
+| Reuse, consolidation, or one-source adaptation of existing loopback perception-memory pages, publications, and presentation behavior where useful | Maintaining divergent CLI-page and workbench definitions that must be updated independently |
+| The current lightweight local stack, including Python loopback serving and plain HTML, CSS, and JavaScript, evolved only as the selected slice requires | React adoption, a broad frontend-framework migration, a final design system, or a rewrite of every existing static evidence page |
+| Operator-guided interface shapes and display granularity that can evolve while the selected feature purpose and signal meaning stay stable | Completing M006 cross-environment evidence, redesigning the external Metrics UI, remote hosting, authentication, packaging, or movement authority |
 
 ## Exit Criteria
 
 | ID | Criterion | Status | Evidence / remaining gap |
 | --- | --- | --- | --- |
-| M008-01 | A grounded baseline evaluates the accepted M007 sequence families as candidate workbench features by recording each relevant user goal, required inputs and environment, side effects, state transitions, outputs, human-recognizable signals, recovery and cleanup, and visual-interface needs | Unmet | M007 provides sequence definitions and evidence, but their workbench feature value has not been evaluated |
-| M008-02 | The baseline selects a bounded implementation set based on user usefulness and interface feasibility, and explicitly records why other M007 sequences are deferred or unsuitable without turning them into a backlog | Unmet | Selection follows baseline evidence rather than a predetermined sequence count or coverage target |
-| M008-03 | One local workbench surface discovers and launches the selected features through their real CLI sequences, presents feature inputs and execution state, and does not create a second core-engine or CLI authority | Unmet | The shared workbench boundary has not yet been proposed or implemented |
-| M008-04 | Each implemented feature has a usable visual interface that conveys its task-specific signals, state, and outcome without requiring raw command transcripts, JSON, runtime files, or internal topology as the primary explanation | Unmet | Exact visual forms remain intentionally open until the baseline and hands-on use establish them |
-| M008-05 | One baseline-selected M007 sequence works end to end as a human-usable workbench feature with real inputs, execution, recognizable success or failure, recovery, and cleanup | Unmet | The baseline must choose the primary feature before implementation is contracted |
-| M008-06 | At least one meaningfully different baseline-selected M007 sequence works through the same workbench while retaining the interface needed for its distinct signals, proving the product can grow without an engine or CLI fork | Unmet | A second feature is required to distinguish a reusable workbench from a one-off visual wrapper |
-| M008-07 | Every implemented feature preserves its declared safety and side-effect boundaries, reports unavailable dependencies and exact recovery, avoids hidden simulator reconfiguration, and leaves no unintended worker or session mutation after cleanup | Unmet | Safety, failure, and cleanup proof must accompany each selected feature |
-| M008-08 | Closeout confirms the M007 feature baseline, bounded feature selection, usable workbench interfaces, real CLI parity, safe recovery and cleanup, and residual limits, then records the next product decision without hiding unfinished work | Unmet | Milestone closeout is selected only after the implementation criteria are Met |
+| M008-01 | A grounded, bounded assessment evaluates the relevant M007 perception-memory journeys, current CLI capabilities, and existing CLI-launched pages for operator usefulness, composability, required inputs and state, signal quality, CLI completeness, side effects, recovery, cleanup, and workbench fit | Unmet | Accepted M007 evidence and current pages provide inputs, but this workbench-feasibility assessment has not been completed |
+| M008-02 | The assessment selects an authoritative sequence set for one useful slice; any newly defined sequence is limited, independently useful from the CLI, reusable in a larger feature, and explicit about inputs, signals, safety, recovery, and cleanup | Unmet | Existing candidates are not assumed sufficient, and missing behavior is not automatically converted into implementation work |
+| M008-03 | One long-lived local workbench page remains available across repeated runs while its server invokes CLI-owned sequences and maintains structured run state; the browser does not become a second sequence or business-logic authority, and delivery does not require React or a broad framework migration | Unmet | The current loopback server and plain pages are a starting point, not yet a persistent workbench contract |
+| M008-04 | Existing CLI-launched perception-memory pages and their signal publications are reused, consolidated, or given an explicit one-source adaptation boundary so the CLI page and workbench do not require divergent feature definitions | Unmet | Current live and static pages expose useful pieces, but their workbench reuse and synchronization boundary has not been established |
+| M008-05 | One selected perception-memory slice works end to end with a supported real input, meaningful tunable processing where the slice requires it, recognizable live and result signals, and an interface whose minimal usefulness and display granularity are accepted by the operator | Unmet | Exact visual form remains intentionally adaptive; one operator-accepted slice is sufficient for M008 feasibility |
+| M008-06 | The implemented slice preserves its declared observation-only and side-effect boundaries, reports unavailable dependencies and exact recovery, avoids hidden simulator reconfiguration, and leaves no unintended worker or session mutation after cleanup | Unmet | Safety, failure, repeated-run lifecycle, and cleanup proof must accompany the slice |
+| M008-07 | Closeout records a durable CLI, sequence, signal, and page-surface gap assessment, distinguishing limitations worth a later product decision from observations that require no follow-up | Unmet | Feasibility findings must survive the implementation without becoming an automatic backlog |
+| M008-08 | Closeout confirms the selected sequence contract, one operator-accepted workbench slice, CLI and existing-page alignment, safe recovery and cleanup, and residual limits, then records the next product decision without hiding unfinished work | Unmet | Milestone closeout is selected only after the implementation criteria are Met |
 
 ## Current Delivery
 
@@ -102,6 +106,7 @@ with a bounded set of real, human-usable workbench features.
 | --- | --- | --- |
 | M008 activation | ready_for_proposal | Activated from `main` after M007 closeout; M006 remains active on its own branch with draft cumulative PR #70 intentionally deferred, and M008 uses a separate branch and cumulative review surface. |
 | Idle | idle | Plan revision: reframe M008 around evaluating M007 sequences as candidate workbench features, selecting a bounded useful set, and building interfaces that convey each selected feature's signals; the work order remains unchanged until the first proposal retargets it. |
+| Idle | idle | Plan revision: bound M008 to one operator-useful perception-memory feasibility slice, a long-lived local workbench that reuses CLI-owned sequences and existing page signals, and a durable gap assessment; remove all-sequence and second-feature quotas, keep React out of scope, and leave the work order unchanged until proposal selection. |
 
 ## Accepted Review Units
 
@@ -112,11 +117,13 @@ with a bounded set of real, human-usable workbench features.
 
 | Risk or assumption | Consequence | Resolution path |
 | --- | --- | --- |
-| M007 sequences were accepted as CLI journeys, not proven as workbench features | A sequence may be technically runnable yet have weak user value or signals that do not support a usable interface | Use the baseline to evaluate feature purpose and visual proof before selecting implementation work |
-| Different M007 features may need materially different visual explanations | A prematurely generic interface could hide the signals that make each feature useful | Keep discovery and execution common while allowing task-specific views inside the same workbench |
-| The smallest reliable CLI-to-workbench transport is not yet chosen | A premature service or protocol could create work before real feature needs are understood | Let the first implementation proposal choose the smallest transport that preserves real CLI behavior and machine-readable results |
+| M007 sequences were accepted as CLI journeys, not proven as workbench features | A sequence may be technically runnable yet have weak user value, poor reuse, or signals that do not support a usable interface | Bound the assessment to the current perception-memory source and let operator acceptance select one slice before implementation expands |
+| Existing frontend pieces are split between long-running perception-memory routes and generated per-run review pages | A new workbench could duplicate signal meaning, rendering behavior, or lifecycle state and drift from the CLI-launched pages | Inventory the existing publications and views, then reuse, consolidate, or define one source and explicit adaptations before adding parallel behavior |
+| The current live page server is associated with a worker rather than an explicit multi-run workbench session | Repeated runs, cancellation, stale state, or cleanup may be confusing even if a single run works | Let the slice proposal define the smallest persistent session and run identity that keeps state, failure, and cleanup legible |
+| Arbitrary capture or video upload is a candidate interaction, not a proven CLI input | Committing to upload could create a workbench-only ingestion path or unnecessary conversion work | First assess the recorded-source contracts already accepted in M007; add input sequencing only when it is useful and authoritative from the CLI as well |
+| The smallest reliable CLI-to-workbench invocation boundary is not yet chosen | A premature subprocess, service, or in-process API decision could create work before the selected feature needs are understood | Let the proposal choose the smallest server-side boundary that preserves CLI-owned sequence behavior and structured results |
 | The full M006 shadow decision surfaces are accepted on the M006 branch but are not in `main` | A baseline candidate that needs the full shadow proposal lifecycle cannot be implemented from the current M008 base | Keep M006 ownership separate and mark the candidate unavailable or deferred until its CLI contract is available; do not duplicate it in M008 |
-| Human-friendly presentation may change as operators use selected features | Freezing a visual layout would turn useful feedback into rework | Keep feature purpose, signals, and outcome stable while allowing the interface form to adapt |
+| Human-friendly presentation and the minimally useful display granularity are operator judgments | Freezing a visual layout too early creates rework, while leaving acceptance implicit makes feasibility impossible to close | Keep feature purpose and signal meaning stable, make the operator the acceptance owner, and allow the visual form to adapt during the milestone |
 
 ## Milestone Decisions
 
@@ -130,6 +137,10 @@ with a bounded set of real, human-usable workbench features.
 | 2026-08-27 | Treat M007 sequences as candidate product features rather than command lists to display | M008 must test whether each relevant sequence has a coherent user goal and visual signals before investing in its interface |
 | 2026-08-27 | Use a baseline to select the bounded feature set and learn exact interface forms through use | This keeps the milestone adaptable without making its deliverable vague: a baseline plus real usable interfaces must exist at closeout |
 | 2026-08-27 | Supersede the fixed perception-memory-first assumption with an M007 feature baseline | The first proposal may retarget the unchanged work-order node through the normal proposal window; no proposal or implementation has started |
+| 2026-08-27 | Bound the feasibility audit to perception-memory candidates and permit limited new sequences only when useful from both CLI and workbench | This tests the source code and operator needs that exist now without shoehorning weak M007 candidates or auditing unrelated coverage |
+| 2026-08-27 | Make one operator-accepted workbench slice and a durable gap assessment sufficient for M008 | A second-feature quota would create work beyond the current feasibility question; reuse is assessed in sequence and page boundaries rather than feature count |
+| 2026-08-27 | Evolve a long-lived local page from the existing CLI-launched pages and signals, keeping sequence execution server-side and CLI-owned | The workbench must stay aligned with the CLI and remain available across runs without duplicating business logic in the browser |
+| 2026-08-27 | Keep React and broad frontend-framework migration out of M008 | The current Python loopback server and plain HTML, CSS, and JavaScript can prove the useful product slice before a framework decision is warranted |
 
 ## Closeout
 
@@ -139,13 +150,18 @@ Closeout will produce:
 
 - `closeout.md`;
 - a completed-milestone ledger entry;
-- a baseline evaluating the relevant M007 sequence families as workbench
-  features and recording the bounded implementation selection;
-- a human-runnable workbench with task-appropriate interfaces for the selected
-  features, backed by real CLI sequence results;
-- end-to-end evidence for a primary feature and at least one meaningfully
-  different feature through the same workbench;
-- explicit recovery, cleanup, safety, and unavailable-dependency limits;
-- a residual-risk statement covering deferred M007 candidates, M006 dependency,
-  external Metrics UI capabilities, movement authority, transport limits, and
-  visual design that remains intentionally adaptable.
+- a bounded perception-memory candidate assessment and the selected
+  authoritative CLI sequence definitions;
+- one long-lived local workbench with an operator-accepted, human-usable
+  perception-memory slice backed by real CLI-owned execution and structured
+  signals;
+- a recorded reuse, consolidation, or adaptation boundary for the existing
+  CLI-launched perception-memory pages and publications;
+- end-to-end evidence for useful input, tuning where selected, repeated-run
+  state, meaningful signals, failure, recovery, cleanup, and observation-only
+  safety;
+- a durable gap assessment that separates later product decisions from findings
+  that need no follow-up;
+- a residual-risk statement covering deferred candidates, M006 dependency,
+  source-input limits, external Metrics UI capabilities, movement authority,
+  transport limits, and visual design that remains intentionally adaptable.

@@ -1123,8 +1123,8 @@ def validate_plan_text(text: str) -> PlanState:
             prior_frontier, prior_state, _ = prior_history_row
             if history_frontier == prior_frontier:
                 is_plan_revision = (
-                    prior_state == "ready_for_proposal"
-                    and history_state == "ready_for_proposal"
+                    prior_state == history_state
+                    and history_state in {"ready_for_proposal", "idle"}
                     and history_evidence.startswith("Plan revision:")
                 )
                 if (

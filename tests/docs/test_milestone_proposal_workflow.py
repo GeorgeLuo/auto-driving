@@ -2998,7 +2998,7 @@ class ValidatePrCommandTests(unittest.TestCase):
             pull_request_author=REPAIR_PR_AUTHOR,
             head_oid="a" * 40,
             commits=("a" * 40,),
-            reviews=(),
+            reviews=(_contract_review(head_oid="a" * 40),),
         )
         payload = {
             "pull_request": {
@@ -3034,6 +3034,91 @@ class ValidatePrCommandTests(unittest.TestCase):
             validate_diff.call_args.kwargs["repair_review_metadata"],
             metadata,
         )
+
+    def test_event_validation_rejects_proposal_without_exact_head_receipt(self) -> None:
+        for head_ref, transition in (
+            (PROPOSAL_BRANCH, "proposal"),
+            (PROPOSAL_AMENDMENT_BRANCH, "proposal_amendment"),
+        ):
+            with self.subTest(transition=transition):
+                metadata = RepairReviewMetadata(
+                    pull_request_number=60,
+                    pull_request_url=REPAIR_PR_URL,
+                    pull_request_author=REPAIR_PR_AUTHOR,
+                    head_oid="a" * 40,
+                    commits=("a" * 40,),
+                    reviews=(),
+                )
+                payload = {
+                    "pull_request": {
+                        "number": 60,
+                        "body": _review_unit_body(),
+                    }
+                }
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    event_path = Path(temp_dir) / "event.json"
+                    event_path.write_text(json.dumps(payload), encoding="utf-8")
+                    with (
+                        mock.patch(
+                            "docs.milestones.workflow._fetch_pr_repair_review_metadata",
+                            return_value=metadata,
+                        ),
+                        mock.patch(
+                            "docs.milestones.workflow.validate_review_unit_git_diff",
+                            return_value=transition,
+                        ),
+                    ):
+                        with self.assertRaisesRegex(
+                            PlanContractError,
+                            "proposal merge requires an exact-head",
+                        ):
+                            _cmd_validate_pr(
+                                base_ref=MILESTONE_BRANCH,
+                                head_ref=head_ref,
+                                base_sha="b" * 40,
+                                head_sha="a" * 40,
+                                event_path=event_path,
+                                body_path=None,
+                            )
+
+    def test_event_validation_does_not_gate_implementation(self) -> None:
+        metadata = RepairReviewMetadata(
+            pull_request_number=60,
+            pull_request_url=REPAIR_PR_URL,
+            pull_request_author=REPAIR_PR_AUTHOR,
+            head_oid="a" * 40,
+            commits=("a" * 40,),
+            reviews=(),
+        )
+        payload = {
+            "pull_request": {
+                "number": 60,
+                "body": _review_unit_body(),
+            }
+        }
+        with tempfile.TemporaryDirectory() as temp_dir:
+            event_path = Path(temp_dir) / "event.json"
+            event_path.write_text(json.dumps(payload), encoding="utf-8")
+            with (
+                mock.patch(
+                    "docs.milestones.workflow._fetch_pr_repair_review_metadata",
+                    return_value=metadata,
+                ),
+                mock.patch(
+                    "docs.milestones.workflow.validate_review_unit_git_diff",
+                    return_value="implementation",
+                ),
+            ):
+                result = _cmd_validate_pr(
+                    base_ref=MILESTONE_BRANCH,
+                    head_ref=IMPLEMENTATION_BRANCH,
+                    base_sha="b" * 40,
+                    head_sha="a" * 40,
+                    event_path=event_path,
+                    body_path=None,
+                )
+
+        self.assertEqual(result, 0)
 
 
 if __name__ == "__main__":

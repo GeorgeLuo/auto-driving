@@ -2739,7 +2739,11 @@ def _require_merged_head_unchanged(metadata: RepairReviewMetadata) -> None:
         )
 
 
-def _require_exact_head_accepted(metadata: RepairReviewMetadata) -> None:
+def _require_exact_head_accepted(
+    metadata: RepairReviewMetadata,
+    *,
+    label: str = "completion",
+) -> None:
     decisions = _exact_head_contract_decisions(metadata)
     outstanding = sorted(
         reviewer
@@ -2748,12 +2752,12 @@ def _require_exact_head_accepted(metadata: RepairReviewMetadata) -> None:
     )
     if outstanding:
         raise PlanContractError(
-            "completion requires no exact-head Contract Review Receipt with "
+            f"{label} requires no exact-head Contract Review Receipt with "
             f"Outcome: changes_requested (outstanding: {', '.join(outstanding)})"
         )
     if "accepted" not in decisions.values():
         raise PlanContractError(
-            "completion requires an exact-head Contract Review Receipt with "
+            f"{label} requires an exact-head Contract Review Receipt with "
             "Outcome: accepted"
         )
 
@@ -5342,6 +5346,15 @@ def _cmd_validate_pr(
     if transition is None:
         print(f"PR targets {base_ref}; milestone review-unit gate not applicable.")
     else:
+        if transition in {"proposal", "proposal_amendment"}:
+            if repair_review_metadata is None:
+                raise PlanContractError(
+                    "proposal merge gate requires event-backed GitHub review metadata"
+                )
+            _require_exact_head_accepted(
+                repair_review_metadata,
+                label="proposal merge",
+            )
         print(f"Valid {transition} PR transition into {base_ref}.")
     return 0
 

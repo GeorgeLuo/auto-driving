@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="ceb95932d79b307fa5f3ba3e7e7b7fa1a0657b6c06ccf7e646849ea0e004aa6c">
+  <meta name="source-sha256" content="f84b384e25c93df39364c402caa79406dcad648a7c39d02c1981332fb509677c">
   <base target="_blank">
   <title>Milestone plan — 008-cli-decision-workbench</title>
   <style>
@@ -100,17 +100,17 @@
 <p>Shared planning contract: <a href="../README.md">README.md</a> · <a href="../planning-contract.html">planning-contract.html</a></p>
 <h2>Objective</h2>
 <p>Determine the smallest operator-useful and reusable perception-memory feature
-slice that can be expressed through CLI-owned sequences, then deliver it in a
-long-lived local workbench page. The workbench server runs those authoritative
-sequences and supplies structured state and signals; the browser presents the
-feature without reimplementing its business logic. A bounded audit of the
-relevant M007 sequences, current CLI capabilities, and existing CLI-launched
-pages may select existing candidates or define a limited number of new
-sequences when they are independently useful from both the CLI and the
-workbench. The exact visual form may be learned through operator use. M008
-closes with one usable slice and a durable assessment of CLI, sequence, and
-signal gaps rather than broad scenario coverage or a frontend framework
-migration.</p>
+slice that can be expressed through CLI-useful sequences, then deliver it in a
+long-lived local workbench page. The CLI and workbench use the same
+authoritative server-side sequence implementation and structured state; the
+browser presents the feature without reimplementing its business logic. A
+bounded audit of the relevant M007 sequences, current CLI capabilities, and
+existing CLI-launched pages may select existing candidates or define a limited
+number of new sequences when they are independently useful from both the CLI
+and the workbench. The exact invocation boundary and visual form may be learned
+through operator use. M008 closes with one usable slice and a durable
+assessment of CLI, sequence, and signal gaps rather than broad scenario
+coverage or a frontend framework migration.</p>
 <h2>Completion Usage</h2>
 <table>
 <thead>
@@ -126,29 +126,15 @@ migration.</p>
 <tr>
 <td>Primary demonstration</td>
 <td>The long-lived local workbench is open and the selected source, perception, and memory prerequisites are available</td>
-<td>Provide or choose the supported input, tune the selected processing configuration, run or replay the CLI-owned sequence, follow live state and metadata, inspect the result, and clean up without closing the page</td>
-<td>The operator judges one perception-memory task minimally useful; the page remains available for another run; useful progress, outcome, and next-action signals are visible without shell commands or raw JSON; the server uses the real CLI-owned path safely underneath</td>
+<td>Provide or choose the supported input, adjust processing settings when the selected slice exposes them, run or replay the authoritative sequence, follow live state and metadata, inspect the result, and clean up without closing the page</td>
+<td>One recorded operator acceptance confirms that the perception-memory task is minimally useful; the page remains available for another run; useful progress, outcome, and next-action signals are visible without shell commands or raw JSON; the server uses the same sequence behavior as the CLI</td>
 <td>M008-03, M008-04, M008-05, M008-06</td>
 </tr>
 <tr>
-<td>Assess candidate sequences</td>
-<td>Accepted M007 perception-memory journeys, current CLI capabilities, and existing CLI-launched live and review pages</td>
-<td>Evaluate a bounded candidate set for operator usefulness, composability, input and state requirements, signal quality, CLI completeness, side effects, recovery, cleanup, and workbench fit</td>
-<td>The assessment selects an authoritative sequence set for the slice, or defines only the limited missing sequences that are useful from both CLI and workbench, and records remaining gaps without automatically creating a backlog</td>
-<td>M008-01, M008-02, M008-07</td>
-</tr>
-<tr>
-<td>Keep existing pages aligned</td>
-<td>Existing CLI-launched perception and memory pages and their structured publications are available</td>
-<td>Evolve, reuse, consolidate, or explicitly adapt those signals as the long-lived workbench is built</td>
-<td>Signal meaning and sequence behavior have one authority, so changing the feature does not require maintaining separate CLI-page and workbench business definitions</td>
-<td>M008-03, M008-04</td>
-</tr>
-<tr>
 <td>Recover a blocked run</td>
-<td>A prerequisite, input, external capability, CLI step, or worker is unavailable or fails</td>
+<td>A declared operator-reachable prerequisite, input, external capability, sequence step, or worker fails</td>
 <td>Inspect the failed boundary and named next action, make the external change or clean up, then retry from the persistent workbench</td>
-<td>Failure and recovery remain visible; the workbench does not silently reconfigure the simulator, apply movement, or leave an unintended worker or session mutation</td>
+<td>The selected slice's declared failure and recovery state remains visible; the workbench does not silently reconfigure the simulator, apply movement, or leave an unintended worker or session mutation</td>
 <td>M008-06</td>
 </tr>
 </tbody>
@@ -175,12 +161,12 @@ migration.</p>
 <td>Treating per-run generated reports, raw stdout, JSON, logs, or command transcripts as the workbench product surface</td>
 </tr>
 <tr>
-<td>Server-side use of CLI-owned sequences and structured results, with the core engine and CLI retaining execution and business-rule authority</td>
-<td>Reimplementing sequence, perception, memory, decision, orchestration, or safety logic in browser code</td>
+<td>One authoritative server-side sequence implementation and structured result contract shared by the CLI and workbench</td>
+<td>Reimplementing sequence, perception, memory, decision, orchestration, or safety logic in browser code, or maintaining divergent CLI and workbench execution paths</td>
 </tr>
 <tr>
-<td>Reuse, consolidation, or one-source adaptation of existing loopback perception-memory pages, publications, and presentation behavior where useful</td>
-<td>Maintaining divergent CLI-page and workbench definitions that must be updated independently</td>
+<td>Reuse, consolidation, or one-source adaptation of the loopback pages, publications, and presentation behavior used by the selected slice</td>
+<td>Aligning every existing page or maintaining divergent CLI-page and workbench definitions that must be updated independently</td>
 </tr>
 <tr>
 <td>The current lightweight local stack, including Python loopback serving and plain HTML, CSS, and JavaScript, evolved only as the selected slice requires</td>
@@ -189,6 +175,10 @@ migration.</p>
 <tr>
 <td>Operator-guided interface shapes and display granularity that can evolve while the selected feature purpose and signal meaning stay stable</td>
 <td>Completing M006 cross-environment evidence, redesigning the external Metrics UI, remote hosting, authentication, packaging, or movement authority</td>
+</tr>
+<tr>
+<td>Enabling or foundational work that a proposal ties directly to an existing exit criterion and one bounded review question, even when its exact mechanism is not named in this plan</td>
+<td>Treating an unnamed mechanism as rejected by default, or expanding scope only because work may be useful later</td>
 </tr>
 </tbody>
 </table>
@@ -217,37 +207,37 @@ migration.</p>
 </tr>
 <tr>
 <td>M008-03</td>
-<td>One long-lived local workbench page remains available across repeated runs while its server invokes CLI-owned sequences and maintains structured run state; the browser does not become a second sequence or business-logic authority, and delivery does not require React or a broad framework migration</td>
+<td>One long-lived local workbench page remains available across repeated runs while its server uses the same authoritative sequence implementation and structured run state as the CLI; the proposal may choose a CLI-process or shared application-API invocation boundary, the browser does not become a second sequence or business-logic authority, and delivery does not require React or a broad framework migration</td>
 <td>Unmet</td>
 <td>The current loopback server and plain pages are a starting point, not yet a persistent workbench contract</td>
 </tr>
 <tr>
 <td>M008-04</td>
-<td>Existing CLI-launched perception-memory pages and their signal publications are reused, consolidated, or given an explicit one-source adaptation boundary so the CLI page and workbench do not require divergent feature definitions</td>
+<td>The existing CLI-launched pages and signal publications used by the selected slice are reused, consolidated, or given an explicit one-source adaptation boundary so the CLI page and workbench do not require divergent feature definitions</td>
 <td>Unmet</td>
-<td>Current live and static pages expose useful pieces, but their workbench reuse and synchronization boundary has not been established</td>
+<td>Current live and static pages expose useful pieces, but the selected slice's reuse and synchronization boundary has not been established</td>
 </tr>
 <tr>
 <td>M008-05</td>
-<td>One selected perception-memory slice works end to end with a supported real input, meaningful tunable processing where the slice requires it, recognizable live and result signals, and an interface whose minimal usefulness and display granularity are accepted by the operator</td>
+<td>One selected perception-memory slice works end to end with a supported real input, meaningful tunable processing where the slice requires it, recognizable live and result signals, and one recorded affirmative operator acceptance of the primary demonstration's minimal usefulness and display granularity</td>
 <td>Unmet</td>
-<td>Exact visual form remains intentionally adaptive; one operator-accepted slice is sufficient for M008 feasibility</td>
+<td>One affirmative acceptance is sufficient for M008; later visual refinement is residual unless it falsifies that accepted demonstration</td>
 </tr>
 <tr>
 <td>M008-06</td>
-<td>The implemented slice preserves its declared observation-only and side-effect boundaries, reports unavailable dependencies and exact recovery, avoids hidden simulator reconfiguration, and leaves no unintended worker or session mutation after cleanup</td>
+<td>The implemented slice preserves its declared observation-only and side-effect boundaries for its named operator-reachable lifecycle cases, shows their failure and recovery state, avoids hidden simulator reconfiguration, and leaves no unintended worker or session mutation after cleanup</td>
 <td>Unmet</td>
-<td>Safety, failure, repeated-run lifecycle, and cleanup proof must accompany the slice</td>
+<td>Safety, failure, repeated-run lifecycle, and cleanup proof is limited to the selected slice's declared cases</td>
 </tr>
 <tr>
 <td>M008-07</td>
-<td>Closeout records a durable CLI, sequence, signal, and page-surface gap assessment, distinguishing limitations worth a later product decision from observations that require no follow-up</td>
+<td>The single bounded assessment used for M008-01 and M008-02 is maintained through closeout with durable CLI, sequence, signal, and page-surface gaps, distinguishing limitations worth a later product decision from observations that require no follow-up</td>
 <td>Unmet</td>
-<td>Feasibility findings must survive the implementation without becoming an automatic backlog</td>
+<td>Feasibility findings must survive the implementation without becoming a second assessment or automatic backlog</td>
 </tr>
 <tr>
 <td>M008-08</td>
-<td>Closeout confirms the selected sequence contract, one operator-accepted workbench slice, CLI and existing-page alignment, safe recovery and cleanup, and residual limits, then records the next product decision without hiding unfinished work</td>
+<td>Closeout confirms the selected sequence contract, one operator-accepted workbench slice, CLI and selected-page alignment, safe recovery and cleanup, and residual limits, then records whether another product decision is warranted without hiding unfinished work</td>
 <td>Unmet</td>
 <td>Milestone closeout is selected only after the implementation criteria are Met</td>
 </tr>
@@ -315,6 +305,11 @@ migration.</p>
 <td>idle</td>
 <td>Plan revision: bound M008 to one operator-useful perception-memory feasibility slice, a long-lived local workbench that reuses CLI-owned sequences and existing page signals, and a durable gap assessment; remove all-sequence and second-feature quotas, keep React out of scope, and leave the work order unchanged until proposal selection.</td>
 </tr>
+<tr>
+<td>Idle</td>
+<td>idle</td>
+<td>Plan revision: tighten M008's finite acceptance boundary, limit alignment and recovery to the selected slice, permit one shared server-side CLI and workbench implementation, collapse repeated evidence obligations, remove superseded multi-feature decisions, and preserve frontier-discovered enabling work without changing the work order.</td>
+</tr>
 </tbody>
 </table>
 <h2>Accepted Review Units</h2>
@@ -354,9 +349,9 @@ migration.</p>
 <td>Bound the assessment to the current perception-memory source and let operator acceptance select one slice before implementation expands</td>
 </tr>
 <tr>
-<td>Existing frontend pieces are split between long-running perception-memory routes and generated per-run review pages</td>
+<td>Frontend pieces used by the selected slice may be split between long-running perception-memory routes and generated per-run review pages</td>
 <td>A new workbench could duplicate signal meaning, rendering behavior, or lifecycle state and drift from the CLI-launched pages</td>
-<td>Inventory the existing publications and views, then reuse, consolidate, or define one source and explicit adaptations before adding parallel behavior</td>
+<td>Inventory only the selected slice's publications and views, then reuse, consolidate, or define one source and explicit adaptations before adding parallel behavior</td>
 </tr>
 <tr>
 <td>The current live page server is associated with a worker rather than an explicit multi-run workbench session</td>
@@ -371,7 +366,7 @@ migration.</p>
 <tr>
 <td>The smallest reliable CLI-to-workbench invocation boundary is not yet chosen</td>
 <td>A premature subprocess, service, or in-process API decision could create work before the selected feature needs are understood</td>
-<td>Let the proposal choose the smallest server-side boundary that preserves CLI-owned sequence behavior and structured results</td>
+<td>Let the proposal choose the smallest boundary over one authoritative server-side sequence implementation and structured result contract</td>
 </tr>
 <tr>
 <td>The full M006 shadow decision surfaces are accepted on the M006 branch but are not in <code>main</code></td>
@@ -381,7 +376,7 @@ migration.</p>
 <tr>
 <td>Human-friendly presentation and the minimally useful display granularity are operator judgments</td>
 <td>Freezing a visual layout too early creates rework, while leaving acceptance implicit makes feasibility impossible to close</td>
-<td>Keep feature purpose and signal meaning stable, make the operator the acceptance owner, and allow the visual form to adapt during the milestone</td>
+<td>Record one affirmative operator judgment against the primary demonstration; later refinement is residual unless it falsifies that acceptance</td>
 </tr>
 </tbody>
 </table>
@@ -402,13 +397,8 @@ migration.</p>
 </tr>
 <tr>
 <td>2026-08-26</td>
-<td>Keep the engine, CLI, and workbench layered in that order</td>
-<td>The workbench should make the CLI understandable and usable without creating a second decision authority</td>
-</tr>
-<tr>
-<td>2026-08-26</td>
-<td>Start with one accepted M007 scenario and prove a second through the same mechanism later</td>
-<td>A real vertical slice establishes feasibility and scaling evidence without creating a speculative frontend backlog</td>
+<td>Keep the engine, shared server-side sequence implementation, CLI, and workbench layered in that order</td>
+<td>The CLI and workbench should expose the same behavior without creating a second decision authority</td>
 </tr>
 <tr>
 <td>2026-08-26</td>
@@ -427,18 +417,8 @@ migration.</p>
 </tr>
 <tr>
 <td>2026-08-27</td>
-<td>Use a baseline to select the bounded feature set and learn exact interface forms through use</td>
-<td>This keeps the milestone adaptable without making its deliverable vague: a baseline plus real usable interfaces must exist at closeout</td>
-</tr>
-<tr>
-<td>2026-08-27</td>
-<td>Supersede the fixed perception-memory-first assumption with an M007 feature baseline</td>
-<td>The first proposal may retarget the unchanged work-order node through the normal proposal window; no proposal or implementation has started</td>
-</tr>
-<tr>
-<td>2026-08-27</td>
-<td>Bound the feasibility audit to perception-memory candidates and permit limited new sequences only when useful from both CLI and workbench</td>
-<td>This tests the source code and operator needs that exist now without shoehorning weak M007 candidates or auditing unrelated coverage</td>
+<td>Use one bounded assessment to select one perception-memory slice, permitting limited new sequences only when useful from both CLI and workbench</td>
+<td>This keeps the milestone adaptable without requiring multiple assessments, features, interface proofs, or unrelated coverage</td>
 </tr>
 <tr>
 <td>2026-08-27</td>
@@ -447,8 +427,8 @@ migration.</p>
 </tr>
 <tr>
 <td>2026-08-27</td>
-<td>Evolve a long-lived local page from the existing CLI-launched pages and signals, keeping sequence execution server-side and CLI-owned</td>
-<td>The workbench must stay aligned with the CLI and remain available across runs without duplicating business logic in the browser</td>
+<td>Evolve a long-lived local page from the selected existing CLI-launched pages and signals, using one authoritative server-side sequence implementation</td>
+<td>The workbench must stay aligned with the CLI and remain available across runs without requiring a CLI subprocess or duplicating business logic in the browser</td>
 </tr>
 <tr>
 <td>2026-08-27</td>
@@ -459,22 +439,21 @@ migration.</p>
 </table>
 <h2>Closeout</h2>
 <p>Blocked until every exit criterion is <code>Met</code>.</p>
+<p>One evolving assessment is the shared evidence for M008-01, M008-02, and
+M008-07. One integrated primary demonstration is the shared evidence for
+M008-03 through M008-06. Closeout cites these artifacts and does not reproduce
+them as new work.</p>
 <p>Closeout will produce:</p>
 <ul>
 <li><code>closeout.md</code>;</li>
 <li>a completed-milestone ledger entry;</li>
-<li>a bounded perception-memory candidate assessment and the selected
-  authoritative CLI sequence definitions;</li>
+<li>the bounded perception-memory assessment containing the selected
+  authoritative sequence contract and durable gap disposition;</li>
 <li>one long-lived local workbench with an operator-accepted, human-usable
-  perception-memory slice backed by real CLI-owned execution and structured
-  signals;</li>
-<li>a recorded reuse, consolidation, or adaptation boundary for the existing
-  CLI-launched perception-memory pages and publications;</li>
-<li>end-to-end evidence for useful input, tuning where selected, repeated-run
-  state, meaningful signals, failure, recovery, cleanup, and observation-only
-  safety;</li>
-<li>a durable gap assessment that separates later product decisions from findings
-  that need no follow-up;</li>
+  perception-memory slice backed by the shared server-side implementation and
+  structured signals, including its selected-page alignment, declared
+  repeated-run lifecycle, failure, recovery, cleanup, and observation-only
+  safety evidence;</li>
 <li>a residual-risk statement covering deferred candidates, M006 dependency,
   source-input limits, external Metrics UI capabilities, movement authority,
   transport limits, and visual design that remains intentionally adaptable.</li>

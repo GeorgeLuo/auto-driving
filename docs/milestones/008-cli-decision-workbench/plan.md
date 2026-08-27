@@ -5,7 +5,7 @@
 | Status | Active |
 | Milestone branch | `milestone/008-cli-decision-workbench` |
 | Cumulative PR | [#167](https://github.com/GeorgeLuo/auto-driving/pull/167) (draft until whole-milestone closeout) |
-| Current frontier | None (idle; first proposal not started) |
+| Current frontier | Perception-memory workbench journey |
 | Started | 2026-08-26 |
 | Action policy | Observation-only; no applied vehicle movement |
 
@@ -63,15 +63,9 @@ coverage or a frontend framework migration.
 
 ### Current Frontier
 
-**None**
-
-- Reason: M008 is open with its first bounded work-order node queued; no proposal review has started.
-- Revisit when: The operator is ready to review the first workbench journey proposal.
-
-### Next-Frontier Candidate
-
 **Perception-memory workbench journey**
 
+- Workflow state: proposal_in_review
 - Proposal branch: `m008/perception-memory-workbench-proposal`
 - Implementation branch: `m008/perception-memory-workbench`
 - Proposal path: `docs/milestones/008-cli-decision-workbench/proposals/perception-memory-workbench.md`
@@ -82,22 +76,17 @@ coverage or a frontend framework migration.
 - Prerequisite: The accepted M007 continuity catalog and CLI sequence runner are available on `main`, and a supported local observation-only run can be prepared.
 - Milestone-level non-goal: Full M006 shadow-decision evidence, all M007 scenarios, engine or CLI redesign, Metrics UI redesign, movement, or remote hosting.
 
+### Next-Frontier Candidate
+
+**None**
+
+- Reason: No remaining work-order node is contracted.
+- Revisit when: The next proposal may introduce a node.
+
 ### Frontier Map
 
-- Path: `Perception-memory workbench journey`
+- Path: none
 - Cadence: linked-list
-
-#### Node: Perception-memory workbench journey
-
-- Proposal branch: `m008/perception-memory-workbench-proposal`
-- Implementation branch: `m008/perception-memory-workbench`
-- Proposal path: `docs/milestones/008-cli-decision-workbench/proposals/perception-memory-workbench.md`
-- Review kind: Behavioral feature slice
-- Review question: Can an operator run the accepted M007 perception-to-memory lifecycle sequence from a local workbench and inspect the real CLI lifecycle, results, and cleanup without shell commands, mock data, hidden simulator changes, or a second execution authority?
-- Acceptance owner: Workbench scenario runner and CLI machine-readable boundary
-- Exit criteria affected: M008-01, M008-02, M008-04
-- Prerequisite: The accepted M007 continuity catalog and CLI sequence runner are available on `main`, and a supported local observation-only run can be prepared.
-- Non-goals: Full M006 shadow-decision evidence, all M007 scenarios, engine or CLI redesign, Metrics UI redesign, movement, or remote hosting.
 
 ## Workflow History
 
@@ -107,6 +96,7 @@ coverage or a frontend framework migration.
 | Idle | idle | Plan revision: reframe M008 around evaluating M007 sequences as candidate workbench features, selecting a bounded useful set, and building interfaces that convey each selected feature's signals; the work order remains unchanged until the first proposal retargets it. |
 | Idle | idle | Plan revision: bound M008 to one operator-useful perception-memory feasibility slice, a long-lived local workbench that reuses CLI-owned sequences and existing page signals, and a durable gap assessment; remove all-sequence and second-feature quotas, keep React out of scope, and leave the work order unchanged until proposal selection. |
 | Idle | idle | Plan revision: tighten M008's finite acceptance boundary, limit alignment and recovery to the selected slice, permit one shared server-side CLI and workbench implementation, collapse repeated evidence obligations, remove superseded multi-feature decisions, and preserve frontier-discovered enabling work without changing the work order. |
+| Perception-memory workbench journey | proposal_in_review | Started m008/perception-memory-workbench-proposal. |
 
 ## Accepted Review Units
 

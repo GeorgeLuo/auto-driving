@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="f84b384e25c93df39364c402caa79406dcad648a7c39d02c1981332fb509677c">
+  <meta name="source-sha256" content="f7e9a4ef8c866092984b09c0a2b0d8fe499c3e6d2e2671bf20dfa24ab7eab029">
   <base target="_blank">
   <title>Milestone plan — 008-cli-decision-workbench</title>
   <style>
@@ -85,7 +85,7 @@
 </tr>
 <tr>
 <td>Current frontier</td>
-<td>None (idle; first proposal not started)</td>
+<td>Perception-memory workbench journey</td>
 </tr>
 <tr>
 <td>Started</td>
@@ -245,14 +245,9 @@ coverage or a frontend framework migration.</p>
 </table>
 <h2>Current Delivery</h2>
 <h3>Current Frontier</h3>
-<p><strong>None</strong></p>
-<ul>
-<li>Reason: M008 is open with its first bounded work-order node queued; no proposal review has started.</li>
-<li>Revisit when: The operator is ready to review the first workbench journey proposal.</li>
-</ul>
-<h3>Next-Frontier Candidate</h3>
 <p><strong>Perception-memory workbench journey</strong></p>
 <ul>
+<li>Workflow state: proposal_in_review</li>
 <li>Proposal branch: <code>m008/perception-memory-workbench-proposal</code></li>
 <li>Implementation branch: <code>m008/perception-memory-workbench</code></li>
 <li>Proposal path: <code>docs/milestones/008-cli-decision-workbench/proposals/perception-memory-workbench.md</code></li>
@@ -261,24 +256,18 @@ coverage or a frontend framework migration.</p>
 <li>Acceptance owner: Workbench scenario runner and CLI machine-readable boundary</li>
 <li>Exit criteria affected: M008-01, M008-02, M008-04</li>
 <li>Prerequisite: The accepted M007 continuity catalog and CLI sequence runner are available on <code>main</code>, and a supported local observation-only run can be prepared.</li>
-<li>Non-goals: Full M006 shadow-decision evidence, all M007 scenarios, engine or CLI redesign, Metrics UI redesign, movement, or remote hosting.</li>
+<li>Milestone-level non-goal: Full M006 shadow-decision evidence, all M007 scenarios, engine or CLI redesign, Metrics UI redesign, movement, or remote hosting.</li>
+</ul>
+<h3>Next-Frontier Candidate</h3>
+<p><strong>None</strong></p>
+<ul>
+<li>Reason: No remaining work-order node is contracted.</li>
+<li>Revisit when: The next proposal may introduce a node.</li>
 </ul>
 <h3>Frontier Map</h3>
 <ul>
-<li>Path: <code>Perception-memory workbench journey</code></li>
+<li>Path: none</li>
 <li>Cadence: linked-list</li>
-</ul>
-<h4>Node: Perception-memory workbench journey</h4>
-<ul>
-<li>Proposal branch: <code>m008/perception-memory-workbench-proposal</code></li>
-<li>Implementation branch: <code>m008/perception-memory-workbench</code></li>
-<li>Proposal path: <code>docs/milestones/008-cli-decision-workbench/proposals/perception-memory-workbench.md</code></li>
-<li>Review kind: Behavioral feature slice</li>
-<li>Review question: Can an operator run the accepted M007 perception-to-memory lifecycle sequence from a local workbench and inspect the real CLI lifecycle, results, and cleanup without shell commands, mock data, hidden simulator changes, or a second execution authority?</li>
-<li>Acceptance owner: Workbench scenario runner and CLI machine-readable boundary</li>
-<li>Exit criteria affected: M008-01, M008-02, M008-04</li>
-<li>Prerequisite: The accepted M007 continuity catalog and CLI sequence runner are available on <code>main</code>, and a supported local observation-only run can be prepared.</li>
-<li>Non-goals: Full M006 shadow-decision evidence, all M007 scenarios, engine or CLI redesign, Metrics UI redesign, movement, or remote hosting.</li>
 </ul>
 <h2>Workflow History</h2>
 <table>
@@ -309,6 +298,11 @@ coverage or a frontend framework migration.</p>
 <td>Idle</td>
 <td>idle</td>
 <td>Plan revision: tighten M008's finite acceptance boundary, limit alignment and recovery to the selected slice, permit one shared server-side CLI and workbench implementation, collapse repeated evidence obligations, remove superseded multi-feature decisions, and preserve frontier-discovered enabling work without changing the work order.</td>
+</tr>
+<tr>
+<td>Perception-memory workbench journey</td>
+<td>proposal_in_review</td>
+<td>Started m008/perception-memory-workbench-proposal.</td>
 </tr>
 </tbody>
 </table>

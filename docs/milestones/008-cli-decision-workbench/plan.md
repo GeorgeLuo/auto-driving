@@ -4,7 +4,7 @@
 | --- | --- |
 | Status | Active |
 | Milestone branch | `milestone/008-cli-decision-workbench` |
-| Cumulative PR | TBD (draft until whole-milestone closeout) |
+| Cumulative PR | [#167](https://github.com/GeorgeLuo/auto-driving/pull/167) (draft until whole-milestone closeout) |
 | Current frontier | None (idle; first proposal not started) |
 | Started | 2026-08-26 |
 | Action policy | Observation-only; no applied vehicle movement |

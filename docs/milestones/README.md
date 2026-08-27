@@ -804,16 +804,6 @@ pre-merge timing, and record the reviewer, authority, review time, reviewed
 head, and merge commit in the canonical plan. A merged PR without that receipt
 remains `proposal_in_review`; do not begin implementation.
 
-The repository's `Require proposal exact-head receipt` ruleset applies to
-`milestone/*` target branches and requires the `Python 3.11` status. That
-status runs the same GitHub review-history check during `validate-pr`; for a
-proposal or proposal-amendment transition it fails unless the current
-`headRefOid` has an authorized, unedited accepted receipt and no outstanding
-exact-head changes request. Review submission, edit, and dismissal events
-rerun the check, so recording the receipt does not require a no-op commit.
-This merge gate does not add a receipt requirement to implementation, plan
-revision, adjunct, or closeout PRs, and it does not migrate already-open PRs.
-
 Every proposal, proposal amendment, and implementation PR body must provide
 exactly one completed `## Review Kind` section. Its value must be supported and
 must match the current frontier's canonical plan value. This keeps the review
@@ -1254,11 +1244,10 @@ ancestor of the milestone branch. They do not police how the review-unit
 branch was created.
 
 CI runs `workflow.py validate-pr` when a PR is opened, synchronized, reopened,
-or its description is edited, and reruns it when a review is submitted, edited,
-or dismissed. It applies the frontier gate to PRs targeting a milestone branch
-and the adjunct gate to reserved adjunct PRs targeting the active plan's
-canonical implementation branch. Proposal, proposal-amendment, and
-implementation PRs must provide the canonical review kind. A proposal PR
+or its description is edited. It applies the frontier gate to PRs targeting a
+milestone branch and the adjunct gate to reserved adjunct PRs targeting the
+active plan's canonical implementation branch. Proposal, proposal-amendment,
+and implementation PRs must provide the canonical review kind. A proposal PR
 may change only its declared proposal document, canonical plan, and generated
 plan HTML. A
 proposal amendment PR has the same contract-only boundary and must add a new
@@ -1278,11 +1267,9 @@ that omits required fields or history is rejected.
 CI supplies `validate-pr` with the PR event payload. For an equivalent local
 check, save the current PR description and pass it with
 `--pr-body-file <path>`; a milestone proposal, amendment, or implementation
-cannot receive a complete validation result without its PR body. Proposal and
-amendment PRs also require event-backed current-head review metadata, so a
-body-only local check is intentionally insufficient for their merge gate. A
-local body with declared repair cycles likewise cannot establish GitHub
-evidence by itself; the event-backed CI path supplies that metadata.
+cannot receive a complete validation result without its PR body. A local body
+with declared repair cycles also cannot establish GitHub evidence by itself;
+the event-backed CI path supplies that metadata.
 
 The machine cannot discover an unrecorded review round, decide whether a cycle
 was intellectually substantial, prove which model authored a phase, prove that a

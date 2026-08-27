@@ -363,6 +363,16 @@ class MilestonePlanningTests(unittest.TestCase):
             r"pull_request:\s*\n\s+types: \[[^\]]*edited[^\]]*\]",
         )
 
+    def test_review_events_rerun_exact_head_receipt_validation(self) -> None:
+        text = TEST_WORKFLOW.read_text(encoding="utf-8")
+        self.assertRegex(
+            text,
+            r"pull_request_review:\s*\n\s+types: \[[^\]]*submitted[^\]]*\]",
+        )
+        self.assertIn("dismissed", text)
+        self.assertIn("github.event.pull_request.head.ref", text)
+        self.assertIn("github.event_name == 'pull_request_review'", text)
+
     def test_contract_defines_work_unit_terms_and_branch_model(self) -> None:
         text = CONTRACT_SOURCE.read_text(encoding="utf-8")
         for term in (

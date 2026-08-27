@@ -89,4 +89,5 @@
 
      Use `changes_requested` instead when the contract is not acceptable.
      A PR conversation comment does not count because it is not commit-bound.
-     Any later commit invalidates this receipt. -->
+     Any later commit invalidates this receipt. The required `Python 3.11`
+     status checks this receipt before the proposal can merge. -->

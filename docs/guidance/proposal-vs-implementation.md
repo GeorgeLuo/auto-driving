@@ -51,6 +51,12 @@ of outstanding changes. Merge alone does not promote the frontier; run the
 matching acceptance command so the plan records the reviewer, authority,
 reviewed head, review time, and merge commit.
 
+The repository ruleset requires the `Python 3.11` status for PRs targeting a
+`milestone/*` branch. Its `validate-pr` step applies this receipt check to
+proposal and amendment transitions before merge, and review submission or
+dismissal reruns the check. Implementation PRs retain their existing
+post-merge completion receipt; this gate does not change that rule.
+
 When the review kind is `deterministic invariant closure`, complete the
 proposal's `Trust And Authority Model` and `Evidence Topology And Capture Strategy`
 before handoff. Distinguish consistency, provenance, and authenticity;

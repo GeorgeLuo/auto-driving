@@ -15,13 +15,6 @@ bypasses, external assumptions, and unverified limits. Terms such as `bounded`,
 require class-level proof only when the review kind is deterministic invariant
 closure.
 
-Scope the matrix to the repository's documented regular usage and the claim's
-actual boundary. Do not turn hypothetical callers or every permutation of
-unsupported input into required behavior. Prefer an explicit rejection at the
-public boundary for usage outside that contract, with a focused test when the
-rejection protects the normal path or an explicit safety, integrity, or
-ownership claim.
-
 ## Case Families
 
 Consider only families relevant to the claim:

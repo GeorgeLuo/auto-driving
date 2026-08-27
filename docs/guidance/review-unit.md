@@ -16,6 +16,10 @@ canonical contract. The contract wins if any wording conflicts.
   substantial live evidence from deterministic implementation.
 - Keep coordinated files together when they close one contract at one owning
   boundary.
+- Review the documented regular paths as the primary compatibility surface and
+  include only their smallest rejection boundary. Hypothetical callers and
+  edge cases are out of scope unless regular usage can reach them, the
+  accepted question includes them, or safety or integrity requires them.
 
 ## Readiness
 

@@ -51,6 +51,12 @@ closeout work is permitted.
 
 Do not preload every role or task guidance file.
 
+Keep the repository's documented callers and regular paths as the primary
+compatibility surface. Apply the selected review or validation guidance to the
+happy path first; reject unsupported usage explicitly rather than creating
+work for hypothetical callers unless the accepted question or a safety or
+integrity contract requires it.
+
 ## External Capability Gaps
 
 When work depends on a separately owned repository—especially Metrics UI—do

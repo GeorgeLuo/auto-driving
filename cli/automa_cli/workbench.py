@@ -967,12 +967,32 @@ class ImageReplayRunner:
             self._generation += 1
             if self._state["phase"] in {"running", "paused"}:
                 self._state["phase"] = "cancelled"
-                self._state["cleanup"] = self._cleanup_locked()
-            self._feed = None
-            self._mapper = None
-            self._memory_stage = None
+            self._cleanup_locked()
+            feed = self._feed
+            source_dir = self.source_dir
+            source_state = copy.deepcopy(self._state.get("source"))
+            source_identity = self._state.get("source_identity")
+            adapter = self._state.get("adapter")
             self._state = self._initial_state()
+            self._feed = feed
+            if feed is not None:
+                self.source_dir = source_dir
+                self._state["source"] = (
+                    source_state if source_state is not None else feed.to_dict()
+                )
+                self._state["source_identity"] = source_identity or feed.source_id
+                self._state["adapter"] = adapter or feed.adapter
+                self._state["progress"] = {
+                    "completed": 0,
+                    "total": len(feed.frames),
+                    "percent": 0.0,
+                }
+                self._state["summary"] = self._summary(
+                    frames_completed=0,
+                    frames_total=len(feed.frames),
+                )
             self._state["last_action"] = {"action": "reset", "at_ms": _now_ms()}
+            self._state["controls"] = self._controls()
             self._condition.notify_all()
             return copy.deepcopy(self._state)
 
@@ -1840,6 +1860,21 @@ def _format_workbench_status(
     failure = state.get("failure")
     if isinstance(failure, dict):
         lines.append(f"failure: {failure.get('message')}")
+    recovery = state.get("recovery_action")
+    if recovery:
+        lines.append(f"recovery: {recovery}")
+    cleanup = state.get("cleanup")
+    if isinstance(cleanup, dict):
+        lines.append(
+            "cleanup: mapper={mapper}; memory={memory}; "
+            "source_read_only={source_read_only}; "
+            "movement_control={movement_control}".format(
+                mapper=cleanup.get("mapper"),
+                memory=cleanup.get("memory"),
+                source_read_only=cleanup.get("source_read_only"),
+                movement_control=cleanup.get("movement_control"),
+            )
+        )
     return "\n".join(lines)
 
 

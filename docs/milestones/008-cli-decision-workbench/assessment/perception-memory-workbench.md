@@ -93,15 +93,21 @@ part of this implementation.
 Focused deterministic coverage is in
 [tests/cli/test_workbench.py](../../../../tests/cli/test_workbench.py). It covers:
 
-- manifest order, identity, bounds, traversal, unsupported input, and absence;
+- manifest order, identity, traversal, unsupported input, and absence;
+- empty, over-limit, non-increasing, and undecodable sources refused before
+  mapper or memory work;
+- mapper `status=error`, mapper exception, and memory `health=error` fail-closed
+  with a named `failure_boundary` and no successful completion;
 - the real packaged perception -> Observation -> bounded-memory path;
 - no fabricated perception for absence;
-- pause/resume/step/reset, stale-run refusal, and terminal cleanup;
+- pause/resume/step/reset, source retained across reset, stale-run refusal, and
+  terminal cleanup;
 - shared loopback state, frame transport, persistence after completion, and
   rejection of raw argv; and
 - per-frame timeline detail payloads used for historical frame selection and
   the page's stable selection hooks; and
-- the public automa vehicles workbench replay --json entry point.
+- the public automa vehicles workbench replay `--json` entry point and human
+  recovery/cleanup lines.
 
 The implementation validation command is:
 

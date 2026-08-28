@@ -17,6 +17,7 @@ from autonomy.perception import (
     PerceivedThing,
     ViewLocation,
 )
+from autonomy.decision.memory import MemoryBounds, MemorySnapshot
 from cli.automa_cli.workbench import (
     ImageReplayRunner,
     ReplayActionError,
@@ -71,6 +72,40 @@ class FixtureMapper:
                 ),
             ),
         )
+
+
+class ErrorStatusMapper(FixtureMapper):
+    def perceive(self, request) -> PerceptionText:
+        self.calls.append("error")
+        return PerceptionText(
+            schema=PERCEPTION_TEXT_SCHEMA,
+            plugin_id=self.plugin_id,
+            status="error",
+            lines=("mapper failed",),
+            signals=(),
+            things=(),
+        )
+
+
+class RaisingMapper(FixtureMapper):
+    def perceive(self, request) -> PerceptionText:
+        self.calls.append("raise")
+        raise RuntimeError("mapper exploded")
+
+
+class ErrorMemory:
+    def update(self, context, observation) -> MemorySnapshot:
+        return MemorySnapshot(
+            memory_id="error-memory",
+            epoch_id="epoch-1",
+            health="error",
+            bounds=MemoryBounds(max_records=4),
+            created_at_ms=0,
+            error="injected memory failure",
+        )
+
+    def reset(self) -> None:
+        return None
 
 
 def _make_images(root: Path, count: int = 3) -> None:
@@ -156,6 +191,150 @@ class WorkbenchTests(unittest.TestCase):
             with self.assertRaises(SourceValidationError):
                 normalize_image_directory(root)
 
+    def test_directory_adapter_rejects_empty_over_limit_and_nonincreasing_sources(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            with self.assertRaises(SourceValidationError):
+                normalize_image_directory(root)
+
+            _make_images(root, 3)
+            with self.assertRaises(SourceValidationError):
+                normalize_image_directory(root, max_frames=2)
+            with self.assertRaises(SourceValidationError):
+                normalize_image_directory(root, max_image_bytes=10)
+
+            (root / "manifest.json").write_text(
+                json.dumps(
+                    {
+                        "frames": [
+                            {
+                                "frame_id": "later",
+                                "frame_index": 2,
+                                "timestamp_ms": 20,
+                                "image_path": "frame_00.png",
+                            },
+                            {
+                                "frame_id": "earlier",
+                                "frame_index": 1,
+                                "timestamp_ms": 30,
+                                "image_path": "frame_01.png",
+                            },
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaises(SourceValidationError):
+                normalize_image_directory(root)
+
+            (root / "manifest.json").write_text(
+                json.dumps(
+                    {
+                        "frames": [
+                            {
+                                "frame_id": "first",
+                                "frame_index": 1,
+                                "timestamp_ms": 40,
+                                "image_path": "frame_00.png",
+                            },
+                            {
+                                "frame_id": "second",
+                                "frame_index": 2,
+                                "timestamp_ms": 40,
+                                "image_path": "frame_01.png",
+                            },
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaises(SourceValidationError):
+                normalize_image_directory(root)
+
+    def test_runner_refuses_invalid_and_undecodable_sources_before_pipeline(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            empty = Path(directory) / "empty"
+            empty.mkdir()
+            mapper = FixtureMapper()
+            empty_state = ImageReplayRunner(
+                empty,
+                cadence_ms=0,
+                mapper_factory=lambda: mapper,
+            ).start()
+            self.assertEqual(empty_state["phase"], "failed")
+            self.assertEqual(empty_state["failure_boundary"], "source")
+            self.assertEqual(mapper.calls, [])
+            self.assertIsNone(empty_state["perception"])
+
+            broken = Path(directory) / "broken"
+            broken.mkdir()
+            (broken / "broken.png").write_bytes(b"not an image")
+            broken_mapper = FixtureMapper()
+            broken_state = ImageReplayRunner(
+                broken,
+                cadence_ms=0,
+                mapper_factory=lambda: broken_mapper,
+            ).start()
+            self.assertEqual(broken_state["phase"], "failed")
+            self.assertEqual(broken_state["failure_boundary"], "source")
+            self.assertEqual(broken_mapper.calls, [])
+            self.assertIsNone(broken_state["perception"])
+
+    def test_runner_fails_closed_on_mapper_and_memory_errors(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            _make_images(root, 1)
+            error_mapper = ErrorStatusMapper()
+            runner = ImageReplayRunner(
+                root,
+                cadence_ms=0,
+                mapper_factory=lambda: error_mapper,
+            )
+            started = runner.start()
+            state = runner.wait(5) if started["phase"] == "running" else started
+            self.assertEqual(state["phase"], "failed")
+            self.assertEqual(state["failure_boundary"], "perception")
+            self.assertEqual(state["perception"]["status"], "error")
+            self.assertNotEqual(state["perception"]["status"], "ok")
+
+            raising_mapper = RaisingMapper()
+            raising_runner = ImageReplayRunner(
+                root,
+                cadence_ms=0,
+                mapper_factory=lambda: raising_mapper,
+            )
+            raising_started = raising_runner.start()
+            raising_state = (
+                raising_runner.wait(5)
+                if raising_started["phase"] == "running"
+                else raising_started
+            )
+            self.assertEqual(raising_state["phase"], "failed")
+            self.assertEqual(raising_state["failure_boundary"], "pipeline")
+            self.assertIsNone(raising_state["perception"])
+
+            memory_mapper = FixtureMapper()
+            memory_runner = ImageReplayRunner(
+                root,
+                cadence_ms=0,
+                mapper_factory=lambda: memory_mapper,
+                memory_stage_factory=lambda: ErrorMemory(),
+            )
+            memory_started = memory_runner.start()
+            memory_state = (
+                memory_runner.wait(5)
+                if memory_started["phase"] == "running"
+                else memory_started
+            )
+            self.assertEqual(memory_state["phase"], "failed")
+            self.assertEqual(memory_state["failure_boundary"], "memory")
+            self.assertEqual(memory_state["memory"]["health"], "error")
+            self.assertNotEqual(memory_state["phase"], "completed")
+
     def test_runner_uses_existing_pipeline_and_reports_memory_effects(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)
@@ -235,10 +414,17 @@ class WorkbenchTests(unittest.TestCase):
             completed = runner.wait(5)
             self.assertEqual(completed["phase"], "completed")
             reset = runner.dispatch("reset")
+            self.assertEqual(reset["phase"], "idle")
+            self.assertIsNone(reset["run_id"])
+            self.assertEqual(reset["progress"]["completed"], 0)
+            self.assertEqual(reset["progress"]["total"], 3)
+            self.assertIsNotNone(reset["source"])
+            restarted = runner.start()
+            completed_again = runner.wait(5)
 
-        self.assertEqual(reset["phase"], "idle")
-        self.assertIsNone(reset["run_id"])
-        self.assertEqual(reset["progress"]["completed"], 0)
+        self.assertEqual(restarted["phase"], "running")
+        self.assertEqual(completed_again["phase"], "completed")
+        self.assertEqual(completed_again["progress"]["completed"], 3)
 
     def test_loopback_api_persists_after_terminal_state_and_rejects_raw_argv(self) -> None:
         with TemporaryDirectory() as directory:
@@ -341,7 +527,29 @@ class WorkbenchTests(unittest.TestCase):
         payload = json.loads(result.stdout)
         self.assertEqual(payload["phase"], "completed")
         self.assertEqual(payload["sequence_id"], "workbench.image_replay.v1")
+        self.assertEqual(
+            payload["machine_detail"]["pipeline"]["perception_algorithm"],
+            "lightweight_observer",
+        )
         self.assertNotIn("argv", payload)
+
+    def test_cli_replay_human_output_names_recovery_and_cleanup(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            _make_images(root, 1)
+            result = run_automa(
+                "vehicles",
+                "workbench",
+                "replay",
+                str(root),
+                "--cadence-ms",
+                "0",
+            )
+
+        self.assertIn("phase: completed", result.stdout)
+        self.assertIn("recovery:", result.stdout)
+        self.assertIn("cleanup:", result.stdout)
+        self.assertIn("source_read_only=True", result.stdout)
 
 
 if __name__ == "__main__":

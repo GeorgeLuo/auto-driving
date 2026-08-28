@@ -65,7 +65,7 @@ coverage or a frontend framework migration.
 
 **Perception-memory workbench journey**
 
-- Workflow state: ready_for_implementation
+- Workflow state: implementation_in_review
 - Proposal branch: `m008/perception-memory-workbench-proposal`
 - Implementation branch: `m008/perception-memory-workbench`
 - Proposal path: `docs/milestones/008-cli-decision-workbench/proposals/perception-memory-workbench.md`
@@ -118,6 +118,7 @@ coverage or a frontend framework migration.
 | Idle | idle | Plan revision: tighten M008's finite acceptance boundary, limit alignment and recovery to the selected slice, permit one shared server-side CLI and workbench implementation, collapse repeated evidence obligations, remove superseded multi-feature decisions, and preserve frontier-discovered enabling work without changing the work order. |
 | Perception-memory workbench journey | proposal_in_review | Started m008/perception-memory-workbench-proposal. |
 | Perception-memory workbench journey | ready_for_implementation | Proposal PR #172 accepted at 09687f19acd61b286378fb65f3db915ce5e50d51 (reviewed head `09e82ae15158608247097c85b5e21a47b0a06511` by `GeorgeLuo` as `OWNER` at `2026-08-27T23:05:47Z`). |
+| Perception-memory workbench journey | implementation_in_review | Started m008/perception-memory-workbench. |
 
 ## Accepted Review Units
 

@@ -33,6 +33,10 @@ explicitly reassigns the operation and the workflow permits it.
 - Before calling a proposal merge-ready, confirm an unedited exact-head
   `accepted` contract receipt on the current `headRefOid`. Merge does not
   substitute for that receipt.
+- End a review when there are no unresolved contract blockers. Formal
+  `changes_requested` is for a false question, a failed accepted-matrix case,
+  or one unset decision the implementer would otherwise have to invent. Stale
+  PR-body metadata is not a repair cycle.
 - Do not mix process, contract, or agent-guidance edits into a closeout
   implementation. File them as later work. They are a different review
   question.

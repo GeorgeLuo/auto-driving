@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="33a1c08936e4d5c873613267ef06d630d87d4a9392106f58550e51a3383eb31e">
+  <meta name="source-sha256" content="77c5bb72985e81b4a0b22fe9f0105122d9a5d8952a4311e3847638c93ad4e3fa">
   <base target="_blank">
   <title>Milestone Planning And Delivery Contract</title>
   <style>
@@ -220,8 +220,21 @@ internals, or a request to add or polish derived evidence HTML are P3 unless
 the operator required that page or the accepted question named one type as
 the claim. A new failure class discovered during fill is a proposal amendment
 or an explicit residual, not proof that the current implementation is false.</p>
+<p>End review when there are no unresolved contract blockers, not when there are
+no observations or possible improvements. A formal <code>changes_requested</code> receipt
+must identify one of:</p>
+<ol>
+<li>a false accepted review question;</li>
+<li>a failed accepted-matrix case; or</li>
+<li>one concrete decision the accepted question requires and the proposal does
+   not settle, which the implementer would otherwise have to invent.</li>
+</ol>
+<p>The third case is a contract gap, not a new want. Name the missing decision.
+Do not use it to reopen adjacent cases or expand the matrix.</p>
+<p>Stale copied head SHAs, PR-body validation prose, and other bookkeeping drift
+are <code>## Concerns</code> or P3. They do not create a repair cycle.</p>
 <p>Do not invent a broader matrix during re-review. Re-check prior findings and
-the accepted matrix only.</p>
+the accepted matrix only. Do not restart an open-ended search.</p>
 <p>There is no cycle count that pauses review. A second or later substantial
 repair is ordinary work when it still addresses the accepted question. If the
 accepted contract is wrong, amend the proposal. If the unit is not singular,

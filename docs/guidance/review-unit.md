@@ -40,14 +40,17 @@ repair-cycle ledger names the consolidated verdict and repair revision.
    explanation of itself.
 2. Report findings first, ordered by severity, with a concrete reproduction and
    required outcome.
-3. After a proposal is accepted, raise P0–P2 only for accepted-matrix cases or
-   a false review question. Leftover two-shapes, requests to collapse
+3. After a proposal is accepted, raise P0–P2 only for accepted-matrix cases, a
+   false review question, or one concrete decision the question requires and
+   the proposal does not settle. Leftover two-shapes, requests to collapse
    internals, and requests to add or polish derived evidence HTML are P3
    unless the operator required that page or the accepted question named one
-   type. New failure classes are amendment or residual.
+   type. New failure classes are amendment or residual. Stale PR-body SHAs and
+   validation prose are Concerns or P3, not a repair cycle.
 4. After repairs, verify prior findings and then review the current PR against
-   that same closed contract.
-5. Give one consolidated verdict. Approval accepts this review question, not
+   that same closed contract. Do not restart an open-ended search.
+5. Give one consolidated verdict. End review when contract blockers are gone,
+   not when observations are gone. Approval accepts this review question, not
    the milestone or unrelated future work.
 
 Use the canonical

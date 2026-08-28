@@ -196,8 +196,23 @@ the operator required that page or the accepted question named one type as
 the claim. A new failure class discovered during fill is a proposal amendment
 or an explicit residual, not proof that the current implementation is false.
 
+End review when there are no unresolved contract blockers, not when there are
+no observations or possible improvements. A formal `changes_requested` receipt
+must identify one of:
+
+1. a false accepted review question;
+2. a failed accepted-matrix case; or
+3. one concrete decision the accepted question requires and the proposal does
+   not settle, which the implementer would otherwise have to invent.
+
+The third case is a contract gap, not a new want. Name the missing decision.
+Do not use it to reopen adjacent cases or expand the matrix.
+
+Stale copied head SHAs, PR-body validation prose, and other bookkeeping drift
+are `## Concerns` or P3. They do not create a repair cycle.
+
 Do not invent a broader matrix during re-review. Re-check prior findings and
-the accepted matrix only.
+the accepted matrix only. Do not restart an open-ended search.
 
 There is no cycle count that pauses review. A second or later substantial
 repair is ordinary work when it still addresses the accepted question. If the

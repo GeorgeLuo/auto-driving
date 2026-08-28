@@ -5,7 +5,7 @@
 | Status | Active |
 | Milestone branch | `milestone/008-cli-decision-workbench` |
 | Cumulative PR | [#167](https://github.com/GeorgeLuo/auto-driving/pull/167) (draft until whole-milestone closeout) |
-| Current frontier | None (idle; first proposal not started) |
+| Current frontier | Perception-memory workbench journey |
 | Started | 2026-08-26 |
 | Action policy | Observation-only; no applied vehicle movement |
 
@@ -30,8 +30,8 @@ coverage or a frontend framework migration.
 
 | Workflow | Starting state | Execution | Success signal | Criteria |
 | --- | --- | --- | --- | --- |
-| Primary demonstration | The long-lived local workbench is open and the selected source, perception, and memory prerequisites are available | Provide or choose the supported input, adjust processing settings when the selected slice exposes them, run or replay the authoritative sequence, follow live state and metadata, inspect the result, and clean up without closing the page | One recorded operator acceptance confirms that the perception-memory task is minimally useful; the page remains available for another run; useful progress, outcome, and next-action signals are visible without shell commands or raw JSON; the server uses the same sequence behavior as the CLI | M008-03, M008-04, M008-05, M008-06 |
-| Recover a blocked run | A declared operator-reachable prerequisite, input, external capability, sequence step, or worker fails | Inspect the failed boundary and named next action, make the external change or clean up, then retry from the persistent workbench | The selected slice's declared failure and recovery state remains visible; the workbench does not silently reconfigure the simulator, apply movement, or leave an unintended worker or session mutation | M008-06 |
+| Primary demonstration | The long-lived local workbench is open and the selected source, perception, and memory prerequisites are available | Provide or choose the supported input, use the declared replay controls, run or replay the authoritative sequence, follow state and metadata, inspect the result, and reset or start another run without closing the page | One recorded operator acceptance confirms that the perception-memory task is minimally useful; the page remains available for another run; useful progress, outcome, and next-action signals are visible without shell commands or raw JSON; the server uses the same sequence behavior as the CLI | M008-03, M008-04, M008-05, M008-06 |
+| Recover a blocked run | A declared operator-reachable source, input, adapter, or sequence step fails | Inspect the failed boundary and named next action, make the external change or reset the isolated replay state, then retry from the persistent workbench | The selected slice's declared failure and recovery state remains visible; the workbench does not silently substitute another source, reconfigure a simulator, apply movement, or leave unintended replay state | M008-06 |
 
 ## Scope Boundaries
 
@@ -63,41 +63,49 @@ coverage or a frontend framework migration.
 
 ### Current Frontier
 
-**None**
+**Perception-memory workbench journey**
 
-- Reason: M008 is open with its first bounded work-order node queued; no proposal review has started.
-- Revisit when: The operator is ready to review the first workbench journey proposal.
+- Workflow state: proposal_in_review
+- Proposal branch: `m008/perception-memory-workbench-proposal`
+- Implementation branch: `m008/perception-memory-workbench`
+- Proposal path: `docs/milestones/008-cli-decision-workbench/proposals/perception-memory-workbench.md`
+- Review kind: Behavioral feature slice
+- Review question: Can an operator use a local workbench to replay a supported ordered image source through the existing perception-to-`Observation`-to-memory pipeline, inspect real capture overlays and memory effects, and control the bounded replay without shell commands, mock data, hidden simulator changes, or a second execution authority?
+- Acceptance owner: Workbench replay runner and CLI machine-readable boundary
+- Exit criteria affected: M008-01, M008-02, M008-04
+- Prerequisite: The current image-directory perception application, perception-to-`Observation` seam, and bounded-memory implementation are available on `main`, and a supported local image source can be read.
+- Milestone-level non-goal: Full M006 shadow-decision evidence, all M007 scenarios, engine or CLI redesign, Metrics UI redesign, movement, or remote hosting.
 
 ### Next-Frontier Candidate
 
-**Perception-memory workbench journey**
+**Replay workbench POC acceptance**
 
-- Proposal branch: `m008/perception-memory-workbench-proposal`
-- Implementation branch: `m008/perception-memory-workbench`
-- Proposal path: `docs/milestones/008-cli-decision-workbench/proposals/perception-memory-workbench.md`
-- Review kind: Behavioral feature slice
-- Review question: Can an operator run the accepted M007 perception-to-memory lifecycle sequence from a local workbench and inspect the real CLI lifecycle, results, and cleanup without shell commands, mock data, hidden simulator changes, or a second execution authority?
-- Acceptance owner: Workbench scenario runner and CLI machine-readable boundary
-- Exit criteria affected: M008-01, M008-02, M008-04
-- Prerequisite: The accepted M007 continuity catalog and CLI sequence runner are available on `main`, and a supported local observation-only run can be prepared.
-- Milestone-level non-goal: Full M006 shadow-decision evidence, all M007 scenarios, engine or CLI redesign, Metrics UI redesign, movement, or remote hosting.
+- Proposal branch: `m008/replay-workbench-acceptance-proposal`
+- Implementation branch: `m008/replay-workbench-acceptance`
+- Proposal path: `docs/milestones/008-cli-decision-workbench/proposals/replay-workbench-acceptance.md`
+- Review kind: Live or external evidence
+- Review question: Can an operator use the implemented image-replay workbench to inspect real perception overlays and memory effects, control the declared replay, and affirm that this one local workflow is minimally useful at its delivered display granularity?
+- Acceptance owner: Operator acceptance record and replay-workbench evidence boundary
+- Exit criteria affected: M008-03, M008-05, M008-06
+- Prerequisite: The accepted Perception-memory workbench journey implementation is available with its declared supported source, visual/control contract, and durable assessment.
+- Non-goals: Product expansion beyond the accepted POC-completion envelope, video/live adapters, new processing semantics, or a substitute for an actual operator acceptance.
 
 ### Frontier Map
 
-- Path: `Perception-memory workbench journey`
+- Path: `Replay workbench POC acceptance`
 - Cadence: linked-list
 
-#### Node: Perception-memory workbench journey
+#### Node: Replay workbench POC acceptance
 
-- Proposal branch: `m008/perception-memory-workbench-proposal`
-- Implementation branch: `m008/perception-memory-workbench`
-- Proposal path: `docs/milestones/008-cli-decision-workbench/proposals/perception-memory-workbench.md`
-- Review kind: Behavioral feature slice
-- Review question: Can an operator run the accepted M007 perception-to-memory lifecycle sequence from a local workbench and inspect the real CLI lifecycle, results, and cleanup without shell commands, mock data, hidden simulator changes, or a second execution authority?
-- Acceptance owner: Workbench scenario runner and CLI machine-readable boundary
-- Exit criteria affected: M008-01, M008-02, M008-04
-- Prerequisite: The accepted M007 continuity catalog and CLI sequence runner are available on `main`, and a supported local observation-only run can be prepared.
-- Non-goals: Full M006 shadow-decision evidence, all M007 scenarios, engine or CLI redesign, Metrics UI redesign, movement, or remote hosting.
+- Proposal branch: `m008/replay-workbench-acceptance-proposal`
+- Implementation branch: `m008/replay-workbench-acceptance`
+- Proposal path: `docs/milestones/008-cli-decision-workbench/proposals/replay-workbench-acceptance.md`
+- Review kind: Live or external evidence
+- Review question: Can an operator use the implemented image-replay workbench to inspect real perception overlays and memory effects, control the declared replay, and affirm that this one local workflow is minimally useful at its delivered display granularity?
+- Acceptance owner: Operator acceptance record and replay-workbench evidence boundary
+- Exit criteria affected: M008-03, M008-05, M008-06
+- Prerequisite: The accepted Perception-memory workbench journey implementation is available with its declared supported source, visual/control contract, and durable assessment.
+- Non-goals: Product expansion beyond the accepted POC-completion envelope, video/live adapters, new processing semantics, or a substitute for an actual operator acceptance.
 
 ## Workflow History
 
@@ -107,6 +115,7 @@ coverage or a frontend framework migration.
 | Idle | idle | Plan revision: reframe M008 around evaluating M007 sequences as candidate workbench features, selecting a bounded useful set, and building interfaces that convey each selected feature's signals; the work order remains unchanged until the first proposal retargets it. |
 | Idle | idle | Plan revision: bound M008 to one operator-useful perception-memory feasibility slice, a long-lived local workbench that reuses CLI-owned sequences and existing page signals, and a durable gap assessment; remove all-sequence and second-feature quotas, keep React out of scope, and leave the work order unchanged until proposal selection. |
 | Idle | idle | Plan revision: tighten M008's finite acceptance boundary, limit alignment and recovery to the selected slice, permit one shared server-side CLI and workbench implementation, collapse repeated evidence obligations, remove superseded multi-feature decisions, and preserve frontier-discovered enabling work without changing the work order. |
+| Perception-memory workbench journey | proposal_in_review | Started m008/perception-memory-workbench-proposal. |
 
 ## Accepted Review Units
 
@@ -138,6 +147,7 @@ coverage or a frontend framework migration.
 | 2026-08-27 | Make one operator-accepted workbench slice and a durable gap assessment sufficient for M008 | A second-feature quota would create work beyond the current feasibility question; reuse is assessed in sequence and page boundaries rather than feature count |
 | 2026-08-27 | Evolve a long-lived local page from the selected existing CLI-launched pages and signals, using one authoritative server-side sequence implementation | The workbench must stay aligned with the CLI and remain available across runs without requiring a CLI subprocess or duplicating business logic in the browser |
 | 2026-08-27 | Keep React and broad frontend-framework migration out of M008 | The current Python loopback server and plain HTML, CSS, and JavaScript can prove the useful product slice before a framework decision is warranted |
+| 2026-08-27 | Treat the first image-replay workbench as a POC with a bounded completion envelope and a queued operator-acceptance unit | Visual/interface refinement and narrowly necessary replay CLI support may evolve inside one journey; new adapters, semantics, authority, or operator goals require a later proposal rather than an endless review loop |
 
 ## Closeout
 

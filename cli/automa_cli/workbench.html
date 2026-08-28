@@ -39,14 +39,14 @@
     }
     .header-inner, main { max-width: 1440px; margin: 0 auto; }
     .header-inner {
-      padding: 22px 28px 18px;
+      padding: 10px 28px 9px;
       display: flex;
       justify-content: space-between;
-      align-items: flex-start;
-      gap: 20px;
+      align-items: center;
+      gap: 16px;
     }
     h1, h2, h3, p { margin: 0; }
-    h1 { font-size: clamp(1.3rem, 2.5vw, 2rem); letter-spacing: -.03em; }
+    h1 { font-size: clamp(1.12rem, 2vw, 1.55rem); letter-spacing: -.03em; }
     h2 { font-size: 1rem; letter-spacing: .01em; }
     h3 { font-size: .78rem; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
     .eyebrow {
@@ -55,17 +55,17 @@
       font-weight: 750;
       letter-spacing: .15em;
       text-transform: uppercase;
-      margin-bottom: 7px;
+      margin-bottom: 2px;
     }
     .subtitle, .muted { color: var(--muted); }
-    .subtitle { margin-top: 7px; font-size: .9rem; max-width: 720px; }
+    .subtitle { margin-top: 3px; font-size: .76rem; max-width: 720px; }
     .status-chip {
-      min-width: 130px;
+      min-width: 96px;
       border: 1px solid var(--line);
       border-radius: 999px;
-      padding: 9px 13px;
+      padding: 6px 10px;
       text-align: center;
-      font-size: .78rem;
+      font-size: .68rem;
       font-weight: 750;
       text-transform: uppercase;
       letter-spacing: .08em;
@@ -165,10 +165,13 @@
       overflow: hidden;
     }
     .progress > div { height: 100%; background: linear-gradient(90deg, #53b89d, #a6efd5); width: 0%; transition: width .2s; }
+    .panel-heading-values { display: flex; align-items: baseline; gap: 12px; }
     .timeline { display: grid; gap: 7px; max-height: 280px; overflow: auto; }
     .timeline button { text-align: left; width: 100%; display: grid; grid-template-columns: 1fr auto; gap: 5px 10px; }
+    .timeline button:hover:not(:disabled) { transform: none; }
     .timeline button.selected { border-color: var(--accent); background: rgba(55, 106, 94, .45); }
     .timeline small { color: var(--muted); }
+    .timeline-help { margin-top: 10px; }
     .record-list { display: grid; gap: 8px; max-height: 330px; overflow: auto; }
     .record-list button { text-align: left; width: 100%; }
     .record-list button.selected { border-color: var(--accent); background: rgba(55, 106, 94, .45); }
@@ -196,8 +199,8 @@
     }
     @media (max-width: 600px) {
       .header-inner, main { padding-left: 15px; padding-right: 15px; }
-      .header-inner { display: block; }
-      .status-chip { display: inline-block; margin-top: 13px; }
+      .header-inner { gap: 10px; }
+      .status-chip { min-width: auto; }
       .frame-meta, .form-row { grid-template-columns: 1fr 1fr; }
     }
   </style>
@@ -240,10 +243,14 @@
         <section class="panel">
           <div class="panel-heading">
             <h2>Replay timeline</h2>
-            <span id="progressText" class="muted">0 / 0</span>
+            <div class="panel-heading-values">
+              <span id="timelineSelection" class="muted">select a processed frame</span>
+              <span id="progressText" class="muted">0 / 0</span>
+            </div>
           </div>
           <div class="progress"><div id="progressBar"></div></div>
-          <div id="timeline" class="timeline"><p class="muted help">No frames have been processed.</p></div>
+          <div id="timeline" class="timeline"><p class="timeline-empty muted help">No frames have been processed.</p></div>
+          <p class="help timeline-help">Click a processed frame to inspect its image, perception, and memory state.</p>
         </section>
 
         <section class="panel">
@@ -341,11 +348,14 @@
       var state = null;
       var lastImageKey = "";
       var requestInFlight = false;
+      var selectedFrameId = null;
+      var selectedFrameRunId = null;
+      var timelineRunId = null;
       var elements = {};
       [
         "phaseChip", "sourceIdentity", "emptyState", "viewerFrame", "frameImage",
         "overlayCanvas", "frameId", "frameIndex", "frameTimestamp", "perceptionStatus",
-        "progressText", "progressBar", "timeline", "evidenceSummary", "pluginRuns",
+        "progressText", "progressBar", "timeline", "timelineSelection", "evidenceSummary", "pluginRuns",
         "evidenceCounts", "evidenceText", "sourceDir", "cadence", "overlayToggle",
         "validateButton", "startButton", "pauseButton", "resumeButton", "stepButton",
         "cancelButton", "resetButton", "notice", "memoryHealth", "memoryEpoch",
@@ -365,7 +375,25 @@
       }
 
       function currentFrame() {
+        var selected = selectedTimelineItem();
+        if (selected && selected.frame) return selected.frame;
         return state && state.current_frame ? state.current_frame : null;
+      }
+
+      function selectedTimelineItem() {
+        if (!state || !selectedFrameId || selectedFrameRunId !== state.run_id) return null;
+        var timeline = Array.isArray(state.timeline) ? state.timeline : [];
+        return timeline.find(function (item) {
+          return item && item.frame && item.frame.frame_id === selectedFrameId;
+        }) || null;
+      }
+
+      function currentPayload(key) {
+        var selected = selectedTimelineItem();
+        if (selected && Object.prototype.hasOwnProperty.call(selected, key)) {
+          return selected[key];
+        }
+        return state ? state[key] : null;
       }
 
       function selectedRunId(action) {
@@ -374,6 +402,10 @@
       }
 
       async function action(action, extra) {
+        if (["start", "validate", "reset"].indexOf(action) >= 0) {
+          selectedFrameId = null;
+          selectedFrameRunId = null;
+        }
         var body = { action: action };
         var runId = selectedRunId(action);
         if (runId) body.run_id = runId;
@@ -427,6 +459,7 @@
         setText("frameId", frame.frame_id);
         setText("frameIndex", frame.position);
         setText("frameTimestamp", frame.timestamp_ms);
+        elements.frameImage.alt = "Replay frame " + text(frame.frame_id, "unknown");
         elements.viewerFrame.hidden = !!frame.absent;
         elements.emptyState.hidden = !frame.absent;
         if (frame.absent) {
@@ -458,7 +491,7 @@
         canvas.height = image.naturalHeight;
         var context = canvas.getContext("2d");
         context.clearRect(0, 0, canvas.width, canvas.height);
-        var perception = state && state.perception;
+        var perception = currentPayload("perception");
         var things = perception && Array.isArray(perception.things) ? perception.things : [];
         things.forEach(function (thing) {
           var location = thing.location || {};
@@ -496,35 +529,94 @@
 
       function renderTimeline() {
         var timeline = state && Array.isArray(state.timeline) ? state.timeline : [];
-        elements.timeline.textContent = "";
-        if (!timeline.length) {
-          var empty = document.createElement("p");
-          empty.className = "muted help";
-          empty.textContent = "No frames have been processed.";
-          elements.timeline.appendChild(empty);
-          return;
+        var runId = state && state.run_id ? state.run_id : null;
+        if (runId !== timelineRunId) {
+          elements.timeline.textContent = "";
+          timelineRunId = runId;
         }
-        timeline.forEach(function (item) {
-          var frame = item.frame || {};
-          var button = document.createElement("button");
-          button.type = "button";
-          button.className = frame.frame_id === (currentFrame() || {}).frame_id ? "selected" : "";
-          var name = document.createElement("strong");
-          name.textContent = text(frame.frame_id, "unknown frame");
-          var status = document.createElement("small");
-          status.textContent = text(item.perception_status, "no perception") +
-            " · memory " + text(item.memory_record_count, "0");
-          button.appendChild(name);
-          button.appendChild(status);
-          button.addEventListener("click", function () {
-            elements.notice.textContent = "Timeline selection is rendered from the latest server state.";
+        if (!timeline.length) {
+          if (!elements.timeline.querySelector(".timeline-empty")) {
+            elements.timeline.textContent = "";
+            var empty = document.createElement("p");
+            empty.className = "timeline-empty muted help";
+            empty.textContent = "No frames have been processed.";
+            elements.timeline.appendChild(empty);
+          }
+        } else {
+          var emptyState = elements.timeline.querySelector(".timeline-empty");
+          if (emptyState) emptyState.remove();
+          var existing = {};
+          Array.prototype.forEach.call(
+            elements.timeline.querySelectorAll("button[data-frame-id]"),
+            function (button) {
+              existing[button.getAttribute("data-frame-id")] = button;
+            }
+          );
+          timeline.forEach(function (item) {
+            var frame = item.frame || {};
+            var frameId = text(frame.frame_id, "unknown frame");
+            var button = existing[frameId];
+            if (!button) {
+              button = document.createElement("button");
+              button.type = "button";
+              button.setAttribute("data-frame-id", frameId);
+              button.addEventListener("click", function () {
+                selectFrame(button.getAttribute("data-frame-id"));
+              });
+              elements.timeline.appendChild(button);
+            }
+            var name = button.querySelector("strong");
+            if (!name) {
+              name = document.createElement("strong");
+              button.appendChild(name);
+            }
+            name.textContent = frameId;
+            var status = button.querySelector("small");
+            if (!status) {
+              status = document.createElement("small");
+              button.appendChild(status);
+            }
+            status.textContent = text(item.perception_status, "no perception") +
+              " · memory " + text(item.memory_record_count, "0");
+            button.setAttribute("aria-label", "Show replay frame " + frameId);
           });
-          elements.timeline.appendChild(button);
+        }
+        var displayedId = (currentFrame() || {}).frame_id;
+        var selected = selectedTimelineItem();
+        var selectedId = selected && selected.frame ? selected.frame.frame_id : displayedId;
+        Array.prototype.forEach.call(
+          elements.timeline.querySelectorAll("button[data-frame-id]"),
+          function (button) {
+            var isSelected = button.getAttribute("data-frame-id") === selectedId;
+            button.classList.toggle("selected", isSelected);
+            button.setAttribute("aria-pressed", isSelected ? "true" : "false");
+          }
+        );
+        if (selected) {
+          setText("timelineSelection", "selected · " + text(selected.frame.frame_id));
+        } else if (displayedId) {
+          setText("timelineSelection", "latest processed");
+        } else {
+          setText("timelineSelection", "select a processed frame");
+        }
+      }
+
+      function selectFrame(frameId) {
+        if (!state || !state.run_id) return;
+        var timeline = Array.isArray(state.timeline) ? state.timeline : [];
+        var item = timeline.find(function (entry) {
+          return entry && entry.frame && entry.frame.frame_id === frameId;
         });
+        if (!item) return;
+        selectedFrameId = frameId;
+        selectedFrameRunId = state.run_id;
+        selectedRecordId = null;
+        elements.notice.textContent = "Showing frame " + text(frameId, "unknown frame") + ".";
+        render();
       }
 
       function renderEvidence() {
-        var perception = state && state.perception;
+        var perception = currentPayload("perception");
         if (!perception) {
           setText("evidenceSummary", "no output");
           setText("pluginRuns", null);
@@ -540,7 +632,7 @@
       }
 
       function renderMemory() {
-        var memory = state && state.memory;
+        var memory = currentPayload("memory");
         if (!memory) {
           setText("memoryHealth", "no snapshot");
           setText("memoryEpoch", null);

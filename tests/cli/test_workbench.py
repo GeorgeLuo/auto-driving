@@ -176,6 +176,12 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(state["observation"]["metadata"]["source"], "workbench.image_replay.v1")
         self.assertEqual(state["memory"]["health"], "healthy")
         self.assertGreaterEqual(state["memory"]["record_count"], 2)
+        self.assertEqual(state["timeline"][0]["perception"]["status"], "ok")
+        self.assertEqual(
+            state["timeline"][0]["observation"]["observation_id"],
+            state["timeline"][0]["observation_id"],
+        )
+        self.assertEqual(state["timeline"][0]["memory"]["health"], "healthy")
         self.assertTrue(state["timeline"][0]["memory_effect"]["added"])
         self.assertTrue(state["cleanup"]["source_read_only"])
         self.assertFalse(state["cleanup"]["movement_control"])
@@ -247,7 +253,11 @@ class WorkbenchTests(unittest.TestCase):
             html = urlopen(base, timeout=2).read().decode("utf-8")
             self.assertIn("Perception-memory Workbench", html)
             self.assertIn('id="stepButton"', html)
+            self.assertIn('id="timelineSelection"', html)
             self.assertIn('id="memorySelected"', html)
+            self.assertIn("selectedFrameId", html)
+            self.assertIn("data-frame-id", html)
+            self.assertNotIn("Timeline selection is rendered from the latest server state.", html)
 
             start_body = json.dumps(
                 {"action": "start", "source_dir": str(root), "cadence_ms": 0}

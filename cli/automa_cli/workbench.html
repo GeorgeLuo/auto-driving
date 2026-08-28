@@ -174,6 +174,7 @@
     .timeline-help { margin-top: 10px; }
     .record-list { display: grid; gap: 8px; max-height: 330px; overflow: auto; }
     .record-list button { text-align: left; width: 100%; }
+    .record-list button:hover:not(:disabled) { transform: none; }
     .record-list button.selected { border-color: var(--accent); background: rgba(55, 106, 94, .45); }
     .record strong { display: block; font-size: .8rem; }
     .record pre, pre {
@@ -308,13 +309,19 @@
         </section>
 
         <section class="panel">
-          <div class="panel-heading"><h2>Memory ledger</h2><span id="memoryHealth" class="muted">no snapshot</span></div>
+          <div class="panel-heading">
+            <h2>Memory ledger</h2>
+            <div class="panel-heading-values">
+              <span id="memorySelection" class="muted">select a record</span>
+              <span id="memoryHealth" class="muted">no snapshot</span>
+            </div>
+          </div>
           <dl class="kv">
             <dt>Epoch</dt><dd id="memoryEpoch">—</dd>
             <dt>Records</dt><dd id="memoryCount">—</dd>
             <dt>Policy</dt><dd id="memoryPolicy">—</dd>
           </dl>
-          <div id="memoryRecords" class="record-list" style="margin-top: 13px;"><p class="muted help">No retained evidence yet.</p></div>
+          <div id="memoryRecords" class="record-list" style="margin-top: 13px;"><p class="memory-empty muted help">No retained evidence yet.</p></div>
           <div class="metric" style="margin-top: 11px;">
             <h3>Selected record</h3>
             <pre id="memorySelected">Select a server-produced memory record to inspect its provenance.</pre>
@@ -358,7 +365,7 @@
         "progressText", "progressBar", "timeline", "timelineSelection", "evidenceSummary", "pluginRuns",
         "evidenceCounts", "evidenceText", "sourceDir", "cadence", "overlayToggle",
         "validateButton", "startButton", "pauseButton", "resumeButton", "stepButton",
-        "cancelButton", "resetButton", "notice", "memoryHealth", "memoryEpoch",
+        "cancelButton", "resetButton", "notice", "memorySelection", "memoryHealth", "memoryEpoch",
         "memoryCount", "memoryPolicy", "memoryRecords", "runId", "sequenceId",
         "adapter", "recoveryAction", "sideEffects", "failurePanel", "failureText",
         "rawState", "memorySelected"
@@ -405,6 +412,7 @@
         if (["start", "validate", "reset"].indexOf(action) >= 0) {
           selectedFrameId = null;
           selectedFrameRunId = null;
+          selectedRecordId = null;
         }
         var body = { action: action };
         var runId = selectedRunId(action);
@@ -638,49 +646,90 @@
           setText("memoryEpoch", null);
           setText("memoryCount", null);
           setText("memoryPolicy", null);
-          elements.memoryRecords.textContent = "";
+          setText("memorySelection", "no record selected");
+          if (!elements.memoryRecords.querySelector(".memory-empty")) {
+            elements.memoryRecords.textContent = "";
+            var noSnapshot = document.createElement("p");
+            noSnapshot.className = "memory-empty muted help";
+            noSnapshot.textContent = "No retained evidence yet.";
+            elements.memoryRecords.appendChild(noSnapshot);
+          }
           elements.memorySelected.textContent = "Select a server-produced memory record to inspect its provenance.";
-          var empty = document.createElement("p");
-          empty.className = "muted help";
-          empty.textContent = "No retained evidence yet.";
-          elements.memoryRecords.appendChild(empty);
           return;
         }
         setText("memoryHealth", memory.health);
         setText("memoryEpoch", memory.epoch_id);
         setText("memoryCount", memory.record_count);
         setText("memoryPolicy", memory.metadata && memory.metadata.policy);
-        elements.memoryRecords.textContent = "";
-        var records = memory.records || [];
-        if (!records.some(function (record) { return record.record_id === selectedRecordId; })) {
-          selectedRecordId = records.length ? records[0].record_id : null;
+        var records = Array.isArray(memory.records) ? memory.records : [];
+        var recordIds = records.map(function (record) {
+          return text(record.record_id, "unknown record");
+        });
+        if (recordIds.indexOf(selectedRecordId) < 0) {
+          selectedRecordId = recordIds.length ? recordIds[0] : null;
         }
+        var emptyState = elements.memoryRecords.querySelector(".memory-empty");
+        if (emptyState) emptyState.remove();
+        var existing = {};
+        Array.prototype.forEach.call(
+          elements.memoryRecords.querySelectorAll("button[data-record-id]"),
+          function (card) {
+            existing[card.getAttribute("data-record-id")] = card;
+          }
+        );
+        var present = {};
         records.forEach(function (record) {
-          var card = document.createElement("button");
-          card.type = "button";
-          card.className = "record";
-          if (record.record_id === selectedRecordId) card.className += " selected";
-          var title = document.createElement("strong");
-          title.textContent = text(record.label, record.record_id);
-          var detail = document.createElement("pre");
-          detail.textContent = text(record.record_id, "unknown record") + " · confidence " + text(record.confidence, "0");
-          card.appendChild(title);
-          card.appendChild(detail);
-          card.addEventListener("click", function () {
-            selectedRecordId = record.record_id;
-            renderMemory();
-          });
-          elements.memoryRecords.appendChild(card);
+          var recordId = text(record.record_id, "unknown record");
+          present[recordId] = true;
+          var card = existing[recordId];
+          if (!card) {
+            card = document.createElement("button");
+            card.type = "button";
+            card.className = "record";
+            card.setAttribute("data-record-id", recordId);
+            card.addEventListener("click", function () {
+              selectRecord(card.getAttribute("data-record-id"));
+            });
+            elements.memoryRecords.appendChild(card);
+          }
+          var title = card.querySelector("strong");
+          if (!title) {
+            title = document.createElement("strong");
+            card.appendChild(title);
+          }
+          title.textContent = text(record.label, recordId);
+          var detail = card.querySelector("pre");
+          if (!detail) {
+            detail = document.createElement("pre");
+            card.appendChild(detail);
+          }
+          detail.textContent = recordId + " · confidence " + text(record.confidence, "0");
+          var isSelected = recordId === selectedRecordId;
+          card.classList.toggle("selected", isSelected);
+          card.setAttribute("aria-pressed", isSelected ? "true" : "false");
+          card.setAttribute("aria-label", "Show memory record " + text(record.label, recordId));
+        });
+        Object.keys(existing).forEach(function (recordId) {
+          if (!present[recordId]) existing[recordId].remove();
         });
         if (!records.length) {
-          var noRecords = document.createElement("p");
-          noRecords.className = "muted help";
-          noRecords.textContent = "Memory is empty for this frame.";
-          elements.memoryRecords.appendChild(noRecords);
+          var noRecords = elements.memoryRecords.querySelector(".memory-empty");
+          if (!noRecords) {
+            noRecords = document.createElement("p");
+            noRecords.className = "memory-empty muted help";
+            noRecords.textContent = "Memory is empty for this frame.";
+            elements.memoryRecords.appendChild(noRecords);
+          }
+          setText("memorySelection", "no record selected");
           elements.memorySelected.textContent = "Memory is empty for this frame.";
           return;
         }
-        var selected = records.find(function (record) { return record.record_id === selectedRecordId; });
+        var selected = records.find(function (record) {
+          return text(record.record_id, "unknown record") === selectedRecordId;
+        });
+        setText("memorySelection", selected
+          ? "selected · " + text(selected.label, selectedRecordId)
+          : "select a record");
         elements.memorySelected.textContent = selected
           ? JSON.stringify({
             record_id: selected.record_id,
@@ -691,6 +740,18 @@
             properties: selected.properties
           }, null, 2)
           : "Select a server-produced memory record to inspect its provenance.";
+      }
+
+      function selectRecord(recordId) {
+        var memory = currentPayload("memory");
+        var records = memory && Array.isArray(memory.records) ? memory.records : [];
+        var selected = records.find(function (record) {
+          return text(record.record_id, "unknown record") === recordId;
+        });
+        if (!selected) return;
+        selectedRecordId = recordId;
+        elements.notice.textContent = "Showing memory record " + text(selected.label, recordId) + ".";
+        renderMemory();
       }
 
       function renderFailure() {
@@ -713,7 +774,7 @@
           elements.sourceDir.value = source.source_path || source.path || "";
         }
         var frame = currentFrame();
-        var perception = state.perception;
+        var perception = currentPayload("perception");
         setText("perceptionStatus", perception && perception.status);
         var progress = state.progress || {};
         setText("progressText", text(progress.completed, "0") + " / " + text(progress.total, "0"));

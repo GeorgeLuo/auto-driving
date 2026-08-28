@@ -50,6 +50,7 @@ from .perception_runs import (
     compare_perception_candidates,
     run_perception_experiment,
 )
+from .workbench import run_workbench_replay
 from .simulators import DEFAULT_SCENARIO_ID, ensure_simulator, get_simulator_status
 from .physical_check import run_physical_perception_check
 from .physical_qualify import run_physical_strategy_qualification
@@ -669,6 +670,76 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print the full machine-readable check report.",
     )
     memory_check.set_defaults(handler=_handle_vehicles_memory_check)
+
+    workbench = vehicle_commands.add_parser(
+        "workbench",
+        help="Replay images through the perception-memory workbench.",
+    )
+    workbench.set_defaults(handler=_handle_vehicles_workbench_help)
+    workbench_commands = workbench.add_subparsers(
+        dest="workbench_command",
+        required=True,
+    )
+    workbench_help = workbench_commands.add_parser(
+        "help",
+        help="Show workbench-level commands.",
+    )
+    workbench_help.set_defaults(handler=_handle_vehicles_workbench_help)
+    workbench_replay = workbench_commands.add_parser(
+        "replay",
+        help="Replay an ordered image directory through perception and memory.",
+        description=(
+            "Run the bounded M008 perception-memory workbench against an ordered "
+            "local image directory. The server owns source ordering, perception, "
+            "observation, and bounded memory. Without --serve, one replay runs "
+            "to a terminal state; --serve keeps the loopback page available for "
+            "pause, step, reset, and another run."
+        ),
+    )
+    workbench_replay.add_argument(
+        "source_dir",
+        help="Directory containing supported images and optional ordered manifest.",
+    )
+    workbench_replay.add_argument(
+        "--cadence-ms",
+        type=int,
+        default=250,
+        help="Delay between frames in milliseconds (default: 250; zero means as fast as possible).",
+    )
+    workbench_replay.add_argument(
+        "--max-frames",
+        type=int,
+        default=256,
+        help="Maximum normalized frames accepted from the source (default: 256).",
+    )
+    workbench_replay.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Loopback host for --serve (default: 127.0.0.1).",
+    )
+    workbench_replay.add_argument(
+        "--port",
+        type=int,
+        default=0,
+        help="Loopback port for --serve (default: choose a free port).",
+    )
+    workbench_replay.add_argument(
+        "--serve",
+        action="store_true",
+        help="Keep the loopback workbench server alive after starting the replay.",
+    )
+    workbench_replay.add_argument(
+        "--open",
+        dest="open_browser",
+        action="store_true",
+        help="Open the loopback workbench page in a browser and imply --serve.",
+    )
+    workbench_replay.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the final machine-readable workbench state.",
+    )
+    workbench_replay.set_defaults(handler=_handle_vehicles_workbench_replay)
 
     info = vehicle_commands.add_parser("info", help="Inspect locally staged controller configuration.")
     info_commands = info.add_subparsers(dest="info_command", required=True)
@@ -1476,6 +1547,7 @@ def _handle_vehicles_help(args: argparse.Namespace) -> int:
                 "- operation    run bounded vehicle checks and setup tasks",
                 "- info         inspect locally staged controller configuration",
                 "- memory       operate memory (reset, replay, lifecycle check)",
+                "- workbench    replay images through perception and bounded memory",
                 "- perception   run and configure vehicle perception",
                 "- stream       read rolling local automation outputs",
                 "- help         show this summary",
@@ -1909,6 +1981,40 @@ def _handle_vehicles_memory_check(args: argparse.Namespace) -> int:
         timeout_s=float(getattr(args, "timeout_s", 3.0)),
         fresh_timeout_s=float(getattr(args, "fresh_timeout_s", 12.0)),
         expiry_timeout_s=getattr(args, "expiry_timeout_s", None),
+    )
+    if result.message:
+        print(result.message)
+    return result.exit_code
+
+
+def _handle_vehicles_workbench_help(args: argparse.Namespace) -> int:
+    print(
+        "\n".join(
+            [
+                "automa vehicles workbench commands",
+                "",
+                "- replay  replay an ordered image directory through perception and memory",
+                "- help    show this summary",
+                "",
+                "Detailed help:",
+                "- ./cli/automa vehicles workbench replay --help",
+            ]
+        )
+    )
+    return 0
+
+
+def _handle_vehicles_workbench_replay(args: argparse.Namespace) -> int:
+    result = run_workbench_replay(
+        args.source_dir,
+        cadence_ms=args.cadence_ms,
+        max_frames=args.max_frames,
+        host=args.host,
+        port=args.port,
+        serve=args.serve,
+        open_browser=args.open_browser,
+        json_output=args.json,
+        output=None if args.json else sys.stdout,
     )
     if result.message:
         print(result.message)

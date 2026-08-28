@@ -1,0 +1,683 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Automa Perception-memory Workbench</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #11151b;
+      --panel: #1a212b;
+      --panel-strong: #222c38;
+      --line: #344252;
+      --muted: #9ba9b8;
+      --text: #eef4f8;
+      --accent: #69d2b4;
+      --accent-strong: #b8f4df;
+      --warn: #f3c969;
+      --danger: #f28e8e;
+      --shadow: 0 18px 50px rgba(0, 0, 0, .22);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 15% 0%, rgba(75, 125, 145, .18), transparent 35rem),
+        var(--bg);
+      color: var(--text);
+    }
+    header {
+      border-bottom: 1px solid var(--line);
+      background: rgba(17, 21, 27, .9);
+      position: sticky;
+      top: 0;
+      z-index: 4;
+      backdrop-filter: blur(14px);
+    }
+    .header-inner, main { max-width: 1440px; margin: 0 auto; }
+    .header-inner {
+      padding: 22px 28px 18px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 20px;
+    }
+    h1, h2, h3, p { margin: 0; }
+    h1 { font-size: clamp(1.3rem, 2.5vw, 2rem); letter-spacing: -.03em; }
+    h2 { font-size: 1rem; letter-spacing: .01em; }
+    h3 { font-size: .78rem; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
+    .eyebrow {
+      color: var(--accent);
+      font-size: .72rem;
+      font-weight: 750;
+      letter-spacing: .15em;
+      text-transform: uppercase;
+      margin-bottom: 7px;
+    }
+    .subtitle, .muted { color: var(--muted); }
+    .subtitle { margin-top: 7px; font-size: .9rem; max-width: 720px; }
+    .status-chip {
+      min-width: 130px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 9px 13px;
+      text-align: center;
+      font-size: .78rem;
+      font-weight: 750;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      background: var(--panel);
+    }
+    .status-chip.running, .status-chip.completed { border-color: rgba(105, 210, 180, .65); color: var(--accent-strong); }
+    .status-chip.paused { border-color: rgba(243, 201, 105, .65); color: var(--warn); }
+    .status-chip.failed, .status-chip.cancelled { border-color: rgba(242, 142, 142, .65); color: var(--danger); }
+    main { padding: 25px 28px 48px; }
+    .grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.45fr) minmax(320px, .8fr);
+      gap: 18px;
+      align-items: start;
+    }
+    .stack { display: grid; gap: 18px; }
+    .panel {
+      background: linear-gradient(145deg, rgba(34, 44, 56, .96), rgba(25, 32, 42, .96));
+      border: 1px solid var(--line);
+      border-radius: 15px;
+      box-shadow: var(--shadow);
+      padding: 18px;
+      min-width: 0;
+    }
+    .panel-heading {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 15px;
+      margin-bottom: 15px;
+    }
+    .source-form { display: grid; gap: 11px; }
+    label { font-size: .78rem; color: var(--muted); }
+    input, select, button {
+      font: inherit;
+      color: var(--text);
+    }
+    input, select {
+      width: 100%;
+      padding: 10px 11px;
+      background: #11171e;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      outline: none;
+    }
+    input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(105, 210, 180, .14); }
+    .form-row { display: grid; grid-template-columns: minmax(0, 1fr) 150px; gap: 10px; }
+    .button-row { display: flex; flex-wrap: wrap; gap: 8px; }
+    button {
+      border: 1px solid var(--line);
+      background: #263240;
+      border-radius: 8px;
+      padding: 9px 12px;
+      cursor: pointer;
+      transition: border-color .15s, background .15s, transform .15s;
+      font-size: .82rem;
+    }
+    button:hover:not(:disabled) { border-color: var(--accent); background: #2c4050; transform: translateY(-1px); }
+    button:disabled { cursor: not-allowed; opacity: .38; }
+    button.primary { background: #1f6558; border-color: #55b49a; color: #edfff8; }
+    button.danger { border-color: rgba(242, 142, 142, .45); }
+    .help { font-size: .76rem; line-height: 1.45; color: var(--muted); }
+    .notice { min-height: 1.3em; color: var(--warn); font-size: .8rem; margin-top: 2px; }
+    .viewer {
+      min-height: 380px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      overflow: hidden;
+      background: #0b0f14;
+      position: relative;
+    }
+    .viewer-frame { max-width: 100%; position: relative; line-height: 0; }
+    .viewer img { display: block; max-width: min(100%, 960px); max-height: 64vh; object-fit: contain; }
+    .viewer canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+    .empty-state { padding: 35px; text-align: center; color: var(--muted); line-height: 1.55; }
+    .frame-meta, .metric-grid { display: grid; gap: 9px; }
+    .frame-meta { grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 13px; }
+    .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .metric, .record {
+      background: rgba(10, 14, 19, .32);
+      border: 1px solid rgba(52, 66, 82, .8);
+      border-radius: 9px;
+      padding: 10px;
+    }
+    .metric .value { font-size: 1.05rem; font-weight: 700; margin-top: 4px; }
+    .metric .label { font-size: .7rem; }
+    .kv { display: grid; grid-template-columns: minmax(100px, .8fr) minmax(0, 1.4fr); gap: 7px 12px; font-size: .79rem; }
+    .kv dt { color: var(--muted); }
+    .kv dd { margin: 0; overflow-wrap: anywhere; }
+    .progress {
+      height: 7px;
+      margin: 12px 0 6px;
+      background: #10161d;
+      border-radius: 99px;
+      overflow: hidden;
+    }
+    .progress > div { height: 100%; background: linear-gradient(90deg, #53b89d, #a6efd5); width: 0%; transition: width .2s; }
+    .timeline { display: grid; gap: 7px; max-height: 280px; overflow: auto; }
+    .timeline button { text-align: left; width: 100%; display: grid; grid-template-columns: 1fr auto; gap: 5px 10px; }
+    .timeline button.selected { border-color: var(--accent); background: rgba(55, 106, 94, .45); }
+    .timeline small { color: var(--muted); }
+    .record-list { display: grid; gap: 8px; max-height: 330px; overflow: auto; }
+    .record-list button { text-align: left; width: 100%; }
+    .record-list button.selected { border-color: var(--accent); background: rgba(55, 106, 94, .45); }
+    .record strong { display: block; font-size: .8rem; }
+    .record pre, pre {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      color: #cdd9e2;
+      font: .73rem/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      margin: 7px 0 0;
+    }
+    details summary { cursor: pointer; color: var(--muted); font-size: .8rem; }
+    .tag {
+      display: inline-block;
+      border: 1px solid var(--line);
+      border-radius: 99px;
+      padding: 3px 7px;
+      font-size: .68rem;
+      color: var(--accent-strong);
+      margin: 2px 4px 2px 0;
+    }
+    @media (max-width: 930px) {
+      .grid { grid-template-columns: 1fr; }
+      .viewer { min-height: 280px; }
+    }
+    @media (max-width: 600px) {
+      .header-inner, main { padding-left: 15px; padding-right: 15px; }
+      .header-inner { display: block; }
+      .status-chip { display: inline-block; margin-top: 13px; }
+      .frame-meta, .form-row { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <div>
+        <div class="eyebrow">Automa / M008</div>
+        <h1>Perception-memory Workbench</h1>
+        <p class="subtitle">Replay an ordered local image source through the existing perception, observation, and bounded-memory pipeline.</p>
+      </div>
+      <div id="phaseChip" class="status-chip">idle</div>
+    </div>
+  </header>
+
+  <main>
+    <div class="grid">
+      <div class="stack">
+        <section class="panel">
+          <div class="panel-heading">
+            <h2>Capture view</h2>
+            <span id="sourceIdentity" class="muted">no source selected</span>
+          </div>
+          <div class="viewer">
+            <div id="emptyState" class="empty-state">Choose an image directory, validate it, and start a replay.<br>The server owns the pipeline; this page only renders its state.</div>
+            <div id="viewerFrame" class="viewer-frame" hidden>
+              <img id="frameImage" alt="Current replay frame">
+              <canvas id="overlayCanvas" aria-hidden="true"></canvas>
+            </div>
+          </div>
+          <div class="frame-meta">
+            <div class="metric"><div class="label">Frame</div><div id="frameId" class="value">—</div></div>
+            <div class="metric"><div class="label">Sequence index</div><div id="frameIndex" class="value">—</div></div>
+            <div class="metric"><div class="label">Timestamp</div><div id="frameTimestamp" class="value">—</div></div>
+            <div class="metric"><div class="label">Perception</div><div id="perceptionStatus" class="value">—</div></div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-heading">
+            <h2>Replay timeline</h2>
+            <span id="progressText" class="muted">0 / 0</span>
+          </div>
+          <div class="progress"><div id="progressBar"></div></div>
+          <div id="timeline" class="timeline"><p class="muted help">No frames have been processed.</p></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-heading">
+            <h2>Perception evidence</h2>
+            <span id="evidenceSummary" class="muted">no output</span>
+          </div>
+          <div class="metric-grid">
+            <div class="metric"><div class="label">Plugin runs</div><div id="pluginRuns" class="value">—</div></div>
+            <div class="metric"><div class="label">Things / signals</div><div id="evidenceCounts" class="value">—</div></div>
+          </div>
+          <pre id="evidenceText" class="help" style="margin-top: 14px;">No perception output yet.</pre>
+        </section>
+      </div>
+
+      <div class="stack">
+        <section class="panel">
+          <div class="panel-heading"><h2>Source and controls</h2><span class="tag">observation-only</span></div>
+          <div class="source-form">
+            <div>
+              <label for="sourceDir">Image directory</label>
+              <input id="sourceDir" type="text" autocomplete="off" placeholder="/path/to/ordered/images">
+            </div>
+            <div class="form-row">
+              <div>
+                <label for="cadence">Cadence</label>
+                <select id="cadence">
+                  <option value="0">as fast as possible</option>
+                  <option value="100">100 ms</option>
+                  <option value="250" selected>250 ms</option>
+                  <option value="500">500 ms</option>
+                  <option value="1000">1 second</option>
+                </select>
+              </div>
+              <div>
+                <label for="overlayToggle">Display</label>
+                <select id="overlayToggle">
+                  <option value="on" selected>overlays on</option>
+                  <option value="off">image only</option>
+                </select>
+              </div>
+            </div>
+            <div class="button-row">
+              <button id="validateButton">Validate source</button>
+              <button id="startButton" class="primary">Start replay</button>
+              <button id="pauseButton">Pause</button>
+              <button id="resumeButton">Resume</button>
+              <button id="stepButton">Step</button>
+              <button id="cancelButton" class="danger">Cancel</button>
+              <button id="resetButton">Reset</button>
+            </div>
+            <div id="notice" class="notice" role="status"></div>
+            <p class="help">Source order, frame identity, absence annotations, perception, observation, and memory are validated and produced server-side.</p>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-heading"><h2>Memory ledger</h2><span id="memoryHealth" class="muted">no snapshot</span></div>
+          <dl class="kv">
+            <dt>Epoch</dt><dd id="memoryEpoch">—</dd>
+            <dt>Records</dt><dd id="memoryCount">—</dd>
+            <dt>Policy</dt><dd id="memoryPolicy">—</dd>
+          </dl>
+          <div id="memoryRecords" class="record-list" style="margin-top: 13px;"><p class="muted help">No retained evidence yet.</p></div>
+          <div class="metric" style="margin-top: 11px;">
+            <h3>Selected record</h3>
+            <pre id="memorySelected">Select a server-produced memory record to inspect its provenance.</pre>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-heading"><h2>Run state</h2><span id="runId" class="muted">no run</span></div>
+          <dl class="kv">
+            <dt>Sequence</dt><dd id="sequenceId">—</dd>
+            <dt>Adapter</dt><dd id="adapter">—</dd>
+            <dt>Next action</dt><dd id="recoveryAction">—</dd>
+            <dt>Side effects</dt><dd id="sideEffects">—</dd>
+          </dl>
+          <div id="failurePanel" hidden style="margin-top: 14px;">
+            <h3>Failure boundary</h3>
+            <pre id="failureText"></pre>
+          </div>
+          <details style="margin-top: 15px;">
+            <summary>Raw server state</summary>
+            <pre id="rawState"></pre>
+          </details>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    (function () {
+      "use strict";
+      var state = null;
+      var lastImageKey = "";
+      var requestInFlight = false;
+      var elements = {};
+      [
+        "phaseChip", "sourceIdentity", "emptyState", "viewerFrame", "frameImage",
+        "overlayCanvas", "frameId", "frameIndex", "frameTimestamp", "perceptionStatus",
+        "progressText", "progressBar", "timeline", "evidenceSummary", "pluginRuns",
+        "evidenceCounts", "evidenceText", "sourceDir", "cadence", "overlayToggle",
+        "validateButton", "startButton", "pauseButton", "resumeButton", "stepButton",
+        "cancelButton", "resetButton", "notice", "memoryHealth", "memoryEpoch",
+        "memoryCount", "memoryPolicy", "memoryRecords", "runId", "sequenceId",
+        "adapter", "recoveryAction", "sideEffects", "failurePanel", "failureText",
+        "rawState", "memorySelected"
+      ].forEach(function (id) { elements[id] = document.getElementById(id); });
+      var selectedRecordId = null;
+
+      function text(value, fallback) {
+        if (value === null || value === undefined || value === "") return fallback || "—";
+        return String(value);
+      }
+
+      function setText(id, value, fallback) {
+        elements[id].textContent = text(value, fallback);
+      }
+
+      function currentFrame() {
+        return state && state.current_frame ? state.current_frame : null;
+      }
+
+      function selectedRunId(action) {
+        if (!state || ["start", "validate", "reset"].indexOf(action) >= 0) return null;
+        return state.run_id || null;
+      }
+
+      async function action(action, extra) {
+        var body = { action: action };
+        var runId = selectedRunId(action);
+        if (runId) body.run_id = runId;
+        if (extra) Object.keys(extra).forEach(function (key) { body[key] = extra[key]; });
+        elements.notice.textContent = "";
+        try {
+          var response = await fetch("/api/action", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body)
+          });
+          var payload = await response.json();
+          if (payload.state) render(payload.state);
+          if (!response.ok || payload.ok === false) {
+            elements.notice.textContent = payload.message || "Action was rejected.";
+            return;
+          }
+          if (action === "validate") elements.notice.textContent = "Source validated.";
+        } catch (error) {
+          elements.notice.textContent = "Workbench connection failed: " + error;
+        }
+      }
+
+      function setButton(id, allowed) {
+        elements[id].disabled = !allowed;
+      }
+
+      function renderControls() {
+        var allowed = state && state.controls && state.controls.allowed_actions
+          ? state.controls.allowed_actions : [];
+        setButton("validateButton", allowed.indexOf("validate") >= 0);
+        setButton("startButton", allowed.indexOf("start") >= 0);
+        setButton("pauseButton", allowed.indexOf("pause") >= 0);
+        setButton("resumeButton", allowed.indexOf("resume") >= 0);
+        setButton("stepButton", allowed.indexOf("step") >= 0);
+        setButton("cancelButton", allowed.indexOf("cancel") >= 0);
+        setButton("resetButton", allowed.indexOf("reset") >= 0);
+        elements.cadence.disabled = !state;
+      }
+
+      function renderFrame() {
+        var frame = currentFrame();
+        if (!frame) {
+          elements.viewerFrame.hidden = true;
+          elements.emptyState.hidden = false;
+          setText("frameId", null);
+          setText("frameIndex", null);
+          setText("frameTimestamp", null);
+          return;
+        }
+        setText("frameId", frame.frame_id);
+        setText("frameIndex", frame.position);
+        setText("frameTimestamp", frame.timestamp_ms);
+        elements.viewerFrame.hidden = !!frame.absent;
+        elements.emptyState.hidden = !frame.absent;
+        if (frame.absent) {
+          elements.emptyState.textContent = "This sequence position has no image.\nReason: " + text(frame.absence_reason, "not provided");
+          return;
+        }
+        elements.emptyState.hidden = true;
+        var imageKey = text(state.run_id, "") + ":" + text(frame.frame_id, "");
+        if (imageKey !== lastImageKey) {
+          lastImageKey = imageKey;
+          elements.frameImage.onload = function () {
+            drawOverlay();
+          };
+          elements.frameImage.src = "/api/frame?run_id=" + encodeURIComponent(state.run_id || "") +
+            "&frame_id=" + encodeURIComponent(frame.frame_id);
+        }
+        drawOverlay();
+      }
+
+      function drawOverlay() {
+        var frame = currentFrame();
+        var image = elements.frameImage;
+        var canvas = elements.overlayCanvas;
+        if (!frame || frame.absent || !image.naturalWidth || elements.overlayToggle.value === "off") {
+          canvas.width = 1; canvas.height = 1;
+          return;
+        }
+        canvas.width = image.naturalWidth;
+        canvas.height = image.naturalHeight;
+        var context = canvas.getContext("2d");
+        context.clearRect(0, 0, canvas.width, canvas.height);
+        var perception = state && state.perception;
+        var things = perception && Array.isArray(perception.things) ? perception.things : [];
+        things.forEach(function (thing) {
+          var location = thing.location || {};
+          if (location.frame !== "image" && location.frame !== "camera") return;
+          context.strokeStyle = "#69d2b4";
+          context.fillStyle = "rgba(105, 210, 180, .12)";
+          context.lineWidth = Math.max(2, canvas.width / 500);
+          var box = location.bbox_xyxy_norm;
+          if (Array.isArray(box) && box.length === 4) {
+            var x = box[0] * canvas.width;
+            var y = box[1] * canvas.height;
+            var width = (box[2] - box[0]) * canvas.width;
+            var height = (box[3] - box[1]) * canvas.height;
+            context.fillRect(x, y, width, height);
+            context.strokeRect(x, y, width, height);
+            context.fillStyle = "#b8f4df";
+            context.font = Math.max(12, canvas.width / 55) + "px sans-serif";
+            context.fillText(text(thing.label, thing.kind), x + 4, Math.max(14, y - 4));
+          }
+          var polygon = location.polygon_xy_norm;
+          if (Array.isArray(polygon) && polygon.length > 1) {
+            context.beginPath();
+            polygon.forEach(function (point, index) {
+              if (!Array.isArray(point) || point.length < 2) return;
+              var px = point[0] * canvas.width;
+              var py = point[1] * canvas.height;
+              if (index === 0) context.moveTo(px, py); else context.lineTo(px, py);
+            });
+            context.closePath();
+            context.fill();
+            context.stroke();
+          }
+        });
+      }
+
+      function renderTimeline() {
+        var timeline = state && Array.isArray(state.timeline) ? state.timeline : [];
+        elements.timeline.textContent = "";
+        if (!timeline.length) {
+          var empty = document.createElement("p");
+          empty.className = "muted help";
+          empty.textContent = "No frames have been processed.";
+          elements.timeline.appendChild(empty);
+          return;
+        }
+        timeline.forEach(function (item) {
+          var frame = item.frame || {};
+          var button = document.createElement("button");
+          button.type = "button";
+          button.className = frame.frame_id === (currentFrame() || {}).frame_id ? "selected" : "";
+          var name = document.createElement("strong");
+          name.textContent = text(frame.frame_id, "unknown frame");
+          var status = document.createElement("small");
+          status.textContent = text(item.perception_status, "no perception") +
+            " · memory " + text(item.memory_record_count, "0");
+          button.appendChild(name);
+          button.appendChild(status);
+          button.addEventListener("click", function () {
+            elements.notice.textContent = "Timeline selection is rendered from the latest server state.";
+          });
+          elements.timeline.appendChild(button);
+        });
+      }
+
+      function renderEvidence() {
+        var perception = state && state.perception;
+        if (!perception) {
+          setText("evidenceSummary", "no output");
+          setText("pluginRuns", null);
+          setText("evidenceCounts", null);
+          elements.evidenceText.textContent = "No perception output yet.";
+          return;
+        }
+        setText("evidenceSummary", perception.status);
+        setText("pluginRuns", Array.isArray(perception.plugin_runs) ? perception.plugin_runs.length : 0);
+        setText("evidenceCounts", (perception.things || []).length + " / " + (perception.signals || []).length);
+        elements.evidenceText.textContent = Array.isArray(perception.lines)
+          ? perception.lines.join("\n") : "Structured perception output has no text lines.";
+      }
+
+      function renderMemory() {
+        var memory = state && state.memory;
+        if (!memory) {
+          setText("memoryHealth", "no snapshot");
+          setText("memoryEpoch", null);
+          setText("memoryCount", null);
+          setText("memoryPolicy", null);
+          elements.memoryRecords.textContent = "";
+          elements.memorySelected.textContent = "Select a server-produced memory record to inspect its provenance.";
+          var empty = document.createElement("p");
+          empty.className = "muted help";
+          empty.textContent = "No retained evidence yet.";
+          elements.memoryRecords.appendChild(empty);
+          return;
+        }
+        setText("memoryHealth", memory.health);
+        setText("memoryEpoch", memory.epoch_id);
+        setText("memoryCount", memory.record_count);
+        setText("memoryPolicy", memory.metadata && memory.metadata.policy);
+        elements.memoryRecords.textContent = "";
+        var records = memory.records || [];
+        if (!records.some(function (record) { return record.record_id === selectedRecordId; })) {
+          selectedRecordId = records.length ? records[0].record_id : null;
+        }
+        records.forEach(function (record) {
+          var card = document.createElement("button");
+          card.type = "button";
+          card.className = "record";
+          if (record.record_id === selectedRecordId) card.className += " selected";
+          var title = document.createElement("strong");
+          title.textContent = text(record.label, record.record_id);
+          var detail = document.createElement("pre");
+          detail.textContent = text(record.record_id, "unknown record") + " · confidence " + text(record.confidence, "0");
+          card.appendChild(title);
+          card.appendChild(detail);
+          card.addEventListener("click", function () {
+            selectedRecordId = record.record_id;
+            renderMemory();
+          });
+          elements.memoryRecords.appendChild(card);
+        });
+        if (!records.length) {
+          var noRecords = document.createElement("p");
+          noRecords.className = "muted help";
+          noRecords.textContent = "Memory is empty for this frame.";
+          elements.memoryRecords.appendChild(noRecords);
+          elements.memorySelected.textContent = "Memory is empty for this frame.";
+          return;
+        }
+        var selected = records.find(function (record) { return record.record_id === selectedRecordId; });
+        elements.memorySelected.textContent = selected
+          ? JSON.stringify({
+            record_id: selected.record_id,
+            kind: selected.kind,
+            label: selected.label,
+            confidence: selected.confidence,
+            provenance: selected.provenance,
+            properties: selected.properties
+          }, null, 2)
+          : "Select a server-produced memory record to inspect its provenance.";
+      }
+
+      function renderFailure() {
+        var failure = state && state.failure;
+        elements.failurePanel.hidden = !failure;
+        if (failure) {
+          elements.failureText.textContent = text(failure.boundary, "failure") + ": " + text(failure.message, "unknown failure");
+        }
+      }
+
+      function render(nextState) {
+        state = nextState || state;
+        if (!state) return;
+        var phase = text(state.phase, "idle");
+        elements.phaseChip.textContent = phase;
+        elements.phaseChip.className = "status-chip " + phase;
+        var source = state.source || {};
+        setText("sourceIdentity", state.source_identity || "no source selected");
+        if (document.activeElement !== elements.sourceDir) {
+          elements.sourceDir.value = source.source_path || source.path || "";
+        }
+        var frame = currentFrame();
+        var perception = state.perception;
+        setText("perceptionStatus", perception && perception.status);
+        var progress = state.progress || {};
+        setText("progressText", text(progress.completed, "0") + " / " + text(progress.total, "0"));
+        elements.progressBar.style.width = text(progress.percent, "0") + "%";
+        setText("runId", state.run_id || "no run");
+        setText("sequenceId", state.sequence_id);
+        setText("adapter", state.adapter);
+        setText("recoveryAction", state.recovery_action);
+        var sideEffects = state.machine_detail && state.machine_detail.side_effects;
+        setText("sideEffects", sideEffects && sideEffects.observation_only ? "observation only" : "inspect state");
+        elements.rawState.textContent = JSON.stringify(state, null, 2);
+        renderFrame();
+        renderTimeline();
+        renderEvidence();
+        renderMemory();
+        renderFailure();
+        renderControls();
+      }
+
+      async function poll() {
+        if (requestInFlight) return;
+        requestInFlight = true;
+        try {
+          var response = await fetch("/api/state", { cache: "no-store" });
+          if (response.ok) render(await response.json());
+        } catch (error) {
+          elements.notice.textContent = "Workbench connection failed: " + error;
+        } finally {
+          requestInFlight = false;
+        }
+      }
+
+      elements.validateButton.addEventListener("click", function () {
+        action("validate", { source_dir: elements.sourceDir.value });
+      });
+      elements.startButton.addEventListener("click", function () {
+        action("start", {
+          source_dir: elements.sourceDir.value,
+          cadence_ms: Number(elements.cadence.value)
+        });
+      });
+      elements.pauseButton.addEventListener("click", function () { action("pause"); });
+      elements.resumeButton.addEventListener("click", function () { action("resume"); });
+      elements.stepButton.addEventListener("click", function () { action("step"); });
+      elements.cancelButton.addEventListener("click", function () { action("cancel"); });
+      elements.resetButton.addEventListener("click", function () { action("reset"); });
+      elements.cadence.addEventListener("change", function () {
+        if (state && (state.phase === "running" || state.phase === "paused")) {
+          action("set_cadence", { cadence_ms: Number(elements.cadence.value) });
+        }
+      });
+      elements.overlayToggle.addEventListener("change", drawOverlay);
+      window.addEventListener("resize", drawOverlay);
+      poll();
+      window.setInterval(poll, 250);
+    }());
+  </script>
+</body>
+</html>

@@ -254,9 +254,12 @@ class WorkbenchTests(unittest.TestCase):
             self.assertIn("Perception-memory Workbench", html)
             self.assertIn('id="stepButton"', html)
             self.assertIn('id="timelineSelection"', html)
+            self.assertIn('id="memorySelection"', html)
             self.assertIn('id="memorySelected"', html)
             self.assertIn("selectedFrameId", html)
             self.assertIn("data-frame-id", html)
+            self.assertIn("data-record-id", html)
+            self.assertIn("selectRecord", html)
             self.assertNotIn("Timeline selection is rendered from the latest server state.", html)
 
             start_body = json.dumps(

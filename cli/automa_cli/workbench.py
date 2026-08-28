@@ -1369,6 +1369,9 @@ class ImageReplayRunner:
         }
         return {
             "frame": frame.to_dict(include_path=False),
+            "perception": result.perception.to_dict() if result.perception else None,
+            "observation": result.observation.to_dict() if result.observation else None,
+            "memory": memory,
             "perception_status": result.perception.status if result.perception else None,
             "observation_id": result.observation.observation_id if result.observation else None,
             "memory_health": result.memory.health if result.memory else None,

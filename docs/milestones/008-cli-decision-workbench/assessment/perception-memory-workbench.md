@@ -81,6 +81,7 @@ derive observations, mutate memory, or invoke a command.
 | validate and set_cadence actions | Small support actions make source failure and controlled replay usable through the same page/CLI-owned runner; they do not alter fixed pipeline semantics | Admitted under the four proposal envelope conditions |
 | cancel action | Gives a bounded recovery path for a long-lived local server and ensures isolated stage cleanup | Admitted under the four proposal envelope conditions |
 | --max-frames, --host, and --port CLI options | Expose source and loopback safety limits already enforced by the runner; they do not add a source or semantic choice | Admitted under the four proposal envelope conditions |
+| Clickable frame selection with frame-specific timeline details, keyed DOM updates, and a compact sticky header | Hands-on use found that timeline rows could not inspect an earlier processed frame and blinked during polling. Selection reuses server-produced frame, perception, observation, and memory values; keyed updates preserve hovered rows; the header refinement improves the same page without changing replay semantics | Admitted under the four proposal envelope conditions |
 | Video, live ingestion, arbitrary algorithm selection, candidate comparison, recording, simulator/vehicle control, or external hosting | Each changes source, semantic, authority, or operator goal | Deferred to a later proposal; no follow-up in this implementation unit |
 
 No new product frontier, catalog entry, external authority, or alternate
@@ -98,6 +99,8 @@ Focused deterministic coverage is in
 - pause/resume/step/reset, stale-run refusal, and terminal cleanup;
 - shared loopback state, frame transport, persistence after completion, and
   rejection of raw argv; and
+- per-frame timeline detail payloads used for historical frame selection and
+  the page's stable selection hooks; and
 - the public automa vehicles workbench replay --json entry point.
 
 The implementation validation command is:

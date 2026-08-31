@@ -29,6 +29,11 @@ try:
         US88_SOURCE_RELPATH,
         USAGE_PATTERNS,
     )
+    from .frozen_parser import (
+        FROZEN_PARSER_SOURCE_COMMIT,
+        FrozenParserError,
+        run_frozen_parser_audit,
+    )
     from .parser_walk import (
         action_leaf_ids,
         leaf_skeleton,
@@ -53,6 +58,11 @@ except ImportError:  # script / path execution
         US88_SOURCE_CONTENT_SHA256,
         US88_SOURCE_RELPATH,
         USAGE_PATTERNS,
+    )
+    from frozen_parser import (
+        FROZEN_PARSER_SOURCE_COMMIT,
+        FrozenParserError,
+        run_frozen_parser_audit,
     )
     from parser_walk import (
         action_leaf_ids,
@@ -440,6 +450,16 @@ def validate_leaf_inventory_document(
     if re.fullmatch(r"[0-9a-f]{7,40}", source_commit) is None:
         raise AuditError(
             "leaf inventory generator.source_commit must be a git commit id"
+        )
+    if revision != FROZEN_PARSER_SOURCE_COMMIT:
+        raise AuditError(
+            "leaf inventory generator.revision must equal frozen parser source "
+            f"{FROZEN_PARSER_SOURCE_COMMIT}"
+        )
+    if source_commit != FROZEN_PARSER_SOURCE_COMMIT:
+        raise AuditError(
+            "leaf inventory generator.source_commit must equal frozen parser source "
+            f"{FROZEN_PARSER_SOURCE_COMMIT}"
         )
     inventory = inventory_doc.get("leaves")
     if not isinstance(inventory, list):
@@ -1979,10 +1999,11 @@ def help_drift_report(parser: argparse.ArgumentParser | None = None) -> dict[str
     }
 
 
-def run_audit(*, repo_root: Path = ROOT) -> dict[str, Any]:
-    from cli.automa_cli.app import build_parser
-
-    parser = build_parser()
+def _run_audit_with_parser(
+    *,
+    repo_root: Path,
+    parser: argparse.ArgumentParser,
+) -> dict[str, Any]:
     catalog_path = repo_root / CATALOG_PATH.relative_to(ROOT)
     catalog = load_catalog(
         catalog_path,
@@ -2097,6 +2118,22 @@ def run_audit(*, repo_root: Path = ROOT) -> dict[str, Any]:
         },
     }
     return {"report": report, "rollup": rollup}
+
+
+def run_audit(
+    *,
+    repo_root: Path = ROOT,
+) -> dict[str, Any]:
+    """Validate current M007 evidence against its historical parser authority."""
+
+    repo_root = Path(repo_root).resolve()
+    try:
+        return run_frozen_parser_audit(
+            repo_root=repo_root,
+            validator_path=Path(__file__),
+        )
+    except FrozenParserError as exc:
+        raise AuditError(str(exc)) from exc
 
 
 def main(argv: list[str] | None = None) -> int:

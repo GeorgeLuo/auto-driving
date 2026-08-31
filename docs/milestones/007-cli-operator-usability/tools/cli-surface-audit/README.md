@@ -16,6 +16,7 @@ Implements the accepted
 | `live_residuals.json` | Linked `M007-LIVE-*` residuals |
 | `frozen_authority.py` | Code-frozen templates, claim/trace map, and #88 source identity |
 | `validate_audit.py` | Fail-closed finalizer |
+| `frozen_parser.py` | Exact-Git parser-source resolver for the inventory-generation revision |
 | `parser_walk.py` / `argv_validate.py` | Membership walk (help → `kind: meta`) and parser-aware argv checks |
 
 ### Membership rule
@@ -42,9 +43,26 @@ python3 docs/milestones/007-cli-operator-usability/tools/cli-surface-audit/valid
 
 Exit `0` and `result: pass` are required for Met.
 
+Historical parser validation requires the local Git object
+`a989324470e6fc04c9d9678e2337daf47828100b`, the revision already recorded by
+`leaf_inventory.json`. The finalizer resolves that exact commit without a
+branch, tag, working-tree, or network fallback, verifies the frozen `app.py`
+bytes and the complete 100-file historical import tree, and imports that source
+in an isolated child process. Current artifact bytes remain the evidence under
+validation. A checkout that lacks the frozen object fails closed; CI fetches it
+explicitly.
+
+The accepted audit unit remains PR #122 at canonical merge
+`5c09fb32dc196b79e90c2a54fde78b896b41cb49`; that acceptance identity does not
+replace the earlier parser-generation revision recorded inside its inventory.
+
 ## Non-claims
 
 - Cited `passed` is historical, not HEAD re-verification.
+- The 49-leaf inventory and parser-aware argv receipts describe the frozen
+  inventory-generation revision, not the current checkout's CLI membership.
+- Later CLI additions do not rewrite M007 evidence; current CLI claims require
+  their own current-head tests or a separately reviewed audit refresh.
 - A cited family aggregate cannot promote a row unless its frozen result also
   contains every registered command in order, plus the declared confirmation
   and cleanup predicates; extra diagnostic commands do not replace a missing

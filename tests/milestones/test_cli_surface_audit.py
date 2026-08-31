@@ -1,11 +1,19 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import json
+import os
 import shlex
+import shutil
+import subprocess
 import sys
+import tarfile
+import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -63,14 +71,237 @@ class CliSurfaceAuditTests(unittest.TestCase):
         sys.path.insert(0, str(TOOL))
         cls.parser_walk = _load("parser_walk", TOOL / "parser_walk.py")
         cls.argv_validate = _load("argv_validate", TOOL / "argv_validate.py")
+        cls.frozen_parser = _load("frozen_parser", TOOL / "frozen_parser.py")
         cls.validate_audit = _load("validate_audit", TOOL / "validate_audit.py")
+
+    @classmethod
+    def _historical_audit_result(cls) -> dict[str, object]:
+        if not hasattr(cls, "_cached_historical_audit"):
+            cls._cached_historical_audit = cls.validate_audit.run_audit(repo_root=ROOT)
+        return cls._cached_historical_audit
 
     def test_leaf_membership_matches_parser(self) -> None:
         inventory = json.loads((TOOL / "leaf_inventory.json").read_text(encoding="utf-8"))
-        ids = self.parser_walk.public_leaf_ids()
+        result = self._historical_audit_result()
+        ids = result["report"]["leaves"]["ids"]
         recorded = [row["leaf_id"] for row in inventory["leaves"]]
         self.assertEqual(sorted(ids), sorted(recorded))
         self.assertGreaterEqual(len(ids), 20)
+
+    def test_inventory_parser_source_identity_is_frozen(self) -> None:
+        inventory = json.loads((TOOL / "leaf_inventory.json").read_text(encoding="utf-8"))
+        generator = inventory["generator"]
+        self.assertEqual(
+            generator["revision"],
+            self.frozen_parser.FROZEN_PARSER_SOURCE_COMMIT,
+        )
+        self.assertEqual(
+            generator["source_commit"],
+            self.frozen_parser.FROZEN_PARSER_SOURCE_COMMIT,
+        )
+        for field in ("revision", "source_commit"):
+            with self.subTest(field=field):
+                mutated = json.loads(json.dumps(inventory))
+                mutated["generator"][field] = "0" * 40
+                with self.assertRaisesRegex(
+                    self.validate_audit.AuditError,
+                    "frozen parser source",
+                ):
+                    self.validate_audit.validate_leaf_inventory_document(mutated)
+
+    def test_frozen_parser_missing_commit_fails_closed(self) -> None:
+        runner = mock.Mock(
+            return_value=SimpleNamespace(
+                returncode=1,
+                stdout=b"",
+                stderr=b"missing commit",
+            )
+        )
+        source = self.frozen_parser.FrozenParserSource(ROOT, git_runner=runner)
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(
+                self.frozen_parser.FrozenParserError,
+                "commit is missing or unusable",
+            ):
+                source.materialize(Path(directory))
+        self.assertEqual(
+            runner.call_args.args[0],
+            [
+                "git",
+                "--no-replace-objects",
+                "cat-file",
+                "-e",
+                f"{self.frozen_parser.FROZEN_PARSER_SOURCE_COMMIT}^{{commit}}",
+            ],
+        )
+
+    def test_frozen_parser_rejects_archive_traversal(self) -> None:
+        payload = io.BytesIO()
+        with tarfile.open(fileobj=payload, mode="w") as archive:
+            data = b"untrusted"
+            member = tarfile.TarInfo("../escape.py")
+            member.size = len(data)
+            archive.addfile(member, io.BytesIO(data))
+        runner = mock.Mock(
+            side_effect=[
+                SimpleNamespace(returncode=0, stdout=b"", stderr=b""),
+                SimpleNamespace(returncode=0, stdout=payload.getvalue(), stderr=b""),
+            ]
+        )
+        source = self.frozen_parser.FrozenParserSource(ROOT, git_runner=runner)
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(
+                self.frozen_parser.FrozenParserError,
+                "archive path is unsafe",
+            ):
+                source.materialize(Path(directory))
+        commands = [call.args[0] for call in runner.call_args_list]
+        self.assertEqual(
+            commands[0],
+            [
+                "git",
+                "--no-replace-objects",
+                "cat-file",
+                "-e",
+                f"{self.frozen_parser.FROZEN_PARSER_SOURCE_COMMIT}^{{commit}}",
+            ],
+        )
+        self.assertEqual(
+            commands[1][0:4],
+            ["git", "--no-replace-objects", "archive", "--format=tar"],
+        )
+
+    def test_frozen_parser_rejects_duplicate_archive_members(self) -> None:
+        payload = io.BytesIO()
+        with tarfile.open(fileobj=payload, mode="w") as archive:
+            for data in (b"first", b"second"):
+                member = tarfile.TarInfo("cli/automa_cli/app.py")
+                member.size = len(data)
+                archive.addfile(member, io.BytesIO(data))
+        runner = mock.Mock(
+            side_effect=[
+                SimpleNamespace(returncode=0, stdout=b"", stderr=b""),
+                SimpleNamespace(returncode=0, stdout=payload.getvalue(), stderr=b""),
+            ]
+        )
+        source = self.frozen_parser.FrozenParserSource(ROOT, git_runner=runner)
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(
+                self.frozen_parser.FrozenParserError,
+                "duplicate member",
+            ):
+                source.materialize(Path(directory))
+
+    def test_historical_audit_ignores_current_app_source_drift(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repo_root = Path(directory)
+            staged_m007 = (
+                repo_root
+                / "docs"
+                / "milestones"
+                / "007-cli-operator-usability"
+            )
+            staged_m007.parent.mkdir(parents=True)
+            source_m007 = (
+                ROOT / "docs" / "milestones" / "007-cli-operator-usability"
+            )
+            staged_tool = staged_m007 / "tools" / "cli-surface-audit"
+            staged_tool.parent.mkdir(parents=True)
+            shutil.copytree(
+                source_m007 / "tools" / "cli-surface-audit",
+                staged_tool,
+                ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+            )
+            for relative in (
+                "evidence/cli-scenario-continuity/result.json",
+                "evidence/live-cli-acceptance/exploratory-findings.md",
+                "evidence/live-cli-acceptance/result.json",
+            ):
+                destination = staged_m007 / relative
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(source_m007 / relative, destination)
+            (repo_root / ".git").write_text(
+                f"gitdir: {(ROOT / '.git').resolve()}\n",
+                encoding="utf-8",
+            )
+            current_cli = repo_root / "cli" / "automa_cli"
+            current_cli.mkdir(parents=True)
+            (repo_root / "cli" / "__init__.py").write_text("", encoding="utf-8")
+            (current_cli / "__init__.py").write_text("", encoding="utf-8")
+            (current_cli / "app.py").write_text(
+                "this is intentionally invalid Python !!!\n",
+                encoding="utf-8",
+            )
+            validator = (
+                staged_m007
+                / "tools"
+                / "cli-surface-audit"
+                / "validate_audit.py"
+            )
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(validator),
+                    "--repo-root",
+                    str(repo_root),
+                ],
+                cwd=repo_root,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+                timeout=120,
+            )
+        self.assertEqual(completed.returncode, 0, completed.stderr.decode())
+        self.assertEqual(completed.stderr, b"")
+        self.assertIn(b'"leaves": 49', completed.stdout)
+
+    def test_frozen_parser_pins_the_complete_import_tree(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            source_root = self.frozen_parser.FrozenParserSource(ROOT).materialize(
+                Path(directory)
+            )
+            files = sorted(
+                path.relative_to(source_root).as_posix()
+                for path in source_root.rglob("*")
+                if path.is_file()
+            )
+        self.assertEqual(
+            len(files),
+            self.frozen_parser.FROZEN_SOURCE_FILE_COUNT,
+        )
+        self.assertIn("cli/automa_cli/app.py", files)
+
+    def test_frozen_parser_child_uses_isolated_python_environment(self) -> None:
+        source = mock.Mock()
+        source.materialize.side_effect = lambda destination: destination
+        child_runner = mock.Mock(
+            return_value=SimpleNamespace(
+                returncode=0,
+                stdout=json.dumps({"report": {}, "rollup": ""}).encode("utf-8"),
+                stderr=b"",
+            )
+        )
+        with mock.patch.dict(
+            os.environ,
+            {
+                "PYTHONPATH": "/tmp/untrusted-python-path",
+                "COVERAGE_PROCESS_CONFIG": "/tmp/untrusted-coverage-config",
+            },
+        ):
+            result = self.frozen_parser.run_frozen_parser_audit(
+                repo_root=ROOT,
+                validator_path=TOOL / "validate_audit.py",
+                source=source,
+                child_runner=child_runner,
+            )
+        self.assertEqual(result, {"report": {}, "rollup": ""})
+        command = child_runner.call_args.args[0]
+        environment = child_runner.call_args.kwargs["env"]
+        self.assertEqual(command[1:4], ["-I", "-B", "-c"])
+        self.assertNotIn("PYTHONPATH", environment)
+        self.assertNotIn("COVERAGE_PROCESS_CONFIG", environment)
 
     def test_overlay_omission_fails(self) -> None:
         inventory = json.loads((TOOL / "leaf_inventory.json").read_text(encoding="utf-8"))
@@ -221,7 +452,7 @@ class CliSurfaceAuditTests(unittest.TestCase):
         self.assertIn("frozen", str(ctx.exception).lower())
 
     def test_full_audit_pass(self) -> None:
-        result = self.validate_audit.run_audit(repo_root=ROOT)
+        result = self._historical_audit_result()
         self.assertEqual(result["report"]["result"], "pass")
         self.assertEqual(result["report"]["sequences"]["count"], 10)
         self.assertGreaterEqual(result["report"]["leaves"]["count"], 40)
@@ -481,13 +712,12 @@ class CliSurfaceAuditTests(unittest.TestCase):
         self.assertEqual(len(meta), 10)
         self.assertTrue(all(row["tokens"][-1] == "help" for row in meta))
         self.assertTrue(all(row["tokens"][-1] != "help" for row in action))
-        walk = self.parser_walk.walk_leaves(
-            __import__("cli.automa_cli.app", fromlist=["build_parser"]).build_parser()
-        )
+        report = self._historical_audit_result()["report"]
         self.assertEqual(
-            {leaf.leaf_id: leaf.kind for leaf in walk},
-            {row["leaf_id"]: row["kind"] for row in inventory["leaves"]},
+            set(report["help_drift"]["meta_leaf_ids"]),
+            {row["leaf_id"] for row in meta},
         )
+        self.assertEqual(report["leaves"]["meta_count"], len(meta))
 
     def test_supports_json_parser_parity_mutation_fails(self) -> None:
         inventory = json.loads((TOOL / "leaf_inventory.json").read_text(encoding="utf-8"))
@@ -561,7 +791,7 @@ class CliSurfaceAuditTests(unittest.TestCase):
                 self.validate_audit.validate_overlay(leaf_ids=leaf_ids, overlay=mutated)
 
     def test_help_drift_excludes_meta(self) -> None:
-        report = self.validate_audit.help_drift_report()
+        report = self._historical_audit_result()["report"]["help_drift"]
         self.assertEqual(report["meta_leaf_count"], 10)
         self.assertNotIn("help", report.get("missing_from_help", []))
         self.assertTrue(

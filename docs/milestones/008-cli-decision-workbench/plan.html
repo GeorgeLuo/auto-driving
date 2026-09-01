@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="447ae34a5774e6b9160086117506d1b9e5ef8a8ee757de128fd83e0f576e58f6">
+  <meta name="source-sha256" content="092aa73805ee3b450431dc12ce6fc303b02aff056cc71072b56fabc9657f8c5f">
   <base target="_blank">
   <title>Milestone plan — 008-cli-decision-workbench</title>
   <style>
@@ -252,6 +252,9 @@ coverage or a frontend framework migration.</p>
 <li>Implementation branch: <code>m008/perception-memory-workbench</code></li>
 <li>Proposal path: <code>docs/milestones/008-cli-decision-workbench/proposals/perception-memory-workbench.md</code></li>
 <li>Accepted proposal: <a href="https://github.com/GeorgeLuo/auto-driving/pull/172">#172</a> at <code>09687f19acd61b286378fb65f3db915ce5e50d51</code> (reviewed head <code>09e82ae15158608247097c85b5e21a47b0a06511</code> by <code>GeorgeLuo</code> as <code>OWNER</code> at <code>2026-08-27T23:05:47Z</code>)</li>
+<li>Proposal amendment branch: <code>m008/amend-plugin-selection</code></li>
+<li>Proposal amendment path: <code>docs/milestones/008-cli-decision-workbench/proposals/perception-plugin-selection-amendment.md</code></li>
+<li>Accepted proposal amendments: <a href="https://github.com/GeorgeLuo/auto-driving/pull/179">#179</a> at <code>1189002447802442e857da8f5d9c2663ff85b86d</code> (<code>docs/milestones/008-cli-decision-workbench/proposals/perception-plugin-selection-amendment.md</code>) (reviewed head <code>cb8ee7318c3820dc239def5343521396d9aab194</code> by <code>GeorgeLuo</code> as <code>OWNER</code> at <code>2026-09-01T23:17:14Z</code>)</li>
 <li>Review kind: Behavioral feature slice</li>
 <li>Review question: Can an operator use a local workbench to replay a supported ordered image source through the existing perception-to-<code>Observation</code>-to-memory pipeline, inspect real capture overlays and memory effects, and control the bounded replay without shell commands, mock data, hidden simulator changes, or a second execution authority?</li>
 <li>Acceptance owner: Workbench replay runner and CLI machine-readable boundary</li>
@@ -331,8 +334,18 @@ coverage or a frontend framework migration.</p>
 </tr>
 <tr>
 <td>Perception-memory workbench journey</td>
+<td>proposal_amendment_in_review</td>
+<td>Started proposal amendment m008/amend-plugin-selection.</td>
+</tr>
+<tr>
+<td>Perception-memory workbench journey</td>
+<td>ready_for_implementation</td>
+<td>Proposal amendment PR #179 accepted at 1189002447802442e857da8f5d9c2663ff85b86d (reviewed head <code>cb8ee7318c3820dc239def5343521396d9aab194</code> by <code>GeorgeLuo</code> as <code>OWNER</code> at <code>2026-09-01T23:17:14Z</code>).</td>
+</tr>
+<tr>
+<td>Perception-memory workbench journey</td>
 <td>implementation_in_review</td>
-<td>Started m008/perception-memory-workbench.</td>
+<td>Resumed m008/perception-memory-workbench after amendment PR #179 acceptance.</td>
 </tr>
 </tbody>
 </table>

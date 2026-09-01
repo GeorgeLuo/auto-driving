@@ -13,11 +13,16 @@ from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapsh
 from lab.plugins.perception.floor_continuity_capture.src.plugin import (
     CaptureFloorContinuityPlugin,
 )
+from lab.plugins.perception.floor_continuity.src.model import FloorContinuityConfig
 
 
 PLUGIN_SPEC = (
     "lab.plugins.perception.floor_continuity_capture.src.plugin:"
     "CaptureFloorContinuityPlugin"
+)
+MANIFEST_PATH = (
+    Path(__file__).parents[3]
+    / "lab/plugins/perception/floor_continuity_capture/plugin.json"
 )
 
 
@@ -26,10 +31,18 @@ class CaptureFloorContinuityCandidateTests(unittest.TestCase):
         rgb = np.full((120, 160, 3), (205, 199, 185), dtype=np.uint8)
         rgb[58:84, 38:78] = (62, 67, 72)
 
+        plugin = CaptureFloorContinuityPlugin(**_capture_config())
         result = _mapper().perceive(_request(rgb, "frame-19"))
 
         self.assertEqual(result.status, "ok")
         self.assertEqual(CaptureFloorContinuityPlugin.plugin_id, "floor-continuity-capture-v1")
+        self.assertEqual(
+            plugin.config,
+            FloorContinuityConfig(
+                minimum_boundary_width_ratio=0.03,
+                minimum_boundary_confidence=0.7,
+            ),
+        )
         self.assertTrue(_signal(result, "floor_visible").value)
         boundaries = [thing for thing in result.things if thing.kind == "floor_boundary"]
         self.assertTrue(boundaries)
@@ -63,11 +76,18 @@ class CaptureFloorContinuityCandidateTests(unittest.TestCase):
 
 
 def _mapper(**config_overrides) -> PluginPerceptionMapper:
+    config = _capture_config()
+    config.update(config_overrides)
     return PluginPerceptionMapper(
         plugins=["floor_continuity_capture"],
         plugin_specs={"floor_continuity_capture": PLUGIN_SPEC},
-        plugin_configs={"floor_continuity_capture": config_overrides},
+        plugin_configs={"floor_continuity_capture": config},
     )
+
+
+def _capture_config() -> dict:
+    manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
+    return dict(manifest["plugin"]["config"])
 
 
 def _request(rgb: np.ndarray, frame_id: str):

@@ -184,7 +184,6 @@
       font: .73rem/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       margin: 7px 0 0;
     }
-    details summary { cursor: pointer; color: var(--muted); font-size: .8rem; }
     .tag {
       display: inline-block;
       border: 1px solid var(--line);
@@ -340,10 +339,6 @@
             <h3>Failure boundary</h3>
             <pre id="failureText"></pre>
           </div>
-          <details style="margin-top: 15px;">
-            <summary>Raw server state</summary>
-            <pre id="rawState"></pre>
-          </details>
         </section>
       </div>
     </div>
@@ -354,10 +349,15 @@
       "use strict";
       var state = null;
       var lastImageKey = "";
-      var requestInFlight = false;
+      var loadedImageKey = "";
+      var pollInFlight = false;
+      var pollTimer = null;
+      var actionInFlight = false;
+      var stateRequestGeneration = 0;
       var selectedFrameId = null;
       var selectedFrameRunId = null;
-      var timelineRunId = null;
+      var selectedFrameDetail = null;
+      var detailRequestGeneration = 0;
       var elements = {};
       [
         "phaseChip", "sourceIdentity", "emptyState", "viewerFrame", "frameImage",
@@ -368,7 +368,7 @@
         "cancelButton", "resetButton", "notice", "memorySelection", "memoryHealth", "memoryEpoch",
         "memoryCount", "memoryPolicy", "memoryRecords", "runId", "sequenceId",
         "adapter", "recoveryAction", "sideEffects", "failurePanel", "failureText",
-        "rawState", "memorySelected"
+        "memorySelected"
       ].forEach(function (id) { elements[id] = document.getElementById(id); });
       var selectedRecordId = null;
 
@@ -382,37 +382,39 @@
       }
 
       function currentFrame() {
-        var selected = selectedTimelineItem();
-        if (selected && selected.frame) return selected.frame;
+        if (selectedFrameDetail && selectedFrameDetail.frame) {
+          return selectedFrameDetail.frame;
+        }
         return state && state.current_frame ? state.current_frame : null;
       }
 
-      function selectedTimelineItem() {
-        if (!state || !selectedFrameId || selectedFrameRunId !== state.run_id) return null;
-        var timeline = Array.isArray(state.timeline) ? state.timeline : [];
-        return timeline.find(function (item) {
-          return item && item.frame && item.frame.frame_id === selectedFrameId;
-        }) || null;
-      }
-
       function currentPayload(key) {
-        var selected = selectedTimelineItem();
-        if (selected && Object.prototype.hasOwnProperty.call(selected, key)) {
-          return selected[key];
+        if (selectedFrameDetail && Object.prototype.hasOwnProperty.call(selectedFrameDetail, key)) {
+          return selectedFrameDetail[key];
         }
         return state ? state[key] : null;
       }
 
+      function clearFrameSelection() {
+        detailRequestGeneration += 1;
+        selectedFrameId = null;
+        selectedFrameRunId = null;
+        selectedFrameDetail = null;
+        selectedRecordId = null;
+      }
+
       function selectedRunId(action) {
-        if (!state || ["start", "validate", "reset"].indexOf(action) >= 0) return null;
+        if (!state || action === "start") return null;
         return state.run_id || null;
       }
 
       async function action(action, extra) {
+        if (actionInFlight) return;
+        var requestGeneration = ++stateRequestGeneration;
+        actionInFlight = true;
+        renderControls();
         if (["start", "validate", "reset"].indexOf(action) >= 0) {
-          selectedFrameId = null;
-          selectedFrameRunId = null;
-          selectedRecordId = null;
+          clearFrameSelection();
         }
         var body = { action: action };
         var runId = selectedRunId(action);
@@ -426,14 +428,26 @@
             body: JSON.stringify(body)
           });
           var payload = await response.json();
-          if (payload.state) render(payload.state);
+          if (payload.state && requestGeneration === stateRequestGeneration) {
+            render(payload.state);
+          }
           if (!response.ok || payload.ok === false) {
-            elements.notice.textContent = payload.message || "Action was rejected.";
+            if (requestGeneration === stateRequestGeneration) {
+              elements.notice.textContent = payload.message || "Action was rejected.";
+            }
             return;
           }
-          if (action === "validate") elements.notice.textContent = "Source validated.";
+          if (action === "validate" && requestGeneration === stateRequestGeneration) {
+            elements.notice.textContent = "Source validated.";
+          }
         } catch (error) {
-          elements.notice.textContent = "Workbench connection failed: " + error;
+          if (requestGeneration === stateRequestGeneration) {
+            elements.notice.textContent = "Workbench connection failed: " + error;
+          }
+        } finally {
+          actionInFlight = false;
+          renderControls();
+          schedulePoll(pollDelay());
         }
       }
 
@@ -444,21 +458,27 @@
       function renderControls() {
         var allowed = state && state.controls && state.controls.allowed_actions
           ? state.controls.allowed_actions : [];
-        setButton("validateButton", allowed.indexOf("validate") >= 0);
-        setButton("startButton", allowed.indexOf("start") >= 0);
-        setButton("pauseButton", allowed.indexOf("pause") >= 0);
-        setButton("resumeButton", allowed.indexOf("resume") >= 0);
-        setButton("stepButton", allowed.indexOf("step") >= 0);
-        setButton("cancelButton", allowed.indexOf("cancel") >= 0);
-        setButton("resetButton", allowed.indexOf("reset") >= 0);
-        elements.cadence.disabled = !state;
+        setButton("validateButton", !actionInFlight && allowed.indexOf("validate") >= 0);
+        setButton("startButton", !actionInFlight && allowed.indexOf("start") >= 0);
+        setButton("pauseButton", !actionInFlight && allowed.indexOf("pause") >= 0);
+        setButton("resumeButton", !actionInFlight && allowed.indexOf("resume") >= 0);
+        setButton("stepButton", !actionInFlight && allowed.indexOf("step") >= 0);
+        setButton("cancelButton", !actionInFlight && allowed.indexOf("cancel") >= 0);
+        setButton("resetButton", !actionInFlight && allowed.indexOf("reset") >= 0);
+        elements.cadence.disabled = !state || actionInFlight;
       }
 
       function renderFrame() {
         var frame = currentFrame();
         if (!frame) {
+          lastImageKey = "";
+          loadedImageKey = "";
+          elements.frameImage.removeAttribute("src");
+          elements.overlayCanvas.width = 1;
+          elements.overlayCanvas.height = 1;
           elements.viewerFrame.hidden = true;
           elements.emptyState.hidden = false;
+          elements.emptyState.textContent = "Choose an image directory, validate it, and start a replay.\nThe server owns the pipeline; this page only renders its state.";
           setText("frameId", null);
           setText("frameIndex", null);
           setText("frameTimestamp", null);
@@ -468,22 +488,47 @@
         setText("frameIndex", frame.position);
         setText("frameTimestamp", frame.timestamp_ms);
         elements.frameImage.alt = "Replay frame " + text(frame.frame_id, "unknown");
-        elements.viewerFrame.hidden = !!frame.absent;
-        elements.emptyState.hidden = !frame.absent;
         if (frame.absent) {
+          lastImageKey = "";
+          loadedImageKey = "";
+          elements.frameImage.removeAttribute("src");
+          elements.overlayCanvas.width = 1;
+          elements.overlayCanvas.height = 1;
+          elements.viewerFrame.hidden = true;
+          elements.emptyState.hidden = false;
           elements.emptyState.textContent = "This sequence position has no image.\nReason: " + text(frame.absence_reason, "not provided");
           return;
         }
-        elements.emptyState.hidden = true;
-        var imageKey = text(state.run_id, "") + ":" + text(frame.frame_id, "");
+        var imageKey = text(selectedFrameRunId || state.run_id, "") + ":" + text(frame.frame_id, "");
         if (imageKey !== lastImageKey) {
           lastImageKey = imageKey;
+          loadedImageKey = "";
+          elements.overlayCanvas.width = 1;
+          elements.overlayCanvas.height = 1;
+          elements.viewerFrame.hidden = true;
+          elements.emptyState.hidden = false;
+          elements.emptyState.textContent = "Loading frame " + text(frame.frame_id, "unknown") + "…";
           elements.frameImage.onload = function () {
+            if (lastImageKey !== imageKey) return;
+            loadedImageKey = imageKey;
+            elements.viewerFrame.hidden = false;
+            elements.emptyState.hidden = true;
             drawOverlay();
           };
-          elements.frameImage.src = "/api/frame?run_id=" + encodeURIComponent(state.run_id || "") +
+          elements.frameImage.onerror = function () {
+            if (lastImageKey !== imageKey) return;
+            loadedImageKey = "";
+            elements.viewerFrame.hidden = true;
+            elements.emptyState.hidden = false;
+            elements.emptyState.textContent = "Frame image is unavailable.";
+          };
+          elements.frameImage.src = "/api/frame?run_id=" + encodeURIComponent(selectedFrameRunId || state.run_id || "") +
             "&frame_id=" + encodeURIComponent(frame.frame_id);
+          return;
         }
+        if (loadedImageKey !== imageKey) return;
+        elements.viewerFrame.hidden = false;
+        elements.emptyState.hidden = true;
         drawOverlay();
       }
 
@@ -491,7 +536,10 @@
         var frame = currentFrame();
         var image = elements.frameImage;
         var canvas = elements.overlayCanvas;
-        if (!frame || frame.absent || !image.naturalWidth || elements.overlayToggle.value === "off") {
+        var imageKey = frame
+          ? text(selectedFrameRunId || (state && state.run_id), "") + ":" + text(frame.frame_id, "")
+          : "";
+        if (!frame || frame.absent || loadedImageKey !== imageKey || !image.naturalWidth || elements.overlayToggle.value === "off") {
           canvas.width = 1; canvas.height = 1;
           return;
         }
@@ -503,7 +551,7 @@
         var things = perception && Array.isArray(perception.things) ? perception.things : [];
         things.forEach(function (thing) {
           var location = thing.location || {};
-          if (location.frame !== "image" && location.frame !== "camera") return;
+          if (thing.kind === "sensor_frame" || location.frame !== "image") return;
           context.strokeStyle = "#69d2b4";
           context.fillStyle = "rgba(105, 210, 180, .12)";
           context.lineWidth = Math.max(2, canvas.width / 500);
@@ -520,10 +568,9 @@
             context.fillText(text(thing.label, thing.kind), x + 4, Math.max(14, y - 4));
           }
           var polygon = location.polygon_xy_norm;
-          if (Array.isArray(polygon) && polygon.length > 1) {
+          if (Array.isArray(polygon) && polygon.length > 2) {
             context.beginPath();
             polygon.forEach(function (point, index) {
-              if (!Array.isArray(point) || point.length < 2) return;
               var px = point[0] * canvas.width;
               var py = point[1] * canvas.height;
               if (index === 0) context.moveTo(px, py); else context.lineTo(px, py);
@@ -537,71 +584,38 @@
 
       function renderTimeline() {
         var timeline = state && Array.isArray(state.timeline) ? state.timeline : [];
-        var runId = state && state.run_id ? state.run_id : null;
-        if (runId !== timelineRunId) {
-          elements.timeline.textContent = "";
-          timelineRunId = runId;
-        }
+        var highlightedFrameId = selectedFrameId || ((state && state.current_frame) || {}).frame_id;
+        elements.timeline.textContent = "";
         if (!timeline.length) {
-          if (!elements.timeline.querySelector(".timeline-empty")) {
-            elements.timeline.textContent = "";
-            var empty = document.createElement("p");
-            empty.className = "timeline-empty muted help";
-            empty.textContent = "No frames have been processed.";
-            elements.timeline.appendChild(empty);
-          }
+          var empty = document.createElement("p");
+          empty.className = "timeline-empty muted help";
+          empty.textContent = "No frames have been processed.";
+          elements.timeline.appendChild(empty);
         } else {
-          var emptyState = elements.timeline.querySelector(".timeline-empty");
-          if (emptyState) emptyState.remove();
-          var existing = {};
-          Array.prototype.forEach.call(
-            elements.timeline.querySelectorAll("button[data-frame-id]"),
-            function (button) {
-              existing[button.getAttribute("data-frame-id")] = button;
-            }
-          );
           timeline.forEach(function (item) {
             var frame = item.frame || {};
             var frameId = text(frame.frame_id, "unknown frame");
-            var button = existing[frameId];
-            if (!button) {
-              button = document.createElement("button");
-              button.type = "button";
-              button.setAttribute("data-frame-id", frameId);
-              button.addEventListener("click", function () {
-                selectFrame(button.getAttribute("data-frame-id"));
-              });
-              elements.timeline.appendChild(button);
-            }
-            var name = button.querySelector("strong");
-            if (!name) {
-              name = document.createElement("strong");
-              button.appendChild(name);
-            }
+            var button = document.createElement("button");
+            button.type = "button";
+            button.setAttribute("data-frame-id", frameId);
+            button.addEventListener("click", function () { selectFrame(frameId); });
+            var name = document.createElement("strong");
             name.textContent = frameId;
-            var status = button.querySelector("small");
-            if (!status) {
-              status = document.createElement("small");
-              button.appendChild(status);
-            }
+            button.appendChild(name);
+            var status = document.createElement("small");
             status.textContent = text(item.perception_status, "no perception") +
               " · memory " + text(item.memory_record_count, "0");
+            button.appendChild(status);
             button.setAttribute("aria-label", "Show replay frame " + frameId);
+            var isSelected = frameId === highlightedFrameId;
+            button.classList.toggle("selected", isSelected);
+            button.setAttribute("aria-pressed", isSelected ? "true" : "false");
+            elements.timeline.appendChild(button);
           });
         }
         var displayedId = (currentFrame() || {}).frame_id;
-        var selected = selectedTimelineItem();
-        var selectedId = selected && selected.frame ? selected.frame.frame_id : displayedId;
-        Array.prototype.forEach.call(
-          elements.timeline.querySelectorAll("button[data-frame-id]"),
-          function (button) {
-            var isSelected = button.getAttribute("data-frame-id") === selectedId;
-            button.classList.toggle("selected", isSelected);
-            button.setAttribute("aria-pressed", isSelected ? "true" : "false");
-          }
-        );
-        if (selected) {
-          setText("timelineSelection", "selected · " + text(selected.frame.frame_id));
+        if (selectedFrameDetail) {
+          setText("timelineSelection", "selected · " + text(selectedFrameId));
         } else if (displayedId) {
           setText("timelineSelection", "latest processed");
         } else {
@@ -609,18 +623,42 @@
         }
       }
 
-      function selectFrame(frameId) {
+      async function selectFrame(frameId) {
         if (!state || !state.run_id) return;
         var timeline = Array.isArray(state.timeline) ? state.timeline : [];
         var item = timeline.find(function (entry) {
           return entry && entry.frame && entry.frame.frame_id === frameId;
         });
         if (!item) return;
-        selectedFrameId = frameId;
-        selectedFrameRunId = state.run_id;
-        selectedRecordId = null;
-        elements.notice.textContent = "Showing frame " + text(frameId, "unknown frame") + ".";
-        render();
+        var runId = state.run_id;
+        var generation = ++detailRequestGeneration;
+        elements.notice.textContent = "Loading frame " + text(frameId, "unknown frame") + "…";
+        try {
+          var response = await fetch(
+            "/api/frame-detail?run_id=" + encodeURIComponent(runId) +
+            "&frame_id=" + encodeURIComponent(frameId),
+            { cache: "no-store" }
+          );
+          var detail = await response.json();
+          if (generation !== detailRequestGeneration || !state || state.run_id !== runId) return;
+          if (!response.ok) {
+            elements.notice.textContent = detail.message || "Frame detail is unavailable.";
+            return;
+          }
+          if (!detail.frame || detail.frame.frame_id !== frameId) {
+            elements.notice.textContent = "Frame detail did not match the selected frame.";
+            return;
+          }
+          selectedFrameId = frameId;
+          selectedFrameRunId = runId;
+          selectedFrameDetail = detail;
+          selectedRecordId = null;
+          elements.notice.textContent = "Showing frame " + text(frameId, "unknown frame") + ".";
+          render();
+        } catch (error) {
+          if (generation !== detailRequestGeneration || !state || state.run_id !== runId) return;
+          elements.notice.textContent = "Workbench connection failed: " + error;
+        }
       }
 
       function renderEvidence() {
@@ -641,19 +679,17 @@
 
       function renderMemory() {
         var memory = currentPayload("memory");
+        elements.memoryRecords.textContent = "";
         if (!memory) {
           setText("memoryHealth", "no snapshot");
           setText("memoryEpoch", null);
           setText("memoryCount", null);
           setText("memoryPolicy", null);
           setText("memorySelection", "no record selected");
-          if (!elements.memoryRecords.querySelector(".memory-empty")) {
-            elements.memoryRecords.textContent = "";
-            var noSnapshot = document.createElement("p");
-            noSnapshot.className = "memory-empty muted help";
-            noSnapshot.textContent = "No retained evidence yet.";
-            elements.memoryRecords.appendChild(noSnapshot);
-          }
+          var noSnapshot = document.createElement("p");
+          noSnapshot.className = "memory-empty muted help";
+          noSnapshot.textContent = "No retained evidence yet.";
+          elements.memoryRecords.appendChild(noSnapshot);
           elements.memorySelected.textContent = "Select a server-produced memory record to inspect its provenance.";
           return;
         }
@@ -668,58 +704,30 @@
         if (recordIds.indexOf(selectedRecordId) < 0) {
           selectedRecordId = recordIds.length ? recordIds[0] : null;
         }
-        var emptyState = elements.memoryRecords.querySelector(".memory-empty");
-        if (emptyState) emptyState.remove();
-        var existing = {};
-        Array.prototype.forEach.call(
-          elements.memoryRecords.querySelectorAll("button[data-record-id]"),
-          function (card) {
-            existing[card.getAttribute("data-record-id")] = card;
-          }
-        );
-        var present = {};
         records.forEach(function (record) {
           var recordId = text(record.record_id, "unknown record");
-          present[recordId] = true;
-          var card = existing[recordId];
-          if (!card) {
-            card = document.createElement("button");
-            card.type = "button";
-            card.className = "record";
-            card.setAttribute("data-record-id", recordId);
-            card.addEventListener("click", function () {
-              selectRecord(card.getAttribute("data-record-id"));
-            });
-            elements.memoryRecords.appendChild(card);
-          }
-          var title = card.querySelector("strong");
-          if (!title) {
-            title = document.createElement("strong");
-            card.appendChild(title);
-          }
+          var card = document.createElement("button");
+          card.type = "button";
+          card.className = "record";
+          card.setAttribute("data-record-id", recordId);
+          card.addEventListener("click", function () { selectRecord(recordId); });
+          var title = document.createElement("strong");
           title.textContent = text(record.label, recordId);
-          var detail = card.querySelector("pre");
-          if (!detail) {
-            detail = document.createElement("pre");
-            card.appendChild(detail);
-          }
+          card.appendChild(title);
+          var detail = document.createElement("pre");
           detail.textContent = recordId + " · confidence " + text(record.confidence, "0");
+          card.appendChild(detail);
           var isSelected = recordId === selectedRecordId;
           card.classList.toggle("selected", isSelected);
           card.setAttribute("aria-pressed", isSelected ? "true" : "false");
           card.setAttribute("aria-label", "Show memory record " + text(record.label, recordId));
-        });
-        Object.keys(existing).forEach(function (recordId) {
-          if (!present[recordId]) existing[recordId].remove();
+          elements.memoryRecords.appendChild(card);
         });
         if (!records.length) {
-          var noRecords = elements.memoryRecords.querySelector(".memory-empty");
-          if (!noRecords) {
-            noRecords = document.createElement("p");
-            noRecords.className = "memory-empty muted help";
-            noRecords.textContent = "Memory is empty for this frame.";
-            elements.memoryRecords.appendChild(noRecords);
-          }
+          var noRecords = document.createElement("p");
+          noRecords.className = "memory-empty muted help";
+          noRecords.textContent = "Memory is empty for this frame.";
+          elements.memoryRecords.appendChild(noRecords);
           setText("memorySelection", "no record selected");
           elements.memorySelected.textContent = "Memory is empty for this frame.";
           return;
@@ -765,6 +773,9 @@
       function render(nextState) {
         state = nextState || state;
         if (!state) return;
+        if (selectedFrameRunId && selectedFrameRunId !== state.run_id) {
+          clearFrameSelection();
+        }
         var phase = text(state.phase, "idle");
         elements.phaseChip.textContent = phase;
         elements.phaseChip.className = "status-chip " + phase;
@@ -773,7 +784,6 @@
         if (document.activeElement !== elements.sourceDir) {
           elements.sourceDir.value = source.source_path || source.path || "";
         }
-        var frame = currentFrame();
         var perception = currentPayload("perception");
         setText("perceptionStatus", perception && perception.status);
         var progress = state.progress || {};
@@ -785,7 +795,6 @@
         setText("recoveryAction", state.recovery_action);
         var sideEffects = state.machine_detail && state.machine_detail.side_effects;
         setText("sideEffects", sideEffects && sideEffects.observation_only ? "observation only" : "inspect state");
-        elements.rawState.textContent = JSON.stringify(state, null, 2);
         renderFrame();
         renderTimeline();
         renderEvidence();
@@ -795,16 +804,33 @@
       }
 
       async function poll() {
-        if (requestInFlight) return;
-        requestInFlight = true;
+        if (pollInFlight || actionInFlight) {
+          schedulePoll(pollDelay());
+          return;
+        }
+        pollInFlight = true;
+        var requestGeneration = stateRequestGeneration;
         try {
           var response = await fetch("/api/state", { cache: "no-store" });
-          if (response.ok) render(await response.json());
+          var payload = response.ok ? await response.json() : null;
+          if (payload && requestGeneration === stateRequestGeneration) render(payload);
         } catch (error) {
-          elements.notice.textContent = "Workbench connection failed: " + error;
+          if (requestGeneration === stateRequestGeneration) {
+            elements.notice.textContent = "Workbench connection failed: " + error;
+          }
         } finally {
-          requestInFlight = false;
+          pollInFlight = false;
+          schedulePoll(pollDelay());
         }
+      }
+
+      function pollDelay() {
+        return state && (state.phase === "running" || state.phase === "paused") ? 250 : 2000;
+      }
+
+      function schedulePoll(delay) {
+        if (pollTimer !== null) window.clearTimeout(pollTimer);
+        pollTimer = window.setTimeout(poll, delay);
       }
 
       elements.validateButton.addEventListener("click", function () {
@@ -829,7 +855,6 @@
       elements.overlayToggle.addEventListener("change", drawOverlay);
       window.addEventListener("resize", drawOverlay);
       poll();
-      window.setInterval(poll, 250);
     }());
   </script>
 </body>

@@ -7,13 +7,20 @@ import threading
 import time
 import zlib
 from collections import OrderedDict
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, quote, urljoin, urlparse
 from urllib.request import urlopen
 
 from PIL import Image
+
+from .loopback_http import (
+    LoopbackHTTPRequestHandler,
+    LoopbackHTTPServer,
+    start_server_thread,
+    stop_server_thread,
+    validate_loopback_host,
+)
 
 
 VIEW_SCHEMA = "automa_perception_view_v1"
@@ -38,8 +45,7 @@ class PerceptionViewServer:
         run_id: str | None = None,
         worker_pid: int | None = None,
     ) -> None:
-        if host not in {"127.0.0.1", "localhost", "::1"}:
-            raise ValueError("perception view must bind to a loopback address")
+        validate_loopback_host(host, owner="perception view")
         self.vehicle_id = vehicle_id
         self.automation_dir = automation_dir
         self.host = host
@@ -48,7 +54,7 @@ class PerceptionViewServer:
         self.worker_pid = int(worker_pid) if isinstance(worker_pid, int) else os.getpid()
         self.record_path = automation_dir / VIEW_RECORD_NAME
         self._lock = threading.Lock()
-        self._httpd: ThreadingHTTPServer | None = None
+        self._httpd: _PerceptionHttpServer | None = None
         self._thread: threading.Thread | None = None
         self._frame_bytes: bytes | None = None
         self._frame_content_type = "application/octet-stream"
@@ -65,29 +71,24 @@ class PerceptionViewServer:
     def url(self) -> str | None:
         if self._httpd is None:
             return None
-        host, port = self._httpd.server_address[:2]
-        display_host = "127.0.0.1" if host in {"0.0.0.0", "::"} else host
-        return f"http://{display_host}:{port}/"
+        return self._httpd.loopback_url
 
     def start(self) -> "PerceptionViewServer":
         if self._httpd is not None:
             return self
         self.automation_dir.mkdir(parents=True, exist_ok=True)
-        try:
-            httpd = _PerceptionHttpServer((self.host, self.preferred_port), _PerceptionViewHandler)
-        except OSError:
-            if self.preferred_port == 0:
-                raise
-            httpd = _PerceptionHttpServer((self.host, 0), _PerceptionViewHandler)
+        httpd = _PerceptionHttpServer.bind_with_ephemeral_fallback(
+            host=self.host,
+            preferred_port=self.preferred_port,
+            handler=_PerceptionViewHandler,
+        )
         httpd.publisher = self
         self._httpd = httpd
         self._started_at_ms = _timestamp_ms()
-        self._thread = threading.Thread(
-            target=httpd.serve_forever,
+        self._thread = start_server_thread(
+            httpd,
             name=f"automa-perception-view-{self.vehicle_id}",
-            daemon=True,
         )
-        self._thread.start()
         _write_json(self.record_path, self.describe())
         return self
 
@@ -177,22 +178,17 @@ class PerceptionViewServer:
         thread = self._thread
         if httpd is None:
             return
-        httpd.shutdown()
-        httpd.server_close()
-        if thread is not None:
-            thread.join(timeout=1.0)
+        stop_server_thread(httpd, thread)
         _write_json(self.record_path, self.describe(status="stopped"))
         self._httpd = None
         self._thread = None
 
 
-class _PerceptionHttpServer(ThreadingHTTPServer):
-    daemon_threads = True
-    allow_reuse_address = True
+class _PerceptionHttpServer(LoopbackHTTPServer):
     publisher: PerceptionViewServer
 
 
-class _PerceptionViewHandler(BaseHTTPRequestHandler):
+class _PerceptionViewHandler(LoopbackHTTPRequestHandler):
     server: _PerceptionHttpServer
 
     def do_GET(self) -> None:
@@ -267,47 +263,6 @@ class _PerceptionViewHandler(BaseHTTPRequestHandler):
             self._send(200, body, content_type, include_body=include_body)
             return
         self._send_json(404, {"error": "not found"}, include_body=include_body)
-
-    def _send_json(
-        self,
-        status: int,
-        payload: dict[str, Any],
-        *,
-        include_body: bool = True,
-    ) -> None:
-        body = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
-        self._send(
-            status,
-            body,
-            "application/json; charset=utf-8",
-            include_body=include_body,
-        )
-
-    def _send(
-        self,
-        status: int,
-        body: bytes,
-        content_type: str,
-        *,
-        include_body: bool = True,
-    ) -> None:
-        self.send_response(status)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header(
-            "Content-Security-Policy",
-            "default-src 'self'; img-src 'self'; connect-src 'self'; "
-            "style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'",
-        )
-        self.end_headers()
-        if include_body:
-            self.wfile.write(body)
-
-    def log_message(self, format: str, *args: Any) -> None:
-        return None
-
 
 def get_perception_view_status(
     automation_dir: Path,

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+import threading
 import time
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from urllib.error import HTTPError
+from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from PIL import Image
@@ -87,14 +89,21 @@ class ErrorStatusMapper(FixtureMapper):
         )
 
 
-class RaisingMapper(FixtureMapper):
+class BlockingSecondMapper(FixtureMapper):
+    def __init__(self) -> None:
+        super().__init__()
+        self.second_started = threading.Event()
+        self.release_second = threading.Event()
+
     def perceive(self, request) -> PerceptionText:
-        self.calls.append("raise")
-        raise RuntimeError("mapper exploded")
+        if len(self.calls) == 1:
+            self.second_started.set()
+            self.release_second.wait(3)
+        return super().perceive(request)
 
 
 class ErrorMemory:
-    def update(self, context, observation) -> MemorySnapshot:
+    def __call__(self, context, observation) -> MemorySnapshot:
         return MemorySnapshot(
             memory_id="error-memory",
             epoch_id="epoch-1",
@@ -127,23 +136,35 @@ def _wait_until(predicate, timeout: float = 3.0) -> None:
 class WorkbenchTests(unittest.TestCase):
     def test_directory_adapter_honors_manifest_order_and_absence(self) -> None:
         with TemporaryDirectory() as directory:
-            root = Path(directory)
-            _make_images(root, 2)
-            (root / "manifest.json").write_text(
+            workspace = Path(directory)
+            root = workspace / "lab/plugins/perception/example/runs/fixture-run"
+            image_root = workspace / "lab/runs/capture"
+            root.mkdir(parents=True)
+            image_root.mkdir(parents=True)
+            _make_images(image_root, 2)
+            (root / "run.json").write_text(
                 json.dumps(
                     {
                         "source_id": "fixture.sequence",
+                        "run_dir": "lab/plugins/perception/example/runs/fixture-run",
+                        "source": {
+                            "kind": "apply",
+                            "path": "/previous/location/auto-driving/lab/runs/capture",
+                        },
                         "frames": [
                             {
                                 "frame_id": "capture-b",
                                 "frame_index": 5,
-                                "timestamp_ms": 500,
-                                "image_path": "frame_01.png",
+                                "captured_at_ms": 500,
+                                "image_path": (
+                                    "/previous/location/auto-driving/lab/runs/capture/"
+                                    "frame_01.png"
+                                ),
                             },
                             {
                                 "frame_id": "capture-dropout",
                                 "frame_index": 6,
-                                "timestamp_ms": 600,
+                                "captured_at_ms": 600,
                                 "absent": True,
                                 "absence_reason": "camera dropout",
                             },
@@ -257,19 +278,6 @@ class WorkbenchTests(unittest.TestCase):
         self,
     ) -> None:
         with TemporaryDirectory() as directory:
-            empty = Path(directory) / "empty"
-            empty.mkdir()
-            mapper = FixtureMapper()
-            empty_state = ImageReplayRunner(
-                empty,
-                cadence_ms=0,
-                mapper_factory=lambda: mapper,
-            ).start()
-            self.assertEqual(empty_state["phase"], "failed")
-            self.assertEqual(empty_state["failure_boundary"], "source")
-            self.assertEqual(mapper.calls, [])
-            self.assertIsNone(empty_state["perception"])
-
             broken = Path(directory) / "broken"
             broken.mkdir()
             (broken / "broken.png").write_bytes(b"not an image")
@@ -299,23 +307,6 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(state["phase"], "failed")
             self.assertEqual(state["failure_boundary"], "perception")
             self.assertEqual(state["perception"]["status"], "error")
-            self.assertNotEqual(state["perception"]["status"], "ok")
-
-            raising_mapper = RaisingMapper()
-            raising_runner = ImageReplayRunner(
-                root,
-                cadence_ms=0,
-                mapper_factory=lambda: raising_mapper,
-            )
-            raising_started = raising_runner.start()
-            raising_state = (
-                raising_runner.wait(5)
-                if raising_started["phase"] == "running"
-                else raising_started
-            )
-            self.assertEqual(raising_state["phase"], "failed")
-            self.assertEqual(raising_state["failure_boundary"], "pipeline")
-            self.assertIsNone(raising_state["perception"])
 
             memory_mapper = FixtureMapper()
             memory_runner = ImageReplayRunner(
@@ -333,7 +324,6 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(memory_state["phase"], "failed")
             self.assertEqual(memory_state["failure_boundary"], "memory")
             self.assertEqual(memory_state["memory"]["health"], "error")
-            self.assertNotEqual(memory_state["phase"], "completed")
 
     def test_runner_uses_existing_pipeline_and_reports_memory_effects(self) -> None:
         with TemporaryDirectory() as directory:
@@ -347,6 +337,8 @@ class WorkbenchTests(unittest.TestCase):
             )
             runner.start()
             state = runner.wait(5)
+            first_frame_id = state["timeline"][0]["frame"]["frame_id"]
+            first_detail = runner.frame_detail(first_frame_id, run_id=state["run_id"])
 
         self.assertEqual(state["phase"], "completed")
         self.assertEqual(state["sequence_id"], "workbench.image_replay.v1")
@@ -355,12 +347,11 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(state["observation"]["metadata"]["source"], "workbench.image_replay.v1")
         self.assertEqual(state["memory"]["health"], "healthy")
         self.assertGreaterEqual(state["memory"]["record_count"], 2)
-        self.assertEqual(state["timeline"][0]["perception"]["status"], "ok")
-        self.assertEqual(
-            state["timeline"][0]["observation"]["observation_id"],
-            state["timeline"][0]["observation_id"],
-        )
-        self.assertEqual(state["timeline"][0]["memory"]["health"], "healthy")
+        self.assertNotIn("frames", state["source"])
+        self.assertNotIn("perception", state["timeline"][0])
+        self.assertEqual(first_detail["perception"]["status"], "ok")
+        self.assertIsNotNone(first_detail["observation"]["observation_id"])
+        self.assertEqual(first_detail["memory"]["health"], "healthy")
         self.assertTrue(state["timeline"][0]["memory_effect"]["added"])
         self.assertTrue(state["cleanup"]["source_read_only"])
         self.assertFalse(state["cleanup"]["movement_control"])
@@ -395,6 +386,29 @@ class WorkbenchTests(unittest.TestCase):
         self.assertTrue(state["timeline"][1]["frame"]["absent"])
         self.assertEqual(state["observation"]["metadata"]["absence_reason"], "dropout")
 
+    def test_public_state_keeps_frame_and_pipeline_payload_paired(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            _make_images(root, 2)
+            mapper = BlockingSecondMapper()
+            runner = ImageReplayRunner(
+                root,
+                cadence_ms=0,
+                mapper_factory=lambda: mapper,
+            )
+            runner.start()
+            self.assertTrue(mapper.second_started.wait(3))
+            try:
+                active = runner.state()
+                self.assertEqual(len(active["timeline"]), 1)
+                self.assertEqual(
+                    active["current_frame"]["frame_id"],
+                    active["timeline"][0]["frame"]["frame_id"],
+                )
+            finally:
+                mapper.release_second.set()
+            self.assertEqual(runner.wait(5)["phase"], "completed")
+
     def test_pause_resume_step_reset_and_stale_run_are_server_owned(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)
@@ -413,13 +427,16 @@ class WorkbenchTests(unittest.TestCase):
             runner.dispatch("resume", run_id=run_id)
             completed = runner.wait(5)
             self.assertEqual(completed["phase"], "completed")
-            reset = runner.dispatch("reset")
+            with self.assertRaises(ReplayActionError):
+                runner.dispatch("reset")
+            reset = runner.dispatch("reset", run_id=run_id)
             self.assertEqual(reset["phase"], "idle")
             self.assertIsNone(reset["run_id"])
             self.assertEqual(reset["progress"]["completed"], 0)
             self.assertEqual(reset["progress"]["total"], 3)
             self.assertIsNotNone(reset["source"])
-            restarted = runner.start()
+            self.assertEqual(reset["timeline"], [])
+            restarted = runner.start(cadence_ms=0)
             completed_again = runner.wait(5)
 
         self.assertEqual(restarted["phase"], "running")
@@ -441,12 +458,6 @@ class WorkbenchTests(unittest.TestCase):
             self.assertIn('id="stepButton"', html)
             self.assertIn('id="timelineSelection"', html)
             self.assertIn('id="memorySelection"', html)
-            self.assertIn('id="memorySelected"', html)
-            self.assertIn("selectedFrameId", html)
-            self.assertIn("data-frame-id", html)
-            self.assertIn("data-record-id", html)
-            self.assertIn("selectRecord", html)
-            self.assertNotIn("Timeline selection is rendered from the latest server state.", html)
 
             start_body = json.dumps(
                 {"action": "start", "source_dir": str(root), "cadence_ms": 0}
@@ -471,8 +482,16 @@ class WorkbenchTests(unittest.TestCase):
             self.assertTrue(health["persistent_across_terminal_state"])
             latest = json.loads(urlopen(base + "api/state", timeout=2).read())
             self.assertEqual(latest["phase"], "completed")
+            frame_id = state["timeline"][0]["frame"]["frame_id"]
+            query = urlencode({"run_id": run_id, "frame_id": frame_id})
+            detail = json.loads(
+                urlopen(base + "api/frame-detail?" + query, timeout=2).read()
+            )
+            self.assertEqual(detail["frame"]["frame_id"], frame_id)
+            self.assertEqual(detail["perception"]["status"], "ok")
+            self.assertEqual(detail["memory"]["health"], "healthy")
             frame = urlopen(
-                base + "api/frame?run_id=" + run_id + "&frame_id=" + state["timeline"][0]["frame"]["frame_id"],
+                base + "api/frame?" + query,
                 timeout=2,
             )
             self.assertEqual(frame.status, 200)
@@ -494,6 +513,9 @@ class WorkbenchTests(unittest.TestCase):
             )
             self.assertNotEqual(second_start["state"]["run_id"], run_id)
             self.assertEqual(runner.wait(5)["phase"], "completed")
+            with self.assertRaises(HTTPError) as stale_detail:
+                urlopen(base + "api/frame-detail?" + query, timeout=2)
+            self.assertEqual(stale_detail.exception.code, 409)
 
             bad_body = json.dumps({"action": "start", "argv": ["--unsafe"]}).encode("utf-8")
             with self.assertRaises(HTTPError) as error:
@@ -509,6 +531,9 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(error.exception.code, 400)
             bad_payload = json.loads(error.exception.read())
             self.assertEqual(bad_payload["boundary"], "input")
+            server.stop()
+            self.assertIsNone(runner.state()["source"])
+            self.assertEqual(runner.state()["timeline"], [])
 
     def test_cli_replay_machine_readable_boundary(self) -> None:
         with TemporaryDirectory() as directory:

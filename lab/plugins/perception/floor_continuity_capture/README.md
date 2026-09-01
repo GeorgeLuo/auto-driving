@@ -8,7 +8,8 @@ does not establish object identity, depth, or safe traversability.
 
 The capture-tuned defaults retain boundaries with at least `0.70` confidence
 and `0.03` image-width support. They remove the smallest frame-19 fragment
-while retaining the larger obstacle contacts.
+while retaining the larger obstacle contacts. Every other detector setting
+inherits the base floor-continuity default.
 
 Apply it to frame 19:
 

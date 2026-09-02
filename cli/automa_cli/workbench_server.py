@@ -148,6 +148,7 @@ class WorkbenchServer:
             "plugin_dir",
             "active_plugin_ids",
             "position",
+            "loop",
         }
         unknown = sorted(set(payload) - allowed)
         if unknown:
@@ -219,6 +220,13 @@ class WorkbenchServer:
                 status_code=400,
                 boundary="input",
             )
+        loop = payload.get("loop")
+        if loop is not None and not isinstance(loop, bool):
+            raise ReplayActionError(
+                "loop must be a boolean",
+                status_code=400,
+                boundary="input",
+            )
         try:
             state = self.runner.dispatch(
                 action,
@@ -229,6 +237,7 @@ class WorkbenchServer:
                 plugin_dir=plugin_dir,
                 active_plugin_ids=active_plugin_ids,
                 position=position,
+                loop=loop,
             )
         except SourceValidationError as exc:
             raise ReplayActionError(

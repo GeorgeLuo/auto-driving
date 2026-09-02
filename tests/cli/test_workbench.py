@@ -22,13 +22,20 @@ from autonomy.perception import (
 from autonomy.decision.memory import MemoryBounds, MemorySnapshot
 from cli.automa_cli.workbench import (
     PluginCatalogError,
-    ImageReplayRunner,
+    ImageReplayRunner as ProductionImageReplayRunner,
     ReplayActionError,
     SourceValidationError,
     WorkbenchServer,
     normalize_image_directory,
     discover_plugin_catalog,
 )
+
+
+class ImageReplayRunner(ProductionImageReplayRunner):
+    """Deterministic tests default loop off so wait() can observe completed."""
+
+    def __init__(self, *args, loop=False, **kwargs):
+        super().__init__(*args, loop=loop, **kwargs)
 from tests.support.cli_runner import run_automa
 
 
@@ -708,6 +715,29 @@ class WorkbenchTests(unittest.TestCase):
         idle = ImageReplayRunner()
         with self.assertRaises(ReplayActionError):
             idle.dispatch("seek", run_id="missing", position=0)
+
+    def test_loop_playback_rewinds_instead_of_completing(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            _make_images(root, 2)
+            mapper = FixtureMapper()
+            runner = ImageReplayRunner(
+                root,
+                cadence_ms=0,
+                mapper_factory=lambda: mapper,
+                loop=True,
+            )
+            started = runner.start()
+            run_id = started["run_id"]
+            self.assertTrue(started["controls"]["loop"])
+            _wait_until(lambda: len(mapper.calls) >= 3)
+            live = runner.state()
+            self.assertEqual(live["phase"], "running")
+            self.assertLessEqual(len(live["timeline"]), 2)
+            runner.dispatch("set_loop", run_id=run_id, loop=False)
+            finished = runner.wait(5)
+            self.assertEqual(finished["phase"], "completed")
+            self.assertFalse(finished["controls"]["loop"])
 
     def test_seek_while_running_pauses_and_serves_frame_bytes_by_position(self) -> None:
         with TemporaryDirectory() as directory:

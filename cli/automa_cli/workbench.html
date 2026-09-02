@@ -323,7 +323,8 @@
       flex: 0 0 auto;
       min-height: 1em;
     }
-    .workspace-tools .text-action[aria-pressed="true"] { color: var(--fg); }
+    .workspace-tools .text-action[aria-pressed="true"],
+    .playback-meta .text-action[aria-pressed="true"] { color: var(--fg); }
     #floatLayer { pointer-events: none; }
     .viewer {
       flex: 1;
@@ -678,6 +679,7 @@
               <option value="1000">1 second</option>
               <option value="realtime">realtime</option>
             </select>
+            <button type="button" id="loopToggle" class="text-action" value="on" aria-pressed="true" aria-label="Toggle loop playback">loop</button>
             <button type="button" id="overlayToggle" class="text-action" value="on" aria-pressed="true" aria-label="Toggle overlays">overlays</button>
             <span id="progressText" class="muted">0 / 0</span>
           </div>
@@ -779,7 +781,7 @@
         "sourceIdentity", "emptyState", "viewerFrame", "frameImage",
         "overlayCanvas", "viewerStage", "frameId", "frameIndex", "frameTimestamp", "perceptionStatus",
         "progressText", "seekBar", "evidenceSummary", "pluginRuns",
-        "evidenceCounts", "evidenceText", "sourceDir", "cadence", "overlayToggle",
+        "evidenceCounts", "evidenceText", "sourceDir", "cadence", "loopToggle", "overlayToggle",
         "startButton", "pauseButton", "resumeButton", "stepButton",
         "cancelButton", "resetButton", "notice", "pluginDir", "refreshPluginsButton",
         "pluginSelectionSummary", "pluginCatalog", "pluginDigest", "memorySelection", "memoryHealth", "memoryEpoch",
@@ -1671,6 +1673,10 @@
           elements.cadence.value = controls.pace === "realtime"
             ? "realtime" : text(controls.cadence_ms, "250");
         }
+        if (typeof controls.loop === "boolean") {
+          elements.loopToggle.value = controls.loop ? "on" : "off";
+          elements.loopToggle.setAttribute("aria-pressed", controls.loop ? "true" : "false");
+        }
         if (scrubbing) {
           var live = state.current_frame;
           if (live && Number(live.position) === scrubPosition) {
@@ -1752,6 +1758,7 @@
         };
         if (cadence.pace !== "realtime") payload.cadence_ms = cadence.cadence_ms;
         if (elements.pluginDir.value.trim()) payload.plugin_dir = elements.pluginDir.value.trim();
+        payload.loop = elements.loopToggle.getAttribute("aria-pressed") === "true";
         action("start", payload);
       });
       elements.refreshPluginsButton.addEventListener("click", function () {
@@ -1888,6 +1895,12 @@
       });
       window.addEventListener("pointerup", function () {
         if (scrubbing) endScrub();
+      });
+      elements.loopToggle.addEventListener("click", function () {
+        var on = elements.loopToggle.getAttribute("aria-pressed") !== "true";
+        elements.loopToggle.setAttribute("aria-pressed", on ? "true" : "false");
+        elements.loopToggle.value = on ? "on" : "off";
+        action("set_loop", { loop: on });
       });
       elements.overlayToggle.addEventListener("click", function () {
         var next = elements.overlayToggle.value === "off" ? "on" : "off";

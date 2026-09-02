@@ -40,6 +40,7 @@ from .workbench_contract import (
     ReplayActionError,
     WORKBENCH_ACTIONS,
     WORKBENCH_DEFAULT_CADENCE_MS,
+    WORKBENCH_DEFAULT_LOOP,
     WORKBENCH_DEFAULT_PACE,
     WORKBENCH_PACES,
     WORKBENCH_SEQUENCE_ID,
@@ -122,13 +123,13 @@ def _safe_status(value: Any) -> str:
 
 def _state_action_set(phase: str) -> list[str]:
     if phase == "idle":
-        return ["validate", "refresh_plugins", "select_plugins", "start", "reset"]
+        return ["validate", "refresh_plugins", "select_plugins", "start", "reset", "set_loop"]
     if phase == "running":
-        return ["pause", "seek", "cancel", "reset", "set_cadence", "select_plugins"]
+        return ["pause", "seek", "cancel", "reset", "set_cadence", "set_loop", "select_plugins"]
     if phase == "paused":
-        return ["resume", "step", "seek", "cancel", "reset", "set_cadence", "select_plugins"]
+        return ["resume", "step", "seek", "cancel", "reset", "set_cadence", "set_loop", "select_plugins"]
     if phase in {"completed", "failed", "cancelled"}:
-        return ["validate", "refresh_plugins", "select_plugins", "start", "reset"]
+        return ["validate", "refresh_plugins", "select_plugins", "start", "reset", "set_loop"]
     return []
 
 
@@ -144,6 +145,7 @@ class ImageReplayRunner:
         active_plugin_ids: list[str] | tuple[str, ...] | None = None,
         cadence_ms: int = WORKBENCH_DEFAULT_CADENCE_MS,
         pace: str = WORKBENCH_DEFAULT_PACE,
+        loop: bool = WORKBENCH_DEFAULT_LOOP,
         max_frames: int = WORKBENCH_DEFAULT_MAX_FRAMES,
         max_image_bytes: int = WORKBENCH_DEFAULT_MAX_IMAGE_BYTES,
         mapper_factory: Callable[[], PerceptionMapper] | None = None,
@@ -170,6 +172,7 @@ class ImageReplayRunner:
         self._generation = 0
         self._cadence_ms = self._validate_cadence(cadence_ms)
         self._pace = self._validate_pace(pace)
+        self._loop = bool(loop)
         self._server_identity = f"workbench-{uuid.uuid4().hex[:12]}"
         self._plugin_catalog: PluginCatalog = discover_plugin_catalog(plugin_dir)
         self.plugin_dir = (
@@ -339,6 +342,7 @@ class ImageReplayRunner:
         *,
         cadence_ms: int | None = None,
         pace: str | None = None,
+        loop: bool | None = None,
     ) -> dict[str, Any]:
         with self._action_lock:
             with self._condition:
@@ -352,6 +356,8 @@ class ImageReplayRunner:
                     self._cadence_ms = self._validate_cadence(cadence_ms)
                 if pace is not None:
                     self._pace = self._validate_pace(pace)
+                if loop is not None:
+                    self._loop = bool(loop)
                 raw_source = (
                     self.source_dir if source_dir is None else os.fspath(source_dir)
                 )
@@ -456,6 +462,7 @@ class ImageReplayRunner:
         plugin_dir: str | os.PathLike[str] | None = None,
         active_plugin_ids: list[str] | tuple[str, ...] | None = None,
         position: int | None = None,
+        loop: bool | None = None,
     ) -> dict[str, Any]:
         action = str(action or "").strip()
         if action not in WORKBENCH_ACTIONS:
@@ -524,7 +531,7 @@ class ImageReplayRunner:
                         boundary="plugin_catalog",
                         state=self.state(),
                     ) from exc
-                return self.start(source_dir, cadence_ms=cadence_ms, pace=pace)
+                return self.start(source_dir, cadence_ms=cadence_ms, pace=pace, loop=loop)
             if action == "set_cadence":
                 if cadence_ms is None and pace is None:
                     raise ReplayActionError(
@@ -556,6 +563,8 @@ class ImageReplayRunner:
                     )
                     self._condition.notify_all()
                 return self.state()
+            if action == "set_loop":
+                return self._set_loop(loop)
             if action == "pause":
                 return self._pause()
             if action == "resume":
@@ -758,6 +767,30 @@ class ImageReplayRunner:
             return self.mapper_factory()
         return self._plugin_catalog.build_mapper(selected_plugin_ids)
 
+    def _set_loop(self, loop: bool | None) -> dict[str, Any]:
+        if not isinstance(loop, bool):
+            raise ReplayActionError(
+                "set_loop requires a boolean loop",
+                status_code=400,
+                boundary="input",
+            )
+        with self._condition:
+            self._loop = loop
+            self._record_action_locked("set_loop", loop=loop)
+            self._condition.notify_all()
+            return copy.deepcopy(self._state)
+
+    def _wrap_or_complete_locked(self) -> None:
+        feed = self._feed
+        if feed is None or int(self._state["position"]) < len(feed.frames):
+            return
+        if self._loop:
+            if self._state["phase"] == "running":
+                self._state["position"] = 0
+                self._record_action_locked("loop")
+            return
+        self._complete_locked()
+
     def _pause(self) -> dict[str, Any]:
         with self._condition:
             if self._state["phase"] != "running":
@@ -789,8 +822,11 @@ class ImageReplayRunner:
             run_id = str(self._state["run_id"])
             generation = self._generation
             if self._state["position"] >= len(self._feed.frames):
-                self._complete_locked()
-                return copy.deepcopy(self._state)
+                if self._loop:
+                    self._state["position"] = 0
+                else:
+                    self._complete_locked()
+                    return copy.deepcopy(self._state)
             frame = self._feed.frames[self._state["position"]]
         self._process_one(run_id, generation, frame, allow_paused=True)
         with self._lock:
@@ -856,7 +892,7 @@ class ImageReplayRunner:
             duration_ms=cached.get("duration_ms"),
         )
         if completed >= total:
-            self._complete_locked()
+            self._wrap_or_complete_locked()
 
     def _cancel(self) -> dict[str, Any]:
         with self._condition:
@@ -920,7 +956,14 @@ class ImageReplayRunner:
                     continue
                 feed = self._feed
                 position = int(self._state["position"])
-                if feed is None or position >= len(feed.frames):
+                if feed is None:
+                    self._complete_locked()
+                    return
+                if position >= len(feed.frames):
+                    if self._loop:
+                        self._state["position"] = 0
+                        self._record_action_locked("loop")
+                        continue
                     self._complete_locked()
                     return
                 frame = feed.frames[position]
@@ -1069,10 +1112,8 @@ class ImageReplayRunner:
                         previous_memory=previous_memory,
                     )
                     self._history[frame.frame_id] = detail
-                    if refresh_current:
-                        self._upsert_timeline_locked(detail)
-                    else:
-                        self._state["timeline"].append(self._timeline_item(detail))
+                    self._upsert_timeline_locked(detail)
+                    if not refresh_current:
                         self._state["position"] = frame.position + 1
                     if result.perception is not None and _safe_status(
                         result.perception.status
@@ -1095,11 +1136,8 @@ class ImageReplayRunner:
                             or "memory stage returned an error",
                             recovery_action="start",
                         )
-                    elif (
-                        not refresh_current
-                        and self._state["position"] >= len(self._feed.frames)
-                    ):
-                        self._complete_locked()
+                    elif not refresh_current:
+                        self._wrap_or_complete_locked()
                     self._condition.notify_all()
             except Exception as exc:  # noqa: BLE001 - per-frame isolation boundary
                 with self._condition:
@@ -1190,6 +1228,7 @@ class ImageReplayRunner:
                 "select_plugins",
                 "set_plugins",
                 "reset",
+                "set_loop",
             }
             and current is None
             and run_id is None
@@ -1280,6 +1319,7 @@ class ImageReplayRunner:
         return {
             "cadence_ms": self._cadence_ms,
             "pace": self._pace,
+            "loop": bool(getattr(self, "_loop", WORKBENCH_DEFAULT_LOOP)),
             "allowed_actions": _state_action_set(current_phase),
         }
 

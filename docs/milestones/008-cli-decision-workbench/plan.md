@@ -65,13 +65,13 @@ coverage or a frontend framework migration.
 
 **Perception-memory workbench journey**
 
-- Workflow state: ready_for_implementation
+- Workflow state: proposal_amendment_in_review
 - Proposal branch: `m008/perception-memory-workbench-proposal`
 - Implementation branch: `m008/perception-memory-workbench`
 - Proposal path: `docs/milestones/008-cli-decision-workbench/proposals/perception-memory-workbench.md`
 - Accepted proposal: [#172](https://github.com/GeorgeLuo/auto-driving/pull/172) at `09687f19acd61b286378fb65f3db915ce5e50d51` (reviewed head `09e82ae15158608247097c85b5e21a47b0a06511` by `GeorgeLuo` as `OWNER` at `2026-08-27T23:05:47Z`)
-- Proposal amendment branch: `m008/amend-plugin-selection`
-- Proposal amendment path: `docs/milestones/008-cli-decision-workbench/proposals/perception-plugin-selection-amendment.md`
+- Proposal amendment branch: `m008/amend-live-plugin-selection`
+- Proposal amendment path: `docs/milestones/008-cli-decision-workbench/proposals/perception-live-plugin-selection-amendment.md`
 - Accepted proposal amendments: [#179](https://github.com/GeorgeLuo/auto-driving/pull/179) at `1189002447802442e857da8f5d9c2663ff85b86d` (`docs/milestones/008-cli-decision-workbench/proposals/perception-plugin-selection-amendment.md`) (reviewed head `cb8ee7318c3820dc239def5343521396d9aab194` by `GeorgeLuo` as `OWNER` at `2026-09-01T23:17:14Z`)
 - Review kind: Behavioral feature slice
 - Review question: Can an operator use a local workbench to replay a supported ordered image source through the existing perception-to-`Observation`-to-memory pipeline, inspect real capture overlays and memory effects, and control the bounded replay without shell commands, mock data, hidden simulator changes, or a second execution authority?
@@ -123,6 +123,7 @@ coverage or a frontend framework migration.
 | Perception-memory workbench journey | ready_for_implementation | Proposal PR #172 accepted at 09687f19acd61b286378fb65f3db915ce5e50d51 (reviewed head `09e82ae15158608247097c85b5e21a47b0a06511` by `GeorgeLuo` as `OWNER` at `2026-08-27T23:05:47Z`). |
 | Perception-memory workbench journey | proposal_amendment_in_review | Started proposal amendment m008/amend-plugin-selection. |
 | Perception-memory workbench journey | ready_for_implementation | Proposal amendment PR #179 accepted at 1189002447802442e857da8f5d9c2663ff85b86d (reviewed head `cb8ee7318c3820dc239def5343521396d9aab194` by `GeorgeLuo` as `OWNER` at `2026-09-01T23:17:14Z`). |
+| Perception-memory workbench journey | proposal_amendment_in_review | Started proposal amendment m008/amend-live-plugin-selection. |
 
 ## Accepted Review Units
 

@@ -67,17 +67,18 @@
       min-width: 0;
     }
     .sidebar {
-      gap: 12px;
+      gap: 0;
       overflow: hidden;
       background: var(--sidebar);
       border-right: 1px solid var(--border);
-      padding: 12px 12px 8px;
+      padding: 12px 4px 8px;
     }
     .sidebar-brand {
       display: flex;
       align-items: baseline;
       gap: 8px;
       flex: 0 0 auto;
+      padding: 0 12px 8px;
     }
     .sidebar-brand .brand {
       font-size: 13px;
@@ -87,20 +88,57 @@
     .sidebar-scroll {
       display: flex;
       flex-direction: column;
-      gap: 14px;
+      gap: 8px;
       flex: 1;
       min-height: 0;
       overflow: auto;
       overflow-x: hidden;
     }
+    .sidebar-group {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      padding: 0;
+    }
+    .sidebar-group-label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      height: 32px;
+      padding: 0 8px;
+      color: rgb(237 237 237 / .7);
+      font-size: 12px;
+      font-weight: 500;
+      letter-spacing: -.01em;
+      cursor: pointer;
+      list-style: none;
+    }
+    .sidebar-group-label::-webkit-details-marker,
+    .sidebar-group-label::marker { display: none; content: none; }
+    .sidebar-group-label svg {
+      width: 12px;
+      height: 12px;
+      flex: 0 0 auto;
+      color: var(--muted);
+      transition: transform .15s ease;
+    }
+    .sidebar-group[open] > .sidebar-group-label svg { transform: rotate(180deg); }
+    .sidebar-group-body {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 0 8px 8px;
+      min-width: 0;
+    }
     .sidebar-fill { flex: 1; gap: 6px; min-height: 0; }
     .sidebar .plugin-catalog {
-      flex: 0 1 auto;
+      flex: none;
       max-height: none;
       align-content: start;
       gap: 6px;
     }
-    .truncate, #sourceIdentity, .inline-edit, .digest {
+    .truncate, #sourceIdentity, #pluginSelectionSummary, .inline-edit, .digest {
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -544,36 +582,48 @@
         <span class="brand">Workbench</span>
         <span class="kicker">SETUP</span>
       </div>
-      <section>
-        <div class="panel-heading">
-          <h2>Source</h2>
-          <span id="sourceIdentity" class="muted">no source selected</span>
-        </div>
-        <label class="field" for="sourceDir">
-          <span class="kicker">directory</span>
-          <input id="sourceDir" class="inline-edit" type="text" autocomplete="off" placeholder="/path/to/ordered/images">
-        </label>
-      </section>
-
-      <section class="sidebar-fill">
-        <div class="panel-heading">
-          <h2>Plugins</h2>
-          <span id="pluginSelectionSummary" class="muted">no catalog</span>
-          <button type="button" id="refreshPluginsButton" class="text-action">inspect</button>
-        </div>
-        <div class="field">
-          <label class="kicker" for="pluginDir">directory</label>
-          <input id="pluginDir" class="inline-edit" type="text" autocomplete="off" placeholder="/path/to/plugins">
-        </div>
-        <div id="pluginCatalog" class="plugin-catalog">
-          <p class="muted help">The packaged lightweight catalog will appear here.</p>
-        </div>
-        <div id="pluginDigest" class="digest muted"></div>
-        <details class="help-details">
-          <summary>Plugin selection</summary>
-          <p class="help">Only ready, server-discovered IDs can be selected. Click a ready checkbox to start or stop it at the next frame boundary. Select none for raw capture without perception overlays. The plugin root stays locked during replay.</p>
+      <div class="sidebar-scroll">
+        <details class="sidebar-group" open>
+          <summary class="sidebar-group-label">
+            <span>Setup</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </summary>
+          <div class="sidebar-group-body">
+            <div class="field">
+              <span class="kicker">source</span>
+              <span id="sourceIdentity" class="muted">no source selected</span>
+            </div>
+            <label class="field" for="sourceDir">
+              <span class="kicker">directory</span>
+              <input id="sourceDir" class="inline-edit" type="text" autocomplete="off" placeholder="/path/to/ordered/images">
+            </label>
+            <label class="field" for="pluginDir">
+              <span class="kicker">plugin dir</span>
+              <input id="pluginDir" class="inline-edit" type="text" autocomplete="off" placeholder="/path/to/plugins">
+            </label>
+          </div>
         </details>
-      </section>
+        <details class="sidebar-group" open>
+          <summary class="sidebar-group-label">
+            <span>Plugins</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </summary>
+          <div class="sidebar-group-body">
+            <div class="field">
+              <span id="pluginSelectionSummary" class="muted">no catalog</span>
+              <button type="button" id="refreshPluginsButton" class="text-action">inspect</button>
+            </div>
+            <div id="pluginCatalog" class="plugin-catalog">
+              <p class="muted help">The packaged lightweight catalog will appear here.</p>
+            </div>
+            <div id="pluginDigest" class="digest muted"></div>
+            <details class="help-details">
+              <summary>Plugin selection</summary>
+              <p class="help">Only ready, server-discovered IDs can be selected. Click a ready checkbox to start or stop it at the next frame boundary. Select none for raw capture without perception overlays. The plugin root stays locked during replay.</p>
+            </details>
+          </div>
+        </details>
+      </div>
     </aside>
 
     <div class="workspace">

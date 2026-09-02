@@ -195,6 +195,18 @@
     }
     .inline-edit::placeholder { color: var(--muted); opacity: .45; }
     .inline-edit:placeholder-shown { background: var(--empty); }
+    .memory-search {
+      width: 100%;
+      padding: 2px 4px;
+      border-radius: var(--radius);
+    }
+    .float-frame .memory-search {
+      color: inherit;
+      background: transparent;
+    }
+    .float-frame .memory-search:placeholder-shown {
+      background: rgb(31 31 31 / .4);
+    }
     .inline-edit:disabled { opacity: .38; }
     .text-action {
       margin: 0;
@@ -703,6 +715,7 @@
                 <dt>Records</dt><dd id="memoryCount">—</dd>
                 <dt>Policy</dt><dd id="memoryPolicy">—</dd>
               </dl>
+              <input id="memorySearch" class="inline-edit memory-search" type="search" autocomplete="off" placeholder="Search..." aria-label="Filter memory records">
               <div id="memoryRecords" class="record-list"><p class="memory-empty muted help">No retained evidence yet.</p></div>
               <details class="help-details">
                 <summary>Selected record</summary>
@@ -770,7 +783,7 @@
         "startButton", "pauseButton", "resumeButton", "stepButton",
         "cancelButton", "resetButton", "notice", "pluginDir", "refreshPluginsButton",
         "pluginSelectionSummary", "pluginCatalog", "pluginDigest", "memorySelection", "memoryHealth", "memoryEpoch",
-        "memoryCount", "memoryPolicy", "memoryRecords", "failurePanel", "failureText",
+        "memoryCount", "memoryPolicy", "memorySearch", "memoryRecords", "failurePanel", "failureText",
         "memorySelected"
       ].forEach(function (id) { elements[id] = document.getElementById(id); });
       var selectedRecordId = null;
@@ -1454,6 +1467,26 @@
           ? perception.lines.join("\n") : "Structured perception output has no text lines.";
       }
 
+      function memorySearchPattern() {
+        var term = String(elements.memorySearch.value || "").trim().toLowerCase();
+        if (!term) return null;
+        try {
+          return new RegExp(term);
+        } catch (error) {
+          return new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+        }
+      }
+
+      function memoryRecordMatches(record, pattern) {
+        if (!pattern) return true;
+        var haystack = [
+          text(record.label, ""),
+          text(record.record_id, ""),
+          text(record.kind, "")
+        ].join(" ").toLowerCase();
+        return pattern.test(haystack);
+      }
+
       function renderMemory() {
         var memory = currentPayload("memory");
         elements.memoryRecords.textContent = "";
@@ -1475,13 +1508,17 @@
         setText("memoryCount", memory.record_count);
         setText("memoryPolicy", memory.metadata && memory.metadata.policy);
         var records = Array.isArray(memory.records) ? memory.records : [];
+        var pattern = memorySearchPattern();
+        var visible = records.filter(function (record) {
+          return memoryRecordMatches(record, pattern);
+        });
         var recordIds = records.map(function (record) {
           return text(record.record_id, "unknown record");
         });
         if (recordIds.indexOf(selectedRecordId) < 0) {
           selectedRecordId = recordIds.length ? recordIds[0] : null;
         }
-        records.forEach(function (record) {
+        visible.forEach(function (record) {
           var recordId = text(record.record_id, "unknown record");
           var card = document.createElement("button");
           card.type = "button";
@@ -1505,6 +1542,12 @@
           setText("memorySelection", "no record selected");
           elements.memorySelected.textContent = "Memory is empty for this frame.";
           return;
+        }
+        if (!visible.length) {
+          var noMatch = document.createElement("p");
+          noMatch.className = "memory-empty muted help";
+          noMatch.textContent = "No matching records.";
+          elements.memoryRecords.appendChild(noMatch);
         }
         var selected = records.find(function (record) {
           return text(record.record_id, "unknown record") === selectedRecordId;
@@ -1644,6 +1687,12 @@
       });
       elements.pluginDir.addEventListener("change", function () {
         remember(PLUGIN_DIR_KEY, elements.pluginDir.value);
+      });
+      elements.memorySearch.addEventListener("input", function () {
+        renderMemory();
+      });
+      elements.memorySearch.addEventListener("pointerdown", function (event) {
+        event.stopPropagation();
       });
       elements.startButton.addEventListener("click", function () {
         var cadence = cadencePayload();

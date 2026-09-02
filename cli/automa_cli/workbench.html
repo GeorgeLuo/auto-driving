@@ -16,9 +16,12 @@
       --muted: #8c8c8c;
       --border: #242424;
       --empty: rgba(255, 255, 255, .06);
+      --elevate: rgba(255, 255, 255, .03);
+      --button-outline: rgba(255, 255, 255, .08);
       --danger: #dc2626;
       --font-sans: Inter, system-ui, sans-serif;
       --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+      --radius: .375rem;
     }
     * { box-sizing: border-box; }
     html, body { height: 100%; }
@@ -53,7 +56,7 @@
     }
     .app {
       display: grid;
-      grid-template-columns: 20rem minmax(0, 1fr);
+      grid-template-columns: 16rem minmax(0, 1fr);
       height: 100%;
       min-height: 0;
     }
@@ -64,27 +67,27 @@
       min-width: 0;
     }
     .sidebar {
-      gap: 18px;
+      gap: 16px;
       overflow: hidden;
       background: var(--sidebar);
       border-right: 1px solid var(--border);
       padding: 12px;
     }
-    .sidebar-fill { flex: 1; gap: 8px; }
+    .sidebar-scroll {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+    }
+    .sidebar-fill { flex: 1; gap: 8px; min-height: 8rem; }
     .workspace {
       overflow: hidden;
-      padding: 12px 16px 8px;
-      gap: 8px;
-    }
-    .viewer-panel { flex: 1; gap: 6px; }
-    .workspace-bottom {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
+      padding: 16px 16px 4px;
       gap: 16px;
-      height: 26vh;
-      min-height: 0;
-      overflow: hidden;
     }
+    .viewer-panel { flex: 1; gap: 8px; min-height: 0; }
     .panel-heading, .panel-heading-values, .field, .playback-row {
       display: flex;
       align-items: baseline;
@@ -125,13 +128,64 @@
     }
     .text-action:hover:not(:disabled) { color: var(--fg); }
     .text-action:disabled { cursor: not-allowed; opacity: .38; }
-    .text-action.danger { color: var(--danger); }
-    .text-action.danger:hover:not(:disabled) { color: #f87171; }
     .text-action.selected { color: var(--fg); }
-    .playback-controls { display: grid; gap: 6px; flex: 0 0 auto; }
-    .playback-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: baseline; }
-    .cadence-field { width: auto; max-width: 16rem; }
-    .cadence-field .inline-edit { width: 9ch; flex: 0 0 auto; }
+    .playback {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 8px;
+      padding: 8px 0 4px;
+      flex: 0 0 auto;
+    }
+    .seek {
+      width: 100%;
+      height: 20px;
+      margin: 0;
+      background: transparent;
+      accent-color: var(--fg);
+    }
+    .playback-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .playback-actions { display: flex; align-items: center; gap: 4px; }
+    .icon-btn {
+      width: 36px;
+      height: 36px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      border: 1px solid transparent;
+      border-radius: var(--radius);
+      background: transparent;
+      color: var(--fg);
+      cursor: pointer;
+    }
+    .icon-btn svg { width: 16px; height: 16px; display: block; }
+    .icon-btn:hover:not(:disabled) { background: var(--elevate); }
+    .icon-btn.outline { border-color: var(--button-outline); }
+    .icon-btn:disabled { cursor: not-allowed; opacity: .38; }
+    .cadence-select {
+      height: 24px;
+      padding: 0 8px;
+      font: inherit;
+      font-size: 12px;
+      color: var(--fg);
+      background: transparent;
+      border: 1px solid hsl(0 0% 20% / .5);
+      border-radius: var(--radius);
+    }
+    .cadence-select:disabled { opacity: .38; }
+    .playback-meta {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-left: auto;
+    }
     .help { font-size: 11px; line-height: 1.45; }
     .notice { min-height: 1.1em; color: var(--muted); font-size: 11px; }
     .notice.error { color: var(--danger); }
@@ -185,18 +239,6 @@
       align-items: baseline;
     }
     .kv dd { margin: 0; overflow-wrap: anywhere; color: var(--fg); }
-    .progress {
-      height: 2px;
-      background: var(--border);
-      overflow: hidden;
-    }
-    .progress > div, .timeline-progress > span {
-      display: block;
-      height: 100%;
-      background: var(--fg);
-      width: 0%;
-    }
-    .timeline-progress { margin: 0; }
     .timeline-details, .evidence-panel {
       display: flex;
       flex-direction: column;
@@ -269,7 +311,6 @@
         border-top: 1px solid var(--border);
         overflow: auto;
       }
-      .workspace-bottom { height: 22vh; }
     }
   </style>
 </head>
@@ -287,45 +328,67 @@
         </label>
       </section>
 
-      <section class="sidebar-fill">
-        <div class="panel-heading">
-          <h2>Perception plugins</h2>
-          <span id="pluginSelectionSummary" class="muted">no catalog</span>
-        </div>
-        <div class="field">
-          <label class="kicker" for="pluginDir">directory</label>
-          <input id="pluginDir" class="inline-edit" type="text" autocomplete="off" placeholder="/path/to/plugins">
-          <button type="button" id="refreshPluginsButton" class="text-action">inspect</button>
-        </div>
-        <div id="pluginCatalog" class="plugin-catalog">
-          <p class="muted help">The packaged lightweight catalog will appear here.</p>
-        </div>
-        <div id="pluginDigest" class="digest muted"></div>
-        <details class="help-details">
-          <summary>Plugin selection</summary>
-          <p class="help">Only ready, server-discovered IDs can be selected. Click a ready checkbox to start or stop it at the next frame boundary. Select none for raw capture without perception overlays. The plugin root stays locked during replay.</p>
-        </details>
-      </section>
-
-      <section class="sidebar-fill">
-        <div class="panel-heading">
-          <h2>Memory ledger</h2>
-          <div class="panel-heading-values">
-            <span id="memorySelection" class="muted">select a record</span>
-            <span id="memoryHealth" class="muted">no snapshot</span>
+      <div class="sidebar-scroll">
+        <section class="sidebar-fill">
+          <div class="panel-heading">
+            <h2>Perception plugins</h2>
+            <span id="pluginSelectionSummary" class="muted">no catalog</span>
           </div>
-        </div>
-        <dl class="kv">
-          <dt>Epoch</dt><dd id="memoryEpoch">—</dd>
-          <dt>Records</dt><dd id="memoryCount">—</dd>
-          <dt>Policy</dt><dd id="memoryPolicy">—</dd>
-        </dl>
-        <div id="memoryRecords" class="record-list"><p class="memory-empty muted help">No retained evidence yet.</p></div>
-        <div>
-          <h3>Selected record</h3>
-          <pre id="memorySelected">Select a server-produced memory record to inspect its provenance.</pre>
-        </div>
-      </section>
+          <div class="field">
+            <label class="kicker" for="pluginDir">directory</label>
+            <input id="pluginDir" class="inline-edit" type="text" autocomplete="off" placeholder="/path/to/plugins">
+            <button type="button" id="refreshPluginsButton" class="text-action">inspect</button>
+          </div>
+          <div id="pluginCatalog" class="plugin-catalog">
+            <p class="muted help">The packaged lightweight catalog will appear here.</p>
+          </div>
+          <div id="pluginDigest" class="digest muted"></div>
+          <details class="help-details">
+            <summary>Plugin selection</summary>
+            <p class="help">Only ready, server-discovered IDs can be selected. Click a ready checkbox to start or stop it at the next frame boundary. Select none for raw capture without perception overlays. The plugin root stays locked during replay.</p>
+          </details>
+        </section>
+
+        <section class="sidebar-fill">
+          <div class="panel-heading">
+            <h2>Memory ledger</h2>
+            <div class="panel-heading-values">
+              <span id="memorySelection" class="muted">select a record</span>
+              <span id="memoryHealth" class="muted">no snapshot</span>
+            </div>
+          </div>
+          <dl class="kv">
+            <dt>Epoch</dt><dd id="memoryEpoch">—</dd>
+            <dt>Records</dt><dd id="memoryCount">—</dd>
+            <dt>Policy</dt><dd id="memoryPolicy">—</dd>
+          </dl>
+          <div id="memoryRecords" class="record-list"><p class="memory-empty muted help">No retained evidence yet.</p></div>
+          <div>
+            <h3>Selected record</h3>
+            <pre id="memorySelected">Select a server-produced memory record to inspect its provenance.</pre>
+          </div>
+        </section>
+
+        <section class="sidebar-fill">
+          <div class="panel-heading">
+            <span class="section-title">Replay timeline</span>
+            <span id="timelineSelection" class="muted">select a processed frame</span>
+          </div>
+          <div id="timeline" class="timeline"><p class="timeline-empty muted help">No frames have been processed.</p></div>
+        </section>
+
+        <section class="sidebar-fill evidence-panel">
+          <div class="panel-heading">
+            <h2>Perception evidence</h2>
+            <span id="evidenceSummary" class="muted">no output</span>
+          </div>
+          <div class="metric-grid">
+            <div class="metric"><div class="label">Plugin runs</div><div id="pluginRuns" class="value">—</div></div>
+            <div class="metric"><div class="label">Things / signals</div><div id="evidenceCounts" class="value">—</div></div>
+          </div>
+          <pre id="evidenceText">No perception output yet.</pre>
+        </section>
+      </div>
     </aside>
 
     <div class="workspace">
@@ -346,58 +409,53 @@
             <div class="metric"><div class="label">Perception</div><div id="perceptionStatus" class="value">—</div></div>
           </div>
         </details>
-        <div class="playback-controls">
-          <div class="playback-row">
-            <div class="playback-actions">
-              <button type="button" id="startButton" class="text-action" aria-label="Start replay">start</button>
-              <button type="button" id="pauseButton" class="text-action" aria-label="Pause replay">pause</button>
-              <button type="button" id="resumeButton" class="text-action" aria-label="Resume replay">resume</button>
-              <button type="button" id="stepButton" class="text-action" aria-label="Step one frame">step</button>
-              <button type="button" id="cancelButton" class="text-action danger" aria-label="Cancel replay">cancel</button>
-              <button type="button" id="resetButton" class="text-action" aria-label="Reset workbench">reset</button>
-            </div>
-            <label class="field cadence-field" for="cadence">
-              <span class="kicker">cadence</span>
-              <input id="cadence" class="inline-edit" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" value="250" aria-label="Replay cadence">
-            </label>
-            <button type="button" id="overlayToggle" class="text-action" value="on" aria-pressed="true" aria-label="Toggle overlays">overlays</button>
-          </div>
-          <span class="timeline-progress progress"><span id="progressBar"></span></span>
-          <div class="playback-row">
-            <span id="progressText" class="muted">0 / 0</span>
-            <span id="notice" class="notice" role="status"></span>
-          </div>
-          <details class="help-details">
-            <summary>Replay behavior</summary>
-            <p class="help">Cadence is an editable millisecond delay, <span class="mono">0</span> for as fast as possible, or realtime (capture timestamps). Source order, frame identity, absence annotations, perception, observation, and memory are validated and produced server-side.</p>
-          </details>
-          <details id="failurePanel" class="help-details" hidden>
-            <summary>Failure boundary</summary>
-            <pre id="failureText"></pre>
-          </details>
-        </div>
       </section>
 
-      <div class="workspace-bottom">
-        <details class="timeline-details">
-          <summary>
-            <span class="section-title">Replay timeline</span>
-            <span id="timelineSelection" class="muted">select a processed frame</span>
-          </summary>
-          <div id="timeline" class="timeline"><p class="timeline-empty muted help">No frames have been processed.</p></div>
+      <div class="playback">
+        <input id="seekBar" class="seek" type="range" min="0" max="0" value="0" aria-label="Replay position">
+        <div class="playback-bar">
+          <div class="playback-actions">
+            <button type="button" id="startButton" class="icon-btn outline" aria-label="Start replay" title="Start">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+            </button>
+            <button type="button" id="resumeButton" class="icon-btn outline" aria-label="Resume replay" title="Resume" hidden>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+            </button>
+            <button type="button" id="pauseButton" class="icon-btn outline" aria-label="Pause replay" title="Pause" hidden>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
+            </button>
+            <button type="button" id="stepButton" class="icon-btn" aria-label="Step one frame" title="Step">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="5 4 15 12 5 20 5 4"></polygon><line x1="19" y1="5" x2="19" y2="19"></line></svg>
+            </button>
+            <button type="button" id="cancelButton" class="icon-btn" aria-label="Cancel replay" title="Stop">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="1"></rect></svg>
+            </button>
+            <button type="button" id="resetButton" class="icon-btn" aria-label="Reset workbench" title="Reset">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"></path><polyline points="3 4 3 10 9 10"></polyline></svg>
+            </button>
+          </div>
+          <div class="playback-meta">
+            <select id="cadence" class="cadence-select" aria-label="Replay cadence">
+              <option value="0">as fast as possible</option>
+              <option value="100">100 ms</option>
+              <option value="250" selected>250 ms</option>
+              <option value="500">500 ms</option>
+              <option value="1000">1 second</option>
+              <option value="realtime">realtime</option>
+            </select>
+            <button type="button" id="overlayToggle" class="text-action" value="on" aria-pressed="true" aria-label="Toggle overlays">overlays</button>
+            <span id="progressText" class="muted">0 / 0</span>
+          </div>
+        </div>
+        <span id="notice" class="notice" role="status"></span>
+        <details class="help-details">
+          <summary>Replay behavior</summary>
+          <p class="help">Realtime follows recorded frame timestamps; fixed values add a delay after each frame, and “as fast as possible” removes that delay. Source order, frame identity, absence annotations, perception, observation, and memory are validated and produced server-side.</p>
         </details>
-
-        <section class="evidence-panel">
-          <div class="panel-heading">
-            <h2>Perception evidence</h2>
-            <span id="evidenceSummary" class="muted">no output</span>
-          </div>
-          <div class="metric-grid">
-            <div class="metric"><div class="label">Plugin runs</div><div id="pluginRuns" class="value">—</div></div>
-            <div class="metric"><div class="label">Things / signals</div><div id="evidenceCounts" class="value">—</div></div>
-          </div>
-          <pre id="evidenceText">No perception output yet.</pre>
-        </section>
+        <details id="failurePanel" class="help-details" hidden>
+          <summary>Failure boundary</summary>
+          <pre id="failureText"></pre>
+        </details>
       </div>
     </div>
   </main>
@@ -425,7 +483,7 @@
       [
         "sourceIdentity", "emptyState", "viewerFrame", "frameImage",
         "overlayCanvas", "frameId", "frameIndex", "frameTimestamp", "perceptionStatus",
-        "progressText", "progressBar", "timeline", "timelineSelection", "evidenceSummary", "pluginRuns",
+        "progressText", "seekBar", "timeline", "timelineSelection", "evidenceSummary", "pluginRuns",
         "evidenceCounts", "evidenceText", "sourceDir", "cadence", "overlayToggle",
         "startButton", "pauseButton", "resumeButton", "stepButton",
         "cancelButton", "resetButton", "notice", "pluginDir", "refreshPluginsButton",
@@ -674,9 +732,15 @@
       function renderControls() {
         var allowed = state && state.controls && state.controls.allowed_actions
           ? state.controls.allowed_actions : [];
-        setButton("startButton", !actionInFlight && allowed.indexOf("start") >= 0);
-        setButton("pauseButton", !actionInFlight && allowed.indexOf("pause") >= 0);
-        setButton("resumeButton", !actionInFlight && allowed.indexOf("resume") >= 0);
+        var canStart = !actionInFlight && allowed.indexOf("start") >= 0;
+        var canPause = !actionInFlight && allowed.indexOf("pause") >= 0;
+        var canResume = !actionInFlight && allowed.indexOf("resume") >= 0;
+        setButton("startButton", canStart);
+        setButton("pauseButton", canPause);
+        setButton("resumeButton", canResume);
+        elements.startButton.hidden = !canStart;
+        elements.pauseButton.hidden = !canPause;
+        elements.resumeButton.hidden = !canResume;
         setButton("stepButton", !actionInFlight && allowed.indexOf("step") >= 0);
         setButton("cancelButton", !actionInFlight && allowed.indexOf("cancel") >= 0);
         setButton("resetButton", !actionInFlight && allowed.indexOf("reset") >= 0);
@@ -1030,7 +1094,15 @@
         setText("perceptionStatus", perception && perception.status);
         var progress = state.progress || {};
         setText("progressText", text(progress.completed, "0") + " / " + text(progress.total, "0"));
-        elements.progressBar.style.width = text(progress.percent, "0") + "%";
+        var total = Number(progress.total) || 0;
+        var completed = Number(progress.completed) || 0;
+        elements.seekBar.max = String(Math.max(total, 1));
+        elements.seekBar.disabled = total === 0;
+        if (document.activeElement !== elements.seekBar) {
+          var frame = currentFrame();
+          var position = frame && frame.position != null ? Number(frame.position) : Math.max(completed - 1, 0);
+          elements.seekBar.value = String(Math.min(Math.max(position, 0), Math.max(total, 1)));
+        }
         var controls = state.controls || {};
         if (document.activeElement !== elements.cadence && (!cadenceDraft || state.phase !== "idle")) {
           elements.cadence.value = controls.pace === "realtime"
@@ -1107,30 +1179,24 @@
       elements.stepButton.addEventListener("click", function () { action("step"); });
       elements.cancelButton.addEventListener("click", function () { action("cancel"); });
       elements.resetButton.addEventListener("click", function () { action("reset"); });
-      elements.cadence.addEventListener("input", function () {
+      elements.cadence.addEventListener("change", function () {
         cadenceDraft = state && state.phase === "idle";
-      });
-      elements.cadence.addEventListener("keydown", function (event) {
-        if (event.key === "Enter") {
-          event.preventDefault();
-          elements.cadence.blur();
-        }
-      });
-      elements.cadence.addEventListener("blur", function () {
-        var cadence = cadencePayload();
-        if (!cadence) {
-          if (state && state.controls) {
-            elements.cadence.value = state.controls.pace === "realtime"
-              ? "realtime" : text(state.controls.cadence_ms, "250");
-          }
-          return;
-        }
         if (state && (state.phase === "running" || state.phase === "paused")) {
           cadenceDraft = false;
+          var cadence = cadencePayload();
+          if (!cadence) return;
           var payload = { pace: cadence.pace };
           if (cadence.pace !== "realtime") payload.cadence_ms = cadence.cadence_ms;
           action("set_cadence", payload);
         }
+      });
+      elements.seekBar.addEventListener("change", function () {
+        var timeline = state && Array.isArray(state.timeline) ? state.timeline : [];
+        var position = Number(elements.seekBar.value);
+        var item = timeline.find(function (entry) {
+          return entry && entry.frame && Number(entry.frame.position) === position;
+        });
+        if (item && item.frame) selectFrame(item.frame.frame_id);
       });
       elements.overlayToggle.addEventListener("click", function () {
         var next = elements.overlayToggle.value === "off" ? "on" : "off";

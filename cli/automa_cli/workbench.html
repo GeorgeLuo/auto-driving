@@ -243,24 +243,18 @@
       border: 2px solid hsl(0 0% 55%);
       background: var(--bg);
     }
-    .cadence-field {
-      display: flex;
-      align-items: baseline;
-      gap: 8px;
-      margin-left: 8px;
-    }
     .cadence-select {
       height: 24px;
-      padding: 0 6px;
+      padding: 0 4px;
       font: inherit;
       font-size: 12px;
       color: var(--fg);
       background: transparent;
-      border: 1px solid var(--button-outline);
+      border: 1px solid transparent;
       border-radius: var(--radius);
     }
     .cadence-select:hover, .cadence-select:focus {
-      border-color: hsl(0 0% 40%);
+      border-color: var(--button-outline);
     }
     .cadence-select:disabled { opacity: .38; }
     .playback-meta {
@@ -679,19 +673,16 @@
             <button type="button" id="resetButton" class="icon-btn" aria-label="Reset workbench" title="Reset">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"></path><polyline points="3 4 3 10 9 10"></polyline></svg>
             </button>
-            <label class="cadence-field" for="cadence">
-              <span class="kicker">cadence</span>
-              <select id="cadence" class="cadence-select">
-                <option value="0">as fast as possible</option>
-                <option value="100">100 ms</option>
-                <option value="250" selected>250 ms</option>
-                <option value="500">500 ms</option>
-                <option value="1000">1 second</option>
-                <option value="realtime">realtime</option>
-              </select>
-            </label>
           </div>
           <div class="playback-meta">
+            <select id="cadence" class="cadence-select" aria-label="Replay cadence">
+              <option value="0">as fast as possible</option>
+              <option value="100">100 ms</option>
+              <option value="250" selected>250 ms</option>
+              <option value="500">500 ms</option>
+              <option value="1000">1 second</option>
+              <option value="realtime">realtime</option>
+            </select>
             <button type="button" id="overlayToggle" class="text-action" value="on" aria-pressed="true" aria-label="Toggle overlays">overlays</button>
             <span id="progressText" class="muted">0 / 0</span>
           </div>

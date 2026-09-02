@@ -1479,11 +1479,7 @@
 
       function memoryRecordMatches(record, pattern) {
         if (!pattern) return true;
-        var haystack = [
-          text(record.label, ""),
-          text(record.record_id, ""),
-          text(record.kind, "")
-        ].join(" ").toLowerCase();
+        var haystack = text(record.label, text(record.record_id, "")).toLowerCase();
         return pattern.test(haystack);
       }
 

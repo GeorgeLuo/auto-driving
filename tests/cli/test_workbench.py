@@ -709,6 +709,10 @@ class WorkbenchTests(unittest.TestCase):
             self.assertIn("Select none for raw capture without perception overlays.", html)
             self.assertIn("state.active_plugin_ids.length === 0", html)
             self.assertNotIn("pending", html)
+            self.assertIn(
+                'action("select_plugins", {\n              active_plugin_ids: pluginSelectionDraft',
+                html,
+            )
             current_payload = html.split("function currentPayload(key) {", 1)[1].split(
                 "function clearFrameSelection() {", 1
             )[0]

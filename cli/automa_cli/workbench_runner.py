@@ -713,6 +713,7 @@ class ImageReplayRunner:
                     ) from exc
                 self._mapper = next_mapper
 
+            selection_changed = normalized != self._active_plugin_ids
             self._active_plugin_ids = normalized
             self._apply_plugin_configuration_locked()
             if active_phase:
@@ -722,7 +723,31 @@ class ImageReplayRunner:
                 pipeline["run_active_plugin_ids"] = list(normalized)
             self._state["failure"] = None
             self._state["failure_boundary"] = None
+            refresh_frame = None
+            run_id = None
+            generation = None
+            if (
+                selection_changed
+                and self._state["phase"] == "paused"
+                and self._feed is not None
+            ):
+                current = self._state.get("current_frame")
+                frame_id = current.get("frame_id") if isinstance(current, dict) else None
+                if frame_id:
+                    refresh_frame = self._frame_for_id_locked(str(frame_id))
+                    run_id = str(self._state["run_id"])
+                    generation = self._generation
             self._record_action_locked("select_plugins")
+            if refresh_frame is None:
+                return copy.deepcopy(self._state)
+        self._process_one(
+            run_id,
+            generation,
+            refresh_frame,
+            allow_paused=True,
+            refresh_current=True,
+        )
+        with self._lock:
             return copy.deepcopy(self._state)
 
     def _build_mapper_for_selection(
@@ -938,6 +963,7 @@ class ImageReplayRunner:
         frame: ReplayFrame,
         *,
         allow_paused: bool = False,
+        refresh_current: bool = False,
     ) -> None:
         with self._action_lock:
             with self._lock:
@@ -1043,8 +1069,11 @@ class ImageReplayRunner:
                         previous_memory=previous_memory,
                     )
                     self._history[frame.frame_id] = detail
-                    self._state["timeline"].append(self._timeline_item(detail))
-                    self._state["position"] = frame.position + 1
+                    if refresh_current:
+                        self._upsert_timeline_locked(detail)
+                    else:
+                        self._state["timeline"].append(self._timeline_item(detail))
+                        self._state["position"] = frame.position + 1
                     if result.perception is not None and _safe_status(
                         result.perception.status
                     ) in {
@@ -1066,7 +1095,10 @@ class ImageReplayRunner:
                             or "memory stage returned an error",
                             recovery_action="start",
                         )
-                    elif self._state["position"] >= len(self._feed.frames):
+                    elif (
+                        not refresh_current
+                        and self._state["position"] >= len(self._feed.frames)
+                    ):
                         self._complete_locked()
                     self._condition.notify_all()
             except Exception as exc:  # noqa: BLE001 - per-frame isolation boundary
@@ -1378,6 +1410,17 @@ class ImageReplayRunner:
             },
             "duration_ms": result.duration_ms,
         }
+
+    def _upsert_timeline_locked(self, detail: dict[str, Any]) -> None:
+        item = self._timeline_item(detail)
+        frame_id = item["frame"]["frame_id"]
+        timeline = self._state["timeline"]
+        for index, existing in enumerate(timeline):
+            existing_frame = existing.get("frame") if isinstance(existing, dict) else None
+            if isinstance(existing_frame, dict) and existing_frame.get("frame_id") == frame_id:
+                timeline[index] = item
+                return
+        timeline.append(item)
 
     @staticmethod
     def _timeline_item(detail: dict[str, Any]) -> dict[str, Any]:

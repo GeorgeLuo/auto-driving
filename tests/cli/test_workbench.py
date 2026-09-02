@@ -291,6 +291,64 @@ class WorkbenchTests(unittest.TestCase):
             )
             runner.dispatch("cancel", run_id=run_id)
 
+    def test_paused_plugin_toggle_reprocesses_current_frame_evidence(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            _make_images(root, 3)
+            runner = ImageReplayRunner(
+                root,
+                plugin_dir=Path("lab/plugins/perception"),
+                cadence_ms=5000,
+            )
+            runner.dispatch(
+                "select_plugins",
+                active_plugin_ids=["classical_regions"],
+            )
+            started = runner.start()
+            run_id = started["run_id"]
+            _wait_until(lambda: runner.state().get("current_frame") is not None)
+            paused = runner.dispatch("pause", run_id=run_id)
+            position = paused["position"]
+            timeline_len = len(paused["timeline"])
+            self.assertEqual(
+                [run["plugin_id"] for run in paused["perception"]["plugin_runs"]],
+                ["classical_regions"],
+            )
+
+            both = runner.dispatch(
+                "select_plugins",
+                run_id=run_id,
+                active_plugin_ids=["classical_regions", "floor_continuity"],
+            )
+            self.assertEqual(both["phase"], "paused")
+            self.assertEqual(both["position"], position)
+            self.assertEqual(len(both["timeline"]), timeline_len)
+            self.assertEqual(
+                [run["plugin_id"] for run in both["perception"]["plugin_runs"]],
+                ["classical_regions", "floor_continuity"],
+            )
+
+            none = runner.dispatch(
+                "select_plugins",
+                run_id=run_id,
+                active_plugin_ids=[],
+            )
+            self.assertEqual(none["phase"], "paused")
+            self.assertEqual(list(none["perception"]["plugin_runs"] or ()), [])
+
+            one = runner.dispatch(
+                "select_plugins",
+                run_id=run_id,
+                active_plugin_ids=["floor_continuity"],
+            )
+            self.assertEqual(one["phase"], "paused")
+            self.assertEqual(one["position"], position)
+            self.assertEqual(
+                [run["plugin_id"] for run in one["perception"]["plugin_runs"]],
+                ["floor_continuity"],
+            )
+            runner.dispatch("cancel", run_id=run_id)
+
     def test_catalog_rejects_unavailable_and_duplicate_selection(self) -> None:
         catalog = discover_plugin_catalog(Path("lab/plugins/perception"))
         with self.assertRaises(PluginCatalogError):
@@ -786,10 +844,7 @@ class WorkbenchTests(unittest.TestCase):
             current_payload = html.split("function currentPayload(key) {", 1)[1].split(
                 "function clearFrameSelection() {", 1
             )[0]
-            self.assertLess(
-                current_payload.index("state.active_plugin_ids.length === 0"),
-                current_payload.index("selectedFrameDetail &&"),
-            )
+            self.assertIn("selected.length === 0 && runs.length > 0", current_payload)
             plugin_root = str(Path("lab/plugins/perception").resolve())
 
             def post(payload: dict[str, object]) -> dict[str, object]:

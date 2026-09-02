@@ -608,7 +608,7 @@
             <div id="pluginDigest" class="digest muted"></div>
             <details class="help-details">
               <summary>Plugin selection</summary>
-              <p class="help">Only ready, server-discovered IDs can be selected. Click a ready checkbox to start or stop it at the next frame boundary. Select none for raw capture without perception overlays. The plugin root stays locked during replay.</p>
+              <p class="help">Only ready, server-discovered IDs can be selected. While paused, the current frame is reprocessed immediately so Evidence and overlays match the selection. While playing, the change applies at the next frame boundary. Select none for raw capture without perception overlays. The plugin root stays locked during replay.</p>
             </details>
           </div>
         </details>
@@ -1063,14 +1063,19 @@
       }
 
       function currentPayload(key) {
-        if (key === "perception" && state && Array.isArray(state.active_plugin_ids) &&
-            state.active_plugin_ids.length === 0) {
-          return null;
-        }
+        var payload;
         if (selectedFrameDetail && Object.prototype.hasOwnProperty.call(selectedFrameDetail, key)) {
-          return selectedFrameDetail[key];
+          payload = selectedFrameDetail[key];
+        } else {
+          payload = state ? state[key] : null;
         }
-        return state ? state[key] : null;
+        if (key === "perception") {
+          var selected = state && Array.isArray(state.active_plugin_ids)
+            ? state.active_plugin_ids : [];
+          var runs = payload && Array.isArray(payload.plugin_runs) ? payload.plugin_runs : [];
+          if (selected.length === 0 && runs.length > 0) return null;
+        }
+        return payload;
       }
 
       function clearFrameSelection() {

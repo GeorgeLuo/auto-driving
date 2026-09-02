@@ -136,6 +136,51 @@ def _wait_until(predicate, timeout: float = 3.0) -> None:
 
 
 class WorkbenchTests(unittest.TestCase):
+    def test_workbench_frame_metadata_is_collapsible_and_compact(self) -> None:
+        html = Path("cli/automa_cli/workbench.html").read_text(encoding="utf-8")
+
+        self.assertIn('<details class="frame-details">', html)
+        self.assertIn("<summary>Frame details</summary>", html)
+        self.assertNotIn('<details class="frame-details" open>', html)
+        self.assertIn(
+            ".metric .value { font-size: .9rem; font-weight: 500; margin-top: 3px; }",
+            html,
+        )
+        self.assertNotIn("<header", html)
+        self.assertNotIn("<h1>", html)
+        self.assertNotIn('class="eyebrow"', html)
+        self.assertNotIn('class="subtitle"', html)
+        self.assertNotIn("<h2>Capture view</h2>", html)
+        source_controls = html.split("<h2>Source</h2>", 1)[1].split(
+            "</section>", 1
+        )[0]
+        self.assertIn('id="sourceIdentity"', source_controls)
+        self.assertNotIn("<h2>Source and controls</h2>", html)
+        self.assertIn('<div class="playback-controls">', html)
+        self.assertIn('<button id="startButton" class="primary" aria-label="Start replay" title="Start replay">▶</button>', html)
+        self.assertIn('<button id="pauseButton" aria-label="Pause replay" title="Pause replay">⏸</button>', html)
+        self.assertNotIn(">Start replay<", html)
+        self.assertNotIn(">Pause<", html)
+        self.assertIn('<details class="help-details">', html)
+        self.assertIn("<summary>Replay behavior</summary>", html)
+        self.assertIn("<summary>Plugin selection</summary>", html)
+        self.assertNotIn("<h2>Run state</h2>", html)
+        self.assertIn('id="failurePanel" class="help-details" hidden', html)
+        self.assertIn('"\\nNext action: " + recovery', html)
+        self.assertNotIn("observation-only", html)
+        self.assertNotIn('id="phaseChip"', html)
+        self.assertNotIn('class="status-chip"', html)
+        self.assertNotIn('id="validateButton"', html)
+        self.assertNotIn("Validate source", html)
+        self.assertIn(".frame-details .frame-meta .metric {", html)
+        self.assertIn("background: none;", html)
+        self.assertIn("border: 0;", html)
+        self.assertIn('<details class="panel timeline-details">', html)
+        self.assertIn('<span class="section-title">Replay timeline</span>', html)
+        self.assertIn('<span class="timeline-progress progress"><span id="progressBar"></span></span>', html)
+        self.assertNotIn(".timeline-details > summary::before", html)
+        self.assertNotIn('<details class="panel timeline-details" open>', html)
+
     def test_workbench_keeps_plugin_checkbox_nodes_stable_between_state_polls(self) -> None:
         html = Path("cli/automa_cli/workbench.html").read_text(encoding="utf-8")
         render_plugins = html.split("function renderPlugins() {", 1)[1].split(

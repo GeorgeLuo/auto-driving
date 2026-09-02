@@ -787,6 +787,7 @@
         "memorySelected"
       ].forEach(function (id) { elements[id] = document.getElementById(id); });
       var selectedRecordId = null;
+      var memoryListSignature = "";
       var SOURCE_DIR_KEY = "automa-workbench-source-dir";
       var PLUGIN_DIR_KEY = "automa-workbench-plugin-dir";
 
@@ -1477,16 +1478,75 @@
         }
       }
 
-      function memoryRecordMatches(record, pattern) {
+      function memoryRecordId(record) {
+        return text(record.record_id, "unknown record");
+      }
+
+      function memoryRecordLabel(record) {
+        return text(record.label, memoryRecordId(record));
+      }
+
+      function memoryRecordTitle(record, records) {
+        var label = memoryRecordLabel(record);
+        var collisions = 0;
+        records.forEach(function (candidate) {
+          if (memoryRecordLabel(candidate) === label) collisions += 1;
+        });
+        if (collisions < 2) return label;
+        var plugin = record.provenance && record.provenance.source_plugin_id;
+        return plugin ? label + " · " + plugin : label;
+      }
+
+      function memoryRecordMatches(record, records, pattern) {
         if (!pattern) return true;
-        var haystack = text(record.label, text(record.record_id, "")).toLowerCase();
-        return pattern.test(haystack);
+        pattern.lastIndex = 0;
+        return pattern.test(memoryRecordTitle(record, records).toLowerCase());
+      }
+
+      function paintMemorySelection(records) {
+        var selected = records.find(function (record) {
+          return memoryRecordId(record) === selectedRecordId;
+        });
+        Array.prototype.forEach.call(
+          elements.memoryRecords.querySelectorAll("button[data-record-id]"),
+          function (button) {
+            var isSelected = button.getAttribute("data-record-id") === selectedRecordId;
+            button.classList.toggle("selected", isSelected);
+            button.setAttribute("aria-pressed", isSelected ? "true" : "false");
+          }
+        );
+        setText("memorySelection", selected
+          ? "selected · " + memoryRecordTitle(selected, records)
+          : "select a record");
+        elements.memorySelected.textContent = selected
+          ? JSON.stringify({
+            record_id: selected.record_id,
+            kind: selected.kind,
+            label: selected.label,
+            confidence: selected.confidence,
+            provenance: selected.provenance,
+            properties: selected.properties
+          }, null, 2)
+          : "Select a server-produced memory record to inspect its provenance.";
+      }
+
+      function bindMemoryList() {
+        if (elements.memoryRecords.getAttribute("data-bound") === "true") return;
+        elements.memoryRecords.setAttribute("data-bound", "true");
+        elements.memoryRecords.addEventListener("pointerdown", function (event) {
+          var button = event.target.closest("button[data-record-id]");
+          if (!button) return;
+          event.stopPropagation();
+          selectRecord(button.getAttribute("data-record-id"));
+        });
       }
 
       function renderMemory() {
+        bindMemoryList();
         var memory = currentPayload("memory");
-        elements.memoryRecords.textContent = "";
         if (!memory) {
+          memoryListSignature = "";
+          elements.memoryRecords.textContent = "";
           setText("memoryHealth", "no snapshot");
           setText("memoryEpoch", null);
           setText("memoryCount", null);
@@ -1506,28 +1566,32 @@
         var records = Array.isArray(memory.records) ? memory.records : [];
         var pattern = memorySearchPattern();
         var visible = records.filter(function (record) {
-          return memoryRecordMatches(record, pattern);
+          return memoryRecordMatches(record, records, pattern);
         });
-        var recordIds = records.map(function (record) {
-          return text(record.record_id, "unknown record");
-        });
+        var recordIds = records.map(memoryRecordId);
         if (recordIds.indexOf(selectedRecordId) < 0) {
           selectedRecordId = recordIds.length ? recordIds[0] : null;
         }
+        var signature = visible.map(function (record) {
+          return memoryRecordId(record) + "\t" + memoryRecordTitle(record, records);
+        }).join("\n") + "\0" + String(elements.memorySearch.value || "") + "\0" + String(records.length);
+        if (signature === memoryListSignature && elements.memoryRecords.querySelector("button[data-record-id], .memory-empty")) {
+          paintMemorySelection(records);
+          return;
+        }
+        memoryListSignature = signature;
+        elements.memoryRecords.textContent = "";
         visible.forEach(function (record) {
-          var recordId = text(record.record_id, "unknown record");
+          var recordId = memoryRecordId(record);
+          var titleText = memoryRecordTitle(record, records);
           var card = document.createElement("button");
           card.type = "button";
           card.className = "text-action record";
           card.setAttribute("data-record-id", recordId);
-          card.addEventListener("click", function () { selectRecord(recordId); });
           var title = document.createElement("strong");
-          title.textContent = text(record.label, recordId);
+          title.textContent = titleText;
           card.appendChild(title);
-          var isSelected = recordId === selectedRecordId;
-          card.classList.toggle("selected", isSelected);
-          card.setAttribute("aria-pressed", isSelected ? "true" : "false");
-          card.setAttribute("aria-label", "Show memory record " + text(record.label, recordId));
+          card.setAttribute("aria-label", "Show memory record " + titleText);
           elements.memoryRecords.appendChild(card);
         });
         if (!records.length) {
@@ -1545,34 +1609,19 @@
           noMatch.textContent = "No matching records.";
           elements.memoryRecords.appendChild(noMatch);
         }
-        var selected = records.find(function (record) {
-          return text(record.record_id, "unknown record") === selectedRecordId;
-        });
-        setText("memorySelection", selected
-          ? "selected · " + text(selected.label, selectedRecordId)
-          : "select a record");
-        elements.memorySelected.textContent = selected
-          ? JSON.stringify({
-            record_id: selected.record_id,
-            kind: selected.kind,
-            label: selected.label,
-            confidence: selected.confidence,
-            provenance: selected.provenance,
-            properties: selected.properties
-          }, null, 2)
-          : "Select a server-produced memory record to inspect its provenance.";
+        paintMemorySelection(records);
       }
 
       function selectRecord(recordId) {
         var memory = currentPayload("memory");
         var records = memory && Array.isArray(memory.records) ? memory.records : [];
         var selected = records.find(function (record) {
-          return text(record.record_id, "unknown record") === recordId;
+          return memoryRecordId(record) === recordId;
         });
         if (!selected) return;
         selectedRecordId = recordId;
-        elements.notice.textContent = "Showing memory record " + text(selected.label, recordId) + ".";
-        renderMemory();
+        elements.notice.textContent = "Showing memory record " + memoryRecordTitle(selected, records) + ".";
+        paintMemorySelection(records);
       }
 
       function renderFailure() {

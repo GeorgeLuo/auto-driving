@@ -400,6 +400,8 @@
       var selectedFrameDetail = null;
       var detailRequestGeneration = 0;
       var elements = {};
+      var pluginSelectionDraft = null;
+      var pluginSelectionDraftDigest = null;
       [
         "phaseChip", "sourceIdentity", "emptyState", "viewerFrame", "frameImage",
         "overlayCanvas", "frameId", "frameIndex", "frameTimestamp", "perceptionStatus",
@@ -483,6 +485,10 @@
             if (action === "validate") elements.notice.textContent = "Source and plugin configuration validated.";
             if (action === "refresh_plugins") elements.notice.textContent = "Plugin catalog refreshed.";
             if (action === "select_plugins") elements.notice.textContent = "Plugin selection applied.";
+            if (["refresh_plugins", "select_plugins", "start"].indexOf(action) >= 0) {
+              pluginSelectionDraft = null;
+              pluginSelectionDraftDigest = null;
+            }
           }
         } catch (error) {
           if (requestGeneration === stateRequestGeneration) {
@@ -509,8 +515,13 @@
       function renderPlugins() {
         var catalog = state && state.plugin_catalog;
         var plugins = catalog && Array.isArray(catalog.plugins) ? catalog.plugins : [];
-        var active = state && Array.isArray(state.active_plugin_ids)
+        var stateActive = state && Array.isArray(state.active_plugin_ids)
           ? state.active_plugin_ids : [];
+        if (!catalog || pluginSelectionDraftDigest !== catalog.digest) {
+          pluginSelectionDraft = stateActive.slice();
+          pluginSelectionDraftDigest = catalog ? catalog.digest : null;
+        }
+        var active = pluginSelectionDraft || stateActive;
         var locked = state && (state.phase === "running" || state.phase === "paused");
         elements.pluginCatalog.textContent = "";
         if (!plugins.length) {
@@ -529,6 +540,10 @@
           checkbox.setAttribute("data-plugin-id", text(plugin.id, ""));
           checkbox.checked = active.indexOf(plugin.id) >= 0;
           checkbox.disabled = !plugin.ready || locked || actionInFlight;
+          checkbox.addEventListener("change", function () {
+            pluginSelectionDraft = selectedPluginIdsFromView();
+            pluginSelectionDraftDigest = catalog ? catalog.digest : null;
+          });
           item.appendChild(checkbox);
           var copy = document.createElement("span");
           var title = document.createElement("strong");

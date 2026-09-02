@@ -223,6 +223,8 @@
     .text-action:disabled { cursor: not-allowed; opacity: .38; }
     .text-action.selected { color: var(--fg); }
     .playback {
+      position: relative;
+      z-index: 1000;
       display: flex;
       flex-direction: column;
       justify-content: center;
@@ -777,6 +779,8 @@
       var scrubPosition = null;
       var seekQueued = null;
       var seekInFlight = false;
+      var loopDraft = null;
+      var pendingLoop = null;
       [
         "sourceIdentity", "emptyState", "viewerFrame", "frameImage",
         "overlayCanvas", "viewerStage", "frameId", "frameIndex", "frameTimestamp", "perceptionStatus",
@@ -1065,6 +1069,28 @@
         return parseCadence(elements.cadence.value);
       }
 
+      function loopEnabled() {
+        if (loopDraft !== null) return loopDraft;
+        return elements.loopToggle.getAttribute("aria-pressed") === "true";
+      }
+
+      function paintLoopToggle(on) {
+        elements.loopToggle.value = on ? "on" : "off";
+        elements.loopToggle.setAttribute("aria-pressed", on ? "true" : "false");
+      }
+
+      function sendLoop(on) {
+        pendingLoop = on;
+        if (!actionInFlight) flushLoop();
+      }
+
+      function flushLoop() {
+        if (pendingLoop === null || actionInFlight) return;
+        var on = pendingLoop;
+        pendingLoop = null;
+        action("set_loop", { loop: on });
+      }
+
       function setText(id, value, fallback) {
         elements[id].textContent = text(value, fallback);
       }
@@ -1168,7 +1194,8 @@
         } finally {
           actionInFlight = false;
           renderControls();
-          schedulePoll(pollDelay());
+          if (pendingLoop !== null) flushLoop();
+          else schedulePoll(pollDelay());
         }
       }
 
@@ -1677,9 +1704,13 @@
           elements.cadence.value = controls.pace === "realtime"
             ? "realtime" : text(controls.cadence_ms, "250");
         }
-        if (typeof controls.loop === "boolean") {
-          elements.loopToggle.value = controls.loop ? "on" : "off";
-          elements.loopToggle.setAttribute("aria-pressed", controls.loop ? "true" : "false");
+        if (loopDraft !== null && typeof controls.loop === "boolean" && controls.loop === loopDraft) {
+          loopDraft = null;
+        }
+        if (loopDraft !== null) {
+          paintLoopToggle(loopDraft);
+        } else if (typeof controls.loop === "boolean") {
+          paintLoopToggle(controls.loop);
         }
         if (scrubbing) {
           var live = state.current_frame;
@@ -1762,7 +1793,7 @@
         };
         if (cadence.pace !== "realtime") payload.cadence_ms = cadence.cadence_ms;
         if (elements.pluginDir.value.trim()) payload.plugin_dir = elements.pluginDir.value.trim();
-        payload.loop = elements.loopToggle.getAttribute("aria-pressed") === "true";
+        payload.loop = loopEnabled();
         action("start", payload);
       });
       elements.refreshPluginsButton.addEventListener("click", function () {
@@ -1900,11 +1931,13 @@
       window.addEventListener("pointerup", function () {
         if (scrubbing) endScrub();
       });
-      elements.loopToggle.addEventListener("click", function () {
-        var on = elements.loopToggle.getAttribute("aria-pressed") !== "true";
-        elements.loopToggle.setAttribute("aria-pressed", on ? "true" : "false");
-        elements.loopToggle.value = on ? "on" : "off";
-        action("set_loop", { loop: on });
+      elements.loopToggle.addEventListener("pointerdown", function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        var on = !loopEnabled();
+        loopDraft = on;
+        paintLoopToggle(on);
+        sendLoop(on);
       });
       elements.overlayToggle.addEventListener("click", function () {
         var next = elements.overlayToggle.value === "off" ? "on" : "off";

@@ -136,6 +136,29 @@ def _wait_until(predicate, timeout: float = 3.0) -> None:
 
 
 class WorkbenchTests(unittest.TestCase):
+    def test_workbench_keeps_last_frame_visible_while_next_image_loads(self) -> None:
+        html = Path("cli/automa_cli/workbench.html").read_text(encoding="utf-8")
+        render_frame = html.split("function renderFrame() {", 1)[1].split(
+            "function drawOverlay() {", 1
+        )[0]
+        image_change = render_frame.split("if (imageKey !== lastImageKey) {", 1)[1].split(
+            "if (loadedImageKey !== imageKey) return;", 1
+        )[0]
+
+        self.assertIn('var hasRenderedImage = loadedImageKey !== "";', image_change)
+        self.assertIn("var preloadedImage = new Image();", image_change)
+        self.assertIn("elements.frameImage.replaceWith(preloadedImage);", image_change)
+        self.assertIn("elements.overlayCanvas.width = 1;", image_change)
+        loading_branch = image_change.split("if (!hasRenderedImage) {", 1)[1].split(
+            "} else {", 1
+        )[0]
+        self.assertIn('elements.emptyState.textContent = "Loading frame "', loading_branch)
+        self.assertNotIn('elements.emptyState.textContent = "Loading frame "', image_change.split(
+            "} else {", 1
+        )[1])
+        self.assertIn("elements.viewerFrame.hidden = false;", image_change)
+        self.assertIn("elements.emptyState.hidden = true;", image_change)
+
     def test_manifest_catalog_is_recursive_deterministic_and_explicit_about_readiness(self) -> None:
         catalog = discover_plugin_catalog(Path("lab/plugins/perception"))
         self.assertEqual(

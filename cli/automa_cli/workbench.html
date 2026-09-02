@@ -400,6 +400,7 @@
       var selectedFrameRunId = null;
       var selectedFrameDetail = null;
       var detailRequestGeneration = 0;
+      var imageRequestGeneration = 0;
       var elements = {};
       var pluginSelectionDraft = null;
       var pluginSelectionDraftDigest = null;
@@ -631,28 +632,43 @@
         var imageKey = text(selectedFrameRunId || state.run_id, "") + ":" + text(frame.frame_id, "");
         if (imageKey !== lastImageKey) {
           lastImageKey = imageKey;
-          loadedImageKey = "";
+          var hasRenderedImage = loadedImageKey !== "";
+          var requestGeneration = ++imageRequestGeneration;
+          var imageUrl = "/api/frame?run_id=" + encodeURIComponent(selectedFrameRunId || state.run_id || "") +
+            "&frame_id=" + encodeURIComponent(frame.frame_id);
           elements.overlayCanvas.width = 1;
           elements.overlayCanvas.height = 1;
-          elements.viewerFrame.hidden = true;
-          elements.emptyState.hidden = false;
-          elements.emptyState.textContent = "Loading frame " + text(frame.frame_id, "unknown") + "…";
-          elements.frameImage.onload = function () {
-            if (lastImageKey !== imageKey) return;
+          if (!hasRenderedImage) {
+            elements.viewerFrame.hidden = true;
+            elements.emptyState.hidden = false;
+            elements.emptyState.textContent = "Loading frame " + text(frame.frame_id, "unknown") + "…";
+          } else {
+            elements.viewerFrame.hidden = false;
+            elements.emptyState.hidden = true;
+          }
+          var preloadedImage = new Image();
+          preloadedImage.alt = elements.frameImage.alt;
+          preloadedImage.onload = function () {
+            if (requestGeneration !== imageRequestGeneration || lastImageKey !== imageKey) return;
+            preloadedImage.onload = null;
+            preloadedImage.onerror = null;
+            elements.frameImage.replaceWith(preloadedImage);
+            elements.frameImage = preloadedImage;
             loadedImageKey = imageKey;
             elements.viewerFrame.hidden = false;
             elements.emptyState.hidden = true;
             drawOverlay();
           };
-          elements.frameImage.onerror = function () {
-            if (lastImageKey !== imageKey) return;
+          preloadedImage.onerror = function () {
+            if (requestGeneration !== imageRequestGeneration || lastImageKey !== imageKey) return;
+            preloadedImage.onload = null;
+            preloadedImage.onerror = null;
             loadedImageKey = "";
             elements.viewerFrame.hidden = true;
             elements.emptyState.hidden = false;
             elements.emptyState.textContent = "Frame image is unavailable.";
           };
-          elements.frameImage.src = "/api/frame?run_id=" + encodeURIComponent(selectedFrameRunId || state.run_id || "") +
-            "&frame_id=" + encodeURIComponent(frame.frame_id);
+          preloadedImage.src = imageUrl;
           return;
         }
         if (loadedImageKey !== imageKey) return;

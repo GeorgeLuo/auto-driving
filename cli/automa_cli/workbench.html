@@ -325,14 +325,17 @@
       max-width: min(22rem, calc(100vw - 16px));
       padding: 6px 8px;
       border: 1px solid rgb(36 36 36 / .8);
-      border-radius: var(--radius);
+      border-radius: 0;
       background: rgb(20 20 20 / .94);
       color: var(--fg);
       font-size: 11px;
       line-height: 1.35;
       pointer-events: none;
+      opacity: 1;
+      transition: opacity .25s ease;
     }
     .notice:empty { display: none; }
+    .notice.is-fading { opacity: 0; }
     .notice.error { color: var(--danger); }
     .workspace-tools {
       display: flex;
@@ -811,10 +814,30 @@
         "memoryCount", "memoryPolicy", "memorySearch", "memoryRecords", "failurePanel", "failureText",
         "memorySelected"
       ].forEach(function (id) { elements[id] = document.getElementById(id); });
+      var noticeTimer = null;
       var selectedRecordId = null;
       var memoryListSignature = "";
       var SOURCE_DIR_KEY = "automa-workbench-source-dir";
       var PLUGIN_DIR_KEY = "automa-workbench-plugin-dir";
+
+      function setNotice(message) {
+        if (noticeTimer !== null) {
+          window.clearTimeout(noticeTimer);
+          noticeTimer = null;
+        }
+        elements.notice.classList.remove("is-fading");
+        elements.notice.textContent = message || "";
+        if (!message) return;
+        void elements.notice.offsetWidth;
+        noticeTimer = window.setTimeout(function () {
+          elements.notice.classList.add("is-fading");
+          noticeTimer = window.setTimeout(function () {
+            elements.notice.classList.remove("is-fading");
+            elements.notice.textContent = "";
+            noticeTimer = null;
+          }, 250);
+        }, 1000);
+      }
 
       function remembered(key) {
         try { return window.localStorage.getItem(key) || ""; }
@@ -1135,7 +1158,7 @@
             }
           }
           if (!result.ok || (result.payload && result.payload.ok === false)) {
-            elements.notice.textContent = (result.payload && result.payload.message) || "Action was rejected.";
+            setNotice((result.payload && result.payload.message) || "Action was rejected.");
             if (pendingLoop === null && controls && typeof controls.loop === "boolean") {
               loopDraft = null;
               paintLoopToggle(controls.loop);
@@ -1144,7 +1167,7 @@
           if (pendingLoop !== null) flushLoop();
         }).catch(function (error) {
           loopInFlight = false;
-          elements.notice.textContent = "Workbench connection failed: " + error;
+          setNotice("Workbench connection failed: " + error);
           if (pendingLoop !== null) flushLoop();
         });
       }
@@ -1206,7 +1229,7 @@
         var runId = selectedRunId(action);
         if (runId) body.run_id = runId;
         if (extra) Object.keys(extra).forEach(function (key) { body[key] = extra[key]; });
-        if (!skipViewer) elements.notice.textContent = "";
+        if (!skipViewer) setNotice("");
         try {
           var response = await fetch("/api/action", {
             method: "POST",
@@ -1226,14 +1249,14 @@
                 pluginCatalogRenderKey = null;
                 if (payload.state) render(payload.state);
               }
-              elements.notice.textContent = payload.message || "Action was rejected.";
+              setNotice(payload.message || "Action was rejected.");
             }
             return;
           }
           if (requestGeneration === stateRequestGeneration) {
-            if (action === "validate") elements.notice.textContent = "Source and plugin configuration validated.";
-            if (action === "refresh_plugins") elements.notice.textContent = "Reloaded the plugin catalog from the plugin directory.";
-            if (action === "select_plugins") elements.notice.textContent = "Plugin selection applied.";
+            if (action === "validate") setNotice("Source and plugin configuration validated.");
+            if (action === "refresh_plugins") setNotice("Reloaded the plugin catalog from the plugin directory.");
+            if (action === "select_plugins") setNotice("Plugin selection applied.");
             if (action === "select_plugins") {
               clearFrameSelection();
               render(payload.state);
@@ -1252,7 +1275,7 @@
               pluginCatalogRenderKey = null;
               render();
             }
-            elements.notice.textContent = "Workbench connection failed: " + error;
+            setNotice("Workbench connection failed: " + error);
           }
         } finally {
           actionInFlight = false;
@@ -1717,7 +1740,7 @@
         });
         if (!selected) return;
         selectedRecordId = recordId;
-        elements.notice.textContent = "Showing memory record " + memoryRecordTitle(selected, records) + ".";
+        setNotice("Showing memory record " + memoryRecordTitle(selected, records) + ".");
         paintMemorySelection(records);
       }
 
@@ -1806,7 +1829,7 @@
           if (payload && requestGeneration === stateRequestGeneration) render(payload);
         } catch (error) {
           if (requestGeneration === stateRequestGeneration) {
-            elements.notice.textContent = "Workbench connection failed: " + error;
+            setNotice("Workbench connection failed: " + error);
           }
         } finally {
           pollInFlight = false;
@@ -1850,7 +1873,7 @@
       elements.startButton.addEventListener("click", function () {
         var cadence = cadencePayload();
         if (!cadence) {
-          elements.notice.textContent = "Cadence must be a millisecond delay or realtime.";
+          setNotice("Cadence must be a millisecond delay or realtime.");
           return;
         }
         var payload = {

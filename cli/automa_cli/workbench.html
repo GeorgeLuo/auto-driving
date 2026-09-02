@@ -790,6 +790,12 @@
       var pluginSelectionDraftDigest = null;
       var pluginCatalogRenderKey = null;
       var cadenceDraft = false;
+      var scrubbing = false;
+      var resumeAfterScrub = false;
+      var pendingResume = false;
+      var scrubPosition = null;
+      var seekQueued = null;
+      var seekInFlight = false;
       [
         "sourceIdentity", "emptyState", "viewerFrame", "frameImage",
         "overlayCanvas", "viewerStage", "frameId", "frameIndex", "frameTimestamp", "perceptionStatus",
@@ -1673,19 +1679,28 @@
         setText("progressText", text(progress.completed, "0") + " / " + text(progress.total, "0"));
         var total = Number(progress.total) || 0;
         var completed = Number(progress.completed) || 0;
-        elements.seekBar.max = String(Math.max(total, 1));
-        elements.seekBar.disabled = total === 0;
-        if (document.activeElement !== elements.seekBar) {
+        var lastIndex = Math.max(total - 1, 0);
+        elements.seekBar.max = String(lastIndex);
+        elements.seekBar.disabled = total === 0 || !state ||
+          (state.phase !== "running" && state.phase !== "paused" && !scrubbing);
+        if (!scrubbing && document.activeElement !== elements.seekBar) {
           var frame = currentFrame();
           var position = frame && frame.position != null ? Number(frame.position) : Math.max(completed - 1, 0);
-          elements.seekBar.value = String(Math.min(Math.max(position, 0), Math.max(total, 1)));
+          elements.seekBar.value = String(Math.min(Math.max(position, 0), lastIndex));
         }
         var controls = state.controls || {};
         if (document.activeElement !== elements.cadence && (!cadenceDraft || state.phase !== "idle")) {
           elements.cadence.value = controls.pace === "realtime"
             ? "realtime" : text(controls.cadence_ms, "250");
         }
-        renderFrame();
+        if (scrubbing) {
+          var live = state.current_frame;
+          if (live && Number(live.position) === scrubPosition) {
+            renderFrame();
+          }
+        } else {
+          renderFrame();
+        }
         renderTimeline();
         renderEvidence();
         renderMemory();
@@ -1777,13 +1792,119 @@
           action("set_cadence", payload);
         }
       });
-      elements.seekBar.addEventListener("change", function () {
-        var timeline = state && Array.isArray(state.timeline) ? state.timeline : [];
-        var position = Number(elements.seekBar.value);
-        var item = timeline.find(function (entry) {
-          return entry && entry.frame && Number(entry.frame.position) === position;
+      function showScrubImage(position) {
+        var runId = state && state.run_id;
+        if (!runId) return;
+        var imageKey = text(runId, "") + ":pos:" + position;
+        setText("frameIndex", position);
+        setText("frameId", "seeking");
+        setText("frameTimestamp", null);
+        elements.overlayCanvas.width = 1;
+        elements.overlayCanvas.height = 1;
+        if (imageKey === lastImageKey) return;
+        lastImageKey = imageKey;
+        var requestGeneration = ++imageRequestGeneration;
+        var imageUrl = "/api/frame?run_id=" + encodeURIComponent(runId) + "&position=" + encodeURIComponent(position);
+        var hasRenderedImage = loadedImageKey !== "";
+        if (!hasRenderedImage) {
+          elements.viewerFrame.hidden = true;
+          elements.emptyState.hidden = false;
+          elements.emptyState.textContent = "Loading frame " + position + "…";
+        }
+        var preloadedImage = new Image();
+        preloadedImage.alt = "Replay frame " + position;
+        preloadedImage.onload = function () {
+          if (requestGeneration !== imageRequestGeneration || lastImageKey !== imageKey) return;
+          preloadedImage.onload = null;
+          preloadedImage.onerror = null;
+          elements.frameImage.replaceWith(preloadedImage);
+          elements.frameImage = preloadedImage;
+          loadedImageKey = imageKey;
+          elements.viewerFrame.hidden = false;
+          elements.emptyState.hidden = true;
+        };
+        preloadedImage.onerror = function () {
+          if (requestGeneration !== imageRequestGeneration || lastImageKey !== imageKey) return;
+          preloadedImage.onload = null;
+          preloadedImage.onerror = null;
+          loadedImageKey = "";
+          elements.viewerFrame.hidden = true;
+          elements.emptyState.hidden = false;
+          elements.emptyState.textContent = "Frame image is unavailable.";
+        };
+        preloadedImage.src = imageUrl;
+      }
+
+      function queueSeek(position) {
+        seekQueued = position;
+        if (!seekInFlight && !actionInFlight) flushSeek();
+      }
+
+      function flushSeek() {
+        if (seekQueued == null || seekInFlight || actionInFlight) return;
+        var position = seekQueued;
+        seekQueued = null;
+        seekInFlight = true;
+        action("seek", { position: position }).then(function () {
+          seekInFlight = false;
+          if (seekQueued != null) {
+            flushSeek();
+            return;
+          }
+          if (!scrubbing && pendingResume) {
+            pendingResume = false;
+            if (state && state.phase === "paused") action("resume");
+          }
         });
-        if (item && item.frame) selectFrame(item.frame.frame_id);
+      }
+
+      function beginScrub() {
+        if (scrubbing) return;
+        if (!state || (state.phase !== "running" && state.phase !== "paused")) return;
+        scrubbing = true;
+        resumeAfterScrub = state.phase === "running";
+        pendingResume = false;
+        clearFrameSelection();
+        if (resumeAfterScrub) {
+          action("pause").then(function () { flushSeek(); });
+        }
+      }
+
+      function onSeekInput() {
+        if (!state || (state.phase !== "running" && state.phase !== "paused" && !scrubbing)) return;
+        if (!scrubbing) beginScrub();
+        var position = Number(elements.seekBar.value);
+        if (!Number.isFinite(position)) return;
+        var lastIndex = Number(elements.seekBar.max);
+        if (!Number.isFinite(lastIndex)) lastIndex = position;
+        position = Math.max(0, Math.min(Math.round(position), lastIndex));
+        scrubPosition = position;
+        elements.seekBar.value = String(position);
+        showScrubImage(position);
+        queueSeek(position);
+      }
+
+      function endScrub() {
+        if (!scrubbing) return;
+        scrubbing = false;
+        if (resumeAfterScrub) {
+          if (seekInFlight || seekQueued != null || actionInFlight) pendingResume = true;
+          else if (state && state.phase === "paused") action("resume");
+        }
+        resumeAfterScrub = false;
+      }
+
+      elements.seekBar.addEventListener("pointerdown", function () { beginScrub(); });
+      elements.seekBar.addEventListener("input", onSeekInput);
+      elements.seekBar.addEventListener("change", function () {
+        if (!scrubbing) onSeekInput();
+        endScrub();
+      });
+      elements.seekBar.addEventListener("keyup", function () {
+        if (scrubbing) endScrub();
+      });
+      window.addEventListener("pointerup", function () {
+        if (scrubbing) endScrub();
       });
       elements.overlayToggle.addEventListener("click", function () {
         var next = elements.overlayToggle.value === "off" ? "on" : "off";

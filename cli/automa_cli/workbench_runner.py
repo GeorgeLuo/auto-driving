@@ -124,9 +124,9 @@ def _state_action_set(phase: str) -> list[str]:
     if phase == "idle":
         return ["validate", "refresh_plugins", "select_plugins", "start", "reset"]
     if phase == "running":
-        return ["pause", "cancel", "reset", "set_cadence", "select_plugins"]
+        return ["pause", "seek", "cancel", "reset", "set_cadence", "select_plugins"]
     if phase == "paused":
-        return ["resume", "step", "cancel", "reset", "set_cadence", "select_plugins"]
+        return ["resume", "step", "seek", "cancel", "reset", "set_cadence", "select_plugins"]
     if phase in {"completed", "failed", "cancelled"}:
         return ["validate", "refresh_plugins", "select_plugins", "start", "reset"]
     return []
@@ -258,10 +258,15 @@ class ImageReplayRunner:
         frame_id: str | None = None,
         *,
         run_id: str,
+        position: int | None = None,
     ) -> tuple[bytes, str] | None:
         with self._lock:
             self._require_run_id_locked(run_id)
-            frame = self._frame_for_id_locked(frame_id)
+            frame = (
+                self._frame_for_position_locked(position)
+                if position is not None
+                else self._frame_for_id_locked(frame_id)
+            )
             if frame is None or frame.image_path is None:
                 return None
             path = frame.image_path
@@ -283,6 +288,13 @@ class ImageReplayRunner:
             (frame for frame in self._feed.frames if frame.frame_id == selected_id),
             None,
         )
+
+    def _frame_for_position_locked(self, position: int) -> ReplayFrame | None:
+        if self._feed is None:
+            return None
+        if position < 0 or position >= len(self._feed.frames):
+            return None
+        return self._feed.frames[position]
 
     def validate_source(
         self, source_dir: str | os.PathLike[str] | None = None
@@ -443,6 +455,7 @@ class ImageReplayRunner:
         pace: str | None = None,
         plugin_dir: str | os.PathLike[str] | None = None,
         active_plugin_ids: list[str] | tuple[str, ...] | None = None,
+        position: int | None = None,
     ) -> dict[str, Any]:
         action = str(action or "").strip()
         if action not in WORKBENCH_ACTIONS:
@@ -549,6 +562,8 @@ class ImageReplayRunner:
                 return self._resume()
             if action == "step":
                 return self._step()
+            if action == "seek":
+                return self._seek(position)
             if action == "cancel":
                 return self._cancel()
             if action == "reset":
@@ -756,6 +771,67 @@ class ImageReplayRunner:
         with self._lock:
             self._record_action_locked("step")
             return copy.deepcopy(self._state)
+
+    def _seek(self, position: int | None) -> dict[str, Any]:
+        if isinstance(position, bool) or not isinstance(position, int):
+            raise ReplayActionError(
+                "seek requires an integer position",
+                status_code=400,
+                boundary="input",
+            )
+        with self._condition:
+            if self._state["phase"] not in {"running", "paused"} or self._feed is None:
+                raise ReplayActionError(
+                    "seek requires a running or paused replay",
+                    boundary="lifecycle",
+                )
+            total = len(self._feed.frames)
+            if position < 0 or position >= total:
+                raise ReplayActionError(
+                    "seek position is outside the loaded source",
+                    status_code=400,
+                    boundary="input",
+                    state=copy.deepcopy(self._state),
+                )
+            if self._state["phase"] == "running":
+                self._state["phase"] = "paused"
+                self._condition.notify_all()
+            run_id = str(self._state["run_id"])
+            generation = self._generation
+            frame = self._feed.frames[position]
+            cached = self._history.get(frame.frame_id)
+            if cached is not None:
+                self._apply_cached_frame_locked(frame, cached)
+                self._record_action_locked("seek", position=position)
+                return copy.deepcopy(self._state)
+        self._process_one(run_id, generation, frame, allow_paused=True)
+        with self._lock:
+            self._record_action_locked("seek", position=position)
+            return copy.deepcopy(self._state)
+
+    def _apply_cached_frame_locked(
+        self,
+        frame: ReplayFrame,
+        cached: dict[str, Any],
+    ) -> None:
+        self._state["current_frame"] = frame.to_dict()
+        self._state["perception"] = copy.deepcopy(cached.get("perception"))
+        self._state["observation"] = copy.deepcopy(cached.get("observation"))
+        self._state["memory"] = copy.deepcopy(cached.get("memory"))
+        completed = frame.position + 1
+        total = len(self._feed.frames) if self._feed is not None else completed
+        self._state["progress"]["completed"] = completed
+        self._state["progress"]["percent"] = (
+            round((completed / total) * 100.0, 2) if total else 100.0
+        )
+        self._state["position"] = completed
+        self._state["summary"] = self._summary(
+            frames_completed=completed,
+            frames_total=total,
+            duration_ms=cached.get("duration_ms"),
+        )
+        if completed >= total:
+            self._complete_locked()
 
     def _cancel(self) -> dict[str, Any]:
         with self._condition:

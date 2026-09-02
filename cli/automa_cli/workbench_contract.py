@@ -25,6 +25,7 @@ WORKBENCH_ACTIONS = (
     "pause",
     "resume",
     "step",
+    "seek",
     "cancel",
     "reset",
     "set_cadence",

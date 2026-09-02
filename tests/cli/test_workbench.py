@@ -607,6 +607,86 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(completed_again["phase"], "completed")
         self.assertEqual(completed_again["progress"]["completed"], 3)
 
+    def test_seek_jumps_current_frame_and_reuses_processed_history(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            _make_images(root, 4)
+            mapper = FixtureMapper()
+            runner = ImageReplayRunner(
+                root,
+                cadence_ms=5000,
+                mapper_factory=lambda: mapper,
+            )
+            started = runner.start()
+            run_id = started["run_id"]
+            _wait_until(lambda: len(runner.state()["timeline"]) >= 1)
+            paused = runner.dispatch("pause", run_id=run_id)
+            first_id = paused["current_frame"]["frame_id"]
+            calls_after_first = len(mapper.calls)
+            self.assertIn("seek", paused["controls"]["allowed_actions"])
+
+            sought = runner.dispatch("seek", run_id=run_id, position=2)
+            self.assertEqual(sought["phase"], "paused")
+            self.assertEqual(sought["current_frame"]["position"], 2)
+            self.assertEqual(sought["position"], 3)
+            self.assertEqual(len(mapper.calls), calls_after_first + 1)
+            self.assertEqual(
+                sought["current_frame"]["frame_id"],
+                sought["timeline"][-1]["frame"]["frame_id"],
+            )
+
+            cached = runner.dispatch("seek", run_id=run_id, position=0)
+            self.assertEqual(cached["phase"], "paused")
+            self.assertEqual(cached["current_frame"]["frame_id"], first_id)
+            self.assertEqual(cached["current_frame"]["position"], 0)
+            self.assertEqual(len(mapper.calls), calls_after_first + 1)
+
+            with self.assertRaises(ReplayActionError):
+                runner.dispatch("seek", run_id=run_id, position=99)
+            with self.assertRaises(ReplayActionError):
+                runner.dispatch("seek", run_id=run_id)
+            runner.dispatch("cancel", run_id=run_id)
+
+        idle = ImageReplayRunner()
+        with self.assertRaises(ReplayActionError):
+            idle.dispatch("seek", run_id="missing", position=0)
+
+    def test_seek_while_running_pauses_and_serves_frame_bytes_by_position(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            _make_images(root, 4)
+            runner = ImageReplayRunner(root, cadence_ms=5000)
+            server = WorkbenchServer(runner).start()
+            self.addCleanup(server.stop)
+            base = server.url
+            self.assertIsNotNone(base)
+
+            def post(payload: dict[str, object]) -> dict[str, object]:
+                body = json.dumps(payload).encode("utf-8")
+                return json.loads(
+                    urlopen(
+                        Request(
+                            base + "api/action",
+                            data=body,
+                            headers={"Content-Type": "application/json"},
+                            method="POST",
+                        ),
+                        timeout=10,
+                    ).read()
+                )
+
+            started = post({"action": "start", "source_dir": str(root), "cadence_ms": 5000})
+            run_id = started["state"]["run_id"]
+            _wait_until(lambda: len(runner.state()["timeline"]) >= 1)
+            sought = post({"action": "seek", "run_id": run_id, "position": 2})
+            self.assertEqual(sought["state"]["phase"], "paused")
+            self.assertEqual(sought["state"]["current_frame"]["position"], 2)
+            query = urlencode({"run_id": run_id, "position": "2"})
+            frame = urlopen(base + "api/frame?" + query, timeout=2)
+            self.assertEqual(frame.status, 200)
+            self.assertTrue(frame.read())
+            post({"action": "cancel", "run_id": run_id})
+
     def test_realtime_pace_honors_recorded_frame_timestamps(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)

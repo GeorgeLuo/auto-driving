@@ -19,8 +19,10 @@ from .workbench_contract import (
     ReplayActionError,
     WORKBENCH_ACTIONS,
     WORKBENCH_DEFAULT_CADENCE_MS,
+    WORKBENCH_DEFAULT_PACE,
     WORKBENCH_ERROR_SCHEMA,
     WORKBENCH_HOST,
+    WORKBENCH_PACES,
     WORKBENCH_SEQUENCE_ID,
 )
 from .workbench_runner import ImageReplayRunner
@@ -48,6 +50,7 @@ def run_workbench_replay(
     plugin_dir: str | os.PathLike[str] | None = None,
     active_plugin_ids: list[str] | tuple[str, ...] | None = None,
     cadence_ms: int = WORKBENCH_DEFAULT_CADENCE_MS,
+    pace: str = WORKBENCH_DEFAULT_PACE,
     max_frames: int = WORKBENCH_DEFAULT_MAX_FRAMES,
     host: str = WORKBENCH_HOST,
     port: int = 0,
@@ -71,6 +74,7 @@ def run_workbench_replay(
             plugin_dir=plugin_dir,
             active_plugin_ids=active_plugin_ids,
             cadence_ms=cadence_ms,
+            pace=pace,
             max_frames=max_frames,
         )
         if serve:
@@ -187,6 +191,8 @@ __all__ = [
     "WorkbenchServer",
     "WORKBENCH_ACTIONS",
     "WORKBENCH_DEFAULT_CADENCE_MS",
+    "WORKBENCH_DEFAULT_PACE",
+    "WORKBENCH_PACES",
     "WORKBENCH_SEQUENCE_ID",
     "load_image_feed",
     "normalize_image_directory",

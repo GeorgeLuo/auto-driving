@@ -143,6 +143,7 @@ class WorkbenchServer:
             "run_id",
             "source_dir",
             "cadence_ms",
+            "pace",
             "plugin_dir",
             "active_plugin_ids",
         }
@@ -183,6 +184,13 @@ class WorkbenchServer:
                 status_code=400,
                 boundary="input",
             )
+        pace = payload.get("pace")
+        if pace is not None and not isinstance(pace, str):
+            raise ReplayActionError(
+                "pace must be a string",
+                status_code=400,
+                boundary="input",
+            )
         plugin_dir = payload.get("plugin_dir")
         if plugin_dir is not None and not isinstance(plugin_dir, str):
             raise ReplayActionError(
@@ -206,6 +214,7 @@ class WorkbenchServer:
                 run_id=run_id,
                 source_dir=source_dir,
                 cadence_ms=cadence_ms,
+                pace=pace,
                 plugin_dir=plugin_dir,
                 active_plugin_ids=active_plugin_ids,
             )

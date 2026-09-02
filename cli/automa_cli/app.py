@@ -728,6 +728,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Delay between frames in milliseconds (default: 250; zero means as fast as possible).",
     )
     workbench_replay.add_argument(
+        "--pace",
+        choices=("fixed", "realtime"),
+        default="fixed",
+        help="Playback pacing mode (realtime honors recorded frame timestamps; default: fixed).",
+    )
+    workbench_replay.add_argument(
         "--max-frames",
         type=int,
         default=256,
@@ -2031,6 +2037,7 @@ def _handle_vehicles_workbench_replay(args: argparse.Namespace) -> int:
         plugin_dir=args.plugin_dir,
         active_plugin_ids=args.active_plugin_ids,
         cadence_ms=args.cadence_ms,
+        pace=args.pace,
         max_frames=args.max_frames,
         host=args.host,
         port=args.port,

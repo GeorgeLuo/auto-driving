@@ -553,6 +553,91 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(completed_again["phase"], "completed")
         self.assertEqual(completed_again["progress"]["completed"], 3)
 
+    def test_realtime_pace_honors_recorded_frame_timestamps(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            _make_images(root, 3)
+            (root / "manifest.json").write_text(
+                json.dumps(
+                    {
+                        "source_id": "timed.fixture",
+                        "frames": [
+                            {"frame_id": "first", "timestamp_ms": 0, "image_path": "frame_00.png"},
+                            {"frame_id": "second", "timestamp_ms": 80, "image_path": "frame_01.png"},
+                            {"frame_id": "third", "timestamp_ms": 160, "image_path": "frame_02.png"},
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            runner = ImageReplayRunner(
+                root,
+                cadence_ms=0,
+                pace="realtime",
+                mapper_factory=FixtureMapper,
+            )
+            started = runner.start()
+            self.assertEqual(started["controls"]["pace"], "realtime")
+            _wait_until(lambda: len(runner.state()["timeline"]) >= 1)
+            first_seen = time.monotonic()
+            _wait_until(lambda: len(runner.state()["timeline"]) >= 2)
+            second_seen = time.monotonic()
+            completed = runner.wait(3)
+
+        self.assertGreaterEqual(second_seen - first_seen, 0.06)
+        self.assertEqual(completed["phase"], "completed")
+        self.assertEqual(completed["controls"]["pace"], "realtime")
+
+    def test_loopback_api_accepts_realtime_pace_selection(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            _make_images(root, 2)
+            (root / "manifest.json").write_text(
+                json.dumps(
+                    {
+                        "source_id": "api-timed.fixture",
+                        "frames": [
+                            {"frame_id": "first", "timestamp_ms": 0, "image_path": "frame_00.png"},
+                            {"frame_id": "second", "timestamp_ms": 20, "image_path": "frame_01.png"},
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            runner = ImageReplayRunner(
+                cadence_ms=5000,
+                mapper_factory=FixtureMapper,
+            )
+            server = WorkbenchServer(runner).start()
+            self.addCleanup(server.stop)
+            base = server.url
+            self.assertIsNotNone(base)
+
+            def post(payload: dict[str, object]) -> dict[str, object]:
+                body = json.dumps(payload).encode("utf-8")
+                return json.loads(
+                    urlopen(
+                        Request(
+                            base + "api/action",
+                            data=body,
+                            headers={"Content-Type": "application/json"},
+                            method="POST",
+                        ),
+                        timeout=3,
+                    ).read()
+                )
+
+            started = post(
+                {
+                    "action": "start",
+                    "source_dir": str(root),
+                    "pace": "realtime",
+                    "cadence_ms": 5000,
+                }
+            )
+            self.assertEqual(started["state"]["controls"]["pace"], "realtime")
+            self.assertEqual(runner.wait(3)["phase"], "completed")
+
     def test_loopback_api_exposes_and_applies_plugin_selection(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)
@@ -696,6 +781,7 @@ class WorkbenchTests(unittest.TestCase):
             self.assertIn('id="stepButton"', html)
             self.assertIn('id="timelineSelection"', html)
             self.assertIn('id="memorySelection"', html)
+            self.assertIn("realtime (capture timestamps)", html)
 
             start_body = json.dumps(
                 {"action": "start", "source_dir": str(root), "cadence_ms": 0}
@@ -795,6 +881,26 @@ class WorkbenchTests(unittest.TestCase):
             "lightweight_observer",
         )
         self.assertNotIn("argv", payload)
+
+    def test_cli_replay_accepts_realtime_pace(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            _make_images(root, 1)
+            result = run_automa(
+                "vehicles",
+                "workbench",
+                "replay",
+                str(root),
+                "--pace",
+                "realtime",
+                "--cadence-ms",
+                "0",
+                "--json",
+            )
+
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["phase"], "completed")
+        self.assertEqual(payload["controls"]["pace"], "realtime")
 
     def test_cli_replay_human_output_names_recovery_and_cleanup(self) -> None:
         with TemporaryDirectory() as directory:

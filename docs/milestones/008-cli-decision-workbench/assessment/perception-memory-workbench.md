@@ -91,7 +91,7 @@ mechanics are owned once by `loopback_http.py`; the perception view and
 workbench retain only their application routes.
 
 The page provides source selection and validation, start/pause/resume/step/
-cancel/reset, cadence, overlay visibility, timeline, server-produced overlays,
+cancel/reset, fixed or realtime timestamp-paced cadence, overlay visibility, timeline, server-produced overlays,
 perception text, an inspectable manifest-backed plugin catalog with active-ID
 toggles, and an identity-linked memory ledger. JavaScript is a
 presentation client: it does not read the source directory, decode images,
@@ -113,6 +113,7 @@ state retains its run selection while allowing a separate next-run selection.
 | --max-frames, --host, and --port CLI options | Expose source and loopback safety limits already enforced by the runner; they do not add a source or semantic choice | Admitted under the four proposal envelope conditions |
 | Recursive manifest catalog, readiness reasons, and active-plugin toggles | The amended operator journey requires inspecting every package under a declared root and comparing at least two valid selections through the same server-owned replay | Admitted by accepted amendments #179 and #181; unsupported isolated runtimes remain visible as unavailable, and live changes apply at frame boundaries |
 | Clickable frame selection with on-demand frame detail and a compact sticky header | Hands-on use found that timeline rows could not inspect an earlier processed frame. Selection fetches the server-owned frame, perception, observation, and memory detail only when requested; simple re-rendering avoids a second client-side history model, and terminal polling slows while the page remains available | Admitted under the four proposal envelope conditions |
+| Realtime pace selection | Hands-on capture review requested a pace that honors strictly increasing recorded frame timestamps. The runner waits only for the remaining timestamp delta after processing, while existing fixed-delay and fastest modes remain available through the same CLI, API, and page | Admitted as HITL adjunct #182 under the four proposal envelope conditions |
 | Video, live ingestion, arbitrary algorithm selection, candidate comparison, recording, simulator/vehicle control, or external hosting | Each changes source, semantic, authority, or operator goal | Deferred to a later proposal; no follow-up in this implementation unit |
 
 No new product frontier, external authority, or alternate execution path was
@@ -141,6 +142,8 @@ Focused deterministic coverage is in
 - recursive plugin-manifest discovery, deterministic catalog digest, unavailable
   reasons, declarative selection validation, frame-boundary replacement, and
   selected plugin provenance through the CLI, API, and page;
+- fixed-delay, fastest, and realtime timestamp-paced replay selection through
+  the CLI, loopback API, and workbench page;
 - the public automa vehicles workbench replay `--json` entry point and human
   recovery/cleanup lines.
 

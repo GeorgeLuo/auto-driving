@@ -4,128 +4,165 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Automa Perception-memory Workbench</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap" rel="stylesheet">
   <style>
     :root {
       color-scheme: dark;
-      --bg: #11151b;
-      --panel: #1a212b;
-      --panel-strong: #222c38;
-      --line: #344252;
-      --muted: #9ba9b8;
-      --text: #eef4f8;
-      --accent: #69d2b4;
-      --accent-strong: #b8f4df;
-      --warn: #f3c969;
-      --danger: #f28e8e;
-      --shadow: 0 18px 50px rgba(0, 0, 0, .22);
-      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --bg: #0a0a0a;
+      --sidebar: #0d0d0d;
+      --fg: #ededed;
+      --muted: #8c8c8c;
+      --border: #242424;
+      --empty: rgba(255, 255, 255, .06);
+      --danger: #dc2626;
+      --font-sans: Inter, system-ui, sans-serif;
+      --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
     }
     * { box-sizing: border-box; }
+    html, body { height: 100%; }
     body {
       margin: 0;
-      min-height: 100vh;
-      background:
-        radial-gradient(circle at 15% 0%, rgba(75, 125, 145, .18), transparent 35rem),
-        var(--bg);
-      color: var(--text);
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: var(--font-sans);
+      font-size: 12px;
+      letter-spacing: -.01em;
     }
-    main { max-width: 1440px; margin: 0 auto; }
+    *:focus, *:focus-visible { outline: none; }
     h2, h3, p { margin: 0; }
-    h2 { font-size: 1rem; letter-spacing: .01em; }
-    h3 { font-size: .78rem; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
-    .muted { color: var(--muted); }
-    main { padding: 25px 28px 48px; }
-    .grid {
-      display: grid;
-      grid-template-columns: minmax(0, 1.45fr) minmax(320px, .8fr);
-      gap: 18px;
-      align-items: start;
+    h2, .section-title {
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: -.03em;
     }
-    .stack { display: grid; gap: 18px; }
-    .panel {
-      background: linear-gradient(145deg, rgba(34, 44, 56, .96), rgba(25, 32, 42, .96));
-      border: 1px solid var(--line);
-      border-radius: 15px;
-      box-shadow: var(--shadow);
-      padding: 18px;
+    h3, .kicker, .plugin-status, dt, .metric .label {
+      font-size: 10px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: var(--muted);
+    }
+    .muted, .help, .empty-state, .timeline-empty, .memory-empty { color: var(--muted); }
+    .mono, .metric .value, dd, .digest, pre, #progressText {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      letter-spacing: -.02em;
+    }
+    .app {
+      display: grid;
+      grid-template-columns: 20rem minmax(0, 1fr);
+      height: 100%;
+      min-height: 0;
+    }
+    .sidebar, .workspace, .viewer-panel, .sidebar-fill {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
       min-width: 0;
     }
-    .panel-heading {
+    .sidebar {
+      gap: 18px;
+      overflow: hidden;
+      background: var(--sidebar);
+      border-right: 1px solid var(--border);
+      padding: 12px;
+    }
+    .sidebar-fill { flex: 1; gap: 8px; }
+    .workspace {
+      overflow: hidden;
+      padding: 12px 16px 8px;
+      gap: 8px;
+    }
+    .viewer-panel { flex: 1; gap: 6px; }
+    .workspace-bottom {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      height: 26vh;
+      min-height: 0;
+      overflow: hidden;
+    }
+    .panel-heading, .panel-heading-values, .field, .playback-row {
       display: flex;
       align-items: baseline;
-      justify-content: space-between;
-      gap: 15px;
-      margin-bottom: 15px;
+      gap: 8px;
+      min-width: 0;
     }
-    .source-form { display: grid; gap: 11px; }
-    label { font-size: .78rem; color: var(--muted); }
-    input, select, button {
-      font: inherit;
-      color: var(--text);
-    }
-    input, select {
+    .panel-heading { justify-content: space-between; margin-bottom: 6px; }
+    .panel-heading-values { gap: 12px; }
+    .field { width: 100%; }
+    .field .kicker { flex: 0 0 72px; }
+    .inline-edit {
+      flex: 1;
+      min-width: 0;
       width: 100%;
-      padding: 10px 11px;
-      background: #11171e;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      outline: none;
+      margin: 0;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: var(--fg);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      letter-spacing: -.02em;
+      box-shadow: none;
     }
-    input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(105, 210, 180, .14); }
-    .form-row { display: grid; grid-template-columns: minmax(0, 1fr) 150px; gap: 10px; }
-    .button-row { display: flex; flex-wrap: wrap; gap: 8px; }
-    button {
-      border: 1px solid var(--line);
-      background: #263240;
-      border-radius: 8px;
-      padding: 9px 12px;
+    .inline-edit::placeholder { color: var(--muted); opacity: .45; }
+    .inline-edit:placeholder-shown { background: var(--empty); }
+    .inline-edit:disabled { opacity: .38; }
+    .text-action {
+      margin: 0;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      font: inherit;
+      letter-spacing: -.01em;
       cursor: pointer;
-      transition: border-color .15s, background .15s, transform .15s;
-      font-size: .82rem;
+      text-align: left;
     }
-    button:hover:not(:disabled) { border-color: var(--accent); background: #2c4050; transform: translateY(-1px); }
-    button:disabled { cursor: not-allowed; opacity: .38; }
-    button.primary { background: #1f6558; border-color: #55b49a; color: #edfff8; }
-    button.danger { border-color: rgba(242, 142, 142, .45); }
-    .playback-controls { display: grid; gap: 11px; margin-top: 13px; }
-    .playback-buttons button {
-      width: 38px;
-      height: 36px;
-      padding: 7px;
-      display: inline-grid;
-      place-items: center;
-      font-size: 1.05rem;
-      line-height: 1;
-    }
-    .help { font-size: .76rem; line-height: 1.45; color: var(--muted); }
-    .notice { min-height: 1.3em; color: var(--warn); font-size: .8rem; margin-top: 2px; }
+    .text-action:hover:not(:disabled) { color: var(--fg); }
+    .text-action:disabled { cursor: not-allowed; opacity: .38; }
+    .text-action.danger { color: var(--danger); }
+    .text-action.danger:hover:not(:disabled) { color: #f87171; }
+    .text-action.selected { color: var(--fg); }
+    .playback-controls { display: grid; gap: 6px; flex: 0 0 auto; }
+    .playback-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: baseline; }
+    .cadence-field { width: auto; max-width: 16rem; }
+    .cadence-field .inline-edit { width: 9ch; flex: 0 0 auto; }
+    .help { font-size: 11px; line-height: 1.45; }
+    .notice { min-height: 1.1em; color: var(--muted); font-size: 11px; }
+    .notice.error { color: var(--danger); }
     .viewer {
-      min-height: 380px;
+      flex: 1;
+      min-height: 0;
       display: grid;
       place-items: center;
-      border: 1px solid var(--line);
-      border-radius: 10px;
       overflow: hidden;
-      background: #0b0f14;
+      background: #050505;
       position: relative;
     }
-    .viewer-frame { max-width: 100%; position: relative; line-height: 0; }
-    .viewer img { display: block; max-width: min(100%, 960px); max-height: 64vh; object-fit: contain; }
+    .viewer-frame { max-width: 100%; max-height: 100%; position: relative; line-height: 0; }
+    .viewer img { display: block; max-width: 100%; max-height: 100%; object-fit: contain; }
     .viewer canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-    .empty-state { padding: 35px; text-align: center; color: var(--muted); line-height: 1.55; }
-    .frame-meta, .metric-grid { display: grid; gap: 9px; }
-    .frame-meta { grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 13px; }
-    .frame-details { margin-top: 11px; }
-    .frame-details > summary {
+    .empty-state { padding: 24px; text-align: center; line-height: 1.55; font-size: 12px; }
+    .frame-meta, .metric-grid { display: grid; gap: 4px; }
+    .frame-meta { grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 4px; }
+    .frame-details { margin-top: 2px; flex: 0 0 auto; }
+    .frame-details > summary,
+    .help-details > summary,
+    .timeline-details > summary {
       cursor: pointer;
       color: var(--muted);
-      font-size: .76rem;
+      font-size: 11px;
       font-weight: 500;
     }
     .frame-details .frame-meta {
       grid-template-columns: 1fr;
-      margin-top: 9px;
-      gap: 5px;
+      margin-top: 6px;
+      gap: 3px;
     }
     .frame-details .frame-meta .metric {
       display: flex;
@@ -137,178 +174,220 @@
     }
     .frame-details .frame-meta .metric .label { min-width: 105px; }
     .frame-details .frame-meta .metric .value { margin-top: 0; }
-    .help-details { margin-top: 3px; }
-    .help-details > summary {
-      cursor: pointer;
-      color: var(--muted);
-      font-size: .74rem;
-      font-weight: 500;
-    }
+    .help-details { margin-top: 2px; }
     .help-details .help { margin-top: 6px; }
     .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .metric, .record {
-      background: rgba(10, 14, 19, .32);
-      border: 1px solid rgba(52, 66, 82, .8);
-      border-radius: 9px;
-      padding: 10px;
+    .metric .value { font-size: 12px; font-weight: 400; margin-top: 2px; color: var(--fg); }
+    .kv {
+      display: grid;
+      grid-template-columns: 72px minmax(0, 1fr);
+      gap: 4px 8px;
+      align-items: baseline;
     }
-    .metric .value { font-size: .9rem; font-weight: 500; margin-top: 3px; }
-    .metric .label { font-size: .7rem; }
-    .kv { display: grid; grid-template-columns: minmax(100px, .8fr) minmax(0, 1.4fr); gap: 7px 12px; font-size: .79rem; }
-    .kv dt { color: var(--muted); }
-    .kv dd { margin: 0; overflow-wrap: anywhere; }
+    .kv dd { margin: 0; overflow-wrap: anywhere; color: var(--fg); }
     .progress {
-      height: 7px;
-      margin: 12px 0 6px;
-      background: #10161d;
-      border-radius: 99px;
+      height: 2px;
+      background: var(--border);
       overflow: hidden;
     }
-    .progress > div { height: 100%; background: linear-gradient(90deg, #53b89d, #a6efd5); width: 0%; transition: width .2s; }
-    .panel-heading-values { display: flex; align-items: baseline; gap: 12px; }
-    .section-title { font-size: 1rem; font-weight: 600; letter-spacing: .01em; }
+    .progress > div, .timeline-progress > span {
+      display: block;
+      height: 100%;
+      background: var(--fg);
+      width: 0%;
+    }
+    .timeline-progress { margin: 0; }
+    .timeline-details, .evidence-panel {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      overflow: hidden;
+    }
     .timeline-details > summary {
       display: flex;
       align-items: baseline;
-      cursor: pointer;
       list-style: none;
       margin-bottom: 0;
-      gap: 15px;
+      gap: 12px;
     }
     .timeline-details > summary::-webkit-details-marker { display: none; }
-    .timeline-details[open] > summary { margin-bottom: 15px; }
-    .timeline-progress { flex: 1; min-width: 80px; margin: 0; }
-    .timeline-progress > span { display: block; height: 100%; background: linear-gradient(90deg, #53b89d, #a6efd5); width: 0%; transition: width .2s; }
-    .timeline { display: grid; gap: 7px; max-height: 280px; overflow: auto; }
-    .timeline button { text-align: left; width: 100%; display: grid; grid-template-columns: 1fr auto; gap: 5px 10px; }
-    .timeline button:hover:not(:disabled) { transform: none; }
-    .timeline button.selected { border-color: var(--accent); background: rgba(55, 106, 94, .45); }
-    .timeline small { color: var(--muted); }
-    .timeline-help { margin-top: 10px; }
-    .record-list { display: grid; gap: 8px; max-height: 330px; overflow: auto; }
-    .record-list button { text-align: left; width: 100%; }
-    .record-list button:hover:not(:disabled) { transform: none; }
-    .record-list button.selected { border-color: var(--accent); background: rgba(55, 106, 94, .45); }
-    .record strong { display: block; font-size: .8rem; }
-    .plugin-catalog { display: grid; gap: 8px; max-height: 310px; overflow: auto; }
-    .plugin-entry {
-      display: grid;
-      grid-template-columns: auto minmax(0, 1fr);
-      gap: 8px;
-      align-items: start;
-      padding: 9px;
-      border: 1px solid rgba(52, 66, 82, .8);
-      border-radius: 9px;
-      background: rgba(10, 14, 19, .28);
+    .timeline-details[open] > summary { margin-bottom: 6px; }
+    .timeline, .record-list, .plugin-catalog, #evidenceText, #memorySelected {
+      min-height: 0;
+      overflow: auto;
     }
-    .plugin-entry.unavailable { border-color: rgba(242, 142, 142, .35); }
-    .plugin-entry strong { display: block; font-size: .8rem; }
-    .plugin-entry small { display: block; color: var(--muted); line-height: 1.35; margin-top: 3px; }
-    .plugin-status { color: var(--accent-strong); font-size: .68rem; text-transform: uppercase; letter-spacing: .06em; }
-    .plugin-entry.unavailable .plugin-status { color: var(--danger); }
-    .digest { overflow-wrap: anywhere; font: .68rem/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-    .record pre, pre {
+    .timeline, .plugin-catalog, .record-list { display: grid; gap: 4px; }
+    .plugin-catalog, .record-list { flex: 1; }
+    .timeline { flex: 1; }
+    .timeline .text-action, .record-list .text-action {
+      width: 100%;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 4px 10px;
+    }
+    .timeline small { color: var(--muted); font-size: 11px; }
+    .record strong { display: block; font-size: 12px; font-weight: 500; }
+    .plugin-entry {
+      position: relative;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 6px;
+      align-items: start;
+      cursor: pointer;
+    }
+    .plugin-entry input {
+      position: absolute;
+      opacity: 0;
+      width: 1px;
+      height: 1px;
+      pointer-events: none;
+    }
+    .plugin-entry strong { display: block; font-size: 12px; font-weight: 500; color: var(--muted); }
+    .plugin-entry:has(input:checked) strong { color: var(--fg); }
+    .plugin-entry small { display: block; color: var(--muted); line-height: 1.35; margin-top: 2px; font-size: 11px; }
+    .plugin-entry.unavailable strong, .plugin-entry.unavailable .plugin-status { color: var(--danger); }
+    .digest { overflow-wrap: anywhere; font-size: 10px; line-height: 1.35; color: var(--muted); }
+    pre {
       white-space: pre-wrap;
       overflow-wrap: anywhere;
-      color: #cdd9e2;
-      font: .73rem/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      margin: 7px 0 0;
+      color: var(--muted);
+      margin: 6px 0 0;
+      font-size: 11px;
+      line-height: 1.45;
     }
-    .tag {
-      display: inline-block;
-      border: 1px solid var(--line);
-      border-radius: 99px;
-      padding: 3px 7px;
-      font-size: .68rem;
-      color: var(--accent-strong);
-      margin: 2px 4px 2px 0;
-    }
+    #evidenceText { flex: 1; margin-top: 8px; }
+    #memorySelected { flex: 0 1 30%; }
     @media (max-width: 930px) {
-      .grid { grid-template-columns: 1fr; }
-      .viewer { min-height: 280px; }
-    }
-    @media (max-width: 600px) {
-      main { padding-left: 15px; padding-right: 15px; }
-      .frame-meta, .form-row { grid-template-columns: 1fr 1fr; }
+      .app {
+        grid-template-columns: 1fr;
+        grid-template-rows: minmax(0, 1fr) minmax(0, 38vh);
+      }
+      .workspace { order: 1; }
+      .sidebar {
+        order: 2;
+        border-right: 0;
+        border-top: 1px solid var(--border);
+        overflow: auto;
+      }
+      .workspace-bottom { height: 22vh; }
     }
   </style>
 </head>
 <body>
-  <main>
-    <div class="grid">
-      <div class="stack">
-        <section class="panel">
-          <div class="viewer">
-            <div id="emptyState" class="empty-state">Choose an image directory and start a replay.<br>The server owns the pipeline; this page only renders its state.</div>
-            <div id="viewerFrame" class="viewer-frame" hidden>
-              <img id="frameImage" alt="Current replay frame">
-              <canvas id="overlayCanvas" aria-hidden="true"></canvas>
-            </div>
-          </div>
-          <details class="frame-details">
-            <summary>Frame details</summary>
-            <div class="frame-meta">
-              <div class="metric"><div class="label">Frame</div><div id="frameId" class="value">—</div></div>
-              <div class="metric"><div class="label">Sequence index</div><div id="frameIndex" class="value">—</div></div>
-              <div class="metric"><div class="label">Timestamp</div><div id="frameTimestamp" class="value">—</div></div>
-              <div class="metric"><div class="label">Perception</div><div id="perceptionStatus" class="value">—</div></div>
-            </div>
-          </details>
-          <div class="playback-controls">
-            <div class="form-row">
-              <div>
-                <label for="cadence">Cadence</label>
-                <select id="cadence">
-                  <option value="0">as fast as possible</option>
-                  <option value="100">100 ms</option>
-                  <option value="250" selected>250 ms</option>
-                  <option value="500">500 ms</option>
-                  <option value="1000">1 second</option>
-                  <option value="realtime">realtime (capture timestamps)</option>
-                </select>
-              </div>
-              <div>
-                <label for="overlayToggle">Display</label>
-                <select id="overlayToggle">
-                  <option value="on" selected>overlays on</option>
-                  <option value="off">image only</option>
-                </select>
-              </div>
-            </div>
-            <div class="button-row playback-buttons">
-              <button id="startButton" class="primary" aria-label="Start replay" title="Start replay">▶</button>
-              <button id="pauseButton" aria-label="Pause replay" title="Pause replay">⏸</button>
-              <button id="resumeButton" aria-label="Resume replay" title="Resume replay">▶</button>
-              <button id="stepButton" aria-label="Step one frame" title="Step one frame">⏭</button>
-              <button id="cancelButton" class="danger" aria-label="Cancel replay" title="Cancel replay">■</button>
-              <button id="resetButton" aria-label="Reset workbench" title="Reset workbench">↺</button>
-            </div>
-            <div id="notice" class="notice" role="status"></div>
-            <details class="help-details">
-              <summary>Replay behavior</summary>
-              <p class="help">Realtime follows recorded frame timestamps; fixed values add a delay after each frame, and “as fast as possible” removes that delay. Source order, frame identity, absence annotations, perception, observation, and memory are validated and produced server-side.</p>
-            </details>
-            <details id="failurePanel" class="help-details" hidden>
-              <summary>Failure boundary</summary>
-              <pre id="failureText"></pre>
-            </details>
-          </div>
-        </section>
+  <main class="app">
+    <aside class="sidebar">
+      <section>
+        <div class="panel-heading">
+          <h2>Source</h2>
+          <span id="sourceIdentity" class="muted">no source selected</span>
+        </div>
+        <label class="field" for="sourceDir">
+          <span class="kicker">directory</span>
+          <input id="sourceDir" class="inline-edit" type="text" autocomplete="off" placeholder="/path/to/ordered/images">
+        </label>
+      </section>
 
-        <details class="panel timeline-details">
-          <summary class="panel-heading">
+      <section class="sidebar-fill">
+        <div class="panel-heading">
+          <h2>Perception plugins</h2>
+          <span id="pluginSelectionSummary" class="muted">no catalog</span>
+        </div>
+        <div class="field">
+          <label class="kicker" for="pluginDir">directory</label>
+          <input id="pluginDir" class="inline-edit" type="text" autocomplete="off" placeholder="/path/to/plugins">
+          <button type="button" id="refreshPluginsButton" class="text-action">inspect</button>
+        </div>
+        <div id="pluginCatalog" class="plugin-catalog">
+          <p class="muted help">The packaged lightweight catalog will appear here.</p>
+        </div>
+        <div id="pluginDigest" class="digest muted"></div>
+        <details class="help-details">
+          <summary>Plugin selection</summary>
+          <p class="help">Only ready, server-discovered IDs can be selected. Click a ready checkbox to start or stop it at the next frame boundary. Select none for raw capture without perception overlays. The plugin root stays locked during replay.</p>
+        </details>
+      </section>
+
+      <section class="sidebar-fill">
+        <div class="panel-heading">
+          <h2>Memory ledger</h2>
+          <div class="panel-heading-values">
+            <span id="memorySelection" class="muted">select a record</span>
+            <span id="memoryHealth" class="muted">no snapshot</span>
+          </div>
+        </div>
+        <dl class="kv">
+          <dt>Epoch</dt><dd id="memoryEpoch">—</dd>
+          <dt>Records</dt><dd id="memoryCount">—</dd>
+          <dt>Policy</dt><dd id="memoryPolicy">—</dd>
+        </dl>
+        <div id="memoryRecords" class="record-list"><p class="memory-empty muted help">No retained evidence yet.</p></div>
+        <div>
+          <h3>Selected record</h3>
+          <pre id="memorySelected">Select a server-produced memory record to inspect its provenance.</pre>
+        </div>
+      </section>
+    </aside>
+
+    <div class="workspace">
+      <section class="viewer-panel">
+        <div class="viewer">
+          <div id="emptyState" class="empty-state">Choose an image directory and start a replay.<br>The server owns the pipeline; this page only renders its state.</div>
+          <div id="viewerFrame" class="viewer-frame" hidden>
+            <img id="frameImage" alt="Current replay frame">
+            <canvas id="overlayCanvas" aria-hidden="true"></canvas>
+          </div>
+        </div>
+        <details class="frame-details">
+          <summary>Frame details</summary>
+          <div class="frame-meta">
+            <div class="metric"><div class="label">Frame</div><div id="frameId" class="value">—</div></div>
+            <div class="metric"><div class="label">Sequence index</div><div id="frameIndex" class="value">—</div></div>
+            <div class="metric"><div class="label">Timestamp</div><div id="frameTimestamp" class="value">—</div></div>
+            <div class="metric"><div class="label">Perception</div><div id="perceptionStatus" class="value">—</div></div>
+          </div>
+        </details>
+        <div class="playback-controls">
+          <div class="playback-row">
+            <div class="playback-actions">
+              <button type="button" id="startButton" class="text-action" aria-label="Start replay">start</button>
+              <button type="button" id="pauseButton" class="text-action" aria-label="Pause replay">pause</button>
+              <button type="button" id="resumeButton" class="text-action" aria-label="Resume replay">resume</button>
+              <button type="button" id="stepButton" class="text-action" aria-label="Step one frame">step</button>
+              <button type="button" id="cancelButton" class="text-action danger" aria-label="Cancel replay">cancel</button>
+              <button type="button" id="resetButton" class="text-action" aria-label="Reset workbench">reset</button>
+            </div>
+            <label class="field cadence-field" for="cadence">
+              <span class="kicker">cadence</span>
+              <input id="cadence" class="inline-edit" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" value="250" aria-label="Replay cadence">
+            </label>
+            <button type="button" id="overlayToggle" class="text-action" value="on" aria-pressed="true" aria-label="Toggle overlays">overlays</button>
+          </div>
+          <span class="timeline-progress progress"><span id="progressBar"></span></span>
+          <div class="playback-row">
+            <span id="progressText" class="muted">0 / 0</span>
+            <span id="notice" class="notice" role="status"></span>
+          </div>
+          <details class="help-details">
+            <summary>Replay behavior</summary>
+            <p class="help">Cadence is an editable millisecond delay, <span class="mono">0</span> for as fast as possible, or realtime (capture timestamps). Source order, frame identity, absence annotations, perception, observation, and memory are validated and produced server-side.</p>
+          </details>
+          <details id="failurePanel" class="help-details" hidden>
+            <summary>Failure boundary</summary>
+            <pre id="failureText"></pre>
+          </details>
+        </div>
+      </section>
+
+      <div class="workspace-bottom">
+        <details class="timeline-details">
+          <summary>
             <span class="section-title">Replay timeline</span>
-            <span class="timeline-progress progress"><span id="progressBar"></span></span>
-            <span class="panel-heading-values">
-              <span id="timelineSelection" class="muted">select a processed frame</span>
-              <span id="progressText" class="muted">0 / 0</span>
-            </span>
+            <span id="timelineSelection" class="muted">select a processed frame</span>
           </summary>
           <div id="timeline" class="timeline"><p class="timeline-empty muted help">No frames have been processed.</p></div>
-          <p class="help timeline-help">Click a processed frame to inspect its image, perception, and memory state.</p>
         </details>
 
-        <section class="panel">
+        <section class="evidence-panel">
           <div class="panel-heading">
             <h2>Perception evidence</h2>
             <span id="evidenceSummary" class="muted">no output</span>
@@ -317,68 +396,8 @@
             <div class="metric"><div class="label">Plugin runs</div><div id="pluginRuns" class="value">—</div></div>
             <div class="metric"><div class="label">Things / signals</div><div id="evidenceCounts" class="value">—</div></div>
           </div>
-          <pre id="evidenceText" class="help" style="margin-top: 14px;">No perception output yet.</pre>
+          <pre id="evidenceText">No perception output yet.</pre>
         </section>
-      </div>
-
-      <div class="stack">
-        <section class="panel">
-          <div class="panel-heading">
-            <h2>Source</h2>
-            <span id="sourceIdentity" class="muted">no source selected</span>
-          </div>
-          <div class="source-form">
-            <div>
-              <label for="sourceDir">Image directory</label>
-              <input id="sourceDir" type="text" autocomplete="off" placeholder="/path/to/ordered/images">
-            </div>
-          </div>
-        </section>
-
-        <section class="panel">
-          <div class="panel-heading">
-            <h2>Perception plugins</h2>
-            <span id="pluginSelectionSummary" class="muted">no catalog</span>
-          </div>
-          <div class="source-form">
-            <div>
-              <label for="pluginDir">Plugin directory (optional)</label>
-              <input id="pluginDir" type="text" autocomplete="off" placeholder="/path/to/plugins">
-            </div>
-            <div class="button-row">
-              <button id="refreshPluginsButton">Inspect plugins</button>
-            </div>
-            <div id="pluginCatalog" class="plugin-catalog">
-              <p class="muted help">The packaged lightweight catalog will appear here.</p>
-            </div>
-            <div id="pluginDigest" class="digest muted"></div>
-            <details class="help-details">
-              <summary>Plugin selection</summary>
-              <p class="help">Only ready, server-discovered IDs can be selected. Click a ready checkbox to start or stop it at the next frame boundary. Select none for raw capture without perception overlays. The plugin root stays locked during replay.</p>
-            </details>
-          </div>
-        </section>
-
-        <section class="panel">
-          <div class="panel-heading">
-            <h2>Memory ledger</h2>
-            <div class="panel-heading-values">
-              <span id="memorySelection" class="muted">select a record</span>
-              <span id="memoryHealth" class="muted">no snapshot</span>
-            </div>
-          </div>
-          <dl class="kv">
-            <dt>Epoch</dt><dd id="memoryEpoch">—</dd>
-            <dt>Records</dt><dd id="memoryCount">—</dd>
-            <dt>Policy</dt><dd id="memoryPolicy">—</dd>
-          </dl>
-          <div id="memoryRecords" class="record-list" style="margin-top: 13px;"><p class="memory-empty muted help">No retained evidence yet.</p></div>
-          <div class="metric" style="margin-top: 11px;">
-            <h3>Selected record</h3>
-            <pre id="memorySelected">Select a server-produced memory record to inspect its provenance.</pre>
-          </div>
-        </section>
-
       </div>
     </div>
   </main>
@@ -419,6 +438,19 @@
       function text(value, fallback) {
         if (value === null || value === undefined || value === "") return fallback || "—";
         return String(value);
+      }
+
+      function parseCadence(raw) {
+        var value = String(raw || "").trim().toLowerCase();
+        if (value === "realtime" || value === "real") return { pace: "realtime" };
+        if (!value) return null;
+        var ms = Number(value);
+        if (!Number.isFinite(ms) || ms < 0) return null;
+        return { pace: "fixed", cadence_ms: Math.round(ms) };
+      }
+
+      function cadencePayload() {
+        return parseCadence(elements.cadence.value);
       }
 
       function setText(id, value, fallback) {
@@ -739,8 +771,8 @@
         things.forEach(function (thing) {
           var location = thing.location || {};
           if (thing.kind === "sensor_frame" || location.frame !== "image") return;
-          context.strokeStyle = "#69d2b4";
-          context.fillStyle = "rgba(105, 210, 180, .12)";
+          context.strokeStyle = "rgba(237, 237, 237, .85)";
+          context.fillStyle = "rgba(237, 237, 237, .10)";
           context.lineWidth = Math.max(2, canvas.width / 500);
           var box = location.bbox_xyxy_norm;
           if (Array.isArray(box) && box.length === 4) {
@@ -750,8 +782,8 @@
             var height = (box[3] - box[1]) * canvas.height;
             context.fillRect(x, y, width, height);
             context.strokeRect(x, y, width, height);
-            context.fillStyle = "#b8f4df";
-            context.font = Math.max(12, canvas.width / 55) + "px sans-serif";
+            context.fillStyle = "#ededed";
+            context.font = Math.max(12, canvas.width / 55) + "px \"JetBrains Mono\", monospace";
             context.fillText(text(thing.label, thing.kind), x + 4, Math.max(14, y - 4));
           }
           var polygon = location.polygon_xy_norm;
@@ -784,6 +816,7 @@
             var frameId = text(frame.frame_id, "unknown frame");
             var button = document.createElement("button");
             button.type = "button";
+            button.className = "text-action";
             button.setAttribute("data-frame-id", frameId);
             button.addEventListener("click", function () { selectFrame(frameId); });
             var name = document.createElement("strong");
@@ -898,7 +931,7 @@
           var recordId = text(record.record_id, "unknown record");
           var card = document.createElement("button");
           card.type = "button";
-          card.className = "record";
+          card.className = "text-action record";
           card.setAttribute("data-record-id", recordId);
           card.addEventListener("click", function () { selectRecord(recordId); });
           var title = document.createElement("strong");
@@ -979,7 +1012,7 @@
         setText("progressText", text(progress.completed, "0") + " / " + text(progress.total, "0"));
         elements.progressBar.style.width = text(progress.percent, "0") + "%";
         var controls = state.controls || {};
-        if (!cadenceDraft || state.phase !== "idle") {
+        if (document.activeElement !== elements.cadence && (!cadenceDraft || state.phase !== "idle")) {
           elements.cadence.value = controls.pace === "realtime"
             ? "realtime" : text(controls.cadence_ms, "250");
         }
@@ -1022,13 +1055,17 @@
       }
 
       elements.startButton.addEventListener("click", function () {
-        var selectedPace = elements.cadence.value;
+        var cadence = cadencePayload();
+        if (!cadence) {
+          elements.notice.textContent = "Cadence must be a millisecond delay or realtime.";
+          return;
+        }
         var payload = {
           source_dir: elements.sourceDir.value,
-          pace: selectedPace === "realtime" ? "realtime" : "fixed",
+          pace: cadence.pace,
           active_plugin_ids: selectedPluginIdsFromView()
         };
-        if (selectedPace !== "realtime") payload.cadence_ms = Number(selectedPace);
+        if (cadence.pace !== "realtime") payload.cadence_ms = cadence.cadence_ms;
         if (elements.pluginDir.value.trim()) payload.plugin_dir = elements.pluginDir.value.trim();
         action("start", payload);
       });
@@ -1042,17 +1079,38 @@
       elements.stepButton.addEventListener("click", function () { action("step"); });
       elements.cancelButton.addEventListener("click", function () { action("cancel"); });
       elements.resetButton.addEventListener("click", function () { action("reset"); });
-      elements.cadence.addEventListener("change", function () {
+      elements.cadence.addEventListener("input", function () {
         cadenceDraft = state && state.phase === "idle";
+      });
+      elements.cadence.addEventListener("keydown", function (event) {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          elements.cadence.blur();
+        }
+      });
+      elements.cadence.addEventListener("blur", function () {
+        var cadence = cadencePayload();
+        if (!cadence) {
+          if (state && state.controls) {
+            elements.cadence.value = state.controls.pace === "realtime"
+              ? "realtime" : text(state.controls.cadence_ms, "250");
+          }
+          return;
+        }
         if (state && (state.phase === "running" || state.phase === "paused")) {
           cadenceDraft = false;
-          var selectedPace = elements.cadence.value;
-          var payload = { pace: selectedPace === "realtime" ? "realtime" : "fixed" };
-          if (selectedPace !== "realtime") payload.cadence_ms = Number(selectedPace);
+          var payload = { pace: cadence.pace };
+          if (cadence.pace !== "realtime") payload.cadence_ms = cadence.cadence_ms;
           action("set_cadence", payload);
         }
       });
-      elements.overlayToggle.addEventListener("change", drawOverlay);
+      elements.overlayToggle.addEventListener("click", function () {
+        var next = elements.overlayToggle.value === "off" ? "on" : "off";
+        elements.overlayToggle.value = next;
+        elements.overlayToggle.textContent = next === "on" ? "overlays" : "image";
+        elements.overlayToggle.setAttribute("aria-pressed", next === "on" ? "true" : "false");
+        drawOverlay();
+      });
       window.addEventListener("resize", drawOverlay);
       poll();
     }());

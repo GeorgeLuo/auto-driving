@@ -136,6 +136,30 @@ def _wait_until(predicate, timeout: float = 3.0) -> None:
 
 
 class WorkbenchTests(unittest.TestCase):
+    def test_workbench_keeps_plugin_checkbox_nodes_stable_between_state_polls(self) -> None:
+        html = Path("cli/automa_cli/workbench.html").read_text(encoding="utf-8")
+        render_plugins = html.split("function renderPlugins() {", 1)[1].split(
+            "function renderControls() {", 1
+        )[0]
+        cache_index = render_plugins.index(
+            "if (renderKey === pluginCatalogRenderKey) {"
+        )
+        clear_index = render_plugins.index('elements.pluginCatalog.textContent = "";')
+        stable_branch = render_plugins[cache_index:clear_index]
+
+        self.assertLess(cache_index, clear_index)
+        self.assertIn(
+            'elements.pluginCatalog.querySelectorAll("input[data-plugin-id]")',
+            stable_branch,
+        )
+        self.assertIn(
+            "input.disabled = !readyById[pluginId] || !selectionAllowed;",
+            stable_branch,
+        )
+        self.assertIn("renderPluginSummary(catalog, plugins, active);", stable_branch)
+        self.assertIn("return;", stable_branch)
+        self.assertIn("pluginCatalogRenderKey = null;", html)
+
     def test_manifest_catalog_is_recursive_deterministic_and_explicit_about_readiness(self) -> None:
         catalog = discover_plugin_catalog(Path("lab/plugins/perception"))
         self.assertEqual(

@@ -402,6 +402,7 @@
       var elements = {};
       var pluginSelectionDraft = null;
       var pluginSelectionDraftDigest = null;
+      var pluginCatalogRenderKey = null;
       [
         "phaseChip", "sourceIdentity", "emptyState", "viewerFrame", "frameImage",
         "overlayCanvas", "frameId", "frameIndex", "frameTimestamp", "perceptionStatus",
@@ -488,6 +489,7 @@
             if (["refresh_plugins", "select_plugins", "start"].indexOf(action) >= 0) {
               pluginSelectionDraft = null;
               pluginSelectionDraftDigest = null;
+              pluginCatalogRenderKey = null;
             }
           }
         } catch (error) {
@@ -512,6 +514,16 @@
         ).filter(function (value) { return value; });
       }
 
+      function renderPluginSummary(catalog, plugins, active) {
+        var pending = active.length;
+        var ready = plugins.filter(function (plugin) { return plugin.ready; }).length;
+        setText("pluginSelectionSummary", pending + " active · " + ready + " ready");
+        setText("pluginDigest", catalog ? "catalog " + text(catalog.digest) : "");
+        if (document.activeElement !== elements.pluginDir) {
+          elements.pluginDir.value = state && state.plugin_dir ? state.plugin_dir : "";
+        }
+      }
+
       function renderPlugins() {
         var catalog = state && state.plugin_catalog;
         var plugins = catalog && Array.isArray(catalog.plugins) ? catalog.plugins : [];
@@ -525,6 +537,24 @@
         var allowed = state && state.controls && state.controls.allowed_actions
           ? state.controls.allowed_actions : [];
         var selectionAllowed = !actionInFlight && allowed.indexOf("select_plugins") >= 0;
+        var renderKey = catalog ? "catalog:" + text(catalog.digest, "") : "empty";
+        var readyById = Object.create(null);
+        plugins.forEach(function (plugin) {
+          readyById[text(plugin.id, "")] = plugin.ready;
+        });
+        // Keep checkbox nodes through state polls so an in-progress click is not detached.
+        if (renderKey === pluginCatalogRenderKey) {
+          Array.prototype.forEach.call(
+            elements.pluginCatalog.querySelectorAll("input[data-plugin-id]"),
+            function (input) {
+              var pluginId = input.getAttribute("data-plugin-id");
+              input.disabled = !readyById[pluginId] || !selectionAllowed;
+            }
+          );
+          renderPluginSummary(catalog, plugins, active);
+          return;
+        }
+        pluginCatalogRenderKey = renderKey;
         elements.pluginCatalog.textContent = "";
         if (!plugins.length) {
           var empty = document.createElement("p");
@@ -566,13 +596,7 @@
           item.appendChild(copy);
           elements.pluginCatalog.appendChild(item);
         });
-        var pending = active.length;
-        var ready = plugins.filter(function (plugin) { return plugin.ready; }).length;
-        setText("pluginSelectionSummary", pending + " active · " + ready + " ready");
-        setText("pluginDigest", catalog ? "catalog " + text(catalog.digest) : "");
-        if (document.activeElement !== elements.pluginDir) {
-          elements.pluginDir.value = state && state.plugin_dir ? state.plugin_dir : "";
-        }
+        renderPluginSummary(catalog, plugins, active);
       }
 
       function renderControls() {

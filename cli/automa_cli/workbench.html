@@ -48,7 +48,7 @@
       letter-spacing: .08em;
       color: var(--muted);
     }
-    .muted, .help, .empty-state, .timeline-empty, .memory-empty { color: var(--muted); }
+    .muted, .help, .empty-state, .memory-empty { color: var(--muted); }
     .mono, .metric .value, dd, .digest, pre, #progressText {
       font-family: var(--font-mono);
       font-size: 12px;
@@ -166,7 +166,7 @@
       white-space: nowrap;
     }
     .panel-heading > .muted, .panel-heading > .text-action, .panel-heading > #pluginSelectionSummary,
-    .panel-heading > #memoryHealth, .panel-heading > #timelineSelection, .panel-heading > #evidenceSummary,
+    .panel-heading > #memoryHealth, .panel-heading > #evidenceSummary,
     .panel-heading > #sourceIdentity {
       flex: 1 1 auto;
       min-width: 0;
@@ -440,8 +440,7 @@
     .frame-meta { grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 4px; }
     .frame-details { margin-top: 2px; flex: 0 0 auto; }
     .frame-details > summary,
-    .help-details > summary,
-    .timeline-details > summary {
+    .help-details > summary {
       cursor: pointer;
       color: var(--muted);
       font-size: 11px;
@@ -479,32 +478,23 @@
       white-space: nowrap;
       color: var(--fg);
     }
-    .timeline-details, .evidence-panel {
+    .evidence-panel {
       display: flex;
       flex-direction: column;
       min-height: 0;
       overflow: hidden;
     }
-    .timeline-details > summary {
-      display: flex;
-      align-items: baseline;
-      list-style: none;
-      margin-bottom: 0;
-      gap: 12px;
-    }
-    .timeline-details > summary::-webkit-details-marker { display: none; }
-    .timeline-details[open] > summary { margin-bottom: 6px; }
-    .timeline, .record-list, .plugin-catalog, #evidenceText, #memorySelected {
+    .record-list, .plugin-catalog, #evidenceText, #memorySelected {
       min-height: 0;
       overflow: auto;
     }
-    .timeline, .plugin-catalog, .record-list {
+    .plugin-catalog, .record-list {
       display: grid;
       gap: 4px;
       flex: none;
       max-height: 9rem;
     }
-    .timeline .text-action, .record-list .text-action {
+    .record-list .text-action {
       width: 100%;
       display: block;
       min-height: 1.35em;
@@ -514,7 +504,6 @@
       white-space: nowrap;
       color: var(--muted);
     }
-    .timeline small { display: none; }
     .record strong { display: block; font-size: 12px; font-weight: 500; }
     .plugin-entry {
       position: relative;
@@ -629,7 +618,6 @@
     <div class="workspace">
       <div class="workspace-tools">
         <button type="button" class="text-action" data-recall="memoryFrame">Memory</button>
-        <button type="button" class="text-action" data-recall="timelineFrame">Timeline</button>
         <button type="button" class="text-action" data-recall="evidenceFrame">Evidence</button>
       </div>
       <section class="viewer-panel">
@@ -724,26 +712,6 @@
               </details>
             </div>
           </article>
-          <article class="float-frame" id="timelineFrame" data-frame-anchor="bl" data-frame-width="260" data-frame-height="240">
-            <div class="float-frame-header" data-frame-header>
-              <div class="float-frame-title">
-                <span class="grip" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="1"></circle><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="17" r="1"></circle><circle cx="15" cy="7" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="17" r="1"></circle></svg>
-                </span>
-                <strong>Timeline</strong>
-                <span id="timelineSelection" class="muted">select a processed frame</span>
-              </div>
-              <div class="float-frame-controls">
-                <button type="button" class="icon-btn" data-frame-close aria-label="Close Timeline" title="Close">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-                </button>
-                <button type="button" class="icon-btn" data-frame-minimize aria-label="Minimize Timeline" title="Minimize"></button>
-              </div>
-            </div>
-            <div class="float-frame-body" data-frame-body>
-              <div id="timeline" class="timeline"><p class="timeline-empty muted help">No frames have been processed.</p></div>
-            </div>
-          </article>
           <article class="float-frame" id="evidenceFrame" data-frame-anchor="br" data-frame-width="260" data-frame-height="200">
             <div class="float-frame-header" data-frame-header>
               <div class="float-frame-title">
@@ -799,7 +767,7 @@
       [
         "sourceIdentity", "emptyState", "viewerFrame", "frameImage",
         "overlayCanvas", "viewerStage", "frameId", "frameIndex", "frameTimestamp", "perceptionStatus",
-        "progressText", "seekBar", "timeline", "timelineSelection", "evidenceSummary", "pluginRuns",
+        "progressText", "seekBar", "evidenceSummary", "pluginRuns",
         "evidenceCounts", "evidenceText", "sourceDir", "cadence", "overlayToggle",
         "startButton", "pauseButton", "resumeButton", "stepButton",
         "cancelButton", "resetButton", "notice", "pluginDir", "refreshPluginsButton",
@@ -1463,87 +1431,6 @@
         });
       }
 
-      function renderTimeline() {
-        var timeline = state && Array.isArray(state.timeline) ? state.timeline : [];
-        var highlightedFrameId = selectedFrameId || ((state && state.current_frame) || {}).frame_id;
-        elements.timeline.textContent = "";
-        if (!timeline.length) {
-          var empty = document.createElement("p");
-          empty.className = "timeline-empty muted help";
-          empty.textContent = "No frames have been processed.";
-          elements.timeline.appendChild(empty);
-        } else {
-          timeline.forEach(function (item) {
-            var frame = item.frame || {};
-            var frameId = text(frame.frame_id, "unknown frame");
-            var button = document.createElement("button");
-            button.type = "button";
-            button.className = "text-action";
-            button.setAttribute("data-frame-id", frameId);
-            button.addEventListener("click", function () { selectFrame(frameId); });
-            var name = document.createElement("strong");
-            name.textContent = frameId.split(":").pop() || shortId(frameId);
-            name.title = frameId;
-            button.appendChild(name);
-            var status = document.createElement("small");
-            status.textContent = text(item.perception_status, "no perception") +
-              " · memory " + text(item.memory_record_count, "0");
-            button.appendChild(status);
-            button.setAttribute("aria-label", "Show replay frame " + frameId);
-            var isSelected = frameId === highlightedFrameId;
-            button.classList.toggle("selected", isSelected);
-            button.setAttribute("aria-pressed", isSelected ? "true" : "false");
-            elements.timeline.appendChild(button);
-          });
-        }
-        var displayedId = (currentFrame() || {}).frame_id;
-        if (selectedFrameDetail) {
-          setText("timelineSelection", "selected · " + text(selectedFrameId));
-        } else if (displayedId) {
-          setText("timelineSelection", "latest processed");
-        } else {
-          setText("timelineSelection", "select a processed frame");
-        }
-      }
-
-      async function selectFrame(frameId) {
-        if (!state || !state.run_id) return;
-        var timeline = Array.isArray(state.timeline) ? state.timeline : [];
-        var item = timeline.find(function (entry) {
-          return entry && entry.frame && entry.frame.frame_id === frameId;
-        });
-        if (!item) return;
-        var runId = state.run_id;
-        var generation = ++detailRequestGeneration;
-        elements.notice.textContent = "Loading frame " + text(frameId, "unknown frame") + "…";
-        try {
-          var response = await fetch(
-            "/api/frame-detail?run_id=" + encodeURIComponent(runId) +
-            "&frame_id=" + encodeURIComponent(frameId),
-            { cache: "no-store" }
-          );
-          var detail = await response.json();
-          if (generation !== detailRequestGeneration || !state || state.run_id !== runId) return;
-          if (!response.ok) {
-            elements.notice.textContent = detail.message || "Frame detail is unavailable.";
-            return;
-          }
-          if (!detail.frame || detail.frame.frame_id !== frameId) {
-            elements.notice.textContent = "Frame detail did not match the selected frame.";
-            return;
-          }
-          selectedFrameId = frameId;
-          selectedFrameRunId = runId;
-          selectedFrameDetail = detail;
-          selectedRecordId = null;
-          elements.notice.textContent = "Showing frame " + text(frameId, "unknown frame") + ".";
-          render();
-        } catch (error) {
-          if (generation !== detailRequestGeneration || !state || state.run_id !== runId) return;
-          elements.notice.textContent = "Workbench connection failed: " + error;
-        }
-      }
-
       function renderEvidence() {
         var perception = currentPayload("perception");
         if (!perception) {
@@ -1701,7 +1588,6 @@
         } else {
           renderFrame();
         }
-        renderTimeline();
         renderEvidence();
         renderMemory();
         renderFailure();
@@ -1738,7 +1624,7 @@
         pollTimer = window.setTimeout(poll, delay);
       }
 
-      ["memoryFrame", "timelineFrame", "evidenceFrame"].forEach(function (id) {
+      ["memoryFrame", "evidenceFrame"].forEach(function (id) {
         bindFloatingFrame(document.getElementById(id));
       });
       Array.prototype.forEach.call(document.querySelectorAll("[data-recall]"), function (button) {

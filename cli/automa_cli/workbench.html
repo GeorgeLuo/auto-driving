@@ -274,6 +274,7 @@
       min-height: 1em;
     }
     .workspace-tools .text-action[aria-pressed="true"] { color: var(--fg); }
+    #floatLayer { pointer-events: none; }
     .viewer {
       flex: 1;
       min-height: 0;
@@ -284,8 +285,8 @@
       position: relative;
     }
     .float-frame {
-      position: absolute;
-      z-index: 20;
+      position: fixed;
+      z-index: 30;
       display: flex;
       flex-direction: column;
       min-width: 220px;
@@ -294,7 +295,9 @@
       border: 1px solid rgb(148 163 184 / .8);
       box-shadow: 0 10px 24px rgb(0 0 0 / .28);
       user-select: none;
+      pointer-events: auto;
     }
+    .float-frame[hidden] { display: none; }
     .float-frame[data-minimized="true"] { height: auto !important; min-height: 0; }
     .float-frame-header {
       display: flex;
@@ -314,6 +317,12 @@
       min-width: 0;
       font-size: 11px;
       font-weight: 500;
+      white-space: nowrap;
+    }
+    .float-frame-title .muted {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      min-width: 0;
     }
     .float-frame-title .grip { color: rgb(0 0 0 / .55); }
     .float-frame-title strong {
@@ -328,6 +337,7 @@
       height: 18px;
       color: rgb(0 0 0 / .55);
     }
+    .float-frame-controls .icon-btn svg { width: 12px; height: 12px; }
     .float-frame-controls .icon-btn:hover:not(:disabled) {
       background: rgb(0 0 0 / .06);
       color: #000;
@@ -577,71 +587,6 @@
             <img id="frameImage" alt="Current replay frame">
             <canvas id="overlayCanvas" aria-hidden="true"></canvas>
           </div>
-          <article class="float-frame" id="memoryFrame" data-frame-anchor="tr" data-frame-width="280" data-frame-height="260">
-            <div class="float-frame-header" data-frame-header>
-              <div class="float-frame-title">
-                <span class="grip" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="1"></circle><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="17" r="1"></circle><circle cx="15" cy="7" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="17" r="1"></circle></svg>
-                </span>
-                <strong>Memory</strong>
-                <span id="memoryHealth" class="muted">no snapshot</span>
-                <span id="memorySelection" hidden>select a record</span>
-              </div>
-              <div class="float-frame-controls">
-                <button type="button" class="icon-btn" data-frame-minimize aria-label="Minimize Memory" title="Minimize"></button>
-              </div>
-            </div>
-            <div class="float-frame-body" data-frame-body>
-              <dl class="kv">
-                <dt>Epoch</dt><dd id="memoryEpoch">—</dd>
-                <dt>Records</dt><dd id="memoryCount">—</dd>
-                <dt>Policy</dt><dd id="memoryPolicy">—</dd>
-              </dl>
-              <div id="memoryRecords" class="record-list"><p class="memory-empty muted help">No retained evidence yet.</p></div>
-              <details class="help-details">
-                <summary>Selected record</summary>
-                <pre id="memorySelected">Select a server-produced memory record to inspect its provenance.</pre>
-              </details>
-            </div>
-          </article>
-          <article class="float-frame" id="timelineFrame" data-frame-anchor="bl" data-frame-width="220" data-frame-height="240">
-            <div class="float-frame-header" data-frame-header>
-              <div class="float-frame-title">
-                <span class="grip" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="1"></circle><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="17" r="1"></circle><circle cx="15" cy="7" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="17" r="1"></circle></svg>
-                </span>
-                <strong>Timeline</strong>
-                <span id="timelineSelection" class="muted">select a processed frame</span>
-              </div>
-              <div class="float-frame-controls">
-                <button type="button" class="icon-btn" data-frame-minimize aria-label="Minimize Timeline" title="Minimize"></button>
-              </div>
-            </div>
-            <div class="float-frame-body" data-frame-body>
-              <div id="timeline" class="timeline"><p class="timeline-empty muted help">No frames have been processed.</p></div>
-            </div>
-          </article>
-          <article class="float-frame" id="evidenceFrame" data-frame-anchor="br" data-frame-width="260" data-frame-height="200">
-            <div class="float-frame-header" data-frame-header>
-              <div class="float-frame-title">
-                <span class="grip" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="1"></circle><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="17" r="1"></circle><circle cx="15" cy="7" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="17" r="1"></circle></svg>
-                </span>
-                <strong>Evidence</strong>
-                <span id="evidenceSummary" class="muted">no output</span>
-              </div>
-              <div class="float-frame-controls">
-                <button type="button" class="icon-btn" data-frame-minimize aria-label="Minimize Evidence" title="Minimize"></button>
-              </div>
-            </div>
-            <div class="float-frame-body" data-frame-body>
-              <div class="metric-grid">
-                <div class="metric"><div class="label">Plugin runs</div><div id="pluginRuns" class="value">—</div></div>
-                <div class="metric"><div class="label">Things / signals</div><div id="evidenceCounts" class="value">—</div></div>
-              </div>
-              <pre id="evidenceText">No perception output yet.</pre>
-            </div>
-          </article>
         </div>
         <div class="frame-hud">
           <span id="frameId" class="truncate">—</span>
@@ -696,6 +641,83 @@
     </div>
   </main>
 
+  <div id="floatLayer">
+          <article class="float-frame" id="memoryFrame" data-frame-anchor="tr" data-frame-width="280" data-frame-height="260">
+            <div class="float-frame-header" data-frame-header>
+              <div class="float-frame-title">
+                <span class="grip" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="1"></circle><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="17" r="1"></circle><circle cx="15" cy="7" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="17" r="1"></circle></svg>
+                </span>
+                <strong>Memory</strong>
+                <span id="memoryHealth" class="muted">no snapshot</span>
+                <span id="memorySelection" hidden>select a record</span>
+              </div>
+              <div class="float-frame-controls">
+                <button type="button" class="icon-btn" data-frame-close aria-label="Close Memory" title="Close">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
+                <button type="button" class="icon-btn" data-frame-minimize aria-label="Minimize Memory" title="Minimize"></button>
+              </div>
+            </div>
+            <div class="float-frame-body" data-frame-body>
+              <dl class="kv">
+                <dt>Epoch</dt><dd id="memoryEpoch">—</dd>
+                <dt>Records</dt><dd id="memoryCount">—</dd>
+                <dt>Policy</dt><dd id="memoryPolicy">—</dd>
+              </dl>
+              <div id="memoryRecords" class="record-list"><p class="memory-empty muted help">No retained evidence yet.</p></div>
+              <details class="help-details">
+                <summary>Selected record</summary>
+                <pre id="memorySelected">Select a server-produced memory record to inspect its provenance.</pre>
+              </details>
+            </div>
+          </article>
+          <article class="float-frame" id="timelineFrame" data-frame-anchor="bl" data-frame-width="260" data-frame-height="240">
+            <div class="float-frame-header" data-frame-header>
+              <div class="float-frame-title">
+                <span class="grip" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="1"></circle><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="17" r="1"></circle><circle cx="15" cy="7" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="17" r="1"></circle></svg>
+                </span>
+                <strong>Timeline</strong>
+                <span id="timelineSelection" class="muted">select a processed frame</span>
+              </div>
+              <div class="float-frame-controls">
+                <button type="button" class="icon-btn" data-frame-close aria-label="Close Timeline" title="Close">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
+                <button type="button" class="icon-btn" data-frame-minimize aria-label="Minimize Timeline" title="Minimize"></button>
+              </div>
+            </div>
+            <div class="float-frame-body" data-frame-body>
+              <div id="timeline" class="timeline"><p class="timeline-empty muted help">No frames have been processed.</p></div>
+            </div>
+          </article>
+          <article class="float-frame" id="evidenceFrame" data-frame-anchor="br" data-frame-width="260" data-frame-height="200">
+            <div class="float-frame-header" data-frame-header>
+              <div class="float-frame-title">
+                <span class="grip" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="1"></circle><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="17" r="1"></circle><circle cx="15" cy="7" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="17" r="1"></circle></svg>
+                </span>
+                <strong>Evidence</strong>
+                <span id="evidenceSummary" class="muted">no output</span>
+              </div>
+              <div class="float-frame-controls">
+                <button type="button" class="icon-btn" data-frame-close aria-label="Close Evidence" title="Close">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
+                <button type="button" class="icon-btn" data-frame-minimize aria-label="Minimize Evidence" title="Minimize"></button>
+              </div>
+            </div>
+            <div class="float-frame-body" data-frame-body>
+              <div class="metric-grid">
+                <div class="metric"><div class="label">Plugin runs</div><div id="pluginRuns" class="value">—</div></div>
+                <div class="metric"><div class="label">Things / signals</div><div id="evidenceCounts" class="value">—</div></div>
+              </div>
+              <pre id="evidenceText">No perception output yet.</pre>
+            </div>
+          </article>
+  </div>
+
   <script>
     (function () {
       "use strict";
@@ -744,8 +766,9 @@
         } catch (error) {}
       }
 
-      var frameLayer = 20;
+      var frameLayer = 30;
       var floatingFrames = {};
+      var FRAME_PAD = 8;
 
       function rememberJson(key, value) {
         try { window.localStorage.setItem(key, JSON.stringify(value)); }
@@ -759,35 +782,42 @@
         } catch (error) { return null; }
       }
 
+      function viewerRect() {
+        return elements.viewerStage.getBoundingClientRect();
+      }
+
       function frameAnchorRect(root, size) {
-        var stage = elements.viewerStage;
+        var stage = viewerRect();
         var pad = 12;
         var width = size.width;
         var height = size.height;
+        var left = stage.left + pad;
+        var top = stage.top + pad;
+        var maxX = Math.max(left, stage.right - width - pad);
+        var maxY = Math.max(top, stage.bottom - height - pad);
         var anchor = root.getAttribute("data-frame-anchor") || "tl";
-        var maxX = Math.max(pad, stage.clientWidth - width - pad);
-        var maxY = Math.max(pad, stage.clientHeight - height - pad);
-        if (anchor === "tr") return { x: maxX, y: pad };
-        if (anchor === "bl") return { x: pad, y: maxY };
+        if (anchor === "tr") return { x: maxX, y: top };
+        if (anchor === "bl") return { x: left, y: maxY };
         if (anchor === "br") return { x: maxX, y: maxY };
-        return { x: pad, y: pad };
+        return { x: left, y: top };
       }
 
       function clampFrameRect(position, size, minSize) {
-        var stage = elements.viewerStage;
-        var width = Math.max(minSize.width, Math.min(size.width, stage.clientWidth - 16));
-        var height = Math.max(minSize.height, Math.min(size.height, stage.clientHeight - 16));
+        var maxW = Math.max(minSize.width, window.innerWidth - FRAME_PAD * 2);
+        var maxH = Math.max(minSize.height, window.innerHeight - FRAME_PAD * 2);
+        var width = Math.max(minSize.width, Math.min(size.width, maxW));
+        var height = Math.max(minSize.height, Math.min(size.height, maxH));
         return {
           position: {
-            x: Math.min(Math.max(8, position.x), Math.max(8, stage.clientWidth - width - 8)),
-            y: Math.min(Math.max(8, position.y), Math.max(8, stage.clientHeight - height - 8))
+            x: Math.min(Math.max(FRAME_PAD, position.x), Math.max(FRAME_PAD, window.innerWidth - width - FRAME_PAD)),
+            y: Math.min(Math.max(FRAME_PAD, position.y), Math.max(FRAME_PAD, window.innerHeight - height - FRAME_PAD))
           },
           size: { width: width, height: height }
         };
       }
 
       function bindFloatingFrame(root) {
-        var storageKey = "automa-workbench-frame-" + root.id;
+        var storageKey = "automa-workbench-vframe-" + root.id;
         var minSize = { width: 220, height: 140 };
         var defaultSize = {
           width: Number(root.getAttribute("data-frame-width")) || 260,
@@ -797,11 +827,12 @@
         var state = {
           position: stored && stored.position ? stored.position : frameAnchorRect(root, defaultSize),
           size: stored && stored.size ? stored.size : defaultSize,
-          minimized: !!(stored && stored.minimized)
+          minimized: !!(stored && stored.minimized),
+          closed: !!(stored && stored.closed)
         };
         var header = root.querySelector("[data-frame-header]");
-        var body = root.querySelector("[data-frame-body]");
         var minimize = root.querySelector("[data-frame-minimize]");
+        var closeButton = root.querySelector("[data-frame-close]");
         var drag = null;
         var resize = null;
 
@@ -815,6 +846,8 @@
           root.style.top = state.position.y + "px";
           root.style.width = state.size.width + "px";
           root.style.height = state.minimized ? "auto" : state.size.height + "px";
+          root.hidden = !!state.closed;
+          root.setAttribute("data-closed", state.closed ? "true" : "false");
           root.setAttribute("data-minimized", state.minimized ? "true" : "false");
           if (minimize) {
             minimize.textContent = "";
@@ -906,7 +939,7 @@
         });
 
         header.addEventListener("pointerdown", function (event) {
-          if (event.target.closest("[data-frame-minimize], button, a, input, select")) return;
+          if (event.target.closest("[data-frame-minimize], [data-frame-close], button, a, input, select")) return;
           event.preventDefault();
           raise();
           drag = {
@@ -927,7 +960,18 @@
           });
         }
 
+        if (closeButton) {
+          closeButton.addEventListener("click", function (event) {
+            event.preventDefault();
+            event.stopPropagation();
+            state.closed = true;
+            apply();
+            syncRecall();
+          });
+        }
+
         function restore() {
+          state.closed = false;
           state.minimized = false;
           raise();
           apply();
@@ -935,7 +979,11 @@
         }
 
         apply();
-        floatingFrames[root.id] = { restore: restore, isMinimized: function () { return state.minimized; } };
+        floatingFrames[root.id] = {
+          restore: restore,
+          isMinimized: function () { return state.minimized; },
+          isClosed: function () { return state.closed; }
+        };
         window.addEventListener("resize", apply);
         if (!stored) {
           window.requestAnimationFrame(function () {
@@ -948,7 +996,8 @@
       function syncRecall() {
         Array.prototype.forEach.call(document.querySelectorAll("[data-recall]"), function (button) {
           var frame = floatingFrames[button.getAttribute("data-recall")];
-          button.setAttribute("aria-pressed", frame && !frame.isMinimized() ? "true" : "false");
+          var open = frame && !frame.isClosed() && !frame.isMinimized();
+          button.setAttribute("aria-pressed", open ? "true" : "false");
         });
       }
 

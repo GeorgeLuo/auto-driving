@@ -9,6 +9,8 @@
 | Accepted merge | 09687f19acd61b286378fb65f3db915ce5e50d51 |
 | Accepted amendment | [PR #179](https://github.com/GeorgeLuo/auto-driving/pull/179), plugin-directory discovery and active selection |
 | Amendment merge | 1189002447802442e857da8f5d9c2663ff85b86d |
+| Live-selection amendment | [PR #181](https://github.com/GeorgeLuo/auto-driving/pull/181), frame-boundary plugin replacement |
+| Live-selection merge | 5cf51585ac7951ea023a2a86fed786913daf626f |
 | Implementation branch | m008/perception-memory-workbench |
 | Assessment status | Implementation slice ready for focused review; operator POC acceptance remains separate |
 
@@ -96,10 +98,11 @@ presentation client: it does not read the source directory, decode images,
 derive observations, mutate memory, or invoke a command.
 
 Plugin configuration is declarative and server-owned. State records the
-canonical plugin root, catalog digest, pending active IDs, and immutable
-run-specific IDs/order. A running or paused replay rejects configuration
-changes; a terminal state retains its run selection while allowing a separate
-next-run selection.
+canonical plugin root, catalog digest, pending active IDs, and run-specific
+IDs/order. Root discovery and refresh remain unavailable during replay; a
+valid selection change is serialized at a frame boundary, updates the next
+frame's mapper, and leaves completed-frame provenance unchanged. A terminal
+state retains its run selection while allowing a separate next-run selection.
 
 ## POC-completion envelope
 
@@ -108,7 +111,7 @@ next-run selection.
 | validate and set_cadence actions | Small support actions make source failure and controlled replay usable through the same page/CLI-owned runner; they do not alter fixed pipeline semantics | Admitted under the four proposal envelope conditions |
 | cancel action | Gives a bounded recovery path for a long-lived local server and ensures isolated stage cleanup | Admitted under the four proposal envelope conditions |
 | --max-frames, --host, and --port CLI options | Expose source and loopback safety limits already enforced by the runner; they do not add a source or semantic choice | Admitted under the four proposal envelope conditions |
-| Recursive manifest catalog, readiness reasons, and active-plugin toggles | The amended operator journey requires inspecting every package under a declared root and comparing at least two valid selections through the same server-owned replay | Admitted by accepted amendment #179; unsupported isolated runtimes remain visible as unavailable |
+| Recursive manifest catalog, readiness reasons, and active-plugin toggles | The amended operator journey requires inspecting every package under a declared root and comparing at least two valid selections through the same server-owned replay | Admitted by accepted amendments #179 and #181; unsupported isolated runtimes remain visible as unavailable, and live changes apply at frame boundaries |
 | Clickable frame selection with on-demand frame detail and a compact sticky header | Hands-on use found that timeline rows could not inspect an earlier processed frame. Selection fetches the server-owned frame, perception, observation, and memory detail only when requested; simple re-rendering avoids a second client-side history model, and terminal polling slows while the page remains available | Admitted under the four proposal envelope conditions |
 | Video, live ingestion, arbitrary algorithm selection, candidate comparison, recording, simulator/vehicle control, or external hosting | Each changes source, semantic, authority, or operator goal | Deferred to a later proposal; no follow-up in this implementation unit |
 
@@ -136,8 +139,8 @@ Focused deterministic coverage is in
 - compact timeline state and on-demand per-frame detail used for historical
   frame selection;
 - recursive plugin-manifest discovery, deterministic catalog digest, unavailable
-  reasons, declarative selection validation/locking, and selected plugin
-  provenance through the CLI, API, and page;
+  reasons, declarative selection validation, frame-boundary replacement, and
+  selected plugin provenance through the CLI, API, and page;
 - the public automa vehicles workbench replay `--json` entry point and human
   recovery/cleanup lines.
 

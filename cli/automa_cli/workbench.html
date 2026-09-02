@@ -342,7 +342,7 @@
               <p class="muted help">The packaged lightweight catalog will appear here.</p>
             </div>
             <div id="pluginDigest" class="digest muted"></div>
-            <p class="help">Only ready, server-discovered IDs can be selected. The selected set is locked for each replay.</p>
+            <p class="help">Only ready, server-discovered IDs can be selected. Changes apply at the next frame boundary; the plugin root stays locked during replay.</p>
           </div>
         </section>
 
@@ -522,7 +522,9 @@
           pluginSelectionDraftDigest = catalog ? catalog.digest : null;
         }
         var active = pluginSelectionDraft || stateActive;
-        var locked = state && (state.phase === "running" || state.phase === "paused");
+        var allowed = state && state.controls && state.controls.allowed_actions
+          ? state.controls.allowed_actions : [];
+        var selectionAllowed = !actionInFlight && allowed.indexOf("select_plugins") >= 0;
         elements.pluginCatalog.textContent = "";
         if (!plugins.length) {
           var empty = document.createElement("p");
@@ -539,7 +541,7 @@
           checkbox.type = "checkbox";
           checkbox.setAttribute("data-plugin-id", text(plugin.id, ""));
           checkbox.checked = active.indexOf(plugin.id) >= 0;
-          checkbox.disabled = !plugin.ready || locked || actionInFlight;
+          checkbox.disabled = !plugin.ready || !selectionAllowed;
           checkbox.addEventListener("change", function () {
             pluginSelectionDraft = selectedPluginIdsFromView();
             pluginSelectionDraftDigest = catalog ? catalog.digest : null;
@@ -584,10 +586,11 @@
         setButton("cancelButton", !actionInFlight && allowed.indexOf("cancel") >= 0);
         setButton("resetButton", !actionInFlight && allowed.indexOf("reset") >= 0);
         elements.cadence.disabled = !state || actionInFlight;
-        var configAllowed = !actionInFlight && allowed.indexOf("select_plugins") >= 0;
-        setButton("refreshPluginsButton", !actionInFlight && allowed.indexOf("refresh_plugins") >= 0);
-        setButton("selectPluginsButton", configAllowed);
-        elements.pluginDir.disabled = !state || actionInFlight || !configAllowed;
+        var selectionAllowed = !actionInFlight && allowed.indexOf("select_plugins") >= 0;
+        var rootConfigAllowed = !actionInFlight && allowed.indexOf("refresh_plugins") >= 0;
+        setButton("refreshPluginsButton", rootConfigAllowed);
+        setButton("selectPluginsButton", selectionAllowed);
+        elements.pluginDir.disabled = !state || actionInFlight || !rootConfigAllowed;
         renderPlugins();
       }
 

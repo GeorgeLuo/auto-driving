@@ -122,9 +122,9 @@ def _state_action_set(phase: str) -> list[str]:
     if phase == "idle":
         return ["validate", "refresh_plugins", "select_plugins", "start", "reset"]
     if phase == "running":
-        return ["pause", "cancel", "reset", "set_cadence"]
+        return ["pause", "cancel", "reset", "set_cadence", "select_plugins"]
     if phase == "paused":
-        return ["resume", "step", "cancel", "reset", "set_cadence"]
+        return ["resume", "step", "cancel", "reset", "set_cadence", "select_plugins"]
     if phase in {"completed", "failed", "cancelled"}:
         return ["validate", "refresh_plugins", "select_plugins", "start", "reset"]
     return []
@@ -365,11 +365,7 @@ class ImageReplayRunner:
                         max_frames=self.max_frames,
                         max_image_bytes=self.max_image_bytes,
                     )
-                    mapper = (
-                        self.mapper_factory()
-                        if self._mapper_factory_explicit
-                        else self._plugin_catalog.build_mapper(selected_plugin_ids)
-                    )
+                    mapper = self._build_mapper_for_selection(selected_plugin_ids)
                     memory_stage = self.memory_stage_factory()
                 except Exception as exc:  # noqa: BLE001 - startup isolation boundary
                     self._set_failure_locked(
@@ -632,11 +628,7 @@ class ImageReplayRunner:
                 boundary="input",
             )
         with self._lock:
-            if self._state["phase"] in {"running", "paused"}:
-                raise ReplayActionError(
-                    "active plugin selection cannot change while replay is active",
-                    boundary="lifecycle",
-                )
+            active_phase = self._state["phase"] in {"running", "paused"}
             try:
                 normalized = self._plugin_catalog.normalize_selection(
                     active_plugin_ids,
@@ -651,12 +643,59 @@ class ImageReplayRunner:
                     boundary="plugin_catalog",
                     state=self.state(),
                 ) from exc
+
+            # The action lock serializes this boundary with frame processing.
+            # Build and reset before publishing the new mapper so a failed
+            # instantiation leaves the effective selection and old mapper
+            # untouched.
+            if active_phase and (
+                normalized != self._active_plugin_ids or self._mapper is None
+            ):
+                next_mapper = None
+                previous_mapper = self._mapper
+                try:
+                    next_mapper = self._build_mapper_for_selection(normalized)
+                    if previous_mapper is not None:
+                        previous_mapper.reset()
+                except Exception as exc:  # noqa: BLE001 - selection boundary
+                    if next_mapper is not None:
+                        try:
+                            next_mapper.reset()
+                        except Exception:
+                            pass
+                    message = str(exc)
+                    self._state["failure"] = {
+                        "message": message,
+                        "boundary": "plugin_catalog",
+                    }
+                    self._state["failure_boundary"] = "plugin_catalog"
+                    raise ReplayActionError(
+                        message,
+                        status_code=422,
+                        boundary="plugin_catalog",
+                        state=self.state(),
+                    ) from exc
+                self._mapper = next_mapper
+
             self._active_plugin_ids = normalized
             self._apply_plugin_configuration_locked()
+            if active_phase:
+                self._state["run_active_plugin_ids"] = list(normalized)
+                self._state["run_plugin_order"] = list(normalized)
+                pipeline = self._state.get("machine_detail", {}).get("pipeline", {})
+                pipeline["run_active_plugin_ids"] = list(normalized)
             self._state["failure"] = None
             self._state["failure_boundary"] = None
             self._record_action_locked("select_plugins")
             return copy.deepcopy(self._state)
+
+    def _build_mapper_for_selection(
+        self,
+        selected_plugin_ids: tuple[str, ...],
+    ) -> Any:
+        if self._mapper_factory_explicit:
+            return self.mapper_factory()
+        return self._plugin_catalog.build_mapper(selected_plugin_ids)
 
     def _pause(self) -> dict[str, Any]:
         with self._condition:

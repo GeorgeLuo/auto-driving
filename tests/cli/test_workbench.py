@@ -182,10 +182,10 @@ class WorkbenchTests(unittest.TestCase):
             "lightweight_observer",
         )
 
-    def test_explicit_catalog_requires_selection_and_locks_active_run(self) -> None:
+    def test_explicit_catalog_requires_selection_and_allows_live_replacement(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)
-            _make_images(root, 2)
+            _make_images(root, 3)
             runner = ImageReplayRunner(
                 root,
                 plugin_dir=Path("lab/plugins/perception"),
@@ -204,12 +204,37 @@ class WorkbenchTests(unittest.TestCase):
             started = runner.start()
             run_id = started["run_id"]
             _wait_until(lambda: len(runner.state()["timeline"]) >= 1)
+            selected = runner.dispatch(
+                "select_plugins",
+                run_id=run_id,
+                active_plugin_ids=["floor_continuity"],
+            )
+            self.assertEqual(selected["phase"], "running")
+            self.assertEqual(selected["run_active_plugin_ids"], ["floor_continuity"])
+            paused = runner.dispatch("pause", run_id=run_id)
+            self.assertEqual(paused["phase"], "paused")
+            first_detail = runner.frame_detail(
+                paused["timeline"][0]["frame"]["frame_id"], run_id=run_id
+            )
+            self.assertEqual(
+                [run["plugin_id"] for run in first_detail["perception"]["plugin_runs"]],
+                ["classical_regions"],
+            )
             with self.assertRaises(ReplayActionError):
                 runner.dispatch(
                     "select_plugins",
                     run_id=run_id,
-                    active_plugin_ids=["floor_continuity"],
+                    active_plugin_ids=["unknown"],
                 )
+            self.assertEqual(runner.state()["run_active_plugin_ids"], ["floor_continuity"])
+            stepped = runner.dispatch("step", run_id=run_id)
+            second_detail = runner.frame_detail(
+                stepped["timeline"][1]["frame"]["frame_id"], run_id=run_id
+            )
+            self.assertEqual(
+                [run["plugin_id"] for run in second_detail["perception"]["plugin_runs"]],
+                ["floor_continuity"],
+            )
             runner.dispatch("cancel", run_id=run_id)
 
     def test_catalog_rejects_unavailable_and_duplicate_selection(self) -> None:
@@ -541,6 +566,7 @@ class WorkbenchTests(unittest.TestCase):
             html = urlopen(base, timeout=2).read().decode("utf-8")
             self.assertIn('id="pluginDir"', html)
             self.assertIn('id="selectPluginsButton"', html)
+            self.assertIn("Changes apply at the next frame boundary", html)
             plugin_root = str(Path("lab/plugins/perception").resolve())
 
             def post(payload: dict[str, object]) -> dict[str, object]:
@@ -584,6 +610,76 @@ class WorkbenchTests(unittest.TestCase):
             [item["plugin_id"] for item in state["perception"]["plugin_runs"]],
             ["classical_regions"],
         )
+
+    def test_loopback_api_allows_live_plugin_selection_at_frame_boundary(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            _make_images(root, 3)
+            runner = ImageReplayRunner(cadence_ms=5000)
+            server = WorkbenchServer(runner).start()
+            self.addCleanup(server.stop)
+            base = server.url
+            self.assertIsNotNone(base)
+            plugin_root = str(Path("lab/plugins/perception").resolve())
+
+            def post(payload: dict[str, object]) -> dict[str, object]:
+                body = json.dumps(payload).encode("utf-8")
+                return json.loads(
+                    urlopen(
+                        Request(
+                            base + "api/action",
+                            data=body,
+                            headers={"Content-Type": "application/json"},
+                            method="POST",
+                        ),
+                        timeout=10,
+                    ).read()
+                )
+
+            post({"action": "refresh_plugins", "plugin_dir": plugin_root})
+            post(
+                {
+                    "action": "select_plugins",
+                    "active_plugin_ids": ["classical_regions"],
+                }
+            )
+            started = post(
+                {
+                    "action": "start",
+                    "source_dir": str(root),
+                    "plugin_dir": plugin_root,
+                    "active_plugin_ids": ["classical_regions"],
+                    "cadence_ms": 5000,
+                }
+            )
+            run_id = started["state"]["run_id"]
+            _wait_until(lambda: len(runner.state()["timeline"]) >= 1)
+            selected = post(
+                {
+                    "action": "select_plugins",
+                    "run_id": run_id,
+                    "active_plugin_ids": ["floor_continuity"],
+                }
+            )
+            self.assertEqual(selected["state"]["run_active_plugin_ids"], ["floor_continuity"])
+            paused = post({"action": "pause", "run_id": run_id})
+            self.assertEqual(paused["state"]["phase"], "paused")
+            stepped = post({"action": "step", "run_id": run_id})
+            first_id = stepped["state"]["timeline"][0]["frame"]["frame_id"]
+            second_id = stepped["state"]["timeline"][1]["frame"]["frame_id"]
+            first_detail = runner.frame_detail(first_id, run_id=run_id)
+            second_detail = runner.frame_detail(second_id, run_id=run_id)
+
+        self.assertEqual(
+            [run["plugin_id"] for run in first_detail["perception"]["plugin_runs"]],
+            ["classical_regions"],
+        )
+        self.assertEqual(
+            [run["plugin_id"] for run in second_detail["perception"]["plugin_runs"]],
+            ["floor_continuity"],
+        )
+        self.assertEqual(stepped["state"]["phase"], "paused")
+        post({"action": "cancel", "run_id": run_id})
 
     def test_loopback_api_persists_after_terminal_state_and_rejects_raw_argv(self) -> None:
         with TemporaryDirectory() as directory:

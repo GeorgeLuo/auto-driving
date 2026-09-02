@@ -21,11 +21,13 @@ from autonomy.perception import (
 )
 from autonomy.decision.memory import MemoryBounds, MemorySnapshot
 from cli.automa_cli.workbench import (
+    PluginCatalogError,
     ImageReplayRunner,
     ReplayActionError,
     SourceValidationError,
     WorkbenchServer,
     normalize_image_directory,
+    discover_plugin_catalog,
 )
 from tests.support.cli_runner import run_automa
 
@@ -134,6 +136,89 @@ def _wait_until(predicate, timeout: float = 3.0) -> None:
 
 
 class WorkbenchTests(unittest.TestCase):
+    def test_manifest_catalog_is_recursive_deterministic_and_explicit_about_readiness(self) -> None:
+        catalog = discover_plugin_catalog(Path("lab/plugins/perception"))
+        self.assertEqual(
+            [item.plugin_id for item in catalog.plugins],
+            ["classical_regions", "fastsam", "floor_continuity", "floor_continuity_capture"],
+        )
+        self.assertTrue(catalog.valid)
+        self.assertTrue(catalog.plugins[0].ready)
+        self.assertEqual(catalog.plugins[0].inputs[0]["name"], "frame")
+        self.assertEqual(
+            catalog.plugins[0].output["schema"],
+            "perception_text_v2",
+        )
+        self.assertFalse(catalog.plugins[1].ready)
+        self.assertIn("isolated runtime", catalog.plugins[1].unavailable_reason or "")
+        self.assertEqual(catalog.digest, discover_plugin_catalog(Path("lab/plugins/perception")).digest)
+        self.assertEqual(
+            catalog.normalize_selection(["floor_continuity", "classical_regions"]),
+            ("classical_regions", "floor_continuity"),
+        )
+
+    def test_explicit_catalog_selection_runs_only_selected_plugins(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            _make_images(root, 1)
+            runner = ImageReplayRunner(
+                root,
+                plugin_dir=Path("lab/plugins/perception"),
+                active_plugin_ids=["classical_regions"],
+                cadence_ms=0,
+            )
+            started = runner.start()
+            state = runner.wait(10) if started["phase"] == "running" else started
+
+        self.assertEqual(state["phase"], "completed")
+        self.assertEqual(state["run_active_plugin_ids"], ["classical_regions"])
+        self.assertEqual(state["active_plugin_ids"], ["classical_regions"])
+        self.assertEqual(
+            [run["plugin_id"] for run in state["perception"]["plugin_runs"]],
+            ["classical_regions"],
+        )
+        self.assertNotEqual(
+            state["machine_detail"]["pipeline"]["perception_algorithm"],
+            "lightweight_observer",
+        )
+
+    def test_explicit_catalog_requires_selection_and_locks_active_run(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            _make_images(root, 2)
+            runner = ImageReplayRunner(
+                root,
+                plugin_dir=Path("lab/plugins/perception"),
+                cadence_ms=1000,
+            )
+            failed = runner.start()
+            self.assertEqual(failed["phase"], "failed")
+            self.assertEqual(failed["failure_boundary"], "plugin_catalog")
+            self.assertIn("requires at least one", failed["failure"]["message"])
+
+            runner.dispatch(
+                "select_plugins",
+                run_id=failed["run_id"],
+                active_plugin_ids=["classical_regions"],
+            )
+            started = runner.start()
+            run_id = started["run_id"]
+            _wait_until(lambda: len(runner.state()["timeline"]) >= 1)
+            with self.assertRaises(ReplayActionError):
+                runner.dispatch(
+                    "select_plugins",
+                    run_id=run_id,
+                    active_plugin_ids=["floor_continuity"],
+                )
+            runner.dispatch("cancel", run_id=run_id)
+
+    def test_catalog_rejects_unavailable_and_duplicate_selection(self) -> None:
+        catalog = discover_plugin_catalog(Path("lab/plugins/perception"))
+        with self.assertRaises(PluginCatalogError):
+            catalog.normalize_selection(["fastsam"])
+        with self.assertRaises(PluginCatalogError):
+            catalog.normalize_selection(["classical_regions", "classical_regions"])
+
     def test_directory_adapter_honors_manifest_order_and_absence(self) -> None:
         with TemporaryDirectory() as directory:
             workspace = Path(directory)
@@ -442,6 +527,63 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(restarted["phase"], "running")
         self.assertEqual(completed_again["phase"], "completed")
         self.assertEqual(completed_again["progress"]["completed"], 3)
+
+    def test_loopback_api_exposes_and_applies_plugin_selection(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            _make_images(root, 1)
+            runner = ImageReplayRunner(cadence_ms=0)
+            server = WorkbenchServer(runner).start()
+            self.addCleanup(server.stop)
+            base = server.url
+            self.assertIsNotNone(base)
+
+            html = urlopen(base, timeout=2).read().decode("utf-8")
+            self.assertIn('id="pluginDir"', html)
+            self.assertIn('id="selectPluginsButton"', html)
+            plugin_root = str(Path("lab/plugins/perception").resolve())
+
+            def post(payload: dict[str, object]) -> dict[str, object]:
+                body = json.dumps(payload).encode("utf-8")
+                return json.loads(
+                    urlopen(
+                        Request(
+                            base + "api/action",
+                            data=body,
+                            headers={"Content-Type": "application/json"},
+                            method="POST",
+                        ),
+                        timeout=2,
+                    ).read()
+                )
+
+            inspected = post({"action": "refresh_plugins", "plugin_dir": plugin_root})
+            catalog = inspected["state"]["plugin_catalog"]
+            self.assertEqual(
+                [item["id"] for item in catalog["plugins"]],
+                ["classical_regions", "fastsam", "floor_continuity", "floor_continuity_capture"],
+            )
+            selected = post(
+                {"action": "select_plugins", "active_plugin_ids": ["classical_regions"]}
+            )
+            self.assertEqual(selected["state"]["active_plugin_ids"], ["classical_regions"])
+            started = post(
+                {
+                    "action": "start",
+                    "source_dir": str(root),
+                    "cadence_ms": 0,
+                    "plugin_dir": plugin_root,
+                    "active_plugin_ids": ["classical_regions"],
+                }
+            )
+            state = runner.wait(5)
+
+        self.assertEqual(started["state"]["run_active_plugin_ids"], ["classical_regions"])
+        self.assertEqual(state["phase"], "completed")
+        self.assertEqual(
+            [item["plugin_id"] for item in state["perception"]["plugin_runs"]],
+            ["classical_regions"],
+        )
 
     def test_loopback_api_persists_after_terminal_state_and_rejects_raw_argv(self) -> None:
         with TemporaryDirectory() as directory:

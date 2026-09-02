@@ -24,6 +24,13 @@ from .workbench_contract import (
     WORKBENCH_SEQUENCE_ID,
 )
 from .workbench_runner import ImageReplayRunner
+from .workbench_plugins import (
+    PluginCatalog,
+    PluginCatalogError,
+    build_plugin_catalog,
+    discover_plugin_catalog,
+    packaged_plugin_catalog,
+)
 from .workbench_server import WorkbenchServer
 from .workbench_source import (
     ImageFeed,
@@ -38,6 +45,8 @@ from .workbench_source import (
 def run_workbench_replay(
     source_dir: str | os.PathLike[str],
     *,
+    plugin_dir: str | os.PathLike[str] | None = None,
+    active_plugin_ids: list[str] | tuple[str, ...] | None = None,
     cadence_ms: int = WORKBENCH_DEFAULT_CADENCE_MS,
     max_frames: int = WORKBENCH_DEFAULT_MAX_FRAMES,
     host: str = WORKBENCH_HOST,
@@ -59,6 +68,8 @@ def run_workbench_replay(
     try:
         runner = ImageReplayRunner(
             source_dir,
+            plugin_dir=plugin_dir,
+            active_plugin_ids=active_plugin_ids,
             cadence_ms=cadence_ms,
             max_frames=max_frames,
         )
@@ -126,12 +137,18 @@ def _format_workbench_status(
 ) -> str:
     source = state.get("source") or {}
     progress = state.get("progress") or {}
+    active_plugins = state.get("run_active_plugin_ids") or state.get("active_plugin_ids") or []
+    active_plugins_text = ", ".join(str(item) for item in active_plugins) or "(none)"
     lines = [
         "automa perception-memory workbench",
         f"phase: {state.get('phase')}",
         f"sequence: {state.get('sequence_id')}",
         f"run_id: {state.get('run_id') or '(none)'}",
         f"source: {source.get('source_path') or source.get('path') or '(none)'}",
+        f"plugin_dir: {state.get('plugin_dir') or '(packaged default)'}",
+        f"active_plugins: {active_plugins_text}",
+        f"plugin_order: {active_plugins_text}",
+        f"catalog_digest: {state.get('run_catalog_digest') or state.get('catalog_digest') or '(none)'}",
         f"progress: {progress.get('completed', 0)}/{progress.get('total', 0)}",
     ]
     if server_url:
@@ -162,6 +179,8 @@ def _format_workbench_status(
 __all__ = [
     "ImageFeed",
     "ImageReplayRunner",
+    "PluginCatalog",
+    "PluginCatalogError",
     "ReplayActionError",
     "ReplayFrame",
     "SourceValidationError",
@@ -172,4 +191,7 @@ __all__ = [
     "load_image_feed",
     "normalize_image_directory",
     "run_workbench_replay",
+    "build_plugin_catalog",
+    "discover_plugin_catalog",
+    "packaged_plugin_catalog",
 ]

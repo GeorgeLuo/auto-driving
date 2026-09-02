@@ -43,6 +43,11 @@ from .workbench_contract import (
     WORKBENCH_SEQUENCE_ID,
     WORKBENCH_STATE_SCHEMA,
 )
+from .workbench_plugins import (
+    PluginCatalog,
+    PluginCatalogError,
+    discover_plugin_catalog,
+)
 from .workbench_source import (
     ImageFeed,
     ReplayFrame,
@@ -115,13 +120,13 @@ def _safe_status(value: Any) -> str:
 
 def _state_action_set(phase: str) -> list[str]:
     if phase == "idle":
-        return ["validate", "start", "reset"]
+        return ["validate", "refresh_plugins", "select_plugins", "start", "reset"]
     if phase == "running":
         return ["pause", "cancel", "reset", "set_cadence"]
     if phase == "paused":
         return ["resume", "step", "cancel", "reset", "set_cadence"]
     if phase in {"completed", "failed", "cancelled"}:
-        return ["validate", "start", "reset"]
+        return ["validate", "refresh_plugins", "select_plugins", "start", "reset"]
     return []
 
 
@@ -133,6 +138,8 @@ class ImageReplayRunner:
         source_dir: str | os.PathLike[str] | None = None,
         *,
         source_root: Path | None = None,
+        plugin_dir: str | os.PathLike[str] | None = None,
+        active_plugin_ids: list[str] | tuple[str, ...] | None = None,
         cadence_ms: int = WORKBENCH_DEFAULT_CADENCE_MS,
         max_frames: int = WORKBENCH_DEFAULT_MAX_FRAMES,
         max_image_bytes: int = WORKBENCH_DEFAULT_MAX_IMAGE_BYTES,
@@ -143,9 +150,11 @@ class ImageReplayRunner:
             Path(source_root).expanduser().resolve() if source_root else None
         )
         self.source_dir = os.fspath(source_dir) if source_dir is not None else None
+        self.plugin_dir = os.fspath(plugin_dir) if plugin_dir is not None else None
         self.max_frames = int(max_frames)
         self.max_image_bytes = int(max_image_bytes)
         self.mapper_factory = mapper_factory or _default_mapper
+        self._mapper_factory_explicit = mapper_factory is not None
         self.memory_stage_factory = memory_stage_factory or _default_memory_stage
         self._lock = threading.RLock()
         self._condition = threading.Condition(self._lock)
@@ -158,6 +167,13 @@ class ImageReplayRunner:
         self._generation = 0
         self._cadence_ms = self._validate_cadence(cadence_ms)
         self._server_identity = f"workbench-{uuid.uuid4().hex[:12]}"
+        self._plugin_catalog: PluginCatalog = discover_plugin_catalog(plugin_dir)
+        self.plugin_dir = (
+            str(self._plugin_catalog.root)
+            if self._plugin_catalog.explicit_root and self._plugin_catalog.root is not None
+            else None
+        )
+        self._active_plugin_ids = self._initial_plugin_selection(active_plugin_ids)
         self._state = self._initial_state()
 
     @property
@@ -167,6 +183,58 @@ class ImageReplayRunner:
     def state(self) -> dict[str, Any]:
         with self._lock:
             return copy.deepcopy(self._state)
+
+    @property
+    def plugin_catalog(self) -> PluginCatalog:
+        with self._lock:
+            return self._plugin_catalog
+
+    def _initial_plugin_selection(
+        self,
+        active_plugin_ids: list[str] | tuple[str, ...] | None,
+    ) -> tuple[str, ...]:
+        if active_plugin_ids is None and not self._plugin_catalog.explicit_root:
+            active_plugin_ids = ("frame", "floor_plane")
+        if active_plugin_ids is None:
+            return ()
+        try:
+            return self._plugin_catalog.normalize_selection(
+                active_plugin_ids,
+                require_explicit_selection=self._plugin_catalog.explicit_root,
+            )
+        except PluginCatalogError:
+            # Keep invalid pending input visible in structured state; start and
+            # selection actions will refuse it at the catalog boundary.
+            return tuple(str(item) for item in active_plugin_ids)
+
+    def _plugin_configuration(self) -> dict[str, Any]:
+        return {
+            "plugin_dir": self.plugin_dir,
+            "catalog_digest": self._plugin_catalog.digest,
+            "active_plugin_ids": list(self._active_plugin_ids),
+            "plugin_order": list(self._active_plugin_ids),
+        }
+
+    def _apply_plugin_configuration_locked(self) -> None:
+        configuration = self._plugin_configuration()
+        self._state["plugin_dir"] = configuration["plugin_dir"]
+        self._state["catalog_digest"] = configuration["catalog_digest"]
+        self._state["active_plugin_ids"] = configuration["active_plugin_ids"]
+        self._state["plugin_order"] = configuration["plugin_order"]
+        self._state["plugin_catalog"] = self._plugin_catalog.to_dict(
+            active_ids=self._active_plugin_ids
+        )
+        self._state["machine_detail"]["pipeline"]["active_plugin_ids"] = list(
+            self._active_plugin_ids
+        )
+        self._state["machine_detail"]["pipeline"]["perception_algorithm"] = (
+            DEFAULT_PERCEPTION_ALGORITHM
+            if list(self._active_plugin_ids) == ["frame", "floor_plane"]
+            else "manifest_plugin_selection"
+        )
+        self._state["machine_detail"]["pipeline"]["catalog_digest"] = (
+            self._plugin_catalog.digest
+        )
 
     def frame_detail(
         self,
@@ -234,6 +302,7 @@ class ImageReplayRunner:
             self._history.clear()
             self.source_dir = str(feed.source_path)
             self._state = self._initial_state()
+            self._apply_plugin_configuration_locked()
             self._state["source"] = feed.to_dict()
             self._state["source_identity"] = feed.source_id
             self._state["adapter"] = feed.adapter
@@ -283,15 +352,24 @@ class ImageReplayRunner:
                 self._memory_stage = None
                 self._history.clear()
                 self._state = self._fresh_run_state(run_id)
+                self._apply_plugin_configuration_locked()
                 self._state["source"] = {"path": str(raw_source)}
                 try:
+                    selected_plugin_ids = self._plugin_catalog.normalize_selection(
+                        self._active_plugin_ids,
+                        require_explicit_selection=self._plugin_catalog.explicit_root,
+                    )
                     feed = normalize_image_directory(
                         raw_source,
                         source_root=self.source_root,
                         max_frames=self.max_frames,
                         max_image_bytes=self.max_image_bytes,
                     )
-                    mapper = self.mapper_factory()
+                    mapper = (
+                        self.mapper_factory()
+                        if self._mapper_factory_explicit
+                        else self._plugin_catalog.build_mapper(selected_plugin_ids)
+                    )
                     memory_stage = self.memory_stage_factory()
                 except Exception as exc:  # noqa: BLE001 - startup isolation boundary
                     self._set_failure_locked(
@@ -305,6 +383,12 @@ class ImageReplayRunner:
                 self.source_dir = str(feed.source_path)
                 self._mapper = mapper
                 self._memory_stage = memory_stage
+                self._state["active_plugin_ids"] = list(selected_plugin_ids)
+                self._state["plugin_order"] = list(selected_plugin_ids)
+                self._state["run_plugin_dir"] = self.plugin_dir
+                self._state["run_catalog_digest"] = self._plugin_catalog.digest
+                self._state["run_active_plugin_ids"] = list(selected_plugin_ids)
+                self._state["run_plugin_order"] = list(selected_plugin_ids)
                 self._state["source"] = feed.to_dict()
                 self._state["source_identity"] = feed.source_id
                 self._state["adapter"] = feed.adapter
@@ -341,6 +425,7 @@ class ImageReplayRunner:
                 self.source_dir = None
                 self._worker = None
                 self._state = self._initial_state()
+                self._apply_plugin_configuration_locked()
                 self._condition.notify_all()
         if worker is not None and worker is not threading.current_thread():
             worker.join(timeout=1.0)
@@ -352,6 +437,8 @@ class ImageReplayRunner:
         run_id: str | None = None,
         source_dir: str | os.PathLike[str] | None = None,
         cadence_ms: int | None = None,
+        plugin_dir: str | os.PathLike[str] | None = None,
+        active_plugin_ids: list[str] | tuple[str, ...] | None = None,
     ) -> dict[str, Any]:
         action = str(action or "").strip()
         if action not in WORKBENCH_ACTIONS:
@@ -363,6 +450,10 @@ class ImageReplayRunner:
         with self._action_lock:
             with self._lock:
                 self._check_run_id_locked(action, run_id)
+            if action in {"refresh_plugins", "inspect_plugins"}:
+                return self._refresh_plugins(plugin_dir)
+            if action in {"select_plugins", "set_plugins"}:
+                return self._select_plugins(active_plugin_ids)
             if action == "validate":
                 with self._lock:
                     if self._state["phase"] in {"running", "paused"}:
@@ -371,7 +462,22 @@ class ImageReplayRunner:
                             boundary="lifecycle",
                         )
                 try:
+                    self._configure_plugins_if_requested(plugin_dir, active_plugin_ids)
                     self.validate_source(source_dir)
+                except PluginCatalogError as exc:
+                    with self._lock:
+                        self._state["failure"] = {
+                            "message": str(exc),
+                            "boundary": "plugin_catalog",
+                        }
+                        self._state["failure_boundary"] = "plugin_catalog"
+                        self._record_action_locked(action)
+                    raise ReplayActionError(
+                        str(exc),
+                        status_code=422,
+                        boundary="plugin_catalog",
+                        state=self.state(),
+                    ) from exc
                 except SourceValidationError as exc:
                     with self._lock:
                         self._state["failure"] = {
@@ -392,6 +498,15 @@ class ImageReplayRunner:
                     self._record_action_locked(action)
                 return self.state()
             if action == "start":
+                try:
+                    self._configure_plugins_if_requested(plugin_dir, active_plugin_ids)
+                except PluginCatalogError as exc:
+                    raise ReplayActionError(
+                        str(exc),
+                        status_code=422,
+                        boundary="plugin_catalog",
+                        state=self.state(),
+                    ) from exc
                 return self.start(source_dir, cadence_ms=cadence_ms)
             if action == "set_cadence":
                 if cadence_ms is None:
@@ -422,6 +537,126 @@ class ImageReplayRunner:
             if action == "reset":
                 return self._reset()
         raise AssertionError(f"unhandled action {action}")
+
+    def _configure_plugins_if_requested(
+        self,
+        plugin_dir: str | os.PathLike[str] | None,
+        active_plugin_ids: list[str] | tuple[str, ...] | None,
+    ) -> None:
+        if plugin_dir is None and active_plugin_ids is None:
+            return
+        with self._lock:
+            if self._state["phase"] in {"running", "paused"}:
+                raise ReplayActionError(
+                    "plugin configuration cannot change while replay is active",
+                    boundary="lifecycle",
+                )
+        catalog = (
+            discover_plugin_catalog(plugin_dir)
+            if plugin_dir is not None
+            else self._plugin_catalog
+        )
+        with self._lock:
+            same_root = (
+                catalog.root_identity == self._plugin_catalog.root_identity
+                and catalog.explicit_root == self._plugin_catalog.explicit_root
+            )
+            pending_ids = (
+                tuple(active_plugin_ids)
+                if active_plugin_ids is not None
+                else self._active_plugin_ids
+            )
+            if active_plugin_ids is not None:
+                normalized = catalog.normalize_selection(
+                    pending_ids,
+                    require_explicit_selection=catalog.explicit_root,
+                )
+            elif catalog.explicit_root and not same_root:
+                normalized = ()
+            else:
+                try:
+                    normalized = catalog.normalize_selection(
+                        pending_ids,
+                        require_explicit_selection=catalog.explicit_root,
+                    )
+                except PluginCatalogError:
+                    # A refreshed catalog may have removed a previous id. Keep
+                    # the stale ids visible so the next explicit selection can
+                    # repair the configuration, but never run them.
+                    normalized = tuple(pending_ids)
+            self._plugin_catalog = catalog
+            self.plugin_dir = (
+                str(catalog.root) if catalog.explicit_root and catalog.root is not None else None
+            )
+            self._active_plugin_ids = tuple(normalized)
+            self._apply_plugin_configuration_locked()
+            if catalog.error:
+                raise PluginCatalogError(catalog.error)
+
+    def _refresh_plugins(
+        self,
+        plugin_dir: str | os.PathLike[str] | None,
+    ) -> dict[str, Any]:
+        with self._lock:
+            if self._state["phase"] in {"running", "paused"}:
+                raise ReplayActionError(
+                    "plugin catalog cannot refresh while replay is active",
+                    boundary="lifecycle",
+                )
+        if plugin_dir is None:
+            plugin_dir = self.plugin_dir
+        try:
+            self._configure_plugins_if_requested(plugin_dir, None)
+        except PluginCatalogError as exc:
+            with self._lock:
+                self._state["failure"] = {"message": str(exc), "boundary": "plugin_catalog"}
+                self._state["failure_boundary"] = "plugin_catalog"
+            raise ReplayActionError(
+                str(exc),
+                status_code=422,
+                boundary="plugin_catalog",
+                state=self.state(),
+            ) from exc
+        with self._lock:
+            self._record_action_locked("refresh_plugins")
+            return copy.deepcopy(self._state)
+
+    def _select_plugins(
+        self,
+        active_plugin_ids: list[str] | tuple[str, ...] | None,
+    ) -> dict[str, Any]:
+        if active_plugin_ids is None:
+            raise ReplayActionError(
+                "select_plugins requires active_plugin_ids",
+                status_code=400,
+                boundary="input",
+            )
+        with self._lock:
+            if self._state["phase"] in {"running", "paused"}:
+                raise ReplayActionError(
+                    "active plugin selection cannot change while replay is active",
+                    boundary="lifecycle",
+                )
+            try:
+                normalized = self._plugin_catalog.normalize_selection(
+                    active_plugin_ids,
+                    require_explicit_selection=self._plugin_catalog.explicit_root,
+                )
+            except PluginCatalogError as exc:
+                self._state["failure"] = {"message": str(exc), "boundary": "plugin_catalog"}
+                self._state["failure_boundary"] = "plugin_catalog"
+                raise ReplayActionError(
+                    str(exc),
+                    status_code=422,
+                    boundary="plugin_catalog",
+                    state=self.state(),
+                ) from exc
+            self._active_plugin_ids = normalized
+            self._apply_plugin_configuration_locked()
+            self._state["failure"] = None
+            self._state["failure_boundary"] = None
+            self._record_action_locked("select_plugins")
+            return copy.deepcopy(self._state)
 
     def _pause(self) -> dict[str, Any]:
         with self._condition:
@@ -487,6 +722,7 @@ class ImageReplayRunner:
             source_identity = self._state.get("source_identity")
             adapter = self._state.get("adapter")
             self._state = self._initial_state()
+            self._apply_plugin_configuration_locked()
             self._history.clear()
             self._feed = feed
             if feed is not None:
@@ -757,7 +993,19 @@ class ImageReplayRunner:
                 )
             return
         current = self._state.get("run_id")
-        if action in {"validate", "reset"} and current is None and run_id is None:
+        if (
+            action
+            in {
+                "validate",
+                "refresh_plugins",
+                "inspect_plugins",
+                "select_plugins",
+                "set_plugins",
+                "reset",
+            }
+            and current is None
+            and run_id is None
+        ):
             return
         if not run_id:
             raise ReplayActionError(
@@ -789,6 +1037,21 @@ class ImageReplayRunner:
         return state
 
     def _initial_state(self) -> dict[str, Any]:
+        plugin_configuration = (
+            self._plugin_configuration()
+            if hasattr(self, "_plugin_catalog") and hasattr(self, "_active_plugin_ids")
+            else {
+                "plugin_dir": None,
+                "catalog_digest": None,
+                "active_plugin_ids": [],
+                "plugin_order": [],
+            }
+        )
+        plugin_catalog = (
+            self._plugin_catalog.to_dict(active_ids=self._active_plugin_ids)
+            if hasattr(self, "_plugin_catalog") and hasattr(self, "_active_plugin_ids")
+            else None
+        )
         return {
             "schema": WORKBENCH_STATE_SCHEMA,
             "server_identity": self._server_identity,
@@ -798,11 +1061,20 @@ class ImageReplayRunner:
             "source": None,
             "source_identity": None,
             "adapter": WORKBENCH_ADAPTER,
+            "plugin_dir": plugin_configuration["plugin_dir"],
+            "catalog_digest": plugin_configuration["catalog_digest"],
+            "active_plugin_ids": plugin_configuration["active_plugin_ids"],
+            "plugin_order": plugin_configuration["plugin_order"],
+            "plugin_catalog": plugin_catalog,
+            "run_plugin_dir": None,
+            "run_catalog_digest": None,
+            "run_active_plugin_ids": [],
+            "run_plugin_order": [],
             "current_frame": None,
             "position": 0,
             "progress": {"completed": 0, "total": 0, "percent": 0.0},
             "summary": self._summary(frames_completed=0, frames_total=0),
-            "machine_detail": self._machine_detail(),
+            "machine_detail": self._machine_detail(include_run=False),
             "perception": None,
             "observation": None,
             "memory": None,
@@ -856,13 +1128,38 @@ class ImageReplayRunner:
         }
         return summary
 
-    def _machine_detail(self) -> dict[str, Any]:
+    def _machine_detail(self, *, include_run: bool = True) -> dict[str, Any]:
+        active_ids = list(getattr(self, "_active_plugin_ids", ()))
+        current_state = getattr(self, "_state", {})
+        run_active_ids = (
+            current_state.get("run_active_plugin_ids") or active_ids
+            if include_run
+            else []
+        )
+        run_catalog_digest = (
+            current_state.get("run_catalog_digest")
+            or (self._plugin_catalog.digest if hasattr(self, "_plugin_catalog") else None)
+            if include_run
+            else None
+        )
         return {
             "pipeline": {
-                "perception_algorithm": DEFAULT_PERCEPTION_ALGORITHM,
+                "perception_algorithm": (
+                    DEFAULT_PERCEPTION_ALGORITHM
+                    if active_ids == ["frame", "floor_plane"]
+                    else "manifest_plugin_selection"
+                ),
                 "memory_implementation": DEFAULT_MEMORY_IMPLEMENTATION,
                 "observation_adapter": "autonomy.decision.observation.observation_from_perception",
                 "decision_cycle": "autonomy.decision.cycle.DecisionCycle",
+                "active_plugin_ids": active_ids,
+                "catalog_digest": (
+                    self._plugin_catalog.digest
+                    if hasattr(self, "_plugin_catalog")
+                    else None
+                ),
+                "run_active_plugin_ids": list(run_active_ids),
+                "run_catalog_digest": run_catalog_digest,
             },
             "source_contract": {
                 "sequence_id": WORKBENCH_SEQUENCE_ID,

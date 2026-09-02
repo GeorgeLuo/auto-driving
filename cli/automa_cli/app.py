@@ -691,7 +691,8 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "Run the bounded M008 perception-memory workbench against an ordered "
             "local image directory. The server owns source ordering, perception, "
-            "observation, and bounded memory. Without --serve, one replay runs "
+            "observation, bounded memory, and any selected manifest-backed plugins. "
+            "Without --serve, one replay runs "
             "to a terminal state; --serve keeps the loopback page available for "
             "pause, step, reset, and another run."
         ),
@@ -699,6 +700,26 @@ def build_parser() -> argparse.ArgumentParser:
     workbench_replay.add_argument(
         "source_dir",
         help="Directory containing supported images and optional ordered manifest.",
+    )
+    workbench_replay.add_argument(
+        "--plugin-dir",
+        default=None,
+        help=(
+            "Optional directory tree containing manifest-backed perception plugins. "
+            "Without this flag the packaged lightweight catalog is used."
+        ),
+    )
+    workbench_replay.add_argument(
+        "--plugin",
+        "--active-plugin",
+        "--active-plugin-id",
+        dest="active_plugin_ids",
+        action="append",
+        default=None,
+        help=(
+            "Select one ready plugin id from --plugin-dir; repeat to select more. "
+            "An explicit plugin directory requires at least one selection."
+        ),
     )
     workbench_replay.add_argument(
         "--cadence-ms",
@@ -2007,6 +2028,8 @@ def _handle_vehicles_workbench_help(args: argparse.Namespace) -> int:
 def _handle_vehicles_workbench_replay(args: argparse.Namespace) -> int:
     result = run_workbench_replay(
         args.source_dir,
+        plugin_dir=args.plugin_dir,
+        active_plugin_ids=args.active_plugin_ids,
         cadence_ms=args.cadence_ms,
         max_frames=args.max_frames,
         host=args.host,

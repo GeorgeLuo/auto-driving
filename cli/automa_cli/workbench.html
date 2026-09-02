@@ -177,6 +177,23 @@
     .record-list button:hover:not(:disabled) { transform: none; }
     .record-list button.selected { border-color: var(--accent); background: rgba(55, 106, 94, .45); }
     .record strong { display: block; font-size: .8rem; }
+    .plugin-catalog { display: grid; gap: 8px; max-height: 310px; overflow: auto; }
+    .plugin-entry {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 8px;
+      align-items: start;
+      padding: 9px;
+      border: 1px solid rgba(52, 66, 82, .8);
+      border-radius: 9px;
+      background: rgba(10, 14, 19, .28);
+    }
+    .plugin-entry.unavailable { border-color: rgba(242, 142, 142, .35); }
+    .plugin-entry strong { display: block; font-size: .8rem; }
+    .plugin-entry small { display: block; color: var(--muted); line-height: 1.35; margin-top: 3px; }
+    .plugin-status { color: var(--accent-strong); font-size: .68rem; text-transform: uppercase; letter-spacing: .06em; }
+    .plugin-entry.unavailable .plugin-status { color: var(--danger); }
+    .digest { overflow-wrap: anywhere; font: .68rem/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
     .record pre, pre {
       white-space: pre-wrap;
       overflow-wrap: anywhere;
@@ -309,6 +326,28 @@
 
         <section class="panel">
           <div class="panel-heading">
+            <h2>Perception plugins</h2>
+            <span id="pluginSelectionSummary" class="muted">no catalog</span>
+          </div>
+          <div class="source-form">
+            <div>
+              <label for="pluginDir">Plugin directory (optional)</label>
+              <input id="pluginDir" type="text" autocomplete="off" placeholder="/path/to/plugins">
+            </div>
+            <div class="button-row">
+              <button id="refreshPluginsButton">Inspect plugins</button>
+              <button id="selectPluginsButton">Apply selection</button>
+            </div>
+            <div id="pluginCatalog" class="plugin-catalog">
+              <p class="muted help">The packaged lightweight catalog will appear here.</p>
+            </div>
+            <div id="pluginDigest" class="digest muted"></div>
+            <p class="help">Only ready, server-discovered IDs can be selected. The selected set is locked for each replay.</p>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-heading">
             <h2>Memory ledger</h2>
             <div class="panel-heading-values">
               <span id="memorySelection" class="muted">select a record</span>
@@ -332,6 +371,8 @@
           <dl class="kv">
             <dt>Sequence</dt><dd id="sequenceId">—</dd>
             <dt>Adapter</dt><dd id="adapter">—</dd>
+            <dt>Active plugins</dt><dd id="runPlugins">—</dd>
+            <dt>Catalog digest</dt><dd id="runCatalogDigest" class="digest">—</dd>
             <dt>Next action</dt><dd id="recoveryAction">—</dd>
             <dt>Side effects</dt><dd id="sideEffects">—</dd>
           </dl>
@@ -365,9 +406,10 @@
         "progressText", "progressBar", "timeline", "timelineSelection", "evidenceSummary", "pluginRuns",
         "evidenceCounts", "evidenceText", "sourceDir", "cadence", "overlayToggle",
         "validateButton", "startButton", "pauseButton", "resumeButton", "stepButton",
-        "cancelButton", "resetButton", "notice", "memorySelection", "memoryHealth", "memoryEpoch",
+        "cancelButton", "resetButton", "notice", "pluginDir", "refreshPluginsButton", "selectPluginsButton",
+        "pluginSelectionSummary", "pluginCatalog", "pluginDigest", "memorySelection", "memoryHealth", "memoryEpoch",
         "memoryCount", "memoryPolicy", "memoryRecords", "runId", "sequenceId",
-        "adapter", "recoveryAction", "sideEffects", "failurePanel", "failureText",
+        "adapter", "runPlugins", "runCatalogDigest", "recoveryAction", "sideEffects", "failurePanel", "failureText",
         "memorySelected"
       ].forEach(function (id) { elements[id] = document.getElementById(id); });
       var selectedRecordId = null;
@@ -437,8 +479,10 @@
             }
             return;
           }
-          if (action === "validate" && requestGeneration === stateRequestGeneration) {
-            elements.notice.textContent = "Source validated.";
+          if (requestGeneration === stateRequestGeneration) {
+            if (action === "validate") elements.notice.textContent = "Source and plugin configuration validated.";
+            if (action === "refresh_plugins") elements.notice.textContent = "Plugin catalog refreshed.";
+            if (action === "select_plugins") elements.notice.textContent = "Plugin selection applied.";
           }
         } catch (error) {
           if (requestGeneration === stateRequestGeneration) {
@@ -455,6 +499,65 @@
         elements[id].disabled = !allowed;
       }
 
+      function selectedPluginIdsFromView() {
+        return Array.prototype.map.call(
+          elements.pluginCatalog.querySelectorAll("input[data-plugin-id]:checked"),
+          function (input) { return input.getAttribute("data-plugin-id"); }
+        ).filter(function (value) { return value; });
+      }
+
+      function renderPlugins() {
+        var catalog = state && state.plugin_catalog;
+        var plugins = catalog && Array.isArray(catalog.plugins) ? catalog.plugins : [];
+        var active = state && Array.isArray(state.active_plugin_ids)
+          ? state.active_plugin_ids : [];
+        var locked = state && (state.phase === "running" || state.phase === "paused");
+        elements.pluginCatalog.textContent = "";
+        if (!plugins.length) {
+          var empty = document.createElement("p");
+          empty.className = "muted help";
+          empty.textContent = catalog && catalog.error
+            ? "Plugin catalog unavailable: " + catalog.error
+            : "No manifest-backed plugins found.";
+          elements.pluginCatalog.appendChild(empty);
+        }
+        plugins.forEach(function (plugin) {
+          var item = document.createElement("label");
+          item.className = "plugin-entry" + (plugin.ready ? "" : " unavailable");
+          var checkbox = document.createElement("input");
+          checkbox.type = "checkbox";
+          checkbox.setAttribute("data-plugin-id", text(plugin.id, ""));
+          checkbox.checked = active.indexOf(plugin.id) >= 0;
+          checkbox.disabled = !plugin.ready || locked || actionInFlight;
+          item.appendChild(checkbox);
+          var copy = document.createElement("span");
+          var title = document.createElement("strong");
+          title.textContent = text(plugin.name, plugin.id);
+          copy.appendChild(title);
+          var status = document.createElement("span");
+          status.className = "plugin-status";
+          status.textContent = plugin.ready ? "ready" : "unavailable";
+          copy.appendChild(status);
+          var description = document.createElement("small");
+          description.textContent = text(plugin.description, "No description.");
+          copy.appendChild(description);
+          if (!plugin.ready && plugin.unavailable_reason) {
+            var reason = document.createElement("small");
+            reason.textContent = plugin.unavailable_reason;
+            copy.appendChild(reason);
+          }
+          item.appendChild(copy);
+          elements.pluginCatalog.appendChild(item);
+        });
+        var pending = active.length;
+        var ready = plugins.filter(function (plugin) { return plugin.ready; }).length;
+        setText("pluginSelectionSummary", pending + " active · " + ready + " ready");
+        setText("pluginDigest", catalog ? "catalog " + text(catalog.digest) : "");
+        if (document.activeElement !== elements.pluginDir) {
+          elements.pluginDir.value = state && state.plugin_dir ? state.plugin_dir : "";
+        }
+      }
+
       function renderControls() {
         var allowed = state && state.controls && state.controls.allowed_actions
           ? state.controls.allowed_actions : [];
@@ -466,6 +569,11 @@
         setButton("cancelButton", !actionInFlight && allowed.indexOf("cancel") >= 0);
         setButton("resetButton", !actionInFlight && allowed.indexOf("reset") >= 0);
         elements.cadence.disabled = !state || actionInFlight;
+        var configAllowed = !actionInFlight && allowed.indexOf("select_plugins") >= 0;
+        setButton("refreshPluginsButton", !actionInFlight && allowed.indexOf("refresh_plugins") >= 0);
+        setButton("selectPluginsButton", configAllowed);
+        elements.pluginDir.disabled = !state || actionInFlight || !configAllowed;
+        renderPlugins();
       }
 
       function renderFrame() {
@@ -670,7 +778,10 @@
           elements.evidenceText.textContent = "No perception output yet.";
           return;
         }
-        setText("evidenceSummary", perception.status);
+        var pluginRunIds = Array.isArray(perception.plugin_runs)
+          ? perception.plugin_runs.map(function (run) { return run.plugin_id; })
+          : [];
+        setText("evidenceSummary", text(perception.status) + (pluginRunIds.length ? " · " + pluginRunIds.join(", ") : ""));
         setText("pluginRuns", Array.isArray(perception.plugin_runs) ? perception.plugin_runs.length : 0);
         setText("evidenceCounts", (perception.things || []).length + " / " + (perception.signals || []).length);
         elements.evidenceText.textContent = Array.isArray(perception.lines)
@@ -792,6 +903,9 @@
         setText("runId", state.run_id || "no run");
         setText("sequenceId", state.sequence_id);
         setText("adapter", state.adapter);
+        var runPlugins = state.run_active_plugin_ids || state.active_plugin_ids || [];
+        setText("runPlugins", runPlugins.length ? runPlugins.join(", ") : "(none)");
+        setText("runCatalogDigest", state.run_catalog_digest || state.catalog_digest);
         setText("recoveryAction", state.recovery_action);
         var sideEffects = state.machine_detail && state.machine_detail.side_effects;
         setText("sideEffects", sideEffects && sideEffects.observation_only ? "observation only" : "inspect state");
@@ -834,13 +948,26 @@
       }
 
       elements.validateButton.addEventListener("click", function () {
-        action("validate", { source_dir: elements.sourceDir.value });
+        var payload = { source_dir: elements.sourceDir.value };
+        if (elements.pluginDir.value.trim()) payload.plugin_dir = elements.pluginDir.value.trim();
+        action("validate", payload);
       });
       elements.startButton.addEventListener("click", function () {
-        action("start", {
+        var payload = {
           source_dir: elements.sourceDir.value,
-          cadence_ms: Number(elements.cadence.value)
-        });
+          cadence_ms: Number(elements.cadence.value),
+          active_plugin_ids: selectedPluginIdsFromView()
+        };
+        if (elements.pluginDir.value.trim()) payload.plugin_dir = elements.pluginDir.value.trim();
+        action("start", payload);
+      });
+      elements.refreshPluginsButton.addEventListener("click", function () {
+        var payload = {};
+        if (elements.pluginDir.value.trim()) payload.plugin_dir = elements.pluginDir.value.trim();
+        action("refresh_plugins", payload);
+      });
+      elements.selectPluginsButton.addEventListener("click", function () {
+        action("select_plugins", { active_plugin_ids: selectedPluginIdsFromView() });
       });
       elements.pauseButton.addEventListener("click", function () { action("pause"); });
       elements.resumeButton.addEventListener("click", function () { action("resume"); });

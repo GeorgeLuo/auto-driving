@@ -138,7 +138,14 @@ class WorkbenchServer:
                 status_code=400,
                 boundary="input",
             )
-        allowed = {"action", "run_id", "source_dir", "cadence_ms"}
+        allowed = {
+            "action",
+            "run_id",
+            "source_dir",
+            "cadence_ms",
+            "plugin_dir",
+            "active_plugin_ids",
+        }
         unknown = sorted(set(payload) - allowed)
         if unknown:
             raise ReplayActionError(
@@ -176,12 +183,31 @@ class WorkbenchServer:
                 status_code=400,
                 boundary="input",
             )
+        plugin_dir = payload.get("plugin_dir")
+        if plugin_dir is not None and not isinstance(plugin_dir, str):
+            raise ReplayActionError(
+                "plugin_dir must be a path string",
+                status_code=400,
+                boundary="input",
+            )
+        active_plugin_ids = payload.get("active_plugin_ids")
+        if active_plugin_ids is not None:
+            if not isinstance(active_plugin_ids, list) or any(
+                not isinstance(item, str) for item in active_plugin_ids
+            ):
+                raise ReplayActionError(
+                    "active_plugin_ids must be an array of strings",
+                    status_code=400,
+                    boundary="input",
+                )
         try:
             state = self.runner.dispatch(
                 action,
                 run_id=run_id,
                 source_dir=source_dir,
                 cadence_ms=cadence_ms,
+                plugin_dir=plugin_dir,
+                active_plugin_ids=active_plugin_ids,
             )
         except SourceValidationError as exc:
             raise ReplayActionError(

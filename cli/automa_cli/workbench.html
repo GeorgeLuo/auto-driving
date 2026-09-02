@@ -316,7 +316,20 @@
       margin-left: auto;
     }
     .help { font-size: 11px; line-height: 1.45; }
-    .notice { min-height: 1.1em; color: var(--muted); font-size: 11px; }
+    .notice {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 100%;
+      z-index: 1100;
+      margin: 0 0 4px;
+      min-height: 0;
+      pointer-events: none;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.35;
+    }
+    .notice:empty { display: none; }
     .notice.error { color: var(--danger); }
     .workspace-tools {
       display: flex;

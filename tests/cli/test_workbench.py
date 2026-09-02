@@ -197,6 +197,35 @@ class WorkbenchTests(unittest.TestCase):
         self.assertIn("elements.emptyState.hidden = true;", keep_last)
         self.assertNotIn("Choose an image directory", keep_last)
 
+    def test_workbench_playback_controls_do_not_rebuild_the_viewer(self) -> None:
+        html = Path("cli/automa_cli/workbench.html").read_text(encoding="utf-8")
+        self.assertIn('elements.loopToggle.addEventListener("click"', html)
+        self.assertIn('elements.overlayToggle.addEventListener("click"', html)
+        self.assertNotIn('elements.loopToggle.addEventListener("pointerdown"', html)
+        self.assertNotIn('action("set_loop"', html)
+        self.assertIn('body = { action: "set_loop", loop: on }', html)
+        self.assertIn("function playbackControlAction(name) {", html)
+        self.assertIn('name === "pause"', html)
+        self.assertIn('name === "resume"', html)
+        self.assertIn('name === "set_cadence"', html)
+        action_fn = html.split("async function action(action, extra) {", 1)[1].split(
+            "function setButton(id, allowed) {", 1
+        )[0]
+        preflight = action_fn.split("var body = { action: action };", 1)[0]
+        self.assertNotIn("renderControls();", preflight)
+        self.assertIn("skipViewer", action_fn)
+        self.assertIn("actionInFlight = false;", action_fn.split("if (payload.state")[1])
+        render_fn = html.split("function render(nextState, options) {", 1)[1].split(
+            "async function poll() {", 1
+        )[0]
+        self.assertIn("if (!options.skipViewer) {", render_fn)
+        self.assertIn("renderFrame();", render_fn)
+        controls = html.split("function renderControls() {", 1)[1].split(
+            "function renderFrame() {", 1
+        )[0]
+        self.assertNotIn("!actionInFlight && allowed.indexOf(\"start\")", controls)
+        self.assertIn('setButton("pauseButton", canPause);', controls)
+
     def test_manifest_catalog_is_recursive_deterministic_and_explicit_about_readiness(self) -> None:
         catalog = discover_plugin_catalog(Path("lab/plugins/perception"))
         self.assertEqual(

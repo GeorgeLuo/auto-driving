@@ -794,6 +794,7 @@
       var seekInFlight = false;
       var loopDraft = null;
       var pendingLoop = null;
+      var loopInFlight = false;
       [
         "sourceIdentity", "emptyState", "viewerFrame", "frameImage",
         "overlayCanvas", "viewerStage", "frameId", "frameIndex", "frameTimestamp", "perceptionStatus",
@@ -1092,16 +1093,59 @@
         elements.loopToggle.setAttribute("aria-pressed", on ? "true" : "false");
       }
 
-      function sendLoop(on) {
+      function queueLoop(on) {
+        loopDraft = on;
+        paintLoopToggle(on);
         pendingLoop = on;
-        if (!actionInFlight) flushLoop();
+        flushLoop();
       }
 
       function flushLoop() {
-        if (pendingLoop === null || actionInFlight) return;
+        if (pendingLoop === null || loopInFlight) return;
         var on = pendingLoop;
         pendingLoop = null;
-        action("set_loop", { loop: on });
+        loopInFlight = true;
+        var body = { action: "set_loop", loop: on };
+        var runId = selectedRunId("set_loop");
+        if (runId) body.run_id = runId;
+        fetch("/api/action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        }).then(function (response) {
+          return response.json().then(function (payload) {
+            return { ok: response.ok, payload: payload };
+          }, function () {
+            return { ok: response.ok, payload: null };
+          });
+        }).then(function (result) {
+          loopInFlight = false;
+          var next = result.payload && result.payload.state;
+          var controls = next && next.controls;
+          if (controls && typeof controls.loop === "boolean") {
+            if (state && state.controls) state.controls.loop = controls.loop;
+            if (loopDraft === controls.loop) loopDraft = null;
+            if (pendingLoop === null) {
+              paintLoopToggle(loopDraft !== null ? loopDraft : controls.loop);
+            }
+          }
+          if (!result.ok || (result.payload && result.payload.ok === false)) {
+            elements.notice.textContent = (result.payload && result.payload.message) || "Action was rejected.";
+            if (pendingLoop === null && controls && typeof controls.loop === "boolean") {
+              loopDraft = null;
+              paintLoopToggle(controls.loop);
+            }
+          }
+          if (pendingLoop !== null) flushLoop();
+        }).catch(function (error) {
+          loopInFlight = false;
+          elements.notice.textContent = "Workbench connection failed: " + error;
+          if (pendingLoop !== null) flushLoop();
+        });
+      }
+
+      function playbackControlAction(name) {
+        return name === "pause" || name === "resume" || name === "set_cadence";
       }
 
       function setText(id, value, fallback) {
@@ -1148,7 +1192,7 @@
         if (actionInFlight) return;
         var requestGeneration = ++stateRequestGeneration;
         actionInFlight = true;
-        renderControls();
+        var skipViewer = playbackControlAction(action);
         if (["start", "validate", "reset"].indexOf(action) >= 0) {
           clearFrameSelection();
         }
@@ -1157,7 +1201,7 @@
         var runId = selectedRunId(action);
         if (runId) body.run_id = runId;
         if (extra) Object.keys(extra).forEach(function (key) { body[key] = extra[key]; });
-        elements.notice.textContent = "";
+        if (!skipViewer) elements.notice.textContent = "";
         try {
           var response = await fetch("/api/action", {
             method: "POST",
@@ -1166,7 +1210,8 @@
           });
           var payload = await response.json();
           if (payload.state && requestGeneration === stateRequestGeneration) {
-            render(payload.state);
+            actionInFlight = false;
+            render(payload.state, { skipViewer: skipViewer });
           }
           if (!response.ok || payload.ok === false) {
             if (requestGeneration === stateRequestGeneration) {
@@ -1206,9 +1251,8 @@
           }
         } finally {
           actionInFlight = false;
-          renderControls();
-          if (pendingLoop !== null) flushLoop();
-          else schedulePoll(pollDelay());
+          if (requestGeneration === stateRequestGeneration) renderControls();
+          schedulePoll(pollDelay());
         }
       }
 
@@ -1311,9 +1355,9 @@
       function renderControls() {
         var allowed = state && state.controls && state.controls.allowed_actions
           ? state.controls.allowed_actions : [];
-        var canStart = !actionInFlight && allowed.indexOf("start") >= 0;
-        var canPause = !actionInFlight && allowed.indexOf("pause") >= 0;
-        var canResume = !actionInFlight && allowed.indexOf("resume") >= 0;
+        var canStart = allowed.indexOf("start") >= 0;
+        var canPause = allowed.indexOf("pause") >= 0;
+        var canResume = allowed.indexOf("resume") >= 0;
         setButton("startButton", canStart);
         setButton("pauseButton", canPause);
         setButton("resumeButton", canResume);
@@ -1322,10 +1366,10 @@
         elements.pauseButton.hidden = !playing;
         elements.resumeButton.hidden = !paused;
         elements.startButton.hidden = playing || paused || !canStart;
-        setButton("stepButton", !actionInFlight && allowed.indexOf("step") >= 0);
-        setButton("cancelButton", !actionInFlight && allowed.indexOf("cancel") >= 0);
-        setButton("resetButton", !actionInFlight && allowed.indexOf("reset") >= 0);
-        elements.cadence.disabled = !state || actionInFlight;
+        setButton("stepButton", allowed.indexOf("step") >= 0);
+        setButton("cancelButton", allowed.indexOf("cancel") >= 0);
+        setButton("resetButton", allowed.indexOf("reset") >= 0);
+        elements.cadence.disabled = !state;
         var selectionAllowed = !actionInFlight && allowed.indexOf("select_plugins") >= 0;
         var rootConfigAllowed = !actionInFlight && allowed.indexOf("refresh_plugins") >= 0;
         setButton("refreshPluginsButton", rootConfigAllowed);
@@ -1680,7 +1724,8 @@
         }
       }
 
-      function render(nextState) {
+      function render(nextState, options) {
+        options = options || {};
         state = nextState || state;
         if (!state) return;
         if (selectedFrameRunId && selectedFrameRunId !== state.run_id) {
@@ -1725,17 +1770,19 @@
         } else if (typeof controls.loop === "boolean") {
           paintLoopToggle(controls.loop);
         }
-        if (scrubbing) {
-          var live = state.current_frame;
-          if (live && Number(live.position) === scrubPosition) {
+        if (!options.skipViewer) {
+          if (scrubbing) {
+            var live = state.current_frame;
+            if (live && Number(live.position) === scrubPosition) {
+              renderFrame();
+            }
+          } else {
             renderFrame();
           }
-        } else {
-          renderFrame();
+          renderEvidence();
+          renderMemory();
+          renderFailure();
         }
-        renderEvidence();
-        renderMemory();
-        renderFailure();
         renderControls();
       }
 
@@ -1944,13 +1991,8 @@
       window.addEventListener("pointerup", function () {
         if (scrubbing) endScrub();
       });
-      elements.loopToggle.addEventListener("pointerdown", function (event) {
-        event.preventDefault();
-        event.stopPropagation();
-        var on = !loopEnabled();
-        loopDraft = on;
-        paintLoopToggle(on);
-        sendLoop(on);
+      elements.loopToggle.addEventListener("click", function () {
+        queueLoop(!loopEnabled());
       });
       elements.overlayToggle.addEventListener("click", function () {
         var next = elements.overlayToggle.value === "off" ? "on" : "off";

@@ -189,6 +189,13 @@ class WorkbenchTests(unittest.TestCase):
         )[1])
         self.assertIn("elements.viewerFrame.hidden = false;", image_change)
         self.assertIn("elements.emptyState.hidden = true;", image_change)
+        no_frame = render_frame.split("if (!frame) {", 1)[1].split(
+            "if (loadedImageKey !== \"\") {", 1
+        )
+        keep_last = no_frame[1].split("return;", 1)[0]
+        self.assertIn("elements.viewerFrame.hidden = false;", keep_last)
+        self.assertIn("elements.emptyState.hidden = true;", keep_last)
+        self.assertNotIn("Choose an image directory", keep_last)
 
     def test_manifest_catalog_is_recursive_deterministic_and_explicit_about_readiness(self) -> None:
         catalog = discover_plugin_catalog(Path("lab/plugins/perception"))

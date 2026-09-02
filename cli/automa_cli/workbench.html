@@ -1296,17 +1296,21 @@
       function renderFrame() {
         var frame = currentFrame();
         if (!frame) {
-          lastImageKey = "";
-          loadedImageKey = "";
-          elements.frameImage.removeAttribute("src");
-          elements.overlayCanvas.width = 1;
-          elements.overlayCanvas.height = 1;
-          elements.viewerFrame.hidden = true;
-          elements.emptyState.hidden = false;
-          elements.emptyState.textContent = "Choose an image directory and start a replay.\nThe server owns the pipeline; this page only renders its state.";
           setText("frameId", null);
           setText("frameIndex", null);
           setText("frameTimestamp", null);
+          elements.overlayCanvas.width = 1;
+          elements.overlayCanvas.height = 1;
+          if (loadedImageKey !== "") {
+            elements.viewerFrame.hidden = false;
+            elements.emptyState.hidden = true;
+            return;
+          }
+          lastImageKey = "";
+          elements.frameImage.removeAttribute("src");
+          elements.viewerFrame.hidden = true;
+          elements.emptyState.hidden = false;
+          elements.emptyState.textContent = "Choose an image directory and start a replay.\nThe server owns the pipeline; this page only renders its state.";
           return;
         }
         setText("frameId", frame.frame_id);

@@ -337,13 +337,12 @@
             </div>
             <div class="button-row">
               <button id="refreshPluginsButton">Inspect plugins</button>
-              <button id="selectPluginsButton">Apply selection</button>
             </div>
             <div id="pluginCatalog" class="plugin-catalog">
               <p class="muted help">The packaged lightweight catalog will appear here.</p>
             </div>
             <div id="pluginDigest" class="digest muted"></div>
-            <p class="help">Only ready, server-discovered IDs can be selected. Select none for raw capture without perception overlays. Changes apply at the next frame boundary; pending choices are labeled until applied, and the plugin root stays locked during replay.</p>
+            <p class="help">Only ready, server-discovered IDs can be selected. Click a ready checkbox to start or stop it at the next frame boundary. Select none for raw capture without perception overlays. The plugin root stays locked during replay.</p>
           </div>
         </section>
 
@@ -412,7 +411,7 @@
         "progressText", "progressBar", "timeline", "timelineSelection", "evidenceSummary", "pluginRuns",
         "evidenceCounts", "evidenceText", "sourceDir", "cadence", "overlayToggle",
         "validateButton", "startButton", "pauseButton", "resumeButton", "stepButton",
-        "cancelButton", "resetButton", "notice", "pluginDir", "refreshPluginsButton", "selectPluginsButton",
+        "cancelButton", "resetButton", "notice", "pluginDir", "refreshPluginsButton",
         "pluginSelectionSummary", "pluginCatalog", "pluginDigest", "memorySelection", "memoryHealth", "memoryEpoch",
         "memoryCount", "memoryPolicy", "memoryRecords", "runId", "sequenceId",
         "adapter", "runPlugins", "runCatalogDigest", "recoveryAction", "sideEffects", "failurePanel", "failureText",
@@ -486,6 +485,12 @@
           }
           if (!response.ok || payload.ok === false) {
             if (requestGeneration === stateRequestGeneration) {
+              if (action === "select_plugins") {
+                pluginSelectionDraft = null;
+                pluginSelectionDraftDigest = null;
+                pluginCatalogRenderKey = null;
+                if (payload.state) render(payload.state);
+              }
               elements.notice.textContent = payload.message || "Action was rejected.";
             }
             return;
@@ -506,6 +511,12 @@
           }
         } catch (error) {
           if (requestGeneration === stateRequestGeneration) {
+            if (action === "select_plugins") {
+              pluginSelectionDraft = null;
+              pluginSelectionDraftDigest = null;
+              pluginCatalogRenderKey = null;
+              render();
+            }
             elements.notice.textContent = "Workbench connection failed: " + error;
           }
         } finally {
@@ -527,14 +538,9 @@
       }
 
       function renderPluginSummary(catalog, plugins, active) {
-        var effective = state && Array.isArray(state.active_plugin_ids)
-          ? state.active_plugin_ids : [];
-        var pending = active.length;
-        var hasPending = pending !== effective.length || active.some(function (pluginId, index) {
-          return effective[index] !== pluginId;
-        });
+        var selected = active.length;
         var ready = plugins.filter(function (plugin) { return plugin.ready; }).length;
-        setText("pluginSelectionSummary", (hasPending ? "pending · " : "") + pending + " selected · " + ready + " ready");
+        setText("pluginSelectionSummary", selected + " active · " + ready + " ready");
         setText("pluginDigest", catalog ? "catalog " + text(catalog.digest) : "");
         if (document.activeElement !== elements.pluginDir) {
           elements.pluginDir.value = state && state.plugin_dir ? state.plugin_dir : "";
@@ -592,6 +598,10 @@
           checkbox.addEventListener("change", function () {
             pluginSelectionDraft = selectedPluginIdsFromView();
             pluginSelectionDraftDigest = catalog ? catalog.digest : null;
+            renderPluginSummary(catalog, plugins, pluginSelectionDraft);
+            action("select_plugins", {
+              active_plugin_ids: pluginSelectionDraft
+            });
           });
           item.appendChild(checkbox);
           var copy = document.createElement("span");
@@ -630,7 +640,6 @@
         var selectionAllowed = !actionInFlight && allowed.indexOf("select_plugins") >= 0;
         var rootConfigAllowed = !actionInFlight && allowed.indexOf("refresh_plugins") >= 0;
         setButton("refreshPluginsButton", rootConfigAllowed);
-        setButton("selectPluginsButton", selectionAllowed);
         elements.pluginDir.disabled = !state || actionInFlight || !rootConfigAllowed;
         renderPlugins();
       }
@@ -1046,9 +1055,6 @@
         var payload = {};
         if (elements.pluginDir.value.trim()) payload.plugin_dir = elements.pluginDir.value.trim();
         action("refresh_plugins", payload);
-      });
-      elements.selectPluginsButton.addEventListener("click", function () {
-        action("select_plugins", { active_plugin_ids: selectedPluginIdsFromView() });
       });
       elements.pauseButton.addEventListener("click", function () { action("pause"); });
       elements.resumeButton.addEventListener("click", function () { action("resume"); });

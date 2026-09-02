@@ -704,10 +704,11 @@ class WorkbenchTests(unittest.TestCase):
 
             html = urlopen(base, timeout=2).read().decode("utf-8")
             self.assertIn('id="pluginDir"', html)
-            self.assertIn('id="selectPluginsButton"', html)
-            self.assertIn("Changes apply at the next frame boundary", html)
+            self.assertNotIn('id="selectPluginsButton"', html)
+            self.assertIn("Click a ready checkbox to start or stop it at the next frame boundary.", html)
             self.assertIn("Select none for raw capture without perception overlays.", html)
             self.assertIn("state.active_plugin_ids.length === 0", html)
+            self.assertNotIn("pending", html)
             current_payload = html.split("function currentPayload(key) {", 1)[1].split(
                 "function clearFrameSelection() {", 1
             )[0]

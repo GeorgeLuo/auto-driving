@@ -98,8 +98,8 @@ presentation client: it does not read the source directory, decode images,
 derive observations, mutate memory, or invoke a command.
 
 Plugin configuration is declarative and server-owned. State records the
-canonical plugin root, catalog digest, pending active IDs, and run-specific
-IDs/order. Root discovery and refresh remain unavailable during replay; a
+canonical plugin root, catalog digest, active IDs, and run-specific IDs/order.
+Root discovery and refresh remain unavailable during replay; a
 valid selection change is serialized at a frame boundary, updates the next
 frame's mapper, and leaves completed-frame provenance unchanged. A terminal
 state retains its run selection while allowing a separate next-run selection.

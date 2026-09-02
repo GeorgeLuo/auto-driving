@@ -93,7 +93,13 @@
       overflow: auto;
       overflow-x: hidden;
     }
-    .sidebar-fill { gap: 6px; min-height: 0; }
+    .sidebar-fill { flex: 1; gap: 6px; min-height: 0; }
+    .sidebar .plugin-catalog {
+      flex: 0 1 auto;
+      max-height: none;
+      align-content: start;
+      gap: 6px;
+    }
     .truncate, #sourceIdentity, .inline-edit, .digest {
       overflow: hidden;
       text-overflow: ellipsis;
@@ -260,6 +266,14 @@
     .help { font-size: 11px; line-height: 1.45; }
     .notice { min-height: 1.1em; color: var(--muted); font-size: 11px; }
     .notice.error { color: var(--danger); }
+    .workspace-tools {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      flex: 0 0 auto;
+      min-height: 1em;
+    }
+    .workspace-tools .text-action[aria-pressed="true"] { color: var(--fg); }
     .viewer {
       flex: 1;
       min-height: 0;
@@ -269,6 +283,89 @@
       background: #050505;
       position: relative;
     }
+    .float-frame {
+      position: absolute;
+      z-index: 20;
+      display: flex;
+      flex-direction: column;
+      min-width: 220px;
+      color: #0a0a0a;
+      background: rgb(226 232 240 / .95);
+      border: 1px solid rgb(148 163 184 / .8);
+      box-shadow: 0 10px 24px rgb(0 0 0 / .28);
+      user-select: none;
+    }
+    .float-frame[data-minimized="true"] { height: auto !important; min-height: 0; }
+    .float-frame-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 6px 8px;
+      border-bottom: 1px solid rgb(148 163 184 / .6);
+      cursor: grab;
+    }
+    .float-frame[data-minimized="true"] .float-frame-header { border-bottom: 0; }
+    .float-frame-header:active { cursor: grabbing; }
+    .float-frame-title {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .float-frame-title .grip { color: rgb(0 0 0 / .55); }
+    .float-frame-title strong {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-weight: 500;
+    }
+    .float-frame-controls { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
+    .float-frame-controls .icon-btn {
+      width: 18px;
+      height: 18px;
+      color: rgb(0 0 0 / .55);
+    }
+    .float-frame-controls .icon-btn:hover:not(:disabled) {
+      background: rgb(0 0 0 / .06);
+      color: #000;
+    }
+    .float-frame-body {
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+      padding: 8px 10px 10px;
+      font-size: 12px;
+    }
+    .float-frame[data-minimized="true"] .float-frame-body,
+    .float-frame[data-minimized="true"] .float-resize { display: none; }
+    .float-frame .muted, .float-frame .kicker, .float-frame dt, .float-frame .help,
+    .float-frame .plugin-status { color: #525252; }
+    .float-frame h2, .float-frame .section-title, .float-frame .metric .value, .float-frame dd { color: #0a0a0a; }
+    .float-frame .text-action { color: #525252; }
+    .float-frame .text-action:hover:not(:disabled), .float-frame .text-action.selected { color: #0a0a0a; }
+    .float-frame pre { color: #333; max-height: none; }
+    .float-resize {
+      position: absolute;
+      z-index: 21;
+      padding: 0;
+      border: 0;
+      background: transparent;
+    }
+    .float-resize[data-dir="n"], .float-resize[data-dir="s"] { left: 12px; right: 12px; height: 6px; cursor: ns-resize; }
+    .float-resize[data-dir="e"], .float-resize[data-dir="w"] { top: 12px; bottom: 12px; width: 6px; cursor: ew-resize; }
+    .float-resize[data-dir="n"] { top: 0; }
+    .float-resize[data-dir="s"] { bottom: 0; }
+    .float-resize[data-dir="e"] { right: 0; }
+    .float-resize[data-dir="w"] { left: 0; }
+    .float-resize[data-dir="ne"], .float-resize[data-dir="nw"],
+    .float-resize[data-dir="se"], .float-resize[data-dir="sw"] { width: 12px; height: 12px; }
+    .float-resize[data-dir="ne"] { top: 0; right: 0; cursor: nesw-resize; }
+    .float-resize[data-dir="nw"] { top: 0; left: 0; cursor: nwse-resize; }
+    .float-resize[data-dir="se"] { bottom: 0; right: 0; cursor: nwse-resize; }
+    .float-resize[data-dir="sw"] { bottom: 0; left: 0; cursor: nesw-resize; }
     .viewer-frame { max-width: 100%; max-height: 100%; position: relative; line-height: 0; }
     .viewer img { display: block; max-width: 100%; max-height: 100%; object-fit: contain; }
     .viewer canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
@@ -446,78 +543,105 @@
         </label>
       </section>
 
-      <div class="sidebar-scroll">
-        <section class="sidebar-fill">
-          <div class="panel-heading">
-            <h2>Plugins</h2>
-            <span id="pluginSelectionSummary" class="muted">no catalog</span>
-            <button type="button" id="refreshPluginsButton" class="text-action">inspect</button>
-          </div>
-          <div class="field">
-            <label class="kicker" for="pluginDir">directory</label>
-            <input id="pluginDir" class="inline-edit" type="text" autocomplete="off" placeholder="/path/to/plugins">
-          </div>
-          <div id="pluginCatalog" class="plugin-catalog">
-            <p class="muted help">The packaged lightweight catalog will appear here.</p>
-          </div>
-          <div id="pluginDigest" class="digest muted"></div>
-          <details class="help-details">
-            <summary>Plugin selection</summary>
-            <p class="help">Only ready, server-discovered IDs can be selected. Click a ready checkbox to start or stop it at the next frame boundary. Select none for raw capture without perception overlays. The plugin root stays locked during replay.</p>
-          </details>
-        </section>
-
-        <section class="sidebar-fill">
-          <div class="panel-heading">
-            <h2>Memory</h2>
-            <span id="memoryHealth" class="muted">no snapshot</span>
-            <span id="memorySelection" hidden>select a record</span>
-          </div>
-          <dl class="kv">
-            <dt>Epoch</dt><dd id="memoryEpoch">—</dd>
-            <dt>Records</dt><dd id="memoryCount">—</dd>
-            <dt>Policy</dt><dd id="memoryPolicy">—</dd>
-          </dl>
-          <div id="memoryRecords" class="record-list"><p class="memory-empty muted help">No retained evidence yet.</p></div>
-          <details class="help-details">
-            <summary>Selected record</summary>
-            <pre id="memorySelected">Select a server-produced memory record to inspect its provenance.</pre>
-          </details>
-        </section>
-
-        <section class="sidebar-fill">
-          <div class="panel-heading">
-            <span class="section-title">Replay timeline</span>
-            <span id="timelineSelection" class="muted">select a processed frame</span>
-          </div>
-          <div id="timeline" class="timeline"><p class="timeline-empty muted help">No frames have been processed.</p></div>
-        </section>
-
-        <section class="sidebar-fill evidence-panel">
-          <div class="panel-heading">
-            <h2>Evidence</h2>
-            <span id="evidenceSummary" class="muted">no output</span>
-          </div>
-          <div class="metric-grid">
-            <div class="metric"><div class="label">Plugin runs</div><div id="pluginRuns" class="value">—</div></div>
-            <div class="metric"><div class="label">Things / signals</div><div id="evidenceCounts" class="value">—</div></div>
-          </div>
-          <details class="help-details">
-            <summary>Lines</summary>
-            <pre id="evidenceText">No perception output yet.</pre>
-          </details>
-        </section>
-      </div>
+      <section class="sidebar-fill">
+        <div class="panel-heading">
+          <h2>Plugins</h2>
+          <span id="pluginSelectionSummary" class="muted">no catalog</span>
+          <button type="button" id="refreshPluginsButton" class="text-action">inspect</button>
+        </div>
+        <div class="field">
+          <label class="kicker" for="pluginDir">directory</label>
+          <input id="pluginDir" class="inline-edit" type="text" autocomplete="off" placeholder="/path/to/plugins">
+        </div>
+        <div id="pluginCatalog" class="plugin-catalog">
+          <p class="muted help">The packaged lightweight catalog will appear here.</p>
+        </div>
+        <div id="pluginDigest" class="digest muted"></div>
+        <details class="help-details">
+          <summary>Plugin selection</summary>
+          <p class="help">Only ready, server-discovered IDs can be selected. Click a ready checkbox to start or stop it at the next frame boundary. Select none for raw capture without perception overlays. The plugin root stays locked during replay.</p>
+        </details>
+      </section>
     </aside>
 
     <div class="workspace">
+      <div class="workspace-tools">
+        <button type="button" class="text-action" data-recall="memoryFrame">Memory</button>
+        <button type="button" class="text-action" data-recall="timelineFrame">Timeline</button>
+        <button type="button" class="text-action" data-recall="evidenceFrame">Evidence</button>
+      </div>
       <section class="viewer-panel">
-        <div class="viewer">
+        <div class="viewer" id="viewerStage">
           <div id="emptyState" class="empty-state">Choose an image directory and start a replay.<br>The server owns the pipeline; this page only renders its state.</div>
           <div id="viewerFrame" class="viewer-frame" hidden>
             <img id="frameImage" alt="Current replay frame">
             <canvas id="overlayCanvas" aria-hidden="true"></canvas>
           </div>
+          <article class="float-frame" id="memoryFrame" data-frame-anchor="tr" data-frame-width="280" data-frame-height="260">
+            <div class="float-frame-header" data-frame-header>
+              <div class="float-frame-title">
+                <span class="grip" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="1"></circle><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="17" r="1"></circle><circle cx="15" cy="7" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="17" r="1"></circle></svg>
+                </span>
+                <strong>Memory</strong>
+                <span id="memoryHealth" class="muted">no snapshot</span>
+                <span id="memorySelection" hidden>select a record</span>
+              </div>
+              <div class="float-frame-controls">
+                <button type="button" class="icon-btn" data-frame-minimize aria-label="Minimize Memory" title="Minimize"></button>
+              </div>
+            </div>
+            <div class="float-frame-body" data-frame-body>
+              <dl class="kv">
+                <dt>Epoch</dt><dd id="memoryEpoch">—</dd>
+                <dt>Records</dt><dd id="memoryCount">—</dd>
+                <dt>Policy</dt><dd id="memoryPolicy">—</dd>
+              </dl>
+              <div id="memoryRecords" class="record-list"><p class="memory-empty muted help">No retained evidence yet.</p></div>
+              <details class="help-details">
+                <summary>Selected record</summary>
+                <pre id="memorySelected">Select a server-produced memory record to inspect its provenance.</pre>
+              </details>
+            </div>
+          </article>
+          <article class="float-frame" id="timelineFrame" data-frame-anchor="bl" data-frame-width="220" data-frame-height="240">
+            <div class="float-frame-header" data-frame-header>
+              <div class="float-frame-title">
+                <span class="grip" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="1"></circle><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="17" r="1"></circle><circle cx="15" cy="7" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="17" r="1"></circle></svg>
+                </span>
+                <strong>Timeline</strong>
+                <span id="timelineSelection" class="muted">select a processed frame</span>
+              </div>
+              <div class="float-frame-controls">
+                <button type="button" class="icon-btn" data-frame-minimize aria-label="Minimize Timeline" title="Minimize"></button>
+              </div>
+            </div>
+            <div class="float-frame-body" data-frame-body>
+              <div id="timeline" class="timeline"><p class="timeline-empty muted help">No frames have been processed.</p></div>
+            </div>
+          </article>
+          <article class="float-frame" id="evidenceFrame" data-frame-anchor="br" data-frame-width="260" data-frame-height="200">
+            <div class="float-frame-header" data-frame-header>
+              <div class="float-frame-title">
+                <span class="grip" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="1"></circle><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="17" r="1"></circle><circle cx="15" cy="7" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="17" r="1"></circle></svg>
+                </span>
+                <strong>Evidence</strong>
+                <span id="evidenceSummary" class="muted">no output</span>
+              </div>
+              <div class="float-frame-controls">
+                <button type="button" class="icon-btn" data-frame-minimize aria-label="Minimize Evidence" title="Minimize"></button>
+              </div>
+            </div>
+            <div class="float-frame-body" data-frame-body>
+              <div class="metric-grid">
+                <div class="metric"><div class="label">Plugin runs</div><div id="pluginRuns" class="value">—</div></div>
+                <div class="metric"><div class="label">Things / signals</div><div id="evidenceCounts" class="value">—</div></div>
+              </div>
+              <pre id="evidenceText">No perception output yet.</pre>
+            </div>
+          </article>
         </div>
         <div class="frame-hud">
           <span id="frameId" class="truncate">—</span>
@@ -594,7 +718,7 @@
       var cadenceDraft = false;
       [
         "sourceIdentity", "emptyState", "viewerFrame", "frameImage",
-        "overlayCanvas", "frameId", "frameIndex", "frameTimestamp", "perceptionStatus",
+        "overlayCanvas", "viewerStage", "frameId", "frameIndex", "frameTimestamp", "perceptionStatus",
         "progressText", "seekBar", "timeline", "timelineSelection", "evidenceSummary", "pluginRuns",
         "evidenceCounts", "evidenceText", "sourceDir", "cadence", "overlayToggle",
         "startButton", "pauseButton", "resumeButton", "stepButton",
@@ -618,6 +742,214 @@
           if (trimmed) window.localStorage.setItem(key, trimmed);
           else window.localStorage.removeItem(key);
         } catch (error) {}
+      }
+
+      var frameLayer = 20;
+      var floatingFrames = {};
+
+      function rememberJson(key, value) {
+        try { window.localStorage.setItem(key, JSON.stringify(value)); }
+        catch (error) {}
+      }
+
+      function rememberedJson(key) {
+        try {
+          var raw = window.localStorage.getItem(key);
+          return raw ? JSON.parse(raw) : null;
+        } catch (error) { return null; }
+      }
+
+      function frameAnchorRect(root, size) {
+        var stage = elements.viewerStage;
+        var pad = 12;
+        var width = size.width;
+        var height = size.height;
+        var anchor = root.getAttribute("data-frame-anchor") || "tl";
+        var maxX = Math.max(pad, stage.clientWidth - width - pad);
+        var maxY = Math.max(pad, stage.clientHeight - height - pad);
+        if (anchor === "tr") return { x: maxX, y: pad };
+        if (anchor === "bl") return { x: pad, y: maxY };
+        if (anchor === "br") return { x: maxX, y: maxY };
+        return { x: pad, y: pad };
+      }
+
+      function clampFrameRect(position, size, minSize) {
+        var stage = elements.viewerStage;
+        var width = Math.max(minSize.width, Math.min(size.width, stage.clientWidth - 16));
+        var height = Math.max(minSize.height, Math.min(size.height, stage.clientHeight - 16));
+        return {
+          position: {
+            x: Math.min(Math.max(8, position.x), Math.max(8, stage.clientWidth - width - 8)),
+            y: Math.min(Math.max(8, position.y), Math.max(8, stage.clientHeight - height - 8))
+          },
+          size: { width: width, height: height }
+        };
+      }
+
+      function bindFloatingFrame(root) {
+        var storageKey = "automa-workbench-frame-" + root.id;
+        var minSize = { width: 220, height: 140 };
+        var defaultSize = {
+          width: Number(root.getAttribute("data-frame-width")) || 260,
+          height: Number(root.getAttribute("data-frame-height")) || 200
+        };
+        var stored = rememberedJson(storageKey);
+        var state = {
+          position: stored && stored.position ? stored.position : frameAnchorRect(root, defaultSize),
+          size: stored && stored.size ? stored.size : defaultSize,
+          minimized: !!(stored && stored.minimized)
+        };
+        var header = root.querySelector("[data-frame-header]");
+        var body = root.querySelector("[data-frame-body]");
+        var minimize = root.querySelector("[data-frame-minimize]");
+        var drag = null;
+        var resize = null;
+
+        function persist() { rememberJson(storageKey, state); }
+
+        function apply() {
+          var rect = clampFrameRect(state.position, state.size, minSize);
+          state.position = rect.position;
+          state.size = rect.size;
+          root.style.left = state.position.x + "px";
+          root.style.top = state.position.y + "px";
+          root.style.width = state.size.width + "px";
+          root.style.height = state.minimized ? "auto" : state.size.height + "px";
+          root.setAttribute("data-minimized", state.minimized ? "true" : "false");
+          if (minimize) {
+            minimize.textContent = "";
+            var mark = document.createElement("span");
+            mark.style.display = "block";
+            if (state.minimized) {
+              mark.style.width = "10px";
+              mark.style.height = "10px";
+              mark.style.border = "1px solid currentColor";
+            } else {
+              mark.style.width = "12px";
+              mark.style.borderTop = "1px solid currentColor";
+            }
+            minimize.appendChild(mark);
+            minimize.setAttribute("aria-label", state.minimized ? "Expand" : "Minimize");
+          }
+          persist();
+        }
+
+        function raise() {
+          frameLayer += 1;
+          root.style.zIndex = String(frameLayer);
+        }
+
+        function onPointerMove(event) {
+          if (drag) {
+            state.position = {
+              x: event.clientX - drag.offsetX,
+              y: event.clientY - drag.offsetY
+            };
+            apply();
+          }
+          if (resize) {
+            var dx = event.clientX - resize.startX;
+            var dy = event.clientY - resize.startY;
+            var next = { x: resize.x, y: resize.y, width: resize.width, height: resize.height };
+            if (resize.dir.indexOf("e") >= 0) next.width = resize.width + dx;
+            if (resize.dir.indexOf("s") >= 0) next.height = resize.height + dy;
+            if (resize.dir.indexOf("w") >= 0) {
+              next.width = resize.width - dx;
+              next.x = resize.x + dx;
+            }
+            if (resize.dir.indexOf("n") >= 0) {
+              next.height = resize.height - dy;
+              next.y = resize.y + dy;
+            }
+            state.position = { x: next.x, y: next.y };
+            state.size = { width: next.width, height: next.height };
+            apply();
+          }
+        }
+
+        function onPointerUp() {
+          drag = null;
+          resize = null;
+          window.removeEventListener("pointermove", onPointerMove);
+          window.removeEventListener("pointerup", onPointerUp);
+          window.removeEventListener("pointercancel", onPointerUp);
+        }
+
+        function startPointerSession() {
+          window.addEventListener("pointermove", onPointerMove);
+          window.addEventListener("pointerup", onPointerUp);
+          window.addEventListener("pointercancel", onPointerUp);
+        }
+
+        ["n","s","e","w","ne","nw","se","sw"].forEach(function (dir) {
+          var handle = document.createElement("button");
+          handle.type = "button";
+          handle.className = "float-resize";
+          handle.setAttribute("data-dir", dir);
+          handle.setAttribute("aria-label", "Resize");
+          root.appendChild(handle);
+          handle.addEventListener("pointerdown", function (event) {
+            event.preventDefault();
+            event.stopPropagation();
+            raise();
+            resize = {
+              dir: dir,
+              startX: event.clientX,
+              startY: event.clientY,
+              x: state.position.x,
+              y: state.position.y,
+              width: state.size.width,
+              height: state.size.height
+            };
+            startPointerSession();
+          });
+        });
+
+        header.addEventListener("pointerdown", function (event) {
+          if (event.target.closest("[data-frame-minimize], button, a, input, select")) return;
+          event.preventDefault();
+          raise();
+          drag = {
+            offsetX: event.clientX - state.position.x,
+            offsetY: event.clientY - state.position.y
+          };
+          startPointerSession();
+        });
+        root.addEventListener("pointerdown", raise, true);
+
+        if (minimize) {
+          minimize.addEventListener("click", function (event) {
+            event.preventDefault();
+            event.stopPropagation();
+            state.minimized = !state.minimized;
+            apply();
+            syncRecall();
+          });
+        }
+
+        function restore() {
+          state.minimized = false;
+          raise();
+          apply();
+          syncRecall();
+        }
+
+        apply();
+        floatingFrames[root.id] = { restore: restore, isMinimized: function () { return state.minimized; } };
+        window.addEventListener("resize", apply);
+        if (!stored) {
+          window.requestAnimationFrame(function () {
+            state.position = frameAnchorRect(root, state.size);
+            apply();
+          });
+        }
+      }
+
+      function syncRecall() {
+        Array.prototype.forEach.call(document.querySelectorAll("[data-recall]"), function (button) {
+          var frame = floatingFrames[button.getAttribute("data-recall")];
+          button.setAttribute("aria-pressed", frame && !frame.isMinimized() ? "true" : "false");
+        });
       }
 
       function text(value, fallback) {
@@ -1290,6 +1622,16 @@
         pollTimer = window.setTimeout(poll, delay);
       }
 
+      ["memoryFrame", "timelineFrame", "evidenceFrame"].forEach(function (id) {
+        bindFloatingFrame(document.getElementById(id));
+      });
+      Array.prototype.forEach.call(document.querySelectorAll("[data-recall]"), function (button) {
+        button.addEventListener("click", function () {
+          var frame = floatingFrames[button.getAttribute("data-recall")];
+          if (frame) frame.restore();
+        });
+      });
+      syncRecall();
       elements.sourceDir.value = remembered(SOURCE_DIR_KEY);
       elements.pluginDir.value = remembered(PLUGIN_DIR_KEY);
       elements.sourceDir.addEventListener("change", function () {

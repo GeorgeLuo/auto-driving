@@ -590,6 +590,7 @@
               <span class="kicker">plugin dir</span>
               <input id="pluginDir" class="inline-edit" type="text" autocomplete="off" placeholder="/path/to/plugins">
             </label>
+            <button type="button" id="refreshPluginsButton" class="text-action" title="Reload the plugin catalog from this directory">refresh</button>
           </div>
         </details>
         <details class="sidebar-group" open>
@@ -598,10 +599,7 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
           </summary>
           <div class="sidebar-group-body">
-            <div class="field">
-              <span id="pluginSelectionSummary" class="muted">no catalog</span>
-              <button type="button" id="refreshPluginsButton" class="text-action">inspect</button>
-            </div>
+            <span id="pluginSelectionSummary" class="muted">no catalog</span>
             <div id="pluginCatalog" class="plugin-catalog">
               <p class="muted help">The packaged lightweight catalog will appear here.</p>
             </div>
@@ -1129,7 +1127,7 @@
           }
           if (requestGeneration === stateRequestGeneration) {
             if (action === "validate") elements.notice.textContent = "Source and plugin configuration validated.";
-            if (action === "refresh_plugins") elements.notice.textContent = "Plugin catalog refreshed.";
+            if (action === "refresh_plugins") elements.notice.textContent = "Reloaded the plugin catalog from the plugin directory.";
             if (action === "select_plugins") elements.notice.textContent = "Plugin selection applied.";
             if (action === "select_plugins") {
               clearFrameSelection();

@@ -67,21 +67,39 @@
       min-width: 0;
     }
     .sidebar {
-      gap: 16px;
+      gap: 12px;
       overflow: hidden;
       background: var(--sidebar);
       border-right: 1px solid var(--border);
-      padding: 12px;
+      padding: 12px 12px 8px;
+    }
+    .sidebar-brand {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      flex: 0 0 auto;
+    }
+    .sidebar-brand .brand {
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: -.03em;
     }
     .sidebar-scroll {
       display: flex;
       flex-direction: column;
-      gap: 16px;
+      gap: 14px;
       flex: 1;
       min-height: 0;
       overflow: auto;
+      overflow-x: hidden;
     }
-    .sidebar-fill { flex: 1; gap: 8px; min-height: 8rem; }
+    .sidebar-fill { gap: 6px; min-height: 0; }
+    .truncate, #sourceIdentity, .inline-edit, .digest {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
+    }
     .workspace {
       overflow: hidden;
       padding: 16px 16px 4px;
@@ -165,19 +183,53 @@
       color: var(--fg);
       cursor: pointer;
     }
+    .icon-btn[hidden] { display: none; }
     .icon-btn svg { width: 16px; height: 16px; display: block; }
     .icon-btn:hover:not(:disabled) { background: var(--elevate); }
     .icon-btn.outline { border-color: var(--button-outline); }
     .icon-btn:disabled { cursor: not-allowed; opacity: .38; }
+    .seek {
+      -webkit-appearance: none;
+      appearance: none;
+    }
+    .seek::-webkit-slider-runnable-track {
+      height: 2px;
+      background: hsl(0 0% 18%);
+      border-radius: 999px;
+    }
+    .seek::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 14px;
+      height: 14px;
+      margin-top: -6px;
+      border-radius: 999px;
+      border: 2px solid hsl(0 0% 55%);
+      background: var(--bg);
+    }
+    .seek::-moz-range-track {
+      height: 2px;
+      background: hsl(0 0% 18%);
+      border-radius: 999px;
+    }
+    .seek::-moz-range-thumb {
+      width: 14px;
+      height: 14px;
+      border-radius: 999px;
+      border: 2px solid hsl(0 0% 55%);
+      background: var(--bg);
+    }
     .cadence-select {
       height: 24px;
-      padding: 0 8px;
+      padding: 0 4px;
       font: inherit;
       font-size: 12px;
       color: var(--fg);
       background: transparent;
-      border: 1px solid hsl(0 0% 20% / .5);
+      border: 1px solid transparent;
       border-radius: var(--radius);
+    }
+    .cadence-select:hover, .cadence-select:focus {
+      border-color: var(--button-outline);
     }
     .cadence-select:disabled { opacity: .38; }
     .playback-meta {
@@ -202,6 +254,16 @@
     .viewer img { display: block; max-width: 100%; max-height: 100%; object-fit: contain; }
     .viewer canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
     .empty-state { padding: 24px; text-align: center; line-height: 1.55; font-size: 12px; }
+    .frame-hud {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      min-height: 1em;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .frame-hud #frameId { color: var(--fg); max-width: 36%; }
     .frame-meta, .metric-grid { display: grid; gap: 4px; }
     .frame-meta { grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 4px; }
     .frame-details { margin-top: 2px; flex: 0 0 auto; }
@@ -238,7 +300,13 @@
       gap: 4px 8px;
       align-items: baseline;
     }
-    .kv dd { margin: 0; overflow-wrap: anywhere; color: var(--fg); }
+    .kv dd {
+      margin: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--fg);
+    }
     .timeline-details, .evidence-panel {
       display: flex;
       flex-direction: column;
@@ -258,16 +326,23 @@
       min-height: 0;
       overflow: auto;
     }
-    .timeline, .plugin-catalog, .record-list { display: grid; gap: 4px; }
-    .plugin-catalog, .record-list { flex: 1; }
-    .timeline { flex: 1; }
+    .timeline, .plugin-catalog, .record-list {
+      display: grid;
+      gap: 4px;
+      flex: none;
+      max-height: 9rem;
+    }
     .timeline .text-action, .record-list .text-action {
       width: 100%;
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      gap: 4px 10px;
+      display: block;
+      min-height: 1.35em;
+      line-height: 1.35;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--muted);
     }
-    .timeline small { color: var(--muted); font-size: 11px; }
+    .timeline small { display: none; }
     .record strong { display: block; font-size: 12px; font-weight: 500; }
     .plugin-entry {
       position: relative;
@@ -284,11 +359,12 @@
       height: 1px;
       pointer-events: none;
     }
-    .plugin-entry strong { display: block; font-size: 12px; font-weight: 500; color: var(--muted); }
+    .plugin-entry strong { display: inline; font-size: 12px; font-weight: 500; color: var(--muted); }
     .plugin-entry:has(input:checked) strong { color: var(--fg); }
-    .plugin-entry small { display: block; color: var(--muted); line-height: 1.35; margin-top: 2px; font-size: 11px; }
+    .plugin-entry small { display: none; }
+    .plugin-entry .plugin-status { display: inline; margin-left: 6px; }
     .plugin-entry.unavailable strong, .plugin-entry.unavailable .plugin-status { color: var(--danger); }
-    .digest { overflow-wrap: anywhere; font-size: 10px; line-height: 1.35; color: var(--muted); }
+    .digest { display: none; }
     pre {
       white-space: pre-wrap;
       overflow-wrap: anywhere;
@@ -296,9 +372,9 @@
       margin: 6px 0 0;
       font-size: 11px;
       line-height: 1.45;
+      max-height: 8rem;
+      overflow: auto;
     }
-    #evidenceText { flex: 1; margin-top: 8px; }
-    #memorySelected { flex: 0 1 30%; }
     @media (max-width: 930px) {
       .app {
         grid-template-columns: 1fr;
@@ -317,6 +393,10 @@
 <body>
   <main class="app">
     <aside class="sidebar">
+      <div class="sidebar-brand">
+        <span class="brand">Workbench</span>
+        <span class="kicker">SETUP</span>
+      </div>
       <section>
         <div class="panel-heading">
           <h2>Source</h2>
@@ -331,13 +411,13 @@
       <div class="sidebar-scroll">
         <section class="sidebar-fill">
           <div class="panel-heading">
-            <h2>Perception plugins</h2>
+            <h2>Plugins</h2>
             <span id="pluginSelectionSummary" class="muted">no catalog</span>
+            <button type="button" id="refreshPluginsButton" class="text-action">inspect</button>
           </div>
           <div class="field">
             <label class="kicker" for="pluginDir">directory</label>
             <input id="pluginDir" class="inline-edit" type="text" autocomplete="off" placeholder="/path/to/plugins">
-            <button type="button" id="refreshPluginsButton" class="text-action">inspect</button>
           </div>
           <div id="pluginCatalog" class="plugin-catalog">
             <p class="muted help">The packaged lightweight catalog will appear here.</p>
@@ -351,11 +431,9 @@
 
         <section class="sidebar-fill">
           <div class="panel-heading">
-            <h2>Memory ledger</h2>
-            <div class="panel-heading-values">
-              <span id="memorySelection" class="muted">select a record</span>
-              <span id="memoryHealth" class="muted">no snapshot</span>
-            </div>
+            <h2>Memory</h2>
+            <span id="memoryHealth" class="muted">no snapshot</span>
+            <span id="memorySelection" hidden>select a record</span>
           </div>
           <dl class="kv">
             <dt>Epoch</dt><dd id="memoryEpoch">—</dd>
@@ -363,10 +441,10 @@
             <dt>Policy</dt><dd id="memoryPolicy">—</dd>
           </dl>
           <div id="memoryRecords" class="record-list"><p class="memory-empty muted help">No retained evidence yet.</p></div>
-          <div>
-            <h3>Selected record</h3>
+          <details class="help-details">
+            <summary>Selected record</summary>
             <pre id="memorySelected">Select a server-produced memory record to inspect its provenance.</pre>
-          </div>
+          </details>
         </section>
 
         <section class="sidebar-fill">
@@ -386,7 +464,10 @@
             <div class="metric"><div class="label">Plugin runs</div><div id="pluginRuns" class="value">—</div></div>
             <div class="metric"><div class="label">Things / signals</div><div id="evidenceCounts" class="value">—</div></div>
           </div>
-          <pre id="evidenceText">No perception output yet.</pre>
+          <details class="help-details">
+            <summary>Lines</summary>
+            <pre id="evidenceText">No perception output yet.</pre>
+          </details>
         </section>
       </div>
     </aside>
@@ -400,15 +481,12 @@
             <canvas id="overlayCanvas" aria-hidden="true"></canvas>
           </div>
         </div>
-        <details class="frame-details">
-          <summary>Frame details</summary>
-          <div class="frame-meta">
-            <div class="metric"><div class="label">Frame</div><div id="frameId" class="value">—</div></div>
-            <div class="metric"><div class="label">Sequence index</div><div id="frameIndex" class="value">—</div></div>
-            <div class="metric"><div class="label">Timestamp</div><div id="frameTimestamp" class="value">—</div></div>
-            <div class="metric"><div class="label">Perception</div><div id="perceptionStatus" class="value">—</div></div>
-          </div>
-        </details>
+        <div class="frame-hud">
+          <span id="frameId" class="truncate">—</span>
+          <span id="frameIndex" class="muted">—</span>
+          <span id="frameTimestamp" class="muted">—</span>
+          <span id="perceptionStatus" class="muted">—</span>
+        </div>
       </section>
 
       <div class="playback">
@@ -448,10 +526,6 @@
           </div>
         </div>
         <span id="notice" class="notice" role="status"></span>
-        <details class="help-details">
-          <summary>Replay behavior</summary>
-          <p class="help">Realtime follows recorded frame timestamps; fixed values add a delay after each frame, and “as fast as possible” removes that delay. Source order, frame identity, absence annotations, perception, observation, and memory are validated and produced server-side.</p>
-        </details>
         <details id="failurePanel" class="help-details" hidden>
           <summary>Failure boundary</summary>
           <pre id="failureText"></pre>
@@ -511,6 +585,12 @@
       function text(value, fallback) {
         if (value === null || value === undefined || value === "") return fallback || "—";
         return String(value);
+      }
+
+      function shortId(value) {
+        var raw = text(value, "");
+        if (raw.length <= 28) return raw;
+        return raw.slice(0, 8) + "…" + raw.slice(-12);
       }
 
       function parseCadence(raw) {
@@ -715,13 +795,8 @@
           status.className = "plugin-status";
           status.textContent = plugin.ready ? "ready" : "unavailable";
           copy.appendChild(status);
-          var description = document.createElement("small");
-          description.textContent = text(plugin.description, "No description.");
-          copy.appendChild(description);
           if (!plugin.ready && plugin.unavailable_reason) {
-            var reason = document.createElement("small");
-            reason.textContent = plugin.unavailable_reason;
-            copy.appendChild(reason);
+            title.title = plugin.unavailable_reason;
           }
           item.appendChild(copy);
           elements.pluginCatalog.appendChild(item);
@@ -738,9 +813,11 @@
         setButton("startButton", canStart);
         setButton("pauseButton", canPause);
         setButton("resumeButton", canResume);
-        elements.startButton.hidden = !canStart;
-        elements.pauseButton.hidden = !canPause;
-        elements.resumeButton.hidden = !canResume;
+        var playing = state && state.phase === "running";
+        var paused = state && state.phase === "paused";
+        elements.pauseButton.hidden = !playing;
+        elements.resumeButton.hidden = !paused;
+        elements.startButton.hidden = playing || paused || !canStart;
         setButton("stepButton", !actionInFlight && allowed.indexOf("step") >= 0);
         setButton("cancelButton", !actionInFlight && allowed.indexOf("cancel") >= 0);
         setButton("resetButton", !actionInFlight && allowed.indexOf("reset") >= 0);
@@ -900,7 +977,8 @@
             button.setAttribute("data-frame-id", frameId);
             button.addEventListener("click", function () { selectFrame(frameId); });
             var name = document.createElement("strong");
-            name.textContent = frameId;
+            name.textContent = frameId.split(":").pop() || shortId(frameId);
+            name.title = frameId;
             button.appendChild(name);
             var status = document.createElement("small");
             status.textContent = text(item.perception_status, "no perception") +
@@ -1017,9 +1095,6 @@
           var title = document.createElement("strong");
           title.textContent = text(record.label, recordId);
           card.appendChild(title);
-          var detail = document.createElement("pre");
-          detail.textContent = recordId + " · confidence " + text(record.confidence, "0");
-          card.appendChild(detail);
           var isSelected = recordId === selectedRecordId;
           card.classList.toggle("selected", isSelected);
           card.setAttribute("aria-pressed", isSelected ? "true" : "false");
@@ -1082,7 +1157,9 @@
           clearFrameSelection();
         }
         var source = state.source || {};
-        setText("sourceIdentity", state.source_identity || "no source selected");
+        var identity = state.source_identity || "no source selected";
+        elements.sourceIdentity.title = identity;
+        setText("sourceIdentity", shortId(identity));
         if (document.activeElement !== elements.sourceDir) {
           var sourcePath = source.source_path || source.path;
           if (sourcePath) {

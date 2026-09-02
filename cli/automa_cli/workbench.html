@@ -343,7 +343,7 @@
               <p class="muted help">The packaged lightweight catalog will appear here.</p>
             </div>
             <div id="pluginDigest" class="digest muted"></div>
-            <p class="help">Only ready, server-discovered IDs can be selected. Changes apply at the next frame boundary; the plugin root stays locked during replay.</p>
+            <p class="help">Only ready, server-discovered IDs can be selected. Select none for raw capture without perception overlays. Changes apply at the next frame boundary; pending choices are labeled until applied, and the plugin root stays locked during replay.</p>
           </div>
         </section>
 
@@ -437,6 +437,10 @@
       }
 
       function currentPayload(key) {
+        if (key === "perception" && state && Array.isArray(state.active_plugin_ids) &&
+            state.active_plugin_ids.length === 0) {
+          return null;
+        }
         if (selectedFrameDetail && Object.prototype.hasOwnProperty.call(selectedFrameDetail, key)) {
           return selectedFrameDetail[key];
         }
@@ -490,6 +494,10 @@
             if (action === "validate") elements.notice.textContent = "Source and plugin configuration validated.";
             if (action === "refresh_plugins") elements.notice.textContent = "Plugin catalog refreshed.";
             if (action === "select_plugins") elements.notice.textContent = "Plugin selection applied.";
+            if (action === "select_plugins") {
+              clearFrameSelection();
+              render(payload.state);
+            }
             if (["refresh_plugins", "select_plugins", "start"].indexOf(action) >= 0) {
               pluginSelectionDraft = null;
               pluginSelectionDraftDigest = null;
@@ -519,9 +527,14 @@
       }
 
       function renderPluginSummary(catalog, plugins, active) {
+        var effective = state && Array.isArray(state.active_plugin_ids)
+          ? state.active_plugin_ids : [];
         var pending = active.length;
+        var hasPending = pending !== effective.length || active.some(function (pluginId, index) {
+          return effective[index] !== pluginId;
+        });
         var ready = plugins.filter(function (plugin) { return plugin.ready; }).length;
-        setText("pluginSelectionSummary", pending + " active · " + ready + " ready");
+        setText("pluginSelectionSummary", (hasPending ? "pending · " : "") + pending + " selected · " + ready + " ready");
         setText("pluginDigest", catalog ? "catalog " + text(catalog.digest) : "");
         if (document.activeElement !== elements.pluginDir) {
           elements.pluginDir.value = state && state.plugin_dir ? state.plugin_dir : "";

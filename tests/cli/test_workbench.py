@@ -203,6 +203,7 @@ class WorkbenchTests(unittest.TestCase):
             catalog.normalize_selection(["floor_continuity", "classical_regions"]),
             ("classical_regions", "floor_continuity"),
         )
+        self.assertEqual(catalog.normalize_selection([]), ())
 
     def test_explicit_catalog_selection_runs_only_selected_plugins(self) -> None:
         with TemporaryDirectory() as directory:
@@ -229,7 +230,7 @@ class WorkbenchTests(unittest.TestCase):
             "lightweight_observer",
         )
 
-    def test_explicit_catalog_requires_selection_and_allows_live_replacement(self) -> None:
+    def test_explicit_catalog_allows_raw_capture_and_live_replacement(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)
             _make_images(root, 3)
@@ -238,14 +239,20 @@ class WorkbenchTests(unittest.TestCase):
                 plugin_dir=Path("lab/plugins/perception"),
                 cadence_ms=1000,
             )
-            failed = runner.start()
-            self.assertEqual(failed["phase"], "failed")
-            self.assertEqual(failed["failure_boundary"], "plugin_catalog")
-            self.assertIn("requires at least one", failed["failure"]["message"])
+            raw_started = runner.start()
+            self.assertEqual(raw_started["phase"], "running")
+            self.assertEqual(raw_started["run_active_plugin_ids"], [])
+            raw_state = runner.wait(10)
+            self.assertEqual(raw_state["phase"], "completed")
+            self.assertEqual(raw_state["run_active_plugin_ids"], [])
+            self.assertEqual(raw_state["active_plugin_ids"], [])
+            self.assertEqual(raw_state["perception"]["status"], "empty")
+            self.assertEqual(raw_state["perception"]["plugin_runs"], ())
+            self.assertEqual(raw_state["perception"]["things"], ())
 
             runner.dispatch(
                 "select_plugins",
-                run_id=failed["run_id"],
+                run_id=raw_started["run_id"],
                 active_plugin_ids=["classical_regions"],
             )
             started = runner.start()
@@ -699,6 +706,15 @@ class WorkbenchTests(unittest.TestCase):
             self.assertIn('id="pluginDir"', html)
             self.assertIn('id="selectPluginsButton"', html)
             self.assertIn("Changes apply at the next frame boundary", html)
+            self.assertIn("Select none for raw capture without perception overlays.", html)
+            self.assertIn("state.active_plugin_ids.length === 0", html)
+            current_payload = html.split("function currentPayload(key) {", 1)[1].split(
+                "function clearFrameSelection() {", 1
+            )[0]
+            self.assertLess(
+                current_payload.index("state.active_plugin_ids.length === 0"),
+                current_payload.index("selectedFrameDetail &&"),
+            )
             plugin_root = str(Path("lab/plugins/perception").resolve())
 
             def post(payload: dict[str, object]) -> dict[str, object]:
@@ -721,8 +737,31 @@ class WorkbenchTests(unittest.TestCase):
                 [item["id"] for item in catalog["plugins"]],
                 ["classical_regions", "fastsam", "floor_continuity", "floor_continuity_capture"],
             )
+            raw_selected = post(
+                {"action": "select_plugins", "active_plugin_ids": []}
+            )
+            self.assertEqual(raw_selected["state"]["active_plugin_ids"], [])
+            raw_started = post(
+                {
+                    "action": "start",
+                    "source_dir": str(root),
+                    "cadence_ms": 0,
+                    "plugin_dir": plugin_root,
+                    "active_plugin_ids": [],
+                }
+            )
+            raw_state = runner.wait(5)
+            self.assertEqual(raw_started["state"]["run_active_plugin_ids"], [])
+            self.assertEqual(raw_state["phase"], "completed")
+            self.assertEqual(raw_state["perception"]["status"], "empty")
+            self.assertEqual(raw_state["perception"]["plugin_runs"], ())
+            self.assertEqual(raw_state["perception"]["things"], ())
             selected = post(
-                {"action": "select_plugins", "active_plugin_ids": ["classical_regions"]}
+                {
+                    "action": "select_plugins",
+                    "run_id": raw_started["state"]["run_id"],
+                    "active_plugin_ids": ["classical_regions"],
+                }
             )
             self.assertEqual(selected["state"]["active_plugin_ids"], ["classical_regions"])
             started = post(

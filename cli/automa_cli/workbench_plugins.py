@@ -162,14 +162,9 @@ class PluginCatalog:
                 for value in unavailable
             )
             raise PluginCatalogError(f"unavailable plugin id(s): {reasons}")
-        if require_explicit_selection is None:
-            require_explicit_selection = self.explicit_root
-        if require_explicit_selection and not values:
-            raise PluginCatalogError(
-                "an explicit plugin directory requires at least one active plugin id"
-            )
-        if not values:
-            raise PluginCatalogError("active_plugin_ids must contain at least one ready plugin")
+        # Keep the keyword for caller compatibility. An empty normalized
+        # selection is the explicit raw-capture mode regardless of catalog
+        # root: replay still displays frames, but no perception plugin runs.
         order = {item.plugin_id: index for index, item in enumerate(self.plugins)}
         return tuple(sorted(values, key=lambda value: order[value]))
 

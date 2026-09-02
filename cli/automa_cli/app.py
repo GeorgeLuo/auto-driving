@@ -718,7 +718,8 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "Select one ready plugin id from --plugin-dir; repeat to select more. "
-            "An explicit plugin directory requires at least one selection."
+            "Omit this option with --plugin-dir to replay raw capture without "
+            "perception overlays."
         ),
     )
     workbench_replay.add_argument(

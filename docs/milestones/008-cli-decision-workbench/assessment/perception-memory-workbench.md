@@ -103,6 +103,10 @@ IDs/order. Root discovery and refresh remain unavailable during replay; a
 valid selection change is serialized at a frame boundary, updates the next
 frame's mapper, and leaves completed-frame provenance unchanged. A terminal
 state retains its run selection while allowing a separate next-run selection.
+An empty active-plugin selection is an explicit raw-capture mode: replay still
+advances through the image and observation lifecycle, but the selected mapper
+emits empty perception (`status=empty`, with no plugin runs or things), and the
+page suppresses perception evidence and overlays.
 
 ## POC-completion envelope
 
@@ -114,6 +118,7 @@ state retains its run selection while allowing a separate next-run selection.
 | Recursive manifest catalog, readiness reasons, and active-plugin toggles | The amended operator journey requires inspecting every package under a declared root and comparing at least two valid selections through the same server-owned replay | Admitted by accepted amendments #179 and #181; unsupported isolated runtimes remain visible as unavailable, and live changes apply at frame boundaries |
 | Clickable frame selection with on-demand frame detail and a compact sticky header | Hands-on use found that timeline rows could not inspect an earlier processed frame. Selection fetches the server-owned frame, perception, observation, and memory detail only when requested; simple re-rendering avoids a second client-side history model, and terminal polling slows while the page remains available | Admitted under the four proposal envelope conditions |
 | Realtime pace selection | Hands-on capture review requested a pace that honors strictly increasing recorded frame timestamps. The runner waits only for the remaining timestamp delta after processing, while existing fixed-delay and fastest modes remain available through the same CLI, API, and page | Admitted as HITL adjunct #182 under the four proposal envelope conditions |
+| Empty active-plugin selection | Hands-on review identified raw capture without perception overlays as a normal operator mode; requiring one checked plugin left the source image coupled to an unwanted annotation layer | Supported as an explicit raw-capture selection; the replay remains observation-only and records no plugin evidence |
 | Video, live ingestion, arbitrary algorithm selection, candidate comparison, recording, simulator/vehicle control, or external hosting | Each changes source, semantic, authority, or operator goal | Deferred to a later proposal; no follow-up in this implementation unit |
 
 No new product frontier, external authority, or alternate execution path was

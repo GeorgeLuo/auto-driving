@@ -300,6 +300,7 @@
                   <option value="250" selected>250 ms</option>
                   <option value="500">500 ms</option>
                   <option value="1000">1 second</option>
+                  <option value="realtime">realtime (capture timestamps)</option>
                 </select>
               </div>
               <div>
@@ -320,7 +321,7 @@
               <button id="resetButton">Reset</button>
             </div>
             <div id="notice" class="notice" role="status"></div>
-            <p class="help">Source order, frame identity, absence annotations, perception, observation, and memory are validated and produced server-side.</p>
+            <p class="help">Realtime follows recorded frame timestamps; fixed values add a delay after each frame, and “as fast as possible” removes that delay. Source order, frame identity, absence annotations, perception, observation, and memory are validated and produced server-side.</p>
           </div>
         </section>
 
@@ -403,6 +404,7 @@
       var pluginSelectionDraft = null;
       var pluginSelectionDraftDigest = null;
       var pluginCatalogRenderKey = null;
+      var cadenceDraft = false;
       [
         "phaseChip", "sourceIdentity", "emptyState", "viewerFrame", "frameImage",
         "overlayCanvas", "frameId", "frameIndex", "frameTimestamp", "perceptionStatus",
@@ -461,6 +463,7 @@
         if (["start", "validate", "reset"].indexOf(action) >= 0) {
           clearFrameSelection();
         }
+        if (["start", "reset"].indexOf(action) >= 0) cadenceDraft = false;
         var body = { action: action };
         var runId = selectedRunId(action);
         if (runId) body.run_id = runId;
@@ -949,6 +952,11 @@
         setText("runPlugins", runPlugins.length ? runPlugins.join(", ") : "(none)");
         setText("runCatalogDigest", state.run_catalog_digest || state.catalog_digest);
         setText("recoveryAction", state.recovery_action);
+        var controls = state.controls || {};
+        if (!cadenceDraft || state.phase !== "idle") {
+          elements.cadence.value = controls.pace === "realtime"
+            ? "realtime" : text(controls.cadence_ms, "250");
+        }
         var sideEffects = state.machine_detail && state.machine_detail.side_effects;
         setText("sideEffects", sideEffects && sideEffects.observation_only ? "observation only" : "inspect state");
         renderFrame();
@@ -995,11 +1003,13 @@
         action("validate", payload);
       });
       elements.startButton.addEventListener("click", function () {
+        var selectedPace = elements.cadence.value;
         var payload = {
           source_dir: elements.sourceDir.value,
-          cadence_ms: Number(elements.cadence.value),
+          pace: selectedPace === "realtime" ? "realtime" : "fixed",
           active_plugin_ids: selectedPluginIdsFromView()
         };
+        if (selectedPace !== "realtime") payload.cadence_ms = Number(selectedPace);
         if (elements.pluginDir.value.trim()) payload.plugin_dir = elements.pluginDir.value.trim();
         action("start", payload);
       });
@@ -1017,8 +1027,13 @@
       elements.cancelButton.addEventListener("click", function () { action("cancel"); });
       elements.resetButton.addEventListener("click", function () { action("reset"); });
       elements.cadence.addEventListener("change", function () {
+        cadenceDraft = state && state.phase === "idle";
         if (state && (state.phase === "running" || state.phase === "paused")) {
-          action("set_cadence", { cadence_ms: Number(elements.cadence.value) });
+          cadenceDraft = false;
+          var selectedPace = elements.cadence.value;
+          var payload = { pace: selectedPace === "realtime" ? "realtime" : "fixed" };
+          if (selectedPace !== "realtime") payload.cadence_ms = Number(selectedPace);
+          action("set_cadence", payload);
         }
       });
       elements.overlayToggle.addEventListener("change", drawOverlay);

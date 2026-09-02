@@ -40,6 +40,8 @@ from .workbench_contract import (
     ReplayActionError,
     WORKBENCH_ACTIONS,
     WORKBENCH_DEFAULT_CADENCE_MS,
+    WORKBENCH_DEFAULT_PACE,
+    WORKBENCH_PACES,
     WORKBENCH_SEQUENCE_ID,
     WORKBENCH_STATE_SCHEMA,
 )
@@ -141,6 +143,7 @@ class ImageReplayRunner:
         plugin_dir: str | os.PathLike[str] | None = None,
         active_plugin_ids: list[str] | tuple[str, ...] | None = None,
         cadence_ms: int = WORKBENCH_DEFAULT_CADENCE_MS,
+        pace: str = WORKBENCH_DEFAULT_PACE,
         max_frames: int = WORKBENCH_DEFAULT_MAX_FRAMES,
         max_image_bytes: int = WORKBENCH_DEFAULT_MAX_IMAGE_BYTES,
         mapper_factory: Callable[[], PerceptionMapper] | None = None,
@@ -166,6 +169,7 @@ class ImageReplayRunner:
         self._history: dict[str, dict[str, Any]] = {}
         self._generation = 0
         self._cadence_ms = self._validate_cadence(cadence_ms)
+        self._pace = self._validate_pace(pace)
         self._server_identity = f"workbench-{uuid.uuid4().hex[:12]}"
         self._plugin_catalog: PluginCatalog = discover_plugin_catalog(plugin_dir)
         self.plugin_dir = (
@@ -322,6 +326,7 @@ class ImageReplayRunner:
         source_dir: str | os.PathLike[str] | None = None,
         *,
         cadence_ms: int | None = None,
+        pace: str | None = None,
     ) -> dict[str, Any]:
         with self._action_lock:
             with self._condition:
@@ -333,6 +338,8 @@ class ImageReplayRunner:
                     )
                 if cadence_ms is not None:
                     self._cadence_ms = self._validate_cadence(cadence_ms)
+                if pace is not None:
+                    self._pace = self._validate_pace(pace)
                 raw_source = (
                     self.source_dir if source_dir is None else os.fspath(source_dir)
                 )
@@ -433,6 +440,7 @@ class ImageReplayRunner:
         run_id: str | None = None,
         source_dir: str | os.PathLike[str] | None = None,
         cadence_ms: int | None = None,
+        pace: str | None = None,
         plugin_dir: str | os.PathLike[str] | None = None,
         active_plugin_ids: list[str] | tuple[str, ...] | None = None,
     ) -> dict[str, Any]:
@@ -503,23 +511,36 @@ class ImageReplayRunner:
                         boundary="plugin_catalog",
                         state=self.state(),
                     ) from exc
-                return self.start(source_dir, cadence_ms=cadence_ms)
+                return self.start(source_dir, cadence_ms=cadence_ms, pace=pace)
             if action == "set_cadence":
-                if cadence_ms is None:
+                if cadence_ms is None and pace is None:
                     raise ReplayActionError(
-                        "set_cadence requires cadence_ms",
+                        "set_cadence requires cadence_ms or pace",
                         status_code=400,
                         boundary="input",
                     )
-                value = self._validate_cadence(cadence_ms)
+                value = (
+                    self._validate_cadence(cadence_ms)
+                    if cadence_ms is not None
+                    else None
+                )
+                selected_pace = (
+                    self._validate_pace(pace) if pace is not None else self._pace
+                )
                 with self._lock:
                     if self._state["phase"] not in {"running", "paused"}:
                         raise ReplayActionError(
                             "cadence can only change while replay is running or paused",
                             boundary="lifecycle",
                         )
-                    self._cadence_ms = value
-                    self._record_action_locked(action, cadence_ms=value)
+                    if value is not None:
+                        self._cadence_ms = value
+                    self._pace = selected_pace
+                    self._record_action_locked(
+                        action,
+                        cadence_ms=self._cadence_ms,
+                        pace=self._pace,
+                    )
                     self._condition.notify_all()
                 return self.state()
             if action == "pause":
@@ -802,17 +823,37 @@ class ImageReplayRunner:
                     self._complete_locked()
                     return
                 frame = feed.frames[position]
-                cadence_ms = self._cadence_ms
+            processing_started = time.monotonic()
             self._process_one(run_id, generation, frame)
-            if cadence_ms > 0:
-                with self._condition:
-                    if (
-                        generation != self._generation
-                        or self._state["run_id"] != run_id
-                        or self._state["phase"] != "running"
-                    ):
-                        continue
-                    self._condition.wait(timeout=cadence_ms / 1000.0)
+            processing_elapsed = time.monotonic() - processing_started
+            with self._condition:
+                if (
+                    generation != self._generation
+                    or self._state["run_id"] != run_id
+                    or self._state["phase"] != "running"
+                ):
+                    continue
+                if self._pace == "realtime":
+                    next_position = int(self._state["position"])
+                    next_frame = (
+                        self._feed.frames[next_position]
+                        if self._feed is not None
+                        and next_position < len(self._feed.frames)
+                        else None
+                    )
+                    delay = (
+                        max(
+                            0.0,
+                            (next_frame.timestamp_ms - frame.timestamp_ms) / 1000.0
+                            - processing_elapsed,
+                        )
+                        if next_frame is not None
+                        else 0.0
+                    )
+                else:
+                    delay = self._cadence_ms / 1000.0
+                if delay > 0:
+                    self._condition.wait(timeout=delay)
 
     def _process_one(
         self,
@@ -1130,6 +1171,7 @@ class ImageReplayRunner:
         current_phase = phase or str(current_state.get("phase", "idle"))
         return {
             "cadence_ms": self._cadence_ms,
+            "pace": self._pace,
             "allowed_actions": _state_action_set(current_phase),
         }
 
@@ -1296,6 +1338,16 @@ class ImageReplayRunner:
                 boundary="input",
             )
         return cadence
+
+    @staticmethod
+    def _validate_pace(value: str) -> str:
+        if not isinstance(value, str) or value.strip().lower() not in WORKBENCH_PACES:
+            raise ReplayActionError(
+                "pace must be one of: fixed, realtime",
+                status_code=400,
+                boundary="input",
+            )
+        return value.strip().lower()
 
 
 def _now_ms() -> int:

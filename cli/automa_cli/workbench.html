@@ -317,17 +317,20 @@
     }
     .help { font-size: 11px; line-height: 1.45; }
     .notice {
-      position: absolute;
-      left: 0;
-      right: 0;
-      bottom: 100%;
-      z-index: 1100;
-      margin: 0 0 4px;
-      min-height: 0;
-      pointer-events: none;
-      color: var(--muted);
+      position: fixed;
+      left: 8px;
+      bottom: 8px;
+      z-index: 2000;
+      margin: 0;
+      max-width: min(22rem, calc(100vw - 16px));
+      padding: 6px 8px;
+      border: 1px solid rgb(36 36 36 / .8);
+      border-radius: var(--radius);
+      background: rgb(20 20 20 / .94);
+      color: var(--fg);
       font-size: 11px;
       line-height: 1.35;
+      pointer-events: none;
     }
     .notice:empty { display: none; }
     .notice.error { color: var(--danger); }
@@ -699,7 +702,6 @@
             <span id="progressText" class="muted">0 / 0</span>
           </div>
         </div>
-        <span id="notice" class="notice" role="status"></span>
         <details id="failurePanel" class="help-details" hidden>
           <summary>Failure boundary</summary>
           <pre id="failureText"></pre>
@@ -765,6 +767,8 @@
             </div>
           </article>
   </div>
+
+  <span id="notice" class="notice" role="status"></span>
 
   <script>
     (function () {

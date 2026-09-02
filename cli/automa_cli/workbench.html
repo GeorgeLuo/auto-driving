@@ -638,7 +638,7 @@
             <div id="pluginDigest" class="digest muted"></div>
             <details class="help-details">
               <summary>Plugin selection</summary>
-              <p class="help">Only ready, server-discovered IDs can be selected. While paused, the current frame is reprocessed immediately so Evidence and overlays match the selection. While playing, the change applies at the next frame boundary. Select none for raw capture without perception overlays. The plugin root stays locked during replay.</p>
+              <p class="help">Only ready, server-discovered IDs can be selected. While paused, the current frame is reprocessed immediately so Evidence and overlays match the selection. While playing, the change applies at the next frame boundary. Select none for raw capture without perception overlays. Source and plugin directories stay locked during replay.</p>
             </details>
           </div>
         </details>
@@ -1378,7 +1378,9 @@
         var selectionAllowed = !actionInFlight && allowed.indexOf("select_plugins") >= 0;
         var rootConfigAllowed = !actionInFlight && allowed.indexOf("refresh_plugins") >= 0;
         setButton("refreshPluginsButton", rootConfigAllowed);
-        elements.pluginDir.disabled = !state || actionInFlight || !rootConfigAllowed;
+        var liveReplay = Boolean(state) && (state.phase === "running" || state.phase === "paused");
+        elements.sourceDir.disabled = liveReplay;
+        elements.pluginDir.disabled = liveReplay;
         renderPlugins();
       }
 

@@ -226,6 +226,20 @@ class WorkbenchTests(unittest.TestCase):
         self.assertNotIn("!actionInFlight && allowed.indexOf(\"start\")", controls)
         self.assertIn('setButton("pauseButton", canPause);', controls)
 
+    def test_workbench_locks_source_and_plugin_paths_during_replay(self) -> None:
+        html = Path("cli/automa_cli/workbench.html").read_text(encoding="utf-8")
+        controls = html.split("function renderControls() {", 1)[1].split(
+            "function renderFrame() {", 1
+        )[0]
+        self.assertIn(
+            'var liveReplay = Boolean(state) && (state.phase === "running" || state.phase === "paused");',
+            controls,
+        )
+        self.assertIn("elements.sourceDir.disabled = liveReplay;", controls)
+        self.assertIn("elements.pluginDir.disabled = liveReplay;", controls)
+        self.assertIn("elements.cadence.disabled = !state;", controls)
+        self.assertNotIn("elements.pluginDir.disabled = !state || actionInFlight", controls)
+
     def test_manifest_catalog_is_recursive_deterministic_and_explicit_about_readiness(self) -> None:
         catalog = discover_plugin_catalog(Path("lab/plugins/perception"))
         self.assertEqual(

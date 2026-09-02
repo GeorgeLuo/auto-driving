@@ -434,6 +434,21 @@
         "memorySelected"
       ].forEach(function (id) { elements[id] = document.getElementById(id); });
       var selectedRecordId = null;
+      var SOURCE_DIR_KEY = "automa-workbench-source-dir";
+      var PLUGIN_DIR_KEY = "automa-workbench-plugin-dir";
+
+      function remembered(key) {
+        try { return window.localStorage.getItem(key) || ""; }
+        catch (error) { return ""; }
+      }
+
+      function remember(key, value) {
+        try {
+          var trimmed = String(value || "").trim();
+          if (trimmed) window.localStorage.setItem(key, trimmed);
+          else window.localStorage.removeItem(key);
+        } catch (error) {}
+      }
 
       function text(value, fallback) {
         if (value === null || value === undefined || value === "") return fallback || "—";
@@ -571,8 +586,9 @@
         var ready = plugins.filter(function (plugin) { return plugin.ready; }).length;
         setText("pluginSelectionSummary", selected + " active · " + ready + " ready");
         setText("pluginDigest", catalog ? "catalog " + text(catalog.digest) : "");
-        if (document.activeElement !== elements.pluginDir) {
-          elements.pluginDir.value = state && state.plugin_dir ? state.plugin_dir : "";
+        if (document.activeElement !== elements.pluginDir && state && state.plugin_dir) {
+          elements.pluginDir.value = state.plugin_dir;
+          remember(PLUGIN_DIR_KEY, state.plugin_dir);
         }
       }
 
@@ -1004,7 +1020,11 @@
         var source = state.source || {};
         setText("sourceIdentity", state.source_identity || "no source selected");
         if (document.activeElement !== elements.sourceDir) {
-          elements.sourceDir.value = source.source_path || source.path || "";
+          var sourcePath = source.source_path || source.path;
+          if (sourcePath) {
+            elements.sourceDir.value = sourcePath;
+            remember(SOURCE_DIR_KEY, sourcePath);
+          }
         }
         var perception = currentPayload("perception");
         setText("perceptionStatus", perception && perception.status);
@@ -1054,6 +1074,14 @@
         pollTimer = window.setTimeout(poll, delay);
       }
 
+      elements.sourceDir.value = remembered(SOURCE_DIR_KEY);
+      elements.pluginDir.value = remembered(PLUGIN_DIR_KEY);
+      elements.sourceDir.addEventListener("change", function () {
+        remember(SOURCE_DIR_KEY, elements.sourceDir.value);
+      });
+      elements.pluginDir.addEventListener("change", function () {
+        remember(PLUGIN_DIR_KEY, elements.pluginDir.value);
+      });
       elements.startButton.addEventListener("click", function () {
         var cadence = cadencePayload();
         if (!cadence) {

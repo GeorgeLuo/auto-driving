@@ -13,6 +13,7 @@ import json
 import os
 import platform
 import shutil
+import socket
 import subprocess
 import sys
 import threading
@@ -151,6 +152,12 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+def _free_loopback_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return int(sock.getsockname()[1])
+
+
 def _redact(text: str, repo_root: Path) -> str:
     root = str(repo_root.resolve())
     home = str(Path.home())
@@ -264,9 +271,10 @@ def _ask_verdict(reader: PromptFn) -> str:
 
 
 class WorkbenchProcess:
-    def __init__(self, command: list[str], cwd: Path) -> None:
+    def __init__(self, command: list[str], cwd: Path, *, url: str) -> None:
         self.command = command
         self.cwd = cwd
+        self.expected_url = url.rstrip("/") + "/"
         self.proc: subprocess.Popen[str] | None = None
         self.lines: list[str] = []
         self.url: str | None = None
@@ -274,6 +282,8 @@ class WorkbenchProcess:
         self._thread: threading.Thread | None = None
 
     def start(self) -> None:
+        env = os.environ.copy()
+        env["PYTHONUNBUFFERED"] = "1"
         self.proc = subprocess.Popen(
             self.command,
             cwd=self.cwd,
@@ -281,6 +291,7 @@ class WorkbenchProcess:
             stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
+            env=env,
         )
         self._thread = threading.Thread(target=self._read, daemon=True)
         self._thread.start()
@@ -293,18 +304,60 @@ class WorkbenchProcess:
                 self.lines.append(text)
                 if self.url is None and "workbench:" in text:
                     self.url = text.split("workbench:", 1)[1].strip()
-            print(text)
+            print(text, flush=True)
 
-    def wait_for_url(self, timeout_s: float = 30.0) -> str:
+    def wait_until_ready(
+        self,
+        *,
+        timeout_s: float,
+        reader: PromptFn,
+        output: TextIO,
+    ) -> tuple[str, dict[str, Any]]:
+        health_url = urljoin(self.expected_url, "api/health")
         deadline = time.time() + timeout_s
+        last_error = "not contacted yet"
+        print(
+            "Waiting for the workbench to load the source and print its URL.\n"
+            f"Expect {self.expected_url}  (long captures can take a minute.)",
+            file=output,
+            flush=True,
+        )
         while time.time() < deadline:
             with self._lock:
-                if self.url:
-                    return self.url
+                found = self.url
+            if found:
+                health_url = urljoin(
+                    found if found.endswith("/") else found + "/",
+                    "api/health",
+                )
             if self.proc is not None and self.proc.poll() is not None:
-                raise RuntimeError("workbench process exited before printing a URL")
-            time.sleep(0.1)
-        raise RuntimeError("timed out waiting for workbench URL")
+                raise RuntimeError(
+                    "workbench process exited before becoming ready\n"
+                    + self.transcript()
+                )
+            try:
+                health = _get_json(health_url, timeout=1.0)
+                if health.get("available"):
+                    url = str(health.get("url") or found or self.expected_url)
+                    return url, health
+            except (urllib.error.URLError, TimeoutError, RuntimeError, json.JSONDecodeError) as exc:
+                last_error = str(exc)
+            time.sleep(0.25)
+        print("\nTimed out waiting for the server.", file=output, flush=True)
+        print("Captured CLI output follows:\n", file=output, flush=True)
+        print(self.transcript() or "(no stdout yet)", file=output, flush=True)
+        pasted = _ask(
+            "If the page is open, paste its URL (empty to abort): ",
+            reader,
+        )
+        if not pasted:
+            raise RuntimeError(
+                "timed out waiting for workbench URL "
+                f"(last health error: {last_error})"
+            )
+        url = pasted.rstrip("/") + "/"
+        health = _get_json(urljoin(url, "api/health"))
+        return url, health
 
     def transcript(self) -> str:
         with self._lock:
@@ -429,8 +482,11 @@ def run_session(
     source_dir = source_dir.resolve()
     if not source_dir.is_dir():
         raise SystemExit(f"source directory does not exist: {source_dir}")
+    port = _free_loopback_port()
+    expected_url = f"http://127.0.0.1:{port}/"
     command = [
         sys.executable,
+        "-u",
         str(AUTOMA),
         "vehicles",
         "workbench",
@@ -440,6 +496,10 @@ def run_session(
         pace,
         "--max-frames",
         str(max_frames),
+        "--host",
+        "127.0.0.1",
+        "--port",
+        str(port),
         "--open",
     ]
     if plugin_dir is not None:
@@ -448,36 +508,39 @@ def run_session(
             command.extend(["--plugin", plugin])
     started = _utc_now()
     identity = _git_identity(REPO_ROOT)
-    workbench = WorkbenchProcess(command, REPO_ROOT)
-    print("Launching:", " ".join(command), file=output)
+    workbench = WorkbenchProcess(command, REPO_ROOT, url=expected_url)
+    print("Launching:", " ".join(command), file=output, flush=True)
+    print(
+        "The browser should open. Keep this terminal; after each page action "
+        "you will be asked what you saw.\n",
+        file=output,
+        flush=True,
+    )
     workbench.start()
     payload: dict[str, Any]
     try:
-        url = workbench.wait_for_url()
-        health_url = urljoin(url if url.endswith("/") else url + "/", "api/health")
+        url, health = workbench.wait_until_ready(
+            timeout_s=180,
+            reader=reader,
+            output=output,
+        )
         state_url = urljoin(url if url.endswith("/") else url + "/", "api/state")
-        deadline = time.time() + 20
-        health: dict[str, Any] | None = None
-        while time.time() < deadline:
-            try:
-                health = _get_json(health_url)
-                if health.get("available"):
-                    break
-            except (urllib.error.URLError, TimeoutError, RuntimeError):
-                time.sleep(0.25)
-        if health is None or not health.get("available"):
-            raise RuntimeError(f"workbench health not available at {health_url}")
-        print(f"\nWorkbench URL: {url}", file=output)
+        print(f"\nWorkbench URL: {url}", file=output, flush=True)
         print(
-            "Do the page work yourself. After each step this script snapshots "
-            "/api/state and records your observation.\n",
+            "Use the page. This script will not click it. After each step it "
+            "snapshots /api/state and records your y/n/u answer.\n",
             file=output,
+            flush=True,
         )
         recorded_steps: list[dict[str, Any]] = []
         findings: list[dict[str, Any]] = []
         for index, spec in enumerate(STEPS, start=1):
-            print(f"=== Step {index}/{len(STEPS)}: {spec['id']} ===", file=output)
-            print(spec["do"], file=output)
+            print(
+                f"\n=== Step {index}/{len(STEPS)}: {spec['id']} ===",
+                file=output,
+                flush=True,
+            )
+            print(spec["do"], file=output, flush=True)
             _ask("Press Enter when you have done that on the page. ", reader)
             machine = None
             try:
@@ -607,6 +670,16 @@ def run_session(
         TRANSCRIPT.write_text(redacted if redacted.endswith("\n") else redacted + "\n")
 
 
+def _prompt_path(label: str, default: str, reader: PromptFn) -> Path:
+    entered = _ask(f"{label} [{default}]: ", reader)
+    return Path(entered or default).expanduser()
+
+
+def _prompt_text(label: str, default: str, reader: PromptFn) -> str:
+    entered = _ask(f"{label} [{default}]: ", reader)
+    return entered or default
+
+
 def main(argv: list[str] | None = None, reader: PromptFn | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
@@ -614,7 +687,7 @@ def main(argv: list[str] | None = None, reader: PromptFn | None = None) -> int:
             "the POC acceptance evidence packet."
         )
     )
-    parser.add_argument("--source-dir", required=True, type=Path)
+    parser.add_argument("--source-dir", type=Path, default=None)
     parser.add_argument(
         "--plugin-dir",
         type=Path,
@@ -626,22 +699,55 @@ def main(argv: list[str] | None = None, reader: PromptFn | None = None) -> int:
         help="Use the packaged catalog instead of --plugin-dir.",
     )
     parser.add_argument("--plugin", default="classical_regions")
-    parser.add_argument("--operator", required=True)
-    parser.add_argument("--browser-name", required=True)
-    parser.add_argument("--browser-version", required=True)
+    parser.add_argument("--operator", default=None)
+    parser.add_argument("--browser-name", default=None)
+    parser.add_argument("--browser-version", default=None)
     parser.add_argument("--screenshot", type=Path, default=None)
     parser.add_argument("--pace", default="realtime")
     parser.add_argument("--max-frames", type=int, default=1024)
     args = parser.parse_args(argv)
     prompt = reader or input
+    print(
+        "This recorder asks you what you see on the page.\n"
+        "It launches the workbench, then waits for your y/n/u answers.\n"
+        "It does not fill observations for you.\n",
+        flush=True,
+    )
+    default_source = (
+        "/Users/gluo/Projects/auto-driving/runtime/vehicles/chase-sim-chaser/"
+        "bundle/runtime/automation/captures/"
+        "chase-stream-decision-model-default-45s-20260901-230833"
+    )
+    source_dir = args.source_dir or _prompt_path(
+        "Image directory",
+        default_source,
+        prompt,
+    )
+    operator = args.operator or _prompt_text(
+        "Operator name",
+        os.environ.get("USER") or "operator",
+        prompt,
+    )
+    browser_name = args.browser_name or _prompt_text(
+        "Browser name",
+        "Chrome",
+        prompt,
+    )
+    browser_version = args.browser_version or _prompt_text(
+        "Browser version (chrome://version)",
+        "",
+        prompt,
+    )
+    if not browser_version:
+        raise SystemExit("browser version is required")
     plugin_dir = None if args.packaged else args.plugin_dir
     payload = run_session(
-        source_dir=args.source_dir,
+        source_dir=source_dir,
         plugin_dir=plugin_dir,
         plugin=None if plugin_dir is None else args.plugin,
-        operator=args.operator,
-        browser_name=args.browser_name,
-        browser_version=args.browser_version,
+        operator=operator,
+        browser_name=browser_name,
+        browser_version=browser_version,
         screenshot=args.screenshot,
         pace=args.pace,
         max_frames=args.max_frames,

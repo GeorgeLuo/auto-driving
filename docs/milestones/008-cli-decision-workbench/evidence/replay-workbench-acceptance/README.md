@@ -41,18 +41,16 @@ The operator still drives the page. This script launches the same CLI, prompts
 after each checklist step, snapshots `/api/state`, and writes the packet. It
 does not click the page or infer a visual pass.
 
-From the repository root:
+From the repository root, in a Terminal you can type into:
 
 ```sh
-python3 docs/milestones/008-cli-decision-workbench/evidence/replay-workbench-acceptance/record_session.py \
-  --source-dir /path/to/real-capture \
-  --operator "$USER" \
-  --browser-name Chrome \
-  --browser-version "paste from chrome://version"
+python3 docs/milestones/008-cli-decision-workbench/evidence/replay-workbench-acceptance/record_session.py
 ```
 
-Optional: `--screenshot /path/to/cropped.png`, `--packaged` for the default
-catalog, `--plugin-dir` / `--plugin` to match the accepted launch.
+It asks for the image directory, operator name, and browser version, then
+launches the workbench. After each page action it asks `y` / `n` / `u`.
+Flags still override prompts if you pass them. Optional: `--screenshot`,
+`--packaged`, `--plugin-dir`, `--plugin`.
 
 After each printed `do` block, use the workbench, then answer `y` / `n` / `u`
 and optional notes. At the end, give `accepted`, `blocked`, or `incomplete`.

@@ -75,7 +75,7 @@
   "artifacts": [
     {
       "path": "README.md",
-      "sha256": "3ed7f0f0ccfce680d793aef6788a7aa85b53a01597f827e91cf12678f0a58fd5",
+      "sha256": "6dbd8e490f2e7191e18ab9b3e2c258117f3a8db2e6d45770028633daf3eb8fa8",
       "captured": true
     },
     {
@@ -85,7 +85,7 @@
     },
     {
       "path": "record_session.py",
-      "sha256": "f8eb2b571294fab6b762381cb66db56d7065051a29a95d2e49a8604b8759d99d",
+      "sha256": "aacaa16c1298a9d6b66eebfa2a097ce5c0ea0bc627c51b4a0db5ff808e8297d9",
       "captured": true
     },
     {
@@ -95,8 +95,8 @@
     },
     {
       "path": "cli-transcript.txt",
-      "sha256": null,
-      "captured": false
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "captured": true
     },
     {
       "path": "result.html",

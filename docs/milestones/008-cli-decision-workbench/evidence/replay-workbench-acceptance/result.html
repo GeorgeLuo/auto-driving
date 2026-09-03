@@ -25,7 +25,7 @@
   <h1>Replay workbench POC acceptance</h1>
   <p class="meta">
     status=<span class="badge">incomplete</span>
-    · record digest=<code>4f690c1ae3174f2be924d1a2fb20528750473c6268f39d41900612fe577257f1</code>
+    · record digest=<code>098907afffc8aa75d3bf69c2055f58c9aedb8a0cdf6fbaeab2c9ffa8ddce88b3</code>
   </p>
   <div class="note">
     This page is derived from committed <code>result.json</code>.
@@ -49,14 +49,14 @@
   </table>
   <h2>Procedure steps</h2>
   <table>
-    <tr><th>Id</th><th>Status</th><th>Required</th></tr>
-    <tr><td><code>page_open</code></td><td>pending</td><td>Page shows source identity, plugin catalog, and declared next actions.</td></tr>
-<tr><td><code>inspect_replay</code></td><td>pending</td><td>Ready-plugin replay shows capture, server overlays, progress, and memory on a processed frame.</td></tr>
-<tr><td><code>paused_toggle</code></td><td>pending</td><td>Paused toggle including empty raw-capture updates the held still from the server; invalid IDs are refused.</td></tr>
-<tr><td><code>running_toggle</code></td><td>pending</td><td>Running toggle including empty keeps the current still until the next processed frame.</td></tr>
-<tr><td><code>second_run</code></td><td>pending</td><td>Reset and a second run without restarting the server; prior run identity is not current success.</td></tr>
-<tr><td><code>source_failure</code></td><td>pending</td><td>Empty, missing, or unsupported source names the failure and next action; recovery is an operator-chosen directory.</td></tr>
-<tr><td><code>cleanup</code></td><td>pending</td><td>Cancel or reset with no worker, simulator, Metrics operation, movement, or recording; isolated state is reset.</td></tr>
+    <tr><th>Id</th><th>Status</th><th>Required</th><th>Observation</th><th>Notes</th></tr>
+    <tr><td><code>page_open</code></td><td>pending</td><td>Page shows source identity, plugin catalog, and declared next actions.</td><td>null</td><td>null</td></tr>
+<tr><td><code>inspect_replay</code></td><td>pending</td><td>Ready-plugin replay shows capture, server overlays, progress, and memory on a processed frame.</td><td>null</td><td>null</td></tr>
+<tr><td><code>paused_toggle</code></td><td>pending</td><td>Paused toggle including empty raw-capture updates the held still from the server; invalid IDs are refused.</td><td>null</td><td>null</td></tr>
+<tr><td><code>running_toggle</code></td><td>pending</td><td>Running toggle including empty keeps the current still until the next processed frame.</td><td>null</td><td>null</td></tr>
+<tr><td><code>second_run</code></td><td>pending</td><td>Reset and a second run without restarting the server; prior run identity is not current success.</td><td>null</td><td>null</td></tr>
+<tr><td><code>source_failure</code></td><td>pending</td><td>Empty, missing, or unsupported source names the failure and next action; recovery is an operator-chosen directory.</td><td>null</td><td>null</td></tr>
+<tr><td><code>cleanup</code></td><td>pending</td><td>Cancel or reset with no worker, simulator, Metrics operation, movement, or recording; isolated state is reset.</td><td>null</td><td>null</td></tr>
 
   </table>
   <h2>Findings</h2>
@@ -64,8 +64,9 @@
   <h2>Artifacts</h2>
   <table>
     <tr><th>Path</th><th>Captured</th><th>SHA-256</th></tr>
-    <tr><td><code>README.md</code></td><td>true</td><td><code>3b151d257c53f506157ec8aed5d81026fa100556f9eafcbe89bc2ef99b115d01</code></td></tr>
-<tr><td><code>render_result.py</code></td><td>true</td><td><code>b601324205f06c84005efce66d4fd367cca381bd8888046fd4520b127c7b3d0b</code></td></tr>
+    <tr><td><code>README.md</code></td><td>true</td><td><code>3ed7f0f0ccfce680d793aef6788a7aa85b53a01597f827e91cf12678f0a58fd5</code></td></tr>
+<tr><td><code>render_result.py</code></td><td>true</td><td><code>8660e011d25ae59e33d9237f3a3a57086b930422464a798a99292b035191e9b1</code></td></tr>
+<tr><td><code>record_session.py</code></td><td>true</td><td><code>f8eb2b571294fab6b762381cb66db56d7065051a29a95d2e49a8604b8759d99d</code></td></tr>
 <tr><td><code>browser-view.png</code></td><td>false</td><td><code>null</code></td></tr>
 <tr><td><code>cli-transcript.txt</code></td><td>false</td><td><code>null</code></td></tr>
 <tr><td><code>result.html</code></td><td>true</td><td><code>null</code></td></tr>

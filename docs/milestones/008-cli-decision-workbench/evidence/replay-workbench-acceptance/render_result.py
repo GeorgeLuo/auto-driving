@@ -11,7 +11,13 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 RECORD = HERE / "result.json"
 PAGE = HERE / "result.html"
-HASHED_SIBLINGS = ("README.md", "render_result.py", "browser-view.png", "cli-transcript.txt")
+HASHED_SIBLINGS = (
+    "README.md",
+    "render_result.py",
+    "record_session.py",
+    "browser-view.png",
+    "cli-transcript.txt",
+)
 
 
 def _sha256(path: Path) -> str:
@@ -68,6 +74,8 @@ def render(payload: dict[str, object]) -> str:
                 f"<td><code>{html.escape(str(step.get('id', '')))}</code></td>"
                 f"<td>{_cell(step.get('status'))}</td>"
                 f"<td>{_cell(step.get('required'))}</td>"
+                f"<td>{_cell(step.get('observation'))}</td>"
+                f"<td>{_cell(step.get('notes'))}</td>"
                 "</tr>\n"
             )
     findings = payload.get("findings")
@@ -150,7 +158,7 @@ def render(payload: dict[str, object]) -> str:
   </table>
   <h2>Procedure steps</h2>
   <table>
-    <tr><th>Id</th><th>Status</th><th>Required</th></tr>
+    <tr><th>Id</th><th>Status</th><th>Required</th><th>Observation</th><th>Notes</th></tr>
     {step_rows}
   </table>
   <h2>Findings</h2>

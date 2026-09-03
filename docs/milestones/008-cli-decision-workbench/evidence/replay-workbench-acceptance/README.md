@@ -35,13 +35,40 @@ context, not this verdict.
 | Plugin root | `lab/plugins/perception` or packaged default |
 | Loopback URL | _pending_ |
 
+## How to record a session
+
+The operator still drives the page. This script launches the same CLI, prompts
+after each checklist step, snapshots `/api/state`, and writes the packet. It
+does not click the page or infer a visual pass.
+
+From the repository root:
+
+```sh
+python3 docs/milestones/008-cli-decision-workbench/evidence/replay-workbench-acceptance/record_session.py \
+  --source-dir /path/to/real-capture \
+  --operator "$USER" \
+  --browser-name Chrome \
+  --browser-version "paste from chrome://version"
+```
+
+Optional: `--screenshot /path/to/cropped.png`, `--packaged` for the default
+catalog, `--plugin-dir` / `--plugin` to match the accepted launch.
+
+After each printed `do` block, use the workbench, then answer `y` / `n` / `u`
+and optional notes. At the end, give `accepted`, `blocked`, or `incomplete`.
+The script overwrites `result.json`, this README, `cli-transcript.txt`, and
+regenerates `result.html`.
+
 ## Session checklist
 
-Launch from the repository root:
+Manual equivalent (if not using `record_session.py`):
 
 ```sh
 ./cli/automa vehicles workbench replay <source_dir> \
   --plugin-dir lab/plugins/perception \
+  --plugin classical_regions \
+  --pace realtime \
+  --max-frames 1024 \
   --open
 ```
 
@@ -87,6 +114,7 @@ state; it is not the operator display.
 | [result.json](result.json) | Present; `status=incomplete` |
 | [result.html](result.html) | Derived from `result.json` |
 | [render_result.py](render_result.py) | Regenerates `result.html` |
+| [record_session.py](record_session.py) | Prompt-driven recorder |
 | `browser-view.png` | Not captured |
 | `cli-transcript.txt` | Not captured |
 

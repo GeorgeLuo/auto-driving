@@ -75,12 +75,17 @@
   "artifacts": [
     {
       "path": "README.md",
-      "sha256": "3b151d257c53f506157ec8aed5d81026fa100556f9eafcbe89bc2ef99b115d01",
+      "sha256": "3ed7f0f0ccfce680d793aef6788a7aa85b53a01597f827e91cf12678f0a58fd5",
       "captured": true
     },
     {
       "path": "render_result.py",
-      "sha256": "b601324205f06c84005efce66d4fd367cca381bd8888046fd4520b127c7b3d0b",
+      "sha256": "8660e011d25ae59e33d9237f3a3a57086b930422464a798a99292b035191e9b1",
+      "captured": true
+    },
+    {
+      "path": "record_session.py",
+      "sha256": "f8eb2b571294fab6b762381cb66db56d7065051a29a95d2e49a8604b8759d99d",
       "captured": true
     },
     {

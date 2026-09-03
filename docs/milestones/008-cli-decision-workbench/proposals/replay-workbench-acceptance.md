@@ -55,17 +55,20 @@ Run from a clean checkout of the M008 milestone tip that contains merged PR
 - the named local image-directory source (supported JPEG/PNG/WebP/BMP, with
   optional `manifest.json` / `run.json` order);
 - the plugin root used (`lab/plugins/perception` or the packaged default);
-- the printed loopback URL.
+- the printed loopback URL and server identity from the page's `/api/health` or
+  `/api/state` response.
 
 The source must be a real readable image directory. The primary demonstration
-must use a recorded `manifest.json` / `run.json` with strictly increasing
-`timestamp_ms` values so realtime pacing exercises captured timing, and a ready
-plugin/source combination that produces at least one server-reported
-perception item and memory record. A source without recorded timestamps may be
-used only for a separate failure/recovery retry and cannot be claimed as
-realtime evidence. Fixture-generated or mock frames are not the primary
-demonstration. Local absolute paths and unrelated browser content are redacted
-in tracked artifacts.
+must use a long capture with at least 10 frames spanning at least 10 seconds,
+and no more than the command's bounded 1024 normalized frames. It must use a
+recorded `manifest.json` / `run.json` with strictly increasing `timestamp_ms`
+values so realtime pacing exercises captured timing, and a ready plugin/source
+combination that produces at least one server-reported perception item and
+memory record. A source without recorded timestamps may be used only for a
+separate failure/recovery retry and cannot be claimed as realtime evidence.
+Fixture-generated or mock frames are not the primary demonstration. Local
+absolute paths and unrelated browser content are redacted in tracked
+artifacts.
 
 ### Exact procedure
 
@@ -96,23 +99,36 @@ The operator, not a batch script, then:
 2. The command has already started replay. Inspects the current capture,
    server-produced overlays, progress, and memory ledger on a processed frame;
    wait for the next frame if the page opened before the first frame arrived.
-3. Pauses. Toggles the ready set, including empty raw-capture. The held still
-   must update from the server. The evidence README cites the deterministic
-   invalid-selection coverage (or records an explicit loopback rejection
-   response) rather than treating a checkbox that is never rendered as an
-   invalid-ID test.
-4. Resumes or steps. A running toggle, including empty, must keep the current
-   still's processed evidence until the next processed frame.
+3. Pauses. Toggles to another ready set, then to empty raw-capture, and back
+   to a non-empty ready set. After each selection response, records the held
+   frame's server-produced plugin runs, overlays or explicit raw-capture state,
+   and memory state. Leave the non-empty set selected before resuming. The
+   evidence README cites the deterministic invalid-selection coverage (or
+   records an explicit loopback rejection response) rather than treating a
+   checkbox that is never rendered as an invalid-ID test.
+4. Before this running-toggle check, temporarily choose a fixed cadence with a
+   long enough delay to observe one held frame (for example, 5000 ms). Resume.
+   While the phase is running, toggle the ready set to empty raw-capture (or to
+   another ready set if empty was the last paused selection). Record the state
+   immediately after the selection and after the next frame: the current
+   still's processed evidence must remain unchanged at the selection boundary,
+   then the next frame must reflect the new set. Restore `realtime` before the
+   first run is allowed to complete.
 5. After the first run reaches its terminal state, resets isolated memory and
-   starts a second run **without** restarting the server. Keep loop off so the
-   second run also reaches a terminal state. The page remains available; prior
-   run identity does not leak as current success.
+   reselects `classical_regions` (or another ready non-empty set) if the
+   running-toggle check left an empty selection, then starts a second run
+   **without** restarting the server. Keep loop off so the second run also
+   reaches a terminal state. The page remains available; prior run identity
+   does not leak as current success. Record the server identity and distinct
+   first and second run IDs; the server identity and loopback URL must be the
+   same for both runs.
 6. Once the second run is terminal and the source field is editable, replaces
    it with an empty, missing, or unsupported directory and presses Start. The
-   named failure and next action stay visible. Then replaces it with an
-   operator-chosen valid directory and presses Start again, recording a
-   successful recovery on the same server. No source, simulator, or worker is
-   silently substituted or started.
+   named failure and next action stay visible; expand the `Failure boundary`
+   disclosure and record its boundary, message, and suggested next action.
+   Then replaces it with an operator-chosen valid directory and presses Start
+   again, recording a successful recovery on the same server. No source,
+   simulator, or worker is silently substituted or started.
 7. After the recovered run completes (or is explicitly cancelled if still
    running), resets. No vehicle, worker, simulator, Metrics operation,
    movement, or recording was started. Isolated mapper/memory state is reset.
@@ -126,8 +142,13 @@ display. The citation names
 `tests/cli/test_workbench.py::test_explicit_catalog_allows_raw_capture_and_live_replacement`
 for atomic invalid-ID refusal and
 `tests/cli/test_workbench.py::test_loopback_api_exposes_and_applies_plugin_selection`
-for the loopback selection boundary. If a direct probe is used, it records the
-HTTP 422 `plugin_catalog` response and the unchanged effective selection.
+for the loopback selection boundary,
+`tests/cli/test_workbench.py::test_loopback_api_persists_after_terminal_state_and_rejects_raw_argv`
+for server persistence, distinct run identity, and stale-run rejection, and
+`tests/cli/test_workbench.py::test_cli_replay_machine_readable_boundary` plus
+`tests/cli/test_workbench.py::test_cli_replay_accepts_realtime_pace` for the
+CLI boundary and pace. If a direct probe is used, it records the HTTP 422
+`plugin_catalog` response and the unchanged effective selection.
 
 ### Operator verdict
 
@@ -153,13 +174,17 @@ The implementation PR owns:
 | Path | Contract |
 | --- | --- |
 | `README.md` | Environment receipt, procedure log (including loop-off, second-run, failure, and valid-retry transitions), operator observations, verdict, limitations, deterministic-boundary citations, and links |
-| `result.json` | `m008_replay_workbench_acceptance_v1` with timestamps, commit, source/plugin identity, step outcomes, observation-only/cleanup checks, findings, and `accepted` / `blocked` / `incomplete` |
+| `result.json` | `m008_replay_workbench_acceptance_v1` with timestamps, commit, server identity, distinct first/second/failed/recovered run IDs, source/plugin identity, effective pace/loop controls, step outcomes, observation-only/cleanup checks, findings, and `accepted` / `blocked` / `incomplete` |
 | `result.html` | Derived HTML of that committed `result.json` |
 | `browser-view.png` | One cropped screenshot of the inspected workbench still (capture + overlays or explicit raw-capture) |
 | `cli-transcript.txt` | Optional exact launch/help/status transcript; redacted local prefixes |
 
-`result.json` lists each artifact with a SHA-256 digest. Runtime caches, full
-frame dumps, and unrelated browser chrome stay untracked.
+`result.json` lists each retained non-record artifact with a SHA-256 digest over
+its exact committed bytes. It intentionally excludes itself and derived
+`result.html` to avoid a self-reference/circular digest; the page is verified
+by regeneration from the committed record, and the record's own integrity is
+the Git commit. The README records the digest and regeneration commands.
+Runtime caches, full frame dumps, and unrelated browser chrome stay untracked.
 
 ### Findings
 
@@ -203,7 +228,10 @@ cite residuals already recorded there.
 | Empty selection while running hides leftover server overlays on the current still | Fail the #189 running rule; record an acceptance blocker. |
 | Paused plugin toggle leaves the held still unchanged | Fail the #189 paused rule; record an acceptance blocker. |
 | Invalid plugin IDs change the effective set | Fail; cite the deterministic selection-boundary test or record a direct loopback rejection with the effective set unchanged. |
+| Primary source is too short, exceeds the bounded frame limit, or lacks recorded timestamps | Fail the long realtime demonstration; the session is not accepted on a synthetic-timestamp or truncated source. |
 | Failed source is silently replaced | Fail M008-06. |
+| Server identity changes, run IDs are reused, or the recovery retry uses a new server | Fail M008-03; repeated-run persistence was not established. |
+| Artifact digest is self-referential or `result.html` cannot be regenerated from `result.json` | Fail artifact integrity; repair the evidence packet before handoff. |
 | Session starts a worker, simulator, Metrics operation, movement, or recording | Fail M008-06; reject as out of contract. |
 | Expand into video, live ingest, or a second operator goal | Out of this unit; residual or later proposal. |
 | Rewrite the M008 assessment as a new inventory | Fail: cite and keep the existing assessment. |
@@ -259,9 +287,11 @@ Commit the artifacts above with `result.json` status `accepted`, `blocked`, or
 `incomplete`. Derived `result.html` must be regenerable from that committed
 `result.json`. Plan validation and `git diff --check` still run.
 
-A success handoff requires `accepted` plus the procedure steps for
-persistence, inspection, failure/recovery, and observation-only cleanup. A
-blocker or incomplete session does not promote M008-03, M008-05, or M008-06.
+A success handoff requires `accepted` plus the procedure steps for persistence,
+inspection, failure/recovery, and observation-only cleanup. The packet records
+one server identity, distinct first/second/failed/recovered run IDs, effective
+pace/loop controls, and verified artifact digests/regeneration. A blocker or
+incomplete session does not promote M008-03, M008-05, or M008-06.
 
 ## Expected Handoff
 
@@ -270,11 +300,11 @@ blocker or incomplete session does not promote M008-03, M008-05, or M008-06.
   "schema": "milestone_handoff_template_v1",
   "outcome": "advance",
   "result": "Accepted",
-  "durable_evidence": "PR #{pr} records one operator-accepted local image-replay workbench session: the page stayed available across two runs, overlays and memory were inspected from server state, declared failure/recovery/cleanup stayed observation-only, and the operator affirmed minimal usefulness at the delivered granularity.",
+  "durable_evidence": "PR #{pr} records one operator-accepted local image-replay workbench session: one loopback server identity stayed available across distinct first, second, failed, and recovered runs, overlays and memory were inspected from server state, declared failure/recovery/cleanup stayed observation-only, and the operator affirmed minimal usefulness at the delivered granularity.",
   "criterion_updates": {
     "M008-03": {
       "status": "Met",
-      "evidence": "PR #{pr} records that the long-lived loopback workbench remained available across a second run without relaunching the server and used the same CLI/API runner contract."
+      "evidence": "PR #{pr} records one loopback server identity and distinct run IDs across the first, second, failed, and recovered runs without relaunching the server, and cites the deterministic CLI/API runner contract and persistence coverage."
     },
     "M008-05": {
       "status": "Met",

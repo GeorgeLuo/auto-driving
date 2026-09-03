@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="0f9814031ae28d1168a786f27adc09c785e3beca63234302ee440d1148a1d43a">
+  <meta name="source-sha256" content="83f7b2bc3f7b95d31a4711ba63074807e60d724b02bbe67101c87728a706422d">
   <base target="_blank">
   <title>Milestone plan — 008-cli-decision-workbench</title>
   <style>
@@ -252,9 +252,9 @@ coverage or a frontend framework migration.</p>
 <li>Implementation branch: <code>m008/perception-memory-workbench</code></li>
 <li>Proposal path: <code>docs/milestones/008-cli-decision-workbench/proposals/perception-memory-workbench.md</code></li>
 <li>Accepted proposal: <a href="https://github.com/GeorgeLuo/auto-driving/pull/172">#172</a> at <code>09687f19acd61b286378fb65f3db915ce5e50d51</code> (reviewed head <code>09e82ae15158608247097c85b5e21a47b0a06511</code> by <code>GeorgeLuo</code> as <code>OWNER</code> at <code>2026-08-27T23:05:47Z</code>)</li>
-<li>Proposal amendment branch: <code>m008/amend-live-plugin-selection</code></li>
-<li>Proposal amendment path: <code>docs/milestones/008-cli-decision-workbench/proposals/perception-live-plugin-selection-amendment.md</code></li>
-<li>Accepted proposal amendments: <a href="https://github.com/GeorgeLuo/auto-driving/pull/179">#179</a> at <code>1189002447802442e857da8f5d9c2663ff85b86d</code> (<code>docs/milestones/008-cli-decision-workbench/proposals/perception-plugin-selection-amendment.md</code>) (reviewed head <code>cb8ee7318c3820dc239def5343521396d9aab194</code> by <code>GeorgeLuo</code> as <code>OWNER</code> at <code>2026-09-01T23:17:14Z</code>); <a href="https://github.com/GeorgeLuo/auto-driving/pull/181">#181</a> at <code>5cf51585ac7951ea023a2a86fed786913daf626f</code> (<code>docs/milestones/008-cli-decision-workbench/proposals/perception-live-plugin-selection-amendment.md</code>) (reviewed head <code>2b063feed81a050a3c24263dd453628d0e08cff3</code> by <code>GeorgeLuo</code> as <code>OWNER</code> at <code>2026-09-02T02:08:51Z</code>)</li>
+<li>Proposal amendment branch: <code>m008/amend-raw-capture-paused-refresh</code></li>
+<li>Proposal amendment path: <code>docs/milestones/008-cli-decision-workbench/proposals/perception-raw-capture-paused-refresh-amendment.md</code></li>
+<li>Accepted proposal amendments: <a href="https://github.com/GeorgeLuo/auto-driving/pull/179">#179</a> at <code>1189002447802442e857da8f5d9c2663ff85b86d</code> (<code>docs/milestones/008-cli-decision-workbench/proposals/perception-plugin-selection-amendment.md</code>) (reviewed head <code>cb8ee7318c3820dc239def5343521396d9aab194</code> by <code>GeorgeLuo</code> as <code>OWNER</code> at <code>2026-09-01T23:17:14Z</code>); <a href="https://github.com/GeorgeLuo/auto-driving/pull/181">#181</a> at <code>5cf51585ac7951ea023a2a86fed786913daf626f</code> (<code>docs/milestones/008-cli-decision-workbench/proposals/perception-live-plugin-selection-amendment.md</code>) (reviewed head <code>2b063feed81a050a3c24263dd453628d0e08cff3</code> by <code>GeorgeLuo</code> as <code>OWNER</code> at <code>2026-09-02T02:08:51Z</code>); <a href="https://github.com/GeorgeLuo/auto-driving/pull/189">#189</a> at <code>b1e97ad8bd9c6ea7759bc7fa60331ec0a45d20d7</code> (<code>docs/milestones/008-cli-decision-workbench/proposals/perception-raw-capture-paused-refresh-amendment.md</code>) (reviewed head <code>5f07afdd1a09b066da79e4f886dc0448328f5e97</code> by <code>GeorgeLuo</code> as <code>OWNER</code> at <code>2026-09-03T04:22:22Z</code>)</li>
 <li>Review kind: Behavioral feature slice</li>
 <li>Review question: Can an operator use a local workbench to replay a supported ordered image source through the existing perception-to-<code>Observation</code>-to-memory pipeline, inspect real capture overlays and memory effects, and control the bounded replay without shell commands, mock data, hidden simulator changes, or a second execution authority?</li>
 <li>Acceptance owner: Workbench replay runner and CLI machine-readable boundary</li>
@@ -351,6 +351,16 @@ coverage or a frontend framework migration.</p>
 <td>Perception-memory workbench journey</td>
 <td>ready_for_implementation</td>
 <td>Proposal amendment PR #181 accepted at 5cf51585ac7951ea023a2a86fed786913daf626f (reviewed head <code>2b063feed81a050a3c24263dd453628d0e08cff3</code> by <code>GeorgeLuo</code> as <code>OWNER</code> at <code>2026-09-02T02:08:51Z</code>).</td>
+</tr>
+<tr>
+<td>Perception-memory workbench journey</td>
+<td>proposal_amendment_in_review</td>
+<td>Started proposal amendment m008/amend-raw-capture-paused-refresh.</td>
+</tr>
+<tr>
+<td>Perception-memory workbench journey</td>
+<td>ready_for_implementation</td>
+<td>Proposal amendment PR #189 accepted at b1e97ad8bd9c6ea7759bc7fa60331ec0a45d20d7 (reviewed head <code>5f07afdd1a09b066da79e4f886dc0448328f5e97</code> by <code>GeorgeLuo</code> as <code>OWNER</code> at <code>2026-09-03T04:22:22Z</code>).</td>
 </tr>
 <tr>
 <td>Perception-memory workbench journey</td>

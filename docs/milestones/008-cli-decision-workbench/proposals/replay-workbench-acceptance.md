@@ -106,8 +106,8 @@ The operator, not a batch script, then:
    evidence README cites the deterministic invalid-selection coverage (or
    records an explicit loopback rejection response) rather than treating a
    checkbox that is never rendered as an invalid-ID test.
-4. Before this running-toggle check, temporarily choose a fixed cadence with a
-   long enough delay to observe one held frame (for example, 5000 ms). Resume.
+4. Before this running-toggle check, temporarily choose the `1000 ms` fixed
+   cadence so there is enough delay to observe one held frame. Resume.
    While the phase is running, toggle the ready set to empty raw-capture (or to
    another ready set if empty was the last paused selection). Record the state
    immediately after the selection and after the next frame: the current

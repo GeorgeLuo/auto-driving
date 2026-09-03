@@ -1,0 +1,103 @@
+{
+  "schema": "m008_replay_workbench_acceptance_v1",
+  "status": "incomplete",
+  "incomplete_reason": "First-cut evidence packet. Live session and operator verdict are not yet recorded.",
+  "operator": null,
+  "verdict": null,
+  "timestamps": {
+    "started_at_utc": null,
+    "ended_at_utc": null
+  },
+  "environment": {
+    "operating_system": null,
+    "browser": {
+      "name": null,
+      "version": null
+    }
+  },
+  "repository": {
+    "commit": null,
+    "branch": "m008/replay-workbench-acceptance",
+    "worktree_state": null
+  },
+  "source": {
+    "kind": "image_directory",
+    "path_redacted": null,
+    "plugin_root": null,
+    "loopback_url": null
+  },
+  "steps": [
+    {
+      "id": "page_open",
+      "status": "pending",
+      "required": "Page shows source identity, plugin catalog, and declared next actions."
+    },
+    {
+      "id": "inspect_replay",
+      "status": "pending",
+      "required": "Ready-plugin replay shows capture, server overlays, progress, and memory on a processed frame."
+    },
+    {
+      "id": "paused_toggle",
+      "status": "pending",
+      "required": "Paused toggle including empty raw-capture updates the held still from the server; invalid IDs are refused."
+    },
+    {
+      "id": "running_toggle",
+      "status": "pending",
+      "required": "Running toggle including empty keeps the current still until the next processed frame."
+    },
+    {
+      "id": "second_run",
+      "status": "pending",
+      "required": "Reset and a second run without restarting the server; prior run identity is not current success."
+    },
+    {
+      "id": "source_failure",
+      "status": "pending",
+      "required": "Empty, missing, or unsupported source names the failure and next action; recovery is an operator-chosen directory."
+    },
+    {
+      "id": "cleanup",
+      "status": "pending",
+      "required": "Cancel or reset with no worker, simulator, Metrics operation, movement, or recording; isolated state is reset."
+    }
+  ],
+  "observation_only": {
+    "vehicle": null,
+    "worker": null,
+    "simulator": null,
+    "metrics_operation": null,
+    "movement": null,
+    "recording": null
+  },
+  "findings": [],
+  "artifacts": [
+    {
+      "path": "README.md",
+      "sha256": "3b151d257c53f506157ec8aed5d81026fa100556f9eafcbe89bc2ef99b115d01",
+      "captured": true
+    },
+    {
+      "path": "render_result.py",
+      "sha256": "b601324205f06c84005efce66d4fd367cca381bd8888046fd4520b127c7b3d0b",
+      "captured": true
+    },
+    {
+      "path": "browser-view.png",
+      "sha256": null,
+      "captured": false
+    },
+    {
+      "path": "cli-transcript.txt",
+      "sha256": null,
+      "captured": false
+    },
+    {
+      "path": "result.html",
+      "sha256": null,
+      "captured": true,
+      "note": "derived from this result.json; regenerate with render_result.py"
+    }
+  ]
+}

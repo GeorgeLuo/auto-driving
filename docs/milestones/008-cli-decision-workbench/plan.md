@@ -65,7 +65,7 @@ coverage or a frontend framework migration.
 
 **Replay workbench POC acceptance**
 
-- Workflow state: ready_for_implementation
+- Workflow state: implementation_in_review
 - Proposal branch: `m008/replay-workbench-acceptance-proposal`
 - Implementation branch: `m008/replay-workbench-acceptance`
 - Proposal path: `docs/milestones/008-cli-decision-workbench/proposals/replay-workbench-acceptance.md`
@@ -109,6 +109,7 @@ coverage or a frontend framework migration.
 | Perception-memory workbench journey | accepted | Implementation PR #174 merged at 27b3c343de311e60219abc9b18b4ef293a28b445. |
 | Replay workbench POC acceptance | proposal_in_review | Started m008/replay-workbench-acceptance-proposal. |
 | Replay workbench POC acceptance | ready_for_implementation | Proposal PR #190 accepted at 8dca162ee776267091b1bf4ac23f188e19d471b6 (reviewed head `aa0b4ba65b55140ac80201c66ce3c22b105dd7dc` by `GeorgeLuo` as `OWNER` at `2026-09-03T21:56:31Z`). |
+| Replay workbench POC acceptance | implementation_in_review | Started m008/replay-workbench-acceptance. |
 
 ## Accepted Review Units
 

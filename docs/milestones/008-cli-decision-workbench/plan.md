@@ -65,10 +65,11 @@ coverage or a frontend framework migration.
 
 **Replay workbench POC acceptance**
 
-- Workflow state: proposal_in_review
+- Workflow state: ready_for_implementation
 - Proposal branch: `m008/replay-workbench-acceptance-proposal`
 - Implementation branch: `m008/replay-workbench-acceptance`
 - Proposal path: `docs/milestones/008-cli-decision-workbench/proposals/replay-workbench-acceptance.md`
+- Accepted proposal: [#190](https://github.com/GeorgeLuo/auto-driving/pull/190) at `8dca162ee776267091b1bf4ac23f188e19d471b6` (reviewed head `aa0b4ba65b55140ac80201c66ce3c22b105dd7dc` by `GeorgeLuo` as `OWNER` at `2026-09-03T21:56:31Z`)
 - Review kind: Live or external evidence
 - Review question: Can an operator use the implemented image-replay workbench to inspect real perception overlays and memory effects, control the declared replay, and affirm that this one local workflow is minimally useful at its delivered display granularity?
 - Acceptance owner: Operator acceptance record and replay-workbench evidence boundary
@@ -107,6 +108,7 @@ coverage or a frontend framework migration.
 | Perception-memory workbench journey | implementation_in_review | Started m008/perception-memory-workbench. |
 | Perception-memory workbench journey | accepted | Implementation PR #174 merged at 27b3c343de311e60219abc9b18b4ef293a28b445. |
 | Replay workbench POC acceptance | proposal_in_review | Started m008/replay-workbench-acceptance-proposal. |
+| Replay workbench POC acceptance | ready_for_implementation | Proposal PR #190 accepted at 8dca162ee776267091b1bf4ac23f188e19d471b6 (reviewed head `aa0b4ba65b55140ac80201c66ce3c22b105dd7dc` by `GeorgeLuo` as `OWNER` at `2026-09-03T21:56:31Z`). |
 
 ## Accepted Review Units
 

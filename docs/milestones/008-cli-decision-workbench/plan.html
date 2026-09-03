@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="83f7b2bc3f7b95d31a4711ba63074807e60d724b02bbe67101c87728a706422d">
+  <meta name="source-sha256" content="670dd5dd44c340b73914c7ad6a39e262dbbddf94c8f243ca7ab393e53e88024c">
   <base target="_blank">
   <title>Milestone plan — 008-cli-decision-workbench</title>
   <style>
@@ -85,7 +85,7 @@
 </tr>
 <tr>
 <td>Current frontier</td>
-<td>Perception-memory workbench journey</td>
+<td>None (idle)</td>
 </tr>
 <tr>
 <td>Started</td>
@@ -196,14 +196,14 @@ coverage or a frontend framework migration.</p>
 <tr>
 <td>M008-01</td>
 <td>A grounded, bounded assessment evaluates the relevant M007 perception-memory journeys, current CLI capabilities, and existing CLI-launched pages for operator usefulness, composability, required inputs and state, signal quality, CLI completeness, side effects, recovery, cleanup, and workbench fit</td>
-<td>Unmet</td>
-<td>Accepted M007 evidence and current pages provide inputs, but this workbench-feasibility assessment has not been completed</td>
+<td>Met</td>
+<td>PR #174 records the bounded assessment of the relevant M007 perception-memory candidates, current CLI capabilities, and existing loopback pages.</td>
 </tr>
 <tr>
 <td>M008-02</td>
 <td>The assessment selects an authoritative sequence set for one useful slice; any newly defined sequence is limited, independently useful from the CLI, reusable in a larger feature, and explicit about inputs, signals, safety, recovery, and cleanup</td>
-<td>Unmet</td>
-<td>Existing candidates are not assumed sufficient, and missing behavior is not automatically converted into implementation work</td>
+<td>Met</td>
+<td>PR #174 selects workbench.image_replay.v1 as the one CLI-useful reusable composed journey with declared feed inputs, overlays, controls, safety, recovery, cleanup, and a bounded POC-completion envelope.</td>
 </tr>
 <tr>
 <td>M008-03</td>
@@ -214,8 +214,8 @@ coverage or a frontend framework migration.</p>
 <tr>
 <td>M008-04</td>
 <td>The existing CLI-launched pages and signal publications used by the selected slice are reused, consolidated, or given an explicit one-source adaptation boundary so the CLI page and workbench do not require divergent feature definitions</td>
-<td>Unmet</td>
-<td>Current live and static pages expose useful pieces, but the selected slice's reuse and synchronization boundary has not been established</td>
+<td>Met</td>
+<td>PR #174 establishes the selected slice's one-source adaptation boundary between existing CLI-launched perception/memory pages and the workbench.</td>
 </tr>
 <tr>
 <td>M008-05</td>
@@ -245,22 +245,10 @@ coverage or a frontend framework migration.</p>
 </table>
 <h2>Current Delivery</h2>
 <h3>Current Frontier</h3>
-<p><strong>Perception-memory workbench journey</strong></p>
+<p><strong>None</strong></p>
 <ul>
-<li>Workflow state: implementation_in_review</li>
-<li>Proposal branch: <code>m008/perception-memory-workbench-proposal</code></li>
-<li>Implementation branch: <code>m008/perception-memory-workbench</code></li>
-<li>Proposal path: <code>docs/milestones/008-cli-decision-workbench/proposals/perception-memory-workbench.md</code></li>
-<li>Accepted proposal: <a href="https://github.com/GeorgeLuo/auto-driving/pull/172">#172</a> at <code>09687f19acd61b286378fb65f3db915ce5e50d51</code> (reviewed head <code>09e82ae15158608247097c85b5e21a47b0a06511</code> by <code>GeorgeLuo</code> as <code>OWNER</code> at <code>2026-08-27T23:05:47Z</code>)</li>
-<li>Proposal amendment branch: <code>m008/amend-raw-capture-paused-refresh</code></li>
-<li>Proposal amendment path: <code>docs/milestones/008-cli-decision-workbench/proposals/perception-raw-capture-paused-refresh-amendment.md</code></li>
-<li>Accepted proposal amendments: <a href="https://github.com/GeorgeLuo/auto-driving/pull/179">#179</a> at <code>1189002447802442e857da8f5d9c2663ff85b86d</code> (<code>docs/milestones/008-cli-decision-workbench/proposals/perception-plugin-selection-amendment.md</code>) (reviewed head <code>cb8ee7318c3820dc239def5343521396d9aab194</code> by <code>GeorgeLuo</code> as <code>OWNER</code> at <code>2026-09-01T23:17:14Z</code>); <a href="https://github.com/GeorgeLuo/auto-driving/pull/181">#181</a> at <code>5cf51585ac7951ea023a2a86fed786913daf626f</code> (<code>docs/milestones/008-cli-decision-workbench/proposals/perception-live-plugin-selection-amendment.md</code>) (reviewed head <code>2b063feed81a050a3c24263dd453628d0e08cff3</code> by <code>GeorgeLuo</code> as <code>OWNER</code> at <code>2026-09-02T02:08:51Z</code>); <a href="https://github.com/GeorgeLuo/auto-driving/pull/189">#189</a> at <code>b1e97ad8bd9c6ea7759bc7fa60331ec0a45d20d7</code> (<code>docs/milestones/008-cli-decision-workbench/proposals/perception-raw-capture-paused-refresh-amendment.md</code>) (reviewed head <code>5f07afdd1a09b066da79e4f886dc0448328f5e97</code> by <code>GeorgeLuo</code> as <code>OWNER</code> at <code>2026-09-03T04:22:22Z</code>)</li>
-<li>Review kind: Behavioral feature slice</li>
-<li>Review question: Can an operator use a local workbench to replay a supported ordered image source through the existing perception-to-<code>Observation</code>-to-memory pipeline, inspect real capture overlays and memory effects, and control the bounded replay without shell commands, mock data, hidden simulator changes, or a second execution authority?</li>
-<li>Acceptance owner: Workbench replay runner and CLI machine-readable boundary</li>
-<li>Exit criteria affected: M008-01, M008-02, M008-04</li>
-<li>Prerequisite: The current image-directory perception application, perception-to-<code>Observation</code> seam, and bounded-memory implementation are available on <code>main</code>, and a supported local image source can be read.</li>
-<li>Milestone-level non-goal: Full M006 shadow-decision evidence, all M007 scenarios, engine or CLI redesign, Metrics UI redesign, movement, or remote hosting.</li>
+<li>Reason: The plan already queues the bounded Replay workbench POC acceptance evidence unit after implementation; the handoff must not invent another successor.</li>
+<li>Revisit when: After the queued evidence unit, select closeout or a separately proposed residual only if its acceptance decision or durable assessment requires it.</li>
 </ul>
 <h3>Next-Frontier Candidate</h3>
 <p><strong>Replay workbench POC acceptance</strong></p>
@@ -367,6 +355,11 @@ coverage or a frontend framework migration.</p>
 <td>implementation_in_review</td>
 <td>Started m008/perception-memory-workbench.</td>
 </tr>
+<tr>
+<td>Perception-memory workbench journey</td>
+<td>accepted</td>
+<td>Implementation PR #174 merged at 27b3c343de311e60219abc9b18b4ef293a28b445.</td>
+</tr>
 </tbody>
 </table>
 <h2>Accepted Review Units</h2>
@@ -382,11 +375,11 @@ coverage or a frontend framework migration.</p>
 </thead>
 <tbody>
 <tr>
-<td></td>
-<td></td>
-<td></td>
-<td></td>
-<td></td>
+<td>#174</td>
+<td>Can an operator use a local workbench to replay a supported ordered image source through the existing perception-to-<code>Observation</code>-to-memory pipeline, inspect real capture overlays and memory effects, and control the bounded replay without shell commands, mock data, hidden simulator changes, or a second execution authority?</td>
+<td>Accepted</td>
+<td>M008-01, M008-02, M008-04</td>
+<td>PR #174 selects workbench.image_replay.v1 through the durable M008 assessment, composes the existing image-perception, Observation, and bounded-memory seams behind one shared server-side CLI/workbench runner, and documents the selected visual page adaptation boundary.</td>
 </tr>
 </tbody>
 </table>
@@ -401,16 +394,6 @@ coverage or a frontend framework migration.</p>
 </thead>
 <tbody>
 <tr>
-<td>M007 sequences were accepted as CLI journeys, not proven as workbench features</td>
-<td>A sequence may be technically runnable yet have weak user value, poor reuse, or signals that do not support a usable interface</td>
-<td>Bound the assessment to the current perception-memory source and let operator acceptance select one slice before implementation expands</td>
-</tr>
-<tr>
-<td>Frontend pieces used by the selected slice may be split between long-running perception-memory routes and generated per-run review pages</td>
-<td>A new workbench could duplicate signal meaning, rendering behavior, or lifecycle state and drift from the CLI-launched pages</td>
-<td>Inventory only the selected slice's publications and views, then reuse, consolidate, or define one source and explicit adaptations before adding parallel behavior</td>
-</tr>
-<tr>
 <td>The current live page server is associated with a worker rather than an explicit multi-run workbench session</td>
 <td>Repeated runs, cancellation, stale state, or cleanup may be confusing even if a single run works</td>
 <td>Let the slice proposal define the smallest persistent session and run identity that keeps state, failure, and cleanup legible</td>
@@ -421,11 +404,6 @@ coverage or a frontend framework migration.</p>
 <td>First assess the recorded-source contracts already accepted in M007; add input sequencing only when it is useful and authoritative from the CLI as well</td>
 </tr>
 <tr>
-<td>The smallest reliable CLI-to-workbench invocation boundary is not yet chosen</td>
-<td>A premature subprocess, service, or in-process API decision could create work before the selected feature needs are understood</td>
-<td>Let the proposal choose the smallest boundary over one authoritative server-side sequence implementation and structured result contract</td>
-</tr>
-<tr>
 <td>The full M006 shadow decision surfaces are accepted on the M006 branch but are not in <code>main</code></td>
 <td>A baseline candidate that needs the full shadow proposal lifecycle cannot be implemented from the current M008 base</td>
 <td>Keep M006 ownership separate and mark the candidate unavailable or deferred until its CLI contract is available; do not duplicate it in M008</td>
@@ -434,6 +412,11 @@ coverage or a frontend framework migration.</p>
 <td>Human-friendly presentation and the minimally useful display granularity are operator judgments</td>
 <td>Freezing a visual layout too early creates rework, while leaving acceptance implicit makes feasibility impossible to close</td>
 <td>Record one affirmative operator judgment against the primary demonstration; later refinement is residual unless it falsifies that acceptance</td>
+</tr>
+<tr>
+<td>The selected workbench has not yet received recorded operator acceptance across repeated replay runs and declared source or processing failures</td>
+<td>The deterministic visual implementation can establish the shared sequence and page boundary without proving M008-03, M008-05, or M008-06</td>
+<td>Use the durable assessment and implementation contract to select one bounded operator-evidence review unit, including any future video or live-adapter decision, when the operator is ready.</td>
 </tr>
 </tbody>
 </table>

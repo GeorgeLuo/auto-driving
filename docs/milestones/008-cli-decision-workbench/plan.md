@@ -5,7 +5,7 @@
 | Status | Active |
 | Milestone branch | `milestone/008-cli-decision-workbench` |
 | Cumulative PR | [#167](https://github.com/GeorgeLuo/auto-driving/pull/167) (draft until whole-milestone closeout) |
-| Current frontier | None (idle) |
+| Current frontier | Replay workbench POC acceptance |
 | Started | 2026-08-26 |
 | Action policy | Observation-only; no applied vehicle movement |
 
@@ -63,41 +63,30 @@ coverage or a frontend framework migration.
 
 ### Current Frontier
 
-**None**
+**Replay workbench POC acceptance**
 
-- Reason: The plan already queues the bounded Replay workbench POC acceptance evidence unit after implementation; the handoff must not invent another successor.
-- Revisit when: After the queued evidence unit, select closeout or a separately proposed residual only if its acceptance decision or durable assessment requires it.
+- Workflow state: proposal_in_review
+- Proposal branch: `m008/replay-workbench-acceptance-proposal`
+- Implementation branch: `m008/replay-workbench-acceptance`
+- Proposal path: `docs/milestones/008-cli-decision-workbench/proposals/replay-workbench-acceptance.md`
+- Review kind: Live or external evidence
+- Review question: Can an operator use the implemented image-replay workbench to inspect real perception overlays and memory effects, control the declared replay, and affirm that this one local workflow is minimally useful at its delivered display granularity?
+- Acceptance owner: Operator acceptance record and replay-workbench evidence boundary
+- Exit criteria affected: M008-03, M008-05, M008-06
+- Prerequisite: The accepted Perception-memory workbench journey implementation is available with its declared supported source, visual/control contract, and durable assessment.
+- Milestone-level non-goal: Product expansion beyond the accepted POC-completion envelope, video/live adapters, new processing semantics, or a substitute for an actual operator acceptance.
 
 ### Next-Frontier Candidate
 
-**Replay workbench POC acceptance**
+**None**
 
-- Proposal branch: `m008/replay-workbench-acceptance-proposal`
-- Implementation branch: `m008/replay-workbench-acceptance`
-- Proposal path: `docs/milestones/008-cli-decision-workbench/proposals/replay-workbench-acceptance.md`
-- Review kind: Live or external evidence
-- Review question: Can an operator use the implemented image-replay workbench to inspect real perception overlays and memory effects, control the declared replay, and affirm that this one local workflow is minimally useful at its delivered display granularity?
-- Acceptance owner: Operator acceptance record and replay-workbench evidence boundary
-- Exit criteria affected: M008-03, M008-05, M008-06
-- Prerequisite: The accepted Perception-memory workbench journey implementation is available with its declared supported source, visual/control contract, and durable assessment.
-- Non-goals: Product expansion beyond the accepted POC-completion envelope, video/live adapters, new processing semantics, or a substitute for an actual operator acceptance.
+- Reason: No remaining work-order node is contracted.
+- Revisit when: The next proposal may introduce a node.
 
 ### Frontier Map
 
-- Path: `Replay workbench POC acceptance`
+- Path: none
 - Cadence: linked-list
-
-#### Node: Replay workbench POC acceptance
-
-- Proposal branch: `m008/replay-workbench-acceptance-proposal`
-- Implementation branch: `m008/replay-workbench-acceptance`
-- Proposal path: `docs/milestones/008-cli-decision-workbench/proposals/replay-workbench-acceptance.md`
-- Review kind: Live or external evidence
-- Review question: Can an operator use the implemented image-replay workbench to inspect real perception overlays and memory effects, control the declared replay, and affirm that this one local workflow is minimally useful at its delivered display granularity?
-- Acceptance owner: Operator acceptance record and replay-workbench evidence boundary
-- Exit criteria affected: M008-03, M008-05, M008-06
-- Prerequisite: The accepted Perception-memory workbench journey implementation is available with its declared supported source, visual/control contract, and durable assessment.
-- Non-goals: Product expansion beyond the accepted POC-completion envelope, video/live adapters, new processing semantics, or a substitute for an actual operator acceptance.
 
 ## Workflow History
 
@@ -117,6 +106,7 @@ coverage or a frontend framework migration.
 | Perception-memory workbench journey | ready_for_implementation | Proposal amendment PR #189 accepted at b1e97ad8bd9c6ea7759bc7fa60331ec0a45d20d7 (reviewed head `5f07afdd1a09b066da79e4f886dc0448328f5e97` by `GeorgeLuo` as `OWNER` at `2026-09-03T04:22:22Z`). |
 | Perception-memory workbench journey | implementation_in_review | Started m008/perception-memory-workbench. |
 | Perception-memory workbench journey | accepted | Implementation PR #174 merged at 27b3c343de311e60219abc9b18b4ef293a28b445. |
+| Replay workbench POC acceptance | proposal_in_review | Started m008/replay-workbench-acceptance-proposal. |
 
 ## Accepted Review Units
 

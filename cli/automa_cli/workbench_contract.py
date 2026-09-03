@@ -13,6 +13,7 @@ WORKBENCH_ERROR_SCHEMA = "workbench_error_v1"
 WORKBENCH_HOST = "127.0.0.1"
 WORKBENCH_DEFAULT_CADENCE_MS = 250
 WORKBENCH_DEFAULT_PACE = "fixed"
+WORKBENCH_DEFAULT_LOOP = True
 WORKBENCH_PACES = ("fixed", "realtime")
 WORKBENCH_MAX_ACTION_BYTES = 64 * 1024
 WORKBENCH_ACTIONS = (
@@ -25,9 +26,11 @@ WORKBENCH_ACTIONS = (
     "pause",
     "resume",
     "step",
+    "seek",
     "cancel",
     "reset",
     "set_cadence",
+    "set_loop",
 )
 
 
@@ -53,6 +56,7 @@ __all__ = [
     "WORKBENCH_ACTIONS",
     "WORKBENCH_ACTION_RESULT_SCHEMA",
     "WORKBENCH_DEFAULT_CADENCE_MS",
+    "WORKBENCH_DEFAULT_LOOP",
     "WORKBENCH_DEFAULT_PACE",
     "WORKBENCH_ERROR_SCHEMA",
     "WORKBENCH_HOST",

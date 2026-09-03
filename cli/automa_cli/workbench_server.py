@@ -58,6 +58,7 @@ class ReplayRunner(Protocol):
         frame_id: str | None = None,
         *,
         run_id: str,
+        position: int | None = None,
     ) -> tuple[bytes, str] | None:
         ...
 
@@ -146,6 +147,8 @@ class WorkbenchServer:
             "pace",
             "plugin_dir",
             "active_plugin_ids",
+            "position",
+            "loop",
         }
         unknown = sorted(set(payload) - allowed)
         if unknown:
@@ -208,6 +211,22 @@ class WorkbenchServer:
                     status_code=400,
                     boundary="input",
                 )
+        position = payload.get("position")
+        if position is not None and (
+            isinstance(position, bool) or not isinstance(position, int)
+        ):
+            raise ReplayActionError(
+                "position must be an integer",
+                status_code=400,
+                boundary="input",
+            )
+        loop = payload.get("loop")
+        if loop is not None and not isinstance(loop, bool):
+            raise ReplayActionError(
+                "loop must be a boolean",
+                status_code=400,
+                boundary="input",
+            )
         try:
             state = self.runner.dispatch(
                 action,
@@ -217,6 +236,8 @@ class WorkbenchServer:
                 pace=pace,
                 plugin_dir=plugin_dir,
                 active_plugin_ids=active_plugin_ids,
+                position=position,
+                loop=loop,
             )
         except SourceValidationError as exc:
             raise ReplayActionError(
@@ -281,12 +302,28 @@ class _WorkbenchHTTPHandler(LoopbackHTTPRequestHandler):
         query = parse_qs(query_string, keep_blank_values=True)
         frame_id = _query_one(query, "frame_id")
         run_id = _query_one(query, "run_id")
-        if not run_id or not frame_id:
+        position_raw = _query_one(query, "position")
+        position = None
+        if position_raw is not None:
+            try:
+                position = int(position_raw)
+            except ValueError:
+                self._send_json(
+                    400,
+                    _error_payload(
+                        "input",
+                        "position must be an integer",
+                        self.server.workbench.state_payload(),
+                    ),
+                    include_body=include_body,
+                )
+                return
+        if not run_id or (not frame_id and position is None):
             self._send_json(
                 400,
                 _error_payload(
                     "input",
-                    "run_id and frame_id are required",
+                    "run_id and frame_id or position are required",
                     self.server.workbench.state_payload(),
                 ),
                 include_body=include_body,
@@ -294,6 +331,17 @@ class _WorkbenchHTTPHandler(LoopbackHTTPRequestHandler):
             return
         try:
             if route == "/api/frame-detail":
+                if not frame_id:
+                    self._send_json(
+                        400,
+                        _error_payload(
+                            "input",
+                            "run_id and frame_id are required",
+                            self.server.workbench.state_payload(),
+                        ),
+                        include_body=include_body,
+                    )
+                    return
                 detail = self.server.workbench.runner.frame_detail(
                     frame_id,
                     run_id=run_id,
@@ -302,6 +350,7 @@ class _WorkbenchHTTPHandler(LoopbackHTTPRequestHandler):
                 frame = self.server.workbench.runner.frame_bytes(
                     frame_id,
                     run_id=run_id,
+                    position=position,
                 )
         except ReplayActionError as exc:
             self._send_json(

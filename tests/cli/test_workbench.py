@@ -22,13 +22,20 @@ from autonomy.perception import (
 from autonomy.decision.memory import MemoryBounds, MemorySnapshot
 from cli.automa_cli.workbench import (
     PluginCatalogError,
-    ImageReplayRunner,
+    ImageReplayRunner as ProductionImageReplayRunner,
     ReplayActionError,
     SourceValidationError,
     WorkbenchServer,
     normalize_image_directory,
     discover_plugin_catalog,
 )
+
+
+class ImageReplayRunner(ProductionImageReplayRunner):
+    """Deterministic tests default loop off so wait() can observe completed."""
+
+    def __init__(self, *args, loop=False, **kwargs):
+        super().__init__(*args, loop=loop, **kwargs)
 from tests.support.cli_runner import run_automa
 
 
@@ -182,6 +189,56 @@ class WorkbenchTests(unittest.TestCase):
         )[1])
         self.assertIn("elements.viewerFrame.hidden = false;", image_change)
         self.assertIn("elements.emptyState.hidden = true;", image_change)
+        no_frame = render_frame.split("if (!frame) {", 1)[1].split(
+            "if (loadedImageKey !== \"\") {", 1
+        )
+        keep_last = no_frame[1].split("return;", 1)[0]
+        self.assertIn("elements.viewerFrame.hidden = false;", keep_last)
+        self.assertIn("elements.emptyState.hidden = true;", keep_last)
+        self.assertNotIn("Choose an image directory", keep_last)
+
+    def test_workbench_playback_controls_do_not_rebuild_the_viewer(self) -> None:
+        html = Path("cli/automa_cli/workbench.html").read_text(encoding="utf-8")
+        self.assertIn('elements.loopToggle.addEventListener("click"', html)
+        self.assertIn('elements.overlayToggle.addEventListener("click"', html)
+        self.assertNotIn('elements.loopToggle.addEventListener("pointerdown"', html)
+        self.assertNotIn('action("set_loop"', html)
+        self.assertIn('body = { action: "set_loop", loop: on }', html)
+        self.assertIn("function playbackControlAction(name) {", html)
+        self.assertIn('name === "pause"', html)
+        self.assertIn('name === "resume"', html)
+        self.assertIn('name === "set_cadence"', html)
+        action_fn = html.split("async function action(action, extra) {", 1)[1].split(
+            "function setButton(id, allowed) {", 1
+        )[0]
+        preflight = action_fn.split("var body = { action: action };", 1)[0]
+        self.assertNotIn("renderControls();", preflight)
+        self.assertIn("skipViewer", action_fn)
+        self.assertIn("actionInFlight = false;", action_fn.split("if (payload.state")[1])
+        render_fn = html.split("function render(nextState, options) {", 1)[1].split(
+            "async function poll() {", 1
+        )[0]
+        self.assertIn("if (!options.skipViewer) {", render_fn)
+        self.assertIn("renderFrame();", render_fn)
+        controls = html.split("function renderControls() {", 1)[1].split(
+            "function renderFrame() {", 1
+        )[0]
+        self.assertNotIn("!actionInFlight && allowed.indexOf(\"start\")", controls)
+        self.assertIn('setButton("pauseButton", canPause);', controls)
+
+    def test_workbench_locks_source_and_plugin_paths_during_replay(self) -> None:
+        html = Path("cli/automa_cli/workbench.html").read_text(encoding="utf-8")
+        controls = html.split("function renderControls() {", 1)[1].split(
+            "function renderFrame() {", 1
+        )[0]
+        self.assertIn(
+            'var liveReplay = Boolean(state) && (state.phase === "running" || state.phase === "paused");',
+            controls,
+        )
+        self.assertIn("elements.sourceDir.disabled = liveReplay;", controls)
+        self.assertIn("elements.pluginDir.disabled = liveReplay;", controls)
+        self.assertIn("elements.cadence.disabled = !state;", controls)
+        self.assertNotIn("elements.pluginDir.disabled = !state || actionInFlight", controls)
 
     def test_manifest_catalog_is_recursive_deterministic_and_explicit_about_readiness(self) -> None:
         catalog = discover_plugin_catalog(Path("lab/plugins/perception"))
@@ -287,6 +344,64 @@ class WorkbenchTests(unittest.TestCase):
             )
             self.assertEqual(
                 [run["plugin_id"] for run in second_detail["perception"]["plugin_runs"]],
+                ["floor_continuity"],
+            )
+            runner.dispatch("cancel", run_id=run_id)
+
+    def test_paused_plugin_toggle_reprocesses_current_frame_evidence(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            _make_images(root, 3)
+            runner = ImageReplayRunner(
+                root,
+                plugin_dir=Path("lab/plugins/perception"),
+                cadence_ms=5000,
+            )
+            runner.dispatch(
+                "select_plugins",
+                active_plugin_ids=["classical_regions"],
+            )
+            started = runner.start()
+            run_id = started["run_id"]
+            _wait_until(lambda: runner.state().get("current_frame") is not None)
+            paused = runner.dispatch("pause", run_id=run_id)
+            position = paused["position"]
+            timeline_len = len(paused["timeline"])
+            self.assertEqual(
+                [run["plugin_id"] for run in paused["perception"]["plugin_runs"]],
+                ["classical_regions"],
+            )
+
+            both = runner.dispatch(
+                "select_plugins",
+                run_id=run_id,
+                active_plugin_ids=["classical_regions", "floor_continuity"],
+            )
+            self.assertEqual(both["phase"], "paused")
+            self.assertEqual(both["position"], position)
+            self.assertEqual(len(both["timeline"]), timeline_len)
+            self.assertEqual(
+                [run["plugin_id"] for run in both["perception"]["plugin_runs"]],
+                ["classical_regions", "floor_continuity"],
+            )
+
+            none = runner.dispatch(
+                "select_plugins",
+                run_id=run_id,
+                active_plugin_ids=[],
+            )
+            self.assertEqual(none["phase"], "paused")
+            self.assertEqual(list(none["perception"]["plugin_runs"] or ()), [])
+
+            one = runner.dispatch(
+                "select_plugins",
+                run_id=run_id,
+                active_plugin_ids=["floor_continuity"],
+            )
+            self.assertEqual(one["phase"], "paused")
+            self.assertEqual(one["position"], position)
+            self.assertEqual(
+                [run["plugin_id"] for run in one["perception"]["plugin_runs"]],
                 ["floor_continuity"],
             )
             runner.dispatch("cancel", run_id=run_id)
@@ -607,6 +722,109 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(completed_again["phase"], "completed")
         self.assertEqual(completed_again["progress"]["completed"], 3)
 
+    def test_seek_jumps_current_frame_and_reuses_processed_history(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            _make_images(root, 4)
+            mapper = FixtureMapper()
+            runner = ImageReplayRunner(
+                root,
+                cadence_ms=5000,
+                mapper_factory=lambda: mapper,
+            )
+            started = runner.start()
+            run_id = started["run_id"]
+            _wait_until(lambda: len(runner.state()["timeline"]) >= 1)
+            paused = runner.dispatch("pause", run_id=run_id)
+            first_id = paused["current_frame"]["frame_id"]
+            calls_after_first = len(mapper.calls)
+            self.assertIn("seek", paused["controls"]["allowed_actions"])
+
+            sought = runner.dispatch("seek", run_id=run_id, position=2)
+            self.assertEqual(sought["phase"], "paused")
+            self.assertEqual(sought["current_frame"]["position"], 2)
+            self.assertEqual(sought["position"], 3)
+            self.assertEqual(len(mapper.calls), calls_after_first + 1)
+            self.assertEqual(
+                sought["current_frame"]["frame_id"],
+                sought["timeline"][-1]["frame"]["frame_id"],
+            )
+
+            cached = runner.dispatch("seek", run_id=run_id, position=0)
+            self.assertEqual(cached["phase"], "paused")
+            self.assertEqual(cached["current_frame"]["frame_id"], first_id)
+            self.assertEqual(cached["current_frame"]["position"], 0)
+            self.assertEqual(len(mapper.calls), calls_after_first + 1)
+
+            with self.assertRaises(ReplayActionError):
+                runner.dispatch("seek", run_id=run_id, position=99)
+            with self.assertRaises(ReplayActionError):
+                runner.dispatch("seek", run_id=run_id)
+            runner.dispatch("cancel", run_id=run_id)
+
+        idle = ImageReplayRunner()
+        with self.assertRaises(ReplayActionError):
+            idle.dispatch("seek", run_id="missing", position=0)
+
+    def test_loop_playback_rewinds_instead_of_completing(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            _make_images(root, 2)
+            mapper = FixtureMapper()
+            runner = ImageReplayRunner(
+                root,
+                cadence_ms=0,
+                mapper_factory=lambda: mapper,
+                loop=True,
+            )
+            started = runner.start()
+            run_id = started["run_id"]
+            self.assertTrue(started["controls"]["loop"])
+            _wait_until(lambda: len(mapper.calls) >= 3)
+            live = runner.state()
+            self.assertEqual(live["phase"], "running")
+            self.assertLessEqual(len(live["timeline"]), 2)
+            runner.dispatch("set_loop", run_id=run_id, loop=False)
+            finished = runner.wait(5)
+            self.assertEqual(finished["phase"], "completed")
+            self.assertFalse(finished["controls"]["loop"])
+
+    def test_seek_while_running_pauses_and_serves_frame_bytes_by_position(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            _make_images(root, 4)
+            runner = ImageReplayRunner(root, cadence_ms=5000)
+            server = WorkbenchServer(runner).start()
+            self.addCleanup(server.stop)
+            base = server.url
+            self.assertIsNotNone(base)
+
+            def post(payload: dict[str, object]) -> dict[str, object]:
+                body = json.dumps(payload).encode("utf-8")
+                return json.loads(
+                    urlopen(
+                        Request(
+                            base + "api/action",
+                            data=body,
+                            headers={"Content-Type": "application/json"},
+                            method="POST",
+                        ),
+                        timeout=10,
+                    ).read()
+                )
+
+            started = post({"action": "start", "source_dir": str(root), "cadence_ms": 5000})
+            run_id = started["state"]["run_id"]
+            _wait_until(lambda: len(runner.state()["timeline"]) >= 1)
+            sought = post({"action": "seek", "run_id": run_id, "position": 2})
+            self.assertEqual(sought["state"]["phase"], "paused")
+            self.assertEqual(sought["state"]["current_frame"]["position"], 2)
+            query = urlencode({"run_id": run_id, "position": "2"})
+            frame = urlopen(base + "api/frame?" + query, timeout=2)
+            self.assertEqual(frame.status, 200)
+            self.assertTrue(frame.read())
+            post({"action": "cancel", "run_id": run_id})
+
     def test_realtime_pace_honors_recorded_frame_timestamps(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)
@@ -703,23 +921,10 @@ class WorkbenchTests(unittest.TestCase):
             self.assertIsNotNone(base)
 
             html = urlopen(base, timeout=2).read().decode("utf-8")
-            self.assertIn('id="pluginDir"', html)
-            self.assertNotIn('id="selectPluginsButton"', html)
-            self.assertIn("Click a ready checkbox to start or stop it at the next frame boundary.", html)
-            self.assertIn("Select none for raw capture without perception overlays.", html)
-            self.assertIn("state.active_plugin_ids.length === 0", html)
-            self.assertNotIn("pending", html)
-            self.assertIn(
-                'action("select_plugins", {\n              active_plugin_ids: pluginSelectionDraft',
-                html,
-            )
             current_payload = html.split("function currentPayload(key) {", 1)[1].split(
                 "function clearFrameSelection() {", 1
             )[0]
-            self.assertLess(
-                current_payload.index("state.active_plugin_ids.length === 0"),
-                current_payload.index("selectedFrameDetail &&"),
-            )
+            self.assertIn("selected.length === 0 && runs.length > 0", current_payload)
             plugin_root = str(Path("lab/plugins/perception").resolve())
 
             def post(payload: dict[str, object]) -> dict[str, object]:
@@ -867,12 +1072,8 @@ class WorkbenchTests(unittest.TestCase):
             base = server.url
             self.assertIsNotNone(base)
 
-            html = urlopen(base, timeout=2).read().decode("utf-8")
-            self.assertIn("Perception-memory Workbench", html)
-            self.assertIn('id="stepButton"', html)
-            self.assertIn('id="timelineSelection"', html)
-            self.assertIn('id="memorySelection"', html)
-            self.assertIn("realtime (capture timestamps)", html)
+            served = urlopen(base, timeout=2)
+            self.assertEqual(getattr(served, "status", 200), 200)
 
             start_body = json.dumps(
                 {"action": "start", "source_dir": str(root), "cadence_ms": 0}

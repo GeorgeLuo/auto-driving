@@ -76,6 +76,7 @@ def run_workbench_replay(
             cadence_ms=cadence_ms,
             pace=pace,
             max_frames=max_frames,
+            loop=serve,
         )
         if serve:
             server = WorkbenchServer(runner, host=host, port=port).start()

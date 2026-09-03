@@ -4,386 +4,771 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Automa Perception-memory Workbench</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap" rel="stylesheet">
   <style>
     :root {
       color-scheme: dark;
-      --bg: #11151b;
-      --panel: #1a212b;
-      --panel-strong: #222c38;
-      --line: #344252;
-      --muted: #9ba9b8;
-      --text: #eef4f8;
-      --accent: #69d2b4;
-      --accent-strong: #b8f4df;
-      --warn: #f3c969;
-      --danger: #f28e8e;
-      --shadow: 0 18px 50px rgba(0, 0, 0, .22);
-      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --bg: #0a0a0a;
+      --sidebar: #0d0d0d;
+      --fg: #ededed;
+      --muted: #8c8c8c;
+      --border: #242424;
+      --empty: rgba(255, 255, 255, .06);
+      --elevate: rgba(255, 255, 255, .03);
+      --button-outline: rgba(255, 255, 255, .08);
+      --danger: #dc2626;
+      --font-sans: Inter, system-ui, sans-serif;
+      --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+      --radius: .375rem;
     }
     * { box-sizing: border-box; }
+    html, body { height: 100%; }
     body {
       margin: 0;
-      min-height: 100vh;
-      background:
-        radial-gradient(circle at 15% 0%, rgba(75, 125, 145, .18), transparent 35rem),
-        var(--bg);
-      color: var(--text);
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: var(--font-sans);
+      font-size: 12px;
+      letter-spacing: -.01em;
     }
-    header {
-      border-bottom: 1px solid var(--line);
-      background: rgba(17, 21, 27, .9);
-      position: sticky;
-      top: 0;
-      z-index: 4;
-      backdrop-filter: blur(14px);
+    *:focus, *:focus-visible { outline: none; }
+    h2, h3, p { margin: 0; }
+    h2, .section-title {
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: -.03em;
     }
-    .header-inner, main { max-width: 1440px; margin: 0 auto; }
-    .header-inner {
-      padding: 10px 28px 9px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 16px;
-    }
-    h1, h2, h3, p { margin: 0; }
-    h1 { font-size: clamp(1.12rem, 2vw, 1.55rem); letter-spacing: -.03em; }
-    h2 { font-size: 1rem; letter-spacing: .01em; }
-    h3 { font-size: .78rem; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
-    .eyebrow {
-      color: var(--accent);
-      font-size: .72rem;
-      font-weight: 750;
-      letter-spacing: .15em;
-      text-transform: uppercase;
-      margin-bottom: 2px;
-    }
-    .subtitle, .muted { color: var(--muted); }
-    .subtitle { margin-top: 3px; font-size: .76rem; max-width: 720px; }
-    .status-chip {
-      min-width: 96px;
-      border: 1px solid var(--line);
-      border-radius: 999px;
-      padding: 6px 10px;
-      text-align: center;
-      font-size: .68rem;
-      font-weight: 750;
+    h3, .kicker, .plugin-status, dt, .metric .label {
+      font-size: 10px;
+      font-weight: 500;
       text-transform: uppercase;
       letter-spacing: .08em;
-      background: var(--panel);
+      color: var(--muted);
     }
-    .status-chip.running, .status-chip.completed { border-color: rgba(105, 210, 180, .65); color: var(--accent-strong); }
-    .status-chip.paused { border-color: rgba(243, 201, 105, .65); color: var(--warn); }
-    .status-chip.failed, .status-chip.cancelled { border-color: rgba(242, 142, 142, .65); color: var(--danger); }
-    main { padding: 25px 28px 48px; }
-    .grid {
+    .muted, .help, .empty-state, .memory-empty { color: var(--muted); }
+    .mono, .metric .value, dd, .digest, pre, #progressText {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      letter-spacing: -.02em;
+    }
+    .app {
       display: grid;
-      grid-template-columns: minmax(0, 1.45fr) minmax(320px, .8fr);
-      gap: 18px;
-      align-items: start;
+      grid-template-columns: 16rem minmax(0, 1fr);
+      height: 100%;
+      min-height: 0;
     }
-    .stack { display: grid; gap: 18px; }
-    .panel {
-      background: linear-gradient(145deg, rgba(34, 44, 56, .96), rgba(25, 32, 42, .96));
-      border: 1px solid var(--line);
-      border-radius: 15px;
-      box-shadow: var(--shadow);
-      padding: 18px;
+    .sidebar, .workspace, .viewer-panel, .sidebar-fill {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      min-width: 0;
+    }
+    .sidebar {
+      gap: 0;
+      overflow: hidden;
+      background: var(--sidebar);
+      border-right: 1px solid var(--border);
+      padding: 12px 4px 8px;
+    }
+    .sidebar-brand {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      flex: 0 0 auto;
+      padding: 0 12px 8px;
+    }
+    .sidebar-brand .brand {
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: -.03em;
+    }
+    .sidebar-scroll {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+      overflow-x: hidden;
+    }
+    .sidebar-group {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      padding: 0;
+    }
+    .sidebar-group-label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      height: 32px;
+      padding: 0 8px;
+      color: rgb(237 237 237 / .7);
+      font-size: 12px;
+      font-weight: 500;
+      letter-spacing: -.01em;
+      cursor: pointer;
+      list-style: none;
+    }
+    .sidebar-group-label::-webkit-details-marker,
+    .sidebar-group-label::marker { display: none; content: none; }
+    .sidebar-group-label svg {
+      width: 12px;
+      height: 12px;
+      flex: 0 0 auto;
+      color: var(--muted);
+      transition: transform .15s ease;
+    }
+    .sidebar-group[open] > .sidebar-group-label svg { transform: rotate(180deg); }
+    .sidebar-group-body {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 0 8px 8px;
+      min-width: 0;
+    }
+    .sidebar-fill { flex: 1; gap: 6px; min-height: 0; }
+    .sidebar .plugin-catalog {
+      flex: none;
+      max-height: none;
+      align-content: start;
+      gap: 6px;
+    }
+    .truncate, #sourceIdentity, #pluginSelectionSummary, .inline-edit, .digest {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
+    }
+    .workspace {
+      overflow: hidden;
+      padding: 16px 16px 4px;
+      gap: 16px;
+    }
+    .viewer-panel { flex: 1; gap: 8px; min-height: 0; }
+    .panel-heading, .panel-heading-values, .field, .playback-row {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
       min-width: 0;
     }
     .panel-heading {
+      justify-content: space-between;
+      margin-bottom: 6px;
+      overflow: hidden;
+    }
+    .panel-heading h2, .panel-heading .section-title {
+      flex: 0 1 auto;
+      white-space: nowrap;
+    }
+    .panel-heading > .muted, .panel-heading > .text-action, .panel-heading > #pluginSelectionSummary,
+    .panel-heading > #memoryHealth, .panel-heading > #evidenceSummary,
+    .panel-heading > #sourceIdentity {
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      text-align: right;
+    }
+    .panel-heading > .text-action { flex: 0 0 auto; }
+    .panel-heading-values { gap: 12px; }
+    .field { width: 100%; }
+    .field .kicker { flex: 0 0 72px; white-space: nowrap; }
+    .inline-edit {
+      flex: 1;
+      min-width: 0;
+      width: 100%;
+      margin: 0;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: var(--fg);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      letter-spacing: -.02em;
+      box-shadow: none;
+    }
+    .inline-edit::placeholder { color: var(--muted); opacity: .45; }
+    .inline-edit:placeholder-shown { background: var(--empty); }
+    .memory-search {
+      width: 100%;
+      padding: 2px 4px;
+      border-radius: var(--radius);
+    }
+    .float-frame .memory-search {
+      color: inherit;
+      background: transparent;
+    }
+    .float-frame .memory-search:placeholder-shown {
+      background: rgb(31 31 31 / .4);
+    }
+    .inline-edit:disabled { opacity: .38; }
+    .text-action {
+      margin: 0;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      font: inherit;
+      letter-spacing: -.01em;
+      cursor: pointer;
+      text-align: left;
+    }
+    .text-action:hover:not(:disabled) { color: var(--fg); }
+    .text-action:disabled { cursor: not-allowed; opacity: .38; }
+    .text-action.selected { color: var(--fg); }
+    .playback {
+      position: relative;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 8px;
+      padding: 8px 0 4px;
+      flex: 0 0 auto;
+    }
+    .seek {
+      width: 100%;
+      height: 20px;
+      margin: 0;
+      background: transparent;
+      accent-color: var(--fg);
+    }
+    .playback-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .playback-actions { display: flex; align-items: center; gap: 4px; }
+    .icon-btn {
+      width: 36px;
+      height: 36px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      border: 1px solid transparent;
+      border-radius: var(--radius);
+      background: transparent;
+      color: var(--fg);
+      cursor: pointer;
+    }
+    .icon-btn[hidden] { display: none; }
+    .icon-btn svg { width: 16px; height: 16px; display: block; }
+    .icon-btn:hover:not(:disabled) { background: var(--elevate); }
+    .icon-btn.outline { border-color: var(--button-outline); }
+    .icon-btn:disabled { cursor: not-allowed; opacity: .38; }
+    .seek {
+      -webkit-appearance: none;
+      appearance: none;
+    }
+    .seek::-webkit-slider-runnable-track {
+      height: 2px;
+      background: hsl(0 0% 18%);
+      border-radius: 999px;
+    }
+    .seek::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 14px;
+      height: 14px;
+      margin-top: -6px;
+      border-radius: 999px;
+      border: 2px solid hsl(0 0% 55%);
+      background: var(--bg);
+    }
+    .seek::-moz-range-track {
+      height: 2px;
+      background: hsl(0 0% 18%);
+      border-radius: 999px;
+    }
+    .seek::-moz-range-thumb {
+      width: 14px;
+      height: 14px;
+      border-radius: 999px;
+      border: 2px solid hsl(0 0% 55%);
+      background: var(--bg);
+    }
+    .cadence-select {
+      height: 24px;
+      padding: 0 4px;
+      font: inherit;
+      font-size: 12px;
+      color: var(--fg);
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: var(--radius);
+    }
+    .cadence-select:hover, .cadence-select:focus {
+      border-color: var(--button-outline);
+    }
+    .cadence-select:disabled { opacity: .38; }
+    .playback-meta {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-left: auto;
+    }
+    .help { font-size: 11px; line-height: 1.45; }
+    .notice {
+      position: fixed;
+      left: 8px;
+      bottom: 8px;
+      z-index: 2000;
+      margin: 0;
+      max-width: min(22rem, calc(100vw - 16px));
+      padding: 6px 8px;
+      border: 1px solid rgb(36 36 36 / .8);
+      border-radius: 0;
+      background: rgb(20 20 20 / .94);
+      color: var(--fg);
+      font-size: 11px;
+      line-height: 1.35;
+      pointer-events: none;
+      opacity: 1;
+      transition: opacity .25s ease;
+    }
+    .notice:empty { display: none; }
+    .notice.is-fading { opacity: 0; }
+    .notice.error { color: var(--danger); }
+    .workspace-tools {
       display: flex;
       align-items: baseline;
-      justify-content: space-between;
-      gap: 15px;
-      margin-bottom: 15px;
+      gap: 12px;
+      flex: 0 0 auto;
+      min-height: 1em;
     }
-    .source-form { display: grid; gap: 11px; }
-    label { font-size: .78rem; color: var(--muted); }
-    input, select, button {
-      font: inherit;
-      color: var(--text);
-    }
-    input, select {
-      width: 100%;
-      padding: 10px 11px;
-      background: #11171e;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      outline: none;
-    }
-    input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(105, 210, 180, .14); }
-    .form-row { display: grid; grid-template-columns: minmax(0, 1fr) 150px; gap: 10px; }
-    .button-row { display: flex; flex-wrap: wrap; gap: 8px; }
-    button {
-      border: 1px solid var(--line);
-      background: #263240;
-      border-radius: 8px;
-      padding: 9px 12px;
-      cursor: pointer;
-      transition: border-color .15s, background .15s, transform .15s;
-      font-size: .82rem;
-    }
-    button:hover:not(:disabled) { border-color: var(--accent); background: #2c4050; transform: translateY(-1px); }
-    button:disabled { cursor: not-allowed; opacity: .38; }
-    button.primary { background: #1f6558; border-color: #55b49a; color: #edfff8; }
-    button.danger { border-color: rgba(242, 142, 142, .45); }
-    .help { font-size: .76rem; line-height: 1.45; color: var(--muted); }
-    .notice { min-height: 1.3em; color: var(--warn); font-size: .8rem; margin-top: 2px; }
+    .workspace-tools .text-action[aria-pressed="true"],
+    .playback-meta .text-action[aria-pressed="true"] { color: var(--fg); }
+    .playback-meta .text-action[aria-pressed="false"]:hover:not(:disabled) { color: var(--muted); }
+    #floatLayer { pointer-events: none; }
     .viewer {
-      min-height: 380px;
+      flex: 1;
+      min-height: 0;
       display: grid;
       place-items: center;
-      border: 1px solid var(--line);
-      border-radius: 10px;
       overflow: hidden;
-      background: #0b0f14;
+      background: #050505;
       position: relative;
     }
-    .viewer-frame { max-width: 100%; position: relative; line-height: 0; }
-    .viewer img { display: block; max-width: min(100%, 960px); max-height: 64vh; object-fit: contain; }
-    .viewer canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-    .empty-state { padding: 35px; text-align: center; color: var(--muted); line-height: 1.55; }
-    .frame-meta, .metric-grid { display: grid; gap: 9px; }
-    .frame-meta { grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 13px; }
-    .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .metric, .record {
-      background: rgba(10, 14, 19, .32);
-      border: 1px solid rgba(52, 66, 82, .8);
-      border-radius: 9px;
-      padding: 10px;
+    .float-frame {
+      position: fixed;
+      z-index: 30;
+      display: flex;
+      flex-direction: column;
+      min-width: 220px;
+      color: var(--fg);
+      background: rgb(10 10 10 / .95);
+      border: 1px solid rgb(36 36 36 / .6);
+      box-shadow: 0 10px 15px -3px rgb(0 0 0 / .1), 0 4px 6px -4px rgb(0 0 0 / .1);
+      backdrop-filter: blur(4px);
+      user-select: none;
+      pointer-events: auto;
     }
-    .metric .value { font-size: 1.05rem; font-weight: 700; margin-top: 4px; }
-    .metric .label { font-size: .7rem; }
-    .kv { display: grid; grid-template-columns: minmax(100px, .8fr) minmax(0, 1.4fr); gap: 7px 12px; font-size: .79rem; }
-    .kv dt { color: var(--muted); }
-    .kv dd { margin: 0; overflow-wrap: anywhere; }
-    .progress {
-      height: 7px;
-      margin: 12px 0 6px;
-      background: #10161d;
-      border-radius: 99px;
+    .float-frame[hidden] { display: none; }
+    .float-frame[data-minimized="true"] { height: auto !important; min-height: 0; }
+    .float-frame-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 6px 8px;
+      background: rgb(31 31 31 / .4);
+      border-bottom: 1px solid rgb(36 36 36 / .5);
+      cursor: grab;
+    }
+    .float-frame[data-minimized="true"] .float-frame-header { border-bottom: 0; }
+    .float-frame-header:active { cursor: grabbing; }
+    .float-frame-title {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+      font-size: 12px;
+      font-weight: 400;
+      color: var(--fg);
+      white-space: nowrap;
+    }
+    .float-frame-title .muted {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      min-width: 0;
+    }
+    .float-frame-title .grip { color: var(--muted); }
+    .float-frame-title strong {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-weight: 400;
+    }
+    .float-frame-controls { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+    .float-frame-controls .icon-btn {
+      width: 16px;
+      height: 16px;
+      color: var(--muted);
+    }
+    .float-frame-controls .icon-btn svg { width: 12px; height: 12px; }
+    .float-frame-controls .icon-btn:hover:not(:disabled) {
+      background: transparent;
+      color: var(--fg);
+    }
+    .float-frame-body {
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+      padding: 12px;
+      font-size: 12px;
+      background: var(--bg);
+      color: var(--fg);
+    }
+    .float-frame[data-minimized="true"] .float-frame-body,
+    .float-frame[data-minimized="true"] .float-resize { display: none; }
+    .float-frame .text-action { color: var(--muted); }
+    .float-frame .text-action:hover:not(:disabled), .float-frame .text-action.selected { color: var(--fg); }
+    .float-frame pre { color: var(--muted); max-height: none; }
+    .float-resize {
+      position: absolute;
+      z-index: 21;
+      padding: 0;
+      border: 0;
+      background: transparent;
+    }
+    .float-resize[data-dir="n"], .float-resize[data-dir="s"] { left: 12px; right: 12px; height: 6px; cursor: ns-resize; }
+    .float-resize[data-dir="e"], .float-resize[data-dir="w"] { top: 12px; bottom: 12px; width: 6px; cursor: ew-resize; }
+    .float-resize[data-dir="n"] { top: 0; }
+    .float-resize[data-dir="s"] { bottom: 0; }
+    .float-resize[data-dir="e"] { right: 0; }
+    .float-resize[data-dir="w"] { left: 0; }
+    .float-resize[data-dir="ne"], .float-resize[data-dir="nw"],
+    .float-resize[data-dir="se"], .float-resize[data-dir="sw"] { width: 12px; height: 12px; }
+    .float-resize[data-dir="ne"] { top: 0; right: 0; cursor: nesw-resize; }
+    .float-resize[data-dir="nw"] { top: 0; left: 0; cursor: nwse-resize; }
+    .float-resize[data-dir="se"] { bottom: 0; right: 0; cursor: nwse-resize; }
+    .float-resize[data-dir="sw"] { bottom: 0; left: 0; cursor: nesw-resize; }
+    .viewer-frame { max-width: 100%; max-height: 100%; position: relative; line-height: 0; }
+    .viewer img { display: block; max-width: 100%; max-height: 100%; object-fit: contain; }
+    .viewer canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+    .empty-state { padding: 24px; text-align: center; line-height: 1.55; font-size: 12px; }
+    .frame-hud {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto auto auto;
+      align-items: baseline;
+      gap: 12px;
+      min-height: 1em;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .frame-hud > * {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .frame-hud #frameId { color: var(--fg); }
+    .frame-meta, .metric-grid { display: grid; gap: 4px; }
+    .frame-meta { grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 4px; }
+    .frame-details { margin-top: 2px; flex: 0 0 auto; }
+    .frame-details > summary,
+    .help-details > summary {
+      cursor: pointer;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .frame-details .frame-meta {
+      grid-template-columns: 1fr;
+      margin-top: 6px;
+      gap: 3px;
+    }
+    .frame-details .frame-meta .metric {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      padding: 0;
+      background: none;
+      border: 0;
+    }
+    .frame-details .frame-meta .metric .label { min-width: 105px; }
+    .frame-details .frame-meta .metric .value { margin-top: 0; }
+    .help-details { margin-top: 2px; }
+    .help-details .help { margin-top: 6px; }
+    .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .metric .value { font-size: 12px; font-weight: 400; margin-top: 2px; color: var(--fg); }
+    .kv {
+      display: grid;
+      grid-template-columns: 72px minmax(0, 1fr);
+      gap: 4px 8px;
+      align-items: baseline;
+    }
+    .kv dd {
+      margin: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--fg);
+    }
+    .evidence-panel {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
       overflow: hidden;
     }
-    .progress > div { height: 100%; background: linear-gradient(90deg, #53b89d, #a6efd5); width: 0%; transition: width .2s; }
-    .panel-heading-values { display: flex; align-items: baseline; gap: 12px; }
-    .timeline { display: grid; gap: 7px; max-height: 280px; overflow: auto; }
-    .timeline button { text-align: left; width: 100%; display: grid; grid-template-columns: 1fr auto; gap: 5px 10px; }
-    .timeline button:hover:not(:disabled) { transform: none; }
-    .timeline button.selected { border-color: var(--accent); background: rgba(55, 106, 94, .45); }
-    .timeline small { color: var(--muted); }
-    .timeline-help { margin-top: 10px; }
-    .record-list { display: grid; gap: 8px; max-height: 330px; overflow: auto; }
-    .record-list button { text-align: left; width: 100%; }
-    .record-list button:hover:not(:disabled) { transform: none; }
-    .record-list button.selected { border-color: var(--accent); background: rgba(55, 106, 94, .45); }
-    .record strong { display: block; font-size: .8rem; }
-    .plugin-catalog { display: grid; gap: 8px; max-height: 310px; overflow: auto; }
-    .plugin-entry {
-      display: grid;
-      grid-template-columns: auto minmax(0, 1fr);
-      gap: 8px;
-      align-items: start;
-      padding: 9px;
-      border: 1px solid rgba(52, 66, 82, .8);
-      border-radius: 9px;
-      background: rgba(10, 14, 19, .28);
+    .record-list, .plugin-catalog, #evidenceText, #memorySelected {
+      min-height: 0;
+      overflow: auto;
     }
-    .plugin-entry.unavailable { border-color: rgba(242, 142, 142, .35); }
-    .plugin-entry strong { display: block; font-size: .8rem; }
-    .plugin-entry small { display: block; color: var(--muted); line-height: 1.35; margin-top: 3px; }
-    .plugin-status { color: var(--accent-strong); font-size: .68rem; text-transform: uppercase; letter-spacing: .06em; }
-    .plugin-entry.unavailable .plugin-status { color: var(--danger); }
-    .digest { overflow-wrap: anywhere; font: .68rem/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-    .record pre, pre {
+    .plugin-catalog, .record-list {
+      display: grid;
+      gap: 4px;
+      flex: none;
+      max-height: 9rem;
+    }
+    .record-list .text-action {
+      width: 100%;
+      display: block;
+      min-height: 1.35em;
+      line-height: 1.35;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--muted);
+    }
+    .record strong { display: block; font-size: 12px; font-weight: 500; }
+    .plugin-entry {
+      position: relative;
+      display: block;
+      min-width: 0;
+      cursor: pointer;
+    }
+    .plugin-entry input {
+      position: absolute;
+      opacity: 0;
+      width: 1px;
+      height: 1px;
+      pointer-events: none;
+    }
+    .plugin-entry > span {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      min-width: 0;
+    }
+    .plugin-entry strong {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--muted);
+    }
+    .plugin-entry:has(input:checked) strong { color: var(--fg); }
+    .plugin-entry small { display: none; }
+    .plugin-entry .plugin-status { flex: 0 0 auto; white-space: nowrap; }
+    .plugin-entry.unavailable strong, .plugin-entry.unavailable .plugin-status { color: var(--danger); }
+    .digest { display: none; }
+    pre {
       white-space: pre-wrap;
       overflow-wrap: anywhere;
-      color: #cdd9e2;
-      font: .73rem/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      margin: 7px 0 0;
-    }
-    .tag {
-      display: inline-block;
-      border: 1px solid var(--line);
-      border-radius: 99px;
-      padding: 3px 7px;
-      font-size: .68rem;
-      color: var(--accent-strong);
-      margin: 2px 4px 2px 0;
+      color: var(--muted);
+      margin: 6px 0 0;
+      font-size: 11px;
+      line-height: 1.45;
+      max-height: 8rem;
+      overflow: auto;
     }
     @media (max-width: 930px) {
-      .grid { grid-template-columns: 1fr; }
-      .viewer { min-height: 280px; }
-    }
-    @media (max-width: 600px) {
-      .header-inner, main { padding-left: 15px; padding-right: 15px; }
-      .header-inner { gap: 10px; }
-      .status-chip { min-width: auto; }
-      .frame-meta, .form-row { grid-template-columns: 1fr 1fr; }
+      .app {
+        grid-template-columns: 1fr;
+        grid-template-rows: minmax(0, 1fr) minmax(0, 38vh);
+      }
+      .workspace { order: 1; }
+      .sidebar {
+        order: 2;
+        border-right: 0;
+        border-top: 1px solid var(--border);
+        overflow: auto;
+      }
     }
   </style>
 </head>
 <body>
-  <header>
-    <div class="header-inner">
-      <div>
-        <div class="eyebrow">Automa / M008</div>
-        <h1>Perception-memory Workbench</h1>
-        <p class="subtitle">Replay an ordered local image source through the existing perception, observation, and bounded-memory pipeline.</p>
+  <main class="app">
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <span class="brand">Workbench</span>
+        <span class="kicker">SETUP</span>
       </div>
-      <div id="phaseChip" class="status-chip">idle</div>
-    </div>
-  </header>
-
-  <main>
-    <div class="grid">
-      <div class="stack">
-        <section class="panel">
-          <div class="panel-heading">
-            <h2>Capture view</h2>
-            <span id="sourceIdentity" class="muted">no source selected</span>
-          </div>
-          <div class="viewer">
-            <div id="emptyState" class="empty-state">Choose an image directory, validate it, and start a replay.<br>The server owns the pipeline; this page only renders its state.</div>
-            <div id="viewerFrame" class="viewer-frame" hidden>
-              <img id="frameImage" alt="Current replay frame">
-              <canvas id="overlayCanvas" aria-hidden="true"></canvas>
+      <div class="sidebar-scroll">
+        <details class="sidebar-group" open>
+          <summary class="sidebar-group-label">
+            <span>Setup</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </summary>
+          <div class="sidebar-group-body">
+            <div class="field">
+              <span class="kicker">source</span>
+              <span id="sourceIdentity" class="muted">no source selected</span>
             </div>
+            <label class="field" for="sourceDir">
+              <span class="kicker">directory</span>
+              <input id="sourceDir" class="inline-edit" type="text" autocomplete="off" placeholder="/path/to/ordered/images">
+            </label>
+            <label class="field" for="pluginDir">
+              <span class="kicker">plugin dir</span>
+              <input id="pluginDir" class="inline-edit" type="text" autocomplete="off" placeholder="/path/to/plugins">
+            </label>
+            <button type="button" id="refreshPluginsButton" class="text-action" title="Reload the plugin catalog from this directory">refresh</button>
           </div>
-          <div class="frame-meta">
-            <div class="metric"><div class="label">Frame</div><div id="frameId" class="value">—</div></div>
-            <div class="metric"><div class="label">Sequence index</div><div id="frameIndex" class="value">—</div></div>
-            <div class="metric"><div class="label">Timestamp</div><div id="frameTimestamp" class="value">—</div></div>
-            <div class="metric"><div class="label">Perception</div><div id="perceptionStatus" class="value">—</div></div>
-          </div>
-        </section>
-
-        <section class="panel">
-          <div class="panel-heading">
-            <h2>Replay timeline</h2>
-            <div class="panel-heading-values">
-              <span id="timelineSelection" class="muted">select a processed frame</span>
-              <span id="progressText" class="muted">0 / 0</span>
-            </div>
-          </div>
-          <div class="progress"><div id="progressBar"></div></div>
-          <div id="timeline" class="timeline"><p class="timeline-empty muted help">No frames have been processed.</p></div>
-          <p class="help timeline-help">Click a processed frame to inspect its image, perception, and memory state.</p>
-        </section>
-
-        <section class="panel">
-          <div class="panel-heading">
-            <h2>Perception evidence</h2>
-            <span id="evidenceSummary" class="muted">no output</span>
-          </div>
-          <div class="metric-grid">
-            <div class="metric"><div class="label">Plugin runs</div><div id="pluginRuns" class="value">—</div></div>
-            <div class="metric"><div class="label">Things / signals</div><div id="evidenceCounts" class="value">—</div></div>
-          </div>
-          <pre id="evidenceText" class="help" style="margin-top: 14px;">No perception output yet.</pre>
-        </section>
-      </div>
-
-      <div class="stack">
-        <section class="panel">
-          <div class="panel-heading"><h2>Source and controls</h2><span class="tag">observation-only</span></div>
-          <div class="source-form">
-            <div>
-              <label for="sourceDir">Image directory</label>
-              <input id="sourceDir" type="text" autocomplete="off" placeholder="/path/to/ordered/images">
-            </div>
-            <div class="form-row">
-              <div>
-                <label for="cadence">Cadence</label>
-                <select id="cadence">
-                  <option value="0">as fast as possible</option>
-                  <option value="100">100 ms</option>
-                  <option value="250" selected>250 ms</option>
-                  <option value="500">500 ms</option>
-                  <option value="1000">1 second</option>
-                  <option value="realtime">realtime (capture timestamps)</option>
-                </select>
-              </div>
-              <div>
-                <label for="overlayToggle">Display</label>
-                <select id="overlayToggle">
-                  <option value="on" selected>overlays on</option>
-                  <option value="off">image only</option>
-                </select>
-              </div>
-            </div>
-            <div class="button-row">
-              <button id="validateButton">Validate source</button>
-              <button id="startButton" class="primary">Start replay</button>
-              <button id="pauseButton">Pause</button>
-              <button id="resumeButton">Resume</button>
-              <button id="stepButton">Step</button>
-              <button id="cancelButton" class="danger">Cancel</button>
-              <button id="resetButton">Reset</button>
-            </div>
-            <div id="notice" class="notice" role="status"></div>
-            <p class="help">Realtime follows recorded frame timestamps; fixed values add a delay after each frame, and “as fast as possible” removes that delay. Source order, frame identity, absence annotations, perception, observation, and memory are validated and produced server-side.</p>
-          </div>
-        </section>
-
-        <section class="panel">
-          <div class="panel-heading">
-            <h2>Perception plugins</h2>
+        </details>
+        <details class="sidebar-group" open>
+          <summary class="sidebar-group-label">
+            <span>Plugins</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </summary>
+          <div class="sidebar-group-body">
             <span id="pluginSelectionSummary" class="muted">no catalog</span>
-          </div>
-          <div class="source-form">
-            <div>
-              <label for="pluginDir">Plugin directory (optional)</label>
-              <input id="pluginDir" type="text" autocomplete="off" placeholder="/path/to/plugins">
-            </div>
-            <div class="button-row">
-              <button id="refreshPluginsButton">Inspect plugins</button>
-            </div>
             <div id="pluginCatalog" class="plugin-catalog">
               <p class="muted help">The packaged lightweight catalog will appear here.</p>
             </div>
             <div id="pluginDigest" class="digest muted"></div>
-            <p class="help">Only ready, server-discovered IDs can be selected. Click a ready checkbox to start or stop it at the next frame boundary. Select none for raw capture without perception overlays. The plugin root stays locked during replay.</p>
           </div>
-        </section>
+        </details>
+      </div>
+    </aside>
 
-        <section class="panel">
-          <div class="panel-heading">
-            <h2>Memory ledger</h2>
-            <div class="panel-heading-values">
-              <span id="memorySelection" class="muted">select a record</span>
-              <span id="memoryHealth" class="muted">no snapshot</span>
-            </div>
+    <div class="workspace">
+      <div class="workspace-tools">
+        <button type="button" class="text-action" data-recall="memoryFrame">Memory</button>
+        <button type="button" class="text-action" data-recall="evidenceFrame">Evidence</button>
+      </div>
+      <section class="viewer-panel">
+        <div class="viewer" id="viewerStage">
+          <div id="emptyState" class="empty-state">Choose an image directory and start a replay.<br>The server owns the pipeline; this page only renders its state.</div>
+          <div id="viewerFrame" class="viewer-frame" hidden>
+            <img id="frameImage" alt="Current replay frame">
+            <canvas id="overlayCanvas" aria-hidden="true"></canvas>
           </div>
-          <dl class="kv">
-            <dt>Epoch</dt><dd id="memoryEpoch">—</dd>
-            <dt>Records</dt><dd id="memoryCount">—</dd>
-            <dt>Policy</dt><dd id="memoryPolicy">—</dd>
-          </dl>
-          <div id="memoryRecords" class="record-list" style="margin-top: 13px;"><p class="memory-empty muted help">No retained evidence yet.</p></div>
-          <div class="metric" style="margin-top: 11px;">
-            <h3>Selected record</h3>
-            <pre id="memorySelected">Select a server-produced memory record to inspect its provenance.</pre>
-          </div>
-        </section>
+        </div>
+        <div class="frame-hud">
+          <span id="frameId" class="truncate">—</span>
+          <span id="frameIndex" class="muted">—</span>
+          <span id="frameTimestamp" class="muted">—</span>
+          <span id="perceptionStatus" class="muted">—</span>
+        </div>
+      </section>
 
-        <section class="panel">
-          <div class="panel-heading"><h2>Run state</h2><span id="runId" class="muted">no run</span></div>
-          <dl class="kv">
-            <dt>Sequence</dt><dd id="sequenceId">—</dd>
-            <dt>Adapter</dt><dd id="adapter">—</dd>
-            <dt>Active plugins</dt><dd id="runPlugins">—</dd>
-            <dt>Catalog digest</dt><dd id="runCatalogDigest" class="digest">—</dd>
-            <dt>Next action</dt><dd id="recoveryAction">—</dd>
-            <dt>Side effects</dt><dd id="sideEffects">—</dd>
-          </dl>
-          <div id="failurePanel" hidden style="margin-top: 14px;">
-            <h3>Failure boundary</h3>
-            <pre id="failureText"></pre>
+      <div class="playback">
+        <input id="seekBar" class="seek" type="range" min="0" max="0" value="0" aria-label="Replay position">
+        <div class="playback-bar">
+          <div class="playback-actions">
+            <button type="button" id="startButton" class="icon-btn outline" aria-label="Start replay" title="Start">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+            </button>
+            <button type="button" id="resumeButton" class="icon-btn outline" aria-label="Resume replay" title="Resume" hidden>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+            </button>
+            <button type="button" id="pauseButton" class="icon-btn outline" aria-label="Pause replay" title="Pause" hidden>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
+            </button>
+            <button type="button" id="stepButton" class="icon-btn" aria-label="Step one frame" title="Step">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="5 4 15 12 5 20 5 4"></polygon><line x1="19" y1="5" x2="19" y2="19"></line></svg>
+            </button>
+            <button type="button" id="cancelButton" class="icon-btn" aria-label="Cancel replay" title="Stop">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="1"></rect></svg>
+            </button>
+            <button type="button" id="resetButton" class="icon-btn" aria-label="Reset workbench" title="Reset">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"></path><polyline points="3 4 3 10 9 10"></polyline></svg>
+            </button>
           </div>
-        </section>
+          <div class="playback-meta">
+            <select id="cadence" class="cadence-select" aria-label="Replay cadence">
+              <option value="0">as fast as possible</option>
+              <option value="100">100 ms</option>
+              <option value="250" selected>250 ms</option>
+              <option value="500">500 ms</option>
+              <option value="1000">1 second</option>
+              <option value="realtime">realtime</option>
+            </select>
+            <button type="button" id="loopToggle" class="text-action" value="on" aria-pressed="true" aria-label="Toggle loop playback">loop</button>
+            <button type="button" id="overlayToggle" class="text-action" value="on" aria-pressed="true" aria-label="Toggle overlays">overlays</button>
+            <span id="progressText" class="muted">0 / 0</span>
+          </div>
+        </div>
+        <details id="failurePanel" class="help-details" hidden>
+          <summary>Failure boundary</summary>
+          <pre id="failureText"></pre>
+        </details>
       </div>
     </div>
   </main>
+
+  <div id="floatLayer">
+          <article class="float-frame" id="memoryFrame" data-frame-anchor="tr" data-frame-width="280" data-frame-height="260">
+            <div class="float-frame-header" data-frame-header>
+              <div class="float-frame-title">
+                <span class="grip" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="1"></circle><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="17" r="1"></circle><circle cx="15" cy="7" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="17" r="1"></circle></svg>
+                </span>
+                <strong>Memory</strong>
+                <span id="memoryHealth" class="muted">no snapshot</span>
+                <span id="memorySelection" hidden>select a record</span>
+              </div>
+              <div class="float-frame-controls">
+                <button type="button" class="icon-btn" data-frame-close aria-label="Close Memory" title="Close">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
+                <button type="button" class="icon-btn" data-frame-minimize aria-label="Minimize Memory" title="Minimize"></button>
+              </div>
+            </div>
+            <div class="float-frame-body" data-frame-body>
+              <dl class="kv">
+                <dt>Epoch</dt><dd id="memoryEpoch">—</dd>
+                <dt>Records</dt><dd id="memoryCount">—</dd>
+                <dt>Policy</dt><dd id="memoryPolicy">—</dd>
+              </dl>
+              <input id="memorySearch" class="inline-edit memory-search" type="search" autocomplete="off" placeholder="Search..." aria-label="Filter memory records">
+              <div id="memoryRecords" class="record-list"><p class="memory-empty muted help">No retained evidence yet.</p></div>
+              <details class="help-details">
+                <summary>Selected record</summary>
+                <pre id="memorySelected">Select a server-produced memory record to inspect its provenance.</pre>
+              </details>
+            </div>
+          </article>
+          <article class="float-frame" id="evidenceFrame" data-frame-anchor="br" data-frame-width="260" data-frame-height="200">
+            <div class="float-frame-header" data-frame-header>
+              <div class="float-frame-title">
+                <span class="grip" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="1"></circle><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="17" r="1"></circle><circle cx="15" cy="7" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="17" r="1"></circle></svg>
+                </span>
+                <strong>Evidence</strong>
+                <span id="evidenceSummary" class="muted">no output</span>
+              </div>
+              <div class="float-frame-controls">
+                <button type="button" class="icon-btn" data-frame-close aria-label="Close Evidence" title="Close">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
+                <button type="button" class="icon-btn" data-frame-minimize aria-label="Minimize Evidence" title="Minimize"></button>
+              </div>
+            </div>
+            <div class="float-frame-body" data-frame-body>
+              <div class="metric-grid">
+                <div class="metric"><div class="label">Plugin runs</div><div id="pluginRuns" class="value">—</div></div>
+                <div class="metric"><div class="label">Things / signals</div><div id="evidenceCounts" class="value">—</div></div>
+              </div>
+              <pre id="evidenceText">No perception output yet.</pre>
+            </div>
+          </article>
+  </div>
+
+  <span id="notice" class="notice" role="status"></span>
 
   <script>
     (function () {
@@ -405,23 +790,386 @@
       var pluginSelectionDraftDigest = null;
       var pluginCatalogRenderKey = null;
       var cadenceDraft = false;
+      var scrubbing = false;
+      var resumeAfterScrub = false;
+      var pendingResume = false;
+      var scrubPosition = null;
+      var seekQueued = null;
+      var seekInFlight = false;
+      var loopDraft = null;
+      var pendingLoop = null;
+      var loopInFlight = false;
       [
-        "phaseChip", "sourceIdentity", "emptyState", "viewerFrame", "frameImage",
-        "overlayCanvas", "frameId", "frameIndex", "frameTimestamp", "perceptionStatus",
-        "progressText", "progressBar", "timeline", "timelineSelection", "evidenceSummary", "pluginRuns",
-        "evidenceCounts", "evidenceText", "sourceDir", "cadence", "overlayToggle",
-        "validateButton", "startButton", "pauseButton", "resumeButton", "stepButton",
+        "sourceIdentity", "emptyState", "viewerFrame", "frameImage",
+        "overlayCanvas", "viewerStage", "frameId", "frameIndex", "frameTimestamp", "perceptionStatus",
+        "progressText", "seekBar", "evidenceSummary", "pluginRuns",
+        "evidenceCounts", "evidenceText", "sourceDir", "cadence", "loopToggle", "overlayToggle",
+        "startButton", "pauseButton", "resumeButton", "stepButton",
         "cancelButton", "resetButton", "notice", "pluginDir", "refreshPluginsButton",
         "pluginSelectionSummary", "pluginCatalog", "pluginDigest", "memorySelection", "memoryHealth", "memoryEpoch",
-        "memoryCount", "memoryPolicy", "memoryRecords", "runId", "sequenceId",
-        "adapter", "runPlugins", "runCatalogDigest", "recoveryAction", "sideEffects", "failurePanel", "failureText",
+        "memoryCount", "memoryPolicy", "memorySearch", "memoryRecords", "failurePanel", "failureText",
         "memorySelected"
       ].forEach(function (id) { elements[id] = document.getElementById(id); });
+      var noticeTimer = null;
       var selectedRecordId = null;
+      var memoryListSignature = "";
+      var SOURCE_DIR_KEY = "automa-workbench-source-dir";
+      var PLUGIN_DIR_KEY = "automa-workbench-plugin-dir";
+
+      function setNotice(message) {
+        if (noticeTimer !== null) {
+          window.clearTimeout(noticeTimer);
+          noticeTimer = null;
+        }
+        elements.notice.classList.remove("is-fading");
+        elements.notice.textContent = message || "";
+        if (!message) return;
+        void elements.notice.offsetWidth;
+        noticeTimer = window.setTimeout(function () {
+          elements.notice.classList.add("is-fading");
+          noticeTimer = window.setTimeout(function () {
+            elements.notice.classList.remove("is-fading");
+            elements.notice.textContent = "";
+            noticeTimer = null;
+          }, 250);
+        }, 1000);
+      }
+
+      function remembered(key) {
+        try { return window.localStorage.getItem(key) || ""; }
+        catch (error) { return ""; }
+      }
+
+      function remember(key, value) {
+        try {
+          var trimmed = String(value || "").trim();
+          if (trimmed) window.localStorage.setItem(key, trimmed);
+          else window.localStorage.removeItem(key);
+        } catch (error) {}
+      }
+
+      var frameLayer = 30;
+      var floatingFrames = {};
+      var FRAME_PAD = 8;
+
+      function rememberJson(key, value) {
+        try { window.localStorage.setItem(key, JSON.stringify(value)); }
+        catch (error) {}
+      }
+
+      function rememberedJson(key) {
+        try {
+          var raw = window.localStorage.getItem(key);
+          return raw ? JSON.parse(raw) : null;
+        } catch (error) { return null; }
+      }
+
+      function viewerRect() {
+        return elements.viewerStage.getBoundingClientRect();
+      }
+
+      function frameAnchorRect(root, size) {
+        var stage = viewerRect();
+        var pad = 12;
+        var width = size.width;
+        var height = size.height;
+        var left = stage.left + pad;
+        var top = stage.top + pad;
+        var maxX = Math.max(left, stage.right - width - pad);
+        var maxY = Math.max(top, stage.bottom - height - pad);
+        var anchor = root.getAttribute("data-frame-anchor") || "tl";
+        if (anchor === "tr") return { x: maxX, y: top };
+        if (anchor === "bl") return { x: left, y: maxY };
+        if (anchor === "br") return { x: maxX, y: maxY };
+        return { x: left, y: top };
+      }
+
+      function clampFrameRect(position, size, minSize) {
+        var maxW = Math.max(minSize.width, window.innerWidth - FRAME_PAD * 2);
+        var maxH = Math.max(minSize.height, window.innerHeight - FRAME_PAD * 2);
+        var width = Math.max(minSize.width, Math.min(size.width, maxW));
+        var height = Math.max(minSize.height, Math.min(size.height, maxH));
+        return {
+          position: {
+            x: Math.min(Math.max(FRAME_PAD, position.x), Math.max(FRAME_PAD, window.innerWidth - width - FRAME_PAD)),
+            y: Math.min(Math.max(FRAME_PAD, position.y), Math.max(FRAME_PAD, window.innerHeight - height - FRAME_PAD))
+          },
+          size: { width: width, height: height }
+        };
+      }
+
+      function bindFloatingFrame(root) {
+        var storageKey = "automa-workbench-vframe-" + root.id;
+        var minSize = { width: 220, height: 140 };
+        var defaultSize = {
+          width: Number(root.getAttribute("data-frame-width")) || 260,
+          height: Number(root.getAttribute("data-frame-height")) || 200
+        };
+        var stored = rememberedJson(storageKey);
+        var state = {
+          position: stored && stored.position ? stored.position : frameAnchorRect(root, defaultSize),
+          size: stored && stored.size ? stored.size : defaultSize,
+          minimized: !!(stored && stored.minimized),
+          closed: !!(stored && stored.closed)
+        };
+        var header = root.querySelector("[data-frame-header]");
+        var minimize = root.querySelector("[data-frame-minimize]");
+        var closeButton = root.querySelector("[data-frame-close]");
+        var drag = null;
+        var resize = null;
+
+        function persist() { rememberJson(storageKey, state); }
+
+        function apply() {
+          var rect = clampFrameRect(state.position, state.size, minSize);
+          state.position = rect.position;
+          state.size = rect.size;
+          root.style.left = state.position.x + "px";
+          root.style.top = state.position.y + "px";
+          root.style.width = state.size.width + "px";
+          root.style.height = state.minimized ? "auto" : state.size.height + "px";
+          root.hidden = !!state.closed;
+          root.setAttribute("data-closed", state.closed ? "true" : "false");
+          root.setAttribute("data-minimized", state.minimized ? "true" : "false");
+          if (minimize) {
+            minimize.textContent = "";
+            var mark = document.createElement("span");
+            mark.style.display = "block";
+            if (state.minimized) {
+              mark.style.width = "10px";
+              mark.style.height = "10px";
+              mark.style.border = "1px solid currentColor";
+            } else {
+              mark.style.width = "12px";
+              mark.style.borderTop = "1px solid currentColor";
+            }
+            minimize.appendChild(mark);
+            minimize.setAttribute("aria-label", state.minimized ? "Expand" : "Minimize");
+          }
+          persist();
+        }
+
+        function raise() {
+          frameLayer += 1;
+          root.style.zIndex = String(frameLayer);
+        }
+
+        function onPointerMove(event) {
+          if (drag) {
+            state.position = {
+              x: event.clientX - drag.offsetX,
+              y: event.clientY - drag.offsetY
+            };
+            apply();
+          }
+          if (resize) {
+            var dx = event.clientX - resize.startX;
+            var dy = event.clientY - resize.startY;
+            var next = { x: resize.x, y: resize.y, width: resize.width, height: resize.height };
+            if (resize.dir.indexOf("e") >= 0) next.width = resize.width + dx;
+            if (resize.dir.indexOf("s") >= 0) next.height = resize.height + dy;
+            if (resize.dir.indexOf("w") >= 0) {
+              next.width = resize.width - dx;
+              next.x = resize.x + dx;
+            }
+            if (resize.dir.indexOf("n") >= 0) {
+              next.height = resize.height - dy;
+              next.y = resize.y + dy;
+            }
+            state.position = { x: next.x, y: next.y };
+            state.size = { width: next.width, height: next.height };
+            apply();
+          }
+        }
+
+        function onPointerUp() {
+          drag = null;
+          resize = null;
+          window.removeEventListener("pointermove", onPointerMove);
+          window.removeEventListener("pointerup", onPointerUp);
+          window.removeEventListener("pointercancel", onPointerUp);
+        }
+
+        function startPointerSession() {
+          window.addEventListener("pointermove", onPointerMove);
+          window.addEventListener("pointerup", onPointerUp);
+          window.addEventListener("pointercancel", onPointerUp);
+        }
+
+        ["n","s","e","w","ne","nw","se","sw"].forEach(function (dir) {
+          var handle = document.createElement("button");
+          handle.type = "button";
+          handle.className = "float-resize";
+          handle.setAttribute("data-dir", dir);
+          handle.setAttribute("aria-label", "Resize");
+          root.appendChild(handle);
+          handle.addEventListener("pointerdown", function (event) {
+            event.preventDefault();
+            event.stopPropagation();
+            raise();
+            resize = {
+              dir: dir,
+              startX: event.clientX,
+              startY: event.clientY,
+              x: state.position.x,
+              y: state.position.y,
+              width: state.size.width,
+              height: state.size.height
+            };
+            startPointerSession();
+          });
+        });
+
+        header.addEventListener("pointerdown", function (event) {
+          if (event.target.closest("[data-frame-minimize], [data-frame-close], button, a, input, select")) return;
+          event.preventDefault();
+          raise();
+          drag = {
+            offsetX: event.clientX - state.position.x,
+            offsetY: event.clientY - state.position.y
+          };
+          startPointerSession();
+        });
+        root.addEventListener("pointerdown", raise, true);
+
+        if (minimize) {
+          minimize.addEventListener("click", function (event) {
+            event.preventDefault();
+            event.stopPropagation();
+            state.minimized = !state.minimized;
+            apply();
+            syncRecall();
+          });
+        }
+
+        if (closeButton) {
+          closeButton.addEventListener("click", function (event) {
+            event.preventDefault();
+            event.stopPropagation();
+            state.closed = true;
+            apply();
+            syncRecall();
+          });
+        }
+
+        function restore() {
+          state.closed = false;
+          state.minimized = false;
+          raise();
+          apply();
+          syncRecall();
+        }
+
+        apply();
+        floatingFrames[root.id] = {
+          restore: restore,
+          isMinimized: function () { return state.minimized; },
+          isClosed: function () { return state.closed; }
+        };
+        window.addEventListener("resize", apply);
+        if (!stored) {
+          window.requestAnimationFrame(function () {
+            state.position = frameAnchorRect(root, state.size);
+            apply();
+          });
+        }
+      }
+
+      function syncRecall() {
+        Array.prototype.forEach.call(document.querySelectorAll("[data-recall]"), function (button) {
+          var frame = floatingFrames[button.getAttribute("data-recall")];
+          var open = frame && !frame.isClosed() && !frame.isMinimized();
+          button.setAttribute("aria-pressed", open ? "true" : "false");
+        });
+      }
 
       function text(value, fallback) {
         if (value === null || value === undefined || value === "") return fallback || "—";
         return String(value);
+      }
+
+      function shortId(value) {
+        var raw = text(value, "");
+        if (raw.length <= 28) return raw;
+        return raw.slice(0, 8) + "…" + raw.slice(-12);
+      }
+
+      function parseCadence(raw) {
+        var value = String(raw || "").trim().toLowerCase();
+        if (value === "realtime" || value === "real") return { pace: "realtime" };
+        if (!value) return null;
+        var ms = Number(value);
+        if (!Number.isFinite(ms) || ms < 0) return null;
+        return { pace: "fixed", cadence_ms: Math.round(ms) };
+      }
+
+      function cadencePayload() {
+        return parseCadence(elements.cadence.value);
+      }
+
+      function loopEnabled() {
+        if (loopDraft !== null) return loopDraft;
+        return elements.loopToggle.getAttribute("aria-pressed") === "true";
+      }
+
+      function paintLoopToggle(on) {
+        elements.loopToggle.value = on ? "on" : "off";
+        elements.loopToggle.setAttribute("aria-pressed", on ? "true" : "false");
+      }
+
+      function queueLoop(on) {
+        loopDraft = on;
+        paintLoopToggle(on);
+        pendingLoop = on;
+        flushLoop();
+      }
+
+      function flushLoop() {
+        if (pendingLoop === null || loopInFlight) return;
+        var on = pendingLoop;
+        pendingLoop = null;
+        loopInFlight = true;
+        var body = { action: "set_loop", loop: on };
+        var runId = selectedRunId("set_loop");
+        if (runId) body.run_id = runId;
+        fetch("/api/action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        }).then(function (response) {
+          return response.json().then(function (payload) {
+            return { ok: response.ok, payload: payload };
+          }, function () {
+            return { ok: response.ok, payload: null };
+          });
+        }).then(function (result) {
+          loopInFlight = false;
+          var next = result.payload && result.payload.state;
+          var controls = next && next.controls;
+          if (controls && typeof controls.loop === "boolean") {
+            if (state && state.controls) state.controls.loop = controls.loop;
+            if (loopDraft === controls.loop) loopDraft = null;
+            if (pendingLoop === null) {
+              paintLoopToggle(loopDraft !== null ? loopDraft : controls.loop);
+            }
+          }
+          if (!result.ok || (result.payload && result.payload.ok === false)) {
+            setNotice((result.payload && result.payload.message) || "Action was rejected.");
+            if (pendingLoop === null && controls && typeof controls.loop === "boolean") {
+              loopDraft = null;
+              paintLoopToggle(controls.loop);
+            }
+          }
+          if (pendingLoop !== null) flushLoop();
+        }).catch(function (error) {
+          loopInFlight = false;
+          setNotice("Workbench connection failed: " + error);
+          if (pendingLoop !== null) flushLoop();
+        });
+      }
+
+      function playbackControlAction(name) {
+        return name === "pause" || name === "resume" || name === "set_cadence";
       }
 
       function setText(id, value, fallback) {
@@ -436,14 +1184,19 @@
       }
 
       function currentPayload(key) {
-        if (key === "perception" && state && Array.isArray(state.active_plugin_ids) &&
-            state.active_plugin_ids.length === 0) {
-          return null;
-        }
+        var payload;
         if (selectedFrameDetail && Object.prototype.hasOwnProperty.call(selectedFrameDetail, key)) {
-          return selectedFrameDetail[key];
+          payload = selectedFrameDetail[key];
+        } else {
+          payload = state ? state[key] : null;
         }
-        return state ? state[key] : null;
+        if (key === "perception") {
+          var selected = state && Array.isArray(state.active_plugin_ids)
+            ? state.active_plugin_ids : [];
+          var runs = payload && Array.isArray(payload.plugin_runs) ? payload.plugin_runs : [];
+          if (selected.length === 0 && runs.length > 0) return null;
+        }
+        return payload;
       }
 
       function clearFrameSelection() {
@@ -463,7 +1216,7 @@
         if (actionInFlight) return;
         var requestGeneration = ++stateRequestGeneration;
         actionInFlight = true;
-        renderControls();
+        var skipViewer = playbackControlAction(action);
         if (["start", "validate", "reset"].indexOf(action) >= 0) {
           clearFrameSelection();
         }
@@ -472,7 +1225,7 @@
         var runId = selectedRunId(action);
         if (runId) body.run_id = runId;
         if (extra) Object.keys(extra).forEach(function (key) { body[key] = extra[key]; });
-        elements.notice.textContent = "";
+        if (!skipViewer) setNotice("");
         try {
           var response = await fetch("/api/action", {
             method: "POST",
@@ -481,7 +1234,8 @@
           });
           var payload = await response.json();
           if (payload.state && requestGeneration === stateRequestGeneration) {
-            render(payload.state);
+            actionInFlight = false;
+            render(payload.state, { skipViewer: skipViewer });
           }
           if (!response.ok || payload.ok === false) {
             if (requestGeneration === stateRequestGeneration) {
@@ -491,14 +1245,14 @@
                 pluginCatalogRenderKey = null;
                 if (payload.state) render(payload.state);
               }
-              elements.notice.textContent = payload.message || "Action was rejected.";
+              setNotice(payload.message || "Action was rejected.");
             }
             return;
           }
           if (requestGeneration === stateRequestGeneration) {
-            if (action === "validate") elements.notice.textContent = "Source and plugin configuration validated.";
-            if (action === "refresh_plugins") elements.notice.textContent = "Plugin catalog refreshed.";
-            if (action === "select_plugins") elements.notice.textContent = "Plugin selection applied.";
+            if (action === "validate") setNotice("Source and plugin configuration validated.");
+            if (action === "refresh_plugins") setNotice("Reloaded the plugin catalog from the plugin directory.");
+            if (action === "select_plugins") setNotice("Plugin selection applied.");
             if (action === "select_plugins") {
               clearFrameSelection();
               render(payload.state);
@@ -517,11 +1271,11 @@
               pluginCatalogRenderKey = null;
               render();
             }
-            elements.notice.textContent = "Workbench connection failed: " + error;
+            setNotice("Workbench connection failed: " + error);
           }
         } finally {
           actionInFlight = false;
-          renderControls();
+          if (requestGeneration === stateRequestGeneration) renderControls();
           schedulePoll(pollDelay());
         }
       }
@@ -542,8 +1296,9 @@
         var ready = plugins.filter(function (plugin) { return plugin.ready; }).length;
         setText("pluginSelectionSummary", selected + " active · " + ready + " ready");
         setText("pluginDigest", catalog ? "catalog " + text(catalog.digest) : "");
-        if (document.activeElement !== elements.pluginDir) {
-          elements.pluginDir.value = state && state.plugin_dir ? state.plugin_dir : "";
+        if (document.activeElement !== elements.pluginDir && state && state.plugin_dir) {
+          elements.pluginDir.value = state.plugin_dir;
+          remember(PLUGIN_DIR_KEY, state.plugin_dir);
         }
       }
 
@@ -612,13 +1367,8 @@
           status.className = "plugin-status";
           status.textContent = plugin.ready ? "ready" : "unavailable";
           copy.appendChild(status);
-          var description = document.createElement("small");
-          description.textContent = text(plugin.description, "No description.");
-          copy.appendChild(description);
           if (!plugin.ready && plugin.unavailable_reason) {
-            var reason = document.createElement("small");
-            reason.textContent = plugin.unavailable_reason;
-            copy.appendChild(reason);
+            title.title = plugin.unavailable_reason;
           }
           item.appendChild(copy);
           elements.pluginCatalog.appendChild(item);
@@ -629,35 +1379,48 @@
       function renderControls() {
         var allowed = state && state.controls && state.controls.allowed_actions
           ? state.controls.allowed_actions : [];
-        setButton("validateButton", !actionInFlight && allowed.indexOf("validate") >= 0);
-        setButton("startButton", !actionInFlight && allowed.indexOf("start") >= 0);
-        setButton("pauseButton", !actionInFlight && allowed.indexOf("pause") >= 0);
-        setButton("resumeButton", !actionInFlight && allowed.indexOf("resume") >= 0);
-        setButton("stepButton", !actionInFlight && allowed.indexOf("step") >= 0);
-        setButton("cancelButton", !actionInFlight && allowed.indexOf("cancel") >= 0);
-        setButton("resetButton", !actionInFlight && allowed.indexOf("reset") >= 0);
-        elements.cadence.disabled = !state || actionInFlight;
+        var canStart = allowed.indexOf("start") >= 0;
+        var canPause = allowed.indexOf("pause") >= 0;
+        var canResume = allowed.indexOf("resume") >= 0;
+        setButton("startButton", canStart);
+        setButton("pauseButton", canPause);
+        setButton("resumeButton", canResume);
+        var playing = state && state.phase === "running";
+        var paused = state && state.phase === "paused";
+        elements.pauseButton.hidden = !playing;
+        elements.resumeButton.hidden = !paused;
+        elements.startButton.hidden = playing || paused || !canStart;
+        setButton("stepButton", allowed.indexOf("step") >= 0);
+        setButton("cancelButton", allowed.indexOf("cancel") >= 0);
+        setButton("resetButton", allowed.indexOf("reset") >= 0);
+        elements.cadence.disabled = !state;
         var selectionAllowed = !actionInFlight && allowed.indexOf("select_plugins") >= 0;
         var rootConfigAllowed = !actionInFlight && allowed.indexOf("refresh_plugins") >= 0;
         setButton("refreshPluginsButton", rootConfigAllowed);
-        elements.pluginDir.disabled = !state || actionInFlight || !rootConfigAllowed;
+        var liveReplay = Boolean(state) && (state.phase === "running" || state.phase === "paused");
+        elements.sourceDir.disabled = liveReplay;
+        elements.pluginDir.disabled = liveReplay;
         renderPlugins();
       }
 
       function renderFrame() {
         var frame = currentFrame();
         if (!frame) {
-          lastImageKey = "";
-          loadedImageKey = "";
-          elements.frameImage.removeAttribute("src");
-          elements.overlayCanvas.width = 1;
-          elements.overlayCanvas.height = 1;
-          elements.viewerFrame.hidden = true;
-          elements.emptyState.hidden = false;
-          elements.emptyState.textContent = "Choose an image directory, validate it, and start a replay.\nThe server owns the pipeline; this page only renders its state.";
           setText("frameId", null);
           setText("frameIndex", null);
           setText("frameTimestamp", null);
+          elements.overlayCanvas.width = 1;
+          elements.overlayCanvas.height = 1;
+          if (loadedImageKey !== "") {
+            elements.viewerFrame.hidden = false;
+            elements.emptyState.hidden = true;
+            return;
+          }
+          lastImageKey = "";
+          elements.frameImage.removeAttribute("src");
+          elements.viewerFrame.hidden = true;
+          elements.emptyState.hidden = false;
+          elements.emptyState.textContent = "Choose an image directory and start a replay.\nThe server owns the pipeline; this page only renders its state.";
           return;
         }
         setText("frameId", frame.frame_id);
@@ -740,13 +1503,16 @@
         context.clearRect(0, 0, canvas.width, canvas.height);
         var perception = currentPayload("perception");
         var things = perception && Array.isArray(perception.things) ? perception.things : [];
+        var labels = [];
+        context.strokeStyle = "rgba(57, 255, 20, .95)";
+        context.fillStyle = "rgba(57, 255, 20, .12)";
+        context.lineWidth = Math.max(2, canvas.width / 500);
         things.forEach(function (thing) {
           var location = thing.location || {};
           if (thing.kind === "sensor_frame" || location.frame !== "image") return;
-          context.strokeStyle = "#69d2b4";
-          context.fillStyle = "rgba(105, 210, 180, .12)";
-          context.lineWidth = Math.max(2, canvas.width / 500);
           var box = location.bbox_xyxy_norm;
+          var labelX = 4;
+          var labelY = 14;
           if (Array.isArray(box) && box.length === 4) {
             var x = box[0] * canvas.width;
             var y = box[1] * canvas.height;
@@ -754,9 +1520,8 @@
             var height = (box[3] - box[1]) * canvas.height;
             context.fillRect(x, y, width, height);
             context.strokeRect(x, y, width, height);
-            context.fillStyle = "#b8f4df";
-            context.font = Math.max(12, canvas.width / 55) + "px sans-serif";
-            context.fillText(text(thing.label, thing.kind), x + 4, Math.max(14, y - 4));
+            labelX = x + 4;
+            labelY = Math.max(14, y - 4);
           }
           var polygon = location.polygon_xy_norm;
           if (Array.isArray(polygon) && polygon.length > 2) {
@@ -770,86 +1535,33 @@
             context.fill();
             context.stroke();
           }
-        });
-      }
-
-      function renderTimeline() {
-        var timeline = state && Array.isArray(state.timeline) ? state.timeline : [];
-        var highlightedFrameId = selectedFrameId || ((state && state.current_frame) || {}).frame_id;
-        elements.timeline.textContent = "";
-        if (!timeline.length) {
-          var empty = document.createElement("p");
-          empty.className = "timeline-empty muted help";
-          empty.textContent = "No frames have been processed.";
-          elements.timeline.appendChild(empty);
-        } else {
-          timeline.forEach(function (item) {
-            var frame = item.frame || {};
-            var frameId = text(frame.frame_id, "unknown frame");
-            var button = document.createElement("button");
-            button.type = "button";
-            button.setAttribute("data-frame-id", frameId);
-            button.addEventListener("click", function () { selectFrame(frameId); });
-            var name = document.createElement("strong");
-            name.textContent = frameId;
-            button.appendChild(name);
-            var status = document.createElement("small");
-            status.textContent = text(item.perception_status, "no perception") +
-              " · memory " + text(item.memory_record_count, "0");
-            button.appendChild(status);
-            button.setAttribute("aria-label", "Show replay frame " + frameId);
-            var isSelected = frameId === highlightedFrameId;
-            button.classList.toggle("selected", isSelected);
-            button.setAttribute("aria-pressed", isSelected ? "true" : "false");
-            elements.timeline.appendChild(button);
+          labels.push({
+            text: text(thing.label, thing.kind),
+            x: labelX,
+            y: labelY
           });
-        }
-        var displayedId = (currentFrame() || {}).frame_id;
-        if (selectedFrameDetail) {
-          setText("timelineSelection", "selected · " + text(selectedFrameId));
-        } else if (displayedId) {
-          setText("timelineSelection", "latest processed");
-        } else {
-          setText("timelineSelection", "select a processed frame");
-        }
-      }
-
-      async function selectFrame(frameId) {
-        if (!state || !state.run_id) return;
-        var timeline = Array.isArray(state.timeline) ? state.timeline : [];
-        var item = timeline.find(function (entry) {
-          return entry && entry.frame && entry.frame.frame_id === frameId;
         });
-        if (!item) return;
-        var runId = state.run_id;
-        var generation = ++detailRequestGeneration;
-        elements.notice.textContent = "Loading frame " + text(frameId, "unknown frame") + "…";
-        try {
-          var response = await fetch(
-            "/api/frame-detail?run_id=" + encodeURIComponent(runId) +
-            "&frame_id=" + encodeURIComponent(frameId),
-            { cache: "no-store" }
-          );
-          var detail = await response.json();
-          if (generation !== detailRequestGeneration || !state || state.run_id !== runId) return;
-          if (!response.ok) {
-            elements.notice.textContent = detail.message || "Frame detail is unavailable.";
-            return;
+        context.font = Math.max(11, canvas.width / 60) + "px \"JetBrains Mono\", monospace";
+        var placed = [];
+        labels.forEach(function (label) {
+          var width = context.measureText(label.text).width + 6;
+          var x = Math.min(Math.max(2, label.x), Math.max(2, canvas.width - width - 2));
+          var y = Math.min(Math.max(12, label.y), canvas.height - 4);
+          var attempt = 0;
+          while (attempt < 12) {
+            var clash = placed.some(function (prior) {
+              return Math.abs(y - prior.y) < 15 && x < prior.x + prior.w && x + width > prior.x;
+            });
+            if (!clash) break;
+            y = Math.min(y + 15, canvas.height - 4);
+            attempt += 1;
           }
-          if (!detail.frame || detail.frame.frame_id !== frameId) {
-            elements.notice.textContent = "Frame detail did not match the selected frame.";
-            return;
-          }
-          selectedFrameId = frameId;
-          selectedFrameRunId = runId;
-          selectedFrameDetail = detail;
-          selectedRecordId = null;
-          elements.notice.textContent = "Showing frame " + text(frameId, "unknown frame") + ".";
-          render();
-        } catch (error) {
-          if (generation !== detailRequestGeneration || !state || state.run_id !== runId) return;
-          elements.notice.textContent = "Workbench connection failed: " + error;
-        }
+          placed.push({ x: x, y: y, w: width });
+          context.fillStyle = "rgba(10, 10, 10, .78)";
+          context.fillRect(x - 2, y - 11, width, 14);
+          context.fillStyle = "#ededed";
+          context.fillText(label.text, x, y);
+        });
       }
 
       function renderEvidence() {
@@ -864,17 +1576,93 @@
         var pluginRunIds = Array.isArray(perception.plugin_runs)
           ? perception.plugin_runs.map(function (run) { return run.plugin_id; })
           : [];
-        setText("evidenceSummary", text(perception.status) + (pluginRunIds.length ? " · " + pluginRunIds.join(", ") : ""));
+        setText("evidenceSummary", text(perception.status));
+        elements.evidenceSummary.title = pluginRunIds.length ? pluginRunIds.join(", ") : "";
         setText("pluginRuns", Array.isArray(perception.plugin_runs) ? perception.plugin_runs.length : 0);
         setText("evidenceCounts", (perception.things || []).length + " / " + (perception.signals || []).length);
         elements.evidenceText.textContent = Array.isArray(perception.lines)
           ? perception.lines.join("\n") : "Structured perception output has no text lines.";
       }
 
+      function memorySearchPattern() {
+        var term = String(elements.memorySearch.value || "").trim().toLowerCase();
+        if (!term) return null;
+        try {
+          return new RegExp(term);
+        } catch (error) {
+          return new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+        }
+      }
+
+      function memoryRecordId(record) {
+        return text(record.record_id, "unknown record");
+      }
+
+      function memoryRecordLabel(record) {
+        return text(record.label, memoryRecordId(record));
+      }
+
+      function memoryRecordTitle(record, records) {
+        var label = memoryRecordLabel(record);
+        var collisions = 0;
+        records.forEach(function (candidate) {
+          if (memoryRecordLabel(candidate) === label) collisions += 1;
+        });
+        if (collisions < 2) return label;
+        var plugin = record.provenance && record.provenance.source_plugin_id;
+        return plugin ? label + " · " + plugin : label;
+      }
+
+      function memoryRecordMatches(record, records, pattern) {
+        if (!pattern) return true;
+        pattern.lastIndex = 0;
+        return pattern.test(memoryRecordTitle(record, records).toLowerCase());
+      }
+
+      function paintMemorySelection(records) {
+        var selected = records.find(function (record) {
+          return memoryRecordId(record) === selectedRecordId;
+        });
+        Array.prototype.forEach.call(
+          elements.memoryRecords.querySelectorAll("button[data-record-id]"),
+          function (button) {
+            var isSelected = button.getAttribute("data-record-id") === selectedRecordId;
+            button.classList.toggle("selected", isSelected);
+            button.setAttribute("aria-pressed", isSelected ? "true" : "false");
+          }
+        );
+        setText("memorySelection", selected
+          ? "selected · " + memoryRecordTitle(selected, records)
+          : "select a record");
+        elements.memorySelected.textContent = selected
+          ? JSON.stringify({
+            record_id: selected.record_id,
+            kind: selected.kind,
+            label: selected.label,
+            confidence: selected.confidence,
+            provenance: selected.provenance,
+            properties: selected.properties
+          }, null, 2)
+          : "Select a server-produced memory record to inspect its provenance.";
+      }
+
+      function bindMemoryList() {
+        if (elements.memoryRecords.getAttribute("data-bound") === "true") return;
+        elements.memoryRecords.setAttribute("data-bound", "true");
+        elements.memoryRecords.addEventListener("pointerdown", function (event) {
+          var button = event.target.closest("button[data-record-id]");
+          if (!button) return;
+          event.stopPropagation();
+          selectRecord(button.getAttribute("data-record-id"));
+        });
+      }
+
       function renderMemory() {
+        bindMemoryList();
         var memory = currentPayload("memory");
-        elements.memoryRecords.textContent = "";
         if (!memory) {
+          memoryListSignature = "";
+          elements.memoryRecords.textContent = "";
           setText("memoryHealth", "no snapshot");
           setText("memoryEpoch", null);
           setText("memoryCount", null);
@@ -892,29 +1680,34 @@
         setText("memoryCount", memory.record_count);
         setText("memoryPolicy", memory.metadata && memory.metadata.policy);
         var records = Array.isArray(memory.records) ? memory.records : [];
-        var recordIds = records.map(function (record) {
-          return text(record.record_id, "unknown record");
+        var pattern = memorySearchPattern();
+        var visible = records.filter(function (record) {
+          return memoryRecordMatches(record, records, pattern);
         });
+        var recordIds = records.map(memoryRecordId);
         if (recordIds.indexOf(selectedRecordId) < 0) {
           selectedRecordId = recordIds.length ? recordIds[0] : null;
         }
-        records.forEach(function (record) {
-          var recordId = text(record.record_id, "unknown record");
+        var signature = visible.map(function (record) {
+          return memoryRecordId(record) + "\t" + memoryRecordTitle(record, records);
+        }).join("\n") + "\0" + String(elements.memorySearch.value || "") + "\0" + String(records.length);
+        if (signature === memoryListSignature && elements.memoryRecords.querySelector("button[data-record-id], .memory-empty")) {
+          paintMemorySelection(records);
+          return;
+        }
+        memoryListSignature = signature;
+        elements.memoryRecords.textContent = "";
+        visible.forEach(function (record) {
+          var recordId = memoryRecordId(record);
+          var titleText = memoryRecordTitle(record, records);
           var card = document.createElement("button");
           card.type = "button";
-          card.className = "record";
+          card.className = "text-action record";
           card.setAttribute("data-record-id", recordId);
-          card.addEventListener("click", function () { selectRecord(recordId); });
           var title = document.createElement("strong");
-          title.textContent = text(record.label, recordId);
+          title.textContent = titleText;
           card.appendChild(title);
-          var detail = document.createElement("pre");
-          detail.textContent = recordId + " · confidence " + text(record.confidence, "0");
-          card.appendChild(detail);
-          var isSelected = recordId === selectedRecordId;
-          card.classList.toggle("selected", isSelected);
-          card.setAttribute("aria-pressed", isSelected ? "true" : "false");
-          card.setAttribute("aria-label", "Show memory record " + text(record.label, recordId));
+          card.setAttribute("aria-label", "Show memory record " + titleText);
           elements.memoryRecords.appendChild(card);
         });
         if (!records.length) {
@@ -926,82 +1719,96 @@
           elements.memorySelected.textContent = "Memory is empty for this frame.";
           return;
         }
-        var selected = records.find(function (record) {
-          return text(record.record_id, "unknown record") === selectedRecordId;
-        });
-        setText("memorySelection", selected
-          ? "selected · " + text(selected.label, selectedRecordId)
-          : "select a record");
-        elements.memorySelected.textContent = selected
-          ? JSON.stringify({
-            record_id: selected.record_id,
-            kind: selected.kind,
-            label: selected.label,
-            confidence: selected.confidence,
-            provenance: selected.provenance,
-            properties: selected.properties
-          }, null, 2)
-          : "Select a server-produced memory record to inspect its provenance.";
+        if (!visible.length) {
+          var noMatch = document.createElement("p");
+          noMatch.className = "memory-empty muted help";
+          noMatch.textContent = "No matching records.";
+          elements.memoryRecords.appendChild(noMatch);
+        }
+        paintMemorySelection(records);
       }
 
       function selectRecord(recordId) {
         var memory = currentPayload("memory");
         var records = memory && Array.isArray(memory.records) ? memory.records : [];
         var selected = records.find(function (record) {
-          return text(record.record_id, "unknown record") === recordId;
+          return memoryRecordId(record) === recordId;
         });
         if (!selected) return;
         selectedRecordId = recordId;
-        elements.notice.textContent = "Showing memory record " + text(selected.label, recordId) + ".";
-        renderMemory();
+        setNotice("Showing memory record " + memoryRecordTitle(selected, records) + ".");
+        paintMemorySelection(records);
       }
 
       function renderFailure() {
         var failure = state && state.failure;
         elements.failurePanel.hidden = !failure;
         if (failure) {
-          elements.failureText.textContent = text(failure.boundary, "failure") + ": " + text(failure.message, "unknown failure");
+          var recovery = state && state.recovery_action;
+          elements.failureText.textContent = text(failure.boundary, "failure") + ": " + text(failure.message, "unknown failure") +
+            (recovery ? "\nNext action: " + recovery : "");
         }
       }
 
-      function render(nextState) {
+      function render(nextState, options) {
+        options = options || {};
         state = nextState || state;
         if (!state) return;
         if (selectedFrameRunId && selectedFrameRunId !== state.run_id) {
           clearFrameSelection();
         }
-        var phase = text(state.phase, "idle");
-        elements.phaseChip.textContent = phase;
-        elements.phaseChip.className = "status-chip " + phase;
         var source = state.source || {};
-        setText("sourceIdentity", state.source_identity || "no source selected");
+        var identity = state.source_identity || "no source selected";
+        elements.sourceIdentity.title = identity;
+        setText("sourceIdentity", shortId(identity));
         if (document.activeElement !== elements.sourceDir) {
-          elements.sourceDir.value = source.source_path || source.path || "";
+          var sourcePath = source.source_path || source.path;
+          if (sourcePath) {
+            elements.sourceDir.value = sourcePath;
+            remember(SOURCE_DIR_KEY, sourcePath);
+          }
         }
         var perception = currentPayload("perception");
         setText("perceptionStatus", perception && perception.status);
         var progress = state.progress || {};
         setText("progressText", text(progress.completed, "0") + " / " + text(progress.total, "0"));
-        elements.progressBar.style.width = text(progress.percent, "0") + "%";
-        setText("runId", state.run_id || "no run");
-        setText("sequenceId", state.sequence_id);
-        setText("adapter", state.adapter);
-        var runPlugins = state.run_active_plugin_ids || state.active_plugin_ids || [];
-        setText("runPlugins", runPlugins.length ? runPlugins.join(", ") : "(none)");
-        setText("runCatalogDigest", state.run_catalog_digest || state.catalog_digest);
-        setText("recoveryAction", state.recovery_action);
+        var total = Number(progress.total) || 0;
+        var completed = Number(progress.completed) || 0;
+        var lastIndex = Math.max(total - 1, 0);
+        elements.seekBar.max = String(lastIndex);
+        elements.seekBar.disabled = total === 0 || !state ||
+          (state.phase !== "running" && state.phase !== "paused" && !scrubbing);
+        if (!scrubbing && document.activeElement !== elements.seekBar) {
+          var frame = currentFrame();
+          var position = frame && frame.position != null ? Number(frame.position) : Math.max(completed - 1, 0);
+          elements.seekBar.value = String(Math.min(Math.max(position, 0), lastIndex));
+        }
         var controls = state.controls || {};
-        if (!cadenceDraft || state.phase !== "idle") {
+        if (document.activeElement !== elements.cadence && (!cadenceDraft || state.phase !== "idle")) {
           elements.cadence.value = controls.pace === "realtime"
             ? "realtime" : text(controls.cadence_ms, "250");
         }
-        var sideEffects = state.machine_detail && state.machine_detail.side_effects;
-        setText("sideEffects", sideEffects && sideEffects.observation_only ? "observation only" : "inspect state");
-        renderFrame();
-        renderTimeline();
-        renderEvidence();
-        renderMemory();
-        renderFailure();
+        if (loopDraft !== null && typeof controls.loop === "boolean" && controls.loop === loopDraft) {
+          loopDraft = null;
+        }
+        if (loopDraft !== null) {
+          paintLoopToggle(loopDraft);
+        } else if (typeof controls.loop === "boolean") {
+          paintLoopToggle(controls.loop);
+        }
+        if (!options.skipViewer) {
+          if (scrubbing) {
+            var live = state.current_frame;
+            if (live && Number(live.position) === scrubPosition) {
+              renderFrame();
+            }
+          } else {
+            renderFrame();
+          }
+          renderEvidence();
+          renderMemory();
+          renderFailure();
+        }
         renderControls();
       }
 
@@ -1018,7 +1825,7 @@
           if (payload && requestGeneration === stateRequestGeneration) render(payload);
         } catch (error) {
           if (requestGeneration === stateRequestGeneration) {
-            elements.notice.textContent = "Workbench connection failed: " + error;
+            setNotice("Workbench connection failed: " + error);
           }
         } finally {
           pollInFlight = false;
@@ -1035,20 +1842,44 @@
         pollTimer = window.setTimeout(poll, delay);
       }
 
-      elements.validateButton.addEventListener("click", function () {
-        var payload = { source_dir: elements.sourceDir.value };
-        if (elements.pluginDir.value.trim()) payload.plugin_dir = elements.pluginDir.value.trim();
-        action("validate", payload);
+      ["memoryFrame", "evidenceFrame"].forEach(function (id) {
+        bindFloatingFrame(document.getElementById(id));
+      });
+      Array.prototype.forEach.call(document.querySelectorAll("[data-recall]"), function (button) {
+        button.addEventListener("click", function () {
+          var frame = floatingFrames[button.getAttribute("data-recall")];
+          if (frame) frame.restore();
+        });
+      });
+      syncRecall();
+      elements.sourceDir.value = remembered(SOURCE_DIR_KEY);
+      elements.pluginDir.value = remembered(PLUGIN_DIR_KEY);
+      elements.sourceDir.addEventListener("change", function () {
+        remember(SOURCE_DIR_KEY, elements.sourceDir.value);
+      });
+      elements.pluginDir.addEventListener("change", function () {
+        remember(PLUGIN_DIR_KEY, elements.pluginDir.value);
+      });
+      elements.memorySearch.addEventListener("input", function () {
+        renderMemory();
+      });
+      elements.memorySearch.addEventListener("pointerdown", function (event) {
+        event.stopPropagation();
       });
       elements.startButton.addEventListener("click", function () {
-        var selectedPace = elements.cadence.value;
+        var cadence = cadencePayload();
+        if (!cadence) {
+          setNotice("Cadence must be a millisecond delay or realtime.");
+          return;
+        }
         var payload = {
           source_dir: elements.sourceDir.value,
-          pace: selectedPace === "realtime" ? "realtime" : "fixed",
+          pace: cadence.pace,
           active_plugin_ids: selectedPluginIdsFromView()
         };
-        if (selectedPace !== "realtime") payload.cadence_ms = Number(selectedPace);
+        if (cadence.pace !== "realtime") payload.cadence_ms = cadence.cadence_ms;
         if (elements.pluginDir.value.trim()) payload.plugin_dir = elements.pluginDir.value.trim();
+        payload.loop = loopEnabled();
         action("start", payload);
       });
       elements.refreshPluginsButton.addEventListener("click", function () {
@@ -1065,13 +1896,137 @@
         cadenceDraft = state && state.phase === "idle";
         if (state && (state.phase === "running" || state.phase === "paused")) {
           cadenceDraft = false;
-          var selectedPace = elements.cadence.value;
-          var payload = { pace: selectedPace === "realtime" ? "realtime" : "fixed" };
-          if (selectedPace !== "realtime") payload.cadence_ms = Number(selectedPace);
+          var cadence = cadencePayload();
+          if (!cadence) return;
+          var payload = { pace: cadence.pace };
+          if (cadence.pace !== "realtime") payload.cadence_ms = cadence.cadence_ms;
           action("set_cadence", payload);
         }
       });
-      elements.overlayToggle.addEventListener("change", drawOverlay);
+      function showScrubImage(position) {
+        var runId = state && state.run_id;
+        if (!runId) return;
+        var imageKey = text(runId, "") + ":pos:" + position;
+        setText("frameIndex", position);
+        setText("frameId", "seeking");
+        setText("frameTimestamp", null);
+        elements.overlayCanvas.width = 1;
+        elements.overlayCanvas.height = 1;
+        if (imageKey === lastImageKey) return;
+        lastImageKey = imageKey;
+        var requestGeneration = ++imageRequestGeneration;
+        var imageUrl = "/api/frame?run_id=" + encodeURIComponent(runId) + "&position=" + encodeURIComponent(position);
+        var hasRenderedImage = loadedImageKey !== "";
+        if (!hasRenderedImage) {
+          elements.viewerFrame.hidden = true;
+          elements.emptyState.hidden = false;
+          elements.emptyState.textContent = "Loading frame " + position + "…";
+        }
+        var preloadedImage = new Image();
+        preloadedImage.alt = "Replay frame " + position;
+        preloadedImage.onload = function () {
+          if (requestGeneration !== imageRequestGeneration || lastImageKey !== imageKey) return;
+          preloadedImage.onload = null;
+          preloadedImage.onerror = null;
+          elements.frameImage.replaceWith(preloadedImage);
+          elements.frameImage = preloadedImage;
+          loadedImageKey = imageKey;
+          elements.viewerFrame.hidden = false;
+          elements.emptyState.hidden = true;
+        };
+        preloadedImage.onerror = function () {
+          if (requestGeneration !== imageRequestGeneration || lastImageKey !== imageKey) return;
+          preloadedImage.onload = null;
+          preloadedImage.onerror = null;
+          loadedImageKey = "";
+          elements.viewerFrame.hidden = true;
+          elements.emptyState.hidden = false;
+          elements.emptyState.textContent = "Frame image is unavailable.";
+        };
+        preloadedImage.src = imageUrl;
+      }
+
+      function queueSeek(position) {
+        seekQueued = position;
+        if (!seekInFlight && !actionInFlight) flushSeek();
+      }
+
+      function flushSeek() {
+        if (seekQueued == null || seekInFlight || actionInFlight) return;
+        var position = seekQueued;
+        seekQueued = null;
+        seekInFlight = true;
+        action("seek", { position: position }).then(function () {
+          seekInFlight = false;
+          if (seekQueued != null) {
+            flushSeek();
+            return;
+          }
+          if (!scrubbing && pendingResume) {
+            pendingResume = false;
+            if (state && state.phase === "paused") action("resume");
+          }
+        });
+      }
+
+      function beginScrub() {
+        if (scrubbing) return;
+        if (!state || (state.phase !== "running" && state.phase !== "paused")) return;
+        scrubbing = true;
+        resumeAfterScrub = state.phase === "running";
+        pendingResume = false;
+        clearFrameSelection();
+        if (resumeAfterScrub) {
+          action("pause").then(function () { flushSeek(); });
+        }
+      }
+
+      function onSeekInput() {
+        if (!state || (state.phase !== "running" && state.phase !== "paused" && !scrubbing)) return;
+        if (!scrubbing) beginScrub();
+        var position = Number(elements.seekBar.value);
+        if (!Number.isFinite(position)) return;
+        var lastIndex = Number(elements.seekBar.max);
+        if (!Number.isFinite(lastIndex)) lastIndex = position;
+        position = Math.max(0, Math.min(Math.round(position), lastIndex));
+        scrubPosition = position;
+        elements.seekBar.value = String(position);
+        showScrubImage(position);
+        queueSeek(position);
+      }
+
+      function endScrub() {
+        if (!scrubbing) return;
+        scrubbing = false;
+        if (resumeAfterScrub) {
+          if (seekInFlight || seekQueued != null || actionInFlight) pendingResume = true;
+          else if (state && state.phase === "paused") action("resume");
+        }
+        resumeAfterScrub = false;
+      }
+
+      elements.seekBar.addEventListener("pointerdown", function () { beginScrub(); });
+      elements.seekBar.addEventListener("input", onSeekInput);
+      elements.seekBar.addEventListener("change", function () {
+        if (!scrubbing) onSeekInput();
+        endScrub();
+      });
+      elements.seekBar.addEventListener("keyup", function () {
+        if (scrubbing) endScrub();
+      });
+      window.addEventListener("pointerup", function () {
+        if (scrubbing) endScrub();
+      });
+      elements.loopToggle.addEventListener("click", function () {
+        queueLoop(!loopEnabled());
+      });
+      elements.overlayToggle.addEventListener("click", function () {
+        var next = elements.overlayToggle.value === "off" ? "on" : "off";
+        elements.overlayToggle.value = next;
+        elements.overlayToggle.textContent = next === "on" ? "overlays" : "image";
+        elements.overlayToggle.setAttribute("aria-pressed", next === "on" ? "true" : "false");
+        drawOverlay();
+      });
       window.addEventListener("resize", drawOverlay);
       poll();
     }());

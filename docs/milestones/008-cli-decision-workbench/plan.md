@@ -65,7 +65,7 @@ coverage or a frontend framework migration.
 
 **Perception-memory workbench journey**
 
-- Workflow state: ready_for_implementation
+- Workflow state: implementation_in_review
 - Proposal branch: `m008/perception-memory-workbench-proposal`
 - Implementation branch: `m008/perception-memory-workbench`
 - Proposal path: `docs/milestones/008-cli-decision-workbench/proposals/perception-memory-workbench.md`
@@ -127,6 +127,7 @@ coverage or a frontend framework migration.
 | Perception-memory workbench journey | ready_for_implementation | Proposal amendment PR #181 accepted at 5cf51585ac7951ea023a2a86fed786913daf626f (reviewed head `2b063feed81a050a3c24263dd453628d0e08cff3` by `GeorgeLuo` as `OWNER` at `2026-09-02T02:08:51Z`). |
 | Perception-memory workbench journey | proposal_amendment_in_review | Started proposal amendment m008/amend-raw-capture-paused-refresh. |
 | Perception-memory workbench journey | ready_for_implementation | Proposal amendment PR #189 accepted at b1e97ad8bd9c6ea7759bc7fa60331ec0a45d20d7 (reviewed head `5f07afdd1a09b066da79e4f886dc0448328f5e97` by `GeorgeLuo` as `OWNER` at `2026-09-03T04:22:22Z`). |
+| Perception-memory workbench journey | implementation_in_review | Started m008/perception-memory-workbench. |
 
 ## Accepted Review Units
 

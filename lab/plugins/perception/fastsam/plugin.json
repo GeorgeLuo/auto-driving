@@ -15,6 +15,13 @@
       "max_regions": 32
     }
   },
+  "inputs": [
+    {
+      "name": "frame",
+      "component_id": "camera.rgb:front_camera",
+      "provider_spec": "implementations.perception.components.camera:provide_camera_frame"
+    }
+  ],
   "runtime": {
     "requirements": "requirements.txt",
     "python": ".venv/bin/python"

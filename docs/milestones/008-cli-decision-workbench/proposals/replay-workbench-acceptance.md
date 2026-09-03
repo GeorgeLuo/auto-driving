@@ -57,9 +57,15 @@ Run from a clean checkout of the M008 milestone tip that contains merged PR
 - the plugin root used (`lab/plugins/perception` or the packaged default);
 - the printed loopback URL.
 
-The source must be a real readable image directory. Fixture-generated or mock
-frames are not the primary demonstration. Local absolute paths and unrelated
-browser content are redacted in tracked artifacts.
+The source must be a real readable image directory. The primary demonstration
+must use a recorded `manifest.json` / `run.json` with strictly increasing
+`timestamp_ms` values so realtime pacing exercises captured timing, and a ready
+plugin/source combination that produces at least one server-reported
+perception item and memory record. A source without recorded timestamps may be
+used only for a separate failure/recovery retry and cannot be claimed as
+realtime evidence. Fixture-generated or mock frames are not the primary
+demonstration. Local absolute paths and unrelated browser content are redacted
+in tracked artifacts.
 
 ### Exact procedure
 
@@ -68,35 +74,60 @@ Start the long-lived page from the repository root:
 ```sh
 ./cli/automa vehicles workbench replay <source_dir> \
   --plugin-dir lab/plugins/perception \
+  --plugin classical_regions \
+  --pace realtime \
+  --max-frames 1024 \
   --open
 ```
 
-Omitting `--plugin-dir` is allowed when the packaged `frame` + `floor_plane`
-default is the session's catalog. `--json` is a recorder aid; it is never the
-operator display.
+The command intentionally names a ready plugin, requests recorded-timestamp
+pacing, and raises the bounded frame limit for a long capture. Omitting
+`--plugin-dir` is allowed when the packaged `frame` + `floor_plane` default is
+the session's catalog; in that case omit `--plugin` as well and record the
+packaged selection. `--json` is a recorder aid; it is never the operator
+display.
 
 The operator, not a batch script, then:
 
 1. Confirms the page opened and shows source identity, plugin catalog, and
-   declared next actions without shell commands as the product surface.
-2. Starts replay with a ready plugin selection. Inspects the current capture,
-   server-produced overlays, progress, and memory ledger on a processed frame.
+   declared next actions without shell commands as the product surface. Turn
+   the loop control off so this run reaches a terminal state instead of
+   wrapping forever.
+2. The command has already started replay. Inspects the current capture,
+   server-produced overlays, progress, and memory ledger on a processed frame;
+   wait for the next frame if the page opened before the first frame arrived.
 3. Pauses. Toggles the ready set, including empty raw-capture. The held still
-   must update from the server. Invalid IDs must be refused without changing
-   the set.
+   must update from the server. The evidence README cites the deterministic
+   invalid-selection coverage (or records an explicit loopback rejection
+   response) rather than treating a checkbox that is never rendered as an
+   invalid-ID test.
 4. Resumes or steps. A running toggle, including empty, must keep the current
    still's processed evidence until the next processed frame.
-5. Resets isolated memory and starts a second run **without** restarting the
-   server. The page remains available; prior run identity does not leak as
-   current success.
-6. Points the workbench at an empty, missing, or unsupported source. The named
-   failure and next action stay visible. Recovery is an operator-chosen valid
-   directory, not a silent substitute, simulator change, or worker start.
-7. Cancels or resets. No vehicle, worker, simulator, Metrics operation,
+5. After the first run reaches its terminal state, resets isolated memory and
+   starts a second run **without** restarting the server. Keep loop off so the
+   second run also reaches a terminal state. The page remains available; prior
+   run identity does not leak as current success.
+6. Once the second run is terminal and the source field is editable, replaces
+   it with an empty, missing, or unsupported directory and presses Start. The
+   named failure and next action stay visible. Then replaces it with an
+   operator-chosen valid directory and presses Start again, recording a
+   successful recovery on the same server. No source, simulator, or worker is
+   silently substituted or started.
+7. After the recovered run completes (or is explicitly cancelled if still
+   running), resets. No vehicle, worker, simulator, Metrics operation,
    movement, or recording was started. Isolated mapper/memory state is reset.
 
 CLI human output or one `--json` snapshot may corroborate phase, failure
 boundary, recovery, and cleanup. They cannot replace the page inspection.
+The evidence README must also cite the existing deterministic CLI/API and
+selection-boundary coverage for the invalid-ID and shared-runner claims; a
+direct `/api/action` probe may supplement that citation but is not the product
+display. The citation names
+`tests/cli/test_workbench.py::test_explicit_catalog_allows_raw_capture_and_live_replacement`
+for atomic invalid-ID refusal and
+`tests/cli/test_workbench.py::test_loopback_api_exposes_and_applies_plugin_selection`
+for the loopback selection boundary. If a direct probe is used, it records the
+HTTP 422 `plugin_catalog` response and the unchanged effective selection.
 
 ### Operator verdict
 
@@ -121,7 +152,7 @@ The implementation PR owns:
 
 | Path | Contract |
 | --- | --- |
-| `README.md` | Environment receipt, procedure log, operator observations, verdict, limitations, and links |
+| `README.md` | Environment receipt, procedure log (including loop-off, second-run, failure, and valid-retry transitions), operator observations, verdict, limitations, deterministic-boundary citations, and links |
 | `result.json` | `m008_replay_workbench_acceptance_v1` with timestamps, commit, source/plugin identity, step outcomes, observation-only/cleanup checks, findings, and `accepted` / `blocked` / `incomplete` |
 | `result.html` | Derived HTML of that committed `result.json` |
 | `browser-view.png` | One cropped screenshot of the inspected workbench still (capture + overlays or explicit raw-capture) |
@@ -171,7 +202,7 @@ cite residuals already recorded there.
 | Restart the server between the two runs and claim persistence | Fail M008-03. |
 | Empty selection while running hides leftover server overlays on the current still | Fail the #189 running rule; record an acceptance blocker. |
 | Paused plugin toggle leaves the held still unchanged | Fail the #189 paused rule; record an acceptance blocker. |
-| Invalid plugin IDs change the effective set | Fail; record an acceptance blocker. |
+| Invalid plugin IDs change the effective set | Fail; cite the deterministic selection-boundary test or record a direct loopback rejection with the effective set unchanged. |
 | Failed source is silently replaced | Fail M008-06. |
 | Session starts a worker, simulator, Metrics operation, movement, or recording | Fail M008-06; reject as out of contract. |
 | Expand into video, live ingest, or a second operator goal | Out of this unit; residual or later proposal. |

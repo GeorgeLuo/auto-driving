@@ -11,6 +11,8 @@
 | Amendment merge | 1189002447802442e857da8f5d9c2663ff85b86d |
 | Live-selection amendment | [PR #181](https://github.com/GeorgeLuo/auto-driving/pull/181), frame-boundary plugin replacement |
 | Live-selection merge | 5cf51585ac7951ea023a2a86fed786913daf626f |
+| Raw-capture / paused-refresh amendment | [PR #189](https://github.com/GeorgeLuo/auto-driving/pull/189), empty selection and paused held-frame refresh |
+| Raw-capture / paused-refresh merge | b1e97ad8bd9c6ea7759bc7fa60331ec0a45d20d7 |
 | Implementation branch | m008/perception-memory-workbench |
 | Assessment status | Implementation slice ready for focused review; operator POC acceptance remains separate |
 
@@ -99,14 +101,17 @@ derive observations, mutate memory, or invoke a command.
 
 Plugin configuration is declarative and server-owned. State records the
 canonical plugin root, catalog digest, active IDs, and run-specific IDs/order.
-Root discovery and refresh remain unavailable during replay; a
-valid selection change is serialized at a frame boundary, updates the next
-frame's mapper, and leaves completed-frame provenance unchanged. A terminal
-state retains its run selection while allowing a separate next-run selection.
-An empty active-plugin selection is an explicit raw-capture mode: replay still
-advances through the image and observation lifecycle, but the selected mapper
-emits empty perception (`status=empty`, with no plugin runs or things), and the
-page suppresses perception evidence and overlays.
+Root discovery and refresh remain unavailable during replay. A valid
+selection change, including empty, takes effect the next time this view will
+process a frame: the next unprocessed feed frame while running, or an immediate
+reprocess of the held in-view frame while paused. Other already processed
+timeline frames keep their provenance. A terminal state retains its run
+selection while allowing a separate next-run selection. An empty
+active-plugin selection is explicit raw-capture: replay still advances through
+the image and observation lifecycle, and the selected mapper emits empty
+perception (`status=empty`, with no plugin runs or things). The page renders
+the in-view frame's server-produced perception rather than hiding leftover
+plugin runs because the pending selection is empty.
 
 ## POC-completion envelope
 
@@ -115,10 +120,10 @@ page suppresses perception evidence and overlays.
 | validate and set_cadence actions | Small support actions make source failure and controlled replay usable through the same page/CLI-owned runner; they do not alter fixed pipeline semantics | Admitted under the four proposal envelope conditions |
 | cancel action | Gives a bounded recovery path for a long-lived local server and ensures isolated stage cleanup | Admitted under the four proposal envelope conditions |
 | --max-frames, --host, and --port CLI options | Expose source and loopback safety limits already enforced by the runner; they do not add a source or semantic choice | Admitted under the four proposal envelope conditions |
-| Recursive manifest catalog, readiness reasons, and active-plugin toggles | The amended operator journey requires inspecting every package under a declared root and comparing at least two valid selections through the same server-owned replay | Admitted by accepted amendments #179 and #181; unsupported isolated runtimes remain visible as unavailable, and live changes apply at frame boundaries |
+| Recursive manifest catalog, readiness reasons, and active-plugin toggles | The amended operator journey requires inspecting every package under a declared root and comparing at least two valid selections through the same server-owned replay | Admitted by accepted amendments #179, #181, and #189; unsupported isolated runtimes remain visible as unavailable; running changes apply at the next feed frame; a paused toggle reprocesses the held frame |
 | Clickable frame selection with on-demand frame detail and a compact sticky header | Hands-on use found that timeline rows could not inspect an earlier processed frame. Selection fetches the server-owned frame, perception, observation, and memory detail only when requested; simple re-rendering avoids a second client-side history model, and terminal polling slows while the page remains available | Admitted under the four proposal envelope conditions |
 | Realtime pace selection | Hands-on capture review requested a pace that honors strictly increasing recorded frame timestamps. The runner waits only for the remaining timestamp delta after processing, while existing fixed-delay and fastest modes remain available through the same CLI, API, and page | Admitted as HITL adjunct #182 under the four proposal envelope conditions |
-| Empty active-plugin selection | Hands-on review identified raw capture without perception overlays as a normal operator mode; requiring one checked plugin left the source image coupled to an unwanted annotation layer | Supported as an explicit raw-capture selection; the replay remains observation-only and records no plugin evidence |
+| Empty active-plugin selection | Hands-on review identified raw capture without perception overlays as a normal operator mode; requiring one checked plugin left the source image coupled to an unwanted annotation layer | Admitted by amendment #189 as explicit raw-capture; while running, the current still keeps its server perception until the next processed frame; while paused, the held frame is reprocessed now |
 | Video, live ingestion, arbitrary algorithm selection, candidate comparison, recording, simulator/vehicle control, or external hosting | Each changes source, semantic, authority, or operator goal | Deferred to a later proposal; no follow-up in this implementation unit |
 
 No new product frontier, external authority, or alternate execution path was
@@ -145,8 +150,9 @@ Focused deterministic coverage is in
 - compact timeline state and on-demand per-frame detail used for historical
   frame selection;
 - recursive plugin-manifest discovery, deterministic catalog digest, unavailable
-  reasons, declarative selection validation, frame-boundary replacement, and
-  selected plugin provenance through the CLI, API, and page;
+  reasons, declarative selection validation, empty raw-capture, paused held-frame
+  refresh, running next-feed-frame application without rewriting the current
+  still, and selected plugin provenance through the CLI, API, and page;
 - fixed-delay, fastest, and realtime timestamp-paced replay selection through
   the CLI, loopback API, and workbench page;
 - the public automa vehicles workbench replay `--json` entry point and human

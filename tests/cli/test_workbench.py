@@ -924,7 +924,7 @@ class WorkbenchTests(unittest.TestCase):
             current_payload = html.split("function currentPayload(key) {", 1)[1].split(
                 "function clearFrameSelection() {", 1
             )[0]
-            self.assertIn("selected.length === 0 && runs.length > 0", current_payload)
+            self.assertNotIn("selected.length === 0 && runs.length > 0", current_payload)
             plugin_root = str(Path("lab/plugins/perception").resolve())
 
             def post(payload: dict[str, object]) -> dict[str, object]:
@@ -1061,6 +1061,48 @@ class WorkbenchTests(unittest.TestCase):
         )
         self.assertEqual(stepped["state"]["phase"], "paused")
         post({"action": "cancel", "run_id": run_id})
+
+    def test_running_empty_selection_keeps_current_frame_perception(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            _make_images(root, 3)
+            runner = ImageReplayRunner(
+                root,
+                plugin_dir=Path("lab/plugins/perception"),
+                cadence_ms=5000,
+            )
+            runner.dispatch(
+                "select_plugins",
+                active_plugin_ids=["classical_regions"],
+            )
+            started = runner.start()
+            run_id = started["run_id"]
+            _wait_until(lambda: runner.state().get("current_frame") is not None)
+            before = runner.state()
+            self.assertEqual(
+                [run["plugin_id"] for run in before["perception"]["plugin_runs"]],
+                ["classical_regions"],
+            )
+            selected = runner.dispatch(
+                "select_plugins",
+                run_id=run_id,
+                active_plugin_ids=[],
+            )
+            self.assertEqual(selected["phase"], "running")
+            self.assertEqual(selected["run_active_plugin_ids"], [])
+            self.assertEqual(
+                [run["plugin_id"] for run in selected["perception"]["plugin_runs"]],
+                ["classical_regions"],
+            )
+            paused = runner.dispatch("pause", run_id=run_id)
+            self.assertEqual(
+                [run["plugin_id"] for run in paused["perception"]["plugin_runs"]],
+                ["classical_regions"],
+            )
+            stepped = runner.dispatch("step", run_id=run_id)
+            self.assertEqual(list(stepped["perception"]["plugin_runs"] or ()), [])
+            self.assertEqual(stepped["perception"]["status"], "empty")
+            runner.dispatch("cancel", run_id=run_id)
 
     def test_loopback_api_persists_after_terminal_state_and_rejects_raw_argv(self) -> None:
         with TemporaryDirectory() as directory:

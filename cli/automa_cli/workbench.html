@@ -1184,19 +1184,10 @@
       }
 
       function currentPayload(key) {
-        var payload;
         if (selectedFrameDetail && Object.prototype.hasOwnProperty.call(selectedFrameDetail, key)) {
-          payload = selectedFrameDetail[key];
-        } else {
-          payload = state ? state[key] : null;
+          return selectedFrameDetail[key];
         }
-        if (key === "perception") {
-          var selected = state && Array.isArray(state.active_plugin_ids)
-            ? state.active_plugin_ids : [];
-          var runs = payload && Array.isArray(payload.plugin_runs) ? payload.plugin_runs : [];
-          if (selected.length === 0 && runs.length > 0) return null;
-        }
-        return payload;
+        return state ? state[key] : null;
       }
 
       function clearFrameSelection() {

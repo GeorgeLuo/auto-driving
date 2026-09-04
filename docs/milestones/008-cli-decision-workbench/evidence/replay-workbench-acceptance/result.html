@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Replay workbench POC acceptance</title>
+  <style>
+    :root { font-family: ui-sans-serif, system-ui, sans-serif; color: #17191c; }
+    body { margin: 24px; max-width: 960px; }
+    h1 { font-size: 1.25rem; }
+    .meta { color: #62676f; }
+    .badge {
+      display: inline-block; border: 1px solid #d9dde2; border-radius: 999px;
+      padding: 2px 8px; font-size: 12px; background: #f6f7f8;
+    }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #d9dde2; padding: 6px 8px; text-align: left; vertical-align: top; }
+    th { background: #f6f7f8; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+    .note {
+      border-left: 3px solid #176b87; padding: 8px 12px; background: #e7f3f8; margin: 16px 0;
+    }
+  </style>
+</head>
+<body>
+  <h1>Replay workbench POC acceptance</h1>
+  <p class="meta">
+    status=<span class="badge">accepted</span>
+    · record digest=<code>8cf626f99be0a345afe23285fd4230ddd08aab13d302fe2d4c271c2eb9063c19</code>
+  </p>
+  <div class="note">
+    This page is derived from committed <code>result.json</code>.
+    Regenerate with <code>python3 render_result.py</code>.
+    The JSON record is authoritative.
+  </div>
+  <h2>Receipt</h2>
+  <table>
+    <tr><th>Operator</th><td>gluo</td></tr>
+    <tr><th>Verdict</th><td>accepted</td></tr>
+    <tr><th>Incomplete reason</th><td>null</td></tr>
+    <tr><th>Started</th><td>2026-09-04T01:16:22.238118Z</td></tr>
+    <tr><th>Ended</th><td>2026-09-04T01:18:00.849056Z</td></tr>
+    <tr><th>OS</th><td>macOS-26.6.2-arm64-arm-64bit</td></tr>
+    <tr><th>Browser</th><td>Chrome 152.0.7977.76 headed</td></tr>
+    <tr><th>Commit</th><td><code>e3572d2c875d166efc2d6011384810169e3ce3cb</code></td></tr>
+    <tr><th>Worktree</th><td>clean</td></tr>
+    <tr><th>Source</th><td>&lt;home&gt;/Projects/auto-driving/runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/captures/chase-stream-decision-model-default-45s-20260901-230833</td></tr>
+    <tr><th>Plugin root</th><td>&lt;repo&gt;/lab/plugins/perception</td></tr>
+    <tr><th>Loopback URL</th><td>http://127.0.0.1:53043/</td></tr>
+    <tr><th>Server identity</th><td><code>workbench-2d29d6df9d2f</code></td></tr>
+    <tr><th>First run id</th><td><code>run-af702ee8f0974eabb15bb5bdfa4fff4f</code></td></tr>
+    <tr><th>Second run id</th><td><code>run-3fa4314708804bacbafe9675fff24037</code></td></tr>
+    <tr><th>Failed run id</th><td><code>run-0969dd4fc26d4f3e9ccd04d217c4d156</code></td></tr>
+    <tr><th>Recovered run id</th><td><code>run-614187c4db7e445294420fa5fc4022f2</code></td></tr>
+    <tr><th>Inspect screenshot</th><td>captured=true redaction=observed_pass during=inspect_replay</td></tr>
+  </table>
+  <h2>Procedure steps</h2>
+  <table>
+    <tr><th>Id</th><th>Status</th><th>Required</th><th>Observation</th><th>Notes</th></tr>
+    <tr><td><code>page_open</code></td><td>observed_pass</td><td>Page shows source identity, plugin catalog, and declared next actions.</td><td>y</td><td>Playwright Chromium drove the page at operator request.</td></tr>
+<tr><td><code>inspect_replay</code></td><td>observed_pass</td><td>Ready-plugin replay shows capture, server overlays, progress, and memory on a processed frame.</td><td>y</td><td>Sidebar hidden for the crop so local paths are not in the PNG.</td></tr>
+<tr><td><code>paused_toggle</code></td><td>observed_pass</td><td>Paused toggle including empty raw-capture updates the held still from the server; invalid IDs are refused.</td><td>y</td><td>Sidebar hidden for the crop so local paths are not in the PNG.</td></tr>
+<tr><td><code>running_toggle</code></td><td>observed_pass</td><td>Running toggle including empty keeps the current still until the next processed frame.</td><td>y</td><td>Sidebar hidden for the crop so local paths are not in the PNG.</td></tr>
+<tr><td><code>second_run</code></td><td>observed_pass</td><td>Reset and a second run without restarting the server; prior run identity is not current success.</td><td>y</td><td>null</td></tr>
+<tr><td><code>source_failure</code></td><td>observed_pass</td><td>Empty, missing, or unsupported source names the failure and next action; recovery is an operator-chosen directory.</td><td>y</td><td>null</td></tr>
+<tr><td><code>cleanup</code></td><td>observed_pass</td><td>Cancel or reset with no worker, simulator, Metrics operation, movement, or recording; isolated state is reset.</td><td>y</td><td>null</td></tr>
+
+  </table>
+  <h2>Findings</h2>
+  <pre>[
+  {
+    &quot;id&quot;: &quot;M008-POC-E-001&quot;,
+    &quot;step&quot;: &quot;second_run&quot;,
+    &quot;classification&quot;: &quot;enhancement_candidate&quot;,
+    &quot;observed&quot;: &quot;run_id is not shown on the workbench page. Distinct first, second, failed, and recovered IDs were copied from the recorder /api/state snapshot. Displaying current run identity on the page would avoid a separate state URL. Out of this evidence PR.&quot;
+  }
+]</pre>
+  <h2>Artifacts</h2>
+  <table>
+    <tr><th>Path</th><th>Captured</th><th>SHA-256</th></tr>
+    <tr><td><code>README.md</code></td><td>true</td><td><code>cd997052c41b00488c7c53e42f3507b433b4de899ad53cfe31700d1249892906</code></td></tr>
+<tr><td><code>render_result.py</code></td><td>true</td><td><code>c2fd1d1704034b766e0939c4c54178979549c92005bf2c17c083ac27e2c88bdd</code></td></tr>
+<tr><td><code>record_session.py</code></td><td>true</td><td><code>496f2a642787d61f40838e6e4ca3fcb9d5822f6909b54b0f2ec33568ca6f52c0</code></td></tr>
+<tr><td><code>browser-view.png</code></td><td>true</td><td><code>32d86e5b01149e070fce7fc4a7a460c3b931c85f4cb69b7ae5fa2e257bc36376</code></td></tr>
+<tr><td><code>cli-transcript.txt</code></td><td>true</td><td><code>5624201fde26d1be66a69453114bd966349969be5f6ca54af6c1bc5804b1450f</code></td></tr>
+<tr><td><code>result.html</code></td><td>true</td><td><code>null</code></td></tr>
+
+  </table>
+</body>
+</html>

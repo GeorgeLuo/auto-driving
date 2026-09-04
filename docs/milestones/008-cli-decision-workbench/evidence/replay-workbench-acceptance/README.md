@@ -1,6 +1,6 @@
 # Replay workbench POC acceptance evidence
 
-Status: **accepted**
+Status: **incomplete**
 
 Accepted contract:
 [Replay workbench POC acceptance](../../proposals/replay-workbench-acceptance.md)
@@ -8,43 +8,48 @@ Accepted contract:
 
 ## Verdict
 
-`accepted` — accepted
+`none` — PR #191 changes_requested: the prior session did not prompt for distinct first/second/failed/recovered run IDs, did not snapshot source failure before recovery, and asked for the screenshot only at the end. Packet reset pending a rerun with the repaired recorder.
 
-Operator: `gluo`
+Operator: `none`
 
 ## Environment receipt
 
 | Field | Value |
 | --- | --- |
-| Operator | `gluo` |
-| Started (UTC) | `2026-09-03T23:53:17.227764Z` |
-| Ended (UTC) | `2026-09-03T23:54:35.311055Z` |
-| OS | `macOS-26.6.2-arm64-arm-64bit` |
-| Browser | `Chrome 152.0.7977.76` |
-| auto-driving commit | `ade36f37d02302d0d8d206cb3fd4efff1ec796fd` |
-| Worktree | `dirty` |
-| Image source (redacted) | `<home>/Projects/auto-driving/runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/captures/chase-stream-decision-model-default-45s-20260901-230833` |
-| Plugin root | `<repo>/lab/plugins/perception` |
-| Loopback URL | `http://127.0.0.1:62908/` |
-| Server identity | `workbench-743d40b45bc2` |
-| Launch run id | `run-2e29263e3d26480aa47c0e10256914e5` |
+| Operator | `none` |
+| Started (UTC) | `none` |
+| Ended (UTC) | `none` |
+| OS | `none` |
+| Browser | `none` |
+| auto-driving commit | `none` |
+| Worktree | `none` |
+| Image source (redacted) | `none` |
+| Plugin root | `none` |
+| Loopback URL | `none` |
+| Server identity | `none` |
+| First run id | `none` |
+| Second run id | `none` |
+| Failed run id | `none` |
+| Recovered run id | `none` |
 
 ## Session checklist
 
 Recorded by `record_session.py`. The operator drove the page; the script
-launched the CLI and wrote artifacts. Compact `/api/state` snapshots after each
-step are corroboration only; they do not override the operator answers.
+launched the CLI and wrote artifacts. Compact `/api/state` snapshots are
+corroboration. The operator types run IDs; the script does not fill them.
 
-- [x] `page_open` — Page shows source identity, plugin catalog, and declared next actions.
-- [x] `inspect_replay` — Ready-plugin replay shows capture, server overlays, progress, and memory on a processed frame.
-- [x] `paused_toggle` — Paused toggle including empty raw-capture updates the held still from the server; invalid IDs are refused.
-- [x] `running_toggle` — Running toggle including empty keeps the current still until the next processed frame.
-- [x] `second_run` — Reset and a second run without restarting the server; prior run identity is not current success.
-- [x] `source_failure` — Empty, missing, or unsupported source names the failure and next action; recovery is an operator-chosen directory.
-- [x] `cleanup` — Cancel or reset with no worker, simulator, Metrics operation, movement, or recording; isolated state is reset.
+- [ ] `page_open` — Page shows source identity, plugin catalog, and declared next actions.
+- [ ] `inspect_replay` — Ready-plugin replay shows capture, server overlays, progress, and memory on a processed frame.
+- [ ] `paused_toggle` — Paused toggle including empty raw-capture updates the held still from the server; invalid IDs are refused.
+- [ ] `running_toggle` — Running toggle including empty keeps the current still until the next processed frame.
+- [ ] `second_run` — Reset and a second run without restarting the server; prior run identity is not current success.
+- [ ] `source_failure` — Empty, missing, or unsupported source names the failure and next action; recovery is an operator-chosen directory.
+- [ ] `cleanup` — Cancel or reset with no worker, simulator, Metrics operation, movement, or recording; isolated state is reset.
 
-Observation-only checks (operator `y`, `occurred: false`): vehicle, Automa
-worker, simulator, Metrics operation, movement, recording.
+Observation-only checks are in `result.json` `observation_only`.
+
+Inspect screenshot asked during `inspect_replay` (not at session end):
+captured=`False`, path_redaction=`None`.
 
 ## Findings
 
@@ -52,22 +57,16 @@ None recorded.
 
 ## Limitations
 
-- Worktree `dirty` at record time is the in-progress evidence packet, not a
-  product edit.
-- `cli-transcript.txt` is the launch banner only (`phase: running`,
-  `progress: 0/845`). The workbench process stays open after that.
-- `browser-view.png` is the cropped live still: chase capture frame with
-  `classical_regions` overlays, memory ledger, Evidence `ok`, progress 18/845.
-- Compact `/api/state` snapshots after every prompted step share one completed
-  run (`run-2e29263e3d26480aa47c0e10256914e5`, 845/845, `phase: completed`).
-  They do not list distinct first, second, failed, and recovered run IDs. The
-  operator still recorded `observed_pass` for those steps. Those snapshots were
-  not used to change the verdict.
+- The workbench page does not display `run_id`. After identity steps the
+  recorder prints a compact `/api/state` snapshot and asks the operator to
+  type the run id from that snapshot or `api/state`.
+- `accepted` requires distinct first, second, failed, and recovered run IDs
+  on one server identity, a failure payload while the invalid source is
+  visible, a recovered run snapshot, and a cropped inspect screenshot whose
+  local paths were confirmed excluded.
+- Worktree `dirty` at record time is the in-progress evidence packet.
 
 ## Deterministic boundary citations
-
-Invalid-ID and shared-runner claims stay on the existing tests, not this
-session:
 
 - `tests/cli/test_workbench.py::test_explicit_catalog_allows_raw_capture_and_live_replacement`
 - `tests/cli/test_workbench.py::test_loopback_api_exposes_and_applies_plugin_selection`

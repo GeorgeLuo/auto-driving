@@ -107,6 +107,10 @@ def render(payload: dict[str, object]) -> str:
     source = source if isinstance(source, dict) else {}
     times = payload.get("timestamps")
     times = times if isinstance(times, dict) else {}
+    identities = payload.get("identities")
+    identities = identities if isinstance(identities, dict) else {}
+    shot = payload.get("screenshot")
+    shot = shot if isinstance(shot, dict) else {}
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -155,6 +159,12 @@ def render(payload: dict[str, object]) -> str:
     <tr><th>Source</th><td>{_cell(source.get("path_redacted"))}</td></tr>
     <tr><th>Plugin root</th><td>{_cell(source.get("plugin_root"))}</td></tr>
     <tr><th>Loopback URL</th><td>{_cell(source.get("loopback_url"))}</td></tr>
+    <tr><th>Server identity</th><td><code>{_cell(identities.get("server_identity"))}</code></td></tr>
+    <tr><th>First run id</th><td><code>{_cell(identities.get("first_run_id"))}</code></td></tr>
+    <tr><th>Second run id</th><td><code>{_cell(identities.get("second_run_id"))}</code></td></tr>
+    <tr><th>Failed run id</th><td><code>{_cell(identities.get("failed_run_id"))}</code></td></tr>
+    <tr><th>Recovered run id</th><td><code>{_cell(identities.get("recovered_run_id"))}</code></td></tr>
+    <tr><th>Inspect screenshot</th><td>captured={_cell(shot.get("captured"))} redaction={_cell(shot.get("path_redaction"))} during={_cell(shot.get("asked_during"))}</td></tr>
   </table>
   <h2>Procedure steps</h2>
   <table>

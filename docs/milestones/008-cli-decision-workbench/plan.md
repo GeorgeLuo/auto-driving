@@ -2,10 +2,10 @@
 
 | Field | Value |
 | --- | --- |
-| Status | Active |
+| Status | closed |
 | Milestone branch | `milestone/008-cli-decision-workbench` |
 | Cumulative PR | [#167](https://github.com/GeorgeLuo/auto-driving/pull/167) (draft until whole-milestone closeout) |
-| Current frontier | Milestone closeout |
+| Current frontier | None (closed) |
 | Started | 2026-08-26 |
 | Action policy | Observation-only; no applied vehicle movement |
 
@@ -56,26 +56,17 @@ coverage or a frontend framework migration.
 | M008-04 | The existing CLI-launched pages and signal publications used by the selected slice are reused, consolidated, or given an explicit one-source adaptation boundary so the CLI page and workbench do not require divergent feature definitions | Met | PR #174 establishes the selected slice's one-source adaptation boundary between existing CLI-launched perception/memory pages and the workbench. |
 | M008-05 | One selected perception-memory slice works end to end with a supported real input, meaningful tunable processing where the slice requires it, recognizable live and result signals, and one recorded affirmative operator acceptance of the primary demonstration's minimal usefulness and display granularity | Met | PR #191 records one affirmative operator acceptance of the image-replay primary demonstration at the delivered display granularity. |
 | M008-06 | The implemented slice preserves its declared observation-only and side-effect boundaries for its named operator-reachable lifecycle cases, shows their failure and recovery state, avoids hidden simulator reconfiguration, and leaves no unintended worker or session mutation after cleanup | Met | PR #191 records declared source-failure recovery and cleanup with no worker, simulator, Metrics operation, movement, or recording. |
-| M008-07 | The single bounded assessment used for M008-01 and M008-02 is maintained through closeout with durable CLI, sequence, signal, and page-surface gaps, distinguishing limitations worth a later product decision from observations that require no follow-up | Unmet | Feasibility findings must survive the implementation without becoming a second assessment or automatic backlog |
-| M008-08 | Closeout confirms the selected sequence contract, one operator-accepted workbench slice, CLI and selected-page alignment, safe recovery and cleanup, and residual limits, then records whether another product decision is warranted without hiding unfinished work | Unmet | Milestone closeout is selected only after the implementation criteria are Met |
+| M008-07 | The single bounded assessment used for M008-01 and M008-02 is maintained through closeout with durable CLI, sequence, signal, and page-surface gaps, distinguishing limitations worth a later product decision from observations that require no follow-up | Met | Closeout preserves the single M008 perception-memory assessment and records durable CLI, sequence, signal, page, source, plugin, transport, and visual-gap dispositions in PR #193 |
+| M008-08 | Closeout confirms the selected sequence contract, one operator-accepted workbench slice, CLI and selected-page alignment, safe recovery and cleanup, and residual limits, then records whether another product decision is warranted without hiding unfinished work | Met | Closeout confirms the selected workbench.image_replay.v1 contract, accepted real image-replay slice, CLI/page alignment, observation-only recovery and cleanup, residual limits, and cumulative PR #167 topology in PR #193 |
 
 ## Current Delivery
 
 ### Current Frontier
 
-**Milestone closeout**
+**None**
 
-- Workflow state: implementation_in_review
-- Proposal branch: `m008/closeout-proposal`
-- Implementation branch: `m008/closeout`
-- Proposal path: `docs/milestones/008-cli-decision-workbench/proposals/closeout.md`
-- Accepted proposal: [#192](https://github.com/GeorgeLuo/auto-driving/pull/192) at `05d3c3c9ee7cacc523295d7a54b73c5c29343450` (reviewed head `f546fcac1d38d1c27eda91b59d6402db0c7659e0` by `GeorgeLuo` as `OWNER` at `2026-09-04T04:47:27Z`)
-- Review kind: Milestone closeout
-- Review question: Is milestone 008 complete as a whole—its selected image-replay contract, accepted workbench slice, CLI and page alignment, repeated-run recovery and cleanup, and durable residual assessment are all supported by accepted evidence, and the cumulative milestone is ready for whole-milestone review without hiding deferred product work?
-- Acceptance owner: Whole-milestone closeout judgment in `closeout.md`, the completed ledger and bounded assessment, terminal workflow handoff, and cumulative PR #167 readiness surface
-- Exit criteria affected: M008-07, M008-08
-- Prerequisite: M008-01 through M008-06 are `Met`; the bounded assessment remains the single authority for M008-01, M008-02, and M008-07; accepted review units #174 and #191 and their tracked evidence remain valid
-- Milestone-level non-goal: Product or runtime changes, evidence recapture, video/live ingestion, arbitrary algorithm or isolated-runtime support, movement authority, external hosting, Metrics UI redesign, M006 edits, or marking the cumulative PR ready before terminal handoff
+- Reason: Milestone closed after PR #193.
+- Revisit when: No in-milestone work remains.
 
 ### Next-Frontier Candidate
 
@@ -114,6 +105,7 @@ coverage or a frontend framework migration.
 | Milestone closeout | proposal_in_review | Started m008/closeout-proposal. |
 | Milestone closeout | ready_for_implementation | Proposal PR #192 accepted at 05d3c3c9ee7cacc523295d7a54b73c5c29343450 (reviewed head `f546fcac1d38d1c27eda91b59d6402db0c7659e0` by `GeorgeLuo` as `OWNER` at `2026-09-04T04:47:27Z`). |
 | Milestone closeout | implementation_in_review | Started m008/closeout. |
+| Milestone closeout | accepted | Implementation PR #193 merged at 9d3fa1d1334e747656e5874dc19921a062616bce. |
 
 ## Accepted Review Units
 
@@ -121,15 +113,12 @@ coverage or a frontend framework migration.
 | --- | --- | --- | --- | --- |
 | #174 | Can an operator use a local workbench to replay a supported ordered image source through the existing perception-to-`Observation`-to-memory pipeline, inspect real capture overlays and memory effects, and control the bounded replay without shell commands, mock data, hidden simulator changes, or a second execution authority? | Accepted | M008-01, M008-02, M008-04 | PR #174 selects workbench.image_replay.v1 through the durable M008 assessment, composes the existing image-perception, Observation, and bounded-memory seams behind one shared server-side CLI/workbench runner, and documents the selected visual page adaptation boundary. |
 | #191 | Can an operator use the implemented image-replay workbench to inspect real perception overlays and memory effects, control the declared replay, and affirm that this one local workflow is minimally useful at its delivered display granularity? | Accepted | M008-03, M008-05, M008-06 | PR #191 records one operator-accepted local image-replay workbench session: one loopback server identity stayed available across distinct first, second, failed, and recovered runs, overlays and memory were inspected from server state, declared failure/recovery/cleanup stayed observation-only, and the operator affirmed minimal usefulness at the delivered granularity. |
+| #193 | Is milestone 008 complete as a whole—its selected image-replay contract, accepted workbench slice, CLI and page alignment, repeated-run recovery and cleanup, and durable residual assessment are all supported by accepted evidence, and the cumulative milestone is ready for whole-milestone review without hiding deferred product work? | Accepted | M008-07, M008-08 | M008 closeout judgment in closeout.md; completed.md M008 entry; single bounded assessment retained; accepted PR #174 and PR #191 evidence mapped; selected image-replay contract, operator acceptance, lifecycle safety, residual limits, and cumulative PR #167 preparation recorded in implementation PR #193 |
 
 ## Open Risks And Unverified Assumptions
 
 | Risk or assumption | Consequence | Resolution path |
 | --- | --- | --- |
-| The current live page server is associated with a worker rather than an explicit multi-run workbench session | Repeated runs, cancellation, stale state, or cleanup may be confusing even if a single run works | Let the slice proposal define the smallest persistent session and run identity that keeps state, failure, and cleanup legible |
-| Arbitrary capture or video upload is a candidate interaction, not a proven CLI input | Committing to upload could create a workbench-only ingestion path or unnecessary conversion work | First assess the recorded-source contracts already accepted in M007; add input sequencing only when it is useful and authoritative from the CLI as well |
-| The full M006 shadow decision surfaces are accepted on the M006 branch but are not in `main` | A baseline candidate that needs the full shadow proposal lifecycle cannot be implemented from the current M008 base | Keep M006 ownership separate and mark the candidate unavailable or deferred until its CLI contract is available; do not duplicate it in M008 |
-| Later visual refinement or a video/live source may still be wanted after this POC acceptance | M008 can close on one accepted local slice without those capabilities | Keep those wants as residuals in the existing assessment; select closeout or a later proposal only if the operator is ready. |
 
 ## Milestone Decisions
 

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="6c4eb6747c30b6c70b7d4ca3e183d07e8b2a8c1ce8e5b803c44b68dab2a3b1ac">
+  <meta name="source-sha256" content="fe3d84fb7b9f19e2b2b26cd4b92419da449c6fb10a3d741ea630cc4c1a95a334">
   <base target="_blank">
   <title>Milestone plan — 008-cli-decision-workbench</title>
   <style>
@@ -73,7 +73,7 @@
 <tbody>
 <tr>
 <td>Status</td>
-<td>Active</td>
+<td>closed</td>
 </tr>
 <tr>
 <td>Milestone branch</td>
@@ -85,7 +85,7 @@
 </tr>
 <tr>
 <td>Current frontier</td>
-<td>Milestone closeout</td>
+<td>None (closed)</td>
 </tr>
 <tr>
 <td>Started</td>
@@ -232,32 +232,23 @@ coverage or a frontend framework migration.</p>
 <tr>
 <td>M008-07</td>
 <td>The single bounded assessment used for M008-01 and M008-02 is maintained through closeout with durable CLI, sequence, signal, and page-surface gaps, distinguishing limitations worth a later product decision from observations that require no follow-up</td>
-<td>Unmet</td>
-<td>Feasibility findings must survive the implementation without becoming a second assessment or automatic backlog</td>
+<td>Met</td>
+<td>Closeout preserves the single M008 perception-memory assessment and records durable CLI, sequence, signal, page, source, plugin, transport, and visual-gap dispositions in PR #193</td>
 </tr>
 <tr>
 <td>M008-08</td>
 <td>Closeout confirms the selected sequence contract, one operator-accepted workbench slice, CLI and selected-page alignment, safe recovery and cleanup, and residual limits, then records whether another product decision is warranted without hiding unfinished work</td>
-<td>Unmet</td>
-<td>Milestone closeout is selected only after the implementation criteria are Met</td>
+<td>Met</td>
+<td>Closeout confirms the selected workbench.image_replay.v1 contract, accepted real image-replay slice, CLI/page alignment, observation-only recovery and cleanup, residual limits, and cumulative PR #167 topology in PR #193</td>
 </tr>
 </tbody>
 </table>
 <h2>Current Delivery</h2>
 <h3>Current Frontier</h3>
-<p><strong>Milestone closeout</strong></p>
+<p><strong>None</strong></p>
 <ul>
-<li>Workflow state: implementation_in_review</li>
-<li>Proposal branch: <code>m008/closeout-proposal</code></li>
-<li>Implementation branch: <code>m008/closeout</code></li>
-<li>Proposal path: <code>docs/milestones/008-cli-decision-workbench/proposals/closeout.md</code></li>
-<li>Accepted proposal: <a href="https://github.com/GeorgeLuo/auto-driving/pull/192">#192</a> at <code>05d3c3c9ee7cacc523295d7a54b73c5c29343450</code> (reviewed head <code>f546fcac1d38d1c27eda91b59d6402db0c7659e0</code> by <code>GeorgeLuo</code> as <code>OWNER</code> at <code>2026-09-04T04:47:27Z</code>)</li>
-<li>Review kind: Milestone closeout</li>
-<li>Review question: Is milestone 008 complete as a whole—its selected image-replay contract, accepted workbench slice, CLI and page alignment, repeated-run recovery and cleanup, and durable residual assessment are all supported by accepted evidence, and the cumulative milestone is ready for whole-milestone review without hiding deferred product work?</li>
-<li>Acceptance owner: Whole-milestone closeout judgment in <code>closeout.md</code>, the completed ledger and bounded assessment, terminal workflow handoff, and cumulative PR #167 readiness surface</li>
-<li>Exit criteria affected: M008-07, M008-08</li>
-<li>Prerequisite: M008-01 through M008-06 are <code>Met</code>; the bounded assessment remains the single authority for M008-01, M008-02, and M008-07; accepted review units #174 and #191 and their tracked evidence remain valid</li>
-<li>Milestone-level non-goal: Product or runtime changes, evidence recapture, video/live ingestion, arbitrary algorithm or isolated-runtime support, movement authority, external hosting, Metrics UI redesign, M006 edits, or marking the cumulative PR ready before terminal handoff</li>
+<li>Reason: Milestone closed after PR #193.</li>
+<li>Revisit when: No in-milestone work remains.</li>
 </ul>
 <h3>Next-Frontier Candidate</h3>
 <p><strong>None</strong></p>
@@ -385,6 +376,11 @@ coverage or a frontend framework migration.</p>
 <td>implementation_in_review</td>
 <td>Started m008/closeout.</td>
 </tr>
+<tr>
+<td>Milestone closeout</td>
+<td>accepted</td>
+<td>Implementation PR #193 merged at 9d3fa1d1334e747656e5874dc19921a062616bce.</td>
+</tr>
 </tbody>
 </table>
 <h2>Accepted Review Units</h2>
@@ -413,6 +409,13 @@ coverage or a frontend framework migration.</p>
 <td>M008-03, M008-05, M008-06</td>
 <td>PR #191 records one operator-accepted local image-replay workbench session: one loopback server identity stayed available across distinct first, second, failed, and recovered runs, overlays and memory were inspected from server state, declared failure/recovery/cleanup stayed observation-only, and the operator affirmed minimal usefulness at the delivered granularity.</td>
 </tr>
+<tr>
+<td>#193</td>
+<td>Is milestone 008 complete as a whole—its selected image-replay contract, accepted workbench slice, CLI and page alignment, repeated-run recovery and cleanup, and durable residual assessment are all supported by accepted evidence, and the cumulative milestone is ready for whole-milestone review without hiding deferred product work?</td>
+<td>Accepted</td>
+<td>M008-07, M008-08</td>
+<td>M008 closeout judgment in closeout.md; completed.md M008 entry; single bounded assessment retained; accepted PR #174 and PR #191 evidence mapped; selected image-replay contract, operator acceptance, lifecycle safety, residual limits, and cumulative PR #167 preparation recorded in implementation PR #193</td>
+</tr>
 </tbody>
 </table>
 <h2>Open Risks And Unverified Assumptions</h2>
@@ -426,24 +429,9 @@ coverage or a frontend framework migration.</p>
 </thead>
 <tbody>
 <tr>
-<td>The current live page server is associated with a worker rather than an explicit multi-run workbench session</td>
-<td>Repeated runs, cancellation, stale state, or cleanup may be confusing even if a single run works</td>
-<td>Let the slice proposal define the smallest persistent session and run identity that keeps state, failure, and cleanup legible</td>
-</tr>
-<tr>
-<td>Arbitrary capture or video upload is a candidate interaction, not a proven CLI input</td>
-<td>Committing to upload could create a workbench-only ingestion path or unnecessary conversion work</td>
-<td>First assess the recorded-source contracts already accepted in M007; add input sequencing only when it is useful and authoritative from the CLI as well</td>
-</tr>
-<tr>
-<td>The full M006 shadow decision surfaces are accepted on the M006 branch but are not in <code>main</code></td>
-<td>A baseline candidate that needs the full shadow proposal lifecycle cannot be implemented from the current M008 base</td>
-<td>Keep M006 ownership separate and mark the candidate unavailable or deferred until its CLI contract is available; do not duplicate it in M008</td>
-</tr>
-<tr>
-<td>Later visual refinement or a video/live source may still be wanted after this POC acceptance</td>
-<td>M008 can close on one accepted local slice without those capabilities</td>
-<td>Keep those wants as residuals in the existing assessment; select closeout or a later proposal only if the operator is ready.</td>
+<td></td>
+<td></td>
+<td></td>
 </tr>
 </tbody>
 </table>

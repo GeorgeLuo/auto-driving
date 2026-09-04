@@ -1,2 +1,13 @@
-Prior live session withdrawn after PR #191 changes_requested.
-Rerun record_session.py; this file is rewritten from workbench stdout.
+automa perception-memory workbench
+phase: running
+sequence: workbench.image_replay.v1
+run_id: run-8c2b647c85954586b9b8e04ea7ef7c0c
+source: <home>/Projects/auto-driving/runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/captures/chase-stream-decision-model-default-45s-20260901-230833
+plugin_dir: <repo>/lab/plugins/perception
+active_plugins: classical_regions
+plugin_order: classical_regions
+catalog_digest: a3dd39bddbe0599d2dda2f7ba5469b00fa6879e9aadcdae5984733c628fce32a
+progress: 0/845
+workbench: http://127.0.0.1:50093/
+server: persistent loopback mode; press Ctrl-C to stop
+recovery: start

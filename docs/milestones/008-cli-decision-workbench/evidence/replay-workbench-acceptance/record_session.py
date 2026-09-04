@@ -645,9 +645,12 @@ captured=`{shot.get("captured")}`, path_redaction=`{shot.get("path_redaction")}`
 
 ## Limitations
 
-- The workbench page does not display `run_id`. After identity steps the
-  recorder prints a compact `/api/state` snapshot and asks the operator to
-  type the run id from that snapshot or `{source.get("loopback_url") or ""}api/state`.
+- The workbench page does not display `run_id`. That is an
+  `enhancement_candidate` residual, not a blocker. After identity steps the
+  recorder prints a compact `/api/state` snapshot and asks for the run id
+  from that snapshot (or `{source.get("loopback_url") or ""}api/state`).
+  Surfacing current run identity on the page would avoid that side channel;
+  it is out of this evidence PR.
 - `accepted` requires distinct first, second, failed, and recovered run IDs
   on one server identity, a failure payload while the invalid source is
   visible, a recovered run snapshot, and a cropped inspect screenshot whose

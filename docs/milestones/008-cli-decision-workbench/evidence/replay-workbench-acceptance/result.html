@@ -24,8 +24,8 @@
 <body>
   <h1>Replay workbench POC acceptance</h1>
   <p class="meta">
-    status=<span class="badge">incomplete</span>
-    · record digest=<code>cb93f8b2abab1067a89fef1531114dba4e5dfecbc71907f66bcec8eaa4137022</code>
+    status=<span class="badge">accepted</span>
+    · record digest=<code>484ef518913318fa76df42abc8f63271e4c4fb4a13a4652b057a6e0b708c85d3</code>
   </p>
   <div class="note">
     This page is derived from committed <code>result.json</code>.
@@ -34,47 +34,54 @@
   </div>
   <h2>Receipt</h2>
   <table>
-    <tr><th>Operator</th><td>null</td></tr>
-    <tr><th>Verdict</th><td>null</td></tr>
-    <tr><th>Incomplete reason</th><td>PR #191 changes_requested: the prior session did not prompt for distinct first/second/failed/recovered run IDs, did not snapshot source failure before recovery, and asked for the screenshot only at the end. Packet reset pending a rerun with the repaired recorder.</td></tr>
-    <tr><th>Started</th><td>null</td></tr>
-    <tr><th>Ended</th><td>null</td></tr>
-    <tr><th>OS</th><td>null</td></tr>
-    <tr><th>Browser</th><td>null null</td></tr>
-    <tr><th>Commit</th><td><code>null</code></td></tr>
-    <tr><th>Worktree</th><td>null</td></tr>
-    <tr><th>Source</th><td>null</td></tr>
-    <tr><th>Plugin root</th><td>null</td></tr>
-    <tr><th>Loopback URL</th><td>null</td></tr>
-    <tr><th>Server identity</th><td><code>null</code></td></tr>
-    <tr><th>First run id</th><td><code>null</code></td></tr>
-    <tr><th>Second run id</th><td><code>null</code></td></tr>
-    <tr><th>Failed run id</th><td><code>null</code></td></tr>
-    <tr><th>Recovered run id</th><td><code>null</code></td></tr>
-    <tr><th>Inspect screenshot</th><td>captured=false redaction=null during=inspect_replay</td></tr>
+    <tr><th>Operator</th><td>gluo</td></tr>
+    <tr><th>Verdict</th><td>accepted</td></tr>
+    <tr><th>Incomplete reason</th><td>null</td></tr>
+    <tr><th>Started</th><td>2026-09-04T00:52:44.452208Z</td></tr>
+    <tr><th>Ended</th><td>2026-09-04T00:54:25.560331Z</td></tr>
+    <tr><th>OS</th><td>macOS-26.6.2-arm64-arm-64bit</td></tr>
+    <tr><th>Browser</th><td>Chrome 152.0.7977.76 headed</td></tr>
+    <tr><th>Commit</th><td><code>768458edda91082faa868128a9e1337f7d1d5562</code></td></tr>
+    <tr><th>Worktree</th><td>dirty</td></tr>
+    <tr><th>Source</th><td>&lt;home&gt;/Projects/auto-driving/runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/captures/chase-stream-decision-model-default-45s-20260901-230833</td></tr>
+    <tr><th>Plugin root</th><td>&lt;repo&gt;/lab/plugins/perception</td></tr>
+    <tr><th>Loopback URL</th><td>http://127.0.0.1:50093/</td></tr>
+    <tr><th>Server identity</th><td><code>workbench-c5b968eb46d0</code></td></tr>
+    <tr><th>First run id</th><td><code>run-8c2b647c85954586b9b8e04ea7ef7c0c</code></td></tr>
+    <tr><th>Second run id</th><td><code>run-1e8262ef400e4a3f93269b1561692942</code></td></tr>
+    <tr><th>Failed run id</th><td><code>run-16266be033944c14a3988af516e19088</code></td></tr>
+    <tr><th>Recovered run id</th><td><code>run-9bfbad7f5b634756af7d3c5d216b78c1</code></td></tr>
+    <tr><th>Inspect screenshot</th><td>captured=true redaction=observed_pass during=inspect_replay</td></tr>
   </table>
   <h2>Procedure steps</h2>
   <table>
     <tr><th>Id</th><th>Status</th><th>Required</th><th>Observation</th><th>Notes</th></tr>
-    <tr><td><code>page_open</code></td><td>pending</td><td>Page shows source identity, plugin catalog, and declared next actions.</td><td>null</td><td>null</td></tr>
-<tr><td><code>inspect_replay</code></td><td>pending</td><td>Ready-plugin replay shows capture, server overlays, progress, and memory on a processed frame.</td><td>null</td><td>null</td></tr>
-<tr><td><code>paused_toggle</code></td><td>pending</td><td>Paused toggle including empty raw-capture updates the held still from the server; invalid IDs are refused.</td><td>null</td><td>null</td></tr>
-<tr><td><code>running_toggle</code></td><td>pending</td><td>Running toggle including empty keeps the current still until the next processed frame.</td><td>null</td><td>null</td></tr>
-<tr><td><code>second_run</code></td><td>pending</td><td>Reset and a second run without restarting the server; prior run identity is not current success.</td><td>null</td><td>null</td></tr>
-<tr><td><code>source_failure</code></td><td>pending</td><td>Empty, missing, or unsupported source names the failure and next action; recovery is an operator-chosen directory.</td><td>null</td><td>null</td></tr>
-<tr><td><code>cleanup</code></td><td>pending</td><td>Cancel or reset with no worker, simulator, Metrics operation, movement, or recording; isolated state is reset.</td><td>null</td><td>null</td></tr>
+    <tr><td><code>page_open</code></td><td>observed_pass</td><td>Page shows source identity, plugin catalog, and declared next actions.</td><td>y</td><td>Playwright Chromium drove the page at operator request.</td></tr>
+<tr><td><code>inspect_replay</code></td><td>observed_pass</td><td>Ready-plugin replay shows capture, server overlays, progress, and memory on a processed frame.</td><td>y</td><td>Sidebar hidden for the crop so local paths are not in the PNG.</td></tr>
+<tr><td><code>paused_toggle</code></td><td>observed_pass</td><td>Paused toggle including empty raw-capture updates the held still from the server; invalid IDs are refused.</td><td>y</td><td>null</td></tr>
+<tr><td><code>running_toggle</code></td><td>observed_pass</td><td>Running toggle including empty keeps the current still until the next processed frame.</td><td>y</td><td>null</td></tr>
+<tr><td><code>second_run</code></td><td>observed_pass</td><td>Reset and a second run without restarting the server; prior run identity is not current success.</td><td>y</td><td>null</td></tr>
+<tr><td><code>source_failure</code></td><td>observed_pass</td><td>Empty, missing, or unsupported source names the failure and next action; recovery is an operator-chosen directory.</td><td>y</td><td>null</td></tr>
+<tr><td><code>cleanup</code></td><td>observed_pass</td><td>Cancel or reset with no worker, simulator, Metrics operation, movement, or recording; isolated state is reset.</td><td>y</td><td>null</td></tr>
 
   </table>
   <h2>Findings</h2>
-  <p>None recorded.</p>
+  <pre>[
+  {
+    &quot;id&quot;: &quot;M008-POC-E-001&quot;,
+    &quot;step&quot;: &quot;second_run&quot;,
+    &quot;classification&quot;: &quot;enhancement_candidate&quot;,
+    &quot;observed&quot;: &quot;run_id is not shown on the workbench page. Distinct first, second, failed, and recovered IDs were copied from the recorder /api/state snapshot. Displaying current run identity on the page would avoid a separate state URL. Out of this evidence PR.&quot;
+  }
+]</pre>
   <h2>Artifacts</h2>
   <table>
     <tr><th>Path</th><th>Captured</th><th>SHA-256</th></tr>
-    <tr><td><code>README.md</code></td><td>true</td><td><code>f9f02059b2768cb218df864aee4ae0252e1ee6984364b57b47f6a20b68978a8c</code></td></tr>
+    <tr><td><code>README.md</code></td><td>true</td><td><code>374c081177a1a0e9a6cc95aa4fa49ee597c51b8813391a23bdd254466d23f3e0</code></td></tr>
 <tr><td><code>render_result.py</code></td><td>true</td><td><code>c2fd1d1704034b766e0939c4c54178979549c92005bf2c17c083ac27e2c88bdd</code></td></tr>
-<tr><td><code>record_session.py</code></td><td>true</td><td><code>a3699e558700fd5bc2f52673237185923f0c78800aa7b23ac074398ef7b657bb</code></td></tr>
-<tr><td><code>browser-view.png</code></td><td>false</td><td><code>null</code></td></tr>
-<tr><td><code>cli-transcript.txt</code></td><td>true</td><td><code>3c8c260258f3b39d6c84aec1e3947732dc04afcbc706e70177cfee490c364400</code></td></tr>
+<tr><td><code>record_session.py</code></td><td>true</td><td><code>a6d2df34b4a6473bb0b9e49d4217e7e649e268ad3dc9705fb2f12d38be34d33c</code></td></tr>
+<tr><td><code>browser-view.png</code></td><td>true</td><td><code>2eb899167ea4aa41a92f1817ea3fdd200d7912ca0d5d933440b51781552c3dc6</code></td></tr>
+<tr><td><code>cli-transcript.txt</code></td><td>true</td><td><code>e36977fa210f764781174abcea4f6c98194643a4fbc4a98b257f61e2843f23cc</code></td></tr>
 <tr><td><code>result.html</code></td><td>true</td><td><code>null</code></td></tr>
 
   </table>

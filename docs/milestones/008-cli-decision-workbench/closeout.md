@@ -5,7 +5,7 @@
 | Milestone | 008 Perception-Memory Workbench Feasibility |
 | Closeout phase | Phase A packet; terminal handoff and cumulative review remain separate |
 | Prepared | 2026-09-04 |
-| Current plan status | Active; `implementation_in_review`; M008-07 and M008-08 remain `Unmet` until Phase B |
+| Current plan status | Closed after Phase B handoff; M008-01 through M008-08 are `Met`; Phase C cumulative review remains pending |
 | Cumulative review | [PR #167](https://github.com/GeorgeLuo/auto-driving/pull/167), draft, `milestone/008-cli-decision-workbench` -> `main` |
 
 ## Whole-milestone judgment
@@ -26,11 +26,21 @@ is functionally satisfactory and minimally useful at its current display
 granularity. That judgment closes the selected product question; visual polish
 and other consumer wants remain residuals rather than hidden acceptance work.
 
-This document is Phase A documentation only. It does not mark M008-07 or
-M008-08 `Met`, remove plan risks, close the plan, make PR #167 ready, merge
-anything to `main`, or create a milestone tag. Phase B is the mechanical
-`workflow.py complete-implementation` handoff after this PR merges. Phase C
-is a separate whole-milestone review of PR #167.
+This document was created as Phase A documentation. Phase A did not mark
+M008-07 or M008-08 `Met`, remove plan risks, close the plan, make PR #167
+ready, merge anything to `main`, or create a milestone tag. Phase B has now
+applied the mechanical `workflow.py complete-implementation` handoff. Phase C
+is still a separate whole-milestone review of PR #167.
+
+## Post-Phase B handoff
+
+The accepted closeout implementation PR #193 was squash-merged as
+`9d3fa1d1334e747656e5874dc19921a062616bce`. The workflow handoff recorded in
+`0872c624d2a8cd622eab7a3727c2a0ce0b8662dc` marked M008-07 and M008-08
+`Met`, removed the four closeout-owned risks, regenerated `plan.html`, and
+closed the plan with no remaining frontier. Cumulative PR #167 is still the
+separate Phase C review surface; it has not merged to `main` and no
+`milestone-008` tag exists.
 
 ## Accepted evidence identity
 

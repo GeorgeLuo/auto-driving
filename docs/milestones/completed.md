@@ -209,11 +209,12 @@ and selection explicit, including empty raw capture; retain fixed, fastest, and
 realtime replay pacing; and keep movement, video/live ingestion, arbitrary or
 isolated plugins, remote hosting, recording, and M006 outside this slice.
 
-Remaining work: Phase B must apply the reviewed terminal handoff, then Phase C
-must review cumulative PR #167 as a whole before any merge to `main` or
-milestone tag. Page `run_id` display and further visual refinement remain
-bounded enhancement candidates; source, browser, transport, history/export,
-and external Metrics UI limits remain documented residuals.
+Remaining work: Phase B has applied the reviewed terminal handoff in
+`0872c624d2a8cd622eab7a3727c2a0ce0b8662dc`; Phase C must still review
+cumulative PR #167 as a whole before any merge to `main` or milestone tag.
+Page `run_id` display and further visual refinement remain bounded enhancement
+candidates; source, browser, transport, history/export, and external Metrics UI
+limits remain documented residuals.
 
 Full record: [plan](008-cli-decision-workbench/plan.md) ·
 [plan.html](008-cli-decision-workbench/plan.html) ·

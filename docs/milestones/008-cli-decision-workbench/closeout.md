@@ -3,10 +3,10 @@
 | Field | Value |
 | --- | --- |
 | Milestone | 008 Perception-Memory Workbench Feasibility |
-| Closeout phase | Phase A packet; terminal handoff and cumulative review remain separate |
+| Closeout phase | Final closeout; Phase C cumulative review accepted |
 | Prepared | 2026-09-04 |
-| Current plan status | Closed after Phase B handoff; M008-01 through M008-08 are `Met`; Phase C cumulative review remains pending |
-| Cumulative review | [PR #167](https://github.com/GeorgeLuo/auto-driving/pull/167), ready for Phase C review, `milestone/008-cli-decision-workbench` -> `main` |
+| Current plan status | Closed; M008-01 through M008-08 are `Met` |
+| Cumulative review | [PR #167](https://github.com/GeorgeLuo/auto-driving/pull/167), accepted and merged into `main` as `3fce449d1eb64d408458231163c3f8b9b5c23af3`; tag `milestone-008` |
 
 ## Whole-milestone judgment
 
@@ -26,11 +26,12 @@ is functionally satisfactory and minimally useful at its current display
 granularity. That judgment closes the selected product question; visual polish
 and other consumer wants remain residuals rather than hidden acceptance work.
 
-This document was created as Phase A documentation. Phase A did not mark
-M008-07 or M008-08 `Met`, remove plan risks, close the plan, make PR #167
-ready, merge anything to `main`, or create a milestone tag. Phase B has now
-applied the mechanical `workflow.py complete-implementation` handoff. Phase C
-is still a separate whole-milestone review of PR #167.
+This document was created as Phase A documentation. At that point, Phase A had
+not marked M008-07 or M008-08 `Met`, removed plan risks, closed the plan, made
+PR #167 ready, merged anything to `main`, or created a milestone tag. Phase B
+applied the mechanical `workflow.py complete-implementation` handoff, and
+Phase C subsequently accepted and merged the cumulative review. The final
+state is recorded below.
 
 ## Post-Phase B handoff
 
@@ -38,9 +39,10 @@ The accepted closeout implementation PR #193 was squash-merged as
 `9d3fa1d1334e747656e5874dc19921a062616bce`. The workflow handoff recorded in
 `0872c624d2a8cd622eab7a3727c2a0ce0b8662dc` marked M008-07 and M008-08
 `Met`, removed the four closeout-owned risks, regenerated `plan.html`, and
-closed the plan with no remaining frontier. Cumulative PR #167 is still the
-separate Phase C review surface; it has not merged to `main` and no
-`milestone-008` tag exists.
+closed the plan with no remaining frontier. Phase C accepted cumulative PR
+#167 at head `2953e431e589ccbb591d8002890b152007f1f642`; it was merged into
+`main` as `3fce449d1eb64d408458231163c3f8b9b5c23af3`, and tag `milestone-008`
+now points to that merge.
 
 ## Accepted evidence identity
 
@@ -179,18 +181,19 @@ git diff --check: pass
 
 ## Cumulative review topology
 
-PR #167 is the cumulative M008 review surface, targeting `main` from
-`milestone/008-cli-decision-workbench`, and is ready for Phase C review. Its
-body cites this packet, accepted review units #174, #191, and #193, their exact
-identities and validation, the residuals above, and the correct child-PR
-topology. Phase B has applied the proposal's expected handoff with
-`workflow.py complete-implementation`. A packet-only finding is repaired on
-#167; a finding that falsifies an already accepted criterion follows the
-append-only reject/restore workflow and a new proposal.
+PR #167 was the cumulative M008 review surface, targeting `main` from
+`milestone/008-cli-decision-workbench`. Its body cites this packet, accepted
+review units #174, #191, and #193, their exact identities and validation, the
+residuals above, and the correct child-PR topology. Phase B applied the
+proposal's expected handoff with `workflow.py complete-implementation`, and
+Phase C accepted the exact cumulative head before the merge recorded above. A
+packet-only finding is repaired on #167; a finding that falsifies an already
+accepted criterion follows the append-only reject/restore workflow and a new
+proposal.
 
 The next product focus is the separately owned M006 frontier (or a later
 proposal selected from the residuals) after whole-milestone acceptance. M008
-does not claim that M006 is complete or that any milestone tag exists.
+does not claim that M006 is complete.
 
 ## References
 

@@ -225,3 +225,12 @@ This is the retained Phase A closeout packet inside cumulative PR #167. It does
 not claim that #167 has merged into `main` or that tag `milestone-008` exists.
 Phase B has applied the reviewed terminal plan handoff; Phase C must still
 accept #167 as a whole.
+
+## 008 Perception-Memory Workbench Feasibility — cumulative acceptance
+
+Cumulative PR [#167](https://github.com/GeorgeLuo/auto-driving/pull/167) was
+accepted at head `2953e431e589ccbb591d8002890b152007f1f642` and merged into
+`main` with merge commit `3fce449d1eb64d408458231163c3f8b9b5c23af3` on
+2026-09-04. Tag `milestone-008` points to that mainline merge. This appended
+record completes the retained Phase A packet above; M008 has no remaining
+in-milestone work.

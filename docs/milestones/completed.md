@@ -188,3 +188,39 @@ cite the rejected cumulative head
 Whole-milestone acceptance remains pending cumulative PR
 [#81](https://github.com/GeorgeLuo/auto-driving/pull/81). This section does not
 claim a `main` merge or tag `milestone-007`.
+
+## 008 - Perception-Memory Workbench Feasibility
+
+Closeout packet prepared: 2026-09-04
+
+Whole-milestone acceptance: pending cumulative PR
+[#167](https://github.com/GeorgeLuo/auto-driving/pull/167).
+
+Delivered one bounded `workbench.image_replay.v1` journey: a long-lived local
+workbench replays an ordered image directory through the shared server-side
+perception, Observation, and bounded-memory pipeline. PR #174 established the
+contract and PR #191 recorded the affirmative Chrome POC acceptance, including
+meaningful perception overlays, memory inspection, plugin selection, realtime
+pacing, repeated runs, failure/recovery, and observation-only cleanup.
+
+Durable decisions: keep the assessment as the single authority; keep CLI and
+page behavior on one server-owned runner; make plugin directories declarative
+and selection explicit, including empty raw capture; retain fixed, fastest, and
+realtime replay pacing; and keep movement, video/live ingestion, arbitrary or
+isolated plugins, remote hosting, recording, and M006 outside this slice.
+
+Remaining work: Phase B must apply the reviewed terminal handoff, then Phase C
+must review cumulative PR #167 as a whole before any merge to `main` or
+milestone tag. Page `run_id` display and further visual refinement remain
+bounded enhancement candidates; source, browser, transport, history/export,
+and external Metrics UI limits remain documented residuals.
+
+Full record: [plan](008-cli-decision-workbench/plan.md) ·
+[plan.html](008-cli-decision-workbench/plan.html) ·
+[assessment](008-cli-decision-workbench/assessment/perception-memory-workbench.md) ·
+[closeout](008-cli-decision-workbench/closeout.md).
+
+This is the retained Phase A closeout packet inside cumulative PR #167. It does
+not claim that #167 has merged into `main` or that tag `milestone-008` exists.
+Phase B must first apply the reviewed terminal plan handoff, and Phase C must
+then accept #167 as a whole.

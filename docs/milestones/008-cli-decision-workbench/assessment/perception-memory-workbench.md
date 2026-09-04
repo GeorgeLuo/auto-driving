@@ -14,7 +14,7 @@
 | Raw-capture / paused-refresh amendment | [PR #189](https://github.com/GeorgeLuo/auto-driving/pull/189), empty selection and paused held-frame refresh |
 | Raw-capture / paused-refresh merge | b1e97ad8bd9c6ea7759bc7fa60331ec0a45d20d7 |
 | Implementation branch | m008/perception-memory-workbench |
-| Assessment status | Implementation slice ready for focused review; operator POC acceptance remains separate |
+| Assessment status | Phase A closeout reconciliation: implementation and operator POC acceptance are recorded; Phase B handoff and Phase C cumulative review remain separate |
 
 ## Selected composition
 
@@ -86,8 +86,10 @@ The public state carries a source summary and compact per-frame timeline rather
 than repeating the full source inventory and cumulative pipeline snapshots on
 every poll. Full perception, observation, and memory detail for one processed
 frame remains in server memory and is fetched only when that frame is selected.
-History is discarded on successful source validation, reset, a new run, or
-server shutdown and has no automatic recording or durable persistence path.
+Terminal cleanup resets mapper and memory stage instances, while terminal
+history remains available for inspection until successful source validation,
+reset, a new run, or server shutdown. History has no automatic recording or
+durable persistence path.
 The shared loopback binding, serving-thread, response, and security-header
 mechanics are owned once by `loopback_http.py`; the perception view and
 workbench retain only their application routes.
@@ -144,7 +146,8 @@ Focused deterministic coverage is in
 - the real packaged perception -> Observation -> bounded-memory path;
 - no fabricated perception for absence;
 - pause/resume/step/reset, source retained across reset, stale-run refusal, and
-  terminal cleanup, with in-memory history discarded on reset or server stop;
+  terminal cleanup, with terminal history retained for inspection until reset,
+  a new run, source validation, or server stop;
 - shared loopback state, frame transport, availability after completion, and
   rejection of raw argv; and
 - compact timeline state and on-demand per-frame detail used for historical
@@ -168,16 +171,21 @@ The broader repository suite and milestone documentation/workflow checks are
 also required for implementation handoff. M007's digest-pinned historical
 artifacts remain unchanged; merged maintenance PR #178 validates them through
 their frozen historical parser boundary while allowing the current M008 parser
-leaves. The separate Replay workbench POC acceptance evidence unit owns the
-operator judgment for M008-03, M008-05, and M008-06; this document does not
-claim that judgment.
+leaves. The Replay workbench POC acceptance evidence unit records the operator
+judgment for M008-03, M008-05, and M008-06 in
+[evidence/replay-workbench-acceptance/](../evidence/replay-workbench-acceptance/)
+and [PR #191](https://github.com/GeorgeLuo/auto-driving/pull/191). Its
+accepted result is bounded to the recorded Chrome session, source, server
+identity, and run identities; it does not claim video/live ingestion, remote
+hosting, movement, or arbitrary plugin-runtime support.
 
 ## Residual gaps
 
 | Gap | Evidence needed | Owner / disposition |
 | --- | --- | --- |
-| Operator finds the first-use page useful and legible | One guided POC acceptance session against the selected journey | Separate M008 evidence unit |
+| Operator finds the first-use page useful and legible | The recorded Chrome POC session accepted the delivered display granularity as minimally useful | Met for the selected local slice in PR #191; further visual refinement is residual |
 | Video or live source semantics | A later source proposal defining ordering, timestamps, identity, and lifecycle | Later product decision |
 | Browser-level visual interaction across supported browsers | The POC acceptance session may identify a bounded repair; browser compatibility beyond the local page is not claimed here | Evidence unit first; later proposal if scope expands |
+| Current `run_id` is not shown on the workbench page | A bounded page-identity improvement if the operator selects it | Enhancement candidate `M008-POC-E-001`; server `/api/state` remains the accepted identity surface |
 | Operator-triggered replay history export | A later product decision would need to define the saved artifact and explicit consent boundary | Current history is memory-only and ends with successful source validation, reset, a new run, or workbench server shutdown; no implicit persistence |
 | Isolated/model-dependent plugin runtimes | A bounded worker adapter and dependency/model policy are needed before replay can safely compose them | Visible as unavailable in the catalog; no install, network fetch, or silent fallback is performed |

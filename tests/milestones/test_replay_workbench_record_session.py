@@ -36,16 +36,26 @@ def _state(
     server: str = "workbench-aaa",
     completed: int = 1,
     total: int = 10,
+    plugins: list[str] | None = None,
+    run_plugins: list[str] | None = None,
+    frame_id: str = "frame-1",
+    position: int = 1,
 ) -> dict:
+    active = ["classical_regions"] if plugins is None else plugins
+    running = active if run_plugins is None else run_plugins
     payload = {
         "server_identity": server,
         "run_id": run_id,
         "phase": phase,
         "source_identity": "capture:run",
-        "active_plugin_ids": ["classical_regions"],
-        "run_active_plugin_ids": ["classical_regions"],
+        "active_plugin_ids": active,
+        "run_active_plugin_ids": running,
         "progress": {"completed": completed, "total": total},
-        "perception": {"status": "ok", "plugin_runs": [{"plugin_id": "classical_regions"}]},
+        "current_frame": {"frame_id": frame_id, "position": position},
+        "perception": {
+            "status": "ok",
+            "plugin_runs": [{"plugin_id": item} for item in running],
+        },
         "memory": {"records": [{"id": "r1"}]},
         "controls": {"pace": "realtime", "loop": False},
         "failure": failure,
@@ -54,6 +64,55 @@ def _state(
         "cleanup": {"worker_started": False},
     }
     return payload
+
+
+def _toggle_states(run_id: str) -> list[dict]:
+    held = "held-frame"
+    return [
+        _state(
+            run_id=run_id,
+            phase="paused",
+            plugins=["floor_continuity"],
+            run_plugins=["floor_continuity"],
+            frame_id=held,
+            position=3,
+            completed=3,
+        ),
+        _state(
+            run_id=run_id,
+            phase="paused",
+            plugins=[],
+            run_plugins=[],
+            frame_id=held,
+            position=3,
+            completed=3,
+        ),
+        _state(
+            run_id=run_id,
+            phase="paused",
+            plugins=["classical_regions"],
+            run_plugins=["classical_regions"],
+            frame_id=held,
+            position=3,
+            completed=3,
+        ),
+        _state(
+            run_id=run_id,
+            plugins=[],
+            run_plugins=["classical_regions"],
+            frame_id="run-frame-a",
+            position=4,
+            completed=4,
+        ),
+        _state(
+            run_id=run_id,
+            plugins=[],
+            run_plugins=[],
+            frame_id="run-frame-b",
+            position=5,
+            completed=5,
+        ),
+    ]
 
 
 class PromptScript:
@@ -103,6 +162,11 @@ class FakeWorkbench:
 def _answers(**overrides: str | list[str]) -> dict[str, str | list[str]]:
     mapping: dict[str, str | list[str]] = {
         "Press Enter when you have done that on the page. ": "",
+        "Press Enter after pausing and selecting another ready plugin set. ": "",
+        "Press Enter after selecting empty raw-capture. ": "",
+        "Press Enter after restoring a non-empty ready set. ": "",
+        "Press Enter immediately after the running toggle": "",
+        "Press Enter after the next processed frame shows the new set. ": "",
         "Press Enter when the failure is visible. ": "",
         "Press Enter when the recovered run has started. ": "",
         "first run id": "run-1",
@@ -135,7 +199,12 @@ class RecordSessionTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.tmpdir.cleanup()
 
-    def _run(self, states: list[dict], answers: dict[str, str | list[str]]):
+    def _run(
+        self,
+        states: list[dict],
+        answers: dict[str, str | list[str]],
+        git_identity: dict[str, str] | None = None,
+    ):
         queue = list(states)
 
         def fetch_json(url: str, timeout: float = 2.0) -> dict:
@@ -161,6 +230,12 @@ class RecordSessionTests(unittest.TestCase):
             fetch_json=fetch_json,
             launcher=FakeWorkbench,
             artifact_dir=self.artifact_dir,
+            git_identity=git_identity
+            or {
+                "commit": "abc",
+                "branch": "m008/replay-workbench-acceptance",
+                "worktree_state": "clean",
+            },
         )
         return payload, reader.seen, output.getvalue(), queue
 
@@ -168,8 +243,7 @@ class RecordSessionTests(unittest.TestCase):
         states = [
             _state(run_id="run-1"),
             _state(run_id="run-1", completed=3),
-            _state(run_id="run-1", phase="paused"),
-            _state(run_id="run-1"),
+            *_toggle_states("run-1"),
             _state(run_id="run-2"),
             _state(
                 run_id="run-3",
@@ -204,13 +278,20 @@ class RecordSessionTests(unittest.TestCase):
         self.assertEqual(payload["screenshot"]["asked_during"], "inspect_replay")
         self.assertEqual(payload["identities"]["second_run_id"], "run-2")
         self.assertEqual(payload["status"], "accepted")
+        paused = next(item for item in payload["steps"] if item["id"] == "paused_toggle")
+        running = next(item for item in payload["steps"] if item["id"] == "running_toggle")
+        self.assertEqual(len(paused["transitions"]), 3)
+        self.assertEqual(len(running["transitions"]), 2)
+        self.assertEqual(
+            paused["transitions"][1]["machine"]["active_plugin_ids"],
+            [],
+        )
 
     def test_same_second_run_id_cannot_accept(self) -> None:
         states = [
             _state(run_id="run-1"),
             _state(run_id="run-1"),
-            _state(run_id="run-1"),
-            _state(run_id="run-1"),
+            *_toggle_states("run-1"),
             _state(run_id="run-1"),
             _state(
                 run_id="run-3",
@@ -239,8 +320,7 @@ class RecordSessionTests(unittest.TestCase):
         states = [
             _state(run_id="run-1"),
             _state(run_id="run-1"),
-            _state(run_id="run-1"),
-            _state(run_id="run-1"),
+            *_toggle_states("run-1"),
             _state(run_id="run-2"),
             _state(run_id="run-1", phase="completed", completed=10),
             _state(run_id="run-4"),
@@ -291,6 +371,61 @@ class RecordSessionTests(unittest.TestCase):
         self.assertIn("missing second run id", reason)
         self.assertIn("source_failure snapshot has no failure payload", reason)
         self.assertIn("inspect screenshot was not captured", reason)
+        self.assertIn("paused_toggle missing per-selection snapshots", gaps)
+
+    def test_single_paused_snapshot_cannot_accept(self) -> None:
+        states = [
+            _state(run_id="run-1"),
+            _state(run_id="run-1"),
+            _state(run_id="run-1", phase="paused"),
+            _state(run_id="run-1", phase="paused"),
+            _state(run_id="run-1", phase="paused"),
+            _state(run_id="run-1"),
+            _state(run_id="run-1"),
+            _state(run_id="run-2"),
+            _state(
+                run_id="run-3",
+                phase="failed",
+                failure={"boundary": "source", "message": "empty directory"},
+            ),
+            _state(run_id="run-4"),
+            _state(run_id="run-4", phase="completed"),
+        ]
+        payload, seen, _out, _remaining = self._run(
+            states,
+            _answers(**{"Path to cropped browser-view.png": str(self.screenshot)}),
+        )
+        self.assertEqual(payload["status"], "incomplete")
+        self.assertIn("paused_toggle snapshots have no empty raw-capture selection", payload["incomplete_reason"])
+        self.assertTrue(
+            any("selecting another ready plugin set" in prompt for prompt in seen)
+        )
+
+    def test_dirty_worktree_cannot_accept(self) -> None:
+        states = [
+            _state(run_id="run-1"),
+            _state(run_id="run-1"),
+            *_toggle_states("run-1"),
+            _state(run_id="run-2"),
+            _state(
+                run_id="run-3",
+                phase="failed",
+                failure={"boundary": "source", "message": "empty directory"},
+            ),
+            _state(run_id="run-4"),
+            _state(run_id="run-4", phase="completed"),
+        ]
+        payload, _seen, _out, _remaining = self._run(
+            states,
+            _answers(**{"Path to cropped browser-view.png": str(self.screenshot)}),
+            git_identity={
+                "commit": "abc",
+                "branch": "m008/replay-workbench-acceptance",
+                "worktree_state": "dirty",
+            },
+        )
+        self.assertEqual(payload["status"], "incomplete")
+        self.assertIn("session did not start from a clean checkout", payload["incomplete_reason"])
 
 
 if __name__ == "__main__":

@@ -88,9 +88,11 @@ STEPS: tuple[dict[str, str], ...] = (
             "from the server; invalid IDs are refused."
         ),
         "do": (
-            "Pause. Toggle to another ready set, then empty raw-capture, then "
-            "back to a non-empty ready set. After each change, check that the "
-            "held still updates from the server. Leave a non-empty set selected."
+            "This step has three pauses. Pause first. Part 1: select another "
+            "ready set and press Enter while that held still is visible. "
+            "Part 2: select empty raw-capture and press Enter. Part 3: restore "
+            "a non-empty ready set and press Enter. Leave the non-empty set "
+            "selected."
         ),
         "ask": (
             "Did each paused toggle (including empty) update the held still "
@@ -104,10 +106,11 @@ STEPS: tuple[dict[str, str], ...] = (
             "next processed frame."
         ),
         "do": (
-            "Set cadence to 1000 ms fixed. Resume. While running, toggle to "
-            "empty (or another ready set). The current still must stay as "
-            "processed until the next frame, which should show the new set. "
-            "Restore realtime before the first run completes."
+            "This step has two pauses. Set cadence to 1000 ms fixed and resume. "
+            "Part 1: while running, toggle to empty (or another ready set) and "
+            "press Enter immediately. Part 2: press Enter after the next "
+            "processed frame shows the new set. Restore realtime before the "
+            "first run completes."
         ),
         "ask": (
             "Did the running toggle keep the current still until the next "
@@ -230,6 +233,9 @@ def _compact_state(state: dict[str, Any] | None) -> dict[str, Any] | None:
     controls = state.get("controls") if isinstance(state.get("controls"), dict) else {}
     plugin_runs = perception.get("plugin_runs") or ()
     records = memory.get("records") or ()
+    current_frame = (
+        state.get("current_frame") if isinstance(state.get("current_frame"), dict) else {}
+    )
     failure = state.get("failure")
     failure_message = None
     failure_boundary = state.get("failure_boundary")
@@ -253,6 +259,8 @@ def _compact_state(state: dict[str, Any] | None) -> dict[str, Any] | None:
             for item in plugin_runs
             if isinstance(item, dict)
         ],
+        "frame_id": current_frame.get("frame_id"),
+        "position": current_frame.get("position"),
         "memory_record_count": len(records) if isinstance(records, (list, tuple)) else None,
         "failure": failure,
         "failure_boundary": failure_boundary,
@@ -290,6 +298,9 @@ def _format_machine(machine: dict[str, Any] | None) -> str:
         f"  progress: {progress.get('completed')}/{progress.get('total')}",
         f"  source_identity: {machine.get('source_identity')}",
         f"  plugins: {machine.get('active_plugin_ids')}",
+        f"  run_plugins: {machine.get('run_active_plugin_ids')}",
+        f"  plugin_runs: {machine.get('plugin_run_ids')}",
+        f"  frame: {machine.get('frame_id')} pos={machine.get('position')}",
         f"  pace: {machine.get('pace')} loop: {machine.get('loop')}",
         f"  recovery_action: {machine.get('recovery_action')}",
     ]
@@ -355,10 +366,13 @@ def identity_gaps(
     identities: dict[str, Any],
     steps: list[dict[str, Any]],
     screenshot: dict[str, Any] | None,
+    worktree_state: str | None = None,
 ) -> list[str]:
     """Return reasons this packet cannot be accepted."""
 
     gaps: list[str] = []
+    if worktree_state and worktree_state != "clean":
+        gaps.append("session did not start from a clean checkout")
     first = identities.get("first_run_id") or None
     second = identities.get("second_run_id") or None
     failed = identities.get("failed_run_id") or None
@@ -411,6 +425,48 @@ def identity_gaps(
         gaps.append("inspect screenshot was not captured during inspect_replay")
     if shot.get("path_redaction") != "observed_pass":
         gaps.append("screenshot path redaction was not confirmed")
+
+    paused = _step_by_id(steps, "paused_toggle").get("transitions") or []
+    if len(paused) < 3:
+        gaps.append("paused_toggle missing per-selection snapshots")
+    else:
+        plugin_sets = [
+            tuple((item.get("machine") or {}).get("active_plugin_ids") or [])
+            for item in paused
+            if isinstance(item, dict)
+        ]
+        if not any(len(item) == 0 for item in plugin_sets):
+            gaps.append("paused_toggle snapshots have no empty raw-capture selection")
+        if len(set(plugin_sets)) < 2:
+            gaps.append("paused_toggle snapshots do not show a plugin-set change")
+        frames = [
+            (item.get("machine") or {}).get("frame_id")
+            for item in paused
+            if isinstance(item, dict)
+        ]
+        held = [item for item in frames if item]
+        if held and len(set(held)) != 1:
+            gaps.append("paused_toggle snapshots are not the same held frame")
+
+    running = _step_by_id(steps, "running_toggle").get("transitions") or []
+    if len(running) < 2:
+        gaps.append(
+            "running_toggle missing selection-boundary and next-frame snapshots"
+        )
+    else:
+        boundary = running[0].get("machine") or {}
+        nxt = running[1].get("machine") or {}
+        if boundary.get("position") == nxt.get("position") and (
+            (boundary.get("progress") or {}) == (nxt.get("progress") or {})
+        ):
+            gaps.append("running_toggle next-frame snapshot is not a later frame")
+        boundary_runs = tuple(boundary.get("plugin_run_ids") or [])
+        next_runs = tuple(nxt.get("plugin_run_ids") or [])
+        next_active = tuple(nxt.get("run_active_plugin_ids") or nxt.get("active_plugin_ids") or [])
+        if boundary_runs and boundary_runs == next_runs and next_active == boundary_runs:
+            gaps.append(
+                "running_toggle next frame still shows the pre-toggle plugin runs"
+            )
     return gaps
 
 
@@ -689,6 +745,31 @@ def _compact_health(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _collect_transitions(
+    parts: list[tuple[str, str]],
+    *,
+    reader: PromptFn,
+    state_url: str,
+    fetch_json: FetchJsonFn,
+    output: TextIO,
+) -> list[dict[str, Any]]:
+    transitions: list[dict[str, Any]] = []
+    for index, (label, prompt) in enumerate(parts, start=1):
+        print(
+            f"\nPART {index}/{len(parts)} — {label}",
+            file=output,
+            flush=True,
+        )
+        _ask(prompt, reader)
+        transitions.append(
+            {
+                "label": label,
+                "machine": _snapshot_state(state_url, fetch_json, output),
+            }
+        )
+    return transitions
+
+
 def _snapshot_state(
     state_url: str,
     fetch_json: FetchJsonFn,
@@ -748,6 +829,7 @@ def run_session(
     fetch_json: FetchJsonFn | None = None,
     launcher: Callable[..., Any] | None = None,
     artifact_dir: Path | None = None,
+    git_identity: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     source_dir = source_dir.resolve()
     if not source_dir.is_dir():
@@ -782,7 +864,7 @@ def run_session(
         if plugin:
             command.extend(["--plugin", plugin])
     started = _utc_now()
-    identity = _git_identity(REPO_ROOT)
+    identity = git_identity or _git_identity(REPO_ROOT)
     workbench = make_workbench(command, REPO_ROOT, url=expected_url)
     print("Launching:", " ".join(command), file=output, flush=True)
     print(
@@ -839,6 +921,70 @@ def run_session(
             print(spec["do"], file=output, flush=True)
             extra: dict[str, Any] = {}
             machine: dict[str, Any] | None
+
+            if spec["id"] == "paused_toggle":
+                extra["transitions"] = _collect_transitions(
+                    [
+                        (
+                            "paused other ready set",
+                            "Press Enter after pausing and selecting another ready plugin set. ",
+                        ),
+                        (
+                            "paused empty raw-capture",
+                            "Press Enter after selecting empty raw-capture. ",
+                        ),
+                        (
+                            "paused restore ready set",
+                            "Press Enter after restoring a non-empty ready set. ",
+                        ),
+                    ],
+                    reader=reader,
+                    state_url=state_url,
+                    fetch_json=fetch,
+                    output=output,
+                )
+                machine = (extra["transitions"][-1] or {}).get("machine")
+                recorded = _record_visual(
+                    spec, reader=reader, machine=machine, extra=extra
+                )
+                if recorded["status"] == "observed_fail":
+                    _add_finding(
+                        spec["id"],
+                        recorded["notes"] or "operator reported fail",
+                        index,
+                    )
+                recorded_steps.append(recorded)
+                continue
+
+            if spec["id"] == "running_toggle":
+                extra["transitions"] = _collect_transitions(
+                    [
+                        (
+                            "running selection boundary",
+                            "Press Enter immediately after the running toggle (before the next frame). ",
+                        ),
+                        (
+                            "running next frame",
+                            "Press Enter after the next processed frame shows the new set. ",
+                        ),
+                    ],
+                    reader=reader,
+                    state_url=state_url,
+                    fetch_json=fetch,
+                    output=output,
+                )
+                machine = (extra["transitions"][-1] or {}).get("machine")
+                recorded = _record_visual(
+                    spec, reader=reader, machine=machine, extra=extra
+                )
+                if recorded["status"] == "observed_fail":
+                    _add_finding(
+                        spec["id"],
+                        recorded["notes"] or "operator reported fail",
+                        index,
+                    )
+                recorded_steps.append(recorded)
+                continue
 
             if spec["id"] == "source_failure":
                 print(
@@ -997,7 +1143,12 @@ def run_session(
                         "observed": f"operator reported {label}",
                     }
                 )
-        gaps = identity_gaps(identities, recorded_steps, screenshot_meta)
+        gaps = identity_gaps(
+            identities,
+            recorded_steps,
+            screenshot_meta,
+            worktree_state=identity.get("worktree_state"),
+        )
         if gaps:
             print("Identity/screenshot gaps:", file=output, flush=True)
             for gap in gaps:

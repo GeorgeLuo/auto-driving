@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="b340b0fbbf5391d9c4ff93a0d0df6f3c20bd0ffb897994066531b2d552d6f92c">
+  <meta name="source-sha256" content="914e7ba19ff3816bd7af02575780a25094f93c86dcdfd0126ede08ed5d758a75">
   <base target="_blank">
   <title>Milestone plan — 008-cli-decision-workbench</title>
   <style>
@@ -85,7 +85,7 @@
 </tr>
 <tr>
 <td>Current frontier</td>
-<td>Replay workbench POC acceptance</td>
+<td>None (idle)</td>
 </tr>
 <tr>
 <td>Started</td>
@@ -208,8 +208,8 @@ coverage or a frontend framework migration.</p>
 <tr>
 <td>M008-03</td>
 <td>One long-lived local workbench page remains available across repeated runs while its server uses the same authoritative sequence implementation and structured run state as the CLI; the proposal may choose a CLI-process or shared application-API invocation boundary, the browser does not become a second sequence or business-logic authority, and delivery does not require React or a broad framework migration</td>
-<td>Unmet</td>
-<td>The current loopback server and plain pages are a starting point, not yet a persistent workbench contract</td>
+<td>Met</td>
+<td>PR #191 records one loopback server identity and distinct run IDs across the first, second, failed, and recovered runs without relaunching the server, and cites the deterministic CLI/API runner contract and persistence coverage.</td>
 </tr>
 <tr>
 <td>M008-04</td>
@@ -220,14 +220,14 @@ coverage or a frontend framework migration.</p>
 <tr>
 <td>M008-05</td>
 <td>One selected perception-memory slice works end to end with a supported real input, meaningful tunable processing where the slice requires it, recognizable live and result signals, and one recorded affirmative operator acceptance of the primary demonstration's minimal usefulness and display granularity</td>
-<td>Unmet</td>
-<td>One affirmative acceptance is sufficient for M008; later visual refinement is residual unless it falsifies that accepted demonstration</td>
+<td>Met</td>
+<td>PR #191 records one affirmative operator acceptance of the image-replay primary demonstration at the delivered display granularity.</td>
 </tr>
 <tr>
 <td>M008-06</td>
 <td>The implemented slice preserves its declared observation-only and side-effect boundaries for its named operator-reachable lifecycle cases, shows their failure and recovery state, avoids hidden simulator reconfiguration, and leaves no unintended worker or session mutation after cleanup</td>
-<td>Unmet</td>
-<td>Safety, failure, repeated-run lifecycle, and cleanup proof is limited to the selected slice's declared cases</td>
+<td>Met</td>
+<td>PR #191 records declared source-failure recovery and cleanup with no worker, simulator, Metrics operation, movement, or recording.</td>
 </tr>
 <tr>
 <td>M008-07</td>
@@ -245,19 +245,10 @@ coverage or a frontend framework migration.</p>
 </table>
 <h2>Current Delivery</h2>
 <h3>Current Frontier</h3>
-<p><strong>Replay workbench POC acceptance</strong></p>
+<p><strong>None</strong></p>
 <ul>
-<li>Workflow state: implementation_in_review</li>
-<li>Proposal branch: <code>m008/replay-workbench-acceptance-proposal</code></li>
-<li>Implementation branch: <code>m008/replay-workbench-acceptance</code></li>
-<li>Proposal path: <code>docs/milestones/008-cli-decision-workbench/proposals/replay-workbench-acceptance.md</code></li>
-<li>Accepted proposal: <a href="https://github.com/GeorgeLuo/auto-driving/pull/190">#190</a> at <code>8dca162ee776267091b1bf4ac23f188e19d471b6</code> (reviewed head <code>aa0b4ba65b55140ac80201c66ce3c22b105dd7dc</code> by <code>GeorgeLuo</code> as <code>OWNER</code> at <code>2026-09-03T21:56:31Z</code>)</li>
-<li>Review kind: Live or external evidence</li>
-<li>Review question: Can an operator use the implemented image-replay workbench to inspect real perception overlays and memory effects, control the declared replay, and affirm that this one local workflow is minimally useful at its delivered display granularity?</li>
-<li>Acceptance owner: Operator acceptance record and replay-workbench evidence boundary</li>
-<li>Exit criteria affected: M008-03, M008-05, M008-06</li>
-<li>Prerequisite: The accepted Perception-memory workbench journey implementation is available with its declared supported source, visual/control contract, and durable assessment.</li>
-<li>Milestone-level non-goal: Product expansion beyond the accepted POC-completion envelope, video/live adapters, new processing semantics, or a substitute for an actual operator acceptance.</li>
+<li>Reason: No remaining work-order node is contracted. Closeout is selected when the operator is ready, not because this unit queued it.</li>
+<li>Revisit when: Select closeout when M008-03, M008-05, and M008-06 are Met and the operator is ready to close.</li>
 </ul>
 <h3>Next-Frontier Candidate</h3>
 <p><strong>None</strong></p>
@@ -365,6 +356,11 @@ coverage or a frontend framework migration.</p>
 <td>implementation_in_review</td>
 <td>Started m008/replay-workbench-acceptance.</td>
 </tr>
+<tr>
+<td>Replay workbench POC acceptance</td>
+<td>accepted</td>
+<td>Implementation PR #191 merged at 6c2f26a2ce34a5f38431e6b21d1269ea306f526d.</td>
+</tr>
 </tbody>
 </table>
 <h2>Accepted Review Units</h2>
@@ -385,6 +381,13 @@ coverage or a frontend framework migration.</p>
 <td>Accepted</td>
 <td>M008-01, M008-02, M008-04</td>
 <td>PR #174 selects workbench.image_replay.v1 through the durable M008 assessment, composes the existing image-perception, Observation, and bounded-memory seams behind one shared server-side CLI/workbench runner, and documents the selected visual page adaptation boundary.</td>
+</tr>
+<tr>
+<td>#191</td>
+<td>Can an operator use the implemented image-replay workbench to inspect real perception overlays and memory effects, control the declared replay, and affirm that this one local workflow is minimally useful at its delivered display granularity?</td>
+<td>Accepted</td>
+<td>M008-03, M008-05, M008-06</td>
+<td>PR #191 records one operator-accepted local image-replay workbench session: one loopback server identity stayed available across distinct first, second, failed, and recovered runs, overlays and memory were inspected from server state, declared failure/recovery/cleanup stayed observation-only, and the operator affirmed minimal usefulness at the delivered granularity.</td>
 </tr>
 </tbody>
 </table>
@@ -414,14 +417,9 @@ coverage or a frontend framework migration.</p>
 <td>Keep M006 ownership separate and mark the candidate unavailable or deferred until its CLI contract is available; do not duplicate it in M008</td>
 </tr>
 <tr>
-<td>Human-friendly presentation and the minimally useful display granularity are operator judgments</td>
-<td>Freezing a visual layout too early creates rework, while leaving acceptance implicit makes feasibility impossible to close</td>
-<td>Record one affirmative operator judgment against the primary demonstration; later refinement is residual unless it falsifies that acceptance</td>
-</tr>
-<tr>
-<td>The selected workbench has not yet received recorded operator acceptance across repeated replay runs and declared source or processing failures</td>
-<td>The deterministic visual implementation can establish the shared sequence and page boundary without proving M008-03, M008-05, or M008-06</td>
-<td>Use the durable assessment and implementation contract to select one bounded operator-evidence review unit, including any future video or live-adapter decision, when the operator is ready.</td>
+<td>Later visual refinement or a video/live source may still be wanted after this POC acceptance</td>
+<td>M008 can close on one accepted local slice without those capabilities</td>
+<td>Keep those wants as residuals in the existing assessment; select closeout or a later proposal only if the operator is ready.</td>
 </tr>
 </tbody>
 </table>

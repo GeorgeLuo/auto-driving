@@ -17,27 +17,27 @@ Operator: `gluo`
 | Field | Value |
 | --- | --- |
 | Operator | `gluo` |
-| Started (UTC) | `2026-09-04T00:52:44.452208Z` |
-| Ended (UTC) | `2026-09-04T00:54:25.560331Z` |
+| Started (UTC) | `2026-09-04T01:16:22.238118Z` |
+| Ended (UTC) | `2026-09-04T01:18:00.849056Z` |
 | OS | `macOS-26.6.2-arm64-arm-64bit` |
 | Browser | `Chrome 152.0.7977.76 headed` |
-| auto-driving commit | `768458edda91082faa868128a9e1337f7d1d5562` |
-| Worktree | `dirty` |
+| auto-driving commit | `e3572d2c875d166efc2d6011384810169e3ce3cb` |
+| Worktree | `clean` |
 | Image source (redacted) | `<home>/Projects/auto-driving/runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/captures/chase-stream-decision-model-default-45s-20260901-230833` |
 | Plugin root | `<repo>/lab/plugins/perception` |
-| Loopback URL | `http://127.0.0.1:50093/` |
-| Server identity | `workbench-c5b968eb46d0` |
-| First run id | `run-8c2b647c85954586b9b8e04ea7ef7c0c` |
-| Second run id | `run-1e8262ef400e4a3f93269b1561692942` |
-| Failed run id | `run-16266be033944c14a3988af516e19088` |
-| Recovered run id | `run-9bfbad7f5b634756af7d3c5d216b78c1` |
+| Loopback URL | `http://127.0.0.1:53043/` |
+| Server identity | `workbench-2d29d6df9d2f` |
+| First run id | `run-af702ee8f0974eabb15bb5bdfa4fff4f` |
+| Second run id | `run-3fa4314708804bacbafe9675fff24037` |
+| Failed run id | `run-0969dd4fc26d4f3e9ccd04d217c4d156` |
+| Recovered run id | `run-614187c4db7e445294420fa5fc4022f2` |
 
 ## Session checklist
 
-Recorded by `record_session.py` with Playwright Chrome driving the live page
-at the operator's request. Compact `/api/state` snapshots are the run-id
-source because the page does not display `run_id`. Copying those ids from the
-printed snapshot is the accepted identity method for this packet.
+Recorded by `record_session.py` from a clean checkout. Playwright Chrome drove
+the live page at the operator's request. Paused and running steps each have
+per-selection `/api/state` snapshots. Run ids come from those snapshots
+because the page does not display `run_id`.
 
 - [x] `page_open` — Page shows source identity, plugin catalog, and declared next actions.
 - [x] `inspect_replay` — Ready-plugin replay shows capture, server overlays, progress, and memory on a processed frame.
@@ -68,7 +68,7 @@ captured=`True`, path_redaction=`observed_pass`.
 - The workbench page does not display `run_id`. That is an
   `enhancement_candidate` residual, not a blocker. After identity steps the
   recorder prints a compact `/api/state` snapshot and asks for the run id
-  from that snapshot (or `http://127.0.0.1:50093/api/state`).
+  from that snapshot (or `http://127.0.0.1:53043/api/state`).
   Surfacing current run identity on the page would avoid that side channel;
   it is out of this evidence PR.
 - `accepted` requires distinct first, second, failed, and recovered run IDs

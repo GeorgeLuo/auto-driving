@@ -5,7 +5,7 @@
 | Status | Active |
 | Milestone branch | `milestone/008-cli-decision-workbench` |
 | Cumulative PR | [#167](https://github.com/GeorgeLuo/auto-driving/pull/167) (draft until whole-milestone closeout) |
-| Current frontier | None (idle) |
+| Current frontier | Milestone closeout |
 | Started | 2026-08-26 |
 | Action policy | Observation-only; no applied vehicle movement |
 
@@ -63,10 +63,18 @@ coverage or a frontend framework migration.
 
 ### Current Frontier
 
-**None**
+**Milestone closeout**
 
-- Reason: No remaining work-order node is contracted. Closeout is selected when the operator is ready, not because this unit queued it.
-- Revisit when: Select closeout when M008-03, M008-05, and M008-06 are Met and the operator is ready to close.
+- Workflow state: proposal_in_review
+- Proposal branch: `m008/closeout-proposal`
+- Implementation branch: `m008/closeout`
+- Proposal path: `docs/milestones/008-cli-decision-workbench/proposals/closeout.md`
+- Review kind: Milestone closeout
+- Review question: Is milestone 008 complete as a whole—its selected image-replay contract, accepted workbench slice, CLI and page alignment, repeated-run recovery and cleanup, and durable residual assessment are all supported by accepted evidence, and the cumulative milestone is ready for whole-milestone review without hiding deferred product work?
+- Acceptance owner: Whole-milestone closeout judgment in `closeout.md`, the completed ledger and bounded assessment, terminal workflow handoff, and cumulative PR #167 readiness surface
+- Exit criteria affected: M008-07, M008-08
+- Prerequisite: M008-01 through M008-06 are `Met`; the bounded assessment remains the single authority for M008-01, M008-02, and M008-07; accepted review units #174 and #191 and their tracked evidence remain valid
+- Milestone-level non-goal: Product or runtime changes, evidence recapture, video/live ingestion, arbitrary algorithm or isolated-runtime support, movement authority, external hosting, Metrics UI redesign, M006 edits, or marking the cumulative PR ready before terminal handoff
 
 ### Next-Frontier Candidate
 
@@ -102,6 +110,7 @@ coverage or a frontend framework migration.
 | Replay workbench POC acceptance | ready_for_implementation | Proposal PR #190 accepted at 8dca162ee776267091b1bf4ac23f188e19d471b6 (reviewed head `aa0b4ba65b55140ac80201c66ce3c22b105dd7dc` by `GeorgeLuo` as `OWNER` at `2026-09-03T21:56:31Z`). |
 | Replay workbench POC acceptance | implementation_in_review | Started m008/replay-workbench-acceptance. |
 | Replay workbench POC acceptance | accepted | Implementation PR #191 merged at 6c2f26a2ce34a5f38431e6b21d1269ea306f526d. |
+| Milestone closeout | proposal_in_review | Started m008/closeout-proposal. |
 
 ## Accepted Review Units
 

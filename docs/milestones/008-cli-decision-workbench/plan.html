@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="914e7ba19ff3816bd7af02575780a25094f93c86dcdfd0126ede08ed5d758a75">
+  <meta name="source-sha256" content="14e26da29d7d0152a01410828f440688e7f86279aab3c684ac3f5b9e38358aa7">
   <base target="_blank">
   <title>Milestone plan — 008-cli-decision-workbench</title>
   <style>
@@ -85,7 +85,7 @@
 </tr>
 <tr>
 <td>Current frontier</td>
-<td>None (idle)</td>
+<td>Milestone closeout</td>
 </tr>
 <tr>
 <td>Started</td>
@@ -245,10 +245,18 @@ coverage or a frontend framework migration.</p>
 </table>
 <h2>Current Delivery</h2>
 <h3>Current Frontier</h3>
-<p><strong>None</strong></p>
+<p><strong>Milestone closeout</strong></p>
 <ul>
-<li>Reason: No remaining work-order node is contracted. Closeout is selected when the operator is ready, not because this unit queued it.</li>
-<li>Revisit when: Select closeout when M008-03, M008-05, and M008-06 are Met and the operator is ready to close.</li>
+<li>Workflow state: proposal_in_review</li>
+<li>Proposal branch: <code>m008/closeout-proposal</code></li>
+<li>Implementation branch: <code>m008/closeout</code></li>
+<li>Proposal path: <code>docs/milestones/008-cli-decision-workbench/proposals/closeout.md</code></li>
+<li>Review kind: Milestone closeout</li>
+<li>Review question: Is milestone 008 complete as a whole—its selected image-replay contract, accepted workbench slice, CLI and page alignment, repeated-run recovery and cleanup, and durable residual assessment are all supported by accepted evidence, and the cumulative milestone is ready for whole-milestone review without hiding deferred product work?</li>
+<li>Acceptance owner: Whole-milestone closeout judgment in <code>closeout.md</code>, the completed ledger and bounded assessment, terminal workflow handoff, and cumulative PR #167 readiness surface</li>
+<li>Exit criteria affected: M008-07, M008-08</li>
+<li>Prerequisite: M008-01 through M008-06 are <code>Met</code>; the bounded assessment remains the single authority for M008-01, M008-02, and M008-07; accepted review units #174 and #191 and their tracked evidence remain valid</li>
+<li>Milestone-level non-goal: Product or runtime changes, evidence recapture, video/live ingestion, arbitrary algorithm or isolated-runtime support, movement authority, external hosting, Metrics UI redesign, M006 edits, or marking the cumulative PR ready before terminal handoff</li>
 </ul>
 <h3>Next-Frontier Candidate</h3>
 <p><strong>None</strong></p>
@@ -360,6 +368,11 @@ coverage or a frontend framework migration.</p>
 <td>Replay workbench POC acceptance</td>
 <td>accepted</td>
 <td>Implementation PR #191 merged at 6c2f26a2ce34a5f38431e6b21d1269ea306f526d.</td>
+</tr>
+<tr>
+<td>Milestone closeout</td>
+<td>proposal_in_review</td>
+<td>Started m008/closeout-proposal.</td>
 </tr>
 </tbody>
 </table>

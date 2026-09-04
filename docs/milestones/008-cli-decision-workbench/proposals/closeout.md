@@ -42,7 +42,7 @@ claiming the terminal plan transition.
 | Phase | When | Owner | Permitted change |
 | --- | --- | --- | --- |
 | **0. Whole-milestone readiness review** | While this proposal PR is open and its plan transition has not merged | Reviewer/operator | Audit the M008 objective, completion usage, all criteria, accepted review units, assessment, evidence identity, residuals, and cumulative PR #167. A gap that falsifies an existing criterion keeps this proposal unaccepted; a new product want is a later proposal. |
-| **A. Closeout implementation PR** (`m008/closeout` → milestone) | After this proposal is accepted | Implementer | Create `closeout.md`, append the M008 completed-ledger entry, reconcile only bounded documentation/navigation, and update draft cumulative PR #167's body and validation notes. Leave M008 Active, M008-07/M008-08 Unmet, risks intact, and the accepted ledger unchanged. |
+| **A. Closeout implementation PR** (`m008/closeout` → milestone) | After this proposal is accepted | Implementer | Create `closeout.md`, reconcile the one existing assessment in place, append the M008 completed-ledger entry, reconcile only bounded documentation/navigation, and update draft cumulative PR #167's body and validation notes. Leave M008 Active, M008-07/M008-08 Unmet, risks intact, and the accepted ledger unchanged. |
 | **B. Post-merge handoff** | After the closeout implementation PR is squash-merged to a clean milestone branch | `workflow.py complete-implementation --pr <implementation-pr>` | Apply this proposal's Expected Handoff mechanically: mark M008-07 and M008-08 Met, remove only risks whose residual meaning is preserved in `closeout.md`, record the accepted closeout unit, close the plan, clear the frontier, and regenerate `plan.html`. |
 | **C. Whole-milestone integration** | After Phase B reaches the milestone tip | Operator/reviewer | Mark #167 ready and review the milestone as a whole. Packet and documentation defects stay on #167. A finding that falsifies an already-Met criterion uses the append-only reject-restore workflow; only an exact-head accepted #167 may merge to `main` and permit tag/branch cleanup. |
 
@@ -60,9 +60,12 @@ M008 closes only when all of the following hold:
    identities recorded below.
 2. The single assessment at
    `docs/milestones/008-cli-decision-workbench/assessment/perception-memory-workbench.md`
-   remains authoritative for M008-01, M008-02, and M008-07. Closeout updates
-   or cites it only as bounded documentation; it does not create a second
-   assessment or convert every gap into a backlog item.
+   remains authoritative for M008-01, M008-02, and M008-07. Phase A reconciles
+   that file in place with the accepted #191 POC judgment and the durable CLI,
+   sequence, signal, page-surface, source, plugin, and transport gap
+   dispositions. Closeout may update or cite it only as bounded documentation;
+   it does not create a second assessment or convert every gap into a backlog
+   item.
 3. `closeout.md` reconciles the selected sequence contract, accepted
    workbench slice, CLI/page adaptation boundary, failure and recovery cases,
    cleanup and observation-only limits, and residual product decisions.
@@ -122,7 +125,7 @@ failures:
 | M006 shadow decision surfaces | M006 remains separately owned and its branch/plan/evidence are not edited by M008 closeout. |
 | External Metrics UI, browser, loopback transport, and timing | Acceptance covers the recorded local environment and server-owned state only; browser launch, remote/public hosting, and future external contract drift remain bounded assumptions. |
 | Movement, vehicle, simulator, and recording authority | The selected journey is observation-only and read-only; no autonomous movement, simulator reconfiguration, worker, or recording claim is made. |
-| History persistence and export | Per-run state is process-local and intentionally discarded on reset, new run, successful terminal cleanup, or shutdown; durable export needs explicit consent and a later proposal. |
+| History persistence and export | Per-run state is process-local. Reset, a new run, successful source validation, or shutdown discards the in-memory history; terminal completion/cancel cleanup resets stage instances but retains terminal history until one of those boundaries. Durable export needs explicit consent and a later proposal. |
 
 ### Required Phase A outputs
 
@@ -130,19 +133,25 @@ failures:
    whole-milestone judgment, criterion map, evidence identities, residual
    dispositions, validation results, cumulative PR topology, and next-focus
    decision.
-2. Append one M008 entry to `docs/milestones/completed.md` in cumulative PR
+2. Reconcile the existing
+   `docs/milestones/008-cli-decision-workbench/assessment/perception-memory-workbench.md`
+   in place: replace stale pre-acceptance status, link the accepted #191
+   judgment, and retain one explicit table of durable gaps and their
+   later-decision or no-follow-up dispositions. Do not create a second
+   assessment or silently turn residuals into implementation work.
+3. Append one M008 entry to `docs/milestones/completed.md` in cumulative PR
    #167. The entry must state that Phase C whole-milestone acceptance and the
    `main` merge/tag remain pending; it must not rewrite earlier milestone
    entries.
-3. Update `docs/README.md` navigation only if needed to point at the durable
+4. Update `docs/README.md` navigation only if needed to point at the durable
    M008 packet. Do not copy plan status or architecture into the index.
-4. Reconcile only factual documentation links or CLI/workbench invocation
+5. Reconcile only factual documentation links or CLI/workbench invocation
    details that have drifted. No runtime, test, plugin, evidence, or M006
    edits are allowed.
-5. Update draft PR #167's body with the current objective, completion usage,
+6. Update draft PR #167's body with the current objective, completion usage,
    accepted review units #174 and #191, exact validation, residuals, and the
    correct milestone/main topology. Leave it draft.
-6. Optionally tighten non-terminal prose in the M008 plan's Closeout section;
+7. Optionally tighten non-terminal prose in the M008 plan's Closeout section;
    do not change criteria, risks, accepted ledger, current identity, or
    status. The normal terminal transition remains workflow-owned.
 
@@ -183,6 +192,7 @@ restore.
 | Path | Change |
 | --- | --- |
 | `docs/milestones/008-cli-decision-workbench/closeout.md` | Durable whole-milestone judgment and evidence/residual map. |
+| `docs/milestones/008-cli-decision-workbench/assessment/perception-memory-workbench.md` | In-place reconciliation of the single assessment with the accepted POC judgment and durable gap dispositions. |
 | `docs/milestones/completed.md` | Append M008 closeout packet entry only. |
 | `docs/README.md` | Navigation-only change if required. |
 | `README.md` or bounded CLI/workbench guide | Factual link/invocation reconciliation only if the audit finds drift. |
@@ -251,11 +261,11 @@ created yet.
 
 ### Phase A implementation diff
 
-The implementation branch creates the closeout packet, appends the cumulative
-ledger entry, performs bounded documentation reconciliation if necessary, and
-updates PR #167's body. It does not alter product/runtime code or accepted
-evidence. The terminal plan transition is intentionally absent until the
-post-merge handoff.
+The implementation branch creates the closeout packet, reconciles the existing
+single assessment in place, appends the cumulative ledger entry, performs
+bounded documentation reconciliation if necessary, and updates PR #167's body.
+It does not alter product/runtime code or accepted evidence. The terminal plan
+transition is intentionally absent until the post-merge handoff.
 
 ## Validation Plan
 

@@ -223,5 +223,5 @@ Full record: [plan](008-cli-decision-workbench/plan.md) ·
 
 This is the retained Phase A closeout packet inside cumulative PR #167. It does
 not claim that #167 has merged into `main` or that tag `milestone-008` exists.
-Phase B must first apply the reviewed terminal plan handoff, and Phase C must
-then accept #167 as a whole.
+Phase B has applied the reviewed terminal plan handoff; Phase C must still
+accept #167 as a whole.

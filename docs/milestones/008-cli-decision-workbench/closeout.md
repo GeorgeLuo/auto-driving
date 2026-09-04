@@ -6,7 +6,7 @@
 | Closeout phase | Phase A packet; terminal handoff and cumulative review remain separate |
 | Prepared | 2026-09-04 |
 | Current plan status | Closed after Phase B handoff; M008-01 through M008-08 are `Met`; Phase C cumulative review remains pending |
-| Cumulative review | [PR #167](https://github.com/GeorgeLuo/auto-driving/pull/167), draft, `milestone/008-cli-decision-workbench` -> `main` |
+| Cumulative review | [PR #167](https://github.com/GeorgeLuo/auto-driving/pull/167), ready for Phase C review, `milestone/008-cli-decision-workbench` -> `main` |
 
 ## Whole-milestone judgment
 
@@ -124,8 +124,8 @@ The durable decisions are:
 | M008-04 | PR #174 | Existing CLI-launched perception/memory seams and selected page meanings have one server-owned adaptation boundary. |
 | M008-05 | PR #191 and operator verdict | A real long capture produced meaningful overlays and memory; the operator accepted the delivered display granularity as minimally useful. |
 | M008-06 | PR #191 and operator verdict | Source failure, valid retry, repeated runs, reset, and cleanup were observed without worker, simulator, Metrics, movement, or recording side effects. |
-| M008-07 | Assessment continuity plus this packet | The assessment remains one evolving authority and classifies durable gaps as later decisions or no-follow-up observations. Phase B will mark this criterion `Met`. |
-| M008-08 | This packet plus Phase B handoff | The selected contract, accepted slice, CLI/page alignment, safe lifecycle, and residual limits are durable. Phase B will mark this criterion `Met`. |
+| M008-07 | Assessment continuity plus this packet | The assessment remains one evolving authority and classifies durable gaps as later decisions or no-follow-up observations. The Phase B handoff marked this criterion `Met`. |
+| M008-08 | This packet plus Phase B handoff | The selected contract, accepted slice, CLI/page alignment, safe lifecycle, and residual limits are durable. The Phase B handoff marked this criterion `Met`. |
 
 ## Gap and residual disposition
 
@@ -179,15 +179,14 @@ git diff --check: pass
 
 ## Cumulative review topology
 
-PR #167 remains the cumulative M008 review surface, targeting `main` from
-`milestone/008-cli-decision-workbench`, and remains draft during Phase A. Its
-body is updated to cite this packet, accepted review units #174 and #191,
-their exact identities and validation, the residuals above, and the correct
-child-PR topology. After this implementation PR is merged, Phase B will apply
-the proposal's expected handoff with `workflow.py complete-implementation`.
-Only then may PR #167 become ready for a whole-milestone review. A packet-only
-finding is repaired on #167; a finding that falsifies an already accepted
-criterion follows the append-only reject/restore workflow and a new proposal.
+PR #167 is the cumulative M008 review surface, targeting `main` from
+`milestone/008-cli-decision-workbench`, and is ready for Phase C review. Its
+body cites this packet, accepted review units #174, #191, and #193, their exact
+identities and validation, the residuals above, and the correct child-PR
+topology. Phase B has applied the proposal's expected handoff with
+`workflow.py complete-implementation`. A packet-only finding is repaired on
+#167; a finding that falsifies an already accepted criterion follows the
+append-only reject/restore workflow and a new proposal.
 
 The next product focus is the separately owned M006 frontier (or a later
 proposal selected from the residuals) after whole-milestone acceptance. M008

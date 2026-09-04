@@ -65,10 +65,11 @@ coverage or a frontend framework migration.
 
 **Milestone closeout**
 
-- Workflow state: proposal_in_review
+- Workflow state: ready_for_implementation
 - Proposal branch: `m008/closeout-proposal`
 - Implementation branch: `m008/closeout`
 - Proposal path: `docs/milestones/008-cli-decision-workbench/proposals/closeout.md`
+- Accepted proposal: [#192](https://github.com/GeorgeLuo/auto-driving/pull/192) at `05d3c3c9ee7cacc523295d7a54b73c5c29343450` (reviewed head `f546fcac1d38d1c27eda91b59d6402db0c7659e0` by `GeorgeLuo` as `OWNER` at `2026-09-04T04:47:27Z`)
 - Review kind: Milestone closeout
 - Review question: Is milestone 008 complete as a whole—its selected image-replay contract, accepted workbench slice, CLI and page alignment, repeated-run recovery and cleanup, and durable residual assessment are all supported by accepted evidence, and the cumulative milestone is ready for whole-milestone review without hiding deferred product work?
 - Acceptance owner: Whole-milestone closeout judgment in `closeout.md`, the completed ledger and bounded assessment, terminal workflow handoff, and cumulative PR #167 readiness surface
@@ -111,6 +112,7 @@ coverage or a frontend framework migration.
 | Replay workbench POC acceptance | implementation_in_review | Started m008/replay-workbench-acceptance. |
 | Replay workbench POC acceptance | accepted | Implementation PR #191 merged at 6c2f26a2ce34a5f38431e6b21d1269ea306f526d. |
 | Milestone closeout | proposal_in_review | Started m008/closeout-proposal. |
+| Milestone closeout | ready_for_implementation | Proposal PR #192 accepted at 05d3c3c9ee7cacc523295d7a54b73c5c29343450 (reviewed head `f546fcac1d38d1c27eda91b59d6402db0c7659e0` by `GeorgeLuo` as `OWNER` at `2026-09-04T04:47:27Z`). |
 
 ## Accepted Review Units
 

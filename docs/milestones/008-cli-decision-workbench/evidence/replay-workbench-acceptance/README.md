@@ -1,122 +1,81 @@
 # Replay workbench POC acceptance evidence
 
-Status: **incomplete** — first-cut packet. The live session and operator
-verdict are not recorded yet.
+Status: **accepted**
 
 Accepted contract:
 [Replay workbench POC acceptance](../../proposals/replay-workbench-acceptance.md)
 ([PR #190](https://github.com/GeorgeLuo/auto-driving/pull/190)).
 
-This directory is the only product of the evidence implementation PR. It does
-not change the workbench. It does not rewrite
-[the M008 assessment](../../assessment/perception-memory-workbench.md).
-
 ## Verdict
 
-`incomplete` — environment receipt, procedure log, screenshot, and named
-operator judgment are still open.
+`accepted` — accepted
 
-Fill this packet during one guided local session against a clean milestone
-checkout that contains merged PR #174. Hands-on comments from #174 are
-context, not this verdict.
+Operator: `gluo`
 
 ## Environment receipt
 
 | Field | Value |
 | --- | --- |
-| Operator | _pending_ |
-| Started (UTC) | _pending_ |
-| Ended (UTC) | _pending_ |
-| OS | _pending_ |
-| Browser | _pending_ |
-| auto-driving commit | _pending_ |
-| Worktree | _pending_ |
-| Image source (redacted) | _pending_ |
-| Plugin root | `lab/plugins/perception` or packaged default |
-| Loopback URL | _pending_ |
-
-## How to record a session
-
-The operator still drives the page. This script launches the same CLI, prompts
-after each checklist step, snapshots `/api/state`, and writes the packet. It
-does not click the page or infer a visual pass.
-
-From the repository root, in a Terminal you can type into:
-
-```sh
-python3 docs/milestones/008-cli-decision-workbench/evidence/replay-workbench-acceptance/record_session.py
-```
-
-It asks for the image directory, operator name, and browser version, then
-launches the workbench. After each page action it asks `y` / `n` / `u`.
-Flags still override prompts if you pass them. Optional: `--screenshot`,
-`--packaged`, `--plugin-dir`, `--plugin`.
-
-After each printed `do` block, use the workbench, then answer `y` / `n` / `u`
-and optional notes. At the end, give `accepted`, `blocked`, or `incomplete`.
-The script overwrites `result.json`, this README, `cli-transcript.txt`, and
-regenerates `result.html`.
+| Operator | `gluo` |
+| Started (UTC) | `2026-09-03T23:53:17.227764Z` |
+| Ended (UTC) | `2026-09-03T23:54:35.311055Z` |
+| OS | `macOS-26.6.2-arm64-arm-64bit` |
+| Browser | `Chrome 152.0.7977.76` |
+| auto-driving commit | `ade36f37d02302d0d8d206cb3fd4efff1ec796fd` |
+| Worktree | `dirty` |
+| Image source (redacted) | `<home>/Projects/auto-driving/runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/captures/chase-stream-decision-model-default-45s-20260901-230833` |
+| Plugin root | `<repo>/lab/plugins/perception` |
+| Loopback URL | `http://127.0.0.1:62908/` |
+| Server identity | `workbench-743d40b45bc2` |
+| Launch run id | `run-2e29263e3d26480aa47c0e10256914e5` |
 
 ## Session checklist
 
-Manual equivalent (if not using `record_session.py`):
+Recorded by `record_session.py`. The operator drove the page; the script
+launched the CLI and wrote artifacts. Compact `/api/state` snapshots after each
+step are corroboration only; they do not override the operator answers.
 
-```sh
-./cli/automa vehicles workbench replay <source_dir> \
-  --plugin-dir lab/plugins/perception \
-  --plugin classical_regions \
-  --pace realtime \
-  --max-frames 1024 \
-  --open
-```
+- [x] `page_open` — Page shows source identity, plugin catalog, and declared next actions.
+- [x] `inspect_replay` — Ready-plugin replay shows capture, server overlays, progress, and memory on a processed frame.
+- [x] `paused_toggle` — Paused toggle including empty raw-capture updates the held still from the server; invalid IDs are refused.
+- [x] `running_toggle` — Running toggle including empty keeps the current still until the next processed frame.
+- [x] `second_run` — Reset and a second run without restarting the server; prior run identity is not current success.
+- [x] `source_failure` — Empty, missing, or unsupported source names the failure and next action; recovery is an operator-chosen directory.
+- [x] `cleanup` — Cancel or reset with no worker, simulator, Metrics operation, movement, or recording; isolated state is reset.
 
-The source must be a real readable image directory. `--json` may corroborate
-state; it is not the operator display.
-
-### Environment
-
-- [ ] Record UTC start, OS, browser name/version.
-- [ ] Record exact `auto-driving` commit and clean/dirty state.
-- [ ] Name the local image directory and plugin root.
-- [ ] Record the printed loopback URL.
-
-### Primary demonstration
-
-- [ ] Page opened with source identity, plugin catalog, and declared next actions.
-- [ ] Replay started with a ready plugin selection; capture, overlays, progress, and memory are visible on a processed frame.
-- [ ] Paused; toggling ready plugins including empty raw-capture updates the held still from the server.
-- [ ] Invalid plugin IDs are refused without changing the effective set.
-- [ ] Resume or step: a running toggle, including empty, keeps the current still until the next processed frame.
-- [ ] Reset isolated memory and start a second run without restarting the server.
-
-### Failure, recovery, cleanup
-
-- [ ] Empty, missing, or unsupported source shows a named failure and next action.
-- [ ] Recovery uses an operator-chosen valid directory; no silent substitute.
-- [ ] Cancel or reset; no vehicle, worker, simulator, Metrics operation, movement, or recording.
-- [ ] Isolated mapper/memory state is reset.
-
-### Final reconciliation
-
-- [ ] Capture one cropped `browser-view.png` of the inspected still.
-- [ ] Optional `cli-transcript.txt` of launch/help/status, with local prefixes redacted.
-- [ ] Operator records `accepted`, `blocked`, or `incomplete` in `result.json` and this README.
-- [ ] Regenerate `result.html` from the committed `result.json`:
-      `python3 render_result.py`
-- [ ] Refresh artifact SHA-256 digests in `result.json` and re-render HTML.
-
-## Artifacts
-
-| Path | Status |
-| --- | --- |
-| [result.json](result.json) | Present; `status=incomplete` |
-| [result.html](result.html) | Derived from `result.json` |
-| [render_result.py](render_result.py) | Regenerates `result.html` |
-| [record_session.py](record_session.py) | Prompt-driven recorder |
-| `browser-view.png` | Not captured |
-| `cli-transcript.txt` | Not captured |
+Observation-only checks (operator `y`, `occurred: false`): vehicle, Automa
+worker, simulator, Metrics operation, movement, recording.
 
 ## Findings
 
-None yet. Confirmed discrepancies use ids `M008-POC-###` with classification
-`acceptance_blocker`, `enhancement_candidate`, or `environment_blocker`.
+None recorded.
+
+## Limitations
+
+- Worktree `dirty` at record time is the in-progress evidence packet, not a
+  product edit.
+- `cli-transcript.txt` is the launch banner only (`phase: running`,
+  `progress: 0/845`). The workbench process stays open after that.
+- `browser-view.png` is the cropped live still: chase capture frame with
+  `classical_regions` overlays, memory ledger, Evidence `ok`, progress 18/845.
+- Compact `/api/state` snapshots after every prompted step share one completed
+  run (`run-2e29263e3d26480aa47c0e10256914e5`, 845/845, `phase: completed`).
+  They do not list distinct first, second, failed, and recovered run IDs. The
+  operator still recorded `observed_pass` for those steps. Those snapshots were
+  not used to change the verdict.
+
+## Deterministic boundary citations
+
+Invalid-ID and shared-runner claims stay on the existing tests, not this
+session:
+
+- `tests/cli/test_workbench.py::test_explicit_catalog_allows_raw_capture_and_live_replacement`
+- `tests/cli/test_workbench.py::test_loopback_api_exposes_and_applies_plugin_selection`
+- `tests/cli/test_workbench.py::test_loopback_api_persists_after_terminal_state_and_rejects_raw_argv`
+- `tests/cli/test_workbench.py::test_cli_replay_machine_readable_boundary`
+- `tests/cli/test_workbench.py::test_cli_replay_accepts_realtime_pace`
+
+## Artifacts
+
+See `result.json` `artifacts` and derived [result.html](result.html).
+Regenerate HTML with `python3 render_result.py`.

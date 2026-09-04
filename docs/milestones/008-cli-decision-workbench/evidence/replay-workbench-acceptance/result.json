@@ -1,81 +1,396 @@
 {
   "schema": "m008_replay_workbench_acceptance_v1",
-  "status": "incomplete",
-  "incomplete_reason": "First-cut evidence packet. Live session and operator verdict are not yet recorded.",
-  "operator": null,
-  "verdict": null,
+  "status": "accepted",
+  "incomplete_reason": null,
+  "operator": "gluo",
+  "verdict": "accepted",
   "timestamps": {
-    "started_at_utc": null,
-    "ended_at_utc": null
+    "started_at_utc": "2026-09-03T23:53:17.227764Z",
+    "ended_at_utc": "2026-09-03T23:54:35.311055Z"
   },
   "environment": {
-    "operating_system": null,
+    "operating_system": "macOS-26.6.2-arm64-arm-64bit",
     "browser": {
-      "name": null,
-      "version": null
+      "name": "Chrome",
+      "version": "152.0.7977.76"
     }
   },
   "repository": {
-    "commit": null,
+    "commit": "ade36f37d02302d0d8d206cb3fd4efff1ec796fd",
     "branch": "m008/replay-workbench-acceptance",
-    "worktree_state": null
+    "worktree_state": "dirty"
   },
   "source": {
     "kind": "image_directory",
-    "path_redacted": null,
-    "plugin_root": null,
-    "loopback_url": null
+    "path_redacted": "<home>/Projects/auto-driving/runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/captures/chase-stream-decision-model-default-45s-20260901-230833",
+    "plugin_root": "<repo>/lab/plugins/perception",
+    "loopback_url": "http://127.0.0.1:62908/",
+    "health": {
+      "server_identity": "workbench-743d40b45bc2",
+      "available": true,
+      "url": "http://127.0.0.1:62908/",
+      "phase": "running",
+      "run_id": "run-2e29263e3d26480aa47c0e10256914e5",
+      "observation_only": true,
+      "persistent_across_terminal_state": true
+    }
   },
+  "launch_command": [
+    "/opt/homebrew/anaconda3/bin/python3",
+    "-u",
+    "<repo>/cli/automa",
+    "vehicles",
+    "workbench",
+    "replay",
+    "<home>/Projects/auto-driving/runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/captures/chase-stream-decision-model-default-45s-20260901-230833",
+    "--pace",
+    "realtime",
+    "--max-frames",
+    "1024",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "62908",
+    "--open",
+    "--plugin-dir",
+    "<repo>/lab/plugins/perception",
+    "--plugin",
+    "classical_regions"
+  ],
   "steps": [
     {
       "id": "page_open",
-      "status": "pending",
-      "required": "Page shows source identity, plugin catalog, and declared next actions."
+      "status": "observed_pass",
+      "required": "Page shows source identity, plugin catalog, and declared next actions.",
+      "observation": "y",
+      "notes": null,
+      "machine": {
+        "server_identity": "workbench-743d40b45bc2",
+        "run_id": "run-2e29263e3d26480aa47c0e10256914e5",
+        "phase": "completed",
+        "source_identity": "chase-stream-decision-model-default-45s-20260901-230833:chase-run:24a6cb37-d6fe-4465-ae58-6d74b747aa8d",
+        "active_plugin_ids": [
+          "classical_regions"
+        ],
+        "run_active_plugin_ids": [
+          "classical_regions"
+        ],
+        "progress": {
+          "completed": 845,
+          "total": 845
+        },
+        "perception_status": "ok",
+        "plugin_run_ids": [
+          "classical_regions"
+        ],
+        "memory_record_count": 3,
+        "failure": null,
+        "recovery_action": "start",
+        "cleanup": {
+          "completed_at_ms": 1788479611713,
+          "mapper": "reset",
+          "memory": "reset",
+          "metrics_used": false,
+          "movement_control": false,
+          "recording_enabled": false,
+          "simulator_used": false,
+          "source_read_only": true,
+          "worker_started": false
+        },
+        "pace": "realtime",
+        "loop": false
+      }
     },
     {
       "id": "inspect_replay",
-      "status": "pending",
-      "required": "Ready-plugin replay shows capture, server overlays, progress, and memory on a processed frame."
+      "status": "observed_pass",
+      "required": "Ready-plugin replay shows capture, server overlays, progress, and memory on a processed frame.",
+      "observation": "y",
+      "notes": null,
+      "machine": {
+        "server_identity": "workbench-743d40b45bc2",
+        "run_id": "run-2e29263e3d26480aa47c0e10256914e5",
+        "phase": "completed",
+        "source_identity": "chase-stream-decision-model-default-45s-20260901-230833:chase-run:24a6cb37-d6fe-4465-ae58-6d74b747aa8d",
+        "active_plugin_ids": [
+          "classical_regions"
+        ],
+        "run_active_plugin_ids": [
+          "classical_regions"
+        ],
+        "progress": {
+          "completed": 845,
+          "total": 845
+        },
+        "perception_status": "ok",
+        "plugin_run_ids": [
+          "classical_regions"
+        ],
+        "memory_record_count": 3,
+        "failure": null,
+        "recovery_action": "start",
+        "cleanup": {
+          "completed_at_ms": 1788479611713,
+          "mapper": "reset",
+          "memory": "reset",
+          "metrics_used": false,
+          "movement_control": false,
+          "recording_enabled": false,
+          "simulator_used": false,
+          "source_read_only": true,
+          "worker_started": false
+        },
+        "pace": "realtime",
+        "loop": false
+      }
     },
     {
       "id": "paused_toggle",
-      "status": "pending",
-      "required": "Paused toggle including empty raw-capture updates the held still from the server; invalid IDs are refused."
+      "status": "observed_pass",
+      "required": "Paused toggle including empty raw-capture updates the held still from the server; invalid IDs are refused.",
+      "observation": "y",
+      "notes": null,
+      "machine": {
+        "server_identity": "workbench-743d40b45bc2",
+        "run_id": "run-2e29263e3d26480aa47c0e10256914e5",
+        "phase": "completed",
+        "source_identity": "chase-stream-decision-model-default-45s-20260901-230833:chase-run:24a6cb37-d6fe-4465-ae58-6d74b747aa8d",
+        "active_plugin_ids": [
+          "classical_regions"
+        ],
+        "run_active_plugin_ids": [
+          "classical_regions"
+        ],
+        "progress": {
+          "completed": 845,
+          "total": 845
+        },
+        "perception_status": "ok",
+        "plugin_run_ids": [
+          "classical_regions"
+        ],
+        "memory_record_count": 3,
+        "failure": null,
+        "recovery_action": "start",
+        "cleanup": {
+          "completed_at_ms": 1788479611713,
+          "mapper": "reset",
+          "memory": "reset",
+          "metrics_used": false,
+          "movement_control": false,
+          "recording_enabled": false,
+          "simulator_used": false,
+          "source_read_only": true,
+          "worker_started": false
+        },
+        "pace": "realtime",
+        "loop": false
+      }
     },
     {
       "id": "running_toggle",
-      "status": "pending",
-      "required": "Running toggle including empty keeps the current still until the next processed frame."
+      "status": "observed_pass",
+      "required": "Running toggle including empty keeps the current still until the next processed frame.",
+      "observation": "y",
+      "notes": null,
+      "machine": {
+        "server_identity": "workbench-743d40b45bc2",
+        "run_id": "run-2e29263e3d26480aa47c0e10256914e5",
+        "phase": "completed",
+        "source_identity": "chase-stream-decision-model-default-45s-20260901-230833:chase-run:24a6cb37-d6fe-4465-ae58-6d74b747aa8d",
+        "active_plugin_ids": [
+          "classical_regions"
+        ],
+        "run_active_plugin_ids": [
+          "classical_regions"
+        ],
+        "progress": {
+          "completed": 845,
+          "total": 845
+        },
+        "perception_status": "ok",
+        "plugin_run_ids": [
+          "classical_regions"
+        ],
+        "memory_record_count": 3,
+        "failure": null,
+        "recovery_action": "start",
+        "cleanup": {
+          "completed_at_ms": 1788479611713,
+          "mapper": "reset",
+          "memory": "reset",
+          "metrics_used": false,
+          "movement_control": false,
+          "recording_enabled": false,
+          "simulator_used": false,
+          "source_read_only": true,
+          "worker_started": false
+        },
+        "pace": "realtime",
+        "loop": false
+      }
     },
     {
       "id": "second_run",
-      "status": "pending",
-      "required": "Reset and a second run without restarting the server; prior run identity is not current success."
+      "status": "observed_pass",
+      "required": "Reset and a second run without restarting the server; prior run identity is not current success.",
+      "observation": "y",
+      "notes": null,
+      "machine": {
+        "server_identity": "workbench-743d40b45bc2",
+        "run_id": "run-2e29263e3d26480aa47c0e10256914e5",
+        "phase": "completed",
+        "source_identity": "chase-stream-decision-model-default-45s-20260901-230833:chase-run:24a6cb37-d6fe-4465-ae58-6d74b747aa8d",
+        "active_plugin_ids": [
+          "classical_regions"
+        ],
+        "run_active_plugin_ids": [
+          "classical_regions"
+        ],
+        "progress": {
+          "completed": 845,
+          "total": 845
+        },
+        "perception_status": "ok",
+        "plugin_run_ids": [
+          "classical_regions"
+        ],
+        "memory_record_count": 3,
+        "failure": null,
+        "recovery_action": "start",
+        "cleanup": {
+          "completed_at_ms": 1788479611713,
+          "mapper": "reset",
+          "memory": "reset",
+          "metrics_used": false,
+          "movement_control": false,
+          "recording_enabled": false,
+          "simulator_used": false,
+          "source_read_only": true,
+          "worker_started": false
+        },
+        "pace": "realtime",
+        "loop": false
+      }
     },
     {
       "id": "source_failure",
-      "status": "pending",
-      "required": "Empty, missing, or unsupported source names the failure and next action; recovery is an operator-chosen directory."
+      "status": "observed_pass",
+      "required": "Empty, missing, or unsupported source names the failure and next action; recovery is an operator-chosen directory.",
+      "observation": "y",
+      "notes": null,
+      "machine": {
+        "server_identity": "workbench-743d40b45bc2",
+        "run_id": "run-2e29263e3d26480aa47c0e10256914e5",
+        "phase": "completed",
+        "source_identity": "chase-stream-decision-model-default-45s-20260901-230833:chase-run:24a6cb37-d6fe-4465-ae58-6d74b747aa8d",
+        "active_plugin_ids": [
+          "classical_regions"
+        ],
+        "run_active_plugin_ids": [
+          "classical_regions"
+        ],
+        "progress": {
+          "completed": 845,
+          "total": 845
+        },
+        "perception_status": "ok",
+        "plugin_run_ids": [
+          "classical_regions"
+        ],
+        "memory_record_count": 3,
+        "failure": null,
+        "recovery_action": "start",
+        "cleanup": {
+          "completed_at_ms": 1788479611713,
+          "mapper": "reset",
+          "memory": "reset",
+          "metrics_used": false,
+          "movement_control": false,
+          "recording_enabled": false,
+          "simulator_used": false,
+          "source_read_only": true,
+          "worker_started": false
+        },
+        "pace": "realtime",
+        "loop": false
+      }
     },
     {
       "id": "cleanup",
-      "status": "pending",
-      "required": "Cancel or reset with no worker, simulator, Metrics operation, movement, or recording; isolated state is reset."
+      "status": "observed_pass",
+      "required": "Cancel or reset with no worker, simulator, Metrics operation, movement, or recording; isolated state is reset.",
+      "observation": "y",
+      "notes": null,
+      "machine": {
+        "server_identity": "workbench-743d40b45bc2",
+        "run_id": "run-2e29263e3d26480aa47c0e10256914e5",
+        "phase": "completed",
+        "source_identity": "chase-stream-decision-model-default-45s-20260901-230833:chase-run:24a6cb37-d6fe-4465-ae58-6d74b747aa8d",
+        "active_plugin_ids": [
+          "classical_regions"
+        ],
+        "run_active_plugin_ids": [
+          "classical_regions"
+        ],
+        "progress": {
+          "completed": 845,
+          "total": 845
+        },
+        "perception_status": "ok",
+        "plugin_run_ids": [
+          "classical_regions"
+        ],
+        "memory_record_count": 3,
+        "failure": null,
+        "recovery_action": "start",
+        "cleanup": {
+          "completed_at_ms": 1788479611713,
+          "mapper": "reset",
+          "memory": "reset",
+          "metrics_used": false,
+          "movement_control": false,
+          "recording_enabled": false,
+          "simulator_used": false,
+          "source_read_only": true,
+          "worker_started": false
+        },
+        "pace": "realtime",
+        "loop": false
+      }
     }
   ],
   "observation_only": {
-    "vehicle": null,
-    "worker": null,
-    "simulator": null,
-    "metrics_operation": null,
-    "movement": null,
-    "recording": null
+    "vehicle": {
+      "occurred": false,
+      "operator_status": "observed_pass"
+    },
+    "worker": {
+      "occurred": false,
+      "operator_status": "observed_pass"
+    },
+    "simulator": {
+      "occurred": false,
+      "operator_status": "observed_pass"
+    },
+    "metrics_operation": {
+      "occurred": false,
+      "operator_status": "observed_pass"
+    },
+    "movement": {
+      "occurred": false,
+      "operator_status": "observed_pass"
+    },
+    "recording": {
+      "occurred": false,
+      "operator_status": "observed_pass"
+    }
   },
   "findings": [],
   "artifacts": [
     {
       "path": "README.md",
-      "sha256": "6dbd8e490f2e7191e18ab9b3e2c258117f3a8db2e6d45770028633daf3eb8fa8",
+      "sha256": "569e4bd6089ceec881d8d8fff163304e478babe2d7221472d2d64d9bb418db72",
       "captured": true
     },
     {
@@ -90,12 +405,12 @@
     },
     {
       "path": "browser-view.png",
-      "sha256": null,
-      "captured": false
+      "sha256": "1443c385736ddff7c7d6304b21c29b3972b8408d2c3794d21cd1c34ec258b454",
+      "captured": true
     },
     {
       "path": "cli-transcript.txt",
-      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "sha256": "3cd2fb10e8a3e59fee4a0cbf7190c0d3135288535e8d8c8096d9072e58ca0d62",
       "captured": true
     },
     {

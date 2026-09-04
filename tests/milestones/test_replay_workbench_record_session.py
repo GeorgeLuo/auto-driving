@@ -427,6 +427,28 @@ class RecordSessionTests(unittest.TestCase):
         self.assertEqual(payload["status"], "incomplete")
         self.assertIn("session did not start from a clean checkout", payload["incomplete_reason"])
 
+    def test_readme_worktree_note_matches_receipt(self) -> None:
+        readme = self.artifact_dir / "README.md"
+        original_readme = self.mod.README
+        self.mod.README = readme
+        payload = {
+            "status": "accepted",
+            "verdict": "accepted",
+            "operator": "tester",
+            "repository": {"worktree_state": "clean"},
+            "steps": [],
+            "findings": [],
+        }
+        try:
+            self.mod._write_readme(payload)
+            self.assertNotIn("Worktree `dirty` at record time", readme.read_text())
+
+            payload["repository"]["worktree_state"] = "dirty"
+            self.mod._write_readme(payload)
+            self.assertIn("Worktree `dirty` at record time", readme.read_text())
+        finally:
+            self.mod.README = original_readme
+
 
 if __name__ == "__main__":
     unittest.main()

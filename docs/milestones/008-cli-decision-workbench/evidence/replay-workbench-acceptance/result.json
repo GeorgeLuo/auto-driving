@@ -555,7 +555,7 @@
   "artifacts": [
     {
       "path": "README.md",
-      "sha256": "3cd07a2bc41f37bc925580c5cf4f2140f929fc2166c4cdc1a7f07ec6f94508c5",
+      "sha256": "cd997052c41b00488c7c53e42f3507b433b4de899ad53cfe31700d1249892906",
       "captured": true
     },
     {
@@ -565,7 +565,7 @@
     },
     {
       "path": "record_session.py",
-      "sha256": "76eac77f523549c5f6eec69a0a6463ccbf02002087b5fffc743853dba82123c7",
+      "sha256": "496f2a642787d61f40838e6e4ca3fcb9d5822f6909b54b0f2ec33568ca6f52c0",
       "captured": true
     },
     {

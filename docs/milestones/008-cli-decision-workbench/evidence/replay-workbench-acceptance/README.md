@@ -75,7 +75,6 @@ captured=`True`, path_redaction=`observed_pass`.
   on one server identity, a failure payload while the invalid source is
   visible, a recovered run snapshot, and a cropped inspect screenshot whose
   local paths were confirmed excluded.
-- Worktree `dirty` at record time is the in-progress evidence packet.
 
 ## Deterministic boundary citations
 

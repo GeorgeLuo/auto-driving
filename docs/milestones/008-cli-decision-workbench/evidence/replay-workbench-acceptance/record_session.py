@@ -647,6 +647,11 @@ def _write_readme(payload: dict[str, Any]) -> None:
         part for part in (_show(browser.get("name")), _show(browser.get("version")))
         if part != "none"
     ) or "none"
+    worktree_note = (
+        "- Worktree `dirty` at record time is the in-progress evidence packet."
+        if repo.get("worktree_state") == "dirty"
+        else ""
+    )
     README.write_text(
         f"""# Replay workbench POC acceptance evidence
 
@@ -711,7 +716,7 @@ captured=`{shot.get("captured")}`, path_redaction=`{shot.get("path_redaction")}`
   on one server identity, a failure payload while the invalid source is
   visible, a recovered run snapshot, and a cropped inspect screenshot whose
   local paths were confirmed excluded.
-- Worktree `dirty` at record time is the in-progress evidence packet.
+{worktree_note}
 
 ## Deterministic boundary citations
 

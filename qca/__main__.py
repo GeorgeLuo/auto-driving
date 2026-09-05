@@ -28,6 +28,11 @@ def _common_options(parser: argparse.ArgumentParser) -> None:
         default=None,
         help="Root to include; may be repeated (default: .).",
     )
+    parser.add_argument(
+        "--python",
+        action="store_true",
+        help="Measure only Python files (.py, .pyi).",
+    )
     parser.add_argument("--json", dest="json_path", type=Path, help="Write machine-readable JSON to this path.")
     parser.add_argument("--markdown", dest="markdown_path", type=Path, help="Write the Markdown summary to this path.")
     parser.add_argument("--html", dest="html_path", type=Path, help="Write a standalone HTML report.")
@@ -40,15 +45,32 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    analyze = subparsers.add_parser("analyze", help="Measure a tree or revision snapshot.")
-    analyze.add_argument("path", nargs="?", default=".")
+    analyze = subparsers.add_parser("analyze", help="Measure files, directories, or a Git revision.")
+    analyze.add_argument(
+        "paths",
+        nargs="*",
+        default=["."],
+        help="Files and/or directories of text to measure (default: .). Git is not required.",
+    )
     analyze.add_argument("--ref", help="Analyze this Git revision instead of the working tree.")
     _common_options(analyze)
 
     diff = subparsers.add_parser("diff", help="Measure a Git base→head change.")
     diff.add_argument("--base", required=True)
     diff.add_argument("--head", required=True)
-    diff.add_argument("--path", default=".")
+    diff.add_argument(
+        "--path",
+        dest="path_flags",
+        action="append",
+        default=[],
+        help="File or directory in the change; may be repeated.",
+    )
+    diff.add_argument(
+        "paths",
+        nargs="*",
+        default=[],
+        help="Additional files and/or directories in the change (default: .).",
+    )
     _common_options(diff)
     diff.add_argument("--evidence", type=Path, help="Attach a qca/verification/v1 record for these exact revisions.")
 
@@ -63,10 +85,16 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _diff_paths(args: argparse.Namespace) -> list[str]:
+    paths = list(args.path_flags or []) + list(args.paths or [])
+    return paths or ["."]
+
+
 def _config(args: argparse.Namespace) -> AnalyzerConfig:
     return AnalyzerConfig(
         include_roots=tuple(args.include_roots or ["."]),
         excluded_globs=tuple(args.excluded_globs),
+        languages=("python",) if getattr(args, "python", False) else (),
     )
 
 
@@ -84,7 +112,7 @@ def main(argv: list[str] | None = None) -> int:
             _write(args.html_path, render_html(json.loads(args.report.read_text(encoding="utf-8"))))
             return 0
         if args.command == "analyze":
-            report = analyze_tree(args.path, ref=args.ref, config=_config(args))
+            report = analyze_tree(args.paths, ref=args.ref, config=_config(args))
             payload = report_to_dict(report)
             markdown = render_markdown(report)
             _write(args.json_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
@@ -93,7 +121,12 @@ def main(argv: list[str] | None = None) -> int:
             print(markdown, end="")
             return 0
         if args.command == "diff":
-            report = analyze_diff(args.base, args.head, path=args.path, config=_config(args))
+            report = analyze_diff(
+                args.base,
+                args.head,
+                path=_diff_paths(args),
+                config=_config(args),
+            )
             if args.evidence:
                 report.factors = attach_verification(
                     report.factors,

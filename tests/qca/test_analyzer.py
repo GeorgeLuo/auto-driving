@@ -8,8 +8,17 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from qca import AnalyzerConfig, analyze_diff, analyze_tree, report_to_dict
+from qca import (
+    AnalysisError,
+    AnalyzerConfig,
+    analyze_diff,
+    analyze_sources,
+    analyze_tree,
+    render_markdown,
+    report_to_dict,
+)
 from qca.backtest import render_backtest_markdown, run_manifest
+from qca.render import render_html
 
 
 class QuantitativeChangeAnalysisTests(unittest.TestCase):
@@ -69,6 +78,109 @@ class QuantitativeChangeAnalysisTests(unittest.TestCase):
             self.assertEqual(payload["head"]["included_file_count"], 1)
             self.assertEqual(payload["head"]["logical_loc"], 2)
             self.assertEqual(len(payload["head"]["callables"]), 1)
+
+    def test_analyze_file_and_directory_without_git(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "app.py").write_text("def run(value):\n    if value:\n        return value\n    return 0\n")
+            (root / "src").mkdir()
+            (root / "src" / "lib.py").write_text("def lib():\n    return 1\n")
+            (root / "tests").mkdir()
+            (root / "tests" / "test_lib.py").write_text("def test_lib():\n    assert True\n")
+
+            file_report = report_to_dict(analyze_tree(root / "app.py"))
+            self.assertEqual(list(item["path"] for item in file_report["source_inventory"]), ["app.py"])
+            self.assertEqual(file_report["source_inventory"][0]["source_class"], "production")
+            self.assertGreater(file_report["head"]["decision_burden"], 0)
+
+            directory = report_to_dict(analyze_tree(root))
+            inventory = {item["path"]: item["source_class"] for item in directory["source_inventory"]}
+            self.assertEqual(inventory["app.py"], "production")
+            self.assertEqual(inventory["tests/test_lib.py"], "tests")
+            self.assertGreater(directory["head"]["included_file_count"], 1)
+
+            combined = report_to_dict(analyze_tree([root / "src", root / "tests"]))
+            combined_paths = {item["path"] for item in combined["source_inventory"]}
+            self.assertEqual(combined_paths, {"src/lib.py", "tests/test_lib.py"})
+            classes = {item["path"]: item["source_class"] for item in combined["source_inventory"]}
+            self.assertEqual(classes["src/lib.py"], "production")
+            self.assertEqual(classes["tests/test_lib.py"], "tests")
+
+            with self.assertRaises(AnalysisError):
+                analyze_tree(root / "missing.py")
+
+    def test_python_language_filter_drops_non_python_files(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "app.py").write_text("def run():\n    return 1\n")
+            (root / "tests").mkdir()
+            (root / "tests" / "test_app.py").write_text("def test_run():\n    assert True\n")
+            (root / "README.md").write_text("# notes\n")
+            (root / "view.html").write_text("<p>view</p>\n")
+            (root / "data.json").write_text("{}\n")
+
+            payload = report_to_dict(
+                analyze_tree(root, config=AnalyzerConfig(languages=("python",)))
+            )
+            paths = [item["path"] for item in payload["source_inventory"]]
+            self.assertEqual(paths, ["app.py", "tests/test_app.py"])
+            classes = {item["path"]: item["source_class"] for item in payload["source_inventory"]}
+            self.assertEqual(classes["app.py"], "production")
+            self.assertEqual(classes["tests/test_app.py"], "tests")
+            self.assertTrue(all(item["language"] == "python" for item in payload["source_inventory"]))
+
+            completed = subprocess.run(
+                [sys.executable, "-m", "qca", "analyze", str(root), "--python", "--json", str(root / "out.json")],
+                cwd=Path(__file__).resolve().parents[2],
+                check=False,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            cli = json.loads((root / "out.json").read_text(encoding="utf-8"))
+            self.assertEqual(
+                [item["path"] for item in cli["source_inventory"]],
+                ["app.py", "tests/test_app.py"],
+            )
+            self.assertEqual(cli["configuration"]["languages"], ["python"])
+
+    def test_analyze_sources_measures_in_memory_text(self) -> None:
+        payload = report_to_dict(
+            analyze_sources(
+                {
+                    "app.py": "def run():\n    return 1\n",
+                    "tests/test_app.py": "def test_run():\n    assert True\n",
+                    "README.md": "notes\n",
+                },
+                analyzed_path="memory",
+            )
+        )
+        inventory = {item["path"]: item for item in payload["source_inventory"]}
+        self.assertEqual(payload["identity"]["analyzed_path"], "memory")
+        self.assertIsNone(payload["identity"]["head_sha"])
+        self.assertEqual(inventory["app.py"]["source_class"], "production")
+        self.assertEqual(inventory["tests/test_app.py"]["source_class"], "tests")
+        self.assertFalse(inventory["README.md"]["included"])
+        self.assertEqual(payload["head"]["included_file_count"], 2)
+        self.assertGreater(payload["head"]["logical_loc"], 0)
+
+    def test_cli_analyzes_a_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            target = root / "app.py"
+            target.write_text("def run():\n    return 1\n")
+            completed = subprocess.run(
+                [sys.executable, "-m", "qca", "analyze", str(target)],
+                cwd=Path(__file__).resolve().parents[2],
+                check=False,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertIn("app.py", completed.stdout)
+            self.assertIn("production", completed.stdout)
 
     def test_git_diff_reports_changed_shape_and_actionable_targets(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -131,13 +243,13 @@ class QuantitativeChangeAnalysisTests(unittest.TestCase):
                 first["identity"]["working_tree_digest"],
                 changed["identity"]["working_tree_digest"],
             )
-            (root / "invalid.bin").write_bytes(b"\xff")
-            invalid_first = report_to_dict(analyze_tree(root))
-            (root / "invalid.bin").write_bytes(b"\xfe")
-            invalid_second = report_to_dict(analyze_tree(root))
+            (root / "notes.txt").write_text("one\n", encoding="utf-8")
+            first_notes = report_to_dict(analyze_tree(root))
+            (root / "notes.txt").write_text("two\n", encoding="utf-8")
+            second_notes = report_to_dict(analyze_tree(root))
             self.assertNotEqual(
-                invalid_first["identity"]["working_tree_digest"],
-                invalid_second["identity"]["working_tree_digest"],
+                first_notes["identity"]["working_tree_digest"],
+                second_notes["identity"]["working_tree_digest"],
             )
             completed = subprocess.run(
                 [sys.executable, "-m", "qca", "analyze", str(root)],
@@ -192,6 +304,71 @@ class QuantitativeChangeAnalysisTests(unittest.TestCase):
             self.assertEqual(diff["decision_burden_delta"], 1)
             self.assertTrue(diff["changed_callables"])
             self.assertEqual(diff["changed_callables"][0]["path"], "app.py")
+
+    def test_diff_measures_scattered_file_collections(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self._git(root, "init", "-q")
+            self._git(root, "config", "user.email", "qca@example.test")
+            self._git(root, "config", "user.name", "QCA Tests")
+            (root / "src").mkdir()
+            (root / "tests").mkdir()
+            (root / "src" / "app.py").write_text("def run():\n    return 1\n", encoding="utf-8")
+            (root / "tests" / "test_app.py").write_text("def test_run():\n    return 1\n", encoding="utf-8")
+            (root / "other.py").write_text("OTHER = 1\n", encoding="utf-8")
+            self._git(root, "add", ".")
+            self._git(root, "commit", "-qm", "base")
+            base = self._git(root, "rev-parse", "HEAD").strip()
+            (root / "src" / "app.py").write_text(
+                "def run():\n    if True:\n        return 1\n    return 0\n",
+                encoding="utf-8",
+            )
+            (root / "tests" / "test_app.py").write_text("def test_run():\n    assert True\n", encoding="utf-8")
+            (root / "other.py").write_text("OTHER = 2\n", encoding="utf-8")
+            self._git(root, "add", ".")
+            self._git(root, "commit", "-qm", "head")
+            head = self._git(root, "rev-parse", "HEAD").strip()
+
+            payload = report_to_dict(analyze_diff(base, head, path=[root / "src", root / "tests"]))
+            changed = set(payload["diff"]["changed_files"])
+            self.assertEqual(changed, {"src/app.py", "tests/test_app.py"})
+            classes = {item["path"]: item["source_class"] for item in payload["diff"]["file_changes"]}
+            self.assertEqual(classes["src/app.py"], "production")
+            self.assertEqual(classes["tests/test_app.py"], "tests")
+            self.assertGreater(payload["diff"]["decision_burden_delta"], 0)
+
+            revision = report_to_dict(analyze_tree([root / "src", root / "tests"], ref=head))
+            self.assertEqual(
+                {item["path"] for item in revision["source_inventory"]},
+                {"src/app.py", "tests/test_app.py"},
+            )
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "qca",
+                    "diff",
+                    "--base",
+                    base,
+                    "--head",
+                    head,
+                    "--path",
+                    str(root / "src"),
+                    "--path",
+                    str(root / "tests"),
+                    "--python",
+                ],
+                cwd=Path(__file__).resolve().parents[2],
+                check=False,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertIn("src/app.py", completed.stdout)
+            self.assertIn("tests/test_app.py", completed.stdout)
+            self.assertNotIn("other.py", completed.stdout)
 
     def test_git_diff_treats_rename_as_delete_plus_add_and_keeps_deletion_ranges(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -261,6 +438,70 @@ class QuantitativeChangeAnalysisTests(unittest.TestCase):
             self.assertTrue(payload["states"][0]["diff"]["review_targets"])
             self.assertTrue(payload["execution"]["all_revisions_resolved"])
             self.assertIn("shape is inspectable", render_backtest_markdown(payload))
+
+    def test_production_vs_tests_split_covers_code_and_excludes_docs(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self._git(root, "init", "-q")
+            self._git(root, "config", "user.email", "qca@example.test")
+            self._git(root, "config", "user.name", "QCA Tests")
+            (root / "app.py").write_text("def run():\n    return 1\n", encoding="utf-8")
+            (root / "tests").mkdir()
+            (root / "tests" / "test_app.py").write_text("def test_run():\n    assert True\n", encoding="utf-8")
+            self._git(root, "add", ".")
+            self._git(root, "commit", "-qm", "base")
+            base = self._git(root, "rev-parse", "HEAD").strip()
+            (root / "app.py").write_text(
+                "def run():\n    return 1\n\ndef extra():\n    return 2\n",
+                encoding="utf-8",
+            )
+            (root / "view.html").write_text("<p>view</p>\n", encoding="utf-8")
+            (root / "tests" / "test_app.py").write_text(
+                "def test_run():\n    assert True\n\ndef test_extra():\n    assert True\n",
+                encoding="utf-8",
+            )
+            (root / "tests" / "data.json").write_text("{}\n", encoding="utf-8")
+            (root / "README.md").write_text("notes\n", encoding="utf-8")
+            self._git(root, "add", ".")
+            self._git(root, "commit", "-qm", "head")
+            head = self._git(root, "rev-parse", "HEAD").strip()
+
+            snapshot = report_to_dict(analyze_tree(root))
+            split = snapshot["head"]["production_test_split"]
+            by_class = snapshot["head"]["by_class"]
+            self.assertEqual(split["classes"], ["production", "tests"])
+            self.assertEqual(split["raw_loc"]["production"], by_class["production"]["raw_loc"])
+            self.assertEqual(split["raw_loc"]["tests"], by_class["tests"]["raw_loc"])
+            self.assertEqual(
+                split["raw_loc"]["total"],
+                split["raw_loc"]["production"] + split["raw_loc"]["tests"],
+            )
+            self.assertGreater(split["raw_loc"]["production"], 0)
+            self.assertGreater(split["raw_loc"]["tests"], 0)
+            self.assertEqual(
+                split["raw_loc"]["production_share_permille"] + split["raw_loc"]["tests_share_permille"],
+                1000,
+            )
+            self.assertTrue(
+                any(item["source_class"] == "docs/configuration" for item in snapshot["source_inventory"])
+            )
+
+            report = analyze_diff(base, head, path=root)
+            payload = report_to_dict(report)
+            diff_split = payload["diff"]["production_test_split"]
+            python = diff_split["python"]
+            all_lines = diff_split["all_lines"]
+            self.assertGreater(python["production"]["net_lines"], 0)
+            self.assertGreater(python["tests"]["net_lines"], 0)
+            self.assertEqual(
+                python["total"]["net_lines"],
+                python["production"]["net_lines"] + python["tests"]["net_lines"],
+            )
+            self.assertGreater(all_lines["production"]["net_lines"], python["production"]["net_lines"])
+            self.assertGreater(all_lines["tests"]["net_lines"], python["tests"]["net_lines"])
+            self.assertGreater(payload["diff"]["changed_by_class"]["docs/configuration"]["files"], 0)
+            self.assertIn("Production vs tests", render_markdown(report))
+            self.assertIn("Production vs tests", render_html(payload))
 
     @staticmethod
     def _git(root: Path, *args: str) -> str:

@@ -12,6 +12,7 @@ import fnmatch
 import hashlib
 import io
 import json
+import os
 import platform
 import re
 import subprocess
@@ -21,12 +22,12 @@ import tokenize
 from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass, field
 from pathlib import Path, PurePosixPath
-from typing import Any, Iterable, Sequence
+from typing import Any, Iterable, Mapping, Protocol, Sequence
 
 from .factors import FACTOR_VERSION, compare_factors, measure_factors
 
 
-ANALYZER_VERSION = "0.3.0"
+ANALYZER_VERSION = "0.3.5"
 REPORT_SCHEMA = "qca/report/v1"
 SOURCE_CLASSES = (
     "production",
@@ -38,6 +39,7 @@ SOURCE_CLASSES = (
     "docs/configuration",
     "unknown",
 )
+_PRODUCTION_TEST_CLASSES = ("production", "tests")
 _HUNK_RE = re.compile(
     r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@"
 )
@@ -60,6 +62,7 @@ class AnalyzerConfig:
 
     include_roots: tuple[str, ...] = (".",)
     excluded_globs: tuple[str, ...] = ()
+    languages: tuple[str, ...] = ()
     generated_markers: tuple[str, ...] = _GENERATED_MARKERS
     vendor_markers: tuple[str, ...] = _VENDOR_MARKERS
     lab_roots: tuple[str, ...] = ("lab",)
@@ -70,6 +73,7 @@ class AnalyzerConfig:
         return {
             "include_roots": sorted(self.include_roots),
             "excluded_globs": sorted(self.excluded_globs),
+            "languages": sorted(self.languages),
             "generated_markers": sorted(self.generated_markers),
             "vendor_markers": sorted(self.vendor_markers),
             "lab_roots": sorted(self.lab_roots),
@@ -111,6 +115,7 @@ class SnapshotMetrics:
     public_symbols: list[str] = field(default_factory=list)
     unsupported_files: list[str] = field(default_factory=list)
     syntax_errors: list[dict[str, str]] = field(default_factory=list)
+    production_test_split: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -135,6 +140,7 @@ class DiffMetrics:
     included_deleted_lines: int = 0
     included_churn: int = 0
     changed_by_class: dict[str, dict[str, int]] = field(default_factory=dict)
+    production_test_split: dict[str, Any] = field(default_factory=dict)
     changed_callables: list[dict[str, Any]] = field(default_factory=list)
     new_import_edges: list[str] = field(default_factory=list)
     removed_import_edges: list[str] = field(default_factory=list)
@@ -169,6 +175,27 @@ class Report:
     factors: dict[str, dict[str, Any]] = field(default_factory=dict)
     factor_version: str = FACTOR_VERSION
     configuration: dict[str, list[str]] = field(default_factory=dict)
+
+
+class _SourceReader(Protocol):
+    def files(self) -> list[str]:
+        ...
+
+    def read_text(self, relative_path: str) -> str:
+        ...
+
+
+class _MappingReader:
+    """Read an explicit path → text mapping with no Git dependency."""
+
+    def __init__(self, sources: Mapping[str, str]) -> None:
+        self._sources = {path.replace("\\", "/"): text for path, text in sources.items()}
+
+    def files(self) -> list[str]:
+        return sorted(self._sources)
+
+    def read_text(self, relative_path: str) -> str:
+        return self._sources.get(relative_path.replace("\\", "/"), "")
 
 
 @dataclass(frozen=True)
@@ -281,24 +308,103 @@ class _TreeReader:
 
 
 def analyze_tree(
-    path: str | Path = ".",
+    path: str | Path | Sequence[str | Path] = ".",
     *,
     ref: str | None = None,
     config: AnalyzerConfig | None = None,
 ) -> Report:
-    """Measure one working-tree path or one Git revision."""
+    """Measure files, directories, or one Git revision.
+
+    Git is required only when ``ref`` is set.  Otherwise any file or directory
+    of text can be measured, including trees that are not repositories.
+    Multiple paths may be passed; they are combined so a change spread across
+    the tree can be measured in one report.
+    """
+
+    paths = _as_paths(path)
+    policy = config or AnalyzerConfig()
+    if ref is not None:
+        return _analyze_revision(paths, ref=ref, config=policy)
+    analyzed_path, sources = _sources_from_paths(paths)
+    return analyze_sources(sources, config=policy, analyzed_path=analyzed_path)
+
+
+def _analyze_revision(
+    paths: tuple[Path, ...],
+    *,
+    ref: str,
+    config: AnalyzerConfig,
+) -> Report:
+    if len(paths) == 1:
+        tree = _resolve_tree(paths[0], ref=ref)
+        reader: _SourceReader = _TreeReader(tree)
+        inventory = _inventory(reader, config)
+        head = _measure_snapshot(reader, inventory)
+        identity = _identity(
+            mode="tree",
+            analyzed_path=tree.scope_rel,
+            head_sha=tree.sha,
+            repo_root=tree.repo_root,
+            config=config,
+            working_tree_digest=None,
+        )
+        return Report(
+            identity=identity,
+            source_inventory=inventory,
+            head=head,
+            observations=_observations(head, None, None),
+            factors=measure_factors(_factor_sources(reader, inventory)),
+            configuration=config.canonical(),
+        )
+    repo_root = _find_repo_root(_existing_search_path(paths))
+    if repo_root is None:
+        raise AnalysisError(f"revision mode requires a Git repository: {paths[0]}")
+    sha = _resolve_ref(ref, repo_root)
+    if sha is None:
+        raise AnalysisError(f"cannot resolve revision: {ref}")
+    pathspecs = tuple(_repo_relative(item, repo_root) for item in paths)
+    strip = _common_scope_prefix(pathspecs)
+    sources = _git_scoped_sources(repo_root, sha, pathspecs, strip)
+    analyzed_path = " ".join(pathspecs)
+    reader = _MappingReader(sources)
+    inventory = _inventory(reader, config)
+    head = _measure_snapshot(reader, inventory)
+    return Report(
+        identity=_identity(
+            mode="tree",
+            analyzed_path=analyzed_path,
+            head_sha=sha,
+            repo_root=repo_root,
+            config=config,
+            working_tree_digest=None,
+        ),
+        source_inventory=inventory,
+        head=head,
+        observations=_observations(head, None, None),
+        factors=measure_factors(_factor_sources(reader, inventory)),
+        configuration=config.canonical(),
+    )
+
+
+def analyze_sources(
+    sources: Mapping[str, str],
+    *,
+    config: AnalyzerConfig | None = None,
+    analyzed_path: str = ".",
+) -> Report:
+    """Measure an explicit path → text mapping. Git is not required."""
 
     policy = config or AnalyzerConfig()
-    tree = _resolve_tree(Path(path), ref=ref)
-    reader = _TreeReader(tree)
+    reader = _MappingReader(sources)
     inventory = _inventory(reader, policy)
     head = _measure_snapshot(reader, inventory)
     identity = _identity(
         mode="tree",
-        tree=tree,
-        base_sha=None,
+        analyzed_path=analyzed_path,
+        head_sha=None,
+        repo_root=None,
         config=policy,
-        working_tree_digest=_working_tree_digest(reader, inventory) if tree.ref is None else None,
+        working_tree_digest=_sources_digest(reader, inventory),
     )
     return Report(
         identity=identity,
@@ -314,36 +420,61 @@ def analyze_diff(
     base: str,
     head: str,
     *,
-    path: str | Path = ".",
+    path: str | Path | Sequence[str | Path] = ".",
     config: AnalyzerConfig | None = None,
 ) -> Report:
-    """Measure a reproducible base→head Git change."""
+    """Measure a reproducible base→head Git change.
+
+    ``path`` may be one file or directory, or several scattered collections.
+    """
 
     policy = config or AnalyzerConfig()
-    root_path = Path(path)
-    repo_root = _find_repo_root(root_path)
-    if repo_root is None:
-        raise AnalysisError("diff mode requires a path inside a Git repository")
-    base_tree = _resolve_tree(root_path, ref=base, repo_root=repo_root)
-    head_tree = _resolve_tree(root_path, ref=head, repo_root=repo_root)
-    base_reader = _TreeReader(base_tree)
-    head_reader = _TreeReader(head_tree)
+    paths = _as_paths(path)
+    if len(paths) == 1:
+        root_path = paths[0]
+        repo_root = _find_repo_root(root_path)
+        if repo_root is None:
+            raise AnalysisError("diff mode requires a path inside a Git repository")
+        base_tree = _resolve_tree(root_path, ref=base, repo_root=repo_root)
+        head_tree = _resolve_tree(root_path, ref=head, repo_root=repo_root)
+        base_reader: _SourceReader = _TreeReader(base_tree)
+        head_reader: _SourceReader = _TreeReader(head_tree)
+        analyzed_path = head_tree.scope_rel
+        strip = head_tree.scope_rel
+        pathspecs = (head_tree.scope_rel,)
+        repo_for_identity = head_tree.repo_root
+        base_sha = base_tree.sha or base
+        head_sha = head_tree.sha or head
+    else:
+        repo_root = _find_repo_root(_existing_search_path(paths))
+        if repo_root is None:
+            raise AnalysisError("diff mode requires a path inside a Git repository")
+        pathspecs = tuple(_repo_relative(item, repo_root) for item in paths)
+        strip = _common_scope_prefix(pathspecs)
+        base_sha = _resolve_ref(base, repo_root) or base
+        head_sha = _resolve_ref(head, repo_root) or head
+        base_reader = _MappingReader(_git_scoped_sources(repo_root, base_sha, pathspecs, strip))
+        head_reader = _MappingReader(_git_scoped_sources(repo_root, head_sha, pathspecs, strip))
+        analyzed_path = " ".join(pathspecs)
+        repo_for_identity = repo_root
     base_inventory = _inventory(base_reader, policy)
     head_inventory = _inventory(head_reader, policy)
     base_snapshot = _measure_snapshot(base_reader, base_inventory)
     head_snapshot = _measure_snapshot(head_reader, head_inventory)
     file_diffs = _read_git_diff(
         repo_root=repo_root,
-        base_sha=base_tree.sha or base,
-        head_sha=head_tree.sha or head,
-        scope_rel=head_tree.scope_rel,
+        base_sha=base_sha,
+        head_sha=head_sha,
+        pathspecs=pathspecs,
     )
-    file_diffs = _scope_file_diffs(file_diffs, head_tree.scope_rel)
+    file_diffs = _scope_file_diffs(file_diffs, strip)
     diff = _derive_diff(base_snapshot, head_snapshot, base_inventory, head_inventory, file_diffs)
     identity = _identity(
         mode="diff",
-        tree=head_tree,
-        base_sha=base_tree.sha,
+        analyzed_path=analyzed_path,
+        head_sha=head_sha,
+        repo_root=repo_for_identity,
+        base_sha=base_sha,
         config=policy,
         working_tree_digest=None,
     )
@@ -363,12 +494,93 @@ def analyze_diff(
     )
 
 
-def _factor_sources(reader: _TreeReader, inventory: list[SourceFile]) -> dict[str, str]:
+def _factor_sources(reader: _SourceReader, inventory: list[SourceFile]) -> dict[str, str]:
     return {
         item.path: reader.read_text(item.path)
         for item in inventory
         if item.included and item.language == "python"
     }
+
+
+def _snapshot_production_test_markdown(split: dict[str, Any]) -> list[str]:
+    if not split:
+        return []
+    files = split["files"]
+    raw = split["raw_loc"]
+    effective = split["effective_loc"]
+    return [
+        "",
+        "### Production vs tests",
+        "",
+        "Denominator is `production+tests`. Core snapshot LOC still includes `tooling/scripts` and `experimental/lab`.",
+        "",
+        "| Class | Files | Raw LOC | Raw share | Effective Python LOC | Effective share |",
+        "| --- | ---: | ---: | ---: | ---: | ---: |",
+        (
+            f"| `production` | {files['production']} | {raw['production']} | "
+            f"{format_share_permille(raw['production_share_permille'])} | {effective['production']} | "
+            f"{format_share_permille(effective['production_share_permille'])} |"
+        ),
+        (
+            f"| `tests` | {files['tests']} | {raw['tests']} | "
+            f"{format_share_permille(raw['tests_share_permille'])} | {effective['tests']} | "
+            f"{format_share_permille(effective['tests_share_permille'])} |"
+        ),
+        (
+            f"| total | {files['total']} | {raw['total']} | "
+            f"{format_share_permille(_share_permille(raw['total'], raw['total']))} | {effective['total']} | "
+            f"{format_share_permille(_share_permille(effective['total'], effective['total']))} |"
+        ),
+    ]
+
+
+def _diff_line_split_row(label: str, side: dict[str, int], added_share: int | None, net_share: int | None) -> str:
+    return (
+        f"| {label} | {side['files']} | {side['added_lines']} | {side['deleted_lines']} | "
+        f"{side['net_lines']} | {format_share_permille(added_share)} | {format_share_permille(net_share)} |"
+    )
+
+
+def _diff_production_test_markdown(split: dict[str, Any]) -> list[str]:
+    if not split:
+        return []
+    all_lines = split["all_lines"]
+    python = split["python"]
+    return [
+        "",
+        "### Production vs tests",
+        "",
+        production_test_split_summary(split),
+        "",
+        "Core churn still includes `tooling/scripts` and `experimental/lab`. Docs are a separate class.",
+        "",
+        "| Class | Files | Added | Deleted | Net | Added share | Net share |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+        _diff_line_split_row(
+            "`production` all lines",
+            all_lines["production"],
+            all_lines["production_added_share_permille"],
+            all_lines["production_net_share_permille"],
+        ),
+        _diff_line_split_row(
+            "`tests` all lines",
+            all_lines["tests"],
+            all_lines["tests_added_share_permille"],
+            all_lines["tests_net_share_permille"],
+        ),
+        _diff_line_split_row(
+            "`production` Python",
+            python["production"],
+            python["production_added_share_permille"],
+            python["production_net_share_permille"],
+        ),
+        _diff_line_split_row(
+            "`tests` Python",
+            python["tests"],
+            python["tests_added_share_permille"],
+            python["tests_net_share_permille"],
+        ),
+    ]
 
 
 def report_to_dict(report: Report) -> dict[str, Any]:
@@ -433,6 +645,7 @@ def render_markdown(report: Report) -> str:
             lines.append(
                 f"| `{source_class}` | {values['files']} | {values['raw_loc']} | {values['effective_loc']} |"
             )
+    lines.extend(_snapshot_production_test_markdown(payload["head"].get("production_test_split") or {}))
     if payload["diff"] is not None:
         diff = payload["diff"]
         lines.extend(
@@ -481,6 +694,7 @@ def render_markdown(report: Report) -> str:
                 lines.append(
                     f"| `{source_class}` | {values['files']} | {values['added_lines']} | {values['deleted_lines']} |"
                 )
+        lines.extend(_diff_production_test_markdown(diff.get("production_test_split") or {}))
         targets = diff["review_targets"]
         lines.extend(
             [
@@ -630,16 +844,20 @@ def _git_bytes(args: Sequence[str], *, cwd: Path | None) -> bytes:
     return completed.stdout
 
 
-def _inventory(reader: _TreeReader, config: AnalyzerConfig) -> list[SourceFile]:
+def _inventory(reader: _SourceReader, config: AnalyzerConfig) -> list[SourceFile]:
     inventory: list[SourceFile] = []
+    allowed_languages = set(config.languages)
     for relative in reader.files():
+        language = _language_for(relative)
+        if allowed_languages and language not in allowed_languages:
+            continue
         text = reader.read_text(relative)
         source_class = classify_source(relative, text, config)
         inventory.append(
             SourceFile(
                 path=relative,
                 source_class=source_class,
-                language=_language_for(relative),
+                language=language,
                 included=(
                     _under_include_root(relative, config.include_roots)
                     and _included(relative, source_class, config)
@@ -718,6 +936,7 @@ def _language_for(path: str) -> str:
     suffix = PurePosixPath(path).suffix.lower()
     return {
         ".py": "python",
+        ".pyi": "python",
         ".js": "javascript",
         ".ts": "typescript",
         ".tsx": "typescript",
@@ -733,7 +952,139 @@ def _language_for(path: str) -> str:
     }.get(suffix, "other")
 
 
-def _measure_snapshot(reader: _TreeReader, inventory: list[SourceFile]) -> SnapshotMetrics:
+def format_share_permille(value: int | None) -> str:
+    """Render a 0-1000 permille share as a one-decimal percentage, or n/a."""
+
+    if value is None:
+        return "n/a"
+    return f"{value / 10:.1f}%"
+
+
+def _share_permille(part: int, total: int) -> int | None:
+    """Return part/total as rounded permille, or None when total is 0."""
+
+    if total == 0:
+        return None
+    if total < 0:
+        part = -part
+        total = -total
+    return (part * 1000 + total // 2) // total
+
+
+def _loc_share_block(production: int, tests: int) -> dict[str, int | None]:
+    total = production + tests
+    return {
+        "production": production,
+        "tests": tests,
+        "total": total,
+        "production_share_permille": _share_permille(production, total),
+        "tests_share_permille": _share_permille(tests, total),
+    }
+
+
+def _line_counts(files: int, added_lines: int, deleted_lines: int) -> dict[str, int]:
+    return {
+        "files": files,
+        "added_lines": added_lines,
+        "deleted_lines": deleted_lines,
+        "net_lines": added_lines - deleted_lines,
+    }
+
+
+def _diff_line_split(sides: dict[str, dict[str, int]]) -> dict[str, Any]:
+    production = sides["production"]
+    tests = sides["tests"]
+    total = _line_counts(
+        production["files"] + tests["files"],
+        production["added_lines"] + tests["added_lines"],
+        production["deleted_lines"] + tests["deleted_lines"],
+    )
+    return {
+        "production": production,
+        "tests": tests,
+        "total": total,
+        "production_added_share_permille": _share_permille(
+            production["added_lines"], total["added_lines"]
+        ),
+        "tests_added_share_permille": _share_permille(tests["added_lines"], total["added_lines"]),
+        "production_net_share_permille": _share_permille(production["net_lines"], total["net_lines"]),
+        "tests_net_share_permille": _share_permille(tests["net_lines"], total["net_lines"]),
+    }
+
+
+def snapshot_production_test_split(by_class: dict[str, dict[str, int]]) -> dict[str, Any]:
+    """Derive production vs tests size shares from a snapshot class table."""
+
+    production = by_class.get("production") or {"files": 0, "raw_loc": 0, "effective_loc": 0}
+    tests = by_class.get("tests") or {"files": 0, "raw_loc": 0, "effective_loc": 0}
+    return {
+        "classes": list(_PRODUCTION_TEST_CLASSES),
+        "denominator": "production+tests",
+        "files": _loc_share_block(production.get("files", 0), tests.get("files", 0)),
+        "raw_loc": _loc_share_block(production.get("raw_loc", 0), tests.get("raw_loc", 0)),
+        "effective_loc": _loc_share_block(
+            production.get("effective_loc", 0), tests.get("effective_loc", 0)
+        ),
+    }
+
+
+def diff_production_test_split(file_changes: list[dict[str, Any]]) -> dict[str, Any]:
+    """Derive production vs tests added/deleted/net shares, all-line and Python."""
+
+    all_sides = {
+        name: {"files": 0, "added_lines": 0, "deleted_lines": 0} for name in _PRODUCTION_TEST_CLASSES
+    }
+    python_sides = {
+        name: {"files": 0, "added_lines": 0, "deleted_lines": 0} for name in _PRODUCTION_TEST_CLASSES
+    }
+    for item in file_changes:
+        source_class = item.get("source_class")
+        if source_class not in all_sides:
+            continue
+        all_sides[source_class]["files"] += 1
+        all_sides[source_class]["added_lines"] += int(item.get("added_lines", 0))
+        all_sides[source_class]["deleted_lines"] += int(item.get("deleted_lines", 0))
+        if item.get("language") == "python":
+            python_sides[source_class]["files"] += 1
+            python_sides[source_class]["added_lines"] += int(item.get("added_lines", 0))
+            python_sides[source_class]["deleted_lines"] += int(item.get("deleted_lines", 0))
+    return {
+        "classes": list(_PRODUCTION_TEST_CLASSES),
+        "denominator": "production+tests",
+        "all_lines": _diff_line_split(
+            {
+                name: _line_counts(values["files"], values["added_lines"], values["deleted_lines"])
+                for name, values in all_sides.items()
+            }
+        ),
+        "python": _diff_line_split(
+            {
+                name: _line_counts(values["files"], values["added_lines"], values["deleted_lines"])
+                for name, values in python_sides.items()
+            }
+        ),
+    }
+
+
+def production_test_split_summary(split: dict[str, Any]) -> str:
+    """One-line production vs tests observation for Markdown and backtests."""
+
+    python = split["python"]
+    all_lines = split["all_lines"]
+    return (
+        "Production vs tests (denominator production+tests): "
+        f"Python net production {python['production']['net_lines']} "
+        f"({format_share_permille(python['production_net_share_permille'])}), "
+        f"tests {python['tests']['net_lines']} "
+        f"({format_share_permille(python['tests_net_share_permille'])}); "
+        f"all-line net production {all_lines['production']['net_lines']} "
+        f"({format_share_permille(all_lines['production_net_share_permille'])}), "
+        f"tests {all_lines['tests']['net_lines']} "
+        f"({format_share_permille(all_lines['tests_net_share_permille'])})."
+    )
+
+
+def _measure_snapshot(reader: _SourceReader, inventory: list[SourceFile]) -> SnapshotMetrics:
     metrics = SnapshotMetrics(
         file_count=len(inventory),
         included_file_count=sum(item.included for item in inventory),
@@ -775,6 +1126,7 @@ def _measure_snapshot(reader: _TreeReader, inventory: list[SourceFile]) -> Snaps
     )
     for bucket in metrics.by_class.values():
         bucket.setdefault("logical_loc", 0)
+    metrics.production_test_split = snapshot_production_test_split(metrics.by_class)
     return metrics
 
 
@@ -920,9 +1272,9 @@ def _read_git_diff(
     repo_root: Path,
     base_sha: str,
     head_sha: str,
-    scope_rel: str,
+    pathspecs: Sequence[str],
 ) -> list[DiffFile]:
-    scope = [] if scope_rel in {"", "."} else [scope_rel]
+    scope = [item for item in pathspecs if item not in {"", "."}]
     numstat = _git(
         ["diff", "--no-ext-diff", "--no-renames", "--numstat", base_sha, head_sha, "--", *scope],
         cwd=repo_root,
@@ -1108,6 +1460,7 @@ def _derive_diff(
         included_deleted_lines=included_deleted_lines,
         included_churn=included_added_lines + included_deleted_lines,
         changed_by_class={key: by_class[key] for key in sorted(by_class)},
+        production_test_split=diff_production_test_split(file_changes),
         changed_callables=changed_callables,
         new_import_edges=new_import_edges,
         removed_import_edges=removed_import_edges,
@@ -1321,6 +1674,7 @@ def _observations(
         {"id": "snapshot.decision_burden", "value": head.decision_burden},
         {"id": "snapshot.unsupported_files", "value": head.unsupported_files},
         {"id": "snapshot.syntax_errors", "value": head.syntax_errors},
+        {"id": "snapshot.production_test_split", "value": head.production_test_split},
     ]
     if base is not None and diff is not None:
         observations.extend(
@@ -1338,6 +1692,7 @@ def _observations(
                 {"id": "diff.new_import_edges", "value": diff.new_import_edges},
                 {"id": "diff.public_symbols_added", "value": diff.public_symbols_added},
                 {"id": "diff.public_symbols_removed", "value": diff.public_symbols_removed},
+                {"id": "diff.production_test_split", "value": diff.production_test_split},
             ]
         )
     return observations
@@ -1346,10 +1701,12 @@ def _observations(
 def _identity(
     *,
     mode: str,
-    tree: _ResolvedTree,
-    base_sha: str | None,
+    analyzed_path: str,
+    head_sha: str | None,
+    repo_root: Path | None,
     config: AnalyzerConfig,
     working_tree_digest: str | None,
+    base_sha: str | None = None,
 ) -> ReportIdentity:
     policy_json = _canonical_json(config.canonical())
     return ReportIdentity(
@@ -1357,16 +1714,16 @@ def _identity(
         schema=REPORT_SCHEMA,
         mode=mode,
         base_sha=base_sha,
-        head_sha=tree.sha,
+        head_sha=head_sha,
         working_tree_digest=working_tree_digest,
-        analyzed_path=tree.scope_rel,
+        analyzed_path=analyzed_path,
         config_hash=_sha256(policy_json),
         exclusion_hash=_sha256(_canonical_json({"excluded_globs": sorted(config.excluded_globs)})),
         tool_versions={
             "python": platform.python_version(),
             "ast": "stdlib",
             "tokenize": "stdlib",
-            "git": _git_version(tree.repo_root),
+            "git": _git_version(repo_root),
         },
     )
 
@@ -1380,22 +1737,132 @@ def _git_version(repo_root: Path | None) -> str:
         return "unavailable"
 
 
-def _working_tree_digest(reader: _TreeReader, inventory: list[SourceFile]) -> str:
-    """Hash the measured working-tree contents, including untracked files."""
+def _as_paths(path: str | Path | Sequence[str | Path]) -> tuple[Path, ...]:
+    if isinstance(path, (str, Path)):
+        return (Path(path),)
+    paths = tuple(Path(item) for item in path)
+    if not paths:
+        raise AnalysisError("at least one file or directory is required")
+    return paths
 
+
+def _existing_search_path(paths: Sequence[Path]) -> Path:
+    for path in paths:
+        if path.exists():
+            return path
+    return Path(".")
+
+
+def _repo_relative(path: Path, repo_root: Path) -> str:
+    absolute = path.expanduser().resolve()
+    try:
+        relative = absolute.relative_to(repo_root.resolve())
+    except ValueError as exc:
+        raise AnalysisError(f"path is outside repository: {path}") from exc
+    return relative.as_posix() or "."
+
+
+def _common_scope_prefix(scopes: Sequence[str]) -> str:
+    parts = ["." if item in {"", "."} else item.replace("\\", "/").strip("/") for item in scopes]
+    if not parts or any(item == "." for item in parts):
+        return "."
+    if len(parts) == 1:
+        return parts[0]
+    try:
+        common = os.path.commonpath(parts).replace("\\", "/")
+    except ValueError:
+        return "."
+    return common or "."
+
+
+def _git_scoped_sources(
+    repo_root: Path,
+    sha: str,
+    scopes: Sequence[str],
+    strip: str,
+) -> dict[str, str]:
+    sources: dict[str, str] = {}
+    strip_path = None if strip in {"", "."} else PurePosixPath(strip)
+    for spec in scopes:
+        pathspec = "." if spec in {"", "."} else spec
+        try:
+            archive = _git_bytes(["archive", "--format=tar", sha, "--", pathspec], cwd=repo_root)
+        except AnalysisError:
+            continue
+        with tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as tar:
+            for member in tar.getmembers():
+                if not member.isfile():
+                    continue
+                name = PurePosixPath(member.name)
+                if strip_path is None:
+                    relative = name.as_posix()
+                else:
+                    try:
+                        relative = name.relative_to(strip_path).as_posix()
+                    except ValueError:
+                        relative = name.name if name == strip_path else name.as_posix()
+                extracted = tar.extractfile(member)
+                if extracted is not None:
+                    sources[relative] = extracted.read().decode("utf-8", errors="replace")
+    return sources
+
+
+def _read_input_text(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        return path.read_bytes().decode("utf-8", errors="replace")
+
+
+def _iter_input_files(root: Path) -> list[Path]:
+    if root.is_file():
+        return [root]
+    if not root.is_dir():
+        raise AnalysisError(f"path does not exist: {root}")
+    files: list[Path] = []
+    for path in root.rglob("*"):
+        if not path.is_file():
+            continue
+        if ".git" in path.parts or "__pycache__" in path.parts:
+            continue
+        files.append(path)
+    return files
+
+
+def _sources_from_paths(paths: Sequence[Path]) -> tuple[str, dict[str, str]]:
+    resolved: list[Path] = []
+    for path in paths:
+        absolute = path.expanduser().resolve()
+        if not absolute.exists():
+            raise AnalysisError(f"path does not exist: {path}")
+        resolved.append(absolute)
+    analyzed_path = " ".join(path.as_posix() for path in paths)
+    if len(resolved) == 1:
+        root = resolved[0]
+        if root.is_file():
+            return analyzed_path, {root.name: _read_input_text(root)}
+        return analyzed_path, {
+            file.relative_to(root).as_posix(): _read_input_text(file) for file in _iter_input_files(root)
+        }
+    common = Path(os.path.commonpath([str(path) for path in resolved]))
+    if common.is_file():
+        common = common.parent
+    sources: dict[str, str] = {}
+    for root in resolved:
+        for file in _iter_input_files(root):
+            relative = file.relative_to(common).as_posix()
+            if relative in sources:
+                raise AnalysisError(f"duplicate input path: {relative}")
+            sources[relative] = _read_input_text(file)
+    return analyzed_path, sources
+
+
+def _sources_digest(reader: _SourceReader, inventory: list[SourceFile]) -> str:
     digest = hashlib.sha256()
     for item in inventory:
         digest.update(item.path.encode("utf-8"))
         digest.update(b"\0")
-        if reader.tree.ref is None:
-            path = reader.tree.root if reader.tree.root.is_file() else reader.tree.root / item.path
-            try:
-                contents = path.read_bytes()
-            except OSError:
-                contents = reader.read_text(item.path).encode("utf-8")
-        else:
-            contents = reader.read_text(item.path).encode("utf-8")
-        digest.update(contents)
+        digest.update(reader.read_text(item.path).encode("utf-8"))
         digest.update(b"\0")
     return digest.hexdigest()
 

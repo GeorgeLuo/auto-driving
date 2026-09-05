@@ -6,6 +6,8 @@ import html
 import json
 from typing import Any
 
+from .analyzer import format_share_permille, production_test_split_summary
+
 
 def _escape(value: Any) -> str:
     return html.escape(str(value), quote=True)
@@ -19,6 +21,93 @@ def _table(headers: list[str], rows: list[list[Any]]) -> str:
         + "".join("<tr>" + "".join(f"<td>{_escape(item)}</td>" for item in row) + "</tr>" for row in rows)
         + "</tbody></table></div>"
     )
+
+
+def _share(value: Any) -> str:
+    return format_share_permille(value if isinstance(value, int) else None)
+
+
+def _production_test_html(payload: dict[str, Any]) -> list[str]:
+    sections: list[str] = ["<h3>Production vs tests</h3>"]
+    snapshot = payload.get("head", {}).get("production_test_split") or {}
+    if snapshot:
+        files = snapshot["files"]
+        raw = snapshot["raw_loc"]
+        effective = snapshot["effective_loc"]
+        sections.append(
+            "<p>Denominator is production+tests. Core snapshot LOC still includes tooling/scripts and experimental/lab.</p>"
+        )
+        sections.append(_table(
+            ["Class", "Files", "Raw LOC", "Raw share", "Effective Python LOC", "Effective share"],
+            [
+                [
+                    "production",
+                    files["production"],
+                    raw["production"],
+                    _share(raw["production_share_permille"]),
+                    effective["production"],
+                    _share(effective["production_share_permille"]),
+                ],
+                [
+                    "tests",
+                    files["tests"],
+                    raw["tests"],
+                    _share(raw["tests_share_permille"]),
+                    effective["tests"],
+                    _share(effective["tests_share_permille"]),
+                ],
+            ],
+        ))
+    diff = payload.get("diff") or {}
+    split = diff.get("production_test_split") or {}
+    if split:
+        sections.append(f"<p>{_escape(production_test_split_summary(split))}</p>")
+        all_lines = split["all_lines"]
+        python = split["python"]
+        sections.append(_table(
+            ["Class", "Files", "Added", "Deleted", "Net", "Added share", "Net share"],
+            [
+                [
+                    "production all lines",
+                    all_lines["production"]["files"],
+                    all_lines["production"]["added_lines"],
+                    all_lines["production"]["deleted_lines"],
+                    all_lines["production"]["net_lines"],
+                    _share(all_lines["production_added_share_permille"]),
+                    _share(all_lines["production_net_share_permille"]),
+                ],
+                [
+                    "tests all lines",
+                    all_lines["tests"]["files"],
+                    all_lines["tests"]["added_lines"],
+                    all_lines["tests"]["deleted_lines"],
+                    all_lines["tests"]["net_lines"],
+                    _share(all_lines["tests_added_share_permille"]),
+                    _share(all_lines["tests_net_share_permille"]),
+                ],
+                [
+                    "production Python",
+                    python["production"]["files"],
+                    python["production"]["added_lines"],
+                    python["production"]["deleted_lines"],
+                    python["production"]["net_lines"],
+                    _share(python["production_added_share_permille"]),
+                    _share(python["production_net_share_permille"]),
+                ],
+                [
+                    "tests Python",
+                    python["tests"]["files"],
+                    python["tests"]["added_lines"],
+                    python["tests"]["deleted_lines"],
+                    python["tests"]["net_lines"],
+                    _share(python["tests_added_share_permille"]),
+                    _share(python["tests_net_share_permille"]),
+                ],
+            ],
+        ))
+    if len(sections) == 1:
+        return []
+    return sections
 
 
 def render_html(payload: dict[str, Any], *, title: str = "Quantitative change analysis") -> str:
@@ -46,6 +135,7 @@ def render_html(payload: dict[str, Any], *, title: str = "Quantitative change an
                 [key, value["files"], value["added_lines"], value["deleted_lines"]]
                 for key, value in diff["changed_by_class"].items() if value["files"]
             ]))
+            sections.extend(_production_test_html(payload))
             sections.extend(["<details><summary>Changed files</summary>", _table(
                 ["File", "Source class", "Core measured", "Added", "Deleted"],
                 [[item["path"], item["source_class"], item["included"], item["added_lines"], item["deleted_lines"]]
@@ -55,6 +145,7 @@ def render_html(payload: dict[str, Any], *, title: str = "Quantitative change an
             sections.append(_table(["Snapshot measurement", "Value"], [
                 [key, value] for key, value in payload["head"].items() if isinstance(value, int)
             ]))
+            sections.extend(_production_test_html(payload))
         sections.append("<h2>Factors</h2><p>Metrics cover the configured Python scope. Diff candidates point at changed files. Recognized static patterns are inspection leads; behavior evidence is shown separately.</p>")
         for name, factor in payload.get("factors", {}).items():
             sections.extend([f"<h3>{_escape(name.replace('_', ' '))}</h3>", f"<p>Status: {_escape(factor['status'])}</p>"])

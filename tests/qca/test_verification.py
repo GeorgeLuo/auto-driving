@@ -48,6 +48,10 @@ runner.reset()
         self.assertEqual(test_metrics["assertion_count"], 4)
         self.assertEqual(test_metrics["literal_assertion_candidates"], 1)
         self.assertEqual(test_metrics["tautological_assertion_candidates"], 2)
+        self.assertEqual(test_metrics["string_expected_assertion_count"], 0)
+        self.assertEqual(test_metrics["formatted_literal_assertion_count"], 0)
+        self.assertEqual(test_metrics["private_import_count"], 0)
+        self.assertEqual(test_metrics["private_helper_call_count"], 0)
         self.assertEqual(test_metrics["candidate_assertion_count"], 3)
         self.assertEqual(len(factors["test_effectiveness"]["findings"]), 3)
         self.assertTrue(all(item["message"] for item in factors["test_effectiveness"]["findings"]))
@@ -67,6 +71,50 @@ runner.reset()
         self.assertTrue(all(item["message"] for item in factors["lifecycle"]["findings"]))
         self.assertTrue(
             any("symmetry" in limitation.lower() for limitation in factors["lifecycle"]["limitations"])
+        )
+
+    def test_reports_string_expected_and_private_surface_candidates(self) -> None:
+        factors = analyze_verification(
+            {
+                "pkg/app.py": "def run():\n    return 1\n\ndef _hidden():\n    return 2\n",
+                "tests/test_app.py": """
+from pkg.app import run
+from pkg.app import _hidden
+
+def _local_helper():
+    return run()
+
+class Suite:
+    def test_behavior(self):
+        markdown = "report"
+        self.assertEqual(run(), 1)
+        self.assertGreater(run(), 0)
+        self.assertIn("| production | 8 | 80.0% |", markdown)
+        self.assertIn("Production vs tests", markdown)
+        self.assertEqual(_hidden(), 2)
+        _local_helper()
+""",
+            }
+        )
+        metrics = factors["test_effectiveness"]["metrics"]
+        kinds = [item["kind"] for item in factors["test_effectiveness"]["findings"]]
+        self.assertEqual(metrics["assertion_count"], 5)
+        self.assertEqual(metrics["literal_assertion_candidates"], 0)
+        self.assertEqual(metrics["string_expected_assertion_count"], 2)
+        self.assertEqual(metrics["formatted_literal_assertion_count"], 1)
+        self.assertEqual(metrics["private_import_count"], 1)
+        self.assertEqual(metrics["private_import_test_file_count"], 1)
+        self.assertEqual(metrics["private_helper_call_count"], 1)
+        self.assertEqual(kinds.count("formatted_literal_assertion"), 1)
+        self.assertEqual(kinds.count("string_expected_assertion"), 1)
+        self.assertEqual(kinds.count("private_import"), 1)
+        self.assertEqual(kinds.count("private_helper_call"), 1)
+        self.assertFalse(
+            any(item["path"] == "pkg/app.py" for item in factors["test_effectiveness"]["findings"])
+        )
+        self.assertTrue(all(item["message"] for item in factors["test_effectiveness"]["findings"]))
+        self.assertTrue(
+            any("private production" in limitation.lower() for limitation in factors["test_effectiveness"]["limitations"])
         )
 
     def test_dynamic_factors_are_explicitly_unmeasured_without_evidence(self) -> None:

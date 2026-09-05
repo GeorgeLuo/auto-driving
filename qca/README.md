@@ -9,13 +9,25 @@ From the repository root:
 
 ```sh
 python3 -m qca analyze .
-python3 -m qca analyze --ref HEAD
+python3 -m qca analyze path/to/file.py
+python3 -m qca analyze path/to/dir
+python3 -m qca analyze src tests
+python3 -m qca analyze qca tests/qca --python
+python3 -m qca analyze qca/analyzer.py tests/qca --python
+python3 -m qca analyze --ref HEAD qca tests/qca
 python3 -m qca diff --base <base-ref> --head <head-ref>
+python3 -m qca diff --base <base-ref> --head <head-ref> --python qca tests/qca
 python3 -m qca diff --base <base-ref> --head <head-ref> --json report.json --markdown report.md
 python3 -m qca diff --base <base-ref> --head <head-ref> --json report.json --html report.html
 python3 -m qca render report.json --html report.html
 python3 -m qca backtest --manifest qca/backtests/m008.json
 ```
+
+`analyze` and `diff` accept one or more files and directories, including
+scattered collections, so a change that spans the tree can be measured in one
+report. Git is not required for `analyze` unless `--ref` is set. Multiple
+paths are combined under their common parent so `tests/` still classifies as
+tests. `--python` keeps only `.py` / `.pyi` files.
 
 Use `--include-root` repeatedly to bound core measurements to an ownership
 area.  The source inventory still classifies files outside those roots so
@@ -43,7 +55,7 @@ candidates and expandable raw data.
 | `functionality` | Stub and obvious unreachable-code patterns | Inspect intentional hooks and protocols before removing code |
 | `coupling` | Resolved local edges, fan-in/fan-out, cycles | Dependencies to examine, including relative imports |
 | `contracts` | Public signatures, literal return-key shapes, CLI declarations | Static surface changes; no runtime compatibility proof |
-| `test_effectiveness` | Literal/same-operand assertion candidates | Runtime coverage and mutation evidence can be attached separately |
+| `test_effectiveness` | Literal/same-operand assertion candidates; string-expected and formatted-literal assertions; private production imports/calls from tests | Runtime coverage and mutation evidence can be attached separately |
 | `end_to_end` | Attached differential execution evidence | `not_measured` until evidence is supplied |
 | `ui_behavior` | Attached browser evidence | API or static HTML inspection alone does not establish visual behavior |
 | `lifecycle` | Recognized lifecycle sites plus optional execution evidence | Source names alone do not prove cleanup or side-effect boundaries |

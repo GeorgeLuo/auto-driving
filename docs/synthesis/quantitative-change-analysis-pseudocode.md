@@ -411,6 +411,79 @@ Do not add duplication, entropy/surprisal, coverage, an LLM, CI annotations, or
 workflow checks until this slice has been run on a tree and several historical
 M008 transitions.
 
+## Prototype checkpoint — 2026-09-04
+
+The first executable slice is now available under [`qca/`](../../qca/) and is
+being evaluated as a standalone experiment.  It exposes three documented
+commands:
+
+```sh
+python3 -m qca analyze .
+python3 -m qca diff --base <ref> --head <ref>
+python3 -m qca backtest --manifest qca/backtests/m008.json
+```
+
+The M008 manifest samples seven immutable transitions labelled small, medium,
+or large.  The committed [JSON report](artifacts/m008-qca-backtest.json) is the
+machine-readable record and the [Markdown report](artifacts/m008-qca-backtest.md)
+is the operator-facing summary.  The run completed for all seven states with
+analyzer version `0.2.0`; the focused QCA suite covers classification, include
+root behavior, Git diff mapping, reproducibility, and manifest output.
+
+The first readings support a bounded hypothesis rather than a quality score:
+
+- the narrow plugin-selection amendment, closeout, and cumulative-merge states
+  have little or no callable/dependency/public-surface signal, so their
+  semantically important documentation changes are visible primarily through
+  file/class churn;
+- the medium proposal states expose test/tooling/documentation spread and, in
+  the plugin-selection proposal, four additional decision-burden units and
+  seven import edges;
+- the large workbench implementation state exposes a +583 decision-burden
+  delta across 24 changed files, 101 new import edges, and 54 public-symbol
+  additions, giving a reviewer concrete places to inspect instead of only a
+  large line count;
+- the acceptance state is structurally distinct from implementation: most of
+  its 2,750 added lines are classified as documentation/evidence, while its
+  code-facing delta is comparatively small.
+
+Each diff also emits deterministic `review_targets` for changed callables,
+new import edges, public-surface changes, and head syntax errors.  These are
+inspection prompts for an operator or agent, not defect labels or gates.  The
+backtest adds evidence-linked operator questions while keeping qualitative
+interpretation and workflow decisions outside the analyzer.
+
+The run also exposed an implementation constraint: excluded files must remain
+classified for change attribution, but must not be tokenized as core metrics.
+The prototype now preserves that distinction, which keeps the full seven-state
+backtest repeatable while retaining documentation/evidence visibility.
+For now, Git renames are represented explicitly as a deletion plus an addition;
+stable moved-callable matching remains an open experiment question.
+
+### Research-pass synthesis
+
+Two independent passes compared the same immutable revisions with the same
+analyzer output.  Both confirmed the gradient and byte-level reproducibility,
+and both identified the same first-order repairs: align scoped paths, separate
+all-file churn from configured core churn, make rename/deletion handling
+explicit, and avoid presenting every standard-library import or simple added
+callable as a separate alert.  The orchestrator applied those repairs and
+restarted the run.
+
+The resulting report is more useful as a handoff because it pairs:
+
+1. raw observations and source-class attribution for the operator;
+2. historical outcomes revealed only after each reading; and
+3. deterministic review targets/questions that an agent can turn into an
+   inspection plan.
+
+The passes also establish a boundary for this experiment: the Python-first
+signals do not explain M008's browser-visible interaction discoveries by
+themselves.  That is a reason to evaluate an eventual qualitative/browser
+adapter separately, not a reason to turn static measurements into a quality
+gate.  No workflow, proposal, amendment, CI, or blocking behavior changes in
+this PR.
+
 ## Open decisions made explicit by the pseudocode
 
 - What exactly counts as logical versus effective LOC?

@@ -1,0 +1,15 @@
+diff --git a/cli/automa_cli/workbench_runner.py b/cli/automa_cli/workbench_runner.py
+--- a/cli/automa_cli/workbench_runner.py
++++ b/cli/automa_cli/workbench_runner.py
+@@ -124,10 +124,8 @@
+ def _state_action_set(phase: str) -> list[str]:
+-    if phase == "idle":
++    if phase in ("idle", "completed", "failed", "cancelled"):
+         return ["validate", "refresh_plugins", "select_plugins", "start", "reset", "set_loop"]
+     if phase == "running":
+         return ["pause", "seek", "cancel", "reset", "set_cadence", "set_loop", "select_plugins"]
+     if phase == "paused":
+         return ["resume", "step", "seek", "cancel", "reset", "set_cadence", "set_loop", "select_plugins"]
+-    if phase in {"completed", "failed", "cancelled"}:
+-        return ["validate", "refresh_plugins", "select_plugins", "start", "reset", "set_loop"]
+     return []

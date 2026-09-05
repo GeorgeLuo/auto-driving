@@ -1,0 +1,36 @@
+{
+  "schema": "qca/m008-backtest/v1",
+  "path": ".",
+  "config": {
+    "include_roots": ["cli", "autonomy", "implementations", "tests", "scripts"],
+    "excluded_globs": []
+  },
+  "experiment": {
+    "hypothesis": "The same QCA 0.3 factor report can inspect an in-progress cumulative milestone PR (M006 / PR 70) and separate decision-core expansion from Automa surface work without a quality score.",
+    "scope_note": "Three-dot PR 70 contribution uses merge-base(main, milestone head). Individual implementation merges use each squash's first parent. Current frontier (cross-environment evidence) is not in this head.",
+    "execution_contract": "Static reports repeat for identical revisions, factor definitions, Python/Git versions and configuration."
+  },
+  "states": [
+    {
+      "id": "foundation-impl",
+      "scale": "large",
+      "base": "c942ab8f1f3b5b0b3cab0f199b68e892136244ac",
+      "head": "7830cb0c509eb6c601bf74f707d8caeca177ed8d",
+      "description": "PR 74 squash: modular shadow action proposal foundation (DecisionData, proposals, mixer, authority)."
+    },
+    {
+      "id": "surfaces-impl",
+      "scale": "large",
+      "base": "beb9c3d25e4a7c2e66ab91bbc939f6fc811c1aa8",
+      "head": "0206c860a7a3aad38045b570f31784c22dac00e8",
+      "description": "PR 80 squash: Automa shadow decision surfaces (stage/info/apply/stream/view)."
+    },
+    {
+      "id": "cumulative-pr70",
+      "scale": "large",
+      "base": "619a290bb693e22dd1c75ff2991d2f24bda44899",
+      "head": "6da43547d16195ccc70b4804b8229cc5d2bed057",
+      "description": "PR 70 three-dot contribution: merge-base with main through current M006 milestone head, including handoff paperwork."
+    }
+  ]
+}

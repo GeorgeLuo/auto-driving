@@ -25,7 +25,7 @@ problem—not a growing research queue. See
 | Note | Status | Area | Candidate application |
 | --- | --- | --- | --- |
 | [Locality and length generalization in visual reasoning](locality-and-length-generalization.md) | candidate | Perception | Coarse global context, selective local inspection, and bounded sequential state |
-| [Quantitative change analysis — v0 pseudocode](quantitative-change-analysis-pseudocode.md) | candidate | Engineering workflow research | Standalone deterministic change measurements before qualitative or workflow integration |
+| [Quantitative change analysis — v0 pseudocode](quantitative-change-analysis-pseudocode.md) | evaluating | Engineering workflow research | Standalone deterministic change measurements; M008 factor experiment in [m008-qca-refined.md](artifacts/m008-qca-refined.md); in-progress M006 PR 70 reading in [m006-qca-pr70.md](artifacts/m006-qca-pr70.md) |
 | [PiRacer physical perception strategies](piracer-physical-perception-strategies.md) | rejected | Physical perception | Floor-continuity did not improve two material behavioral measures on labeled physical frames; keep packaged floor-plane control ([004 closeout](../milestones/004-physical-perception-parity/closeout.md)) |
 
 ## Note Shape

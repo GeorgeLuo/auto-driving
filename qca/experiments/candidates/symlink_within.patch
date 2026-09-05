@@ -1,0 +1,8 @@
+diff --git a/cli/automa_cli/workbench_source.py b/cli/automa_cli/workbench_source.py
+--- a/cli/automa_cli/workbench_source.py
++++ b/cli/automa_cli/workbench_source.py
+@@ -543,3 +543 @@ def _path_contains_symlink(path: Path, root: Path) -> bool:
+-        try:
+-            current.relative_to(root)
+-        except ValueError:
++        if not _is_within(current, root):

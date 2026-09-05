@@ -1,0 +1,110 @@
+{
+  "schema": "qca/m008-backtest/v1",
+  "path": ".",
+  "config": {
+    "include_roots": [
+      "cli",
+      "autonomy",
+      "implementations",
+      "tests",
+      "scripts"
+    ],
+    "excluded_globs": [
+      "docs/milestones/008-cli-decision-workbench/evidence/**"
+    ]
+  },
+  "experiment": {
+    "hypothesis": "A small, interpretable vector of base-to-head observations will make implementation evolution easier to inspect than raw diff size alone.",
+    "scale_questions": {
+      "small": "Do the readings remain useful when a change is semantically important but structurally narrow?",
+      "medium": "Do changed files, callables, and dependency deltas expose the intended implementation boundary?",
+      "large": "Do the readings separate product expansion from broad plumbing, evidence, or closeout surface?"
+    },
+    "provisional_signal_assessment": [
+      {
+        "signal": "source-class attribution",
+        "status": "useful",
+        "evidence": "Separates production, tests, tooling, evidence, and documentation in the M008 gradient."
+      },
+      {
+        "signal": "decision-burden delta",
+        "status": "useful-context",
+        "evidence": "Highlights the +583 implementation transition and stays neutral on whether the increase is justified."
+      },
+      {
+        "signal": "changed callables and grouped review targets",
+        "status": "actionable-with-grouping",
+        "evidence": "Points agents at changed owners while avoiding one prompt for every simple added callable."
+      },
+      {
+        "signal": "dependency/public-surface deltas",
+        "status": "promising",
+        "evidence": "Provides concrete follow-up questions after standard-library imports and constants are de-emphasized."
+      },
+      {
+        "signal": "browser-visible behavior",
+        "status": "not-covered",
+        "evidence": "The static Python-first pass cannot explain M008 visual interaction or playback findings."
+      }
+    ],
+    "execution_contract": "The same analyzer version, manifest, and immutable Git revisions must reproduce the same JSON observations."
+  },
+  "states": [
+    {
+      "id": "m008-proposal",
+      "scale": "medium",
+      "base": "3e0730d1732e65ca22d2b58ad9a3bb87035ef74d",
+      "head": "09687f19acd61b286378fb65f3db915ce5e50d51",
+      "description": "Opening the bounded perception-memory workbench proposal.",
+      "actual_outcome": "Proposal established the initial replay/workbench contract; no product implementation was present yet."
+    },
+    {
+      "id": "plugin-selection-proposal",
+      "scale": "medium",
+      "base": "09687f19acd61b286378fb65f3db915ce5e50d51",
+      "head": "1189002447802442e857da8f5d9c2663ff85b86d",
+      "description": "Adding the operator-selected plugin proposal.",
+      "actual_outcome": "Plugin-selection requirements expanded proposal, tests, tooling, and documentation and led to a later live-selection amendment."
+    },
+    {
+      "id": "plugin-selection-amendment",
+      "scale": "small",
+      "base": "1189002447802442e857da8f5d9c2663ff85b86d",
+      "head": "5cf51585ac7951ea023a2a86fed786913daf626f",
+      "description": "Amending the accepted journey for live plugin selection.",
+      "actual_outcome": "A narrow contract amendment made plugin toggles usable during playback."
+    },
+    {
+      "id": "workbench-implementation",
+      "scale": "large",
+      "base": "b1e97ad8bd9c6ea7759bc7fa60331ec0a45d20d7",
+      "head": "27b3c343de311e60219abc9b18b4ef293a28b445",
+      "description": "Implementing the replay workbench and its selected seams.",
+      "actual_outcome": "The workbench implementation added the replay UI, plugin selection, source/session handling, and associated tests and lab seams."
+    },
+    {
+      "id": "poc-acceptance",
+      "scale": "large",
+      "base": "8dca162ee776267091b1bf4ac23f188e19d471b6",
+      "head": "6c2f26a2ce34a5f38431e6b21d1269ea306f526d",
+      "description": "Recording the bounded Chrome replay acceptance evidence.",
+      "actual_outcome": "Acceptance added browser-run evidence and test-side validation; most added surface was evidence/documentation rather than product code."
+    },
+    {
+      "id": "closeout",
+      "scale": "small",
+      "base": "05d3c3c9ee7cacc523295d7a54b73c5c29343450",
+      "head": "9d3fa1d1334e747656e5874dc19921a062616bce",
+      "description": "Publishing the M008 closeout packet.",
+      "actual_outcome": "Closeout published the milestone packet and durable evidence without changing product behavior."
+    },
+    {
+      "id": "cumulative-merge",
+      "scale": "small",
+      "base": "9d3fa1d1334e747656e5874dc19921a062616bce",
+      "head": "3fce449d1eb64d408458231163c3f8b9b5c23af3",
+      "description": "Recording the post-closeout reconciliation included in the cumulative merge.",
+      "actual_outcome": "The cumulative merge preserved the accepted work; this selected transition is paperwork/reconciliation, not a second product implementation."
+    }
+  ]
+}

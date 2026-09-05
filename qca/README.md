@@ -43,7 +43,7 @@ candidates and expandable raw data.
 | `functionality` | Stub and obvious unreachable-code patterns | Inspect intentional hooks and protocols before removing code |
 | `coupling` | Resolved local edges, fan-in/fan-out, cycles | Dependencies to examine, including relative imports |
 | `contracts` | Public signatures, literal return-key shapes, CLI declarations | Static surface changes; no runtime compatibility proof |
-| `test_effectiveness` | Literal/same-operand assertion candidates | Runtime coverage and mutation evidence can be attached separately |
+| `test_effectiveness` | Literal/same-operand assertion candidates; string-expected and formatted-literal assertions; private production imports/calls from tests | Runtime coverage and mutation evidence can be attached separately |
 | `end_to_end` | Attached differential execution evidence | `not_measured` until evidence is supplied |
 | `ui_behavior` | Attached browser evidence | API or static HTML inspection alone does not establish visual behavior |
 | `lifecycle` | Recognized lifecycle sites plus optional execution evidence | Source names alone do not prove cleanup or side-effect boundaries |

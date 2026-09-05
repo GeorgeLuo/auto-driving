@@ -37,8 +37,10 @@ does not execute commands, inspect Git, or attest that provenance is genuine.
 The static scan has similarly narrow semantics:
 
 * test assertions are counted only in test-like files or test-named callables;
-* literal and same-operand assertions are reported as *candidates*, not bad
-  tests;
+* literal, same-operand, string-expected, and formatted-literal assertions are
+  reported as *candidates*, not bad tests;
+* private production imports and helper calls from tests are candidates, while
+  same-module test helpers and numeric expected values are not;
 * lifecycle metrics count recognized definitions and calls, with a bounded
   list of sites; and
 * no static metric proves lifecycle start/stop/reset/cleanup symmetry.
@@ -99,6 +101,17 @@ _ASSERT_LITERAL_METHODS = {
     "assertIsNone",
     "assertIsNotNone",
 }
+_STRING_EXPECTED_METHODS = {
+    "assertEqual",
+    "assertNotEqual",
+    "assertMultiLineEqual",
+    "assertIn",
+    "assertNotIn",
+    "assertRegex",
+    "assertNotRegex",
+}
+_FORMATTED_LITERAL_RE = re.compile(r"[|<>\n`]|\d+(?:\.\d+)?%")
+_FORMATTED_LITERAL_MIN_LENGTH = 40
 
 
 def analyze_verification(sources: dict[str, str]) -> dict[str, dict[str, Any]]:
@@ -288,20 +301,56 @@ def _test_effectiveness_factor(
     assertion_count = 0
     literal_count = 0
     tautological_count = 0
+    string_expected_count = 0
+    formatted_literal_count = 0
+    private_import_count = 0
+    private_helper_call_count = 0
+    private_import_files: set[str] = set()
     test_case_count = 0
     test_parse_error_count = sum(1 for error in parse_errors if error["path"] in test_paths)
 
     for path, text, tree in parsed:
         module_is_test = path in test_paths
         parents = _parent_map(tree)
+        local_private = _private_names_defined(tree)
         for node in ast.walk(tree):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith("test_"):
                 test_case_count += 1
+            if module_is_test and isinstance(node, (ast.Import, ast.ImportFrom)):
+                imported = _private_imported_names(node)
+                if imported:
+                    private_import_count += len(imported)
+                    private_import_files.add(path)
+                    _append_test_candidate(
+                        candidate_sites,
+                        kind="private_import",
+                        path=path,
+                        node=node,
+                        text=text,
+                        reason=(
+                            "Private production import in a test; inspect whether the test can use a public entrypoint."
+                        ),
+                    )
+                continue
             if not isinstance(node, (ast.Assert, ast.Call)):
                 continue
             if not module_is_test and not _inside_test_callable(node, parents):
                 continue
+            if isinstance(node, ast.Call) and _is_private_helper_call(node, local_private):
+                private_helper_call_count += 1
+                _append_test_candidate(
+                    candidate_sites,
+                    kind="private_helper_call",
+                    path=path,
+                    node=node,
+                    text=text,
+                    reason=(
+                        "Private production helper called from a test; inspect whether a public entrypoint covers the behavior."
+                    ),
+                )
             candidate_kind = _assertion_candidate_kind(node)
+            if candidate_kind is None:
+                candidate_kind = _string_expected_kind(node)
             if isinstance(node, ast.Assert):
                 assertion_count += 1
             elif _is_assertion_call(node):
@@ -310,26 +359,28 @@ def _test_effectiveness_factor(
                 continue
             if candidate_kind == "literal_assertion":
                 literal_count += 1
-            else:
+            elif candidate_kind == "tautological_assertion":
                 tautological_count += 1
-            reason = (
-                "Static candidate only; inspect assertion intent and its input variation before drawing a conclusion."
-            )
-            candidate_sites.append(
-                {
-                    "kind": candidate_kind,
-                    "path": path,
-                    "line": int(getattr(node, "lineno", 0) or 0),
-                    "column": int((getattr(node, "col_offset", 0) or 0) + 1),
-                    "expression": _source_expression(text, node),
-                    "reason": reason,
-                    "message": reason,
-                }
+            elif candidate_kind == "formatted_literal_assertion":
+                formatted_literal_count += 1
+                string_expected_count += 1
+            else:
+                string_expected_count += 1
+            _append_test_candidate(
+                candidate_sites,
+                kind=candidate_kind,
+                path=path,
+                node=node,
+                text=text,
+                reason=(
+                    "Static candidate only; inspect assertion intent and its input variation before drawing a conclusion."
+                ),
             )
 
-    candidate_count = literal_count + tautological_count
+    candidate_count = literal_count + tautological_count + string_expected_count
     limitations = [
-        "Literal and same-operand assertions are candidates for review, not a judgment that a test is ineffective.",
+        "Literal, same-operand, string-expected, and formatted-literal assertions are candidates for review, not a judgment that a test is ineffective.",
+        "Private production imports and helper calls are candidates; same-module test helpers and numeric expected values are omitted.",
         "Static inspection does not infer input variation, mocks, explicit state setup, or the behavior under test.",
     ]
     if test_parse_error_count:
@@ -348,6 +399,11 @@ def _test_effectiveness_factor(
         "assertion_count": assertion_count,
         "literal_assertion_candidates": literal_count,
         "tautological_assertion_candidates": tautological_count,
+        "string_expected_assertion_count": string_expected_count,
+        "formatted_literal_assertion_count": formatted_literal_count,
+        "private_import_count": private_import_count,
+        "private_import_test_file_count": len(private_import_files),
+        "private_helper_call_count": private_helper_call_count,
         "candidate_assertion_count": candidate_count,
         "candidate_site_count": len(candidate_sites),
         "parse_error_count": test_parse_error_count,
@@ -479,6 +535,105 @@ def _inside_test_callable(node: ast.AST, parents: Mapping[ast.AST, ast.AST]) -> 
 def _is_assertion_call(node: ast.Call) -> bool:
     name = _call_name(node.func)
     return bool(name and (name.startswith("assert") or name in {"fail", "failUnless", "failIf"}))
+
+
+def _append_test_candidate(
+    sites: list[dict[str, Any]],
+    *,
+    kind: str,
+    path: str,
+    node: ast.AST,
+    text: str,
+    reason: str,
+) -> None:
+    sites.append(
+        {
+            "kind": kind,
+            "path": path,
+            "line": int(getattr(node, "lineno", 0) or 0),
+            "column": int((getattr(node, "col_offset", 0) or 0) + 1),
+            "expression": _source_expression(text, node),
+            "reason": reason,
+            "message": reason,
+        }
+    )
+
+
+def _is_private_identifier(name: str) -> bool:
+    return name.startswith("_") and not name.startswith("__")
+
+
+def _private_names_defined(tree: ast.AST) -> set[str]:
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            if _is_private_identifier(node.name):
+                names.add(node.name)
+    return names
+
+
+def _is_test_module_name(module: str | None) -> bool:
+    if not module:
+        return False
+    return any(
+        part in {"tests", "test", "testing"} or part.startswith("test_")
+        for part in module.split(".")
+    )
+
+
+def _private_imported_names(node: ast.Import | ast.ImportFrom) -> tuple[str, ...]:
+    if isinstance(node, ast.Import):
+        return tuple(alias.name.split(".")[-1] for alias in node.names if _is_private_identifier(alias.name.split(".")[-1]))
+    if node.module == "__future__" or (node.level or 0) > 0 or _is_test_module_name(node.module):
+        return ()
+    return tuple(alias.name for alias in node.names if _is_private_identifier(alias.name))
+
+
+def _is_private_helper_call(node: ast.Call, local_private: set[str]) -> bool:
+    name = _call_name(node.func)
+    return bool(name and _is_private_identifier(name) and name not in local_private)
+
+
+def _constant_text(node: ast.AST) -> str | None:
+    if not isinstance(node, ast.Constant) or not isinstance(node.value, (str, bytes)):
+        return None
+    if isinstance(node.value, bytes):
+        return node.value.decode("utf-8", "replace")
+    return node.value
+
+
+def _is_formatted_literal(text: str) -> bool:
+    return len(text) >= _FORMATTED_LITERAL_MIN_LENGTH or bool(_FORMATTED_LITERAL_RE.search(text))
+
+
+def _string_constants_in_assertion(node: ast.AST) -> list[str]:
+    values: list[str] = []
+    if isinstance(node, ast.Assert) and isinstance(node.test, ast.Compare):
+        for part in (node.test.left, *node.test.comparators):
+            text = _constant_text(part)
+            if text is not None:
+                values.append(text)
+        return values
+    if not isinstance(node, ast.Call):
+        return values
+    name = _call_name(node.func)
+    if name not in _STRING_EXPECTED_METHODS:
+        return values
+    for arg in node.args[:2]:
+        text = _constant_text(arg)
+        if text is not None:
+            values.append(text)
+    return values
+
+
+def _string_expected_kind(node: ast.AST) -> str | None:
+    constants = _string_constants_in_assertion(node)
+    if not constants:
+        return None
+    expected = max(constants, key=len)
+    if _is_formatted_literal(expected):
+        return "formatted_literal_assertion"
+    return "string_expected_assertion"
 
 
 def _assertion_candidate_kind(node: ast.AST) -> str | None:

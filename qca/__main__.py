@@ -28,6 +28,11 @@ def _common_options(parser: argparse.ArgumentParser) -> None:
         default=None,
         help="Root to include; may be repeated (default: .).",
     )
+    parser.add_argument(
+        "--python",
+        action="store_true",
+        help="Measure only Python files (.py, .pyi).",
+    )
     parser.add_argument("--json", dest="json_path", type=Path, help="Write machine-readable JSON to this path.")
     parser.add_argument("--markdown", dest="markdown_path", type=Path, help="Write the Markdown summary to this path.")
     parser.add_argument("--html", dest="html_path", type=Path, help="Write a standalone HTML report.")
@@ -72,6 +77,7 @@ def _config(args: argparse.Namespace) -> AnalyzerConfig:
     return AnalyzerConfig(
         include_roots=tuple(args.include_roots or ["."]),
         excluded_globs=tuple(args.excluded_globs),
+        languages=("python",) if getattr(args, "python", False) else (),
     )
 
 

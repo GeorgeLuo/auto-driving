@@ -27,7 +27,7 @@ from typing import Any, Iterable, Mapping, Protocol, Sequence
 from .factors import FACTOR_VERSION, compare_factors, measure_factors
 
 
-ANALYZER_VERSION = "0.3.3"
+ANALYZER_VERSION = "0.3.4"
 REPORT_SCHEMA = "qca/report/v1"
 SOURCE_CLASSES = (
     "production",
@@ -62,6 +62,7 @@ class AnalyzerConfig:
 
     include_roots: tuple[str, ...] = (".",)
     excluded_globs: tuple[str, ...] = ()
+    languages: tuple[str, ...] = ()
     generated_markers: tuple[str, ...] = _GENERATED_MARKERS
     vendor_markers: tuple[str, ...] = _VENDOR_MARKERS
     lab_roots: tuple[str, ...] = ("lab",)
@@ -72,6 +73,7 @@ class AnalyzerConfig:
         return {
             "include_roots": sorted(self.include_roots),
             "excluded_globs": sorted(self.excluded_globs),
+            "languages": sorted(self.languages),
             "generated_markers": sorted(self.generated_markers),
             "vendor_markers": sorted(self.vendor_markers),
             "lab_roots": sorted(self.lab_roots),
@@ -783,14 +785,18 @@ def _git_bytes(args: Sequence[str], *, cwd: Path | None) -> bytes:
 
 def _inventory(reader: _SourceReader, config: AnalyzerConfig) -> list[SourceFile]:
     inventory: list[SourceFile] = []
+    allowed_languages = set(config.languages)
     for relative in reader.files():
+        language = _language_for(relative)
+        if allowed_languages and language not in allowed_languages:
+            continue
         text = reader.read_text(relative)
         source_class = classify_source(relative, text, config)
         inventory.append(
             SourceFile(
                 path=relative,
                 source_class=source_class,
-                language=_language_for(relative),
+                language=language,
                 included=(
                     _under_include_root(relative, config.include_roots)
                     and _included(relative, source_class, config)
@@ -869,6 +875,7 @@ def _language_for(path: str) -> str:
     suffix = PurePosixPath(path).suffix.lower()
     return {
         ".py": "python",
+        ".pyi": "python",
         ".js": "javascript",
         ".ts": "typescript",
         ".tsx": "typescript",

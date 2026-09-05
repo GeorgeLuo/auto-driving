@@ -109,6 +109,42 @@ class QuantitativeChangeAnalysisTests(unittest.TestCase):
             with self.assertRaises(AnalysisError):
                 analyze_tree(root / "missing.py")
 
+    def test_python_language_filter_drops_non_python_files(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "app.py").write_text("def run():\n    return 1\n")
+            (root / "tests").mkdir()
+            (root / "tests" / "test_app.py").write_text("def test_run():\n    assert True\n")
+            (root / "README.md").write_text("# notes\n")
+            (root / "view.html").write_text("<p>view</p>\n")
+            (root / "data.json").write_text("{}\n")
+
+            payload = report_to_dict(
+                analyze_tree(root, config=AnalyzerConfig(languages=("python",)))
+            )
+            paths = [item["path"] for item in payload["source_inventory"]]
+            self.assertEqual(paths, ["app.py", "tests/test_app.py"])
+            classes = {item["path"]: item["source_class"] for item in payload["source_inventory"]}
+            self.assertEqual(classes["app.py"], "production")
+            self.assertEqual(classes["tests/test_app.py"], "tests")
+            self.assertTrue(all(item["language"] == "python" for item in payload["source_inventory"]))
+
+            completed = subprocess.run(
+                [sys.executable, "-m", "qca", "analyze", str(root), "--python", "--json", str(root / "out.json")],
+                cwd=Path(__file__).resolve().parents[2],
+                check=False,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            cli = json.loads((root / "out.json").read_text(encoding="utf-8"))
+            self.assertEqual(
+                [item["path"] for item in cli["source_inventory"]],
+                ["app.py", "tests/test_app.py"],
+            )
+            self.assertEqual(cli["configuration"]["languages"], ["python"])
+
     def test_analyze_sources_measures_in_memory_text(self) -> None:
         payload = report_to_dict(
             analyze_sources(

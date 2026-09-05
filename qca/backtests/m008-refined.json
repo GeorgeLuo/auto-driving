@@ -1,0 +1,22 @@
+{
+  "schema": "qca/m008-backtest/v1",
+  "path": ".",
+  "config": {
+    "include_roots": ["cli", "autonomy", "implementations", "tests", "scripts", "lab/plugins/perception"],
+    "excluded_globs": ["docs/milestones/008-cli-decision-workbench/evidence/**"]
+  },
+  "experiment": {
+    "hypothesis": "Factor-specific source measurements will identify concrete simplifications while independent behavior checks reject metric improvements that remove required behavior.",
+    "scope_note": "Python structural scope includes lab plugins; application HTML/CSS participates in code churn but is not parsed as Python. Historical documents and evidence remain visible in all-file attribution.",
+    "execution_contract": "Static reports repeat for identical revisions, factor definitions, Python/Git versions and configuration. Runtime logs and execution durations are separate observations."
+  },
+  "states": [
+    {"id": "proposal", "scale": "medium", "base": "443148388180e278c8240fc4853d463616bc0f35", "head": "09687f19acd61b286378fb65f3db915ce5e50d51", "description": "PR 172 merge onto the aggregate branch."},
+    {"id": "plugin-proposal", "scale": "medium", "base": "24c81a39c30dc855643c78a4907a9e66962071b3", "head": "1189002447802442e857da8f5d9c2663ff85b86d", "description": "PR 179 merge onto the aggregate branch."},
+    {"id": "live-toggle-amendment", "scale": "small", "base": "4ed830e0b7850be08a39651be127cac1b6723082", "head": "5cf51585ac7951ea023a2a86fed786913daf626f", "description": "PR 181 merge onto the aggregate branch."},
+    {"id": "implementation", "scale": "large", "base": "5dd827fc25efbb7f4b74059cceca3d344fca7e3a", "head": "27b3c343de311e60219abc9b18b4ef293a28b445", "description": "PR 174 merge onto the aggregate branch, using its actual first parent."},
+    {"id": "acceptance", "scale": "large", "base": "b3dafa1702c049bfbd13c0b99ad156e9cdbc2aeb", "head": "6c2f26a2ce34a5f38431e6b21d1269ea306f526d", "description": "PR 191 acceptance evidence merge."},
+    {"id": "closeout", "scale": "small", "base": "344e93652f2f13c63d3cd0dc707b4d58b69e8ea3", "head": "9d3fa1d1334e747656e5874dc19921a062616bce", "description": "PR 193 closeout merge."},
+    {"id": "milestone-total", "scale": "large", "base": "897fef80f4a5d39ea24715a6df56e7314256fabe", "head": "3fce449d1eb64d408458231163c3f8b9b5c23af3", "description": "Complete cumulative PR 167 contribution to main, excluding main changes already present before its merge."}
+  ]
+}

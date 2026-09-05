@@ -23,8 +23,10 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Sequence
 
+from .factors import FACTOR_VERSION, compare_factors, measure_factors
 
-ANALYZER_VERSION = "0.2.0"
+
+ANALYZER_VERSION = "0.3.0"
 REPORT_SCHEMA = "qca/report/v1"
 SOURCE_CLASSES = (
     "production",
@@ -164,6 +166,9 @@ class Report:
     base: SnapshotMetrics | None = None
     diff: DiffMetrics | None = None
     observations: list[dict[str, Any]] = field(default_factory=list)
+    factors: dict[str, dict[str, Any]] = field(default_factory=dict)
+    factor_version: str = FACTOR_VERSION
+    configuration: dict[str, list[str]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -300,6 +305,8 @@ def analyze_tree(
         source_inventory=inventory,
         head=head,
         observations=_observations(head, None, None),
+        factors=measure_factors(_factor_sources(reader, inventory)),
+        configuration=policy.canonical(),
     )
 
 
@@ -347,7 +354,21 @@ def analyze_diff(
         base=base_snapshot,
         diff=diff,
         observations=_observations(head_snapshot, base_snapshot, diff),
+        factors=compare_factors(
+            measure_factors(_factor_sources(base_reader, base_inventory)),
+            measure_factors(_factor_sources(head_reader, head_inventory)),
+            set(diff.changed_files),
+        ),
+        configuration=policy.canonical(),
     )
+
+
+def _factor_sources(reader: _TreeReader, inventory: list[SourceFile]) -> dict[str, str]:
+    return {
+        item.path: reader.read_text(item.path)
+        for item in inventory
+        if item.included and item.language == "python"
+    }
 
 
 def report_to_dict(report: Report) -> dict[str, Any]:
@@ -403,7 +424,7 @@ def render_markdown(report: Report) -> str:
             "",
             "### Snapshot by source class",
             "",
-            "| Source class | Files | Raw LOC | Effective LOC |",
+            "| Source class | Files | All raw LOC | Core Python effective LOC |",
             "| --- | ---: | ---: | ---: |",
         ]
     )
@@ -486,6 +507,26 @@ def render_markdown(report: Report) -> str:
             lines.append(f"- inspect {label}: {', '.join(target['reasons'])}")
         if len(targets) > 25:
             lines.append(f"- ... {len(targets) - 25} additional targets are in the JSON report")
+    lines.extend(["", "## Factors", ""])
+    lines.append("Static findings are refactoring candidates. Runtime evidence is reported separately.")
+    for name, factor in payload["factors"].items():
+        lines.extend(["", f"### {name}", "", f"Status: `{factor['status']}`", ""])
+        if factor["metrics"]:
+            lines.extend(["| Measurement | Head | Delta |", "| --- | ---: | ---: |"])
+            for metric, value in factor["metrics"].items():
+                delta = factor.get("delta", {}).get(metric)
+                lines.append(f"| {metric} | {value} | {delta if delta is not None else '—'} |")
+            lines.append("")
+        for item in factor["findings"][:8]:
+            lines.append(
+                f"- `{item.get('path', '')}:{item.get('line', '')}`: {item.get('message', '')}"
+            )
+        if len(factor["findings"]) > 8:
+            lines.append(f"- {len(factor['findings']) - 8} more candidates in JSON/HTML.")
+        lines.append("")
+        lines.extend(f"- Limit: {limit}" for limit in factor["limitations"])
+        if factor.get("verification"):
+            lines.extend(["", "Verification:", "", "```json", json.dumps(factor["verification"], indent=2), "```"])
     lines.extend(["", "## Observations", ""])
     for observation in payload["observations"]:
         lines.append(f"- `{observation['id']}`: {json.dumps(observation['value'], sort_keys=True)}")
@@ -524,7 +565,7 @@ def _resolve_tree(
         root=scope_path,
         repo_root=discovered,
         scope_rel=scope_rel,
-        ref=ref,
+        ref=sha,
         sha=sha,
     )
 
@@ -656,8 +697,6 @@ def classify_source(path: str, text: str, config: AnalyzerConfig | None = None) 
         ".yml",
         ".toml",
         ".ini",
-        ".html",
-        ".css",
     }:
         return "docs/configuration"
     if segments:
@@ -683,6 +722,8 @@ def _language_for(path: str) -> str:
         ".ts": "typescript",
         ".tsx": "typescript",
         ".jsx": "javascript",
+        ".html": "html",
+        ".css": "css",
         ".go": "go",
         ".rs": "rust",
         ".c": "c",
@@ -709,7 +750,7 @@ def _measure_snapshot(reader: _TreeReader, inventory: list[SourceFile]) -> Snaps
         bucket["raw_loc"] += raw_loc
         if not item.included:
             continue
-        effective = _effective_loc(text)
+        effective = _effective_loc(text) if item.language == "python" else 0
         bucket["effective_loc"] += effective
         metrics.raw_loc += raw_loc
         metrics.effective_loc += effective

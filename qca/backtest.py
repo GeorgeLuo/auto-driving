@@ -29,6 +29,7 @@ def run_manifest(manifest_path: str | Path) -> dict[str, Any]:
     )
     results = []
     analyzer_version = None
+    versions = set()
     for state in states:
         if not isinstance(state, dict) or not state.get("id"):
             raise AnalysisError("each backtest state needs an id")
@@ -40,6 +41,7 @@ def run_manifest(manifest_path: str | Path) -> dict[str, Any]:
         )
         payload = report_to_dict(report)
         analyzer_version = payload["identity"]["analyzer_version"]
+        versions.add(analyzer_version)
         results.append(
             {
                 "id": str(state["id"]),
@@ -51,6 +53,9 @@ def run_manifest(manifest_path: str | Path) -> dict[str, Any]:
                 "diff": payload["diff"],
                 "observations": payload["observations"],
                 "operator_questions": _operator_questions(payload["diff"]),
+                "identity": payload["identity"],
+                "configuration": payload["configuration"],
+                "factors": payload["factors"],
             }
         )
     return {
@@ -63,7 +68,7 @@ def run_manifest(manifest_path: str | Path) -> dict[str, Any]:
             "all_revisions_resolved": all(
                 len(state["base"]) == 40 and len(state["head"]) == 40 for state in results
             ),
-            "single_analyzer_version": len({analyzer_version}) == 1,
+            "single_analyzer_version": len(versions) == 1,
             "comparison_boundary": "actual_outcome is historical context and is not supplied to the analyzer",
         },
         "states": results,

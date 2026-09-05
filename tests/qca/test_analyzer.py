@@ -8,8 +8,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from qca import AnalyzerConfig, analyze_diff, analyze_tree, report_to_dict
+from qca import AnalyzerConfig, analyze_diff, analyze_tree, render_markdown, report_to_dict
 from qca.backtest import render_backtest_markdown, run_manifest
+from qca.render import render_html
 
 
 class QuantitativeChangeAnalysisTests(unittest.TestCase):
@@ -261,6 +262,70 @@ class QuantitativeChangeAnalysisTests(unittest.TestCase):
             self.assertTrue(payload["states"][0]["diff"]["review_targets"])
             self.assertTrue(payload["execution"]["all_revisions_resolved"])
             self.assertIn("shape is inspectable", render_backtest_markdown(payload))
+
+    def test_production_vs_tests_split_covers_code_and_excludes_docs(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self._git(root, "init", "-q")
+            self._git(root, "config", "user.email", "qca@example.test")
+            self._git(root, "config", "user.name", "QCA Tests")
+            (root / "app.py").write_text("def run():\n    return 1\n", encoding="utf-8")
+            (root / "tests").mkdir()
+            (root / "tests" / "test_app.py").write_text("def test_run():\n    assert True\n", encoding="utf-8")
+            self._git(root, "add", ".")
+            self._git(root, "commit", "-qm", "base")
+            base = self._git(root, "rev-parse", "HEAD").strip()
+            (root / "app.py").write_text(
+                "def run():\n    return 1\n\ndef extra():\n    return 2\n",
+                encoding="utf-8",
+            )
+            (root / "view.html").write_text("<p>view</p>\n", encoding="utf-8")
+            (root / "tests" / "test_app.py").write_text(
+                "def test_run():\n    assert True\n\ndef test_extra():\n    assert True\n",
+                encoding="utf-8",
+            )
+            (root / "tests" / "data.json").write_text("{}\n", encoding="utf-8")
+            (root / "README.md").write_text("notes\n", encoding="utf-8")
+            self._git(root, "add", ".")
+            self._git(root, "commit", "-qm", "head")
+            head = self._git(root, "rev-parse", "HEAD").strip()
+
+            snapshot = report_to_dict(analyze_tree(root))
+            split = snapshot["head"]["production_test_split"]
+            by_class = snapshot["head"]["by_class"]
+            self.assertEqual(split["classes"], ["production", "tests"])
+            self.assertEqual(split["raw_loc"]["production"], by_class["production"]["raw_loc"])
+            self.assertEqual(split["raw_loc"]["tests"], by_class["tests"]["raw_loc"])
+            self.assertEqual(
+                split["raw_loc"]["total"],
+                split["raw_loc"]["production"] + split["raw_loc"]["tests"],
+            )
+            self.assertGreater(split["raw_loc"]["production"], 0)
+            self.assertGreater(split["raw_loc"]["tests"], 0)
+            self.assertEqual(
+                split["raw_loc"]["production_share_permille"] + split["raw_loc"]["tests_share_permille"],
+                1000,
+            )
+            self.assertTrue(
+                any(item["source_class"] == "docs/configuration" for item in snapshot["source_inventory"])
+            )
+
+            report = analyze_diff(base, head, path=root)
+            payload = report_to_dict(report)
+            diff_split = payload["diff"]["production_test_split"]
+            python = diff_split["python"]
+            all_lines = diff_split["all_lines"]
+            self.assertGreater(python["production"]["net_lines"], 0)
+            self.assertGreater(python["tests"]["net_lines"], 0)
+            self.assertEqual(
+                python["total"]["net_lines"],
+                python["production"]["net_lines"] + python["tests"]["net_lines"],
+            )
+            self.assertGreater(all_lines["production"]["net_lines"], python["production"]["net_lines"])
+            self.assertGreater(all_lines["tests"]["net_lines"], python["tests"]["net_lines"])
+            self.assertGreater(payload["diff"]["changed_by_class"]["docs/configuration"]["files"], 0)
+            self.assertIn("Production vs tests", render_markdown(report))
+            self.assertIn("Production vs tests", render_html(payload))
 
     @staticmethod
     def _git(root: Path, *args: str) -> str:

@@ -26,7 +26,7 @@ from typing import Any, Iterable, Sequence
 from .factors import FACTOR_VERSION, compare_factors, measure_factors
 
 
-ANALYZER_VERSION = "0.3.0"
+ANALYZER_VERSION = "0.3.1"
 REPORT_SCHEMA = "qca/report/v1"
 SOURCE_CLASSES = (
     "production",
@@ -38,6 +38,7 @@ SOURCE_CLASSES = (
     "docs/configuration",
     "unknown",
 )
+_PRODUCTION_TEST_CLASSES = ("production", "tests")
 _HUNK_RE = re.compile(
     r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@"
 )
@@ -111,6 +112,7 @@ class SnapshotMetrics:
     public_symbols: list[str] = field(default_factory=list)
     unsupported_files: list[str] = field(default_factory=list)
     syntax_errors: list[dict[str, str]] = field(default_factory=list)
+    production_test_split: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -135,6 +137,7 @@ class DiffMetrics:
     included_deleted_lines: int = 0
     included_churn: int = 0
     changed_by_class: dict[str, dict[str, int]] = field(default_factory=dict)
+    production_test_split: dict[str, Any] = field(default_factory=dict)
     changed_callables: list[dict[str, Any]] = field(default_factory=list)
     new_import_edges: list[str] = field(default_factory=list)
     removed_import_edges: list[str] = field(default_factory=list)
@@ -371,6 +374,87 @@ def _factor_sources(reader: _TreeReader, inventory: list[SourceFile]) -> dict[st
     }
 
 
+def _snapshot_production_test_markdown(split: dict[str, Any]) -> list[str]:
+    if not split:
+        return []
+    files = split["files"]
+    raw = split["raw_loc"]
+    effective = split["effective_loc"]
+    return [
+        "",
+        "### Production vs tests",
+        "",
+        "Denominator is `production+tests`. Core snapshot LOC still includes `tooling/scripts` and `experimental/lab`.",
+        "",
+        "| Class | Files | Raw LOC | Raw share | Effective Python LOC | Effective share |",
+        "| --- | ---: | ---: | ---: | ---: | ---: |",
+        (
+            f"| `production` | {files['production']} | {raw['production']} | "
+            f"{format_share_permille(raw['production_share_permille'])} | {effective['production']} | "
+            f"{format_share_permille(effective['production_share_permille'])} |"
+        ),
+        (
+            f"| `tests` | {files['tests']} | {raw['tests']} | "
+            f"{format_share_permille(raw['tests_share_permille'])} | {effective['tests']} | "
+            f"{format_share_permille(effective['tests_share_permille'])} |"
+        ),
+        (
+            f"| total | {files['total']} | {raw['total']} | "
+            f"{format_share_permille(_share_permille(raw['total'], raw['total']))} | {effective['total']} | "
+            f"{format_share_permille(_share_permille(effective['total'], effective['total']))} |"
+        ),
+    ]
+
+
+def _diff_line_split_row(label: str, side: dict[str, int], added_share: int | None, net_share: int | None) -> str:
+    return (
+        f"| {label} | {side['files']} | {side['added_lines']} | {side['deleted_lines']} | "
+        f"{side['net_lines']} | {format_share_permille(added_share)} | {format_share_permille(net_share)} |"
+    )
+
+
+def _diff_production_test_markdown(split: dict[str, Any]) -> list[str]:
+    if not split:
+        return []
+    all_lines = split["all_lines"]
+    python = split["python"]
+    return [
+        "",
+        "### Production vs tests",
+        "",
+        production_test_split_summary(split),
+        "",
+        "Core churn still includes `tooling/scripts` and `experimental/lab`. Docs are a separate class.",
+        "",
+        "| Class | Files | Added | Deleted | Net | Added share | Net share |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+        _diff_line_split_row(
+            "`production` all lines",
+            all_lines["production"],
+            all_lines["production_added_share_permille"],
+            all_lines["production_net_share_permille"],
+        ),
+        _diff_line_split_row(
+            "`tests` all lines",
+            all_lines["tests"],
+            all_lines["tests_added_share_permille"],
+            all_lines["tests_net_share_permille"],
+        ),
+        _diff_line_split_row(
+            "`production` Python",
+            python["production"],
+            python["production_added_share_permille"],
+            python["production_net_share_permille"],
+        ),
+        _diff_line_split_row(
+            "`tests` Python",
+            python["tests"],
+            python["tests_added_share_permille"],
+            python["tests_net_share_permille"],
+        ),
+    ]
+
+
 def report_to_dict(report: Report) -> dict[str, Any]:
     """Return a stable JSON-compatible report representation."""
 
@@ -433,6 +517,7 @@ def render_markdown(report: Report) -> str:
             lines.append(
                 f"| `{source_class}` | {values['files']} | {values['raw_loc']} | {values['effective_loc']} |"
             )
+    lines.extend(_snapshot_production_test_markdown(payload["head"].get("production_test_split") or {}))
     if payload["diff"] is not None:
         diff = payload["diff"]
         lines.extend(
@@ -481,6 +566,7 @@ def render_markdown(report: Report) -> str:
                 lines.append(
                     f"| `{source_class}` | {values['files']} | {values['added_lines']} | {values['deleted_lines']} |"
                 )
+        lines.extend(_diff_production_test_markdown(diff.get("production_test_split") or {}))
         targets = diff["review_targets"]
         lines.extend(
             [
@@ -733,6 +819,138 @@ def _language_for(path: str) -> str:
     }.get(suffix, "other")
 
 
+def format_share_permille(value: int | None) -> str:
+    """Render a 0-1000 permille share as a one-decimal percentage, or n/a."""
+
+    if value is None:
+        return "n/a"
+    return f"{value / 10:.1f}%"
+
+
+def _share_permille(part: int, total: int) -> int | None:
+    """Return part/total as rounded permille, or None when total is 0."""
+
+    if total == 0:
+        return None
+    if total < 0:
+        part = -part
+        total = -total
+    return (part * 1000 + total // 2) // total
+
+
+def _loc_share_block(production: int, tests: int) -> dict[str, int | None]:
+    total = production + tests
+    return {
+        "production": production,
+        "tests": tests,
+        "total": total,
+        "production_share_permille": _share_permille(production, total),
+        "tests_share_permille": _share_permille(tests, total),
+    }
+
+
+def _line_counts(files: int, added_lines: int, deleted_lines: int) -> dict[str, int]:
+    return {
+        "files": files,
+        "added_lines": added_lines,
+        "deleted_lines": deleted_lines,
+        "net_lines": added_lines - deleted_lines,
+    }
+
+
+def _diff_line_split(sides: dict[str, dict[str, int]]) -> dict[str, Any]:
+    production = sides["production"]
+    tests = sides["tests"]
+    total = _line_counts(
+        production["files"] + tests["files"],
+        production["added_lines"] + tests["added_lines"],
+        production["deleted_lines"] + tests["deleted_lines"],
+    )
+    return {
+        "production": production,
+        "tests": tests,
+        "total": total,
+        "production_added_share_permille": _share_permille(
+            production["added_lines"], total["added_lines"]
+        ),
+        "tests_added_share_permille": _share_permille(tests["added_lines"], total["added_lines"]),
+        "production_net_share_permille": _share_permille(production["net_lines"], total["net_lines"]),
+        "tests_net_share_permille": _share_permille(tests["net_lines"], total["net_lines"]),
+    }
+
+
+def snapshot_production_test_split(by_class: dict[str, dict[str, int]]) -> dict[str, Any]:
+    """Derive production vs tests size shares from a snapshot class table."""
+
+    production = by_class.get("production") or {"files": 0, "raw_loc": 0, "effective_loc": 0}
+    tests = by_class.get("tests") or {"files": 0, "raw_loc": 0, "effective_loc": 0}
+    return {
+        "classes": list(_PRODUCTION_TEST_CLASSES),
+        "denominator": "production+tests",
+        "files": _loc_share_block(production.get("files", 0), tests.get("files", 0)),
+        "raw_loc": _loc_share_block(production.get("raw_loc", 0), tests.get("raw_loc", 0)),
+        "effective_loc": _loc_share_block(
+            production.get("effective_loc", 0), tests.get("effective_loc", 0)
+        ),
+    }
+
+
+def diff_production_test_split(file_changes: list[dict[str, Any]]) -> dict[str, Any]:
+    """Derive production vs tests added/deleted/net shares, all-line and Python."""
+
+    all_sides = {
+        name: {"files": 0, "added_lines": 0, "deleted_lines": 0} for name in _PRODUCTION_TEST_CLASSES
+    }
+    python_sides = {
+        name: {"files": 0, "added_lines": 0, "deleted_lines": 0} for name in _PRODUCTION_TEST_CLASSES
+    }
+    for item in file_changes:
+        source_class = item.get("source_class")
+        if source_class not in all_sides:
+            continue
+        all_sides[source_class]["files"] += 1
+        all_sides[source_class]["added_lines"] += int(item.get("added_lines", 0))
+        all_sides[source_class]["deleted_lines"] += int(item.get("deleted_lines", 0))
+        if item.get("language") == "python":
+            python_sides[source_class]["files"] += 1
+            python_sides[source_class]["added_lines"] += int(item.get("added_lines", 0))
+            python_sides[source_class]["deleted_lines"] += int(item.get("deleted_lines", 0))
+    return {
+        "classes": list(_PRODUCTION_TEST_CLASSES),
+        "denominator": "production+tests",
+        "all_lines": _diff_line_split(
+            {
+                name: _line_counts(values["files"], values["added_lines"], values["deleted_lines"])
+                for name, values in all_sides.items()
+            }
+        ),
+        "python": _diff_line_split(
+            {
+                name: _line_counts(values["files"], values["added_lines"], values["deleted_lines"])
+                for name, values in python_sides.items()
+            }
+        ),
+    }
+
+
+def production_test_split_summary(split: dict[str, Any]) -> str:
+    """One-line production vs tests observation for Markdown and backtests."""
+
+    python = split["python"]
+    all_lines = split["all_lines"]
+    return (
+        "Production vs tests (denominator production+tests): "
+        f"Python net production {python['production']['net_lines']} "
+        f"({format_share_permille(python['production_net_share_permille'])}), "
+        f"tests {python['tests']['net_lines']} "
+        f"({format_share_permille(python['tests_net_share_permille'])}); "
+        f"all-line net production {all_lines['production']['net_lines']} "
+        f"({format_share_permille(all_lines['production_net_share_permille'])}), "
+        f"tests {all_lines['tests']['net_lines']} "
+        f"({format_share_permille(all_lines['tests_net_share_permille'])})."
+    )
+
+
 def _measure_snapshot(reader: _TreeReader, inventory: list[SourceFile]) -> SnapshotMetrics:
     metrics = SnapshotMetrics(
         file_count=len(inventory),
@@ -775,6 +993,7 @@ def _measure_snapshot(reader: _TreeReader, inventory: list[SourceFile]) -> Snaps
     )
     for bucket in metrics.by_class.values():
         bucket.setdefault("logical_loc", 0)
+    metrics.production_test_split = snapshot_production_test_split(metrics.by_class)
     return metrics
 
 
@@ -1108,6 +1327,7 @@ def _derive_diff(
         included_deleted_lines=included_deleted_lines,
         included_churn=included_added_lines + included_deleted_lines,
         changed_by_class={key: by_class[key] for key in sorted(by_class)},
+        production_test_split=diff_production_test_split(file_changes),
         changed_callables=changed_callables,
         new_import_edges=new_import_edges,
         removed_import_edges=removed_import_edges,
@@ -1321,6 +1541,7 @@ def _observations(
         {"id": "snapshot.decision_burden", "value": head.decision_burden},
         {"id": "snapshot.unsupported_files", "value": head.unsupported_files},
         {"id": "snapshot.syntax_errors", "value": head.syntax_errors},
+        {"id": "snapshot.production_test_split", "value": head.production_test_split},
     ]
     if base is not None and diff is not None:
         observations.extend(
@@ -1338,6 +1559,7 @@ def _observations(
                 {"id": "diff.new_import_edges", "value": diff.new_import_edges},
                 {"id": "diff.public_symbols_added", "value": diff.public_symbols_added},
                 {"id": "diff.public_symbols_removed", "value": diff.public_symbols_removed},
+                {"id": "diff.production_test_split", "value": diff.production_test_split},
             ]
         )
     return observations

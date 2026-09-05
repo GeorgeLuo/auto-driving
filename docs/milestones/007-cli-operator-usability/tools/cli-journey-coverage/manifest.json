@@ -1,0 +1,80 @@
+{
+  "schema": "m007_cli_coverage_manifest_v1",
+  "logical_context_pattern": "^[a-z0-9][a-z0-9._/-]{0,159}$",
+  "context_template": "m007-run/{collection_id}/{logical_context_id}",
+  "owned_source_roots": [
+    "autonomy",
+    "implementations",
+    "cli/automa_cli"
+  ],
+  "catalogs": [
+    {
+      "id": "m007-acceptance",
+      "track": "acceptance",
+      "scope_id": "primary",
+      "path": "docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/catalogs/m007-acceptance.yaml",
+      "sha256": "c1cbc12e95c211c9e473077babac7a9ac448061d398deff783e1d33216a634f4",
+      "required_step_ids": [
+        "help-top",
+        "help-vehicles",
+        "help-automation",
+        "status-initial",
+        "update-perception",
+        "automation-run",
+        "status-running",
+        "automation-stop",
+        "status-stopped"
+      ]
+    },
+    {
+      "id": "m007-continuity",
+      "track": "continuity",
+      "scope_id": "continuity",
+      "path": "docs/milestones/007-cli-operator-usability/tools/live-cli-session-runner/catalogs/m007-continuity.yaml",
+      "sha256": "c3ef8cccfc1a3dcdab6efdaefaf0b8f79fb5638327360e87e0d6686f71042fcb",
+      "required_step_ids": [
+        "offline-capture",
+        "offline-apply-a",
+        "offline-apply-b",
+        "live-swap-stage",
+        "live-swap-stop",
+        "memory-lifecycle"
+      ],
+      "required_family_ids": [
+        "continuity.offline_perception",
+        "continuity.live_config_swap",
+        "continuity.memory_lifecycle"
+      ]
+    }
+  ],
+  "bootstrap": {
+    "logical_context_id": "m007/bootstrap/root-help",
+    "argv": ["./cli/automa", "help"],
+    "role": "bootstrap"
+  },
+  "config_probe": {
+    "logical_context_id": "m007/support/precondition/config-probe/cmd-00",
+    "role": "precondition"
+  },
+  "support_commands": {
+    "precondition": [
+      ["./cli/automa", "vehicles", "status", "--id", "{vehicle_id}", "--chase-url", "{metrics_ui_origin}", "--json"],
+      ["./cli/automa", "vehicles", "automation", "stop", "--id", "{vehicle_id}"],
+      ["./cli/automa", "vehicles", "status", "--id", "{vehicle_id}", "--chase-url", "{metrics_ui_origin}", "--json"]
+    ],
+    "cleanup": [
+      ["./cli/automa", "vehicles", "automation", "stop", "--id", "{vehicle_id}"],
+      ["./cli/automa", "vehicles", "status", "--id", "{vehicle_id}", "--json"]
+    ]
+  },
+  "worker_probe": {
+    "path": "cli/automa_cli/automation.py",
+    "function": "run_vehicle_automation"
+  },
+  "non_claims": {
+    "behavioral_correctness": false,
+    "dead_code": false,
+    "production_value": false,
+    "numeric_coverage_gate": false
+  }
+}

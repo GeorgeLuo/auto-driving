@@ -8,6 +8,7 @@ from pathlib import Path
 
 from docs.milestones.workflow import (
     PlanContractError,
+    RepairReviewMetadata,
     complete_implementation,
     load_handoff_template,
     materialize_handoff_receipt,
@@ -159,7 +160,38 @@ class CompleteImplementationTests(unittest.TestCase):
             "baseRefName": MILESTONE_BRANCH,
             "headRefName": IMPLEMENTATION_BRANCH,
             "mergeCommit": {"oid": merge_commit},
+            "body": (
+                "## Review Kind\n\n"
+                "Deterministic invariant closure\n"
+            ),
         }
+
+    def _accepted_review_metadata(self) -> RepairReviewMetadata:
+        head = "a" * 40
+        return RepairReviewMetadata(
+            pull_request_number=64,
+            pull_request_url="https://example.invalid/64",
+            pull_request_author="repair-author",
+            head_oid=head,
+            commits=(head,),
+            reviews=(
+                {
+                    "url": "https://example.invalid/64#pullrequestreview-1",
+                    "state": "COMMENTED",
+                    "body": (
+                        "## Contract Review Receipt\n\n"
+                        "- Outcome: `accepted`\n"
+                    ),
+                    "commit": {"oid": head},
+                    "submittedAt": "2026-08-14T19:30:00Z",
+                    "author": {"login": "workflow-reviewer"},
+                    "authorAssociation": "COLLABORATOR",
+                    "authorCanPushToRepository": True,
+                    "includesCreatedEdit": False,
+                    "comments": {"nodes": [], "totalCount": 0},
+                },
+            ),
+        )
 
     def test_cli_help_exposes_completion_command(self) -> None:
         script = (
@@ -191,14 +223,13 @@ class CompleteImplementationTests(unittest.TestCase):
                 64,
                 repo_root=root,
                 pr_payload=self._payload(merge_commit),
+                repair_review_metadata=self._accepted_review_metadata(),
                 render_docs=render,
             )
 
-            self.assertEqual(completed.current.name, NEXT_FRONTIER)
-            self.assertEqual(
-                completed.current.fields["workflow state"],
-                "ready_for_proposal",
-            )
+            self.assertTrue(completed.current.is_empty)
+            self.assertEqual(completed.next_frontier.name, NEXT_FRONTIER)
+            self.assertEqual(completed.frontier_map.path, (NEXT_FRONTIER,))
             self.assertEqual(self._git(root, "status", "--porcelain"), "")
             self.assertEqual(
                 self._git(root, "log", "-1", "--format=%s"),
@@ -237,6 +268,29 @@ class CompleteImplementationTests(unittest.TestCase):
                     64,
                     repo_root=root,
                     pr_payload=payload,
+                    repair_review_metadata=self._accepted_review_metadata(),
+                    render_docs=lambda: html.write_text(
+                        "<p>unexpected</p>\n",
+                        encoding="utf-8",
+                    ),
+                )
+
+            self.assertEqual(self._git(root, "rev-parse", "HEAD"), merge_commit)
+            self.assertEqual(self._git(root, "status", "--porcelain"), "")
+
+    def test_completion_rejects_mismatched_review_kind_without_changes(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root, plan, html, merge_commit = self._repo(Path(temp_dir))
+            payload = self._payload(merge_commit)
+            payload["body"] = "## Review Kind\n\nReview repair\n"
+
+            with self.assertRaisesRegex(PlanContractError, "review kind does not match"):
+                complete_implementation(
+                    plan,
+                    64,
+                    repo_root=root,
+                    pr_payload=payload,
+                    repair_review_metadata=self._accepted_review_metadata(),
                     render_docs=lambda: html.write_text(
                         "<p>unexpected</p>\n",
                         encoding="utf-8",

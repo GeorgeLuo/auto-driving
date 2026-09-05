@@ -4,38 +4,31 @@ This directory separates current reference material, future-facing synthesis,
 agent operating guidance, and milestone history. Use the selective reading
 order below instead of loading the full process contract for every task.
 
-## Active Milestone
+## Milestone state
 
-**Milestone 006 — Decision-Facing Perception Readiness**
+Canonical status, frontier, and next action live in each
+`docs/milestones/<number>-<slug>/plan.md`. This page is navigation only. Do not
+copy those fields here.
 
-| Field | Value |
-| --- | --- |
-| Status | Active |
-| Plan | [plan.html](milestones/006-decision-facing-perception-readiness/plan.html) · [plan.md](milestones/006-decision-facing-perception-readiness/plan.md) |
-| Cumulative PR | [#70](https://github.com/GeorgeLuo/auto-driving/pull/70) (draft) |
-| Current frontier | Decision-facing fitness measures |
+On this branch the active milestone is
+[006-decision-facing-perception-readiness](milestones/006-decision-facing-perception-readiness/)
+(`plan.md` · `plan.html`). M008 is closed on `main`; see the closed ledger.
 
-Detailed exit criteria, workflow state, and risks live only in the milestone
-plan. The current frontier is ready for an independent proposal; perception
-implementation must not begin before that proposal is accepted.
+```sh
+python3 docs/milestones/workflow.py status \
+  --plan docs/milestones/006-decision-facing-perception-readiness/plan.md
+```
 
-## Immediate Pre-Plan (Not Active)
-
-**None.** M006 closeout will decide whether a shadow/non-idle decision pre-plan
-is justified.
-
-## Recently Closed
-
-**Milestone 005 — Evidence Memory Foundation** is closed.
-Closeout: [005 closeout](milestones/005-evidence-memory-foundation/closeout.md).
-
-**Milestone 004 — Physical Perception Parity** is closed.
-Closeout: [004 closeout](milestones/004-physical-perception-parity/closeout.md).
+Plans: [milestones/](milestones/). Closed ledger:
+[completed.md](milestones/completed.md). Contract:
+[README.md](milestones/README.md) ·
+[planning-contract.html](milestones/planning-contract.html).
 
 ## Reading Order
 
 1. Short default [agent surface](guidance/agent-surface.md).
-2. Active milestone plan when one is listed above.
+2. The canonical `plan.md` for the milestone under work; run the status command
+   above rather than reading a copy from this page.
 3. Only the role- or task-specific files selected by the agent surface.
 4. Full [planning and delivery contract](milestones/README.md)
    ([rendered](milestones/planning-contract.html)) when resolving ambiguity,

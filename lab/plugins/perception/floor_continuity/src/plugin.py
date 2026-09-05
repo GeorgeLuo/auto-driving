@@ -100,6 +100,7 @@ class FloorContinuityPlugin:
                     self.config,
                     output_dir,
                     inputs.frame_id,
+                    self.plugin_id,
                 )
             )
 
@@ -177,6 +178,7 @@ def _write_diagnostics(
     config: FloorContinuityConfig,
     output_dir: Path,
     frame_id: str,
+    plugin_id: str = FloorContinuityPlugin.plugin_id,
 ) -> dict[str, str]:
     output_dir.mkdir(parents=True, exist_ok=True)
     source_size = (analysis.source_width, analysis.source_height)
@@ -225,7 +227,7 @@ def _write_diagnostics(
         json.dumps(
             {
                 "frame_id": frame_id,
-                "plugin_id": FloorContinuityPlugin.plugin_id,
+                "plugin_id": plugin_id,
                 "config": asdict(config),
                 "measurements": analysis.measurements,
             },

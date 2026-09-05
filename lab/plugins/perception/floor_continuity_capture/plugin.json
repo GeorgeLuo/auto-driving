@@ -1,0 +1,29 @@
+{
+  "schema": "automa_lab_perception_plugin_v0",
+  "id": "floor_continuity_capture",
+  "name": "Capture-calibrated floor continuity",
+  "description": "A stricter isolated floor-boundary alternative calibrated against the archived Chaser Depth Obstacle capture.",
+  "plugin": {
+    "entrypoint": "lab.plugins.perception.floor_continuity_capture.src.plugin:CaptureFloorContinuityPlugin",
+    "config": {
+      "minimum_boundary_width_ratio": 0.03,
+      "minimum_boundary_confidence": 0.7
+    }
+  },
+  "inputs": [
+    {
+      "name": "frame",
+      "component_id": "camera.rgb:front_camera",
+      "provider_spec": "implementations.perception.components.camera:provide_camera_frame"
+    }
+  ],
+  "runtime": {
+    "python": "core"
+  },
+  "output": {
+    "schema": "perception_text_v2",
+    "kind": "floor_boundary",
+    "semantic_labels": false,
+    "depth": false
+  }
+}

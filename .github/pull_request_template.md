@@ -13,65 +13,19 @@
 - Proposal PR:
 - Proposal merge commit:
 - Proposal artifact:
+- Accepted amendment PR(s), merge commit(s), and artifact(s): None
 
 ## Review Kind
 
-<!-- One primary kind: deterministic invariant closure | behavioral feature slice |
-     broad mechanical rollout | live or external evidence | review repair | milestone closeout -->
+<!-- One supported value matching the canonical milestone plan exactly:
+     deterministic invariant closure | behavioral feature slice | broad
+     mechanical rollout | live or external evidence | review repair |
+     milestone closeout -->
 
 ## Review Question
 
-<!-- One yes/no question. Split the PR if you need "and" between independent guarantees. -->
-
-## User Or Operator Impact
-
-## Deliverable
-
-## Invariant Or Acceptance Contract
-
-## Enforcement Or Acceptance Owner
-
-## Affected Paths
-
-## Adversarial Matrix
-
-| Case | Expected Result | Evidence |
-| --- | --- | --- |
-| | | |
-
-## External Assumptions
-
-## Unverified Limits
-
-## Scope
-
-### In Scope
-
--
-
-### Out Of Scope
-
--
-
-## File Impact
-
-### Create
-
--
-
-### Modify
-
--
-
-### Remove
-
--
-
-## Scope Reconciliation
-
-<!-- Before every review or re-review, reconcile this body to the current diff.
-     Summarize meaningful changes to question, owner, matrix, file impact,
-     assumptions, or validation. Write "None; initial review" when applicable. -->
+<!-- One yes/no question. Must match the accepted proposal. Split the PR if
+     you need "and" between independent guarantees. -->
 
 ## Validation
 
@@ -85,6 +39,18 @@ Result:
 # test count and result
 ```
 
-## Review Notes
+## Concerns
 
-<!-- Paths needing deepest attention -->
+<!-- Documentary only. Organize leftover notes here if useful. They do not
+     force repair and do not block completion. -->
+
+## Repair Cycle Ledger
+
+<!-- Add one row for each consolidated changes-requested verdict followed by a
+     repair revision. Classification and highest severity come from the linked
+     GitHub review. Use full 40-character repair SHAs. Keep the sole all-None
+     row until the first repair cycle. -->
+
+| Cycle | Review receipt | Classification | Highest severity | Repair revision | Contract impact |
+| --- | --- | --- | --- | --- | --- |
+| None | None | None | None | None | None |

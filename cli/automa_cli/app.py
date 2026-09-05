@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, TextIO
 
 from .automation import (
     get_vehicle_automation_status,
@@ -51,12 +52,19 @@ from .perception_runs import (
     compare_perception_candidates,
     run_perception_experiment,
 )
+from .workbench import run_workbench_replay
 from .simulators import DEFAULT_SCENARIO_ID, ensure_simulator, get_simulator_status
 from .physical_check import run_physical_perception_check
 from .physical_qualify import run_physical_strategy_qualification
 from .physical_viability import run_physical_viability_measurement
 from .streaming import stream_vehicle_perception
-from .vehicles import discover_active_vehicles, format_active_vehicles_snapshot
+from .vehicles import (
+    DEFAULT_CHASE_READINESS_TIMEOUT_S,
+    discover_active_vehicles,
+    format_active_vehicles_snapshot,
+    format_vehicle_status,
+    get_vehicle_status,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -87,14 +95,20 @@ def build_parser() -> argparse.ArgumentParser:
 
     active = vehicle_commands.add_parser(
         "active",
-        help="Show active vehicles and readiness diagnostics from configured endpoints.",
-        description="Show active vehicles and readiness diagnostics from configured endpoints.",
+        help="Discover vehicle endpoints; this does not imply deployment or a running worker.",
+        description=(
+            "Discover front-camera-capable vehicle endpoints. Discoverable does not "
+            "mean automation is deployed, running, or publishing a view."
+        ),
     )
     active.add_argument(
         "--timeout-s",
         type=float,
-        default=1.0,
-        help="Per-candidate probe timeout in seconds.",
+        default=DEFAULT_CHASE_READINESS_TIMEOUT_S,
+        help=(
+            "One wall-clock readiness deadline per candidate in seconds "
+            f"(default: {DEFAULT_CHASE_READINESS_TIMEOUT_S:g})."
+        ),
     )
     active.add_argument(
         "--picar-url",
@@ -121,7 +135,7 @@ def build_parser() -> argparse.ArgumentParser:
     active.add_argument(
         "--active-only",
         action="store_true",
-        help="Hide inactive candidates and readiness diagnostics.",
+        help="Hide undiscoverable candidates and readiness diagnostics.",
     )
     active.add_argument(
         "--json",
@@ -130,8 +144,58 @@ def build_parser() -> argparse.ArgumentParser:
     )
     active.set_defaults(handler=_handle_vehicles_active)
 
-    automation = vehicle_commands.add_parser("automation", help="Manage vehicle automation runtimes.")
-    automation_commands = automation.add_subparsers(dest="automation_command", required=True)
+    status = vehicle_commands.add_parser(
+        "status",
+        help="Show simulator, vehicle, deployment, worker, and perception-view state.",
+        description=(
+            "Read the complete passive Chase journey state without starting a "
+            "simulator, changing its session, launching a browser, or starting a worker."
+        ),
+    )
+    status.add_argument(
+        "--id",
+        dest="vehicle_id",
+        default=None,
+        help="Vehicle id to inspect. Omit to list every discoverable or locally deployed id.",
+    )
+    status.add_argument(
+        "--chase-url",
+        default=None,
+        help=(
+            "Metrics UI HTTP(S) or WS(S) URL. HTTP origins are resolved to "
+            "/ws/control (default: CHASE_UI_WS_URL, then http://localhost:5050)."
+        ),
+    )
+    status.add_argument(
+        "--chase-ws-url",
+        default=None,
+        help=(
+            "Compatibility form for an explicit Metrics UI WebSocket URL; "
+            "cannot be combined with --chase-url."
+        ),
+    )
+    status.add_argument(
+        "--timeout-s",
+        type=float,
+        default=DEFAULT_CHASE_READINESS_TIMEOUT_S,
+        help=(
+            "One wall-clock deadline for all Chase readiness phases in seconds "
+            f"(default: {DEFAULT_CHASE_READINESS_TIMEOUT_S:g})."
+        ),
+    )
+    status.add_argument(
+        "--json",
+        action="store_true",
+        help="Print automa_vehicle_status_v1 JSON.",
+    )
+    status.set_defaults(handler=_handle_vehicles_status)
+
+    automation = vehicle_commands.add_parser(
+        "automation",
+        help="Manage locally deployed automation workers and their current views.",
+    )
+    automation.set_defaults(handler=_handle_vehicles_automation_help)
+    automation_commands = automation.add_subparsers(dest="automation_command")
     automation_help = automation_commands.add_parser(
         "help",
         help="Show automation-level commands.",
@@ -139,20 +203,26 @@ def build_parser() -> argparse.ArgumentParser:
     automation_help.set_defaults(handler=_handle_vehicles_automation_help)
     automation_run = automation_commands.add_parser(
         "run",
-        help="Start the automation worker and verify its first camera frame.",
-        description="Start the automation worker and verify its first camera frame.",
+        help="Start a worker and verify one correlated camera/perception publication.",
+        description=(
+            "Start the automation worker. Success requires one camera frame, its "
+            "completed perception result, and a healthy current-generation loopback view."
+        ),
     )
     automation_run.add_argument(
         "--id",
         required=True,
         dest="vehicle_id",
-        help="Vehicle id from `automa vehicles active`.",
+        help="Discoverable vehicle id from `automa vehicles status`.",
     )
     automation_run.add_argument(
         "--timeout-s",
         type=float,
-        default=3.0,
-        help="Vehicle/controller timeout in seconds.",
+        default=DEFAULT_CHASE_READINESS_TIMEOUT_S,
+        help=(
+            "One wall-clock Chase readiness deadline in seconds "
+            f"(default: {DEFAULT_CHASE_READINESS_TIMEOUT_S:g})."
+        ),
     )
     automation_run.add_argument(
         "--interval-s",
@@ -169,7 +239,18 @@ def build_parser() -> argparse.ArgumentParser:
     automation_run.add_argument(
         "--observe-only",
         action="store_true",
-        help="Run perception without taking over simulator WS control.",
+        help=(
+            "Passively observe without changing scenario, playback, control source, "
+            "input, or applying vehicle control."
+        ),
+    )
+    automation_run.add_argument(
+        "--open-view",
+        action="store_true",
+        help=(
+            "Open the loopback perception browser only after the first correlated "
+            "camera/perception publication is healthy."
+        ),
     )
     automation_run.add_argument(
         "--record",
@@ -197,13 +278,16 @@ def build_parser() -> argparse.ArgumentParser:
     automation_stop = automation_commands.add_parser(
         "stop",
         help="Stop the background automation loop for a vehicle.",
-        description="Stop the background automation loop for a vehicle.",
+        description=(
+            "Stop the background worker. The local deployment remains staged and "
+            "its former view is no longer current-generation available."
+        ),
     )
     automation_stop.add_argument(
         "--id",
         required=True,
         dest="vehicle_id",
-        help="Vehicle id from `automa vehicles active`.",
+        help="Locally deployed vehicle id from `automa vehicles status`.",
     )
     automation_stop.add_argument(
         "--wait-s",
@@ -245,8 +329,11 @@ def build_parser() -> argparse.ArgumentParser:
     automation_restart.add_argument(
         "--timeout-s",
         type=float,
-        default=3.0,
-        help="Vehicle/controller timeout in seconds.",
+        default=DEFAULT_CHASE_READINESS_TIMEOUT_S,
+        help=(
+            "One wall-clock Chase readiness deadline in seconds "
+            f"(default: {DEFAULT_CHASE_READINESS_TIMEOUT_S:g})."
+        ),
     )
     automation_restart.add_argument(
         "--interval-s",
@@ -671,6 +758,104 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print the full machine-readable check report.",
     )
     memory_check.set_defaults(handler=_handle_vehicles_memory_check)
+
+    workbench = vehicle_commands.add_parser(
+        "workbench",
+        help="Replay images through the perception-memory workbench.",
+    )
+    workbench.set_defaults(handler=_handle_vehicles_workbench_help)
+    workbench_commands = workbench.add_subparsers(
+        dest="workbench_command",
+        required=True,
+    )
+    workbench_help = workbench_commands.add_parser(
+        "help",
+        help="Show workbench-level commands.",
+    )
+    workbench_help.set_defaults(handler=_handle_vehicles_workbench_help)
+    workbench_replay = workbench_commands.add_parser(
+        "replay",
+        help="Replay an ordered image directory through perception and memory.",
+        description=(
+            "Run the bounded M008 perception-memory workbench against an ordered "
+            "local image directory. The server owns source ordering, perception, "
+            "observation, bounded memory, and any selected manifest-backed plugins. "
+            "Without --serve, one replay runs "
+            "to a terminal state; --serve keeps the loopback page available for "
+            "pause, step, reset, and another run."
+        ),
+    )
+    workbench_replay.add_argument(
+        "source_dir",
+        help="Directory containing supported images and optional ordered manifest.",
+    )
+    workbench_replay.add_argument(
+        "--plugin-dir",
+        default=None,
+        help=(
+            "Optional directory tree containing manifest-backed perception plugins. "
+            "Without this flag the packaged lightweight catalog is used."
+        ),
+    )
+    workbench_replay.add_argument(
+        "--plugin",
+        "--active-plugin",
+        "--active-plugin-id",
+        dest="active_plugin_ids",
+        action="append",
+        default=None,
+        help=(
+            "Select one ready plugin id from --plugin-dir; repeat to select more. "
+            "Omit this option with --plugin-dir to replay raw capture without "
+            "perception overlays."
+        ),
+    )
+    workbench_replay.add_argument(
+        "--cadence-ms",
+        type=int,
+        default=250,
+        help="Delay between frames in milliseconds (default: 250; zero means as fast as possible).",
+    )
+    workbench_replay.add_argument(
+        "--pace",
+        choices=("fixed", "realtime"),
+        default="fixed",
+        help="Playback pacing mode (realtime honors recorded frame timestamps; default: fixed).",
+    )
+    workbench_replay.add_argument(
+        "--max-frames",
+        type=int,
+        default=256,
+        help="Maximum normalized frames accepted from the source (default: 256).",
+    )
+    workbench_replay.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Loopback host for --serve (default: 127.0.0.1).",
+    )
+    workbench_replay.add_argument(
+        "--port",
+        type=int,
+        default=0,
+        help="Loopback port for --serve (default: choose a free port).",
+    )
+    workbench_replay.add_argument(
+        "--serve",
+        action="store_true",
+        help="Keep the loopback workbench server alive after starting the replay.",
+    )
+    workbench_replay.add_argument(
+        "--open",
+        dest="open_browser",
+        action="store_true",
+        help="Open the loopback workbench page in a browser and imply --serve.",
+    )
+    workbench_replay.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the final machine-readable workbench state.",
+    )
+    workbench_replay.set_defaults(handler=_handle_vehicles_workbench_replay)
 
     info = vehicle_commands.add_parser("info", help="Inspect locally staged controller configuration.")
     info_commands = info.add_subparsers(dest="info_command", required=True)
@@ -1108,7 +1293,8 @@ def build_parser() -> argparse.ArgumentParser:
         "update",
         help="Stage controller selections or deploy code to a vehicle.",
     )
-    update_commands = update.add_subparsers(dest="update_command", required=True)
+    update.set_defaults(handler=_handle_vehicles_update_help)
+    update_commands = update.add_subparsers(dest="update_command")
     update_help = update_commands.add_parser(
         "help",
         help="Show update-level commands.",
@@ -1243,7 +1429,11 @@ def build_parser() -> argparse.ArgumentParser:
     perception = update_commands.add_parser(
         "perception",
         help="Stage a perception algorithm in a vehicle's local controller bundle.",
-        description="Stage a perception algorithm in a vehicle's local controller bundle.",
+        description=(
+            "Idempotently stage a perception algorithm and safe idle decision in a "
+            "local vehicle bundle. For Chase, the result reports whether the same "
+            "passive capture gate is ready for observation-only automation."
+        ),
     )
     perception.add_argument(
         "--id",
@@ -1254,8 +1444,11 @@ def build_parser() -> argparse.ArgumentParser:
     perception.add_argument(
         "--timeout-s",
         type=float,
-        default=1.0,
-        help="Vehicle discovery/controller timeout in seconds.",
+        default=DEFAULT_CHASE_READINESS_TIMEOUT_S,
+        help=(
+            "One wall-clock Chase readiness deadline in seconds "
+            f"(default: {DEFAULT_CHASE_READINESS_TIMEOUT_S:g})."
+        ),
     )
     perception_selection = perception.add_mutually_exclusive_group()
     perception_selection.add_argument(
@@ -1389,8 +1582,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     simulators_ensure = simulator_commands.add_parser(
         "ensure",
-        help="Use an online simulator or launch the default SimEval deployment.",
-        description="Use an online simulator or launch the default SimEval deployment.",
+        help="Explicitly launch/configure a known simulator environment.",
+        description=(
+            "Explicitly prepare SimEval and select a Chase scenario. This command "
+            "changes simulator configuration; passive status and observation never invoke it."
+        ),
     )
     simulators_ensure.add_argument(
         "--timeout-ms",
@@ -1424,8 +1620,8 @@ def _handle_top_level_help(args: argparse.Namespace) -> int:
                 "The sections below only show the next command level; each command has its own help for details.",
                 "",
                 "- help       Show this command summary.",
-                "- vehicles   Discover vehicles, update vehicle bundles, and inspect active runtime state.",
-                "- simulators Prepare simulator environments for local automation testing.",
+                "- vehicles   Discover vehicles, stage bundles, and inspect each runtime layer.",
+                "- simulators Explicitly prepare or inspect simulator environments.",
                 "",
                 "Detailed help:",
                 "- ./cli/automa --help",
@@ -1443,7 +1639,7 @@ def _handle_simulators_help(args: argparse.Namespace) -> int:
                 "automa simulators commands",
                 "",
                 "- status   show simulator deployment availability",
-                "- ensure   use an online simulator or launch the default one",
+                "- ensure   explicitly launch/configure a known Chase environment",
                 "- help     show this summary",
                 "",
                 "Detailed help:",
@@ -1460,13 +1656,15 @@ def _handle_vehicles_help(args: argparse.Namespace) -> int:
             [
                 "automa vehicles commands",
                 "",
-                "- active       discover reachable vehicle/controller endpoints",
+                "- active       discover vehicle endpoints (not worker/deployment state)",
+                "- status       inspect simulator, deployment, worker, and view layers",
                 "- update       stage controller selections or deploy vehicle code",
                 "- automation   manage locally deployed automation workers",
                 "- operation    run bounded vehicle checks and setup tasks",
                 "- info         inspect locally staged controller configuration",
                 "- memory       operate memory (reset, replay, lifecycle check)",
                 "- decision     offline decision apply/replay (stage via update decision)",
+                "- workbench    replay images through perception and bounded memory",
                 "- perception   run and configure vehicle perception",
                 "- stream       read rolling local automation outputs",
                 "- help         show this summary",
@@ -1486,10 +1684,10 @@ def _handle_vehicles_automation_help(args: argparse.Namespace) -> int:
             [
                 "automa vehicles automation commands",
                 "",
-                "- run       start the automation worker",
-                "- status    show locally deployed automation state",
+                "- run       start a worker and verify camera + perception + current view",
+                "- status    show locally deployed worker and view state",
                 "- restart   stop and start the automation worker",
-                "- stop      stop the automation worker",
+                "- stop      stop the worker; keep its deployment staged",
                 "- help      show this summary",
                 "",
                 "Detailed help:",
@@ -1601,7 +1799,56 @@ def _handle_vehicles_stream_help(args: argparse.Namespace) -> int:
     return 0
 
 
+_TIMEOUT_INPUT_ERROR = "timeout_invalid"
+_TIMEOUT_INPUT_CONSTRAINT = "finite number greater than zero"
+_TIMEOUT_INPUT_RECOVERY = "Provide a finite --timeout-s greater than zero."
+
+
+def _validate_timeout_input(
+    timeout_s: float,
+    *,
+    command: str,
+    json_output: bool,
+    human_stream: TextIO,
+) -> bool:
+    """Reject malformed command-envelope timeouts before dispatching work."""
+
+    if math.isfinite(timeout_s) and timeout_s > 0:
+        return True
+
+    message = f"{command}: --timeout-s must be a {_TIMEOUT_INPUT_CONSTRAINT}"
+    if json_output:
+        print(
+            json.dumps(
+                {
+                    "schema": "automa_cli_error_v1",
+                    "error": _TIMEOUT_INPUT_ERROR,
+                    "layer": "input",
+                    "message": message,
+                    "details": {
+                        "argument": "--timeout-s",
+                        "constraint": _TIMEOUT_INPUT_CONSTRAINT,
+                    },
+                    "recovery": _TIMEOUT_INPUT_RECOVERY,
+                    "exit_code": 2,
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
+    else:
+        print(message, file=human_stream)
+    return False
+
+
 def _handle_vehicles_active(args: argparse.Namespace) -> int:
+    if not _validate_timeout_input(
+        args.timeout_s,
+        command="automa vehicles active",
+        json_output=args.json,
+        human_stream=sys.stderr,
+    ):
+        return 2
     include_inactive = not args.active_only
     payload = discover_active_vehicles(
         timeout_s=args.timeout_s,
@@ -1620,7 +1867,65 @@ def _handle_vehicles_active(args: argparse.Namespace) -> int:
     return 0
 
 
+def _handle_vehicles_status(args: argparse.Namespace) -> int:
+    if not _validate_timeout_input(
+        args.timeout_s,
+        command="automa vehicles status",
+        json_output=args.json,
+        human_stream=sys.stderr,
+    ):
+        return 2
+    if args.chase_url is not None and args.chase_ws_url is not None:
+        print(
+            "automa vehicles status: --chase-url and --chase-ws-url cannot be used together",
+            file=sys.stderr,
+        )
+        return 2
+    try:
+        payload = get_vehicle_status(
+            vehicle_id=args.vehicle_id,
+            chase_url=args.chase_url,
+            chase_ws_url=args.chase_ws_url,
+            timeout_s=args.timeout_s,
+        )
+    except ValueError as exc:
+        print(f"automa vehicles status: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        print(format_vehicle_status(payload))
+    return _vehicle_status_exit_code(payload)
+
+
+def _vehicle_status_exit_code(payload: dict[str, Any]) -> int:
+    cards = payload.get("vehicles")
+    status_cards = (
+        [card for card in cards if isinstance(card, dict)]
+        if isinstance(cards, list)
+        else [payload]
+    )
+    normal_next_steps = {
+        "automation_not_deployed",
+        "worker_stopped",
+    }
+    for card in status_cards:
+        next_action = card.get("next_action")
+        if not isinstance(next_action, dict):
+            continue
+        if str(next_action.get("reason")) not in normal_next_steps:
+            return 1
+    return 0
+
+
 def _handle_vehicles_automation_run(args: argparse.Namespace) -> int:
+    if not _validate_timeout_input(
+        args.timeout_s,
+        command="automa vehicles automation run",
+        json_output=False,
+        human_stream=sys.stdout,
+    ):
+        return 2
     if args.foreground:
         result = run_vehicle_automation(
             vehicle_id=args.vehicle_id,
@@ -1642,6 +1947,7 @@ def _handle_vehicles_automation_run(args: argparse.Namespace) -> int:
             record=args.record,
             verbose=args.verbose,
             log_to_disk=args.log_to_disk,
+            open_view=args.open_view,
         )
     if result.message:
         print(result.message)
@@ -1839,6 +2145,43 @@ def _handle_vehicles_memory_check(args: argparse.Namespace) -> int:
         timeout_s=float(getattr(args, "timeout_s", 3.0)),
         fresh_timeout_s=float(getattr(args, "fresh_timeout_s", 12.0)),
         expiry_timeout_s=getattr(args, "expiry_timeout_s", None),
+    )
+    if result.message:
+        print(result.message)
+    return result.exit_code
+
+
+def _handle_vehicles_workbench_help(args: argparse.Namespace) -> int:
+    print(
+        "\n".join(
+            [
+                "automa vehicles workbench commands",
+                "",
+                "- replay  replay an ordered image directory through perception and memory",
+                "- help    show this summary",
+                "",
+                "Detailed help:",
+                "- ./cli/automa vehicles workbench replay --help",
+            ]
+        )
+    )
+    return 0
+
+
+def _handle_vehicles_workbench_replay(args: argparse.Namespace) -> int:
+    result = run_workbench_replay(
+        args.source_dir,
+        plugin_dir=args.plugin_dir,
+        active_plugin_ids=args.active_plugin_ids,
+        cadence_ms=args.cadence_ms,
+        pace=args.pace,
+        max_frames=args.max_frames,
+        host=args.host,
+        port=args.port,
+        serve=args.serve,
+        open_browser=args.open_browser,
+        json_output=args.json,
+        output=None if args.json else sys.stdout,
     )
     if result.message:
         print(result.message)
@@ -2104,6 +2447,13 @@ def _handle_vehicles_perception_disable(args: argparse.Namespace) -> int:
 
 
 def _handle_vehicles_update_perception(args: argparse.Namespace) -> int:
+    if not _validate_timeout_input(
+        args.timeout_s,
+        command="automa vehicles update perception",
+        json_output=args.json,
+        human_stream=sys.stdout,
+    ):
+        return 2
     result = update_vehicle_perception(
         vehicle_id=args.vehicle_id,
         algorithm=args.algorithm,

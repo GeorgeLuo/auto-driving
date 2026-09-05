@@ -1,0 +1,38 @@
+{
+  "browser_view": null,
+  "commands": [
+    {
+      "argv": [
+        "./cli/automa",
+        "vehicles",
+        "help"
+      ],
+      "command": "./cli/automa vehicles help",
+      "elapsed_ms": 462,
+      "ended_at_utc": "2026-08-05T23:48:10.100035Z",
+      "exit_code": 0,
+      "started_at_utc": "2026-08-05T23:48:09.637472Z",
+      "stderr_path": "steps/help-vehicles/cmd-00.stderr.txt",
+      "stdout_path": "steps/help-vehicles/cmd-00.stdout.txt"
+    }
+  ],
+  "gate_ids": [
+    "help_discoverability"
+  ],
+  "human": {
+    "finding_requested": false,
+    "interactive": true,
+    "notes": "",
+    "visual": "pass"
+  },
+  "id": "help-vehicles",
+  "kind": "command",
+  "machine_evidence": {},
+  "machine_ok": true,
+  "machine_summary": "",
+  "primary_cue": "status, update, and automation are listed",
+  "question": "Can the operator find status, update, and automation from vehicles help?",
+  "required_for_verdict": true,
+  "safety": "read",
+  "status": "pass"
+}

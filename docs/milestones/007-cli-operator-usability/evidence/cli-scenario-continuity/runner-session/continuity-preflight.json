@@ -1,0 +1,37 @@
+{
+  "family_meta": {
+    "by_family": {
+      "continuity.live_config_swap": [
+        "live-swap-stage",
+        "live-swap-stop"
+      ],
+      "continuity.memory_lifecycle": [
+        "memory-lifecycle"
+      ],
+      "continuity.memory_replay": [],
+      "continuity.offline_perception": [
+        "offline-capture",
+        "offline-apply-a",
+        "offline-apply-b"
+      ],
+      "continuity.plugin_ablation": [],
+      "continuity.temporal_backpressure": []
+    },
+    "required": [
+      "continuity.offline_perception",
+      "continuity.live_config_swap",
+      "continuity.memory_lifecycle"
+    ]
+  },
+  "family_ok": true,
+  "family_reason": "family validation ok",
+  "required_family_ids": [
+    "continuity.offline_perception",
+    "continuity.live_config_swap",
+    "continuity.memory_lifecycle"
+  ],
+  "safety_findings": [],
+  "safety_ok": true,
+  "safety_reason": "continuity safety preflight ok",
+  "schema": "continuity_preflight_v0"
+}

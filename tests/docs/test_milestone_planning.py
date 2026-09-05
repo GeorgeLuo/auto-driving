@@ -5,7 +5,19 @@ import re
 import unittest
 from pathlib import Path
 
-from docs.milestones.workflow import parse_table, validate_plan_path
+from docs.milestones.workflow import (
+    apply_handoff,
+    parse_table,
+    validate_plan_path,
+    validate_plan_text,
+    validate_repair_cycle_governance_body,
+)
+from tests.docs.milestone_workflow_fixtures import (
+    NEXT_FRONTIER,
+    handoff_receipt,
+    implementation_review_plan_text,
+    ready_plan_text,
+)
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -14,39 +26,48 @@ MILESTONES = DOCS / "milestones"
 CONTRACT_SOURCE = MILESTONES / "README.md"
 CONTRACT_RENDER = MILESTONES / "planning-contract.html"
 GUIDE = DOCS / "README.md"
+ROOT_README = ROOT / "README.md"
+STALE_MILESTONE_STATUS = re.compile(
+    r"(?im)is the (active|queued) .+ milestone"
+)
 PR_TEMPLATE = ROOT / ".github" / "pull_request_template.md"
 PROPOSAL_PR_TEMPLATE = (
     ROOT / ".github" / "PULL_REQUEST_TEMPLATE" / "proposal.md"
 )
+PROPOSAL_GUIDANCE = DOCS / "guidance" / "proposal-vs-implementation.md"
+PROPOSAL_AMENDMENT_PR_TEMPLATE = (
+    ROOT / ".github" / "PULL_REQUEST_TEMPLATE" / "proposal-amendment.md"
+)
+IMPLEMENTATION_ADJUNCT_PR_TEMPLATE = (
+    ROOT / ".github" / "PULL_REQUEST_TEMPLATE" / "implementation-adjunct.md"
+)
 MILESTONE_PR_TEMPLATE = ROOT / ".github" / "PULL_REQUEST_TEMPLATE" / "milestone.md"
+REPAIR_PR_TEMPLATE = ROOT / ".github" / "PULL_REQUEST_TEMPLATE" / "repair.md"
+TEST_WORKFLOW = ROOT / ".github" / "workflows" / "tests.yml"
 
 
-def _active_milestone_section() -> str:
-    guide = GUIDE.read_text(encoding="utf-8")
+def _plan_header_status(plan_md: Path) -> str:
     match = re.search(
-        r"^## Active Milestone\s*\n(?P<body>.*?)(?=^## |\Z)",
-        guide,
-        re.MULTILINE | re.DOTALL,
+        r"^\| Status \| ([^|]+) \|",
+        plan_md.read_text(encoding="utf-8"),
+        re.MULTILINE,
     )
-    if not match:
-        raise AssertionError("docs/README.md must contain an Active Milestone section")
-    return match.group("body")
+    if match is None:
+        return ""
+    return match.group(1).strip().strip("`")
 
 
 def _active_plan_paths() -> tuple[Path, Path] | None:
-    section = _active_milestone_section()
-    if re.search(r"^\*\*None\.\*\*", section, re.MULTILINE):
+    active: list[tuple[Path, Path]] = []
+    for plan_md in sorted(MILESTONES.glob("*/plan.md")):
+        if _plan_header_status(plan_md).casefold().startswith("active"):
+            active.append((plan_md, plan_md.with_suffix(".html")))
+    if len(active) > 1:
+        names = ", ".join(str(path.relative_to(ROOT)) for path, _ in active)
+        raise AssertionError(f"multiple active milestone plans: {names}")
+    if not active:
         return None
-    match = re.search(
-        r"milestones/(\d+-[^)\s]+)/plan\.html",
-        section,
-    )
-    if not match:
-        raise AssertionError("docs/README.md must link an active milestone plan.html")
-    slug = match.group(1)
-    plan_md = MILESTONES / slug / "plan.md"
-    plan_html = MILESTONES / slug / "plan.html"
-    return plan_md, plan_html
+    return active[0]
 
 
 class MilestonePlanningTests(unittest.TestCase):
@@ -96,7 +117,6 @@ class MilestonePlanningTests(unittest.TestCase):
             "## Exit Criteria",
             "## Current Delivery",
             "### Current Frontier",
-            "### Next-Frontier Candidate",
             "## Workflow History",
             "## Accepted Review Units",
             "## Open Risks And Unverified Assumptions",
@@ -104,6 +124,30 @@ class MilestonePlanningTests(unittest.TestCase):
             "## Closeout",
         ):
             self.assertIn(heading, text, f"missing section {heading}")
+        if "### Frontier Map" not in text:
+            self.assertIn("### Next-Frontier Candidate", text)
+            state = validate_plan_path(plan_md)
+            expected_path = (
+                (state.next_frontier.name,)
+                if not state.next_frontier.is_empty
+                else ()
+            )
+            self.assertEqual(state.frontier_map.path, expected_path)
+
+    def test_legacy_active_plan_shape_uses_bounded_map_adoption(self) -> None:
+        source = ready_plan_text()
+        start = source.index("### Frontier Map")
+        end = source.index("## Workflow History", start)
+        legacy = source[:start] + source[end:]
+
+        self.assertNotIn("### Frontier Map", legacy)
+        state = validate_plan_text(legacy)
+        self.assertEqual(state.status, "Active")
+        self.assertEqual(state.frontier_map.path, (NEXT_FRONTIER,))
+        self.assertEqual(
+            tuple(node.name for node in state.frontier_map.nodes),
+            (NEXT_FRONTIER,),
+        )
 
     def test_completion_usage_starts_with_primary_demonstration(self) -> None:
         paths = _active_plan_paths()
@@ -127,11 +171,12 @@ class MilestonePlanningTests(unittest.TestCase):
             return
         plan_md, _ = paths
         state = validate_plan_path(plan_md)
-        self.assertFalse(state.current.is_empty)
-        # Terminal closeout may leave next empty; otherwise at most one named next.
+        if state.current.is_empty:
+            self.assertTrue(state.current.fields.get("reason"))
+        else:
+            self.assertTrue(state.current.fields["review question"])
         if not state.next_frontier.is_empty:
             self.assertTrue(state.next_frontier.fields["review question"])
-        self.assertTrue(state.current.fields["review question"])
         self.assertTrue(state.milestone_branch.startswith("milestone/"))
 
     def test_active_plan_exit_criteria_use_stable_ids(self) -> None:
@@ -146,27 +191,39 @@ class MilestonePlanningTests(unittest.TestCase):
 
     def test_docs_guide_is_navigation_only_for_progress(self) -> None:
         guide = GUIDE.read_text(encoding="utf-8")
-        self.assertIn("Active Milestone", guide)
-        # Must not restate detailed package progress or remaining-for-closeout.
+        self.assertIn("workflow.py status", guide)
+        self.assertIn("completed.md", guide)
+        self.assertNotIn("## Active Milestone", guide)
+        self.assertNotIn("## Immediate Pre-Plan", guide)
         lowered = guide.lower()
         for banned in (
             "remaining for closeout",
             "package 5a",
             "package 5b",
             "required remediation order",
+            "| current frontier |",
+            "| status | active",
         ):
             self.assertNotIn(banned, lowered)
 
-    def test_docs_guide_identifies_an_active_milestone_or_explicit_none(self) -> None:
-        section = _active_milestone_section()
+    def test_docs_guide_does_not_name_an_active_or_none_milestone(self) -> None:
+        guide = GUIDE.read_text(encoding="utf-8")
+        self.assertNotIn("**None.**", guide)
+        self.assertIn("plan.md", guide)
+        self.assertIsNone(STALE_MILESTONE_STATUS.search(guide))
         paths = _active_plan_paths()
         if paths is None:
-            self.assertRegex(section, r"^\s*\*\*None\.\*\*")
             return
         plan_md, plan_html = paths
-        self.assertNotIn("**None.**", section)
         self.assertTrue(plan_md.is_file())
         self.assertTrue(plan_html.is_file())
+
+    def test_root_readme_does_not_claim_milestone_status(self) -> None:
+        readme = ROOT_README.read_text(encoding="utf-8")
+        self.assertIsNone(STALE_MILESTONE_STATUS.search(readme))
+        self.assertNotIn("## Active Milestone", readme)
+        self.assertIn("docs/README.md", readme)
+        self.assertIn("completed.md", readme)
 
     def test_review_unit_pr_template_has_required_headings(self) -> None:
         self.assertTrue(PR_TEMPLATE.is_file())
@@ -176,21 +233,87 @@ class MilestonePlanningTests(unittest.TestCase):
             "## Accepted Proposal",
             "## Review Kind",
             "## Review Question",
-            "## Invariant Or Acceptance Contract",
-            "## Adversarial Matrix",
-            "## Scope",
-            "## File Impact",
-            "## Scope Reconciliation",
+            "## Repair Cycle Ledger",
             "## Validation",
         ):
             self.assertIn(heading, text)
+        self.assertNotIn("## Repair Escalation", text)
+        self.assertNotIn("## Repair Continuation Audit", text)
+        self.assertIn("matching the canonical milestone plan", text)
 
     def test_proposal_pr_template_forbids_implementation(self) -> None:
         self.assertTrue(PROPOSAL_PR_TEMPLATE.is_file())
         text = PROPOSAL_PR_TEMPLATE.read_text(encoding="utf-8")
         self.assertIn("## Independence Check", text)
+        self.assertIn("## Review Kind", text)
+        self.assertIn("## Operator Want", text)
+        self.assertIn("## Evidence rendering", text)
+        self.assertIn("work-order artifact", text)
+        self.assertIn("- Evidence directory (if yes):", text)
+        self.assertIn("repository-relative directory path", text)
+        self.assertIn("Trust And Authority Model", text)
+        self.assertIn("Evidence Topology And Capture Strategy", text)
         self.assertIn("No product or runtime implementation changed", text)
         self.assertIn("Proposal artifact", text)
+        self.assertIn("## Contract Review Receipt", text)
+        self.assertIn("current repository push authority", text)
+        self.assertIn("unedited COMMENT review", text)
+        self.assertIn("## Repair Cycle Ledger", text)
+        self.assertNotIn("## Repair Escalation", text)
+        self.assertNotIn("## Repair Continuation Audit", text)
+
+    def test_universal_claim_contractability_is_visible_in_author_guidance(
+        self,
+    ) -> None:
+        contract = CONTRACT_SOURCE.read_text(encoding="utf-8")
+        guidance = PROPOSAL_GUIDANCE.read_text(encoding="utf-8")
+        for phrase in (
+            "Trust And Authority Model",
+            "Evidence Topology And Capture Strategy",
+        ):
+            self.assertIn(phrase, contract)
+            self.assertIn(phrase, guidance)
+        normalized_contract = " ".join(contract.split())
+        self.assertIn(
+            "consistency, provenance, and authenticity",
+            normalized_contract,
+        )
+        self.assertIn("canonical capture is ready", guidance)
+
+    def test_proposal_amendment_template_preserves_accepted_contract(self) -> None:
+        self.assertTrue(PROPOSAL_AMENDMENT_PR_TEMPLATE.is_file())
+        text = PROPOSAL_AMENDMENT_PR_TEMPLATE.read_text(encoding="utf-8")
+        self.assertIn("## Review Kind", text)
+        self.assertIn("## Evidence Requiring Amendment", text)
+        self.assertIn("## Operator Want", text)
+        self.assertIn("Trust And Authority Model", text)
+        self.assertIn("Evidence Topology And Capture Strategy", text)
+        self.assertIn("No accepted proposal or prior amendment was modified", text)
+        self.assertIn("No product or runtime implementation changed", text)
+        self.assertIn("## Contract Review Receipt", text)
+        self.assertIn("current repository push authority", text)
+        self.assertIn("## Repair Cycle Ledger", text)
+        self.assertNotIn("## Repair Escalation", text)
+        self.assertNotIn("## Repair Continuation Audit", text)
+
+    def test_implementation_adjunct_template_records_human_compatibility(self) -> None:
+        self.assertTrue(IMPLEMENTATION_ADJUNCT_PR_TEMPLATE.is_file())
+        text = IMPLEMENTATION_ADJUNCT_PR_TEMPLATE.read_text(encoding="utf-8")
+        for heading in (
+            "## Parent Implementation",
+            "## Operator Request",
+            "## HITL Authorization",
+            "## Review Question",
+            "## Compatibility",
+            "## Evidence Impact",
+            "## Repair Cycle Ledger",
+            "## Validation",
+        ):
+            self.assertIn(heading, text)
+        self.assertNotIn("## Repair Escalation", text)
+        self.assertIn("Requested disposition: `implement-now`", text)
+        self.assertIn("parent contract remains true without this adjunct", text)
+        self.assertIn("Base implementation branch", text)
 
     def test_cumulative_milestone_pr_template_targets_main_topology(self) -> None:
         self.assertTrue(MILESTONE_PR_TEMPLATE.is_file())
@@ -198,6 +321,57 @@ class MilestonePlanningTests(unittest.TestCase):
         self.assertIn("Targets: `main`", text)
         self.assertIn("milestone branch", text.lower())
         self.assertIn("## Accepted Review Units", text)
+        self.assertIn("## Repair Cycle Ledger", text)
+        self.assertNotIn("## Repair Escalation", text)
+        self.assertNotIn("## Repair Continuation Audit", text)
+
+    def test_repair_template_carries_cycle_and_escalation_receipts(self) -> None:
+        self.assertTrue(REPAIR_PR_TEMPLATE.is_file())
+        text = REPAIR_PR_TEMPLATE.read_text(encoding="utf-8")
+        self.assertIn("## Review Repair Summary", CONTRACT_SOURCE.read_text(encoding="utf-8"))
+        self.assertIn("## Repair Cycle Ledger", text)
+        self.assertNotIn("## Repair Escalation", text)
+        self.assertNotIn("## Repair Continuation Audit", text)
+
+    def test_review_unit_template_repair_receipt_defaults_are_valid(self) -> None:
+        for path in (
+            PR_TEMPLATE,
+            PROPOSAL_PR_TEMPLATE,
+            PROPOSAL_AMENDMENT_PR_TEMPLATE,
+            IMPLEMENTATION_ADJUNCT_PR_TEMPLATE,
+            MILESTONE_PR_TEMPLATE,
+            REPAIR_PR_TEMPLATE,
+        ):
+            with self.subTest(path=path):
+                self.assertEqual(
+                    validate_repair_cycle_governance_body(
+                        path.read_text(encoding="utf-8")
+                    ),
+                    0,
+                )
+
+    def test_pr_body_edits_revalidate_repair_receipts(self) -> None:
+        text = TEST_WORKFLOW.read_text(encoding="utf-8")
+        self.assertRegex(text, r"types:.*\bedited\b")
+        self.assertIn("pull-requests: read", text)
+        self.assertIn("GH_TOKEN:", text)
+
+    def test_pr_body_edits_rerun_review_kind_validation(self) -> None:
+        text = TEST_WORKFLOW.read_text(encoding="utf-8")
+        self.assertRegex(
+            text,
+            r"pull_request:\s*\n\s+types: \[[^\]]*edited[^\]]*\]",
+        )
+
+    def test_review_events_rerun_receipt_validation(self) -> None:
+        text = TEST_WORKFLOW.read_text(encoding="utf-8")
+        self.assertRegex(
+            text,
+            r"pull_request_review:\s*\n\s+types: \[[^\]]*submitted[^\]]*\]",
+        )
+        self.assertIn("dismissed", text)
+        self.assertIn("github.event.pull_request.head.ref", text)
+        self.assertIn("github.event_name == 'pull_request_review'", text)
 
     def test_contract_defines_work_unit_terms_and_branch_model(self) -> None:
         text = CONTRACT_SOURCE.read_text(encoding="utf-8")
@@ -211,14 +385,50 @@ class MilestonePlanningTests(unittest.TestCase):
             "### Closeout",
             "milestone/<number>-<slug>",
             "m<number>/<frontier>-proposal",
+            "m<number>/<frontier>--adjunct-<slug>",
         ):
             self.assertIn(term, text)
         self.assertIn("targets the milestone branch", text.lower())
+
+    def test_contract_routes_human_discovery_without_reopening_parent(self) -> None:
+        text = CONTRACT_SOURCE.read_text(encoding="utf-8")
+        normalized = " ".join(text.split())
+        self.assertIn("### Human Discovery During Implementation", text)
+        self.assertIn("parent contract remains true", text.lower())
+        self.assertIn("implement-now", text)
+        self.assertIn("creates no plan transition", normalized)
+        self.assertIn("review the integrated parent in totality", normalized)
 
     def test_contract_discourages_multiple_independent_review_questions(self) -> None:
         text = CONTRACT_SOURCE.read_text(encoding="utf-8")
         self.assertIn("Singular Review Question Rule", text)
         self.assertIn('requires “and”', text)
+
+    def test_contract_has_evidence_based_repair_continuation_gate(self) -> None:
+        text = CONTRACT_SOURCE.read_text(encoding="utf-8")
+        normalized = " ".join(text.split())
+        self.assertIn("There is no cycle count that pauses review", text)
+        self.assertIn("Closed implementation review", text)
+        self.assertIn("Late implementer collapse", text)
+        self.assertIn("Derived evidence rendering", text)
+        self.assertIn("one stable evidence directory", normalized)
+        self.assertIn("repository-relative path", normalized)
+        self.assertNotIn("shared directory is acceptable", text.lower())
+        self.assertIn("Do not invent", text)
+        self.assertIn("operator", text.lower())
+        self.assertIn("leftover shapes", text)
+        self.assertIn("inside the accepted owner", text)
+        self.assertIn("different named owner", text)
+        self.assertNotIn("Moving internals or touching more files", text)
+        self.assertIn("Outcome: `accepted`", text)
+        self.assertIn("documentary", text.lower())
+        self.assertIn("a new PR number is not reviewability evidence", normalized)
+        self.assertIn("currently fails closed", normalized)
+        self.assertIn("becomes authoritative only after", normalized)
+        self.assertIn("already open at merge do not migrate automatically", normalized)
+        self.assertIn("introducing PR remains governed by its base contract", normalized)
+        self.assertIn("Repair Cycle Ledger", text)
+        self.assertNotIn("Repair Escalation", text)
 
     def test_contract_assigns_frontier_handoff_to_executable_workflow(self) -> None:
         text = CONTRACT_SOURCE.read_text(encoding="utf-8")
@@ -226,20 +436,27 @@ class MilestonePlanningTests(unittest.TestCase):
         self.assertIn("Frontier handoff:", text)
         self.assertIn("docs/milestones/workflow.py complete-implementation", text)
         self.assertIn("handoff --receipt <path>", text)
-        self.assertIn("docs/milestones/workflow.py start-proposal", text)
         self.assertIn("docs/milestones/workflow.py accept-proposal", text)
-        self.assertIn("docs/milestones/workflow.py start-implementation", text)
+        self.assertIn(
+            "docs/milestones/workflow.py accept-proposal-amendment",
+            text,
+        )
+        self.assertIn("git switch -c", text)
+        self.assertIn("optional helpers", text)
         self.assertIn("merge commit that is not already an ancestor", normalized)
-        self.assertIn("promotes the reviewed next candidate", normalized)
+        self.assertIn("sets current to idle", text)
 
     def test_contract_requires_next_frontier_minimal_acceptance_contract(self) -> None:
         text = CONTRACT_SOURCE.read_text(encoding="utf-8")
         normalized = " ".join(text.split())
         self.assertIn("pre-implementation acceptance contract", text)
-        self.assertIn("frozen before the proposal branch opens", normalized)
+        self.assertIn("select current from the artifact", normalized)
         self.assertIn("enforcement or acceptance owner", text)
         self.assertIn("A name plus a vague “likely question” alone is not a candidate", text)
-        self.assertIn("empty next-frontier slot", text)
+        self.assertIn("empty remaining path", text)
+        self.assertIn("### Frontier Map", text)
+        self.assertIn("linked-list", text)
+        self.assertIn("cannot delete a contracted node", text)
 
     def test_contract_requires_one_primary_completion_demonstration(self) -> None:
         text = CONTRACT_SOURCE.read_text(encoding="utf-8")
@@ -252,7 +469,9 @@ class MilestonePlanningTests(unittest.TestCase):
             return
         plan_md, _ = paths
         state = validate_plan_path(plan_md)
-        frontiers = [state.current]
+        frontiers = []
+        if not state.current.is_empty:
+            frontiers.append(state.current)
         if not state.next_frontier.is_empty:
             frontiers.append(state.next_frontier)
         for frontier in frontiers:
@@ -268,13 +487,24 @@ class MilestonePlanningTests(unittest.TestCase):
                 "non-goals",
             ):
                 self.assertTrue(frontier.fields[field], f"missing frontier field {field}")
-        # Active frontier may be anywhere in the proposal/implementation machine.
         from docs.milestones.workflow import WORKFLOW_STATES
 
-        self.assertIn(
-            state.current.fields["workflow state"],
-            WORKFLOW_STATES,
+        if state.current.is_empty:
+            self.assertTrue(state.current.fields.get("reason"))
+        else:
+            self.assertIn(
+                state.current.fields["workflow state"],
+                WORKFLOW_STATES,
+            )
+
+    def test_repository_accepts_active_idle_current(self) -> None:
+        state = validate_plan_text(
+            apply_handoff(implementation_review_plan_text(), handoff_receipt())
         )
+        self.assertEqual(state.status, "Active")
+        self.assertTrue(state.current.is_empty)
+        self.assertEqual(state.next_frontier.name, NEXT_FRONTIER)
+        self.assertEqual(state.frontier_map.path, (NEXT_FRONTIER,))
 
 
 if __name__ == "__main__":

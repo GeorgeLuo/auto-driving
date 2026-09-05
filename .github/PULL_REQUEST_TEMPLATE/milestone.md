@@ -25,6 +25,17 @@ Authoritative table in the milestone plan (do not duplicate row-by-row status he
 
 <!-- Link the plan Open Risks section or list only residual blockers -->
 
+## Repair Cycle Ledger
+
+<!-- Add one row for each consolidated changes-requested verdict followed by a
+     repair revision. Classification, highest severity, and the exact finding
+     manifest come from the linked GitHub review. Use full 40-character repair
+     SHAs. Keep the sole all-None row until the first repair cycle. -->
+
+| Cycle | Review receipt | Classification | Highest severity | Repair revision | Contract impact |
+| --- | --- | --- | --- | --- | --- |
+| None | None | None | None | None | None |
+
 ## Final Validation
 
 <!-- Added only during closeout -->

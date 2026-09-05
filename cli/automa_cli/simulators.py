@@ -10,6 +10,10 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
+from implementations.vehicle.chase_sim.defaults import (
+    get_default_chase_ui_ws_url,
+)
+
 
 DEFAULT_SERVER = "http://127.0.0.1:3000/api"
 DEFAULT_UI_HTTP_URL = "http://127.0.0.1:5050"
@@ -213,7 +217,7 @@ def ensure_simulator(
     commands.append(final_run.to_dict())
 
     browser_open_failed = browser_open_run is not None and browser_open_run.exit_code != 0
-    usable = bool(
+    configured_usable = bool(
         final_status["online"]
         and frontend_ready
         and ui_summary["ok"]
@@ -222,6 +226,37 @@ def ensure_simulator(
         and stability_summary["ok"]
         and not launch_failed
     )
+    chase_status: dict[str, Any] | None = None
+    chase_gate_ready = False
+    if configured_usable:
+        from .vehicles import (
+            DEFAULT_CHASE_READINESS_TIMEOUT_S,
+            get_vehicle_status,
+        )
+
+        chase_status = get_vehicle_status(
+            vehicle_id="chase-sim-chaser",
+            chase_ws_url=get_default_chase_ui_ws_url(),
+            timeout_s=DEFAULT_CHASE_READINESS_TIMEOUT_S,
+        )
+        expected_layers = {
+            "simulator_server": "reachable",
+            "simulator_frontend": "connected",
+            "chase_game": "ready",
+            "vehicle": "discoverable",
+            "passive_capture": "available",
+        }
+        status_layers = (
+            chase_status.get("layers")
+            if isinstance(chase_status.get("layers"), dict)
+            else {}
+        )
+        chase_gate_ready = all(
+            isinstance(status_layers.get(name), dict)
+            and status_layers[name].get("state") == expected
+            for name, expected in expected_layers.items()
+        )
+    usable = configured_usable and chase_gate_ready
     errors = []
     if launch_failed:
         errors.append("simeval deploy start failed")
@@ -241,6 +276,21 @@ def ensure_simulator(
         errors.append("Chase Play debug is not available")
     if not stability_summary["ok"] and not stability_summary.get("skipped"):
         errors.append("Chase frontend did not remain usable after setup")
+    if configured_usable and not chase_gate_ready:
+        next_action = (
+            chase_status.get("next_action")
+            if isinstance(chase_status, dict)
+            and isinstance(chase_status.get("next_action"), dict)
+            else {}
+        )
+        errors.append(
+            "configured Chase frontend did not pass the shared passive sensor-capture gate"
+            + (
+                f": {next_action.get('reason')}"
+                if next_action.get("reason")
+                else ""
+            )
+        )
 
     payload["initial_status"] = initial_status
     payload["launch"] = {
@@ -260,6 +310,58 @@ def ensure_simulator(
     payload["scenario"] = scenario_summary
     payload["play_debug"] = play_debug_summary
     payload["stability"] = stability_summary
+    payload["chase_readiness"] = (
+        {
+            "endpoint": chase_status.get("endpoint"),
+            "layers": {
+                name: chase_status.get("layers", {}).get(name)
+                for name in (
+                    "simulator_server",
+                    "simulator_frontend",
+                    "chase_game",
+                    "vehicle",
+                    "passive_capture",
+                )
+            },
+            "capture": chase_status.get("capture"),
+            "timeout_s": chase_status.get("timeout_s"),
+            "elapsed_ms": chase_status.get("elapsed_ms"),
+            "ready": chase_gate_ready,
+        }
+        if isinstance(chase_status, dict)
+        else {
+            "ready": False,
+            "reason": "configured simulator gate did not run",
+        }
+    )
+    chase_readiness_gates = (
+        payload["chase_readiness"].get("layers")
+        if isinstance(payload["chase_readiness"].get("layers"), dict)
+        else {}
+    )
+    chase_blocking_layer = next(
+        (
+            name
+            for name, expected in (
+                ("simulator_server", "reachable"),
+                ("simulator_frontend", "connected"),
+                ("chase_game", "ready"),
+                ("vehicle", "discoverable"),
+                ("passive_capture", "available"),
+            )
+            if not isinstance(chase_readiness_gates.get(name), dict)
+            or chase_readiness_gates[name].get("state") != expected
+        ),
+        None,
+    )
+    payload["readiness"] = {
+        "schema": "automa_cli_readiness_v1",
+        "status": "ready" if usable else "blocked",
+        "ready_for": "inspect vehicle status and stage perception",
+        "checked_at_ms": int(time.time() * 1000),
+        "gates": chase_readiness_gates,
+        "blocking_layer": chase_blocking_layer,
+    }
     payload["final_status"] = final_status
     result_status, reason_code = _simulator_ensure_result_status(
         usable=usable,
@@ -271,6 +373,26 @@ def ensure_simulator(
         play_debug_ready=bool(play_debug_summary["ok"]),
         stability_summary=stability_summary,
     )
+    if configured_usable and not chase_gate_ready:
+        result_status = "failed"
+        reason_code = "chase_capture_not_ready"
+    recovery = _simulator_ensure_recovery(
+        reason_code=reason_code,
+        scenario_id=scenario_id,
+    )
+    if reason_code == "chase_capture_not_ready" and isinstance(chase_status, dict):
+        next_action = (
+            chase_status.get("next_action")
+            if isinstance(chase_status.get("next_action"), dict)
+            else {}
+        )
+        if isinstance(next_action.get("command"), str):
+            recovery = next_action["command"]
+        elif isinstance(next_action.get("external_change"), dict):
+            recovery = (
+                "Metrics UI external change required: "
+                + json.dumps(next_action["external_change"], sort_keys=True)
+            )
     payload["result"] = {
         "status": result_status,
         "reason_code": reason_code,
@@ -279,10 +401,7 @@ def ensure_simulator(
         "launched": launched and not launch_failed,
         "error": errors[0] if errors else None,
         "errors": errors,
-        "recovery": _simulator_ensure_recovery(
-            reason_code=reason_code,
-            scenario_id=scenario_id,
-        ),
+        "recovery": recovery,
     }
     payload["commands"] = commands
 
@@ -801,6 +920,8 @@ def _format_ensure(payload: dict[str, Any]) -> str:
     scenario = _dict_field(payload, "scenario")
     play_debug = _dict_field(payload, "play_debug")
     stability = _dict_field(payload, "stability")
+    chase_readiness = _dict_field(payload, "chase_readiness")
+    chase_layers = _dict_field(chase_readiness, "layers")
 
     lines = [
         "Simulator ensure",
@@ -831,9 +952,29 @@ def _format_ensure(payload: dict[str, Any]) -> str:
                 else _yes_no(bool(stability.get("ok")))
             ),
             f"final online: {_yes_no(bool(final.get('online')))}",
+            "shared Chase environment gate: "
+            + _yes_no(bool(chase_readiness.get("ready"))),
+            "atomic passive capture: "
+            + str(
+                _dict_field(chase_layers, "passive_capture").get(
+                    "state",
+                    "not checked",
+                )
+            ),
             f"usable: {_yes_no(bool(result.get('usable')))}",
         ]
     )
+    readiness = _dict_field(payload, "readiness")
+    ready_for = readiness.get(
+        "ready_for",
+        "inspect vehicle status and stage perception",
+    )
+    if readiness.get("status") == "ready":
+        lines.append(f"Ready for: {ready_for}")
+    else:
+        blocking_layer = readiness.get("blocking_layer")
+        suffix = f" (blocking layer: {blocking_layer})" if blocking_layer else ""
+        lines.append(f"Not ready for: {ready_for}{suffix}")
     _append_result_details(lines, result)
     return "\n".join(lines)
 

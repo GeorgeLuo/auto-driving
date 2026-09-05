@@ -1,0 +1,55 @@
+{
+  "browser_view": {
+    "imported_at_utc": "2026-08-05T23:49:09.641832Z",
+    "imported_from": "<home>/Desktop/browser-view1.png",
+    "ok": false,
+    "source_mtime_unix": 1785973735.0144434,
+    "source_sha256": "bbac2a709a3f424e65495723a0a1a1f3ccdc70ef4981e8eb23cae22511005f31",
+    "step_id": "automation-run",
+    "validation": "browser-view.png not bound yet: view health not proven",
+    "view_healthy_at_unix": null
+  },
+  "commands": [
+    {
+      "argv": [
+        "./cli/automa",
+        "vehicles",
+        "automation",
+        "run",
+        "--id",
+        "chase-sim-chaser",
+        "--observe-only",
+        "--frames",
+        "0",
+        "--open-view"
+      ],
+      "command": "./cli/automa vehicles automation run --id chase-sim-chaser --observe-only --frames 0 --open-view",
+      "elapsed_ms": 1681,
+      "ended_at_utc": "2026-08-05T23:48:33.669803Z",
+      "exit_code": 0,
+      "started_at_utc": "2026-08-05T23:48:31.988073Z",
+      "stderr_path": "steps/automation-run/cmd-00.stderr.txt",
+      "stdout_path": "steps/automation-run/cmd-00.stdout.txt"
+    }
+  ],
+  "gate_ids": [
+    "startup",
+    "human_view"
+  ],
+  "human": {
+    "finding_requested": false,
+    "interactive": true,
+    "notes": "",
+    "visual": "pass"
+  },
+  "id": "automation-run",
+  "kind": "command",
+  "machine_evidence": {},
+  "machine_ok": true,
+  "machine_summary": "",
+  "primary_cue": "Ready for: inspect perception and stop automation; Browser opened",
+  "question": "Does observe-only run reach a lag-bounded correlated perception view?",
+  "required_for_verdict": true,
+  "safety": "live_mutation",
+  "status": "pass"
+}

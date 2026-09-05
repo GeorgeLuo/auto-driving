@@ -1,0 +1,16 @@
+automa vehicles commands
+
+- active       discover vehicle endpoints (not worker/deployment state)
+- status       inspect simulator, deployment, worker, and view layers
+- update       stage controller selections or deploy vehicle code
+- automation   manage locally deployed automation workers
+- operation    run bounded vehicle checks and setup tasks
+- info         inspect locally staged controller configuration
+- memory       operate memory (reset, replay, lifecycle check)
+- perception   run and configure vehicle perception
+- stream       read rolling local automation outputs
+- help         show this summary
+
+Detailed help:
+- ./cli/automa vehicles <group> help
+- ./cli/automa vehicles <command> --help

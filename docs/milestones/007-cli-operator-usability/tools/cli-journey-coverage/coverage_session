@@ -1,0 +1,108 @@
+#!/bin/sh
+set -eu
+
+# Pre-interpreter boundary: refuse ambient Coverage.py controls before any
+# collector interpreter starts. Absolute tool paths only — never PATH lookups.
+if LC_ALL=C /usr/bin/env | /usr/bin/grep '^COVERAGE_[^=]*=' >/dev/null 2>&1; then
+    echo "coverage session refused: inherited COVERAGE_* environment" >&2
+    exit 2
+fi
+
+case $0 in
+    /*) launcher_path=$0 ;;
+    *) launcher_path=$PWD/$0 ;;
+esac
+script_dir=${launcher_path%/*}
+script_dir=$(CDPATH= cd -P "$script_dir" && pwd -P)
+launcher_path=$script_dir/coverage_session
+
+# Interpreter selection is operator-supplied and absolute. Caller PATH is never
+# searched for ``python3`` (native PATH wrappers can inject COVERAGE_* between
+# this check and process start).
+if [ -z "${M007_COVERAGE_PYTHON-}" ]; then
+    echo "coverage session refused: set M007_COVERAGE_PYTHON to an absolute native interpreter path" >&2
+    exit 2
+fi
+case $M007_COVERAGE_PYTHON in
+    /*) ;;
+    *)
+        echo "coverage session refused: M007_COVERAGE_PYTHON must be an absolute path" >&2
+        exit 2
+        ;;
+esac
+
+_resolve_native_python() {
+    candidate=$1
+    dir=$(CDPATH= cd -P "$(dirname "$candidate")" 2>/dev/null && pwd -P) || return 1
+    base=$(basename "$candidate")
+    abs=$dir/$base
+    max=32
+    while [ -L "$abs" ]; do
+        max=$((max - 1))
+        [ "$max" -ge 0 ] || return 1
+        target=$(/usr/bin/readlink "$abs") || return 1
+        case $target in
+            /*) abs=$target ;;
+            *)
+                abs=$(CDPATH= cd -P "$(dirname "$abs")" 2>/dev/null && pwd -P)/$target ||
+                    return 1
+                ;;
+        esac
+        dir=$(CDPATH= cd -P "$(dirname "$abs")" 2>/dev/null && pwd -P) || return 1
+        base=$(basename "$abs")
+        abs=$dir/$base
+    done
+    [ -f "$abs" ] && [ -x "$abs" ] || return 1
+    header=$(/usr/bin/head -c 2 "$abs" 2>/dev/null) || return 1
+    if [ "$header" = "#!" ]; then
+        return 1
+    fi
+    # Reject obvious non-Mach-O/non-ELF wrappers that are still binary shims by
+    # requiring the file to be a regular file under an absolute path only.
+    printf '%s\n' "$abs"
+}
+
+if ! python_bin=$(_resolve_native_python "$M007_COVERAGE_PYTHON"); then
+    echo "coverage session refused: M007_COVERAGE_PYTHON is not a native interpreter" >&2
+    exit 2
+fi
+
+# Capability FD: after the COVERAGE_* refusal, mint a one-shot unlinked receipt
+# on FD 3 that only this shell protocol produces for the supported entrypoint.
+# Pure accidental ``python -c`` import of the internal module has no such FD.
+# This is not a same-user adversarial trust root; reimplementing this shell
+# protocol is equivalent to using the public launcher (and still runs the
+# pre-interpreter COVERAGE_* check when this script is the entrypoint).
+cap_dir=$(/usr/bin/mktemp -d "${TMPDIR:-/tmp}/m007-cov-launch.XXXXXX")
+cap_file=$cap_dir/launch.cap
+token=$(LC_ALL=C /usr/bin/od -An -N16 -tx1 /dev/urandom | /usr/bin/tr -d ' \n')
+{
+    printf '%s\n' "m007-coverage-launch-v1"
+    printf '%s\n' "$launcher_path"
+    printf '%s\n' "$token"
+} >"$cap_file"
+exec 3<"$cap_file"
+/bin/rm -f "$cap_file"
+/bin/rmdir "$cap_dir" 2>/dev/null || true
+
+# Keep this shell as parent (no exec). Python authenticates the capability FD.
+"$python_bin" -c '
+import importlib.util
+import pathlib
+import sys
+
+launcher_path = pathlib.Path(sys.argv[1]).resolve(strict=True)
+module_path = pathlib.Path(sys.argv[2]).resolve(strict=True)
+capability_fd = int(sys.argv[3])
+spec = importlib.util.spec_from_file_location("m007_cli_coverage_session", module_path)
+if spec is None or spec.loader is None:
+    raise SystemExit("coverage session refused: cannot load internal module")
+module = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = module
+spec.loader.exec_module(module)
+module.authorize_public_launch(capability_fd=capability_fd, launcher_path=launcher_path)
+raise SystemExit(module.main(sys.argv[4:]))
+' "$launcher_path" "$script_dir/coverage_session.py" 3 "$@"
+status=$?
+exec 3<&- 2>/dev/null || true
+exit "$status"

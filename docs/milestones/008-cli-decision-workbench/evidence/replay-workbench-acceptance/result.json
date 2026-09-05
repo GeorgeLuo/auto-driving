@@ -1,0 +1,588 @@
+{
+  "schema": "m008_replay_workbench_acceptance_v1",
+  "status": "accepted",
+  "incomplete_reason": null,
+  "operator": "gluo",
+  "verdict": "accepted",
+  "timestamps": {
+    "started_at_utc": "2026-09-04T01:16:22.238118Z",
+    "ended_at_utc": "2026-09-04T01:18:00.849056Z"
+  },
+  "environment": {
+    "operating_system": "macOS-26.6.2-arm64-arm-64bit",
+    "browser": {
+      "name": "Chrome",
+      "version": "152.0.7977.76 headed"
+    }
+  },
+  "repository": {
+    "commit": "e3572d2c875d166efc2d6011384810169e3ce3cb",
+    "branch": "m008/replay-workbench-acceptance",
+    "worktree_state": "clean"
+  },
+  "source": {
+    "kind": "image_directory",
+    "path_redacted": "<home>/Projects/auto-driving/runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/captures/chase-stream-decision-model-default-45s-20260901-230833",
+    "plugin_root": "<repo>/lab/plugins/perception",
+    "loopback_url": "http://127.0.0.1:53043/",
+    "health": {
+      "server_identity": "workbench-2d29d6df9d2f",
+      "available": true,
+      "url": "http://127.0.0.1:53043/",
+      "phase": "running",
+      "run_id": "run-af702ee8f0974eabb15bb5bdfa4fff4f",
+      "observation_only": true,
+      "persistent_across_terminal_state": true
+    }
+  },
+  "identities": {
+    "server_identity": "workbench-2d29d6df9d2f",
+    "first_run_id": "run-af702ee8f0974eabb15bb5bdfa4fff4f",
+    "second_run_id": "run-3fa4314708804bacbafe9675fff24037",
+    "failed_run_id": "run-0969dd4fc26d4f3e9ccd04d217c4d156",
+    "recovered_run_id": "run-614187c4db7e445294420fa5fc4022f2"
+  },
+  "screenshot": {
+    "asked_during": "inspect_replay",
+    "captured": true,
+    "path_redaction": "observed_pass"
+  },
+  "launch_command": [
+    "/opt/homebrew/anaconda3/bin/python3",
+    "-u",
+    "<repo>/cli/automa",
+    "vehicles",
+    "workbench",
+    "replay",
+    "<home>/Projects/auto-driving/runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/captures/chase-stream-decision-model-default-45s-20260901-230833",
+    "--pace",
+    "realtime",
+    "--max-frames",
+    "1024",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "53043",
+    "--open",
+    "--plugin-dir",
+    "<repo>/lab/plugins/perception",
+    "--plugin",
+    "classical_regions"
+  ],
+  "steps": [
+    {
+      "id": "page_open",
+      "status": "observed_pass",
+      "required": "Page shows source identity, plugin catalog, and declared next actions.",
+      "observation": "y",
+      "notes": "Playwright Chromium drove the page at operator request.",
+      "machine": {
+        "server_identity": "workbench-2d29d6df9d2f",
+        "run_id": "run-af702ee8f0974eabb15bb5bdfa4fff4f",
+        "phase": "running",
+        "source_identity": "chase-stream-decision-model-default-45s-20260901-230833:chase-run:24a6cb37-d6fe-4465-ae58-6d74b747aa8d",
+        "active_plugin_ids": [
+          "classical_regions"
+        ],
+        "run_active_plugin_ids": [
+          "classical_regions"
+        ],
+        "progress": {
+          "completed": 6,
+          "total": 845
+        },
+        "perception_status": "ok",
+        "plugin_run_ids": [
+          "classical_regions"
+        ],
+        "frame_id": "chase-stream:chase-run:24a6cb37-d6fe-4465-ae58-6d74b747aa8d:frame_3631",
+        "position": 5,
+        "memory_record_count": 4,
+        "failure": null,
+        "failure_boundary": null,
+        "failure_message": null,
+        "recovery_action": "start",
+        "cleanup": null,
+        "pace": "realtime",
+        "loop": false
+      },
+      "operator_run_id": "run-af702ee8f0974eabb15bb5bdfa4fff4f"
+    },
+    {
+      "id": "inspect_replay",
+      "status": "observed_pass",
+      "required": "Ready-plugin replay shows capture, server overlays, progress, and memory on a processed frame.",
+      "observation": "y",
+      "notes": "Sidebar hidden for the crop so local paths are not in the PNG.",
+      "machine": {
+        "server_identity": "workbench-2d29d6df9d2f",
+        "run_id": "run-af702ee8f0974eabb15bb5bdfa4fff4f",
+        "phase": "running",
+        "source_identity": "chase-stream-decision-model-default-45s-20260901-230833:chase-run:24a6cb37-d6fe-4465-ae58-6d74b747aa8d",
+        "active_plugin_ids": [
+          "classical_regions"
+        ],
+        "run_active_plugin_ids": [
+          "classical_regions"
+        ],
+        "progress": {
+          "completed": 8,
+          "total": 845
+        },
+        "perception_status": "ok",
+        "plugin_run_ids": [
+          "classical_regions"
+        ],
+        "frame_id": "chase-stream:chase-run:24a6cb37-d6fe-4465-ae58-6d74b747aa8d:frame_3637",
+        "position": 7,
+        "memory_record_count": 5,
+        "failure": null,
+        "failure_boundary": null,
+        "failure_message": null,
+        "recovery_action": "start",
+        "cleanup": null,
+        "pace": "realtime",
+        "loop": false
+      },
+      "screenshot_path_redaction": "y"
+    },
+    {
+      "id": "paused_toggle",
+      "status": "observed_pass",
+      "required": "Paused toggle including empty raw-capture updates the held still from the server; invalid IDs are refused.",
+      "observation": "y",
+      "notes": "Sidebar hidden for the crop so local paths are not in the PNG.",
+      "machine": {
+        "server_identity": "workbench-2d29d6df9d2f",
+        "run_id": "run-af702ee8f0974eabb15bb5bdfa4fff4f",
+        "phase": "paused",
+        "source_identity": "chase-stream-decision-model-default-45s-20260901-230833:chase-run:24a6cb37-d6fe-4465-ae58-6d74b747aa8d",
+        "active_plugin_ids": [
+          "classical_regions"
+        ],
+        "run_active_plugin_ids": [
+          "classical_regions"
+        ],
+        "progress": {
+          "completed": 8,
+          "total": 845
+        },
+        "perception_status": "ok",
+        "plugin_run_ids": [
+          "classical_regions"
+        ],
+        "frame_id": "chase-stream:chase-run:24a6cb37-d6fe-4465-ae58-6d74b747aa8d:frame_3637",
+        "position": 7,
+        "memory_record_count": 9,
+        "failure": null,
+        "failure_boundary": null,
+        "failure_message": null,
+        "recovery_action": "start",
+        "cleanup": null,
+        "pace": "realtime",
+        "loop": false
+      },
+      "transitions": [
+        {
+          "label": "paused other ready set",
+          "machine": {
+            "server_identity": "workbench-2d29d6df9d2f",
+            "run_id": "run-af702ee8f0974eabb15bb5bdfa4fff4f",
+            "phase": "paused",
+            "source_identity": "chase-stream-decision-model-default-45s-20260901-230833:chase-run:24a6cb37-d6fe-4465-ae58-6d74b747aa8d",
+            "active_plugin_ids": [
+              "floor_continuity"
+            ],
+            "run_active_plugin_ids": [
+              "floor_continuity"
+            ],
+            "progress": {
+              "completed": 8,
+              "total": 845
+            },
+            "perception_status": "ok",
+            "plugin_run_ids": [
+              "floor_continuity"
+            ],
+            "frame_id": "chase-stream:chase-run:24a6cb37-d6fe-4465-ae58-6d74b747aa8d:frame_3637",
+            "position": 7,
+            "memory_record_count": 9,
+            "failure": null,
+            "failure_boundary": null,
+            "failure_message": null,
+            "recovery_action": "start",
+            "cleanup": null,
+            "pace": "realtime",
+            "loop": false
+          }
+        },
+        {
+          "label": "paused empty raw-capture",
+          "machine": {
+            "server_identity": "workbench-2d29d6df9d2f",
+            "run_id": "run-af702ee8f0974eabb15bb5bdfa4fff4f",
+            "phase": "paused",
+            "source_identity": "chase-stream-decision-model-default-45s-20260901-230833:chase-run:24a6cb37-d6fe-4465-ae58-6d74b747aa8d",
+            "active_plugin_ids": [],
+            "run_active_plugin_ids": [],
+            "progress": {
+              "completed": 8,
+              "total": 845
+            },
+            "perception_status": "empty",
+            "plugin_run_ids": [],
+            "frame_id": "chase-stream:chase-run:24a6cb37-d6fe-4465-ae58-6d74b747aa8d:frame_3637",
+            "position": 7,
+            "memory_record_count": 9,
+            "failure": null,
+            "failure_boundary": null,
+            "failure_message": null,
+            "recovery_action": "start",
+            "cleanup": null,
+            "pace": "realtime",
+            "loop": false
+          }
+        },
+        {
+          "label": "paused restore ready set",
+          "machine": {
+            "server_identity": "workbench-2d29d6df9d2f",
+            "run_id": "run-af702ee8f0974eabb15bb5bdfa4fff4f",
+            "phase": "paused",
+            "source_identity": "chase-stream-decision-model-default-45s-20260901-230833:chase-run:24a6cb37-d6fe-4465-ae58-6d74b747aa8d",
+            "active_plugin_ids": [
+              "classical_regions"
+            ],
+            "run_active_plugin_ids": [
+              "classical_regions"
+            ],
+            "progress": {
+              "completed": 8,
+              "total": 845
+            },
+            "perception_status": "ok",
+            "plugin_run_ids": [
+              "classical_regions"
+            ],
+            "frame_id": "chase-stream:chase-run:24a6cb37-d6fe-4465-ae58-6d74b747aa8d:frame_3637",
+            "position": 7,
+            "memory_record_count": 9,
+            "failure": null,
+            "failure_boundary": null,
+            "failure_message": null,
+            "recovery_action": "start",
+            "cleanup": null,
+            "pace": "realtime",
+            "loop": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "running_toggle",
+      "status": "observed_pass",
+      "required": "Running toggle including empty keeps the current still until the next processed frame.",
+      "observation": "y",
+      "notes": "Sidebar hidden for the crop so local paths are not in the PNG.",
+      "machine": {
+        "server_identity": "workbench-2d29d6df9d2f",
+        "run_id": "run-af702ee8f0974eabb15bb5bdfa4fff4f",
+        "phase": "running",
+        "source_identity": "chase-stream-decision-model-default-45s-20260901-230833:chase-run:24a6cb37-d6fe-4465-ae58-6d74b747aa8d",
+        "active_plugin_ids": [],
+        "run_active_plugin_ids": [],
+        "progress": {
+          "completed": 10,
+          "total": 845
+        },
+        "perception_status": "empty",
+        "plugin_run_ids": [],
+        "frame_id": "chase-stream:chase-run:24a6cb37-d6fe-4465-ae58-6d74b747aa8d:frame_3643",
+        "position": 9,
+        "memory_record_count": 7,
+        "failure": null,
+        "failure_boundary": null,
+        "failure_message": null,
+        "recovery_action": "start",
+        "cleanup": null,
+        "pace": "realtime",
+        "loop": false
+      },
+      "transitions": [
+        {
+          "label": "running selection boundary",
+          "machine": {
+            "server_identity": "workbench-2d29d6df9d2f",
+            "run_id": "run-af702ee8f0974eabb15bb5bdfa4fff4f",
+            "phase": "running",
+            "source_identity": "chase-stream-decision-model-default-45s-20260901-230833:chase-run:24a6cb37-d6fe-4465-ae58-6d74b747aa8d",
+            "active_plugin_ids": [],
+            "run_active_plugin_ids": [],
+            "progress": {
+              "completed": 9,
+              "total": 845
+            },
+            "perception_status": "ok",
+            "plugin_run_ids": [
+              "classical_regions"
+            ],
+            "frame_id": "chase-stream:chase-run:24a6cb37-d6fe-4465-ae58-6d74b747aa8d:frame_3641",
+            "position": 8,
+            "memory_record_count": 7,
+            "failure": null,
+            "failure_boundary": null,
+            "failure_message": null,
+            "recovery_action": "start",
+            "cleanup": null,
+            "pace": "fixed",
+            "loop": false
+          }
+        },
+        {
+          "label": "running next frame",
+          "machine": {
+            "server_identity": "workbench-2d29d6df9d2f",
+            "run_id": "run-af702ee8f0974eabb15bb5bdfa4fff4f",
+            "phase": "running",
+            "source_identity": "chase-stream-decision-model-default-45s-20260901-230833:chase-run:24a6cb37-d6fe-4465-ae58-6d74b747aa8d",
+            "active_plugin_ids": [],
+            "run_active_plugin_ids": [],
+            "progress": {
+              "completed": 10,
+              "total": 845
+            },
+            "perception_status": "empty",
+            "plugin_run_ids": [],
+            "frame_id": "chase-stream:chase-run:24a6cb37-d6fe-4465-ae58-6d74b747aa8d:frame_3643",
+            "position": 9,
+            "memory_record_count": 7,
+            "failure": null,
+            "failure_boundary": null,
+            "failure_message": null,
+            "recovery_action": "start",
+            "cleanup": null,
+            "pace": "realtime",
+            "loop": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "second_run",
+      "status": "observed_pass",
+      "required": "Reset and a second run without restarting the server; prior run identity is not current success.",
+      "observation": "y",
+      "notes": null,
+      "machine": {
+        "server_identity": "workbench-2d29d6df9d2f",
+        "run_id": "run-3fa4314708804bacbafe9675fff24037",
+        "phase": "running",
+        "source_identity": "chase-stream-decision-model-default-45s-20260901-230833:chase-run:24a6cb37-d6fe-4465-ae58-6d74b747aa8d",
+        "active_plugin_ids": [
+          "classical_regions"
+        ],
+        "run_active_plugin_ids": [
+          "classical_regions"
+        ],
+        "progress": {
+          "completed": 0,
+          "total": 845
+        },
+        "perception_status": null,
+        "plugin_run_ids": [],
+        "frame_id": null,
+        "position": null,
+        "memory_record_count": 0,
+        "failure": null,
+        "failure_boundary": null,
+        "failure_message": null,
+        "recovery_action": "start",
+        "cleanup": null,
+        "pace": "realtime",
+        "loop": false
+      },
+      "operator_run_id": "run-3fa4314708804bacbafe9675fff24037"
+    },
+    {
+      "id": "source_failure",
+      "status": "observed_pass",
+      "required": "Empty, missing, or unsupported source names the failure and next action; recovery is an operator-chosen directory.",
+      "observation": "y",
+      "notes": null,
+      "machine": {
+        "server_identity": "workbench-2d29d6df9d2f",
+        "run_id": "run-0969dd4fc26d4f3e9ccd04d217c4d156",
+        "phase": "failed",
+        "source_identity": null,
+        "active_plugin_ids": [
+          "classical_regions"
+        ],
+        "run_active_plugin_ids": [],
+        "progress": {
+          "completed": 0,
+          "total": 0
+        },
+        "perception_status": null,
+        "plugin_run_ids": [],
+        "frame_id": null,
+        "position": null,
+        "memory_record_count": 0,
+        "failure": {
+          "boundary": "source",
+          "message": "source directory does not exist: <tmp>/m008-replay-missing-source"
+        },
+        "failure_boundary": "source",
+        "failure_message": "source directory does not exist: <tmp>/m008-replay-missing-source",
+        "recovery_action": "start",
+        "cleanup": {
+          "completed_at_ms": 1788484680547,
+          "mapper": "not_created",
+          "memory": "not_created",
+          "metrics_used": false,
+          "movement_control": false,
+          "recording_enabled": false,
+          "simulator_used": false,
+          "source_read_only": true,
+          "worker_started": false
+        },
+        "pace": "realtime",
+        "loop": false
+      },
+      "operator_failure": {
+        "boundary": "source",
+        "message": "source directory does not exist: <tmp>/m008-replay-missing-source",
+        "recovery_action": "start"
+      },
+      "operator_run_id": "run-0969dd4fc26d4f3e9ccd04d217c4d156",
+      "machine_recovery": {
+        "server_identity": "workbench-2d29d6df9d2f",
+        "run_id": "run-614187c4db7e445294420fa5fc4022f2",
+        "phase": "running",
+        "source_identity": "chase-stream-decision-model-default-45s-20260901-230833:chase-run:24a6cb37-d6fe-4465-ae58-6d74b747aa8d",
+        "active_plugin_ids": [
+          "classical_regions"
+        ],
+        "run_active_plugin_ids": [
+          "classical_regions"
+        ],
+        "progress": {
+          "completed": 0,
+          "total": 845
+        },
+        "perception_status": null,
+        "plugin_run_ids": [],
+        "frame_id": null,
+        "position": null,
+        "memory_record_count": 0,
+        "failure": null,
+        "failure_boundary": null,
+        "failure_message": null,
+        "recovery_action": "start",
+        "cleanup": null,
+        "pace": "realtime",
+        "loop": false
+      },
+      "operator_recovered_run_id": "run-614187c4db7e445294420fa5fc4022f2"
+    },
+    {
+      "id": "cleanup",
+      "status": "observed_pass",
+      "required": "Cancel or reset with no worker, simulator, Metrics operation, movement, or recording; isolated state is reset.",
+      "observation": "y",
+      "notes": null,
+      "machine": {
+        "server_identity": "workbench-2d29d6df9d2f",
+        "run_id": null,
+        "phase": "idle",
+        "source_identity": "chase-stream-decision-model-default-45s-20260901-230833:chase-run:24a6cb37-d6fe-4465-ae58-6d74b747aa8d",
+        "active_plugin_ids": [
+          "classical_regions"
+        ],
+        "run_active_plugin_ids": [],
+        "progress": {
+          "completed": 0,
+          "total": 845
+        },
+        "perception_status": null,
+        "plugin_run_ids": [],
+        "frame_id": null,
+        "position": null,
+        "memory_record_count": 0,
+        "failure": null,
+        "failure_boundary": null,
+        "failure_message": null,
+        "recovery_action": "start",
+        "cleanup": null,
+        "pace": "realtime",
+        "loop": false
+      }
+    }
+  ],
+  "observation_only": {
+    "vehicle": {
+      "occurred": false,
+      "operator_status": "observed_pass"
+    },
+    "worker": {
+      "occurred": false,
+      "operator_status": "observed_pass"
+    },
+    "simulator": {
+      "occurred": false,
+      "operator_status": "observed_pass"
+    },
+    "metrics_operation": {
+      "occurred": false,
+      "operator_status": "observed_pass"
+    },
+    "movement": {
+      "occurred": false,
+      "operator_status": "observed_pass"
+    },
+    "recording": {
+      "occurred": false,
+      "operator_status": "observed_pass"
+    }
+  },
+  "findings": [
+    {
+      "id": "M008-POC-E-001",
+      "step": "second_run",
+      "classification": "enhancement_candidate",
+      "observed": "run_id is not shown on the workbench page. Distinct first, second, failed, and recovered IDs were copied from the recorder /api/state snapshot. Displaying current run identity on the page would avoid a separate state URL. Out of this evidence PR."
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "README.md",
+      "sha256": "cd997052c41b00488c7c53e42f3507b433b4de899ad53cfe31700d1249892906",
+      "captured": true
+    },
+    {
+      "path": "render_result.py",
+      "sha256": "c2fd1d1704034b766e0939c4c54178979549c92005bf2c17c083ac27e2c88bdd",
+      "captured": true
+    },
+    {
+      "path": "record_session.py",
+      "sha256": "496f2a642787d61f40838e6e4ca3fcb9d5822f6909b54b0f2ec33568ca6f52c0",
+      "captured": true
+    },
+    {
+      "path": "browser-view.png",
+      "sha256": "32d86e5b01149e070fce7fc4a7a460c3b931c85f4cb69b7ae5fa2e257bc36376",
+      "captured": true
+    },
+    {
+      "path": "cli-transcript.txt",
+      "sha256": "5624201fde26d1be66a69453114bd966349969be5f6ca54af6c1bc5804b1450f",
+      "captured": true
+    },
+    {
+      "path": "result.html",
+      "sha256": null,
+      "captured": true,
+      "note": "derived from this result.json; regenerate with render_result.py"
+    }
+  ]
+}

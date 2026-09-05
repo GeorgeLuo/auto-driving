@@ -25,10 +25,8 @@ should require only a handful of milestone-plan edits:
 1. add one accepted-review-unit ledger row;
 2. update affected exit criteria;
 3. update unresolved risks;
-4. promote the next frontier;
-5. optionally select one new next-frontier candidate with a **minimal
-   pre-implementation acceptance contract**, or leave the next-candidate slot
-   explicitly empty with a reason.
+4. leave remaining work-order nodes in place (do not delete them to make room);
+5. return to idle so the next proposal selects current from the work order.
 
 Do not preserve redundant sections merely because they already exist.
 
@@ -58,36 +56,46 @@ A milestone answers:
 
 The **frontier** is a planning position, not a branch or task.
 
-It identifies the next milestone claim ready for active attention.
+It identifies the milestone claim ready for active attention.
 
-The plan may contain:
+The plan contains:
 
-- exactly one **current frontier**;
-- one **next-frontier slot** containing at most one candidate;
-- a **preparation horizon** for later provisional needs.
+- a **work order** (`### Frontier Map`): durable named nodes and their remaining
+  walk;
+- a **current** pointer, which may be idle (`**None**`);
+- **off-path** nodes that were contracted but are not on the remaining walk.
+
+The work order is the sequence artifact. Current is selected from it. Completing
+a unit does **not** force work on its predecessor's successor.
+
+The current cadence is a **linked list** of remaining unstarted nodes. Treat the
+map as a graph of durable nodes whose active walk is that list. Do not add
+branches, joins, or a picker until a real unit needs them.
+
+Nodes persist. Introducing a frontier, or rewiring the remaining path, must not
+delete a previously contracted node. Move it off-path instead. Accepted work
+stays in the review-unit ledger; the map is for nodes that are still queued or
+off-path. The current node is the pointer, not a second copy on the path.
 
 The frontier determines priority and readiness. It is not a detailed speculative
-roadmap.
+roadmap and not a ticket backlog of uncontracted names.
 
-A **next-frontier candidate** is not a name stub. Selecting one defines a
-minimal pre-implementation acceptance contract so promotion can open a proposal
-branch against a frozen scope rather than inventing the unit during coding.
-Full adversarial matrices, file impact, and exact validation are settled in the
-independent proposal before implementation begins.
+A node on the remaining path is not a name stub. It defines a minimal
+pre-implementation acceptance contract so a later proposal can select it as
+current. Full adversarial matrices, file impact, and exact validation are
+settled in that node's own proposal. A title with a vague likely question
+cannot sit on the path.
 
-Promote work to the **current** frontier only when it is:
+Select a node as **current** only when it is:
 
 1. **contractable now** through one review question; and
 2. **reviewable in one careful human pass**.
 
-Select a **next-frontier candidate** only when those same readiness conditions
-hold **and** the minimal acceptance fields below are filled. A title with a
-vague likely question is not a candidate.
-
-An empty next-frontier slot is honest when current evidence does not yet justify
-another contract or when milestone closeout is already current. Record why it is
-empty and what decision or evidence could fill it. Do not invent speculative
-scope merely to keep the slot populated.
+Idle current is the normal state at milestone start, after a unit is accepted,
+and when the remaining path is empty. An empty remaining path is not a
+deadlock: the next proposal may introduce a node (including closeout). `advance`
+does not require a successor. Closeout is selected as current when the operator
+is ready to close, not because the previous unit queued it.
 
 Human review attention is the throughput limit. Prefer fewer sequential units
 that close a contractable edge over many named subdivisions that multiply
@@ -137,21 +145,173 @@ review burden. Split it into an evidence unit when it needs separate environment
 preparation, repeatable operator procedure, tracked artifacts, or an acceptance
 judgment that could fail while the implementation contract still passes.
 
+For a universal or deterministic implementation claim, the proposal chooses the
+evidence topology before implementation starts. It states whether bounded proof
+remains in the implementation review unit or whether capture and acceptance use
+a later evidence review unit. Do not begin canonical live-artifact capture until
+the proposal's stated capture-readiness conditions hold; repeated capture while
+the artifact schema, authority mapping, semantic verifier, or adversarial
+mutation cases are still changing is contract discovery, not acceptance proof.
+
 ### Repair Cycle
 
 A review finding remains in the existing PR when it still challenges that PR’s
 stated contract.
 
-A repair response should identify:
+A **repair cycle** is one consolidated changes-requested verdict followed by an
+author revision that addresses that verdict. Count the round once regardless of
+how many findings, commits, or comments it contains.
 
-- root cause;
-- owning enforcement boundary changed;
-- adjacent paths audited;
-- regression coverage added;
-- assumptions still unverified.
+The reviewer classifies the cycle in the verdict. It is **substantial** when
+either the verdict contains a P0–P2 contract failure or the repair changes the
+review question, contract, external assumptions, or adversarial failure class.
+Collapsing two shapes inside the accepted owner, while artifacts and Met
+predicates stay true, is not substantial. Moving enforcement to a different
+named owner is a contract change. Editorial cleanup, evidence formatting, and
+localized P3 corrections are **minor** only when none of those conditions
+applies. A disputed or omitted classification is treated as
+substantial until the reviewer resolves it.
+
+Every review-unit PR body keeps a `Repair Cycle Ledger` with the verdict receipt,
+classification, highest severity, full repair revision, and contract impact for
+each cycle. The receipt must identify one unedited GitHub review on that PR. Its
+reviewed head, reviewer-owned classification, `[P0]` through `[P3]` inline
+finding headings, stable finding URLs, and GitHub submission time are the
+authority. The repair revision must follow the reviewed head. The count belongs
+to the review unit and does not reset after force-push, reopen, or a change of
+author.
+
+The consolidated verdict body contains exactly one line in the form
+`Classification: minor` or `Classification: substantial`. Every inline comment
+attached to that verdict begins with `[P0]`, `[P1]`, `[P2]`, or `[P3]`.
+
+#### Closed implementation review
+
+After a proposal is accepted, implementation review may raise P0–P2 only when
+the case is already in the accepted proposal's adversarial matrix or it
+falsifies the stated review question. Any other observation is P3 or a later
+want. Two leftover shapes in the same owner, a request to collapse
+internals, or a request to add or polish derived evidence HTML are P3 unless
+the operator required that page or the accepted question named one type as
+the claim. A new failure class discovered during fill is a proposal amendment
+or an explicit residual, not proof that the current implementation is false.
+
+Do not invent a broader matrix during re-review. Re-check prior findings and
+the accepted matrix only.
+
+There is no cycle count that pauses review. A second or later substantial
+repair is ordinary work when it still addresses the accepted question. If the
+accepted contract is wrong, amend the proposal. If the unit is not singular,
+stop and re-scope. Do not treat another repair round as evidence that the
+process must escalate.
+
+Review and implementation use the same GitHub account, so GitHub will not emit
+`CHANGES_REQUESTED` or `APPROVED` on these PRs. The only action-forcing signal
+is an unedited exact-head `COMMENTED` review containing only:
+
+```text
+## Contract Review Receipt
+
+- Outcome: `accepted`
+```
+
+or `changes_requested`. Inline findings, want/reject notes, and `## Concerns`
+are documentary. They may be rendered later. They do not force repair and do
+not block or authorize `complete-implementation`.
+
+Completion requires that exact-head receipt to be `accepted`, with no later
+exact-head `changes_requested` receipt. The receipt head must be the
+implementation tip at merge time; a later push to the implementation branch
+cannot authorize handoff of an older merge. A migration's unresolved-finding
+manifest is history, not a lock. `split-or-replace-review-unit` remains
+fail-closed pending issue #118. A new PR number does not reset review history.
+
+This revision becomes authoritative only after the PR introducing it merges
+into the governing base. The introducing PR remains governed by its base
+contract and cannot use the proposed rule to authorize itself. Review units
+already open at merge do not migrate automatically. A migration requires an
+explicit `## Repair Contract Migration` receipt for that specific PR:
+
+```text
+## Repair Contract Migration
+
+- PR: #<number>
+- Prior governing base: <full commit SHA>
+- Adopted contract: <full contract merge SHA>
+- Cumulative cycles: <integer>
+- Cumulative classifications: <minor|substantial, ...>
+- Unresolved finding manifest: <ordered comma-separated durable URLs or None>
+- Migration point: <full commit SHA>
+- Decision receipt: <durable GitHub issue-comment URL>
+- Route: <selected route>
+- Disposition: <unambiguous migration decision>
+```
 
 Create a separate repair review unit only when a distinct PR is genuinely
 necessary.
+
+#### Late implementer collapse
+
+After the accepted tests are green and the review question is answerable, and
+before requesting review, the implementer may treat those tests as the black
+box and collapse two shapes in the same owner against them. Do this once, not
+during fill and not after each repair.
+
+Drive the tests through the public door: committed artifacts or the documented
+command in, pass or fail on the named mutation out. Do not pin helper names or
+error substrings as the contract.
+
+The pass is implementer-owned and documentary. It has no receipt, ledger row,
+or CI gate. Leftover two-shapes are `## Concerns`, not a completion lock.
+
+If the collapse would change artifacts, Met predicates, the review question,
+or the named owner, stop. That is an amendment or a later want, not
+sanitation.
+
+During a repair cycle, add the missing case at that public door and the
+cheapest close. Do not move enforcement to a different named owner in the
+finding diff.
+
+#### Derived evidence rendering
+
+When an implementation mints a durable machine-readable signal (report,
+inventory, registry, disposition record, or equivalent), also commit a derived
+HTML view of those bytes. A frontier that renders one or more signals uses one
+stable evidence directory and records its repository-relative path in the
+proposal's `Evidence rendering` section. Put the committed records and their
+pages beneath that directory, with each page next to the record it presents.
+The record stays the authority. The page, when produced, is a view of that
+committed record, not a fixture or sample. Page format and the internal
+record-to-page relation stay underspecified until a real frontier teaches what
+is useful. Do not invent same-stem, in-page link, or manifest rules in advance.
+
+Skip the page only with a one-line reason in the proposal. Need, and whether
+a skip is enough, are owned by the operator (or someone the operator
+explicitly deputizes). Reviewers and implementers do not decide that a page
+is required, sufficient, or good-looking.
+
+This default has no receipt, ledger row, or CI gate. Missing, crude, or absent
+HTML is `## Concerns` unless the operator already required that page. Do not
+fail Met on layout. Do not treat volume or coverage on the page as a gate.
+Do not build a frontier-picker website in this rule; an index may be composed
+later from the committed pages.
+
+Units that mint no sealed signal (proposal-only, plan revision, docs-only)
+need no page and no skip reason.
+
+### HITL Implementation Adjunct
+
+A **HITL implementation adjunct** is an exceptional child review unit for a
+bounded change first requested by a human during hands-on testing after an
+implementation review has started. It targets the canonical implementation
+branch, not the milestone branch, and leaves the frontier in
+`implementation_in_review`.
+
+An adjunct is neither a repair nor a contract amendment. The parent’s accepted
+contract must remain true without it, while the requested behavior is additive,
+compatible, and useful to the same frontier and operator journey. Human
+direction supplies the need and `implement-now` priority; it does not waive
+contract compatibility, safety review, or evidence refresh.
 
 ### Closeout
 
@@ -172,10 +332,13 @@ Closeout must not conceal unfinished implementation or validation.
 | Milestone objective | Milestone plan |
 | Completion usage | Milestone plan |
 | Exit criteria and status | Milestone plan |
-| Current and next frontier | Milestone plan |
-| Detailed invariant and adversarial matrix | Accepted proposal document |
+| Current frontier, remaining path, and off-path nodes | Milestone plan frontier map |
+| Detailed invariant, trust/authority model, evidence topology, and adversarial matrix | Accepted proposal document |
 | Planned file impact and validation commands | Accepted proposal document |
 | Actual file impact and validation results | Implementation PR |
+| Derived HTML of a sealed implementation signal | Proposal-declared per-frontier evidence directory, next to the committed record |
+| Operator skip of that HTML | Proposal; operator-accepted |
+| Human user-testing request and implement-now direction | Durable issue and adjunct PR |
 | Review findings and repair history | Review-unit PR |
 | Accepted result of a merged PR | One-row plan ledger |
 | Current architecture behavior | `docs/reference/` |
@@ -228,6 +391,7 @@ main
 └── milestone/<number>-<slug>
     ├── m<number>/<frontier>-proposal
     ├── m<number>/<frontier>
+    │   └── m<number>/<frontier>--adjunct-<slug>
     └── ...
 ```
 
@@ -250,6 +414,11 @@ Each frontier has two independently reviewed branches:
   plan transition, and generated plan HTML;
 - `m<number>/<frontier>` implements only the accepted proposal.
 
+If evidence shows that an accepted proposal is materially wrong before its
+implementation is accepted, an optional `m<number>/amend-<slug>` branch may add
+a proposal amendment. It is a contract review unit, not a third implementation
+branch.
+
 Both branches:
 
 - start from the updated milestone branch at their permitted workflow state;
@@ -257,10 +426,29 @@ Both branches:
 - contains one primary review question;
 - leaves the milestone branch coherent after merge.
 
-Prefer squash-merging both PRs into the milestone branch. Proposal merge is an
-approval receipt, not implementation acceptance. Merge the final cumulative
-milestone PR into `main` with a **merge commit** so accepted frontier history
-remains visible.
+Prefer squash-merging both PRs into the milestone branch. A proposal's
+exact-head contract review and merge together form its approval receipt; merge
+alone is not proposal acceptance or implementation acceptance. Merge the final
+cumulative milestone PR into `main` with a **merge commit** so accepted
+frontier history remains visible.
+
+### HITL implementation adjunct branches
+
+When a human explicitly requests an eligible additive change during hands-on
+testing, branch `m<number>/<frontier>--adjunct-<slug>` from the current head of
+the canonical `m<number>/<frontier>` implementation branch. The adjunct PR:
+
+- targets that implementation branch, never the milestone branch or `main`;
+- uses `.github/PULL_REQUEST_TEMPLATE/implementation-adjunct.md`;
+- links the parent implementation PR and durable operator-request issue;
+- records the HITL discovery context and explicit `implement-now` disposition;
+- contains one bounded review question and compatibility assertion; and
+- does not change the milestone plan, accepted proposal, or accepted amendment.
+
+Do not base an adjunct on another adjunct. Keep it current with the parent
+implementation branch, merge it back into that parent, then re-review the
+parent PR in totality. The parent implementation remains the frontier’s sole
+acceptance and ledger unit.
 
 Do not create an implementation branch until its proposal PR has merged and the
 workflow records `ready_for_implementation`. Do not begin the next frontier
@@ -350,18 +538,58 @@ table.
 
 ### 6. Current Delivery
 
-Exactly one current frontier while a milestone is active, plus one
-next-frontier slot containing zero or one candidate.
+A frontier map (the work-order artifact), a current pointer that may be idle,
+and a successor slot derived from the remaining path.
+
+**Frontier map** records remaining unstarted work:
+
+- **Path:** ordered remaining nodes, using `→`. Cadence is `linked-list`.
+  `Path: none` is legal while idle, including a fresh milestone.
+- **Node:** one subsection per remaining path name, using the minimal
+  acceptance fields below.
+- **Off-path:** contracted nodes not on the remaining path, with the same
+  fields plus an off-path reason. They remain on the map so a later proposal
+  can put them back without re-authoring.
+
+The path does **not** include the current pointer. Current, if set, must not
+also appear as a remaining or off-path node. Path names cannot repeat. The
+successor slot is `path[0]`, or **None** when the path is empty. Closeout, if
+on the path, is last. Active and blocked plans require this section, except a
+one-time legacy read: if `### Frontier Map` is missing, Current plus
+Next-Frontier Candidate is the old shape (current pointer and at most one
+remaining node). The next proposal PR must write the real map. Closed plans
+use `Path: none` with no queued or off-path nodes.
+
+For mapped plans, `### Next-Frontier Candidate` is a generated successor view:
+validation derives it from `Frontier Map` path[0], and Markdown rendering
+regenerates the view from that node. Only the bounded no-map legacy adapter
+parses that section as input.
+
+```markdown
+### Frontier Map
+
+- Path: `Successor` → `Milestone closeout`
+- Cadence: linked-list
+
+#### Node: Successor
+```
 
 **Current frontier** records: name, workflow state, separate proposal and
 implementation branches, proposal path, review kind, one review question,
 enforcement or acceptance owner, affected exit criteria, prerequisite, and
 concise milestone-level non-goal. Record the accepted proposal PR and merge
-commit before implementation starts. Add the active PR only for the phase
-currently under review.
+commit before implementation starts. Record each accepted additive proposal
+amendment with its artifact path, PR, and merge commit. Add the active PR only
+for the phase currently under review.
 
-When populated, the **next-frontier candidate** is a pre-implementation
-acceptance contract. It is valid only when it records at least:
+The current frontier and every remaining-path or off-path node must use one of
+the supported values in [Review Kinds](#review-kinds). The value is the stable
+review focus for that frontier across its proposal, any proposal amendments,
+and its implementation.
+
+When populated, the **next-frontier candidate** (the path successor) is a
+pre-implementation acceptance contract. It is valid only when it records at
+least:
 
 - **name;**
 - **planned proposal branch;**
@@ -376,19 +604,30 @@ acceptance contract. It is valid only when it records at least:
 - **prerequisite;**
 - **concise non-goals** (what must not leak into that unit).
 
-It is not started and must not yet have either branch or a PR. The acceptance
-boundary—question, owner, non-goals, and affected exit criteria—is frozen before
-the proposal branch opens. The proposal then defines implementation detail,
-adversarial matrix, file impact, and validation plan in a tracked document.
-That proposal is reviewed and merged independently, without implementation
-changes. Only its accepted merge may move the frontier to
-`ready_for_implementation` and permit the implementation branch to open.
-Prerequisite status and residual evidence may update as the current frontier
-lands; do not silently widen the candidate’s question or non-goals after
-proposal work starts.
+It is not started and must not yet have either branch or a PR. The **proposal
+PR** is the review surface for the work order. While opening a proposal
+(idle or `ready_for_proposal` → `proposal_in_review`), it may:
+
+- add nodes;
+- rewire the remaining path;
+- move a not-yet-started node off-path;
+- update a not-yet-started node's minimal contract;
+- select current from the artifact (path[0] after that rewire, or a newly
+  introduced node).
+
+Those edits are not a second review question and must not block accepting a
+bounded selected unit. Until an exact-head contract receipt exists on the PR,
+the proposal may retarget current from the work order. After a receipt, later
+commits cannot change current identity, question, owner, or kind. Remaining-path
+edits may continue. CI compares that freeze to the plan at the first receipt
+commit, not only to the milestone base.
+
+The proposal cannot delete a contracted node. Implementation, amendment, and
+repair PRs may not edit the map or current identity. The mechanical handoff
+may not invent a node or start the next unit.
 
 A name plus a vague “likely question” alone is not a candidate. Use an explicit
-empty slot instead:
+empty successor instead:
 
 ```markdown
 ### Next-Frontier Candidate
@@ -399,21 +638,29 @@ empty slot instead:
 - Revisit when: <named evidence, decision, or closeout result>
 ```
 
-The empty slot opens no proposal or implementation branch. It is the required terminal state
-while closeout is current, and it may also be used while a named blocker prevents
-honest candidate selection.
+The empty successor opens no proposal or implementation branch. It is honest
+at milestone start, after the last remaining node is selected as current, and
+when no further unit is contracted yet. It is required after closeout is
+current. It does not block `advance`.
 
-**Frontier handoff:** closing the current frontier (accepting its review unit)
-always updates Current Delivery so the plan still answers “what is active?”
-and “what may be next?”. Promote the existing next-frontier candidate to current
-(its pre-implementation contract becomes the current unit’s acceptance
-boundary), then reset the next slot to explicit `None`. A later candidate enters
-through the newly current review unit so it is visible in that PR before it can
-be promoted; the mechanical handoff must not invent one. Do not leave Current
-Delivery without a current frontier while the milestone is active: closeout
-becomes current when it is the active review unit, and a bounded decision or
-evidence unit becomes current when more evidence is required to choose
-implementation work.
+**Frontier handoff:** accepting the current review unit records the ledger,
+criteria, and risks, then sets current to idle. Remaining work-order nodes
+stay. Do not promote a successor, wipe later contracted nodes, or invent one.
+The receipt's `next_frontier.state` remains `none` because the map, not the
+receipt, owns remaining work. The next proposal selects current from that
+artifact (or introduces the first/next node, including closeout).
+
+Windows:
+
+| Window | Work order | Current |
+| --- | --- | --- |
+| Fresh milestone | `Path: none` or unstarted nodes | Idle |
+| Opening proposal | May rewire, add, or select | Becomes path[0] or a new node |
+| Implementation | Frozen | Frozen |
+| After `advance` | Unchanged remaining path | Idle |
+| `block` | Keeps queued and off-path nodes | Idle / blocked |
+| Closeout selected | Remaining path must be empty | Closeout |
+| After `close` | `Path: none` | Closed |
 
 ### 7. Workflow History
 
@@ -422,9 +669,12 @@ Append-only state-transition ledger:
 | Frontier | State | Evidence |
 | --- | --- | --- |
 
-The latest row must match the current frontier and its machine-readable workflow
-state. Preserve proposal acceptance and implementation acceptance as separate
-events.
+While current is set, the latest row must match that frontier and its
+machine-readable workflow state. Idle current (milestone start or after
+`advance`) need not match a live pointer; the latest row may be `accepted`.
+A new frontier may start at `proposal_in_review` when selected from the work
+order after `accepted` or idle. Preserve proposal acceptance and implementation
+acceptance as separate events.
 
 ### 8. Accepted Review Units
 
@@ -476,6 +726,9 @@ paths and tests.
 
 ### Review Kinds
 
+The values below are the complete supported set for canonical milestone plans
+and review-unit PR bodies. Use one value; do not invent a hybrid label.
+
 | Kind | Focus |
 | --- | --- |
 | Deterministic invariant closure | Universal guarantee, owner, bypasses, boundaries, final external values |
@@ -487,13 +740,15 @@ paths and tests.
 
 ### Proposal And Implementation Are Separate
 
-Every frontier moves through these states in order:
+Every frontier moves through these states in order, with an optional amendment
+loop after proposal acceptance:
 
 | Workflow state | Meaning | Permitted work |
 | --- | --- | --- |
 | `ready_for_proposal` | The bounded frontier is ready to hand to a proposal author | Start the proposal branch, or review a necessary pre-proposal plan revision |
 | `proposal_in_review` | A proposal is being authored or reviewed | Proposal document and plan transition only |
-| `ready_for_implementation` | The proposal PR merged and its exact commit is recorded | Start only the implementation branch |
+| `ready_for_implementation` | The proposal PR and any amendments have accepted exact-head contract reviews, are merged, and have their reviewed heads and merge commits recorded | Start the implementation branch, or start a bounded proposal amendment when established evidence requires one |
+| `proposal_amendment_in_review` | New evidence requires a bounded correction to the accepted proposal | Additive amendment document and plan transition only; implementation remains blocked |
 | `implementation_in_review` | Accepted scope is being implemented or reviewed | Product, test, and documentation changes described by the accepted proposal |
 
 The expected collaboration is explicit:
@@ -501,8 +756,9 @@ The expected collaboration is explicit:
 1. the reviewer reports **ready for proposal** and stops;
 2. the operator gives proposal work to the proposal author;
 3. the reviewer reviews and finalizes that proposal without implementation;
-4. proposal merge records acceptance and the reviewer reports **ready for
-   implementation**;
+4. the reviewer records an accepted review on the proposal's exact final head;
+   merge and the acceptance command then record both commits, and the reviewer
+   reports **ready for implementation**;
 5. the operator gives the accepted proposal to the implementer;
 6. implementation review begins only after implementation is complete enough
    to answer the accepted review question.
@@ -511,22 +767,147 @@ The proposal author and implementer may be the same person or model, but they
 must operate in separate branches and review phases. The reviewer must not
 silently fill both roles in one change.
 
-If the frozen frontier is found to be wrong before proposal work starts, revise
-it in a separate plan-only review unit. Use a
-`m<number>/plan-<slug>` branch, keep the workflow state
-`ready_for_proposal`, and change only canonical `plan.md` plus generated
-`plan.html`. Preserve accepted review-unit evidence and every existing `Met`
-criterion, append one Workflow History row whose evidence begins
-`Plan revision:`, and do not add a proposal, tests, or product code. The merged
-revision returns to the normal `ready_for_proposal` handoff; it does not count
-as proposal acceptance or authorize implementation.
+### Exact-Head Contract Review Receipts
+
+A proposal or proposal amendment must have an accepted GitHub review attached
+to the PR's final head commit before merge. The review is the contract judgment;
+the subsequent merge establishes repository ancestry. They are separate facts,
+and neither substitutes for the other. An authorized contract reviewer must
+have current repository push authority and an `OWNER`, `MEMBER`, or
+`COLLABORATOR` association when acceptance is recorded.
+
+- An `APPROVED` review records `accepted`.
+- A `CHANGES_REQUESTED` review records `changes_requested`.
+- When GitHub prevents a reviewer from approving their own PR, a new, unedited
+  formal `COMMENTED` review may contain only:
+
+  ```text
+  ## Contract Review Receipt
+
+  - Outcome: `accepted`
+  ```
+
+  Use `changes_requested` instead when the contract is not acceptable.
+- Only formal GitHub reviews count. PR conversation comments are not bound to a
+  commit and never count as contract receipts.
+- For each authorized reviewer, their latest decisive review on the exact head
+  owns their outcome. Promotion requires at least one accepted outcome and no
+  authorized reviewer with an outstanding `changes_requested` outcome.
+- A later commit invalidates every receipt attached to an earlier head and
+  requires another review. A review submitted or edited after merge cannot
+  retroactively authorize promotion.
+
+The proposal acceptance commands verify the complete review history within a
+bounded 100-review window, fail closed if that window would truncate, compare
+`headRefOid` with each review's commit, enforce reviewer authority and
+pre-merge timing, and record the reviewer, authority, review time, reviewed
+head, and merge commit in the canonical plan. A merged PR without that receipt
+remains `proposal_in_review`; do not begin implementation.
+
+Every proposal, proposal amendment, and implementation PR body must provide
+exactly one completed `## Review Kind` section. Its value must be supported and
+must match the current frontier's canonical plan value. This keeps the review
+focus stable across the proposal and implementation phases; changing the kind
+requires a reviewed plan revision before proposal work starts, not a PR-body
+reclassification during delivery.
+
+If milestone-level facts are wrong (objective, completion usage, exit-criterion
+identity, action policy), revise them in a separate plan-only review unit. Use
+a `m<number>/plan-<slug>` branch, keep idle or `ready_for_proposal`, and change
+only canonical `plan.md` plus generated `plan.html`. Do not change current,
+next, or the work order. Preserve accepted review-unit evidence and every
+existing `Met` criterion, append one Workflow History row whose evidence
+begins `Plan revision:` (frontier `Idle` / state `idle` when current is idle),
+and do not add a proposal, tests, or product code.
+
+Retargeting remaining work, skipping a queued successor, inserting a unit, or
+selecting closeout belongs on the next proposal PR via the work-order artifact.
+Do not use a plan-revision PR for that. Do not implement a queued successor
+merely because the previous unit completed.
+
+If the accepted proposal is later shown to be materially insufficient, amend
+it before implementation acceptance instead of rewriting history or knowingly
+shipping the same gap into another frontier. Existing evidence of a
+deterministic failure is sufficient to justify amendment review; do not require
+a redundant live run merely to reproduce a condition already established. Use
+`m<number>/amend-<slug>` and a new document under the frontier's `proposals/`
+directory. The amendment PR may change only that new artifact, canonical
+`plan.md`, and generated `plan.html`. It must preserve the original accepted
+proposal, prior amendments, exit-criterion state, accepted ledger, risks, and
+queued frontier.
+
+An amendment document starts with `# Proposal Amendment:` and records Review
+Question, Reason For Amendment, Contract Delta, Ownership, Affected Paths,
+Adversarial Matrix, External Assumptions, Non-Goals, File Impact, and Validation
+Plan. It narrows or corrects the implementation contract; it cannot replace the
+proposal's reviewed Expected Handoff. After exact-head contract review and
+merge, record the amendment PR, reviewed head, exact merge commit, and artifact
+path, then return the frontier to `ready_for_implementation`. Amendments are
+cumulative and immutable. The implementation PR must link and reconcile the
+original proposal plus every accepted amendment, and CI rejects changes to any
+of those artifacts.
+
+When an amendment's Review Question or Contract Delta introduces or changes a
+universal invariant, its artifact also completes `## Trust And Authority Model`
+and `## Evidence Topology And Capture Strategy` for that delta. An amendment
+cannot bypass contractability requirements merely because the original proposal
+has already been accepted.
+
+### Human Discovery During Implementation
+
+Classify a human request from hands-on testing before changing code:
+
+| Discovery | Required route |
+| --- | --- |
+| The parent review question is false without the change | Repair the parent implementation PR; this is not adjunct scope |
+| The accepted contract, exit criteria, safety authority, schema, external assumption, expected handoff, or explicit non-goal must change | Stop and use proposal-amendment or later-frontier review; never conceal the change in an adjunct |
+| The parent contract remains true and the human explicitly wants a bounded additive change in the same journey now | Use a HITL implementation adjunct |
+| The request has a different goal, journey, primary owner, or independently acceptable feature outcome | Queue and contract a later frontier |
+
+An adjunct is eligible only when all of the following are true:
+
+1. a durable issue records the human user-testing request, and the adjunct PR
+   records the requester, discovery context, and `implement-now` direction;
+2. the parent implementation is already in `implementation_in_review` and the
+   request serves its current frontier and operator journey;
+3. the change is additive or optional, and every parent contract claim remains
+   true if the adjunct is omitted;
+4. it changes no exit criterion, safety or enforcement authority, schema,
+   external assumption, expected handoff, or explicit non-goal;
+5. it changes no canonical plan, accepted proposal, accepted amendment, or
+   workflow state;
+6. it has one bounded acceptance owner and one review question; and
+7. it declares which evidence remains valid, which evidence must be refreshed,
+   and what parent-level integration check will be run.
+
+The human request authorizes consideration and priority, not a compatibility
+waiver. If any eligibility assertion is uncertain, do not start the adjunct;
+route the request through repair, amendment, or frontier planning.
+
+Open the child PR from
+`m<number>/<frontier>--adjunct-<slug>` to `m<number>/<frontier>`. Prefer one
+active adjunct at a time. After it is reviewed and merged, update the parent
+implementation PR’s `Integrated HITL Adjuncts`, scope reconciliation, affected
+paths, adversarial matrix, file impact, assumptions, and exact validation.
+Refresh invalidated evidence and review the integrated parent in totality
+before accepting it. If the child is rejected or abandoned, the parent
+contract remains reviewable without it.
+
+An adjunct creates no plan transition or accepted-review-unit ledger row. CI
+recognizes the canonical implementation branch as its base, requires the child
+branch shape and completed adjunct template, rejects stale parent ancestry, and
+rejects milestone plan or proposal-artifact edits. The machine validates the
+recorded topology and assertions; the reviewer owns whether the asserted
+compatibility is actually true.
 
 Each proposal lives at the current frontier’s declared `proposal path` and uses
 `.github/PULL_REQUEST_TEMPLATE/proposal.md`. It records the review question,
 proposed contract, owner, affected paths, adversarial matrix, assumptions,
 non-goals, file impacts, validation plan, and the expected successful handoff.
-It contains no product code, tests of unimplemented behavior, generated runtime
-artifacts, or implementation repair.
+When the review question or proposed contract claims a universal invariant, it
+also records the trust and authority model plus the evidence topology and
+capture strategy defined below. It contains no product code, tests of
+unimplemented behavior, generated runtime artifacts, or implementation repair.
 
 `## Expected Handoff` contains exactly one `json` code block. It uses
 `milestone_handoff_template_v1`, which is the normal handoff receipt without
@@ -579,11 +960,17 @@ Approval does **not** mean the milestone is complete, every improvement belongs
 in this PR, the next frontier is automatically approved, or external
 assumptions are proven.
 
+Every review-unit template includes a `Repair Cycle Ledger`. Cycle numbers are
+consecutive. Do not delete or rewrite a prior row, combine verdict rounds, or
+downgrade reviewer-owned severity or classification. The ledger is history, not
+a throttle.
+
 ### Proposal PR Template
 
 Use `.github/PULL_REQUEST_TEMPLATE/proposal.md`. The proposal document itself is
 the durable contract; the PR body gives the reviewer its milestone context,
-question, scope, and explicit confirmation that no implementation is present.
+review kind, question, scope, and explicit confirmation that no implementation
+is present. Proposal amendments use the same canonical review kind.
 
 ### Implementation PR Template
 
@@ -593,40 +980,96 @@ Use `.github/pull_request_template.md` (required headings):
 - Accepted proposal
 - Review kind
 - Review question
-- User or operator impact
-- Deliverable
-- Invariant or acceptance contract
-- Enforcement or acceptance owner
-- Affected paths
-- Adversarial matrix
-- External assumptions
-- Unverified limits
-- Scope (in / out)
-- File impact
-- Scope reconciliation
 - Validation
-- Review notes
+- Repair cycle ledger
 
-Detailed matrices, file impacts, and validation design originate in the
-accepted proposal. The implementation PR reconciles them to observed work
-without silently changing them.
+The accepted proposal owns the matrix, owner, assumptions, limits, and intended
+file impact. The implementation PR links that proposal, reports exact
+validation, and notes a drift only when the diff departed from it. Do not
+restate the contract in the PR body.
 
 ### Invariant Closure (When Claiming Universals)
 
 Words such as `bounded`, `detached`, `deterministic`, `exact`, `fail-closed`,
-`fresh`, and `no movement` are universal guarantees, not positive-path
-examples. Settle invariant, owner, affected paths, adversarial matrix, external
-assumptions, and unverified limits in the proposal. The implementation PR
-reports how the accepted contract was enforced and validated.
+`fresh`, and `no movement` are universal guarantees when the review kind is
+**deterministic invariant closure**. They are not a hidden trigger on other
+kinds. A mechanical rollout or behavioral slice that uses those words in passing
+does not become an authenticity exam.
+
+When the canonical review kind is `deterministic invariant closure`, the
+proposal artifact must complete both of these sections before it can be
+accepted:
+
+- `## Trust And Authority Model`: distinguish consistency, provenance, and
+  authenticity guarantees; identify trusted and untrusted actors and inputs;
+  map each externally visible claim to its source of authority; and state the
+  covered and excluded adversaries, including whether same-user mutation is
+  inside the model.
+- `## Evidence Topology And Capture Strategy`: map each claim and explicit
+  non-claim through authoritative raw evidence, derivation, and semantic
+  verifier; choose bounded implementation evidence or a separate evidence review
+  unit; and define capture readiness, freshness, reproducibility, invalidation,
+  and retained-versus-derived artifact boundaries.
+
+If the guarantee depends on process, library, or external-system behavior whose
+ownership is uncertain, cite the smallest feasibility evidence that settles the
+boundary. Otherwise narrow the guarantee and record the behavior as an
+unverified limit; do not leave ownership discovery for implementation.
 
 Before requesting review:
 
-1. Test the failure class and adjacent paths, not only the first reproduction.
-2. Enforce at the owning boundary.
+1. Test the accepted failure class and adjacent paths named in the proposal
+   matrix, not only the first reproduction.
+2. Enforce the claim at the owning boundary. Do not use this step to demand a
+   mid-cycle rewrite of internals; the late implementer collapse is optional
+   and not a review finding.
 3. Validate the final externally visible value after normalize/store/serialize.
 4. Prove cross-system assumptions against the relevant live system before
    presenting them as observed.
-5. Perform one fresh adversarial pass after a repair before re-review.
+5. After a repair, re-check prior findings and the accepted matrix. Do not run
+   a fresh open-ended adversarial pass.
+
+### Externally Owned Capability Gaps
+
+Treat a separately owned repository as an available contract owner, not as an
+unchangeable black box. Metrics UI is the primary simulator example for this
+repository.
+
+When an operator journey is blocked or made situational by an external
+capability:
+
+1. inspect the installed and documented interface and record concrete version,
+   command, protocol, or response evidence;
+2. identify whether the clean enforcement boundary belongs locally or in the
+   external repository;
+3. prefer the smallest owner-level capability, flag, query, or structured
+   failure contract over UI automation, undocumented state scraping, implicit
+   reconfiguration, duplicated protocol logic, or a permissive local fallback;
+4. state the external gap, its consequence, and whether the current review
+   question can still be accepted without it;
+5. surface an external feature request as an explicit option instead of
+   silently treating the dependency as fixed; and
+6. link an authorized external issue from the relevant proposal, PR, evidence,
+   or unresolved-risk record.
+
+Creating or updating an issue changes external state. Do it only when the
+operator explicitly authorizes the write or an accepted workflow step
+specifically includes external issue creation. Read-only repository and issue
+inspection may be used to resolve ownership and avoid duplicates.
+
+An external request should be independently actionable. Include:
+
+- the blocked user or operator journey;
+- observed interface and version evidence;
+- the minimum requested contract and acceptable equivalent outcomes;
+- required safety and state-preservation behavior;
+- structured unsupported or failure behavior;
+- a bounded acceptance test; and
+- links back to the consuming proposal or implementation.
+
+If a small external flag or response field would remove a substantial local
+workaround, say so directly. Do not conceal the option merely because the
+dependency lives in another repository.
 
 ### Review Finding Format
 
@@ -650,7 +1093,8 @@ Before requesting review:
 ```
 
 Severities: `P0` unsafe/destructive; `P1` stated question materially false;
-`P2` meaningful adjacent gap (normally fix before merge); `P3` nonblocking.
+`P2` an accepted-matrix case that fails (normally fix before merge); `P3`
+nonblocking or a new want outside the accepted contract.
 
 ### Author Repair Response
 
@@ -658,6 +1102,10 @@ Severities: `P0` unsafe/destructive; `P1` stated question materially false;
 ## Review Repair Summary
 
 Revision: `<commit>`
+Cycle: `<consecutive integer>`
+Classification: `<minor | substantial>`
+Highest severity: `<P0 | P1 | P2 | P3>`
+Review receipt: `<exact GitHub review URL for the consolidated verdict>`
 
 ### Finding 1 — <title>
 
@@ -670,23 +1118,14 @@ Revision: `<commit>`
 ## Validation
 
 <commands and results>
-
-## Fresh Adversarial Pass
-
-<Additional cases checked after repair>
 ```
 
-One review-and-repair cycle is normal. After two substantial repair cycles for
-the same invariant, reconsider abstraction, enforcement location, PR scope, and
-whether the question is singular.
+Repair as many times as the accepted question still requires. Split/replacement
+remains fail-closed until issue #118 has structured lineage verification.
 
 Before every review or re-review request, reconcile the PR description to the
-current diff. Refresh the review question when its wording no longer matches,
-the enforcement or acceptance owner, affected paths, adversarial matrix, file
-impact, external assumptions, unverified limits, and exact validation results.
-Summarize meaningful scope deepening and state whether it still closes the same
-claim. Do not make the reviewer reconstruct the actual contract from commit
-history.
+current diff and refresh exact validation results. Do not expand the accepted
+matrix in the PR body.
 
 ### Cumulative Milestone PR
 
@@ -704,23 +1143,25 @@ python3 docs/milestones/workflow.py status \
   --plan docs/milestones/<number>-<slug>/plan.md
 ```
 
-When it reports `ready_for_proposal` but the scope itself needs review, create a
-`m<number>/plan-<slug>` branch and open a plan-only PR to the milestone branch.
-CI recognizes that reserved branch shape and rejects changes outside canonical
-`plan.md` and generated `plan.html`. After that PR merges, inspect status again
-and hand the revised frontier to the proposal author.
-
-When it reports `ready_for_proposal`, create only the proposal branch:
+When it reports idle current or `ready_for_proposal`, open a git branch and a
+proposal PR that selects current from the work order (or introduces the first
+node). Git creates the branch. `workflow.py start-proposal` is optional. Use a
+`m<number>/plan-<slug>` branch only for milestone-level facts (objective,
+exit-criterion IDs, action policy). Remaining-path, skip-successor, and
+closeout-selection edits belong on the proposal PR.
 
 ```sh
-python3 docs/milestones/workflow.py start-proposal \
-  --plan docs/milestones/<number>-<slug>/plan.md \
-  --branch m<number>/<frontier>-proposal
+git fetch origin
+git switch -c m<number>/<frontier>-proposal origin/milestone/<number>-<slug>
 ```
 
-The proposal author commits the proposal artifact, plan transition, and rendered
-HTML, then opens a proposal PR to the milestone branch. After review and merge,
-the maintainer updates the clean milestone branch and records acceptance:
+Commit the proposal artifact, plan transition (including work-order edits), and
+rendered HTML, then open the PR to the milestone branch. Its `Review Kind` must
+match the selected frontier. When the contract is acceptable, submit the
+exact-head GitHub review receipt described above before merging. Any later
+proposal commit requires another receipt. After merge, the maintainer updates
+the milestone branch and records acceptance; the acceptance command rechecks
+the merged PR body and exact-head review receipt before promotion:
 
 ```sh
 python3 docs/milestones/workflow.py accept-proposal \
@@ -728,21 +1169,51 @@ python3 docs/milestones/workflow.py accept-proposal \
   --pr <proposal-pr-number>
 ```
 
-Inspect and commit the resulting plan and HTML transition. Only when status
-reports `ready_for_implementation` may the implementation branch start:
+Inspect and commit the resulting plan and HTML transition. If known evidence
+requires a bounded contract correction, open an additive amendment git branch
+and PR instead of a `start-proposal-amendment` wrapper:
 
 ```sh
-python3 docs/milestones/workflow.py start-implementation \
-  --plan docs/milestones/<number>-<slug>/plan.md \
-  --branch m<number>/<frontier>
+git switch -c m<number>/amend-<slug> origin/milestone/<number>-<slug>
 ```
+
+Apply the same exact-head review rule to the contract-only amendment PR. After
+it merges, record its reviewed head and exact merge acceptance receipt. The
+amendment acceptance command also rechecks the canonical review kind:
+
+```sh
+python3 docs/milestones/workflow.py accept-proposal-amendment \
+  --plan docs/milestones/<number>-<slug>/plan.md \
+  --pr <amendment-pr-number>
+```
+
+Only when status reports `ready_for_implementation` may implementation start.
+Create that git branch the same way; `start-implementation` is optional:
+
+```sh
+git switch -c m<number>/<frontier> origin/milestone/<number>-<slug>
+```
+
+If explicit human testing then produces an eligible implement-now request,
+create its child from the published parent head without changing plan state:
+
+```sh
+git fetch origin m<number>/<frontier>
+git switch -c m<number>/<frontier>--adjunct-<slug> \
+  origin/m<number>/<frontier>
+```
+
+Open the child PR back to `m<number>/<frontier>` with the implementation-adjunct
+template. After child acceptance, merge it into the parent branch, reconcile
+the parent description, refresh affected evidence, and request one parent
+totality re-review.
 
 After the implementation PR is accepted:
 
 1. squash-merge it into the milestone branch;
 2. from a clean local milestone branch, run the completion command below;
-3. confirm its reported frontier and workflow state;
-4. open the new current frontier’s proposal branch only after completion.
+3. confirm current is idle and the work order still holds remaining nodes;
+4. open the next proposal PR from git when ready; do not wait on `start-proposal`.
 
 ```sh
 python3 docs/milestones/workflow.py complete-implementation \
@@ -751,53 +1222,85 @@ python3 docs/milestones/workflow.py complete-implementation \
 ```
 
 `complete-implementation` fetches and fast-forwards the milestone branch,
-confirms the implementation PR is merged from the planned branch, fills the
-reviewed template with the PR number and merge SHA, applies the existing
-handoff owner, verifies that only canonical `plan.md` and generated `plan.html`
-changed, commits them, and pushes the milestone branch. It stops at
-`ready_for_proposal`; it never starts the next proposal branch.
+confirms the implementation PR is merged and its body still matches the
+canonical review kind, fills the reviewed template with the PR number and merge
+SHA, applies the existing handoff owner, verifies that only canonical `plan.md`
+and generated `plan.html` changed, commits them, and pushes the milestone
+branch. It returns current to idle. It does not start the next proposal.
 
 The lower-level `handoff --receipt <path>` command remains available for a
 reviewed exceptional receipt or recovery, but normal successful completion
 must not reconstruct acceptance judgment after merge.
 
-The helper, rather than agent memory, enforces the local order. It refuses a
-dirty worktree, the wrong branch, a branch/state mismatch, an unmerged proposal,
-an implementation start without an accepted proposal, an implementation PR
-from the wrong branch, or a merge commit that is not already an ancestor of the
-milestone branch. Proposal acceptance asks GitHub to confirm the exact base,
-head, merge commit, and changed-file allowlist. Implementation completion asks
-GitHub to confirm the implementation PR and commit, then limits criterion
-updates to the current frontier, prevents premature closeout, updates the
-accepted ledger and risks, promotes the reviewed next candidate to
-`ready_for_proposal`, records workflow history, and regenerates HTML.
+Git creates and switches review-unit branches. Do not require
+`start-proposal`, `start-proposal-amendment`, or `start-implementation` to
+enter a state; those commands are optional helpers. An existing branch is
+usable. CI `validate-pr` is the gate on the PR. Post-merge `accept-proposal`,
+`accept-proposal-amendment`, and `complete-implementation` record receipts
+that cannot exist until merge: GitHub identity, exact-head review, ancestry,
+ledger, and idle return. They may refuse a dirty milestone worktree because
+they commit plan HTML, and they refuse a merge commit that is not already an
+ancestor of the milestone branch. They do not police how the review-unit
+branch was created.
 
-CI runs `workflow.py validate-pr` on every PR targeting a milestone branch. A
-proposal PR may change only its declared proposal document, canonical plan, and
-generated plan HTML. An implementation PR is rejected unless its base records
-an accepted proposal; it may not modify that proposal or the frozen frontier.
+CI runs `workflow.py validate-pr` when a PR is opened, synchronized, reopened,
+or its description is edited. It applies the frontier gate to PRs targeting a
+milestone branch and the adjunct gate to reserved adjunct PRs targeting the
+active plan's canonical implementation branch. Proposal, proposal-amendment,
+and implementation PRs must provide the canonical review kind. A proposal PR
+may change only its declared proposal document, canonical plan, and generated
+plan HTML. A
+proposal amendment PR has the same contract-only boundary and must add a new
+artifact without modifying accepted proposal history. An implementation PR is
+rejected unless its base records an accepted proposal; it may not modify that
+proposal, an accepted amendment, or the work-order map. An adjunct PR must use
+the reserved child branch, current parent head, completed HITL template, and
+immutable milestone contract artifacts.
+For each recognized milestone review-unit transition and adjunct, CI also
+fetches GitHub PR reviews, inline comments, authority, and commit order, then
+validates the declared repair ledger against GitHub review evidence. The
+pull-request workflow runs when that body is edited so a newly recorded ledger
+row can satisfy the gate without an unrelated code commit.
 `docs/render_markdown.py` invokes the same plan validator, so hand-edited state
 that omits required fields or history is rejected.
 
-The machine cannot prove which model authored a phase, that a reviewer
-understood a proposal, or that approval was intellectually sound. The operator
-owns those judgments. What the repository does guarantee is that the current
-state and next handoff are visible, the accepted proposal is durable, proposal
-and implementation diffs are separate, and implementation cannot pass CI
-before proposal acceptance.
+CI supplies `validate-pr` with the PR event payload. For an equivalent local
+check, save the current PR description and pass it with
+`--pr-body-file <path>`; a milestone proposal, amendment, or implementation
+cannot receive a complete validation result without its PR body. A local body
+with declared repair cycles also cannot establish GitHub evidence by itself;
+the event-backed CI path supplies that metadata.
+
+The machine cannot discover an unrecorded review round, decide whether a cycle
+was intellectually substantial, prove which model authored a phase, prove that a
+reviewer understood a proposal, or prove that approval was intellectually sound.
+The reviewer and operator own those judgments. It can prove that a decisive
+review was submitted on a specific proposal head and preserve that fact
+separately from merge ancestry. For repair cycles it can prove that declared
+cycles advance through the PR commit order and that classification and severity
+come from the linked reviewer-owned GitHub evidence. Completion requires an
+exact-head `Contract Review Receipt` with `Outcome: accepted`. Inline comments
+and concern lists do not complete or block a unit. Replacement currently fails
+closed until issue #118 supplies structured lineage verification; a new PR
+number is not reviewability evidence.
+The repository also guarantees that the current state and next handoff are
+visible, the accepted proposal is durable, proposal and implementation diffs
+are separate, and implementation cannot pass CI before proposal acceptance.
 
 The handoff commit is a narrow exception to PR-only changes because it applies
 mechanical post-merge facts that cannot truthfully exist in the merged review
 unit beforehand. It must not introduce code, widen an acceptance contract,
-invent an unreviewed candidate, or change milestone scope. If the handoff needs
-judgment beyond the already reviewed plan state, use a plan-only review unit
-instead.
+invent an unreviewed candidate, delete remaining map nodes, or change
+milestone scope. If the handoff needs judgment beyond the already reviewed
+plan state, stop; do not invent the successor in the receipt.
 
-Drafting or revising the next candidate on the current PR is optional. It gives
-the reviewer visibility into the likely handoff, but it is not a second review
-question and current-PR acceptance must not depend on accepting future scope.
-After that candidate is promoted, its own review unit may introduce a later
-candidate. When none is ready, leave the slot empty rather than forcing one.
+The proposal PR is the window to edit the work-order artifact and to select
+current from it. That is not a second review question; current-PR acceptance
+does not depend on the rest of the milestone path being perfect.
+Implementation stays inside the accepted current contract and must not edit
+the map. After acceptance, current is idle; the next proposal may reorder,
+skip, or introduce the next node. When no successor is contracted, leave the
+path empty rather than forcing one.
 
 At milestone closeout:
 
@@ -855,7 +1358,7 @@ process rules.
 This contract does not:
 
 - redesign product architecture;
-- create a detailed long-term roadmap;
+- create a detailed long-term roadmap or a backlog of uncontracted frontier names;
 - introduce many package sub-IDs;
 - turn the milestone plan into a ticket backlog;
 - copy proposal-level matrices into the plan;

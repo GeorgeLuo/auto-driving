@@ -1,0 +1,60 @@
+{
+  "browser_view": null,
+  "commands": [
+    {
+      "argv": [
+        "./cli/automa",
+        "vehicles",
+        "status",
+        "--chase-url",
+        "http://localhost:5050"
+      ],
+      "command": "./cli/automa vehicles status --chase-url http://localhost:5050",
+      "elapsed_ms": 717,
+      "ended_at_utc": "2026-08-05T23:48:19.650571Z",
+      "exit_code": 0,
+      "started_at_utc": "2026-08-05T23:48:18.933007Z",
+      "stderr_path": "steps/status-initial/cmd-00.stderr.txt",
+      "stdout_path": "steps/status-initial/cmd-00.stdout.txt"
+    },
+    {
+      "argv": [
+        "./cli/automa",
+        "vehicles",
+        "status",
+        "--id",
+        "chase-sim-chaser",
+        "--chase-url",
+        "http://localhost:5050",
+        "--json"
+      ],
+      "captures_to": "initial-status.json",
+      "command": "./cli/automa vehicles status --id chase-sim-chaser --chase-url http://localhost:5050 --json",
+      "elapsed_ms": 648,
+      "ended_at_utc": "2026-08-05T23:48:20.299401Z",
+      "exit_code": 0,
+      "started_at_utc": "2026-08-05T23:48:19.651413Z",
+      "stderr_path": "steps/status-initial/cmd-01.stderr.txt",
+      "stdout_path": "steps/status-initial/cmd-01.stdout.txt"
+    }
+  ],
+  "gate_ids": [
+    "initial_layers"
+  ],
+  "human": {
+    "finding_requested": false,
+    "interactive": true,
+    "notes": "",
+    "visual": "pass"
+  },
+  "id": "status-initial",
+  "kind": "command",
+  "machine_evidence": {},
+  "machine_ok": true,
+  "machine_summary": "initial_layers: initial layers healthy",
+  "primary_cue": "Next action points at observe-only automation run",
+  "question": "Does initial status show a ready passive Chase attachment?",
+  "required_for_verdict": true,
+  "safety": "read",
+  "status": "pass"
+}

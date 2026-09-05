@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from dataclasses import replace
+from pathlib import Path
 import subprocess
 import tempfile
 import unittest
-from pathlib import Path
 
 from docs.milestones.workflow import (
+    Frontier,
+    FrontierMap,
     PlanContractError,
     _workflow_status_payload,
     apply_handoff,
@@ -13,6 +16,12 @@ from docs.milestones.workflow import (
     validate_merged_pr_metadata,
     validate_plan_text,
     verify_handoff_git_state,
+    _append_workflow_history,
+    _frontier_body,
+    _replace_frontier,
+    _replace_frontier_map,
+    _replace_header_value,
+    render_plan_text,
 )
 from tests.docs.milestone_workflow_fixtures import (
     BASELINE_SHA,
@@ -38,6 +47,61 @@ PLAN = ROOT / PLAN_RELATIVE
 
 def _receipt(*, merge_commit: str = "deadbee") -> dict[str, object]:
     return handoff_receipt(merge_commit=merge_commit)
+
+
+def _select_work_order_head(
+    text: str,
+    *,
+    workflow_state: str = "ready_for_proposal",
+) -> str:
+    state = validate_plan_text(text)
+    if state.next_frontier.is_empty or state.next_frontier.name is None:
+        raise AssertionError("work order has no remaining node to select")
+    node = state.next_frontier
+    remaining = state.frontier_map.path[1:]
+    remaining_nodes = tuple(
+        item for item in state.frontier_map.nodes if item.name in remaining
+    )
+    new_current = Frontier(
+        name=node.name,
+        fields={**node.fields, "workflow state": workflow_state},
+    )
+    if remaining_nodes:
+        new_next = remaining_nodes[0]
+    else:
+        new_next = Frontier(
+            name=None,
+            fields={
+                "reason": "No remaining work-order node is contracted.",
+                "revisit when": "The next proposal may introduce a node.",
+            },
+        )
+    updated = _replace_header_value(text, "Current frontier", node.name)
+    updated = _replace_frontier(
+        updated,
+        "### Current Frontier",
+        _frontier_body(new_current, current=True),
+    )
+    updated = _replace_frontier(
+        updated,
+        "### Next-Frontier Candidate",
+        _frontier_body(new_next, current=False),
+    )
+    updated = _replace_frontier_map(
+        updated,
+        FrontierMap(
+            path=remaining,
+            cadence=state.frontier_map.cadence,
+            nodes=remaining_nodes,
+            off_path=state.frontier_map.off_path,
+        ),
+    )
+    return _append_workflow_history(
+        updated,
+        frontier=node.name,
+        state=workflow_state,
+        evidence="Selected remaining work-order head.",
+    )
 
 
 class MilestonePlanContractTests(unittest.TestCase):
@@ -97,16 +161,60 @@ class MilestonePlanContractTests(unittest.TestCase):
             validate_plan_text(invalid)
 
     def test_next_frontier_branch_must_use_milestone_prefix(self) -> None:
-        invalid = self.plan_text.replace(
+        start = self.plan_text.index("### Frontier Map")
+        end = self.plan_text.index("## Workflow History", start)
+        legacy = self.plan_text[:start] + self.plan_text[end:]
+        invalid = legacy.replace(
             f"- Implementation branch: `{NEXT_IMPLEMENTATION_BRANCH}`\n",
             "- Implementation branch: `agent/closeout`\n",
         )
 
         with self.assertRaisesRegex(
             PlanContractError,
-            "Next-Frontier Candidate implementation branch",
+            "implementation branch must start",
         ):
             validate_plan_text(invalid)
+
+    def test_mapped_plan_derives_successor_without_markdown_view(self) -> None:
+        start = self.plan_text.index("### Next-Frontier Candidate")
+        end = self.plan_text.index("### Frontier Map", start)
+        without_view = self.plan_text[:start] + self.plan_text[end:]
+
+        state = validate_plan_text(without_view)
+        self.assertEqual(state.next_frontier.name, NEXT_FRONTIER)
+        rendered = render_plan_text(without_view)
+        self.assertIn("### Next-Frontier Candidate", rendered)
+        self.assertIn(f"**{NEXT_FRONTIER}**", rendered)
+
+    def test_mapped_plan_ignores_stale_markdown_successor_view(self) -> None:
+        start = self.plan_text.index("### Next-Frontier Candidate")
+        end = self.plan_text.index("### Frontier Map", start)
+        view = self.plan_text[start:end].replace(
+            "- Review question: Is the synthetic milestone complete?",
+            "- Review question: Stale duplicate state",
+        )
+        stale = self.plan_text[:start] + view + self.plan_text[end:]
+
+        state = validate_plan_text(stale)
+        self.assertEqual(
+            state.next_frontier.fields["review question"],
+            "Is the synthetic milestone complete?",
+        )
+        rendered = render_plan_text(stale)
+        self.assertIn(
+            "- Review question: Is the synthetic milestone complete?",
+            rendered,
+        )
+
+    def test_handoff_renders_successor_view_for_mapped_plan(self) -> None:
+        start = self.open_plan_text.index("### Next-Frontier Candidate")
+        end = self.open_plan_text.index("### Frontier Map", start)
+        without_view = self.open_plan_text[:start] + self.open_plan_text[end:]
+
+        updated = apply_handoff(without_view, _receipt())
+        state = validate_plan_text(updated)
+        self.assertEqual(state.next_frontier.name, NEXT_FRONTIER)
+        self.assertIn("### Next-Frontier Candidate", updated)
 
     def test_milestone_branch_must_match_milestone_number(self) -> None:
         invalid = self.plan_text.replace(
@@ -144,13 +252,46 @@ class MilestonePlanContractTests(unittest.TestCase):
         with self.assertRaisesRegex(PlanContractError, "Grandfathered PRs"):
             validate_plan_text(missing_field)
 
-    def test_handoff_promotes_closeout_and_allows_terminal_next_slot(self) -> None:
+    def test_advance_allows_empty_remaining_work_order(self) -> None:
+        start = self.open_plan_text.index("### Next-Frontier Candidate")
+        end = self.open_plan_text.index("### Frontier Map")
+        empty_next = (
+            "### Next-Frontier Candidate\n\n"
+            "**None**\n\n"
+            "- Reason: No further unit is contracted.\n"
+            "- Revisit when: The next proposal may introduce a node.\n\n"
+        )
+        plan = self.open_plan_text[:start] + empty_next + self.open_plan_text[end:]
+        plan = plan.replace(f"- Path: `{NEXT_FRONTIER}`", "- Path: none", 1)
+        node_start = plan.index("#### Node:")
+        history = plan.index("## Workflow History")
+        plan = plan[:node_start] + plan[history:]
+        updated = apply_handoff(plan, _receipt())
+        state = validate_plan_text(updated)
+        self.assertTrue(state.current.is_empty)
+        self.assertTrue(state.next_frontier.is_empty)
+        self.assertEqual(state.frontier_map.path, ())
+
+    def test_block_keeps_remaining_work_order(self) -> None:
+        receipt = _receipt()
+        receipt["outcome"] = "block"
+        receipt["blocked_reason"] = "Need operator input"
+        receipt["revisit_when"] = "Operator unblocks"
+        updated = apply_handoff(self.open_plan_text, receipt)
+        state = validate_plan_text(updated)
+        self.assertEqual(state.status, "Blocked")
+        self.assertTrue(state.current.is_empty)
+        self.assertEqual(state.next_frontier.name, NEXT_FRONTIER)
+        self.assertEqual(state.frontier_map.path, (NEXT_FRONTIER,))
+
+    def test_handoff_returns_to_idle_and_keeps_remaining_work_order(self) -> None:
         updated = apply_handoff(self.open_plan_text, _receipt())
         state = validate_plan_text(updated)
 
         self.assertEqual(state.status, "Active")
-        self.assertEqual(state.current.name, NEXT_FRONTIER)
-        self.assertTrue(state.next_frontier.is_empty)
+        self.assertTrue(state.current.is_empty)
+        self.assertEqual(state.next_frontier.name, NEXT_FRONTIER)
+        self.assertEqual(state.frontier_map.path, (NEXT_FRONTIER,))
         self.assertIn(
             ("#59",),
             tuple((row[0],) for row in state.ledger.rows),
@@ -219,34 +360,41 @@ class MilestonePlanContractTests(unittest.TestCase):
         ):
             apply_handoff(self.open_plan_text, receipt)
 
-    def test_handoff_rejects_premature_closeout_promotion(self) -> None:
+    def test_handoff_does_not_force_closeout_when_other_criteria_remain(self) -> None:
         incomplete = self.open_plan_text.replace(
             "| M900-02 | Existing operator path remains stable | Met |",
             "| M900-02 | Existing operator path remains stable | Partial |",
         )
-
+        updated = apply_handoff(incomplete, _receipt())
+        state = validate_plan_text(updated)
+        self.assertTrue(state.current.is_empty)
+        self.assertEqual(state.next_frontier.name, NEXT_FRONTIER)
         with self.assertRaisesRegex(
             PlanContractError,
-            "cannot promote milestone closeout.*M900-02",
+            "cannot select milestone closeout.*M900-02",
         ):
-            apply_handoff(incomplete, _receipt())
+            validate_plan_text(_select_work_order_head(updated))
 
     def test_closeout_handoff_requires_and_records_all_criteria_met(self) -> None:
         promoted = apply_handoff(self.open_plan_text, _receipt())
-        promoted = promoted.replace(
-            f"**{NEXT_FRONTIER}**\n",
-            f"**{NEXT_FRONTIER}**\n\n- PR: [#60](https://example.invalid/60)\n",
-            1,
-        )
+        promoted = _select_work_order_head(promoted)
         promoted = promoted.replace(
             "- Workflow state: ready_for_proposal\n",
             "- Workflow state: implementation_in_review\n",
             1,
         )
         promoted = promoted.replace(
+            f"**{NEXT_FRONTIER}**\n",
+            f"**{NEXT_FRONTIER}**\n\n- PR: [#60](https://example.invalid/60)\n",
+            1,
+        )
+        promoted = promoted.replace(
             "- Proposal path: `docs/milestones/900-workflow-fixture/proposals/closeout.md`\n",
             "- Proposal path: `docs/milestones/900-workflow-fixture/proposals/closeout.md`\n"
-            "- Accepted proposal: [#61](https://example.invalid/61) at `cab1234`\n",
+            "- Accepted proposal: [#61](https://example.invalid/61) at `cab1234` "
+            "(reviewed head `ffffffffffffffffffffffffffffffffffffffff` by "
+            "`workflow-reviewer` as `COLLABORATOR` at "
+            "`2026-08-12T18:00:00Z`)\n",
             1,
         )
         promoted = promoted.replace(
@@ -293,6 +441,10 @@ class MilestonePlanContractTests(unittest.TestCase):
             "baseRefName": MILESTONE_BRANCH,
             "headRefName": IMPLEMENTATION_BRANCH,
             "mergeCommit": {"oid": "abc123456789"},
+            "body": (
+                "## Review Kind\n\n"
+                "Deterministic invariant closure\n"
+            ),
         }
         validate_merged_pr_metadata(valid, state, receipt)
 
@@ -303,6 +455,115 @@ class MilestonePlanContractTests(unittest.TestCase):
         wrong_sha = {**valid, "mergeCommit": {"oid": "def567890"}}
         with self.assertRaisesRegex(PlanContractError, "does not match"):
             validate_merged_pr_metadata(wrong_sha, state, receipt)
+
+        wrong_kind = {
+            **valid,
+            "body": "## Review Kind\n\nBehavioral feature slice\n",
+        }
+        with self.assertRaisesRegex(PlanContractError, "review kind does not match"):
+            validate_merged_pr_metadata(wrong_kind, state, receipt)
+
+    def test_missing_frontier_map_is_legacy_current_plus_next(self) -> None:
+        start = self.plan_text.index("### Frontier Map")
+        end = self.plan_text.index("## Workflow History")
+        missing = self.plan_text[:start] + self.plan_text[end:]
+        state = validate_plan_text(missing)
+        self.assertEqual(state.frontier_map.path, (NEXT_FRONTIER,))
+        self.assertEqual(state.next_frontier.name, NEXT_FRONTIER)
+
+    def test_next_frontier_view_is_derived_from_map_head(self) -> None:
+        state = validate_plan_text(self.plan_text)
+        replacement = Frontier(
+            name="Replacement successor",
+            fields={"review question": "A replacement is visible."},
+        )
+        updated = replace(
+            state,
+            frontier_map=FrontierMap(
+                path=(replacement.name,),
+                cadence=state.frontier_map.cadence,
+                nodes=(replacement,),
+                off_path=state.frontier_map.off_path,
+            ),
+        )
+
+        self.assertEqual(updated.next_frontier, replacement)
+
+    def test_path_cannot_repeat_a_node_name(self) -> None:
+        invalid = self.plan_text.replace(
+            f"- Path: `{NEXT_FRONTIER}`",
+            f"- Path: `{NEXT_FRONTIER}` → `{NEXT_FRONTIER}`",
+            1,
+        )
+        with self.assertRaisesRegex(PlanContractError, "cannot repeat a node name"):
+            validate_plan_text(invalid)
+
+    def test_current_cannot_appear_on_remaining_path(self) -> None:
+        invalid = self.plan_text.replace(
+            f"- Path: `{NEXT_FRONTIER}`",
+            f"- Path: `{CURRENT_FRONTIER}` → `{NEXT_FRONTIER}`",
+            1,
+        )
+        with self.assertRaisesRegex(
+            PlanContractError,
+            "cannot include the current frontier",
+        ):
+            validate_plan_text(invalid)
+
+    def test_handoff_keeps_remaining_path_nodes(self) -> None:
+        inserted = "Capability inventory"
+        longer = self.open_plan_text.replace(
+            f"- Path: `{NEXT_FRONTIER}`",
+            f"- Path: `{inserted}` → `{NEXT_FRONTIER}`",
+            1,
+        )
+        node = f"""
+#### Node: {inserted}
+
+- Proposal branch: `m900/inventory-proposal`
+- Implementation branch: `m900/inventory`
+- Proposal path: `docs/milestones/900-workflow-fixture/proposals/inventory.md`
+- Review kind: Deterministic invariant closure
+- Review question: Are unreached regions grouped?
+- Acceptance owner: Inventory validator
+- Exit criteria affected: M900-02
+- Prerequisite: Current policy is accepted
+- Non-goals: Product deletion
+"""
+        longer = longer.replace(
+            f"#### Node: {NEXT_FRONTIER}",
+            node + f"#### Node: {NEXT_FRONTIER}",
+            1,
+        )
+        next_block = """**Capability inventory**
+
+- Proposal branch: `m900/inventory-proposal`
+- Implementation branch: `m900/inventory`
+- Proposal path: `docs/milestones/900-workflow-fixture/proposals/inventory.md`
+- Review kind: Deterministic invariant closure
+- Review question: Are unreached regions grouped?
+- Acceptance owner: Inventory validator
+- Exit criteria affected: M900-02
+- Prerequisite: Current policy is accepted
+- Non-goals: Product deletion
+"""
+        start = longer.index("### Next-Frontier Candidate")
+        end = longer.index("### Frontier Map")
+        longer = (
+            longer[:start]
+            + "### Next-Frontier Candidate\n\n"
+            + next_block
+            + "\n"
+            + longer[end:]
+        )
+        updated = apply_handoff(longer, _receipt())
+        state = validate_plan_text(updated)
+        self.assertTrue(state.current.is_empty)
+        self.assertEqual(state.next_frontier.name, inserted)
+        self.assertEqual(
+            state.frontier_map.path,
+            (inserted, NEXT_FRONTIER),
+        )
 
 
 class MilestoneHandoffGitOrderingTests(unittest.TestCase):
@@ -438,7 +699,7 @@ class MilestoneHandoffGitOrderingTests(unittest.TestCase):
                 repo_root=ROOT,
             )
 
-    def test_start_rejects_existing_remote_tracking_branch(self) -> None:
+    def test_start_reuses_an_existing_local_branch(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             plan = root / PLAN_RELATIVE
@@ -457,21 +718,23 @@ class MilestoneHandoffGitOrderingTests(unittest.TestCase):
                 "-m",
                 "frontier handoff",
             )
-            self._git(
-                root,
-                "update-ref",
-                f"refs/remotes/origin/{PROPOSAL_BRANCH}",
-                "HEAD",
-            )
+            self._git(root, "switch", "-c", PROPOSAL_BRANCH)
             state = validate_plan_text(current)
-
-            with self.assertRaisesRegex(PlanContractError, "branch already exists"):
-                start_proposal_branch(
-                    plan,
-                    state,
-                    PROPOSAL_BRANCH,
-                    repo_root=root,
-                )
+            start_proposal_branch(
+                plan,
+                state,
+                PROPOSAL_BRANCH,
+                repo_root=root,
+            )
+            self.assertEqual(
+                self._git(root, "branch", "--show-current"),
+                PROPOSAL_BRANCH,
+            )
+            transitioned = validate_plan_text(plan.read_text(encoding="utf-8"))
+            self.assertEqual(
+                transitioned.current.fields["workflow state"],
+                "proposal_in_review",
+            )
 
 
 if __name__ == "__main__":

@@ -1,16 +1,23 @@
 from __future__ import annotations
 
-import base64
+import math
 import time
 from pathlib import Path
 from typing import Any
 
 from .defaults import DEFAULT_CHASE_UI_WS_URL, get_default_chase_ui_ws_url
 from .frame_identity import (
-    build_chase_shadow_reference,
+    ChaseCaptureValidationError,
+    evaluate_chase_evaluator_reference,
     format_chase_frame_id,
+    validate_chase_sensor_capture,
 )
-from .metrics_ws import MetricsUiWebSocketError, MetricsUiWsClient
+from .metrics_ws import (
+    MetricsUiWebSocketError,
+    MetricsUiWsClient,
+    build_chase_session_fingerprint,
+    compare_chase_session_fingerprints,
+)
 from autonomy.vehicle import (
     FRONT_CAMERA_SENSOR_ID,
     CarInterface,
@@ -26,10 +33,171 @@ from autonomy.vehicle import (
 CHASE_SET_CHASER_INPUT = "set-chaser-input"
 CHASE_SET_CHASER_CONTROL_SOURCE = "set-chaser-control-source"
 CHASE_ATOMIC_EVALUATION_QUERY = "atomic-evaluation-capture"
+CHASE_PASSIVE_CAMERA_ID = "front_camera"
+# Metrics UI delivery failures: absent frontend, hung frontend, or mid-request drop.
+# Automa normalizes them to frontend_disconnected so status/recovery stay on
+# simulator_frontend (reload browser), while the precise protocol code is kept
+# in error details.
+FRONTEND_DELIVERY_PROTOCOL_CODES = frozenset(
+    {
+        "frontend_not_connected",
+        "frontend_unresponsive",
+        "frontend_disconnected",
+    }
+)
+CHASE_PASSIVE_PRESERVED_FIELDS = (
+    "gameId",
+    "scenarioId",
+    "simulationEpoch",
+    "playback",
+    "controlSource",
+    "controlInput",
+    "actorId",
+    "cameraId",
+)
+
+_PASSIVE_RECEIPT_FIELD_NAMES = {
+    "gameId": "game_id",
+    "scenarioId": "scenario_id",
+    "simulationEpoch": "simulation_epoch",
+    "playback": "playback",
+    "controlSource": "control_source",
+    "controlInput": "control_input",
+    "actorId": "actor_id",
+    "cameraId": "camera_id",
+}
+
+
+class ChasePassiveCaptureError(RuntimeError):
+    """Structured failure at the passive simulator-observation boundary."""
+
+    def __init__(
+        self,
+        *,
+        code: str,
+        message: str,
+        details: dict[str, Any] | None = None,
+    ):
+        self.code = code
+        self.detail = message
+        self.details = details or {}
+        super().__init__(f"{code}: {message}")
+
+    def to_dict(self) -> dict[str, Any]:
+        layer = {
+            "simulator_unreachable": "simulator_server",
+            "frontend_disconnected": "simulator_frontend",
+            "wrong_game": "chase_game",
+            "front_view_unavailable": "vehicle",
+            "simulator_capability_missing": "passive_capture",
+            "simulator_state_changed": "passive_capture",
+        }.get(self.code, "passive_capture")
+        return {
+            "schema": "automa_cli_error_v1",
+            "error": self.code,
+            "layer": layer,
+            "message": self.detail,
+            "details": self.details,
+            "recovery": None,
+            "exit_code": 1,
+        }
 
 
 def _timestamp_ms() -> int:
     return int(time.time() * 1000)
+
+
+def _normalize_passive_receipt_fingerprint(value: Any) -> dict[str, Any]:
+    source = value if isinstance(value, dict) else {}
+    normalized = {
+        normalized_name: source.get(protocol_name)
+        for protocol_name, normalized_name in _PASSIVE_RECEIPT_FIELD_NAMES.items()
+    }
+    unknown_fields: list[str] = []
+    for protocol_name, normalized_name in _PASSIVE_RECEIPT_FIELD_NAMES.items():
+        field_value = normalized[normalized_name]
+        if protocol_name == "controlInput":
+            valid = protocol_name in source and (
+                field_value is None
+                or (
+                    isinstance(field_value, dict)
+                    and isinstance(field_value.get("source"), str)
+                    and bool(field_value["source"].strip())
+                    and isinstance(field_value.get("forward"), bool)
+                    and isinstance(field_value.get("reverse"), bool)
+                    and isinstance(field_value.get("steering"), (int, float))
+                    and not isinstance(field_value.get("steering"), bool)
+                    and math.isfinite(float(field_value["steering"]))
+                )
+            )
+        elif protocol_name == "playback":
+            valid = (
+                isinstance(field_value, dict)
+                and isinstance(field_value.get("frameIndex"), int)
+                and not isinstance(field_value.get("frameIndex"), bool)
+                and field_value["frameIndex"] >= 0
+                and field_value.get("phase")
+                in {"running", "paused-before-actions"}
+                and isinstance(field_value.get("pendingAction"), bool)
+            )
+        else:
+            valid = isinstance(field_value, str) and bool(field_value.strip())
+        if not valid:
+            unknown_fields.append(normalized_name)
+    return {
+        "schema": "chase_session_fingerprint_v1",
+        **normalized,
+        "unknown_fields": unknown_fields,
+    }
+
+
+def _compare_passive_receipt_fingerprints(
+    before: dict[str, Any],
+    after: dict[str, Any],
+) -> dict[str, Any]:
+    field_names = tuple(_PASSIVE_RECEIPT_FIELD_NAMES.values())
+    unknown_fields = sorted(
+        {
+            *(
+                str(item)
+                for item in before.get("unknown_fields", [])
+                if isinstance(item, str)
+            ),
+            *(
+                str(item)
+                for item in after.get("unknown_fields", [])
+                if isinstance(item, str)
+            ),
+        }
+    )
+    changed_fields = [
+        field_name
+        for field_name in field_names
+        if before.get(field_name) != after.get(field_name)
+    ]
+    return {
+        "preserved": not unknown_fields and not changed_fields,
+        "unknown_fields": unknown_fields,
+        "changed_fields": changed_fields,
+        "before": before,
+        "after": after,
+    }
+
+
+def _passive_receipt_environment(
+    fingerprint: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        key: fingerprint.get(key)
+        for key in (
+            "game_id",
+            "scenario_id",
+            "simulation_epoch",
+            "playback",
+            "control_source",
+            "control_input",
+        )
+    }
 
 
 def _reject_unsupported_sensors(request: SensorReadRequest) -> None:
@@ -95,6 +263,12 @@ class ChaseSimCar(CarInterface):
         # Evaluator-only shadow reference from the most recent capture. Not part of
         # SensorSnapshot so it never enters observation/memory inputs.
         self._last_capture_shadow_reference: dict[str, Any] | None = None
+        self._last_evaluator_reference: dict[str, Any] = {
+            "status": "unavailable",
+            "reason": "not_captured",
+            "path": "evaluator.reference",
+        }
+        self._last_passive_capture: dict[str, Any] | None = None
         self._last_simulator_frame_index: int | None = None
         self._capabilities = VehicleCapabilities(
             vehicle_id=vehicle_id,
@@ -337,57 +511,598 @@ class ChaseSimCar(CarInterface):
     def last_simulator_frame_index(self) -> int | None:
         return self._last_simulator_frame_index
 
+    @property
+    def last_evaluator_reference(self) -> dict[str, Any]:
+        """Frame-scoped evaluator-reference status without evaluator payload."""
+
+        return dict(self._last_evaluator_reference)
+
+    @property
+    def last_passive_capture(self) -> dict[str, Any] | None:
+        """Most recent passive-capture capability and preservation receipt."""
+
+        return dict(self._last_passive_capture) if self._last_passive_capture else None
+
+    def inspect_passive_capture(
+        self,
+        *,
+        timeout_s: float | None = None,
+        include_image: bool = False,
+    ) -> dict[str, Any]:
+        """Read one atomic frame and prove that the simulator session was preserved."""
+
+        operation_timeout = float(
+            self.timeout_s if timeout_s is None else timeout_s
+        )
+        if not math.isfinite(operation_timeout) or operation_timeout <= 0:
+            raise ValueError("passive capture timeout must be finite and greater than zero")
+        started = time.monotonic()
+        deadline = started + operation_timeout
+        phases: dict[str, dict[str, Any]] = {}
+
+        before_state = self._passive_phase(
+            "state_before",
+            phases,
+            deadline,
+            self.client.get_state,
+            error_code="simulator_unreachable",
+        )
+        before_debug = self._passive_phase(
+            "debug_before",
+            phases,
+            deadline,
+            self.client.get_play_debug,
+            error_code="frontend_disconnected",
+        )
+        if before_debug.get("gameId") != "chase":
+            raise ChasePassiveCaptureError(
+                code="wrong_game",
+                message=(
+                    "The connected frontend is not exposing Chase; "
+                    f"reported gameId={before_debug.get('gameId')!r}."
+                ),
+                details={"game_id": before_debug.get("gameId"), "phases": phases},
+            )
+        before = build_chase_session_fingerprint(
+            state=before_state,
+            debug=before_debug,
+        )
+
+        capture = self._passive_phase(
+            "sensor_capture",
+            phases,
+            deadline,
+            self.client.play_game_query,
+            CHASE_ATOMIC_EVALUATION_QUERY,
+            {
+                "actorId": "chaser",
+                "cameraId": CHASE_PASSIVE_CAMERA_ID,
+                "width": 640,
+                "height": 480,
+            },
+            error_code="front_view_unavailable",
+        )
+        passive_observation = capture.get("passiveObservation")
+        if isinstance(passive_observation, dict):
+            return self._passive_receipt_result(
+                capture=capture,
+                passive_observation=passive_observation,
+                fallback_environment=before,
+                phases=phases,
+                operation_timeout=operation_timeout,
+                started=started,
+                include_image=include_image,
+            )
+
+        sensor = validate_chase_sensor_capture(
+            capture,
+            expected_actor_id="chaser",
+            include_validated_bytes=include_image,
+        )
+        evaluator = evaluate_chase_evaluator_reference(capture, sensor=sensor)
+
+        after_state = self._passive_phase(
+            "state_after",
+            phases,
+            deadline,
+            self.client.get_state,
+            error_code="simulator_capability_missing",
+        )
+        after_debug = self._passive_phase(
+            "debug_after",
+            phases,
+            deadline,
+            self.client.get_play_debug,
+            error_code="simulator_capability_missing",
+        )
+        after = build_chase_session_fingerprint(
+            state=after_state,
+            debug=after_debug,
+        )
+        preservation = compare_chase_session_fingerprints(before, after)
+        elapsed_ms = int((time.monotonic() - started) * 1000)
+
+        if preservation["changed_fields"]:
+            status = "unavailable"
+            code = "simulator_state_changed"
+            reason = "session_fingerprint_changed"
+        elif preservation["unknown_fields"]:
+            status = "unsupported"
+            code = "simulator_capability_missing"
+            reason = "preservation_fields_unavailable"
+        else:
+            status = "available"
+            code = None
+            reason = None
+
+        evaluator_status = {
+            key: value
+            for key, value in evaluator.items()
+            if key != "reference" and value is not None
+        }
+        result: dict[str, Any] = {
+            "schema": "chase_passive_capture_v1",
+            "status": status,
+            "code": code,
+            "reason": reason,
+            "sensor": sensor,
+            "evaluator_reference": evaluator_status,
+            "session_preservation": preservation,
+            "environment": {
+                "game_id": before.get("game_id"),
+                "scenario_id": before.get("scenario_id"),
+                "simulation_epoch": before.get("simulation_epoch"),
+                "playback": before.get("playback"),
+                "control_source": before.get("control_source"),
+                "control_input": before.get("control_input"),
+            },
+            "timeout_s": operation_timeout,
+            "elapsed_ms": elapsed_ms,
+            "phases": phases,
+            "allowed_operations": [
+                "get_state",
+                "get_play_debug",
+                f"play_game_query:{CHASE_ATOMIC_EVALUATION_QUERY}",
+            ],
+            "mutation_attempted": False,
+        }
+        if include_image:
+            raw_sensor = capture.get("sensor")
+            raw_image = raw_sensor.get("image") if isinstance(raw_sensor, dict) else None
+            result["image"] = dict(raw_image) if isinstance(raw_image, dict) else None
+
+        self._last_capture_shadow_reference = (
+            evaluator.get("reference")
+            if evaluator.get("status") == "available"
+            and isinstance(evaluator.get("reference"), dict)
+            else None
+        )
+        self._last_evaluator_reference = evaluator_status
+        self._last_simulator_frame_index = int(sensor["simulator_frame_index"])
+        self._last_passive_capture = {
+            key: value for key, value in result.items() if key != "image"
+        }
+        stored_sensor = self._last_passive_capture.get("sensor")
+        if isinstance(stored_sensor, dict) and isinstance(stored_sensor.get("image"), dict):
+            stored_sensor = dict(stored_sensor)
+            stored_image = dict(stored_sensor["image"])
+            stored_image.pop("validated_bytes", None)
+            stored_sensor["image"] = stored_image
+            self._last_passive_capture["sensor"] = stored_sensor
+        return result
+
+    def _passive_receipt_result(
+        self,
+        *,
+        capture: dict[str, Any],
+        passive_observation: dict[str, Any],
+        fallback_environment: dict[str, Any],
+        phases: dict[str, dict[str, Any]],
+        operation_timeout: float,
+        started: float,
+        include_image: bool,
+    ) -> dict[str, Any]:
+        supported = passive_observation.get("supported") is True
+        reason_record = (
+            passive_observation.get("reason")
+            if isinstance(passive_observation.get("reason"), dict)
+            else {}
+        )
+        preservation_record = (
+            passive_observation.get("preservation")
+            if isinstance(passive_observation.get("preservation"), dict)
+            else {}
+        )
+        before_source = (
+            preservation_record.get("before")
+            if supported
+            else passive_observation.get("before")
+        )
+        after_source = (
+            preservation_record.get("after")
+            if supported
+            else passive_observation.get("after")
+        )
+        before = _normalize_passive_receipt_fingerprint(before_source)
+        after = _normalize_passive_receipt_fingerprint(after_source)
+        preservation = _compare_passive_receipt_fingerprints(before, after)
+
+        declared_fields = passive_observation.get("preservedFields")
+        declared_field_set = {
+            str(item)
+            for item in declared_fields
+            if isinstance(item, str)
+        } if isinstance(declared_fields, list) else set()
+        missing_declared_fields = [
+            _PASSIVE_RECEIPT_FIELD_NAMES[field_name]
+            for field_name in CHASE_PASSIVE_PRESERVED_FIELDS
+            if field_name not in declared_field_set
+        ]
+        if supported:
+            preservation["unknown_fields"] = sorted(
+                {
+                    *preservation["unknown_fields"],
+                    *missing_declared_fields,
+                }
+            )
+            preservation["preserved"] = bool(
+                preservation_record.get("preserved") is True
+                and not preservation["unknown_fields"]
+                and not preservation["changed_fields"]
+            )
+
+        query_id = passive_observation.get("queryId")
+        actor_id = passive_observation.get("actorId")
+        camera_id = passive_observation.get("cameraId")
+        if supported and query_id != CHASE_ATOMIC_EVALUATION_QUERY:
+            preservation["unknown_fields"] = sorted(
+                {*preservation["unknown_fields"], "query_id"}
+            )
+        if supported and actor_id != "chaser":
+            preservation["unknown_fields"] = sorted(
+                {*preservation["unknown_fields"], "actor_id"}
+            )
+        if supported and camera_id != CHASE_PASSIVE_CAMERA_ID:
+            preservation["unknown_fields"] = sorted(
+                {*preservation["unknown_fields"], "camera_id"}
+            )
+        if preservation["unknown_fields"]:
+            preservation["preserved"] = False
+
+        sensor: dict[str, Any] | None = None
+        evaluator_status: dict[str, Any] = {
+            "status": "unavailable",
+            "reason": "reference_missing",
+            "path": "evaluator.reference",
+        }
+        evaluator: dict[str, Any] | None = None
+        if supported:
+            sensor = validate_chase_sensor_capture(
+                capture,
+                expected_actor_id="chaser",
+                include_validated_bytes=include_image,
+            )
+            evaluator = evaluate_chase_evaluator_reference(capture, sensor=sensor)
+            evaluator_status = {
+                key: value
+                for key, value in evaluator.items()
+                if key != "reference" and value is not None
+            }
+            playback = (
+                before.get("playback")
+                if isinstance(before.get("playback"), dict)
+                else {}
+            )
+            receipt_identity = {
+                "game_id": before.get("game_id"),
+                "simulation_epoch": before.get("simulation_epoch"),
+                "simulator_frame_index": playback.get("frameIndex"),
+                "actor_id": before.get("actor_id"),
+                "camera_id": before.get("camera_id"),
+            }
+            sensor_identity = {
+                "game_id": sensor.get("game_id"),
+                "simulation_epoch": sensor.get("simulation_epoch"),
+                "simulator_frame_index": sensor.get("simulator_frame_index"),
+                "actor_id": sensor.get("actor_id"),
+                "camera_id": CHASE_PASSIVE_CAMERA_ID,
+            }
+            receipt_identity_fields = {
+                "game_id": "game_id",
+                "simulation_epoch": "simulation_epoch",
+                "simulator_frame_index": "playback",
+                "actor_id": "actor_id",
+                "camera_id": "camera_id",
+            }
+            mismatched_identity = [
+                key
+                for key in receipt_identity
+                if receipt_identity_fields[key]
+                not in preservation["unknown_fields"]
+                if receipt_identity[key] != sensor_identity[key]
+            ]
+            if mismatched_identity:
+                raise ChaseCaptureValidationError(
+                    code="capture_identity_invalid",
+                    path=(
+                        "passiveObservation.preservation.before."
+                        + mismatched_identity[0]
+                    ),
+                    message=(
+                        "preservation receipt does not match the captured "
+                        f"sensor identity ({mismatched_identity})"
+                    ),
+                )
+
+        unsupported_reason = str(reason_record.get("code") or "")
+        if not supported:
+            reason_changed_fields = reason_record.get("changedFields")
+            if isinstance(reason_changed_fields, list):
+                preservation["changed_fields"] = sorted(
+                    {
+                        *preservation["changed_fields"],
+                        *(
+                            _PASSIVE_RECEIPT_FIELD_NAMES.get(str(item), str(item))
+                            for item in reason_changed_fields
+                        ),
+                    }
+                )
+            preservation["preserved"] = False
+
+        if not supported and unsupported_reason == "session_changed":
+            status = "unavailable"
+            code = "simulator_state_changed"
+            reason = "session_fingerprint_changed"
+        elif not supported:
+            status = "unsupported"
+            code = "simulator_capability_missing"
+            reason = unsupported_reason or "passive_observation_unsupported"
+        elif preservation["changed_fields"]:
+            status = "unavailable"
+            code = "simulator_state_changed"
+            reason = "session_fingerprint_changed"
+        elif not preservation["preserved"]:
+            status = "unsupported"
+            code = "simulator_capability_missing"
+            reason = "preservation_receipt_invalid"
+        else:
+            status = "available"
+            code = None
+            reason = None
+
+        environment = (
+            _passive_receipt_environment(before)
+            if not before["unknown_fields"]
+            else {
+                key: fallback_environment.get(key)
+                for key in (
+                    "game_id",
+                    "scenario_id",
+                    "simulation_epoch",
+                    "playback",
+                    "control_source",
+                    "control_input",
+                )
+            }
+        )
+        result: dict[str, Any] = {
+            "schema": "chase_passive_capture_v1",
+            "status": status,
+            "code": code,
+            "reason": reason,
+            "sensor": sensor,
+            "evaluator_reference": evaluator_status,
+            "session_preservation": preservation,
+            "environment": environment,
+            "timeout_s": operation_timeout,
+            "elapsed_ms": int((time.monotonic() - started) * 1000),
+            "phases": phases,
+            "allowed_operations": [
+                "get_state",
+                "get_play_debug",
+                f"play_game_query:{CHASE_ATOMIC_EVALUATION_QUERY}",
+            ],
+            "mutation_attempted": False,
+            "passive_observation": {
+                "supported": supported,
+                "query_id": query_id,
+                "actor_id": actor_id,
+                "camera_id": camera_id,
+                "preserved_fields": (
+                    sorted(declared_field_set)
+                    if declared_field_set
+                    else []
+                ),
+                "reason": reason_record or None,
+            },
+        }
+        if include_image and status == "available":
+            raw_sensor = capture.get("sensor")
+            raw_image = (
+                raw_sensor.get("image")
+                if isinstance(raw_sensor, dict)
+                else None
+            )
+            result["image"] = (
+                dict(raw_image)
+                if isinstance(raw_image, dict)
+                else None
+            )
+
+        self._last_capture_shadow_reference = (
+            evaluator.get("reference")
+            if isinstance(evaluator, dict)
+            and evaluator.get("status") == "available"
+            and isinstance(evaluator.get("reference"), dict)
+            else None
+        )
+        self._last_evaluator_reference = evaluator_status
+        self._last_simulator_frame_index = (
+            int(sensor["simulator_frame_index"])
+            if isinstance(sensor, dict)
+            else None
+        )
+        self._last_passive_capture = {
+            key: value
+            for key, value in result.items()
+            if key != "image"
+        }
+        stored_sensor = self._last_passive_capture.get("sensor")
+        if isinstance(stored_sensor, dict) and isinstance(stored_sensor.get("image"), dict):
+            stored_sensor = dict(stored_sensor)
+            stored_image = dict(stored_sensor["image"])
+            stored_image.pop("validated_bytes", None)
+            stored_sensor["image"] = stored_image
+            self._last_passive_capture["sensor"] = stored_sensor
+        return result
+
+    def _passive_phase(
+        self,
+        name: str,
+        phases: dict[str, dict[str, Any]],
+        deadline: float,
+        operation: Any,
+        *args: Any,
+        error_code: str = "simulator_capability_missing",
+    ) -> dict[str, Any]:
+        phase_started = time.monotonic()
+        remaining = deadline - phase_started
+        if remaining <= 0:
+            raise ChasePassiveCaptureError(
+                code=error_code,
+                message=f"Passive capture timed out before {name}.",
+                details={"incomplete_phase": name, "phases": phases},
+            )
+        try:
+            value = operation(*args, timeout_s=remaining)
+        except ChaseCaptureValidationError:
+            raise
+        except (MetricsUiWebSocketError, OSError, TimeoutError, ValueError) as exc:
+            elapsed_ms = int((time.monotonic() - phase_started) * 1000)
+            protocol_code = (
+                exc.code
+                if isinstance(exc, MetricsUiWebSocketError) and isinstance(exc.code, str)
+                else None
+            )
+            is_frontend_delivery = protocol_code in FRONTEND_DELIVERY_PROTOCOL_CODES
+            effective_error_code = (
+                "frontend_disconnected" if is_frontend_delivery else error_code
+            )
+            protocol_error = (
+                dict(exc.details)
+                if isinstance(exc, MetricsUiWebSocketError)
+                and isinstance(exc.details, dict)
+                else {}
+            )
+            if protocol_code and "code" not in protocol_error:
+                protocol_error["code"] = protocol_code
+            if is_frontend_delivery:
+                minimum_external_change = (
+                    "Open or reload the Metrics UI browser frontend at the exact "
+                    "HTTP origin, then rerun status."
+                )
+            else:
+                minimum_external_change = (
+                    "Metrics UI must expose atomic-evaluation-capture and the "
+                    "required session fingerprint fields without mutation."
+                )
+            raise ChasePassiveCaptureError(
+                code=effective_error_code,
+                message=(
+                    f"Passive capture could not complete {name} after "
+                    f"{elapsed_ms}ms: {exc}"
+                ),
+                details={
+                    "incomplete_phase": name,
+                    "elapsed_ms": elapsed_ms,
+                    "protocol_evidence": str(exc),
+                    "protocol_code": protocol_code,
+                    "protocol_error": protocol_error or None,
+                    "minimum_external_change": minimum_external_change,
+                    "mutation_attempted": False,
+                    "phases": phases,
+                },
+            ) from exc
+        phases[name] = {
+            "status": "complete",
+            "duration_ms": int((time.monotonic() - phase_started) * 1000),
+        }
+        if not isinstance(value, dict):
+            raise ChasePassiveCaptureError(
+                code="simulator_capability_missing",
+                message=f"Passive capture phase {name} returned a non-object value.",
+                details={"incomplete_phase": name, "phases": phases},
+            )
+        return value
+
     def _capture_front_camera(self, path: Path, endpoint: str) -> dict[str, Any]:
         """Capture one atomic image/identity/evaluator-reference response."""
 
-        path.parent.mkdir(parents=True, exist_ok=True)
-        capture_response = self.client.play_game_query(
-            CHASE_ATOMIC_EVALUATION_QUERY,
-            {"actorId": "chaser", "width": 640, "height": 480},
+        passive = self.inspect_passive_capture(
             timeout_s=self.timeout_s,
+            include_image=True,
         )
-        shadow_reference = build_chase_shadow_reference(capture_response)
-        if shadow_reference is None:
-            raise ValueError(
-                "Chase atomic evaluation capture has an invalid identity or control reference"
+        if passive["status"] != "available":
+            code = str(passive.get("code") or "simulator_capability_missing")
+            if code == "simulator_state_changed":
+                message = "Simulator session changed during passive capture."
+            else:
+                unknown = passive["session_preservation"].get("unknown_fields", [])
+                message = (
+                    "Metrics UI cannot prove passive session preservation; "
+                    f"missing fields: {', '.join(unknown) or 'unknown'}."
+                )
+            raise ChasePassiveCaptureError(
+                code=code,
+                message=message,
+                details={
+                    "session_preservation": passive["session_preservation"],
+                    "mutation_attempted": False,
+                },
             )
 
-        sensor = capture_response.get("sensor")
-        image = sensor.get("image") if isinstance(sensor, dict) else None
+        sensor = passive["sensor"]
+        image = passive.get("image")
         if not isinstance(image, dict):
-            raise ValueError("Chase atomic evaluation capture has no sensor image")
-        width = image.get("width")
-        height = image.get("height")
-        if (
-            isinstance(width, bool)
-            or not isinstance(width, int)
-            or width <= 0
-            or isinstance(height, bool)
-            or not isinstance(height, int)
-            or height <= 0
-        ):
-            raise ValueError("Chase atomic evaluation capture has invalid image dimensions")
-
-        byte_count = 0
-        if isinstance(image.get("svg"), str) and path.suffix.lower() == ".svg":
-            path.write_text(image["svg"], encoding="utf-8")
-            content_type = "image/svg+xml"
-        elif isinstance(image.get("dataUrl"), str):
-            content_type, data = _decode_data_url(image["dataUrl"])
-            byte_count = len(data)
-            path.write_bytes(data)
-        else:
-            raise ValueError(
-                "Chase atomic evaluation capture has no image encoding compatible "
-                f"with {path.suffix or 'the requested output'}"
+            raise ChaseCaptureValidationError(
+                code="capture_image_invalid",
+                path="sensor.image",
+                message="validated image payload is unavailable",
             )
-        if byte_count == 0 and path.exists():
-            byte_count = path.stat().st_size
+        sensor_image = sensor.get("image")
+        if not isinstance(sensor_image, dict):
+            raise ChaseCaptureValidationError(
+                code="capture_image_invalid",
+                path="sensor.image",
+                message="validated image envelope is unavailable",
+            )
+        width = int(sensor_image["width"])
+        height = int(sensor_image["height"])
 
-        frame_index = int(shadow_reference["simulator_frame_index"])
-        simulation_epoch = str(shadow_reference["simulation_epoch"])
-        self._last_simulator_frame_index = frame_index
-        self._last_capture_shadow_reference = shadow_reference
+        validated_bytes = sensor_image.get("validated_bytes")
+        if not isinstance(validated_bytes, bytes):
+            if isinstance(image.get("svg"), str) and image["svg"].strip():
+                raise ChaseCaptureValidationError(
+                    code="capture_image_invalid",
+                    path="sensor.image.svg",
+                    message=(
+                        "SVG-only captures are not accepted for "
+                        f"{path.suffix.lower() or 'the requested output'}; provide a decodable "
+                        "raster dataUrl compatible with the worker .png output"
+                    ),
+                )
+            raise ChaseCaptureValidationError(
+                code="capture_image_invalid",
+                path="sensor.image.dataUrl",
+                message="validated raster bytes are unavailable",
+            )
+        path.parent.mkdir(parents=True, exist_ok=True)
+        byte_count = len(validated_bytes)
+        content_type = sensor_image["content_type"]
+        path.write_bytes(validated_bytes)
+
+        frame_index = int(sensor["simulator_frame_index"])
+        simulation_epoch = str(sensor["simulation_epoch"])
 
         capture: dict[str, Any] = {
             "endpoint": CHASE_ATOMIC_EVALUATION_QUERY,
@@ -398,12 +1113,18 @@ class ChaseSimCar(CarInterface):
             "width": width,
             "height": height,
             "captured_at_ms": int(time.time() * 1000),
-            "capture_id": shadow_reference["capture_id"],
+            "capture_id": sensor["capture_id"],
             "simulator_frame_index": frame_index,
             "simulation_epoch": simulation_epoch,
             "frame_index": frame_index,
             "frame_id": format_chase_frame_id(frame_index),
             "identity_pairing": "atomic_evaluation_capture",
+            "evaluator_reference": passive["evaluator_reference"],
+            "passive_capture": {
+                "status": passive["status"],
+                "session_preservation": passive["session_preservation"],
+                "mutation_attempted": False,
+            },
         }
         return capture
 
@@ -412,6 +1133,12 @@ class ChaseSimCar(CarInterface):
         started_ms = _timestamp_ms()
         readings: dict[str, SensorReading] = {}
         self._last_capture_shadow_reference = None
+        self._last_evaluator_reference = {
+            "status": "unavailable",
+            "reason": "not_captured",
+            "path": "evaluator.reference",
+        }
+        self._last_passive_capture = None
         self._last_simulator_frame_index = None
 
         if request.sensor_requested(FRONT_CAMERA_SENSOR_ID):
@@ -431,10 +1158,15 @@ class ChaseSimCar(CarInterface):
         if self._last_simulator_frame_index is not None:
             snapshot_metadata["simulator_frame_index"] = self._last_simulator_frame_index
             snapshot_metadata["frame_id"] = format_chase_frame_id(self._last_simulator_frame_index)
-        if isinstance(self._last_capture_shadow_reference, dict):
-            snapshot_metadata["simulation_epoch"] = self._last_capture_shadow_reference[
-                "simulation_epoch"
-            ]
+        if self._last_passive_capture:
+            sensor = self._last_passive_capture.get("sensor")
+            if isinstance(sensor, dict):
+                snapshot_metadata["simulation_epoch"] = sensor.get("simulation_epoch")
+            snapshot_metadata["passive_capture"] = {
+                "status": self._last_passive_capture.get("status"),
+                "mutation_attempted": False,
+            }
+            snapshot_metadata["evaluator_reference"] = self.last_evaluator_reference
 
         return SensorSnapshot(
             read_id=request.read_id,
@@ -444,13 +1176,3 @@ class ChaseSimCar(CarInterface):
             request=request.to_dict(),
             metadata=snapshot_metadata,
         )
-
-
-def _decode_data_url(data_url: str) -> tuple[str, bytes]:
-    header, _, payload = data_url.partition(",")
-    if not payload:
-        return "application/octet-stream", data_url.encode("utf-8")
-    content_type = header.removeprefix("data:").split(";", 1)[0] or "application/octet-stream"
-    if ";base64" in header:
-        return content_type, base64.b64decode(payload)
-    return content_type, payload.encode("utf-8")

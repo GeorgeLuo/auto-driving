@@ -18290,6 +18290,4470 @@
         },
         "schema": "qca/verification/v1"
       }
+    },
+    {
+      "candidate_sha": "cc60f1a15f9c332737a1c5ee4596a2501af6cb73",
+      "candidate_tree": "4a779107ca81bac3a72d55d483bdbe26e2f62460",
+      "changed_callables": [
+        {
+          "after": {
+            "cyclomatic_complexity": 1,
+            "decision_count": 0,
+            "end_line": 56,
+            "logical_loc": 2,
+            "max_nesting": 0,
+            "path": "cli/automa_cli/workbench_contract.py",
+            "qualified_name": "now_ms",
+            "start_line": 55
+          },
+          "before": null,
+          "path": "cli/automa_cli/workbench_contract.py",
+          "qualified_name": "now_ms"
+        },
+        {
+          "after": {
+            "cyclomatic_complexity": 5,
+            "decision_count": 4,
+            "end_line": 1210,
+            "logical_loc": 17,
+            "max_nesting": 2,
+            "path": "cli/automa_cli/workbench_runner.py",
+            "qualified_name": "ImageReplayRunner._cleanup_locked",
+            "start_line": 1182
+          },
+          "before": {
+            "cyclomatic_complexity": 5,
+            "decision_count": 4,
+            "end_line": 1209,
+            "logical_loc": 17,
+            "max_nesting": 2,
+            "path": "cli/automa_cli/workbench_runner.py",
+            "qualified_name": "ImageReplayRunner._cleanup_locked",
+            "start_line": 1181
+          },
+          "path": "cli/automa_cli/workbench_runner.py",
+          "qualified_name": "ImageReplayRunner._cleanup_locked"
+        },
+        {
+          "after": {
+            "cyclomatic_complexity": 1,
+            "decision_count": 0,
+            "end_line": 1418,
+            "logical_loc": 5,
+            "max_nesting": 0,
+            "path": "cli/automa_cli/workbench_runner.py",
+            "qualified_name": "ImageReplayRunner._record_action_locked",
+            "start_line": 1414
+          },
+          "before": {
+            "cyclomatic_complexity": 1,
+            "decision_count": 0,
+            "end_line": 1417,
+            "logical_loc": 5,
+            "max_nesting": 0,
+            "path": "cli/automa_cli/workbench_runner.py",
+            "qualified_name": "ImageReplayRunner._record_action_locked",
+            "start_line": 1413
+          },
+          "path": "cli/automa_cli/workbench_runner.py",
+          "qualified_name": "ImageReplayRunner._record_action_locked"
+        },
+        {
+          "after": null,
+          "before": {
+            "cyclomatic_complexity": 1,
+            "decision_count": 0,
+            "end_line": 1513,
+            "logical_loc": 2,
+            "max_nesting": 0,
+            "path": "cli/automa_cli/workbench_runner.py",
+            "qualified_name": "_now_ms",
+            "start_line": 1512
+          },
+          "path": "cli/automa_cli/workbench_runner.py",
+          "qualified_name": "_now_ms"
+        },
+        {
+          "after": {
+            "cyclomatic_complexity": 2,
+            "decision_count": 1,
+            "end_line": 103,
+            "logical_loc": 9,
+            "max_nesting": 1,
+            "path": "cli/automa_cli/workbench_server.py",
+            "qualified_name": "WorkbenchServer.start",
+            "start_line": 88
+          },
+          "before": {
+            "cyclomatic_complexity": 2,
+            "decision_count": 1,
+            "end_line": 103,
+            "logical_loc": 9,
+            "max_nesting": 1,
+            "path": "cli/automa_cli/workbench_server.py",
+            "qualified_name": "WorkbenchServer.start",
+            "start_line": 88
+          },
+          "path": "cli/automa_cli/workbench_server.py",
+          "qualified_name": "WorkbenchServer.start"
+        },
+        {
+          "after": null,
+          "before": {
+            "cyclomatic_complexity": 1,
+            "decision_count": 0,
+            "end_line": 477,
+            "logical_loc": 2,
+            "max_nesting": 0,
+            "path": "cli/automa_cli/workbench_server.py",
+            "qualified_name": "_now_ms",
+            "start_line": 476
+          },
+          "path": "cli/automa_cli/workbench_server.py",
+          "qualified_name": "_now_ms"
+        }
+      ],
+      "changed_line_coverage": {
+        "base": {
+          "changed_executable_lines": 7,
+          "covered": 7,
+          "missing": []
+        },
+        "head": {
+          "changed_executable_lines": 5,
+          "covered": 5,
+          "missing": []
+        },
+        "limitation": "Line reachability does not establish assertion strength or branch coverage; subprocess execution is excluded."
+      },
+      "contract_changes": {
+        "added": [
+          "cli/automa_cli/workbench_contract.py::now_ms"
+        ],
+        "changed": [],
+        "removed": []
+      },
+      "decision": "supported_by_checks",
+      "errors": 0,
+      "failures": 0,
+      "hypothesis": "Share workbench clock helper via workbench_contract.now_ms; local _now_ms clones should leave runner and server.",
+      "id": "share_now_ms",
+      "measurements": {
+        "added_lines": 11,
+        "core_churn": 23,
+        "decision_burden_delta": 0,
+        "deleted_lines": 12,
+        "factors": {
+          "contracts": {
+            "delta": {
+              "cli_argument_count": 0,
+              "cli_command_count": 0,
+              "public_callable_count": 1,
+              "return_shape_count": 0,
+              "surface_count": 1
+            },
+            "findings": [
+              {
+                "kind": "callable_contract",
+                "line": 55,
+                "message": "Public callable contract measured: now_ms",
+                "path": "cli/automa_cli/workbench_contract.py",
+                "symbol": "cli/automa_cli/workbench_contract.py::now_ms"
+              },
+              {
+                "kind": "callable_contract",
+                "line": 188,
+                "message": "Public callable contract measured: ImageReplayRunner.server_identity",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "symbol": "cli/automa_cli/workbench_runner.py::ImageReplayRunner.server_identity"
+              },
+              {
+                "kind": "callable_contract",
+                "line": 191,
+                "message": "Public callable contract measured: ImageReplayRunner.state",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "symbol": "cli/automa_cli/workbench_runner.py::ImageReplayRunner.state"
+              },
+              {
+                "kind": "callable_contract",
+                "line": 196,
+                "message": "Public callable contract measured: ImageReplayRunner.plugin_catalog",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "symbol": "cli/automa_cli/workbench_runner.py::ImageReplayRunner.plugin_catalog"
+              },
+              {
+                "kind": "callable_contract",
+                "line": 247,
+                "message": "Public callable contract measured: ImageReplayRunner.frame_detail",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "symbol": "cli/automa_cli/workbench_runner.py::ImageReplayRunner.frame_detail"
+              },
+              {
+                "kind": "callable_contract",
+                "line": 260,
+                "message": "Public callable contract measured: ImageReplayRunner.frame_bytes",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "symbol": "cli/automa_cli/workbench_runner.py::ImageReplayRunner.frame_bytes"
+              },
+              {
+                "kind": "callable_contract",
+                "line": 303,
+                "message": "Public callable contract measured: ImageReplayRunner.validate_source",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "symbol": "cli/automa_cli/workbench_runner.py::ImageReplayRunner.validate_source"
+              },
+              {
+                "kind": "callable_contract",
+                "line": 340,
+                "message": "Public callable contract measured: ImageReplayRunner.start",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "symbol": "cli/automa_cli/workbench_runner.py::ImageReplayRunner.start"
+              },
+              {
+                "kind": "callable_contract",
+                "line": 431,
+                "message": "Public callable contract measured: ImageReplayRunner.wait",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "symbol": "cli/automa_cli/workbench_runner.py::ImageReplayRunner.wait"
+              },
+              {
+                "kind": "callable_contract",
+                "line": 437,
+                "message": "Public callable contract measured: ImageReplayRunner.close",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "symbol": "cli/automa_cli/workbench_runner.py::ImageReplayRunner.close"
+              },
+              {
+                "kind": "callable_contract",
+                "line": 455,
+                "message": "Public callable contract measured: ImageReplayRunner.dispatch",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "symbol": "cli/automa_cli/workbench_runner.py::ImageReplayRunner.dispatch"
+              },
+              {
+                "kind": "callable_contract",
+                "line": 36,
+                "message": "Public callable contract measured: ReplayRunner.server_identity",
+                "path": "cli/automa_cli/workbench_server.py",
+                "symbol": "cli/automa_cli/workbench_server.py::ReplayRunner.server_identity"
+              },
+              {
+                "kind": "callable_contract",
+                "line": 39,
+                "message": "Public callable contract measured: ReplayRunner.state",
+                "path": "cli/automa_cli/workbench_server.py",
+                "symbol": "cli/automa_cli/workbench_server.py::ReplayRunner.state"
+              },
+              {
+                "kind": "callable_contract",
+                "line": 42,
+                "message": "Public callable contract measured: ReplayRunner.close",
+                "path": "cli/automa_cli/workbench_server.py",
+                "symbol": "cli/automa_cli/workbench_server.py::ReplayRunner.close"
+              },
+              {
+                "kind": "callable_contract",
+                "line": 45,
+                "message": "Public callable contract measured: ReplayRunner.dispatch",
+                "path": "cli/automa_cli/workbench_server.py",
+                "symbol": "cli/automa_cli/workbench_server.py::ReplayRunner.dispatch"
+              },
+              {
+                "kind": "callable_contract",
+                "line": 48,
+                "message": "Public callable contract measured: ReplayRunner.frame_detail",
+                "path": "cli/automa_cli/workbench_server.py",
+                "symbol": "cli/automa_cli/workbench_server.py::ReplayRunner.frame_detail"
+              },
+              {
+                "kind": "callable_contract",
+                "line": 56,
+                "message": "Public callable contract measured: ReplayRunner.frame_bytes",
+                "path": "cli/automa_cli/workbench_server.py",
+                "symbol": "cli/automa_cli/workbench_server.py::ReplayRunner.frame_bytes"
+              },
+              {
+                "kind": "callable_contract",
+                "line": 85,
+                "message": "Public callable contract measured: WorkbenchServer.url",
+                "path": "cli/automa_cli/workbench_server.py",
+                "symbol": "cli/automa_cli/workbench_server.py::WorkbenchServer.url"
+              },
+              {
+                "kind": "callable_contract",
+                "line": 88,
+                "message": "Public callable contract measured: WorkbenchServer.start",
+                "path": "cli/automa_cli/workbench_server.py",
+                "symbol": "cli/automa_cli/workbench_server.py::WorkbenchServer.start"
+              },
+              {
+                "kind": "callable_contract",
+                "line": 105,
+                "message": "Public callable contract measured: WorkbenchServer.stop",
+                "path": "cli/automa_cli/workbench_server.py",
+                "symbol": "cli/automa_cli/workbench_server.py::WorkbenchServer.stop"
+              },
+              {
+                "kind": "callable_contract",
+                "line": 115,
+                "message": "Public callable contract measured: WorkbenchServer.health_payload",
+                "path": "cli/automa_cli/workbench_server.py",
+                "symbol": "cli/automa_cli/workbench_server.py::WorkbenchServer.health_payload"
+              },
+              {
+                "kind": "return_shape",
+                "line": 115,
+                "message": "Direct dict return shape measured for WorkbenchServer.health_payload: available,host,observation_only,persistent_across_terminal_state,phase,port,run_id,schema,sequence_id,server_identity,started_at_ms,url",
+                "path": "cli/automa_cli/workbench_server.py",
+                "symbol": "cli/automa_cli/workbench_server.py::WorkbenchServer.health_payload"
+              },
+              {
+                "kind": "callable_contract",
+                "line": 132,
+                "message": "Public callable contract measured: WorkbenchServer.state_payload",
+                "path": "cli/automa_cli/workbench_server.py",
+                "symbol": "cli/automa_cli/workbench_server.py::WorkbenchServer.state_payload"
+              },
+              {
+                "kind": "callable_contract",
+                "line": 135,
+                "message": "Public callable contract measured: WorkbenchServer.action_payload",
+                "path": "cli/automa_cli/workbench_server.py",
+                "symbol": "cli/automa_cli/workbench_server.py::WorkbenchServer.action_payload"
+              },
+              {
+                "kind": "return_shape",
+                "line": 135,
+                "message": "Direct dict return shape measured for WorkbenchServer.action_payload: action,ok,schema,state",
+                "path": "cli/automa_cli/workbench_server.py",
+                "symbol": "cli/automa_cli/workbench_server.py::WorkbenchServer.action_payload"
+              }
+            ],
+            "limitations": [
+              "CLI inventory recognizes literal argparse-style add_argument and add_parser calls; it is not a schema or compatibility proof.",
+              "Public contracts are static AST approximations; runtime decorators, dispatch, inheritance, and annotations are not evaluated.",
+              "Returned shapes include only direct dict literals in public callable return statements."
+            ],
+            "metrics": {
+              "cli_argument_count": 337,
+              "cli_command_count": 67,
+              "public_callable_count": 1495,
+              "return_shape_count": 107,
+              "surface_count": 1899
+            },
+            "status": "measured"
+          },
+          "coupling": {
+            "delta": {
+              "cycle_count": 0,
+              "cyclic_node_count": 0,
+              "edge_count": 0,
+              "external_import_count": 0,
+              "fan_in_hotspot_count": 0,
+              "fan_out_hotspot_count": 0,
+              "max_fan_in": 0,
+              "max_fan_out": 0,
+              "module_count": 0
+            },
+            "findings": [
+              {
+                "kind": "fan_in",
+                "line": 1,
+                "message": "Local dependency fan-in is 3 modules.",
+                "path": "cli/automa_cli/workbench_contract.py",
+                "value": 3
+              },
+              {
+                "kind": "external_import",
+                "line": 3,
+                "message": "Import is not resolved to a supplied local module: __future__:annotations",
+                "name": "__future__:annotations",
+                "path": "cli/automa_cli/workbench_contract.py"
+              },
+              {
+                "kind": "external_import",
+                "line": 5,
+                "message": "Import is not resolved to a supplied local module: time",
+                "name": "time",
+                "path": "cli/automa_cli/workbench_contract.py"
+              },
+              {
+                "kind": "external_import",
+                "line": 6,
+                "message": "Import is not resolved to a supplied local module: typing:Any",
+                "name": "typing:Any",
+                "path": "cli/automa_cli/workbench_contract.py"
+              },
+              {
+                "kind": "fan_out",
+                "line": 1,
+                "message": "Local dependency fan-out is 10 modules.",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "value": 10
+              },
+              {
+                "kind": "external_import",
+                "line": 3,
+                "message": "Import is not resolved to a supplied local module: __future__:annotations",
+                "name": "__future__:annotations",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "external_import",
+                "line": 5,
+                "message": "Import is not resolved to a supplied local module: copy",
+                "name": "copy",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "external_import",
+                "line": 6,
+                "message": "Import is not resolved to a supplied local module: os",
+                "name": "os",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "external_import",
+                "line": 7,
+                "message": "Import is not resolved to a supplied local module: threading",
+                "name": "threading",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "external_import",
+                "line": 8,
+                "message": "Import is not resolved to a supplied local module: time",
+                "name": "time",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "external_import",
+                "line": 9,
+                "message": "Import is not resolved to a supplied local module: uuid",
+                "name": "uuid",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "external_import",
+                "line": 10,
+                "message": "Import is not resolved to a supplied local module: pathlib:Path",
+                "name": "pathlib:Path",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "external_import",
+                "line": 11,
+                "message": "Import is not resolved to a supplied local module: typing:Any",
+                "name": "typing:Any",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "external_import",
+                "line": 11,
+                "message": "Import is not resolved to a supplied local module: typing:Callable",
+                "name": "typing:Callable",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "fan_out",
+                "line": 1,
+                "message": "Local dependency fan-out is 3 modules.",
+                "path": "cli/automa_cli/workbench_server.py",
+                "value": 3
+              },
+              {
+                "kind": "external_import",
+                "line": 3,
+                "message": "Import is not resolved to a supplied local module: __future__:annotations",
+                "name": "__future__:annotations",
+                "path": "cli/automa_cli/workbench_server.py"
+              },
+              {
+                "kind": "external_import",
+                "line": 5,
+                "message": "Import is not resolved to a supplied local module: json",
+                "name": "json",
+                "path": "cli/automa_cli/workbench_server.py"
+              },
+              {
+                "kind": "external_import",
+                "line": 6,
+                "message": "Import is not resolved to a supplied local module: threading",
+                "name": "threading",
+                "path": "cli/automa_cli/workbench_server.py"
+              },
+              {
+                "kind": "external_import",
+                "line": 7,
+                "message": "Import is not resolved to a supplied local module: pathlib:Path",
+                "name": "pathlib:Path",
+                "path": "cli/automa_cli/workbench_server.py"
+              },
+              {
+                "kind": "external_import",
+                "line": 8,
+                "message": "Import is not resolved to a supplied local module: typing:Any",
+                "name": "typing:Any",
+                "path": "cli/automa_cli/workbench_server.py"
+              },
+              {
+                "kind": "external_import",
+                "line": 8,
+                "message": "Import is not resolved to a supplied local module: typing:Protocol",
+                "name": "typing:Protocol",
+                "path": "cli/automa_cli/workbench_server.py"
+              },
+              {
+                "kind": "external_import",
+                "line": 9,
+                "message": "Import is not resolved to a supplied local module: urllib.parse:parse_qs",
+                "name": "urllib.parse:parse_qs",
+                "path": "cli/automa_cli/workbench_server.py"
+              },
+              {
+                "kind": "external_import",
+                "line": 9,
+                "message": "Import is not resolved to a supplied local module: urllib.parse:urlparse",
+                "name": "urllib.parse:urlparse",
+                "path": "cli/automa_cli/workbench_server.py"
+              }
+            ],
+            "limitations": [
+              "Cycles are deterministic strongly connected components, not every distinct runtime import path.",
+              "Import resolution is AST-based and does not execute module search hooks or dynamic imports.",
+              "Unresolved imports are separate observations; installability and runtime availability are not measured."
+            ],
+            "metrics": {
+              "cycle_count": 1,
+              "cyclic_node_count": 3,
+              "edge_count": 439,
+              "external_import_count": 1225,
+              "fan_in_hotspot_count": 49,
+              "fan_out_hotspot_count": 63,
+              "max_fan_in": 43,
+              "max_fan_out": 18,
+              "module_count": 226
+            },
+            "status": "measured"
+          },
+          "end_to_end": {
+            "delta": {},
+            "findings": [],
+            "limitations": [
+              "No subprocess or integration-run evidence was supplied; static source inspection cannot establish end-to-end behavior."
+            ],
+            "metrics": {},
+            "status": "verified"
+          },
+          "functional_style": {
+            "delta": {
+              "attribute_write_count": 0,
+              "global_or_nonlocal_count": 0,
+              "mutable_default_count": 0,
+              "mutating_call_count": 0,
+              "recognized_effect_count": 0
+            },
+            "findings": [
+              {
+                "kind": "attribute_write",
+                "line": 50,
+                "message": "Attribute write observed: status_code.",
+                "path": "cli/automa_cli/workbench_contract.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 51,
+                "message": "Attribute write observed: boundary.",
+                "path": "cli/automa_cli/workbench_contract.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 52,
+                "message": "Attribute write observed: state.",
+                "path": "cli/automa_cli/workbench_contract.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 155,
+                "message": "Attribute write observed: source_root.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 158,
+                "message": "Attribute write observed: source_dir.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 159,
+                "message": "Attribute write observed: plugin_dir.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 160,
+                "message": "Attribute write observed: max_frames.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 161,
+                "message": "Attribute write observed: max_image_bytes.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 162,
+                "message": "Attribute write observed: mapper_factory.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 163,
+                "message": "Attribute write observed: _mapper_factory_explicit.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 164,
+                "message": "Attribute write observed: memory_stage_factory.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 165,
+                "message": "Attribute write observed: _lock.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 166,
+                "message": "Attribute write observed: _condition.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 167,
+                "message": "Attribute write observed: _action_lock.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 168,
+                "message": "Attribute write observed: _worker.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 169,
+                "message": "Attribute write observed: _feed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 170,
+                "message": "Attribute write observed: _mapper.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 171,
+                "message": "Attribute write observed: _memory_stage.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 172,
+                "message": "Attribute write observed: _history.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 173,
+                "message": "Attribute write observed: _generation.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 174,
+                "message": "Attribute write observed: _cadence_ms.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 175,
+                "message": "Attribute write observed: _pace.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 176,
+                "message": "Attribute write observed: _loop.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 177,
+                "message": "Attribute write observed: _server_identity.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 178,
+                "message": "Attribute write observed: _plugin_catalog.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 179,
+                "message": "Attribute write observed: plugin_dir.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 184,
+                "message": "Attribute write observed: _active_plugin_ids.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 185,
+                "message": "Attribute write observed: _state.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 321,
+                "message": "Attribute write observed: _feed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "mutating_call",
+                "line": 322,
+                "message": "Mutating method call observed: clear.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 323,
+                "message": "Attribute write observed: source_dir.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 324,
+                "message": "Attribute write observed: _state.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 357,
+                "message": "Attribute write observed: _cadence_ms.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 359,
+                "message": "Attribute write observed: _pace.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 361,
+                "message": "Attribute write observed: _loop.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 372,
+                "message": "Attribute write observed: _generation.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 376,
+                "message": "Attribute write observed: _feed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 377,
+                "message": "Attribute write observed: _mapper.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 378,
+                "message": "Attribute write observed: _memory_stage.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "mutating_call",
+                "line": 379,
+                "message": "Mutating method call observed: clear.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 380,
+                "message": "Attribute write observed: _state.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 404,
+                "message": "Attribute write observed: _feed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 405,
+                "message": "Attribute write observed: source_dir.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 406,
+                "message": "Attribute write observed: _mapper.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 407,
+                "message": "Attribute write observed: _memory_stage.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 421,
+                "message": "Attribute write observed: _worker.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 443,
+                "message": "Attribute write observed: _generation.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "mutating_call",
+                "line": 445,
+                "message": "Mutating method call observed: clear.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 446,
+                "message": "Attribute write observed: _feed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 447,
+                "message": "Attribute write observed: source_dir.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 448,
+                "message": "Attribute write observed: _worker.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 449,
+                "message": "Attribute write observed: _state.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 558,
+                "message": "Attribute write observed: _cadence_ms.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 559,
+                "message": "Attribute write observed: _pace.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 629,
+                "message": "Attribute write observed: _plugin_catalog.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 630,
+                "message": "Attribute write observed: plugin_dir.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 633,
+                "message": "Attribute write observed: _active_plugin_ids.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 724,
+                "message": "Attribute write observed: _mapper.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 727,
+                "message": "Attribute write observed: _active_plugin_ids.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 779,
+                "message": "Attribute write observed: _loop.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 913,
+                "message": "Attribute write observed: _generation.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 922,
+                "message": "Attribute write observed: _state.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "mutating_call",
+                "line": 924,
+                "message": "Mutating method call observed: clear.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 925,
+                "message": "Attribute write observed: _feed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 927,
+                "message": "Attribute write observed: source_dir.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 1208,
+                "message": "Attribute write observed: _mapper.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 1209,
+                "message": "Attribute write observed: _memory_stage.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "mutating_call",
+                "line": 1464,
+                "message": "Mutating method call observed: append.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 77,
+                "message": "Attribute write observed: runner.",
+                "path": "cli/automa_cli/workbench_server.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 78,
+                "message": "Attribute write observed: host.",
+                "path": "cli/automa_cli/workbench_server.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 79,
+                "message": "Attribute write observed: preferred_port.",
+                "path": "cli/automa_cli/workbench_server.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 80,
+                "message": "Attribute write observed: _httpd.",
+                "path": "cli/automa_cli/workbench_server.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 81,
+                "message": "Attribute write observed: _thread.",
+                "path": "cli/automa_cli/workbench_server.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 82,
+                "message": "Attribute write observed: _started_at_ms.",
+                "path": "cli/automa_cli/workbench_server.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 96,
+                "message": "Attribute write observed: workbench.",
+                "path": "cli/automa_cli/workbench_server.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 97,
+                "message": "Attribute write observed: _httpd.",
+                "path": "cli/automa_cli/workbench_server.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 98,
+                "message": "Attribute write observed: _started_at_ms.",
+                "path": "cli/automa_cli/workbench_server.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 99,
+                "message": "Attribute write observed: _thread.",
+                "path": "cli/automa_cli/workbench_server.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 111,
+                "message": "Attribute write observed: _httpd.",
+                "path": "cli/automa_cli/workbench_server.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 112,
+                "message": "Attribute write observed: _thread.",
+                "path": "cli/automa_cli/workbench_server.py"
+              },
+              {
+                "kind": "mutating_call",
+                "line": 113,
+                "message": "Mutating method call observed: close.",
+                "path": "cli/automa_cli/workbench_server.py"
+              }
+            ],
+            "limitations": [
+              "Absence of recognized effects does not prove purity."
+            ],
+            "metrics": {
+              "attribute_write_count": 462,
+              "global_or_nonlocal_count": 1,
+              "mutable_default_count": 0,
+              "mutating_call_count": 729,
+              "recognized_effect_count": 1193
+            },
+            "status": "measured"
+          },
+          "functionality": {
+            "delta": {
+              "stub_count": 0,
+              "unreachable_count": 0
+            },
+            "findings": [
+              {
+                "kind": "stub",
+                "line": 36,
+                "message": "Stub callable observed: server_identity.",
+                "name": "server_identity",
+                "path": "cli/automa_cli/workbench_server.py"
+              },
+              {
+                "kind": "stub",
+                "line": 39,
+                "message": "Stub callable observed: state.",
+                "name": "state",
+                "path": "cli/automa_cli/workbench_server.py"
+              },
+              {
+                "kind": "stub",
+                "line": 42,
+                "message": "Stub callable observed: close.",
+                "name": "close",
+                "path": "cli/automa_cli/workbench_server.py"
+              },
+              {
+                "kind": "stub",
+                "line": 45,
+                "message": "Stub callable observed: dispatch.",
+                "name": "dispatch",
+                "path": "cli/automa_cli/workbench_server.py"
+              },
+              {
+                "kind": "stub",
+                "line": 48,
+                "message": "Stub callable observed: frame_detail.",
+                "name": "frame_detail",
+                "path": "cli/automa_cli/workbench_server.py"
+              },
+              {
+                "kind": "stub",
+                "line": 56,
+                "message": "Stub callable observed: frame_bytes.",
+                "name": "frame_bytes",
+                "path": "cli/automa_cli/workbench_server.py"
+              }
+            ],
+            "limitations": [
+              "Inspect intentional hooks and protocols before removing code."
+            ],
+            "metrics": {
+              "stub_count": 15,
+              "unreachable_count": 0
+            },
+            "status": "measured"
+          },
+          "lifecycle": {
+            "delta": {
+              "calls_count": 0,
+              "cleanup_call_count": 0,
+              "cleanup_definition_count": 0,
+              "cleanup_site_count": 0,
+              "definitions_count": 0,
+              "effect_site_count": 0,
+              "parse_error_count": 0,
+              "recognized_site_count": 0,
+              "reset_call_count": 0,
+              "reset_definition_count": 0,
+              "reset_site_count": 0,
+              "site_count": 0,
+              "start_call_count": 0,
+              "start_definition_count": 0,
+              "start_site_count": 0,
+              "stop_call_count": 0,
+              "stop_definition_count": 0,
+              "stop_site_count": 0
+            },
+            "findings": [
+              {
+                "column": 5,
+                "kind": "lifecycle_effect_site",
+                "line": 340,
+                "message": "Static lifecycle name/call site only; inspect the runtime effect and paired cleanup behavior separately.",
+                "name": "def start( self, source_dir: str | os.PathLike[str] | None = None, *, cadence_ms: int | None = None, pace: str | None = None, loop: bool | None = None, ) -> dict[str, Any]: with self._action_lock: with self._condition: phase = self._state[\"phase\"] if phase in {\"running\", \"paused\"}: raise ReplayActionError( f\"cannot start while replay is {phase}\", boundary=\"lifecycle\", ) if cadence_ms is not None: self._cadence_ms = self._validate_cadence(cadence_ms) if pace is not None: self._pace = self._validate_pace(pace) if loop is not None: self._loop = bool(loop) raw_source = ( self.source_dir if source_dir is None else os.fspath(source_dir) ) if raw_source is None: raise ReplayActionError( \"start requires source_dir\", status_code=400, boundary=\"source\", ) run_id = f\"run-{uuid.uuid4().hex}\" self._generation += 1 generation = self._generation if self._mapper is not None or self._memory_stage is not None: self._cleanup_locked() self._feed = None self._mapper = None self._memory_stage = None self._history.clear() self._state = self._fresh_run_state(run_id) self._apply_plugin_configuration_locked() self._state[\"source\"] = {\"path\": str(raw_source)} try: selected_plugin_ids = self._plugin_catalog.normalize_selection( self._active_plugin_ids, require_explicit_selection=self._plugin_catalog.explicit_root, ) feed = normalize_image_directory( raw_source, source_root=self.source_root, max_frames=self.max_frames, max_image_bytes=self.max_image_bytes, ) mapper = self._build_mapper_for_selection(selected_plugin_ids) memory_stage = self.memory_stage_factory() except Exception as exc: # noqa: BLE001 - startup isolation boundary self._set_failure_locked( boundary=getattr(exc, \"boundary\", \"startup\"), message=str(exc), recovery_action=\"start\", ) self._condition.notify_all() return copy.deepcopy(self._state) self._feed = feed self.source_dir = str(feed.source_path) self._mapper = mapper self._memory_stage = memory_stage self._state[\"active_plugin_ids\"] = list(selected_plugin_ids) self._state[\"plugin_order\"] = list(selected_plugin_ids) self._state[\"run_plugin_dir\"] = self.plugin_dir self._state[\"run_catalog_digest\"] = self._plugin_catalog.digest self._state[\"run_active_plugin_ids\"] = list(selected_plugin_ids) self._state[\"run_plugin_order\"] = list(selected_plugin_ids) self._state[\"source\"] = feed.to_dict() self._state[\"source_identity\"] = feed.source_id self._state[\"adapter\"] = feed.adapter self._state[\"progress\"][\"total\"] = len(feed.frames) self._state[\"machine_detail\"] = self._machine_detail() self._state[\"phase\"] = \"running\" self._record_action_locked(\"start\", run_id=run_id) self._worker = threading.Thread( target=self._run_loop, args=(run_id, generation), name=f\"automa-workbench-{run_id[-12:]}\", daemon=True, ) self._worker.start() self._condition.notify_all() return copy.deepcopy(self._state)",
+                "operation": "start",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "site_type": "definition"
+              },
+              {
+                "column": 5,
+                "kind": "lifecycle_effect_site",
+                "line": 437,
+                "message": "Static lifecycle name/call site only; inspect the runtime effect and paired cleanup behavior separately.",
+                "name": "def close(self) -> None: \"\"\"Stop replay work and discard all server-lifetime state.\"\"\" with self._action_lock: with self._condition: worker = self._worker self._generation += 1 self._cleanup_locked() self._history.clear() self._feed = None self.source_dir = None self._worker = None self._state = self._initial_state() self._apply_plugin_configuration_locked() self._condition.notify_all() if worker is not None and worker is not threading.current_thread(): worker.join(timeout=1.0)",
+                "operation": "cleanup",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "site_type": "definition"
+              },
+              {
+                "column": 5,
+                "kind": "lifecycle_effect_site",
+                "line": 898,
+                "message": "Static lifecycle name/call site only; inspect the runtime effect and paired cleanup behavior separately.",
+                "name": "def _cancel(self) -> dict[str, Any]: with self._condition: if self._state[\"phase\"] not in {\"running\", \"paused\"}: raise ReplayActionError( \"cancel requires a running or paused replay\", boundary=\"lifecycle\" ) self._state[\"phase\"] = \"cancelled\" self._state[\"recovery_action\"] = \"start\" self._state[\"cleanup\"] = self._cleanup_locked() self._record_action_locked(\"cancel\") self._condition.notify_all() return copy.deepcopy(self._state)",
+                "operation": "stop",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "site_type": "definition"
+              },
+              {
+                "column": 5,
+                "kind": "lifecycle_effect_site",
+                "line": 911,
+                "message": "Static lifecycle name/call site only; inspect the runtime effect and paired cleanup behavior separately.",
+                "name": "def _reset(self) -> dict[str, Any]: with self._condition: self._generation += 1 if self._state[\"phase\"] in {\"running\", \"paused\"}: self._state[\"phase\"] = \"cancelled\" self._cleanup_locked() feed = self._feed source_dir = self.source_dir source_state = copy.deepcopy(self._state.get(\"source\")) source_identity = self._state.get(\"source_identity\") adapter = self._state.get(\"adapter\") self._state = self._initial_state() self._apply_plugin_configuration_locked() self._history.clear() self._feed = feed if feed is not None: self.source_dir = source_dir self._state[\"source\"] = ( source_state if source_state is not None else feed.to_dict() ) self._state[\"source_identity\"] = source_identity or feed.source_id self._state[\"adapter\"] = adapter or feed.adapter self._state[\"progress\"] = { \"completed\": 0, \"total\": len(feed.frames), \"percent\": 0.0, } self._state[\"summary\"] = self._summary( frames_completed=0, frames_total=len(feed.frames), ) self._record_action_locked(\"reset\") self._condition.notify_all() return copy.deepcopy(self._state)",
+                "operation": "reset",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "site_type": "definition"
+              },
+              {
+                "column": 5,
+                "kind": "lifecycle_effect_site",
+                "line": 1182,
+                "message": "Static lifecycle name/call site only; inspect the runtime effect and paired cleanup behavior separately.",
+                "name": "def _cleanup_locked(self) -> dict[str, Any]: mapper_status = \"not_created\" memory_status = \"not_created\" if self._mapper is not None: try: self._mapper.reset() mapper_status = \"reset\" except Exception as exc: # noqa: BLE001 - cleanup boundary mapper_status = f\"error: {type(exc).__name__}: {exc}\" if self._memory_stage is not None: try: self._memory_stage.reset() memory_status = \"reset\" except Exception as exc: # noqa: BLE001 - cleanup boundary memory_status = f\"error: {type(exc).__name__}: {exc}\" cleanup = { \"completed_at_ms\": now_ms(), \"mapper\": mapper_status, \"memory\": memory_status, \"source_read_only\": True, \"worker_started\": False, \"simulator_used\": False, \"movement_control\": False, \"metrics_used\": False, \"recording_enabled\": False, } self._mapper = None self._memory_stage = None return cleanup",
+                "operation": "cleanup",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "site_type": "definition"
+              },
+              {
+                "column": 34,
+                "kind": "lifecycle_effect_site",
+                "line": 1179,
+                "message": "Static lifecycle name/call site only; inspect the runtime effect and paired cleanup behavior separately.",
+                "name": "self._cleanup_locked()",
+                "operation": "cleanup",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "site_type": "call"
+              },
+              {
+                "column": 13,
+                "kind": "lifecycle_effect_site",
+                "line": 322,
+                "message": "Static lifecycle name/call site only; inspect the runtime effect and paired cleanup behavior separately.",
+                "name": "self._history.clear()",
+                "operation": "reset",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "site_type": "call"
+              },
+              {
+                "column": 38,
+                "kind": "lifecycle_effect_site",
+                "line": 906,
+                "message": "Static lifecycle name/call site only; inspect the runtime effect and paired cleanup behavior separately.",
+                "name": "self._cleanup_locked()",
+                "operation": "cleanup",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "site_type": "call"
+              },
+              {
+                "column": 13,
+                "kind": "lifecycle_effect_site",
+                "line": 916,
+                "message": "Static lifecycle name/call site only; inspect the runtime effect and paired cleanup behavior separately.",
+                "name": "self._cleanup_locked()",
+                "operation": "cleanup",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "site_type": "call"
+              },
+              {
+                "column": 13,
+                "kind": "lifecycle_effect_site",
+                "line": 924,
+                "message": "Static lifecycle name/call site only; inspect the runtime effect and paired cleanup behavior separately.",
+                "name": "self._history.clear()",
+                "operation": "reset",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "site_type": "call"
+              },
+              {
+                "column": 38,
+                "kind": "lifecycle_effect_site",
+                "line": 1161,
+                "message": "Static lifecycle name/call site only; inspect the runtime effect and paired cleanup behavior separately.",
+                "name": "self._cleanup_locked()",
+                "operation": "cleanup",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "site_type": "call"
+              },
+              {
+                "column": 17,
+                "kind": "lifecycle_effect_site",
+                "line": 379,
+                "message": "Static lifecycle name/call site only; inspect the runtime effect and paired cleanup behavior separately.",
+                "name": "self._history.clear()",
+                "operation": "reset",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "site_type": "call"
+              },
+              {
+                "column": 17,
+                "kind": "lifecycle_effect_site",
+                "line": 427,
+                "message": "Static lifecycle name/call site only; inspect the runtime effect and paired cleanup behavior separately.",
+                "name": "self._worker.start()",
+                "operation": "start",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "site_type": "call"
+              },
+              {
+                "column": 17,
+                "kind": "lifecycle_effect_site",
+                "line": 444,
+                "message": "Static lifecycle name/call site only; inspect the runtime effect and paired cleanup behavior separately.",
+                "name": "self._cleanup_locked()",
+                "operation": "cleanup",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "site_type": "call"
+              },
+              {
+                "column": 17,
+                "kind": "lifecycle_effect_site",
+                "line": 445,
+                "message": "Static lifecycle name/call site only; inspect the runtime effect and paired cleanup behavior separately.",
+                "name": "self._history.clear()",
+                "operation": "reset",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "site_type": "call"
+              },
+              {
+                "column": 24,
+                "kind": "lifecycle_effect_site",
+                "line": 535,
+                "message": "Static lifecycle name/call site only; inspect the runtime effect and paired cleanup behavior separately.",
+                "name": "self.start(source_dir, cadence_ms=cadence_ms, pace=pace, loop=loop)",
+                "operation": "start",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "site_type": "call"
+              },
+              {
+                "column": 24,
+                "kind": "lifecycle_effect_site",
+                "line": 578,
+                "message": "Static lifecycle name/call site only; inspect the runtime effect and paired cleanup behavior separately.",
+                "name": "self._cancel()",
+                "operation": "stop",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "site_type": "call"
+              },
+              {
+                "column": 24,
+                "kind": "lifecycle_effect_site",
+                "line": 580,
+                "message": "Static lifecycle name/call site only; inspect the runtime effect and paired cleanup behavior separately.",
+                "name": "self._reset()",
+                "operation": "reset",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "site_type": "call"
+              },
+              {
+                "column": 17,
+                "kind": "lifecycle_effect_site",
+                "line": 1187,
+                "message": "Static lifecycle name/call site only; inspect the runtime effect and paired cleanup behavior separately.",
+                "name": "self._mapper.reset()",
+                "operation": "reset",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "site_type": "call"
+              },
+              {
+                "column": 17,
+                "kind": "lifecycle_effect_site",
+                "line": 1193,
+                "message": "Static lifecycle name/call site only; inspect the runtime effect and paired cleanup behavior separately.",
+                "name": "self._memory_stage.reset()",
+                "operation": "reset",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "site_type": "call"
+              },
+              {
+                "column": 21,
+                "kind": "lifecycle_effect_site",
+                "line": 375,
+                "message": "Static lifecycle name/call site only; inspect the runtime effect and paired cleanup behavior separately.",
+                "name": "self._cleanup_locked()",
+                "operation": "cleanup",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "site_type": "call"
+              },
+              {
+                "column": 25,
+                "kind": "lifecycle_effect_site",
+                "line": 705,
+                "message": "Static lifecycle name/call site only; inspect the runtime effect and paired cleanup behavior separately.",
+                "name": "previous_mapper.reset()",
+                "operation": "reset",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "site_type": "call"
+              },
+              {
+                "column": 29,
+                "kind": "lifecycle_effect_site",
+                "line": 709,
+                "message": "Static lifecycle name/call site only; inspect the runtime effect and paired cleanup behavior separately.",
+                "name": "next_mapper.reset()",
+                "operation": "reset",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "site_type": "call"
+              },
+              {
+                "column": 5,
+                "kind": "lifecycle_effect_site",
+                "line": 42,
+                "message": "Static lifecycle name/call site only; inspect the runtime effect and paired cleanup behavior separately.",
+                "name": "def close(self) -> None: ...",
+                "operation": "cleanup",
+                "path": "cli/automa_cli/workbench_server.py",
+                "site_type": "definition"
+              },
+              {
+                "column": 5,
+                "kind": "lifecycle_effect_site",
+                "line": 88,
+                "message": "Static lifecycle name/call site only; inspect the runtime effect and paired cleanup behavior separately.",
+                "name": "def start(self) -> \"WorkbenchServer\": if self._httpd is not None: return self httpd = _WorkbenchHTTPServer.bind_with_ephemeral_fallback( host=self.host, preferred_port=self.preferred_port, handler=_WorkbenchHTTPHandler, ) httpd.workbench = self self._httpd = httpd self._started_at_ms = now_ms() self._thread = start_server_thread( httpd, name=f\"automa-workbench-http-{self.runner.server_identity[-8:]}\", ) return self",
+                "operation": "start",
+                "path": "cli/automa_cli/workbench_server.py",
+                "site_type": "definition"
+              },
+              {
+                "column": 5,
+                "kind": "lifecycle_effect_site",
+                "line": 105,
+                "message": "Static lifecycle name/call site only; inspect the runtime effect and paired cleanup behavior separately.",
+                "name": "def stop(self) -> None: if self._httpd is None: return try: stop_server_thread(self._httpd, self._thread) finally: self._httpd = None self._thread = None self.runner.close()",
+                "operation": "stop",
+                "path": "cli/automa_cli/workbench_server.py",
+                "site_type": "definition"
+              },
+              {
+                "column": 13,
+                "kind": "lifecycle_effect_site",
+                "line": 113,
+                "message": "Static lifecycle name/call site only; inspect the runtime effect and paired cleanup behavior separately.",
+                "name": "self.runner.close()",
+                "operation": "cleanup",
+                "path": "cli/automa_cli/workbench_server.py",
+                "site_type": "call"
+              }
+            ],
+            "limitations": [
+              "Recognized names and call sites are static indicators only; they do not prove start/stop/reset/cleanup effects or symmetry.",
+              "No runtime lifecycle sequence, resource ownership, or teardown outcome was measured.",
+              "Lifecycle site details are limited to the first 128; counts remain parser-derived."
+            ],
+            "metrics": {
+              "calls_count": 115,
+              "cleanup_call_count": 23,
+              "cleanup_definition_count": 6,
+              "cleanup_site_count": 29,
+              "definitions_count": 42,
+              "effect_site_count": 157,
+              "parse_error_count": 0,
+              "recognized_site_count": 157,
+              "reset_call_count": 34,
+              "reset_definition_count": 21,
+              "reset_site_count": 55,
+              "site_count": 128,
+              "start_call_count": 39,
+              "start_definition_count": 5,
+              "start_site_count": 44,
+              "stop_call_count": 19,
+              "stop_definition_count": 10,
+              "stop_site_count": 29
+            },
+            "status": "measured"
+          },
+          "patterns": {
+            "delta": {
+              "bare_except_count": 0,
+              "broad_except_count": 0,
+              "logged_error_count": 0,
+              "raise_count": 0,
+              "swallowed_exception_count": 0
+            },
+            "findings": [
+              {
+                "kind": "raise",
+                "line": 308,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 311,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 352,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 366,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "broad_except",
+                "line": 396,
+                "message": "Broad except for Exception or BaseException observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 470,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 485,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 500,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 514,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 529,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 538,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 553,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 581,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 592,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 636,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 644,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 656,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 671,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 686,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "broad_except",
+                "line": 706,
+                "message": "Broad except for Exception or BaseException observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "broad_except",
+                "line": 710,
+                "message": "Broad except for Exception or BaseException observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "swallowed_exception",
+                "line": 710,
+                "message": "Except body is only pass; exception may be swallowed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 718,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 773,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 798,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 809,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 820,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 839,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 846,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 852,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 901,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "broad_except",
+                "line": 1143,
+                "message": "Broad except for Exception or BaseException observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "broad_except",
+                "line": 1189,
+                "message": "Broad except for Exception or BaseException observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "broad_except",
+                "line": 1195,
+                "message": "Broad except for Exception or BaseException observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 1215,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 1239,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 1246,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 1255,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 1489,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 1495,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 1505,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 137,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_server.py"
+              },
+              {
+                "kind": "raise",
+                "line": 155,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_server.py"
+              },
+              {
+                "kind": "raise",
+                "line": 162,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_server.py"
+              },
+              {
+                "kind": "raise",
+                "line": 169,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_server.py"
+              },
+              {
+                "kind": "raise",
+                "line": 176,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_server.py"
+              },
+              {
+                "kind": "raise",
+                "line": 185,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_server.py"
+              },
+              {
+                "kind": "raise",
+                "line": 192,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_server.py"
+              },
+              {
+                "kind": "raise",
+                "line": 199,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_server.py"
+              },
+              {
+                "kind": "raise",
+                "line": 209,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_server.py"
+              },
+              {
+                "kind": "raise",
+                "line": 218,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_server.py"
+              },
+              {
+                "kind": "raise",
+                "line": 225,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_server.py"
+              },
+              {
+                "kind": "raise",
+                "line": 243,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_server.py"
+              }
+            ],
+            "limitations": [
+              "Inspect intent at the owning boundary; recognized patterns are not a style grade."
+            ],
+            "metrics": {
+              "bare_except_count": 0,
+              "broad_except_count": 41,
+              "logged_error_count": 0,
+              "raise_count": 545,
+              "swallowed_exception_count": 15
+            },
+            "status": "measured"
+          },
+          "redundancy": {
+            "delta": {
+              "clone_group_count": 0,
+              "cloned_callable_count": -1,
+              "duplicate_ast_loc": -1,
+              "repeated_branch_count": 0
+            },
+            "findings": [
+              {
+                "kind": "callable_clone",
+                "line": 698,
+                "message": "Nontrivial callable body is shared by 12 callables: _timestamp_ms, timestamp_ms, timestamp_ms, _timestamp_ms, _timestamp_ms, _timestamp_ms, _timestamp_ms, now_ms, timestamp_ms, _timestamp_ms, _timestamp_ms, timestamp_ms.",
+                "occurrences": [
+                  {
+                    "line": 698,
+                    "name": "_timestamp_ms",
+                    "path": "autonomy/decision/activation.py"
+                  },
+                  {
+                    "line": 19,
+                    "name": "timestamp_ms",
+                    "path": "autonomy/decision/cycle.py"
+                  },
+                  {
+                    "line": 14,
+                    "name": "timestamp_ms",
+                    "path": "autonomy/decision/observation.py"
+                  },
+                  {
+                    "line": 2280,
+                    "name": "_timestamp_ms",
+                    "path": "cli/automa_cli/automation.py"
+                  },
+                  {
+                    "line": 520,
+                    "name": "_timestamp_ms",
+                    "path": "cli/automa_cli/perception_view.py"
+                  },
+                  {
+                    "line": 831,
+                    "name": "_timestamp_ms",
+                    "path": "cli/automa_cli/physical_check.py"
+                  },
+                  {
+                    "line": 447,
+                    "name": "_timestamp_ms",
+                    "path": "cli/automa_cli/streaming.py"
+                  },
+                  {
+                    "line": 55,
+                    "name": "now_ms",
+                    "path": "cli/automa_cli/workbench_contract.py"
+                  },
+                  {
+                    "line": 20,
+                    "name": "timestamp_ms",
+                    "path": "implementations/operations/startup_action_check/runner.py"
+                  },
+                  {
+                    "line": 106,
+                    "name": "_timestamp_ms",
+                    "path": "implementations/vehicle/chase_sim/car.py"
+                  },
+                  {
+                    "line": 26,
+                    "name": "_timestamp_ms",
+                    "path": "implementations/vehicle/picar/car.py"
+                  },
+                  {
+                    "line": 57,
+                    "name": "timestamp_ms",
+                    "path": "scripts/calibration/piracer_visual_depth_calibration.py"
+                  }
+                ],
+                "path": "autonomy/decision/activation.py",
+                "paths": [
+                  "autonomy/decision/activation.py",
+                  "autonomy/decision/cycle.py",
+                  "autonomy/decision/observation.py",
+                  "cli/automa_cli/automation.py",
+                  "cli/automa_cli/perception_view.py",
+                  "cli/automa_cli/physical_check.py",
+                  "cli/automa_cli/streaming.py",
+                  "cli/automa_cli/workbench_contract.py",
+                  "implementations/operations/startup_action_check/runner.py",
+                  "implementations/vehicle/chase_sim/car.py",
+                  "implementations/vehicle/picar/car.py",
+                  "scripts/calibration/piracer_visual_depth_calibration.py"
+                ]
+              }
+            ],
+            "limitations": [
+              "Identifier normalization is approximate; renamed locals may still look identical."
+            ],
+            "metrics": {
+              "clone_group_count": 41,
+              "cloned_callable_count": 120,
+              "duplicate_ast_loc": 193,
+              "repeated_branch_count": 0
+            },
+            "status": "measured"
+          },
+          "test_effectiveness": {
+            "delta": {
+              "assertion_count": 0,
+              "candidate_assertion_count": 0,
+              "candidate_site_count": 0,
+              "literal_assertion_candidates": 0,
+              "parse_error_count": 0,
+              "python_file_count": 0,
+              "source_file_count": 0,
+              "tautological_assertion_candidates": 0,
+              "test_case_count": 0,
+              "test_file_count": 0
+            },
+            "findings": [],
+            "limitations": [
+              "Literal and same-operand assertions are candidates for review, not a judgment that a test is ineffective.",
+              "Static inspection does not infer input variation, mocks, explicit state setup, or the behavior under test."
+            ],
+            "metrics": {
+              "assertion_count": 3358,
+              "candidate_assertion_count": 0,
+              "candidate_site_count": 0,
+              "literal_assertion_candidates": 0,
+              "parse_error_count": 0,
+              "python_file_count": 226,
+              "source_file_count": 226,
+              "tautological_assertion_candidates": 0,
+              "test_case_count": 875,
+              "test_file_count": 103
+            },
+            "status": "measured"
+          },
+          "ui_behavior": {
+            "delta": {},
+            "findings": [],
+            "limitations": [
+              "No actual browser interaction evidence was supplied; loopback/API traces alone do not establish UI behavior."
+            ],
+            "metrics": {},
+            "status": "not_measured"
+          }
+        },
+        "files": 3,
+        "identity": {
+          "analyzed_path": ".",
+          "analyzer_version": "0.3.0",
+          "base_sha": "3fce449d1eb64d408458231163c3f8b9b5c23af3",
+          "config_hash": "09521d4826d9c8fb6c90bb688b292b4669beb3dbca030ec29ee9643daa107fa1",
+          "exclusion_hash": "eb07f66a773b3d87bdd2f9166d45e91b8fad2da748779c0912f2e1634865674c",
+          "head_sha": "cc60f1a15f9c332737a1c5ee4596a2501af6cb73",
+          "mode": "diff",
+          "report_schema": "qca/report/v1",
+          "schema": "qca/report/v1",
+          "tool_versions": {
+            "ast": "stdlib",
+            "git": "git version 2.50.1 (Apple Git-155)",
+            "python": "3.11.7",
+            "tokenize": "stdlib"
+          },
+          "working_tree_digest": null
+        },
+        "source_classes": {
+          "docs/configuration": {
+            "added_lines": 0,
+            "deleted_lines": 0,
+            "files": 0
+          },
+          "experimental/lab": {
+            "added_lines": 0,
+            "deleted_lines": 0,
+            "files": 0
+          },
+          "generated/runtime": {
+            "added_lines": 0,
+            "deleted_lines": 0,
+            "files": 0
+          },
+          "production": {
+            "added_lines": 11,
+            "deleted_lines": 12,
+            "files": 3
+          },
+          "tests": {
+            "added_lines": 0,
+            "deleted_lines": 0,
+            "files": 0
+          },
+          "tooling/scripts": {
+            "added_lines": 0,
+            "deleted_lines": 0,
+            "files": 0
+          },
+          "unknown": {
+            "added_lines": 0,
+            "deleted_lines": 0,
+            "files": 0
+          },
+          "vendored/minified": {
+            "added_lines": 0,
+            "deleted_lines": 0,
+            "files": 0
+          }
+        }
+      },
+      "patch": "qca/experiments/candidates/share_now_ms.patch",
+      "probe_returncode": 0,
+      "scale": "small",
+      "tests_run": 39,
+      "trace_equal": true,
+      "verification": {
+        "base_sha": "3fce449d1eb64d408458231163c3f8b9b5c23af3",
+        "factors": {
+          "end_to_end": {
+            "actual": {
+              "trace_digest": "19e87ea39936394c5a72ba42b65bd16162f1699559e46c1d317e31abdab97179"
+            },
+            "commands": [
+              "python3 qca/experiments/workbench_probe.py"
+            ],
+            "expected": {
+              "trace_digest": "19e87ea39936394c5a72ba42b65bd16162f1699559e46c1d317e31abdab97179"
+            },
+            "results": [
+              {
+                "baseline_digest": "19e87ea39936394c5a72ba42b65bd16162f1699559e46c1d317e31abdab97179",
+                "baseline_trace_equal": true,
+                "candidate_digest": "19e87ea39936394c5a72ba42b65bd16162f1699559e46c1d317e31abdab97179",
+                "returncode": 0
+              }
+            ],
+            "status": "passed"
+          },
+          "lifecycle": {
+            "reason": "Consult replay-probe observations; no complete filesystem/process/network side-effect audit was executed.",
+            "status": "not_measured"
+          },
+          "test_effectiveness": {
+            "changed_line_coverage": {
+              "base": {
+                "changed_executable_lines": 7,
+                "covered": 7,
+                "missing": []
+              },
+              "head": {
+                "changed_executable_lines": 5,
+                "covered": 5,
+                "missing": []
+              },
+              "limitation": "Line reachability does not establish assertion strength or branch coverage; subprocess execution is excluded."
+            },
+            "commands": [
+              "python3 qca/experiments/run_tests.py"
+            ],
+            "results": [
+              {
+                "errors": 0,
+                "failures": 0,
+                "returncode": 0,
+                "tests_run": 39
+              }
+            ],
+            "status": "passed"
+          },
+          "ui_behavior": {
+            "reason": "No browser interaction was executed; API replay does not establish visual behavior.",
+            "status": "not_measured"
+          }
+        },
+        "head_sha": "cc60f1a15f9c332737a1c5ee4596a2501af6cb73",
+        "provenance": {
+          "candidate_patch_sha256": "ada706055a3010eae8d5a4360ee0788d628e59dabd07422cbc4ffec354042c40",
+          "runner": "python3 -m qca.experiments.refine_m008",
+          "scope": "deterministic synthetic replay, consumer tests, and in-process line coverage"
+        },
+        "schema": "qca/verification/v1"
+      }
+    },
+    {
+      "candidate_sha": "8bb428953612ae0251dc4581384025566702fe1d",
+      "candidate_tree": "b9f5ab936e38bc2e838929df43adcd829fad1c82",
+      "changed_callables": [
+        {
+          "after": {
+            "cyclomatic_complexity": 5,
+            "decision_count": 4,
+            "end_line": 545,
+            "logical_loc": 10,
+            "max_nesting": 2,
+            "path": "cli/automa_cli/workbench_source.py",
+            "qualified_name": "_path_contains_symlink",
+            "start_line": 536
+          },
+          "before": {
+            "cyclomatic_complexity": 5,
+            "decision_count": 4,
+            "end_line": 547,
+            "logical_loc": 11,
+            "max_nesting": 2,
+            "path": "cli/automa_cli/workbench_source.py",
+            "qualified_name": "_path_contains_symlink",
+            "start_line": 536
+          },
+          "path": "cli/automa_cli/workbench_source.py",
+          "qualified_name": "_path_contains_symlink"
+        }
+      ],
+      "changed_line_coverage": {
+        "base": {
+          "changed_executable_lines": 3,
+          "covered": 2,
+          "missing": [
+            "cli/automa_cli/workbench_source.py:545"
+          ]
+        },
+        "head": {
+          "changed_executable_lines": 1,
+          "covered": 1,
+          "missing": []
+        },
+        "limitation": "Line reachability does not establish assertion strength or branch coverage; subprocess execution is excluded."
+      },
+      "contract_changes": {
+        "added": [],
+        "changed": [],
+        "removed": []
+      },
+      "decision": "supported_by_checks",
+      "errors": 0,
+      "failures": 0,
+      "hypothesis": "Walk symlink containment with _is_within instead of a second relative_to/except; decision burden should fall by one.",
+      "id": "symlink_within",
+      "measurements": {
+        "added_lines": 1,
+        "core_churn": 4,
+        "decision_burden_delta": 0,
+        "deleted_lines": 3,
+        "factors": {
+          "contracts": {
+            "delta": {
+              "cli_argument_count": 0,
+              "cli_command_count": 0,
+              "public_callable_count": 0,
+              "return_shape_count": 0,
+              "surface_count": 0
+            },
+            "findings": [
+              {
+                "kind": "callable_contract",
+                "line": 52,
+                "message": "Public callable contract measured: ReplayFrame.absent",
+                "path": "cli/automa_cli/workbench_source.py",
+                "symbol": "cli/automa_cli/workbench_source.py::ReplayFrame.absent"
+              },
+              {
+                "kind": "callable_contract",
+                "line": 55,
+                "message": "Public callable contract measured: ReplayFrame.to_dict",
+                "path": "cli/automa_cli/workbench_source.py",
+                "symbol": "cli/automa_cli/workbench_source.py::ReplayFrame.to_dict"
+              },
+              {
+                "kind": "return_shape",
+                "line": 55,
+                "message": "Direct dict return shape measured for ReplayFrame.to_dict: absence_reason,absent,content_type,frame_id,frame_index,image_name,image_path,metadata,position,source_id,timestamp_ms",
+                "path": "cli/automa_cli/workbench_source.py",
+                "symbol": "cli/automa_cli/workbench_source.py::ReplayFrame.to_dict"
+              },
+              {
+                "kind": "callable_contract",
+                "line": 81,
+                "message": "Public callable contract measured: ImageFeed.to_dict",
+                "path": "cli/automa_cli/workbench_source.py",
+                "symbol": "cli/automa_cli/workbench_source.py::ImageFeed.to_dict"
+              },
+              {
+                "kind": "return_shape",
+                "line": 81,
+                "message": "Direct dict return shape measured for ImageFeed.to_dict: adapter,frame_count,manifest_path,source_id,source_path",
+                "path": "cli/automa_cli/workbench_source.py",
+                "symbol": "cli/automa_cli/workbench_source.py::ImageFeed.to_dict"
+              },
+              {
+                "kind": "callable_contract",
+                "line": 93,
+                "message": "Public callable contract measured: normalize_image_directory",
+                "path": "cli/automa_cli/workbench_source.py",
+                "symbol": "cli/automa_cli/workbench_source.py::normalize_image_directory"
+              },
+              {
+                "kind": "callable_contract",
+                "line": 185,
+                "message": "Public callable contract measured: content_type_for_path",
+                "path": "cli/automa_cli/workbench_source.py",
+                "symbol": "cli/automa_cli/workbench_source.py::content_type_for_path"
+              }
+            ],
+            "limitations": [
+              "CLI inventory recognizes literal argparse-style add_argument and add_parser calls; it is not a schema or compatibility proof.",
+              "Public contracts are static AST approximations; runtime decorators, dispatch, inheritance, and annotations are not evaluated.",
+              "Returned shapes include only direct dict literals in public callable return statements."
+            ],
+            "metrics": {
+              "cli_argument_count": 337,
+              "cli_command_count": 67,
+              "public_callable_count": 1494,
+              "return_shape_count": 107,
+              "surface_count": 1898
+            },
+            "status": "measured"
+          },
+          "coupling": {
+            "delta": {
+              "cycle_count": 0,
+              "cyclic_node_count": 0,
+              "edge_count": 0,
+              "external_import_count": 0,
+              "fan_in_hotspot_count": 0,
+              "fan_out_hotspot_count": 0,
+              "max_fan_in": 0,
+              "max_fan_out": 0,
+              "module_count": 0
+            },
+            "findings": [
+              {
+                "kind": "fan_in",
+                "line": 1,
+                "message": "Local dependency fan-in is 3 modules.",
+                "path": "cli/automa_cli/workbench_source.py",
+                "value": 3
+              },
+              {
+                "kind": "external_import",
+                "line": 3,
+                "message": "Import is not resolved to a supplied local module: __future__:annotations",
+                "name": "__future__:annotations",
+                "path": "cli/automa_cli/workbench_source.py"
+              },
+              {
+                "kind": "external_import",
+                "line": 5,
+                "message": "Import is not resolved to a supplied local module: copy",
+                "name": "copy",
+                "path": "cli/automa_cli/workbench_source.py"
+              },
+              {
+                "kind": "external_import",
+                "line": 6,
+                "message": "Import is not resolved to a supplied local module: hashlib",
+                "name": "hashlib",
+                "path": "cli/automa_cli/workbench_source.py"
+              },
+              {
+                "kind": "external_import",
+                "line": 7,
+                "message": "Import is not resolved to a supplied local module: json",
+                "name": "json",
+                "path": "cli/automa_cli/workbench_source.py"
+              },
+              {
+                "kind": "external_import",
+                "line": 8,
+                "message": "Import is not resolved to a supplied local module: mimetypes",
+                "name": "mimetypes",
+                "path": "cli/automa_cli/workbench_source.py"
+              },
+              {
+                "kind": "external_import",
+                "line": 9,
+                "message": "Import is not resolved to a supplied local module: os",
+                "name": "os",
+                "path": "cli/automa_cli/workbench_source.py"
+              },
+              {
+                "kind": "external_import",
+                "line": 10,
+                "message": "Import is not resolved to a supplied local module: re",
+                "name": "re",
+                "path": "cli/automa_cli/workbench_source.py"
+              },
+              {
+                "kind": "external_import",
+                "line": 11,
+                "message": "Import is not resolved to a supplied local module: dataclasses:dataclass",
+                "name": "dataclasses:dataclass",
+                "path": "cli/automa_cli/workbench_source.py"
+              },
+              {
+                "kind": "external_import",
+                "line": 11,
+                "message": "Import is not resolved to a supplied local module: dataclasses:field",
+                "name": "dataclasses:field",
+                "path": "cli/automa_cli/workbench_source.py"
+              },
+              {
+                "kind": "external_import",
+                "line": 12,
+                "message": "Import is not resolved to a supplied local module: pathlib:Path",
+                "name": "pathlib:Path",
+                "path": "cli/automa_cli/workbench_source.py"
+              },
+              {
+                "kind": "external_import",
+                "line": 13,
+                "message": "Import is not resolved to a supplied local module: typing:Any",
+                "name": "typing:Any",
+                "path": "cli/automa_cli/workbench_source.py"
+              },
+              {
+                "kind": "external_import",
+                "line": 484,
+                "message": "Import is not resolved to a supplied local module: PIL:Image",
+                "name": "PIL:Image",
+                "path": "cli/automa_cli/workbench_source.py"
+              }
+            ],
+            "limitations": [
+              "Cycles are deterministic strongly connected components, not every distinct runtime import path.",
+              "Import resolution is AST-based and does not execute module search hooks or dynamic imports.",
+              "Unresolved imports are separate observations; installability and runtime availability are not measured."
+            ],
+            "metrics": {
+              "cycle_count": 1,
+              "cyclic_node_count": 3,
+              "edge_count": 439,
+              "external_import_count": 1225,
+              "fan_in_hotspot_count": 49,
+              "fan_out_hotspot_count": 63,
+              "max_fan_in": 43,
+              "max_fan_out": 18,
+              "module_count": 226
+            },
+            "status": "measured"
+          },
+          "end_to_end": {
+            "delta": {},
+            "findings": [],
+            "limitations": [
+              "No subprocess or integration-run evidence was supplied; static source inspection cannot establish end-to-end behavior."
+            ],
+            "metrics": {},
+            "status": "verified"
+          },
+          "functional_style": {
+            "delta": {
+              "attribute_write_count": 0,
+              "global_or_nonlocal_count": 0,
+              "mutable_default_count": 0,
+              "mutating_call_count": 0,
+              "recognized_effect_count": 0
+            },
+            "findings": [
+              {
+                "kind": "mutating_call",
+                "line": 296,
+                "message": "Mutating method call observed: append.",
+                "path": "cli/automa_cli/workbench_source.py"
+              }
+            ],
+            "limitations": [
+              "Absence of recognized effects does not prove purity."
+            ],
+            "metrics": {
+              "attribute_write_count": 462,
+              "global_or_nonlocal_count": 1,
+              "mutable_default_count": 0,
+              "mutating_call_count": 729,
+              "recognized_effect_count": 1193
+            },
+            "status": "measured"
+          },
+          "functionality": {
+            "delta": {
+              "stub_count": 0,
+              "unreachable_count": 0
+            },
+            "findings": [],
+            "limitations": [
+              "Inspect intentional hooks and protocols before removing code."
+            ],
+            "metrics": {
+              "stub_count": 15,
+              "unreachable_count": 0
+            },
+            "status": "measured"
+          },
+          "lifecycle": {
+            "delta": {
+              "calls_count": 0,
+              "cleanup_call_count": 0,
+              "cleanup_definition_count": 0,
+              "cleanup_site_count": 0,
+              "definitions_count": 0,
+              "effect_site_count": 0,
+              "parse_error_count": 0,
+              "recognized_site_count": 0,
+              "reset_call_count": 0,
+              "reset_definition_count": 0,
+              "reset_site_count": 0,
+              "site_count": 0,
+              "start_call_count": 0,
+              "start_definition_count": 0,
+              "start_site_count": 0,
+              "stop_call_count": 0,
+              "stop_definition_count": 0,
+              "stop_site_count": 0
+            },
+            "findings": [],
+            "limitations": [
+              "Recognized names and call sites are static indicators only; they do not prove start/stop/reset/cleanup effects or symmetry.",
+              "No runtime lifecycle sequence, resource ownership, or teardown outcome was measured.",
+              "Lifecycle site details are limited to the first 128; counts remain parser-derived."
+            ],
+            "metrics": {
+              "calls_count": 115,
+              "cleanup_call_count": 23,
+              "cleanup_definition_count": 6,
+              "cleanup_site_count": 29,
+              "definitions_count": 42,
+              "effect_site_count": 157,
+              "parse_error_count": 0,
+              "recognized_site_count": 157,
+              "reset_call_count": 34,
+              "reset_definition_count": 21,
+              "reset_site_count": 55,
+              "site_count": 128,
+              "start_call_count": 39,
+              "start_definition_count": 5,
+              "start_site_count": 44,
+              "stop_call_count": 19,
+              "stop_definition_count": 10,
+              "stop_site_count": 29
+            },
+            "status": "measured"
+          },
+          "patterns": {
+            "delta": {
+              "bare_except_count": 0,
+              "broad_except_count": 0,
+              "logged_error_count": 0,
+              "raise_count": 0,
+              "swallowed_exception_count": 0
+            },
+            "findings": [
+              {
+                "kind": "raise",
+                "line": 103,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_source.py"
+              },
+              {
+                "kind": "raise",
+                "line": 106,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_source.py"
+              },
+              {
+                "kind": "raise",
+                "line": 108,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_source.py"
+              },
+              {
+                "kind": "raise",
+                "line": 110,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_source.py"
+              },
+              {
+                "kind": "raise",
+                "line": 118,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_source.py"
+              },
+              {
+                "kind": "raise",
+                "line": 122,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_source.py"
+              },
+              {
+                "kind": "raise",
+                "line": 124,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_source.py"
+              },
+              {
+                "kind": "raise",
+                "line": 126,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_source.py"
+              },
+              {
+                "kind": "raise",
+                "line": 132,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_source.py"
+              },
+              {
+                "kind": "raise",
+                "line": 138,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_source.py"
+              },
+              {
+                "kind": "raise",
+                "line": 143,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_source.py"
+              },
+              {
+                "kind": "raise",
+                "line": 145,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_source.py"
+              },
+              {
+                "kind": "raise",
+                "line": 161,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_source.py"
+              },
+              {
+                "kind": "raise",
+                "line": 198,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_source.py"
+              },
+              {
+                "kind": "raise",
+                "line": 202,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_source.py"
+              },
+              {
+                "kind": "raise",
+                "line": 206,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_source.py"
+              },
+              {
+                "kind": "raise",
+                "line": 219,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_source.py"
+              },
+              {
+                "kind": "raise",
+                "line": 222,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_source.py"
+              },
+              {
+                "kind": "raise",
+                "line": 290,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_source.py"
+              },
+              {
+                "kind": "raise",
+                "line": 294,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_source.py"
+              },
+              {
+                "kind": "raise",
+                "line": 305,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_source.py"
+              },
+              {
+                "kind": "raise",
+                "line": 325,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_source.py"
+              },
+              {
+                "kind": "raise",
+                "line": 345,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_source.py"
+              },
+              {
+                "kind": "raise",
+                "line": 352,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_source.py"
+              },
+              {
+                "kind": "swallowed_exception",
+                "line": 404,
+                "message": "Except body is only pass; exception may be swallowed.",
+                "path": "cli/automa_cli/workbench_source.py"
+              },
+              {
+                "kind": "raise",
+                "line": 411,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_source.py"
+              },
+              {
+                "kind": "raise",
+                "line": 418,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_source.py"
+              },
+              {
+                "kind": "raise",
+                "line": 422,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_source.py"
+              },
+              {
+                "kind": "swallowed_exception",
+                "line": 431,
+                "message": "Except body is only pass; exception may be swallowed.",
+                "path": "cli/automa_cli/workbench_source.py"
+              },
+              {
+                "kind": "raise",
+                "line": 459,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_source.py"
+              },
+              {
+                "kind": "raise",
+                "line": 463,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_source.py"
+              },
+              {
+                "kind": "raise",
+                "line": 465,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_source.py"
+              },
+              {
+                "kind": "raise",
+                "line": 471,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_source.py"
+              },
+              {
+                "kind": "raise",
+                "line": 473,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_source.py"
+              },
+              {
+                "kind": "raise",
+                "line": 475,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_source.py"
+              },
+              {
+                "kind": "raise",
+                "line": 478,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_source.py"
+              },
+              {
+                "kind": "raise",
+                "line": 480,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_source.py"
+              },
+              {
+                "kind": "raise",
+                "line": 499,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_source.py"
+              },
+              {
+                "kind": "broad_except",
+                "line": 502,
+                "message": "Broad except for Exception or BaseException observed.",
+                "path": "cli/automa_cli/workbench_source.py"
+              },
+              {
+                "kind": "raise",
+                "line": 503,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_source.py"
+              },
+              {
+                "kind": "raise",
+                "line": 517,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_source.py"
+              },
+              {
+                "kind": "raise",
+                "line": 521,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_source.py"
+              },
+              {
+                "kind": "raise",
+                "line": 525,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_source.py"
+              }
+            ],
+            "limitations": [
+              "Inspect intent at the owning boundary; recognized patterns are not a style grade."
+            ],
+            "metrics": {
+              "bare_except_count": 0,
+              "broad_except_count": 41,
+              "logged_error_count": 0,
+              "raise_count": 545,
+              "swallowed_exception_count": 15
+            },
+            "status": "measured"
+          },
+          "redundancy": {
+            "delta": {
+              "clone_group_count": 0,
+              "cloned_callable_count": 0,
+              "duplicate_ast_loc": 0,
+              "repeated_branch_count": 0
+            },
+            "findings": [],
+            "limitations": [
+              "Identifier normalization is approximate; renamed locals may still look identical."
+            ],
+            "metrics": {
+              "clone_group_count": 41,
+              "cloned_callable_count": 121,
+              "duplicate_ast_loc": 194,
+              "repeated_branch_count": 0
+            },
+            "status": "measured"
+          },
+          "test_effectiveness": {
+            "delta": {
+              "assertion_count": 0,
+              "candidate_assertion_count": 0,
+              "candidate_site_count": 0,
+              "literal_assertion_candidates": 0,
+              "parse_error_count": 0,
+              "python_file_count": 0,
+              "source_file_count": 0,
+              "tautological_assertion_candidates": 0,
+              "test_case_count": 0,
+              "test_file_count": 0
+            },
+            "findings": [],
+            "limitations": [
+              "Literal and same-operand assertions are candidates for review, not a judgment that a test is ineffective.",
+              "Static inspection does not infer input variation, mocks, explicit state setup, or the behavior under test."
+            ],
+            "metrics": {
+              "assertion_count": 3358,
+              "candidate_assertion_count": 0,
+              "candidate_site_count": 0,
+              "literal_assertion_candidates": 0,
+              "parse_error_count": 0,
+              "python_file_count": 226,
+              "source_file_count": 226,
+              "tautological_assertion_candidates": 0,
+              "test_case_count": 875,
+              "test_file_count": 103
+            },
+            "status": "measured"
+          },
+          "ui_behavior": {
+            "delta": {},
+            "findings": [],
+            "limitations": [
+              "No actual browser interaction evidence was supplied; loopback/API traces alone do not establish UI behavior."
+            ],
+            "metrics": {},
+            "status": "not_measured"
+          }
+        },
+        "files": 1,
+        "identity": {
+          "analyzed_path": ".",
+          "analyzer_version": "0.3.0",
+          "base_sha": "3fce449d1eb64d408458231163c3f8b9b5c23af3",
+          "config_hash": "09521d4826d9c8fb6c90bb688b292b4669beb3dbca030ec29ee9643daa107fa1",
+          "exclusion_hash": "eb07f66a773b3d87bdd2f9166d45e91b8fad2da748779c0912f2e1634865674c",
+          "head_sha": "8bb428953612ae0251dc4581384025566702fe1d",
+          "mode": "diff",
+          "report_schema": "qca/report/v1",
+          "schema": "qca/report/v1",
+          "tool_versions": {
+            "ast": "stdlib",
+            "git": "git version 2.50.1 (Apple Git-155)",
+            "python": "3.11.7",
+            "tokenize": "stdlib"
+          },
+          "working_tree_digest": null
+        },
+        "source_classes": {
+          "docs/configuration": {
+            "added_lines": 0,
+            "deleted_lines": 0,
+            "files": 0
+          },
+          "experimental/lab": {
+            "added_lines": 0,
+            "deleted_lines": 0,
+            "files": 0
+          },
+          "generated/runtime": {
+            "added_lines": 0,
+            "deleted_lines": 0,
+            "files": 0
+          },
+          "production": {
+            "added_lines": 1,
+            "deleted_lines": 3,
+            "files": 1
+          },
+          "tests": {
+            "added_lines": 0,
+            "deleted_lines": 0,
+            "files": 0
+          },
+          "tooling/scripts": {
+            "added_lines": 0,
+            "deleted_lines": 0,
+            "files": 0
+          },
+          "unknown": {
+            "added_lines": 0,
+            "deleted_lines": 0,
+            "files": 0
+          },
+          "vendored/minified": {
+            "added_lines": 0,
+            "deleted_lines": 0,
+            "files": 0
+          }
+        }
+      },
+      "patch": "qca/experiments/candidates/symlink_within.patch",
+      "probe_returncode": 0,
+      "scale": "small",
+      "tests_run": 39,
+      "trace_equal": true,
+      "verification": {
+        "base_sha": "3fce449d1eb64d408458231163c3f8b9b5c23af3",
+        "factors": {
+          "end_to_end": {
+            "actual": {
+              "trace_digest": "19e87ea39936394c5a72ba42b65bd16162f1699559e46c1d317e31abdab97179"
+            },
+            "commands": [
+              "python3 qca/experiments/workbench_probe.py"
+            ],
+            "expected": {
+              "trace_digest": "19e87ea39936394c5a72ba42b65bd16162f1699559e46c1d317e31abdab97179"
+            },
+            "results": [
+              {
+                "baseline_digest": "19e87ea39936394c5a72ba42b65bd16162f1699559e46c1d317e31abdab97179",
+                "baseline_trace_equal": true,
+                "candidate_digest": "19e87ea39936394c5a72ba42b65bd16162f1699559e46c1d317e31abdab97179",
+                "returncode": 0
+              }
+            ],
+            "status": "passed"
+          },
+          "lifecycle": {
+            "reason": "Consult replay-probe observations; no complete filesystem/process/network side-effect audit was executed.",
+            "status": "not_measured"
+          },
+          "test_effectiveness": {
+            "changed_line_coverage": {
+              "base": {
+                "changed_executable_lines": 3,
+                "covered": 2,
+                "missing": [
+                  "cli/automa_cli/workbench_source.py:545"
+                ]
+              },
+              "head": {
+                "changed_executable_lines": 1,
+                "covered": 1,
+                "missing": []
+              },
+              "limitation": "Line reachability does not establish assertion strength or branch coverage; subprocess execution is excluded."
+            },
+            "commands": [
+              "python3 qca/experiments/run_tests.py"
+            ],
+            "results": [
+              {
+                "errors": 0,
+                "failures": 0,
+                "returncode": 0,
+                "tests_run": 39
+              }
+            ],
+            "status": "passed"
+          },
+          "ui_behavior": {
+            "reason": "No browser interaction was executed; API replay does not establish visual behavior.",
+            "status": "not_measured"
+          }
+        },
+        "head_sha": "8bb428953612ae0251dc4581384025566702fe1d",
+        "provenance": {
+          "candidate_patch_sha256": "d6415e3f5e32eadab1938f3819f0023c3d84d990678246bc4e9bc335f88c9f50",
+          "runner": "python3 -m qca.experiments.refine_m008",
+          "scope": "deterministic synthetic replay, consumer tests, and in-process line coverage"
+        },
+        "schema": "qca/verification/v1"
+      }
+    },
+    {
+      "candidate_sha": "94fea7728561d3c51f5df3cdd99e4b9ddf0428f3",
+      "candidate_tree": "ffa6824c88556fe0b0c34a23a2d7b726d72847cc",
+      "changed_callables": [
+        {
+          "after": {
+            "cyclomatic_complexity": 9,
+            "decision_count": 8,
+            "end_line": 1248,
+            "logical_loc": 12,
+            "max_nesting": 2,
+            "path": "cli/automa_cli/workbench_runner.py",
+            "qualified_name": "ImageReplayRunner._check_run_id_locked",
+            "start_line": 1219
+          },
+          "before": {
+            "cyclomatic_complexity": 9,
+            "decision_count": 8,
+            "end_line": 1250,
+            "logical_loc": 12,
+            "max_nesting": 2,
+            "path": "cli/automa_cli/workbench_runner.py",
+            "qualified_name": "ImageReplayRunner._check_run_id_locked",
+            "start_line": 1211
+          },
+          "path": "cli/automa_cli/workbench_runner.py",
+          "qualified_name": "ImageReplayRunner._check_run_id_locked"
+        },
+        {
+          "after": {
+            "cyclomatic_complexity": 2,
+            "decision_count": 1,
+            "end_line": 1252,
+            "logical_loc": 3,
+            "max_nesting": 1,
+            "path": "cli/automa_cli/workbench_runner.py",
+            "qualified_name": "ImageReplayRunner._require_run_id_locked",
+            "start_line": 1250
+          },
+          "before": {
+            "cyclomatic_complexity": 2,
+            "decision_count": 1,
+            "end_line": 1259,
+            "logical_loc": 3,
+            "max_nesting": 1,
+            "path": "cli/automa_cli/workbench_runner.py",
+            "qualified_name": "ImageReplayRunner._require_run_id_locked",
+            "start_line": 1252
+          },
+          "path": "cli/automa_cli/workbench_runner.py",
+          "qualified_name": "ImageReplayRunner._require_run_id_locked"
+        },
+        {
+          "after": {
+            "cyclomatic_complexity": 1,
+            "decision_count": 0,
+            "end_line": 1217,
+            "logical_loc": 2,
+            "max_nesting": 0,
+            "path": "cli/automa_cli/workbench_runner.py",
+            "qualified_name": "ImageReplayRunner._stale_run_error",
+            "start_line": 1211
+          },
+          "before": null,
+          "path": "cli/automa_cli/workbench_runner.py",
+          "qualified_name": "ImageReplayRunner._stale_run_error"
+        }
+      ],
+      "changed_line_coverage": {
+        "base": {
+          "changed_executable_lines": 3,
+          "covered": 2,
+          "missing": [
+            "cli/automa_cli/workbench_runner.py:1214"
+          ]
+        },
+        "head": {
+          "changed_executable_lines": 5,
+          "covered": 4,
+          "missing": [
+            "cli/automa_cli/workbench_runner.py:1222"
+          ]
+        },
+        "limitation": "Line reachability does not establish assertion strength or branch coverage; subprocess execution is excluded."
+      },
+      "contract_changes": {
+        "added": [],
+        "changed": [],
+        "removed": []
+      },
+      "decision": "supported_by_checks",
+      "errors": 0,
+      "failures": 0,
+      "hypothesis": "Construct the stale-run ReplayActionError once; three identical raises should share one helper.",
+      "id": "stale_run_error",
+      "measurements": {
+        "added_lines": 11,
+        "core_churn": 29,
+        "decision_burden_delta": 0,
+        "deleted_lines": 18,
+        "factors": {
+          "contracts": {
+            "delta": {
+              "cli_argument_count": 0,
+              "cli_command_count": 0,
+              "public_callable_count": 0,
+              "return_shape_count": 0,
+              "surface_count": 0
+            },
+            "findings": [
+              {
+                "kind": "callable_contract",
+                "line": 187,
+                "message": "Public callable contract measured: ImageReplayRunner.server_identity",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "symbol": "cli/automa_cli/workbench_runner.py::ImageReplayRunner.server_identity"
+              },
+              {
+                "kind": "callable_contract",
+                "line": 190,
+                "message": "Public callable contract measured: ImageReplayRunner.state",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "symbol": "cli/automa_cli/workbench_runner.py::ImageReplayRunner.state"
+              },
+              {
+                "kind": "callable_contract",
+                "line": 195,
+                "message": "Public callable contract measured: ImageReplayRunner.plugin_catalog",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "symbol": "cli/automa_cli/workbench_runner.py::ImageReplayRunner.plugin_catalog"
+              },
+              {
+                "kind": "callable_contract",
+                "line": 246,
+                "message": "Public callable contract measured: ImageReplayRunner.frame_detail",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "symbol": "cli/automa_cli/workbench_runner.py::ImageReplayRunner.frame_detail"
+              },
+              {
+                "kind": "callable_contract",
+                "line": 259,
+                "message": "Public callable contract measured: ImageReplayRunner.frame_bytes",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "symbol": "cli/automa_cli/workbench_runner.py::ImageReplayRunner.frame_bytes"
+              },
+              {
+                "kind": "callable_contract",
+                "line": 302,
+                "message": "Public callable contract measured: ImageReplayRunner.validate_source",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "symbol": "cli/automa_cli/workbench_runner.py::ImageReplayRunner.validate_source"
+              },
+              {
+                "kind": "callable_contract",
+                "line": 339,
+                "message": "Public callable contract measured: ImageReplayRunner.start",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "symbol": "cli/automa_cli/workbench_runner.py::ImageReplayRunner.start"
+              },
+              {
+                "kind": "callable_contract",
+                "line": 430,
+                "message": "Public callable contract measured: ImageReplayRunner.wait",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "symbol": "cli/automa_cli/workbench_runner.py::ImageReplayRunner.wait"
+              },
+              {
+                "kind": "callable_contract",
+                "line": 436,
+                "message": "Public callable contract measured: ImageReplayRunner.close",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "symbol": "cli/automa_cli/workbench_runner.py::ImageReplayRunner.close"
+              },
+              {
+                "kind": "callable_contract",
+                "line": 454,
+                "message": "Public callable contract measured: ImageReplayRunner.dispatch",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "symbol": "cli/automa_cli/workbench_runner.py::ImageReplayRunner.dispatch"
+              }
+            ],
+            "limitations": [
+              "CLI inventory recognizes literal argparse-style add_argument and add_parser calls; it is not a schema or compatibility proof.",
+              "Public contracts are static AST approximations; runtime decorators, dispatch, inheritance, and annotations are not evaluated.",
+              "Returned shapes include only direct dict literals in public callable return statements."
+            ],
+            "metrics": {
+              "cli_argument_count": 337,
+              "cli_command_count": 67,
+              "public_callable_count": 1494,
+              "return_shape_count": 107,
+              "surface_count": 1898
+            },
+            "status": "measured"
+          },
+          "coupling": {
+            "delta": {
+              "cycle_count": 0,
+              "cyclic_node_count": 0,
+              "edge_count": 0,
+              "external_import_count": 0,
+              "fan_in_hotspot_count": 0,
+              "fan_out_hotspot_count": 0,
+              "max_fan_in": 0,
+              "max_fan_out": 0,
+              "module_count": 0
+            },
+            "findings": [
+              {
+                "kind": "fan_out",
+                "line": 1,
+                "message": "Local dependency fan-out is 10 modules.",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "value": 10
+              },
+              {
+                "kind": "external_import",
+                "line": 3,
+                "message": "Import is not resolved to a supplied local module: __future__:annotations",
+                "name": "__future__:annotations",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "external_import",
+                "line": 5,
+                "message": "Import is not resolved to a supplied local module: copy",
+                "name": "copy",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "external_import",
+                "line": 6,
+                "message": "Import is not resolved to a supplied local module: os",
+                "name": "os",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "external_import",
+                "line": 7,
+                "message": "Import is not resolved to a supplied local module: threading",
+                "name": "threading",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "external_import",
+                "line": 8,
+                "message": "Import is not resolved to a supplied local module: time",
+                "name": "time",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "external_import",
+                "line": 9,
+                "message": "Import is not resolved to a supplied local module: uuid",
+                "name": "uuid",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "external_import",
+                "line": 10,
+                "message": "Import is not resolved to a supplied local module: pathlib:Path",
+                "name": "pathlib:Path",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "external_import",
+                "line": 11,
+                "message": "Import is not resolved to a supplied local module: typing:Any",
+                "name": "typing:Any",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "external_import",
+                "line": 11,
+                "message": "Import is not resolved to a supplied local module: typing:Callable",
+                "name": "typing:Callable",
+                "path": "cli/automa_cli/workbench_runner.py"
+              }
+            ],
+            "limitations": [
+              "Cycles are deterministic strongly connected components, not every distinct runtime import path.",
+              "Import resolution is AST-based and does not execute module search hooks or dynamic imports.",
+              "Unresolved imports are separate observations; installability and runtime availability are not measured."
+            ],
+            "metrics": {
+              "cycle_count": 1,
+              "cyclic_node_count": 3,
+              "edge_count": 439,
+              "external_import_count": 1225,
+              "fan_in_hotspot_count": 49,
+              "fan_out_hotspot_count": 63,
+              "max_fan_in": 43,
+              "max_fan_out": 18,
+              "module_count": 226
+            },
+            "status": "measured"
+          },
+          "end_to_end": {
+            "delta": {},
+            "findings": [],
+            "limitations": [
+              "No subprocess or integration-run evidence was supplied; static source inspection cannot establish end-to-end behavior."
+            ],
+            "metrics": {},
+            "status": "verified"
+          },
+          "functional_style": {
+            "delta": {
+              "attribute_write_count": 0,
+              "global_or_nonlocal_count": 0,
+              "mutable_default_count": 0,
+              "mutating_call_count": 0,
+              "recognized_effect_count": 0
+            },
+            "findings": [
+              {
+                "kind": "attribute_write",
+                "line": 154,
+                "message": "Attribute write observed: source_root.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 157,
+                "message": "Attribute write observed: source_dir.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 158,
+                "message": "Attribute write observed: plugin_dir.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 159,
+                "message": "Attribute write observed: max_frames.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 160,
+                "message": "Attribute write observed: max_image_bytes.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 161,
+                "message": "Attribute write observed: mapper_factory.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 162,
+                "message": "Attribute write observed: _mapper_factory_explicit.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 163,
+                "message": "Attribute write observed: memory_stage_factory.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 164,
+                "message": "Attribute write observed: _lock.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 165,
+                "message": "Attribute write observed: _condition.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 166,
+                "message": "Attribute write observed: _action_lock.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 167,
+                "message": "Attribute write observed: _worker.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 168,
+                "message": "Attribute write observed: _feed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 169,
+                "message": "Attribute write observed: _mapper.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 170,
+                "message": "Attribute write observed: _memory_stage.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 171,
+                "message": "Attribute write observed: _history.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 172,
+                "message": "Attribute write observed: _generation.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 173,
+                "message": "Attribute write observed: _cadence_ms.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 174,
+                "message": "Attribute write observed: _pace.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 175,
+                "message": "Attribute write observed: _loop.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 176,
+                "message": "Attribute write observed: _server_identity.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 177,
+                "message": "Attribute write observed: _plugin_catalog.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 178,
+                "message": "Attribute write observed: plugin_dir.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 183,
+                "message": "Attribute write observed: _active_plugin_ids.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 184,
+                "message": "Attribute write observed: _state.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 320,
+                "message": "Attribute write observed: _feed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "mutating_call",
+                "line": 321,
+                "message": "Mutating method call observed: clear.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 322,
+                "message": "Attribute write observed: source_dir.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 323,
+                "message": "Attribute write observed: _state.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 356,
+                "message": "Attribute write observed: _cadence_ms.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 358,
+                "message": "Attribute write observed: _pace.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 360,
+                "message": "Attribute write observed: _loop.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 371,
+                "message": "Attribute write observed: _generation.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 375,
+                "message": "Attribute write observed: _feed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 376,
+                "message": "Attribute write observed: _mapper.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 377,
+                "message": "Attribute write observed: _memory_stage.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "mutating_call",
+                "line": 378,
+                "message": "Mutating method call observed: clear.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 379,
+                "message": "Attribute write observed: _state.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 403,
+                "message": "Attribute write observed: _feed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 404,
+                "message": "Attribute write observed: source_dir.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 405,
+                "message": "Attribute write observed: _mapper.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 406,
+                "message": "Attribute write observed: _memory_stage.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 420,
+                "message": "Attribute write observed: _worker.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 442,
+                "message": "Attribute write observed: _generation.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "mutating_call",
+                "line": 444,
+                "message": "Mutating method call observed: clear.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 445,
+                "message": "Attribute write observed: _feed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 446,
+                "message": "Attribute write observed: source_dir.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 447,
+                "message": "Attribute write observed: _worker.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 448,
+                "message": "Attribute write observed: _state.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 557,
+                "message": "Attribute write observed: _cadence_ms.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 558,
+                "message": "Attribute write observed: _pace.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 628,
+                "message": "Attribute write observed: _plugin_catalog.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 629,
+                "message": "Attribute write observed: plugin_dir.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 632,
+                "message": "Attribute write observed: _active_plugin_ids.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 723,
+                "message": "Attribute write observed: _mapper.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 726,
+                "message": "Attribute write observed: _active_plugin_ids.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 778,
+                "message": "Attribute write observed: _loop.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 912,
+                "message": "Attribute write observed: _generation.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 921,
+                "message": "Attribute write observed: _state.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "mutating_call",
+                "line": 923,
+                "message": "Mutating method call observed: clear.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 924,
+                "message": "Attribute write observed: _feed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 926,
+                "message": "Attribute write observed: source_dir.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 1207,
+                "message": "Attribute write observed: _mapper.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "attribute_write",
+                "line": 1208,
+                "message": "Attribute write observed: _memory_stage.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "mutating_call",
+                "line": 1456,
+                "message": "Mutating method call observed: append.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              }
+            ],
+            "limitations": [
+              "Absence of recognized effects does not prove purity."
+            ],
+            "metrics": {
+              "attribute_write_count": 462,
+              "global_or_nonlocal_count": 1,
+              "mutable_default_count": 0,
+              "mutating_call_count": 729,
+              "recognized_effect_count": 1193
+            },
+            "status": "measured"
+          },
+          "functionality": {
+            "delta": {
+              "stub_count": 0,
+              "unreachable_count": 0
+            },
+            "findings": [],
+            "limitations": [
+              "Inspect intentional hooks and protocols before removing code."
+            ],
+            "metrics": {
+              "stub_count": 15,
+              "unreachable_count": 0
+            },
+            "status": "measured"
+          },
+          "lifecycle": {
+            "delta": {
+              "calls_count": 0,
+              "cleanup_call_count": 0,
+              "cleanup_definition_count": 0,
+              "cleanup_site_count": 0,
+              "definitions_count": 0,
+              "effect_site_count": 0,
+              "parse_error_count": 0,
+              "recognized_site_count": 0,
+              "reset_call_count": 0,
+              "reset_definition_count": 0,
+              "reset_site_count": 0,
+              "site_count": 0,
+              "start_call_count": 0,
+              "start_definition_count": 0,
+              "start_site_count": 0,
+              "stop_call_count": 0,
+              "stop_definition_count": 0,
+              "stop_site_count": 0
+            },
+            "findings": [
+              {
+                "column": 5,
+                "kind": "lifecycle_effect_site",
+                "line": 339,
+                "message": "Static lifecycle name/call site only; inspect the runtime effect and paired cleanup behavior separately.",
+                "name": "def start( self, source_dir: str | os.PathLike[str] | None = None, *, cadence_ms: int | None = None, pace: str | None = None, loop: bool | None = None, ) -> dict[str, Any]: with self._action_lock: with self._condition: phase = self._state[\"phase\"] if phase in {\"running\", \"paused\"}: raise ReplayActionError( f\"cannot start while replay is {phase}\", boundary=\"lifecycle\", ) if cadence_ms is not None: self._cadence_ms = self._validate_cadence(cadence_ms) if pace is not None: self._pace = self._validate_pace(pace) if loop is not None: self._loop = bool(loop) raw_source = ( self.source_dir if source_dir is None else os.fspath(source_dir) ) if raw_source is None: raise ReplayActionError( \"start requires source_dir\", status_code=400, boundary=\"source\", ) run_id = f\"run-{uuid.uuid4().hex}\" self._generation += 1 generation = self._generation if self._mapper is not None or self._memory_stage is not None: self._cleanup_locked() self._feed = None self._mapper = None self._memory_stage = None self._history.clear() self._state = self._fresh_run_state(run_id) self._apply_plugin_configuration_locked() self._state[\"source\"] = {\"path\": str(raw_source)} try: selected_plugin_ids = self._plugin_catalog.normalize_selection( self._active_plugin_ids, require_explicit_selection=self._plugin_catalog.explicit_root, ) feed = normalize_image_directory( raw_source, source_root=self.source_root, max_frames=self.max_frames, max_image_bytes=self.max_image_bytes, ) mapper = self._build_mapper_for_selection(selected_plugin_ids) memory_stage = self.memory_stage_factory() except Exception as exc: # noqa: BLE001 - startup isolation boundary self._set_failure_locked( boundary=getattr(exc, \"boundary\", \"startup\"), message=str(exc), recovery_action=\"start\", ) self._condition.notify_all() return copy.deepcopy(self._state) self._feed = feed self.source_dir = str(feed.source_path) self._mapper = mapper self._memory_stage = memory_stage self._state[\"active_plugin_ids\"] = list(selected_plugin_ids) self._state[\"plugin_order\"] = list(selected_plugin_ids) self._state[\"run_plugin_dir\"] = self.plugin_dir self._state[\"run_catalog_digest\"] = self._plugin_catalog.digest self._state[\"run_active_plugin_ids\"] = list(selected_plugin_ids) self._state[\"run_plugin_order\"] = list(selected_plugin_ids) self._state[\"source\"] = feed.to_dict() self._state[\"source_identity\"] = feed.source_id self._state[\"adapter\"] = feed.adapter self._state[\"progress\"][\"total\"] = len(feed.frames) self._state[\"machine_detail\"] = self._machine_detail() self._state[\"phase\"] = \"running\" self._record_action_locked(\"start\", run_id=run_id) self._worker = threading.Thread( target=self._run_loop, args=(run_id, generation), name=f\"automa-workbench-{run_id[-12:]}\", daemon=True, ) self._worker.start() self._condition.notify_all() return copy.deepcopy(self._state)",
+                "operation": "start",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "site_type": "definition"
+              },
+              {
+                "column": 5,
+                "kind": "lifecycle_effect_site",
+                "line": 436,
+                "message": "Static lifecycle name/call site only; inspect the runtime effect and paired cleanup behavior separately.",
+                "name": "def close(self) -> None: \"\"\"Stop replay work and discard all server-lifetime state.\"\"\" with self._action_lock: with self._condition: worker = self._worker self._generation += 1 self._cleanup_locked() self._history.clear() self._feed = None self.source_dir = None self._worker = None self._state = self._initial_state() self._apply_plugin_configuration_locked() self._condition.notify_all() if worker is not None and worker is not threading.current_thread(): worker.join(timeout=1.0)",
+                "operation": "cleanup",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "site_type": "definition"
+              },
+              {
+                "column": 5,
+                "kind": "lifecycle_effect_site",
+                "line": 897,
+                "message": "Static lifecycle name/call site only; inspect the runtime effect and paired cleanup behavior separately.",
+                "name": "def _cancel(self) -> dict[str, Any]: with self._condition: if self._state[\"phase\"] not in {\"running\", \"paused\"}: raise ReplayActionError( \"cancel requires a running or paused replay\", boundary=\"lifecycle\" ) self._state[\"phase\"] = \"cancelled\" self._state[\"recovery_action\"] = \"start\" self._state[\"cleanup\"] = self._cleanup_locked() self._record_action_locked(\"cancel\") self._condition.notify_all() return copy.deepcopy(self._state)",
+                "operation": "stop",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "site_type": "definition"
+              },
+              {
+                "column": 5,
+                "kind": "lifecycle_effect_site",
+                "line": 910,
+                "message": "Static lifecycle name/call site only; inspect the runtime effect and paired cleanup behavior separately.",
+                "name": "def _reset(self) -> dict[str, Any]: with self._condition: self._generation += 1 if self._state[\"phase\"] in {\"running\", \"paused\"}: self._state[\"phase\"] = \"cancelled\" self._cleanup_locked() feed = self._feed source_dir = self.source_dir source_state = copy.deepcopy(self._state.get(\"source\")) source_identity = self._state.get(\"source_identity\") adapter = self._state.get(\"adapter\") self._state = self._initial_state() self._apply_plugin_configuration_locked() self._history.clear() self._feed = feed if feed is not None: self.source_dir = source_dir self._state[\"source\"] = ( source_state if source_state is not None else feed.to_dict() ) self._state[\"source_identity\"] = source_identity or feed.source_id self._state[\"adapter\"] = adapter or feed.adapter self._state[\"progress\"] = { \"completed\": 0, \"total\": len(feed.frames), \"percent\": 0.0, } self._state[\"summary\"] = self._summary( frames_completed=0, frames_total=len(feed.frames), ) self._record_action_locked(\"reset\") self._condition.notify_all() return copy.deepcopy(self._state)",
+                "operation": "reset",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "site_type": "definition"
+              },
+              {
+                "column": 5,
+                "kind": "lifecycle_effect_site",
+                "line": 1181,
+                "message": "Static lifecycle name/call site only; inspect the runtime effect and paired cleanup behavior separately.",
+                "name": "def _cleanup_locked(self) -> dict[str, Any]: mapper_status = \"not_created\" memory_status = \"not_created\" if self._mapper is not None: try: self._mapper.reset() mapper_status = \"reset\" except Exception as exc: # noqa: BLE001 - cleanup boundary mapper_status = f\"error: {type(exc).__name__}: {exc}\" if self._memory_stage is not None: try: self._memory_stage.reset() memory_status = \"reset\" except Exception as exc: # noqa: BLE001 - cleanup boundary memory_status = f\"error: {type(exc).__name__}: {exc}\" cleanup = { \"completed_at_ms\": _now_ms(), \"mapper\": mapper_status, \"memory\": memory_status, \"source_read_only\": True, \"worker_started\": False, \"simulator_used\": False, \"movement_control\": False, \"metrics_used\": False, \"recording_enabled\": False, } self._mapper = None self._memory_stage = None return cleanup",
+                "operation": "cleanup",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "site_type": "definition"
+              },
+              {
+                "column": 34,
+                "kind": "lifecycle_effect_site",
+                "line": 1178,
+                "message": "Static lifecycle name/call site only; inspect the runtime effect and paired cleanup behavior separately.",
+                "name": "self._cleanup_locked()",
+                "operation": "cleanup",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "site_type": "call"
+              },
+              {
+                "column": 13,
+                "kind": "lifecycle_effect_site",
+                "line": 321,
+                "message": "Static lifecycle name/call site only; inspect the runtime effect and paired cleanup behavior separately.",
+                "name": "self._history.clear()",
+                "operation": "reset",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "site_type": "call"
+              },
+              {
+                "column": 38,
+                "kind": "lifecycle_effect_site",
+                "line": 905,
+                "message": "Static lifecycle name/call site only; inspect the runtime effect and paired cleanup behavior separately.",
+                "name": "self._cleanup_locked()",
+                "operation": "cleanup",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "site_type": "call"
+              },
+              {
+                "column": 13,
+                "kind": "lifecycle_effect_site",
+                "line": 915,
+                "message": "Static lifecycle name/call site only; inspect the runtime effect and paired cleanup behavior separately.",
+                "name": "self._cleanup_locked()",
+                "operation": "cleanup",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "site_type": "call"
+              },
+              {
+                "column": 13,
+                "kind": "lifecycle_effect_site",
+                "line": 923,
+                "message": "Static lifecycle name/call site only; inspect the runtime effect and paired cleanup behavior separately.",
+                "name": "self._history.clear()",
+                "operation": "reset",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "site_type": "call"
+              },
+              {
+                "column": 38,
+                "kind": "lifecycle_effect_site",
+                "line": 1160,
+                "message": "Static lifecycle name/call site only; inspect the runtime effect and paired cleanup behavior separately.",
+                "name": "self._cleanup_locked()",
+                "operation": "cleanup",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "site_type": "call"
+              },
+              {
+                "column": 17,
+                "kind": "lifecycle_effect_site",
+                "line": 378,
+                "message": "Static lifecycle name/call site only; inspect the runtime effect and paired cleanup behavior separately.",
+                "name": "self._history.clear()",
+                "operation": "reset",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "site_type": "call"
+              },
+              {
+                "column": 17,
+                "kind": "lifecycle_effect_site",
+                "line": 426,
+                "message": "Static lifecycle name/call site only; inspect the runtime effect and paired cleanup behavior separately.",
+                "name": "self._worker.start()",
+                "operation": "start",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "site_type": "call"
+              },
+              {
+                "column": 17,
+                "kind": "lifecycle_effect_site",
+                "line": 443,
+                "message": "Static lifecycle name/call site only; inspect the runtime effect and paired cleanup behavior separately.",
+                "name": "self._cleanup_locked()",
+                "operation": "cleanup",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "site_type": "call"
+              },
+              {
+                "column": 17,
+                "kind": "lifecycle_effect_site",
+                "line": 444,
+                "message": "Static lifecycle name/call site only; inspect the runtime effect and paired cleanup behavior separately.",
+                "name": "self._history.clear()",
+                "operation": "reset",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "site_type": "call"
+              },
+              {
+                "column": 24,
+                "kind": "lifecycle_effect_site",
+                "line": 534,
+                "message": "Static lifecycle name/call site only; inspect the runtime effect and paired cleanup behavior separately.",
+                "name": "self.start(source_dir, cadence_ms=cadence_ms, pace=pace, loop=loop)",
+                "operation": "start",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "site_type": "call"
+              },
+              {
+                "column": 24,
+                "kind": "lifecycle_effect_site",
+                "line": 577,
+                "message": "Static lifecycle name/call site only; inspect the runtime effect and paired cleanup behavior separately.",
+                "name": "self._cancel()",
+                "operation": "stop",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "site_type": "call"
+              },
+              {
+                "column": 24,
+                "kind": "lifecycle_effect_site",
+                "line": 579,
+                "message": "Static lifecycle name/call site only; inspect the runtime effect and paired cleanup behavior separately.",
+                "name": "self._reset()",
+                "operation": "reset",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "site_type": "call"
+              },
+              {
+                "column": 17,
+                "kind": "lifecycle_effect_site",
+                "line": 1186,
+                "message": "Static lifecycle name/call site only; inspect the runtime effect and paired cleanup behavior separately.",
+                "name": "self._mapper.reset()",
+                "operation": "reset",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "site_type": "call"
+              },
+              {
+                "column": 17,
+                "kind": "lifecycle_effect_site",
+                "line": 1192,
+                "message": "Static lifecycle name/call site only; inspect the runtime effect and paired cleanup behavior separately.",
+                "name": "self._memory_stage.reset()",
+                "operation": "reset",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "site_type": "call"
+              },
+              {
+                "column": 21,
+                "kind": "lifecycle_effect_site",
+                "line": 374,
+                "message": "Static lifecycle name/call site only; inspect the runtime effect and paired cleanup behavior separately.",
+                "name": "self._cleanup_locked()",
+                "operation": "cleanup",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "site_type": "call"
+              },
+              {
+                "column": 25,
+                "kind": "lifecycle_effect_site",
+                "line": 704,
+                "message": "Static lifecycle name/call site only; inspect the runtime effect and paired cleanup behavior separately.",
+                "name": "previous_mapper.reset()",
+                "operation": "reset",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "site_type": "call"
+              },
+              {
+                "column": 29,
+                "kind": "lifecycle_effect_site",
+                "line": 708,
+                "message": "Static lifecycle name/call site only; inspect the runtime effect and paired cleanup behavior separately.",
+                "name": "next_mapper.reset()",
+                "operation": "reset",
+                "path": "cli/automa_cli/workbench_runner.py",
+                "site_type": "call"
+              }
+            ],
+            "limitations": [
+              "Recognized names and call sites are static indicators only; they do not prove start/stop/reset/cleanup effects or symmetry.",
+              "No runtime lifecycle sequence, resource ownership, or teardown outcome was measured.",
+              "Lifecycle site details are limited to the first 128; counts remain parser-derived."
+            ],
+            "metrics": {
+              "calls_count": 115,
+              "cleanup_call_count": 23,
+              "cleanup_definition_count": 6,
+              "cleanup_site_count": 29,
+              "definitions_count": 42,
+              "effect_site_count": 157,
+              "parse_error_count": 0,
+              "recognized_site_count": 157,
+              "reset_call_count": 34,
+              "reset_definition_count": 21,
+              "reset_site_count": 55,
+              "site_count": 128,
+              "start_call_count": 39,
+              "start_definition_count": 5,
+              "start_site_count": 44,
+              "stop_call_count": 19,
+              "stop_definition_count": 10,
+              "stop_site_count": 29
+            },
+            "status": "measured"
+          },
+          "patterns": {
+            "delta": {
+              "bare_except_count": 0,
+              "broad_except_count": 0,
+              "logged_error_count": 0,
+              "raise_count": 0,
+              "swallowed_exception_count": 0
+            },
+            "findings": [
+              {
+                "kind": "raise",
+                "line": 307,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 310,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 351,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 365,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "broad_except",
+                "line": 395,
+                "message": "Broad except for Exception or BaseException observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 469,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 484,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 499,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 513,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 528,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 537,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 552,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 580,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 591,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 635,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 643,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 655,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 670,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 685,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "broad_except",
+                "line": 705,
+                "message": "Broad except for Exception or BaseException observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "broad_except",
+                "line": 709,
+                "message": "Broad except for Exception or BaseException observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "swallowed_exception",
+                "line": 709,
+                "message": "Except body is only pass; exception may be swallowed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 717,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 772,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 797,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 808,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 819,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 838,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 845,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 851,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 900,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "broad_except",
+                "line": 1142,
+                "message": "Broad except for Exception or BaseException observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "broad_except",
+                "line": 1188,
+                "message": "Broad except for Exception or BaseException observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "broad_except",
+                "line": 1194,
+                "message": "Broad except for Exception or BaseException observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 1222,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 1241,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 1248,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 1252,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 1481,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 1487,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              },
+              {
+                "kind": "raise",
+                "line": 1497,
+                "message": "Raise statement observed.",
+                "path": "cli/automa_cli/workbench_runner.py"
+              }
+            ],
+            "limitations": [
+              "Inspect intent at the owning boundary; recognized patterns are not a style grade."
+            ],
+            "metrics": {
+              "bare_except_count": 0,
+              "broad_except_count": 41,
+              "logged_error_count": 0,
+              "raise_count": 545,
+              "swallowed_exception_count": 15
+            },
+            "status": "measured"
+          },
+          "redundancy": {
+            "delta": {
+              "clone_group_count": 0,
+              "cloned_callable_count": 0,
+              "duplicate_ast_loc": 0,
+              "repeated_branch_count": 0
+            },
+            "findings": [
+              {
+                "kind": "callable_clone",
+                "line": 698,
+                "message": "Nontrivial callable body is shared by 13 callables: _timestamp_ms, timestamp_ms, timestamp_ms, _timestamp_ms, _timestamp_ms, _timestamp_ms, _timestamp_ms, _now_ms, _now_ms, timestamp_ms, _timestamp_ms, _timestamp_ms, timestamp_ms.",
+                "occurrences": [
+                  {
+                    "line": 698,
+                    "name": "_timestamp_ms",
+                    "path": "autonomy/decision/activation.py"
+                  },
+                  {
+                    "line": 19,
+                    "name": "timestamp_ms",
+                    "path": "autonomy/decision/cycle.py"
+                  },
+                  {
+                    "line": 14,
+                    "name": "timestamp_ms",
+                    "path": "autonomy/decision/observation.py"
+                  },
+                  {
+                    "line": 2280,
+                    "name": "_timestamp_ms",
+                    "path": "cli/automa_cli/automation.py"
+                  },
+                  {
+                    "line": 520,
+                    "name": "_timestamp_ms",
+                    "path": "cli/automa_cli/perception_view.py"
+                  },
+                  {
+                    "line": 831,
+                    "name": "_timestamp_ms",
+                    "path": "cli/automa_cli/physical_check.py"
+                  },
+                  {
+                    "line": 447,
+                    "name": "_timestamp_ms",
+                    "path": "cli/automa_cli/streaming.py"
+                  },
+                  {
+                    "line": 1505,
+                    "name": "_now_ms",
+                    "path": "cli/automa_cli/workbench_runner.py"
+                  },
+                  {
+                    "line": 476,
+                    "name": "_now_ms",
+                    "path": "cli/automa_cli/workbench_server.py"
+                  },
+                  {
+                    "line": 20,
+                    "name": "timestamp_ms",
+                    "path": "implementations/operations/startup_action_check/runner.py"
+                  },
+                  {
+                    "line": 106,
+                    "name": "_timestamp_ms",
+                    "path": "implementations/vehicle/chase_sim/car.py"
+                  },
+                  {
+                    "line": 26,
+                    "name": "_timestamp_ms",
+                    "path": "implementations/vehicle/picar/car.py"
+                  },
+                  {
+                    "line": 57,
+                    "name": "timestamp_ms",
+                    "path": "scripts/calibration/piracer_visual_depth_calibration.py"
+                  }
+                ],
+                "path": "autonomy/decision/activation.py",
+                "paths": [
+                  "autonomy/decision/activation.py",
+                  "autonomy/decision/cycle.py",
+                  "autonomy/decision/observation.py",
+                  "cli/automa_cli/automation.py",
+                  "cli/automa_cli/perception_view.py",
+                  "cli/automa_cli/physical_check.py",
+                  "cli/automa_cli/streaming.py",
+                  "cli/automa_cli/workbench_runner.py",
+                  "cli/automa_cli/workbench_server.py",
+                  "implementations/operations/startup_action_check/runner.py",
+                  "implementations/vehicle/chase_sim/car.py",
+                  "implementations/vehicle/picar/car.py",
+                  "scripts/calibration/piracer_visual_depth_calibration.py"
+                ]
+              }
+            ],
+            "limitations": [
+              "Identifier normalization is approximate; renamed locals may still look identical."
+            ],
+            "metrics": {
+              "clone_group_count": 41,
+              "cloned_callable_count": 121,
+              "duplicate_ast_loc": 194,
+              "repeated_branch_count": 0
+            },
+            "status": "measured"
+          },
+          "test_effectiveness": {
+            "delta": {
+              "assertion_count": 0,
+              "candidate_assertion_count": 0,
+              "candidate_site_count": 0,
+              "literal_assertion_candidates": 0,
+              "parse_error_count": 0,
+              "python_file_count": 0,
+              "source_file_count": 0,
+              "tautological_assertion_candidates": 0,
+              "test_case_count": 0,
+              "test_file_count": 0
+            },
+            "findings": [],
+            "limitations": [
+              "Literal and same-operand assertions are candidates for review, not a judgment that a test is ineffective.",
+              "Static inspection does not infer input variation, mocks, explicit state setup, or the behavior under test."
+            ],
+            "metrics": {
+              "assertion_count": 3358,
+              "candidate_assertion_count": 0,
+              "candidate_site_count": 0,
+              "literal_assertion_candidates": 0,
+              "parse_error_count": 0,
+              "python_file_count": 226,
+              "source_file_count": 226,
+              "tautological_assertion_candidates": 0,
+              "test_case_count": 875,
+              "test_file_count": 103
+            },
+            "status": "measured"
+          },
+          "ui_behavior": {
+            "delta": {},
+            "findings": [],
+            "limitations": [
+              "No actual browser interaction evidence was supplied; loopback/API traces alone do not establish UI behavior."
+            ],
+            "metrics": {},
+            "status": "not_measured"
+          }
+        },
+        "files": 1,
+        "identity": {
+          "analyzed_path": ".",
+          "analyzer_version": "0.3.0",
+          "base_sha": "3fce449d1eb64d408458231163c3f8b9b5c23af3",
+          "config_hash": "09521d4826d9c8fb6c90bb688b292b4669beb3dbca030ec29ee9643daa107fa1",
+          "exclusion_hash": "eb07f66a773b3d87bdd2f9166d45e91b8fad2da748779c0912f2e1634865674c",
+          "head_sha": "94fea7728561d3c51f5df3cdd99e4b9ddf0428f3",
+          "mode": "diff",
+          "report_schema": "qca/report/v1",
+          "schema": "qca/report/v1",
+          "tool_versions": {
+            "ast": "stdlib",
+            "git": "git version 2.50.1 (Apple Git-155)",
+            "python": "3.11.7",
+            "tokenize": "stdlib"
+          },
+          "working_tree_digest": null
+        },
+        "source_classes": {
+          "docs/configuration": {
+            "added_lines": 0,
+            "deleted_lines": 0,
+            "files": 0
+          },
+          "experimental/lab": {
+            "added_lines": 0,
+            "deleted_lines": 0,
+            "files": 0
+          },
+          "generated/runtime": {
+            "added_lines": 0,
+            "deleted_lines": 0,
+            "files": 0
+          },
+          "production": {
+            "added_lines": 11,
+            "deleted_lines": 18,
+            "files": 1
+          },
+          "tests": {
+            "added_lines": 0,
+            "deleted_lines": 0,
+            "files": 0
+          },
+          "tooling/scripts": {
+            "added_lines": 0,
+            "deleted_lines": 0,
+            "files": 0
+          },
+          "unknown": {
+            "added_lines": 0,
+            "deleted_lines": 0,
+            "files": 0
+          },
+          "vendored/minified": {
+            "added_lines": 0,
+            "deleted_lines": 0,
+            "files": 0
+          }
+        }
+      },
+      "patch": "qca/experiments/candidates/stale_run_error.patch",
+      "probe_returncode": 0,
+      "scale": "small",
+      "tests_run": 39,
+      "trace_equal": true,
+      "verification": {
+        "base_sha": "3fce449d1eb64d408458231163c3f8b9b5c23af3",
+        "factors": {
+          "end_to_end": {
+            "actual": {
+              "trace_digest": "19e87ea39936394c5a72ba42b65bd16162f1699559e46c1d317e31abdab97179"
+            },
+            "commands": [
+              "python3 qca/experiments/workbench_probe.py"
+            ],
+            "expected": {
+              "trace_digest": "19e87ea39936394c5a72ba42b65bd16162f1699559e46c1d317e31abdab97179"
+            },
+            "results": [
+              {
+                "baseline_digest": "19e87ea39936394c5a72ba42b65bd16162f1699559e46c1d317e31abdab97179",
+                "baseline_trace_equal": true,
+                "candidate_digest": "19e87ea39936394c5a72ba42b65bd16162f1699559e46c1d317e31abdab97179",
+                "returncode": 0
+              }
+            ],
+            "status": "passed"
+          },
+          "lifecycle": {
+            "reason": "Consult replay-probe observations; no complete filesystem/process/network side-effect audit was executed.",
+            "status": "not_measured"
+          },
+          "test_effectiveness": {
+            "changed_line_coverage": {
+              "base": {
+                "changed_executable_lines": 3,
+                "covered": 2,
+                "missing": [
+                  "cli/automa_cli/workbench_runner.py:1214"
+                ]
+              },
+              "head": {
+                "changed_executable_lines": 5,
+                "covered": 4,
+                "missing": [
+                  "cli/automa_cli/workbench_runner.py:1222"
+                ]
+              },
+              "limitation": "Line reachability does not establish assertion strength or branch coverage; subprocess execution is excluded."
+            },
+            "commands": [
+              "python3 qca/experiments/run_tests.py"
+            ],
+            "results": [
+              {
+                "errors": 0,
+                "failures": 0,
+                "returncode": 0,
+                "tests_run": 39
+              }
+            ],
+            "status": "passed"
+          },
+          "ui_behavior": {
+            "reason": "No browser interaction was executed; API replay does not establish visual behavior.",
+            "status": "not_measured"
+          }
+        },
+        "head_sha": "94fea7728561d3c51f5df3cdd99e4b9ddf0428f3",
+        "provenance": {
+          "candidate_patch_sha256": "bd7589646d5fb053c77da2092bd661f0df4aedc2cb90869f181ac7cdcd0e0e25",
+          "runner": "python3 -m qca.experiments.refine_m008",
+          "scope": "deterministic synthetic replay, consumer tests, and in-process line coverage"
+        },
+        "schema": "qca/verification/v1"
+      }
     }
   ]
 }

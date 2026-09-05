@@ -29,6 +29,9 @@ CANDIDATES = (
     ("combine_actions", "small", "Merge identical idle and terminal action branches; decision burden should fall by one, with action order and fresh lists preserved."),
     ("path_containment", "medium", "Delegate two path-containment checks to Path.is_relative_to; decision burden should fall by two with identical lexical path semantics."),
     ("skip_validation", "negative-control", "Removing frame-sequence validation lowers decision burden but must be rejected when duplicate/non-increasing inputs cease to fail."),
+    ("share_now_ms", "small", "Share workbench clock helper via workbench_contract.now_ms; local _now_ms clones should leave runner and server."),
+    ("symlink_within", "small", "Walk symlink containment with _is_within instead of a second relative_to/except; decision burden should fall by one."),
+    ("stale_run_error", "small", "Construct the stale-run ReplayActionError once; three identical raises should share one helper."),
 )
 
 
@@ -107,20 +110,38 @@ def _changed_coverage(checkout: Path, candidate: str, baseline: dict, after: dic
     return result
 
 
-def run(output: Path) -> dict:
+def run(
+    output: Path,
+    *,
+    skip_historical: bool = False,
+    trial_ids: tuple[str, ...] = (),
+) -> dict:
     output.mkdir(parents=True, exist_ok=True)
     manifest = json.loads((ROOT / "qca/backtests/m008-refined.json").read_text())
     config = AnalyzerConfig(**{key: tuple(value) for key, value in manifest["config"].items()})
+    selected = tuple(
+        item for item in CANDIDATES if not trial_ids or item[0] in trial_ids
+    )
+    if trial_ids:
+        missing = [name for name in trial_ids if name not in {item[0] for item in CANDIDATES}]
+        if missing:
+            raise ValueError(f"unknown trial id(s): {', '.join(missing)}")
     states = []
-    for state in manifest["states"]:
-        print(f"Measuring {state['id']}", flush=True)
-        report = analyze_diff(state["base"], state["head"], path=ROOT, config=config)
-        payload = report_to_dict(report)
-        states.append({**state, **_compact(payload)})
-        if state["id"] == "milestone-total":
-            _json(output / "m008-report.json", payload)
-            (output / "m008-report.md").write_text(render_markdown(report), encoding="utf-8")
-            (output / "m008-report.html").write_text(render_html(payload, title="M008 · factor analysis"), encoding="utf-8")
+    if skip_historical:
+        prior = ROOT / "docs/synthesis/artifacts/m008-qca-refined.json"
+        if prior.is_file():
+            states = json.loads(prior.read_text(encoding="utf-8")).get("states", [])
+            print(f"Reusing {len(states)} historical states from {prior}", flush=True)
+    else:
+        for state in manifest["states"]:
+            print(f"Measuring {state['id']}", flush=True)
+            report = analyze_diff(state["base"], state["head"], path=ROOT, config=config)
+            payload = report_to_dict(report)
+            states.append({**state, **_compact(payload)})
+            if state["id"] == "milestone-total":
+                _json(output / "m008-report.json", payload)
+                (output / "m008-report.md").write_text(render_markdown(report), encoding="utf-8")
+                (output / "m008-report.html").write_text(render_html(payload, title="M008 · factor analysis"), encoding="utf-8")
     trials = []
     with tempfile.TemporaryDirectory(prefix="qca-m008-") as temporary:
         root = Path(temporary)
@@ -132,7 +153,7 @@ def run(output: Path) -> dict:
         probe_rc, baseline_probe = _execute(baseline, "workbench_probe.py", output / "baseline-probe.json")
         if baseline_rc or probe_rc or baseline_tests["tests_run"] == 0:
             raise RuntimeError("baseline validation failed; candidate comparisons would be inconclusive")
-        for name, scale, hypothesis in CANDIDATES:
+        for name, scale, hypothesis in selected:
             print(f"Testing {name}", flush=True)
             checkout = root / name
             _git(ROOT, "clone", "--shared", "--quiet", "--no-checkout", str(ROOT), str(checkout))
@@ -206,7 +227,8 @@ def run(output: Path) -> dict:
             }
             trials.append(trial)
     result = {
-        "schema": "qca/refinement-experiment/v1", "analyzer_version": states[0]["identity"]["analyzer_version"],
+        "schema": "qca/refinement-experiment/v1",
+        "analyzer_version": (states[0]["identity"]["analyzer_version"] if states else None),
         "hypothesis": manifest["experiment"]["hypothesis"], "configuration": config.canonical(),
         "baseline_sha": M008, "states": states, "trials": trials,
         "negative_control": {
@@ -273,5 +295,20 @@ def _render_experiment(result: dict) -> str:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument(
+        "--skip-historical",
+        action="store_true",
+        help="Reuse committed historical state measurements instead of re-analyzing them.",
+    )
+    parser.add_argument(
+        "--trials",
+        default="",
+        help="Comma-separated candidate ids (default: all).",
+    )
     args = parser.parse_args()
-    run(args.output_dir.resolve())
+    trial_ids = tuple(item.strip() for item in args.trials.split(",") if item.strip())
+    run(
+        args.output_dir.resolve(),
+        skip_historical=args.skip_historical,
+        trial_ids=trial_ids,
+    )

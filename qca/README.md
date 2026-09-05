@@ -71,12 +71,14 @@ python3 -m qca.experiments.refine_m008 --output-dir /tmp/m008-refined
 ```
 
 The runner measures seven historical merge transitions, including the whole
-milestone contribution to `main`. It then reconstructs three candidate patches
+milestone contribution to `main`. It then reconstructs candidate patches
 in disposable historical clones, runs consumer tests with line coverage, and
-compares replay probes with the baseline. Two trials are proposed
-simplifications; one deliberately removes validation to check whether a lower
-static count is rejected by behavior checks. Product changes exist only in
-those temporary clones and the committed patch inputs.
+compares replay probes with the baseline. Two original trials plus three later
+workbench samples are proposed simplifications; one original trial
+deliberately removes validation to check whether a lower static count is
+rejected by behavior checks. Product changes exist only in those temporary
+clones and the committed patch inputs. `--trials` selects candidate ids;
+`--skip-historical` reuses the committed state measurements.
 
 The runner writes `m008-report.json`, `.md`, and `.html` as regular per-analysis
 reports for the whole milestone, plus `experiment.json` / `experiment.md` for

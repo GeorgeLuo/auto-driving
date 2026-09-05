@@ -51,6 +51,36 @@ Removing frame-sequence validation lowers decision burden but must be rejected w
 - decision-burden Δ: -3
 - candidate: `466649c11af9b9cc30c7c03721ec3f9804be525d`
 
+### `share_now_ms` (small)
+
+Share workbench clock helper via workbench_contract.now_ms; local _now_ms clones should leave runner and server.
+
+- decision: `supported_by_checks`
+- tests: 39 run, 0 failed, 0 errors
+- replay trace equal: `True`
+- decision-burden Δ: +0
+- candidate: `cc60f1a15f9c332737a1c5ee4596a2501af6cb73`
+
+### `symlink_within` (small)
+
+Walk symlink containment with _is_within instead of a second relative_to/except; decision burden should fall by one.
+
+- decision: `supported_by_checks`
+- tests: 39 run, 0 failed, 0 errors
+- replay trace equal: `True`
+- decision-burden Δ: +0
+- candidate: `8bb428953612ae0251dc4581384025566702fe1d`
+
+### `stale_run_error` (small)
+
+Construct the stale-run ReplayActionError once; three identical raises should share one helper.
+
+- decision: `supported_by_checks`
+- tests: 39 run, 0 failed, 0 errors
+- replay trace equal: `True`
+- decision-burden Δ: +0
+- candidate: `94fea7728561d3c51f5df3cdd99e4b9ddf0428f3`
+
 ## Limitations
 
 - Synthetic replay and existing tests cover a bounded sample, not universal behavior equivalence.

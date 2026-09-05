@@ -1,0 +1,22 @@
+diff --git a/cli/automa_cli/workbench_source.py b/cli/automa_cli/workbench_source.py
+--- a/cli/automa_cli/workbench_source.py
++++ b/cli/automa_cli/workbench_source.py
+@@ -528,6 +528,2 @@
+ def _is_within(path: Path, root: Path) -> bool:
+-    try:
+-        path.relative_to(root)
+-    except ValueError:
+-        return False
+-    return True
++    return path.is_relative_to(root)
+diff --git a/cli/automa_cli/workbench_plugins.py b/cli/automa_cli/workbench_plugins.py
+--- a/cli/automa_cli/workbench_plugins.py
++++ b/cli/automa_cli/workbench_plugins.py
+@@ -651,6 +651,2 @@
+ def _inside(root: Path, path: Path) -> bool:
+-    try:
+-        path.relative_to(root)
+-        return True
+-    except ValueError:
+-        return False
++    return path.is_relative_to(root)

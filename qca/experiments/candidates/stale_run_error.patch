@@ -1,0 +1,53 @@
+diff --git a/cli/automa_cli/workbench_runner.py b/cli/automa_cli/workbench_runner.py
+index f2054fa..bdc3d50 100644
+--- a/cli/automa_cli/workbench_runner.py
++++ b/cli/automa_cli/workbench_runner.py
+@@ -1208,15 +1208,18 @@ class ImageReplayRunner:
+         self._memory_stage = None
+         return cleanup
+ 
++    def _stale_run_error(self) -> ReplayActionError:
++        return ReplayActionError(
++            "run_id is stale for this workbench server",
++            status_code=409,
++            boundary="stale_run",
++            state=copy.deepcopy(self._state),
++        )
++
+     def _check_run_id_locked(self, action: str, run_id: str | None) -> None:
+         if action == "start":
+             if run_id is not None and run_id != self._state.get("run_id"):
+-                raise ReplayActionError(
+-                    "run_id is stale for this workbench server",
+-                    status_code=409,
+-                    boundary="stale_run",
+-                    state=copy.deepcopy(self._state),
+-                )
++                raise self._stale_run_error()
+             return
+         current = self._state.get("run_id")
+         if (
+@@ -1242,21 +1245,11 @@ class ImageReplayRunner:
+                 state=copy.deepcopy(self._state),
+             )
+         if run_id != current:
+-            raise ReplayActionError(
+-                "run_id is stale for this workbench server",
+-                status_code=409,
+-                boundary="stale_run",
+-                state=copy.deepcopy(self._state),
+-            )
++            raise self._stale_run_error()
+ 
+     def _require_run_id_locked(self, run_id: str) -> None:
+         if run_id != self._state.get("run_id"):
+-            raise ReplayActionError(
+-                "run_id is stale for this workbench server",
+-                status_code=409,
+-                boundary="stale_run",
+-                state=copy.deepcopy(self._state),
+-            )
++            raise self._stale_run_error()
+ 
+     def _fresh_run_state(self, run_id: str) -> dict[str, Any]:
+         state = self._initial_state()

@@ -1,0 +1,17 @@
+diff --git a/cli/automa_cli/workbench_source.py b/cli/automa_cli/workbench_source.py
+--- a/cli/automa_cli/workbench_source.py
++++ b/cli/automa_cli/workbench_source.py
+@@ -514,12 +514,2 @@
+ def _validate_frame_sequence(frames: tuple[ReplayFrame, ...]) -> None:
+-    ids = [frame.frame_id for frame in frames]
+-    if len(ids) != len(set(ids)):
+-        raise SourceValidationError("source contains duplicate frame_id values")
+-    indices = [frame.frame_index for frame in frames]
+-    timestamps = [frame.timestamp_ms for frame in frames]
+-    if any(current <= previous for previous, current in zip(indices, indices[1:])):
+-        raise SourceValidationError("frame_index values must be strictly increasing")
+-    if any(
+-        current <= previous for previous, current in zip(timestamps, timestamps[1:])
+-    ):
+-        raise SourceValidationError("timestamp_ms values must be strictly increasing")
++    return None

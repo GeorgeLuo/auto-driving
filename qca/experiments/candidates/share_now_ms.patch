@@ -1,0 +1,103 @@
+diff --git a/cli/automa_cli/workbench_contract.py b/cli/automa_cli/workbench_contract.py
+index d5f6ed6..57d5013 100644
+--- a/cli/automa_cli/workbench_contract.py
++++ b/cli/automa_cli/workbench_contract.py
+@@ -2,6 +2,7 @@
+ 
+ from __future__ import annotations
+ 
++import time
+ from typing import Any
+ 
+ 
+@@ -51,8 +52,13 @@ class ReplayActionError(ValueError):
+         self.state = state
+ 
+ 
++def now_ms() -> int:
++    return int(time.time() * 1000)
++
++
+ __all__ = [
+     "ReplayActionError",
++    "now_ms",
+     "WORKBENCH_ACTIONS",
+     "WORKBENCH_ACTION_RESULT_SCHEMA",
+     "WORKBENCH_DEFAULT_CADENCE_MS",
+diff --git a/cli/automa_cli/workbench_runner.py b/cli/automa_cli/workbench_runner.py
+index f2054fa..a8ab0a1 100644
+--- a/cli/automa_cli/workbench_runner.py
++++ b/cli/automa_cli/workbench_runner.py
+@@ -38,6 +38,7 @@ from implementations.perception.catalog import (
+ 
+ from .workbench_contract import (
+     ReplayActionError,
++    now_ms,
+     WORKBENCH_ACTIONS,
+     WORKBENCH_DEFAULT_CADENCE_MS,
+     WORKBENCH_DEFAULT_LOOP,
+@@ -1194,7 +1195,7 @@ class ImageReplayRunner:
+             except Exception as exc:  # noqa: BLE001 - cleanup boundary
+                 memory_status = f"error: {type(exc).__name__}: {exc}"
+         cleanup = {
+-            "completed_at_ms": _now_ms(),
++            "completed_at_ms": now_ms(),
+             "mapper": mapper_status,
+             "memory": memory_status,
+             "source_read_only": True,
+@@ -1411,7 +1412,7 @@ class ImageReplayRunner:
+         }
+ 
+     def _record_action_locked(self, action: str, **fields: Any) -> None:
+-        item = {"action": action, **fields, "at_ms": _now_ms()}
++        item = {"action": action, **fields, "at_ms": now_ms()}
+         detail = self._state.setdefault("machine_detail", self._machine_detail())
+         detail["last_transition"] = item
+         self._state["controls"] = self._controls()
+@@ -1509,8 +1510,4 @@ class ImageReplayRunner:
+         return value.strip().lower()
+ 
+ 
+-def _now_ms() -> int:
+-    return int(time.time() * 1000)
+-
+-
+ __all__ = ["ImageReplayRunner"]
+diff --git a/cli/automa_cli/workbench_server.py b/cli/automa_cli/workbench_server.py
+index ed125e8..1bfa64d 100644
+--- a/cli/automa_cli/workbench_server.py
++++ b/cli/automa_cli/workbench_server.py
+@@ -4,7 +4,6 @@ from __future__ import annotations
+ 
+ import json
+ import threading
+-import time
+ from pathlib import Path
+ from typing import Any, Protocol
+ from urllib.parse import parse_qs, urlparse
+@@ -18,6 +17,7 @@ from .loopback_http import (
+ )
+ from .workbench_contract import (
+     ReplayActionError,
++    now_ms,
+     WORKBENCH_ACTION_RESULT_SCHEMA,
+     WORKBENCH_ERROR_SCHEMA,
+     WORKBENCH_HOST,
+@@ -95,7 +95,7 @@ class WorkbenchServer:
+         )
+         httpd.workbench = self
+         self._httpd = httpd
+-        self._started_at_ms = _now_ms()
++        self._started_at_ms = now_ms()
+         self._thread = start_server_thread(
+             httpd,
+             name=f"automa-workbench-http-{self.runner.server_identity[-8:]}",
+@@ -473,8 +473,4 @@ def _error_payload(
+     return payload
+ 
+ 
+-def _now_ms() -> int:
+-    return int(time.time() * 1000)
+-
+-
+ __all__ = ["WorkbenchServer"]

@@ -133,7 +133,7 @@ class MilestonePlanContractTests(unittest.TestCase):
 
         self.assertEqual(state.current.fields["workflow state"], "ready_for_proposal")
         self.assertEqual(payload["workflow_state"], "ready_for_proposal")
-        self.assertIn("proposal author", payload["next_action"])
+        self.assertIn("Open a proposal git branch and PR", payload["next_action"])
 
     def test_missing_current_frontier_owner_is_rejected(self) -> None:
         invalid = self.plan_text.replace(

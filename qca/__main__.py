@@ -40,8 +40,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    analyze = subparsers.add_parser("analyze", help="Measure a tree or revision snapshot.")
-    analyze.add_argument("path", nargs="?", default=".")
+    analyze = subparsers.add_parser("analyze", help="Measure files, directories, or a Git revision.")
+    analyze.add_argument(
+        "paths",
+        nargs="*",
+        default=["."],
+        help="Files and/or directories of text to measure (default: .). Git is not required.",
+    )
     analyze.add_argument("--ref", help="Analyze this Git revision instead of the working tree.")
     _common_options(analyze)
 
@@ -84,7 +89,7 @@ def main(argv: list[str] | None = None) -> int:
             _write(args.html_path, render_html(json.loads(args.report.read_text(encoding="utf-8"))))
             return 0
         if args.command == "analyze":
-            report = analyze_tree(args.path, ref=args.ref, config=_config(args))
+            report = analyze_tree(args.paths, ref=args.ref, config=_config(args))
             payload = report_to_dict(report)
             markdown = render_markdown(report)
             _write(args.json_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")

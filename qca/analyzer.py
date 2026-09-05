@@ -12,6 +12,7 @@ import fnmatch
 import hashlib
 import io
 import json
+import os
 import platform
 import re
 import subprocess
@@ -21,12 +22,12 @@ import tokenize
 from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass, field
 from pathlib import Path, PurePosixPath
-from typing import Any, Iterable, Sequence
+from typing import Any, Iterable, Mapping, Protocol, Sequence
 
 from .factors import FACTOR_VERSION, compare_factors, measure_factors
 
 
-ANALYZER_VERSION = "0.3.2"
+ANALYZER_VERSION = "0.3.3"
 REPORT_SCHEMA = "qca/report/v1"
 SOURCE_CLASSES = (
     "production",
@@ -174,6 +175,27 @@ class Report:
     configuration: dict[str, list[str]] = field(default_factory=dict)
 
 
+class _SourceReader(Protocol):
+    def files(self) -> list[str]:
+        ...
+
+    def read_text(self, relative_path: str) -> str:
+        ...
+
+
+class _MappingReader:
+    """Read an explicit path → text mapping with no Git dependency."""
+
+    def __init__(self, sources: Mapping[str, str]) -> None:
+        self._sources = {path.replace("\\", "/"): text for path, text in sources.items()}
+
+    def files(self) -> list[str]:
+        return sorted(self._sources)
+
+    def read_text(self, relative_path: str) -> str:
+        return self._sources.get(relative_path.replace("\\", "/"), "")
+
+
 @dataclass(frozen=True)
 class _ResolvedTree:
     root: Path
@@ -284,24 +306,65 @@ class _TreeReader:
 
 
 def analyze_tree(
-    path: str | Path = ".",
+    path: str | Path | Sequence[str | Path] = ".",
     *,
     ref: str | None = None,
     config: AnalyzerConfig | None = None,
 ) -> Report:
-    """Measure one working-tree path or one Git revision."""
+    """Measure files, directories, or one Git revision.
+
+    Git is required only when ``ref`` is set.  Otherwise any file or directory
+    of text can be measured, including trees that are not repositories.
+    """
+
+    paths = _as_paths(path)
+    policy = config or AnalyzerConfig()
+    if ref is not None:
+        if len(paths) != 1:
+            raise AnalysisError("revision mode requires a single path")
+        tree = _resolve_tree(paths[0], ref=ref)
+        reader: _SourceReader = _TreeReader(tree)
+        inventory = _inventory(reader, policy)
+        head = _measure_snapshot(reader, inventory)
+        identity = _identity(
+            mode="tree",
+            analyzed_path=tree.scope_rel,
+            head_sha=tree.sha,
+            repo_root=tree.repo_root,
+            config=policy,
+            working_tree_digest=None,
+        )
+        return Report(
+            identity=identity,
+            source_inventory=inventory,
+            head=head,
+            observations=_observations(head, None, None),
+            factors=measure_factors(_factor_sources(reader, inventory)),
+            configuration=policy.canonical(),
+        )
+    analyzed_path, sources = _sources_from_paths(paths)
+    return analyze_sources(sources, config=policy, analyzed_path=analyzed_path)
+
+
+def analyze_sources(
+    sources: Mapping[str, str],
+    *,
+    config: AnalyzerConfig | None = None,
+    analyzed_path: str = ".",
+) -> Report:
+    """Measure an explicit path → text mapping. Git is not required."""
 
     policy = config or AnalyzerConfig()
-    tree = _resolve_tree(Path(path), ref=ref)
-    reader = _TreeReader(tree)
+    reader = _MappingReader(sources)
     inventory = _inventory(reader, policy)
     head = _measure_snapshot(reader, inventory)
     identity = _identity(
         mode="tree",
-        tree=tree,
-        base_sha=None,
+        analyzed_path=analyzed_path,
+        head_sha=None,
+        repo_root=None,
         config=policy,
-        working_tree_digest=_working_tree_digest(reader, inventory) if tree.ref is None else None,
+        working_tree_digest=_sources_digest(reader, inventory),
     )
     return Report(
         identity=identity,
@@ -345,7 +408,9 @@ def analyze_diff(
     diff = _derive_diff(base_snapshot, head_snapshot, base_inventory, head_inventory, file_diffs)
     identity = _identity(
         mode="diff",
-        tree=head_tree,
+        analyzed_path=head_tree.scope_rel,
+        head_sha=head_tree.sha,
+        repo_root=head_tree.repo_root,
         base_sha=base_tree.sha,
         config=policy,
         working_tree_digest=None,
@@ -366,7 +431,7 @@ def analyze_diff(
     )
 
 
-def _factor_sources(reader: _TreeReader, inventory: list[SourceFile]) -> dict[str, str]:
+def _factor_sources(reader: _SourceReader, inventory: list[SourceFile]) -> dict[str, str]:
     return {
         item.path: reader.read_text(item.path)
         for item in inventory
@@ -716,7 +781,7 @@ def _git_bytes(args: Sequence[str], *, cwd: Path | None) -> bytes:
     return completed.stdout
 
 
-def _inventory(reader: _TreeReader, config: AnalyzerConfig) -> list[SourceFile]:
+def _inventory(reader: _SourceReader, config: AnalyzerConfig) -> list[SourceFile]:
     inventory: list[SourceFile] = []
     for relative in reader.files():
         text = reader.read_text(relative)
@@ -951,7 +1016,7 @@ def production_test_split_summary(split: dict[str, Any]) -> str:
     )
 
 
-def _measure_snapshot(reader: _TreeReader, inventory: list[SourceFile]) -> SnapshotMetrics:
+def _measure_snapshot(reader: _SourceReader, inventory: list[SourceFile]) -> SnapshotMetrics:
     metrics = SnapshotMetrics(
         file_count=len(inventory),
         included_file_count=sum(item.included for item in inventory),
@@ -1568,10 +1633,12 @@ def _observations(
 def _identity(
     *,
     mode: str,
-    tree: _ResolvedTree,
-    base_sha: str | None,
+    analyzed_path: str,
+    head_sha: str | None,
+    repo_root: Path | None,
     config: AnalyzerConfig,
     working_tree_digest: str | None,
+    base_sha: str | None = None,
 ) -> ReportIdentity:
     policy_json = _canonical_json(config.canonical())
     return ReportIdentity(
@@ -1579,16 +1646,16 @@ def _identity(
         schema=REPORT_SCHEMA,
         mode=mode,
         base_sha=base_sha,
-        head_sha=tree.sha,
+        head_sha=head_sha,
         working_tree_digest=working_tree_digest,
-        analyzed_path=tree.scope_rel,
+        analyzed_path=analyzed_path,
         config_hash=_sha256(policy_json),
         exclusion_hash=_sha256(_canonical_json({"excluded_globs": sorted(config.excluded_globs)})),
         tool_versions={
             "python": platform.python_version(),
             "ast": "stdlib",
             "tokenize": "stdlib",
-            "git": _git_version(tree.repo_root),
+            "git": _git_version(repo_root),
         },
     )
 
@@ -1602,22 +1669,71 @@ def _git_version(repo_root: Path | None) -> str:
         return "unavailable"
 
 
-def _working_tree_digest(reader: _TreeReader, inventory: list[SourceFile]) -> str:
-    """Hash the measured working-tree contents, including untracked files."""
+def _as_paths(path: str | Path | Sequence[str | Path]) -> tuple[Path, ...]:
+    if isinstance(path, (str, Path)):
+        return (Path(path),)
+    paths = tuple(Path(item) for item in path)
+    if not paths:
+        raise AnalysisError("analyze requires at least one file or directory")
+    return paths
 
+
+def _read_input_text(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        return path.read_bytes().decode("utf-8", errors="replace")
+
+
+def _iter_input_files(root: Path) -> list[Path]:
+    if root.is_file():
+        return [root]
+    if not root.is_dir():
+        raise AnalysisError(f"path does not exist: {root}")
+    files: list[Path] = []
+    for path in root.rglob("*"):
+        if not path.is_file():
+            continue
+        if ".git" in path.parts or "__pycache__" in path.parts:
+            continue
+        files.append(path)
+    return files
+
+
+def _sources_from_paths(paths: Sequence[Path]) -> tuple[str, dict[str, str]]:
+    resolved: list[Path] = []
+    for path in paths:
+        absolute = path.expanduser().resolve()
+        if not absolute.exists():
+            raise AnalysisError(f"path does not exist: {path}")
+        resolved.append(absolute)
+    analyzed_path = " ".join(path.as_posix() for path in paths)
+    if len(resolved) == 1:
+        root = resolved[0]
+        if root.is_file():
+            return analyzed_path, {root.name: _read_input_text(root)}
+        return analyzed_path, {
+            file.relative_to(root).as_posix(): _read_input_text(file) for file in _iter_input_files(root)
+        }
+    common = Path(os.path.commonpath([str(path) for path in resolved]))
+    if common.is_file():
+        common = common.parent
+    sources: dict[str, str] = {}
+    for root in resolved:
+        for file in _iter_input_files(root):
+            relative = file.relative_to(common).as_posix()
+            if relative in sources:
+                raise AnalysisError(f"duplicate input path: {relative}")
+            sources[relative] = _read_input_text(file)
+    return analyzed_path, sources
+
+
+def _sources_digest(reader: _SourceReader, inventory: list[SourceFile]) -> str:
     digest = hashlib.sha256()
     for item in inventory:
         digest.update(item.path.encode("utf-8"))
         digest.update(b"\0")
-        if reader.tree.ref is None:
-            path = reader.tree.root if reader.tree.root.is_file() else reader.tree.root / item.path
-            try:
-                contents = path.read_bytes()
-            except OSError:
-                contents = reader.read_text(item.path).encode("utf-8")
-        else:
-            contents = reader.read_text(item.path).encode("utf-8")
-        digest.update(contents)
+        digest.update(reader.read_text(item.path).encode("utf-8"))
         digest.update(b"\0")
     return digest.hexdigest()
 

@@ -8,7 +8,15 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from qca import AnalyzerConfig, analyze_diff, analyze_tree, render_markdown, report_to_dict
+from qca import (
+    AnalysisError,
+    AnalyzerConfig,
+    analyze_diff,
+    analyze_sources,
+    analyze_tree,
+    render_markdown,
+    report_to_dict,
+)
 from qca.backtest import render_backtest_markdown, run_manifest
 from qca.render import render_html
 
@@ -71,6 +79,73 @@ class QuantitativeChangeAnalysisTests(unittest.TestCase):
             self.assertEqual(payload["head"]["logical_loc"], 2)
             self.assertEqual(len(payload["head"]["callables"]), 1)
 
+    def test_analyze_file_and_directory_without_git(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "app.py").write_text("def run(value):\n    if value:\n        return value\n    return 0\n")
+            (root / "src").mkdir()
+            (root / "src" / "lib.py").write_text("def lib():\n    return 1\n")
+            (root / "tests").mkdir()
+            (root / "tests" / "test_lib.py").write_text("def test_lib():\n    assert True\n")
+
+            file_report = report_to_dict(analyze_tree(root / "app.py"))
+            self.assertEqual(list(item["path"] for item in file_report["source_inventory"]), ["app.py"])
+            self.assertEqual(file_report["source_inventory"][0]["source_class"], "production")
+            self.assertGreater(file_report["head"]["decision_burden"], 0)
+
+            directory = report_to_dict(analyze_tree(root))
+            inventory = {item["path"]: item["source_class"] for item in directory["source_inventory"]}
+            self.assertEqual(inventory["app.py"], "production")
+            self.assertEqual(inventory["tests/test_lib.py"], "tests")
+            self.assertGreater(directory["head"]["included_file_count"], 1)
+
+            combined = report_to_dict(analyze_tree([root / "src", root / "tests"]))
+            combined_paths = {item["path"] for item in combined["source_inventory"]}
+            self.assertEqual(combined_paths, {"src/lib.py", "tests/test_lib.py"})
+            classes = {item["path"]: item["source_class"] for item in combined["source_inventory"]}
+            self.assertEqual(classes["src/lib.py"], "production")
+            self.assertEqual(classes["tests/test_lib.py"], "tests")
+
+            with self.assertRaises(AnalysisError):
+                analyze_tree(root / "missing.py")
+
+    def test_analyze_sources_measures_in_memory_text(self) -> None:
+        payload = report_to_dict(
+            analyze_sources(
+                {
+                    "app.py": "def run():\n    return 1\n",
+                    "tests/test_app.py": "def test_run():\n    assert True\n",
+                    "README.md": "notes\n",
+                },
+                analyzed_path="memory",
+            )
+        )
+        inventory = {item["path"]: item for item in payload["source_inventory"]}
+        self.assertEqual(payload["identity"]["analyzed_path"], "memory")
+        self.assertIsNone(payload["identity"]["head_sha"])
+        self.assertEqual(inventory["app.py"]["source_class"], "production")
+        self.assertEqual(inventory["tests/test_app.py"]["source_class"], "tests")
+        self.assertFalse(inventory["README.md"]["included"])
+        self.assertEqual(payload["head"]["included_file_count"], 2)
+        self.assertGreater(payload["head"]["logical_loc"], 0)
+
+    def test_cli_analyzes_a_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            target = root / "app.py"
+            target.write_text("def run():\n    return 1\n")
+            completed = subprocess.run(
+                [sys.executable, "-m", "qca", "analyze", str(target)],
+                cwd=Path(__file__).resolve().parents[2],
+                check=False,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertIn("app.py", completed.stdout)
+            self.assertIn("production", completed.stdout)
+
     def test_git_diff_reports_changed_shape_and_actionable_targets(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -132,13 +207,13 @@ class QuantitativeChangeAnalysisTests(unittest.TestCase):
                 first["identity"]["working_tree_digest"],
                 changed["identity"]["working_tree_digest"],
             )
-            (root / "invalid.bin").write_bytes(b"\xff")
-            invalid_first = report_to_dict(analyze_tree(root))
-            (root / "invalid.bin").write_bytes(b"\xfe")
-            invalid_second = report_to_dict(analyze_tree(root))
+            (root / "notes.txt").write_text("one\n", encoding="utf-8")
+            first_notes = report_to_dict(analyze_tree(root))
+            (root / "notes.txt").write_text("two\n", encoding="utf-8")
+            second_notes = report_to_dict(analyze_tree(root))
             self.assertNotEqual(
-                invalid_first["identity"]["working_tree_digest"],
-                invalid_second["identity"]["working_tree_digest"],
+                first_notes["identity"]["working_tree_digest"],
+                second_notes["identity"]["working_tree_digest"],
             )
             completed = subprocess.run(
                 [sys.executable, "-m", "qca", "analyze", str(root)],

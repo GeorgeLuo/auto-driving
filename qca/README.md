@@ -9,6 +9,9 @@ From the repository root:
 
 ```sh
 python3 -m qca analyze .
+python3 -m qca analyze path/to/file.py
+python3 -m qca analyze path/to/dir
+python3 -m qca analyze src tests
 python3 -m qca analyze --ref HEAD
 python3 -m qca diff --base <base-ref> --head <head-ref>
 python3 -m qca diff --base <base-ref> --head <head-ref> --json report.json --markdown report.md
@@ -16,6 +19,10 @@ python3 -m qca diff --base <base-ref> --head <head-ref> --json report.json --htm
 python3 -m qca render report.json --html report.html
 python3 -m qca backtest --manifest qca/backtests/m008.json
 ```
+
+`analyze` measures files and directories of text. Git is not required unless
+`--ref` is set. Multiple paths are combined under their common parent so
+`tests/` still classifies as tests.
 
 Use `--include-root` repeatedly to bound core measurements to an ownership
 area.  The source inventory still classifies files outside those roots so

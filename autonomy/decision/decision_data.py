@@ -16,6 +16,7 @@ from autonomy.decision.memory import (
 )
 from autonomy.decision.observation import Observation
 from autonomy.decision.shadow_ids import (
+    _is_json_primitive,
     deep_freeze,
     frozen_mapping_to_dict,
     require_ascii_id,
@@ -55,18 +56,6 @@ PRIOR_HOST_ALLOWED_KEYS = frozenset(
         "source",
     }
 )
-
-
-def _is_json_primitive(value: object) -> bool:
-    if value is None or isinstance(value, str):
-        return True
-    if type(value) is bool:
-        return True
-    if type(value) is int:
-        return True
-    if type(value) is float:
-        return math.isfinite(value)
-    return False
 
 
 def _canonical_channel_origin(key: str) -> str:

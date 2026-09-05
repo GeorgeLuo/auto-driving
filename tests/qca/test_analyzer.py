@@ -305,6 +305,71 @@ class QuantitativeChangeAnalysisTests(unittest.TestCase):
             self.assertTrue(diff["changed_callables"])
             self.assertEqual(diff["changed_callables"][0]["path"], "app.py")
 
+    def test_diff_measures_scattered_file_collections(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self._git(root, "init", "-q")
+            self._git(root, "config", "user.email", "qca@example.test")
+            self._git(root, "config", "user.name", "QCA Tests")
+            (root / "src").mkdir()
+            (root / "tests").mkdir()
+            (root / "src" / "app.py").write_text("def run():\n    return 1\n", encoding="utf-8")
+            (root / "tests" / "test_app.py").write_text("def test_run():\n    return 1\n", encoding="utf-8")
+            (root / "other.py").write_text("OTHER = 1\n", encoding="utf-8")
+            self._git(root, "add", ".")
+            self._git(root, "commit", "-qm", "base")
+            base = self._git(root, "rev-parse", "HEAD").strip()
+            (root / "src" / "app.py").write_text(
+                "def run():\n    if True:\n        return 1\n    return 0\n",
+                encoding="utf-8",
+            )
+            (root / "tests" / "test_app.py").write_text("def test_run():\n    assert True\n", encoding="utf-8")
+            (root / "other.py").write_text("OTHER = 2\n", encoding="utf-8")
+            self._git(root, "add", ".")
+            self._git(root, "commit", "-qm", "head")
+            head = self._git(root, "rev-parse", "HEAD").strip()
+
+            payload = report_to_dict(analyze_diff(base, head, path=[root / "src", root / "tests"]))
+            changed = set(payload["diff"]["changed_files"])
+            self.assertEqual(changed, {"src/app.py", "tests/test_app.py"})
+            classes = {item["path"]: item["source_class"] for item in payload["diff"]["file_changes"]}
+            self.assertEqual(classes["src/app.py"], "production")
+            self.assertEqual(classes["tests/test_app.py"], "tests")
+            self.assertGreater(payload["diff"]["decision_burden_delta"], 0)
+
+            revision = report_to_dict(analyze_tree([root / "src", root / "tests"], ref=head))
+            self.assertEqual(
+                {item["path"] for item in revision["source_inventory"]},
+                {"src/app.py", "tests/test_app.py"},
+            )
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "qca",
+                    "diff",
+                    "--base",
+                    base,
+                    "--head",
+                    head,
+                    "--path",
+                    str(root / "src"),
+                    "--path",
+                    str(root / "tests"),
+                    "--python",
+                ],
+                cwd=Path(__file__).resolve().parents[2],
+                check=False,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertIn("src/app.py", completed.stdout)
+            self.assertIn("tests/test_app.py", completed.stdout)
+            self.assertNotIn("other.py", completed.stdout)
+
     def test_git_diff_treats_rename_as_delete_plus_add_and_keeps_deletion_ranges(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

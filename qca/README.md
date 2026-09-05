@@ -13,17 +13,21 @@ python3 -m qca analyze path/to/file.py
 python3 -m qca analyze path/to/dir
 python3 -m qca analyze src tests
 python3 -m qca analyze qca tests/qca --python
-python3 -m qca analyze --ref HEAD
+python3 -m qca analyze qca/analyzer.py tests/qca --python
+python3 -m qca analyze --ref HEAD qca tests/qca
 python3 -m qca diff --base <base-ref> --head <head-ref>
+python3 -m qca diff --base <base-ref> --head <head-ref> --python qca tests/qca
 python3 -m qca diff --base <base-ref> --head <head-ref> --json report.json --markdown report.md
 python3 -m qca diff --base <base-ref> --head <head-ref> --json report.json --html report.html
 python3 -m qca render report.json --html report.html
 python3 -m qca backtest --manifest qca/backtests/m008.json
 ```
 
-`analyze` measures files and directories of text. Git is not required unless
-`--ref` is set. Multiple paths are combined under their common parent so
-`tests/` still classifies as tests. `--python` keeps only `.py` / `.pyi` files.
+`analyze` and `diff` accept one or more files and directories, including
+scattered collections, so a change that spans the tree can be measured in one
+report. Git is not required for `analyze` unless `--ref` is set. Multiple
+paths are combined under their common parent so `tests/` still classifies as
+tests. `--python` keeps only `.py` / `.pyi` files.
 
 Use `--include-root` repeatedly to bound core measurements to an ownership
 area.  The source inventory still classifies files outside those roots so

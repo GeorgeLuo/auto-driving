@@ -27,7 +27,7 @@ from typing import Any, Iterable, Mapping, Protocol, Sequence
 from .factors import FACTOR_VERSION, compare_factors, measure_factors
 
 
-ANALYZER_VERSION = "0.3.4"
+ANALYZER_VERSION = "0.3.5"
 REPORT_SCHEMA = "qca/report/v1"
 SOURCE_CLASSES = (
     "production",
@@ -317,23 +317,35 @@ def analyze_tree(
 
     Git is required only when ``ref`` is set.  Otherwise any file or directory
     of text can be measured, including trees that are not repositories.
+    Multiple paths may be passed; they are combined so a change spread across
+    the tree can be measured in one report.
     """
 
     paths = _as_paths(path)
     policy = config or AnalyzerConfig()
     if ref is not None:
-        if len(paths) != 1:
-            raise AnalysisError("revision mode requires a single path")
+        return _analyze_revision(paths, ref=ref, config=policy)
+    analyzed_path, sources = _sources_from_paths(paths)
+    return analyze_sources(sources, config=policy, analyzed_path=analyzed_path)
+
+
+def _analyze_revision(
+    paths: tuple[Path, ...],
+    *,
+    ref: str,
+    config: AnalyzerConfig,
+) -> Report:
+    if len(paths) == 1:
         tree = _resolve_tree(paths[0], ref=ref)
         reader: _SourceReader = _TreeReader(tree)
-        inventory = _inventory(reader, policy)
+        inventory = _inventory(reader, config)
         head = _measure_snapshot(reader, inventory)
         identity = _identity(
             mode="tree",
             analyzed_path=tree.scope_rel,
             head_sha=tree.sha,
             repo_root=tree.repo_root,
-            config=policy,
+            config=config,
             working_tree_digest=None,
         )
         return Report(
@@ -342,10 +354,36 @@ def analyze_tree(
             head=head,
             observations=_observations(head, None, None),
             factors=measure_factors(_factor_sources(reader, inventory)),
-            configuration=policy.canonical(),
+            configuration=config.canonical(),
         )
-    analyzed_path, sources = _sources_from_paths(paths)
-    return analyze_sources(sources, config=policy, analyzed_path=analyzed_path)
+    repo_root = _find_repo_root(_existing_search_path(paths))
+    if repo_root is None:
+        raise AnalysisError(f"revision mode requires a Git repository: {paths[0]}")
+    sha = _resolve_ref(ref, repo_root)
+    if sha is None:
+        raise AnalysisError(f"cannot resolve revision: {ref}")
+    pathspecs = tuple(_repo_relative(item, repo_root) for item in paths)
+    strip = _common_scope_prefix(pathspecs)
+    sources = _git_scoped_sources(repo_root, sha, pathspecs, strip)
+    analyzed_path = " ".join(pathspecs)
+    reader = _MappingReader(sources)
+    inventory = _inventory(reader, config)
+    head = _measure_snapshot(reader, inventory)
+    return Report(
+        identity=_identity(
+            mode="tree",
+            analyzed_path=analyzed_path,
+            head_sha=sha,
+            repo_root=repo_root,
+            config=config,
+            working_tree_digest=None,
+        ),
+        source_inventory=inventory,
+        head=head,
+        observations=_observations(head, None, None),
+        factors=measure_factors(_factor_sources(reader, inventory)),
+        configuration=config.canonical(),
+    )
 
 
 def analyze_sources(
@@ -382,38 +420,61 @@ def analyze_diff(
     base: str,
     head: str,
     *,
-    path: str | Path = ".",
+    path: str | Path | Sequence[str | Path] = ".",
     config: AnalyzerConfig | None = None,
 ) -> Report:
-    """Measure a reproducible base→head Git change."""
+    """Measure a reproducible base→head Git change.
+
+    ``path`` may be one file or directory, or several scattered collections.
+    """
 
     policy = config or AnalyzerConfig()
-    root_path = Path(path)
-    repo_root = _find_repo_root(root_path)
-    if repo_root is None:
-        raise AnalysisError("diff mode requires a path inside a Git repository")
-    base_tree = _resolve_tree(root_path, ref=base, repo_root=repo_root)
-    head_tree = _resolve_tree(root_path, ref=head, repo_root=repo_root)
-    base_reader = _TreeReader(base_tree)
-    head_reader = _TreeReader(head_tree)
+    paths = _as_paths(path)
+    if len(paths) == 1:
+        root_path = paths[0]
+        repo_root = _find_repo_root(root_path)
+        if repo_root is None:
+            raise AnalysisError("diff mode requires a path inside a Git repository")
+        base_tree = _resolve_tree(root_path, ref=base, repo_root=repo_root)
+        head_tree = _resolve_tree(root_path, ref=head, repo_root=repo_root)
+        base_reader: _SourceReader = _TreeReader(base_tree)
+        head_reader: _SourceReader = _TreeReader(head_tree)
+        analyzed_path = head_tree.scope_rel
+        strip = head_tree.scope_rel
+        pathspecs = (head_tree.scope_rel,)
+        repo_for_identity = head_tree.repo_root
+        base_sha = base_tree.sha or base
+        head_sha = head_tree.sha or head
+    else:
+        repo_root = _find_repo_root(_existing_search_path(paths))
+        if repo_root is None:
+            raise AnalysisError("diff mode requires a path inside a Git repository")
+        pathspecs = tuple(_repo_relative(item, repo_root) for item in paths)
+        strip = _common_scope_prefix(pathspecs)
+        base_sha = _resolve_ref(base, repo_root) or base
+        head_sha = _resolve_ref(head, repo_root) or head
+        base_reader = _MappingReader(_git_scoped_sources(repo_root, base_sha, pathspecs, strip))
+        head_reader = _MappingReader(_git_scoped_sources(repo_root, head_sha, pathspecs, strip))
+        analyzed_path = " ".join(pathspecs)
+        repo_for_identity = repo_root
     base_inventory = _inventory(base_reader, policy)
     head_inventory = _inventory(head_reader, policy)
     base_snapshot = _measure_snapshot(base_reader, base_inventory)
     head_snapshot = _measure_snapshot(head_reader, head_inventory)
     file_diffs = _read_git_diff(
         repo_root=repo_root,
-        base_sha=base_tree.sha or base,
-        head_sha=head_tree.sha or head,
-        scope_rel=head_tree.scope_rel,
+        base_sha=base_sha,
+        head_sha=head_sha,
+        pathspecs=pathspecs,
     )
-    file_diffs = _scope_file_diffs(file_diffs, head_tree.scope_rel)
+    file_diffs = _scope_file_diffs(file_diffs, strip)
     diff = _derive_diff(base_snapshot, head_snapshot, base_inventory, head_inventory, file_diffs)
     identity = _identity(
         mode="diff",
-        analyzed_path=head_tree.scope_rel,
-        head_sha=head_tree.sha,
-        repo_root=head_tree.repo_root,
-        base_sha=base_tree.sha,
+        analyzed_path=analyzed_path,
+        head_sha=head_sha,
+        repo_root=repo_for_identity,
+        base_sha=base_sha,
         config=policy,
         working_tree_digest=None,
     )
@@ -1211,9 +1272,9 @@ def _read_git_diff(
     repo_root: Path,
     base_sha: str,
     head_sha: str,
-    scope_rel: str,
+    pathspecs: Sequence[str],
 ) -> list[DiffFile]:
-    scope = [] if scope_rel in {"", "."} else [scope_rel]
+    scope = [item for item in pathspecs if item not in {"", "."}]
     numstat = _git(
         ["diff", "--no-ext-diff", "--no-renames", "--numstat", base_sha, head_sha, "--", *scope],
         cwd=repo_root,
@@ -1681,8 +1742,69 @@ def _as_paths(path: str | Path | Sequence[str | Path]) -> tuple[Path, ...]:
         return (Path(path),)
     paths = tuple(Path(item) for item in path)
     if not paths:
-        raise AnalysisError("analyze requires at least one file or directory")
+        raise AnalysisError("at least one file or directory is required")
     return paths
+
+
+def _existing_search_path(paths: Sequence[Path]) -> Path:
+    for path in paths:
+        if path.exists():
+            return path
+    return Path(".")
+
+
+def _repo_relative(path: Path, repo_root: Path) -> str:
+    absolute = path.expanduser().resolve()
+    try:
+        relative = absolute.relative_to(repo_root.resolve())
+    except ValueError as exc:
+        raise AnalysisError(f"path is outside repository: {path}") from exc
+    return relative.as_posix() or "."
+
+
+def _common_scope_prefix(scopes: Sequence[str]) -> str:
+    parts = ["." if item in {"", "."} else item.replace("\\", "/").strip("/") for item in scopes]
+    if not parts or any(item == "." for item in parts):
+        return "."
+    if len(parts) == 1:
+        return parts[0]
+    try:
+        common = os.path.commonpath(parts).replace("\\", "/")
+    except ValueError:
+        return "."
+    return common or "."
+
+
+def _git_scoped_sources(
+    repo_root: Path,
+    sha: str,
+    scopes: Sequence[str],
+    strip: str,
+) -> dict[str, str]:
+    sources: dict[str, str] = {}
+    strip_path = None if strip in {"", "."} else PurePosixPath(strip)
+    for spec in scopes:
+        pathspec = "." if spec in {"", "."} else spec
+        try:
+            archive = _git_bytes(["archive", "--format=tar", sha, "--", pathspec], cwd=repo_root)
+        except AnalysisError:
+            continue
+        with tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as tar:
+            for member in tar.getmembers():
+                if not member.isfile():
+                    continue
+                name = PurePosixPath(member.name)
+                if strip_path is None:
+                    relative = name.as_posix()
+                else:
+                    try:
+                        relative = name.relative_to(strip_path).as_posix()
+                    except ValueError:
+                        relative = name.name if name == strip_path else name.as_posix()
+                extracted = tar.extractfile(member)
+                if extracted is not None:
+                    sources[relative] = extracted.read().decode("utf-8", errors="replace")
+    return sources
 
 
 def _read_input_text(path: Path) -> str:

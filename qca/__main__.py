@@ -58,7 +58,19 @@ def build_parser() -> argparse.ArgumentParser:
     diff = subparsers.add_parser("diff", help="Measure a Git base→head change.")
     diff.add_argument("--base", required=True)
     diff.add_argument("--head", required=True)
-    diff.add_argument("--path", default=".")
+    diff.add_argument(
+        "--path",
+        dest="path_flags",
+        action="append",
+        default=[],
+        help="File or directory in the change; may be repeated.",
+    )
+    diff.add_argument(
+        "paths",
+        nargs="*",
+        default=[],
+        help="Additional files and/or directories in the change (default: .).",
+    )
     _common_options(diff)
     diff.add_argument("--evidence", type=Path, help="Attach a qca/verification/v1 record for these exact revisions.")
 
@@ -71,6 +83,11 @@ def build_parser() -> argparse.ArgumentParser:
     render.add_argument("report", type=Path)
     render.add_argument("--html", dest="html_path", required=True, type=Path)
     return parser
+
+
+def _diff_paths(args: argparse.Namespace) -> list[str]:
+    paths = list(args.path_flags or []) + list(args.paths or [])
+    return paths or ["."]
 
 
 def _config(args: argparse.Namespace) -> AnalyzerConfig:
@@ -104,7 +121,12 @@ def main(argv: list[str] | None = None) -> int:
             print(markdown, end="")
             return 0
         if args.command == "diff":
-            report = analyze_diff(args.base, args.head, path=args.path, config=_config(args))
+            report = analyze_diff(
+                args.base,
+                args.head,
+                path=_diff_paths(args),
+                config=_config(args),
+            )
             if args.evidence:
                 report.factors = attach_verification(
                     report.factors,

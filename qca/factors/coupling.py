@@ -7,6 +7,8 @@ from collections import defaultdict
 from pathlib import PurePosixPath
 from typing import Any
 
+from ._utils import _norm, _sort_findings
+
 
 def analyze_coupling(sources: dict[str, str]) -> dict[str, dict[str, Any]]:
     """Measure local imports and static public contracts without importing code.
@@ -47,13 +49,6 @@ def analyze_coupling(sources: dict[str, str]) -> dict[str, dict[str, Any]]:
         factor["findings"] = _sort_findings(factor["findings"])
         factor["limitations"] = sorted(set(factor["limitations"]))
     return {"coupling": coupling, "contracts": contracts}
-
-
-def _norm(path: str) -> str:
-    value = str(path).replace("\\", "/")
-    while value.startswith("./"):
-        value = value[2:]
-    return value or "."
 
 
 def _module_names(path: str) -> list[str]:
@@ -445,10 +440,3 @@ def _expr(node: ast.AST) -> str:
         return ast.unparse(node)
     except Exception:
         return "<dynamic>"
-
-
-def _sort_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return sorted(findings, key=lambda item: (str(item.get("path", "")),
-                                               int(item.get("line", 0)),
-                                               str(item.get("kind", "")),
-                                               str(item.get("message", ""))))

@@ -66,10 +66,9 @@ VERIFICATION_FACTORS = (
 STATIC_FACTORS = ("test_effectiveness", "lifecycle")
 DYNAMIC_FACTORS = ("end_to_end", "ui_behavior")
 
-# Site lists are evidence for inspection, not a complete program inventory.
-# Counts remain exact (for successfully parsed Python inputs) while the lists
-# stay bounded so a large repository cannot produce an unwieldy report.
-MAX_CANDIDATE_SITES = 64
+# Lifecycle site lists are evidence for inspection, not a complete program
+# inventory. Counts remain exact (for successfully parsed Python inputs) while
+# the list stays bounded so a large repository cannot produce an unwieldy report.
 MAX_LIFECYCLE_SITES = 128
 
 _PYTHON_SUFFIXES = {".py", ".pyi"}
@@ -407,10 +406,6 @@ def _test_effectiveness_factor(
         limitations.append(
             f"{test_parse_error_count} test-like Python file(s) could not be parsed and were excluded from assertion counts."
         )
-    if candidate_count > MAX_CANDIDATE_SITES:
-        limitations.append(
-            f"Candidate site details are limited to the first {MAX_CANDIDATE_SITES}; counts remain parser-derived."
-        )
     metrics = {
         "source_file_count": len(ordered_sources),
         "python_file_count": python_file_count,
@@ -434,7 +429,6 @@ def _test_effectiveness_factor(
         "metrics": metrics,
         "findings": candidate_sites,
         "details": {
-            "candidate_site_limit": MAX_CANDIDATE_SITES,
             "candidate_sites_are_complete": True,
         },
         "limitations": limitations,
@@ -1010,7 +1004,6 @@ def _substantive_value(value: Any) -> bool:
 
 __all__ = [
     "DYNAMIC_FACTORS",
-    "MAX_CANDIDATE_SITES",
     "MAX_LIFECYCLE_SITES",
     "STATIC_FACTORS",
     "VERIFICATION_FACTORS",

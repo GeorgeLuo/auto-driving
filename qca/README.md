@@ -97,6 +97,10 @@ and reads can invoke useful setters/getters, so this is not proof of a bad test.
 Normalization, serialization, transport, and consumer-output assertions remain
 valuable. No count is a quality grade or a reason to delete a test automatically.
 
+Analyzer `0.3.7` retains all test inspection candidates and reports their
+completeness without the obsolete 64-site limit metadata. Shared factor path
+normalization and finding ordering keep those behaviors consistent.
+
 ## Reproduce the refined M008 experiment
 
 Install the repository test dependencies, then run from the repository root:

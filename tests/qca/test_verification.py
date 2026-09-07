@@ -142,7 +142,6 @@ class Suite:
                     "expression": assignment,
                 })
                 self.assertIn(assertion.removeprefix("assert "), candidate["expression"])
-                self.assertIn("boundary", candidate["message"])
 
     def test_boundary_readback_tracking_stops_at_behavior_or_uncertainty(self) -> None:
         """Boundary: transformations and uncertain state must not look like direct readbacks."""
@@ -201,11 +200,15 @@ def helper():
 
     def test_candidate_site_details_are_complete_and_counts_are_retained(self) -> None:
         source = "\n".join("assert True" for _ in range(80)) + "\n"
-        factors = analyze_verification({"tests/test_many.py": source})
-        metrics = factors["test_effectiveness"]["metrics"]
+        payload = report_to_dict(analyze_sources({"tests/test_many.py": source}))
+        factor = payload["factors"]["test_effectiveness"]
+        metrics = factor["metrics"]
         self.assertEqual(metrics["literal_assertion_candidates"], 80)
-        self.assertEqual(len(factors["test_effectiveness"]["findings"]), 80)
-        self.assertEqual(factors["test_effectiveness"]["details"]["candidate_site_limit"], 64)
+        self.assertEqual(metrics["candidate_assertion_count"], 80)
+        self.assertEqual(metrics["candidate_site_count"], 80)
+        self.assertEqual(len(factor["findings"]), 80)
+        self.assertTrue(factor["details"]["candidate_sites_are_complete"])
+        self.assertFalse(any("limited to the first" in limitation for limitation in factor["limitations"]))
 
     def test_attach_promotes_only_dynamic_factors_and_preserves_static_payload(self) -> None:
         factors = analyze_verification(

@@ -7,6 +7,8 @@ import hashlib
 from collections import defaultdict
 from typing import Any
 
+from ._utils import _norm, _sort_findings
+
 
 _MUTATING_METHODS = frozenset({
     "append", "extend", "insert", "remove", "pop", "clear",
@@ -63,25 +65,6 @@ def analyze_structure(sources: dict[str, str]) -> dict[str, dict[str, Any]]:
         factor["findings"] = _sort_findings(factor["findings"])
         factor["limitations"] = sorted(set(factor["limitations"]))
     return factors
-
-
-def _norm(path: str) -> str:
-    value = str(path).replace("\\", "/")
-    while value.startswith("./"):
-        value = value[2:]
-    return value or "."
-
-
-def _sort_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return sorted(
-        findings,
-        key=lambda item: (
-            str(item.get("path", "")),
-            int(item.get("line", 0)),
-            str(item.get("kind", "")),
-            str(item.get("message", "")),
-        ),
-    )
 
 
 def _factor(

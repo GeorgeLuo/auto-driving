@@ -28,9 +28,11 @@ The runtime evidence record uses ``qca/verification/v1``::
     }
 
 All four factor names are recognized.  Omitted factor records are treated as
-``not_measured`` by :func:`attach_verification`; a ``passed`` or ``failed``
-record must contain non-empty command/result material or a non-empty
-expected/actual pair.  A lone ``{"passed": true}`` is not evidence.  The
+``not_measured`` by :func:`attach_verification` and receive a default reason.
+An explicitly supplied ``not_measured`` record must include a non-empty
+``reason`` or ``limitation``.  A ``passed`` or ``failed`` record must contain
+non-empty command/result material or a non-empty expected/actual pair.  A lone
+``{"passed": true}`` is not evidence.  The
 whole evidence envelope, including provenance, must contain only JSON-safe
 values: built-in scalar values with finite floats, mappings with string keys,
 and list/tuple arrays (tuples are normalized to lists).  This module does not
@@ -931,8 +933,11 @@ def _validate_factor_record(
             f"evidence record for {factor_name!r} has a head_sha that does not match the envelope"
         )
     if status == "not_measured":
-        reason = normalized.get("reason", normalized.get("limitation"))
-        if reason is not None and (not isinstance(reason, str) or not reason.strip()):
+        reason = normalized.get("reason")
+        limitation = normalized.get("limitation")
+        has_reason = isinstance(reason, str) and bool(reason.strip())
+        has_limitation = isinstance(limitation, str) and bool(limitation.strip())
+        if not (has_reason or has_limitation):
             raise ValueError(f"not_measured record for {factor_name!r} needs a non-empty reason")
         return normalized
 

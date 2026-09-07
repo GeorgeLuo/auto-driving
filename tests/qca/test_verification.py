@@ -403,7 +403,63 @@ def helper():
         )
         for name in ("test_effectiveness", "end_to_end", "ui_behavior", "lifecycle"):
             self.assertEqual(attached[name]["verification"]["status"], "not_measured")
+            self.assertEqual(
+                attached[name]["verification"]["record"]["reason"],
+                "No record was supplied for this factor.",
+            )
         self.assertEqual(attached["end_to_end"]["status"], "not_measured")
+
+    def test_attach_requires_reason_for_explicit_not_measured_records(self) -> None:
+        """Consumer: explicit unmeasured evidence must explain the uncertainty."""
+        base = analyze_verification({})
+        envelope = {
+            "schema": VERIFICATION_SCHEMA,
+            "base_sha": "base-ref",
+            "head_sha": "head-ref",
+        }
+        rejected = [
+            {"end_to_end": {"status": "not_measured"}},
+            {"end_to_end": {"status": "not_measured", "reason": "  "}},
+            {"end_to_end": {"status": "not_measured", "limitation": ""}},
+        ]
+        for factors in rejected:
+            with self.subTest(factors=factors):
+                with self.assertRaises(ValueError):
+                    attach_verification(
+                        base,
+                        {**envelope, "factors": factors},
+                        "base-ref",
+                        "head-ref",
+                    )
+
+        attached = attach_verification(
+            base,
+            {
+                **envelope,
+                "factors": {
+                    "end_to_end": {
+                        "status": "not_measured",
+                        "limitation": "No subprocess was executed.",
+                    },
+                    "ui_behavior": {
+                        "status": "not_measured",
+                        "reason": "No browser interaction was executed.",
+                    },
+                },
+            },
+            "base-ref",
+            "head-ref",
+        )
+        end_to_end = attached["end_to_end"]["verification"]
+        ui_behavior = attached["ui_behavior"]["verification"]
+        self.assertEqual(end_to_end["record"]["status"], "not_measured")
+        self.assertEqual(end_to_end["record"]["limitation"], "No subprocess was executed.")
+        self.assertEqual(ui_behavior["record"]["reason"], "No browser interaction was executed.")
+        json.dumps(end_to_end, allow_nan=False)
+        self.assertEqual(
+            attached["lifecycle"]["verification"]["record"]["reason"],
+            "No record was supplied for this factor.",
+        )
 
 
 if __name__ == "__main__":

@@ -123,14 +123,16 @@ result and predicate-call equivalence for a bounded sample of ordinary
 containers and preserve `all([])` as a negative control. The original sites
 remain available for inspection; candidate count is not a removal target.
 
-### Measurement correctness (analyzer 0.3.9)
+### Measurement correctness (analyzer 0.3.10)
 
-Single-file Git diffs retain basename inventory paths and callable locations,
-including deleted files identified from the selected revision. Evidence
-attachment accepts null, booleans, integers, finite floats, strings, string-keyed
-mappings, and lists/tuples. Mappings become plain dictionaries and tuples become
-lists; sets, unsupported scalar objects, non-string keys, non-finite floats, and
-cycles are rejected with their evidence location before report rendering.
+Git path transport is lossless for whitespace, non-ASCII, and escaped names in
+revision inventories and diffs. Single-file Git diffs retain basename inventory
+paths and callable locations, including deleted files identified from the
+selected revision. Evidence attachment accepts null, booleans, integers, finite
+floats, strings, string-keyed mappings, and lists/tuples. Mappings become plain
+dictionaries and tuples become lists; sets, unsupported scalar objects,
+non-string keys, non-finite floats, and cycles are rejected with their evidence
+location before report rendering.
 Lifecycle `sites_are_complete` is derived from retained and total site counts.
 
 Coupling edges retain per-import `resolution_details`: `exact` matches a

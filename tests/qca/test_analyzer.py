@@ -429,6 +429,68 @@ class QuantitativeChangeAnalysisTests(unittest.TestCase):
             )
             self.assertIsNone(deleted_file_diff["changed_callables"][0]["after"])
 
+    def test_git_paths_round_trip_through_revision_and_diff_reports(self) -> None:
+        """Public Git paths stay exact across spaces, escapes, and Unicode."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self._git(root, "init", "-q")
+            self._git(root, "config", "user.email", "qca@example.test")
+            self._git(root, "config", "user.name", "QCA Tests")
+            names = ["space name.py", "café.py", "tab\tname.py"]
+            empty_name = "empty artifact.txt"
+            for name in names:
+                (root / name).write_text(
+                    "def run():\n    return 1\n",
+                    encoding="utf-8",
+                )
+            self._git(root, "add", ".")
+            self._git(root, "commit", "-qm", "base")
+            base = self._git(root, "rev-parse", "HEAD").strip()
+            for name in names:
+                (root / name).write_text(
+                    "def run():\n    return 2\n\ndef added():\n    return 3\n",
+                    encoding="utf-8",
+                )
+            (root / empty_name).touch()
+            self._git(root, "add", ".")
+            self._git(root, "commit", "-qm", "head")
+            head = self._git(root, "rev-parse", "HEAD").strip()
+
+            snapshot = report_to_dict(analyze_tree(root, ref=head))
+            self.assertEqual(
+                [item["path"] for item in snapshot["source_inventory"]],
+                sorted(names + [empty_name]),
+            )
+            self.assertTrue(
+                all(
+                    item["size_bytes"] > 0
+                    for item in snapshot["source_inventory"]
+                    if item["path"] in names
+                )
+            )
+            self.assertEqual(
+                {item["path"] for item in snapshot["head"]["callables"]},
+                set(names),
+            )
+
+            diff = report_to_dict(analyze_diff(base, head, path=root))["diff"]
+            self.assertEqual(diff["changed_files"], sorted(names + [empty_name]))
+            self.assertEqual(
+                {item["path"] for item in diff["changed_callables"]},
+                set(names),
+            )
+            self.assertEqual(
+                {(item["path"], item["qualified_name"]) for item in diff["changed_callables"]},
+                {(name, callable_name) for name in names for callable_name in ("run", "added")},
+            )
+
+            single = report_to_dict(analyze_diff(base, head, path=root / "café.py"))["diff"]
+            self.assertEqual(single["changed_files"], ["café.py"])
+            self.assertEqual(
+                {(item["path"], item["qualified_name"]) for item in single["changed_callables"]},
+                {("café.py", "run"), ("café.py", "added")},
+            )
+
     def test_backtest_manifest_preserves_scale_and_questions(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

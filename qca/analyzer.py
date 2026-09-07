@@ -27,7 +27,7 @@ from typing import Any, Iterable, Mapping, Protocol, Sequence
 from .factors import FACTOR_VERSION, compare_factors, measure_factors
 
 
-ANALYZER_VERSION = "0.3.9"
+ANALYZER_VERSION = "0.3.10"
 REPORT_SCHEMA = "qca/report/v1"
 SOURCE_CLASSES = (
     "production",
@@ -230,14 +230,16 @@ class _TreeReader:
             return sorted(paths)
 
         prefix = [] if self.tree.scope_rel in {"", "."} else [self.tree.scope_rel]
-        output = _git(
-            ["ls-tree", "-r", "--name-only", self.tree.ref, "--", *prefix],
+        output = _git_bytes(
+            ["ls-tree", "-r", "--name-only", "-z", self.tree.ref, "--", *prefix],
             cwd=self.tree.repo_root,
         )
         paths = []
         scope = PurePosixPath(self.tree.scope_rel) if self.tree.scope_rel not in {"", "."} else None
-        for line in output.splitlines():
-            repo_path = PurePosixPath(line.strip())
+        for raw_path in output.split(b"\0"):
+            if not raw_path:
+                continue
+            repo_path = PurePosixPath(os.fsdecode(raw_path))
             if scope is None:
                 relative = repo_path
             elif self.tree.scope_is_file:
@@ -1293,19 +1295,33 @@ def _read_git_diff(
     pathspecs: Sequence[str],
 ) -> list[DiffFile]:
     scope = [item for item in pathspecs if item not in {"", "."}]
-    numstat = _git(
-        ["diff", "--no-ext-diff", "--no-renames", "--numstat", base_sha, head_sha, "--", *scope],
+    numstat = _git_bytes(
+        [
+            "diff",
+            "--no-ext-diff",
+            "--no-renames",
+            "--numstat",
+            "-z",
+            base_sha,
+            head_sha,
+            "--",
+            *scope,
+        ],
         cwd=repo_root,
     )
     stats: dict[str, list[int]] = {}
-    for line in numstat.splitlines():
-        parts = line.split("\t", 2)
+    ordered_paths: list[str] = []
+    for record in numstat.split(b"\0"):
+        if not record:
+            continue
+        parts = record.split(b"\t", 2)
         if len(parts) != 3:
             continue
-        added = 0 if parts[0] == "-" else int(parts[0])
-        deleted = 0 if parts[1] == "-" else int(parts[1])
-        path = _normalize_diff_path(parts[2])
+        added = 0 if parts[0] == b"-" else int(parts[0])
+        deleted = 0 if parts[1] == b"-" else int(parts[1])
+        path = os.fsdecode(parts[2])
         stats[path] = [added, deleted]
+        ordered_paths.append(path)
 
     ranges: dict[str, dict[str, set[int]]] = defaultdict(lambda: {"new": set(), "old": set()})
     unified = _git(
@@ -1313,18 +1329,13 @@ def _read_git_diff(
         cwd=repo_root,
     )
     current: str | None = None
-    old_path: str | None = None
+    path_index = 0
     old_line = 0
     new_line = 0
     for line in unified.splitlines():
-        if line.startswith("--- "):
-            header = line[4:]
-            old_path = None if header == "/dev/null" else _normalize_diff_path(header)
-            continue
-        if line.startswith("+++ "):
-            header = line[4:]
-            new_path = None if header == "/dev/null" else _normalize_diff_path(header)
-            current = new_path or old_path
+        if line.startswith("diff --git "):
+            current = ordered_paths[path_index] if path_index < len(ordered_paths) else None
+            path_index += 1
             continue
         match = _HUNK_RE.match(line)
         if match:
@@ -1394,16 +1405,6 @@ def _scope_file_diffs(
             )
         )
     return scoped
-
-
-def _normalize_diff_path(value: str) -> str:
-    # Git quotes unusual paths when core.quotePath is enabled. v0 keeps the
-    # common path form explicit and avoids guessing at a rename's two paths.
-    if " => " in value and value.startswith("{"):
-        value = value.split(" => ", 1)[1].rstrip("}")
-    if value.startswith("a/") or value.startswith("b/"):
-        value = value[2:]
-    return value
 
 
 def _derive_diff(

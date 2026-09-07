@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import json
 import unittest
 
 from qca import analyze_sources, report_to_dict
@@ -257,6 +258,87 @@ def helper():
             attached["end_to_end"]["verification"]["provenance"]["runner"],
             "unit-test",
         )
+
+    def test_attach_nested_evidence_is_json_serializable(self) -> None:
+        report = analyze_sources({"tests/test_example.py": "def test_one():\n    assert value == value\n"})
+        shared = {"source": "same"}
+        evidence = {
+            "schema": VERIFICATION_SCHEMA,
+            "base_sha": "base-ref",
+            "head_sha": "head-ref",
+            "provenance": {
+                "runner": "unit-test",
+                "metadata": [{"elapsed": 1.5, "tags": ("nested", "tuple")}],
+                "shared_first": shared,
+                "shared_second": shared,
+            },
+            "factors": {
+                "end_to_end": {
+                    "status": "passed",
+                    "commands": ("python -m pytest",),
+                    "results": [{"returncode": 0, "details": {"checks": ["one", {"ok": True}]}}],
+                    "expected": {"phase": "completed", "checks": ("one",)},
+                    "actual": {"phase": "completed", "checks": ("one",)},
+                },
+            },
+        }
+
+        report.factors = attach_verification(report.factors, evidence, "base-ref", "head-ref")
+        payload = report_to_dict(report)
+        json.dumps(payload, allow_nan=False)
+        self.assertEqual(
+            payload["factors"]["end_to_end"]["verification"]["record"]["commands"],
+            ["python -m pytest"],
+        )
+        self.assertEqual(
+            payload["factors"]["end_to_end"]["verification"]["provenance"]["shared_first"],
+            payload["factors"]["end_to_end"]["verification"]["provenance"]["shared_second"],
+        )
+
+    def test_attach_rejects_non_json_evidence_values(self) -> None:
+        base = analyze_verification({})
+        common = {
+            "schema": VERIFICATION_SCHEMA,
+            "base_sha": "base-ref",
+            "head_sha": "head-ref",
+            "factors": {
+                "end_to_end": {
+                    "status": "passed",
+                    "commands": ["pytest"],
+                    "results": [{"returncode": 0}],
+                },
+            },
+        }
+
+        cases = [
+            ("set", lambda: {**common, "provenance": {"values": {"a", "b"}}}),
+            ("custom scalar", lambda: {**common, "provenance": {"value": object()}}),
+            ("non-finite float", lambda: {**common, "provenance": {"score": float("nan")}}),
+            ("non-string key", lambda: {**common, "provenance": {1: "invalid"}}),
+        ]
+        for label, make_evidence in cases:
+            with self.subTest(label=label):
+                with self.assertRaises(ValueError):
+                    attach_verification(base, make_evidence(), "base-ref", "head-ref")
+
+        cyclic = {"marker": "cycle"}
+        cyclic["self"] = cyclic
+        with self.assertRaises(ValueError):
+            attach_verification(
+                base,
+                {**common, "provenance": cyclic},
+                "base-ref",
+                "head-ref",
+            )
+
+    def test_lifecycle_site_completeness_reflects_bounded_details(self) -> None:
+        source = "\n".join("def start():\n    pass" for _ in range(129)) + "\n"
+        lifecycle = analyze_verification({"app.py": source})["lifecycle"]
+
+        self.assertEqual(lifecycle["metrics"]["recognized_site_count"], 129)
+        self.assertEqual(len(lifecycle["findings"]), 128)
+        self.assertFalse(lifecycle["details"]["sites_are_complete"])
+        self.assertTrue(any("first 128" in item for item in lifecycle["limitations"]))
 
     def test_attach_rejects_mismatched_refs_and_boolean_only_pass(self) -> None:
         base = analyze_verification({})

@@ -228,6 +228,22 @@ class QuantitativeChangeAnalysisTests(unittest.TestCase):
                 )
             )
 
+            single_file_payload = report_to_dict(
+                analyze_diff(base, head, path=root / "app.py")
+            )
+            single_file_diff = single_file_payload["diff"]
+            self.assertEqual(single_file_diff["changed_files"], ["app.py"])
+            self.assertEqual(
+                [item["path"] for item in single_file_diff["changed_callables"]],
+                ["app.py"],
+            )
+            self.assertTrue(
+                any(
+                    target["kind"] == "callable" and target["path"] == "app.py"
+                    for target in single_file_diff["review_targets"]
+                )
+            )
+
     def test_report_json_is_reproducible_for_same_tree(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -335,6 +351,10 @@ class QuantitativeChangeAnalysisTests(unittest.TestCase):
             classes = {item["path"]: item["source_class"] for item in payload["diff"]["file_changes"]}
             self.assertEqual(classes["src/app.py"], "production")
             self.assertEqual(classes["tests/test_app.py"], "tests")
+            self.assertEqual(
+                {item["path"] for item in payload["diff"]["changed_callables"]},
+                {"src/app.py", "tests/test_app.py"},
+            )
             self.assertGreater(payload["diff"]["decision_burden_delta"], 0)
 
             revision = report_to_dict(analyze_tree([root / "src", root / "tests"], ref=head))
@@ -394,6 +414,20 @@ class QuantitativeChangeAnalysisTests(unittest.TestCase):
             self.assertIsNone(changes[("new.py", "old")]["before"])
             self.assertIsNone(changes[("old.py", "old")]["after"])
             self.assertIsNone(changes[("delete.py", "gone")]["after"])
+
+            deleted_file_payload = report_to_dict(
+                analyze_diff(base, head, path=root / "delete.py")
+            )
+            deleted_file_diff = deleted_file_payload["diff"]
+            self.assertEqual(deleted_file_diff["changed_files"], ["delete.py"])
+            self.assertEqual(
+                [
+                    (item["path"], item["qualified_name"])
+                    for item in deleted_file_diff["changed_callables"]
+                ],
+                [("delete.py", "gone")],
+            )
+            self.assertIsNone(deleted_file_diff["changed_callables"][0]["after"])
 
     def test_backtest_manifest_preserves_scale_and_questions(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

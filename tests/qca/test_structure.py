@@ -58,6 +58,22 @@ class StructureFactorTests(unittest.TestCase):
         self.assertEqual(redundancy["metrics"]["cloned_callable_count"], 2)
         self.assertGreater(redundancy["metrics"]["duplicate_ast_loc"], 0)
 
+    def test_consumer_clone_report_exposes_erased_identifier_distinctions(self) -> None:
+        """Consumer: broad clone candidates retain evidence of unequal variable use."""
+        source = "def pair(a, b):\n    return a + b\n\ndef repeated(x, y):\n    return x + x\n"
+        factor = report_to_dict(analyze_sources({"app.py": source}))["factors"]["redundancy"]
+        clone = next(f for f in factor["findings"] if f["kind"] == "callable_clone")
+        self.assertTrue(clone["identifier_usage_differs"])
+        first, second = clone["occurrences"]
+        self.assertNotEqual(first["identifier_usage"]["pattern"], second["identifier_usage"]["pattern"])
+        self.assertEqual(first["identifier_usage"]["names"], ["a", "b"])
+        self.assertEqual(second["identifier_usage"]["names"], ["x", "y"])
+        self.assertEqual((first["line"], first["end_line"], second["line"], second["end_line"]), (1, 2, 4, 5))
+        self.assertEqual(ast.dump(ast.parse(first["code"])), ast.dump(ast.parse("def pair(a, b):\n    return a + b")))
+        renamed = source.replace("return x + x", "return x + y")
+        clone = next(f for f in analyze_sources({"app.py": renamed}).factors["redundancy"]["findings"] if f["kind"] == "callable_clone")
+        self.assertFalse(clone["identifier_usage_differs"])
+
     def test_stub_function_is_functionality_finding(self) -> None:
         result = analyze_structure({"hooks.py": "def hook():\n    pass\n"})
         functionality = result["functionality"]

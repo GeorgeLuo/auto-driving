@@ -31,8 +31,10 @@ All four factor names are recognized.  Omitted factor records are treated as
 ``not_measured`` by :func:`attach_verification`; a ``passed`` or ``failed``
 record must contain non-empty command/result material or a non-empty
 expected/actual pair.  A lone ``{"passed": true}`` is not evidence.  The
-provenance object is copied exactly as supplied by the caller.  This module
-does not execute commands, inspect Git, or attest that provenance is genuine.
+whole evidence envelope, including provenance, must contain only JSON-safe
+values: built-in scalar values with finite floats, mappings with string keys,
+and list/tuple arrays (tuples are normalized to lists).  This module does not
+execute commands, inspect Git, or attest that provenance is genuine.
 
 The static scan has similarly narrow semantics:
 
@@ -50,6 +52,7 @@ from __future__ import annotations
 
 import ast
 import copy
+import math
 import re
 from collections.abc import Mapping
 from pathlib import PurePosixPath
@@ -177,8 +180,9 @@ def attach_verification(
     them.  Runtime ``passed`` records promote only the dynamic factors to
     ``verified``; ``failed`` promotes them to ``failed``.  Static factor
     statuses remain the result of :func:`analyze_verification`.  Every attached
-    factor receives a ``verification`` object containing the original record,
-    revisions, schema, and caller-supplied provenance.
+    factor receives a ``verification`` object containing a validated
+    JSON-compatible copy of the record, revisions, schema, and caller-supplied
+    provenance.
 
     The function is intentionally non-executing: it does not authenticate
     commands, inspect their output, or claim that a provenance object is
@@ -192,6 +196,7 @@ def attach_verification(
         raise TypeError("factors must be a mapping of factor names to payloads")
     if not isinstance(evidence, Mapping):
         raise TypeError("evidence must be a mapping")
+    evidence = _json_compatible_copy(evidence, "evidence")
 
     schema = evidence.get("schema")
     if schema != VERIFICATION_SCHEMA:
@@ -515,7 +520,7 @@ def _lifecycle_factor(
         "details": {
             "by_kind": by_kind,
             "site_limit": MAX_LIFECYCLE_SITES,
-            "sites_are_complete": True,
+            "sites_are_complete": len(sites) == total_sites,
         },
         "limitations": limitations,
     }
@@ -843,6 +848,57 @@ def _extract_factor_records(evidence: Mapping[str, Any]) -> dict[str, Any]:
     if unknown:
         raise ValueError(f"evidence contains unknown factor(s): {', '.join(unknown)}")
     return dict(nested)
+
+
+def _json_compatible_copy(value: Any, path: str, active: set[int] | None = None) -> Any:
+    """Return a JSON-safe copy of an evidence value or reject it.
+
+    Evidence is deliberately limited to the built-in JSON scalar types, finite
+    floats, mappings with string keys, and list/tuple arrays.  Tuples are
+    accepted as the Python spelling of a JSON array and normalized to lists.
+    Mapping and sequence containers are copied while traversing so custom
+    container implementations cannot remain in the attached report.  The
+    active container ids detect cycles while allowing shared sub-values.
+    """
+
+    if type(value) in (type(None), bool, int, str):
+        return value
+    if type(value) is float:
+        if not math.isfinite(value):
+            raise ValueError(f"{path} contains a non-finite float")
+        return value
+
+    if isinstance(value, Mapping):
+        marker = id(value)
+        active = set() if active is None else active
+        if marker in active:
+            raise ValueError(f"{path} contains a cyclic reference")
+        active.add(marker)
+        try:
+            normalized: dict[str, Any] = {}
+            for key, item in value.items():
+                if type(key) is not str:
+                    raise ValueError(f"{path} contains a non-string object key")
+                normalized[key] = _json_compatible_copy(item, f"{path}.{key}", active)
+            return normalized
+        finally:
+            active.remove(marker)
+
+    if isinstance(value, (list, tuple)):
+        marker = id(value)
+        active = set() if active is None else active
+        if marker in active:
+            raise ValueError(f"{path} contains a cyclic reference")
+        active.add(marker)
+        try:
+            return [
+                _json_compatible_copy(item, f"{path}[{index}]", active)
+                for index, item in enumerate(value)
+            ]
+        finally:
+            active.remove(marker)
+
+    raise ValueError(f"{path} contains unsupported value type {type(value).__name__}")
 
 
 def _validate_factor_record(

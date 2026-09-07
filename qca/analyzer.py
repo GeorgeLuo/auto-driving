@@ -27,7 +27,7 @@ from typing import Any, Iterable, Mapping, Protocol, Sequence
 from .factors import FACTOR_VERSION, compare_factors, measure_factors
 
 
-ANALYZER_VERSION = "0.3.8"
+ANALYZER_VERSION = "0.3.9"
 REPORT_SCHEMA = "qca/report/v1"
 SOURCE_CLASSES = (
     "production",
@@ -203,6 +203,7 @@ class _ResolvedTree:
     root: Path
     repo_root: Path | None
     scope_rel: str
+    scope_is_file: bool
     ref: str | None
     sha: str | None
 
@@ -217,7 +218,7 @@ class _TreeReader:
     def files(self) -> list[str]:
         if self.tree.ref is None:
             root = self.tree.root
-            if root.is_file():
+            if self.tree.scope_is_file:
                 return [root.name]
             paths: list[str] = []
             for path in root.rglob("*"):
@@ -239,7 +240,7 @@ class _TreeReader:
             repo_path = PurePosixPath(line.strip())
             if scope is None:
                 relative = repo_path
-            elif self.tree.root.is_file():
+            elif self.tree.scope_is_file:
                 if repo_path != scope:
                     continue
                 relative = PurePosixPath(repo_path.name)
@@ -253,7 +254,7 @@ class _TreeReader:
 
     def read_text(self, relative_path: str) -> str:
         if self.tree.ref is None:
-            path = self.tree.root if self.tree.root.is_file() else self.tree.root / relative_path
+            path = self.tree.root if self.tree.scope_is_file else self.tree.root / relative_path
             try:
                 return path.read_text(encoding="utf-8")
             except UnicodeDecodeError:
@@ -290,7 +291,7 @@ class _TreeReader:
                 if not member.isfile():
                     continue
                 name = PurePosixPath(member.name)
-                if self.tree.root.is_file():
+                if self.tree.scope_is_file:
                     if name.name != scope_path.name:
                         continue
                     relative = name.name
@@ -441,6 +442,7 @@ def analyze_diff(
         head_reader: _SourceReader = _TreeReader(head_tree)
         analyzed_path = head_tree.scope_rel
         strip = head_tree.scope_rel
+        scope_is_file = base_tree.scope_is_file or head_tree.scope_is_file
         pathspecs = (head_tree.scope_rel,)
         repo_for_identity = head_tree.repo_root
         base_sha = base_tree.sha or base
@@ -451,6 +453,7 @@ def analyze_diff(
             raise AnalysisError("diff mode requires a path inside a Git repository")
         pathspecs = tuple(_repo_relative(item, repo_root) for item in paths)
         strip = _common_scope_prefix(pathspecs)
+        scope_is_file = False
         base_sha = _resolve_ref(base, repo_root) or base
         head_sha = _resolve_ref(head, repo_root) or head
         base_reader = _MappingReader(_git_scoped_sources(repo_root, base_sha, pathspecs, strip))
@@ -467,7 +470,7 @@ def analyze_diff(
         head_sha=head_sha,
         pathspecs=pathspecs,
     )
-    file_diffs = _scope_file_diffs(file_diffs, strip)
+    file_diffs = _scope_file_diffs(file_diffs, strip, scope_is_file=scope_is_file)
     diff = _derive_diff(base_snapshot, head_snapshot, base_inventory, head_inventory, file_diffs)
     identity = _identity(
         mode="diff",
@@ -768,6 +771,7 @@ def _resolve_tree(
             root=scope_path,
             repo_root=discovered,
             scope_rel=scope_rel,
+            scope_is_file=scope_path.is_file(),
             ref=None,
             sha=None,
         )
@@ -775,10 +779,12 @@ def _resolve_tree(
         raise AnalysisError(f"revision mode requires a Git repository: {path}")
     scope_rel = _scope_relative(scope_path, discovered)
     sha = _resolve_ref(ref, discovered)
+    scope_is_file = scope_path.is_file() or _git_scope_is_file(discovered, sha, scope_rel)
     return _ResolvedTree(
         root=scope_path,
         repo_root=discovered,
         scope_rel=scope_rel,
+        scope_is_file=scope_is_file,
         ref=sha,
         sha=sha,
     )
@@ -807,6 +813,18 @@ def _resolve_ref(ref: str, repo_root: Path | None) -> str | None:
     if repo_root is None:
         return None
     return _git(["rev-parse", f"{ref}^{{commit}}"], cwd=repo_root).strip()
+
+
+def _git_scope_is_file(repo_root: Path, sha: str | None, scope_rel: str) -> bool:
+    """Identify a file scope that may no longer exist in the working tree."""
+
+    if sha is None or scope_rel in {"", "."}:
+        return False
+    try:
+        object_type = _git(["cat-file", "-t", f"{sha}:{scope_rel}"], cwd=repo_root).strip()
+    except AnalysisError:
+        return False
+    return object_type == "blob"
 
 
 def _git(args: Sequence[str], *, cwd: Path | None) -> str:
@@ -1342,7 +1360,12 @@ def _read_git_diff(
     ]
 
 
-def _scope_file_diffs(file_diffs: list[DiffFile], scope_rel: str) -> list[DiffFile]:
+def _scope_file_diffs(
+    file_diffs: list[DiffFile],
+    scope_rel: str,
+    *,
+    scope_is_file: bool = False,
+) -> list[DiffFile]:
     """Align Git's repository-relative paths with a scoped tree inventory."""
 
     if scope_rel in {"", "."}:
@@ -1350,13 +1373,17 @@ def _scope_file_diffs(file_diffs: list[DiffFile], scope_rel: str) -> list[DiffFi
     scope = PurePosixPath(scope_rel)
     scoped: list[DiffFile] = []
     for item in file_diffs:
-        try:
-            relative = PurePosixPath(item.path).relative_to(scope).as_posix()
-        except ValueError:
-            # Git should only return paths inside the requested scope.  Keep
-            # an explicit path if it does not, so the report cannot silently
-            # lose a changed file.
-            relative = item.path
+        item_path = PurePosixPath(item.path)
+        if scope_is_file and item_path == scope:
+            relative = scope.name
+        else:
+            try:
+                relative = item_path.relative_to(scope).as_posix()
+            except ValueError:
+                # Git should only return paths inside the requested scope.  Keep
+                # an explicit path if it does not, so the report cannot silently
+                # lose a changed file.
+                relative = item.path
         scoped.append(
             DiffFile(
                 path=relative,

@@ -94,7 +94,11 @@ def _redundancy(trees: dict[str, ast.Module]) -> dict[str, Any]:
                 if _is_trivial_callable(node):
                     continue
                 digest = _callable_digest(node)
-                entry = {"path": path, "line": int(node.lineno), "name": node.name}
+                entry = {
+                    "path": path, "line": int(node.lineno), "end_line": int(node.end_lineno),
+                    "name": node.name, "code": ast.unparse(node),
+                    "identifier_usage": _identifier_usage(node),
+                }
                 groups[digest].append(entry)
                 stmt_counts[digest] = _logical_stmt_count(node)
             elif isinstance(node, ast.If):
@@ -131,14 +135,18 @@ def _redundancy(trees: dict[str, ast.Module]) -> dict[str, Any]:
         cloned_callable_count += len(occurrences)
         duplicate_ast_loc += stmt_counts[digest] * (len(occurrences) - 1)
         names = ", ".join(item["name"] for item in occurrences)
+        usage_patterns = {tuple(item["identifier_usage"]["pattern"]) for item in occurrences}
         findings.append({
             "path": occurrences[0]["path"],
             "line": occurrences[0]["line"],
             "kind": "callable_clone",
             "message": (
-                f"Nontrivial callable body is shared by {len(occurrences)} "
-                f"callables: {names}."
+                f"Approximate callable structure matches across {len(occurrences)} "
+                f"callables: {names}; inspect identifier usage before sharing behavior."
             ),
+            "identifier_usage_differs": len(usage_patterns) > 1,
+            "match_basis": "AST with all Name identifiers and parameter names erased",
+            "limitation": "Identifier usage records spelling equality in AST walk order, not lexical binding or behavioral equivalence.",
             "occurrences": occurrences,
             "paths": [item["path"] for item in occurrences],
         })
@@ -153,6 +161,17 @@ def _redundancy(trees: dict[str, ast.Module]) -> dict[str, Any]:
         findings,
         ["Identifier normalization is approximate; renamed locals may still look identical."],
     )
+
+
+def _identifier_usage(node: ast.FunctionDef | ast.AsyncFunctionDef) -> dict[str, Any]:
+    """Expose equality distinctions discarded by broad clone matching."""
+    names: dict[str, int] = {}
+    pattern: list[int] = []
+    for child in ast.walk(node):
+        name = child.id if isinstance(child, ast.Name) else child.arg if isinstance(child, ast.arg) else None
+        if name is not None:
+            pattern.append(names.setdefault(name, len(names)))
+    return {"names": list(names), "pattern": pattern}
 
 
 def _is_trivial_callable(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:

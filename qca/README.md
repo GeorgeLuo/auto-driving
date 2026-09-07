@@ -123,6 +123,33 @@ result and predicate-call equivalence for a bounded sample of ordinary
 containers and preserve `all([])` as a negative control. The original sites
 remain available for inspection; candidate count is not a removal target.
 
+### Measurement correctness (analyzer 0.3.9)
+
+Single-file Git diffs retain basename inventory paths and callable locations,
+including deleted files identified from the selected revision. Evidence
+attachment accepts null, booleans, integers, finite floats, strings, string-keyed
+mappings, and lists/tuples. Mappings become plain dictionaries and tuples become
+lists; sets, unsupported scalar objects, non-string keys, non-finite floats, and
+cycles are rejected with their evidence location before report rendering.
+Lifecycle `sites_are_complete` is derived from retained and total site counts.
+
+Coupling edges retain per-import `resolution_details`: `exact` matches a
+supplied module, `ancestor_fallback` matches only a parent, and `symbol_owner`
+locates the module of a `from ... import ...` request without proving the symbol
+exists. Records include `requested_name`, `matched_module`, and
+`unresolved_suffix`. Wholly unresolved imports stay in `unresolved_external`.
+Aggregated edges expose their common resolution or `mixed`; inspect the details
+for each import. Edge and cycle counts include candidate fallback dependencies.
+`cycles` remains a list of SCC member sets, explicitly marked by
+`cycle_representation: scc_members`; member order never asserts an arrow path.
+
+Approximate clone matching remains deliberately broad. Each clone occurrence
+now includes an end line, reconstructed code, and `identifier_usage` containing
+identifier spellings and their equality pattern in AST traversal order. The
+finding's `identifier_usage_differs` exposes distinctions erased by matching,
+such as `a + b` versus `x + x`. This is spelling evidence, not lexical binding
+resolution or proof of equivalent behavior.
+
 ## Reproduce the refined M008 experiment
 
 Install the repository test dependencies, then run from the repository root:

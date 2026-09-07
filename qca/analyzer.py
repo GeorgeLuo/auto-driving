@@ -27,7 +27,7 @@ from typing import Any, Iterable, Mapping, Protocol, Sequence
 from .factors import FACTOR_VERSION, compare_factors, measure_factors
 
 
-ANALYZER_VERSION = "0.3.5"
+ANALYZER_VERSION = "0.3.6"
 REPORT_SCHEMA = "qca/report/v1"
 SOURCE_CLASSES = (
     "production",

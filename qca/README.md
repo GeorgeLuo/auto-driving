@@ -55,7 +55,7 @@ candidates and expandable raw data.
 | `functionality` | Stub and obvious unreachable-code patterns | Inspect intentional hooks and protocols before removing code |
 | `coupling` | Resolved local edges, fan-in/fan-out, cycles | Dependencies to examine, including relative imports |
 | `contracts` | Public signatures, literal return-key shapes, CLI declarations | Static surface changes; no runtime compatibility proof |
-| `test_effectiveness` | Literal/same-operand assertion candidates; string-expected and formatted-literal assertions; private production imports/calls from tests | Runtime coverage and mutation evidence can be attached separately |
+| `test_effectiveness` | Literal/same-operand and assignment-readback candidates; string-expected and formatted-literal assertions; private production imports/calls from tests | Runtime coverage and mutation evidence can be attached separately |
 | `end_to_end` | Attached differential execution evidence | `not_measured` until evidence is supplied |
 | `ui_behavior` | Attached browser evidence | API or static HTML inspection alone does not establish visual behavior |
 | `lifecycle` | Recognized lifecycle sites plus optional execution evidence | Source names alone do not prove cleanup or side-effect boundaries |
@@ -73,6 +73,29 @@ mapping for the four verification factors above. Each entry supplies
 expected/actual data; an unmeasured entry explains its reason. This is
 explicitly caller-supplied evidence, not an authenticated execution receipt.
 The schema is documented in `qca/factors/verification.py`.
+
+### Assignment-readback candidates (analyzer 0.3.6)
+
+`test_effectiveness.assignment_readback_candidates` counts assertions such as
+`value = 3; assert value == 3` and `obj.value = 3; self.assertEqual(obj.value, 3)`.
+The metric lives under `factors.test_effectiveness.metrics`; each
+`assignment_readback` finding points to the assertion and includes an
+`assignment` object with the source path, line, column, and expression.
+Readbacks take precedence over string-expected classification so each assertion
+contributes once to `candidate_assertion_count`.
+
+The scan tracks scalar literal assignments to local names or one-level
+attributes in straight-line `test_*` function bodies. It recognizes single
+`==` / `is` assertions and two-argument `assertEqual` / `assertIs` calls in
+either operand order. Calls, control flow, other statements, uncertain writes,
+and assertions end tracking; aliases, constructors, subscripts, and nested
+control-flow bodies are not followed. These deliberate limits favor a small,
+inspectable candidate set over speculative dataflow analysis.
+
+A candidate asks whether a meaningful boundary was exercised. Attribute writes
+and reads can invoke useful setters/getters, so this is not proof of a bad test.
+Normalization, serialization, transport, and consumer-output assertions remain
+valuable. No count is a quality grade or a reason to delete a test automatically.
 
 ## Reproduce the refined M008 experiment
 

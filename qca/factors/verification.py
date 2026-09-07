@@ -37,10 +37,10 @@ does not execute commands, inspect Git, or attest that provenance is genuine.
 The static scan has similarly narrow semantics:
 
 * test assertions are counted only in test-like files or test-named callables;
-* literal, same-operand, string-expected, and formatted-literal assertions are
+* literal, same-operand, assignment-readback, string-expected, and formatted-literal assertions are
   reported as *candidates*, not bad tests;
 * private production imports and helper calls from tests are candidates, while
-  same-module test helpers and numeric expected values are not;
+  same-module test helpers are not; numeric literals alone are not a signal;
 * lifecycle metrics count recognized definitions and calls, with a bounded
   list of sites; and
 * no static metric proves lifecycle start/stop/reset/cleanup symmetry.
@@ -301,6 +301,7 @@ def _test_effectiveness_factor(
     assertion_count = 0
     literal_count = 0
     tautological_count = 0
+    readback_count = 0
     string_expected_count = 0
     formatted_literal_count = 0
     private_import_count = 0
@@ -313,6 +314,7 @@ def _test_effectiveness_factor(
         module_is_test = path in test_paths
         parents = _parent_map(tree)
         local_private = _private_names_defined(tree)
+        readbacks = _assignment_readbacks(tree)
         for node in ast.walk(tree):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith("test_"):
                 test_case_count += 1
@@ -349,6 +351,8 @@ def _test_effectiveness_factor(
                     ),
                 )
             candidate_kind = _assertion_candidate_kind(node)
+            if candidate_kind is None and node in readbacks:
+                candidate_kind = "assignment_readback"
             if candidate_kind is None:
                 candidate_kind = _string_expected_kind(node)
             if isinstance(node, ast.Assert):
@@ -361,6 +365,8 @@ def _test_effectiveness_factor(
                 literal_count += 1
             elif candidate_kind == "tautological_assertion":
                 tautological_count += 1
+            elif candidate_kind == "assignment_readback":
+                readback_count += 1
             elif candidate_kind == "formatted_literal_assertion":
                 formatted_literal_count += 1
                 string_expected_count += 1
@@ -377,10 +383,24 @@ def _test_effectiveness_factor(
                 ),
             )
 
-    candidate_count = literal_count + tautological_count + string_expected_count
+            if candidate_kind == "assignment_readback":
+                assignment = readbacks[node]
+                candidate_sites[-1]["assignment"] = {
+                    "path": path,
+                    "line": assignment.lineno,
+                    "column": assignment.col_offset + 1,
+                    "expression": _source_expression(text, assignment),
+                }
+                candidate_sites[-1]["reason"] = candidate_sites[-1]["message"] = (
+                    "Assertion reads back a directly assigned literal; inspect whether a meaningful "
+                    "boundary is exercised. Attribute access may invoke a setter or getter."
+                )
+
+    candidate_count = literal_count + tautological_count + readback_count + string_expected_count
     limitations = [
         "Literal, same-operand, string-expected, and formatted-literal assertions are candidates for review, not a judgment that a test is ineffective.",
-        "Private production imports and helper calls are candidates; same-module test helpers and numeric expected values are omitted.",
+        "Private production imports and helper calls are candidates; same-module test helpers are omitted; numeric expected values alone are not candidates.",
+        "Assignment readbacks track scalar literals in straight-line test function bodies only; calls, control flow, and uncertain mutations end tracking. No alias, constructor, subscript, or interprocedural inference is performed; attribute access may exercise meaningful descriptors.",
         "Static inspection does not infer input variation, mocks, explicit state setup, or the behavior under test.",
     ]
     if test_parse_error_count:
@@ -399,6 +419,7 @@ def _test_effectiveness_factor(
         "assertion_count": assertion_count,
         "literal_assertion_candidates": literal_count,
         "tautological_assertion_candidates": tautological_count,
+        "assignment_readback_candidates": readback_count,
         "string_expected_assertion_count": string_expected_count,
         "formatted_literal_assertion_count": formatted_literal_count,
         "private_import_count": private_import_count,
@@ -634,6 +655,85 @@ def _string_expected_kind(node: ast.AST) -> str | None:
     if _is_formatted_literal(expected):
         return "formatted_literal_assertion"
     return "string_expected_assertion"
+
+
+def _assignment_readbacks(tree: ast.AST) -> dict[ast.AST, ast.AST]:
+    """Locate literal readbacks without following calls, branches, or aliases."""
+    matches: dict[ast.AST, ast.AST] = {}
+    for function in ast.walk(tree):
+        if not (
+            isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and function.name.startswith("test_")
+        ):
+            continue
+        assigned: dict[str, tuple[ast.AST, ast.AST]] = {}
+        for statement in function.body:
+            target = value = None
+            if isinstance(statement, ast.Assign) and len(statement.targets) == 1:
+                target, value = statement.targets[0], statement.value
+            elif isinstance(statement, ast.AnnAssign):
+                target, value = statement.target, statement.value
+            if target is not None:
+                key = _readback_target(target)
+                literal = isinstance(value, ast.Constant) or (
+                    isinstance(value, ast.UnaryOp)
+                    and isinstance(value.op, (ast.UAdd, ast.USub))
+                    and isinstance(value.operand, ast.Constant)
+                    and type(value.operand.value) in (int, float, complex)
+                )
+                if key is None or not literal or any(isinstance(n, ast.Call) for n in ast.walk(statement)):
+                    assigned.clear()
+                    continue
+                # Attribute writes can invoke descriptors; a name write may
+                # replace an object whose field was tracked. Retain only
+                # unrelated scalar locals across simple local assignments.
+                if isinstance(target, ast.Attribute):
+                    assigned.clear()
+                else:
+                    assigned = {k: v for k, v in assigned.items() if "." not in k and k != key}
+                assigned[key] = (value, statement)
+                continue
+
+            assertion = statement.value if isinstance(statement, ast.Expr) else statement
+            operands = None
+            if isinstance(assertion, ast.Assert):
+                comparison = assertion.test
+                if (
+                    isinstance(comparison, ast.Compare)
+                    and len(comparison.ops) == 1
+                    and isinstance(comparison.ops[0], (ast.Eq, ast.Is))
+                ):
+                    operands = (comparison.left, comparison.comparators[0])
+            elif (
+                isinstance(assertion, ast.Call)
+                and _call_name(assertion.func) in {"assertEqual", "assertIs"}
+                and len(assertion.args) == 2
+                and not assertion.keywords
+            ):
+                operands = tuple(assertion.args)
+            # Calls even in assertion messages/operands can change state.
+            nested_calls = any(
+                isinstance(n, (ast.Call, ast.Await, ast.Yield, ast.NamedExpr))
+                and n is not assertion
+                for n in ast.walk(statement)
+            )
+            if operands is not None and not nested_calls:
+                for actual, expected in (operands, operands[::-1]):
+                    prior = assigned.get(_readback_target(actual))
+                    if prior is not None and _ast_equal(prior[0], expected):
+                        matches[assertion] = prior[1]
+                        break
+            # Assertions may invoke user code too; do not carry facts onward.
+            assigned.clear()
+    return matches
+
+
+def _readback_target(node: ast.AST) -> str | None:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+        return f"{node.value.id}.{node.attr}"
+    return None
 
 
 def _assertion_candidate_kind(node: ast.AST) -> str | None:

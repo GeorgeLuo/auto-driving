@@ -3,6 +3,8 @@ from __future__ import annotations
 import copy
 import unittest
 
+from qca import analyze_sources, report_to_dict
+
 from qca.factors.verification import (
     VERIFICATION_SCHEMA,
     analyze_verification,
@@ -116,6 +118,78 @@ class Suite:
         self.assertTrue(
             any("private production" in limitation.lower() for limitation in factors["test_effectiveness"]["limitations"])
         )
+
+    def test_consumer_report_locates_assignment_and_readback(self) -> None:
+        """Consumer: the serialized report identifies both ends of a readback."""
+        cases = [
+            ("value = 3", "assert value == 3"),
+            ("value: int = -3", "self.assertEqual(-3, value)"),
+            ("obj.value = 3", "assert obj.value == 3"),
+            ('value = "ready"', 'self.assertEqual(value, "ready")'),
+            ("value = None", "self.assertIs(value, None)"),
+        ]
+        for assignment, assertion in cases:
+            with self.subTest(assignment=assignment, assertion=assertion):
+                source = f"def test_example(self, obj):\n    {assignment}\n    {assertion}\n"
+                payload = report_to_dict(analyze_sources({"tests/test_sample.py": source}))
+                factor = payload["factors"]["test_effectiveness"]
+                self.assertEqual(factor["metrics"]["assignment_readback_candidates"], 1)
+                self.assertEqual(factor["metrics"]["candidate_assertion_count"], 1)
+                candidate = next(f for f in factor["findings"] if f["kind"] == "assignment_readback")
+                self.assertEqual((candidate["path"], candidate["line"], candidate["column"]), ("tests/test_sample.py", 3, 5))
+                self.assertEqual(candidate["assignment"], {
+                    "path": "tests/test_sample.py", "line": 2, "column": 5,
+                    "expression": assignment,
+                })
+                self.assertIn(assertion.removeprefix("assert "), candidate["expression"])
+                self.assertIn("boundary", candidate["message"])
+
+    def test_boundary_readback_tracking_stops_at_behavior_or_uncertainty(self) -> None:
+        """Boundary: transformations and uncertain state must not look like direct readbacks."""
+        cases = [
+            'result = api.normalize({"value": "3"})\nassert result["value"] == 3',
+            'value = 3\nassert serialize(value) == 3',
+            'obj.value = 3\nnormalize(obj)\nassert obj.value == 3',
+            'value = 3\nvalue += 1\nassert value == 3',
+            'value = 3\nvalue = normalize(value)\nassert value == 3',
+            'obj.value = 3\nobj = other\nassert obj.value == 3',
+            'obj.value = 3\nother.value = 3\nassert obj.value == 3',
+            'value = 3\nif condition:\n    value = 4\nassert value == 3',
+            'value = 3\nassert value == 3, mutate()',
+            'value = 3\nself.assertEqual(value, mutate())',
+            'value = 3\nassert value == 4',
+            'value = 3\nassert value != 3',
+            'value = 3\nalias = value\nassert alias == 3',
+            'obj = Model(value=3)\nassert obj.value == 3',
+            'data["value"] = 3\nassert data["value"] == 3',
+            'value = 3\ndef nested():\n    assert value == 3',
+        ]
+        for body in cases:
+            with self.subTest(body=body):
+                source = "def test_example(self, obj):\n" + "\n".join("    " + line for line in body.splitlines()) + "\n"
+                factor = analyze_sources({"tests/test_sample.py": source}).factors["test_effectiveness"]
+                self.assertEqual(factor["metrics"]["assignment_readback_candidates"], 0)
+                self.assertFalse(any(f["kind"] == "assignment_readback" for f in factor["findings"]))
+
+    def test_boundary_readback_scopes_and_reassignments(self) -> None:
+        """Boundary: track the latest local literal without crossing test scopes."""
+        source = """def test_first():
+    value = 3
+    other = 4
+    value = 5
+    assert value == 5
+
+def test_second():
+    assert value == 5
+
+def helper():
+    value = 3
+    assert value == 3
+"""
+        factor = analyze_sources({"tests/test_sample.py": source}).factors["test_effectiveness"]
+        candidates = [f for f in factor["findings"] if f["kind"] == "assignment_readback"]
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual((candidates[0]["assignment"]["line"], candidates[0]["line"]), (4, 5))
 
     def test_dynamic_factors_are_explicitly_unmeasured_without_evidence(self) -> None:
         factors = analyze_verification({})

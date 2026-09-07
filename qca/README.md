@@ -50,7 +50,7 @@ candidates and expandable raw data.
 | Factor | Computed evidence | Interpretation |
 | --- | --- | --- |
 | `redundancy` | Nontrivial callable clones and repeated branch bodies | Candidates for shared behavior; identifier normalization is approximate |
-| `patterns` | Recognized error-handling patterns | Inspect intent at the owning boundary |
+| `patterns` | Recognized error-handling patterns and redundant `any()` guards | Inspect intent at the owning boundary |
 | `functional_style` | State writes, mutable defaults, recognized effects, unresolved calls | Candidates for pure transformations; absence of recognized effects does not prove purity |
 | `functionality` | Stub and obvious unreachable-code patterns | Inspect intentional hooks and protocols before removing code |
 | `coupling` | Resolved local edges, fan-in/fan-out, cycles | Dependencies to examine, including relative imports |
@@ -100,6 +100,28 @@ valuable. No count is a quality grade or a reason to delete a test automatically
 Analyzer `0.3.7` retains all test inspection candidates and reports their
 completeness without the obsolete 64-site limit metadata. Shared factor path
 normalization and finding ordering keep those behaviors consistent.
+
+### Manually discovered redundant guards (analyzer 0.3.8)
+
+Manual inspection found repeated `bool(container) and any(...)` guards in
+`qca/factors/verification.py`. For ordinary containers, `any()` already returns
+false on empty input, including generator expressions over that container.
+The `patterns.metrics.redundant_any_guard_count` metric reports this narrow
+syntax, with `redundant_any_guard` findings carrying path, line, and expression.
+
+The detector requires a two-part `and`, explicit `bool(name)`, and `any(name)`
+or one synchronous generator over the same name. It also recognizes zero-arg
+`values()`, `keys()`, and `items()` on that name. It does not follow aliases,
+attribute guards, iterator factories, or multiple generator clauses. `all()`,
+`or`, guards for None, and checks over another collection are excluded because
+they may protect different behavior.
+
+These are manual-inspection candidates: builtin shadowing, custom truthiness,
+custom mapping methods, and concurrent mutation can make the guard observable.
+The scan does not prove these absent and does not rewrite code. Tests establish
+result and predicate-call equivalence for a bounded sample of ordinary
+containers and preserve `all([])` as a negative control. The original sites
+remain available for inspection; candidate count is not a removal target.
 
 ## Reproduce the refined M008 experiment
 

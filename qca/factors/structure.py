@@ -212,9 +212,23 @@ def _patterns(trees: dict[str, ast.Module]) -> dict[str, Any]:
     raise_count = 0
     logged_error_count = 0
     swallowed_exception_count = 0
+    redundant_any_guard_count = 0
 
     for path in sorted(trees):
         for node in ast.walk(trees[path]):
+            if _redundant_any_guard(node):
+                redundant_any_guard_count += 1
+                findings.append({
+                    "path": path,
+                    "line": node.lineno,
+                    "kind": "redundant_any_guard",
+                    "expression": ast.unparse(node),
+                    "message": (
+                        "bool(container) guards any() over the same container. "
+                        "For ordinary containers any() already handles emptiness; "
+                        "inspect builtin shadowing and custom truth/iteration effects before simplifying."
+                    ),
+                })
             if isinstance(node, ast.Raise):
                 raise_count += 1
                 findings.append({
@@ -264,9 +278,47 @@ def _patterns(trees: dict[str, ast.Module]) -> dict[str, Any]:
             "raise_count": raise_count,
             "logged_error_count": logged_error_count,
             "swallowed_exception_count": swallowed_exception_count,
+            "redundant_any_guard_count": redundant_any_guard_count,
         },
         findings,
-        ["Inspect intent at the owning boundary; recognized patterns are not a style grade."],
+        [
+            "Inspect intent at the owning boundary; recognized patterns are not a style grade.",
+            "Redundant-any guards match syntax only: builtin bool/any and ordinary container semantics are not proven. Aliases, attribute guards, and arbitrary iterator factories are not followed.",
+        ],
+    )
+
+
+def _redundant_any_guard(node: ast.AST) -> bool:
+    """Recognize an explicit emptiness guard over the same any() input."""
+    if not isinstance(node, ast.BoolOp) or not isinstance(node.op, ast.And) or len(node.values) != 2:
+        return False
+    guard, aggregate = node.values
+    if not (_unary_named_call(guard, "bool") and _unary_named_call(aggregate, "any")):
+        return False
+    container = guard.args[0]
+    if not isinstance(container, ast.Name):
+        return False
+    iterable = aggregate.args[0]
+    if isinstance(iterable, ast.GeneratorExp):
+        if len(iterable.generators) != 1 or iterable.generators[0].is_async:
+            return False
+        iterable = iterable.generators[0].iter
+    if isinstance(iterable, ast.Call):
+        if iterable.args or iterable.keywords or not isinstance(iterable.func, ast.Attribute):
+            return False
+        if iterable.func.attr not in {"values", "keys", "items"}:
+            return False
+        iterable = iterable.func.value
+    return isinstance(iterable, ast.Name) and iterable.id == container.id
+
+
+def _unary_named_call(node: ast.AST, name: str) -> bool:
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == name
+        and len(node.args) == 1
+        and not node.keywords
     )
 
 

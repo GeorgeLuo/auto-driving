@@ -257,9 +257,8 @@ before requesting review, the implementer may treat those tests as the black
 box and collapse two shapes in the same owner against them. Do this once, not
 during fill and not after each repair.
 
-Drive the tests through the public door: committed artifacts or the documented
-command in, pass or fail on the named mutation out. Do not pin helper names or
-error substrings as the contract.
+Use the [testing purpose and regression value](#testing-purpose-and-regression-value)
+contract below to keep this pass independent of implementation details.
 
 The pass is implementer-owned and documentary. It has no receipt, ledger row,
 or CI gate. Leftover two-shapes are `## Concerns`, not a completion lock.
@@ -987,6 +986,48 @@ The accepted proposal owns the matrix, owner, assumptions, limits, and intended
 file impact. The implementation PR links that proposal, reports exact
 validation, and notes a drift only when the diff departed from it. Do not
 restate the contract in the PR body.
+
+### Testing Purpose And Regression Value
+
+For each new or materially changed test, identify its purpose in the test name
+or a short docstring/metadata note, and answer: **What concrete regression would
+this catch?** The name or note can carry both; no separate inventory is needed.
+
+| Purpose | Behavior protected |
+| --- | --- |
+| `consumer` | Public CLI/API/UI journeys and observable compatibility, including changes consumers notice while internal tests still pass. |
+| `boundary` | Invalid, missing, malformed, unsupported, raced, or degraded cases, with the expected rejection, fail-closed result, or explicit degraded behavior visible. |
+| `mechanism` | A narrow internal invariant; explain why a public-entry-point test cannot provide a useful close. |
+
+Purpose is independent of [test ownership and layers](../../tests/README.md#ownership):
+a CLI test can be `consumer` or `boundary`, and a unit test can be `boundary`.
+A test may protect both a consumer journey and a boundary. Keep existing test
+placement and execution unchanged. Start with names or short notes; add tagging
+or filtering tooling only when reporting or selective execution needs it.
+
+Prefer the owner's public entry point: a documented command, API/UI journey,
+or committed artifact in, observable behavior out. Cover representative normal
+usage first. Add off-path cases when normal usage can reach them, the accepted
+contract claims them, or safety, integrity, or ownership requires them.
+Unsupported inputs or states should be rejected by the domain owner and
+translated into the CLI/API's structured error contract at the outer boundary.
+Do not expand an accepted matrix to hypothetical callers during repair.
+
+Assert a meaningful result, transformation, normalization, serialization,
+rejection, or compatibility property that survives implementation refactoring.
+For universal claims, check the final externally visible value after storage,
+serialization, or transport. A named mutation should produce the contracted
+failure without pinning helper names or incidental error substrings.
+
+Remove or replace assignment-level tautologies: setting a field and immediately
+reading the same value back does not establish behavior. Field assertions are
+valuable when they cross a meaningful wire/schema, normalization, serialization,
+transport, or consumer-output boundary—for example, checking a normalized value
+in serialized output rather than reading a value just assigned to an object.
+
+Apply this rule as tests are added or materially changed. It requires no
+immediate suite rewrite or deletion, coverage target, new test framework, or
+repository-wide naming migration.
 
 ### Invariant Closure (When Claiming Universals)
 

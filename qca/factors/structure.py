@@ -7,6 +7,8 @@ import hashlib
 from collections import defaultdict
 from typing import Any
 
+from ._utils import _norm, _sort_findings
+
 
 _MUTATING_METHODS = frozenset({
     "append", "extend", "insert", "remove", "pop", "clear",
@@ -65,25 +67,6 @@ def analyze_structure(sources: dict[str, str]) -> dict[str, dict[str, Any]]:
     return factors
 
 
-def _norm(path: str) -> str:
-    value = str(path).replace("\\", "/")
-    while value.startswith("./"):
-        value = value[2:]
-    return value or "."
-
-
-def _sort_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return sorted(
-        findings,
-        key=lambda item: (
-            str(item.get("path", "")),
-            int(item.get("line", 0)),
-            str(item.get("kind", "")),
-            str(item.get("message", "")),
-        ),
-    )
-
-
 def _factor(
     metrics: dict[str, int],
     findings: list[dict[str, Any]],
@@ -111,7 +94,11 @@ def _redundancy(trees: dict[str, ast.Module]) -> dict[str, Any]:
                 if _is_trivial_callable(node):
                     continue
                 digest = _callable_digest(node)
-                entry = {"path": path, "line": int(node.lineno), "name": node.name}
+                entry = {
+                    "path": path, "line": int(node.lineno), "end_line": int(node.end_lineno),
+                    "name": node.name, "code": ast.unparse(node),
+                    "identifier_usage": _identifier_usage(node),
+                }
                 groups[digest].append(entry)
                 stmt_counts[digest] = _logical_stmt_count(node)
             elif isinstance(node, ast.If):
@@ -148,14 +135,18 @@ def _redundancy(trees: dict[str, ast.Module]) -> dict[str, Any]:
         cloned_callable_count += len(occurrences)
         duplicate_ast_loc += stmt_counts[digest] * (len(occurrences) - 1)
         names = ", ".join(item["name"] for item in occurrences)
+        usage_patterns = {tuple(item["identifier_usage"]["pattern"]) for item in occurrences}
         findings.append({
             "path": occurrences[0]["path"],
             "line": occurrences[0]["line"],
             "kind": "callable_clone",
             "message": (
-                f"Nontrivial callable body is shared by {len(occurrences)} "
-                f"callables: {names}."
+                f"Approximate callable structure matches across {len(occurrences)} "
+                f"callables: {names}; inspect identifier usage before sharing behavior."
             ),
+            "identifier_usage_differs": len(usage_patterns) > 1,
+            "match_basis": "AST with all Name identifiers and parameter names erased",
+            "limitation": "Identifier usage records spelling equality in AST walk order, not lexical binding or behavioral equivalence.",
             "occurrences": occurrences,
             "paths": [item["path"] for item in occurrences],
         })
@@ -170,6 +161,17 @@ def _redundancy(trees: dict[str, ast.Module]) -> dict[str, Any]:
         findings,
         ["Identifier normalization is approximate; renamed locals may still look identical."],
     )
+
+
+def _identifier_usage(node: ast.FunctionDef | ast.AsyncFunctionDef) -> dict[str, Any]:
+    """Expose equality distinctions discarded by broad clone matching."""
+    names: dict[str, int] = {}
+    pattern: list[int] = []
+    for child in ast.walk(node):
+        name = child.id if isinstance(child, ast.Name) else child.arg if isinstance(child, ast.arg) else None
+        if name is not None:
+            pattern.append(names.setdefault(name, len(names)))
+    return {"names": list(names), "pattern": pattern}
 
 
 def _is_trivial_callable(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
@@ -229,9 +231,23 @@ def _patterns(trees: dict[str, ast.Module]) -> dict[str, Any]:
     raise_count = 0
     logged_error_count = 0
     swallowed_exception_count = 0
+    redundant_any_guard_count = 0
 
     for path in sorted(trees):
         for node in ast.walk(trees[path]):
+            if _redundant_any_guard(node):
+                redundant_any_guard_count += 1
+                findings.append({
+                    "path": path,
+                    "line": node.lineno,
+                    "kind": "redundant_any_guard",
+                    "expression": ast.unparse(node),
+                    "message": (
+                        "bool(container) guards any() over the same container. "
+                        "For ordinary containers any() already handles emptiness; "
+                        "inspect builtin shadowing and custom truth/iteration effects before simplifying."
+                    ),
+                })
             if isinstance(node, ast.Raise):
                 raise_count += 1
                 findings.append({
@@ -281,9 +297,47 @@ def _patterns(trees: dict[str, ast.Module]) -> dict[str, Any]:
             "raise_count": raise_count,
             "logged_error_count": logged_error_count,
             "swallowed_exception_count": swallowed_exception_count,
+            "redundant_any_guard_count": redundant_any_guard_count,
         },
         findings,
-        ["Inspect intent at the owning boundary; recognized patterns are not a style grade."],
+        [
+            "Inspect intent at the owning boundary; recognized patterns are not a style grade.",
+            "Redundant-any guards match syntax only: builtin bool/any and ordinary container semantics are not proven. Aliases, attribute guards, and arbitrary iterator factories are not followed.",
+        ],
+    )
+
+
+def _redundant_any_guard(node: ast.AST) -> bool:
+    """Recognize an explicit emptiness guard over the same any() input."""
+    if not isinstance(node, ast.BoolOp) or not isinstance(node.op, ast.And) or len(node.values) != 2:
+        return False
+    guard, aggregate = node.values
+    if not (_unary_named_call(guard, "bool") and _unary_named_call(aggregate, "any")):
+        return False
+    container = guard.args[0]
+    if not isinstance(container, ast.Name):
+        return False
+    iterable = aggregate.args[0]
+    if isinstance(iterable, ast.GeneratorExp):
+        if len(iterable.generators) != 1 or iterable.generators[0].is_async:
+            return False
+        iterable = iterable.generators[0].iter
+    if isinstance(iterable, ast.Call):
+        if iterable.args or iterable.keywords or not isinstance(iterable.func, ast.Attribute):
+            return False
+        if iterable.func.attr not in {"values", "keys", "items"}:
+            return False
+        iterable = iterable.func.value
+    return isinstance(iterable, ast.Name) and iterable.id == container.id
+
+
+def _unary_named_call(node: ast.AST, name: str) -> bool:
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == name
+        and len(node.args) == 1
+        and not node.keywords
     )
 
 

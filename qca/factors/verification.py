@@ -28,17 +28,23 @@ The runtime evidence record uses ``qca/verification/v1``::
     }
 
 All four factor names are recognized.  Omitted factor records are treated as
-``not_measured`` by :func:`attach_verification`; a ``passed`` or ``failed``
-record must contain non-empty command/result material or a non-empty
-expected/actual pair.  A lone ``{"passed": true}`` is not evidence.  The
-provenance object is copied exactly as supplied by the caller.  This module
-does not execute commands, inspect Git, or attest that provenance is genuine.
+``not_measured`` by :func:`attach_verification` and receive a default reason.
+An explicitly supplied ``not_measured`` record must include a non-empty
+``reason`` or ``limitation``.  A ``passed`` or ``failed`` record must contain
+non-empty command/result material or a non-empty expected/actual pair.  A lone
+``{"passed": true}`` is not evidence.  The
+whole evidence envelope, including provenance, must contain only JSON-safe
+values: built-in scalar values with finite floats, mappings with string keys,
+and list/tuple arrays (tuples are normalized to lists).  This module does not
+execute commands, inspect Git, or attest that provenance is genuine.
 
 The static scan has similarly narrow semantics:
 
 * test assertions are counted only in test-like files or test-named callables;
-* literal and same-operand assertions are reported as *candidates*, not bad
-  tests;
+* literal, same-operand, assignment-readback, string-expected, and formatted-literal assertions are
+  reported as *candidates*, not bad tests;
+* private production imports and helper calls from tests are candidates, while
+  same-module test helpers are not; numeric literals alone are not a signal;
 * lifecycle metrics count recognized definitions and calls, with a bounded
   list of sites; and
 * no static metric proves lifecycle start/stop/reset/cleanup symmetry.
@@ -48,6 +54,7 @@ from __future__ import annotations
 
 import ast
 import copy
+import math
 import re
 from collections.abc import Mapping
 from pathlib import PurePosixPath
@@ -64,10 +71,9 @@ VERIFICATION_FACTORS = (
 STATIC_FACTORS = ("test_effectiveness", "lifecycle")
 DYNAMIC_FACTORS = ("end_to_end", "ui_behavior")
 
-# Site lists are evidence for inspection, not a complete program inventory.
-# Counts remain exact (for successfully parsed Python inputs) while the lists
-# stay bounded so a large repository cannot produce an unwieldy report.
-MAX_CANDIDATE_SITES = 64
+# Lifecycle site lists are evidence for inspection, not a complete program
+# inventory. Counts remain exact (for successfully parsed Python inputs) while
+# the list stays bounded so a large repository cannot produce an unwieldy report.
 MAX_LIFECYCLE_SITES = 128
 
 _PYTHON_SUFFIXES = {".py", ".pyi"}
@@ -99,6 +105,17 @@ _ASSERT_LITERAL_METHODS = {
     "assertIsNone",
     "assertIsNotNone",
 }
+_STRING_EXPECTED_METHODS = {
+    "assertEqual",
+    "assertNotEqual",
+    "assertMultiLineEqual",
+    "assertIn",
+    "assertNotIn",
+    "assertRegex",
+    "assertNotRegex",
+}
+_FORMATTED_LITERAL_RE = re.compile(r"[|<>\n`]|\d+(?:\.\d+)?%")
+_FORMATTED_LITERAL_MIN_LENGTH = 40
 
 
 def analyze_verification(sources: dict[str, str]) -> dict[str, dict[str, Any]]:
@@ -165,8 +182,9 @@ def attach_verification(
     them.  Runtime ``passed`` records promote only the dynamic factors to
     ``verified``; ``failed`` promotes them to ``failed``.  Static factor
     statuses remain the result of :func:`analyze_verification`.  Every attached
-    factor receives a ``verification`` object containing the original record,
-    revisions, schema, and caller-supplied provenance.
+    factor receives a ``verification`` object containing a validated
+    JSON-compatible copy of the record, revisions, schema, and caller-supplied
+    provenance.
 
     The function is intentionally non-executing: it does not authenticate
     commands, inspect their output, or claim that a provenance object is
@@ -180,6 +198,7 @@ def attach_verification(
         raise TypeError("factors must be a mapping of factor names to payloads")
     if not isinstance(evidence, Mapping):
         raise TypeError("evidence must be a mapping")
+    evidence = _json_compatible_copy(evidence, "evidence")
 
     schema = evidence.get("schema")
     if schema != VERIFICATION_SCHEMA:
@@ -288,20 +307,60 @@ def _test_effectiveness_factor(
     assertion_count = 0
     literal_count = 0
     tautological_count = 0
+    readback_count = 0
+    string_expected_count = 0
+    formatted_literal_count = 0
+    private_import_count = 0
+    private_helper_call_count = 0
+    private_import_files: set[str] = set()
     test_case_count = 0
     test_parse_error_count = sum(1 for error in parse_errors if error["path"] in test_paths)
 
     for path, text, tree in parsed:
         module_is_test = path in test_paths
         parents = _parent_map(tree)
+        local_private = _private_names_defined(tree)
+        readbacks = _assignment_readbacks(tree)
         for node in ast.walk(tree):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith("test_"):
                 test_case_count += 1
+            if module_is_test and isinstance(node, (ast.Import, ast.ImportFrom)):
+                imported = _private_imported_names(node)
+                if imported:
+                    private_import_count += len(imported)
+                    private_import_files.add(path)
+                    _append_test_candidate(
+                        candidate_sites,
+                        kind="private_import",
+                        path=path,
+                        node=node,
+                        text=text,
+                        reason=(
+                            "Private production import in a test; inspect whether the test can use a public entrypoint."
+                        ),
+                    )
+                continue
             if not isinstance(node, (ast.Assert, ast.Call)):
                 continue
             if not module_is_test and not _inside_test_callable(node, parents):
                 continue
+            if isinstance(node, ast.Call) and _is_private_helper_call(node, local_private):
+                private_helper_call_count += 1
+                _append_test_candidate(
+                    candidate_sites,
+                    kind="private_helper_call",
+                    path=path,
+                    node=node,
+                    text=text,
+                    reason=(
+                        "Private production helper called from a test; inspect whether a public entrypoint covers the behavior."
+                    ),
+                )
             candidate_kind = _assertion_candidate_kind(node)
+            if candidate_kind is None and node in readbacks:
+                candidate_kind = "assignment_readback"
+            if candidate_kind is None:
+                candidate_kind = _string_expected_kind(node)
             if isinstance(node, ast.Assert):
                 assertion_count += 1
             elif _is_assertion_call(node):
@@ -310,35 +369,49 @@ def _test_effectiveness_factor(
                 continue
             if candidate_kind == "literal_assertion":
                 literal_count += 1
-            else:
+            elif candidate_kind == "tautological_assertion":
                 tautological_count += 1
-            reason = (
-                "Static candidate only; inspect assertion intent and its input variation before drawing a conclusion."
-            )
-            candidate_sites.append(
-                {
-                    "kind": candidate_kind,
-                    "path": path,
-                    "line": int(getattr(node, "lineno", 0) or 0),
-                    "column": int((getattr(node, "col_offset", 0) or 0) + 1),
-                    "expression": _source_expression(text, node),
-                    "reason": reason,
-                    "message": reason,
-                }
+            elif candidate_kind == "assignment_readback":
+                readback_count += 1
+            elif candidate_kind == "formatted_literal_assertion":
+                formatted_literal_count += 1
+                string_expected_count += 1
+            else:
+                string_expected_count += 1
+            _append_test_candidate(
+                candidate_sites,
+                kind=candidate_kind,
+                path=path,
+                node=node,
+                text=text,
+                reason=(
+                    "Static candidate only; inspect assertion intent and its input variation before drawing a conclusion."
+                ),
             )
 
-    candidate_count = literal_count + tautological_count
+            if candidate_kind == "assignment_readback":
+                assignment = readbacks[node]
+                candidate_sites[-1]["assignment"] = {
+                    "path": path,
+                    "line": assignment.lineno,
+                    "column": assignment.col_offset + 1,
+                    "expression": _source_expression(text, assignment),
+                }
+                candidate_sites[-1]["reason"] = candidate_sites[-1]["message"] = (
+                    "Assertion reads back a directly assigned literal; inspect whether a meaningful "
+                    "boundary is exercised. Attribute access may invoke a setter or getter."
+                )
+
+    candidate_count = literal_count + tautological_count + readback_count + string_expected_count
     limitations = [
-        "Literal and same-operand assertions are candidates for review, not a judgment that a test is ineffective.",
+        "Literal, same-operand, string-expected, and formatted-literal assertions are candidates for review, not a judgment that a test is ineffective.",
+        "Private production imports and helper calls are candidates; same-module test helpers are omitted; numeric expected values alone are not candidates.",
+        "Assignment readbacks track scalar literals in straight-line test function bodies only; calls, control flow, and uncertain mutations end tracking. No alias, constructor, subscript, or interprocedural inference is performed; attribute access may exercise meaningful descriptors.",
         "Static inspection does not infer input variation, mocks, explicit state setup, or the behavior under test.",
     ]
     if test_parse_error_count:
         limitations.append(
             f"{test_parse_error_count} test-like Python file(s) could not be parsed and were excluded from assertion counts."
-        )
-    if candidate_count > MAX_CANDIDATE_SITES:
-        limitations.append(
-            f"Candidate site details are limited to the first {MAX_CANDIDATE_SITES}; counts remain parser-derived."
         )
     metrics = {
         "source_file_count": len(ordered_sources),
@@ -348,6 +421,12 @@ def _test_effectiveness_factor(
         "assertion_count": assertion_count,
         "literal_assertion_candidates": literal_count,
         "tautological_assertion_candidates": tautological_count,
+        "assignment_readback_candidates": readback_count,
+        "string_expected_assertion_count": string_expected_count,
+        "formatted_literal_assertion_count": formatted_literal_count,
+        "private_import_count": private_import_count,
+        "private_import_test_file_count": len(private_import_files),
+        "private_helper_call_count": private_helper_call_count,
         "candidate_assertion_count": candidate_count,
         "candidate_site_count": len(candidate_sites),
         "parse_error_count": test_parse_error_count,
@@ -357,7 +436,6 @@ def _test_effectiveness_factor(
         "metrics": metrics,
         "findings": candidate_sites,
         "details": {
-            "candidate_site_limit": MAX_CANDIDATE_SITES,
             "candidate_sites_are_complete": True,
         },
         "limitations": limitations,
@@ -444,7 +522,7 @@ def _lifecycle_factor(
         "details": {
             "by_kind": by_kind,
             "site_limit": MAX_LIFECYCLE_SITES,
-            "sites_are_complete": True,
+            "sites_are_complete": len(sites) == total_sites,
         },
         "limitations": limitations,
     }
@@ -479,6 +557,184 @@ def _inside_test_callable(node: ast.AST, parents: Mapping[ast.AST, ast.AST]) -> 
 def _is_assertion_call(node: ast.Call) -> bool:
     name = _call_name(node.func)
     return bool(name and (name.startswith("assert") or name in {"fail", "failUnless", "failIf"}))
+
+
+def _append_test_candidate(
+    sites: list[dict[str, Any]],
+    *,
+    kind: str,
+    path: str,
+    node: ast.AST,
+    text: str,
+    reason: str,
+) -> None:
+    sites.append(
+        {
+            "kind": kind,
+            "path": path,
+            "line": int(getattr(node, "lineno", 0) or 0),
+            "column": int((getattr(node, "col_offset", 0) or 0) + 1),
+            "expression": _source_expression(text, node),
+            "reason": reason,
+            "message": reason,
+        }
+    )
+
+
+def _is_private_identifier(name: str) -> bool:
+    return name.startswith("_") and not name.startswith("__")
+
+
+def _private_names_defined(tree: ast.AST) -> set[str]:
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            if _is_private_identifier(node.name):
+                names.add(node.name)
+    return names
+
+
+def _is_test_module_name(module: str | None) -> bool:
+    if not module:
+        return False
+    return any(
+        part in {"tests", "test", "testing"} or part.startswith("test_")
+        for part in module.split(".")
+    )
+
+
+def _private_imported_names(node: ast.Import | ast.ImportFrom) -> tuple[str, ...]:
+    if isinstance(node, ast.Import):
+        return tuple(alias.name.split(".")[-1] for alias in node.names if _is_private_identifier(alias.name.split(".")[-1]))
+    if node.module == "__future__" or (node.level or 0) > 0 or _is_test_module_name(node.module):
+        return ()
+    return tuple(alias.name for alias in node.names if _is_private_identifier(alias.name))
+
+
+def _is_private_helper_call(node: ast.Call, local_private: set[str]) -> bool:
+    name = _call_name(node.func)
+    return bool(name and _is_private_identifier(name) and name not in local_private)
+
+
+def _constant_text(node: ast.AST) -> str | None:
+    if not isinstance(node, ast.Constant) or not isinstance(node.value, (str, bytes)):
+        return None
+    if isinstance(node.value, bytes):
+        return node.value.decode("utf-8", "replace")
+    return node.value
+
+
+def _is_formatted_literal(text: str) -> bool:
+    return len(text) >= _FORMATTED_LITERAL_MIN_LENGTH or bool(_FORMATTED_LITERAL_RE.search(text))
+
+
+def _string_constants_in_assertion(node: ast.AST) -> list[str]:
+    values: list[str] = []
+    if isinstance(node, ast.Assert) and isinstance(node.test, ast.Compare):
+        for part in (node.test.left, *node.test.comparators):
+            text = _constant_text(part)
+            if text is not None:
+                values.append(text)
+        return values
+    if not isinstance(node, ast.Call):
+        return values
+    name = _call_name(node.func)
+    if name not in _STRING_EXPECTED_METHODS:
+        return values
+    for arg in node.args[:2]:
+        text = _constant_text(arg)
+        if text is not None:
+            values.append(text)
+    return values
+
+
+def _string_expected_kind(node: ast.AST) -> str | None:
+    constants = _string_constants_in_assertion(node)
+    if not constants:
+        return None
+    expected = max(constants, key=len)
+    if _is_formatted_literal(expected):
+        return "formatted_literal_assertion"
+    return "string_expected_assertion"
+
+
+def _assignment_readbacks(tree: ast.AST) -> dict[ast.AST, ast.AST]:
+    """Locate literal readbacks without following calls, branches, or aliases."""
+    matches: dict[ast.AST, ast.AST] = {}
+    for function in ast.walk(tree):
+        if not (
+            isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and function.name.startswith("test_")
+        ):
+            continue
+        assigned: dict[str, tuple[ast.AST, ast.AST]] = {}
+        for statement in function.body:
+            target = value = None
+            if isinstance(statement, ast.Assign) and len(statement.targets) == 1:
+                target, value = statement.targets[0], statement.value
+            elif isinstance(statement, ast.AnnAssign):
+                target, value = statement.target, statement.value
+            if target is not None:
+                key = _readback_target(target)
+                literal = isinstance(value, ast.Constant) or (
+                    isinstance(value, ast.UnaryOp)
+                    and isinstance(value.op, (ast.UAdd, ast.USub))
+                    and isinstance(value.operand, ast.Constant)
+                    and type(value.operand.value) in (int, float, complex)
+                )
+                if key is None or not literal or any(isinstance(n, ast.Call) for n in ast.walk(statement)):
+                    assigned.clear()
+                    continue
+                # Attribute writes can invoke descriptors; a name write may
+                # replace an object whose field was tracked. Retain only
+                # unrelated scalar locals across simple local assignments.
+                if isinstance(target, ast.Attribute):
+                    assigned.clear()
+                else:
+                    assigned = {k: v for k, v in assigned.items() if "." not in k and k != key}
+                assigned[key] = (value, statement)
+                continue
+
+            assertion = statement.value if isinstance(statement, ast.Expr) else statement
+            operands = None
+            if isinstance(assertion, ast.Assert):
+                comparison = assertion.test
+                if (
+                    isinstance(comparison, ast.Compare)
+                    and len(comparison.ops) == 1
+                    and isinstance(comparison.ops[0], (ast.Eq, ast.Is))
+                ):
+                    operands = (comparison.left, comparison.comparators[0])
+            elif (
+                isinstance(assertion, ast.Call)
+                and _call_name(assertion.func) in {"assertEqual", "assertIs"}
+                and len(assertion.args) == 2
+                and not assertion.keywords
+            ):
+                operands = tuple(assertion.args)
+            # Calls even in assertion messages/operands can change state.
+            nested_calls = any(
+                isinstance(n, (ast.Call, ast.Await, ast.Yield, ast.NamedExpr))
+                and n is not assertion
+                for n in ast.walk(statement)
+            )
+            if operands is not None and not nested_calls:
+                for actual, expected in (operands, operands[::-1]):
+                    prior = assigned.get(_readback_target(actual))
+                    if prior is not None and _ast_equal(prior[0], expected):
+                        matches[assertion] = prior[1]
+                        break
+            # Assertions may invoke user code too; do not carry facts onward.
+            assigned.clear()
+    return matches
+
+
+def _readback_target(node: ast.AST) -> str | None:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+        return f"{node.value.id}.{node.attr}"
+    return None
 
 
 def _assertion_candidate_kind(node: ast.AST) -> str | None:
@@ -596,6 +852,57 @@ def _extract_factor_records(evidence: Mapping[str, Any]) -> dict[str, Any]:
     return dict(nested)
 
 
+def _json_compatible_copy(value: Any, path: str, active: set[int] | None = None) -> Any:
+    """Return a JSON-safe copy of an evidence value or reject it.
+
+    Evidence is deliberately limited to the built-in JSON scalar types, finite
+    floats, mappings with string keys, and list/tuple arrays.  Tuples are
+    accepted as the Python spelling of a JSON array and normalized to lists.
+    Mapping and sequence containers are copied while traversing so custom
+    container implementations cannot remain in the attached report.  The
+    active container ids detect cycles while allowing shared sub-values.
+    """
+
+    if type(value) in (type(None), bool, int, str):
+        return value
+    if type(value) is float:
+        if not math.isfinite(value):
+            raise ValueError(f"{path} contains a non-finite float")
+        return value
+
+    if isinstance(value, Mapping):
+        marker = id(value)
+        active = set() if active is None else active
+        if marker in active:
+            raise ValueError(f"{path} contains a cyclic reference")
+        active.add(marker)
+        try:
+            normalized: dict[str, Any] = {}
+            for key, item in value.items():
+                if type(key) is not str:
+                    raise ValueError(f"{path} contains a non-string object key")
+                normalized[key] = _json_compatible_copy(item, f"{path}.{key}", active)
+            return normalized
+        finally:
+            active.remove(marker)
+
+    if isinstance(value, (list, tuple)):
+        marker = id(value)
+        active = set() if active is None else active
+        if marker in active:
+            raise ValueError(f"{path} contains a cyclic reference")
+        active.add(marker)
+        try:
+            return [
+                _json_compatible_copy(item, f"{path}[{index}]", active)
+                for index, item in enumerate(value)
+            ]
+        finally:
+            active.remove(marker)
+
+    raise ValueError(f"{path} contains unsupported value type {type(value).__name__}")
+
+
 def _validate_factor_record(
     factor_name: str,
     record: Any,
@@ -626,8 +933,11 @@ def _validate_factor_record(
             f"evidence record for {factor_name!r} has a head_sha that does not match the envelope"
         )
     if status == "not_measured":
-        reason = normalized.get("reason", normalized.get("limitation"))
-        if reason is not None and (not isinstance(reason, str) or not reason.strip()):
+        reason = normalized.get("reason")
+        limitation = normalized.get("limitation")
+        has_reason = isinstance(reason, str) and bool(reason.strip())
+        has_limitation = isinstance(limitation, str) and bool(limitation.strip())
+        if not (has_reason or has_limitation):
             raise ValueError(f"not_measured record for {factor_name!r} needs a non-empty reason")
         return normalized
 
@@ -755,7 +1065,6 @@ def _substantive_value(value: Any) -> bool:
 
 __all__ = [
     "DYNAMIC_FACTORS",
-    "MAX_CANDIDATE_SITES",
     "MAX_LIFECYCLE_SITES",
     "STATIC_FACTORS",
     "VERIFICATION_FACTORS",

@@ -7,6 +7,8 @@ from collections import defaultdict
 from pathlib import PurePosixPath
 from typing import Any
 
+from ._utils import _norm, _sort_findings
+
 
 def analyze_coupling(sources: dict[str, str]) -> dict[str, dict[str, Any]]:
     """Measure local imports and static public contracts without importing code.
@@ -49,13 +51,6 @@ def analyze_coupling(sources: dict[str, str]) -> dict[str, dict[str, Any]]:
     return {"coupling": coupling, "contracts": contracts}
 
 
-def _norm(path: str) -> str:
-    value = str(path).replace("\\", "/")
-    while value.startswith("./"):
-        value = value[2:]
-    return value or "."
-
-
 def _module_names(path: str) -> list[str]:
     parts = PurePosixPath(path).parts
     stem = parts[-1][:-3]
@@ -84,17 +79,48 @@ def _index(trees: dict[str, ast.Module]) -> dict[str, str]:
     return {name: sorted(paths)[0] for name, paths in candidates.items()}
 
 
-def _lookup(name: str, index: dict[str, str]) -> str | None:
-    """Resolve exact local names before falling back to local package parents."""
-    while name:
-        if name in index:
-            return index[name]
-        name = name.rpartition(".")[0]
-    return None
+def _lookup_resolution(name: str, index: dict[str, str]) -> dict[str, Any]:
+    """Resolve a local module while retaining how much of its name matched.
+
+    Parent lookup is useful for inspection because a missing dotted child may
+    still indicate coupling to a supplied package.  It is only a candidate,
+    though, so callers need to be able to distinguish it from an exact module
+    resolution.  ``unresolved_suffix`` is the portion after the matched
+    module; for a wholly unresolved name it contains the complete request.
+    """
+    requested = name
+    candidate = name
+    while candidate:
+        if candidate in index:
+            exact = candidate == requested
+            return {
+                "target": index[candidate],
+                "resolution": "exact" if exact else "ancestor_fallback",
+                "requested_name": requested,
+                "matched_module": candidate,
+                "unresolved_suffix": _unresolved_suffix(requested, candidate),
+            }
+        candidate = candidate.rpartition(".")[0]
+    return {
+        "target": None,
+        "resolution": "unresolved",
+        "requested_name": requested,
+        "matched_module": None,
+        "unresolved_suffix": requested or None,
+    }
 
 
-def _from_target(path: str, node: ast.ImportFrom, imported: str,
-                 index: dict[str, str]) -> str | None:
+def _unresolved_suffix(requested: str, matched: str) -> str | None:
+    if requested == matched:
+        return None
+    prefix = matched + "."
+    if requested.startswith(prefix):
+        return requested[len(prefix):] or None
+    return requested or None
+
+
+def _from_resolution(path: str, node: ast.ImportFrom, imported: str,
+                     index: dict[str, str]) -> dict[str, Any]:
     if node.level:
         package = [part for part in _package(path).split(".") if part]
         if node.level > 1:
@@ -105,10 +131,26 @@ def _from_target(path: str, node: ast.ImportFrom, imported: str,
         base = node.module or ""
     if imported and imported != "*":
         child = f"{base}.{imported}" if base else imported
-        target = _lookup(child, index)
-        if target is not None:
-            return target
-    return _lookup(base, index)
+        child_resolution = _lookup_resolution(child, index)
+        if child_resolution["resolution"] == "exact":
+            return child_resolution
+
+        # ``from module import symbol`` commonly resolves to the module that
+        # owns the symbol.  Keep that useful edge, but label it separately
+        # from a dotted-module parent fallback so consumers do not mistake it
+        # for proof that ``module.symbol`` is itself a local module.
+        base_resolution = _lookup_resolution(base, index)
+        if base_resolution["resolution"] == "exact":
+            return {
+                **base_resolution,
+                "resolution": "symbol_owner",
+                "requested_name": child,
+                "unresolved_suffix": _unresolved_suffix(
+                    child, base_resolution["matched_module"]
+                ),
+            }
+        return child_resolution
+    return _lookup_resolution(base, index)
 
 
 def _coupling(trees: dict[str, ast.Module]) -> dict[str, Any]:
@@ -119,22 +161,28 @@ def _coupling(trees: dict[str, ast.Module]) -> dict[str, Any]:
     for path in nodes:
         for node in ast.walk(trees[path]):
             if isinstance(node, ast.Import):
-                imports = [(alias.name, _lookup(alias.name, index), "import")
+                imports = [(alias.name, _lookup_resolution(alias.name, index), "import")
                            for alias in node.names]
             elif isinstance(node, ast.ImportFrom):
                 imports = [("." * node.level + (node.module or "") +
                             (f":{alias.name}" if alias.name != "*" else ""),
-                            _from_target(path, node, alias.name, index), "from")
+                            _from_resolution(path, node, alias.name, index), "from")
                            for alias in node.names]
             else:
                 continue
-            for name, target, kind in imports:
+            for name, resolution, kind in imports:
+                target = resolution["target"]
                 if target is None:
                     key = (path, int(node.lineno), name)
-                    external.setdefault(key, {"path": path, "line": int(node.lineno),
-                                              "name": name, "kind": "external"})
+                    external.setdefault(
+                        key,
+                        {"path": path, "line": int(node.lineno),
+                         "name": name, "kind": "external",
+                         **_resolution_fields(resolution)},
+                    )
                 else:
-                    _edge(edge_data, path, target, int(node.lineno), kind, name)
+                    _edge(edge_data, path, target, int(node.lineno), kind, name,
+                          resolution)
 
     edges = [edge_data[key] for key in sorted(edge_data)]
     fan_in = {path: 0 for path in nodes}
@@ -149,15 +197,16 @@ def _coupling(trees: dict[str, ast.Module]) -> dict[str, Any]:
     findings: list[dict[str, Any]] = [
         {"path": item["path"], "line": item["line"], "kind": "external_import",
          "message": f"Import is not resolved to a supplied local module: {item['name']}",
-         "name": item["name"]}
+         "name": item["name"], **_resolution_fields(item)}
         for item in unresolved
     ]
     for cycle in cycles:
         line = min((edge["line"] for edge in edges
                     if edge["source"] in cycle and edge["target"] in cycle), default=1)
         findings.append({"path": cycle[0], "line": line, "kind": "cycle",
-                         "message": "Local import cycle: " + " -> ".join(cycle + [cycle[0]]),
-                         "members": cycle, "paths": cycle})
+                         "message": "Local import cycle component: " + ", ".join(cycle),
+                         "members": cycle, "paths": cycle,
+                         "cycle_representation": "scc_members"})
     for path in nodes:
         if fan_out[path] >= 3:
             findings.append({"path": path, "line": 1, "kind": "fan_out",
@@ -179,6 +228,7 @@ def _coupling(trees: dict[str, ast.Module]) -> dict[str, Any]:
     graph = {"nodes": nodes, "edges": edges,
              "fan": {"in": fan_in, "out": fan_out},
              "cycles": cycles,
+             "cycle_representation": "scc_members",
              "unresolved_external": unresolved}
     return {
         "status": "measured", "metrics": metrics, "graph": graph,
@@ -186,18 +236,54 @@ def _coupling(trees: dict[str, ast.Module]) -> dict[str, Any]:
         "limitations": [
             "Import resolution is AST-based and does not execute module search hooks or dynamic imports.",
             "Unresolved imports are separate observations; installability and runtime availability are not measured.",
-            "Cycles are deterministic strongly connected components, not every distinct runtime import path.",
+            "Cycles are deterministic strongly connected component member sets, not every distinct runtime import path; member ordering does not imply an import path.",
         ],
     }
 
 
 def _edge(edges: dict[tuple[str, str], dict[str, Any]], source: str, target: str,
-          line: int, kind: str, name: str) -> None:
+          line: int, kind: str, name: str,
+          resolution: dict[str, Any]) -> None:
     item = edges.setdefault((source, target), {"source": source, "target": target,
                                                 "line": line, "kind": kind,
-                                                "imports": [], "lines": []})
+                                                "imports": [], "lines": [],
+                                                "resolution_details": []})
     item["imports"] = sorted(set(item["imports"]) | {name})
     item["lines"] = sorted(set(item["lines"]) | {line})
+    detail = {"line": line, "import": name, **_resolution_fields(resolution)}
+    if detail not in item["resolution_details"]:
+        item["resolution_details"].append(detail)
+        item["resolution_details"].sort(
+            key=lambda value: (
+                value["requested_name"], value["matched_module"] or "",
+                value["unresolved_suffix"] or "", value["resolution"],
+                value["line"], value["import"],
+            )
+        )
+    _set_edge_resolution(item)
+
+
+def _resolution_fields(resolution: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "resolution": resolution["resolution"],
+        "requested_name": resolution["requested_name"],
+        "matched_module": resolution["matched_module"],
+        "unresolved_suffix": resolution["unresolved_suffix"],
+    }
+
+
+def _set_edge_resolution(edge: dict[str, Any]) -> None:
+    details = edge["resolution_details"]
+    if len(details) == 1:
+        edge.update(_resolution_fields(details[0]))
+        return
+    resolutions = {detail["resolution"] for detail in details}
+    edge.update({
+        "resolution": next(iter(resolutions)) if len(resolutions) == 1 else "mixed",
+        "requested_name": None,
+        "matched_module": None,
+        "unresolved_suffix": None,
+    })
 
 
 def _scc_cycles(adjacency: dict[str, set[str]]) -> list[list[str]]:
@@ -445,10 +531,3 @@ def _expr(node: ast.AST) -> str:
         return ast.unparse(node)
     except Exception:
         return "<dynamic>"
-
-
-def _sort_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return sorted(findings, key=lambda item: (str(item.get("path", "")),
-                                               int(item.get("line", 0)),
-                                               str(item.get("kind", "")),
-                                               str(item.get("message", ""))))

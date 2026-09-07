@@ -32,7 +32,9 @@ tests. `--python` keeps only `.py` / `.pyi` files.
 Use `--include-root` repeatedly to bound core measurements to an ownership
 area.  The source inventory still classifies files outside those roots so
 changed-file attribution remains visible.  JSON is the stable machine-facing
-record; Markdown is a compact operator-facing rendering.  Diff
+record; Markdown is a compact operator-facing rendering.  Factor findings
+include additive `indicator` identity and `evidence` source blocks; Markdown
+keeps a compact list, while HTML presents the same code.  Diff
 `review_targets` are deterministic inspection prompts for agents and humans,
 not findings that should be accepted without review.  Rename detection is
 deliberately disabled in v0: a move is represented as an old-file deletion and
@@ -45,7 +47,9 @@ locations to inspect, and limitations. Diffs carry `base_metrics` and `delta`;
 their findings are restricted to changed files while their totals describe
 the full configured Python scope. The report stores the configuration as well
 as its hash. HTML renders the same JSON record, including all inspection
-candidates and expandable raw data.
+candidates, source evidence, and expandable raw data. Each static finding
+carries `indicator` (`id`, `version`) and `evidence` (`revision`, `primary`,
+`related`, `pattern`, `uncertainty`, `inspection_question`, `primary_reason`).
 
 | Factor | Computed evidence | Interpretation |
 | --- | --- | --- |
@@ -151,6 +155,26 @@ identifier spellings and their equality pattern in AST traversal order. The
 finding's `identifier_usage_differs` exposes distinctions erased by matching,
 such as `a + b` versus `x + x`. This is spelling evidence, not lexical binding
 resolution or proof of equivalent behavior.
+
+### Independently testable indicators (analyzer 0.3.11)
+
+Detectors live in `qca/indicators/` as separately importable modules that share
+one `AnalysisContext`. Structure and coupling reuse the same cached AST when
+parse options match; verification keeps stub files, case-insensitive `.py`
+suffixes, and type-comment parsing. `qca.indicators.INDICATOR_REGISTRY` lists
+the shipped detector identities. There is no plugin discovery.
+
+When a detector has an AST node, `evidence.primary` is that exact range and
+source text. Graph-wide observations set `primary` to `null`, explain the
+broader scope in `primary_reason`, and cite contributing blocks in
+`evidence.related`. Git-backed `analyze --ref` and `diff` reports set
+`evidence.revision` to the analyzed SHA; in-memory and working-tree analyses
+leave it `null`. Matching rules, metrics, and historic finding fields are
+unchanged.
+
+Independent tests can call a detector predicate or `analyze(context)` without
+building a public report. New prototype indicators should follow the same
+module, registry, and evidence shape.
 
 ## Reproduce the refined M008 experiment
 

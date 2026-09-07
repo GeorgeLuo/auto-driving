@@ -27,7 +27,7 @@ from typing import Any, Iterable, Mapping, Protocol, Sequence
 from .factors import FACTOR_VERSION, compare_factors, measure_factors
 
 
-ANALYZER_VERSION = "0.3.10"
+ANALYZER_VERSION = "0.3.11"
 REPORT_SCHEMA = "qca/report/v1"
 SOURCE_CLASSES = (
     "production",
@@ -356,7 +356,10 @@ def _analyze_revision(
             source_inventory=inventory,
             head=head,
             observations=_observations(head, None, None),
-            factors=measure_factors(_factor_sources(reader, inventory)),
+            factors=measure_factors(
+                _factor_sources(reader, inventory),
+                revision=tree.sha,
+            ),
             configuration=config.canonical(),
         )
     repo_root = _find_repo_root(_existing_search_path(paths))
@@ -384,7 +387,7 @@ def _analyze_revision(
         source_inventory=inventory,
         head=head,
         observations=_observations(head, None, None),
-        factors=measure_factors(_factor_sources(reader, inventory)),
+        factors=measure_factors(_factor_sources(reader, inventory), revision=sha),
         configuration=config.canonical(),
     )
 
@@ -414,7 +417,7 @@ def analyze_sources(
         source_inventory=inventory,
         head=head,
         observations=_observations(head, None, None),
-        factors=measure_factors(_factor_sources(reader, inventory)),
+        factors=measure_factors(_factor_sources(reader, inventory), revision=None),
         configuration=policy.canonical(),
     )
 
@@ -491,8 +494,14 @@ def analyze_diff(
         diff=diff,
         observations=_observations(head_snapshot, base_snapshot, diff),
         factors=compare_factors(
-            measure_factors(_factor_sources(base_reader, base_inventory)),
-            measure_factors(_factor_sources(head_reader, head_inventory)),
+            measure_factors(
+                _factor_sources(base_reader, base_inventory),
+                revision=base_sha,
+            ),
+            measure_factors(
+                _factor_sources(head_reader, head_inventory),
+                revision=head_sha,
+            ),
             set(diff.changed_files),
         ),
         configuration=policy.canonical(),
@@ -505,6 +514,17 @@ def _factor_sources(reader: _SourceReader, inventory: list[SourceFile]) -> dict[
         for item in inventory
         if item.included and item.language == "python"
     }
+
+
+def _finding_markdown(item: dict[str, Any]) -> str:
+    path = item.get("path", "")
+    line = item.get("line", "")
+    location = f"{path}:{line}" if path or line != "" else str(item.get("kind") or "finding")
+    indicator = ""
+    identity = item.get("indicator")
+    if isinstance(identity, dict) and identity.get("id"):
+        indicator = f" `{identity['id']}`"
+    return f"- `{location}`{indicator}: {item.get('message', '')}"
 
 
 def _snapshot_production_test_markdown(split: dict[str, Any]) -> list[str]:
@@ -737,9 +757,7 @@ def render_markdown(report: Report) -> str:
                 lines.append(f"| {metric} | {value} | {delta if delta is not None else '—'} |")
             lines.append("")
         for item in factor["findings"][:8]:
-            lines.append(
-                f"- `{item.get('path', '')}:{item.get('line', '')}`: {item.get('message', '')}"
-            )
+            lines.append(_finding_markdown(item))
         if len(factor["findings"]) > 8:
             lines.append(f"- {len(factor['findings']) - 8} more candidates in JSON/HTML.")
         lines.append("")

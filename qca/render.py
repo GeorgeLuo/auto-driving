@@ -13,6 +13,63 @@ def _escape(value: Any) -> str:
     return html.escape(str(value), quote=True)
 
 
+def _finding_location(item: dict[str, Any]) -> str:
+    path = item.get("path") or ""
+    line = item.get("line")
+    if path and line not in (None, ""):
+        return f"{path}:{line}"
+    if path:
+        return str(path)
+    return str(item.get("kind") or "finding")
+
+
+def _finding_indicator_id(item: dict[str, Any]) -> str:
+    identity = item.get("indicator")
+    if isinstance(identity, dict) and identity.get("id"):
+        return str(identity["id"])
+    return ""
+
+
+def _source_block_html(block: dict[str, Any] | None) -> str:
+    if not isinstance(block, dict) or not block.get("code"):
+        return ""
+    path = block.get("path") or ""
+    start = ((block.get("range") or {}).get("start") or {}).get("line")
+    label = f"{path}:{start}" if path and start not in (None, "") else path
+    heading = f"<p>{_escape(label)}</p>" if label else ""
+    return heading + f"<pre><code>{_escape(block['code'])}</code></pre>"
+
+
+def _finding_evidence_html(item: dict[str, Any]) -> str:
+    evidence = item.get("evidence")
+    if not isinstance(evidence, dict):
+        return ""
+    parts = [
+        f'<details class="finding"><summary>{_escape(_finding_location(item))} source evidence</summary>'
+    ]
+    indicator_id = _finding_indicator_id(item)
+    if indicator_id:
+        parts.append(f"<p>Indicator: <code>{_escape(indicator_id)}</code></p>")
+    question = evidence.get("inspection_question")
+    if question:
+        parts.append(f"<p>Inspect: {_escape(question)}</p>")
+    uncertainty = evidence.get("uncertainty")
+    if isinstance(uncertainty, list) and uncertainty:
+        parts.append("<p>Uncertainty: " + _escape("; ".join(str(label) for label in uncertainty)) + "</p>")
+    primary = evidence.get("primary")
+    if primary:
+        parts.append(_source_block_html(primary))
+    elif evidence.get("primary_reason"):
+        parts.append(f"<p>{_escape(evidence['primary_reason'])}</p>")
+    related = evidence.get("related")
+    if isinstance(related, list) and related:
+        parts.append("<details><summary>Related source</summary>")
+        parts.extend(_source_block_html(block) for block in related if isinstance(block, dict))
+        parts.append("</details>")
+    parts.append("</details>")
+    return "\n".join(part for part in parts if part)
+
+
 def _table(headers: list[str], rows: list[list[Any]]) -> str:
     return (
         '<div class="scroll"><table><thead><tr>'
@@ -157,10 +214,16 @@ def render_html(payload: dict[str, Any], *, title: str = "Quantitative change an
             findings = factor["findings"]
             if findings:
                 sections.append(f"<details><summary>{len(findings)} inspection candidates</summary>")
-                sections.append(_table(["Location", "Pattern", "Reason"], [
-                    [f"{item.get('path', '')}:{item.get('line', '')}", item.get("kind", ""), item["message"]]
+                sections.append(_table(["Location", "Indicator", "Pattern", "Reason"], [
+                    [
+                        _finding_location(item),
+                        _finding_indicator_id(item),
+                        item.get("kind", ""),
+                        item.get("message", ""),
+                    ]
                     for item in findings
                 ]))
+                sections.extend(_finding_evidence_html(item) for item in findings)
                 sections.append("</details>")
             if factor.get("verification"):
                 sections.append("<pre>" + _escape(json.dumps(factor["verification"], indent=2)) + "</pre>")
@@ -193,6 +256,6 @@ def render_html(payload: dict[str, Any], *, title: str = "Quantitative change an
 *{{box-sizing:border-box}}body{{margin:0;color:#20312f;background:#f6f8f7;font:15px/1.55 system-ui,sans-serif}}
 main{{max-width:1140px;margin:auto;padding:28px 24px 64px}}h1{{font-size:26px}}h2{{margin-top:32px;font-size:21px}}h3{{margin-top:28px;font-size:17px}}
 .scroll{{overflow:auto}}table{{width:100%;border-collapse:collapse;margin:12px 0;background:white;font-size:13px}}th,td{{border:1px solid #d8e1dc;padding:8px;text-align:left;vertical-align:top;overflow-wrap:anywhere}}th{{background:#eaf0ec}}
-details{{margin:16px 0}}summary{{cursor:pointer;padding:10px 0}}pre{{max-height:65vh;overflow:auto;padding:16px;background:#1d2e2b;color:#e6f1eb;font-size:12px}}.limit{{font-size:13px;color:#596962}}
+details{{margin:16px 0}}summary{{cursor:pointer;padding:10px 0}}pre{{max-height:65vh;overflow:auto;padding:16px;background:#1d2e2b;color:#e6f1eb;font-size:12px}}.finding{{margin:12px 0;padding:8px 12px;background:white;border:1px solid #d8e1dc}}.finding pre{{max-height:24vh}}.limit{{font-size:13px;color:#596962}}
 </style></head><body><main>{body}</main></body></html>
 '''

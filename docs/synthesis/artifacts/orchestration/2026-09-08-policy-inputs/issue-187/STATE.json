@@ -1,0 +1,100 @@
+{
+  "phase": "complete",
+  "pr": 196,
+  "issue": 187,
+  "observed_head": "761310438afbef47b1f4937fb6867ec4174fc61d",
+  "observed_base": "b88861baf0740247ba8e6a76b968478c82a8f02a",
+  "policy": "review-repair/v1",
+  "policy_source": "b88861baf0740247ba8e6a76b968478c82a8f02a",
+  "requested_root_runtime": {
+    "model": "gpt-5.6-luna",
+    "effort": "max"
+  },
+  "cycle": 1,
+  "active_worker": null,
+  "finding_dispositions": {},
+  "validation": {
+    "metadata_repair": "PR body now uses the canonical six-column all-None zero-cycle table",
+    "isolated_worktree": "/private/tmp/auto-driving-187",
+    "head_publication": "761310438afbef47b1f4937fb6867ec4174fc61d",
+    "local_final": [
+      "python3 docs/render_markdown.py --check: pass",
+      "python3 docs/milestones/workflow.py validate: pass for plans 005, 007, and 008",
+      "git diff --check origin/main..HEAD: pass",
+      "python3 docs/milestones/workflow.py validate-pr with exact base/head/body: pass"
+    ],
+    "remote_ci": [
+      {
+        "run_id": 34267960610,
+        "event": "pull_request",
+        "status": "success",
+        "url": "https://github.com/GeorgeLuo/auto-driving/actions/runs/34267960610"
+      },
+      {
+        "run_id": 34268528767,
+        "event": "pull_request_review",
+        "status": "success",
+        "url": "https://github.com/GeorgeLuo/auto-driving/actions/runs/34268528767"
+      }
+    ]
+  },
+  "receipts": [
+    {
+      "type": "exact_head_acceptance",
+      "review_id": 5146057563,
+      "url": "https://github.com/GeorgeLuo/auto-driving/pull/196#pullrequestreview-5146057563",
+      "head": "761310438afbef47b1f4937fb6867ec4174fc61d",
+      "state": "COMMENTED",
+      "body": "## Contract Review Receipt\\n\\n- Outcome: `accepted`",
+      "submitted_at": "2026-09-08T19:21:57Z"
+    }
+  ],
+  "next_action": "Operator may merge PR #196; do not merge or close issue #187 in this run.",
+  "outstanding_ci_run_id": null,
+  "root_runtime_actual": {
+    "model": "GPT-5; exact variant not exposed by runtime",
+    "effort": "not exposed"
+  },
+  "runtime_deviations": [
+    "Root model and effort identity were not exposed by the runtime; reviewer ran with the requested gpt-5.6-luna/max configuration."
+  ],
+  "metrics": {
+    "review_cycles": 1,
+    "reviewer_launches": 1,
+    "root_child_turns": 1,
+    "poll_wait_turns": 0,
+    "max_live_subordinates": 1,
+    "coordinator_used": false,
+    "duplicated_validation": 0,
+    "exact_head_receipts": true,
+    "final_acceptance_done": true,
+    "review_receipt": {
+      "cycle": 1,
+      "head_reviewed": "761310438afbef47b1f4937fb6867ec4174fc61d",
+      "findings": [],
+      "escalation_required": false,
+      "outcome": "no_blockers",
+      "evidence_refs": [
+        "docs/milestones/README.md:990-1028",
+        "docs/guidance/validation.md:30-31",
+        "tests/README.md:26-30",
+        "docs/milestones/planning-contract.html:1142-1192"
+      ],
+      "reviewer_agent": "01a08274-9607-7a33-bbd8-cc47aedafe94"
+    },
+    "reviewer_model": "gpt-5.6-luna",
+    "reviewer_effort": "max",
+    "model_calls": {
+      "root": "token/call telemetry unavailable",
+      "reviewer": 1
+    },
+    "cached_input": "unavailable",
+    "output_and_reasoning_tokens": "unavailable",
+    "wait_status_activations": 4,
+    "terminal_watch_sessions": 2,
+    "lowest_tier_review_cycles": 0,
+    "no_lowest_tier_explanation": "Operator-pinned Luna/max reviewer completed without escalation or descent.",
+    "outcome": "converged",
+    "telemetry": "token and reasoning-output telemetry unavailable"
+  }
+}

@@ -23,6 +23,7 @@ Load that version in addition to role/task guidance from
 
 | Policy | Current version | Use when |
 | --- | --- | --- |
+| `product-implementation` | [v1](product-implementation/v1.md) | Implement one accepted frontier proposal; experimental, ready-for-review delivery. |
 | `ad-hoc-implementation` | [v3](ad-hoc-implementation/v3.md) | Bounded implementation, no accepted proposal, existing authority is enough. |
 | `review-repair` | [v1](review-repair/v1.md) | Existing implementation, one frozen review question, remove blockers. |
 
@@ -59,3 +60,9 @@ contains no shared semantic definitions.
 
 Policy-specific invariants win over the pinned shared defaults. The canonical
 milestone contract wins over both.
+
+## Experiment evidence
+
+The [frontier-policy input notes](../../synthesis/artifacts/orchestration/2026-09-08-policy-inputs/README.md)
+retain the handoff snapshots and limits behind `product-implementation/v1`.
+They are historical evidence, not policy authority or a completed frontier trial.

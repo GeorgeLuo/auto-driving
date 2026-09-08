@@ -9,7 +9,7 @@ not authorize a phase transition that recorded workflow state forbids.
 Do not infer a policy. The operator names an immutable id:
 
 ```text
-Follow orchestration policy ad-hoc-implementation/v2 for this change.
+Follow orchestration policy ad-hoc-implementation/v3 for this change.
 ```
 
 ```text
@@ -23,7 +23,7 @@ Load that version in addition to role/task guidance from
 
 | Policy | Current version | Use when |
 | --- | --- | --- |
-| `ad-hoc-implementation` | [v2](ad-hoc-implementation/v2.md) | Bounded implementation, no accepted proposal, existing authority is enough. |
+| `ad-hoc-implementation` | [v3](ad-hoc-implementation/v3.md) | Bounded implementation, no accepted proposal, existing authority is enough. |
 | `review-repair` | [v1](review-repair/v1.md) | Existing implementation, one frozen review question, remove blockers. |
 
 No other policy IDs exist in this directory.
@@ -55,12 +55,14 @@ min_max:
     compute: lowest_capable_available
     tokens: artifact   # source, tests, diffs, evidence
     in_policy_economy_tier: sufficient
+    execute_on: child
   steering:
     actors: [root, executive]
     tokens: dense_receipt
     receipt_fields: [head, status, finding_ids, pass_fail, evidence_refs]
     forbidden_inputs:
       [repo_reread, raw_logs, worker_transcripts, poll_wait_output]
+    owns: [compile_packet, disposition, recompile, closure]
 
 runtime:
   child_default: lowest_capable_available
@@ -69,11 +71,21 @@ runtime:
   not_escalate_if: [work_involves_judgment]
   inherit_planner_runtime: false
 
+delegation:
+  default: always_after_compiled_packet
+  collapse_only_if: not terminal_receipt_without_model_polling
+  not_grounds_to_skip:
+    [small_or_tightly_coupled, root_already_holds_context, no_independent_parallelism]
+  cost_model:
+    dense_packet: true
+    high_tier_child_overhead_accepted: ~1.1x
+    # Skipping that ~10% tax also skips economy-tier attempts (~1/40th work cost).
+
 smell:
-  decomposed_run_with_zero_lowest_tier_units: requires_explanation
-  valid_explanations:
-    [lowest_tier_unavailable, lowest_tier_failed, direct_mode_too_small]
-  invalid: spawn_child_to_satisfy_metric
+  compiled_unit_executed_on_root: requires_explanation
+  valid_explanations: [no_terminal_receipt_without_polling]
+  invalid:
+    [direct_mode_too_small, spawn_child_to_satisfy_metric]
 
 defaults:
   live_subordinates: 1

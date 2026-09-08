@@ -1347,11 +1347,19 @@ a guidance file directs it, when workflow meaning is ambiguous, or when
 changing the workflow itself.
 
 Guidance files may summarize or route to this contract. They must not introduce
-new process rules, carry current milestone state, or override this contract. If
-the two conflict, this contract wins. Operation classification does not
-authorize a workflow phase transition. Long-running conversations should
-retain current work state and findings, not act as the durable store for
-process rules.
+new canonical workflow or milestone process rules, carry current milestone
+state, or override this contract. An explicitly operator-selected and named,
+immutable, versioned
+orchestration policy under `docs/guidance/orchestration/` is a bounded exception:
+it may define execution organization for that named run, including delegation,
+synchronization, reasoning allocation, escalation, and receipt topology. The
+policy must preserve the existing role and task guidance and may not change
+canonical milestone state, workflow phase transitions, accepted proposal or
+review contracts, safety or authority boundaries, ownership, external schemas,
+completion or merge predicates, or any other canonical rule. If the two
+conflict, this contract wins. Operation classification does not authorize a
+workflow phase transition. Long-running conversations should retain current
+work state and findings, not act as the durable store for process rules.
 
 ## Non-Goals Of This Contract
 

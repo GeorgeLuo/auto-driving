@@ -138,6 +138,23 @@ async def execute(value, /, fallback=None, *, limit=3):
             analyze_coupling_context(context)["coupling"]["metrics"]["module_count"], 1
         )
 
+    def test_inventory_root_init_relative_import_does_not_crash(self) -> None:
+        context = AnalysisContext.from_sources(
+            {
+                "__init__.py": "from .analyzer import analyze_tree\n",
+                "analyzer.py": "def analyze_tree():\n    return None\n",
+            }
+        )
+
+        result = coupling.analyze(context)
+
+        self.assertEqual(result["metrics"]["module_count"], 2)
+        self.assertEqual(result["metrics"]["edge_count"], 1)
+        self.assertEqual(result["metrics"]["external_import_count"], 0)
+        self.assertEqual(coupling._module("__init__.py"), "")
+        self.assertEqual(coupling._package("__init__.py"), "")
+        json.dumps(result)
+
     def test_legacy_helpers_remain_independently_callable(self) -> None:
         tree = ast.parse("def run(value=1):\n    return value\n")
         function = tree.body[0]

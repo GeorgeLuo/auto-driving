@@ -69,12 +69,20 @@ def _module_names(path: str) -> list[str]:
 
 
 def _module(path: str) -> str:
-    return _module_names(path)[0]
+    names = _module_names(path)
+    if names:
+        return names[0]
+    # Inventory-root ``__init__.py`` has no dotted module name; treat as "".
+    if PurePosixPath(path).name == "__init__.py":
+        return ""
+    raise ValueError(f"no module name for path: {path}")
 
 
 def _package(path: str) -> str:
     module = _module(path)
-    return module if PurePosixPath(path).name == "__init__.py" else module.rpartition(".")[0]
+    if PurePosixPath(path).name == "__init__.py":
+        return module
+    return module.rpartition(".")[0]
 
 
 def _index(trees: Mapping[str, ast.Module]) -> dict[str, str]:

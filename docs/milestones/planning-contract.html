@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="33a1c08936e4d5c873613267ef06d630d87d4a9392106f58550e51a3383eb31e">
+  <meta name="source-sha256" content="a493acf97d3159f0e718ef375d0fb7a4276f95c39179af45221cecb1f9108bc7">
   <base target="_blank">
   <title>Milestone Planning And Delivery Contract</title>
   <style>
@@ -1441,11 +1441,19 @@ only the selected role- or task-specific guidance. Load this full contract when
 a guidance file directs it, when workflow meaning is ambiguous, or when
 changing the workflow itself.</p>
 <p>Guidance files may summarize or route to this contract. They must not introduce
-new process rules, carry current milestone state, or override this contract. If
-the two conflict, this contract wins. Operation classification does not
-authorize a workflow phase transition. Long-running conversations should
-retain current work state and findings, not act as the durable store for
-process rules.</p>
+new canonical workflow or milestone process rules, carry current milestone
+state, or override this contract. An explicitly operator-selected and named,
+immutable, versioned
+orchestration policy under <code>docs/guidance/orchestration/</code> is a bounded exception:
+it may define execution organization for that named run, including delegation,
+synchronization, reasoning allocation, escalation, and receipt topology. The
+policy must preserve the existing role and task guidance and may not change
+canonical milestone state, workflow phase transitions, accepted proposal or
+review contracts, safety or authority boundaries, ownership, external schemas,
+completion or merge predicates, or any other canonical rule. If the two
+conflict, this contract wins. Operation classification does not authorize a
+workflow phase transition. Long-running conversations should retain current
+work state and findings, not act as the durable store for process rules.</p>
 <h2>Non-Goals Of This Contract</h2>
 <p>This contract does not:</p>
 <ul>

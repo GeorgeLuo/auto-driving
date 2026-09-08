@@ -64,17 +64,19 @@ only as a pricing choice.
 
 After choosing the minimum necessary execution topology, use the
 **lowest-capability available runtime that can reliably execute each bounded
-role**. In the current environment, prefer **Luna Max** for bounded child work
-when it is available and its capabilities cover the unit. Escalate to Astra or
-a higher-capability runtime only for remaining uncertainty, a required
-capability Luna lacks, or concrete evidence that the lower tier was
-insufficient.
+role**. For the bounded review, repair, and pattern-following implementation
+these policies cover, that economy tier is sufficient. Escalate to a
+higher-capability runtime only when the unit still has unresolved uncertainty,
+needs a capability the lower tier lacks, or the lower tier already failed with
+evidence.
+
+Do not keep an in-policy bounded role on a stronger runtime merely because the
+work involves judgment, review, or repair.
 
 For a decomposed multi-agent run, reaching completion without executing any
 unit on the lowest available capable tier is an **orchestration smell**. Record
 why no bounded unit was suitable. Acceptable explanations include:
 
-- the task remained genuinely judgment-bearing throughout;
 - the required capability was unavailable in the lowest tier;
 - the lowest tier was attempted and produced evidence of insufficiency;
 - the run remained direct because the task was too small for delegation to be
@@ -111,9 +113,10 @@ The first experiments established several cross-policy defaults:
 1. **Topology before reasoning tier.** Minimize unnecessary actor boundaries,
    model activations, duplicated context, and duplicate validation before
    optimizing reasoning effort.
-2. **Capability should descend with uncertainty.** Once work is bounded, prefer
-   the lowest capable available runtime; a decomposed run with no lowest-tier
-   work requires an explanation.
+2. **Capability should descend with uncertainty.** Once work is bounded, use
+   the lowest capable available runtime; in-policy bounded work is in-capability
+   for that economy tier. A decomposed run with no lowest-tier work requires an
+   explanation.
 3. **One subordinate by default.** Additional simultaneous child contexts need
    an explicit independence/parallelism case.
 4. **Terminal receipts, not supervision loops.** Do not emulate asynchronous

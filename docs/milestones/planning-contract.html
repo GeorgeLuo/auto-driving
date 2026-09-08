@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="e5d8c8adf1dc7143a30fa66ec3f6e01bc449844a7d789ff9c97893c7f605a519">
+  <meta name="source-sha256" content="a2b341bb4282365272fa49076c3a97b49e060ae879fcf32cf289c5767f42754b">
   <base target="_blank">
   <title>Milestone Planning And Delivery Contract</title>
   <style>
@@ -1140,56 +1140,67 @@ file impact. The implementation PR links that proposal, reports exact
 validation, and notes a drift only when the diff departed from it. Do not
 restate the contract in the PR body.</p>
 <h3>Testing Purpose And Regression Value</h3>
-<p>For each new or materially changed test, identify its purpose in the test name
-or a short docstring/metadata note, and answer: <strong>What concrete regression would
-this catch?</strong> The name or note can carry both; no separate inventory is needed.</p>
+<p>For every new or materially changed test, name a concrete, plausible regression
+and the observable behavior or justified mechanism that exposes it.</p>
 <table>
 <thead>
 <tr>
 <th>Purpose</th>
-<th>Behavior protected</th>
+<th>When to use</th>
+<th>What failure it detects</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td><code>consumer</code></td>
-<td>Public CLI/API/UI journeys and observable compatibility, including changes consumers notice while internal tests still pass.</td>
+<td>Public CLI/API/UI journeys</td>
+<td>Observable incompatibility despite passing internal tests.</td>
 </tr>
 <tr>
 <td><code>boundary</code></td>
-<td>Invalid, missing, malformed, unsupported, raced, or degraded cases, with the expected rejection, fail-closed result, or explicit degraded behavior visible.</td>
+<td>Invalid, missing, malformed, unsupported, raced, degraded, or relevant edge cases</td>
+<td>Lost contracted rejection, fail-closed result, or explicit degraded outcome.</td>
 </tr>
 <tr>
 <td><code>mechanism</code></td>
-<td>A narrow internal invariant; explain why a public-entry-point test cannot provide a useful close.</td>
+<td>Narrow internal invariant lacking a useful public-door check; justify why</td>
+<td>Violation of that invariant.</td>
 </tr>
 </tbody>
 </table>
-<p>Purpose is independent of <a href="../../tests/README.md#ownership">test ownership and layers</a>:
-a CLI test can be <code>consumer</code> or <code>boundary</code>, and a unit test can be <code>boundary</code>.
-A test may protect both a consumer journey and a boundary. Keep existing test
-placement and execution unchanged. Start with names or short notes; add tagging
-or filtering tooling only when reporting or selective execution needs it.</p>
-<p>Prefer the owner's public entry point: a documented command, API/UI journey,
-or committed artifact in, observable behavior out. Cover representative normal
-usage first. Add off-path cases when normal usage can reach them, the accepted
-contract claims them, or safety, integrity, or ownership requires them.
-Unsupported inputs or states should be rejected by the domain owner and
-translated into the CLI/API's structured error contract at the outer boundary.
-Do not expand an accepted matrix to hypothetical callers during repair.</p>
-<p>Assert a meaningful result, transformation, normalization, serialization,
-rejection, or compatibility property that survives implementation refactoring.
-For universal claims, check the final externally visible value after storage,
-serialization, or transport. A named mutation should produce the contracted
-failure without pinning helper names or incidental error substrings.</p>
-<p>Remove or replace assignment-level tautologies: setting a field and immediately
-reading the same value back does not establish behavior. Field assertions are
-valuable when they cross a meaningful wire/schema, normalization, serialization,
-transport, or consumer-output boundary—for example, checking a normalized value
-in serialized output rather than reading a value just assigned to an object.</p>
-<p>Apply this rule as tests are added or materially changed. It requires no
-immediate suite rewrite or deletion, coverage target, new test framework, or
-repository-wide naming migration.</p>
+<p>Identify purpose and regression in a name or short docstring/note.
+Purpose is independent of <a href="../../tests/README.md#ownership">ownership/layer</a>:
+CLI tests can be consumer or boundary; unit tests can be boundary. Purposes may
+overlap.</p>
+<p>Prefer the owner's public entry point; cover normal usage first. Add
+off-path cases reachable normally, contracted, or required by safety, integrity,
+or ownership. Domain owners reject unsupported inputs/states; outer boundaries
+translate into CLI/API structured error contracts. Repairs stay within accepted
+matrices.</p>
+<p>Assert refactoring-stable behavior: named mutations cause contracted failures
+without pinning helpers or incidental error substrings. Universal claims check
+final externally visible values after storage, serialization, or transport.</p>
+<p>Replace bare assignment/readback tautologies such as <code>value = 3; assert value == 3</code>.
+Keep field checks exercising meaningful setters/getters, normalization,
+wire/schema, serialization, transport, or consumer-output contracts—for example,
+a setter normalizing input or a normalized value surviving serialization.</p>
+<p>Optional <a href="../../qca/README.md">QCA observations</a>, available via
+<code>python3 -m qca diff --base &lt;base-ref&gt; --head &lt;head-ref&gt;</code>, can focus inspection:</p>
+<ul>
+<li><code>test_effectiveness</code> assignment-readback, literal/same-operand, and other static
+  candidates: would a plausible behavior change fail this assertion?
+  Inspect meaningful boundaries before replacing it.</li>
+<li>Private imports/calls: can a public-door test protect the regression, or is
+  mechanism coverage justified?</li>
+<li><code>contracts</code> changes: which consumer compatibility needs checking? Static
+  observations do not prove runtime compatibility.</li>
+<li>Supplied coverage/runtime evidence: identify unexercised behavior to consider
+  within scope. Absent evidence is unmeasured.</li>
+</ul>
+<p>QCA candidates/counts do not classify, score, or justify automatic test deletion.
+No QCA run, decision record, metadata schema, gate, suite retrofit/rewrite/deletion,
+coverage target, or new framework is required. Preserve placement/execution;
+add tagging/filtering only for reporting/execution needs.</p>
 <h3>Invariant Closure (When Claiming Universals)</h3>
 <p>Words such as <code>bounded</code>, <code>detached</code>, <code>deterministic</code>, <code>exact</code>, <code>fail-closed</code>,
 <code>fresh</code>, and <code>no movement</code> are universal guarantees when the review kind is

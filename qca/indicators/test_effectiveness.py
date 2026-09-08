@@ -16,6 +16,11 @@ from typing import Any
 
 from .context import AnalysisContext
 from .evidence import LocatedNode, enrich_finding
+from .report import (
+    call_name as _call_name,
+    source_expression as _source_expression,
+    verification_inputs as _verification_inputs,
+)
 
 
 FACTOR = "test_effectiveness"
@@ -567,47 +572,6 @@ def _ast_equal(left: ast.AST, right: ast.AST) -> bool:
     return ast.dump(left, annotate_fields=True, include_attributes=False) == ast.dump(
         right, annotate_fields=True, include_attributes=False
     )
-
-
-def _source_expression(text: str, node: ast.AST) -> str:
-    expression = ast.get_source_segment(text, node)
-    if expression:
-        return " ".join(expression.strip().split())
-    try:
-        return ast.unparse(node)
-    except (AttributeError, ValueError):
-        return type(node).__name__
-
-
-def _call_name(node: ast.AST) -> str | None:
-    if isinstance(node, ast.Name):
-        return node.id
-    if isinstance(node, ast.Attribute):
-        return node.attr
-    return None
-
-
-def _verification_inputs(
-    context: AnalysisContext,
-) -> tuple[list[tuple[str, str]], list[tuple[str, str, ast.AST]], list[dict[str, Any]], int]:
-    if not isinstance(context, AnalysisContext):
-        raise TypeError("context must be an AnalysisContext")
-    ordered_sources = sorted(context.sources.items(), key=lambda item: item[0])
-    paths = tuple(context.paths("verification"))
-    trees = context.trees("verification")
-    parsed = [(path, context.sources[path], trees[path]) for path in paths if path in trees]
-    parse_errors: list[dict[str, Any]] = []
-    for raw_path, raw_error in context.syntax_errors("verification").items():
-        item = raw_error.to_dict()
-        parse_errors.append(
-            {
-                "path": str(item.get("path", raw_path)),
-                "line": int(item.get("line") or 0),
-                "column": int(item.get("column") or 0),
-                "message": str(item.get("message", "syntax error")),
-            }
-        )
-    return ordered_sources, parsed, parse_errors, len(paths)
 
 
 def _enrich_finding(

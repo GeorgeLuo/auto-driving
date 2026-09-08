@@ -6,9 +6,8 @@ import ast
 from collections.abc import Mapping
 from typing import Any
 
-from ..factors._utils import _sort_findings
 from .context import AnalysisContext
-from .evidence import enrich_finding
+from .report import kind_finding, measured_factor as _factor
 
 
 FACTOR = "functionality"
@@ -159,43 +158,23 @@ def _collect_unreachable(
     return len(statements)
 
 
-def _factor(
-    metrics: dict[str, int],
-    findings: list[dict[str, Any]],
-    limitations: list[str],
-) -> dict[str, Any]:
-    return {
-        "status": "measured",
-        "metrics": metrics,
-        "findings": _sort_findings(findings),
-        "limitations": limitations,
-    }
-
-
 def _finding(
     context: AnalysisContext | None,
     finding: dict[str, Any],
     node_refs: tuple[tuple[str, ast.AST], ...],
-    ) -> dict[str, Any]:
-    finding = dict(finding)
-    detector_id = DETECTOR_IDS[finding["kind"]]
-    if context is not None:
-        path, node = node_refs[0]
-        return enrich_finding(
-            finding,
-            context=context,
-            indicator_id=detector_id,
-            indicator_version=INDICATOR_VERSION,
-            path=path,
-            node=node,
-            family="default",
-            pattern={"kind": finding["kind"]},
-            uncertainty=["static_candidate"],
-            inspection_question=(
-                "Inspect intentional hooks, protocols, and control-flow intent before changing this code."
-            ),
-        )
-    return finding
+) -> dict[str, Any]:
+    path, node = node_refs[0]
+    return kind_finding(
+        context,
+        finding,
+        detector_ids=DETECTOR_IDS,
+        indicator_version=INDICATOR_VERSION,
+        path=path,
+        node=node,
+        inspection_question=(
+            "Inspect intentional hooks, protocols, and control-flow intent before changing this code."
+        ),
+    )
 
 
 __all__ = [

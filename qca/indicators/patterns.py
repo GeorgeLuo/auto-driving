@@ -6,9 +6,9 @@ import ast
 from collections.abc import Mapping
 from typing import Any
 
-from ..factors._utils import _sort_findings
 from .context import AnalysisContext
-from .evidence import LocatedNode, enrich_finding
+from .evidence import LocatedNode
+from .report import kind_finding, measured_factor as _factor, source_code as _source_code
 
 
 FACTOR = "patterns"
@@ -253,31 +253,6 @@ def _unary_named_call(node: ast.AST, name: str) -> bool:
     )
 
 
-def _factor(
-    metrics: dict[str, int],
-    findings: list[dict[str, Any]],
-    limitations: list[str],
-) -> dict[str, Any]:
-    return {
-        "status": "measured",
-        "metrics": metrics,
-        "findings": _sort_findings(findings),
-        "limitations": limitations,
-    }
-
-
-def _source_code(
-    context: AnalysisContext | None,
-    path: str,
-    node: ast.AST,
-) -> str:
-    if context is not None:
-        block = context.source_block(path, node, family="default")
-        if block is not None:
-            return block.code
-    return ast.unparse(node)
-
-
 def _finding(
     context: AnalysisContext | None,
     finding: dict[str, Any],
@@ -289,26 +264,21 @@ def _finding(
     uncertainty: list[str] | None = None,
     inspection_question: str | None = None,
 ) -> dict[str, Any]:
-    finding = dict(finding)
-    detector_id = DETECTOR_IDS[finding["kind"]]
-    if context is not None:
-        return enrich_finding(
-            finding,
-            context=context,
-            indicator_id=detector_id,
-            indicator_version=INDICATOR_VERSION,
-            path=path,
-            node=node,
-            family="default",
-            related_nodes=related_nodes,
-            pattern=pattern or {"kind": finding["kind"]},
-            uncertainty=uncertainty or ["static_candidate"],
-            inspection_question=(
-                inspection_question
-                or "Inspect the owning boundary before drawing a conclusion from this static candidate."
-            ),
-        )
-    return finding
+    return kind_finding(
+        context,
+        finding,
+        detector_ids=DETECTOR_IDS,
+        indicator_version=INDICATOR_VERSION,
+        path=path,
+        node=node,
+        related_nodes=related_nodes,
+        pattern=pattern,
+        uncertainty=uncertainty,
+        inspection_question=(
+            inspection_question
+            or "Inspect the owning boundary before drawing a conclusion from this static candidate."
+        ),
+    )
 
 
 __all__ = [

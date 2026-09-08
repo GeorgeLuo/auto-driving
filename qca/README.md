@@ -110,6 +110,8 @@ normalization and finding ordering keep those behaviors consistent.
 Manual inspection found repeated `bool(container) and any(...)` guards in
 `qca/factors/verification.py`. For ordinary containers, `any()` already returns
 false on empty input, including generator expressions over that container.
+Those production sites now use `any(...)` directly; the detector still reports
+the original two-part syntax wherever it remains.
 The `patterns.metrics.redundant_any_guard_count` metric reports this narrow
 syntax, with `redundant_any_guard` findings carrying path, line, and expression.
 

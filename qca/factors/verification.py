@@ -411,9 +411,9 @@ def _nonzero_returncodes(results: list[Any]) -> list[int | float]:
 def _has_browser_evidence(record: Mapping[str, Any]) -> bool:
     browser = record.get("browser", record.get("browser_evidence"))
     if isinstance(browser, Mapping):
-        return bool(browser) and any(_substantive_value(value) for value in browser.values())
+        return any(_substantive_value(value) for value in browser.values())
     if isinstance(browser, (list, tuple)):
-        return bool(browser) and any(_substantive_value(value) for value in browser)
+        return any(_substantive_value(value) for value in browser)
     return isinstance(browser, str) and bool(browser.strip())
 
 
@@ -456,7 +456,7 @@ def _substantive_result(value: Any) -> bool:
             return False
         return any(_substantive_value(item) for item in value.values())
     if isinstance(value, (list, tuple)):
-        return bool(value) and any(_substantive_result(item) for item in value)
+        return any(_substantive_result(item) for item in value)
     return not isinstance(value, (bool, type(None)))
 
 
@@ -466,9 +466,9 @@ def _substantive_value(value: Any) -> bool:
     if isinstance(value, str):
         return bool(value.strip())
     if isinstance(value, Mapping):
-        return bool(value) and any(_substantive_value(item) for item in value.values())
+        return any(_substantive_value(item) for item in value.values())
     if isinstance(value, (list, tuple, set)):
-        return bool(value) and any(_substantive_value(item) for item in value)
+        return any(_substantive_value(item) for item in value)
     return True
 
 

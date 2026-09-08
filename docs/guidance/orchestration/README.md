@@ -56,6 +56,54 @@ The path is the policy identifier: `<policy>/<version>`.
 Historical issue threads are experiment evidence, not policy authority. New
 runs should reference files in this directory.
 
+## Capability gradient
+
+Successful decomposition should make some work simpler than the work that
+preceded it. Treat runtime selection as evidence of that simplification, not
+only as a pricing choice.
+
+After choosing the minimum necessary execution topology, use the
+**lowest-capability available runtime that can reliably execute each bounded
+role**. In the current environment, prefer **Luna Max** for bounded child work
+when it is available and its capabilities cover the unit. Escalate to Astra or
+a higher-capability runtime only for remaining uncertainty, a required
+capability Luna lacks, or concrete evidence that the lower tier was
+insufficient.
+
+For a decomposed multi-agent run, reaching completion without executing any
+unit on the lowest available capable tier is an **orchestration smell**. Record
+why no bounded unit was suitable. Acceptable explanations include:
+
+- the task remained genuinely judgment-bearing throughout;
+- the required capability was unavailable in the lowest tier;
+- the lowest tier was attempted and produced evidence of insufficiency;
+- the run remained direct because the task was too small for delegation to be
+  economical.
+
+Do not launch a child merely to satisfy this diagnostic. A small direct-mode
+change may correctly stay in one stronger root context. The smell applies when
+the orchestrator has already chosen decomposition but still fails to compile
+any work down to the lowest capable tier.
+
+The intended capability shape is:
+
+```text
+uncertainty / frontier reasoning
+        |
+        v
+bounded plan or accepted pattern
+        |
+        v
+lowest capable execution runtime
+        |
+        v
+deterministic validation / closure
+```
+
+Higher-capability execution should be justified by current uncertainty or a
+demonstrated capability gap, not inherited from the actor that planned the
+work.
+
 ## Common operating principles
 
 The first experiments established several cross-policy defaults:
@@ -63,19 +111,22 @@ The first experiments established several cross-policy defaults:
 1. **Topology before reasoning tier.** Minimize unnecessary actor boundaries,
    model activations, duplicated context, and duplicate validation before
    optimizing reasoning effort.
-2. **One subordinate by default.** Additional simultaneous child contexts need
+2. **Capability should descend with uncertainty.** Once work is bounded, prefer
+   the lowest capable available runtime; a decomposed run with no lowest-tier
+   work requires an explanation.
+3. **One subordinate by default.** Additional simultaneous child contexts need
    an explicit independence/parallelism case.
-3. **Terminal receipts, not supervision loops.** Do not emulate asynchronous
+4. **Terminal receipts, not supervision loops.** Do not emulate asynchronous
    completion with repeated model-level polling or progress prompts.
-4. **No coordinator by default.** Add an intermediate compression role only
+5. **No coordinator by default.** Add an intermediate compression role only
    when it replaces meaningful parent synchronization rather than adding
    another live context.
-5. **One owner per validation check.** Re-run a successful check only when the
+6. **One owner per validation check.** Re-run a successful check only when the
    final head can invalidate it or repository guidance explicitly requires it.
-6. **Durable resumability.** Visible policy state plus repository state must be
+7. **Durable resumability.** Visible policy state plus repository state must be
    enough for a fresh session to resume without hidden worker reasoning or
    private message packets.
-7. **Explicit closure.** The parent/executive owns the deterministic delivery
+8. **Explicit closure.** The parent/executive owns the deterministic delivery
    tail unless a policy states a concrete reason to delegate it.
 
 These are defaults, not authority to violate a policy-specific invariant or the

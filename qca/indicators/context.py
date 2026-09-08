@@ -224,9 +224,11 @@ def _path_matches_family(path: str, policy: _ParseFamily) -> bool:
 
 
 def _line_texts(source: str) -> list[str]:
-    # splitlines(keepends=True) omits the final empty item, but a source with
-    # no text still has a useful conceptual line for defensive range checks.
-    return source.splitlines(keepends=True) or [""]
+    # Source newlines are normalized to LF before parsing. Other separators,
+    # including form feeds and Unicode string contents, do not advance AST
+    # line numbers. Retain LF characters for exact multiline source slices.
+    lines = source.split("\n")
+    return [line + "\n" for line in lines[:-1]] + [lines[-1]]
 
 
 def _byte_to_char_column(line: str, byte_column: int) -> int | None:

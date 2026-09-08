@@ -14,6 +14,39 @@ from qca.render import render_html
 
 
 class FactorReportTests(unittest.TestCase):
+    def test_source_evidence_uses_python_physical_lines(self):
+        for prefix in ('TEXT = "first\u2028second"\n', '\fTEXT = "page"\n', 'TEXT = "é"\n'):
+            with self.subTest(prefix=prefix), tempfile.TemporaryDirectory() as directory:
+                path = Path(directory) / "app.py"
+                path.write_text(
+                    prefix
+                    + "def run():\n    pass\n"
+                    + "def test_readback():\n    value = 3\n    assert value == 3\n",
+                    encoding="utf-8",
+                )
+                payload = json.loads(json.dumps(report_to_dict(analyze_tree(path))))
+                stub = next(
+                    item for item in payload["factors"]["functionality"]["findings"]
+                    if item["kind"] == "stub"
+                )
+                primary = stub["evidence"]["primary"]
+                self.assertEqual(primary["code"], "def run():\n    pass")
+                self.assertEqual(primary["range"], {
+                    "start": {"line": 2, "column": 0, "byte_column": 0},
+                    "end": {"line": 3, "column": 8, "byte_column": 8},
+                })
+                readback = next(
+                    item for item in payload["factors"]["test_effectiveness"]["findings"]
+                    if item["kind"] == "assignment_readback"
+                )
+                self.assertEqual(readback["evidence"]["primary"]["code"], "assert value == 3")
+                related = readback["evidence"]["related"][0]
+                self.assertEqual(related["code"], "value = 3")
+                self.assertEqual(related["range"], {
+                    "start": {"line": 5, "column": 4, "byte_column": 4},
+                    "end": {"line": 5, "column": 13, "byte_column": 13},
+                })
+
     def test_excluded_source_does_not_contribute_structural_candidates(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

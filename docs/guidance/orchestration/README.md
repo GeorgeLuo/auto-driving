@@ -1,20 +1,12 @@
 # Orchestration Policies
 
-This directory contains operator-selected orchestration policies for recurring
-agent work shapes. A policy defines chain of command, communication boundaries,
-execution topology, escalation, validation ownership, and termination. It does
-not replace the repository's canonical planning and delivery contract.
-
-The canonical [Milestone Planning And Delivery Contract](../../milestones/README.md)
-wins if a policy conflicts with it. A policy also does not authorize a phase
-transition that the recorded workflow state does not permit.
+Operator-selected execution policies. They do not replace the canonical
+[Milestone Planning And Delivery Contract](../../milestones/README.md) and do
+not authorize a phase transition that recorded workflow state forbids.
 
 ## Invocation
 
-Policies are selected explicitly by the operator. Do not infer a policy merely
-because a task resembles one.
-
-Use the immutable policy identifier in the request:
+Do not infer a policy. The operator names an immutable id:
 
 ```text
 Follow orchestration policy ad-hoc-implementation/v2 for this change.
@@ -24,133 +16,75 @@ Follow orchestration policy ad-hoc-implementation/v2 for this change.
 Follow orchestration policy review-repair/v1 for PR #<number> through final review.
 ```
 
-When a policy is named, load that version in addition to the normal role and
-task guidance selected by [agent-surface.md](../agent-surface.md).
+Load that version in addition to role/task guidance from
+[agent-surface.md](../agent-surface.md).
 
 ## Current policies
 
 | Policy | Current version | Use when |
 | --- | --- | --- |
-| `ad-hoc-implementation` | [v2](ad-hoc-implementation/v2.md) | A bounded implementation has no accepted proposal and should be planned locally without becoming product discovery. |
-| `review-repair` | [v1](review-repair/v1.md) | Existing implementation should be independently reviewed and repaired against one frozen accepted review question until no blockers remain. |
+| `ad-hoc-implementation` | [v2](ad-hoc-implementation/v2.md) | Bounded implementation, no accepted proposal, existing authority is enough. |
+| `review-repair` | [v1](review-repair/v1.md) | Existing implementation, one frozen review question, remove blockers. |
 
-No other orchestration policy IDs are defined by this directory. Do not invent
-additional stages or policy names from prior conversations or historical issue
-comments.
+No other policy IDs exist in this directory.
 
 ## Versioning
 
-The path is the policy identifier: `<policy>/<version>`.
+Id = `<policy>/<version>`.
 
-- A substantive change to chain of command, authority, synchronization,
-  reasoning topology, escalation, or completion semantics requires a new
-  version file.
-- Keep prior versions so a recorded run can be reconstructed against the policy
-  that governed it.
-- Update the current-version table above when a new cut becomes preferred for
-  future runs.
-- Typo, link, or wording fixes that cannot change execution semantics may be
-  corrected in place.
-- Once a policy version has governed a real run, do not materially rewrite it.
-
-Historical issue threads are experiment evidence, not policy authority. New
-runs should reference files in this directory.
-
-## Min-max strategy
-
-Allocate compute and tokens in opposite directions:
-
-- **Defined work uses minimal compute and should process the most tokens.**
-  Once a unit is bounded—frozen review question, approved repair, accepted
-  pattern, owned validation—run it on the lowest capable available runtime and
-  spend tokens on the artifact (source, tests, diffs, evidence). Do not starve
-  that worker of the work in order to look cheap, then make a parent re-read
-  the same material.
-- **Steering uses few, dense signals.** Root/executive actors consume compact
-  receipts: exact head, status, finding IDs, pass/fail identities, and evidence
-  refs. They do not synchronize by re-reading the repository, raw logs, worker
-  transcripts, or poll/wait output.
-
-The PR #198 trial failed this split: supervision contexts processed most of
-the tokens while review/repair did not uniquely justify that spend. Cache hid
-the dollar cost; the allocation was still wrong.
-
-### Capability gradient
-
-Successful decomposition should make some work simpler than the work that
-preceded it. After the topology is chosen, use the **lowest-capability
-available runtime that can execute each bounded role**. For the bounded
-review, repair, and pattern-following implementation these policies cover,
-that economy tier is sufficient. Escalate to a higher-capability runtime only
-when the unit still has unresolved uncertainty, needs a capability the lower
-tier lacks, or the lower tier already failed with evidence.
-
-Do not keep an in-policy bounded role on a stronger runtime merely because the
-work involves judgment, review, or repair.
-
-For a decomposed multi-agent run, reaching completion without executing any
-unit on the lowest available capable tier is an **orchestration smell**. Record
-why no bounded unit was suitable. Acceptable explanations include:
-
-- the required capability was unavailable in the lowest tier;
-- the lowest tier was attempted and produced evidence of insufficiency;
-- the run remained direct because the task was too small for delegation to be
-  economical.
-
-Do not launch a child merely to satisfy this diagnostic. A small direct-mode
-change may correctly stay in one stronger root context. The smell applies when
-the orchestrator has already chosen decomposition but still fails to compile
-any work down to the lowest capable tier.
-
-The intended shape is:
-
-```text
-uncertainty / frontier reasoning
-        |
-        v
-bounded plan or accepted pattern
-        |
-        v
-lowest capable execution runtime, tokens on the artifact
-        |
-        v
-dense receipt to steering
-        |
-        v
-deterministic validation / closure
+```yaml
+new_version_required_for:
+  - chain_of_command
+  - authority
+  - synchronization
+  - reasoning_topology
+  - escalation
+  - completion
+in_place_ok_for: [typo, link, wording_without_semantic_change]
+once_used_on_a_real_run: do_not_materially_rewrite
+authority: this_directory
+not_authority: historical_issue_comments
 ```
 
-Higher-capability execution should be justified by current uncertainty or a
-demonstrated capability gap, not inherited from the actor that planned the
-work.
+## Shared definitions
 
-## Common operating principles
+```yaml
+min_max:
+  defined_work:
+    examples: [frozen_review, approved_repair, accepted_pattern, owned_validation]
+    compute: lowest_capable_available
+    tokens: artifact   # source, tests, diffs, evidence
+    in_policy_economy_tier: sufficient
+  steering:
+    actors: [root, executive]
+    tokens: dense_receipt
+    receipt_fields: [head, status, finding_ids, pass_fail, evidence_refs]
+    forbidden_inputs:
+      [repo_reread, raw_logs, worker_transcripts, poll_wait_output]
 
-The first experiments established several cross-policy defaults:
+runtime:
+  child_default: lowest_capable_available
+  escalate_if:
+    [unresolved_uncertainty, missing_capability, lower_tier_failed_with_evidence]
+  not_escalate_if: [work_involves_judgment]
+  inherit_planner_runtime: false
 
-1. **Min-max allocation.** Defined work: cheapest capable runtime, tokens on
-   the artifact. Steering: few dense signals, not raw context.
-2. **Topology before reasoning tier.** Minimize unnecessary actor boundaries,
-   model activations, duplicated context, and duplicate validation before
-   optimizing reasoning effort.
-3. **Capability should descend with uncertainty.** Once work is bounded, use
-   the lowest capable available runtime; in-policy bounded work is in-capability
-   for that economy tier. A decomposed run with no lowest-tier work requires an
-   explanation.
-4. **One subordinate by default.** Additional simultaneous child contexts need
-   an explicit independence/parallelism case.
-5. **Terminal receipts, not supervision loops.** Do not emulate asynchronous
-   completion with repeated model-level polling or progress prompts.
-6. **No coordinator by default.** Add an intermediate compression role only
-   when it replaces meaningful parent synchronization rather than adding
-   another live context.
-7. **One owner per validation check.** Re-run a successful check only when the
-   final head can invalidate it or repository guidance explicitly requires it.
-8. **Durable resumability.** Visible policy state plus repository state must be
-   enough for a fresh session to resume without hidden worker reasoning or
-   private message packets.
-9. **Explicit closure.** The parent/executive owns the deterministic delivery
-   tail unless a policy states a concrete reason to delegate it.
+smell:
+  decomposed_run_with_zero_lowest_tier_units: requires_explanation
+  valid_explanations:
+    [lowest_tier_unavailable, lowest_tier_failed, direct_mode_too_small]
+  invalid: spawn_child_to_satisfy_metric
 
-These are defaults, not authority to violate a policy-specific invariant or the
-canonical milestone contract.
+defaults:
+  live_subordinates: 1
+  coordinator: false
+  sync: terminal_receipt
+  sync_forbidden: [model_polling, progress_prompts, stdin_peeks, sleep_wait_loops]
+  clarification_max: 1
+  validation: {one_owner_per_check: true}
+  closure_owner: parent
+  resume_from: [visible_policy_state, repository_state]
+```
+
+Policy-specific invariants win over these defaults. The canonical milestone
+contract wins over both.

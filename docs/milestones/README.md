@@ -987,6 +987,8 @@ file impact. The implementation PR links that proposal, reports exact
 validation, and notes a drift only when the diff departed from it. Do not
 restate the contract in the PR body.
 
+<a id="testing-purpose-and-regression-value"></a>
+
 ### Testing Purpose And Regression Value
 
 For every new or materially changed test, name a concrete, plausible regression

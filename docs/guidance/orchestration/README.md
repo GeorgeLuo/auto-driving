@@ -56,19 +56,34 @@ The path is the policy identifier: `<policy>/<version>`.
 Historical issue threads are experiment evidence, not policy authority. New
 runs should reference files in this directory.
 
-## Capability gradient
+## Min-max strategy
+
+Allocate compute and tokens in opposite directions:
+
+- **Defined work uses minimal compute and should process the most tokens.**
+  Once a unit is bounded—frozen review question, approved repair, accepted
+  pattern, owned validation—run it on the lowest capable available runtime and
+  spend tokens on the artifact (source, tests, diffs, evidence). Do not starve
+  that worker of the work in order to look cheap, then make a parent re-read
+  the same material.
+- **Steering uses few, dense signals.** Root/executive actors consume compact
+  receipts: exact head, status, finding IDs, pass/fail identities, and evidence
+  refs. They do not synchronize by re-reading the repository, raw logs, worker
+  transcripts, or poll/wait output.
+
+The PR #198 trial failed this split: supervision contexts processed most of
+the tokens while review/repair did not uniquely justify that spend. Cache hid
+the dollar cost; the allocation was still wrong.
+
+### Capability gradient
 
 Successful decomposition should make some work simpler than the work that
-preceded it. Treat runtime selection as evidence of that simplification, not
-only as a pricing choice.
-
-After choosing the minimum necessary execution topology, use the
-**lowest-capability available runtime that can reliably execute each bounded
-role**. For the bounded review, repair, and pattern-following implementation
-these policies cover, that economy tier is sufficient. Escalate to a
-higher-capability runtime only when the unit still has unresolved uncertainty,
-needs a capability the lower tier lacks, or the lower tier already failed with
-evidence.
+preceded it. After the topology is chosen, use the **lowest-capability
+available runtime that can execute each bounded role**. For the bounded
+review, repair, and pattern-following implementation these policies cover,
+that economy tier is sufficient. Escalate to a higher-capability runtime only
+when the unit still has unresolved uncertainty, needs a capability the lower
+tier lacks, or the lower tier already failed with evidence.
 
 Do not keep an in-policy bounded role on a stronger runtime merely because the
 work involves judgment, review, or repair.
@@ -87,7 +102,7 @@ change may correctly stay in one stronger root context. The smell applies when
 the orchestrator has already chosen decomposition but still fails to compile
 any work down to the lowest capable tier.
 
-The intended capability shape is:
+The intended shape is:
 
 ```text
 uncertainty / frontier reasoning
@@ -96,7 +111,10 @@ uncertainty / frontier reasoning
 bounded plan or accepted pattern
         |
         v
-lowest capable execution runtime
+lowest capable execution runtime, tokens on the artifact
+        |
+        v
+dense receipt to steering
         |
         v
 deterministic validation / closure
@@ -110,26 +128,28 @@ work.
 
 The first experiments established several cross-policy defaults:
 
-1. **Topology before reasoning tier.** Minimize unnecessary actor boundaries,
+1. **Min-max allocation.** Defined work: cheapest capable runtime, tokens on
+   the artifact. Steering: few dense signals, not raw context.
+2. **Topology before reasoning tier.** Minimize unnecessary actor boundaries,
    model activations, duplicated context, and duplicate validation before
    optimizing reasoning effort.
-2. **Capability should descend with uncertainty.** Once work is bounded, use
+3. **Capability should descend with uncertainty.** Once work is bounded, use
    the lowest capable available runtime; in-policy bounded work is in-capability
    for that economy tier. A decomposed run with no lowest-tier work requires an
    explanation.
-3. **One subordinate by default.** Additional simultaneous child contexts need
+4. **One subordinate by default.** Additional simultaneous child contexts need
    an explicit independence/parallelism case.
-4. **Terminal receipts, not supervision loops.** Do not emulate asynchronous
+5. **Terminal receipts, not supervision loops.** Do not emulate asynchronous
    completion with repeated model-level polling or progress prompts.
-5. **No coordinator by default.** Add an intermediate compression role only
+6. **No coordinator by default.** Add an intermediate compression role only
    when it replaces meaningful parent synchronization rather than adding
    another live context.
-6. **One owner per validation check.** Re-run a successful check only when the
+7. **One owner per validation check.** Re-run a successful check only when the
    final head can invalidate it or repository guidance explicitly requires it.
-7. **Durable resumability.** Visible policy state plus repository state must be
+8. **Durable resumability.** Visible policy state plus repository state must be
    enough for a fresh session to resume without hidden worker reasoning or
    private message packets.
-8. **Explicit closure.** The parent/executive owns the deterministic delivery
+9. **Explicit closure.** The parent/executive owns the deterministic delivery
    tail unless a policy states a concrete reason to delegate it.
 
 These are defaults, not authority to violate a policy-specific invariant or the

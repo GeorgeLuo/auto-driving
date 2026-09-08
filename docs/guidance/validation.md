@@ -20,15 +20,10 @@ contract wins if any wording conflicts.
 
 ## Test design
 
-Use the canonical [testing purpose and regression value](../milestones/README.md#testing-purpose-and-regression-value)
-rule: identify new or materially changed tests as `consumer`, `boundary`, or
-justified `mechanism` in a name or short note, independent of owner/layer.
-Make the concrete regression clear, prefer public entry points and observable
-results, and replace assignment-level tautologies. Meaningful field checks
-across schema, normalization, serialization, transport, or consumer-output
-boundaries remain useful. Cover normal usage and contracted boundaries without
-expanding the accepted matrix during repair. No suite migration or tagging
-framework is required.
+Apply the canonical [testing purpose and regression value](../milestones/README.md#testing-purpose-and-regression-value)
+rule when designing tests. Cover representative normal usage and contracted
+boundaries; keep repairs within the accepted matrix. Existing QCA observations
+may focus inspection as described there; report runtime evidence separately.
 
 ## Evidence
 

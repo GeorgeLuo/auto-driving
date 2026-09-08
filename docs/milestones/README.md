@@ -989,45 +989,52 @@ restate the contract in the PR body.
 
 ### Testing Purpose And Regression Value
 
-For each new or materially changed test, identify its purpose in the test name
-or a short docstring/metadata note, and answer: **What concrete regression would
-this catch?** The name or note can carry both; no separate inventory is needed.
+For every new or materially changed test, name a concrete, plausible regression
+and the observable behavior or justified mechanism that exposes it.
 
-| Purpose | Behavior protected |
-| --- | --- |
-| `consumer` | Public CLI/API/UI journeys and observable compatibility, including changes consumers notice while internal tests still pass. |
-| `boundary` | Invalid, missing, malformed, unsupported, raced, or degraded cases, with the expected rejection, fail-closed result, or explicit degraded behavior visible. |
-| `mechanism` | A narrow internal invariant; explain why a public-entry-point test cannot provide a useful close. |
+| Purpose | When to use | What failure it detects |
+| --- | --- | --- |
+| `consumer` | Public CLI/API/UI journeys | Observable incompatibility despite passing internal tests. |
+| `boundary` | Invalid, missing, malformed, unsupported, raced, degraded, or relevant edge cases | Lost contracted rejection, fail-closed result, or explicit degraded outcome. |
+| `mechanism` | Narrow internal invariant lacking a useful public-door check; justify why | Violation of that invariant. |
 
-Purpose is independent of [test ownership and layers](../../tests/README.md#ownership):
-a CLI test can be `consumer` or `boundary`, and a unit test can be `boundary`.
-A test may protect both a consumer journey and a boundary. Keep existing test
-placement and execution unchanged. Start with names or short notes; add tagging
-or filtering tooling only when reporting or selective execution needs it.
+Identify purpose and regression in a name or short docstring/note.
+Purpose is independent of [ownership/layer](../../tests/README.md#ownership):
+CLI tests can be consumer or boundary; unit tests can be boundary. Purposes may
+overlap.
 
-Prefer the owner's public entry point: a documented command, API/UI journey,
-or committed artifact in, observable behavior out. Cover representative normal
-usage first. Add off-path cases when normal usage can reach them, the accepted
-contract claims them, or safety, integrity, or ownership requires them.
-Unsupported inputs or states should be rejected by the domain owner and
-translated into the CLI/API's structured error contract at the outer boundary.
-Do not expand an accepted matrix to hypothetical callers during repair.
+Prefer the owner's public entry point; cover normal usage first. Add
+off-path cases reachable normally, contracted, or required by safety, integrity,
+or ownership. Domain owners reject unsupported inputs/states; outer boundaries
+translate into CLI/API structured error contracts. Repairs stay within accepted
+matrices.
 
-Assert a meaningful result, transformation, normalization, serialization,
-rejection, or compatibility property that survives implementation refactoring.
-For universal claims, check the final externally visible value after storage,
-serialization, or transport. A named mutation should produce the contracted
-failure without pinning helper names or incidental error substrings.
+Assert refactoring-stable behavior: named mutations cause contracted failures
+without pinning helpers or incidental error substrings. Universal claims check
+final externally visible values after storage, serialization, or transport.
 
-Remove or replace assignment-level tautologies: setting a field and immediately
-reading the same value back does not establish behavior. Field assertions are
-valuable when they cross a meaningful wire/schema, normalization, serialization,
-transport, or consumer-output boundary—for example, checking a normalized value
-in serialized output rather than reading a value just assigned to an object.
+Replace bare assignment/readback tautologies such as `value = 3; assert value == 3`.
+Keep field checks exercising meaningful setters/getters, normalization,
+wire/schema, serialization, transport, or consumer-output contracts—for example,
+a setter normalizing input or a normalized value surviving serialization.
 
-Apply this rule as tests are added or materially changed. It requires no
-immediate suite rewrite or deletion, coverage target, new test framework, or
-repository-wide naming migration.
+Optional [QCA observations](../../qca/README.md), available via
+`python3 -m qca diff --base <base-ref> --head <head-ref>`, can focus inspection:
+
+- `test_effectiveness` assignment-readback, literal/same-operand, and other static
+  candidates: would a plausible behavior change fail this assertion?
+  Inspect meaningful boundaries before replacing it.
+- Private imports/calls: can a public-door test protect the regression, or is
+  mechanism coverage justified?
+- `contracts` changes: which consumer compatibility needs checking? Static
+  observations do not prove runtime compatibility.
+- Supplied coverage/runtime evidence: identify unexercised behavior to consider
+  within scope. Absent evidence is unmeasured.
+
+QCA candidates/counts do not classify, score, or justify automatic test deletion.
+No QCA run, decision record, metadata schema, gate, suite retrofit/rewrite/deletion,
+coverage target, or new framework is required. Preserve placement/execution;
+add tagging/filtering only for reporting/execution needs.
 
 ### Invariant Closure (When Claiming Universals)
 

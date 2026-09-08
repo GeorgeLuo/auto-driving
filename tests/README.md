@@ -23,11 +23,10 @@ It does not launch a simulator, contact a Pi, or record runtime artifacts.
   implementations.
 - `live/` contains named, bounded checks that require explicit opt-in.
 
-Test purpose is a separate axis from this ownership/layer layout. For new or
-materially changed tests, follow the canonical
+For new or materially changed tests, use the canonical
 [testing purpose and regression value](../docs/milestones/README.md#testing-purpose-and-regression-value)
-rule (`consumer`, `boundary`, or justified `mechanism`), summarized in
-[validation guidance](../docs/guidance/validation.md#test-design).
+rule to name the protected regression and purpose. Keep tests with their
+existing owner above.
 
 ## Support Contract
 

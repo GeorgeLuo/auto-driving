@@ -10,15 +10,23 @@ contract wins if any wording conflicts.
 ## Start
 
 1. Read [docs/README.md](../README.md) for repository documentation navigation.
-2. Classify the requested operation using the role routing below.
-3. Load the selected role guidance.
-4. Identify the active milestone plan and run its documented workflow status
+2. If the latest operator request explicitly names a versioned orchestration
+   policy, load that exact policy from [orchestration/](orchestration/README.md)
+   in addition to the normal role/task guidance. Do not infer a policy when the
+   operator did not select one.
+3. Classify the requested operation using the role routing below.
+4. Load the selected role guidance.
+5. Identify the active milestone plan and run its documented workflow status
    command when milestone work is involved.
-5. Load only the task guidance selected below.
-6. Read current task data: the active plan, accepted proposal, relevant diff,
+6. Load only the task guidance selected below.
+7. Read current task data: the active plan, accepted proposal, relevant diff,
    findings, and latest validation evidence.
-7. Load the full contract only when this surface directs it, workflow meaning
+8. Load the full contract only when this surface directs it, workflow meaning
    is ambiguous, or the workflow itself is being changed.
+
+A selected orchestration policy organizes execution only. It does not authorize
+a phase transition, override the canonical contract, or replace role/task
+guidance.
 
 ## Role Routing
 

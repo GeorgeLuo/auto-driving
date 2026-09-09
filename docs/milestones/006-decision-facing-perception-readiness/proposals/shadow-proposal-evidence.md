@@ -22,7 +22,7 @@ Prerequisite (accepted, do not re-open):
 
 This is one live/external evidence review unit for M006-06 and M006-07. It
 does not implement the decision engine, the Automa surfaces, or either of the
-capture-readiness prerequisites below.
+capture-readiness capabilities discussed below.
 
 ## Review Kind
 
@@ -34,6 +34,21 @@ Does the staged `avoid_recent_obstruction` path produce provenance-complete
 shadow action plans and the same correlated visual explanation on Chase and
 stationary PiRacer inputs while applied control remains zero and privileged
 simulator state stays outside controller inputs?
+
+## Deliverable and readiness status
+
+This PR delivers a bounded evidence contract/procedure and a fail-closed
+capture/readiness gate for M006-06 and M006-07. Acceptance of this proposal
+accepts that evidence contract only. It does not assert that either environment
+can provide live capture, that D1 or D2 is available, or that live capture is
+ready. D1 and D2 are provisional names for candidate capture-readiness
+capability gaps or conditions: they are proposal-level, non-binding hypotheses,
+not M006 exit criteria, contracted Frontier Map nodes, accepted dependencies,
+or permission to implement them in this PR. Future work may introduce a
+concrete capability or recovery frontier after this unit's output or a concrete
+failure identifies the need; that work must be separately proposed and
+reviewed, and this PR does not predeclare its branch, PR, external issue, or
+implementation route.
 
 ## Operator Want
 
@@ -61,8 +76,9 @@ simulator state stays outside controller inputs?
 
 ### Package boundary
 
-After the capture-readiness prerequisites are accepted and available, produce
-two separately attributable packages beneath the stable evidence directory:
+Only after an explicit capture assignment and verification of every applicable
+candidate condition below may the evidence owner produce two separately
+attributable packages beneath the stable evidence directory:
 `chase/` and `piracer/`. Each package uses the same staged engine, accepted
 operator path, and correlated decision/view fields. Each contains:
 
@@ -105,7 +121,7 @@ sequence, and 8 MiB per record. No retuning is part of this contract.
 | Claim | Authoritative observation | Derivation | Acceptance boundary |
 | --- | --- | --- | --- |
 | M006-06 active intent and lifecycle | Live full shadow cycle, original observation and `MemorySnapshot` exports, cycle timestamp, and activation configuration | Join candidate `source_refs` to record provenance; calculate age from source timestamp and provenance update time; classify with the accepted policy | Left/right active witnesses show fresh selection, retained continuity within `retained_max_age_ms`, stale command-null/idle selection, and inactive after eligible evidence expires. Selection and command signs agree. |
-| M006-06 exact visual explanation | Original correlated image bytes, full source references, actual browser-rendered exact-frame page, and visual inspection receipt | Map each source reference to its actual image/frame and inspect the current and retained source frames | The rendered image, memory references, lifecycle, command, selection, authority, and text agree with the record. A template-only screenshot or JSON-only assertion is insufficient. The live URL and spatial retained-evidence overlay remain D2 prerequisites. |
+| M006-06 exact visual explanation | Original correlated image bytes, full source references, actual browser-rendered exact-frame page, and visual inspection receipt | Map each source reference to its actual image/frame and inspect the current and retained source frames | The rendered image, memory references, lifecycle, command, selection, authority, and text agree with the record. A template-only screenshot or JSON-only assertion is insufficient. The live URL and spatial retained-evidence overlay remain the D2 candidate condition and must be independently verified before a live-view claim. |
 | M006-06 replay | Captured observations/memory, source cycle identities, replay sequence bytes, frozen activation, and code revision | Lossless projection into `automa_decision_apply_sequence_v0`, then accepted decision apply twice | Canonical digest bytes and SHA-256 match, and replay lifecycle/selection/command agrees with the captured cycles for identical replay-supported inputs/configuration. Full host-envelope or generation equality is not claimed by replay. |
 | M006-07 Chase privilege exclusion | Controller input/cycle source exports and pinned capture-to-context code; evaluator state stored only as a separate sibling artifact | Inspect actual candidate input and source envelopes against camera/observation/memory provenance | No evaluator, map, reference-decision, or other privileged simulator state is present in controller inputs. This is bounded evidence for the declared capture, not a universal authenticity proof. |
 | M006-06/M006-07 zero applied control | Host-side applied/pilot output and mode records covering the declared interval, joined to capture generation, plus cycle authority | Separate proposed, authorized idle, `proposed_applied=false`, and actual host output; summarize zero/nonzero observations and temporal gaps | Every accepted interval has host evidence; Pi mode is `user` and pilot outputs are zero. An engine-authorized idle result or stationary photograph alone is insufficient. |
@@ -116,32 +132,40 @@ Recurring evidence IDs do not establish physical-object identity; memory is the
 latest evidence rather than a trajectory. No location, motion, prediction,
 navigation, or movement-safety claim is part of this proposal.
 
-### Capture-readiness prerequisites
+### Candidate capture-readiness conditions (D1/D2)
 
-D1 and D2 are explicit limits on this evidence unit. Each must be closed by its
-own separately reviewed prerequisite contract/implementation route on the
-existing owner boundary before canonical M006-06/M006-07 capture. This proposal
-does not choose their implementation shape, create an external issue, or count
-offline or physical-observation output as satisfying the missing live capability.
+D1 and D2 are provisional, proposal-level, non-binding hypotheses about
+capability gaps or conditions that may matter to a later canonical capture.
+They are not M006 exit criteria, contracted Frontier Map nodes, accepted
+prerequisites, or implementation permission in this PR. They make the evidence
+contract's fail-closed gate explicit. If a future capture attempt confirms a
+condition is needed, the relevant owner must provide or verify it through a
+separately reviewed capability or recovery proposal and implementation route
+before the affected canonical evidence is attempted. This proposal does not
+choose that route, create an external issue, or reserve a product path.
 
-| ID | Existing boundary owner | Smallest missing capability | Readiness rule |
+| ID | Candidate owner / boundary | Candidate minimum capability | Separate route and capture gate |
 | --- | --- | --- | --- |
-| D1 — PiRacer shadow-cycle publication/liveness | Existing PiRacer Donkey physical publication/control boundary together with the Automa automation/decision-stream publication boundary | A supported physical shadow-cycle publication/stream route with genuine run, activation, and liveness identity plus host mode/pilot observations, preserving the same accepted operator workflow | A separately reviewed prerequisite contract/implementation route must be accepted and available before physical automation or canonical Pi evidence. Existing physical observation publication is supporting input evidence only; it cannot stand in for the generation-scoped shadow publication or fabricate local PID/state. |
-| D2 — Live decision URL/retained-evidence visual overlay | Existing Automa decision `info`/view boundary | A correlated live decision view reachable from `info` and the required visual retained-evidence explanation | A separately reviewed prerequisite contract/implementation route must be accepted and available before the live-view portion of canonical evidence. Existing exact-frame replay HTML is supporting visual evidence only; it does not resolve the required live URL or spatial retained-evidence overlay. |
+| D1 — PiRacer shadow-cycle publication/liveness | Existing PiRacer Donkey physical publication/control boundary together with the Automa automation/decision-stream publication boundary | A supported physical shadow-cycle publication/stream route with genuine run, activation, and liveness identity plus host mode/pilot observations, preserving the same accepted operator workflow | If later evidence confirms this condition is needed, the named owner must separately propose and review the bounded capability or recovery work, then provide an availability/verification receipt before physical automation or canonical Pi evidence. Existing physical observation publication is supporting input evidence only; it cannot stand in for the generation-scoped shadow publication or fabricate local PID/state. |
+| D2 — Live decision URL/retained-evidence visual overlay | Existing Automa decision `info`/view boundary | A correlated live decision view reachable from `info` and the required visual retained-evidence explanation | If later evidence confirms this condition is needed, the named owner must separately propose and review the bounded capability or recovery work, then provide an availability/verification receipt before the live-view portion of canonical evidence. Existing exact-frame replay HTML is supporting visual evidence only; it does not resolve the required live URL or spatial retained-evidence overlay. |
 
-The operator must assign capture only after the proposal is accepted, the
-workflow is ready for implementation, both prerequisite routes are accepted or
-available, and the capture procedure, lossless sequence mapping, bounded
-selection, and evidence checks are frozen. If a prerequisite or authoritative
-observation is unavailable, the package remains incomplete or records the
-failure; it is not reclassified as successful through offline replay,
-stationary observation, or a fabricated live publisher.
+The operator may authorize canonical capture only after the proposal is accepted,
+the workflow is ready for implementation, the capture procedure, lossless
+sequence mapping, bounded selection, and evidence checks are frozen, and every
+applicable candidate condition has an explicit availability/verification
+receipt. Proposal acceptance alone is never that receipt and does not make live
+capture ready. If a candidate condition or authoritative observation is
+unavailable, the package remains incomplete or records the failure; it is not
+reclassified as successful through offline replay, stationary observation, or a
+fabricated live publisher. A future proposal may introduce the concrete
+capability or recovery unit after this contract's output or a concrete failure
+identifies it.
 
 ### Bounded cases
 
 | Case | Criteria | Evidence contract |
 | --- | --- | --- |
-| C1 — shared staged path | M006-06, M006-07 | In Chase and PiRacer, stage/inspect the same engine configuration and run the live automation/decision stream after D1/D2 readiness. Record matching vehicle/run/activation/frame identity, one `avoid_recent_obstruction` candidate, `deterministic_first_active`, engine `shadow-proposals`, and observed host output zero. |
+| C1 — shared staged path | M006-06, M006-07 | In Chase and PiRacer, stage/inspect the same engine configuration and run the live automation/decision stream after the applicable candidate conditions are verified by the capture gate. Record matching vehicle/run/activation/frame identity, one `avoid_recent_obstruction` candidate, `deterministic_first_active`, engine `shadow-proposals`, and observed host output zero. |
 | C2 — left/right active intent | M006-06, M006-07 | Each environment supplies one supported left and one supported right scene. Fresh accepted image-relative evidence selects steering `+m` for left and `-m` for right, with throttle `0`, gear hold, matching selected contribution and complete references. Proposed nonzero steering is visible beside idle authority and host observations. |
 | C3 — retained-to-inactive lifecycle | M006-06, M006-07 | Each environment records one side-evidence removal sequence without reset: fresh, retained active, stale command-null/idle selection, then inactive after accepted evidence expires. Preserve the prior source image for retained/stale references and use real cycle timestamps and memory snapshots; timestamps are not edited to manufacture transitions. |
 | C4 — absent supported evidence | M006-06 | Empty memory at start or after expiry yields inactive, no selected proposal, and no invented source or movement intent. Unsupported placement is recorded honestly and cannot satisfy C2. |
@@ -156,8 +180,8 @@ stationary observation, or a fabricated live publisher.
 | Evidence package, manifest, capture procedure, and acceptance judgment | Tracked exact-frame Chase and stationary PiRacer shadow evidence packages under the stable evidence directory; the evidence operator and reviewer own capture and acceptance. |
 | Accepted proposal/plan/authority semantics | PR #74 proposal and implementation; this unit consumes the types, plugin policy, lifecycle rules, selector, and shadow authority without changing them. |
 | Decision stage/info/stream/apply/view fields | Existing Automa decision surfaces from PR #80; this unit consumes them without reimplementing them. |
-| D1 PiRacer publication/liveness | Existing PiRacer Donkey physical publication/control boundary and its Automa automation/decision-stream owner, through a separately reviewed prerequisite route. |
-| D2 live URL/retained-evidence overlay | Existing Automa decision `info`/view owner, through a separately reviewed prerequisite route. |
+| D1 PiRacer publication/liveness | Existing PiRacer Donkey physical publication/control boundary and its Automa automation/decision-stream owner; this is the candidate boundary for any future capability or recovery proposal if a concrete gap is identified. |
+| D2 live URL/retained-evidence overlay | Existing Automa decision `info`/view owner; this is the candidate boundary for any future capability or recovery proposal if a concrete gap is identified. |
 | Chase session preservation | Existing Metrics UI/Chase session boundary; use its existing session-fingerprint/preserve-session capability or retain a structured refusal. No external issue is created by this proposal. |
 | Visual correlation | Evidence review inspects actual rendered images, source frames, references, lifecycle, selection, and separate authority fields; JSON and template presence alone do not own this claim. |
 
@@ -165,7 +189,7 @@ stationary observation, or a fabricated live publisher.
 
 | Path | Expected result |
 | --- | --- |
-| Shared stage → info → live automation → decision stream | Chase and stationary PiRacer use the same accepted engine configuration and correlated run/activation/frame identity after D1/D2 readiness. |
+| Shared stage → info → live automation → decision stream | Chase and stationary PiRacer use the same accepted engine configuration and correlated run/activation/frame identity after the applicable candidate conditions are verified by the capture gate. |
 | Left/right supported scenes | Fresh accepted obstruction evidence produces the expected steer-away intent with throttle zero and gear hold; proposal and authority remain separate. |
 | Continuous evidence removal | Fresh, retained, stale, and inactive lifecycle states are visible with real timestamps, memory snapshots, and retained source images. |
 | Absent or unsupported evidence | Inactive or unavailable state is recorded without an invented source, command, or movement claim. |
@@ -201,15 +225,16 @@ stationary observation, or a fabricated live publisher.
   their review questions.
 - The accepted Automa decision surfaces remain available without renaming their
   schemas or changing their proposal/authority meaning. D1 and D2 are the
-  separately reviewed prerequisites described above, not assumptions that this
-  proposal may silently waive.
+  provisional candidate conditions described above; this proposal neither
+  asserts their availability nor waives the capture gate.
 - Chase can provide the supported packaged perception/memory path and a
   reachable session whose identity and preservation can be observed. If the
   existing session-preservation capability refuses, the refusal and its impact
   remain external evidence rather than a local workaround.
 - PiRacer hardware can be operated stationary in `user` mode with idle user
-  inputs after D1 is resolved; narrow supported placements and inactive physical
-  output are acceptable evidence of a limit, not a reason to tune perception.
+  inputs if the applicable D1 candidate condition is later verified; narrow
+  supported placements and inactive physical output are acceptable evidence of
+  a limit, not a reason to tune perception.
 - A frozen repository/deployed-bundle identity, engine/plugin/selector and
   activation configuration, vehicle/run/publisher identity, frame/cycle and
   observation/memory/source records, image hashes, and environment-specific
@@ -225,8 +250,9 @@ stationary observation, or a fabricated live publisher.
 ## Non-Goals
 
 - Implementing D1 PiRacer shadow-cycle publication/liveness or D2 live decision
-  URL/retained-evidence overlay in this evidence PR; each needs its own reviewed
-  prerequisite contract/implementation route.
+  URL/retained-evidence overlay in this evidence PR; a future proposal may
+  introduce separately reviewed capability or recovery work if a concrete need
+  is identified.
 - Reimplementing or changing the accepted Automa decision surfaces, PR #74
   proposal policy, lifecycle matrix, selector, authority semantics, or source
   schema.
@@ -274,12 +300,13 @@ stationary observation, or a fabricated live publisher.
   to reproduce these artifacts. They do not become product surfaces or policy
   implementation.
 
-### Separately reviewed prerequisites
+### Potential future capability work
 
-D1 and D2 determine their own implementation file impact in their respective
-reviewed prerequisite contracts. This proposal names only their owning
-boundaries and smallest missing capabilities; it does not infer or reserve
-their product paths.
+D1 and D2 determine any later implementation file impact only if a concrete gap
+is identified and a future proposal is accepted for that bounded capability or
+recovery work. This proposal names their candidate owning boundaries and
+minimum capabilities for capture readiness; it does not infer or reserve their
+product paths.
 
 ## Validation Plan
 
@@ -311,13 +338,20 @@ block. No product suite or live capture is part of proposal validation.
 
 ### Later live/external acceptance (not run in this proposal phase)
 
-After proposal acceptance, D1 and D2 prerequisite routes, and explicit operator
-assignment, the evidence owner will run the accepted stage/info/automation/
-stream/replay/view procedure for bounded Chase and stationary PiRacer packages,
-then inspect the records and rendered images against C1-C7. Those commands and
-captures are not executed or represented as receipts here.
+After proposal acceptance, explicit operator assignment, and independent
+verification of every applicable candidate capture-readiness condition, the
+evidence owner may run the accepted stage/info/automation/stream/replay/view
+procedure for bounded Chase and stationary PiRacer packages, then inspect the
+records and rendered images against C1-C7. Proposal acceptance alone does not
+authorize these commands, assert D1/D2 availability, or make live capture
+ready. Those commands and captures are not executed or represented as receipts
+here.
 
 ## Expected Handoff
+
+This is a later evidence-phase success template, not a proposal acceptance
+result; M006-06 and M006-07 remain `Unmet` until the required evidence is
+captured and accepted.
 
 Post-merge evidence success template (merge-time identity is filled by the
 governing completion workflow; do not predeclare PR/SHA fields):

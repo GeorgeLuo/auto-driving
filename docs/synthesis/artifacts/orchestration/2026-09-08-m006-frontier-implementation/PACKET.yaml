@@ -17,7 +17,7 @@ identity:
     branch: m006/shadow-proposal-evidence
     pr: null
     base: a8c4483dea577afdb78094caa36d650f47882a27
-    head: a8c4483dea577afdb78094caa36d650f47882a27
+    head: 779a04a3b79cc8d111bed181471ab861114c49d9
 contract:
   question: >-
     Does the staged avoid_recent_obstruction path produce provenance-complete

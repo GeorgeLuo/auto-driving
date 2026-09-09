@@ -4,10 +4,10 @@
   "packet_revision": 1,
   "unit": "A2",
   "input_head": "a8c4483dea577afdb78094caa36d650f47882a27",
-  "head_after": "a8c4483dea577afdb78094caa36d650f47882a27",
+  "head_after": "779a04a3b79cc8d111bed181471ab861114c49d9",
   "status": "complete",
   "plan_fit": "matched",
-  "worktree_state": "dirty; receipt is pre-commit and head_after will be refreshed after integration commit",
+  "worktree_state": "clean at implementation content commit; metadata receipt commit follows",
   "changed_paths": [
     "docs/milestones/006-decision-facing-perception-readiness/evidence/shadow-proposal-evidence/README.md",
     "docs/milestones/006-decision-facing-perception-readiness/evidence/shadow-proposal-evidence/preparatory/README.md",

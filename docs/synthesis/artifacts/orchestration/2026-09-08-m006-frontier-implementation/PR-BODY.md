@@ -16,6 +16,7 @@
 - Reviewed head: `f9705785e62ba6c7d193cee8dcd86d0052ed6508`
 - Proposal artifact:
   `docs/milestones/006-decision-facing-perception-readiness/proposals/shadow-proposal-evidence.md`
+- Implementation content commit: `779a04a3b79cc8d111bed181471ab861114c49d9`
 
 ## Review Kind
 

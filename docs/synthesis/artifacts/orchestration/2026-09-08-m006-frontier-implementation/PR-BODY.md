@@ -97,7 +97,7 @@ and [evidence result](../../evidence/shadow-proposal-evidence/result.json).
 
 | Cycle | Review receipt | Classification | Highest severity | Repair revision | Contract impact |
 | --- | --- | --- | --- | --- | --- |
-| None | None | None | None | None | No review cycle has occurred. |
+| None | None | None | None | None | None |
 
 ## Handoff
 

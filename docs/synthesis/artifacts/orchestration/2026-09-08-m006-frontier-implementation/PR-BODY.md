@@ -17,6 +17,7 @@
 - Proposal artifact:
   `docs/milestones/006-decision-facing-perception-readiness/proposals/shadow-proposal-evidence.md`
 - Implementation content commit: `779a04a3b79cc8d111bed181471ab861114c49d9`
+- Preserved remote implementation-start commit: `af02f318010947612bf8ec9f25e42e01581288e1`
 
 ## Review Kind
 
@@ -58,6 +59,8 @@ package is claimed.
 - Operator capture authorization is pending and is not valid while those
   receipts are blocked.
 - M006-06 and M006-07 remain `Unmet`.
+- The branch preserves the concurrent implementation-start transition; the
+  canonical plan is now `implementation_in_review`.
 
 The separate D1/D2 capability or recovery route must be proposed and reviewed
 if an operator later assigns it. This PR does not create an external issue,

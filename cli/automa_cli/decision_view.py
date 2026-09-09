@@ -1026,62 +1026,128 @@ class DecisionViewPublisher:
         self._pinned_frame_ids = pins
 
     def _admit_entry_locked(self, record: _ImageRecord, metadata_bytes: int) -> bool:
-        if len(self._entries) >= MAX_IMAGES:
-            if not self._evict_for_locked(required_bytes=len(record.data), required_metadata=metadata_bytes):
-                self._count_refusal_locked("retention_limit")
-                return False
-        if len(record.data) > MAX_TOTAL_IMAGE_BYTES:
+        if (
+            type(metadata_bytes) is not int
+            or metadata_bytes < 0
+            or metadata_bytes > MAX_METADATA_BYTES
+            or type(record.data) is not bytes
+            or not record.data
+            or len(record.data) > MAX_IMAGE_BYTES
+            or type(record.width_px) is not int
+            or type(record.height_px) is not int
+            or record.width_px <= 0
+            or record.height_px <= 0
+            or record.width_px * record.height_px > MAX_PIXELS_PER_IMAGE
+        ):
             self._count_refusal_locked("size_limit")
             return False
-        while (
-            self._image_bytes_locked() + len(record.data) > MAX_TOTAL_IMAGE_BYTES
-            or self._metadata_bytes + metadata_bytes > MAX_METADATA_BYTES
-        ):
-            if not self._evict_for_locked(required_bytes=len(record.data), required_metadata=metadata_bytes):
-                self._count_refusal_locked("size_limit")
+
+        required_bytes = len(record.data)
+        count_pressure = len(self._entries) >= MAX_IMAGES
+        metadata_pressure = self._metadata_bytes + metadata_bytes > MAX_METADATA_BYTES
+        if metadata_pressure:
+            has_unpinned_entry = any(
+                frame_id not in self._pinned_frame_ids
+                and entry.frame_id not in self._pinned_frame_ids
+                for frame_id, entry in self._entries.items()
+            )
+            if not self._make_metadata_room_locked(metadata_bytes):
+                self._count_refusal_locked(
+                    "retention_limit"
+                    if count_pressure and not has_unpinned_entry
+                    else "size_limit"
+                )
                 return False
+
+        image_pressure = (
+            len(self._entries) >= MAX_IMAGES
+            or self._image_bytes_locked() + required_bytes > MAX_TOTAL_IMAGE_BYTES
+        )
+        if image_pressure:
+            if not self._evict_for_locked(required_bytes=required_bytes, required_metadata=0):
+                has_unpinned_entry = any(
+                    frame_id not in self._pinned_frame_ids
+                    and entry.frame_id not in self._pinned_frame_ids
+                    for frame_id, entry in self._entries.items()
+                )
+                self._count_refusal_locked(
+                    "retention_limit"
+                    if len(self._entries) >= MAX_IMAGES and not has_unpinned_entry
+                    else "size_limit"
+                )
+                return False
+        self._entries[record.frame_id] = record
+        self._entries.move_to_end(record.frame_id)
         return True
 
     def _evict_for_locked(self, *, required_bytes: int, required_metadata: int) -> bool:
+        if (
+            type(required_bytes) is not int
+            or required_bytes < 0
+            or required_bytes > MAX_IMAGE_BYTES
+            or type(required_metadata) is not int
+            or required_metadata < 0
+            or required_metadata > MAX_METADATA_BYTES
+        ):
+            return False
+
+        image_bytes = self._image_bytes_locked()
+        if (
+            len(self._entries) < MAX_IMAGES
+            and image_bytes + required_bytes <= MAX_TOTAL_IMAGE_BYTES
+            and self._metadata_bytes + required_metadata <= MAX_METADATA_BYTES
+        ):
+            return True
+
         for frame_id, entry in list(self._entries.items()):
-            if frame_id in self._pinned_frame_ids:
+            if frame_id in self._pinned_frame_ids or entry.frame_id in self._pinned_frame_ids:
                 continue
             self._entries.pop(frame_id, None)
-            self._metadata_bytes = max(0, self._metadata_bytes - _entry_metadata_bytes(entry))
+            image_bytes -= len(entry.data)
+            self._metadata_bytes = max(
+                0,
+                self._metadata_bytes - _entry_metadata_bytes(entry),
+            )
             if (
                 len(self._entries) < MAX_IMAGES
-                and self._image_bytes_locked() + required_bytes <= MAX_TOTAL_IMAGE_BYTES
+                and image_bytes + required_bytes <= MAX_TOTAL_IMAGE_BYTES
                 and self._metadata_bytes + required_metadata <= MAX_METADATA_BYTES
             ):
                 return True
         return (
             len(self._entries) < MAX_IMAGES
-            and self._image_bytes_locked() + required_bytes <= MAX_TOTAL_IMAGE_BYTES
+            and image_bytes + required_bytes <= MAX_TOTAL_IMAGE_BYTES
             and self._metadata_bytes + required_metadata <= MAX_METADATA_BYTES
         )
 
     def _make_metadata_room_locked(self, required_metadata: int) -> bool:
         """Evict only older unpinned records before refusing new metadata."""
 
-        if required_metadata > MAX_METADATA_BYTES:
+        if (
+            type(required_metadata) is not int
+            or required_metadata < 0
+            or required_metadata > MAX_METADATA_BYTES
+        ):
             return False
-        while self._metadata_bytes + required_metadata > MAX_METADATA_BYTES:
-            removed = False
-            for key, archive in list(self._archives.items()):
-                if archive.frame_id in self._pinned_frame_ids:
-                    continue
-                self._archives.pop(key, None)
-                self._metadata_bytes = max(
-                    0,
-                    self._metadata_bytes - _archive_metadata_bytes(archive),
-                )
-                removed = True
-                break
-            if removed:
+
+        if self._metadata_bytes + required_metadata <= MAX_METADATA_BYTES:
+            return True
+        for key, archive in list(self._archives.items()):
+            if self._metadata_bytes + required_metadata <= MAX_METADATA_BYTES:
+                return True
+            if key[0] in self._pinned_frame_ids or archive.frame_id in self._pinned_frame_ids:
                 continue
-            if not self._evict_for_locked(required_bytes=0, required_metadata=required_metadata):
-                return False
-        return True
+            self._archives.pop(key, None)
+            self._metadata_bytes = max(
+                0,
+                self._metadata_bytes - _archive_metadata_bytes(archive),
+            )
+        if self._metadata_bytes + required_metadata <= MAX_METADATA_BYTES:
+            return True
+        return self._evict_for_locked(
+            required_bytes=0,
+            required_metadata=required_metadata,
+        )
 
     def _snapshot_locked(self) -> _StoreSnapshot:
         return _StoreSnapshot(
@@ -1098,6 +1164,7 @@ class DecisionViewPublisher:
         return sum(len(item.data) for item in self._entries.values())
 
     def _limits_locked(self) -> dict[str, int]:
+        image_bytes = self._image_bytes_locked()
         return {
             "max_images": MAX_IMAGES,
             "max_image_bytes": MAX_IMAGE_BYTES,
@@ -1106,16 +1173,16 @@ class DecisionViewPublisher:
             "max_metadata_bytes": MAX_METADATA_BYTES,
             "max_response_bytes": MAX_RESPONSE_BYTES,
             "image_count": len(self._entries),
-            "image_bytes": self._image_bytes_locked(),
-            "metadata_bytes": self._metadata_bytes,
-            "retention_refusals": self._retention_refusals,
-            "size_refusals": self._size_refusals,
+            "image_bytes": image_bytes,
+            "metadata_bytes": max(0, self._metadata_bytes),
+            "retention_refusals": max(0, self._retention_refusals),
+            "size_refusals": max(0, self._size_refusals),
         }
 
     def _count_refusal_locked(self, reason: str) -> None:
         if reason in {"retention_limit", "retention_refusal"}:
             self._retention_refusals += 1
-        else:
+        elif reason in {"size_limit", "size_refusal"}:
             self._size_refusals += 1
 
     def _build_payload(

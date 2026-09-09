@@ -69,10 +69,11 @@ for simulator and physical vehicles.
 
 **Cross-environment shadow proposal evidence**
 
-- Workflow state: proposal_in_review
+- Workflow state: ready_for_implementation
 - Proposal branch: `m006/shadow-proposal-evidence-proposal`
 - Implementation branch: `m006/shadow-proposal-evidence`
 - Proposal path: `docs/milestones/006-decision-facing-perception-readiness/proposals/shadow-proposal-evidence.md`
+- Accepted proposal: [#201](https://github.com/GeorgeLuo/auto-driving/pull/201) at `9e2a353c736a04fed22c1ce5d456c6115fbfbddc` (reviewed head `f9705785e62ba6c7d193cee8dcd86d0052ed6508` by `GeorgeLuo` as `OWNER` at `2026-09-09T04:31:46Z`)
 - Review kind: Live or external evidence
 - Review question: Does the staged `avoid_recent_obstruction` path produce provenance-complete shadow action plans and the same correlated visual explanation on Chase and stationary PiRacer inputs while applied control remains zero and privileged simulator state stays outside controller inputs?
 - Acceptance owner: Tracked exact-frame Chase and stationary PiRacer shadow evidence packages using the accepted Automa decision surfaces
@@ -111,6 +112,7 @@ for simulator and physical vehicles.
 | Automa shadow decision surfaces | accepted | Implementation PR #80 merged at 0206c860a7a3aad38045b570f31784c22dac00e8. |
 | Cross-environment shadow proposal evidence | ready_for_proposal | Promoted after implementation PR #80. |
 | Cross-environment shadow proposal evidence | proposal_in_review | Started m006/shadow-proposal-evidence-proposal. |
+| Cross-environment shadow proposal evidence | ready_for_implementation | Proposal PR #201 accepted at 9e2a353c736a04fed22c1ce5d456c6115fbfbddc (reviewed head `f9705785e62ba6c7d193cee8dcd86d0052ed6508` by `GeorgeLuo` as `OWNER` at `2026-09-09T04:31:46Z`). |
 
 ## Accepted Review Units
 

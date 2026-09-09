@@ -69,7 +69,7 @@ for simulator and physical vehicles.
 
 **Cross-environment shadow proposal evidence**
 
-- Workflow state: ready_for_proposal
+- Workflow state: proposal_in_review
 - Proposal branch: `m006/shadow-proposal-evidence-proposal`
 - Implementation branch: `m006/shadow-proposal-evidence`
 - Proposal path: `docs/milestones/006-decision-facing-perception-readiness/proposals/shadow-proposal-evidence.md`
@@ -80,12 +80,17 @@ for simulator and physical vehicles.
 - Prerequisite: Automa shadow decision surfaces accepted (M006-05) with stage/info/apply/stream/view and deterministic replay
 - Milestone-level non-goal: Re-implementing operator surfaces, changing PR #74 proposal policy, perception retune, applied movement, or navigation claims
 
+### Frontier Map
+
+- Path: none
+- Cadence: linked-list
+
 ### Next-Frontier Candidate
 
 **None**
 
-- Reason: Cross-environment shadow proposal evidence is promoted from the frozen next-candidate slot after M006-05.
-- Revisit when: Live Chase/Pi evidence packages (M006-06–M006-07) are accepted or closeout planning begins after a plan revision queues M006-08.
+- Reason: No remaining work-order node is contracted.
+- Revisit when: The next proposal may introduce a node.
 
 ## Workflow History
 
@@ -105,6 +110,7 @@ for simulator and physical vehicles.
 | Automa shadow decision surfaces | implementation_in_review | Started m006/shadow-decision-surfaces. |
 | Automa shadow decision surfaces | accepted | Implementation PR #80 merged at 0206c860a7a3aad38045b570f31784c22dac00e8. |
 | Cross-environment shadow proposal evidence | ready_for_proposal | Promoted after implementation PR #80. |
+| Cross-environment shadow proposal evidence | proposal_in_review | Started m006/shadow-proposal-evidence-proposal. |
 
 ## Accepted Review Units
 

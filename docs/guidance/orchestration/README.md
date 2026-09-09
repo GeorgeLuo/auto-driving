@@ -16,6 +16,11 @@ Follow orchestration policy ad-hoc-implementation/v3 for this change.
 Follow orchestration policy review-repair/v1 for PR #<number> through final review.
 ```
 
+```text
+Follow orchestration policy product-implementation/v1 to implement
+<accepted proposal> on <milestone branch>. Deliver ready for independent review.
+```
+
 Load that version in addition to role/task guidance from
 [agent-surface.md](../agent-surface.md).
 

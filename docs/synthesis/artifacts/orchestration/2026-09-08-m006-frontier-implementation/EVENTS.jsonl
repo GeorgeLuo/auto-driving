@@ -1,0 +1,5 @@
+{"event":"packet_compiled","unit":"root","packet_revision":1,"input_head":"a8c4483dea577afdb78094caa36d650f47882a27","status":"complete","evidence":"PACKET.yaml and STATE.json"}
+{"event":"A1_dispatch","unit":"A1","requested_runtime":"gpt-6-astra/low","observed_runtime":"not dispatched; child terminal-receipt interface unavailable","execution":"root bounded-design pass","status":"complete"}
+{"event":"A1_receipt","unit":"A1","status":"complete","plan_fit":"matched","d1":"blocked","d2":"blocked","evidence":"STATE.json boundary and README.md readiness receipts"}
+{"event":"A2_dispatch","unit":"A2","requested_runtime":"gpt-5.6-luna/max","observed_runtime":"root direct execution fallback","status":"complete","evidence":"A2-RECEIPT.json"}
+{"event":"A2_receipt","unit":"A2","status":"complete","plan_fit":"matched","canonical_capture_ready":false,"evidence":"A2-RECEIPT.json"}

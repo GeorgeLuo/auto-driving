@@ -1,0 +1,72 @@
+{
+  "policy": "product-implementation/v1",
+  "shared": "shared/v1",
+  "packet_revision": 1,
+  "unit": "A2",
+  "input_head": "a8c4483dea577afdb78094caa36d650f47882a27",
+  "head_after": "a8c4483dea577afdb78094caa36d650f47882a27",
+  "status": "complete",
+  "plan_fit": "matched",
+  "worktree_state": "dirty; receipt is pre-commit and head_after will be refreshed after integration commit",
+  "changed_paths": [
+    "docs/milestones/006-decision-facing-perception-readiness/evidence/shadow-proposal-evidence/README.md",
+    "docs/milestones/006-decision-facing-perception-readiness/evidence/shadow-proposal-evidence/preparatory/README.md",
+    "docs/milestones/006-decision-facing-perception-readiness/evidence/shadow-proposal-evidence/preparatory/public-door-result.json",
+    "docs/milestones/006-decision-facing-perception-readiness/evidence/shadow-proposal-evidence/result.json",
+    "docs/milestones/006-decision-facing-perception-readiness/evidence/shadow-proposal-evidence/result.html",
+    "docs/milestones/006-decision-facing-perception-readiness/evidence/shadow-proposal-evidence/render_result.py",
+    "docs/milestones/006-decision-facing-perception-readiness/evidence/shadow-proposal-evidence/verify_packet.py"
+  ],
+  "decisions": [
+    {
+      "choice": "keep canonical Chase and PiRacer packages absent",
+      "preserved_constraint": "missing evidence remains incomplete; no placeholder success record",
+      "evidence": "D1 physical shadow-cycle publication/liveness and D2 live decision URL/retained overlay are blocked"
+    },
+    {
+      "choice": "use the tracked active-left fixture only through the existing offline public CLI",
+      "preserved_constraint": "synthetic/old evidence cannot satisfy the accepted LIVE packages",
+      "evidence": "deterministic digest 63369a158af3198a44e145ed11aa71dbb62097e46a39e3e458909fe08a53e54b; source image is null"
+    }
+  ],
+  "validation": [
+    {
+      "check": "packet verifier, derived HTML check, fabricated-success rejection",
+      "owner": "A2",
+      "revision": "a8c4483dea577afdb78094caa36d650f47882a27",
+      "result": "pass",
+      "evidence": "result.json validation.packet_verifier"
+    },
+    {
+      "check": "focused decision surfaces",
+      "owner": "A2",
+      "revision": "a8c4483dea577afdb78094caa36d650f47882a27",
+      "result": "pass: 33 tests",
+      "evidence": "result.json validation.focused_decision_surfaces"
+    },
+    {
+      "check": "workflow and docs",
+      "owner": "root",
+      "revision": "a8c4483dea577afdb78094caa36d650f47882a27",
+      "result": "pass",
+      "evidence": "result.json validation.workflow_and_docs"
+    },
+    {
+      "check": "broader deterministic suite",
+      "owner": "root",
+      "revision": "a8c4483dea577afdb78094caa36d650f47882a27",
+      "result": "1048 passed, 2 skipped, 4 unrelated/out-of-scope failures",
+      "evidence": "result.json validation.broader_deterministic_suite"
+    }
+  ],
+  "unresolved": [
+    "D1 capability/verification receipt",
+    "D2 capability/verification receipt",
+    "operator capture authorization",
+    "four unrelated full-suite failures; implementation PR must remain draft"
+  ],
+  "anomalies": [
+    "full deterministic suite is not green on this base; no changed product source path is implicated"
+  ],
+  "next": "root integration, final-head validation, truthful draft PR, and external capability-gap handoff"
+}

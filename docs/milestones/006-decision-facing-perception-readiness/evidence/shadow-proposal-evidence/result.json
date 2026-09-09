@@ -1,0 +1,170 @@
+{
+  "schema": "m006_shadow_proposal_evidence_v1",
+  "status": "incomplete",
+  "canonical_capture_ready": false,
+  "operator_capture_authorized": false,
+  "milestone": "006",
+  "frontier": "Cross-environment shadow proposal evidence",
+  "criteria": {
+    "M006-06": {
+      "status": "Unmet",
+      "reason": "No canonical Chase/PiRacer live package is accepted."
+    },
+    "M006-07": {
+      "status": "Unmet",
+      "reason": "No authoritative Chase privilege-exclusion or Pi user-mode interval is captured."
+    }
+  },
+  "identity": {
+    "repository": "GeorgeLuo/auto-driving",
+    "implementation_branch": "m006/shadow-proposal-evidence",
+    "base": "a8c4483dea577afdb78094caa36d650f47882a27",
+    "head": "a8c4483dea577afdb78094caa36d650f47882a27",
+    "proposal_pr": 201,
+    "proposal_reviewed_head": "f9705785e62ba6c7d193cee8dcd86d0052ed6508",
+    "proposal_merge": "9e2a353c736a04fed22c1ce5d456c6115fbfbddc",
+    "policy_commit": "c8ee3515719ebbde4540d9d1ee04f9d04385ddc"
+  },
+  "readiness_receipts": {
+    "proposal_acceptance": {
+      "status": "verified",
+      "source": "docs/milestones/006-decision-facing-perception-readiness/plan.md",
+      "review": "https://github.com/GeorgeLuo/auto-driving/pull/201#pullrequestreview-5149775116",
+      "observation": "workflow.py status reports ready_for_implementation and the accepted proposal merge/reviewed-head pair."
+    },
+    "procedure_and_checks": {
+      "status": "frozen_for_operator_review",
+      "source": "README.md",
+      "observation": "C1-C7 mapping, lossless replay projection, bounds, rendering checks, and fail-closed gate are recorded."
+    },
+    "D1": {
+      "status": "blocked",
+      "owner": "PiRacer Donkey physical publication/control boundary plus Automa automation/decision-stream publication boundary",
+      "minimum_capability": "genuine physical shadow-cycle publication/stream with run, activation, frame, and liveness identity plus host mode/pilot observations",
+      "observation": "cli/automa_cli/automation.py:111-135 discovers with include_picar=False and accepts only provider chase-sim; no supported PiRacer shadow-cycle publication route is exposed by the documented worker.",
+      "impact": "M006-07 physical live capture cannot be claimed.",
+      "next": "separate capability/recovery proposal and verification receipt if an operator later assigns that work"
+    },
+    "D2": {
+      "status": "blocked",
+      "owner": "Automa decision info/view boundary",
+      "minimum_capability": "correlated live decision URL reachable from info with retained-evidence visual explanation",
+      "observation": "staged info returns combined_view.url=null and path_template=cli/automa_cli/decision_view.html#decision-combined-v0; app.py exposes offline decision apply and terminal stream, not a live decision-view command.",
+      "impact": "M006-06 live visual-correlation claim cannot be claimed.",
+      "next": "separate capability/recovery proposal and verification receipt if an operator later assigns that work"
+    },
+    "operator_capture_authorization": {
+      "status": "pending",
+      "observation": "Not requested as a valid authorization while D1 and D2 are blocked.",
+      "required_after": ["D1 available/verified", "D2 available/verified", "final-head validation"]
+    }
+  },
+  "case_outcomes": {
+    "C1": {"status": "not_run", "reason": "canonical live capture gate blocked"},
+    "C2": {"status": "not_run", "reason": "preparatory fixture is not environment evidence"},
+    "C3": {"status": "not_run", "reason": "no live no-reset lifecycle interval"},
+    "C4": {"status": "not_run", "reason": "no canonical environment package"},
+    "C5": {"status": "not_run", "reason": "no live stop/publication interval"},
+    "C6": {"status": "not_run", "reason": "offline fixture digest is preparatory and has no source image"},
+    "C7": {"status": "not_run", "reason": "no Chase privilege receipt or Pi authority interval"}
+  },
+  "preparatory_checks": {
+    "chase_passive_status": {
+      "status": "blocked",
+      "command": "./cli/automa vehicles status --id chase-sim-chaser --json",
+      "observation": "Metrics UI frontend_disconnected; simulator server reachable; no mutation attempted.",
+      "next_action": "Open or reload the existing Metrics UI frontend, then rerun the passive status check only when capture is authorized."
+    },
+    "decision_info": {
+      "status": "passed_contract_probe",
+      "command": "AUTOMA_RUNTIME_ROOT=<temporary> ./cli/automa vehicles update decision --id chase-sim-chaser --engine shadow-proposals --json && ./cli/automa vehicles info decision --id chase-sim-chaser --json",
+      "observation": "Engine config, plugin, selector, shadow authority, and schema were available; combined_view.url was null.",
+      "live_capture_eligible": false
+    },
+    "offline_public_door": {
+      "status": "passed_preparatory_only",
+      "record": "preparatory/public-door-result.json",
+      "fixture_sha256": "bc5bcc2164f2c8b198163d3ed6e61648b787a62d82904ed56855270e07a39c76",
+      "digest_sha256": "63369a158af3198a44e145ed11aa71dbb62097e46a39e3e458909fe08a53e54b",
+      "proposed_steering": 0.35,
+      "authorized_steering": 0.0,
+      "authorized_throttle": 0.0,
+      "proposed_applied": false,
+      "source_image": null,
+      "limitation": "offline fixture only; no live run, host interval, original camera image, or D1/D2 receipt"
+    }
+  },
+  "validation": {
+    "packet_verifier": {
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 verify_packet.py --check-html --self-test",
+      "status": "passed",
+      "result": "blocked packet accepted; fabricated readiness mutation rejected"
+    },
+    "focused_decision_surfaces": {
+      "command": "PYTHONDONTWRITEBYTECODE=1 pytest -q tests/cli/decision/test_commands.py tests/cli/decision/test_shadow_decision_surfaces.py",
+      "status": "passed",
+      "summary": "33 passed"
+    },
+    "workflow_and_docs": {
+      "commands": [
+        "PYTHONDONTWRITEBYTECODE=1 python3 docs/milestones/workflow.py status --plan docs/milestones/006-decision-facing-perception-readiness/plan.md",
+        "PYTHONDONTWRITEBYTECODE=1 python3 docs/milestones/workflow.py validate docs/milestones/006-decision-facing-perception-readiness/plan.md",
+        "python3 docs/render_markdown.py --check",
+        "git diff --check"
+      ],
+      "status": "passed",
+      "summary": "workflow state remains ready_for_implementation; plan valid; rendered documentation and diff clean"
+    },
+    "broader_deterministic_suite": {
+      "command": "PYTHONDONTWRITEBYTECODE=1 pytest -q",
+      "status": "incomplete_with_unrelated_failures",
+      "summary": "1048 passed, 2 skipped, 4 failed",
+      "failures": [
+        "tests/milestones/test_cli_journey_coverage.py::RootAndEnvironmentTests::test_hook_sanitizes_environment_and_generates_contained_effective_config",
+        "tests/milestones/test_cli_journey_coverage.py::RootAndEnvironmentTests::test_interpreter_symlink_alias_is_normalized_to_python_token",
+        "tests/milestones/test_cli_journey_coverage.py::RootAndEnvironmentTests::test_runner_precondition_preserves_manifest_template_before_substitution",
+        "tests/milestones/test_cli_surface_audit.py::CliSurfaceAuditTests::test_historical_audit_ignores_current_app_source_drift"
+      ],
+      "limitation": "Failures are outside the changed docs/evidence paths; the exact base checkout reproduces the historical-audit failure and passes the three PATH-sensitive tests when selected individually. The full suite is not green and the implementation PR remains draft."
+    }
+  },
+  "environment_packages": {
+    "chase": {
+      "status": "not_captured",
+      "path": "chase/",
+      "interval_coverage": "none",
+      "authoritative_host_observation": false
+    },
+    "piracer": {
+      "status": "not_captured",
+      "path": "piracer/",
+      "interval_coverage": "none",
+      "authoritative_host_observation": false
+    }
+  },
+  "interval_coverage": {
+    "chase": {"status": "unavailable", "accepted_intervals": 0, "uncovered_intervals": "all"},
+    "piracer": {"status": "unavailable", "accepted_intervals": 0, "uncovered_intervals": "all"}
+  },
+  "cleanup": {
+    "live_worker_started": false,
+    "simulator_started_or_changed": false,
+    "vehicle_control_applied": false,
+    "pilot_output_observed": false,
+    "temporary_probe_runtime": "isolated temporary runtime; no repository or live vehicle state"
+  },
+  "limits": {
+    "max_frames": 256,
+    "max_sequence_bytes": 33554432,
+    "max_record_bytes": 8388608,
+    "hashes_mean": "byte consistency only",
+    "non_claims": ["object identity", "trajectory", "self-motion", "prediction", "navigation", "movement safety", "physical readiness"]
+  },
+  "artifacts": [
+    {"path": "README.md", "role": "frozen procedure and case map", "authoritative": true},
+    {"path": "result.json", "role": "readiness and outcome record", "authoritative": true},
+    {"path": "result.html", "role": "derived from result.json", "authoritative": false},
+    {"path": "preparatory/public-door-result.json", "role": "offline public-door check", "authoritative": true, "live_evidence_eligible": false}
+  ],
+  "next": "Resolve applicable D1/D2 capability gaps through their separate route, rerun readiness checks, then obtain explicit operator capture authorization before any canonical live operation."
+}

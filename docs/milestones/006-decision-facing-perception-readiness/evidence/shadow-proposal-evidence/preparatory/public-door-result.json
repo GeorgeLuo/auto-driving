@@ -1,0 +1,62 @@
+{
+  "schema": "m006_preparatory_public_door_result_v1",
+  "status": "passed_preparatory_only",
+  "canonical_capture": false,
+  "vehicle_id": "chase-sim-chaser",
+  "source": {
+    "kind": "tracked_test_fixture",
+    "path": "tests/cli/decision/fixtures/apply_active_left/sequence.json",
+    "sha256": "bc5bcc2164f2c8b198163d3ed6e61648b787a62d82904ed56855270e07a39c76",
+    "live_evidence_eligible": false,
+    "reason": "offline fixture has no live run, host interval, or source image"
+  },
+  "public_command": "./cli/automa vehicles decision apply --id chase-sim-chaser --from-run tests/cli/decision/fixtures/apply_active_left --json --record",
+  "engine_id": "shadow-proposals",
+  "frame_count": 1,
+  "deterministic": true,
+  "digest_sha256": "63369a158af3198a44e145ed11aa71dbb62097e46a39e3e458909fe08a53e54b",
+  "second_pass_digest_sha256": "63369a158af3198a44e145ed11aa71dbb62097e46a39e3e458909fe08a53e54b",
+  "digest": {
+    "schema": "vehicle_decision_apply_digest_v0",
+    "frame_count": 1,
+    "frames": [
+      {
+        "frame_id": "frame_001",
+        "cycle_status": "ok",
+        "cycle_reason": "",
+        "plan_status": "selected",
+        "selected_proposal_id": "avoid_recent_obstruction:frame_001",
+        "candidates": [
+          {
+            "plugin_id": "avoid_recent_obstruction",
+            "lifecycle": "fresh",
+            "confidence": 0.8,
+            "reason": "steer_away_left_obstruction"
+          }
+        ],
+        "proposed": {
+          "steering": 0.35,
+          "throttle": 0.0
+        },
+        "authorized_output": {
+          "steering": 0.0,
+          "throttle": 0.0,
+          "confidence": 1.0,
+          "reason": "shadow-only-idle"
+        },
+        "proposed_applied": false
+      }
+    ]
+  },
+  "record": {
+    "view_id": "decision-combined-v0",
+    "manifest_schema": "decision_exact_frame_review_v0",
+    "source_image": null,
+    "image_correlation_status": "not_available_in_fixture"
+  },
+  "readiness": {
+    "d1": "not_verified",
+    "d2": "not_verified",
+    "operator_capture_authorized": false
+  }
+}

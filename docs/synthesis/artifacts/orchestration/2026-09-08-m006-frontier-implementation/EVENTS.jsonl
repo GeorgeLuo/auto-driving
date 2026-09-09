@@ -3,3 +3,5 @@
 {"event":"A1_receipt","unit":"A1","status":"complete","plan_fit":"matched","d1":"blocked","d2":"blocked","evidence":"STATE.json boundary and README.md readiness receipts"}
 {"event":"A2_dispatch","unit":"A2","requested_runtime":"gpt-5.6-luna/max","observed_runtime":"root direct execution fallback","status":"complete","evidence":"A2-RECEIPT.json"}
 {"event":"A2_receipt","unit":"A2","status":"complete","plan_fit":"matched","canonical_capture_ready":false,"evidence":"A2-RECEIPT.json"}
+{"event":"external_drift_detected","remote_branch":"origin/m006/shadow-proposal-evidence","remote_head":"af02f318010947612bf8ec9f25e42e01581288e1","observation":"concurrent implementation start changed only M006 plan.md and generated plan.html","disposition":"preserve and merge; do not force-push or revert"}
+{"event":"reconcile","local_head":"5844c58e37aa6db27fa724dc1ab7b7f196fe7195","remote_start":"af02f318010947612bf8ec9f25e42e01581288e1","workflow_state":"implementation_in_review","status":"matched"}

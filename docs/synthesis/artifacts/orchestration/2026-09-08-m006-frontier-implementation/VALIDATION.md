@@ -1,8 +1,11 @@
 # Validation ledger
 
-All checks below were run on implementation branch `m006/shadow-proposal-evidence`
-from base `a8c4483dea577afdb78094caa36d650f47882a27` before the integration
-commit. The accepted M006 proposal and plan were not edited.
+The preparation checks below were run on implementation branch
+`m006/shadow-proposal-evidence` from base
+`a8c4483dea577afdb78094caa36d650f47882a27`. A concurrent remote start commit
+`af02f318010947612bf8ec9f25e42e01581288e1` was preserved; it changes only the
+canonical plan/HTML state to `implementation_in_review`. The accepted proposal
+artifact was not edited.
 
 ## Passed
 
@@ -11,7 +14,7 @@ commit. The accepted M006 proposal and plan were not edited.
 - `PYTHONDONTWRITEBYTECODE=1 pytest -q tests/cli/decision/test_commands.py tests/cli/decision/test_shadow_decision_surfaces.py`
   — 33 passed.
 - `PYTHONDONTWRITEBYTECODE=1 python3 docs/milestones/workflow.py status --plan docs/milestones/006-decision-facing-perception-readiness/plan.md`
-  — M006 active, frontier correct, state `ready_for_implementation`, accepted
+  — M006 active, frontier correct, state `implementation_in_review`, accepted
   proposal #201 recorded.
 - `PYTHONDONTWRITEBYTECODE=1 python3 docs/milestones/workflow.py validate docs/milestones/006-decision-facing-perception-readiness/plan.md`
   — valid milestone plan.
@@ -36,3 +39,10 @@ No simulator, Metrics UI session, Chase worker, PiRacer worker, vehicle, or
 physical control operation was started. D1/D2 receipts are blocked, so no
 canonical capture authorization was valid. The offline fixture is explicitly
 preparatory and has no source image or host-authority interval.
+
+## Reconciliation
+
+The final branch preserves the concurrent implementation-start transition and
+the local evidence preparation. Its changed paths are the accepted evidence
+root, orchestration record, and the two canonical/generated plan files from
+the remote start; no proposal, product, runtime, or test source path changed.

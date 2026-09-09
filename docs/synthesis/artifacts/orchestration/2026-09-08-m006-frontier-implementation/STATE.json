@@ -10,7 +10,7 @@
     "repository": "/Users/gluo/Projects/auto-driving",
     "branch": "m006/shadow-proposal-evidence",
     "base": "a8c4483dea577afdb78094caa36d650f47882a27",
-    "head": "5844c58e37aa6db27fa724dc1ab7b7f196fe7195",
+    "head": "a0e11c6d5c29fc3f1f75c2b22588696600fc9a9c",
     "preserved_remote_start": "af02f318010947612bf8ec9f25e42e01581288e1",
     "audit_commit": "metadata receipt commit follows the implementation content commit",
     "proposal_pr": 201,
@@ -22,7 +22,7 @@
     "frontier": "Cross-environment shadow proposal evidence",
     "state": "implementation_in_review",
     "criteria": ["M006-06", "M006-07"],
-    "current_pr": null
+    "current_pr": 202
   },
   "boundary": {
     "status": "blocked_at_capture_gate",

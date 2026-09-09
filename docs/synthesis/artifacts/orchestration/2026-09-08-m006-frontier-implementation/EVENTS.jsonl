@@ -5,3 +5,4 @@
 {"event":"A2_receipt","unit":"A2","status":"complete","plan_fit":"matched","canonical_capture_ready":false,"evidence":"A2-RECEIPT.json"}
 {"event":"external_drift_detected","remote_branch":"origin/m006/shadow-proposal-evidence","remote_head":"af02f318010947612bf8ec9f25e42e01581288e1","observation":"concurrent implementation start changed only M006 plan.md and generated plan.html","disposition":"preserve and merge; do not force-push or revert"}
 {"event":"reconcile","local_head":"5844c58e37aa6db27fa724dc1ab7b7f196fe7195","remote_start":"af02f318010947612bf8ec9f25e42e01581288e1","workflow_state":"implementation_in_review","status":"matched"}
+{"event":"publish","implementation_pr":202,"url":"https://github.com/GeorgeLuo/auto-driving/pull/202","branch_tip":"a0e11c6d5c29fc3f1f75c2b22588696600fc9a9c","draft":true,"status":"published"}

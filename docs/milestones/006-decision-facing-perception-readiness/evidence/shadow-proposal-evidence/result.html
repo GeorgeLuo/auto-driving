@@ -22,7 +22,7 @@
   <h1>M006 cross-environment shadow-proposal evidence</h1>
   <p class="meta">status=<span class="badge">incomplete</span>
     · canonical_capture_ready=<code>false</code>
-    · result.json sha256=<code>232a1d609f3f723613737c9b0bb6a6dde21ae8f2ce3c3767caa8d4efc942006c</code></p>
+    · result.json sha256=<code>421fa05af4b52737d7b21ee139f1d91d4286100195ad96b3cf230fd9b01a1588</code></p>
   <div class="blocked">
     This page is derived from adjacent committed <code>result.json</code>.
     The record is incomplete and fail-closed: no canonical Chase or PiRacer
@@ -32,7 +32,7 @@
   <table>
     <tr><th>Branch</th><td><code>m006/shadow-proposal-evidence</code></td></tr>
     <tr><th>Base</th><td><code>a8c4483dea577afdb78094caa36d650f47882a27</code></td></tr>
-    <tr><th>Head</th><td><code>779a04a3b79cc8d111bed181471ab861114c49d9</code></td></tr>
+    <tr><th>Head</th><td><code>a0e11c6d5c29fc3f1f75c2b22588696600fc9a9c</code></td></tr>
     <tr><th>Proposal</th><td>PR 201, merge <code>9e2a353c736a04fed22c1ce5d456c6115fbfbddc</code></td></tr>
     <tr><th>Policy</th><td><code>c8ee3515719ebbde4540d9d1ee04f9d04385ddc</code></td></tr>
   </table>
@@ -40,7 +40,7 @@
   <table><tr><th>Criterion</th><th>Status</th><th>Reason</th></tr><tr><td><code>M006-06</code></td><td>Unmet</td><td>No canonical Chase/PiRacer live package is accepted.</td></tr>
 <tr><td><code>M006-07</code></td><td>Unmet</td><td>No authoritative Chase privilege-exclusion or Pi user-mode interval is captured.</td></tr></table>
   <h2>Readiness receipts</h2>
-  <table><tr><th>Receipt</th><th>Status</th><th>Observation / impact</th></tr><tr><td><code>proposal_acceptance</code></td><td>verified</td><td>workflow.py status reports ready_for_implementation and the accepted proposal merge/reviewed-head pair.</td></tr>
+  <table><tr><th>Receipt</th><th>Status</th><th>Observation / impact</th></tr><tr><td><code>proposal_acceptance</code></td><td>verified</td><td>Initial workflow status reported ready_for_implementation with the accepted proposal merge/reviewed-head pair; the preserved remote implementation start now records implementation_in_review.</td></tr>
 <tr><td><code>procedure_and_checks</code></td><td>frozen_for_operator_review</td><td>C1-C7 mapping, lossless replay projection, bounds, rendering checks, and fail-closed gate are recorded.</td></tr>
 <tr><td><code>D1</code></td><td>blocked</td><td>cli/automa_cli/automation.py:111-135 discovers with include_picar=False and accepts only provider chase-sim; no supported PiRacer shadow-cycle publication route is exposed by the documented worker.</td></tr>
 <tr><td><code>D2</code></td><td>blocked</td><td>staged info returns combined_view.url=null and path_template=cli/automa_cli/decision_view.html#decision-combined-v0; app.py exposes offline decision apply and terminal stream, not a live decision-view command.</td></tr>

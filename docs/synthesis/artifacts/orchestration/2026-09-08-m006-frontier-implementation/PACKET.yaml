@@ -15,9 +15,10 @@ identity:
   amendments: []
   implementation:
     branch: m006/shadow-proposal-evidence
-    pr: null
+    pr: 202
+    url: https://github.com/GeorgeLuo/auto-driving/pull/202
     base: a8c4483dea577afdb78094caa36d650f47882a27
-    head: 5844c58e37aa6db27fa724dc1ab7b7f196fe7195
+    head: a0e11c6d5c29fc3f1f75c2b22588696600fc9a9c
     preserved_remote_start: af02f318010947612bf8ec9f25e42e01581288e1
 contract:
   question: >-

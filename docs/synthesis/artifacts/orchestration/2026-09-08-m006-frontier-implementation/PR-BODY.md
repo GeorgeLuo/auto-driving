@@ -18,6 +18,8 @@
   `docs/milestones/006-decision-facing-perception-readiness/proposals/shadow-proposal-evidence.md`
 - Implementation content commit: `779a04a3b79cc8d111bed181471ab861114c49d9`
 - Preserved remote implementation-start commit: `af02f318010947612bf8ec9f25e42e01581288e1`
+- Draft implementation PR: [#202](https://github.com/GeorgeLuo/auto-driving/pull/202)
+- Branch tip at publication: `a0e11c6d5c29fc3f1f75c2b22588696600fc9a9c`
 
 ## Review Kind
 

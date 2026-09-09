@@ -19,7 +19,7 @@
     "repository": "GeorgeLuo/auto-driving",
     "implementation_branch": "m006/shadow-proposal-evidence",
     "base": "a8c4483dea577afdb78094caa36d650f47882a27",
-    "head": "5844c58e37aa6db27fa724dc1ab7b7f196fe7195",
+    "head": "a0e11c6d5c29fc3f1f75c2b22588696600fc9a9c",
     "proposal_pr": 201,
     "proposal_reviewed_head": "f9705785e62ba6c7d193cee8dcd86d0052ed6508",
     "proposal_merge": "9e2a353c736a04fed22c1ce5d456c6115fbfbddc",
@@ -30,7 +30,7 @@
       "status": "verified",
       "source": "docs/milestones/006-decision-facing-perception-readiness/plan.md",
       "review": "https://github.com/GeorgeLuo/auto-driving/pull/201#pullrequestreview-5149775116",
-      "observation": "workflow.py status reports ready_for_implementation and the accepted proposal merge/reviewed-head pair."
+      "observation": "Initial workflow status reported ready_for_implementation with the accepted proposal merge/reviewed-head pair; the preserved remote implementation start now records implementation_in_review."
     },
     "procedure_and_checks": {
       "status": "frozen_for_operator_review",

@@ -21,6 +21,25 @@ class PacketError(ValueError):
     pass
 
 
+def _required_fields(value: object, fields: tuple[str, ...], context: str) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise PacketError(f"{context} must be an object")
+    missing = [field for field in fields if field not in value]
+    if missing:
+        raise PacketError(f"{context} missing required fields: {', '.join(missing)}")
+    return value
+
+
+def _required_false(value: object, field: str) -> None:
+    if type(value) is not bool or value is not False:
+        raise PacketError(f"{field} must remain false in the incomplete packet")
+
+
+def _required_zero_number(value: object, field: str) -> None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value != 0:
+        raise PacketError(f"{field} must remain zero in the incomplete packet")
+
+
 def validate(payload: object) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise PacketError("result.json must be an object")
@@ -42,12 +61,24 @@ def validate(payload: object) -> dict[str, Any]:
     ):
         raise PacketError("preparation cannot mark either criterion Met")
 
-    receipts = payload.get("readiness_receipts")
-    if not isinstance(receipts, dict):
-        raise PacketError("readiness_receipts must be an object")
-    for name in ("proposal_acceptance", "procedure_and_checks", "D1", "D2", "operator_capture_authorization"):
-        if not isinstance(receipts.get(name), dict):
-            raise PacketError(f"missing readiness receipt: {name}")
+    receipts = _required_fields(
+        payload.get("readiness_receipts"),
+        ("proposal_acceptance", "procedure_and_checks", "D1", "D2", "operator_capture_authorization"),
+        "readiness_receipts",
+    )
+    receipt_fields = {
+        "proposal_acceptance": ("status", "source", "review", "observation"),
+        "procedure_and_checks": ("status", "source", "observation"),
+        "D1": ("status", "owner", "minimum_capability", "observation", "impact", "next"),
+        "D2": ("status", "owner", "minimum_capability", "observation", "impact", "next"),
+        "operator_capture_authorization": ("status", "observation", "required_after"),
+    }
+    for name, fields in receipt_fields.items():
+        _required_fields(receipts[name], fields, f"readiness_receipts.{name}")
+    if receipts["proposal_acceptance"].get("status") != "verified":
+        raise PacketError("proposal acceptance receipt must remain verified")
+    if receipts["procedure_and_checks"].get("status") != "frozen_for_operator_review":
+        raise PacketError("procedure and checks receipt must remain frozen for operator review")
     if receipts["D1"].get("status") != "blocked":
         raise PacketError("D1 must remain blocked until a genuine physical shadow-cycle receipt exists")
     if receipts["D2"].get("status") != "blocked":
@@ -64,26 +95,120 @@ def validate(payload: object) -> dict[str, Any]:
     ):
         raise PacketError("canonical cases cannot be passed before capture readiness")
 
-    prep = payload.get("preparatory_checks")
-    if not isinstance(prep, dict):
-        raise PacketError("preparatory_checks must be an object")
-    public = prep.get("offline_public_door")
-    if not isinstance(public, dict) or public.get("status") != "passed_preparatory_only":
+    prep = _required_fields(
+        payload.get("preparatory_checks"),
+        ("chase_passive_status", "decision_info", "offline_public_door"),
+        "preparatory_checks",
+    )
+    passive = _required_fields(
+        prep["chase_passive_status"],
+        ("status", "command", "observation", "next_action"),
+        "preparatory_checks.chase_passive_status",
+    )
+    if passive.get("status") != "blocked":
+        raise PacketError("Chase passive status must remain blocked before capture authorization")
+
+    decision_info = _required_fields(
+        prep["decision_info"],
+        ("status", "command", "observation", "live_capture_eligible"),
+        "preparatory_checks.decision_info",
+    )
+    if decision_info.get("status") != "passed_contract_probe":
+        raise PacketError("decision info receipt must remain a contract probe")
+    _required_false(
+        decision_info["live_capture_eligible"],
+        "preparatory_checks.decision_info.live_capture_eligible",
+    )
+
+    public = _required_fields(
+        prep["offline_public_door"],
+        (
+            "status",
+            "record",
+            "fixture_sha256",
+            "digest_sha256",
+            "proposed_steering",
+            "authorized_steering",
+            "authorized_throttle",
+            "proposed_applied",
+            "source_image",
+            "limitation",
+        ),
+        "preparatory_checks.offline_public_door",
+    )
+    if public.get("status") != "passed_preparatory_only":
         raise PacketError("offline public-door check must be explicitly preparatory")
-    digest = public.get("digest_sha256")
+    digest = public["digest_sha256"]
     if not isinstance(digest, str) or len(digest) != 64:
         raise PacketError("preparatory digest must be a SHA-256 string")
+    _required_zero_number(
+        public["authorized_steering"],
+        "preparatory_checks.offline_public_door.authorized_steering",
+    )
+    _required_zero_number(
+        public["authorized_throttle"],
+        "preparatory_checks.offline_public_door.authorized_throttle",
+    )
+    _required_false(public["proposed_applied"], "preparatory_checks.offline_public_door.proposed_applied")
     if public.get("source_image") is not None:
         raise PacketError("fixture source_image must stay null; it is not visual live evidence")
 
-    packages = payload.get("environment_packages")
-    if not isinstance(packages, dict) or set(packages) != {"chase", "piracer"}:
-        raise PacketError("environment_packages must contain Chase and PiRacer")
-    if any(
-        not isinstance(item, dict) or item.get("status") != "not_captured"
-        for item in packages.values()
+    packages = _required_fields(
+        payload.get("environment_packages"),
+        ("chase", "piracer"),
+        "environment_packages",
+    )
+    for environment in ("chase", "piracer"):
+        package = _required_fields(
+            packages[environment],
+            ("status", "path", "interval_coverage", "authoritative_host_observation"),
+            f"environment_packages.{environment}",
+        )
+        if package["status"] != "not_captured":
+            raise PacketError("canonical environment packages must not be fabricated")
+        if package["interval_coverage"] != "none":
+            raise PacketError(f"environment_packages.{environment}.interval_coverage must remain none")
+        _required_false(
+            package["authoritative_host_observation"],
+            f"environment_packages.{environment}.authoritative_host_observation",
+        )
+
+    coverage = _required_fields(
+        payload.get("interval_coverage"),
+        ("chase", "piracer"),
+        "interval_coverage",
+    )
+    for environment in ("chase", "piracer"):
+        interval = _required_fields(
+            coverage[environment],
+            ("status", "accepted_intervals", "uncovered_intervals"),
+            f"interval_coverage.{environment}",
+        )
+        if interval["status"] != "unavailable":
+            raise PacketError(f"interval_coverage.{environment}.status must remain unavailable")
+        if type(interval["accepted_intervals"]) is not int or interval["accepted_intervals"] != 0:
+            raise PacketError(f"interval_coverage.{environment}.accepted_intervals must remain zero")
+        if interval["uncovered_intervals"] != "all":
+            raise PacketError(f"interval_coverage.{environment}.uncovered_intervals must remain all")
+
+    cleanup = _required_fields(
+        payload.get("cleanup"),
+        (
+            "live_worker_started",
+            "simulator_started_or_changed",
+            "vehicle_control_applied",
+            "pilot_output_observed",
+            "temporary_probe_runtime",
+        ),
+        "cleanup",
+    )
+    for field in (
+        "live_worker_started",
+        "simulator_started_or_changed",
+        "vehicle_control_applied",
+        "pilot_output_observed",
     ):
-        raise PacketError("canonical environment packages must not be fabricated")
+        _required_false(cleanup[field], f"cleanup.{field}")
     return payload
 
 

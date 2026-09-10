@@ -1991,16 +1991,70 @@ def _validate_host_value(
         raise ValueError("host_observation_unsupported")
     if value.get("schema") != HOST_OBSERVATION_SCHEMA:
         raise ValueError("host_observation_unsupported")
-    if value.get("identity") != identity:
+
+    identity_keys = {
+        "vehicle_id",
+        "run_id",
+        "worker_pid",
+        "activation_engine_id",
+        "activation_activated_at_ms",
+        "activation_sha256",
+    }
+    reported_identity = value.get("identity")
+    if (
+        not isinstance(identity, dict)
+        or set(identity) != identity_keys
+        or not isinstance(reported_identity, dict)
+        or set(reported_identity) != identity_keys
+    ):
         raise ValueError("host_observation_generation_mismatch")
-    if value.get("frame_id") != frame.get("frame_id") or value.get("frame_index") != frame.get("frame_index"):
+    for candidate_identity in (identity, reported_identity):
+        if any(
+            type(candidate_identity.get(field)) is not str
+            for field in (
+                "vehicle_id",
+                "run_id",
+                "activation_engine_id",
+                "activation_sha256",
+            )
+        ) or (
+            not _is_nonnegative_int(candidate_identity.get("worker_pid"))
+            or candidate_identity["worker_pid"] <= 0
+            or not _is_nonnegative_int(candidate_identity.get("activation_activated_at_ms"))
+        ):
+            raise ValueError("host_observation_generation_mismatch")
+    if reported_identity != identity:
+        raise ValueError("host_observation_generation_mismatch")
+
+    frame_id = frame.get("frame_id")
+    reported_frame_id = value.get("frame_id")
+    frame_index = frame.get("frame_index")
+    reported_frame_index = value.get("frame_index")
+    if (
+        type(frame_id) is not str
+        or type(reported_frame_id) is not str
+        or type(frame_index) is not int
+        or frame_index < 0
+        or type(reported_frame_index) is not int
+        or reported_frame_index < 0
+    ):
         raise ValueError("host_observation_frame_mismatch")
+    if reported_frame_id != frame_id or reported_frame_index != frame_index:
+        raise ValueError("host_observation_frame_mismatch")
+
     observed_at_ms = value.get("observed_at_ms")
-    if not _is_nonnegative_int(observed_at_ms) or not _is_nonnegative_int(updated_at_ms) or observed_at_ms != updated_at_ms:
-        raise ValueError("host_observation_timestamp_mismatch")
     source_timestamp = frame.get("timestamp_ms")
     published_at = frame.get("published_at_ms")
-    if not _is_nonnegative_int(source_timestamp) or not _is_nonnegative_int(published_at) or not source_timestamp <= observed_at_ms <= published_at:
+    if (
+        not _is_nonnegative_int(observed_at_ms)
+        or not _is_nonnegative_int(updated_at_ms)
+        or not _is_nonnegative_int(source_timestamp)
+        or not _is_nonnegative_int(published_at)
+    ):
+        raise ValueError("host_observation_timestamp_mismatch")
+    if observed_at_ms != updated_at_ms:
+        raise ValueError("host_observation_timestamp_mismatch")
+    if not source_timestamp <= observed_at_ms <= published_at:
         raise ValueError("host_observation_timestamp_mismatch")
     if not isinstance(value.get("observer"), str) or not value["observer"]:
         raise ValueError("host_observation_malformed")

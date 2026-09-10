@@ -563,6 +563,7 @@ class LiveDecisionViewTests(unittest.TestCase):
                 self.assertEqual(headers["Cache-Control"], "no-store")
                 self.assertEqual(headers["X-Content-Type-Options"], "nosniff")
                 self.assertIn("default-src 'self'", headers["Content-Security-Policy"])
+                self.assertIn("img-src 'self' blob:", headers["Content-Security-Policy"])
                 self.assertEqual(int(headers["Content-Length"]), len(body))
                 head_status, head_headers, head_body = self.request(path, method="HEAD")
                 self.assertEqual(head_status, 200)

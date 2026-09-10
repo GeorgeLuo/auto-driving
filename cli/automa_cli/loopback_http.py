@@ -11,7 +11,7 @@ from typing import Any
 
 LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 DEFAULT_CONTENT_SECURITY_POLICY = (
-    "default-src 'self'; img-src 'self'; connect-src 'self'; "
+    "default-src 'self'; img-src 'self' blob:; connect-src 'self'; "
     "style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'"
 )
 

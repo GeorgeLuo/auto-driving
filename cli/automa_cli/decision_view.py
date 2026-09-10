@@ -373,6 +373,7 @@ def _unavailable_payload(
         "identity": copied_identity,
         "decision": None,
         "decision_sha256": None,
+        "presentation": None,
         "current_image": _unavailable_image_descriptor(
             generation_id=generation_id,
             frame_id=None,
@@ -1367,6 +1368,7 @@ class DecisionViewPublisher:
             entries=snapshot.entries,
             archives=snapshot.archives,
         )
+        presentation = _build_presentation(frame)
         host_observation = _resolve_host_observation(
             frame=frame,
             identity=self.identity,
@@ -1391,6 +1393,7 @@ class DecisionViewPublisher:
             "identity": deepcopy(self.identity),
             "decision": deepcopy(frame),
             "decision_sha256": decision_sha,
+            "presentation": presentation,
             "current_image": current_image,
             "evidence": evidence,
             "host_observation": host_observation,
@@ -1686,6 +1689,79 @@ def _resolve_evidence(
     return result
 
 
+def _build_presentation(frame: dict[str, Any]) -> dict[str, Any]:
+    """Project server-owned view facts without changing the accepted cycle."""
+
+    cycle = frame.get("cycle") if isinstance(frame.get("cycle"), dict) else None
+    source = cycle.get("source") if isinstance(cycle, dict) else None
+    memory_envelope = source.get("memory") if isinstance(source, dict) else None
+    memory = _memory_presentation(memory_envelope)
+    selected_candidate = _selected_candidate_presentation(cycle)
+    return {
+        "observation": deepcopy(frame.get("observation_summary")),
+        "memory": memory,
+        "selected_candidate": selected_candidate,
+    }
+
+
+def _memory_presentation(memory_envelope: Any) -> dict[str, Any]:
+    """Expose bounded complete records while preserving unavailable states."""
+
+    if not isinstance(memory_envelope, dict):
+        return {
+            "status": "unavailable",
+            "reason": "memory_envelope_missing",
+            "health": None,
+            "record_count": None,
+            "preview_records": None,
+            "omitted_record_count": None,
+        }
+
+    status = memory_envelope.get("status")
+    reason = memory_envelope.get("reason")
+    value = memory_envelope.get("value")
+    records = value.get("records") if isinstance(value, dict) else None
+    if status != "ready" or not isinstance(value, dict) or not isinstance(records, list):
+        return {
+            "status": deepcopy(status),
+            "reason": deepcopy(reason),
+            "health": None,
+            "record_count": None,
+            "preview_records": None,
+            "omitted_record_count": None,
+        }
+
+    preview_records = deepcopy(records[:4])
+    return {
+        "status": deepcopy(status),
+        "reason": deepcopy(reason),
+        "health": deepcopy(value.get("health")),
+        "record_count": deepcopy(value.get("record_count")),
+        "preview_records": preview_records,
+        "omitted_record_count": len(records) - len(preview_records),
+    }
+
+
+def _selected_candidate_presentation(
+    cycle: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Resolve the accepted selected candidate from the canonical plan only."""
+
+    plan = cycle.get("plan") if isinstance(cycle, dict) else None
+    if not isinstance(plan, dict):
+        return None
+    selected_id = plan.get("selected_proposal_id")
+    if selected_id is None:
+        return None
+    candidates = plan.get("candidates")
+    if not isinstance(candidates, list):
+        return None
+    for candidate in candidates:
+        if isinstance(candidate, dict) and candidate.get("proposal_id") == selected_id:
+            return deepcopy(candidate)
+    return None
+
+
 def _resolve_one_ref(
     *,
     source_ref: dict[str, Any],
@@ -1707,6 +1783,7 @@ def _resolve_one_ref(
         "association": "unavailable",
         "record_id": None,
         "provenance": None,
+        "retained_age_ms": None,
         "source_image": _unavailable_image_descriptor(
             generation_id=generation_id,
             frame_id=None,
@@ -1738,6 +1815,16 @@ def _resolve_one_ref(
     provenance = record.get("provenance") if isinstance(record.get("provenance"), dict) else None
     base["record_id"] = record.get("record_id")
     base["provenance"] = deepcopy(provenance)
+    if provenance is not None:
+        source_timestamp = cycle.get("source")
+        source_timestamp = (
+            source_timestamp.get("timestamp_ms")
+            if isinstance(source_timestamp, dict)
+            else None
+        )
+        updated_at_ms = provenance.get("updated_at_ms")
+        if _is_nonnegative_int(source_timestamp) and _is_nonnegative_int(updated_at_ms):
+            base["retained_age_ms"] = source_timestamp - updated_at_ms
     ref_to_provenance = {
         "frame_id": "frame_id",
         "observation_id": "observation_id",

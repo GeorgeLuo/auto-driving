@@ -841,17 +841,19 @@ class DecisionViewPublisher:
 
     def _latest_bytes(self) -> bytes | None:
         try:
-            raw = self.latest_decision_path.read_bytes()
+            with self.latest_decision_path.open("rb") as stream:
+                raw = stream.read(MAX_DECISION_FILE_BYTES + 1)
         except OSError:
             return None
         if len(raw) > MAX_DECISION_FILE_BYTES:
-            return raw
+            return None
         return raw
 
     def _read_state(self) -> dict[str, Any] | None:
         state_path = self.automation_dir / "state.json"
         try:
-            raw = state_path.read_bytes()
+            with state_path.open("rb") as stream:
+                raw = stream.read(MAX_RECORD_BYTES + 1)
         except OSError:
             return None
         if len(raw) > MAX_RECORD_BYTES:

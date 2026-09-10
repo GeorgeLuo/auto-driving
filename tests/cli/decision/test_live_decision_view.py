@@ -5,10 +5,10 @@ evidence. Tests cover current/retained spatial association, record 13, pinning
 beyond the perception cache, lifecycle/integrity refusal, partial components,
 HTTP framing, CLI discovery, and representative count/item/file bounds.
 Deferred: browser rendering/transactions/resize, automation scheduler wiring,
-port reuse, concurrent assembly races, redirect/slow-response probe deadlines,
-exact millisecond freshness endpoints, total byte/metadata saturation, pin
-exhaustion/release, and every provenance mutation. Those cases are not
-implicitly passed by this representative contract suite.
+port reuse, concurrent assembly races, redirects, exact millisecond freshness
+endpoints, total byte/metadata saturation, pin exhaustion/release, and every
+provenance mutation. Those cases are not implicitly passed by this
+representative contract suite.
 No acceptance predicate, liveness check, clock, policy, or projector is patched.
 """
 
@@ -18,6 +18,7 @@ from copy import deepcopy
 from dataclasses import replace
 import hashlib
 import http.client
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import io
 import json
 import os
@@ -27,6 +28,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from urllib.parse import urlsplit
@@ -197,6 +199,64 @@ class LiveDecisionViewTests(unittest.TestCase):
             ):
                 decision_view._bounded_response_body(response, deadline=0.05)
         self.assertEqual(response.reads, 1)
+
+    def test_public_probe_bounds_real_response_and_error_trickle(self) -> None:
+        f = self.fixture
+        f.arrange("current-left")
+        record = json.loads(f.server.record_path.read_text(encoding="utf-8"))
+        body = b"x" * 400
+        response_status = {"value": 200}
+
+        class TricklingHandler(BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1"
+
+            def do_GET(self) -> None:
+                self.send_response(response_status["value"])
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                for offset in range(0, len(body), 20):
+                    try:
+                        self.wfile.write(body[offset : offset + 20])
+                        self.wfile.flush()
+                    except OSError:
+                        return
+                    time.sleep(0.03)
+
+            def log_message(self, *_args) -> None:
+                return
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), TricklingHandler)
+        server.daemon_threads = True
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            write_json(
+                f.server.record_path,
+                {**record, "url": f"http://127.0.0.1:{server.server_port}/"},
+            )
+            for status in (200, 503):
+                response_status["value"] = status
+                started = time.monotonic()
+                result = probe_decision_view(
+                    automation_dir=f.automation_dir,
+                    vehicle_id=f.vehicle_id,
+                    activation=f.activation,
+                )
+                elapsed = time.monotonic() - started
+                with self.subTest(status=status):
+                    self.assertFalse(result["available"])
+                    self.assertEqual(result["reason"], "view_unreachable")
+                    self.assertGreaterEqual(elapsed, 0.20)
+                    self.assertLess(
+                        elapsed,
+                        0.45,
+                        f"probe exceeded its 250 ms total budget: {elapsed:.3f}s",
+                    )
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=1)
 
     def test_image_pixel_header_limit_is_checked_before_full_decode(self) -> None:
         def chunk(kind: bytes, data: bytes) -> bytes:

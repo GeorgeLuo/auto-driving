@@ -2132,7 +2132,11 @@ class _NoRedirect(HTTPRedirectHandler):
         return None
 
 
-_PROBE_READ_CHUNK_BYTES = 64 * 1024
+# ``HTTPResponse.read(amt)`` may wait for all ``amt`` bytes when its socket is
+# wrapped by a buffered reader. One-byte reads let the socket timeout and the
+# monotonic check bound each incremental transport read without changing the
+# total response-body ceiling.
+_PROBE_READ_CHUNK_BYTES = 1
 
 
 def _set_response_read_timeout(response: Any, timeout_s: float) -> None:

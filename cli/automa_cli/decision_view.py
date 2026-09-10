@@ -782,21 +782,6 @@ class DecisionViewPublisher:
                 identity=self.identity,
             )
         frame, frame_bytes = self._read_frame()
-        if frame.get("vehicle_id") is not None and frame.get("vehicle_id") != self.vehicle_id:
-            raise DecisionViewHTTPError(503, "vehicle_mismatch", "latest decision belongs to another vehicle")
-        if (
-            frame.get("run_id") is not None
-            and frame.get("run_id") != self.identity["run_id"]
-        ) or (
-            frame.get("worker_pid") is not None
-            and frame.get("worker_pid") != self.identity["worker_pid"]
-        ):
-            raise DecisionViewHTTPError(
-                503,
-                "generation_mismatch",
-                "latest decision does not match the view startup generation",
-                identity=self.identity,
-            )
         try:
             accept_decision_stream_frame(
                 frame,
@@ -814,6 +799,21 @@ class DecisionViewPublisher:
                 exc.message_text,
                 identity=self.identity,
             ) from exc
+        if frame.get("vehicle_id") is not None and frame.get("vehicle_id") != self.vehicle_id:
+            raise DecisionViewHTTPError(503, "vehicle_mismatch", "latest decision belongs to another vehicle")
+        if (
+            frame.get("run_id") is not None
+            and frame.get("run_id") != self.identity["run_id"]
+        ) or (
+            frame.get("worker_pid") is not None
+            and frame.get("worker_pid") != self.identity["worker_pid"]
+        ):
+            raise DecisionViewHTTPError(
+                503,
+                "generation_mismatch",
+                "latest decision does not match the view startup generation",
+                identity=self.identity,
+            )
         return frame, frame_bytes
 
     def _recheck_generation(

@@ -2,26 +2,399 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>decision-combined-v0</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>decision-combined-v0 · shadow observe-only</title>
   <style>
-    body { font-family: ui-monospace, monospace; margin: 1.5rem; background: #111; color: #eee; }
-    h1 { font-size: 1.1rem; }
-    .emph { color: #f5a623; font-weight: bold; }
-    section { margin-bottom: 1rem; border-bottom: 1px solid #333; padding-bottom: 0.75rem; }
+    :root { color-scheme: dark; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    body { margin: 0; background: #101419; color: #e8edf2; line-height: 1.45; }
+    main { max-width: 1180px; margin: 0 auto; padding: 1rem; }
+    h1, h2, h3 { line-height: 1.2; }
+    h1 { margin: 0; font-size: clamp(1.2rem, 3vw, 1.8rem); }
+    h2 { margin: 0 0 .7rem; font-size: 1rem; }
+    h3 { margin: .8rem 0 .4rem; font-size: .9rem; }
+    p { margin: .35rem 0; }
+    code, pre, .fact-value { overflow-wrap: anywhere; }
+    pre { white-space: pre-wrap; margin: 0; padding: .7rem; background: #171d24; border: 1px solid #303a45; border-radius: .35rem; }
+    header, section { margin-bottom: 1rem; padding: .9rem; background: #141a20; border: 1px solid #303a45; border-radius: .45rem; }
+    header { border-left: .35rem solid #e7a83b; }
+    .eyebrow { margin: 0 0 .35rem; color: #9fb2c4; font-size: .78rem; letter-spacing: .08em; text-transform: uppercase; }
+    .observe { color: #ffd37a; font-weight: 700; }
+    .status { margin-top: .7rem; padding: .65rem; border: 1px solid #66788a; border-radius: .35rem; }
+    .status[data-state="live"] { border-color: #65c18c; }
+    .status[data-state="error"] { border-color: #ed8b8b; }
+    .status::before { content: "Status: "; font-weight: 700; }
+    .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: .55rem .9rem; }
+    .fact { min-width: 0; padding: .45rem; background: #171d24; border-radius: .3rem; }
+    .fact-label { display: block; color: #9fb2c4; font-size: .78rem; }
+    .fact-value { display: block; margin-top: .15rem; }
+    .warning { border-left: .3rem solid #e7a83b; padding-left: .7rem; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 1rem; }
+    .pane { min-width: 0; padding: .7rem; background: #171d24; border: 1px solid #303a45; border-radius: .35rem; }
+    .media-stage { position: relative; width: 100%; max-height: 70vh; overflow: hidden; background: #090b0d; border: 1px solid #45525f; border-radius: .25rem; }
+    .media-stage img { display: block; width: 100%; height: auto; max-height: 70vh; object-fit: contain; }
+    .media-stage svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+    .bbox { fill: none; stroke: #ffd166; stroke-width: 3; vector-effect: non-scaling-stroke; }
+    .polygon { fill: #ffd16633; stroke: #65c18c; stroke-width: 3; vector-effect: non-scaling-stroke; }
+    .unavailable { color: #ffb4b4; }
+    .subtle { color: #afbdc9; }
+    .empty { padding: .6rem; border: 1px dashed #66788a; border-radius: .3rem; }
+    @media (max-width: 560px) { main { padding: .65rem; } header, section { padding: .7rem; } }
   </style>
 </head>
 <body>
-  <h1 id="decision-combined-v0">decision-combined-v0</h1>
-  <p>Correlated shadow decision view template. Exact-frame HTML is produced by
-     <code>vehicles decision apply --record</code>; live stream uses the same field set.</p>
-  <section>
-    <h2>Authority</h2>
-    <p class="emph">proposed_applied=false</p>
-    <p>authorized_output is always idle with reason shadow-only-idle.</p>
-  </section>
-  <section>
-    <h2>Non-claims</h2>
-    <p>no object identity; shadow-only; not navigation certification.</p>
-  </section>
+  <main>
+    <header>
+      <p class="eyebrow">Automa M006 D2 · shadow / observe-only</p>
+      <h1 id="decision-combined-v0">decision-combined-v0</h1>
+      <p>This view reports an accepted shadow decision. It has no controls and sends no vehicle commands.</p>
+      <p id="status" class="status" role="status" aria-live="polite" data-state="error">Unavailable: a generation query is required.</p>
+    </header>
+    <div id="live-content" aria-live="off">
+      <section class="empty"><p class="subtle">Live decision content is unavailable until a generation-bound response is accepted.</p></section>
+    </div>
+  </main>
+  <script>
+    (() => {
+      "use strict";
+
+      const statusNode = document.getElementById("status");
+      const liveRoot = document.getElementById("live-content");
+      const generationPattern = /^[0-9a-f]{64}$/;
+      const pollDelayMs = 500;
+      const transactionLimitMs = 2000;
+      let generation = null;
+      let transactionSerial = 0;
+      let activeController = null;
+      let pollTimer = null;
+      let currentObjectUrls = [];
+      let wasHidden = document.visibilityState === "hidden";
+
+      function element(tag, text, className) {
+        const node = document.createElement(tag);
+        if (className) node.className = className;
+        if (text !== undefined && text !== null) node.textContent = String(text);
+        return node;
+      }
+
+      function setStatus(message, state) {
+        statusNode.textContent = message;
+        statusNode.dataset.state = state || "error";
+      }
+
+      function revokeObjectUrls(urls) {
+        for (const url of urls || []) URL.revokeObjectURL(url);
+      }
+
+      function clearLive(message) {
+        revokeObjectUrls(currentObjectUrls);
+        currentObjectUrls = [];
+        const empty = element("section", null, "empty");
+        empty.appendChild(element("p", message, "unavailable"));
+        liveRoot.replaceChildren(empty);
+        setStatus(message, "error");
+      }
+
+      function invalidate(message) {
+        transactionSerial += 1;
+        if (activeController) activeController.abort();
+        clearLive(message);
+      }
+
+      function jsonText(value) {
+        try { return JSON.stringify(value, null, 2); }
+        catch (_) { return "[unserializable value]"; }
+      }
+
+      function jsonSection(title, value) {
+        const section = element("section");
+        section.appendChild(element("h2", title));
+        const pre = element("pre");
+        pre.textContent = jsonText(value);
+        section.appendChild(pre);
+        return section;
+      }
+
+      function factsSection(title, facts) {
+        const section = element("section");
+        section.appendChild(element("h2", title));
+        const grid = element("div", null, "facts");
+        for (const [label, value] of facts) {
+          const fact = element("div", null, "fact");
+          fact.appendChild(element("span", label, "fact-label"));
+          fact.appendChild(element("span", value === undefined ? "unavailable" : value, "fact-value"));
+          grid.appendChild(fact);
+        }
+        section.appendChild(grid);
+        return section;
+      }
+
+      function pathValue(root, path) {
+        let value = root;
+        for (const key of path) {
+          if (!value || typeof value !== "object") return undefined;
+          value = value[key];
+        }
+        return value;
+      }
+
+      function displayValue(value) {
+        if (value === null || value === undefined) return "unavailable";
+        if (typeof value === "object") return jsonText(value);
+        return String(value);
+      }
+
+      function finiteNormalized(value) {
+        return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1;
+      }
+
+      function validGeometry(geometry) {
+        if (!geometry || geometry.status !== "available" || geometry.coordinate_frame !== "image" || geometry.transform !== "normalized_source_image_to_display") return null;
+        const bbox = geometry.bbox_xyxy_norm;
+        const polygon = geometry.polygon_xy_norm;
+        const validBbox = Array.isArray(bbox) && bbox.length === 4 && bbox.every(finiteNormalized) && bbox[0] < bbox[2] && bbox[1] < bbox[3];
+        let validPolygon = Array.isArray(polygon) && polygon.length >= 3 && polygon.length <= 256 && polygon.every(point => Array.isArray(point) && point.length === 2 && point.every(finiteNormalized));
+        if (validPolygon) {
+          let area = 0;
+          for (let i = 0; i < polygon.length; i += 1) {
+            const a = polygon[i];
+            const b = polygon[(i + 1) % polygon.length];
+            area += a[0] * b[1] - b[0] * a[1];
+          }
+          validPolygon = Math.abs(area) > 0;
+        }
+        if (!validBbox && !validPolygon) return null;
+        return { bbox: validBbox ? bbox : null, polygon: validPolygon ? polygon : null };
+      }
+
+      function geometryNote(geometry) {
+        if (!geometry || geometry.status !== "available") return "Geometry unavailable: " + ((geometry && geometry.reason) || "geometry_missing");
+        if (!validGeometry(geometry)) return "Geometry unavailable: unsupported or invalid supplied geometry";
+        return "Geometry: normalized source-image geometry; no cross-frame projection";
+      }
+
+      function appendGeometryFacts(pane, geometry) {
+        pane.appendChild(element("p", geometryNote(geometry), geometry && geometry.status === "available" ? "subtle" : "unavailable"));
+        if (geometry && geometry.coordinate_frame) pane.appendChild(element("p", "coordinate_frame=" + geometry.coordinate_frame));
+      }
+
+      function mediaPane(title, descriptor, geometry, assets, associationText) {
+        const pane = element("article", null, "pane");
+        pane.appendChild(element("h3", title));
+        pane.appendChild(element("p", associationText || "Association: unavailable", "subtle"));
+        pane.appendChild(factsSection("Source facts", [
+          ["status", descriptor && descriptor.status], ["reason", descriptor && descriptor.reason], ["image_id", descriptor && descriptor.image_id],
+          ["sha256", descriptor && descriptor.sha256], ["frame_id", descriptor && descriptor.frame_id], ["frame_index", descriptor && descriptor.frame_index],
+          ["observation_id", descriptor && descriptor.observation_id], ["captured_at_ms", descriptor && descriptor.captured_at_ms],
+          ["dimensions", descriptor && descriptor.width_px && descriptor.height_px ? descriptor.width_px + " × " + descriptor.height_px : undefined]
+        ]));
+        if (!descriptor || descriptor.status !== "available") {
+          pane.appendChild(element("p", "Image unavailable: " + ((descriptor && descriptor.reason) || "source_unavailable"), "unavailable"));
+          appendGeometryFacts(pane, geometry);
+          return pane;
+        }
+        const asset = assets.get(descriptor.url);
+        if (!asset) {
+          pane.appendChild(element("p", "Image unavailable: transaction asset missing", "unavailable"));
+          appendGeometryFacts(pane, geometry);
+          return pane;
+        }
+        const stage = element("div", null, "media-stage");
+        stage.style.aspectRatio = String(descriptor.width_px) + " / " + String(descriptor.height_px);
+        const image = asset.image.cloneNode(false);
+        image.alt = title + "; exact returned source image";
+        stage.appendChild(image);
+        const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        svg.setAttribute("viewBox", "0 0 " + String(descriptor.width_px) + " " + String(descriptor.height_px));
+        svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+        svg.setAttribute("aria-label", "Validated source-image geometry overlay");
+        const shape = validGeometry(geometry);
+        if (shape) {
+          if (shape.bbox) {
+            const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+            rect.setAttribute("class", "bbox");
+            rect.setAttribute("x", String(shape.bbox[0] * descriptor.width_px));
+            rect.setAttribute("y", String(shape.bbox[1] * descriptor.height_px));
+            rect.setAttribute("width", String((shape.bbox[2] - shape.bbox[0]) * descriptor.width_px));
+            rect.setAttribute("height", String((shape.bbox[3] - shape.bbox[1]) * descriptor.height_px));
+            svg.appendChild(rect);
+          }
+          if (shape.polygon) {
+            const polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+            polygon.setAttribute("class", "polygon");
+            polygon.setAttribute("points", shape.polygon.map(point => (point[0] * descriptor.width_px) + "," + (point[1] * descriptor.height_px)).join(" "));
+            svg.appendChild(polygon);
+          }
+        }
+        stage.appendChild(svg);
+        pane.appendChild(stage);
+        appendGeometryFacts(pane, geometry);
+        return pane;
+      }
+
+      function imageDescriptors(payload) {
+        const descriptors = [];
+        if (payload.current_image) descriptors.push(payload.current_image);
+        for (const entry of Array.isArray(payload.evidence) ? payload.evidence : []) if (entry && entry.source_image) descriptors.push(entry.source_image);
+        return descriptors.filter((descriptor, index, all) => descriptor && descriptor.status === "available" && typeof descriptor.url === "string" && all.findIndex(item => item && item.url === descriptor.url) === index);
+      }
+
+      function loadImage(descriptor, signal, objectUrls) {
+        return fetch(descriptor.url, { cache: "no-store", signal }).then(response => {
+          if (!response.ok) throw new Error("image_http_" + response.status);
+          return response.blob();
+        }).then(blob => new Promise((resolve, reject) => {
+          const objectUrl = URL.createObjectURL(blob);
+          objectUrls.push(objectUrl);
+          const image = new Image();
+          let settled = false;
+          const finish = (error) => {
+            if (settled) return;
+            settled = true;
+            if (error) reject(error); else resolve({ image, objectUrl });
+          };
+          image.onload = () => {
+            const decoded = typeof image.decode === "function" ? image.decode() : Promise.resolve();
+            decoded.then(() => finish()).catch(finish);
+          };
+          image.onerror = () => finish(new Error("image_decode_failed"));
+          signal.addEventListener("abort", () => finish(new Error("transaction_aborted")), { once: true });
+          image.src = objectUrl;
+        }));
+      }
+
+      async function fetchTransaction(serial) {
+        const controller = new AbortController();
+        activeController = controller;
+        const startedAt = performance.now();
+        const objectUrls = [];
+        let deadlineExpired = false;
+        const expireTransaction = () => { deadlineExpired = true; controller.abort(); };
+        let deadlineTimer = setTimeout(expireTransaction, transactionLimitMs);
+        try {
+          const url = "/api/decision/latest?generation=" + encodeURIComponent(generation);
+          const response = await fetch(url, { cache: "no-store", signal: controller.signal });
+          let payload = null;
+          try { payload = await response.json(); } catch (_) { payload = null; }
+          if (!response.ok) throw new Error(payload && payload.reason ? payload.reason : "http_" + response.status);
+          if (!payload || (payload.status !== "current" && payload.status !== "partial")) throw new Error((payload && payload.reason) || "decision_unavailable");
+          if (payload.generation_id !== generation) throw new Error("generation_mismatch");
+          if (typeof payload.max_age_ms !== "number" || !Number.isFinite(payload.max_age_ms) || payload.max_age_ms <= 0 || typeof payload.expires_at_ms !== "number" || !Number.isFinite(payload.expires_at_ms)) throw new Error("freshness_invalid");
+          const freshnessMs = payload.expires_at_ms - Date.now();
+          const transactionMs = transactionLimitMs - (performance.now() - startedAt);
+          if (freshnessMs <= 0) throw new Error("decision_expired");
+          if (transactionMs <= 0) throw new Error("timeout");
+          clearTimeout(deadlineTimer);
+          deadlineTimer = setTimeout(expireTransaction, Math.min(transactionMs, freshnessMs));
+          const assets = new Map();
+          await Promise.all(imageDescriptors(payload).map(async descriptor => assets.set(descriptor.url, await loadImage(descriptor, controller.signal, objectUrls))));
+          if (serial !== transactionSerial || controller.signal.aborted) throw new Error("superseded");
+          if (performance.now() - startedAt > transactionLimitMs || Date.now() >= payload.expires_at_ms) throw new Error("decision_expired");
+          return { payload, assets, objectUrls };
+        } catch (error) {
+          revokeObjectUrls(objectUrls);
+          if (deadlineExpired || (error && error.name === "AbortError")) throw new Error("timeout");
+          throw error;
+        } finally {
+          clearTimeout(deadlineTimer);
+          if (activeController === controller) activeController = null;
+        }
+      }
+
+      function renderPayload(result) {
+        const payload = result.payload;
+        const decision = payload.decision || {};
+        const cycle = decision.cycle || {};
+        const plan = cycle.plan || decision.plan_summary || {};
+        const authority = cycle.authority || decision.authority_summary || {};
+        const fragment = document.createDocumentFragment();
+        fragment.appendChild(factsSection("Lifecycle, generation, identity, freshness", [
+          ["schema", payload.schema], ["view_id", payload.view_id], ["status", payload.status], ["reason", payload.reason], ["generation_id", payload.generation_id],
+          ["served_at_ms", payload.served_at_ms], ["max_age_ms", payload.max_age_ms], ["expires_at_ms", payload.expires_at_ms], ["decision_sha256", payload.decision_sha256],
+          ["vehicle_id", pathValue(payload, ["identity", "vehicle_id"])], ["run_id", pathValue(payload, ["identity", "run_id"])], ["worker_pid", pathValue(payload, ["identity", "worker_pid"])],
+          ["activation_engine_id", pathValue(payload, ["identity", "activation_engine_id"])], ["activation_activated_at_ms", pathValue(payload, ["identity", "activation_activated_at_ms"])], ["activation_sha256", pathValue(payload, ["identity", "activation_sha256"])]
+        ]));
+        const authoritySection = factsSection("Authority facts · shadow only", [
+          ["proposed_applied", "false (shadow / observe-only)"], ["proposed command", displayValue(authority.proposed || decision.authority_summary && decision.authority_summary.proposed)],
+          ["authorized output", displayValue(authority.authorized_output || decision.authority_summary && decision.authority_summary.authorized_output)], ["authorized output meaning", "idle authorization only; not physical host telemetry"],
+          ["host observation status", pathValue(payload, ["host_observation", "status"])], ["host observation reason", pathValue(payload, ["host_observation", "reason"])]
+        ]);
+        authoritySection.classList.add("warning");
+        fragment.appendChild(authoritySection);
+        fragment.appendChild(factsSection("Current decision cycle", [
+          ["frame_id", decision.frame_id || cycle.frame_id], ["frame_index", decision.frame_index || cycle.frame_index], ["timestamp_ms", decision.timestamp_ms || cycle.timestamp_ms], ["published_at_ms", decision.published_at_ms],
+          ["cycle status", cycle.status || authority.cycle_status], ["cycle reason", cycle.reason || authority.cycle_reason], ["plan status", plan.status], ["selected proposal", plan.selected_proposal_id]
+        ]));
+        fragment.appendChild(jsonSection("Contributions, candidates, source refs and command values", {
+          contributions: plan.contributions || decision.plan_summary && decision.plan_summary.contributions || [], candidates: plan.candidates || decision.plan_summary && decision.plan_summary.candidates || [],
+          authority_commands: { proposed: authority.proposed, authorized_output: authority.authorized_output }, source_refs: (plan.candidates || []).map(candidate => ({ proposal_id: candidate && candidate.proposal_id, source_refs: candidate && candidate.source_refs || [] }))
+        }));
+        const imageSection = element("section");
+        imageSection.appendChild(element("h2", "Current image and retained source-image evidence"));
+        const imageGrid = element("div", null, "grid");
+        imageGrid.appendChild(mediaPane("Current cycle image", payload.current_image, null, result.assets, "Association: current decision-cycle frame; this is not the fastest camera frame."));
+        const evidence = Array.isArray(payload.evidence) ? payload.evidence : [];
+        if (!evidence.length) imageGrid.appendChild(element("p", "No source refs were accepted for this cycle.", "empty"));
+        evidence.forEach((entry, index) => {
+          const label = "Retained source " + String(index + 1) + " · " + (entry.association || "unavailable") + " · proposal=" + displayValue(entry.proposal_id);
+          imageGrid.appendChild(mediaPane(label, entry.source_image, entry.geometry, result.assets, "Association: " + displayValue(entry.association) + "; record_id=" + displayValue(entry.record_id)));
+        });
+        imageSection.appendChild(imageGrid);
+        fragment.appendChild(imageSection);
+        fragment.appendChild(jsonSection("Host observation · separate fact, not physical telemetry", payload.host_observation || { status: "unavailable", reason: "host_observation_unavailable", value: null }));
+        fragment.appendChild(jsonSection("Raw accepted decision (lossless display)", decision));
+        return fragment;
+      }
+
+      async function poll() {
+        if (!generation) return;
+        const serial = ++transactionSerial;
+        try {
+          const result = await fetchTransaction(serial);
+          if (serial !== transactionSerial) { revokeObjectUrls(result.objectUrls); return; }
+          const fragment = renderPayload(result);
+          if (serial !== transactionSerial || Date.now() >= result.payload.expires_at_ms) {
+            revokeObjectUrls(result.objectUrls);
+            if (serial === transactionSerial) clearLive("Unavailable: decision_expired");
+            return;
+          }
+          revokeObjectUrls(currentObjectUrls);
+          currentObjectUrls = result.objectUrls;
+          liveRoot.replaceChildren(fragment);
+          setStatus(result.payload.status === "partial" ? "Live partial: " + (result.payload.reason || "component_unavailable") : "Live accepted: shadow / observe-only", "live");
+        } catch (error) {
+          if (serial !== transactionSerial) return;
+          const reason = error && error.message === "timeout" ? "request_timeout" : ((error && error.message) || "decision_unavailable");
+          clearLive("Unavailable: " + reason);
+        } finally {
+          if (serial === transactionSerial) pollTimer = setTimeout(poll, pollDelayMs);
+        }
+      }
+
+      function schedulePoll() {
+        if (pollTimer) clearTimeout(pollTimer);
+        pollTimer = setTimeout(poll, pollDelayMs);
+      }
+
+      function readGeneration() {
+        const params = new URLSearchParams(window.location.search);
+        const values = params.getAll("generation");
+        return values.length === 1 && generationPattern.test(values[0]) ? values[0] : null;
+      }
+
+      generation = readGeneration();
+      if (!generation) {
+        clearLive("Unavailable: exactly one lower-case generation query parameter is required.");
+        return;
+      }
+      setStatus("Waiting for generation-bound shadow decision…", "error");
+      window.addEventListener("offline", () => invalidate("Unavailable: network_disconnected"));
+      window.addEventListener("online", schedulePoll);
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "hidden") { wasHidden = true; return; }
+        if (wasHidden) { wasHidden = false; invalidate("Unavailable: tab_resumed; awaiting a fresh accepted response"); schedulePoll(); }
+      });
+      poll();
+    })();
+  </script>
 </body>
 </html>

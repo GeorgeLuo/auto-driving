@@ -595,6 +595,7 @@
       }
 
       function renderPreviewResult(payload) {
+        const disclosureState = captureDisclosureState(previewOutput);
         const decision = payload && payload.decision;
         const cycle = pathValue(decision, ["cycle"]);
         const plan = pathValue(cycle, ["plan"]);
@@ -624,6 +625,7 @@
           jsonSection("Preview cycle.authority", authority)
         ], false, "preview-canonical-plan-authority"));
         previewOutput.replaceChildren(detailsSection("Decision details", content, false, "selected-shadow-artifact"));
+        restoreDisclosureState(previewOutput, disclosureState);
       }
 
       function selectedPreviewLabel() {

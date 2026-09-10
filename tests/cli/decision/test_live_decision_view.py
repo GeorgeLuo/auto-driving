@@ -317,19 +317,22 @@ class LiveDecisionViewTests(unittest.TestCase):
         )
         for landmark in (
             'section.id = "decision-overview"',
+            "PR execution path",
             "Decision black box",
-            "Input · current perception",
+            "Input · structured observation",
             "Input · memory snapshot",
             "Decision · shadow proposal",
             "Output · authority boundary",
-            "Decision inputs · raw envelopes",
-            "Decision result · detailed",
+            "function detailsSection",
+            "Supporting data · raw decision input envelopes",
+            "Supporting evidence · source images, retained refs, and geometry",
+            "Supporting record · publication, identity, freshness, and raw decision",
         ):
             with self.subTest(landmark=landmark):
                 self.assertIn(landmark, html)
         self.assertLess(
             html.index("fragment.appendChild(blackBoxOverview"),
-            html.index('fragment.appendChild(jsonSection("Raw accepted decision'),
+            html.index('fragment.appendChild(detailsSection("Supporting record'),
         )
 
     def test_current_payload_preserves_cycle_and_exact_image_bytes(self) -> None:

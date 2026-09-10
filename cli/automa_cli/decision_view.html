@@ -35,6 +35,11 @@
     .black-box-card .fact { background: #141a20; }
     .memory-records { margin: .7rem 0 0; padding-left: 1.1rem; color: #d3dde5; }
     .memory-records li { margin: .3rem 0; overflow-wrap: anywhere; }
+    .supporting-details { margin-bottom: 1rem; padding: .8rem .9rem; background: #141a20; border: 1px solid #303a45; border-radius: .45rem; }
+    .supporting-details > summary { cursor: pointer; color: #c7d4df; font-weight: 700; }
+    .supporting-details > summary::marker { color: #e7a83b; }
+    .supporting-details > section { margin: .8rem 0 0; padding: 0; background: transparent; border: 0; }
+    .supporting-details > section:last-child { margin-bottom: 0; }
     .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: .55rem .9rem; }
     .fact { min-width: 0; padding: .45rem; background: #171d24; border-radius: .3rem; }
     .fact-label { display: block; color: #9fb2c4; font-size: .78rem; }
@@ -154,6 +159,16 @@
         return section;
       }
 
+      function detailsSection(title, children, open) {
+        const details = element("details", null, "supporting-details");
+        if (open) details.open = true;
+        details.appendChild(element("summary", title));
+        for (const child of (Array.isArray(children) ? children : [children])) {
+          if (child) details.appendChild(child);
+        }
+        return details;
+      }
+
       function pathValue(root, path) {
         let value = root;
         for (const key of path) {
@@ -224,13 +239,15 @@
         const source = cycle.source || {};
         const section = element("section", null, "black-box-overview");
         section.id = "decision-overview";
+        section.appendChild(element("p", "PR execution path", "eyebrow"));
         section.appendChild(element("h2", "Decision black box"));
-        section.appendChild(element("p", "What entered this cycle, what the shadow proposal selected, and what authority allowed. Read-only; no vehicle command is sent.", "section-intro"));
+        section.appendChild(element("p", "Structured observation + memory snapshot → shadow proposal → authority result. Source images and raw records below are supporting evidence, not additional engine inputs. Read-only; no vehicle command is sent.", "section-intro"));
         const flow = element("div", null, "black-box-flow");
-        const perceptionCard = blackBoxCard("input", "Input · current perception", "Observation", [
+        const perceptionCard = blackBoxCard("input", "Input · structured observation", "Observation", [
           ["status", observation.status || envelopeSummary(source.observation)],
           ["observation", observation.frame_id || "unavailable"],
           ["cycle frame", decision.frame_id || cycle.frame_id],
+          ["raw image", "not an engine input"],
           ["reason", observation.reason || "none"]
         ]);
         const memoryCard = blackBoxCard("input", "Input · memory snapshot", "Memory", [
@@ -243,8 +260,11 @@
         flow.appendChild(memoryCard);
         flow.appendChild(blackBoxCard("decision", "Decision · shadow proposal", "Selected result", [
           ["engine", decision.engine_id],
+          ["selector", plan.selector_id || "unavailable"],
           ["plan", planSummary.status || plan.status],
           ["selected proposal", selectedId || "none"],
+          ["lifecycle", selected && selected.lifecycle || "none"],
+          ["freshness", selected && selected.freshness || "none"],
           ["reason", selected && selected.reason || "none"],
           ["proposed command", commandSummary(proposed)]
         ]));
@@ -434,34 +454,34 @@
         const fragment = document.createDocumentFragment();
         fragment.appendChild(blackBoxOverview(payload, decision, cycle, plan, authority));
         const memorySummary = decision.memory_summary || {};
-        fragment.appendChild(factsSection("Decision inputs · envelope status", [
+        fragment.appendChild(detailsSection("Supporting data · decision input envelope status", factsSection("Decision inputs · envelope status", [
           ["current perception", (decision.observation_summary || {}).status || envelopeSummary(source.observation)],
           ["memory", (memorySummary.status || envelopeSummary(source.memory)) + " · records=" + displayValue(memorySummary.record_count)],
           ["patterns", envelopeSummary(source.patterns)],
           ["projections", envelopeSummary(source.projections)],
           ["capabilities", envelopeSummary(source.capabilities)],
           ["prior applied command", envelopeSummary(source.prior_host_applied_command)]
-        ]));
-        fragment.appendChild(jsonSection("Decision inputs · raw envelopes", {
+        ])));
+        fragment.appendChild(detailsSection("Supporting data · raw decision input envelopes", jsonSection("Decision inputs · raw envelopes", {
           observation: source.observation || null,
           memory: source.memory || null,
           patterns: source.patterns || null,
           projections: source.projections || null,
           capabilities: source.capabilities || null,
           prior_host_applied_command: source.prior_host_applied_command || null
-        }));
-        fragment.appendChild(factsSection("Decision result · detailed", [
+        })));
+        fragment.appendChild(detailsSection("Supporting data · detailed decision result", factsSection("Decision result · detailed", [
           ["engine", decision.engine_id], ["cycle status", cycle.status || authority.cycle_status], ["cycle reason", cycle.reason || authority.cycle_reason],
           ["selector", plan.selector_id || "unavailable"], ["plan status", planSummary.status || plan.status], ["selected proposal", selectedId || "none"],
           ["proposal lifecycle", selected && selected.lifecycle || "none"], ["proposal freshness", selected && selected.freshness || "none"],
           ["proposal reason", selected && selected.reason || "none"], ["proposed command", commandSummary(proposed)]
-        ]));
-        fragment.appendChild(jsonSection("Decision trace · candidates, contributions, and authority", {
+        ])));
+        fragment.appendChild(detailsSection("Supporting data · proposal trace, candidates, and authority", jsonSection("Decision trace · candidates, contributions, and authority", {
           contributions: planSummary.contributions || plan.contributions || [],
           candidates: candidates,
           selected_proposal_id: selectedId || null,
           authority_commands: { proposed: proposed, authorized_output: authorized, proposed_applied: authority.proposed_applied }
-        }));
+        })));
         const imageSection = element("section");
         imageSection.appendChild(element("h2", "Source evidence · current image and retained memory refs"));
         const imageGrid = element("div", null, "grid");
@@ -473,19 +493,21 @@
           imageGrid.appendChild(mediaPane(label, entry.source_image, entry.geometry, result.assets, "Association: " + displayValue(entry.association) + "; record_id=" + displayValue(entry.record_id)));
         });
         imageSection.appendChild(imageGrid);
-        fragment.appendChild(imageSection);
-        fragment.appendChild(factsSection("Host observation · separate from the decision", [
+        fragment.appendChild(detailsSection("Supporting evidence · source images, retained refs, and geometry", imageSection));
+        const hostFacts = factsSection("Host observation · separate from the decision", [
           ["status", pathValue(payload, ["host_observation", "status"])], ["reason", pathValue(payload, ["host_observation", "reason"])],
           ["mode", pathValue(payload, ["host_observation", "value", "mode"])], ["host output", commandSummary(pathValue(payload, ["host_observation", "value", "host_output"]))]
-        ]));
-        fragment.appendChild(jsonSection("Host observation · separate fact, not physical telemetry", payload.host_observation || { status: "unavailable", reason: "host_observation_unavailable", value: null }));
-        fragment.appendChild(factsSection("Publication, identity, and freshness", [
+        ]);
+        const hostRaw = jsonSection("Host observation · separate fact, not physical telemetry", payload.host_observation || { status: "unavailable", reason: "host_observation_unavailable", value: null });
+        fragment.appendChild(detailsSection("Supporting data · independent host observation", [hostFacts, hostRaw]));
+        const publicationFacts = factsSection("Publication, identity, and freshness", [
           ["schema", payload.schema], ["view_id", payload.view_id], ["status", payload.status], ["reason", payload.reason], ["generation_id", payload.generation_id],
           ["served_at_ms", payload.served_at_ms], ["max_age_ms", payload.max_age_ms], ["expires_at_ms", payload.expires_at_ms], ["decision_sha256", payload.decision_sha256],
           ["vehicle_id", pathValue(payload, ["identity", "vehicle_id"])], ["run_id", pathValue(payload, ["identity", "run_id"])], ["worker_pid", pathValue(payload, ["identity", "worker_pid"])],
           ["activation_engine_id", pathValue(payload, ["identity", "activation_engine_id"])], ["activation_activated_at_ms", pathValue(payload, ["identity", "activation_activated_at_ms"])], ["activation_sha256", pathValue(payload, ["identity", "activation_sha256"])]
-        ]));
-        fragment.appendChild(jsonSection("Raw accepted decision (lossless display)", decision));
+        ]);
+        const rawDecision = jsonSection("Raw accepted decision (lossless display)", decision);
+        fragment.appendChild(detailsSection("Supporting record · publication, identity, freshness, and raw decision", [publicationFacts, rawDecision]));
         return fragment;
       }
 

@@ -19,12 +19,15 @@ from autonomy.decision import canonical_json_utf8
 from .decision_view import (
     DECISION_API_PATH,
     DECISION_IMAGE_PATH,
+    DECISION_PREVIEW_PATH,
+    MAX_PREVIEW_REQUEST_BYTES,
     DECISION_VIEW_PATH,
     DecisionViewHTTPError,
     DecisionViewPublisher,
     _unavailable_payload,
     parse_generation_query,
     parse_image_id,
+    parse_preview_request,
 )
 from .loopback_http import (
     LoopbackHTTPRequestHandler,
@@ -259,6 +262,9 @@ class _PerceptionViewHandler(LoopbackHTTPRequestHandler):
         self._handle_request(include_body=False)
 
     def do_POST(self) -> None:
+        if urlparse(self.path).path == DECISION_PREVIEW_PATH:
+            self._handle_preview_request()
+            return
         self._reject_method()
 
     def do_PUT(self) -> None:
@@ -285,18 +291,23 @@ class _PerceptionViewHandler(LoopbackHTTPRequestHandler):
             DECISION_VIEW_PATH,
             "/decision.html",
             DECISION_API_PATH,
+            DECISION_PREVIEW_PATH,
             DECISION_IMAGE_PATH.rstrip("/"),
         } or route.startswith(DECISION_IMAGE_PATH)
         if not is_decision_route:
             self.send_error(501, f"Unsupported method ({self.command!r})")
             return
+        allow = "POST" if route == DECISION_PREVIEW_PATH else "GET, HEAD"
         self._send_decision_error(
             DecisionViewHTTPError(
                 405,
                 "method_not_allowed",
-                "decision view supports only GET and HEAD",
+                "decision preview supports only POST"
+                if route == DECISION_PREVIEW_PATH
+                else "decision view supports only GET and HEAD",
             ),
             include_body=True,
+            allow=allow,
         )
 
     def _send_decision_error(
@@ -304,6 +315,7 @@ class _PerceptionViewHandler(LoopbackHTTPRequestHandler):
         exc: DecisionViewHTTPError,
         *,
         include_body: bool,
+        allow: str | None = None,
     ) -> None:
         decision_publisher = self.server.publisher.decision_publisher
         identity = getattr(decision_publisher, "identity", None)
@@ -317,7 +329,9 @@ class _PerceptionViewHandler(LoopbackHTTPRequestHandler):
             identity=identity,
             generation_id=generation_id,
         )
-        extra_headers = {"Allow": "GET, HEAD"} if exc.status_code == 405 else None
+        extra_headers = (
+            {"Allow": allow or "GET, HEAD"} if exc.status_code == 405 else None
+        )
         self._send(
             exc.status_code,
             canonical_json_utf8(payload),
@@ -393,6 +407,17 @@ class _PerceptionViewHandler(LoopbackHTTPRequestHandler):
                 return
             self._send(200, body, "text/html; charset=utf-8", include_body=include_body)
             return
+        if route == DECISION_PREVIEW_PATH:
+            self._send_decision_error(
+                DecisionViewHTTPError(
+                    405,
+                    "method_not_allowed",
+                    "decision preview supports only POST",
+                ),
+                include_body=include_body,
+                allow="POST",
+            )
+            return
         if route == DECISION_API_PATH:
             try:
                 generation = parse_generation_query(request.query)
@@ -417,6 +442,7 @@ class _PerceptionViewHandler(LoopbackHTTPRequestHandler):
                 include_body=include_body,
             )
             return
+
         if (
             route == DECISION_IMAGE_PATH.rstrip("/")
             or route.startswith(DECISION_IMAGE_PATH)
@@ -491,6 +517,84 @@ class _PerceptionViewHandler(LoopbackHTTPRequestHandler):
             self._send(200, body, content_type, include_body=include_body)
             return
         self._send_json(404, {"error": "not found"}, include_body=include_body)
+
+    def _handle_preview_request(self) -> None:
+        request = urlparse(self.path)
+        try:
+            generation = parse_generation_query(request.query)
+            decision_publisher = self.server.publisher.decision_publisher
+            if decision_publisher is None:
+                raise DecisionViewHTTPError(
+                    503,
+                    "producer_unavailable",
+                    "decision view publisher is unavailable",
+                )
+            content_type = self.headers.get("Content-Type", "")
+            if content_type.split(";", 1)[0].strip().lower() != "application/json":
+                raise DecisionViewHTTPError(
+                    415,
+                    "preview_content_type",
+                    "decision preview requires application/json",
+                )
+            content_length = self.headers.get("Content-Length")
+            if content_length is None:
+                raise DecisionViewHTTPError(
+                    400,
+                    "preview_invalid",
+                    "decision preview requires a Content-Length header",
+                )
+            try:
+                body_length = int(content_length)
+            except (TypeError, ValueError) as exc:
+                raise DecisionViewHTTPError(
+                    400,
+                    "preview_invalid",
+                    "decision preview Content-Length is invalid",
+                ) from exc
+            if body_length < 0:
+                raise DecisionViewHTTPError(
+                    400,
+                    "preview_invalid",
+                    "decision preview Content-Length is invalid",
+                )
+            if body_length > MAX_PREVIEW_REQUEST_BYTES:
+                raise DecisionViewHTTPError(
+                    413,
+                    "preview_too_large",
+                    "decision preview request exceeds the request bound",
+                )
+            raw = self.rfile.read(body_length)
+            if len(raw) != body_length:
+                raise DecisionViewHTTPError(
+                    400,
+                    "preview_invalid",
+                    "decision preview request body is incomplete",
+                )
+            try:
+                decoded = json.loads(raw.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise DecisionViewHTTPError(
+                    400,
+                    "preview_invalid",
+                    "decision preview request is not valid JSON",
+                ) from exc
+            preview_request = parse_preview_request(decoded)
+            body = canonical_json_utf8(
+                decision_publisher.preview_payload(
+                    generation=generation,
+                    **preview_request,
+                )
+            )
+        except DecisionViewHTTPError as exc:
+            self._send_decision_error(exc, include_body=True)
+            return
+        self._send(
+            200,
+            body,
+            "application/json; charset=utf-8",
+            include_body=True,
+        )
+
 
 def get_perception_view_status(
     automation_dir: Path,

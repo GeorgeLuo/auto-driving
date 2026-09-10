@@ -1,9 +1,10 @@
 """Generation-bound live decision view support for Automa (M006 D2).
 
-The decision view is deliberately a projection at the existing perception-view
-boundary.  It consumes an already accepted ``vehicle_decision_stream_frame_v0``
-and the bytes which entered the existing capture publication.  It does not run
-the decision engine, resolve arbitrary files, or create a second server.
+The live decision view is a projection at the existing perception-view
+boundary. It consumes an already accepted ``vehicle_decision_stream_frame_v0``
+and the bytes which entered the existing capture publication. It also exposes
+an explicitly bounded, shadow-only preview that reruns the activated decision
+engine without replacing or publishing the accepted frame.
 """
 
 from __future__ import annotations
@@ -33,9 +34,14 @@ from .decision import (
     DECISION_STREAM_MAX_AGE_MS,
     DecisionSurfaceError,
     accept_decision_stream_frame,
+    build_decision_stream_frame,
     is_pid_alive,
     _read_surface_activation,
+    strict_decode_apply_memory,
+    strict_decode_apply_observation,
+    validate_shadow_engine_config,
 )
+from implementations.decision.catalog import create_shadow_proposals_engine
 
 
 DECISION_VIEW_SCHEMA = "automa_decision_view_v1"
@@ -43,6 +49,11 @@ DECISION_VIEW_ID = "decision-combined-v0"
 DECISION_VIEW_PATH = "/decision"
 DECISION_API_PATH = "/api/decision/latest"
 DECISION_IMAGE_PATH = "/api/decision/images/"
+DECISION_PREVIEW_PATH = "/api/decision/preview"
+DECISION_PREVIEW_SCHEMA = "automa_decision_preview_v0"
+DECISION_PREVIEW_REQUEST_SCHEMA = "automa_decision_preview_request_v0"
+PREVIEW_MEMORY_MODES = frozenset({"current", "empty"})
+MAX_PREVIEW_REQUEST_BYTES = 4096
 
 MAX_IMAGES = 64
 MAX_IMAGE_BYTES = 8 * 1024 * 1024
@@ -270,6 +281,55 @@ def parse_generation_query(query: str) -> str:
             "generation must be a lower-case SHA-256 hash",
         )
     return generation
+
+
+def parse_preview_request(payload: object) -> dict[str, str]:
+    """Validate the small, generation-bound input selector for a preview."""
+
+    if not isinstance(payload, dict):
+        raise DecisionViewHTTPError(
+            400,
+            "preview_invalid",
+            "preview request must be a JSON object",
+        )
+    expected_keys = {
+        "schema",
+        "base_decision_sha256",
+        "memory_mode",
+    }
+    if set(payload) != expected_keys:
+        raise DecisionViewHTTPError(
+            400,
+            "preview_invalid",
+            "preview request has an unexpected key set",
+        )
+    if payload.get("schema") != DECISION_PREVIEW_REQUEST_SCHEMA:
+        raise DecisionViewHTTPError(
+            400,
+            "preview_invalid",
+            "preview request schema is invalid",
+        )
+    base_decision_sha256 = payload.get("base_decision_sha256")
+    if (
+        type(base_decision_sha256) is not str
+        or GENERATION_RE.fullmatch(base_decision_sha256) is None
+    ):
+        raise DecisionViewHTTPError(
+            400,
+            "preview_invalid",
+            "base_decision_sha256 must be a lower-case SHA-256 hash",
+        )
+    memory_mode = payload.get("memory_mode")
+    if type(memory_mode) is not str or memory_mode not in PREVIEW_MEMORY_MODES:
+        raise DecisionViewHTTPError(
+            400,
+            "preview_invalid",
+            "memory_mode must be one of: current, empty",
+        )
+    return {
+        "base_decision_sha256": base_decision_sha256,
+        "memory_mode": memory_mode,
+    }
 
 
 def parse_image_id(path: str) -> str:
@@ -673,6 +733,120 @@ class DecisionViewPublisher:
             return payload
         raise AssertionError("decision view retry loop did not return")
 
+    def preview_payload(
+        self,
+        *,
+        generation: str,
+        base_decision_sha256: str,
+        memory_mode: str,
+        now_ms: int | None = None,
+        pid_alive: Callable[[int], bool] = is_pid_alive,
+    ) -> dict[str, Any]:
+        """Rerun the activated shadow engine without publishing its result."""
+
+        if (
+            type(base_decision_sha256) is not str
+            or GENERATION_RE.fullmatch(base_decision_sha256) is None
+        ):
+            raise DecisionViewHTTPError(
+                400,
+                "preview_invalid",
+                "base_decision_sha256 must be a lower-case SHA-256 hash",
+                identity=self.identity,
+            )
+        if type(memory_mode) is not str or memory_mode not in PREVIEW_MEMORY_MODES:
+            raise DecisionViewHTTPError(
+                400,
+                "preview_invalid",
+                "memory_mode must be one of: current, empty",
+                identity=self.identity,
+            )
+        if generation != self.generation_id:
+            raise DecisionViewHTTPError(
+                409,
+                "generation_mismatch",
+                "requested generation does not belong to this decision view",
+                identity=self.identity,
+            )
+
+        served_at_ms = timestamp_ms() if now_ms is None else int(now_ms)
+        frame, frame_bytes = self._accepted_frame(
+            generation=generation,
+            served_at_ms=served_at_ms,
+            pid_alive=pid_alive,
+        )
+        actual_base_sha256 = _sha256(_canonical(frame))
+        if base_decision_sha256 != actual_base_sha256:
+            raise DecisionViewHTTPError(
+                409,
+                "preview_stale",
+                "preview input is based on an older accepted decision",
+                identity=self.identity,
+            )
+
+        preview_frame = self._build_preview_frame(
+            frame=frame,
+            memory_mode=memory_mode,
+            published_at_ms=served_at_ms,
+        )
+        final_frame, final_frame_bytes = self._recheck_generation(
+            generation=generation,
+            pid_alive=pid_alive,
+            served_at_ms=served_at_ms,
+        )
+        if final_frame_bytes != frame_bytes:
+            raise DecisionViewHTTPError(
+                409,
+                "preview_stale",
+                "accepted decision changed while the preview was assembled",
+                identity=self.identity,
+            )
+        if final_frame.get("frame_id") != frame.get("frame_id"):
+            raise DecisionViewHTTPError(
+                409,
+                "preview_stale",
+                "accepted decision changed while the preview was assembled",
+                identity=self.identity,
+            )
+
+        with self._lock:
+            snapshot = self._snapshot_locked()
+        payload = self._build_payload(
+            frame=preview_frame,
+            snapshot=snapshot,
+            served_at_ms=served_at_ms,
+        )
+        payload["schema"] = DECISION_PREVIEW_SCHEMA
+        payload["status"] = "preview"
+        payload["reason"] = None
+        payload["base_decision_sha256"] = actual_base_sha256
+        payload["preview"] = {
+            "schema": DECISION_PREVIEW_SCHEMA,
+            "memory_mode": memory_mode,
+            "base_decision_sha256": actual_base_sha256,
+            "source_frame_id": frame.get("frame_id"),
+            "source_frame_index": frame.get("frame_index"),
+            "live_decision_unchanged": True,
+            "authority_mode": "shadow_only",
+        }
+        try:
+            response_bytes = _canonical(payload)
+        except (TypeError, ValueError) as exc:
+            raise DecisionViewHTTPError(
+                503,
+                "preview_payload_invalid",
+                f"shadow preview is not strictly JSON serializable: {exc}",
+                identity=self.identity,
+            ) from exc
+        if len(response_bytes) > MAX_RESPONSE_BYTES:
+            raise DecisionViewHTTPError(
+                503,
+                "view_payload_too_large",
+                "shadow preview response exceeds max_response_bytes",
+                identity=self.identity,
+            )
+        return payload
+
     def image_response(
         self,
         *,
@@ -895,6 +1069,130 @@ class DecisionViewPublisher:
             served_at_ms=timestamp_ms() if served_at_ms is None else served_at_ms,
             pid_alive=pid_alive,
         )
+
+    def _build_preview_frame(
+        self,
+        *,
+        frame: dict[str, Any],
+        memory_mode: str,
+        published_at_ms: int,
+    ) -> dict[str, Any]:
+        cycle = frame.get("cycle")
+        source = cycle.get("source") if isinstance(cycle, dict) else None
+        if not isinstance(source, dict):
+            raise DecisionViewHTTPError(
+                503,
+                "preview_inputs_unavailable",
+                "accepted decision has no replayable decision source",
+                identity=self.identity,
+            )
+
+        observation_env = source.get("observation")
+        if not isinstance(observation_env, dict):
+            raise DecisionViewHTTPError(
+                503,
+                "preview_inputs_unavailable",
+                "accepted decision has no observation envelope",
+                identity=self.identity,
+            )
+        observation = None
+        observation_error = None
+        observation_status = observation_env.get("status")
+        if observation_status == "ready":
+            observation_value = observation_env.get("value")
+            try:
+                observation = strict_decode_apply_observation(observation_value)
+            except (DecisionSurfaceError, TypeError, ValueError) as exc:
+                raise DecisionViewHTTPError(
+                    503,
+                    "preview_inputs_invalid",
+                    "accepted observation could not be replayed",
+                    identity=self.identity,
+                ) from exc
+        elif observation_status == "error":
+            observation_error = observation_env.get("reason")
+            if type(observation_error) is not str or not observation_error:
+                raise DecisionViewHTTPError(
+                    503,
+                    "preview_inputs_invalid",
+                    "accepted observation error envelope is invalid",
+                    identity=self.identity,
+                )
+        elif observation_status != "unavailable":
+            raise DecisionViewHTTPError(
+                503,
+                "preview_inputs_invalid",
+                "accepted observation envelope status is invalid",
+                identity=self.identity,
+            )
+
+        memory = None
+        if memory_mode == "current":
+            memory_env = source.get("memory")
+            if not isinstance(memory_env, dict):
+                raise DecisionViewHTTPError(
+                    503,
+                    "preview_inputs_unavailable",
+                    "accepted decision has no memory envelope",
+                    identity=self.identity,
+                )
+            memory_status = memory_env.get("status")
+            if memory_status == "ready":
+                try:
+                    memory = strict_decode_apply_memory(memory_env.get("value"))
+                except (DecisionSurfaceError, TypeError, ValueError) as exc:
+                    raise DecisionViewHTTPError(
+                        503,
+                        "preview_inputs_invalid",
+                        "accepted memory could not be replayed",
+                        identity=self.identity,
+                    ) from exc
+            elif memory_status not in {"unavailable", "error"}:
+                raise DecisionViewHTTPError(
+                    503,
+                    "preview_inputs_invalid",
+                    "accepted memory envelope status is invalid",
+                    identity=self.identity,
+                )
+
+        decision_config = self.startup_activation.get("decision")
+        engine_config = (
+            decision_config.get("engine_config")
+            if isinstance(decision_config, dict)
+            else None
+        )
+        try:
+            config = validate_shadow_engine_config(engine_config or {})
+            engine = create_shadow_proposals_engine(config)
+            cycle_result, _control = engine.run_cycle(
+                frame_id=frame["frame_id"],
+                frame_index=frame["frame_index"],
+                timestamp_ms=frame["timestamp_ms"],
+                observation=observation,
+                observation_error=observation_error,
+                memory=memory,
+                # Preview never imports or reuses host output. The authority
+                # result must remain the engine's shadow-only idle output.
+                host_application=None,
+            )
+            return build_decision_stream_frame(
+                cycle_result,
+                vehicle_id=self.vehicle_id,
+                run_id=self.identity["run_id"],
+                worker_pid=self.identity["worker_pid"],
+                activation_engine_id=self.identity["activation_engine_id"],
+                activation_activated_at_ms=self.identity["activation_activated_at_ms"],
+                published_at_ms=published_at_ms,
+            )
+        except DecisionViewHTTPError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - preview is a non-fatal HTTP boundary
+            raise DecisionViewHTTPError(
+                503,
+                "preview_engine_unavailable",
+                "activated shadow engine could not rerun the decision",
+                identity=self.identity,
+            ) from exc
 
     def _read_frame(self) -> tuple[dict[str, Any], bytes]:
         try:
@@ -2443,6 +2741,9 @@ def _probe_unavailable(reason: str) -> dict[str, Any]:
 __all__ = [
     "DECISION_API_PATH",
     "DECISION_IMAGE_PATH",
+    "DECISION_PREVIEW_PATH",
+    "DECISION_PREVIEW_REQUEST_SCHEMA",
+    "DECISION_PREVIEW_SCHEMA",
     "DECISION_VIEW_ID",
     "DECISION_VIEW_PATH",
     "DECISION_VIEW_SCHEMA",
@@ -2455,5 +2756,6 @@ __all__ = [
     "identity_for_activation",
     "parse_generation_query",
     "parse_image_id",
+    "parse_preview_request",
     "probe_decision_view",
 ]

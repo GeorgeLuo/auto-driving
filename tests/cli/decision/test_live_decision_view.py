@@ -7,8 +7,9 @@ HTTP framing, CLI discovery, and representative count/item/file bounds.
 Deferred: browser rendering/transactions/resize, automation scheduler wiring,
 port reuse, concurrent assembly races, redirects, exact millisecond freshness
 endpoints, total byte/metadata saturation, pin exhaustion/release, and every
-provenance mutation. Those cases are not implicitly passed by this
-representative contract suite.
+provenance mutation. The browser preview interaction is covered here at its
+HTTP contract boundary; visual acceptance remains deferred. Those cases are
+not implicitly passed by this representative contract suite.
 No acceptance predicate, liveness check, clock, policy, or projector is patched.
 """
 
@@ -57,11 +58,23 @@ class LiveDecisionViewTests(unittest.TestCase):
         self.fixture = DecisionFixture(Path(self.tmp.name) / "vehicles")
         self.addCleanup(self.fixture.close)
 
-    def request(self, path: str | None = None, *, method: str = "GET"):
+    def request(
+        self,
+        path: str | None = None,
+        *,
+        method: str = "GET",
+        body: bytes | None = None,
+        headers: dict[str, str] | None = None,
+    ):
         parsed = urlsplit(self.fixture.server.url)
         connection = http.client.HTTPConnection(parsed.hostname, parsed.port, timeout=3)
         try:
-            connection.request(method, path or self.fixture.api_path)
+            connection.request(
+                method,
+                path or self.fixture.api_path,
+                body=body,
+                headers=headers or {},
+            )
             response = connection.getresponse()
             return response.status, dict(response.getheaders()), response.read()
         finally:
@@ -354,6 +367,25 @@ class LiveDecisionViewTests(unittest.TestCase):
             html.index("fragment.appendChild(blackBoxOverview"),
             html.index('fragment.appendChild(detailsSection("Supporting record'),
         )
+
+    def test_html_exposes_only_a_bounded_shadow_preview_control(self) -> None:
+        html = (REPOSITORY / "cli" / "automa_cli" / "decision_view.html").read_text(
+            encoding="utf-8"
+        )
+        for landmark in (
+            'id="shadow-preview"',
+            'id="preview-memory"',
+            'value="empty">Clear retained memory</option>',
+            'id="preview-submit"',
+            'method: "POST"',
+            '"/api/decision/preview?generation="',
+            '"automa_decision_preview_request_v0"',
+            '"automa_decision_preview_v0"',
+            "live decision remains unchanged",
+        ):
+            with self.subTest(landmark=landmark):
+                self.assertIn(landmark, html)
+        self.assertLess(html.index('id="shadow-preview"'), html.index('id="live-content"'))
 
     def test_html_preserves_disclosure_state_during_live_refresh(self) -> None:
         html = (REPOSITORY / "cli" / "automa_cli" / "decision_view.html").read_text(
@@ -753,6 +785,82 @@ class LiveDecisionViewTests(unittest.TestCase):
                 self.assertEqual(head_headers["Content-Type"], headers["Content-Type"])
         # This validates shell delivery only, not JavaScript execution or visual acceptance.
         self.assertEqual(self.request("/no-such-d2-route")[0], 404)
+
+    def test_shadow_preview_changes_plan_without_replacing_live_decision(self) -> None:
+        f = self.fixture
+        f.arrange("host-zero")
+        baseline = self.payload()
+        latest_bytes = f.latest_path.read_bytes()
+        generation = f.publisher.generation_id
+        request = {
+            "schema": "automa_decision_preview_request_v0",
+            "base_decision_sha256": baseline["decision_sha256"],
+            "memory_mode": "empty",
+        }
+        status, headers, body = self.request(
+            f"/api/decision/preview?generation={generation}",
+            method="POST",
+            body=json.dumps(request).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+        )
+        self.assertEqual(status, 200, body)
+        self.assertEqual(headers["Content-Type"], "application/json; charset=utf-8")
+        preview = json.loads(body)
+        self.assertEqual(preview["schema"], "automa_decision_preview_v0")
+        self.assertEqual(preview["status"], "preview")
+        self.assertEqual(preview["generation_id"], generation)
+        self.assertEqual(preview["base_decision_sha256"], baseline["decision_sha256"])
+        self.assertEqual(preview["preview"]["memory_mode"], "empty")
+        self.assertTrue(preview["preview"]["live_decision_unchanged"])
+        self.assertEqual(
+            baseline["decision"]["cycle"]["plan"]["status"],
+            "selected",
+        )
+        self.assertEqual(preview["decision"]["cycle"]["plan"]["status"], "idle")
+        self.assertIsNone(preview["decision"]["cycle"]["plan"]["selected_proposal_id"])
+        self.assertIsNone(preview["decision"]["cycle"]["authority"]["proposed"])
+        self.assertEqual(
+            preview["decision"]["cycle"]["authority"]["authorized_output"]["reason"],
+            "shadow-only-idle",
+        )
+        self.assertEqual(f.latest_path.read_bytes(), latest_bytes)
+        after = self.payload()
+        self.assertEqual(after["decision"], baseline["decision"])
+        self.assertEqual(after["decision_sha256"], baseline["decision_sha256"])
+
+    def test_shadow_preview_is_generation_and_body_bound(self) -> None:
+        f = self.fixture
+        f.arrange("current-left")
+        generation = f.publisher.generation_id
+        preview_path = f"/api/decision/preview?generation={generation}"
+        for body, expected_status, expected_reason in (
+            (b"{}", 400, "preview_invalid"),
+            (
+                json.dumps(
+                    {
+                        "schema": "automa_decision_preview_request_v0",
+                        "base_decision_sha256": "0" * 64,
+                        "memory_mode": "current",
+                    }
+                ).encode("utf-8"),
+                409,
+                "preview_stale",
+            ),
+        ):
+            with self.subTest(expected_reason=expected_reason):
+                status, _headers, raw = self.request(
+                    preview_path,
+                    method="POST",
+                    body=body,
+                    headers={"Content-Type": "application/json"},
+                )
+                self.assertEqual(status, expected_status, raw)
+                self.assertEqual(json.loads(raw)["reason"], expected_reason)
+        for method in ("GET", "HEAD", "PUT", "DELETE"):
+            with self.subTest(method=method):
+                status, headers, _body = self.request(preview_path, method=method)
+                self.assertEqual(status, 405)
+                self.assertEqual(headers["Allow"], "POST")
 
     def test_count_item_and_decision_file_bounds_are_publicly_visible(self) -> None:
         f = self.fixture

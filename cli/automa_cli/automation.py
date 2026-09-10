@@ -47,6 +47,7 @@ from .decision import (
     load_decision_activation,
     publish_shadow_decision_frame,
 )
+from .decision_view import DecisionViewPublisher
 from .paths import display_path, safe_path_part
 from .perception import (
     _close_mapper,
@@ -69,6 +70,7 @@ ROOT = Path(__file__).resolve().parents[2]
 RUNTIME_ROOT = Path(os.environ.get("AUTOMA_RUNTIME_ROOT", ROOT / "runtime" / "vehicles"))
 AUTOMA_EXECUTABLE = ROOT / "cli" / "automa"
 MAX_STATUS_REASON_CHARS = 240
+MAX_DECISION_FILE_BYTES = 8 * 1024 * 1024
 # Observe-only continuous runs allow playback/input to evolve; identity and
 # control authority must stay fixed until stop.
 PASSIVE_RUN_STABLE_FIELDS = (
@@ -290,11 +292,22 @@ def run_vehicle_automation(
 
     view_server: PerceptionViewServer | None = None
     try:
+        decision_publisher = None
+        if decision_config.get("engine_id") == "shadow-proposals":
+            decision_publisher = DecisionViewPublisher(
+                vehicle_id=vehicle_id,
+                automation_dir=automation_dir,
+                activation=decision_activation,
+                run_id=run_id,
+                worker_pid=os.getpid(),
+                decision_runtime_dir=Path(bundle["decision_runtime_dir"]),
+            )
         view_server = PerceptionViewServer(
             vehicle_id=vehicle_id,
             automation_dir=automation_dir,
             run_id=run_id,
             worker_pid=os.getpid(),
+            decision_publisher=decision_publisher,
         ).start()
         published_view = view_server.describe()
     except (OSError, RuntimeError, ValueError) as exc:
@@ -514,6 +527,25 @@ def run_vehicle_automation(
                 activation=decision_activation,
                 staged_engine_id=str(decision_config.get("engine_id") or ""),
             )
+            if published:
+                latest_frame = _read_latest_decision_frame_for_view(
+                    automation_dir / "latest_decision.json",
+                    frame_id=context.frame_id,
+                    run_id=str(state.get("run_id") or run_id),
+                    worker_pid=int(state.get("pid") or os.getpid()),
+                    activation_activated_at_ms=decision_activation.get("activated_at_ms"),
+                )
+                if (
+                    latest_frame is None
+                    or view_server is None
+                    or not view_server.publish_decision_frame(latest_frame)
+                ):
+                    _record_decision_publish_skip(
+                        state,
+                        state_path,
+                        state_lock,
+                        reason="decision_view_frame_unavailable_or_identity_mismatch",
+                    )
             if (
                 not published
                 and str(decision_config.get("engine_id") or "") == "shadow-proposals"
@@ -2392,6 +2424,37 @@ def _record_decision_publish_skip(
                 pass
     except Exception:  # noqa: BLE001 - counter path must never raise
         pass
+
+
+def _read_latest_decision_frame_for_view(
+    path: Path,
+    *,
+    frame_id: str,
+    run_id: str,
+    worker_pid: int,
+    activation_activated_at_ms: Any,
+) -> dict[str, Any] | None:
+    """Read only the bounded, identity-matching frame just published by the worker."""
+
+    try:
+        with Path(path).open("rb") as handle:
+            payload = handle.read(MAX_DECISION_FILE_BYTES + 1)
+        if len(payload) > MAX_DECISION_FILE_BYTES:
+            return None
+        frame = json.loads(payload.decode("utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError):
+        return None
+    if not isinstance(frame, dict):
+        return None
+    if (
+        frame.get("frame_id") != frame_id
+        or frame.get("run_id") != run_id
+        or frame.get("worker_pid") != worker_pid
+        or frame.get("activation_engine_id") != "shadow-proposals"
+        or frame.get("activation_activated_at_ms") != activation_activated_at_ms
+    ):
+        return None
+    return frame
 
 
 def _stop_perception_view(view_server: PerceptionViewServer | None) -> dict[str, Any]:

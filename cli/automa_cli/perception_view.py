@@ -22,6 +22,7 @@ from .decision_view import (
     DECISION_VIEW_PATH,
     DecisionViewHTTPError,
     DecisionViewPublisher,
+    _unavailable_payload,
     parse_generation_query,
     parse_image_id,
 )
@@ -256,6 +257,111 @@ class _PerceptionViewHandler(LoopbackHTTPRequestHandler):
 
     def do_HEAD(self) -> None:
         self._handle_request(include_body=False)
+
+    def do_POST(self) -> None:
+        self._reject_method()
+
+    def do_PUT(self) -> None:
+        self._reject_method()
+
+    def do_PATCH(self) -> None:
+        self._reject_method()
+
+    def do_DELETE(self) -> None:
+        self._reject_method()
+
+    def do_OPTIONS(self) -> None:
+        self._reject_method()
+
+    def do_TRACE(self) -> None:
+        self._reject_method()
+
+    def do_CONNECT(self) -> None:
+        self._reject_method()
+
+    def _reject_method(self) -> None:
+        route = urlparse(self.path).path
+        is_decision_route = route in {
+            DECISION_VIEW_PATH,
+            "/decision.html",
+            DECISION_API_PATH,
+            DECISION_IMAGE_PATH.rstrip("/"),
+        } or route.startswith(DECISION_IMAGE_PATH)
+        if not is_decision_route:
+            self.send_error(501, f"Unsupported method ({self.command!r})")
+            return
+        self._send_decision_error(
+            DecisionViewHTTPError(
+                405,
+                "method_not_allowed",
+                "decision view supports only GET and HEAD",
+            ),
+            include_body=True,
+        )
+
+    def _send_decision_error(
+        self,
+        exc: DecisionViewHTTPError,
+        *,
+        include_body: bool,
+    ) -> None:
+        decision_publisher = self.server.publisher.decision_publisher
+        identity = getattr(decision_publisher, "identity", None)
+        generation_id = getattr(decision_publisher, "generation_id", None)
+        if not isinstance(identity, dict):
+            identity = None
+        if not isinstance(generation_id, str):
+            generation_id = None
+        payload = _unavailable_payload(
+            reason=exc.reason,
+            identity=identity,
+            generation_id=generation_id,
+        )
+        extra_headers = {"Allow": "GET, HEAD"} if exc.status_code == 405 else None
+        self._send(
+            exc.status_code,
+            canonical_json_utf8(payload),
+            "application/json; charset=utf-8",
+            include_body=include_body,
+            extra_headers=extra_headers,
+        )
+
+    def _send_decision_image(
+        self,
+        body: bytes,
+        content_type: str,
+        trusted_digest: str,
+        *,
+        include_body: bool = True,
+    ) -> None:
+        self._send(
+            200,
+            body,
+            content_type,
+            include_body=include_body,
+            extra_headers={"X-Automa-Image-Sha256": trusted_digest},
+        )
+
+    def _send(
+        self,
+        status: int,
+        body: bytes,
+        content_type: str,
+        *,
+        include_body: bool = True,
+        extra_headers: dict[str, str] | None = None,
+    ) -> None:
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Content-Security-Policy", self.content_security_policy)
+        for name, value in (extra_headers or {}).items():
+            self.send_header(name, value)
+        self.end_headers()
+        if include_body:
+            self.wfile.write(body)
 
     def _handle_request(self, *, include_body: bool) -> None:
         request = urlparse(self.path)

@@ -622,13 +622,13 @@ class DecisionViewPublisher:
                 "requested generation does not belong to this decision view",
                 identity=self.identity,
             )
+        served_at_ms = timestamp_ms() if now_ms is None else int(now_ms)
+        frame, frame_bytes = self._accepted_frame(
+            generation=generation,
+            served_at_ms=served_at_ms,
+            pid_alive=pid_alive,
+        )
         for attempt in range(2):
-            served_at_ms = timestamp_ms() if now_ms is None else int(now_ms)
-            frame, frame_bytes = self._accepted_frame(
-                generation=generation,
-                served_at_ms=served_at_ms,
-                pid_alive=pid_alive,
-            )
             with self._lock:
                 snapshot = self._snapshot_locked()
             payload = self._build_payload(
@@ -636,16 +636,23 @@ class DecisionViewPublisher:
                 snapshot=snapshot,
                 served_at_ms=served_at_ms,
             )
-            if self._latest_bytes() != frame_bytes:
-                if attempt == 0:
-                    continue
-                raise DecisionViewHTTPError(
-                    503,
-                    "decision_changed_during_read",
-                    "latest decision changed while the view was assembled",
-                    identity=self.identity,
-                )
-            self._recheck_generation(generation=generation, pid_alive=pid_alive)
+            final_frame, final_frame_bytes = self._recheck_generation(
+                generation=generation,
+                pid_alive=pid_alive,
+                served_at_ms=served_at_ms,
+            )
+            if final_frame_bytes != frame_bytes:
+                if attempt == 1:
+                    raise DecisionViewHTTPError(
+                        503,
+                        "decision_changed_during_read",
+                        "latest decision changed while the view was assembled",
+                        identity=self.identity,
+                    )
+                frame, frame_bytes = final_frame, final_frame_bytes
+                if now_ms is None:
+                    served_at_ms = timestamp_ms()
+                continue
             try:
                 response_bytes = _canonical(payload)
             except (TypeError, ValueError) as exc:

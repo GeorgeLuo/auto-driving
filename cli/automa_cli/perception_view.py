@@ -14,6 +14,15 @@ from urllib.request import urlopen
 
 from PIL import Image
 
+from .decision_view import (
+    DECISION_API_PATH,
+    DECISION_IMAGE_PATH,
+    DECISION_VIEW_PATH,
+    DecisionViewHTTPError,
+    DecisionViewPublisher,
+    parse_generation_query,
+    parse_image_id,
+)
 from .loopback_http import (
     LoopbackHTTPRequestHandler,
     LoopbackHTTPServer,
@@ -29,6 +38,7 @@ VIEW_RECORD_NAME = "perception_view.json"
 VIEW_HOST = "127.0.0.1"
 VIEW_HTML_PATH = Path(__file__).with_name("perception_view.html")
 MEMORY_VIEW_HTML_PATH = Path(__file__).with_name("memory_view.html")
+DECISION_VIEW_HTML_PATH = Path(__file__).with_name("decision_view.html")
 MAX_BUFFERED_FRAMES = 8
 
 
@@ -44,6 +54,7 @@ class PerceptionViewServer:
         port: int | None = None,
         run_id: str | None = None,
         worker_pid: int | None = None,
+        decision_publisher: DecisionViewPublisher | None = None,
     ) -> None:
         validate_loopback_host(host, owner="perception view")
         self.vehicle_id = vehicle_id
@@ -52,6 +63,23 @@ class PerceptionViewServer:
         self.preferred_port = _vehicle_view_port(vehicle_id) if port is None else int(port)
         self.run_id = run_id
         self.worker_pid = int(worker_pid) if isinstance(worker_pid, int) else os.getpid()
+        self.decision_publisher = decision_publisher
+        if decision_publisher is not None:
+            publisher_identity = getattr(decision_publisher, "identity", None)
+            publisher_vehicle_id = getattr(decision_publisher, "vehicle_id", None)
+            publisher_automation_dir = getattr(decision_publisher, "automation_dir", None)
+            if (
+                publisher_vehicle_id != self.vehicle_id
+                or not isinstance(publisher_identity, dict)
+                or publisher_identity.get("vehicle_id") != self.vehicle_id
+                or publisher_identity.get("run_id") != self.run_id
+                or publisher_identity.get("worker_pid") != self.worker_pid
+                or publisher_automation_dir is None
+                or Path(publisher_automation_dir) != Path(self.automation_dir)
+            ):
+                raise ValueError(
+                    "decision view publisher identity must match perception view ownership"
+                )
         self.record_path = automation_dir / VIEW_RECORD_NAME
         self._lock = threading.Lock()
         self._httpd: _PerceptionHttpServer | None = None
@@ -117,6 +145,25 @@ class PerceptionViewServer:
             self._latest_frame = frame
             self._latest_frame_id = frame_id
             self._frame_published_at_ms = published_at_ms
+        if self.decision_publisher is not None:
+            try:
+                self.decision_publisher.publish_capture(
+                    frame_bytes=frame_bytes,
+                    frame_record=frame_record,
+                    content_type=content_type,
+                    width_px=width_px,
+                    height_px=height_px,
+                )
+            except Exception:  # noqa: BLE001 - D2 publication is best-effort
+                pass
+
+    def publish_decision_frame(self, frame: dict[str, Any]) -> bool:
+        if self.decision_publisher is None:
+            return False
+        try:
+            return bool(self.decision_publisher.publish_decision_frame(frame))
+        except Exception:  # noqa: BLE001 - D2 publication is best-effort
+            return False
 
     def publish_perception(self, *, frame_record: dict[str, Any]) -> None:
         frame_id = str(frame_record.get("frame_id") or "unknown")
@@ -126,7 +173,7 @@ class PerceptionViewServer:
             self._perception_published_at_ms = _timestamp_ms()
 
     def describe(self, *, status: str = "running") -> dict[str, Any]:
-        return {
+        description = {
             "schema": VIEW_SCHEMA,
             "vehicle_id": self.vehicle_id,
             "run_id": self.run_id,
@@ -140,6 +187,12 @@ class PerceptionViewServer:
             "started_at_ms": self._started_at_ms,
             "record_path": str(self.record_path),
         }
+        if self.decision_publisher is not None:
+            try:
+                description["decision_view"] = self.decision_publisher.describe()
+            except Exception:  # noqa: BLE001 - D2 description is best-effort
+                pass
+        return description
 
     def health_payload(self) -> dict[str, Any]:
         with self._lock:
@@ -174,6 +227,11 @@ class PerceptionViewServer:
             return self._frame_bytes, self._frame_content_type
 
     def stop(self) -> None:
+        if self.decision_publisher is not None:
+            try:
+                self.decision_publisher.stop()
+            except Exception:  # noqa: BLE001 - D2 shutdown is best-effort
+                pass
         httpd = self._httpd
         thread = self._thread
         if httpd is None:

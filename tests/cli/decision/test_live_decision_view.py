@@ -311,6 +311,27 @@ class LiveDecisionViewTests(unittest.TestCase):
         self.assertIn("Unavailable: decision_expired", html)
         self.assertIn("serial !== transactionSerial", html)
 
+    def test_html_leads_with_black_box_inputs_and_outputs(self) -> None:
+        html = (REPOSITORY / "cli" / "automa_cli" / "decision_view.html").read_text(
+            encoding="utf-8"
+        )
+        for landmark in (
+            'section.id = "decision-overview"',
+            "Decision black box",
+            "Input · current perception",
+            "Input · memory snapshot",
+            "Decision · shadow proposal",
+            "Output · authority boundary",
+            "Decision inputs · raw envelopes",
+            "Decision result · detailed",
+        ):
+            with self.subTest(landmark=landmark):
+                self.assertIn(landmark, html)
+        self.assertLess(
+            html.index("fragment.appendChild(blackBoxOverview"),
+            html.index('fragment.appendChild(jsonSection("Raw accepted decision'),
+        )
+
     def test_current_payload_preserves_cycle_and_exact_image_bytes(self) -> None:
         f = self.fixture
         f.arrange("host-zero")

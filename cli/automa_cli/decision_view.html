@@ -23,6 +23,18 @@
     .status[data-state="live"] { border-color: #65c18c; }
     .status[data-state="error"] { border-color: #ed8b8b; }
     .status::before { content: "Status: "; font-weight: 700; }
+    .black-box-overview { border-color: #65c18c; }
+    .section-intro { margin: -.2rem 0 .8rem; color: #afbdc9; }
+    .black-box-flow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .65rem; }
+    .black-box-card { min-width: 0; padding: .7rem; background: #171d24; border: 1px solid #303a45; border-radius: .35rem; }
+    .black-box-card[data-kind="input"] { border-top: .25rem solid #72a7ff; }
+    .black-box-card[data-kind="decision"] { border-top: .25rem solid #e7a83b; }
+    .black-box-card[data-kind="output"] { border-top: .25rem solid #65c18c; }
+    .black-box-card h3 { margin-top: 0; }
+    .black-box-card .facts { grid-template-columns: 1fr; }
+    .black-box-card .fact { background: #141a20; }
+    .memory-records { margin: .7rem 0 0; padding-left: 1.1rem; color: #d3dde5; }
+    .memory-records li { margin: .3rem 0; overflow-wrap: anywhere; }
     .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: .55rem .9rem; }
     .fact { min-width: 0; padding: .45rem; background: #171d24; border-radius: .3rem; }
     .fact-label { display: block; color: #9fb2c4; font-size: .78rem; }
@@ -38,7 +50,8 @@
     .unavailable { color: #ffb4b4; }
     .subtle { color: #afbdc9; }
     .empty { padding: .6rem; border: 1px dashed #66788a; border-radius: .3rem; }
-    @media (max-width: 560px) { main { padding: .65rem; } header, section { padding: .7rem; } }
+    @media (max-width: 900px) { .black-box-flow { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 560px) { main { padding: .65rem; } header, section { padding: .7rem; } .black-box-flow { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
@@ -123,9 +136,7 @@
         return section;
       }
 
-      function factsSection(title, facts) {
-        const section = element("section");
-        section.appendChild(element("h2", title));
+      function factsGrid(facts) {
         const grid = element("div", null, "facts");
         for (const [label, value] of facts) {
           const fact = element("div", null, "fact");
@@ -133,7 +144,13 @@
           fact.appendChild(element("span", value === undefined ? "unavailable" : value, "fact-value"));
           grid.appendChild(fact);
         }
-        section.appendChild(grid);
+        return grid;
+      }
+
+      function factsSection(title, facts) {
+        const section = element("section");
+        section.appendChild(element("h2", title));
+        section.appendChild(factsGrid(facts));
         return section;
       }
 
@@ -150,6 +167,95 @@
         if (value === null || value === undefined) return "unavailable";
         if (typeof value === "object") return jsonText(value);
         return String(value);
+      }
+
+      function commandSummary(command) {
+        if (!command || typeof command !== "object") return "none";
+        return "steering=" + displayValue(command.steering) + " · throttle=" + displayValue(command.throttle);
+      }
+
+      function envelopeSummary(envelope) {
+        if (!envelope || typeof envelope !== "object") return "unavailable";
+        const status = envelope.status || "unavailable";
+        return envelope.reason ? status + " · " + envelope.reason : status;
+      }
+
+      function selectedCandidate(plan, planSummary) {
+        const candidates = Array.isArray(planSummary.candidates) ? planSummary.candidates : Array.isArray(plan.candidates) ? plan.candidates : [];
+        const selectedId = planSummary.selected_proposal_id || plan.selected_proposal_id;
+        return candidates.find(candidate => candidate && candidate.proposal_id === selectedId) || null;
+      }
+
+      function blackBoxCard(kind, label, title, facts) {
+        const card = element("article", null, "black-box-card");
+        card.dataset.kind = kind;
+        card.appendChild(element("p", label, "eyebrow"));
+        card.appendChild(element("h3", title));
+        card.appendChild(factsGrid(facts));
+        return card;
+      }
+
+      function appendMemoryRecords(card, memory) {
+        const records = memory && Array.isArray(memory.records) ? memory.records : [];
+        if (!records.length) {
+          card.appendChild(element("p", "No retained records.", "empty"));
+          return;
+        }
+        const list = element("ul", null, "memory-records");
+        records.slice(0, 4).forEach(record => {
+          const parts = [record.kind || "record", record.record_id || "unidentified"];
+          if (record.frame_id) parts.push("frame=" + record.frame_id);
+          if (record.confidence !== undefined) parts.push("confidence=" + displayValue(record.confidence));
+          list.appendChild(element("li", parts.join(" · ")));
+        });
+        if (records.length > 4) list.appendChild(element("li", "+" + String(records.length - 4) + " more records in the raw snapshot", "subtle"));
+        card.appendChild(list);
+      }
+
+      function blackBoxOverview(payload, decision, cycle, plan, authority) {
+        const observation = decision.observation_summary || {};
+        const memory = decision.memory_summary || {};
+        const planSummary = decision.plan_summary || {};
+        const authoritySummary = decision.authority_summary || {};
+        const selected = selectedCandidate(plan, planSummary);
+        const selectedId = planSummary.selected_proposal_id || plan.selected_proposal_id;
+        const proposed = authority.proposed || authoritySummary.proposed;
+        const authorized = authority.authorized_output || authoritySummary.authorized_output;
+        const source = cycle.source || {};
+        const section = element("section", null, "black-box-overview");
+        section.id = "decision-overview";
+        section.appendChild(element("h2", "Decision black box"));
+        section.appendChild(element("p", "What entered this cycle, what the shadow proposal selected, and what authority allowed. Read-only; no vehicle command is sent.", "section-intro"));
+        const flow = element("div", null, "black-box-flow");
+        const perceptionCard = blackBoxCard("input", "Input · current perception", "Observation", [
+          ["status", observation.status || envelopeSummary(source.observation)],
+          ["observation", observation.frame_id || "unavailable"],
+          ["cycle frame", decision.frame_id || cycle.frame_id],
+          ["reason", observation.reason || "none"]
+        ]);
+        const memoryCard = blackBoxCard("input", "Input · memory snapshot", "Memory", [
+          ["status", memory.status || envelopeSummary(source.memory)],
+          ["health", memory.health || "unavailable"],
+          ["record count", memory.record_count === undefined ? "unavailable" : memory.record_count]
+        ]);
+        appendMemoryRecords(memoryCard, memory);
+        flow.appendChild(perceptionCard);
+        flow.appendChild(memoryCard);
+        flow.appendChild(blackBoxCard("decision", "Decision · shadow proposal", "Selected result", [
+          ["engine", decision.engine_id],
+          ["plan", planSummary.status || plan.status],
+          ["selected proposal", selectedId || "none"],
+          ["reason", selected && selected.reason || "none"],
+          ["proposed command", commandSummary(proposed)]
+        ]));
+        flow.appendChild(blackBoxCard("output", "Output · authority boundary", "Authorized result", [
+          ["proposed applied", authority.proposed_applied === false ? "no · shadow only" : displayValue(authority.proposed_applied)],
+          ["proposal", commandSummary(proposed)],
+          ["authorized output", commandSummary(authorized)],
+          ["host observation", pathValue(payload, ["host_observation", "status"]) || "unavailable"]
+        ]));
+        section.appendChild(flow);
+        return section;
       }
 
       function finiteNormalized(value) {
@@ -317,30 +423,47 @@
         const cycle = decision.cycle || {};
         const plan = cycle.plan || decision.plan_summary || {};
         const authority = cycle.authority || decision.authority_summary || {};
+        const source = cycle.source || {};
+        const planSummary = decision.plan_summary || plan;
+        const authoritySummary = decision.authority_summary || authority;
+        const selected = selectedCandidate(plan, planSummary);
+        const selectedId = planSummary.selected_proposal_id || plan.selected_proposal_id;
+        const candidates = Array.isArray(planSummary.candidates) ? planSummary.candidates : Array.isArray(plan.candidates) ? plan.candidates : [];
+        const proposed = authority.proposed || authoritySummary.proposed;
+        const authorized = authority.authorized_output || authoritySummary.authorized_output;
         const fragment = document.createDocumentFragment();
-        fragment.appendChild(factsSection("Lifecycle, generation, identity, freshness", [
-          ["schema", payload.schema], ["view_id", payload.view_id], ["status", payload.status], ["reason", payload.reason], ["generation_id", payload.generation_id],
-          ["served_at_ms", payload.served_at_ms], ["max_age_ms", payload.max_age_ms], ["expires_at_ms", payload.expires_at_ms], ["decision_sha256", payload.decision_sha256],
-          ["vehicle_id", pathValue(payload, ["identity", "vehicle_id"])], ["run_id", pathValue(payload, ["identity", "run_id"])], ["worker_pid", pathValue(payload, ["identity", "worker_pid"])],
-          ["activation_engine_id", pathValue(payload, ["identity", "activation_engine_id"])], ["activation_activated_at_ms", pathValue(payload, ["identity", "activation_activated_at_ms"])], ["activation_sha256", pathValue(payload, ["identity", "activation_sha256"])]
+        fragment.appendChild(blackBoxOverview(payload, decision, cycle, plan, authority));
+        const memorySummary = decision.memory_summary || {};
+        fragment.appendChild(factsSection("Decision inputs · envelope status", [
+          ["current perception", (decision.observation_summary || {}).status || envelopeSummary(source.observation)],
+          ["memory", (memorySummary.status || envelopeSummary(source.memory)) + " · records=" + displayValue(memorySummary.record_count)],
+          ["patterns", envelopeSummary(source.patterns)],
+          ["projections", envelopeSummary(source.projections)],
+          ["capabilities", envelopeSummary(source.capabilities)],
+          ["prior applied command", envelopeSummary(source.prior_host_applied_command)]
         ]));
-        const authoritySection = factsSection("Authority facts · shadow only", [
-          ["proposed_applied", "false (shadow / observe-only)"], ["proposed command", displayValue(authority.proposed || decision.authority_summary && decision.authority_summary.proposed)],
-          ["authorized output", displayValue(authority.authorized_output || decision.authority_summary && decision.authority_summary.authorized_output)], ["authorized output meaning", "idle authorization only; not physical host telemetry"],
-          ["host observation status", pathValue(payload, ["host_observation", "status"])], ["host observation reason", pathValue(payload, ["host_observation", "reason"])]
-        ]);
-        authoritySection.classList.add("warning");
-        fragment.appendChild(authoritySection);
-        fragment.appendChild(factsSection("Current decision cycle", [
-          ["frame_id", decision.frame_id || cycle.frame_id], ["frame_index", decision.frame_index || cycle.frame_index], ["timestamp_ms", decision.timestamp_ms || cycle.timestamp_ms], ["published_at_ms", decision.published_at_ms],
-          ["cycle status", cycle.status || authority.cycle_status], ["cycle reason", cycle.reason || authority.cycle_reason], ["plan status", plan.status], ["selected proposal", plan.selected_proposal_id]
+        fragment.appendChild(jsonSection("Decision inputs · raw envelopes", {
+          observation: source.observation || null,
+          memory: source.memory || null,
+          patterns: source.patterns || null,
+          projections: source.projections || null,
+          capabilities: source.capabilities || null,
+          prior_host_applied_command: source.prior_host_applied_command || null
+        }));
+        fragment.appendChild(factsSection("Decision result · detailed", [
+          ["engine", decision.engine_id], ["cycle status", cycle.status || authority.cycle_status], ["cycle reason", cycle.reason || authority.cycle_reason],
+          ["selector", plan.selector_id || "unavailable"], ["plan status", planSummary.status || plan.status], ["selected proposal", selectedId || "none"],
+          ["proposal lifecycle", selected && selected.lifecycle || "none"], ["proposal freshness", selected && selected.freshness || "none"],
+          ["proposal reason", selected && selected.reason || "none"], ["proposed command", commandSummary(proposed)]
         ]));
-        fragment.appendChild(jsonSection("Contributions, candidates, source refs and command values", {
-          contributions: plan.contributions || decision.plan_summary && decision.plan_summary.contributions || [], candidates: plan.candidates || decision.plan_summary && decision.plan_summary.candidates || [],
-          authority_commands: { proposed: authority.proposed, authorized_output: authority.authorized_output }, source_refs: (plan.candidates || []).map(candidate => ({ proposal_id: candidate && candidate.proposal_id, source_refs: candidate && candidate.source_refs || [] }))
+        fragment.appendChild(jsonSection("Decision trace · candidates, contributions, and authority", {
+          contributions: planSummary.contributions || plan.contributions || [],
+          candidates: candidates,
+          selected_proposal_id: selectedId || null,
+          authority_commands: { proposed: proposed, authorized_output: authorized, proposed_applied: authority.proposed_applied }
         }));
         const imageSection = element("section");
-        imageSection.appendChild(element("h2", "Current image and retained source-image evidence"));
+        imageSection.appendChild(element("h2", "Source evidence · current image and retained memory refs"));
         const imageGrid = element("div", null, "grid");
         imageGrid.appendChild(mediaPane("Current cycle image", payload.current_image, null, result.assets, "Association: current decision-cycle frame; this is not the fastest camera frame."));
         const evidence = Array.isArray(payload.evidence) ? payload.evidence : [];
@@ -351,7 +474,17 @@
         });
         imageSection.appendChild(imageGrid);
         fragment.appendChild(imageSection);
+        fragment.appendChild(factsSection("Host observation · separate from the decision", [
+          ["status", pathValue(payload, ["host_observation", "status"])], ["reason", pathValue(payload, ["host_observation", "reason"])],
+          ["mode", pathValue(payload, ["host_observation", "value", "mode"])], ["host output", commandSummary(pathValue(payload, ["host_observation", "value", "host_output"]))]
+        ]));
         fragment.appendChild(jsonSection("Host observation · separate fact, not physical telemetry", payload.host_observation || { status: "unavailable", reason: "host_observation_unavailable", value: null }));
+        fragment.appendChild(factsSection("Publication, identity, and freshness", [
+          ["schema", payload.schema], ["view_id", payload.view_id], ["status", payload.status], ["reason", payload.reason], ["generation_id", payload.generation_id],
+          ["served_at_ms", payload.served_at_ms], ["max_age_ms", payload.max_age_ms], ["expires_at_ms", payload.expires_at_ms], ["decision_sha256", payload.decision_sha256],
+          ["vehicle_id", pathValue(payload, ["identity", "vehicle_id"])], ["run_id", pathValue(payload, ["identity", "run_id"])], ["worker_pid", pathValue(payload, ["identity", "worker_pid"])],
+          ["activation_engine_id", pathValue(payload, ["identity", "activation_engine_id"])], ["activation_activated_at_ms", pathValue(payload, ["identity", "activation_activated_at_ms"])], ["activation_sha256", pathValue(payload, ["identity", "activation_sha256"])]
+        ]));
         fragment.appendChild(jsonSection("Raw accepted decision (lossless display)", decision));
         return fragment;
       }

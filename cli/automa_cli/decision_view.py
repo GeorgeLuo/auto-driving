@@ -872,10 +872,11 @@ class DecisionViewPublisher:
         *,
         generation: str,
         pid_alive: Callable[[int], bool],
-    ) -> None:
-        self._accepted_frame(
+        served_at_ms: int | None = None,
+    ) -> tuple[dict[str, Any], bytes]:
+        return self._accepted_frame(
             generation=generation,
-            served_at_ms=timestamp_ms(),
+            served_at_ms=timestamp_ms() if served_at_ms is None else served_at_ms,
             pid_alive=pid_alive,
         )
 

@@ -702,14 +702,22 @@ class DecisionViewPublisher:
             )
             if record is None:
                 raise DecisionViewHTTPError(404, "image_not_found", "registered image was not found")
-            if record.sha256 is None or _sha256(record.data) != record.sha256:
-                raise DecisionViewHTTPError(
-                    503,
-                    "image_unavailable",
-                    "registered image bytes failed their immutable hash check",
-                    identity=self.identity,
-                )
-            return record.data, record.content_type, record.sha256
+            image_data = record.data
+            content_type = record.content_type
+            sha256 = record.sha256
+        if sha256 is None or _sha256(image_data) != sha256:
+            raise DecisionViewHTTPError(
+                503,
+                "image_unavailable",
+                "registered image bytes failed their immutable hash check",
+                identity=self.identity,
+            )
+        self._accepted_frame(
+            generation=generation,
+            served_at_ms=timestamp_ms(),
+            pid_alive=pid_alive,
+        )
+        return image_data, content_type, sha256
 
     def stop(self) -> None:
         with self._lock:

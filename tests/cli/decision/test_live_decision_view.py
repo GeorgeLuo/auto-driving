@@ -6,9 +6,9 @@ beyond the perception cache, lifecycle/integrity refusal, partial components,
 HTTP framing, CLI discovery, and representative count/item/file bounds.
 Deferred: browser rendering/transactions/resize, automation scheduler wiring,
 port reuse, concurrent assembly races, redirect/slow-response probe deadlines,
-exact millisecond freshness endpoints, polygon/orientation/pixel limits, total
-byte/metadata saturation, pin exhaustion/release, and every provenance mutation.
-Those cases are not implicitly passed by this representative contract suite.
+exact millisecond freshness endpoints, total byte/metadata saturation, pin
+exhaustion/release, and every provenance mutation. Those cases are not
+implicitly passed by this representative contract suite.
 No acceptance predicate, liveness check, clock, policy, or projector is patched.
 """
 
@@ -18,19 +18,26 @@ from copy import deepcopy
 from dataclasses import replace
 import hashlib
 import http.client
+import io
 import json
 import os
 from pathlib import Path
 import select
+import struct
 import subprocess
 import sys
 import tempfile
 import time
 import unittest
 from urllib.parse import urlsplit
+import zlib
+from unittest.mock import patch
+
+from PIL import Image
 
 from autonomy.decision.memory import canonical_json_utf8
 from cli.automa_cli.decision import build_decision_stream_frame, write_latest_decision_frame
+from cli.automa_cli import decision_view
 from cli.automa_cli.decision_view import probe_decision_view
 from tests.cli.decision.live_view_fixture import (
     DecisionFixture, LABEL, LEFT_BOX, RIGHT_BOX, REPOSITORY, SCENARIOS,
@@ -99,6 +106,150 @@ class LiveDecisionViewTests(unittest.TestCase):
         self.assertEqual(head_body, b"")
         for key in ("Content-Length", "Content-Type", "X-Automa-Image-Sha256", "Cache-Control"):
             self.assertEqual(head_headers[key], headers[key])
+
+    def test_probe_requires_established_identity_and_accepted_decision(self) -> None:
+        f = self.fixture
+        f.arrange("current-left")
+        payload = self.payload()
+
+        class ProbeResponse:
+            status = 200
+
+            def __init__(self, body):
+                self.body = canonical_json_utf8(body)
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def read(self, _size=-1):
+                body, self.body = self.body, b""
+                return body
+
+        class ProbeOpener:
+            def __init__(self, body):
+                self.body = body
+
+            def open(self, _request, timeout):
+                self.timeout = timeout
+                return ProbeResponse(self.body)
+
+        cases = []
+        missing_identity = deepcopy(payload)
+        missing_identity["identity"] = None
+        missing_identity["generation_id"] = None
+        cases.append(("missing identity", missing_identity, "generation_mismatch"))
+        malformed_decision = deepcopy(payload)
+        malformed_decision["decision"] = {"not": "an accepted stream frame"}
+        cases.append(("malformed decision", malformed_decision, "decision_invalid"))
+        inflated_freshness = deepcopy(payload)
+        inflated_freshness["max_age_ms"] *= 2
+        inflated_freshness["expires_at_ms"] = (
+            inflated_freshness["decision"]["published_at_ms"]
+            + inflated_freshness["max_age_ms"]
+        )
+        cases.append(("inflated freshness", inflated_freshness, "decision_invalid"))
+        for label, response_payload, reason in cases:
+            with self.subTest(label=label), patch(
+                "cli.automa_cli.decision_view.build_opener",
+                return_value=ProbeOpener(response_payload),
+            ):
+                result = probe_decision_view(
+                    automation_dir=f.automation_dir,
+                    vehicle_id=f.vehicle_id,
+                    activation=f.activation,
+                )
+                self.assertFalse(result["available"])
+                self.assertIsNone(result["url"])
+                self.assertEqual(result["reason"], reason)
+
+        with patch(
+            "cli.automa_cli.decision_view.build_opener",
+            return_value=ProbeOpener(payload),
+        ), patch("cli.automa_cli.decision_view.is_pid_alive", return_value=False):
+            result = probe_decision_view(
+                automation_dir=f.automation_dir,
+                vehicle_id=f.vehicle_id,
+                activation=f.activation,
+            )
+        self.assertFalse(result["available"])
+        self.assertIsNone(result["url"])
+        self.assertEqual(result["reason"], "decision_stale")
+
+    def test_bounded_probe_body_stops_a_trickling_response_at_deadline(self) -> None:
+        class TricklingResponse:
+            def __init__(self):
+                self.reads = 0
+
+            def read(self, _size=-1):
+                self.reads += 1
+                return b"x"
+
+        response = TricklingResponse()
+        with patch(
+            "cli.automa_cli.decision_view.time.monotonic",
+            side_effect=(0.0, 0.04, 0.06),
+        ):
+            with self.assertRaisesRegex(
+                TimeoutError, "exceeded its total budget"
+            ):
+                decision_view._bounded_response_body(response, deadline=0.05)
+        self.assertEqual(response.reads, 1)
+
+    def test_image_pixel_header_limit_is_checked_before_full_decode(self) -> None:
+        def chunk(kind: bytes, data: bytes) -> bytes:
+            return (
+                struct.pack(">I", len(data))
+                + kind
+                + data
+                + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
+            )
+
+        oversized_png = (
+            b"\x89PNG\r\n\x1a\n"
+            + chunk(b"IHDR", struct.pack(">IIBBBBB", 5000, 4000, 8, 2, 0, 0, 0))
+            + chunk(b"IEND", b"")
+        )
+        with patch.object(Image.Image, "load", side_effect=AssertionError("decoded")):
+            with self.assertRaisesRegex(
+                decision_view._CaptureRefusal, "max_pixels_per_image"
+            ):
+                decision_view._decode_image_dimensions(oversized_png)
+
+    def test_unsupported_image_format_is_refused_before_full_decode(self) -> None:
+        output = io.BytesIO()
+        Image.new("RGB", (20, 20), color=(20, 40, 60)).save(output, format="BMP")
+        with patch.object(Image.Image, "load", side_effect=AssertionError("decoded")):
+            with self.assertRaisesRegex(
+                decision_view._CaptureRefusal, "only PNG/JPEG decision images"
+            ):
+                decision_view._decode_image_dimensions(output.getvalue())
+
+    def test_non_identity_exif_orientation_is_refused_at_image_ingress(self) -> None:
+        image = Image.new("RGB", (320, 180), color=(20, 40, 60))
+        exif = Image.Exif()
+        exif[274] = 6
+        output = io.BytesIO()
+        image.save(output, format="JPEG", exif=exif)
+        with patch.object(Image.Image, "load", side_effect=AssertionError("decoded")):
+            with self.assertRaisesRegex(
+                decision_view._CaptureRefusal, "image_orientation_unsupported"
+            ) as refusal:
+                decision_view._decode_image_dimensions(output.getvalue())
+        self.assertEqual(refusal.exception.reason, "image_orientation_unsupported")
+
+    def test_html_freshness_contract_is_monotonic_and_has_independent_expiry(self) -> None:
+        html = (REPOSITORY / "cli" / "automa_cli" / "decision_view.html").read_text(
+            encoding="utf-8"
+        )
+        self.assertNotIn("Date.now()", html)
+        self.assertIn("performance.now()", html)
+        self.assertIn("payload.expires_at_ms - payload.served_at_ms", html)
+        self.assertIn("displayExpiryTimer", html)
+        self.assertIn("Unavailable: decision_expired", html)
+        self.assertIn("serial !== transactionSerial", html)
 
     def test_current_payload_preserves_cycle_and_exact_image_bytes(self) -> None:
         f = self.fixture

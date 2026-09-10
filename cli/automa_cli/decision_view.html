@@ -66,6 +66,8 @@
       let transactionSerial = 0;
       let activeController = null;
       let pollTimer = null;
+      let displayExpiryTimer = null;
+      let displayedTransactionSerial = null;
       let currentObjectUrls = [];
       let wasHidden = document.visibilityState === "hidden";
 
@@ -85,7 +87,14 @@
         for (const url of urls || []) URL.revokeObjectURL(url);
       }
 
+      function clearDisplayExpiry() {
+        if (displayExpiryTimer) clearTimeout(displayExpiryTimer);
+        displayExpiryTimer = null;
+        displayedTransactionSerial = null;
+      }
+
       function clearLive(message) {
+        clearDisplayExpiry();
         revokeObjectUrls(currentObjectUrls);
         currentObjectUrls = [];
         const empty = element("section", null, "empty");
@@ -278,18 +287,20 @@
           if (!response.ok) throw new Error(payload && payload.reason ? payload.reason : "http_" + response.status);
           if (!payload || (payload.status !== "current" && payload.status !== "partial")) throw new Error((payload && payload.reason) || "decision_unavailable");
           if (payload.generation_id !== generation) throw new Error("generation_mismatch");
-          if (typeof payload.max_age_ms !== "number" || !Number.isFinite(payload.max_age_ms) || payload.max_age_ms <= 0 || typeof payload.expires_at_ms !== "number" || !Number.isFinite(payload.expires_at_ms)) throw new Error("freshness_invalid");
-          const freshnessMs = payload.expires_at_ms - Date.now();
+          if (typeof payload.max_age_ms !== "number" || !Number.isFinite(payload.max_age_ms) || payload.max_age_ms <= 0 || typeof payload.served_at_ms !== "number" || !Number.isFinite(payload.served_at_ms) || typeof payload.expires_at_ms !== "number" || !Number.isFinite(payload.expires_at_ms)) throw new Error("freshness_invalid");
+          const freshnessBudgetMs = payload.expires_at_ms - payload.served_at_ms;
+          const freshnessRemainingMs = freshnessBudgetMs - (performance.now() - startedAt);
+          if (freshnessBudgetMs <= 0) throw new Error("freshness_invalid");
           const transactionMs = transactionLimitMs - (performance.now() - startedAt);
-          if (freshnessMs <= 0) throw new Error("decision_expired");
+          if (freshnessRemainingMs <= 0) throw new Error("decision_expired");
           if (transactionMs <= 0) throw new Error("timeout");
           clearTimeout(deadlineTimer);
-          deadlineTimer = setTimeout(expireTransaction, Math.min(transactionMs, freshnessMs));
+          deadlineTimer = setTimeout(expireTransaction, Math.min(transactionMs, freshnessRemainingMs));
           const assets = new Map();
           await Promise.all(imageDescriptors(payload).map(async descriptor => assets.set(descriptor.url, await loadImage(descriptor, controller.signal, objectUrls))));
           if (serial !== transactionSerial || controller.signal.aborted) throw new Error("superseded");
-          if (performance.now() - startedAt > transactionLimitMs || Date.now() >= payload.expires_at_ms) throw new Error("decision_expired");
-          return { payload, assets, objectUrls };
+          if (performance.now() - startedAt >= transactionLimitMs || freshnessBudgetMs - (performance.now() - startedAt) <= 0) throw new Error("decision_expired");
+          return { payload, assets, objectUrls, freshnessBudgetMs, startedAt };
         } catch (error) {
           revokeObjectUrls(objectUrls);
           if (deadlineExpired || (error && error.name === "AbortError")) throw new Error("timeout");
@@ -352,15 +363,21 @@
           const result = await fetchTransaction(serial);
           if (serial !== transactionSerial) { revokeObjectUrls(result.objectUrls); return; }
           const fragment = renderPayload(result);
-          if (serial !== transactionSerial || Date.now() >= result.payload.expires_at_ms) {
+          const remainingFreshnessMs = result.freshnessBudgetMs - (performance.now() - result.startedAt);
+          if (serial !== transactionSerial || remainingFreshnessMs <= 0) {
             revokeObjectUrls(result.objectUrls);
             if (serial === transactionSerial) clearLive("Unavailable: decision_expired");
             return;
           }
+          clearDisplayExpiry();
           revokeObjectUrls(currentObjectUrls);
           currentObjectUrls = result.objectUrls;
+          displayedTransactionSerial = serial;
           liveRoot.replaceChildren(fragment);
           setStatus(result.payload.status === "partial" ? "Live partial: " + (result.payload.reason || "component_unavailable") : "Live accepted: shadow / observe-only", "live");
+          displayExpiryTimer = setTimeout(() => {
+            if (displayedTransactionSerial === serial) clearLive("Unavailable: decision_expired");
+          }, Math.max(0, Math.floor(remainingFreshnessMs)));
         } catch (error) {
           if (serial !== transactionSerial) return;
           const reason = error && error.message === "timeout" ? "request_timeout" : ((error && error.message) || "decision_unavailable");

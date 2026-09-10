@@ -1410,12 +1410,6 @@ class DecisionViewPublisher:
         }
 
 
-class _CaptureRefusal(Exception):
-    def __init__(self, reason: str, message: str) -> None:
-        super().__init__(message)
-        self.reason = reason
-
-
 def _route_error_for_decision(exc: DecisionSurfaceError) -> tuple[int, str]:
     if exc.error == "latest_frame_invalid":
         return 422, "decision_invalid"
@@ -1434,11 +1428,34 @@ def _route_error_for_decision(exc: DecisionSurfaceError) -> tuple[int, str]:
     return 503, "producer_unavailable"
 
 
+class _CaptureRefusal(Exception):
+    def __init__(self, reason: str, message: str) -> None:
+        super().__init__(message)
+        self.reason = reason
+
+
 def _decode_image_dimensions(data: bytes) -> tuple[int, int, str]:
     with Image.open(io.BytesIO(data)) as image:
-        image.load()
         width, height = image.size
-        return int(width), int(height), str(image.format or "")
+        image_format = str(image.format or "")
+        if image_format not in {"PNG", "JPEG"}:
+            raise _CaptureRefusal(
+                "size_limit",
+                "only PNG/JPEG decision images are supported",
+            )
+        if width * height > MAX_PIXELS_PER_IMAGE:
+            raise _CaptureRefusal(
+                "size_limit",
+                "capture image exceeds max_pixels_per_image",
+            )
+        orientation = image.getexif().get(274, 1)
+        if orientation != 1:
+            raise _CaptureRefusal(
+                "image_orientation_unsupported",
+                "image_orientation_unsupported: non-identity EXIF image orientation is unsupported",
+            )
+        image.load()
+        return int(width), int(height), image_format
 
 
 def _environment_frame(frame_record: dict[str, Any]) -> dict[str, Any] | None:
@@ -2115,14 +2132,48 @@ class _NoRedirect(HTTPRedirectHandler):
         return None
 
 
+_PROBE_READ_CHUNK_BYTES = 64 * 1024
+
+
+def _set_response_read_timeout(response: Any, timeout_s: float) -> None:
+    candidates = [
+        getattr(response, "_sock", None),
+        getattr(getattr(getattr(response, "fp", None), "raw", None), "_sock", None),
+    ]
+    for sock in candidates:
+        settimeout = getattr(sock, "settimeout", None)
+        if callable(settimeout):
+            try:
+                settimeout(timeout_s)
+            except OSError:
+                pass
+            return
+
+
 def _bounded_response_body(response: Any, *, deadline: float) -> bytes:
-    remaining = deadline - time.monotonic()
-    if remaining <= 0:
+    chunks: list[bytes] = []
+    body_length = 0
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("decision view probe exceeded its total budget")
+        _set_response_read_timeout(response, remaining)
+        chunk = response.read(
+            min(_PROBE_READ_CHUNK_BYTES, MAX_RESPONSE_BYTES - body_length + 1)
+        )
+        if not chunk:
+            break
+        if not isinstance(chunk, bytes):
+            raise ValueError("decision view response body is not bytes")
+        body_length += len(chunk)
+        if body_length > MAX_RESPONSE_BYTES:
+            raise ValueError("view_payload_too_large")
+        chunks.append(chunk)
+        if deadline - time.monotonic() <= 0:
+            raise TimeoutError("decision view probe exceeded its total budget")
+    if deadline - time.monotonic() <= 0:
         raise TimeoutError("decision view probe exceeded its total budget")
-    body = response.read(MAX_RESPONSE_BYTES + 1)
-    if len(body) > MAX_RESPONSE_BYTES:
-        raise ValueError("view_payload_too_large")
-    return body
+    return b"".join(chunks)
 
 
 def probe_decision_view(
@@ -2156,6 +2207,8 @@ def probe_decision_view(
     worker_pid = record.get("worker_pid")
     if type(run_id) is not str or not run_id or not _is_nonnegative_int(worker_pid) or worker_pid <= 0:
         return _probe_unavailable("producer_unavailable")
+    if record.get("status") != "running" or record.get("available") is not True:
+        return _probe_unavailable("producer_unavailable")
     try:
         identity = identity_for_activation(
             vehicle_id=vehicle_id,
@@ -2166,6 +2219,22 @@ def probe_decision_view(
     except (TypeError, ValueError):
         return _probe_unavailable("activation_invalid")
     generation_id = generation_for_identity(identity)
+    producer_view = record.get("decision_view")
+    if not isinstance(producer_view, dict):
+        return _probe_unavailable("producer_unavailable")
+    if (
+        producer_view.get("schema") != DECISION_VIEW_SCHEMA
+        or producer_view.get("view_id") != DECISION_VIEW_ID
+        or producer_view.get("available") is not True
+        or producer_view.get("status") != "running"
+        or producer_view.get("max_age_ms") != DECISION_STREAM_MAX_AGE_MS
+    ):
+        return _probe_unavailable("producer_unavailable")
+    if (
+        producer_view.get("generation_id") != generation_id
+        or producer_view.get("identity") != identity
+    ):
+        return _probe_unavailable("generation_mismatch")
     api_url = urljoin(str(origin).rstrip("/") + "/", DECISION_API_PATH.lstrip("/"))
     api_url = f"{api_url}?{urlencode({'generation': generation_id})}"
     deadline = time.monotonic() + max(0.01, min(float(timeout_s), 0.25))
@@ -2191,11 +2260,50 @@ def probe_decision_view(
         return _probe_unavailable("view_unreachable")
     if not isinstance(response_payload, dict) or response_payload.get("schema") != DECISION_VIEW_SCHEMA:
         return _probe_unavailable("view_unreachable")
-    if response_payload.get("generation_id") not in (None, generation_id):
+    if response_payload.get("generation_id") != generation_id:
         return _probe_unavailable("generation_mismatch")
-    if response_payload.get("identity") not in (None, identity):
+    if response_payload.get("identity") != identity:
         return _probe_unavailable("generation_mismatch")
-    if response_status == 200 and response_payload.get("status") in {"current", "partial"} and isinstance(response_payload.get("decision"), dict):
+    if response_status == 200 and response_payload.get("status") in {"current", "partial"}:
+        decision = response_payload.get("decision")
+        max_age_ms = response_payload.get("max_age_ms")
+        served_at_ms = response_payload.get("served_at_ms")
+        expires_at_ms = response_payload.get("expires_at_ms")
+        published_at_ms = decision.get("published_at_ms") if isinstance(decision, dict) else None
+        if (
+            not isinstance(decision, dict)
+            or response_payload.get("view_id") != DECISION_VIEW_ID
+            or type(max_age_ms) is not int
+            or max_age_ms != DECISION_STREAM_MAX_AGE_MS
+            or not _is_nonnegative_int(served_at_ms)
+            or not _is_nonnegative_int(expires_at_ms)
+            or not _is_nonnegative_int(published_at_ms)
+            or expires_at_ms != published_at_ms + max_age_ms
+            or decision.get("vehicle_id") != identity["vehicle_id"]
+            or decision.get("run_id") != identity["run_id"]
+            or decision.get("worker_pid") != identity["worker_pid"]
+            or decision.get("engine_id") != "shadow-proposals"
+            or decision.get("activation_engine_id") != identity["activation_engine_id"]
+            or decision.get("activation_activated_at_ms") != identity["activation_activated_at_ms"]
+            or response_payload.get("decision_sha256") != _sha256(_canonical(decision))
+        ):
+            return _probe_unavailable("decision_invalid")
+        try:
+            accept_decision_stream_frame(
+                decision,
+                activation=activation,
+                automation_state={
+                    "vehicle_id": vehicle_id,
+                    "run_id": run_id,
+                    "pid": worker_pid,
+                    "status": "running",
+                },
+                now_ms=timestamp_ms(),
+                is_pid_alive=is_pid_alive,
+                max_age_ms=DECISION_STREAM_MAX_AGE_MS,
+            )
+        except DecisionSurfaceError as exc:
+            return _probe_unavailable(_route_error_for_decision(exc)[1])
         page_url = urljoin(str(origin).rstrip("/") + "/", DECISION_VIEW_PATH.lstrip("/"))
         page_url = f"{page_url}?{urlencode({'generation': generation_id})}"
         return {

@@ -663,10 +663,45 @@ def get_vehicle_decision_info(*, vehicle_id: str, json_output: bool = False) -> 
             },
         }
 
+    # Keep discovery read-only and derive the producer location from the
+    # controller bundle.  Import locally because decision_view imports the
+    # shared activation/acceptance helpers from this module.
+    from .decision_view import probe_decision_view
+
+    view_probe = probe_decision_view(
+        automation_dir=Path(bundle["runtime_dir"]) / "automation",
+        vehicle_id=vehicle_id,
+        activation=activation,
+    )
+    if engine_id != ENGINE_ID:
+        # A stale or unrelated record must not make a non-shadow activation
+        # appear to provide the D2 producer.
+        view_probe = {
+            **view_probe,
+            "available": False,
+            "status": "unavailable",
+            "reason": "wrong_engine",
+            "url": None,
+            "api_url": None,
+            "generation_id": None,
+            "identity": None,
+        }
+
     combined_view = {
         "view_id": COMBINED_VIEW_ID,
-        "url": None,
         "path_template": f"cli/automa_cli/decision_view.html#{COMBINED_VIEW_ID}",
+        "available": view_probe.get("available") is True,
+        "status": view_probe.get("status") or "unavailable",
+        "reason": view_probe.get("reason"),
+        "api_url": view_probe.get("api_url"),
+        "generation_id": view_probe.get("generation_id"),
+        "identity": view_probe.get("identity"),
+        "url": (
+            view_probe.get("url")
+            if view_probe.get("available") is True
+            and view_probe.get("status") in {"current", "partial"}
+            else None
+        ),
     }
 
     payload = {
@@ -3213,11 +3248,18 @@ def _format_decision_info(payload: dict[str, Any]) -> str:
             ]
         )
     combined = payload.get("combined_view") if isinstance(payload.get("combined_view"), dict) else {}
+    if combined.get("available") is True:
+        combined_status = combined.get("status")
+        combined_location = f"url={combined.get('url')}"
+    else:
+        combined_status = f"status={combined.get('status')} reason={combined.get('reason')}"
+        combined_location = "url=None"
     lines.extend(
         [
             "",
             f"Combined view: id={combined.get('view_id')} "
-            f"url={combined.get('url')} path_template={combined.get('path_template')}",
+            f"{combined_status} {combined_location} "
+            f"path_template={combined.get('path_template')}",
         ]
     )
     return "\n".join(lines)

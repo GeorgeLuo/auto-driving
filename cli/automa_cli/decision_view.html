@@ -775,7 +775,30 @@
       function readGeneration() {
         const params = new URLSearchParams(window.location.search);
         const values = params.getAll("generation");
+        if (values.length === 0) return undefined;
         return values.length === 1 && generationPattern.test(values[0]) ? values[0] : null;
+      }
+
+      async function discoverGeneration() {
+        const controller = new AbortController();
+        const deadlineTimer = setTimeout(() => controller.abort(), transactionLimitMs);
+        try {
+          const response = await fetch("/api/health", { cache: "no-store", signal: controller.signal });
+          let health = null;
+          try { health = await response.json(); } catch (_) { health = null; }
+          const discovered = pathValue(health, ["decision_view", "generation_id"]);
+          if (!response.ok || !health || !health.decision_view || health.decision_view.available !== true || !generationPattern.test(discovered)) {
+            throw new Error("decision_generation_unavailable");
+          }
+          const canonicalUrl = window.location.pathname + "?generation=" + encodeURIComponent(discovered) + window.location.hash;
+          window.history.replaceState(null, "", canonicalUrl);
+          return discovered;
+        } catch (error) {
+          if (error && error.name === "AbortError") throw new Error("request_timeout");
+          throw error;
+        } finally {
+          clearTimeout(deadlineTimer);
+        }
       }
 
       previewForm.addEventListener("submit", event => {
@@ -783,19 +806,34 @@
         submitPreview();
       });
 
-      generation = readGeneration();
-      if (!generation) {
-        clearLive("Unavailable: exactly one lower-case generation query parameter is required.");
-        return;
+      async function start() {
+        const requestedGeneration = readGeneration();
+        if (requestedGeneration === null) {
+          clearLive("Unavailable: exactly one lower-case generation query parameter is required.");
+          return;
+        }
+        if (requestedGeneration === undefined) {
+          setStatus("Discovering the current decision generation…", "error");
+          setPreviewStatus("Waiting for the current decision generation…", "error");
+          try {
+            generation = await discoverGeneration();
+          } catch (error) {
+            clearLive("Unavailable: " + ((error && error.message) || "decision_generation_unavailable"));
+            return;
+          }
+        } else {
+          generation = requestedGeneration;
+        }
+        setStatus("Waiting for generation-bound shadow decision…", "error");
+        window.addEventListener("offline", () => invalidate("Unavailable: network_disconnected"));
+        window.addEventListener("online", schedulePoll);
+        document.addEventListener("visibilitychange", () => {
+          if (document.visibilityState === "hidden") { wasHidden = true; return; }
+          if (wasHidden) { wasHidden = false; invalidate("Unavailable: tab_resumed; awaiting a fresh accepted response"); schedulePoll(); }
+        });
+        poll();
       }
-      setStatus("Waiting for generation-bound shadow decision…", "error");
-      window.addEventListener("offline", () => invalidate("Unavailable: network_disconnected"));
-      window.addEventListener("online", schedulePoll);
-      document.addEventListener("visibilitychange", () => {
-        if (document.visibilityState === "hidden") { wasHidden = true; return; }
-        if (wasHidden) { wasHidden = false; invalidate("Unavailable: tab_resumed; awaiting a fresh accepted response"); schedulePoll(); }
-      });
-      poll();
+      start();
     })();
   </script>
 </body>

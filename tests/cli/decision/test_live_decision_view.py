@@ -382,6 +382,9 @@ class LiveDecisionViewTests(unittest.TestCase):
             '"automa_decision_preview_request_v0"',
             '"automa_decision_preview_v0"',
             "live decision remains unchanged",
+            "async function discoverGeneration",
+            'fetch("/api/health"',
+            "window.history.replaceState",
         ):
             with self.subTest(landmark=landmark):
                 self.assertIn(landmark, html)

@@ -1641,6 +1641,8 @@ def _resolve_evidence(
     if not isinstance(plan, dict):
         return []
     selected_id = plan.get("selected_proposal_id")
+    accepted_frame_id = frame.get("frame_id")
+    accepted_frame_index = frame.get("frame_index")
     result: list[dict[str, Any]] = []
     candidates = plan.get("candidates") if isinstance(plan.get("candidates"), list) else []
     for candidate in candidates:
@@ -1656,7 +1658,8 @@ def _resolve_evidence(
                     source_ref=source_ref,
                     proposal_id=proposal_id if isinstance(proposal_id, str) else None,
                     selected=proposal_id == selected_id,
-                    current_frame_id=frame.get("frame_id"),
+                    current_frame_id=accepted_frame_id,
+                    current_frame_index=accepted_frame_index,
                     generation_id=generation_id,
                     cycle=cycle,
                     entries=entries,
@@ -1672,6 +1675,7 @@ def _resolve_one_ref(
     proposal_id: str | None,
     selected: bool,
     current_frame_id: Any,
+    current_frame_index: Any,
     generation_id: str,
     cycle: dict[str, Any],
     entries: dict[str, _ImageRecord],
@@ -1743,11 +1747,66 @@ def _resolve_one_ref(
             observation_id=observation_id if isinstance(observation_id, str) else None,
             reason="source_unavailable",
         )
-        base["geometry"]["reason"] = "source_unavailable"
+        base["geometry"] = _unavailable_geometry(
+            reason="source_unavailable",
+            coordinate_frame=provenance.get("coordinate_frame"),
+        )
         return base
-    association = "current" if source_frame_id == current_frame_id else "retained"
-    base["association"] = association
     entry = entries.get(source_frame_id) if isinstance(source_frame_id, str) else None
+    association_reason: str | None = None
+    if archive.association_error is not None:
+        association_reason = archive.association_error
+    elif archive.frame_id != source_frame_id:
+        association_reason = "source_association_mismatch"
+    elif not _is_nonnegative_int(archive.frame_index) or not _is_nonnegative_int(archive.captured_at_ms):
+        association_reason = "source_unavailable"
+    elif archive.observation_id != observation_id:
+        association_reason = "source_association_mismatch"
+    elif not isinstance(archive.observation, dict) or archive.observation.get("observation_id") != observation_id:
+        association_reason = "source_observation_mismatch"
+    elif entry is not None and (
+        entry.frame_id != source_frame_id
+        or entry.frame_index != archive.frame_index
+        or entry.observation_id != observation_id
+        or entry.association_error is not None
+    ):
+        association_reason = (
+            entry.association_error
+            if entry.association_error is not None
+            else "source_association_mismatch"
+        )
+    elif source_frame_id == current_frame_id and archive.frame_index != current_frame_index:
+        association_reason = "source_association_mismatch"
+
+    if association_reason is not None:
+        if entry is not None:
+            base["source_image"] = _unavailable_image_descriptor(
+                generation_id=generation_id,
+                frame_id=entry.frame_id,
+                frame_index=entry.frame_index,
+                captured_at_ms=entry.captured_at_ms,
+                observation_id=observation_id,
+                reason=association_reason,
+                environment_frame=entry.environment_frame,
+            )
+        else:
+            base["source_image"] = _unavailable_image_descriptor(
+                generation_id=generation_id,
+                frame_id=archive.frame_id if isinstance(archive.frame_id, str) else source_frame_id,
+                frame_index=archive.frame_index if _is_nonnegative_int(archive.frame_index) else None,
+                captured_at_ms=archive.captured_at_ms if _is_nonnegative_int(archive.captured_at_ms) else None,
+                observation_id=observation_id,
+                reason=association_reason,
+                environment_frame=archive.environment_frame,
+            )
+        base["reason"] = association_reason
+        base["geometry"] = _unavailable_geometry(
+            reason=association_reason,
+            coordinate_frame=provenance.get("coordinate_frame"),
+        )
+        return base
+
+    base["association"] = "current" if source_frame_id == current_frame_id else "retained"
     if entry is None:
         base["source_image"] = _unavailable_image_descriptor(
             generation_id=generation_id,
@@ -1759,31 +1818,12 @@ def _resolve_one_ref(
             environment_frame=archive.environment_frame,
         )
         image_reason = "retention_limit"
-    elif entry.association_error is not None:
-        base["source_image"] = _unavailable_image_descriptor(
-            generation_id=generation_id,
-            frame_id=entry.frame_id,
-            frame_index=entry.frame_index,
-            captured_at_ms=entry.captured_at_ms,
-            observation_id=archive.observation_id,
-            reason=entry.association_error,
-            environment_frame=entry.environment_frame,
-        )
-        image_reason = entry.association_error
-    elif entry.observation_id != archive.observation_id:
-        base["source_image"] = _unavailable_image_descriptor(
-            generation_id=generation_id,
-            frame_id=entry.frame_id,
-            frame_index=entry.frame_index,
-            captured_at_ms=entry.captured_at_ms,
-            observation_id=archive.observation_id,
-            reason="source_association_mismatch",
-            environment_frame=entry.environment_frame,
-        )
-        image_reason = "source_association_mismatch"
     else:
         base["source_image"] = _available_descriptor(entry=entry, generation_id=generation_id)
-        image_reason = None
+        if base["source_image"].get("status") == "available":
+            image_reason = None
+        else:
+            image_reason = base["source_image"].get("reason") or "source_unavailable"
 
     observation = archive.observation
     observed_at_ms = provenance.get("observed_at_ms")
@@ -1815,6 +1855,11 @@ def _resolve_one_ref(
             else:
                 geometry = _resolve_geometry(record_location, provenance.get("coordinate_frame"))
                 geometry_reason = geometry.get("reason")
+    if image_reason is not None:
+        geometry = _unavailable_geometry(
+            reason=image_reason,
+            coordinate_frame=provenance.get("coordinate_frame"),
+        )
     base["geometry"] = geometry
     if image_reason is not None:
         base["reason"] = image_reason

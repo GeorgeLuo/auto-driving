@@ -823,7 +823,8 @@ class DecisionViewPublisher:
 
     def _read_frame(self) -> tuple[dict[str, Any], bytes]:
         try:
-            raw = self.latest_decision_path.read_bytes()
+            with self.latest_decision_path.open("rb") as stream:
+                raw = stream.read(MAX_DECISION_FILE_BYTES + 1)
         except FileNotFoundError as exc:
             raise DecisionViewHTTPError(503, "decision_missing", "latest decision publication is missing") from exc
         except OSError as exc:

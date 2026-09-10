@@ -70,7 +70,7 @@
     <header>
       <p class="eyebrow">Automa · observe-only</p>
       <h1 id="decision-combined-v0">Obstruction decision</h1>
-      <p class="subtle">Shadow preview · no vehicle commands sent.</p>
+      <p class="subtle">Shadow decision · no vehicle commands sent.</p>
     </header>
     <section id="shadow-preview" class="preview-controls">
       <h2>Choose an obstruction side</h2>
@@ -86,13 +86,10 @@
       <div id="preview-black-box" aria-live="polite"></div>
       <div id="preview-output" aria-live="polite"></div>
     </section>
-    <details class="supporting-details">
-      <summary>Live baseline &amp; diagnostics</summary>
-      <p id="status" class="status" role="status" aria-live="polite" data-state="error">Connecting…</p>
-      <div id="live-content" aria-live="off">
-        <p class="subtle">Waiting for live data…</p>
-      </div>
-    </details>
+    <p id="status" hidden role="status" aria-live="polite" data-state="error">Connecting…</p>
+    <div id="live-content" hidden aria-live="off">
+      <p class="subtle">Waiting for live data…</p>
+    </div>
   </main>
   <script>
     (() => {
@@ -320,22 +317,6 @@
         return section;
       }
 
-      function acceptedLiveBaseline(payload) {
-        if (!payload || typeof payload !== "object") return null;
-        const decision = payload.decision;
-        const cycle = pathValue(decision, ["cycle"]);
-        const authority = pathValue(cycle, ["authority"]);
-        const selected = pathValue(payload, ["presentation", "selected_candidate"]);
-        return detailsSection("Accepted live decision · read-only baseline", factsSection("Accepted live baseline", [
-          ["decision · steering direction", steeringDirection(pathValue(authority, ["proposed"]))],
-          ["reason", pathValue(selected, ["reason"])],
-          ["proposed command", commandSummary(pathValue(authority, ["proposed"]))],
-          ["authorized output", commandSummary(pathValue(authority, ["authorized_output"]))],
-          ["source frame", pathValue(decision, ["frame_id"])],
-          ["decision sha256", pathValue(payload, ["decision_sha256"])]
-        ]), false, "accepted-live-baseline");
-      }
-
       function renderSelectedBlackBox(payload) {
         const decision = payload && payload.decision;
         const cycle = pathValue(decision, ["cycle"]);
@@ -550,7 +531,6 @@
         const authority = pathValue(cycle, ["authority"]);
         const source = pathValue(cycle, ["source"]);
         const fragment = document.createDocumentFragment();
-        fragment.appendChild(acceptedLiveBaseline(payload));
         fragment.appendChild(candidatesSection(plan));
         fragment.appendChild(detailsSection("Supporting data · decision input envelope status", factsSection("Decision inputs · envelope status", [
           ["observation", envelopeSummary(pathValue(source, ["observation"]))],

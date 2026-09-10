@@ -1610,7 +1610,9 @@ def _resolve_current_image(
             observation_id=observation_id if isinstance(observation_id, str) else None,
             reason="source_unavailable",
         )
-    if entry.association_error is not None:
+    if entry.frame_id != frame_id or entry.frame_index != frame_index:
+        reason = "source_association_mismatch"
+    elif entry.association_error is not None:
         reason = entry.association_error
     elif not isinstance(observation_id, str) or entry.observation_id != observation_id:
         reason = "source_association_mismatch"

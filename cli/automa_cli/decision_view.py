@@ -811,6 +811,7 @@ class DecisionViewPublisher:
                 identity=self.identity,
             )
         frame, frame_bytes = self._read_frame()
+        stale_error: DecisionSurfaceError | None = None
         try:
             accept_decision_stream_frame(
                 frame,
@@ -821,28 +822,49 @@ class DecisionViewPublisher:
                 max_age_ms=self.max_age_ms,
             )
         except DecisionSurfaceError as exc:
-            status, reason = _route_error_for_decision(exc)
-            raise DecisionViewHTTPError(
-                status,
-                reason,
-                exc.message_text,
-                identity=self.identity,
-            ) from exc
+            if exc.error != "latest_frame_stale":
+                status, reason = _route_error_for_decision(exc)
+                raise DecisionViewHTTPError(
+                    status,
+                    reason,
+                    exc.message_text,
+                    identity=self.identity,
+                ) from exc
+            stale_error = exc
         if frame.get("vehicle_id") is not None and frame.get("vehicle_id") != self.vehicle_id:
-            raise DecisionViewHTTPError(503, "vehicle_mismatch", "latest decision belongs to another vehicle")
+            raise DecisionViewHTTPError(
+                409,
+                "vehicle_mismatch",
+                "latest decision belongs to another vehicle",
+                identity=self.identity,
+            )
         if (
             frame.get("run_id") is not None
             and frame.get("run_id") != self.identity["run_id"]
         ) or (
             frame.get("worker_pid") is not None
             and frame.get("worker_pid") != self.identity["worker_pid"]
+        ) or frame.get("engine_id") != self.identity["activation_engine_id"] or (
+            frame.get("activation_engine_id")
+            != self.identity["activation_engine_id"]
+        ) or (
+            frame.get("activation_activated_at_ms")
+            != self.identity["activation_activated_at_ms"]
         ):
             raise DecisionViewHTTPError(
-                503,
+                409,
                 "generation_mismatch",
                 "latest decision does not match the view startup generation",
                 identity=self.identity,
             )
+        if stale_error is not None:
+            status, reason = _route_error_for_decision(stale_error)
+            raise DecisionViewHTTPError(
+                status,
+                reason,
+                stale_error.message_text,
+                identity=self.identity,
+            ) from stale_error
         return frame, frame_bytes
 
     def _recheck_generation(

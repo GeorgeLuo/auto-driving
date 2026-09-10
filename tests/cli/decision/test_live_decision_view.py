@@ -37,10 +37,12 @@ from unittest.mock import patch
 
 from PIL import Image
 
+from autonomy.decision.decision_data import unavailable_envelope
 from autonomy.decision.memory import canonical_json_utf8
 from cli.automa_cli.decision import build_decision_stream_frame, write_latest_decision_frame
 from cli.automa_cli import decision_view
 from cli.automa_cli.decision_view import probe_decision_view
+from implementations.decision.catalog import create_shadow_proposals_engine
 from tests.cli.decision.live_view_fixture import (
     DecisionFixture, LABEL, LEFT_BOX, RIGHT_BOX, REPOSITORY, SCENARIOS,
     synthetic_png, write_json,
@@ -72,6 +74,23 @@ class LiveDecisionViewTests(unittest.TestCase):
         self.assertLessEqual(len(body), 8 * 1024 * 1024)
         return json.loads(body)
 
+    def publish_cycle_dict(self, cycle: dict) -> dict:
+        """Republish a deliberately arranged typed cycle through D2's public path."""
+        f = self.fixture
+        frame = build_decision_stream_frame(
+            cycle,
+            vehicle_id=f.vehicle_id,
+            run_id=f.run_id,
+            worker_pid=os.getpid(),
+            activation_engine_id="shadow-proposals",
+            activation_activated_at_ms=f.activation["activated_at_ms"],
+        )
+        write_latest_decision_frame(f.latest_path, frame)
+        accepted_frame = json.loads(f.latest_path.read_text(encoding="utf-8"))
+        self.assertTrue(f.server.publish_decision_frame(accepted_frame))
+        f.frame = accepted_frame
+        return accepted_frame
+
     def assert_refusal(self, status: int, reason: str, *, path: str | None = None,
                        method: str = "GET") -> None:
         actual, headers, body = self.request(path, method=method)
@@ -87,6 +106,7 @@ class LiveDecisionViewTests(unittest.TestCase):
         self.assertEqual(payload["evidence"], [])
         self.assertEqual(payload["current_image"]["status"], "unavailable")
         self.assertIsNone(payload["current_image"]["url"])
+        self.assertIsNone(payload["presentation"])
         self.assertIsNone(payload["host_observation"]["value"])
 
     def assert_image(self, descriptor: dict, expected: bytes) -> None:
@@ -353,6 +373,128 @@ class LiveDecisionViewTests(unittest.TestCase):
         self.assertTrue(evidence["selected"])
         self.assertEqual(evidence["source_ref"], f.frame["cycle"]["plan"]["candidates"][0]["source_refs"][0])
         self.assert_image(payload["current_image"], f.images[f.frame["frame_id"]])
+
+    def test_presentation_exposes_canonical_inputs_selected_candidate_and_full_command(self) -> None:
+        f = self.fixture
+        f.arrange("host-zero")
+        payload = self.payload()
+        cycle = f.frame["cycle"]
+        source = cycle["source"]
+        presentation = payload["presentation"]
+
+        self.assertEqual(presentation["observation"], f.frame["observation_summary"])
+        memory = presentation["memory"]
+        memory_value = source["memory"]["value"]
+        self.assertEqual(memory["status"], source["memory"]["status"])
+        self.assertEqual(memory["reason"], source["memory"]["reason"])
+        self.assertEqual(memory["health"], memory_value["health"])
+        self.assertEqual(memory["record_count"], memory_value["record_count"])
+        self.assertEqual(memory["preview_records"], memory_value["records"][:4])
+        self.assertEqual(memory["omitted_record_count"], 0)
+
+        selected_id = cycle["plan"]["selected_proposal_id"]
+        selected = next(
+            candidate
+            for candidate in cycle["plan"]["candidates"]
+            if candidate["proposal_id"] == selected_id
+        )
+        self.assertEqual(presentation["selected_candidate"], selected)
+        self.assertEqual(
+            presentation["selected_candidate"]["command"],
+            cycle["authority"]["proposed"],
+        )
+        self.assertIn("gear", presentation["selected_candidate"]["command"])
+        self.assertEqual(
+            payload["decision_sha256"],
+            hashlib.sha256(canonical_json_utf8(f.frame)).hexdigest(),
+        )
+
+    def test_ready_empty_and_unavailable_memory_presentation_are_distinct(self) -> None:
+        f = self.fixture
+        f.arrange("inactive")
+        empty_payload = self.payload()
+        empty_memory = empty_payload["presentation"]["memory"]
+        self.assertEqual(empty_memory["status"], "ready")
+        self.assertEqual(empty_memory["health"], "empty")
+        self.assertEqual(empty_memory["record_count"], 0)
+        self.assertEqual(empty_memory["preview_records"], [])
+        self.assertEqual(empty_memory["omitted_record_count"], 0)
+
+        cycle = deepcopy(f.frame["cycle"])
+        cycle["source"]["memory"] = unavailable_envelope(
+            "memory_not_available", updated_at_ms=cycle["source"]["timestamp_ms"]
+        ).to_dict()
+        self.publish_cycle_dict(cycle)
+        unavailable_payload = self.payload()
+        unavailable_memory = unavailable_payload["presentation"]["memory"]
+        self.assertEqual(unavailable_memory["status"], "unavailable")
+        self.assertEqual(unavailable_memory["reason"], "memory_not_available")
+        for field in ("health", "record_count", "preview_records", "omitted_record_count"):
+            with self.subTest(field=field):
+                self.assertIsNone(unavailable_memory[field])
+
+    def test_memory_preview_is_bounded_and_retained_age_is_server_computed(self) -> None:
+        f = self.fixture
+        f.engine = create_shadow_proposals_engine(
+            config=replace(f.engine.config, retained_max_age_ms=12000)
+        )
+        decorations = []
+        for index in range(1, 13):
+            record = f.capture(index)
+            decorations.append(replace(record, kind="d2-fixture-decoration"))
+        selected = f.capture(13)
+        # Archive the selected record at its producer timestamp before using it
+        # from the later current frame. Its provenance update remains 1000 ms.
+        f.publish(13, (selected,))
+        f.capture(14, timestamp=13000)
+        f.publish(14, tuple(decorations + [selected]), timestamp=13000)
+        payload = self.payload()
+        source_memory = payload["decision"]["cycle"]["source"]["memory"]["value"]
+        presentation_memory = payload["presentation"]["memory"]
+        self.assertEqual(presentation_memory["record_count"], 13)
+        self.assertEqual(presentation_memory["preview_records"], source_memory["records"][:4])
+        self.assertEqual(presentation_memory["omitted_record_count"], 9)
+        self.assertEqual(payload["decision"]["cycle"]["source"]["timestamp_ms"], 13000)
+        selected_candidate = payload["presentation"]["selected_candidate"]
+        self.assertIsNotNone(selected_candidate)
+        self.assertEqual(selected_candidate["lifecycle"], "retained")
+        self.assertEqual(selected_candidate["source_refs"][0]["id"], selected.record_id)
+        evidence, = payload["evidence"]
+        self.assertTrue(evidence["selected"])
+        self.assertEqual(evidence["record_id"], "d2-fixture-record-013")
+        self.assertEqual(evidence["association"], "retained")
+        self.assertEqual(evidence["retained_age_ms"], 13000 - selected.provenance.updated_at_ms)
+        self.assertEqual(evidence["retained_age_ms"], 12000)
+        self.assertEqual(evidence["source_image"]["frame_id"], "d2-fixture-frame-013")
+
+    def test_stale_selection_is_null_and_retained_age_preserves_producer_state(self) -> None:
+        f = self.fixture
+        f.arrange("stale")
+        payload = self.payload()
+        self.assertIsNone(payload["presentation"]["selected_candidate"])
+        self.assertEqual(payload["evidence"][0]["retained_age_ms"], 1501)
+        self.assertEqual(
+            payload["decision"]["cycle"]["plan"]["candidates"][0]["freshness"],
+            "stale",
+        )
+
+    def test_error_cycle_keeps_null_plan_without_summary_fallback(self) -> None:
+        f = self.fixture
+        f.arrange("current-left")
+        cycle, _ = f.engine.run_cycle(
+            frame_id="d2-fixture-error-frame",
+            frame_index=99,
+            timestamp_ms=2000,
+            observation=f.observations[f.frame["frame_id"]],
+            memory=None,
+            host_application=object(),
+        )
+        self.publish_cycle_dict(cycle.to_dict())
+        payload = self.payload()
+        self.assertEqual(payload["decision"]["cycle"]["status"], "engine_error")
+        self.assertIsNone(payload["decision"]["cycle"]["plan"])
+        self.assertIsNone(payload["presentation"]["selected_candidate"])
+        self.assertIsNone(payload["decision"]["plan_summary"]["selected_proposal_id"])
 
     def test_right_partial_has_real_geometry_and_unavailable_host_not_zero(self) -> None:
         self.fixture.arrange("current-right")

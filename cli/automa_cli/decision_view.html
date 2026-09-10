@@ -82,13 +82,14 @@
     </header>
     <section id="shadow-preview" class="preview-controls">
       <p class="eyebrow">Controlled rerun · shadow only</p>
-      <h2>Change a decision input</h2>
-      <p class="section-intro">Choose whether the server reruns the activated decision engine with the accepted retained memory or with that memory cleared. The live accepted decision and its publication are not changed.</p>
+      <h2>What if the obstruction were on the other side?</h2>
+      <p class="section-intro">Choose a hypothetical position for retained image evidence. The server copies that memory and reruns the decision engine; freshness and all other inputs stay the same. Compare the result here with the accepted decision at the time of the rerun. No vehicle commands are sent.</p>
       <form id="preview-form">
-        <label for="preview-memory">Memory input
+        <label for="preview-memory">Hypothetical obstruction position
           <select id="preview-memory" name="memory_mode" disabled>
             <option value="current">Use accepted memory</option>
-            <option value="empty">Clear retained memory</option>
+            <option value="left">Left</option>
+            <option value="right">Right</option>
           </select>
         </label>
         <button id="preview-submit" type="submit" disabled>Recompute shadow preview</button>
@@ -125,6 +126,7 @@
       let currentDecisionSha256 = null;
       let previewSerial = 0;
       let activePreviewController = null;
+      let previewBaseSha256 = null;
 
       function element(tag, text, className) {
         const node = document.createElement(tag);
@@ -171,31 +173,24 @@
         currentDecisionSha256 = null;
         previewMemory.disabled = true;
         previewSubmit.disabled = true;
-        previewOutput.replaceChildren(element("p", message, "subtle"));
-        setPreviewStatus(message, "error");
+        setPreviewStatus(previewBaseSha256 ? "Saved hypothetical comparison; live input unavailable. Wait for live input to rerun." : message, "error");
       }
 
       function updatePreviewBase(decisionSha256) {
         const next = typeof decisionSha256 === "string" && generationPattern.test(decisionSha256)
           ? decisionSha256 : null;
-        const changed = currentDecisionSha256 !== null
-          && next !== null
-          && currentDecisionSha256 !== next;
         if (!next) {
           resetPreview("Unavailable: no accepted decision is available for preview.");
           return;
         }
-        if (changed) {
-          previewSerial += 1;
-          if (activePreviewController) activePreviewController.abort();
-          previewOutput.replaceChildren(element("p", "Live decision changed; recompute the preview.", "subtle"));
-          setPreviewStatus("Live decision changed; recompute the preview.", "error");
-        } else if (!currentDecisionSha256) {
+        if (previewBaseSha256 && previewBaseSha256 !== next && !activePreviewController) {
+          setPreviewStatus("Saved hypothetical comparison — live input has advanced. Change position or recompute to use the latest input.", "live");
+        } else if (!currentDecisionSha256 && !previewBaseSha256) {
           setPreviewStatus("Ready: choose an input variant and recompute.", "live");
         }
         currentDecisionSha256 = next;
         previewMemory.disabled = false;
-        previewSubmit.disabled = false;
+        previewSubmit.disabled = Boolean(activePreviewController);
       }
 
       function invalidate(message) {
@@ -666,15 +661,18 @@
         const preview = payload && payload.preview;
         const selected = pathValue(payload, ["presentation", "selected_candidate"]);
         const section = element("section", null, "preview-result");
-        section.appendChild(element("h3", "Server-recomputed shadow decision"));
+        section.appendChild(element("h3", "Accepted before → hypothetical after"));
         section.appendChild(element("p", "This is a preview of the activated engine. It is not published as the live decision and cannot drive a vehicle.", "subtle"));
         section.appendChild(factsGrid([
-          ["memory input", pathValue(preview, ["memory_mode"])],
+          ["hypothetical position", pathValue(preview, ["memory_mode"])],
+          ["before · plan", pathValue(preview, ["before_plan", "status"])],
+          ["before · reason", pathValue(preview, ["before", "reason"])],
+          ["before · proposed command", commandSummary(pathValue(preview, ["before_proposed"]))],
           ["cycle status", pathValue(cycle, ["status"])],
-          ["plan status", pathValue(plan, ["status"])],
+          ["after · plan", pathValue(plan, ["status"])],
           ["selected proposal", pathValue(plan, ["selected_proposal_id"])],
-          ["selected reason", pathValue(selected, ["reason"])],
-          ["proposed command", commandSummary(pathValue(authority, ["proposed"]))],
+          ["after · reason", pathValue(selected, ["reason"])],
+          ["after · proposed command", commandSummary(pathValue(authority, ["proposed"]))],
           ["authorized output", commandSummary(pathValue(authority, ["authorized_output"]))],
           ["live source frame", pathValue(preview, ["source_frame_id"])],
           ["preview decision sha256", pathValue(payload, ["decision_sha256"])],
@@ -693,6 +691,7 @@
           return;
         }
         const serial = ++previewSerial;
+        const requestedBase = currentDecisionSha256;
         if (activePreviewController) activePreviewController.abort();
         const controller = new AbortController();
         activePreviewController = controller;
@@ -709,7 +708,7 @@
               headers: { "Content-Type": "application/json", "Accept": "application/json" },
               body: JSON.stringify({
                 schema: "automa_decision_preview_request_v0",
-                base_decision_sha256: currentDecisionSha256,
+                base_decision_sha256: requestedBase,
                 memory_mode: previewMemory.value
               })
             }
@@ -719,13 +718,18 @@
           if (!response.ok) throw new Error((payload && payload.reason) || "http_" + response.status);
           if (!payload || payload.schema !== "automa_decision_preview_v0" || payload.status !== "preview") throw new Error("preview_invalid");
           if (serial !== previewSerial || controller.signal.aborted) throw new Error("superseded");
-          if (payload.base_decision_sha256 !== currentDecisionSha256) throw new Error("preview_stale");
+          if (payload.base_decision_sha256 !== requestedBase) throw new Error("preview_stale");
+          previewBaseSha256 = requestedBase;
           renderPreviewResult(payload);
-          setPreviewStatus("Preview recomputed: live decision remains unchanged.", "live");
+          setPreviewStatus(requestedBase === currentDecisionSha256
+            ? "Hypothetical comparison saved. Accepted live decision below remains unchanged."
+            : "Hypothetical comparison saved; live input has since advanced. Recompute to update.", "live");
         } catch (error) {
           if (serial !== previewSerial) return;
           const reason = error && error.name === "AbortError" ? "request_timeout" : ((error && error.message) || "preview_unavailable");
-          setPreviewStatus("Unavailable: " + reason, "error");
+          setPreviewStatus((reason === "preview_stale"
+            ? "Live input changed during the request; recompute with the latest input."
+            : "Could not recompute: " + reason) + (previewBaseSha256 ? " Previous comparison remains below." : ""), "error");
         } finally {
           clearTimeout(deadlineTimer);
           if (activePreviewController === controller) activePreviewController = null;
@@ -805,6 +809,7 @@
         event.preventDefault();
         submitPreview();
       });
+      previewMemory.addEventListener("change", submitPreview);
 
       async function start() {
         const requestedGeneration = readGeneration();

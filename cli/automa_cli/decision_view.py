@@ -52,7 +52,7 @@ DECISION_IMAGE_PATH = "/api/decision/images/"
 DECISION_PREVIEW_PATH = "/api/decision/preview"
 DECISION_PREVIEW_SCHEMA = "automa_decision_preview_v0"
 DECISION_PREVIEW_REQUEST_SCHEMA = "automa_decision_preview_request_v0"
-PREVIEW_MEMORY_MODES = frozenset({"current", "empty"})
+PREVIEW_MEMORY_MODES = frozenset({"current", "empty", "left", "right"})
 MAX_PREVIEW_REQUEST_BYTES = 4096
 
 MAX_IMAGES = 64
@@ -324,7 +324,7 @@ def parse_preview_request(payload: object) -> dict[str, str]:
         raise DecisionViewHTTPError(
             400,
             "preview_invalid",
-            "memory_mode must be one of: current, empty",
+            "memory_mode must be one of: current, empty, left, right",
         )
     return {
         "base_decision_sha256": base_decision_sha256,
@@ -758,7 +758,7 @@ class DecisionViewPublisher:
             raise DecisionViewHTTPError(
                 400,
                 "preview_invalid",
-                "memory_mode must be one of: current, empty",
+                "memory_mode must be one of: current, empty, left, right",
                 identity=self.identity,
             )
         if generation != self.generation_id:
@@ -828,6 +828,9 @@ class DecisionViewPublisher:
             "source_frame_index": frame.get("frame_index"),
             "live_decision_unchanged": True,
             "authority_mode": "shadow_only",
+            "before": _selected_candidate_presentation(frame["cycle"]),
+            "before_plan": frame["cycle"].get("plan"),
+            "before_proposed": frame["cycle"].get("authority", {}).get("proposed"),
         }
         try:
             response_bytes = _canonical(payload)
@@ -1127,7 +1130,7 @@ class DecisionViewPublisher:
             )
 
         memory = None
-        if memory_mode == "current":
+        if memory_mode != "empty":
             memory_env = source.get("memory")
             if not isinstance(memory_env, dict):
                 raise DecisionViewHTTPError(
@@ -1140,6 +1143,24 @@ class DecisionViewPublisher:
             if memory_status == "ready":
                 try:
                     memory = strict_decode_apply_memory(memory_env.get("value"))
+                    if memory_mode in {"left", "right"}:
+                        memory_value = memory.to_dict()
+                        changed = False
+                        for record in memory_value["records"]:
+                            location = record.get("location")
+                            if location and location.get("frame") == "image":
+                                location["zone"] = memory_mode
+                                # The explicit zone is the hypothetical input;
+                                # original image geometry must not contradict it.
+                                location["bbox_xyxy_norm"] = None
+                                changed = True
+                        if not changed:
+                            raise DecisionViewHTTPError(
+                                409, "preview_inputs_unavailable",
+                                "No retained image evidence is available to reposition.",
+                                identity=self.identity,
+                            )
+                        memory = strict_decode_apply_memory(memory_value)
                 except (DecisionSurfaceError, TypeError, ValueError) as exc:
                     raise DecisionViewHTTPError(
                         503,
@@ -1152,6 +1173,12 @@ class DecisionViewPublisher:
                     503,
                     "preview_inputs_invalid",
                     "accepted memory envelope status is invalid",
+                    identity=self.identity,
+                )
+            if memory is None and memory_mode in {"left", "right"}:
+                raise DecisionViewHTTPError(
+                    409, "preview_inputs_unavailable",
+                    "No retained image evidence is available to reposition.",
                     identity=self.identity,
                 )
 

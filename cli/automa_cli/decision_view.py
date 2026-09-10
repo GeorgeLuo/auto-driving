@@ -780,11 +780,32 @@ class DecisionViewPublisher:
                 "automation state is unavailable",
                 identity=self.identity,
             )
-        if state.get("vehicle_id") not in (None, self.vehicle_id):
-            raise DecisionViewHTTPError(503, "vehicle_mismatch", "automation state belongs to another vehicle")
-        if state.get("run_id") != self.identity["run_id"] or state.get("pid") != self.identity["worker_pid"]:
+        state_vehicle_id = state.get("vehicle_id")
+        state_run_id = state.get("run_id")
+        state_pid = state.get("pid")
+        if (
+            ("vehicle_id" in state and (type(state_vehicle_id) is not str or not state_vehicle_id))
+            or type(state_run_id) is not str
+            or not state_run_id
+            or not _is_nonnegative_int(state_pid)
+            or state_pid <= 0
+        ):
             raise DecisionViewHTTPError(
                 503,
+                "producer_unavailable",
+                "automation state identity is unavailable",
+                identity=self.identity,
+            )
+        if state_vehicle_id is not None and state_vehicle_id != self.vehicle_id:
+            raise DecisionViewHTTPError(
+                409,
+                "vehicle_mismatch",
+                "automation state belongs to another vehicle",
+                identity=self.identity,
+            )
+        if state_run_id != self.identity["run_id"] or state_pid != self.identity["worker_pid"]:
+            raise DecisionViewHTTPError(
+                409,
                 "generation_mismatch",
                 "automation state does not match the view startup generation",
                 identity=self.identity,

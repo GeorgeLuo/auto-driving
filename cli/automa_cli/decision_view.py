@@ -726,6 +726,13 @@ class DecisionViewPublisher:
                 "requested generation does not belong to this decision view",
                 identity=self.identity,
             )
+        if self._stopped:
+            raise DecisionViewHTTPError(
+                503,
+                "producer_unavailable",
+                "decision view publisher is stopped",
+                identity=self.identity,
+            )
         try:
             activation = _read_surface_activation(
                 self.activation_path,

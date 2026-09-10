@@ -1,0 +1,495 @@
+"""Public D2 contracts on disposable loopback servers, with real owned PIDs.
+
+Coverage receipt: these are deterministic d2-fixture records, not Chase/Pi live
+evidence. Tests cover current/retained spatial association, record 13, pinning
+beyond the perception cache, lifecycle/integrity refusal, partial components,
+HTTP framing, CLI discovery, and representative count/item/file bounds.
+Deferred: browser rendering/transactions/resize, automation scheduler wiring,
+port reuse, concurrent assembly races, redirect/slow-response probe deadlines,
+exact millisecond freshness endpoints, polygon/orientation/pixel limits, total
+byte/metadata saturation, pin exhaustion/release, and every provenance mutation.
+Those cases are not implicitly passed by this representative contract suite.
+No acceptance predicate, liveness check, clock, policy, or projector is patched.
+"""
+
+from __future__ import annotations
+
+from copy import deepcopy
+from dataclasses import replace
+import hashlib
+import http.client
+import json
+import os
+from pathlib import Path
+import select
+import subprocess
+import sys
+import tempfile
+import time
+import unittest
+from urllib.parse import urlsplit
+
+from autonomy.decision.memory import canonical_json_utf8
+from cli.automa_cli.decision import build_decision_stream_frame, write_latest_decision_frame
+from cli.automa_cli.decision_view import probe_decision_view
+from tests.cli.decision.live_view_fixture import (
+    DecisionFixture, LABEL, LEFT_BOX, RIGHT_BOX, REPOSITORY, SCENARIOS,
+    synthetic_png, write_json,
+)
+from tests.support.cli_runner import run_automa
+
+
+class LiveDecisionViewTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory(prefix="automa-d2-contract-")
+        self.addCleanup(self.tmp.cleanup)
+        self.fixture = DecisionFixture(Path(self.tmp.name) / "vehicles")
+        self.addCleanup(self.fixture.close)
+
+    def request(self, path: str | None = None, *, method: str = "GET"):
+        parsed = urlsplit(self.fixture.server.url)
+        connection = http.client.HTTPConnection(parsed.hostname, parsed.port, timeout=3)
+        try:
+            connection.request(method, path or self.fixture.api_path)
+            response = connection.getresponse()
+            return response.status, dict(response.getheaders()), response.read()
+        finally:
+            connection.close()
+
+    def payload(self) -> dict:
+        status, headers, body = self.request()
+        self.assertEqual(status, 200, body)
+        self.assertEqual(headers["Content-Type"], "application/json; charset=utf-8")
+        self.assertLessEqual(len(body), 8 * 1024 * 1024)
+        return json.loads(body)
+
+    def assert_refusal(self, status: int, reason: str, *, path: str | None = None,
+                       method: str = "GET") -> None:
+        actual, headers, body = self.request(path, method=method)
+        self.assertEqual(actual, status, body)
+        self.assertEqual(headers["Cache-Control"], "no-store")
+        payload = json.loads(body)
+        self.assertEqual(payload["schema"], "automa_decision_view_v1")
+        self.assertEqual(payload["status"], "unavailable")
+        self.assertEqual(payload["reason"], reason)
+        self.assertIsNone(payload["decision"])
+        self.assertIsNone(payload["decision_sha256"])
+        self.assertIsNone(payload["expires_at_ms"])
+        self.assertEqual(payload["evidence"], [])
+        self.assertEqual(payload["current_image"]["status"], "unavailable")
+        self.assertIsNone(payload["current_image"]["url"])
+        self.assertIsNone(payload["host_observation"]["value"])
+
+    def assert_image(self, descriptor: dict, expected: bytes) -> None:
+        status, headers, body = self.request(descriptor["url"])
+        self.assertEqual(status, 200, body)
+        self.assertEqual(body, expected)
+        digest = hashlib.sha256(expected).hexdigest()
+        self.assertEqual(descriptor["sha256"], digest)
+        self.assertEqual(headers["X-Automa-Image-Sha256"], digest)
+        self.assertEqual(headers["Content-Type"], "image/png")
+        self.assertEqual(headers["Cache-Control"], "no-store")
+        self.assertEqual(int(headers["Content-Length"]), len(expected))
+        self.assertEqual(descriptor["byte_length"], len(expected))
+        self.assertEqual((descriptor["width_px"], descriptor["height_px"]), (320, 180))
+        identity = {k: v for k, v in descriptor.items() if k not in {"status", "reason", "image_id", "url"}}
+        self.assertEqual(descriptor["image_id"], hashlib.sha256(canonical_json_utf8(identity)).hexdigest())
+        head_status, head_headers, head_body = self.request(descriptor["url"], method="HEAD")
+        self.assertEqual(head_status, 200)
+        self.assertEqual(head_body, b"")
+        for key in ("Content-Length", "Content-Type", "X-Automa-Image-Sha256", "Cache-Control"):
+            self.assertEqual(head_headers[key], headers[key])
+
+    def test_current_payload_preserves_cycle_and_exact_image_bytes(self) -> None:
+        f = self.fixture
+        f.arrange("host-zero")
+        payload = self.payload()
+        self.assertEqual(payload["status"], "current")
+        self.assertIsNone(payload["reason"])
+        self.assertEqual(payload["decision"], f.frame)
+        self.assertEqual(payload["decision_sha256"], hashlib.sha256(canonical_json_utf8(f.frame)).hexdigest())
+        self.assertEqual(payload["identity"]["worker_pid"], os.getpid())
+        self.assertEqual(payload["generation_id"], hashlib.sha256(canonical_json_utf8(payload["identity"])).hexdigest())
+        self.assertEqual(payload["expires_at_ms"], f.frame["published_at_ms"] + 30000)
+        evidence, = payload["evidence"]
+        self.assertEqual(evidence["association"], "current")
+        self.assertEqual(evidence["geometry"]["bbox_xyxy_norm"], list(LEFT_BOX))
+        self.assertEqual(evidence["source_image"], payload["current_image"])
+        self.assertTrue(evidence["selected"])
+        self.assertEqual(evidence["source_ref"], f.frame["cycle"]["plan"]["candidates"][0]["source_refs"][0])
+        self.assert_image(payload["current_image"], f.images[f.frame["frame_id"]])
+
+    def test_right_partial_has_real_geometry_and_unavailable_host_not_zero(self) -> None:
+        self.fixture.arrange("current-right")
+        payload = self.payload()
+        self.assertEqual(payload["status"], "partial")
+        self.assertEqual(payload["evidence"][0]["geometry"]["bbox_xyxy_norm"], list(RIGHT_BOX))
+        self.assertEqual(payload["host_observation"]["status"], "unavailable")
+        self.assertIsNone(payload["host_observation"]["value"])
+        self.assertEqual(payload["reason"], payload["host_observation"]["reason"])
+        self.assert_image(payload["current_image"], synthetic_png("right"))
+
+    def test_retained_source_survives_newer_captures_and_source_file_removal(self) -> None:
+        f = self.fixture
+        f.arrange("retained")
+        before = self.payload()
+        for index in range(3, 13):
+            f.capture(index, side="right", timestamp=1500 + index)
+        # Both retained and current images must be ingress bytes even after source loss.
+        for path in f.source_dir.iterdir():
+            path.unlink()
+        payload = self.payload()
+        self.assertEqual(payload["current_image"], before["current_image"])
+        self.assertEqual(payload["evidence"], before["evidence"])
+        source, = payload["evidence"]
+        self.assertEqual(source["association"], "retained")
+        self.assertEqual(source["source_image"]["frame_id"], "d2-fixture-frame-001")
+        self.assertEqual(payload["current_image"]["frame_id"], "d2-fixture-frame-002")
+        self.assertEqual(source["geometry"]["bbox_xyxy_norm"], list(LEFT_BOX))
+        self.assertNotEqual(source["source_image"]["image_id"], payload["current_image"]["image_id"])
+        self.assert_image(source["source_image"], synthetic_png("left"))
+        self.assert_image(payload["current_image"], synthetic_png("right"))
+        self.assertEqual(self.request("/frame?v=d2-fixture-frame-001")[0], 404)
+
+    def test_thirteenth_memory_record_resolves_outside_summary(self) -> None:
+        f = self.fixture
+        records = []
+        for index in range(1, 14):
+            record = f.capture(index)
+            records.append(replace(record, kind="d2-fixture-decoration") if index < 13 else record)
+        f.publish(13, tuple(records))
+        payload = self.payload()
+        self.assertEqual(len(payload["decision"]["cycle"]["source"]["memory"]["value"]["records"]), 13)
+        evidence, = payload["evidence"]
+        self.assertEqual(evidence["record_id"], "d2-fixture-record-013")
+        self.assertEqual(evidence["status"], "available")
+        self.assert_image(evidence["source_image"], synthetic_png("left"))
+
+    def test_stale_memory_keeps_historical_ref_but_no_selected_command(self) -> None:
+        self.fixture.arrange("stale")
+        payload = self.payload()
+        candidate, = payload["decision"]["cycle"]["plan"]["candidates"]
+        self.assertEqual(candidate["lifecycle"], "stale")
+        self.assertIsNone(candidate["command"])
+        self.assertIsNone(payload["decision"]["cycle"]["plan"]["selected_proposal_id"])
+        evidence, = payload["evidence"]
+        self.assertFalse(evidence["selected"])
+        self.assertEqual(evidence["association"], "retained")
+        self.assert_image(evidence["source_image"], synthetic_png("left"))
+
+    def test_inactive_cycle_clears_prior_selection(self) -> None:
+        self.fixture.arrange("inactive")
+        payload = self.payload()
+        self.assertEqual(payload["evidence"], [])
+        candidate, = payload["decision"]["cycle"]["plan"]["candidates"]
+        self.assertEqual(candidate["lifecycle"], "inactive")
+        self.assertIsNone(candidate["command"])
+
+    def test_missing_ingress_never_reads_existing_observation_artifact(self) -> None:
+        f = self.fixture
+        f.arrange("missing-image")
+        self.assertTrue((f.source_dir / "d2-fixture-frame-001.png").exists())
+        payload = self.payload()
+        self.assertEqual(payload["status"], "partial")
+        self.assertEqual(payload["decision"], f.frame)
+        self.assertEqual(payload["current_image"]["status"], "unavailable")
+        evidence, = payload["evidence"]
+        self.assertIsNotNone(evidence["provenance"])
+        self.assertEqual(evidence["geometry"]["status"], "unavailable")
+        self.assertIsNone(evidence["source_image"]["url"])
+
+    def test_zone_only_geometry_is_partial_without_invented_box(self) -> None:
+        self.fixture.arrange("missing-geometry")
+        payload = self.payload()
+        evidence, = payload["evidence"]
+        self.assertEqual(payload["status"], "partial")
+        self.assertEqual(evidence["association"], "current")
+        self.assertEqual(evidence["source_image"]["status"], "available")
+        self.assertEqual(evidence["reason"], "geometry_missing")
+        self.assertEqual(evidence["geometry"]["reason"], "geometry_missing")
+        self.assertIsNone(evidence["geometry"]["bbox_xyxy_norm"])
+        self.assertIsNone(evidence["geometry"]["polygon_xy_norm"])
+        self.assertIsNone(evidence["geometry"]["transform"])
+
+    def test_observed_nonzero_is_separate_from_proposed_and_authorized_idle(self) -> None:
+        self.fixture.arrange("host-nonzero")
+        payload = self.payload()
+        authority = payload["decision"]["cycle"]["authority"]
+        self.assertFalse(authority["proposed_applied"])
+        self.assertNotEqual(authority["proposed"]["steering"], 0)
+        self.assertEqual(authority["authorized_output"]["steering"], 0)
+        self.assertEqual(authority["authorized_output"]["throttle"], 0)
+        self.assertEqual(payload["host_observation"]["status"], "available")
+        self.assertEqual(payload["host_observation"]["value"]["host_output"]["steering"], 0.2)
+        self.assertEqual(payload["host_observation"]["value"], authority["host_application"]["value"])
+
+    def test_mismatched_or_generic_host_report_is_partial_and_raw_preserved(self) -> None:
+        f = self.fixture
+        f.arrange("host-zero")
+        for mutation, reason in (("frame", "host_observation_frame_mismatch"),
+                                 ("generic", "host_observation_unsupported")):
+            with self.subTest(mutation=mutation):
+                cycle = deepcopy(f.cycle.to_dict())
+                value = cycle["authority"]["host_application"]["value"]
+                if mutation == "frame":
+                    value["frame_id"] = "d2-fixture-other-frame"
+                else:
+                    cycle["authority"]["host_application"]["value"] = {"fixture": LABEL}
+                frame = build_decision_stream_frame(
+                    cycle, vehicle_id=f.vehicle_id, run_id=f.run_id, worker_pid=os.getpid(),
+                    activation_engine_id="shadow-proposals",
+                    activation_activated_at_ms=f.activation["activated_at_ms"],
+                )
+                write_latest_decision_frame(f.latest_path, frame)
+                # The accepted decision is the actual JSON publication.  Its
+                # decoded representation canonicalizes tuple fields to lists.
+                accepted_frame = json.loads(f.latest_path.read_text(encoding="utf-8"))
+                payload = self.payload()
+                self.assertEqual(payload["status"], "partial")
+                self.assertEqual(payload["host_observation"]["reason"], reason)
+                self.assertIsNone(payload["host_observation"]["value"])
+                self.assertEqual(payload["decision"], accepted_frame)
+
+    def test_conflicting_capture_bytes_refuse_association(self) -> None:
+        f = self.fixture
+        f.arrange("current-left")
+        prior = self.payload()["current_image"]
+        f.publisher.publish_capture(frame_bytes=synthetic_png("right"),
+                                    frame_record=f.captures[f.frame["frame_id"]], content_type="image/png")
+        payload = self.payload()
+        self.assertEqual(payload["status"], "partial")
+        self.assertEqual(payload["current_image"]["reason"], "source_conflict")
+        self.assertEqual(payload["evidence"][0]["geometry"]["status"], "unavailable")
+        self.assertNotEqual(self.request(prior["url"])[0], 200)
+
+    def test_publication_missing_malformed_future_and_stale_refuse_cached_data(self) -> None:
+        f = self.fixture
+        f.arrange("current-left")
+        image_url = self.payload()["current_image"]["url"]
+        original = deepcopy(f.frame)
+        cases = (
+            ("missing", 503, "decision_missing"),
+            ("malformed", 422, "decision_invalid"),
+            ("future", 503, "decision_stale"),
+            ("stale", 503, "decision_stale"),
+        )
+        for case, status, reason in cases:
+            with self.subTest(case=case):
+                frame = deepcopy(original)
+                if case == "missing":
+                    f.latest_path.unlink()
+                elif case == "malformed":
+                    frame["plan_summary"] = {}
+                    write_latest_decision_frame(f.latest_path, frame)
+                else:
+                    frame["published_at_ms"] = int(time.time() * 1000) + (60000 if case == "future" else -60000)
+                    write_latest_decision_frame(f.latest_path, frame)
+                self.assert_refusal(status, reason)
+                self.assert_refusal(status, reason, path=image_url)
+                info = f.info()["combined_view"]
+                self.assertFalse(info["available"])
+                self.assertIsNone(info["url"])
+                self.assertEqual(info["reason"], reason)
+                write_latest_decision_frame(f.latest_path, original)
+
+    def test_state_and_config_generation_mutations_refuse_data_and_images(self) -> None:
+        f = self.fixture
+        f.arrange("current-left")
+        image_url = self.payload()["current_image"]["url"]
+        for field, value, reason in (("run_id", "d2-fixture-other-run", "generation_mismatch"),
+                                     ("vehicle_id", "d2-fixture-other-vehicle", "vehicle_mismatch"),
+                                     ("pid", os.getpid() + 1, "generation_mismatch")):
+            with self.subTest(field=field):
+                write_json(f.state_path, {**f.state, field: value})
+                self.assert_refusal(409, reason)
+                self.assert_refusal(409, reason, path=image_url)
+                write_json(f.state_path, f.state)
+        activation = deepcopy(f.activation)
+        activation["decision"]["engine_config"]["steer_magnitude"] = 0.45
+        write_json(f.activation_path, activation)
+        self.assert_refusal(409, "generation_mismatch")
+        self.assert_refusal(409, "generation_mismatch", path=image_url)
+        view = f.info()["combined_view"]
+        self.assertFalse(view["available"])
+        self.assertIsNone(view["url"])
+
+    def test_stopped_completed_and_absent_state_refuse_while_listener_is_alive(self) -> None:
+        f = self.fixture
+        f.arrange("current-left")
+        image_url = self.payload()["current_image"]["url"]
+        for status in ("stopped", "completed", "error"):
+            with self.subTest(status=status):
+                write_json(f.state_path, {**f.state, "status": status})
+                self.assert_refusal(503, "producer_unavailable")
+                self.assert_refusal(503, "producer_unavailable", path=image_url)
+        f.state_path.unlink()
+        self.assert_refusal(503, "producer_unavailable")
+        write_json(f.state_path, f.state)
+        f.publisher.stop()
+        self.assert_refusal(503, "producer_unavailable")
+
+    def test_http_methods_queries_hashes_and_headers(self) -> None:
+        f = self.fixture
+        f.arrange("current-left")
+        generation = f.publisher.generation_id
+        for path in ("/api/decision/latest", "/api/decision/latest?generation=bad",
+                     f.api_path + "&generation=" + generation, f.api_path + "&extra=1",
+                     "/api/decision/images/../active.json?generation=" + generation,
+                     "/api/decision/images/%2e%2e%2factive.json?generation=" + generation,
+                     "/api/decision/images/https%3A%2F%2Fexample.com?generation=" + generation):
+            with self.subTest(path=path):
+                self.assertEqual(self.request(path)[0], 400)
+        self.assert_refusal(409, "generation_mismatch", path="/api/decision/latest?generation=" + "0" * 64)
+        self.assertEqual(self.request("/api/decision/images/" + "0" * 64 + "?generation=" + generation)[0], 404)
+        for method in ("POST", "PUT", "DELETE", "PATCH", "OPTIONS", "TRACE", "CONNECT"):
+            with self.subTest(method=method):
+                self.assert_refusal(405, "method_not_allowed", method=method)
+                self.assertEqual(self.request(method=method)[1]["Allow"], "GET, HEAD")
+        for path in (f.api_path, "/decision?generation=" + generation):
+            with self.subTest(path=path):
+                status, headers, body = self.request(path)
+                self.assertEqual(status, 200)
+                self.assertEqual(headers["Cache-Control"], "no-store")
+                self.assertEqual(headers["X-Content-Type-Options"], "nosniff")
+                self.assertIn("default-src 'self'", headers["Content-Security-Policy"])
+                self.assertEqual(int(headers["Content-Length"]), len(body))
+                head_status, head_headers, head_body = self.request(path, method="HEAD")
+                self.assertEqual(head_status, 200)
+                self.assertEqual(head_body, b"")
+                self.assertEqual(head_headers["Content-Type"], headers["Content-Type"])
+        # This validates shell delivery only, not JavaScript execution or visual acceptance.
+        self.assertEqual(self.request("/no-such-d2-route")[0], 404)
+
+    def test_count_item_and_decision_file_bounds_are_publicly_visible(self) -> None:
+        f = self.fixture
+        f.arrange("current-left")
+        source = self.payload()["current_image"]
+        for index in range(2, 68):
+            f.capture(index, timestamp=1000 + index)
+        f.publisher.publish_capture(
+            frame_bytes=b"x" * (8388608 + 1),
+            frame_record={**f.captures[f.frame["frame_id"]], "frame_id": "d2-fixture-too-large"},
+            content_type="image/png",
+        )
+        payload = self.payload()
+        limits = payload["limits"]
+        for key, expected in {"max_images": 64, "max_image_bytes": 8388608,
+                              "max_total_image_bytes": 33554432, "max_pixels_per_image": 16000000,
+                              "max_metadata_bytes": 8388608, "max_response_bytes": 8388608}.items():
+            self.assertEqual(limits[key], expected)
+        self.assertLessEqual(limits["image_count"], 64)
+        self.assertLessEqual(limits["image_bytes"], limits["max_total_image_bytes"])
+        self.assertLessEqual(limits["metadata_bytes"], limits["max_metadata_bytes"])
+        self.assertGreaterEqual(limits["size_refusals"], 1)
+        self.assert_image(source, synthetic_png("left"))
+        # Valid JSON padded over the D2 file ceiling, not a fake huge cycle schema.
+        f.latest_path.write_bytes(canonical_json_utf8(f.frame) + b" " * 8388608)
+        self.assert_refusal(503, "view_payload_too_large")
+
+    def test_info_cli_exposes_only_probed_urls_and_preserves_unavailable_success(self) -> None:
+        f = self.fixture
+        view = f.info()["combined_view"]
+        self.assertFalse(view["available"])
+        self.assertIsNone(view["url"])
+        self.assertEqual(view["reason"], "decision_missing")
+        f.arrange("current-left")
+        info = f.info()
+        view = info["combined_view"]
+        self.assertEqual(info["schema"], "vehicle_decision_info_v0")
+        self.assertTrue(view["available"])
+        self.assertEqual(view["status"], "partial")
+        self.assertEqual(view["api_url"], f.server.url.rstrip("/") + f.api_path)
+        human = run_automa("vehicles", "info", "decision", "--id", f.vehicle_id,
+                            runtime_root=f.runtime_root)
+        self.assertIn(view["url"], human.stdout)
+        stream = run_automa("vehicles", "stream", "decision", "--id", f.vehicle_id,
+                             "--once", "--json", runtime_root=f.runtime_root)
+        self.assertEqual(json.loads(stream.stdout), f.frame)
+        f.server.stop()
+        unavailable = f.info()["combined_view"]
+        self.assertFalse(unavailable["available"])
+        self.assertIsNone(unavailable["url"])
+        self.assertIsNone(unavailable["api_url"])
+        self.assertTrue(unavailable["reason"])
+
+    def test_probe_rejects_external_origin_and_ignores_record_supplied_api_url(self) -> None:
+        f = self.fixture
+        f.arrange("current-left")
+        record = json.loads(f.server.record_path.read_text())
+        write_json(f.server.record_path, {**record, "url": "https://example.invalid/"})
+        result = probe_decision_view(automation_dir=f.automation_dir, vehicle_id=f.vehicle_id,
+                                     activation=f.activation)
+        self.assertFalse(result["available"])
+        self.assertEqual(result["reason"], "view_unreachable")
+        self.assertIsNone(result["url"])
+        write_json(f.server.record_path, {**record, "api_url": "https://example.invalid/"})
+        result = probe_decision_view(automation_dir=f.automation_dir, vehicle_id=f.vehicle_id,
+                                     activation=f.activation)
+        self.assertTrue(result["available"])
+        self.assertEqual(result["api_url"], f.server.url.rstrip("/") + f.api_path)
+
+
+class DisposableFixtureProcessTests(unittest.TestCase):
+    def test_required_arguments_and_preexisting_runtime_refusal(self) -> None:
+        script = REPOSITORY / "tests/cli/decision/live_view_fixture.py"
+        result = subprocess.run([sys.executable, str(script)], capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("--runtime-root", result.stderr)
+        self.assertIn("--vehicle-id", result.stderr)
+        with tempfile.TemporaryDirectory(prefix="automa-d2-refusal-") as tmp:
+            vehicle = Path(tmp) / "d2-fixture"
+            vehicle.mkdir()
+            marker = vehicle / "keep.txt"
+            marker.write_text("owned preexisting bytes")
+            with self.assertRaisesRegex(ValueError, "preexisting"):
+                DecisionFixture(Path(tmp))
+            self.assertEqual(marker.read_text(), "owned preexisting bytes")
+            self.assertEqual(list(vehicle.iterdir()), [marker])
+            for bad_id in ("../elsewhere", "/absolute", "a/b"):
+                with self.subTest(vehicle_id=bad_id), self.assertRaises(ValueError):
+                    DecisionFixture(Path(tmp), bad_id)
+
+    def test_real_fixture_process_prints_probed_url_and_stops_only_its_listener(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="automa-d2-process-") as tmp:
+            runtime_root = Path(tmp) / "vehicles"
+            env = {k: v for k, v in os.environ.items()
+                   if k not in {"AUTOMA_TEST_LIVE_SIM", "AUTOMA_TEST_LIVE_PI"}}
+            env["PYTHONDONTWRITEBYTECODE"] = "1"
+            process = subprocess.Popen([
+                sys.executable, str(REPOSITORY / "tests/cli/decision/live_view_fixture.py"),
+                "--runtime-root", str(runtime_root), "--vehicle-id", "d2-fixture",
+                "--scenario", "retained", "--port", "0", "--duration-s", "30",
+            ], cwd=REPOSITORY, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            try:
+                ready, _, _ = select.select([process.stdout], [], [], 20)
+                self.assertTrue(ready, "fixture did not emit a bounded startup receipt")
+                line = process.stdout.readline()
+                self.assertTrue(line, "fixture exited before its startup receipt")
+                receipt = json.loads(line)
+                self.assertEqual(receipt["fixture"], LABEL)
+                self.assertEqual(receipt["pid"], process.pid)
+                self.assertEqual(receipt["runtime_root"], str(runtime_root.resolve()))
+                self.assertIn(str(runtime_root.resolve()), receipt["info_command"])
+                self.assertIsNotNone(receipt["url"])
+                info = run_automa("vehicles", "info", "decision", "--id", "d2-fixture",
+                                  "--json", runtime_root=runtime_root)
+                self.assertEqual(json.loads(info.stdout)["combined_view"]["url"], receipt["url"])
+                process.terminate()
+                stdout, stderr = process.communicate(timeout=10)
+                self.assertEqual(process.returncode, 0, stdout + stderr)
+                stopped = run_automa("vehicles", "info", "decision", "--id", "d2-fixture",
+                                     "--json", runtime_root=runtime_root)
+                self.assertIsNone(json.loads(stopped.stdout)["combined_view"]["url"])
+                self.assertTrue(Path(receipt["source_records"]).exists())
+            finally:
+                if process.poll() is None:
+                    process.kill()
+                    process.communicate(timeout=5)
+                if process.stdout is not None:
+                    process.stdout.close()
+                if process.stderr is not None:
+                    process.stderr.close()
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -27,9 +27,8 @@
     .preview-controls { border-color: #72a7ff; }
     .preview-controls form { display: flex; flex-wrap: wrap; align-items: end; gap: .75rem; }
     .preview-controls label { display: grid; gap: .25rem; color: #c7d4df; font-size: .82rem; }
-    .preview-controls select, .preview-controls button { font: inherit; color: #e8edf2; background: #171d24; border: 1px solid #66788a; border-radius: .3rem; padding: .45rem .6rem; }
-    .preview-controls button { cursor: pointer; border-color: #72a7ff; }
-    .preview-controls button:disabled, .preview-controls select:disabled { cursor: not-allowed; opacity: .55; }
+    .preview-controls select { font: inherit; color: #e8edf2; background: #171d24; border: 1px solid #66788a; border-radius: .3rem; padding: .45rem .6rem; }
+    .preview-controls select:disabled { cursor: not-allowed; opacity: .55; }
     .preview-status { margin-top: .7rem; }
     .preview-result { margin-top: .8rem; border-top: 1px solid #303a45; padding-top: .8rem; }
     .section-intro { margin: -.2rem 0 .8rem; color: #afbdc9; }
@@ -77,24 +76,22 @@
     <header>
       <p class="eyebrow">Automa M006 D2 · shadow / observe-only</p>
       <h1 id="decision-combined-v0">decision-combined-v0</h1>
-      <p>This view reports an accepted shadow decision and can rerun a bounded input preview. It never sends vehicle commands.</p>
+    <p>This view reports an accepted shadow decision and automatically computes a bounded side comparison. It never sends vehicle commands.</p>
       <p id="status" class="status" role="status" aria-live="polite" data-state="error">Unavailable: a generation query is required.</p>
     </header>
     <section id="shadow-preview" class="preview-controls">
-      <p class="eyebrow">Controlled rerun · shadow only</p>
+      <p class="eyebrow">Automatic shadow comparison</p>
       <h2>What if the obstruction were on the other side?</h2>
-      <p class="section-intro">Choose a hypothetical position for retained image evidence. The server copies that memory and reruns the decision engine; freshness and all other inputs stay the same. Compare the result here with the accepted decision at the time of the rerun. No vehicle commands are sent.</p>
-      <form id="preview-form">
+      <p class="section-intro">When an accepted decision arrives, the server computes both side variants from the same input snapshot. Select either already-computed shadow decision; freshness and all other inputs stay the same. The accepted live decision remains a separate read-only baseline. No vehicle commands are sent.</p>
+      <div>
         <label for="preview-memory">Hypothetical obstruction position
           <select id="preview-memory" name="memory_mode" disabled>
-            <option value="current">Use accepted memory</option>
-            <option value="left">Left</option>
-            <option value="right">Right</option>
+            <option value="left">Left obstruction</option>
+            <option value="right">Right obstruction</option>
           </select>
         </label>
-        <button id="preview-submit" type="submit" disabled>Recompute shadow preview</button>
-      </form>
-      <p id="preview-status" class="status preview-status" role="status" aria-live="polite" data-state="error">Waiting for an accepted decision…</p>
+      </div>
+      <p id="preview-status" class="status preview-status" role="status" aria-live="polite" data-state="error">Waiting for an accepted decision to compute both side previews…</p>
       <div id="preview-output" aria-live="polite"></div>
     </section>
     <div id="live-content" aria-live="off">
@@ -107,9 +104,7 @@
 
       const statusNode = document.getElementById("status");
       const liveRoot = document.getElementById("live-content");
-      const previewForm = document.getElementById("preview-form");
       const previewMemory = document.getElementById("preview-memory");
-      const previewSubmit = document.getElementById("preview-submit");
       const previewStatus = document.getElementById("preview-status");
       const previewOutput = document.getElementById("preview-output");
       const generationPattern = /^[0-9a-f]{64}$/;
@@ -127,6 +122,10 @@
       let previewSerial = 0;
       let activePreviewController = null;
       let previewBaseSha256 = null;
+      let currentPreviewSourceFrameId = null;
+      let previewBaseSourceFrameId = null;
+      let previewArtifacts = new Map();
+      const previewModes = ["left", "right"];
 
       function element(tag, text, className) {
         const node = document.createElement(tag);
@@ -159,7 +158,7 @@
         clearDisplayExpiry();
         revokeObjectUrls(currentObjectUrls);
         currentObjectUrls = [];
-        resetPreview("Unavailable: recompute preview after a live decision returns.");
+        resetPreview("Unavailable: waiting for a new accepted decision to compute both previews.");
         const empty = element("section", null, "empty");
         empty.appendChild(element("p", message, "unavailable"));
         liveRoot.replaceChildren(empty);
@@ -170,27 +169,41 @@
         previewSerial += 1;
         if (activePreviewController) activePreviewController.abort();
         activePreviewController = null;
+        previewArtifacts = new Map();
+        previewBaseSha256 = null;
+        currentPreviewSourceFrameId = null;
+        previewBaseSourceFrameId = null;
         currentDecisionSha256 = null;
         previewMemory.disabled = true;
-        previewSubmit.disabled = true;
-        setPreviewStatus(previewBaseSha256 ? "Saved hypothetical comparison; live input unavailable. Wait for live input to rerun." : message, "error");
+        setPreviewStatus(message, "error");
       }
 
-      function updatePreviewBase(decisionSha256) {
+      function updatePreviewBase(decisionSha256, sourceFrameId) {
         const next = typeof decisionSha256 === "string" && generationPattern.test(decisionSha256)
           ? decisionSha256 : null;
         if (!next) {
           resetPreview("Unavailable: no accepted decision is available for preview.");
           return;
         }
-        if (previewBaseSha256 && previewBaseSha256 !== next && !activePreviewController) {
-          setPreviewStatus("Saved hypothetical comparison — live input has advanced. Change position or recompute to use the latest input.", "live");
-        } else if (!currentDecisionSha256 && !previewBaseSha256) {
-          setPreviewStatus("Ready: choose an input variant and recompute.", "live");
+        const sourceChanged = Boolean(
+          previewBaseSourceFrameId && sourceFrameId &&
+          previewBaseSourceFrameId !== sourceFrameId
+        );
+        if (sourceChanged) {
+          previewArtifacts = new Map();
+          previewBaseSha256 = null;
+          previewBaseSourceFrameId = null;
+          previewOutput.replaceChildren();
         }
         currentDecisionSha256 = next;
+        currentPreviewSourceFrameId = typeof sourceFrameId === "string" ? sourceFrameId : null;
         previewMemory.disabled = false;
-        previewSubmit.disabled = Boolean(activePreviewController);
+        if (!activePreviewController && previewArtifacts.size !== previewModes.length) {
+          setPreviewStatus("Computing both side previews…", "live");
+          computePreviewPair();
+        } else if (!activePreviewController && previewBaseSourceFrameId === currentPreviewSourceFrameId) {
+          setPreviewStatus("Both side previews ready; select a side to compare.", "live");
+        }
       }
 
       function invalidate(message) {
@@ -344,8 +357,8 @@
         const section = element("section", null, "black-box-overview");
         section.id = "decision-overview";
         section.appendChild(element("p", "PR execution path", "eyebrow"));
-        section.appendChild(element("h2", "Decision black box"));
-        section.appendChild(element("p", "Structured observation + memory snapshot → shadow proposal → authority result. Source images and raw records below are supporting evidence, not additional engine inputs. The accepted result is read-only; the bounded preview above is the only interactive path and sends no vehicle command.", "section-intro"));
+        section.appendChild(element("h2", "Decision black box · accepted live decision"));
+        section.appendChild(element("p", "This is the accepted live result; the live decision remains unchanged when the hypothetical control above changes. Structured observation + memory snapshot → shadow proposal → authority result. The hypothetical after-state is shown above; no vehicle command is sent.", "section-intro"));
         const flow = element("div", null, "black-box-flow");
         const perceptionCard = blackBoxCard("input", "Input · structured observation", "Observation", [
           ["status", pathValue(observation, ["status"])],
@@ -661,18 +674,18 @@
         const preview = payload && payload.preview;
         const selected = pathValue(payload, ["presentation", "selected_candidate"]);
         const section = element("section", null, "preview-result");
-        section.appendChild(element("h3", "Accepted before → hypothetical after"));
-        section.appendChild(element("p", "This is a preview of the activated engine. It is not published as the live decision and cannot drive a vehicle.", "subtle"));
+        section.appendChild(element("h2", "Hypothetical decision after"));
+        section.appendChild(element("p", "This is the decision produced after changing the selected input. It is a shadow preview, not the accepted live decision, and cannot drive a vehicle.", "subtle"));
         section.appendChild(factsGrid([
           ["hypothetical position", pathValue(preview, ["memory_mode"])],
+          ["decision after · reason", pathValue(selected, ["reason"])],
+          ["after · proposed command", commandSummary(pathValue(authority, ["proposed"]))],
+          ["after · plan", pathValue(plan, ["status"])],
           ["before · plan", pathValue(preview, ["before_plan", "status"])],
           ["before · reason", pathValue(preview, ["before", "reason"])],
           ["before · proposed command", commandSummary(pathValue(preview, ["before_proposed"]))],
           ["cycle status", pathValue(cycle, ["status"])],
-          ["after · plan", pathValue(plan, ["status"])],
           ["selected proposal", pathValue(plan, ["selected_proposal_id"])],
-          ["after · reason", pathValue(selected, ["reason"])],
-          ["after · proposed command", commandSummary(pathValue(authority, ["proposed"]))],
           ["authorized output", commandSummary(pathValue(authority, ["authorized_output"]))],
           ["live source frame", pathValue(preview, ["source_frame_id"])],
           ["preview decision sha256", pathValue(payload, ["decision_sha256"])],
@@ -685,56 +698,101 @@
         previewOutput.replaceChildren(section);
       }
 
-      async function submitPreview() {
-        if (!generation || !currentDecisionSha256) {
-          setPreviewStatus("Unavailable: wait for an accepted decision.", "error");
-          return;
-        }
+      function selectedPreviewLabel() {
+        return previewMemory.value === "right" ? "right obstruction" : "left obstruction";
+      }
+
+      async function computePreviewPair() {
+        if (!generation || !currentDecisionSha256 || activePreviewController) return;
         const serial = ++previewSerial;
-        const requestedBase = currentDecisionSha256;
-        if (activePreviewController) activePreviewController.abort();
         const controller = new AbortController();
         activePreviewController = controller;
         const deadlineTimer = setTimeout(() => controller.abort(), transactionLimitMs);
-        previewSubmit.disabled = true;
-        setPreviewStatus("Recomputing shadow preview…", "live");
+        setPreviewStatus("Computing both side previews…", "live");
         try {
-          const response = await fetch(
-            "/api/decision/preview?generation=" + encodeURIComponent(generation),
-            {
-              method: "POST",
-              cache: "no-store",
-              signal: controller.signal,
-              headers: { "Content-Type": "application/json", "Accept": "application/json" },
-              body: JSON.stringify({
-                schema: "automa_decision_preview_request_v0",
-                base_decision_sha256: requestedBase,
-                memory_mode: previewMemory.value
-              })
-            }
-          );
           let payload = null;
-          try { payload = await response.json(); } catch (_) { payload = null; }
-          if (!response.ok) throw new Error((payload && payload.reason) || "http_" + response.status);
-          if (!payload || payload.schema !== "automa_decision_preview_v0" || payload.status !== "preview") throw new Error("preview_invalid");
-          if (serial !== previewSerial || controller.signal.aborted) throw new Error("superseded");
-          if (payload.base_decision_sha256 !== requestedBase) throw new Error("preview_stale");
+          let requestedBase = currentDecisionSha256;
+          let requestedSourceFrameId = currentPreviewSourceFrameId;
+          let lastError = null;
+          for (let attempt = 0; attempt < 3; attempt += 1) {
+            try {
+              requestedBase = currentDecisionSha256;
+              requestedSourceFrameId = currentPreviewSourceFrameId;
+              const response = await fetch(
+                "/api/decision/preview?generation=" + encodeURIComponent(generation),
+                {
+                  method: "POST",
+                  cache: "no-store",
+                  signal: controller.signal,
+                  headers: { "Content-Type": "application/json", "Accept": "application/json" },
+                  body: JSON.stringify({
+                    schema: "automa_decision_preview_request_v0",
+                    base_decision_sha256: requestedBase,
+                    memory_mode: "both"
+                  })
+                }
+              );
+              try { payload = await response.json(); } catch (_) { payload = null; }
+              if (!response.ok) throw new Error((payload && payload.reason) || "http_" + response.status);
+              if (!payload || payload.schema !== "automa_decision_preview_pair_v0" || payload.status !== "preview_pair") {
+                throw new Error("preview_pair_invalid");
+              }
+              if (payload.base_decision_sha256 !== requestedBase) throw new Error("preview_stale");
+              if (requestedSourceFrameId && currentPreviewSourceFrameId && requestedSourceFrameId !== currentPreviewSourceFrameId) {
+                throw new Error("preview_stale");
+              }
+              const pair = payload.previews;
+              if (!pair || typeof pair !== "object") throw new Error("preview_pair_invalid");
+              for (const mode of previewModes) {
+                const artifact = pair[mode];
+                if (!artifact || artifact.schema !== "automa_decision_preview_v0" || artifact.status !== "preview" ||
+                    artifact.base_decision_sha256 !== requestedBase || artifact.preview?.memory_mode !== mode) {
+                  throw new Error("preview_pair_invalid");
+                }
+              }
+              break;
+            } catch (error) {
+              lastError = error;
+              const reason = error && error.name === "AbortError" ? "request_timeout" : ((error && error.message) || "preview_unavailable");
+              if (reason === "preview_stale" && attempt < 2) {
+                setPreviewStatus("Live input advanced while building both previews; retrying…", "live");
+                await new Promise(resolve => setTimeout(resolve, 150));
+                continue;
+              }
+              throw error;
+            }
+          }
+          if (!payload) throw lastError || new Error("preview_unavailable");
+          if (serial !== previewSerial || controller.signal.aborted) return;
+          previewArtifacts = new Map(previewModes.map(mode => [mode, payload.previews[mode]]));
           previewBaseSha256 = requestedBase;
-          renderPreviewResult(payload);
-          setPreviewStatus(requestedBase === currentDecisionSha256
-            ? "Hypothetical comparison saved. Accepted live decision below remains unchanged."
-            : "Hypothetical comparison saved; live input has since advanced. Recompute to update.", "live");
+          previewBaseSourceFrameId = requestedSourceFrameId;
+          renderPreviewResult(previewArtifacts.get(previewMemory.value) || previewArtifacts.get(previewModes[0]));
+          setPreviewStatus("Both side previews ready. Showing " + selectedPreviewLabel() + "; the accepted live decision remains unchanged below.", "live");
         } catch (error) {
           if (serial !== previewSerial) return;
           const reason = error && error.name === "AbortError" ? "request_timeout" : ((error && error.message) || "preview_unavailable");
-          setPreviewStatus((reason === "preview_stale"
-            ? "Live input changed during the request; recompute with the latest input."
-            : "Could not recompute: " + reason) + (previewBaseSha256 ? " Previous comparison remains below." : ""), "error");
+          const stale = reason === "preview_stale";
+          setPreviewStatus(stale
+            ? "Live input changed while the pair was being built; waiting for a stable accepted input."
+            : "Could not compute both side previews: " + reason, "error");
         } finally {
           clearTimeout(deadlineTimer);
           if (activePreviewController === controller) activePreviewController = null;
-          if (serial === previewSerial) previewSubmit.disabled = !currentDecisionSha256;
+          if (serial === previewSerial && !previewArtifacts.size && currentDecisionSha256) {
+            setTimeout(() => computePreviewPair(), 250);
+          }
         }
+      }
+
+      function showSelectedPreview() {
+        const payload = previewArtifacts.get(previewMemory.value);
+        if (!payload) {
+          setPreviewStatus("Waiting for both side previews…", "live");
+          return;
+        }
+        renderPreviewResult(payload);
+        setPreviewStatus("Showing " + selectedPreviewLabel() + "; both variants use the same accepted input snapshot.", "live");
       }
 
       async function poll() {
@@ -757,7 +815,10 @@
           displayedTransactionSerial = serial;
           liveRoot.replaceChildren(fragment);
           restoreDisclosureState(liveRoot, disclosureState);
-          updatePreviewBase(result.payload.decision_sha256);
+          updatePreviewBase(
+            result.payload.decision_sha256,
+            pathValue(result.payload, ["decision", "frame_id"])
+          );
           setStatus(result.payload.status === "partial" ? "Live partial: " + (result.payload.reason || "component_unavailable") : "Live accepted: shadow / observe-only", "live");
           displayExpiryTimer = setTimeout(() => {
             if (displayedTransactionSerial === serial) clearLive("Unavailable: decision_expired");
@@ -805,11 +866,7 @@
         }
       }
 
-      previewForm.addEventListener("submit", event => {
-        event.preventDefault();
-        submitPreview();
-      });
-      previewMemory.addEventListener("change", submitPreview);
+      previewMemory.addEventListener("change", showSelectedPreview);
 
       async function start() {
         const requestedGeneration = readGeneration();

@@ -579,12 +579,20 @@ class _PerceptionViewHandler(LoopbackHTTPRequestHandler):
                     "decision preview request is not valid JSON",
                 ) from exc
             preview_request = parse_preview_request(decoded)
-            body = canonical_json_utf8(
-                decision_publisher.preview_payload(
-                    generation=generation,
-                    **preview_request,
+            if preview_request["memory_mode"] == "both":
+                body = canonical_json_utf8(
+                    decision_publisher.preview_pair_payload(
+                        generation=generation,
+                        base_decision_sha256=preview_request["base_decision_sha256"],
+                    )
                 )
-            )
+            else:
+                body = canonical_json_utf8(
+                    decision_publisher.preview_payload(
+                        generation=generation,
+                        **preview_request,
+                    )
+                )
         except DecisionViewHTTPError as exc:
             self._send_decision_error(exc, include_body=True)
             return

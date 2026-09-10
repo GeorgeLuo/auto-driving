@@ -51,6 +51,7 @@ DECISION_API_PATH = "/api/decision/latest"
 DECISION_IMAGE_PATH = "/api/decision/images/"
 DECISION_PREVIEW_PATH = "/api/decision/preview"
 DECISION_PREVIEW_SCHEMA = "automa_decision_preview_v0"
+DECISION_PREVIEW_PAIR_SCHEMA = "automa_decision_preview_pair_v0"
 DECISION_PREVIEW_REQUEST_SCHEMA = "automa_decision_preview_request_v0"
 PREVIEW_MEMORY_MODES = frozenset({"current", "empty", "left", "right"})
 MAX_PREVIEW_REQUEST_BYTES = 4096
@@ -320,11 +321,13 @@ def parse_preview_request(payload: object) -> dict[str, str]:
             "base_decision_sha256 must be a lower-case SHA-256 hash",
         )
     memory_mode = payload.get("memory_mode")
-    if type(memory_mode) is not str or memory_mode not in PREVIEW_MEMORY_MODES:
+    if type(memory_mode) is not str or (
+        memory_mode not in PREVIEW_MEMORY_MODES and memory_mode != "both"
+    ):
         raise DecisionViewHTTPError(
             400,
             "preview_invalid",
-            "memory_mode must be one of: current, empty, left, right",
+            "memory_mode must be one of: current, empty, left, right, both",
         )
     return {
         "base_decision_sha256": base_decision_sha256,
@@ -811,6 +814,129 @@ class DecisionViewPublisher:
 
         with self._lock:
             snapshot = self._snapshot_locked()
+        return self._build_preview_payload(
+            frame=frame,
+            preview_frame=preview_frame,
+            snapshot=snapshot,
+            served_at_ms=served_at_ms,
+            actual_base_sha256=actual_base_sha256,
+            memory_mode=memory_mode,
+        )
+
+    def preview_pair_payload(
+        self,
+        *,
+        generation: str,
+        base_decision_sha256: str,
+        now_ms: int | None = None,
+        pid_alive: Callable[[int], bool] = is_pid_alive,
+    ) -> dict[str, Any]:
+        """Compute both hypothetical side artifacts from one accepted frame."""
+
+        if (
+            type(base_decision_sha256) is not str
+            or GENERATION_RE.fullmatch(base_decision_sha256) is None
+        ):
+            raise DecisionViewHTTPError(
+                400,
+                "preview_invalid",
+                "base_decision_sha256 must be a lower-case SHA-256 hash",
+                identity=self.identity,
+            )
+        if generation != self.generation_id:
+            raise DecisionViewHTTPError(
+                409,
+                "generation_mismatch",
+                "requested generation does not belong to this decision view",
+                identity=self.identity,
+            )
+
+        served_at_ms = timestamp_ms() if now_ms is None else int(now_ms)
+        frame, frame_bytes = self._accepted_frame(
+            generation=generation,
+            served_at_ms=served_at_ms,
+            pid_alive=pid_alive,
+        )
+        actual_base_sha256 = _sha256(_canonical(frame))
+        if base_decision_sha256 != actual_base_sha256:
+            raise DecisionViewHTTPError(
+                409,
+                "preview_stale",
+                "preview input is based on an older accepted decision",
+                identity=self.identity,
+            )
+
+        with self._lock:
+            snapshot = self._snapshot_locked()
+        previews = {
+            mode: self._build_preview_payload(
+                frame=frame,
+                preview_frame=self._build_preview_frame(
+                    frame=frame,
+                    memory_mode=mode,
+                    published_at_ms=served_at_ms,
+                ),
+                snapshot=snapshot,
+                served_at_ms=served_at_ms,
+                actual_base_sha256=actual_base_sha256,
+                memory_mode=mode,
+            )
+            for mode in ("left", "right")
+        }
+
+        final_frame, final_frame_bytes = self._recheck_generation(
+            generation=generation,
+            pid_alive=pid_alive,
+            served_at_ms=served_at_ms,
+        )
+        if (
+            final_frame_bytes != frame_bytes
+            or final_frame.get("frame_id") != frame.get("frame_id")
+        ):
+            raise DecisionViewHTTPError(
+                409,
+                "preview_stale",
+                "accepted decision changed while both previews were assembled",
+                identity=self.identity,
+            )
+
+        payload = {
+            "schema": DECISION_PREVIEW_PAIR_SCHEMA,
+            "status": "preview_pair",
+            "reason": None,
+            "generation_id": self.generation_id,
+            "identity": deepcopy(self.identity),
+            "base_decision_sha256": actual_base_sha256,
+            "previews": previews,
+        }
+        try:
+            response_bytes = _canonical(payload)
+        except (TypeError, ValueError) as exc:
+            raise DecisionViewHTTPError(
+                503,
+                "preview_payload_invalid",
+                f"shadow preview pair is not strictly JSON serializable: {exc}",
+                identity=self.identity,
+            ) from exc
+        if len(response_bytes) > MAX_RESPONSE_BYTES:
+            raise DecisionViewHTTPError(
+                503,
+                "view_payload_too_large",
+                "shadow preview pair exceeds max_response_bytes",
+                identity=self.identity,
+            )
+        return payload
+
+    def _build_preview_payload(
+        self,
+        *,
+        frame: dict[str, Any],
+        preview_frame: dict[str, Any],
+        snapshot: _StoreSnapshot,
+        served_at_ms: int,
+        actual_base_sha256: str,
+        memory_mode: str,
+    ) -> dict[str, Any]:
         payload = self._build_payload(
             frame=preview_frame,
             snapshot=snapshot,
@@ -2768,6 +2894,7 @@ def _probe_unavailable(reason: str) -> dict[str, Any]:
 __all__ = [
     "DECISION_API_PATH",
     "DECISION_IMAGE_PATH",
+    "DECISION_PREVIEW_PAIR_SCHEMA",
     "DECISION_PREVIEW_PATH",
     "DECISION_PREVIEW_REQUEST_SCHEMA",
     "DECISION_PREVIEW_SCHEMA",

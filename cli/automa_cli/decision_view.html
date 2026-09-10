@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>decision-combined-v0 · shadow observe-only</title>
   <style>
-    :root { color-scheme: dark; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    :root { color-scheme: dark; font-family: system-ui, -apple-system, sans-serif; }
     body { margin: 0; background: #101419; color: #e8edf2; line-height: 1.45; }
-    main { max-width: 1180px; margin: 0 auto; padding: 1rem; }
+    main { max-width: 880px; margin: 0 auto; padding: 2rem 1rem; }
     h1, h2, h3 { line-height: 1.2; }
     h1 { margin: 0; font-size: clamp(1.2rem, 3vw, 1.8rem); }
     h2 { margin: 0 0 .7rem; font-size: 1rem; }
@@ -25,22 +25,18 @@
     .status::before { content: "Status: "; font-weight: 700; }
     .black-box-overview { border-color: #65c18c; }
     .preview-controls { border-color: #72a7ff; }
+    .decision-direction { font-size: clamp(2.8rem, 9vw, 5rem); font-weight: 750; letter-spacing: -.04em; color: #a1e9ba; margin: .4rem 0; }
+    .decision-context { color: #afbdc9; }
+    #preview-black-box .black-box-overview { margin: 1rem 0; padding: 1.5rem; }
+    #preview-status { border: 0; padding: 0; font-size: .85rem; color: #afbdc9; }
+    #preview-status::before { content: ""; }
+    #preview-status[data-state="error"] { color: #ffb4b4; }
     .preview-controls label { display: grid; gap: .25rem; color: #c7d4df; font-size: .82rem; }
     .preview-controls select { font: inherit; color: #e8edf2; background: #171d24; border: 1px solid #66788a; border-radius: .3rem; padding: .45rem .6rem; }
     .preview-controls select:disabled { cursor: not-allowed; opacity: .55; }
     .preview-status { margin-top: .7rem; }
     .preview-result { margin-top: .8rem; border-top: 1px solid #303a45; padding-top: .8rem; }
     .section-intro { margin: -.2rem 0 .8rem; color: #afbdc9; }
-    .black-box-flow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .65rem; }
-    .black-box-card { min-width: 0; padding: .7rem; background: #171d24; border: 1px solid #303a45; border-radius: .35rem; }
-    .black-box-card[data-kind="input"] { border-top: .25rem solid #72a7ff; }
-    .black-box-card[data-kind="decision"] { border-top: .25rem solid #e7a83b; }
-    .black-box-card[data-kind="output"] { border-top: .25rem solid #65c18c; }
-    .black-box-card h3 { margin-top: 0; }
-    .black-box-card .facts { grid-template-columns: 1fr; }
-    .black-box-card .fact { background: #141a20; }
-    .memory-records { margin: .7rem 0 0; padding-left: 1.1rem; color: #d3dde5; }
-    .memory-records li { margin: .3rem 0; overflow-wrap: anywhere; }
     .candidate-list { display: grid; gap: .75rem; }
     .candidate-card { padding: .7rem; background: #171d24; border: 1px solid #303a45; border-radius: .35rem; }
     .candidate-card .facts { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
@@ -66,37 +62,37 @@
     .unavailable { color: #ffb4b4; }
     .subtle { color: #afbdc9; }
     .empty { padding: .6rem; border: 1px dashed #66788a; border-radius: .3rem; }
-    @media (max-width: 900px) { .black-box-flow { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-    @media (max-width: 560px) { main { padding: .65rem; } header, section { padding: .7rem; } .black-box-flow { grid-template-columns: 1fr; } }
+    @media (max-width: 560px) { main { padding: .65rem; } header, section { padding: .7rem; } }
   </style>
 </head>
 <body>
   <main>
     <header>
-      <p class="eyebrow">Automa M006 D2 · shadow / observe-only</p>
-      <h1 id="decision-combined-v0">decision-combined-v0</h1>
-    <p>This view reports an accepted shadow decision and automatically computes a bounded side comparison. It never sends vehicle commands.</p>
-      <p id="status" class="status" role="status" aria-live="polite" data-state="error">Unavailable: a generation query is required.</p>
+      <p class="eyebrow">Automa · observe-only</p>
+      <h1 id="decision-combined-v0">Obstruction decision</h1>
+      <p class="subtle">Shadow preview · no vehicle commands sent.</p>
     </header>
     <section id="shadow-preview" class="preview-controls">
-      <p class="eyebrow">Automatic shadow comparison</p>
-      <h2>What if the obstruction were on the other side?</h2>
-      <p class="section-intro">When an accepted decision arrives, the server computes both side variants from the same input snapshot. Select either already-computed shadow decision; freshness and all other inputs stay the same. The accepted live decision remains a separate read-only baseline. No vehicle commands are sent.</p>
+      <h2>Choose an obstruction side</h2>
       <div>
-        <label for="preview-memory">Hypothetical obstruction position
+        <label for="preview-memory">Obstruction position
           <select id="preview-memory" name="memory_mode" disabled>
             <option value="left">Left obstruction</option>
             <option value="right">Right obstruction</option>
           </select>
         </label>
       </div>
-      <p id="preview-status" class="status preview-status" role="status" aria-live="polite" data-state="error">Waiting for an accepted decision to compute both side previews…</p>
+      <p id="preview-status" class="status preview-status" role="status" aria-live="polite" data-state="error">Loading decisions…</p>
       <div id="preview-black-box" aria-live="polite"></div>
       <div id="preview-output" aria-live="polite"></div>
     </section>
-    <div id="live-content" aria-live="off">
-      <section class="empty"><p class="subtle">Live decision content is unavailable until a generation-bound response is accepted.</p></section>
-    </div>
+    <details class="supporting-details">
+      <summary>Live baseline &amp; diagnostics</summary>
+      <p id="status" class="status" role="status" aria-live="polite" data-state="error">Connecting…</p>
+      <div id="live-content" aria-live="off">
+        <p class="subtle">Waiting for live data…</p>
+      </div>
+    </details>
   </main>
   <script>
     (() => {
@@ -204,7 +200,7 @@
           setPreviewStatus("Computing both side previews…", "live");
           computePreviewPair();
         } else if (!activePreviewController && previewBaseSourceFrameId === currentPreviewSourceFrameId) {
-          setPreviewStatus("Both side previews ready; select a side to compare.", "live");
+          setPreviewStatus("Ready · change the side to compare.", "live");
         }
       }
 
@@ -313,95 +309,14 @@
         return displayValue(status);
       }
 
-      function blackBoxCard(kind, label, title, facts) {
-        const card = element("article", null, "black-box-card");
-        card.dataset.kind = kind;
-        card.appendChild(element("p", label, "eyebrow"));
-        card.appendChild(element("h3", title));
-        card.appendChild(factsGrid(facts));
-        return card;
-      }
-
-      function appendMemoryRecords(card, memory) {
-        if (!memory || typeof memory !== "object") {
-          card.appendChild(element("p", "Memory preview unavailable.", "unavailable"));
-          return;
-        }
-        const records = memory.preview_records;
-        if (!Array.isArray(records)) {
-          card.appendChild(element("p", "Memory preview unavailable · reason=" + displayValue(memory.reason), "unavailable"));
-          return;
-        }
-        if (!records.length) {
-          card.appendChild(element("p", "No retained records.", "empty"));
-        }
-        if (records.length) {
-          const list = element("ul", null, "memory-records");
-          records.forEach((record, index) => {
-            const details = element("details");
-            details.dataset.disclosureKey = "memory-record:" + displayValue(pathValue(record, ["record_id"]));
-            const label = "record " + String(index + 1) + " · "
-              + displayValue(pathValue(record, ["record_id"]));
-            details.appendChild(element("summary", label));
-            const pre = element("pre");
-            pre.textContent = jsonText(record);
-            details.appendChild(pre);
-            const item = element("li");
-            item.appendChild(details);
-            list.appendChild(item);
-          });
-          card.appendChild(list);
-        }
-        card.appendChild(element("p", "Omitted from preview: " + displayValue(memory.omitted_record_count), "subtle"));
-      }
-
       function blackBoxOverview(payload, decision, cycle) {
-        const presentation = payload.presentation;
-        const observation = pathValue(presentation, ["observation"]);
-        const memory = pathValue(presentation, ["memory"]);
-        const selected = pathValue(presentation, ["selected_candidate"]);
-        const plan = pathValue(cycle, ["plan"]);
-        const authority = pathValue(cycle, ["authority"]);
+        const command = pathValue(cycle, ["authority", "proposed"]);
+        const side = pathValue(payload, ["preview", "memory_mode"]);
         const section = element("section", null, "black-box-overview");
         section.id = "decision-overview";
-        section.appendChild(element("p", "PR execution path", "eyebrow"));
-        section.appendChild(element("h2", "Decision black box · selected shadow preview"));
-        section.appendChild(element("p", "This black box is driven by the selected hypothetical obstruction position. It is a shadow preview and cannot drive a vehicle. The accepted live baseline is retained below.", "section-intro"));
-        const flow = element("div", null, "black-box-flow");
-        const perceptionCard = blackBoxCard("input", "Input · structured observation", "Observation", [
-          ["status", pathValue(observation, ["status"])],
-          ["observation", pathValue(observation, ["frame_id"])],
-          ["cycle frame", pathValue(decision, ["frame_id"])],
-          ["raw image", "not an engine input"],
-          ["reason", pathValue(observation, ["reason"])]
-        ]);
-        const memoryCard = blackBoxCard("input", "Input · memory snapshot", "Memory", [
-          ["status", pathValue(memory, ["status"])],
-          ["reason", pathValue(memory, ["reason"])],
-          ["health", pathValue(memory, ["health"])],
-          ["record count", pathValue(memory, ["record_count"])]
-        ]);
-        appendMemoryRecords(memoryCard, memory);
-        flow.appendChild(perceptionCard);
-        flow.appendChild(memoryCard);
-        flow.appendChild(blackBoxCard("decision", "Decision · shadow proposal", "Selected result", [
-          ["engine", pathValue(decision, ["engine_id"])],
-          ["selector", pathValue(plan, ["selector_id"])],
-          ["plan", pathValue(plan, ["status"])],
-          ["selected proposal", pathValue(plan, ["selected_proposal_id"])],
-          ["lifecycle", pathValue(selected, ["lifecycle"])],
-          ["freshness", pathValue(selected, ["freshness"])],
-          ["decision · steering direction", steeringDirection(pathValue(authority, ["proposed"]))],
-          ["reason", pathValue(selected, ["reason"])],
-          ["proposed command (including gear)", commandSummary(pathValue(authority, ["proposed"]))]
-        ]));
-        flow.appendChild(blackBoxCard("output", "Output · authority boundary", "Authorized result", [
-          ["proposed_applied (shadow-only)", pathValue(authority, ["proposed_applied"])],
-          ["proposed intent (including gear)", commandSummary(pathValue(authority, ["proposed"]))],
-          ["authorized output (including gear)", commandSummary(pathValue(authority, ["authorized_output"]))],
-          ["host observation", pathValue(payload, ["host_observation", "status"])]
-        ]));
-        section.appendChild(flow);
+        section.appendChild(element("h2", "Black-box decision"));
+        section.appendChild(element("p", steeringDirection(command), "decision-direction"));
+        section.appendChild(element("p", "Obstruction on the " + displayValue(side), "decision-context"));
         return section;
       }
 
@@ -707,8 +622,7 @@
         const preview = payload && payload.preview;
         const selected = pathValue(payload, ["presentation", "selected_candidate"]);
         const content = element("section", null, "preview-result");
-        content.appendChild(element("h2", "Selected shadow artifact"));
-        content.appendChild(element("p", "Full details for the selected hypothetical decision. The prominent black box above is the operator view.", "subtle"));
+        content.appendChild(element("h2", "Selected preview"));
         content.appendChild(factsGrid([
           ["hypothetical position", pathValue(preview, ["memory_mode"])],
           ["decision after · steering direction", steeringDirection(pathValue(authority, ["proposed"]))],
@@ -729,7 +643,7 @@
           jsonSection("Preview cycle.plan", plan),
           jsonSection("Preview cycle.authority", authority)
         ], false, "preview-canonical-plan-authority"));
-        previewOutput.replaceChildren(detailsSection("Supporting detail · selected shadow artifact", content, false, "selected-shadow-artifact"));
+        previewOutput.replaceChildren(detailsSection("Decision details", content, false, "selected-shadow-artifact"));
       }
 
       function selectedPreviewLabel() {
@@ -803,7 +717,7 @@
           previewBaseSourceFrameId = requestedSourceFrameId;
           renderPreviewResult(previewArtifacts.get(previewMemory.value) || previewArtifacts.get(previewModes[0]));
           renderSelectedBlackBox(previewArtifacts.get(previewMemory.value) || previewArtifacts.get(previewModes[0]));
-          setPreviewStatus("Both side previews ready. Showing " + selectedPreviewLabel() + "; the accepted live decision remains unchanged below.", "live");
+          setPreviewStatus("Ready · change the side to compare.", "live");
         } catch (error) {
           if (serial !== previewSerial) return;
           const reason = error && error.name === "AbortError" ? "request_timeout" : ((error && error.message) || "preview_unavailable");
@@ -828,7 +742,7 @@
         }
         renderPreviewResult(payload);
         renderSelectedBlackBox(payload);
-        setPreviewStatus("Showing " + selectedPreviewLabel() + "; both variants use the same accepted input snapshot.", "live");
+        setPreviewStatus("Ready · change the side to compare.", "live");
       }
 
       async function poll() {

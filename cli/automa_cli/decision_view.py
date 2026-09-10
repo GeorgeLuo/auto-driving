@@ -944,7 +944,15 @@ class DecisionViewPublisher:
         source = cycle.get("source")
         if not isinstance(source, dict):
             return
-        if source.get("frame_id") != frame.get("frame_id"):
+        frame_id = frame.get("frame_id")
+        frame_index = frame.get("frame_index")
+        if (
+            type(frame_id) is not str
+            or not frame_id
+            or not _is_nonnegative_int(frame_index)
+            or source.get("frame_id") != frame_id
+            or source.get("frame_index") != frame_index
+        ):
             return
         observation_env = source.get("observation")
         if not isinstance(observation_env, dict) or observation_env.get("status") != "ready":
@@ -955,18 +963,43 @@ class DecisionViewPublisher:
         observation_id = observation.get("observation_id")
         if type(observation_id) is not str or not observation_id:
             return
-        frame_id = str(frame.get("frame_id"))
-        frame_index = frame.get("frame_index") if _is_nonnegative_int(frame.get("frame_index")) else None
+        archive_key = (frame_id, observation_id)
+        previous = self._archives.get(archive_key)
         entry = self._entries.get(frame_id)
         captured_at_ms = entry.captured_at_ms if entry is not None else None
         environment_frame = entry.environment_frame if entry is not None else None
-        association_error = None
-        if entry is not None:
+        association_error = "source_unavailable" if entry is None else None
+        if entry is not None and entry.frame_id != frame_id:
+            association_error = "source_association_mismatch"
+            self._replace_entry_error_locked(frame_id, association_error)
+        elif entry is not None and entry.frame_index != frame_index:
+            association_error = "source_association_mismatch"
+            self._replace_entry_error_locked(frame_id, association_error)
+        elif entry is not None:
             association_error = self._bind_observation_to_entry_locked(
                 entry=entry,
                 observation=observation,
                 observation_id=observation_id,
             )
+        if previous is not None:
+            if previous.frame_id != frame_id or previous.frame_index != frame_index:
+                association_error = association_error or "source_association_mismatch"
+            elif entry is not None and (
+                previous.captured_at_ms != captured_at_ms
+                or previous.environment_frame != environment_frame
+            ):
+                association_error = association_error or "source_association_mismatch"
+            else:
+                try:
+                    same_observation = _canonical(previous.observation) == _canonical(observation)
+                except (TypeError, ValueError):
+                    same_observation = False
+                if not same_observation:
+                    association_error = association_error or "source_conflict"
+            if previous.association_error is not None:
+                association_error = association_error or previous.association_error
+        if association_error is not None and entry is not None and entry.association_error is None:
+            self._replace_entry_error_locked(frame_id, association_error)
         archive = _ObservationArchive(
             frame_id=frame_id,
             frame_index=frame_index,
@@ -976,7 +1009,7 @@ class DecisionViewPublisher:
             association_error=association_error,
             environment_frame=deepcopy(environment_frame),
         )
-        previous = self._archives.pop((frame_id, observation_id), None)
+        previous = self._archives.pop(archive_key, None)
         if previous is not None:
             self._metadata_bytes -= _archive_metadata_bytes(previous)
         try:
@@ -1007,6 +1040,12 @@ class DecisionViewPublisher:
     ) -> str | None:
         if entry.association_error is not None:
             return entry.association_error
+        if (
+            not isinstance(observation, dict)
+            or observation.get("observation_id") != observation_id
+        ):
+            self._replace_entry_error_locked(entry.frame_id, "source_conflict")
+            return "source_conflict"
         observed_snapshot = observation.get("sensor_snapshot")
         if entry.sensor_snapshot is None or not isinstance(observed_snapshot, dict):
             error = "source_association_unavailable"
@@ -1018,10 +1057,37 @@ class DecisionViewPublisher:
         if error is not None:
             self._replace_entry_error_locked(entry.frame_id, error)
             return error
+        archive = self._archives.get((entry.frame_id, observation_id))
+        if archive is not None:
+            if archive.frame_id != entry.frame_id:
+                error = "source_association_mismatch"
+            elif archive.frame_index is None or archive.captured_at_ms is None:
+                error = "source_unavailable"
+            elif (
+                archive.frame_index != entry.frame_index
+                or archive.captured_at_ms != entry.captured_at_ms
+                or archive.environment_frame != entry.environment_frame
+            ):
+                error = "source_association_mismatch"
+            elif archive.association_error is not None:
+                error = archive.association_error
+            else:
+                try:
+                    same_observation = _canonical(archive.observation) == _canonical(observation)
+                except (TypeError, ValueError):
+                    same_observation = False
+                if not same_observation:
+                    error = "source_conflict"
+            if error is not None:
+                self._replace_entry_error_locked(entry.frame_id, error)
+                return error
         if entry.observation_id is not None and entry.observation_id != observation_id:
             self._replace_entry_error_locked(entry.frame_id, "source_conflict")
             return "source_conflict"
         if entry.observation_id == observation_id:
+            if archive is None:
+                self._replace_entry_error_locked(entry.frame_id, "source_unavailable")
+                return "source_unavailable"
             return None
         updated = _ImageRecord(
             **{
@@ -1063,11 +1129,28 @@ class DecisionViewPublisher:
         entry = self._entries.get(frame_id)
         if entry is None:
             return
-        self._bind_observation_to_entry_locked(
-            entry=entry,
-            observation=archive.observation,
-            observation_id=archive.observation_id,
-        )
+        error = None
+        if archive.frame_id != frame_id or entry.frame_id != frame_id:
+            error = "source_association_mismatch"
+        elif archive.frame_index is None or archive.captured_at_ms is None:
+            error = "source_unavailable"
+        elif archive.frame_index != entry.frame_index:
+            error = "source_association_mismatch"
+        elif (
+            archive.captured_at_ms != entry.captured_at_ms
+            or archive.environment_frame != entry.environment_frame
+        ):
+            error = "source_association_mismatch"
+        elif archive.association_error is not None:
+            error = archive.association_error
+        else:
+            error = self._bind_observation_to_entry_locked(
+                entry=entry,
+                observation=archive.observation,
+                observation_id=archive.observation_id,
+            )
+        if error is not None:
+            self._replace_entry_error_locked(entry.frame_id, error)
 
     def _replace_entry_error_locked(self, frame_id: str, error: str) -> None:
         entry = self._entries.get(frame_id)

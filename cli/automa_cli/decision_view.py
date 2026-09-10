@@ -747,6 +747,14 @@ class DecisionViewPublisher:
                 503, "activation_invalid", "decision activation is invalid"
             ) from exc
 
+        if activation["decision"]["engine_id"] != "shadow-proposals":
+            raise DecisionViewHTTPError(
+                503,
+                "wrong_engine",
+                "decision view requires engine_id='shadow-proposals'",
+                identity=self.identity,
+            )
+
         try:
             current_identity = identity_for_activation(
                 vehicle_id=self.vehicle_id,

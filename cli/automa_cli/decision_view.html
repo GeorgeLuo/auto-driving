@@ -165,14 +165,30 @@
         return section;
       }
 
-      function detailsSection(title, children, open) {
+      function detailsSection(title, children, open, disclosureKey) {
         const details = element("details", null, "supporting-details");
+        details.dataset.disclosureKey = disclosureKey || title;
         if (open) details.open = true;
         details.appendChild(element("summary", title));
         for (const child of (Array.isArray(children) ? children : [children])) {
           if (child) details.appendChild(child);
         }
         return details;
+      }
+
+      function captureDisclosureState(root) {
+        const state = new Map();
+        root.querySelectorAll("details[data-disclosure-key]").forEach(details => {
+          state.set(details.dataset.disclosureKey, details.open);
+        });
+        return state;
+      }
+
+      function restoreDisclosureState(root, state) {
+        root.querySelectorAll("details[data-disclosure-key]").forEach(details => {
+          const key = details.dataset.disclosureKey;
+          if (state.has(key)) details.open = state.get(key);
+        });
       }
 
       function pathValue(root, path) {
@@ -235,6 +251,7 @@
           const list = element("ul", null, "memory-records");
           records.forEach((record, index) => {
             const details = element("details");
+            details.dataset.disclosureKey = "memory-record:" + displayValue(pathValue(record, ["record_id"]));
             const label = "record " + String(index + 1) + " · "
               + displayValue(pathValue(record, ["record_id"]));
             details.appendChild(element("summary", label));
@@ -325,7 +342,11 @@
             ["reason", pathValue(candidate, ["reason"])],
             ["complete command (including gear)", commandSummary(pathValue(candidate, ["command"]))]
           ]));
-          card.appendChild(detailsSection("Candidate detail · complete producer record", jsonSection("Canonical candidate", candidate)));
+          const candidateId = pathValue(candidate, ["proposal_id"]);
+          const candidateKey = candidateId === undefined || candidateId === null
+            ? "candidate:index:" + String(index)
+            : "candidate:" + String(candidateId);
+          card.appendChild(detailsSection("Candidate detail · complete producer record", jsonSection("Canonical candidate", candidate), false, candidateKey));
           list.appendChild(card);
         });
         section.appendChild(list);
@@ -579,10 +600,12 @@
             return;
           }
           clearDisplayExpiry();
+          const disclosureState = captureDisclosureState(liveRoot);
           revokeObjectUrls(currentObjectUrls);
           currentObjectUrls = result.objectUrls;
           displayedTransactionSerial = serial;
           liveRoot.replaceChildren(fragment);
+          restoreDisclosureState(liveRoot, disclosureState);
           setStatus(result.payload.status === "partial" ? "Live partial: " + (result.payload.reason || "component_unavailable") : "Live accepted: shadow / observe-only", "live");
           displayExpiryTimer = setTimeout(() => {
             if (displayedTransactionSerial === serial) clearLive("Unavailable: decision_expired");

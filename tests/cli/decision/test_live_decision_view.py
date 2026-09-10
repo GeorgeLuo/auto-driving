@@ -355,6 +355,22 @@ class LiveDecisionViewTests(unittest.TestCase):
             html.index('fragment.appendChild(detailsSection("Supporting record'),
         )
 
+    def test_html_preserves_disclosure_state_during_live_refresh(self) -> None:
+        html = (REPOSITORY / "cli" / "automa_cli" / "decision_view.html").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("function captureDisclosureState", html)
+        self.assertIn("function restoreDisclosureState", html)
+        self.assertIn("details.dataset.disclosureKey", html)
+        self.assertIn(
+            "const disclosureState = captureDisclosureState(liveRoot);",
+            html,
+        )
+        self.assertIn(
+            "liveRoot.replaceChildren(fragment);\n          restoreDisclosureState(liveRoot, disclosureState);",
+            html,
+        )
+
     def test_current_payload_preserves_cycle_and_exact_image_bytes(self) -> None:
         f = self.fixture
         f.arrange("host-zero")

@@ -14,6 +14,8 @@ from urllib.request import urlopen
 
 from PIL import Image
 
+from autonomy.decision import canonical_json_utf8
+
 from .decision_view import (
     DECISION_API_PATH,
     DECISION_IMAGE_PATH,
@@ -276,6 +278,68 @@ class _PerceptionViewHandler(LoopbackHTTPRequestHandler):
                 self._send_json(500, {"error": str(exc)}, include_body=include_body)
                 return
             self._send(200, body, "text/html; charset=utf-8", include_body=include_body)
+            return
+        if route in {DECISION_VIEW_PATH, "/decision.html"}:
+            try:
+                body = DECISION_VIEW_HTML_PATH.read_bytes()
+            except OSError as exc:
+                self._send_json(500, {"error": str(exc)}, include_body=include_body)
+                return
+            self._send(200, body, "text/html; charset=utf-8", include_body=include_body)
+            return
+        if route == DECISION_API_PATH:
+            try:
+                generation = parse_generation_query(request.query)
+                decision_publisher = self.server.publisher.decision_publisher
+                if decision_publisher is None:
+                    raise DecisionViewHTTPError(
+                        503,
+                        "producer_unavailable",
+                        "decision view publisher is unavailable",
+                    )
+                body = canonical_json_utf8(
+                    decision_publisher.latest_payload(generation=generation)
+                )
+            except DecisionViewHTTPError as exc:
+                # `_send_decision_error` is supplied by the later handler slice.
+                self._send_decision_error(exc, include_body=include_body)
+                return
+            self._send(
+                200,
+                body,
+                "application/json; charset=utf-8",
+                include_body=include_body,
+            )
+            return
+        if (
+            route == DECISION_IMAGE_PATH.rstrip("/")
+            or route.startswith(DECISION_IMAGE_PATH)
+        ):
+            try:
+                generation = parse_generation_query(request.query)
+                image_id = parse_image_id(route)
+                decision_publisher = self.server.publisher.decision_publisher
+                if decision_publisher is None:
+                    raise DecisionViewHTTPError(
+                        503,
+                        "producer_unavailable",
+                        "decision view publisher is unavailable",
+                    )
+                body, content_type, trusted_digest = decision_publisher.image_response(
+                    image_id=image_id,
+                    generation=generation,
+                )
+            except DecisionViewHTTPError as exc:
+                # `_send_decision_error` is supplied by the later handler slice.
+                self._send_decision_error(exc, include_body=include_body)
+                return
+            # `_send_decision_image` carries the trusted digest in the later sender.
+            self._send_decision_image(
+                body,
+                content_type,
+                trusted_digest,
+                include_body=include_body,
+            )
             return
         if route == "/api/health":
             self._send_json(

@@ -1269,6 +1269,8 @@ class _CaptureRefusal(Exception):
 def _route_error_for_decision(exc: DecisionSurfaceError) -> tuple[int, str]:
     if exc.error == "latest_frame_invalid":
         return 422, "decision_invalid"
+    if exc.error == "generation_mismatch":
+        return 409, "generation_mismatch"
     if exc.error == "latest_frame_missing":
         return 503, "decision_missing"
     if exc.error == "wrong_engine":

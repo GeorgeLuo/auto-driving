@@ -25,7 +25,6 @@
     .status::before { content: "Status: "; font-weight: 700; }
     .black-box-overview { border-color: #65c18c; }
     .preview-controls { border-color: #72a7ff; }
-    .preview-controls form { display: flex; flex-wrap: wrap; align-items: end; gap: .75rem; }
     .preview-controls label { display: grid; gap: .25rem; color: #c7d4df; font-size: .82rem; }
     .preview-controls select { font: inherit; color: #e8edf2; background: #171d24; border: 1px solid #66788a; border-radius: .3rem; padding: .45rem .6rem; }
     .preview-controls select:disabled { cursor: not-allowed; opacity: .55; }
@@ -92,6 +91,7 @@
         </label>
       </div>
       <p id="preview-status" class="status preview-status" role="status" aria-live="polite" data-state="error">Waiting for an accepted decision to compute both side previews…</p>
+      <div id="preview-black-box" aria-live="polite"></div>
       <div id="preview-output" aria-live="polite"></div>
     </section>
     <div id="live-content" aria-live="off">
@@ -106,6 +106,7 @@
       const liveRoot = document.getElementById("live-content");
       const previewMemory = document.getElementById("preview-memory");
       const previewStatus = document.getElementById("preview-status");
+      const previewBlackBox = document.getElementById("preview-black-box");
       const previewOutput = document.getElementById("preview-output");
       const generationPattern = /^[0-9a-f]{64}$/;
       const pollDelayMs = 500;
@@ -175,6 +176,7 @@
         previewBaseSourceFrameId = null;
         currentDecisionSha256 = null;
         previewMemory.disabled = true;
+        previewBlackBox.replaceChildren();
         setPreviewStatus(message, "error");
       }
 
@@ -293,6 +295,12 @@
         return displayValue(command);
       }
 
+      function steeringDirection(command) {
+        const steering = Number(pathValue(command, ["steering"]));
+        if (!Number.isFinite(steering) || Math.abs(steering) < 1e-9) return "hold";
+        return steering < 0 ? "steer left" : "steer right";
+      }
+
       function envelopeSummary(envelope) {
         if (envelope === undefined) return "unavailable";
         if (envelope === null) return "null";
@@ -357,8 +365,8 @@
         const section = element("section", null, "black-box-overview");
         section.id = "decision-overview";
         section.appendChild(element("p", "PR execution path", "eyebrow"));
-        section.appendChild(element("h2", "Decision black box · accepted live decision"));
-        section.appendChild(element("p", "This is the accepted live result; the live decision remains unchanged when the hypothetical control above changes. Structured observation + memory snapshot → shadow proposal → authority result. The hypothetical after-state is shown above; no vehicle command is sent.", "section-intro"));
+        section.appendChild(element("h2", "Decision black box · selected shadow preview"));
+        section.appendChild(element("p", "This black box is driven by the selected hypothetical obstruction position. It is a shadow preview and cannot drive a vehicle. The accepted live baseline is retained below.", "section-intro"));
         const flow = element("div", null, "black-box-flow");
         const perceptionCard = blackBoxCard("input", "Input · structured observation", "Observation", [
           ["status", pathValue(observation, ["status"])],
@@ -383,6 +391,7 @@
           ["selected proposal", pathValue(plan, ["selected_proposal_id"])],
           ["lifecycle", pathValue(selected, ["lifecycle"])],
           ["freshness", pathValue(selected, ["freshness"])],
+          ["decision · steering direction", steeringDirection(pathValue(authority, ["proposed"]))],
           ["reason", pathValue(selected, ["reason"])],
           ["proposed command (including gear)", commandSummary(pathValue(authority, ["proposed"]))]
         ]));
@@ -396,17 +405,41 @@
         return section;
       }
 
+      function acceptedLiveBaseline(payload) {
+        if (!payload || typeof payload !== "object") return null;
+        const decision = payload.decision;
+        const cycle = pathValue(decision, ["cycle"]);
+        const authority = pathValue(cycle, ["authority"]);
+        const selected = pathValue(payload, ["presentation", "selected_candidate"]);
+        return detailsSection("Accepted live decision · read-only baseline", factsSection("Accepted live baseline", [
+          ["decision · steering direction", steeringDirection(pathValue(authority, ["proposed"]))],
+          ["reason", pathValue(selected, ["reason"])],
+          ["proposed command", commandSummary(pathValue(authority, ["proposed"]))],
+          ["authorized output", commandSummary(pathValue(authority, ["authorized_output"]))],
+          ["source frame", pathValue(decision, ["frame_id"])],
+          ["decision sha256", pathValue(payload, ["decision_sha256"])]
+        ]), false, "accepted-live-baseline");
+      }
+
+      function renderSelectedBlackBox(payload) {
+        const decision = payload && payload.decision;
+        const cycle = pathValue(decision, ["cycle"]);
+        if (!decision || !cycle) return;
+        const replacement = blackBoxOverview(payload, decision, cycle);
+        previewBlackBox.replaceChildren(replacement);
+      }
+
       function candidatesSection(plan) {
-        const section = element("section");
-        section.appendChild(element("h2", "Candidates · canonical cycle.plan.candidates"));
+        const content = element("section");
+        content.appendChild(element("h2", "Candidates · canonical cycle.plan.candidates"));
         const candidates = pathValue(plan, ["candidates"]);
         if (!Array.isArray(candidates)) {
-          section.appendChild(element("p", "Candidates unavailable; the canonical plan is unavailable.", "unavailable"));
-          return section;
+          content.appendChild(element("p", "Candidates unavailable; the canonical plan is unavailable.", "unavailable"));
+          return detailsSection("Supporting detail · candidates", content, false, "supporting-candidates");
         }
         if (!candidates.length) {
-          section.appendChild(element("p", "No candidates were emitted by the canonical plan.", "empty"));
-          return section;
+          content.appendChild(element("p", "No candidates were emitted by the canonical plan.", "empty"));
+          return detailsSection("Supporting detail · candidates", content, false, "supporting-candidates");
         }
         const list = element("div", null, "candidate-list");
         candidates.forEach((candidate, index) => {
@@ -429,8 +462,8 @@
           card.appendChild(detailsSection("Candidate detail · complete producer record", jsonSection("Canonical candidate", candidate), false, candidateKey));
           list.appendChild(card);
         });
-        section.appendChild(list);
-        return section;
+        content.appendChild(list);
+        return detailsSection("Supporting detail · candidates", content, false, "supporting-candidates");
       }
 
       function finiteNormalized(value) {
@@ -602,7 +635,7 @@
         const authority = pathValue(cycle, ["authority"]);
         const source = pathValue(cycle, ["source"]);
         const fragment = document.createDocumentFragment();
-        fragment.appendChild(blackBoxOverview(payload, decision, cycle));
+        fragment.appendChild(acceptedLiveBaseline(payload));
         fragment.appendChild(candidatesSection(plan));
         fragment.appendChild(detailsSection("Supporting data · decision input envelope status", factsSection("Decision inputs · envelope status", [
           ["observation", envelopeSummary(pathValue(source, ["observation"]))],
@@ -673,11 +706,12 @@
         const authority = pathValue(cycle, ["authority"]);
         const preview = payload && payload.preview;
         const selected = pathValue(payload, ["presentation", "selected_candidate"]);
-        const section = element("section", null, "preview-result");
-        section.appendChild(element("h2", "Hypothetical decision after"));
-        section.appendChild(element("p", "This is the decision produced after changing the selected input. It is a shadow preview, not the accepted live decision, and cannot drive a vehicle.", "subtle"));
-        section.appendChild(factsGrid([
+        const content = element("section", null, "preview-result");
+        content.appendChild(element("h2", "Selected shadow artifact"));
+        content.appendChild(element("p", "Full details for the selected hypothetical decision. The prominent black box above is the operator view.", "subtle"));
+        content.appendChild(factsGrid([
           ["hypothetical position", pathValue(preview, ["memory_mode"])],
+          ["decision after · steering direction", steeringDirection(pathValue(authority, ["proposed"]))],
           ["decision after · reason", pathValue(selected, ["reason"])],
           ["after · proposed command", commandSummary(pathValue(authority, ["proposed"]))],
           ["after · plan", pathValue(plan, ["status"])],
@@ -691,11 +725,11 @@
           ["preview decision sha256", pathValue(payload, ["decision_sha256"])],
           ["live decision unchanged", pathValue(preview, ["live_decision_unchanged"])]
         ]));
-        section.appendChild(detailsSection("Preview canonical plan and authority", [
+        content.appendChild(detailsSection("Canonical plan and authority", [
           jsonSection("Preview cycle.plan", plan),
           jsonSection("Preview cycle.authority", authority)
         ], false, "preview-canonical-plan-authority"));
-        previewOutput.replaceChildren(section);
+        previewOutput.replaceChildren(detailsSection("Supporting detail · selected shadow artifact", content, false, "selected-shadow-artifact"));
       }
 
       function selectedPreviewLabel() {
@@ -768,6 +802,7 @@
           previewBaseSha256 = requestedBase;
           previewBaseSourceFrameId = requestedSourceFrameId;
           renderPreviewResult(previewArtifacts.get(previewMemory.value) || previewArtifacts.get(previewModes[0]));
+          renderSelectedBlackBox(previewArtifacts.get(previewMemory.value) || previewArtifacts.get(previewModes[0]));
           setPreviewStatus("Both side previews ready. Showing " + selectedPreviewLabel() + "; the accepted live decision remains unchanged below.", "live");
         } catch (error) {
           if (serial !== previewSerial) return;
@@ -792,6 +827,7 @@
           return;
         }
         renderPreviewResult(payload);
+        renderSelectedBlackBox(payload);
         setPreviewStatus("Showing " + selectedPreviewLabel() + "; both variants use the same accepted input snapshot.", "live");
       }
 
@@ -819,6 +855,9 @@
             result.payload.decision_sha256,
             pathValue(result.payload, ["decision", "frame_id"])
           );
+          if (previewArtifacts.size === previewModes.length) {
+            renderSelectedBlackBox(previewArtifacts.get(previewMemory.value) || previewArtifacts.get(previewModes[0]));
+          }
           setStatus(result.payload.status === "partial" ? "Live partial: " + (result.payload.reason || "component_unavailable") : "Live accepted: shadow / observe-only", "live");
           displayExpiryTimer = setTimeout(() => {
             if (displayedTransactionSerial === serial) clearLive("Unavailable: decision_expired");

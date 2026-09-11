@@ -27,15 +27,18 @@ Plans: [milestones/](milestones/). Closed ledger:
 ## Reading Order
 
 1. Short default [agent surface](guidance/agent-surface.md).
-2. The canonical `plan.md` for the milestone under work; run the status command
+2. When the operator explicitly names one, load the exact versioned
+   [orchestration policy](guidance/orchestration/README.md). Policies organize
+   execution but do not replace workflow authority or role/task guidance.
+3. The canonical `plan.md` for the milestone under work; run the status command
    above rather than reading a copy from this page.
-3. Only the role- or task-specific files selected by the agent surface.
-4. Full [planning and delivery contract](milestones/README.md)
+4. Only the role- or task-specific files selected by the agent surface.
+5. Full [planning and delivery contract](milestones/README.md)
    ([rendered](milestones/planning-contract.html)) when resolving ambiguity,
    changing workflow, or directed there by a guidance file.
-5. [completed.md](milestones/completed.md) for durable closed-work context.
-6. Relevant documents under `reference/` for current system behavior.
-7. `synthesis/` for research evidence, not backlog commitments.
+6. [completed.md](milestones/completed.md) for durable closed-work context.
+7. Relevant documents under `reference/` for current system behavior.
+8. `synthesis/` for research evidence, not backlog commitments.
 
 Do not treat closed milestone plans as current architecture.
 The active milestone plan, not this navigation page, owns current workflow and
@@ -46,6 +49,7 @@ frontier state.
 | Path | Role |
 | --- | --- |
 | `guidance/` | Short, derived agent operating surface and role guidance |
+| `guidance/orchestration/` | Operator-selected, versioned orchestration policies; opt-in and subordinate to the canonical workflow contract |
 | `reference/` | Living architecture and contracts |
 | `synthesis/` | Research evidence without commitment |
 | `milestones/README.md` | Canonical planning and PR delivery contract |

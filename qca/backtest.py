@@ -6,7 +6,14 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .analyzer import AnalysisError, AnalyzerConfig, analyze_diff, report_to_dict
+from .analyzer import (
+    AnalysisError,
+    AnalyzerConfig,
+    analyze_diff,
+    format_share_permille,
+    production_test_split_summary,
+    report_to_dict,
+)
 
 
 def run_manifest(manifest_path: str | Path) -> dict[str, Any]:
@@ -91,6 +98,16 @@ def _operator_questions(diff: dict[str, Any]) -> list[str]:
     if classes.get("tests", {}).get("files"):
         questions.append(
             "What consumer-visible behavior or boundary does the changed test surface verify?"
+        )
+    split = diff.get("production_test_split") or {}
+    python = split.get("python") or {}
+    if python.get("production", {}).get("files") and python.get("tests", {}).get("files"):
+        questions.append(
+            "Does the production vs tests Python net split "
+            f"({python['production']['net_lines']} / {python['tests']['net_lines']}, "
+            f"{format_share_permille(python['production_net_share_permille'])} / "
+            f"{format_share_permille(python['tests_net_share_permille'])}) "
+            "match the intended change?"
         )
     if classes.get("tooling/scripts", {}).get("files"):
         questions.append("Which tooling or workflow behavior does this changed script surface support?")
@@ -185,6 +202,9 @@ def render_backtest_markdown(payload: dict[str, Any]) -> str:
                 f"+{diff['included_added_lines']}/-{diff['included_deleted_lines']} "
                 f"({diff['included_churn']} churn)."
             )
+            split = diff.get("production_test_split")
+            if split:
+                lines.append(production_test_split_summary(split))
             lines.append("")
         for question in state["operator_questions"]:
             lines.append(f"- {question}")

@@ -14,7 +14,7 @@ from cli.automa_cli.bundles import (
     release_activation_summary,
     sync_controller_bundle,
 )
-from cli.automa_cli.perception_view import PerceptionViewServer
+from cli.automa_cli.runtime_view import RuntimeViewServer
 from implementations.perception.catalog import (
     DEFAULT_PERCEPTION_ALGORITHM,
     PERCEPTION_ALGORITHMS,
@@ -425,7 +425,7 @@ class PerceptionCommandTests(unittest.TestCase):
                 manifest_bundle_root=ROOT,
             )
             automation_dir = runtime_root / vehicle_id / "bundle" / "runtime" / "automation"
-            server = PerceptionViewServer(
+            server = RuntimeViewServer(
                 vehicle_id=vehicle_id,
                 automation_dir=automation_dir,
                 port=0,
@@ -447,8 +447,8 @@ class PerceptionCommandTests(unittest.TestCase):
                     }
                 },
             }
-            server.publish_frame(frame_path=frame_path, frame_record=frame_record)
-            server.publish_perception(frame_record=frame_record)
+            server.perception.publish_frame(frame_path=frame_path, frame_record=frame_record)
+            server.perception.publish_perception(frame_record=frame_record)
             expected_url = server.url
             try:
                 text_result = run_automa(

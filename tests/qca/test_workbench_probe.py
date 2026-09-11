@@ -8,6 +8,11 @@ from qca.experiments.workbench_probe import _normalize
 
 class WorkbenchProbeNormalizeTests(unittest.TestCase):
     def test_replaces_host_paths_timings_and_embedded_durations(self) -> None:
+        """Mechanism: check the trace-normalization invariant at its deterministic seam.
+
+        The full public probe adds subprocess, loopback, and temporary-file
+        behavior, so it cannot isolate this host-independent comparison rule.
+        """
         capture = Path("/var/folders/tmp/qca-workbench-probe-aaaa/capture")
         checkout = Path("/var/folders/tmp/qca-m008-bbbb/baseline")
         payload = {

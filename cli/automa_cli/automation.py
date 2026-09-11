@@ -48,8 +48,8 @@ from .perception import (
     _close_mapper,
     _load_mapper,
 )
+from .runtime_view import RuntimeViewServer
 from .perception_view import (
-    PerceptionViewServer,
     get_perception_view_status,
     perception_view_ready,
 )
@@ -281,9 +281,9 @@ def run_vehicle_automation(
             if transient_dir.exists():
                 shutil.rmtree(transient_dir)
 
-    view_server: PerceptionViewServer | None = None
+    view_server: RuntimeViewServer | None = None
     try:
-        view_server = PerceptionViewServer(
+        view_server = RuntimeViewServer(
             vehicle_id=vehicle_id,
             automation_dir=automation_dir,
             run_id=run_id,
@@ -377,9 +377,9 @@ def run_vehicle_automation(
     _emit(output, f"Action policy: {state['action_policy']}")
     _emit(output, f"Engine: {cycle_host.manager.status().get('engine')}")
     if published_view.get("available"):
-        _emit(output, f"Perception view: {published_view.get('url')}")
+        _emit(output, f"Runtime view: {published_view.get('url')}")
     else:
-        _emit(output, f"Perception view: unavailable ({published_view.get('reason', 'startup failed')})")
+        _emit(output, f"Runtime view: unavailable ({published_view.get('reason', 'startup failed')})")
     if max_frames == 0:
         _emit(output, "Frames: until Ctrl-C")
     else:
@@ -561,7 +561,7 @@ def run_vehicle_automation(
             }
         if view_server is not None:
             try:
-                view_server.publish_perception(frame_record=frame_record)
+                view_server.perception.publish_perception(frame_record=frame_record)
                 update_view_state(view_server.health_payload())
             except (OSError, TypeError, ValueError) as exc:
                 update_view_state(
@@ -873,7 +873,7 @@ def run_vehicle_automation(
                 capture_record["shadow_reference"] = shadow_reference
             if view_server is not None:
                 try:
-                    view_server.publish_frame(frame_path=front_path, frame_record=capture_record)
+                    view_server.perception.publish_frame(frame_path=front_path, frame_record=capture_record)
                     update_view_state(view_server.health_payload())
                 except (OSError, TypeError, ValueError) as exc:
                     update_view_state(
@@ -1171,7 +1171,7 @@ def start_vehicle_automation_background(
                 [
                     f"Automation already running for {vehicle_id}.",
                     f"PID: {existing_pid}",
-                    f"Perception view: {view['url']}",
+                    f"Runtime view: {view['url']}",
                     *([browser_line] if browser_line else []),
                     "Ready for: inspect perception and stop automation",
                     f"State: {display_path(automation_dir / 'state.json')}",
@@ -1297,7 +1297,7 @@ def start_vehicle_automation_background(
                 f"perception={perception_phase.get('duration_ms', 'unknown')}ms, "
                 "view=current-generation correlated"
             ),
-            f"Perception view: {startup.get('view_url')}",
+            f"Runtime view: {startup.get('view_url')}",
             "Ready for: inspect perception and stop automation",
         ]
         if open_view:
@@ -2303,7 +2303,7 @@ def _write_json(path: Path, payload: Any) -> None:
     temporary.replace(path)
 
 
-def _stop_perception_view(view_server: PerceptionViewServer | None) -> dict[str, Any]:
+def _stop_perception_view(view_server: RuntimeViewServer | None) -> dict[str, Any]:
     if view_server is None:
         return {
             "status": "unavailable",

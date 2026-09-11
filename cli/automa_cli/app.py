@@ -246,7 +246,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--open-view",
         action="store_true",
         help=(
-            "Open the loopback perception browser only after the first correlated "
+            "Open the local Automa runtime views after the first correlated "
             "camera/perception publication is healthy."
         ),
     )

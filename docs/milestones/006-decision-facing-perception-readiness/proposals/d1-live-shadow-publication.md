@@ -70,7 +70,14 @@ physical-vehicle/Donkey source, the generated-vendor patch, and the M006 local
 decision surface. A later accepted proposal should retain only the selected
 boundary and the smallest rejection cases.
 
-### Stage parity and mutable decision implementation
+### Highest-leverage question: what is D1's logical boundary?
+
+The operator outcome is already clear enough to serve as a premise: one
+ordinary decision-stage check should show a current result and fail closed when
+that result is no longer trustworthy. The highest-leverage open question is
+therefore the logical ownership of that stage: is decision a peer stage with
+provider adapters, or is D1 a Pi-specific live surface? This choice informs
+more of the other questions than any individual route or field choice.
 
 Perception and memory already provide the useful mental directory: stage-level
 `update`, `info`, and `stream` commands, with provider-specific execution
@@ -120,7 +127,40 @@ The working recommendation is the first option. This proposal accepts the
 stage boundary and operator-visible behavior; it does not freeze the internal
 decision-generation implementation or require a perfect long-term abstraction.
 
-### Publisher and identity authority
+#### Downstream hit analysis
+
+The following is a qualitative dependency check, not a claim that every
+downstream choice is mathematically determined. A check mark means that the
+boundary option directly supports the recommended selection; `~` means it
+could support it only after adding another architectural decision; `×` means
+it conflicts with the recommended D1 shape. This is the useful comparison
+across options:
+
+| Downstream selection | A. Common stage/provider seam | B. Pi-specific surface | C. Universal abstraction now | D. Chase worker as boundary |
+| --- | :---: | :---: | :---: | :---: |
+| One `vehicles update/info/stream decision` surface | ✓ | × | ✓ | × |
+| Vehicle runtime owns source identity | ✓ | ~ | ~ | × |
+| Existing physical runtime boundary, transport behind adapter | ✓ | ~ | ~ | × |
+| Provider-neutral result acceptance | ✓ | × | ✓ | × |
+| Small bounded freshness predicate | ✓ | ~ | ~ | × |
+| Mutable decision implementation with a small interface | ✓ | × | × | × |
+| No Pi-only workflow, bridge, or future-proof framework | ✓ | × | × | ✓ |
+| **Qualitative recommendation hits** | **7** | **0** | **2** | **1** |
+
+The point is not that option A makes every detail automatic. It establishes
+the ownership and user-facing shape that make the remaining choices local:
+the runtime produces evidence, the provider adapts it, the common validator
+accepts its meaning, and the CLI presents it. Option A therefore has the
+highest leverage and should be selected first. The later sections are
+dependent design details or explicit deferrals, not independent alternatives
+that all remain open after this selection.
+
+### Downstream question: who owns source identity?
+
+Once decision is a peer stage, this question is about the producer boundary,
+not about inventing a Pi-specific decision owner. The selected answer should
+let each vehicle provider attach truthful source identity to the result it
+actually produced.
 
 The existing physical path has a publisher, but it is an observation publisher, not
 yet a complete decision-stream publisher. `AutonomyPilotPart` retains the
@@ -149,7 +189,11 @@ decision-stage API, and PiRacer is simply the first physical provider. This
 requires adding the missing source identity fields; no existing component
 currently supplies the entire tuple.
 
-### Endpoint ownership and adapter shape
+### Downstream question: how does the provider publish?
+
+This follows source ownership. The transport only needs to carry one
+correlated result from that owner; it should not become a second logical stage
+or force the CLI to reconstruct evidence from unrelated reads.
 
 The endpoint is a separate patched DonkeyCar host boundary, not an unknown
 external service in this checkout. The app assembly is source-controlled in
@@ -179,7 +223,11 @@ logical contract is the common decision provider and CLI; the repository's
 vendor patch is only the source-controlled transport boundary, even though its
 handler executes from the generated DonkeyCar checkout.
 
-### Host mode, pilot input, and final output
+### Mostly independent scope question: what host evidence is needed?
+
+This question is mostly independent of route shape, but it is still bounded by
+the operator claim. If D1 only proves shadow generation while stationary, it
+does not need to grow into a full actuator-observation contract.
 
 The shadow authority result is not a substitute for host control evidence. The
 current Donkey patch exposes the controller's current drive mode, while the
@@ -204,7 +252,11 @@ to make D1 tractable and should not be smuggled into the contract. Whatever
 record is exposed must continue to distinguish a proposed decision from host
 output; D1 does not claim actuator application.
 
-### First operator surface: CLI or live page
+### Derived operator surface: CLI or live page
+
+This is downstream of the stage/provider and result contract. The existing
+stage-level CLI is therefore the default, while a page remains a separate
+presentation question.
 
 The existing `stream decision` surface is a strong presentation and acceptance
 candidate, but its current producer/consumer pair is local: it reads
@@ -234,7 +286,11 @@ operator check is intentionally ordinary:
 supporting evidence and defer the live page. This changes transport/provider
 ownership, not the decision engine or the operator's decision concept.
 
-### Freshness and producer liveness
+### Derived acceptance question: what counts as current?
+
+Freshness is downstream of publication ownership and the bounded operator
+check. It should specify the minimum fail-closed behavior without turning
+continuous liveness into a prerequisite for the first result.
 
 The existing Pi observation publisher already computes publication age using a
 default 0.5-second cycle cadence and a minimum 1,000 ms stale threshold. That
@@ -264,7 +320,11 @@ alignment, activation, and timestamp checks, but local `os.kill`/`state.json`
 checks stay in the local worker provider and are not fabricated on the
 physical path.
 
-### Contract boundary without freezing implementation
+### Cross-cutting compatibility question: what must remain stable?
+
+This is the constraint that cuts across the other questions: preserve the
+meaning the operator and existing decision surfaces consume, while allowing
+provider-specific evidence and mutable implementation details behind it.
 
 The accepted M006 decision frame is a compatibility baseline for the decision
 meaning, not permission for a physical provider to impersonate the local worker
@@ -412,9 +472,10 @@ selected provider transport is kept aligned with the deployed vendor checkout.
 
 ## Expected handoff
 
-After feedback, a higher-reasoning review should confirm the narrow stage
-interface, select the smallest provider transport, and finalize the public
-acceptance behavior, rejection cases, and live validation procedure. It need
-not settle a universal abstraction or freeze the mutable decision engine. Only
-then should this become a formal M006 proposal with a separate implementation
-review unit.
+After feedback, a higher-reasoning review should first accept or reject the
+highest-leverage stage/provider boundary using the hit analysis above. It can
+then resolve only the downstream choices that remain consequential: source
+authority, provider transport, result acceptance, and the bounded procedure.
+It need not settle a universal abstraction or freeze the mutable decision
+engine. Only then should this become a formal M006 proposal with a separate
+implementation review unit.

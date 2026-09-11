@@ -1,0 +1,1 @@
+"""Packaged decision proposal plugins."""

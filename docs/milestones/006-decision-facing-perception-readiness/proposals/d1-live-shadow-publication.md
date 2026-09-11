@@ -2,15 +2,17 @@
 
 ## Status
 
-Feedback draft only. This document is not an accepted proposal, does not
-change the M006 plan, and does not authorize implementation.
+Operator-authorized combined proposal/implementation draft on PR #208,
+targeting `milestone/006-decision-facing-perception-readiness`. The operator
+has authorized implementation on this same branch and PR without a separate
+proposal-to-implementation PR. No product implementation is present yet.
 
-M006's current cross-environment shadow-proposal frontier is already
-represented by accepted proposal #201. This document is a feedback-only
-candidate for a bounded live publication/inspection slice adjacent to that
-frontier; it does not replace #201, satisfy its exit criteria, or silently
-change the milestone scope. Any overlap or amendment must be resolved through
-the normal M006 proposal review.
+D1 is a sibling capability/recovery unit, not an amendment to accepted #201.
+It does not change the M006 plan or satisfy its exit criteria. #201 remains
+the current planned evidence frontier and owns physical evidence and
+M006-06/M006-07 promotion. A material correction to #201's accepted evidence
+contract requires additive amendment review; the combined-review exception
+does not authorize that correction or acceptance of either unit.
 
 ## The question
 
@@ -49,7 +51,16 @@ requirement to reproduce its two offline scenarios live.
 
 ## Review kind
 
-Live or external evidence
+Behavioral feature slice
+
+The D1 source/provider/decision boundary owns deterministic implementation
+acceptance: source identity, normalization, bounded freshness, semantic
+rejection, and shadow-only authority. Physical Pi fresh-to-stale evidence is
+separately owned by #201. Pi unavailability or an unobserved physical
+transition leaves evidence incomplete, not code acceptance blocked when the
+provider correctly rejects missing or stale data. Accepting stale data as
+current is a D1 implementation defect. D2 has similarly shaped shadow-only
+goals and constraints; its offline inspector is not live D1 evidence.
 
 ## What already exists
 
@@ -85,11 +96,10 @@ decision loop or a new decision policy.
 
 ## Open questions: options and baseline
 
-The following is a feasibility baseline for the open design questions. It is
-not an implementation commitment. The options are grounded in the current
-physical-vehicle/Donkey source, the generated-vendor patch, and the M006 local
-decision surface. A later accepted proposal should retain only the selected
-boundary and the smallest rejection cases.
+The following options record the design rationale. The selected stage/provider
+boundary, source ownership, shared meanings, and bounded rejection behavior
+govern this combined review. Internal choices remain implementation-owned
+within those constraints; the proposal is a floor, not an exhaustive design.
 
 ### Highest-leverage question: what is D1's logical boundary?
 
@@ -499,15 +509,16 @@ decision rather than an implementation surprise.
 
 ## Implementation impact and dependency schedule
 
-This is planning material for sizing and sequencing, not an additional
-contract or an implementation authorization. It records the file-level
+This is planning material for sizing and sequencing within the operator's
+combined-review authorization, not an additional contract. It records the file-level
 dependency exercise in the same place as the proposal. Estimates exclude
 proof-of-work reports, generated HTML, and unrelated existing contents.
 
 ### Baseline correction
 
-PR #208 is intentionally based on `main` for feedback, but implementation
-impact must be measured against the M006 branch after the accepted decision
+PR #208 now targets the M006 milestone branch. Its branch still needs the
+M006 baseline integrated before product work; implementation impact is
+measured against the M006 branch after the accepted decision
 surface work, currently represented by `m006/sync-main-after-207` at
 `b356f60`. That branch already contains:
 
@@ -610,13 +621,15 @@ against the same envelope. The route must expose one publisher-owned snapshot;
 the CLI must not reconstruct a decision by joining observation, status, frame,
 and local-worker reads.
 
-**Wave 3 — bounded live check.** In the eventual implementation/evidence
-review unit, run the physical readiness procedure and the ordinary
+**Wave 3 — later #201 evidence handoff.** After #201's capture-readiness gate
+and explicit capture assignment, its evidence owner runs the physical readiness
+procedure and the ordinary
 `vehicles stream decision --id <vehicle_id> --once --json` check while the
 vehicle is stationary in action-idle user mode. Confirm one fresh correlated
 result, then stop the producer and wait beyond its freshness bound to confirm
 `unavailable` for the missing/stale publication. This is not direct process-stop
-detection. This feedback draft authorizes no live capture and does not claim
+detection. D1 deterministic implementation acceptance does not require this
+physical witness. This combined review authorizes no live capture and does not claim
 host or actuator application from this D1 result.
 
 This is not seven independent implementation lanes. It is one serial seam and
@@ -655,13 +668,19 @@ sourced repository.
 
 ## Expected handoff
 
-After feedback, the formal proposal review should decide the stage/provider
-boundary and resolve the remaining proposal-level choices: source authority,
-provider-level result acceptance, and the bounded procedure. It need not settle
-a universal abstraction, freeze the mutable decision engine, or add
-host-application proof. The concrete route choice remains implementation-owned
-as stated above. Only after the proposal has an exact-head accepted contract
-review, has merged, and the milestone workflow records
-`ready_for_implementation` may implementation begin as a separate review unit
-on its separate branch. Proposal and implementation may share a working
-session, but not a branch.
+Implement and deliver D1 for independent review on this same PR and branch
+under the explicit combined-review exception. Report the exact implementation
+head, changed paths, deterministic validation, remaining limitations, and D1
+availability/verification information for #201. This is not self-acceptance,
+a plan transition, or permission to mark M006-06/M006-07 Met.
+
+#201's evidence owner separately verifies physical readiness and captures the
+fresh-to-stale witness; missing physical evidence remains incomplete. D2's
+offline inspector cannot substitute for that witness. The concrete route,
+accessor name, normalization layout, and cadence-relative freshness threshold
+remain implementation choices within the fixed observable contract.
+
+Stop dependent work for operator judgment if the primary question, safety or
+authority boundary, semantic schema, named owner, acceptance criterion,
+external assumption, expected handoff, or a material non-goal must change.
+Internal choices and same-owner file discovery alone do not require amendment.

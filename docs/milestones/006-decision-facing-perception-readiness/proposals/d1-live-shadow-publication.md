@@ -5,34 +5,47 @@
 Feedback draft only. This document is not an accepted proposal, does not
 change the M006 plan, and does not authorize implementation.
 
+M006's current cross-environment shadow-proposal frontier is already
+represented by accepted proposal #201. This document is a feedback-only
+candidate for a bounded live publication/inspection slice adjacent to that
+frontier; it does not replace #201, satisfy its exit criteria, or silently
+change the milestone scope. Any overlap or amendment must be resolved through
+the normal M006 proposal review.
+
 ## The question
 
 Can D1 expose and accept one current decision result from an activated vehicle
 decision stage, with genuine source identity and bounded freshness, so Automa
-can inspect it and reject it safely when the producer stops or the publication
-becomes stale? PiRacer is the first live fixture, not a special decision
-architecture.
+can inspect it and reject it safely when the publication is missing, mismatched,
+or becomes stale after the producer stops? PiRacer is the first live fixture,
+not a special decision architecture.
 
 The desired operator experience is simple:
 
 1. Start the vehicle runtime with its decision stage activated; the stage
    invokes the shared decision cycle on camera input.
 2. Use the same decision-stage CLI surface used for other providers to read
-   one current result with enough correlated vehicle, runtime, activation,
-   frame, source, proposal, and shadow-authority identity to identify what ran.
-3. See the proposed decision alongside the explicit shadow-only authority
-   result; a proposed intent is not presented as a vehicle command.
-4. Stop the producer or wait past its freshness limit and see **unavailable**,
-   not the last cycle presented as current.
+   one correlated result with vehicle, runtime, activation, frame, source,
+   proposal, and explicit shadow-authority meaning sufficient to identify what
+   ran.
+3. See the proposed decision alongside `authority_mode=shadow_only`, an idle
+   `authorized_output`, and `proposed_applied=false`; a proposed intent is not
+   presented as a vehicle command.
+4. If the publication is missing, mismatched, or older than its freshness
+   bound, see **unavailable**, not the last cycle presented as current. For a
+   stopped producer, stop it and wait beyond that bound before checking.
 
-The physical fixture remains stationary in its existing safe/user operating
-mode as a run precondition. That is an operating constraint, not a D1 claim
-that the publication proves final host or actuator behavior.
+The physical fixture remains stationary in action-idle user mode as a run
+precondition. That is an operating constraint, not a D1 claim that the
+publication proves final host or actuator behavior.
 
 The live cycle should preserve the same decision meaning that #203 exercises
 offline. A live cycle may contain a proposed steering intent; it must not apply
 that intent to the vehicle. The proposal fixes that observable boundary, not a
 permanent implementation name or a frozen internal decision algorithm.
+Here, “same decision meaning” refers to the underlying accepted decision
+result semantics, not #203's `automa_decision_inspection_v1` wrapper and not a
+requirement to reproduce its two offline scenarios live.
 
 ## Review kind
 
@@ -43,8 +56,10 @@ Live or external evidence
 Source inspection changes the likely shape of this work:
 
 - `implementations/runtime/donkeycar/donkey_part.py` already calls the shared
-  `AutonomyCycleHost` and retains the resulting cycle in its latest onboard
-  snapshot. It also reports frame timing, mode, and engine control data.
+  `AutonomyCycleHost` and retains a generic serialized cycle/observation
+  snapshot in its latest onboard state. It also reports frame timing, mode,
+  and engine control data; it does not yet retain the complete typed shadow
+  decision result for publication.
 - The M006 decision surface already builds and strictly validates
   generation-scoped `vehicle_decision_stream_frame_v0` frames for the local
   automation worker in `cli/automa_cli/decision.py`.
@@ -64,8 +79,9 @@ Source inspection changes the likely shape of this work:
   rather than making `shadow-proposals` or PiRacer a permanent architectural
   owner.
 
-The likely gap is therefore a physical publication/transport adapter and its
-read-side acceptance—not a second decision loop or a new decision policy.
+The likely gap is therefore a narrow source-side result-provider capability,
+physical publication/transport, and read-side acceptance—not a second
+decision loop or a new decision policy.
 
 ## Open questions: options and baseline
 
@@ -156,8 +172,9 @@ across options:
 
 The point is not that option A makes every detail automatic. It establishes
 the ownership and user-facing shape that make the remaining choices local:
-the runtime produces evidence, the provider adapts it, the common validator
-accepts its meaning, and the CLI presents it. Option A therefore has the
+the vehicle runtime produces and attaches source evidence, the provider
+normalizes it and checks provider-specific freshness, the common validator
+accepts shared result meaning, and the CLI presents it. Option A therefore has the
 highest leverage and should be selected first. The later sections are
 dependent design details or explicit deferrals, not independent alternatives
 that all remain open after this selection.
@@ -168,6 +185,13 @@ Once decision is a peer stage, this question is about the producer boundary,
 not about inventing a Pi-specific decision owner. The selected answer should
 let each vehicle provider attach truthful source identity to the result it
 actually produced.
+
+The ownership split is: the vehicle runtime/source mints and attaches vehicle,
+run, activation, generation, and frame identity to the result it produced; the
+physical provider normalizes the source record and checks provider-specific
+freshness/availability; and the common validator checks shared decision
+semantics and cross-field correlation. The CLI consumes those outcomes and
+does not mint identity.
 
 The existing physical path has a publisher, but it is an observation publisher, not
 yet a complete decision-stream publisher. `AutonomyPilotPart` retains the
@@ -188,13 +212,14 @@ carry the full run/activation/generation identity tuple
 | Create a new bridge process that mints its own run/generation identity | Medium as transport, low as D1 boundary; defer | A bridge could adapt the existing HTTP payload to the M006 frame contract without changing Donkey vendor code. | A bridge-created token identifies the bridge session, not the process that ran the cycle; it adds another liveness boundary and risks accepting a disconnected or relabeled cycle. |
 
 The current recommendation is therefore: the loaded activation selects the
-decision implementation, the vehicle runtime wiring attaches source identity
-to each completed cycle, and the HTTP publisher plus Automa CLI transport,
-validate, and reject mismatches. The local Automa worker remains authoritative
-only for Chase. `manage.py drive` is a runtime assembly owner, not a new
-decision-stage API, and PiRacer is simply the first physical provider. This
-requires adding the missing source identity fields; no existing component
-currently supplies the entire tuple.
+mutable decision implementation; vehicle runtime wiring attaches source
+identity to each completed cycle; the physical provider normalizes and checks
+its transport/freshness evidence; and the common validator plus Automa CLI
+accept shared result meaning and reject mismatches. The local Automa worker
+remains authoritative only for Chase. `manage.py drive` is a runtime assembly
+owner, not a new decision-stage API, and PiRacer is simply the first physical
+provider. This requires adding the missing source identity fields; no existing
+component currently supplies the entire tuple.
 
 ### Downstream question: how does the provider publish?
 
@@ -226,9 +251,11 @@ and vehicle-owned identity. Whether that is an extension of the observation
 route or a dedicated decision route is a transport detail for implementation
 review. Keep the existing observation consumer compatible, and do not have the
 CLI synthesize authoritative identity from unrelated HTTP responses. The
-logical contract is the common decision provider and CLI; the repository's
-vendor patch is only the source-controlled transport boundary, even though its
-handler executes from the generated DonkeyCar checkout.
+provider-backed read-only HTTP route is in scope as transport, while an
+operator-facing live decision page/URL is not. The logical boundary is the
+common decision provider and CLI; the repository's vendor patch is only the
+source-controlled transport boundary, even though its handler executes from
+the generated DonkeyCar checkout.
 
 ### Explicit D1 deferral: host application
 
@@ -299,23 +326,25 @@ that a remote process is alive.
 
 | Option | Baseline plausibility | Case for it | Main limitation |
 | --- | --- | --- | --- |
-| Timestamp age only | Strong existing baseline | A stopped or hung cycle becomes stale after more than 1,000 ms without adding a new heartbeat protocol. | The current physical route can still return a stale payload with `ok=true`; clock skew, future timestamps, or a frozen process need explicit handling. |
+| Timestamp age only | Strong existing baseline | A stopped or hung cycle becomes stale after no new publication arrives for more than 1,000 ms, without adding a new heartbeat protocol. | The current physical route can still return a stale payload with `ok=true`; clock skew, future timestamps, or a frozen process need explicit handling. |
 | Producer heartbeat/PID | Medium | A producer identity and heartbeat can distinguish a runtime generation and support a stopped-process check. | A remote CLI cannot use local `os.kill` to verify a Pi PID; PID alone proves existence, not cycle progress, and PID reuse is possible. |
 | Sequence advancement | Medium-high | Existing frame IDs, frame indices, and counters can show whether the latest cycle advances rather than merely being replayed. | Counters reset on process restart unless bound to a run/generation, and sequence advancement still needs a timeout for a slow or hung producer. |
 | systemd/MainPID identity | Medium-high as binding evidence | The service is supervised with `Type=simple` and `Restart=always`, so service restart can define a new runtime generation. | Service existence does not prove the camera/decision loop advances, and the current publication does not expose remote `MainPID` or unit generation. |
 | Correlated current publication: source/runtime identity + activation match + bounded timestamp | High; recommended for D1 | It covers the first meaningful stopped/stale check with one provider-owned publication and avoids applying local-worker process checks to a remote producer. | Continuous heartbeat, sequence progress, and systemd identity are not proved by this minimum and may be separate future evidence. |
 
-The current recommendation is a provider-owned source/runtime identity,
-activation match, and bounded timestamp freshness. The 1,000 ms value can be a
-starting configuration derived from the observed physical cadence; the
-implementation review may choose a better cadence-relative threshold without
-changing the operator contract. Missing, future-dated, mismatched, or stale
-data is `unavailable`. Continuous heartbeat, sequence-advancement, and
-systemd/MainPID proof are deferred unless the bounded check shows they are
-needed. The existing validator can be reused for result semantics, cycle
-alignment, activation, and timestamp checks, but local `os.kill`/`state.json`
-checks stay in the local worker provider and are not fabricated on the
-physical path.
+The current recommendation is a provider publication carrying runtime-produced
+source identity, an activation match, and bounded timestamp freshness. The
+1,000 ms value can be a starting configuration derived from the observed
+physical cadence; the implementation review may choose a better
+cadence-relative threshold without changing the proposal's semantic boundary.
+Missing, future-dated, mismatched, or stale data is `unavailable`. A stopped
+producer is demonstrated by stopping it and then waiting beyond the freshness
+bound; this does not claim direct remote process-stop detection. Continuous
+heartbeat, sequence-advancement, and systemd/MainPID proof are deferred unless
+the bounded check shows they are needed. The existing validator can be reused
+for result semantics, cycle-alignment, activation, and timestamp checks, but
+local `os.kill`/`state.json` checks stay in the local worker provider and are
+not fabricated on the physical path.
 
 ### Cross-cutting compatibility question: what must remain stable?
 
@@ -345,14 +374,15 @@ remains intact.
 | Revise the M006 frame schema/validator to add physical fields | Medium, but only through amendment | Gives physical producer fields first-class names and can unify local/physical acceptance. | It changes the accepted contract and requires amendment/re-review rather than being a fill-in task inside this proposal. |
 | Add extra fields and let the current validator ignore them | None; reject | Minimal code change. | The current validator explicitly requires an exact key set, so this would fail acceptance and create an ambiguous contract. |
 
-The draft therefore assumes a small provider-neutral result boundary, with
-physical source identity and freshness verified by the physical adapter and
-local PID/state checks retained by the Chase adapter. A separately correlated
-host-application record is not part of the first D1 claim. The existing
-shadow-authority fields remain explicit: `proposed_applied=false` means the
-proposal was not applied as proposed, while `host_application` is unavailable
-unless a host reports it. In every shape, the vehicle runtime produces
-identity and decision evidence; the CLI is only the provider-aware consumer.
+The draft therefore assumes a small provider-neutral result boundary: the
+vehicle runtime produces identity and decision evidence, the physical provider
+normalizes and verifies provider-specific freshness, and the common validator
+checks shared semantics; local PID/state checks remain in the Chase adapter. A
+separately correlated host-application record is not part of the first D1
+claim. The existing shadow-authority fields remain explicit:
+`proposed_applied=false` means the proposal was not applied as proposed, while
+`host_application` is unavailable unless a host reports it. The CLI is only the
+provider-aware consumer.
 
 Baseline references used for these options are the Pi assembly and activation
 load in `deploy/targets/donkeycar/app/manage.py:451-558`, the controller and
@@ -367,119 +397,271 @@ path in `cli/automa_cli/physical_observation.py:111-307`.
 ## Proposed boundary
 
 ```text
-vehicle adapter → sensor/frame input → activated decision stage
+vehicle runtime/source → sensor/frame input → activated decision stage
         ↓
-stable decision result + source/runtime freshness
+runtime attaches source/run/activation/frame identity to its result
         ↓
-provider publication adapter (file, HTTP, or equivalent)
+provider publication adapter normalizes and checks freshness
         ↓
-common `vehicles update/info/stream decision` CLI
+common semantic acceptance → `vehicles update/info/stream decision` CLI
 ```
 
-D1 owns the narrow missing provider/publication seam: expose one decision
-result with genuine source/runtime identity and bounded freshness, then accept
-it through the common decision surface. The result must make proposed intent
-and shadow-only authority visible without claiming host or actuator
-application. The existing shadow engine, activated cycle execution, and
-provider-specific liveness checks remain owners of their current
-responsibilities. `manage.py`, a Donkey route, or a new bridge process is an
-implementation detail behind the physical provider, not a new logical stage.
+D1 owns the narrow missing provider/publication and common-acceptance seam:
+expose one decision result whose source/runtime identity is produced by the
+vehicle runtime, normalize and check bounded freshness in the provider, and
+accept shared result meaning through the common decision surface. The result
+must make proposed intent and shadow-only authority visible without claiming
+host or actuator application. The existing shadow engine, activated cycle
+execution, and provider-specific liveness checks remain owners of their
+current responsibilities. `manage.py` vehicle-runtime wiring and a Donkey
+route are in-scope implementation details behind the physical provider; a new
+bridge process is not a new logical stage and remains out of scope.
 
-The first useful result is one honest live cycle and one honest stopped/stale
-result. Left/right decision behavior remains the behavior established by #203;
-this proposal does not retune perception or claim vehicle avoidance.
+The first useful result is one fresh correlated cycle and one stale/unavailable
+result after a producer stop followed by the freshness wait. Missing,
+mismatched, and incomplete publications are also unavailable. Left/right
+decision behavior remains the offline semantic/reference behavior established
+by #203; this proposal does not retune perception or claim vehicle avoidance.
 
 ## In scope
 
 - Confirm whether the existing physical publication can carry the accepted full
-  decision result; if not, add the smallest provider adapter or transport
-  needed.
-- Source/runtime, activation, frame, and bounded freshness identity sufficient
-  to say what decision stage ran and to reject a mismatched result.
-- The current observation/memory and resulting plan, proposal, and authority
-  data needed to correlate one cycle.
+  decision result; if not, add the smallest provider-backed read-only transport
+  and adapter needed. The physical route is in scope; an operator-facing live
+  page is not.
+- Vehicle/source-provider, runtime/run, activation/generation, frame/cycle,
+  input/publication timestamp, and bounded-freshness evidence sufficient to say
+  what decision stage ran and to reject a mismatched result.
+- Same-cycle observation/memory context and resulting plan, proposal, and
+  authority data only when they are co-located in the publisher-owned snapshot;
+  no separate reads or new memory semantics are required.
 - Shadow-authority fields sufficient to distinguish proposed intent from the
   shadow-only authorized output; D1 does not claim host or actuator application.
 - A narrow provider interface behind the existing decision-stage command
-  family; no general-purpose framework is required.
-- Explicit unavailable behavior for a stopped, stale, mismatched, or
-  incomplete publication.
+  family; the read-only same-cycle result accessor is allowed, but no
+  general-purpose framework is required.
+- Explicit unavailable behavior for a missing, mismatched, incomplete, or
+  stale publication. A stopped producer is checked only after waiting beyond
+  the freshness bound.
 - A short operator procedure for checking the path while the vehicle remains
-  stationary.
+  stationary in action-idle user mode.
+- If the existing semantic frame cannot be used truthfully, stop and return a
+  versioned schema amendment to proposal review; do not silently land a new
+  semantic contract during implementation.
 
 ## Out of scope
 
 - Vehicle movement or applying proposed commands.
-- Reimplementing the decision cycle, shadow engine, perception, memory,
+- Reimplementing or retuning the decision cycle, shadow engine, perception, memory,
   tracking, prediction, or steering policy.
 - The offline toggle/page implemented by #203.
-- A live decision URL, retained-image overlay, or redesign of the operator
-  page; those are separate questions.
+- An operator-facing live decision page/URL, retained-image overlay, or
+  redesign of the operator page; those are separate questions. The
+  provider-backed read-only HTTP route used by the CLI remains in scope.
 - PiRacer-only commands, controls, or a second operator-facing decision
   concept.
-- Chase evaluator state or privileged simulator inputs.
-- A new unreviewed decision schema parallel to
-  `vehicle_decision_stream_frame_v0`; a versioned amendment remains possible
-  if the physical source cannot truthfully use the existing representation.
-- Continuous heartbeat, sequence-advancement, systemd/MainPID, host telemetry,
-  or actuator-application proof unless a later evidence unit demonstrates that
-  it is necessary.
+- Privileged Chase evaluator inputs or state; provider-owned worker liveness
+  evidence remains limited to the local producer path.
+- A new unreviewed semantic decision contract parallel to
+  `vehicle_decision_stream_frame_v0`. Provider wire envelopes, nesting, and
+  normalization are allowed when they preserve the accepted meanings; a new
+  semantic version requires proposal amendment/review.
+- Continuous heartbeat, sequence-advancement, systemd/MainPID, unrelated host
+  or actuator telemetry, or actuator-application proof. Required source/runtime
+  identity, timestamps, shadow fields, and the unavailable
+  `host_application` sentinel remain in scope; later evidence cannot expand
+  this D1 claim.
 - A universal future-proof abstraction or a second bridge lifecycle.
-- Automation-launcher changes unless inspection confirms the existing vehicle
-  runtime cannot be exercised without them.
+- CLI automation-launcher changes. The narrowly scoped `manage.py`
+  vehicle-runtime activation/source/context wiring remains in scope; any
+  launcher expansion is a separate scope decision.
+
+The read-only same-cycle result accessor with fail-closed clearing is an
+explicitly allowed publication seam; it does not reimplement or retune the
+decision engine or policy.
 
 ## Independence from #203
 
-There is no implementation dependency on #203. #203 loads a saved decision
-sequence and runs the real shadow engine for two offline scenarios. D1 should
-produce the underlying live cycle contract that can later be replayed or
-inspected by the same decision surfaces; it should not import or turn the
-offline inspector into a live producer.
+There is no dependency on #203's branch, offline wrapper, or inspector page.
+#203 loads a saved decision sequence and runs the real shadow engine for two
+offline scenarios. D1 may use the accepted shared decision-result meaning and
+the existing `vehicles stream decision` CLI as compatibility baselines, but it
+should not import or turn the offline inspector into a live producer.
 
-The branches should remain separate. D1 should reuse the underlying decision
-meaning and existing shadow engine where appropriate, not depend on #203's
-`automa_decision_inspection_v1` wrapper or edit its inspector page. A later
-live-page integration would be a separate review question. If physical
-provenance requires a small versioned contract amendment, that is a proposal
-review decision rather than an implementation surprise.
+The branches should remain separate. D1 uses the live
+`vehicles stream decision` provider; later replay or offline-page integration
+is optional follow-on work, not D1 scope. A later live-page integration would
+also be a separate review question. #203 supplies an offline semantic and
+left/right reference baseline, not live proof and not a requirement to
+reproduce its two scenarios on the physical provider. If physical provenance
+requires a small versioned semantic amendment, that is a proposal-review
+decision rather than an implementation surprise.
 
-## Approximate implementation impact
+## Implementation impact and dependency schedule
 
-These are rough added/changed-line estimates for sizing discussion, not a
-commitment. They exclude proof-of-work reports, generated HTML, and the
-existing contents of the files. They reflect the existing cycle and local
-decision publisher described above.
+This is planning material for sizing and sequencing, not an additional
+contract or an implementation authorization. It records the file-level
+dependency exercise in the same place as the proposal. Estimates exclude
+proof-of-work reports, generated HTML, and unrelated existing contents.
 
-| Candidate file | Likely work | Estimate |
-| --- | --- | ---: |
-| `implementations/runtime/donkeycar/donkey_part.py` | Attach source identity and the smallest decision publication payload; cycle execution already exists | 25–70 |
-| `deploy/targets/donkeycar/patches/waveshare-donkeycar-local.patch` and, if needed, `manage.py` | Expose the provider publication through the existing Donkey boundary | 20–70 |
-| `cli/automa_cli/physical_observation.py` or a focused physical-decision adapter | Fetch, decode, correlate, and report the physical decision result | 30–80 |
-| `cli/automa_cli/decision.py` | Separate shared result acceptance from local-worker liveness where needed | 15–50 |
-| `cli/automa_cli/app.py` | Route the existing decision-stage command to the provider | 0–20 |
-| `tests/cli/` and `tests/integration/` | Fixtures for identity, stop/stale/mismatch, source correlation, and shadow-only authority | 50–120 |
+### Baseline correction
 
-Likely in-repository base case: **90–220 production LOC plus 50–120 test
-LOC**, or roughly **140–340 LOC total**. This is a typical combined case, not
-the sum of every per-file maximum. It assumes one
-provider adapter, no bridge process, no full `DriveMode` snapshot, and no new
-framework. The estimate still excludes any new decision engine, decision
-policy, page, or #203 code; implementation review can revise it after the seam
-is selected.
+PR #208 is intentionally based on `main` for feedback, but implementation
+impact must be measured against the M006 branch after the accepted decision
+surface work, currently represented by `m006/sync-main-after-207` at
+`b356f60`. That branch already contains:
 
-The baseline check found a separately owned *runtime boundary*, but not a
-separately sourced repository: `manage.py` and the vendor patch are
-source-controlled here, while the patched handler executes from the generated
-DonkeyCar checkout during deployment. The implementation review can confirm
-the selected D1 semantic boundary and keep the chosen provider transport
-aligned with the deployed vendor checkout.
+- `cli/automa_cli/decision.py` with decision frame construction, acceptance,
+  publication, persistence, and `vehicles stream decision`;
+- `cli/automa_cli/app.py` with the `vehicles stream decision` parser and
+  handler;
+- `cli/automa_cli/automation.py` with the Chase/local-worker latest-frame
+  writer; and
+- `implementations/decision/shadow_adapter.py` with a shadow engine that
+  retains the typed cycle result while returning an idle `AutonomyControl`.
+
+Consequently, `app.py`, `streaming.py`, and Chase `automation.py` are not D1
+implementation targets. The physical-provider work belongs around the
+existing decision owner, not in a second streaming implementation.
+
+### Shared meanings to keep aligned
+
+The implementation should carry one vehicle-runtime-produced,
+provider-published result with these meanings, even if its physical wire
+nesting differs. The runtime is authoritative for identity production; the
+provider owns transport normalization and provider-specific freshness checks;
+the common validator owns shared semantic acceptance:
+
+```text
+vehicle identity
+source/provider identity
+producer runtime/run identity
+activation/generation identity
+frame/cycle identity and input timestamp
+producer publication/completion timestamp
+decision source, proposal/plan, and authority
+authority_mode = shadow_only
+proposed_applied = false
+authorized_output = shadow-only idle
+host_application = unavailable unless explicitly host-reported
+```
+
+The existing `vehicle_decision_stream_frame_v0` acceptance path also has local
+Chase-only evidence: `worker_pid`, `state.json`, and local PID liveness. Those
+checks remain in the Chase provider. A physical provider must not fabricate
+local-worker evidence just to fit the existing validator.
+
+### Hidden result-provider seam
+
+`AutonomyCycleHost` returns a generic `DecisionCycleResult`, while the active
+`ShadowProposalsAutonomyEngine` retains the real
+`ShadowDecisionCycleResult` as `last_cycle_result`. `AutonomyManager.step()`
+returns only the idle control, so the onboard publisher cannot truthfully
+publish the decision by reading the generic control or cycle dictionary.
+
+The file-level pseudocode pass found a narrow illustrative solution: add an
+optional read-only capability such as `get_current_cycle_result()` to the
+current shadow adapter. It should return only the result from the most recent
+successful step, clear on reset and failed entry, and never authorize the
+inner control. The publisher can discover that capability at the runtime
+boundary and correlate the result to the frame; it must not import or
+hard-code the concrete shadow class as the permanent decision boundary. No
+change to the generic `AutonomyEngine` protocol or `AutonomyManager` is
+expected for D1, and the final method name is an implementation choice.
+
+### File disposition and dependencies
+
+| File | D1 disposition | Earliest useful work | Hard dependency | Parallelization verdict |
+| --- | --- | --- | --- | --- |
+| `implementations/decision/shadow_adapter.py` | Add the optional same-cycle result capability; preserve fail-closed clearing and idle control | Contract/seam wave | Result shape and ownership | Small serial seam lane |
+| `autonomy/runtime/manager.py` / `autonomy/runtime/engine.py` | No change expected; retain `step -> AutonomyControl` | None | Revisit only if the optional capability is insufficient | Exclude from fanout |
+| `implementations/runtime/donkeycar/donkey_part.py` | Attach one same-cycle decision publication to the onboard snapshot; preserve observation and user-mode behavior | After seam and identity shape | Result capability, source/runtime identity, envelope | One file lane |
+| `deploy/targets/donkeycar/app/manage.py` | Pass authoritative activation/source/runtime context into the part | After the part API is fixed | `donkey_part.py` constructor/context | Draft in parallel; implement afterward |
+| `deploy/targets/donkeycar/patches/waveshare-donkeycar-local.patch` | Add one read-only decision route or equivalent publisher-backed response | After envelope is named | Part publication method and error shape | Independent transport lane |
+| `cli/automa_cli/physical_observation.py` | Fetch and normalize one physical decision response; do not join unrelated reads | After wire contract | Route and provider identity | Interface/fixture drafting can be parallel; implementation follows the route envelope |
+| `cli/automa_cli/decision.py` | Separate shared semantic acceptance from Chase-only liveness and add physical provider dispatch | After normalized contract | Physical adapter shape | One high-coupling lane; implementation follows the normalized adapter |
+| `cli/automa_cli/app.py`, `cli/automa_cli/streaming.py`, `cli/automa_cli/automation.py` | No D1 change on the actual M006 implementation base | None | Existing accepted decision surface | Do not schedule agents |
+| `tests/implementations/decision/test_shadow_adapter.py` | Verify result accessor, clearing, and unchanged idle authority | After seam decision | Accessor shape | Small conditional test lane |
+| `tests/implementations/runtime/test_observation_publication.py` | Verify atomic source publication and compatibility with observation output | After envelope is frozen | Part API and fixtures | Draft in parallel; run after source work |
+| `tests/cli/decision/test_shadow_decision_surfaces.py` | Verify shared semantics, provider dispatch, and unavailable cases | After validator shape | Existing frame fixtures and physical adapter | Draft in parallel; primary decision tests |
+| `tests/integration/physical_deploy/test_live_runner.py` | Verify the bounded physical check and stopped/stale unavailable result | Last | Deployed route, provider, and validator | Inherently final/live |
+
+### Bottom-up schedule
+
+**Wave 0 — serial seam and identity decisions.** Freeze the optional result
+accessor, the provider-neutral meanings above, and the owner/lifecycle of
+vehicle, runtime, and activation-generation identity. Without these, parallel
+agents can produce individually plausible but incompatible payloads.
+
+**Wave 1 — parallel file work.** Pseudocode, fixtures, and interfaces can be
+drafted in disjoint lanes for `donkey_part.py`, the Donkey route patch,
+`physical_observation.py`, `decision.py`, and deterministic tests.
+Implementation of the physical read adapter follows the route envelope;
+implementation of decision acceptance follows the normalized adapter shape.
+`manage.py` can be drafted in parallel but should wait for the
+`donkey_part.py` constructor/context API before implementation. `decision.py`
+is one high-coupling lane because it owns frame construction, validation,
+persistence, and streaming.
+
+**Wave 2 — integration and deterministic validation.** Integrate the adapter
+seam first, then the onboard publisher, runtime wiring, route/read adapter,
+and decision acceptance. Run source-publication and decision-surface tests
+against the same envelope. The route must expose one publisher-owned snapshot;
+the CLI must not reconstruct a decision by joining observation, status, frame,
+and local-worker reads.
+
+**Wave 3 — bounded live check.** In the eventual implementation/evidence
+review unit, run the physical readiness procedure and the ordinary
+`vehicles stream decision --id <vehicle_id> --once --json` check while the
+vehicle is stationary in action-idle user mode. Confirm one fresh correlated
+result, then stop the producer and wait beyond its freshness bound to confirm
+`unavailable` for the missing/stale publication. This is not direct process-stop
+detection. This feedback draft authorizes no live capture and does not claim
+host or actuator application from this D1 result.
+
+This is not seven independent implementation lanes. It is one serial seam and
+identity spine followed by roughly three parallel lanes: onboard source and
+wiring, route and physical read adapter, and decision acceptance/tests. The
+single-file coupling in `decision.py` and `donkey_part.py` is a reason to give
+each file one owner, not to split regions of those files between agents.
+
+### Revised sizing
+
+| Area | Likely added/changed LOC |
+| --- | ---: |
+| Optional result-provider seam and shadow adapter | 5–20 |
+| `donkey_part.py` source publication | 60–120 |
+| `manage.py` wiring | 10–30 |
+| Donkey route patch | 35–80 |
+| Physical fetch/normalizer | 40–100 |
+| Existing `decision.py` validator/provider integration | 80–180 |
+| Deterministic tests, including the adapter seam | 160–320 |
+| Live test/procedure updates | 30–70 |
+
+The practical planning envelope is **230–530 production LOC plus 160–320
+deterministic-test LOC and 30–70 live/procedure LOC**, or roughly **420–920
+changed LOC** after allowing for overlap between refactoring and added lines.
+The lower end assumes the optional adapter capability and provider split stay
+small; the upper end includes a dedicated physical decision route and a clean
+provider-neutral acceptance separation. This supersedes the earlier
+`90–220` production / `50–120` test estimate, which counted already-present
+CLI work and omitted the physical-provider integration.
+
+The source-controlled `manage.py` vehicle-runtime/context wiring and vendor
+patch are the repository boundary for a generated DonkeyCar checkout; the
+patched handler executes from that generated checkout during deployment. This
+is a deployment detail, not a second logical decision stage or a separately
+sourced repository.
 
 ## Expected handoff
 
-After feedback, a higher-reasoning review should first accept or reject the
-highest-leverage stage/provider boundary using the hit analysis above. It can
-then resolve only the downstream choices that remain consequential: source
-authority, provider transport, result acceptance, and the bounded procedure.
-It need not settle a universal abstraction, freeze the mutable decision engine,
-or add host-application proof. Only then should this become a formal M006
-proposal with a separate implementation review unit.
+After feedback, the formal proposal review should decide the stage/provider
+boundary and resolve the remaining proposal-level choices: source authority,
+provider-level result acceptance, and the bounded procedure. It need not settle
+a universal abstraction, freeze the mutable decision engine, or add
+host-application proof. The concrete route choice remains implementation-owned
+as stated above. Only after the proposal has an exact-head accepted contract
+review, has merged, and the milestone workflow records
+`ready_for_implementation` may implementation begin as a separate review unit
+on its separate branch. Proposal and implementation may share a working
+session, but not a branch.

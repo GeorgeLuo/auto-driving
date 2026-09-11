@@ -9,10 +9,10 @@ from urllib.request import Request, urlopen
 
 from PIL import Image
 
+from cli.automa_cli.runtime_view import RuntimeViewServer
 from cli.automa_cli.perception_view import (
     PUBLICATION_SCHEMA,
     VIEW_SCHEMA,
-    PerceptionViewServer,
     get_perception_view_status,
 )
 
@@ -24,7 +24,7 @@ class PerceptionViewTests(unittest.TestCase):
             frame_path = root / "frame.png"
             Image.new("RGB", (64, 48), (20, 40, 60)).save(frame_path)
             expected_frame = frame_path.read_bytes()
-            server = PerceptionViewServer(
+            server = RuntimeViewServer(
                 vehicle_id="test-vehicle",
                 automation_dir=root / "automation",
                 port=0,
@@ -34,7 +34,7 @@ class PerceptionViewTests(unittest.TestCase):
                 frame_record["perception"]["things"] = tuple(
                     frame_record["perception"]["things"]
                 )
-                server.publish_frame(
+                server.perception.publish_frame(
                     frame_path=frame_path,
                     frame_record=frame_record,
                 )
@@ -54,7 +54,7 @@ class PerceptionViewTests(unittest.TestCase):
                 self.assertEqual(payload["overlay"]["status"], "pending")
                 self.assertIsNone(payload["perception"])
 
-                server.publish_perception(frame_record=frame_record)
+                server.perception.publish_perception(frame_record=frame_record)
                 status = get_perception_view_status(root / "automation")
                 self.assertTrue(status["available"])
                 self.assertEqual(status["status"], "running")
@@ -75,7 +75,7 @@ class PerceptionViewTests(unittest.TestCase):
                 newer_record["frame_id"] = "frame_000005"
                 newer_record["frame_index"] = 5
                 newer_record["captured_at_ms"] = 1534
-                server.publish_frame(frame_path=newer_frame_path, frame_record=newer_record)
+                server.perception.publish_frame(frame_path=newer_frame_path, frame_record=newer_record)
 
                 with urlopen(f"{server.url}api/latest", timeout=1.0) as response:
                     stale_payload = json.loads(response.read().decode("utf-8"))
@@ -103,7 +103,7 @@ class PerceptionViewTests(unittest.TestCase):
                     )
                     self.assertEqual(response.read(), b"")
 
-                with urlopen(server.url, timeout=1.0) as response:
+                with urlopen(f"{server.url}perception", timeout=1.0) as response:
                     html = response.read().decode("utf-8")
                 self.assertIn("Automa Perception", html)
                 self.assertIn('id="regionsToggle"', html)
@@ -119,7 +119,7 @@ class PerceptionViewTests(unittest.TestCase):
 
     def test_view_rejects_data_requests_before_first_publication(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            server = PerceptionViewServer(
+            server = RuntimeViewServer(
                 vehicle_id="test-vehicle",
                 automation_dir=Path(tmp),
                 port=0,
@@ -138,7 +138,7 @@ class PerceptionViewTests(unittest.TestCase):
             status = get_perception_view_status(root)
             self.assertFalse(status["available"])
 
-            server = PerceptionViewServer(
+            server = RuntimeViewServer(
                 vehicle_id="test-vehicle",
                 automation_dir=root,
                 port=0,
@@ -152,7 +152,7 @@ class PerceptionViewTests(unittest.TestCase):
     def test_view_health_rejects_a_different_worker_generation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            server = PerceptionViewServer(
+            server = RuntimeViewServer(
                 vehicle_id="test-vehicle",
                 automation_dir=root,
                 port=0,

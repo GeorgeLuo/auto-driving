@@ -8,7 +8,7 @@ from typing import Any, TextIO
 
 from .automation import _automation_dir, _pid_alive
 from .paths import display_path
-from .perception_view import PerceptionViewServer
+from .runtime_view import RuntimeViewServer
 from .physical_observation import (
     LATEST_FRAME_PATH,
     LATEST_JSON_PATH,
@@ -160,10 +160,10 @@ def _stream_physical_perception(
     runtime_dir = physical_observation_dir(vehicle_id)
     runtime_dir.mkdir(parents=True, exist_ok=True)
     frame_path = runtime_dir / "latest_frame.jpg"
-    view_server: PerceptionViewServer | None = None
+    view_server: RuntimeViewServer | None = None
     view_error: str | None = None
     try:
-        view_server = PerceptionViewServer(
+        view_server = RuntimeViewServer(
             vehicle_id=vehicle_id,
             automation_dir=runtime_dir,
         ).start()
@@ -224,7 +224,7 @@ def _stream_physical_perception(
 
 def _publish_physical_view(
     *,
-    view_server: PerceptionViewServer,
+    view_server: RuntimeViewServer,
     base_url: str,
     publication: dict[str, Any],
     frame_path: Path,
@@ -236,8 +236,8 @@ def _publish_physical_view(
     jpeg, _headers = fetch_observation_frame(base_url, timeout_s=timeout_s)
     frame_path.write_bytes(jpeg)
     frame_record = publication_to_frame_record(publication)
-    view_server.publish_frame(frame_path=frame_path, frame_record=frame_record)
-    view_server.publish_perception(frame_record=frame_record)
+    view_server.perception.publish_frame(frame_path=frame_path, frame_record=frame_record)
+    view_server.perception.publish_perception(frame_record=frame_record)
 
 
 def _render_chase_perception_screen(
@@ -446,6 +446,5 @@ def _int_or_none(value: Any) -> int | None:
 
 def _timestamp_ms() -> int:
     return int(time.time() * 1000)
-
 
 

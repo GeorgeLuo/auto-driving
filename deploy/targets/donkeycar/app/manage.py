@@ -540,6 +540,22 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
                         host=AutonomyCycleHost(manager=autonomy_manager, stages=stages),
                         min_interval_s=observation_interval_s,
                         algorithm=perception_algorithm,
+                        vehicle_id=activation.payload.get("vehicle_id"),
+                        source_id=(
+                            f"donkeycar:{activation.payload.get('vehicle_id')}"
+                            if isinstance(activation.payload.get("vehicle_id"), str)
+                            else None
+                        ),
+                        activation_engine_id=activation.engine_id,
+                        activation_activated_at_ms=activation.payload.get(
+                            "activated_at_ms"
+                        ),
+                        activation_engine_config=activation.engine_config,
+                        generation_id=(
+                            f"{activation.engine_id}:{activation.payload.get('activated_at_ms')}"
+                            if type(activation.payload.get("activated_at_ms")) is int
+                            else None
+                        ),
                     )
                     autonomy_manager.register_status_provider(
                         "observation",

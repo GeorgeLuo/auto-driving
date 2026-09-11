@@ -541,22 +541,13 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
                         min_interval_s=observation_interval_s,
                         algorithm=perception_algorithm,
                         vehicle_id=activation.payload.get("vehicle_id"),
-                        source_id=(
-                            f"donkeycar:{activation.payload.get('vehicle_id')}"
-                            if isinstance(activation.payload.get("vehicle_id"), str)
-                            else None
-                        ),
                         activation_engine_id=activation.engine_id,
                         activation_activated_at_ms=activation.payload.get(
                             "activated_at_ms"
                         ),
                         activation_engine_config=activation.engine_config,
-                        generation_id=(
-                            f"{activation.engine_id}:{activation.payload.get('activated_at_ms')}"
-                            if type(activation.payload.get("activated_at_ms")) is int
-                            else None
-                        ),
                     )
+                    observation_publisher = autonomy_part
                     autonomy_manager.register_status_provider(
                         "observation",
                         autonomy_part.observation_status,
@@ -564,7 +555,7 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
                     # HTTP publication handlers read this publisher without
                     # re-entering AutonomyManager.status.
                     if autonomy_controller is not None:
-                        autonomy_controller.observation_publisher = autonomy_part
+                        autonomy_controller.observation_publisher = observation_publisher
                     V.add(
                         autonomy_part,
                         inputs=['cam/image_array', 'user/mode', 'user/angle', 'user/throttle'],

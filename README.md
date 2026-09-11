@@ -102,6 +102,7 @@ The command groups intentionally distinguish different kinds of state:
 | `vehicles update decision` | Packages code and stages a decision activation locally. |
 | `vehicles update memory` | Packages code and stages a vehicle memory activation locally (default `bounded_evidence`). |
 | `vehicles info ...` | Reads staged perception, decision, or memory configuration; perception info also reports the live view URL. |
+| `vehicles decision inspect` | Opens a standalone inspector for saved decision inputs. Toggle obstruction side to inspect the shadow engine's result; no live worker is needed. [Sample command and input](examples/decision-inspection/README.md). |
 | `vehicles perception ...` | Runs perception experiments and manages production or lab plugins. |
 | `vehicles automation ...` | Runs or inspects the local Chase controller worker. |
 | `vehicles stream perception` | Displays rolling latest perception. Chase uses the local automation worker; PiCar polls onboard `/autonomy/observation/latest` and opens a local frame-matched perception view (link to Memory map). |

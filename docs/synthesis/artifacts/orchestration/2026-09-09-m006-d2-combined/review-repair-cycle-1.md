@@ -1,5 +1,9 @@
 # M006 D2 review-repair orchestration receipt — cycle 1
 
+Historical review of the former live publisher design. The 2026-09-10
+operator-directed standalone inspector supersedes that implementation; this
+receipt does not assess the current PR head.
+
 Status: `changes_requested` — browser evidence remains open.
 
 This is the executed review-repair record for the D2 combined implementation.

@@ -14,21 +14,6 @@ from urllib.request import urlopen
 
 from PIL import Image
 
-from autonomy.decision import canonical_json_utf8
-
-from .decision_view import (
-    DECISION_API_PATH,
-    DECISION_IMAGE_PATH,
-    DECISION_PREVIEW_PATH,
-    MAX_PREVIEW_REQUEST_BYTES,
-    DECISION_VIEW_PATH,
-    DecisionViewHTTPError,
-    DecisionViewPublisher,
-    _unavailable_payload,
-    parse_generation_query,
-    parse_image_id,
-    parse_preview_request,
-)
 from .loopback_http import (
     LoopbackHTTPRequestHandler,
     LoopbackHTTPServer,
@@ -44,7 +29,6 @@ VIEW_RECORD_NAME = "perception_view.json"
 VIEW_HOST = "127.0.0.1"
 VIEW_HTML_PATH = Path(__file__).with_name("perception_view.html")
 MEMORY_VIEW_HTML_PATH = Path(__file__).with_name("memory_view.html")
-DECISION_VIEW_HTML_PATH = Path(__file__).with_name("decision_view.html")
 MAX_BUFFERED_FRAMES = 8
 
 
@@ -60,7 +44,6 @@ class PerceptionViewServer:
         port: int | None = None,
         run_id: str | None = None,
         worker_pid: int | None = None,
-        decision_publisher: DecisionViewPublisher | None = None,
     ) -> None:
         validate_loopback_host(host, owner="perception view")
         self.vehicle_id = vehicle_id
@@ -69,23 +52,6 @@ class PerceptionViewServer:
         self.preferred_port = _vehicle_view_port(vehicle_id) if port is None else int(port)
         self.run_id = run_id
         self.worker_pid = int(worker_pid) if isinstance(worker_pid, int) else os.getpid()
-        self.decision_publisher = decision_publisher
-        if decision_publisher is not None:
-            publisher_identity = getattr(decision_publisher, "identity", None)
-            publisher_vehicle_id = getattr(decision_publisher, "vehicle_id", None)
-            publisher_automation_dir = getattr(decision_publisher, "automation_dir", None)
-            if (
-                publisher_vehicle_id != self.vehicle_id
-                or not isinstance(publisher_identity, dict)
-                or publisher_identity.get("vehicle_id") != self.vehicle_id
-                or publisher_identity.get("run_id") != self.run_id
-                or publisher_identity.get("worker_pid") != self.worker_pid
-                or publisher_automation_dir is None
-                or Path(publisher_automation_dir) != Path(self.automation_dir)
-            ):
-                raise ValueError(
-                    "decision view publisher identity must match perception view ownership"
-                )
         self.record_path = automation_dir / VIEW_RECORD_NAME
         self._lock = threading.Lock()
         self._httpd: _PerceptionHttpServer | None = None
@@ -151,25 +117,6 @@ class PerceptionViewServer:
             self._latest_frame = frame
             self._latest_frame_id = frame_id
             self._frame_published_at_ms = published_at_ms
-        if self.decision_publisher is not None:
-            try:
-                self.decision_publisher.publish_capture(
-                    frame_bytes=frame_bytes,
-                    frame_record=frame_record,
-                    content_type=content_type,
-                    width_px=width_px,
-                    height_px=height_px,
-                )
-            except Exception:  # noqa: BLE001 - D2 publication is best-effort
-                pass
-
-    def publish_decision_frame(self, frame: dict[str, Any]) -> bool:
-        if self.decision_publisher is None:
-            return False
-        try:
-            return bool(self.decision_publisher.publish_decision_frame(frame))
-        except Exception:  # noqa: BLE001 - D2 publication is best-effort
-            return False
 
     def publish_perception(self, *, frame_record: dict[str, Any]) -> None:
         frame_id = str(frame_record.get("frame_id") or "unknown")
@@ -179,7 +126,7 @@ class PerceptionViewServer:
             self._perception_published_at_ms = _timestamp_ms()
 
     def describe(self, *, status: str = "running") -> dict[str, Any]:
-        description = {
+        return {
             "schema": VIEW_SCHEMA,
             "vehicle_id": self.vehicle_id,
             "run_id": self.run_id,
@@ -193,12 +140,6 @@ class PerceptionViewServer:
             "started_at_ms": self._started_at_ms,
             "record_path": str(self.record_path),
         }
-        if self.decision_publisher is not None:
-            try:
-                description["decision_view"] = self.decision_publisher.describe()
-            except Exception:  # noqa: BLE001 - D2 description is best-effort
-                pass
-        return description
 
     def health_payload(self) -> dict[str, Any]:
         with self._lock:
@@ -233,11 +174,6 @@ class PerceptionViewServer:
             return self._frame_bytes, self._frame_content_type
 
     def stop(self) -> None:
-        if self.decision_publisher is not None:
-            try:
-                self.decision_publisher.stop()
-            except Exception:  # noqa: BLE001 - D2 shutdown is best-effort
-                pass
         httpd = self._httpd
         thread = self._thread
         if httpd is None:
@@ -261,122 +197,6 @@ class _PerceptionViewHandler(LoopbackHTTPRequestHandler):
     def do_HEAD(self) -> None:
         self._handle_request(include_body=False)
 
-    def do_POST(self) -> None:
-        if urlparse(self.path).path == DECISION_PREVIEW_PATH:
-            self._handle_preview_request()
-            return
-        self._reject_method()
-
-    def do_PUT(self) -> None:
-        self._reject_method()
-
-    def do_PATCH(self) -> None:
-        self._reject_method()
-
-    def do_DELETE(self) -> None:
-        self._reject_method()
-
-    def do_OPTIONS(self) -> None:
-        self._reject_method()
-
-    def do_TRACE(self) -> None:
-        self._reject_method()
-
-    def do_CONNECT(self) -> None:
-        self._reject_method()
-
-    def _reject_method(self) -> None:
-        route = urlparse(self.path).path
-        is_decision_route = route in {
-            DECISION_VIEW_PATH,
-            "/decision.html",
-            DECISION_API_PATH,
-            DECISION_PREVIEW_PATH,
-            DECISION_IMAGE_PATH.rstrip("/"),
-        } or route.startswith(DECISION_IMAGE_PATH)
-        if not is_decision_route:
-            self.send_error(501, f"Unsupported method ({self.command!r})")
-            return
-        allow = "POST" if route == DECISION_PREVIEW_PATH else "GET, HEAD"
-        self._send_decision_error(
-            DecisionViewHTTPError(
-                405,
-                "method_not_allowed",
-                "decision preview supports only POST"
-                if route == DECISION_PREVIEW_PATH
-                else "decision view supports only GET and HEAD",
-            ),
-            include_body=True,
-            allow=allow,
-        )
-
-    def _send_decision_error(
-        self,
-        exc: DecisionViewHTTPError,
-        *,
-        include_body: bool,
-        allow: str | None = None,
-    ) -> None:
-        decision_publisher = self.server.publisher.decision_publisher
-        identity = getattr(decision_publisher, "identity", None)
-        generation_id = getattr(decision_publisher, "generation_id", None)
-        if not isinstance(identity, dict):
-            identity = None
-        if not isinstance(generation_id, str):
-            generation_id = None
-        payload = _unavailable_payload(
-            reason=exc.reason,
-            identity=identity,
-            generation_id=generation_id,
-        )
-        extra_headers = (
-            {"Allow": allow or "GET, HEAD"} if exc.status_code == 405 else None
-        )
-        self._send(
-            exc.status_code,
-            canonical_json_utf8(payload),
-            "application/json; charset=utf-8",
-            include_body=include_body,
-            extra_headers=extra_headers,
-        )
-
-    def _send_decision_image(
-        self,
-        body: bytes,
-        content_type: str,
-        trusted_digest: str,
-        *,
-        include_body: bool = True,
-    ) -> None:
-        self._send(
-            200,
-            body,
-            content_type,
-            include_body=include_body,
-            extra_headers={"X-Automa-Image-Sha256": trusted_digest},
-        )
-
-    def _send(
-        self,
-        status: int,
-        body: bytes,
-        content_type: str,
-        *,
-        include_body: bool = True,
-        extra_headers: dict[str, str] | None = None,
-    ) -> None:
-        self.send_response(status)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("Content-Security-Policy", self.content_security_policy)
-        for name, value in (extra_headers or {}).items():
-            self.send_header(name, value)
-        self.end_headers()
-        if include_body:
-            self.wfile.write(body)
-
     def _handle_request(self, *, include_body: bool) -> None:
         request = urlparse(self.path)
         route = request.path
@@ -398,80 +218,6 @@ class _PerceptionViewHandler(LoopbackHTTPRequestHandler):
                 self._send_json(500, {"error": str(exc)}, include_body=include_body)
                 return
             self._send(200, body, "text/html; charset=utf-8", include_body=include_body)
-            return
-        if route in {DECISION_VIEW_PATH, "/decision.html"}:
-            try:
-                body = DECISION_VIEW_HTML_PATH.read_bytes()
-            except OSError as exc:
-                self._send_json(500, {"error": str(exc)}, include_body=include_body)
-                return
-            self._send(200, body, "text/html; charset=utf-8", include_body=include_body)
-            return
-        if route == DECISION_PREVIEW_PATH:
-            self._send_decision_error(
-                DecisionViewHTTPError(
-                    405,
-                    "method_not_allowed",
-                    "decision preview supports only POST",
-                ),
-                include_body=include_body,
-                allow="POST",
-            )
-            return
-        if route == DECISION_API_PATH:
-            try:
-                generation = parse_generation_query(request.query)
-                decision_publisher = self.server.publisher.decision_publisher
-                if decision_publisher is None:
-                    raise DecisionViewHTTPError(
-                        503,
-                        "producer_unavailable",
-                        "decision view publisher is unavailable",
-                    )
-                body = canonical_json_utf8(
-                    decision_publisher.latest_payload(generation=generation)
-                )
-            except DecisionViewHTTPError as exc:
-                # `_send_decision_error` is supplied by the later handler slice.
-                self._send_decision_error(exc, include_body=include_body)
-                return
-            self._send(
-                200,
-                body,
-                "application/json; charset=utf-8",
-                include_body=include_body,
-            )
-            return
-
-        if (
-            route == DECISION_IMAGE_PATH.rstrip("/")
-            or route.startswith(DECISION_IMAGE_PATH)
-        ):
-            try:
-                generation = parse_generation_query(request.query)
-                image_id = parse_image_id(route)
-                decision_publisher = self.server.publisher.decision_publisher
-                if decision_publisher is None:
-                    raise DecisionViewHTTPError(
-                        503,
-                        "producer_unavailable",
-                        "decision view publisher is unavailable",
-                    )
-                body, content_type, trusted_digest = decision_publisher.image_response(
-                    image_id=image_id,
-                    generation=generation,
-                )
-            except DecisionViewHTTPError as exc:
-                # `_send_decision_error` is supplied by the later handler slice.
-                self._send_decision_error(exc, include_body=include_body)
-                return
-            # `_send_decision_image` carries the trusted digest in the later sender.
-            self._send_decision_image(
-                body,
-                content_type,
-                trusted_digest,
-                include_body=include_body,
-            )
             return
         if route == "/api/health":
             self._send_json(
@@ -517,92 +263,6 @@ class _PerceptionViewHandler(LoopbackHTTPRequestHandler):
             self._send(200, body, content_type, include_body=include_body)
             return
         self._send_json(404, {"error": "not found"}, include_body=include_body)
-
-    def _handle_preview_request(self) -> None:
-        request = urlparse(self.path)
-        try:
-            generation = parse_generation_query(request.query)
-            decision_publisher = self.server.publisher.decision_publisher
-            if decision_publisher is None:
-                raise DecisionViewHTTPError(
-                    503,
-                    "producer_unavailable",
-                    "decision view publisher is unavailable",
-                )
-            content_type = self.headers.get("Content-Type", "")
-            if content_type.split(";", 1)[0].strip().lower() != "application/json":
-                raise DecisionViewHTTPError(
-                    415,
-                    "preview_content_type",
-                    "decision preview requires application/json",
-                )
-            content_length = self.headers.get("Content-Length")
-            if content_length is None:
-                raise DecisionViewHTTPError(
-                    400,
-                    "preview_invalid",
-                    "decision preview requires a Content-Length header",
-                )
-            try:
-                body_length = int(content_length)
-            except (TypeError, ValueError) as exc:
-                raise DecisionViewHTTPError(
-                    400,
-                    "preview_invalid",
-                    "decision preview Content-Length is invalid",
-                ) from exc
-            if body_length < 0:
-                raise DecisionViewHTTPError(
-                    400,
-                    "preview_invalid",
-                    "decision preview Content-Length is invalid",
-                )
-            if body_length > MAX_PREVIEW_REQUEST_BYTES:
-                raise DecisionViewHTTPError(
-                    413,
-                    "preview_too_large",
-                    "decision preview request exceeds the request bound",
-                )
-            raw = self.rfile.read(body_length)
-            if len(raw) != body_length:
-                raise DecisionViewHTTPError(
-                    400,
-                    "preview_invalid",
-                    "decision preview request body is incomplete",
-                )
-            try:
-                decoded = json.loads(raw.decode("utf-8"))
-            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-                raise DecisionViewHTTPError(
-                    400,
-                    "preview_invalid",
-                    "decision preview request is not valid JSON",
-                ) from exc
-            preview_request = parse_preview_request(decoded)
-            if preview_request["memory_mode"] == "both":
-                body = canonical_json_utf8(
-                    decision_publisher.preview_pair_payload(
-                        generation=generation,
-                        base_decision_sha256=preview_request["base_decision_sha256"],
-                    )
-                )
-            else:
-                body = canonical_json_utf8(
-                    decision_publisher.preview_payload(
-                        generation=generation,
-                        **preview_request,
-                    )
-                )
-        except DecisionViewHTTPError as exc:
-            self._send_decision_error(exc, include_body=True)
-            return
-        self._send(
-            200,
-            body,
-            "application/json; charset=utf-8",
-            include_body=True,
-        )
-
 
 def get_perception_view_status(
     automation_dir: Path,

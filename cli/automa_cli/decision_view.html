@@ -1,836 +1,123 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>decision-combined-v0 · shadow observe-only</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Automa · Decision inspector</title>
   <style>
     :root { color-scheme: dark; font-family: system-ui, -apple-system, sans-serif; }
     body { margin: 0; background: #101419; color: #e8edf2; line-height: 1.45; }
-    main { max-width: 880px; margin: 0 auto; padding: 2rem 1rem; }
-    h1, h2, h3 { line-height: 1.2; }
-    h1 { margin: 0; font-size: clamp(1.2rem, 3vw, 1.8rem); }
-    h2 { margin: 0 0 .7rem; font-size: 1rem; }
-    h3 { margin: .8rem 0 .4rem; font-size: .9rem; }
-    p { margin: .35rem 0; }
-    code, pre, .fact-value { overflow-wrap: anywhere; }
-    pre { white-space: pre-wrap; margin: 0; padding: .7rem; background: #171d24; border: 1px solid #303a45; border-radius: .35rem; }
-    header, section { margin-bottom: 1rem; padding: .9rem; background: #141a20; border: 1px solid #303a45; border-radius: .45rem; }
+    main { max-width: 880px; margin: auto; padding: 2rem 1rem; }
+    header, section { margin-bottom: 1rem; padding: 1rem; background: #141a20; border: 1px solid #303a45; border-radius: .45rem; }
     header { border-left: .35rem solid #e7a83b; }
-    .eyebrow { margin: 0 0 .35rem; color: #9fb2c4; font-size: .78rem; letter-spacing: .08em; text-transform: uppercase; }
-    .observe { color: #ffd37a; font-weight: 700; }
-    .status { margin-top: .7rem; padding: .65rem; border: 1px solid #66788a; border-radius: .35rem; }
-    .status[data-state="live"] { border-color: #65c18c; }
-    .status[data-state="error"] { border-color: #ed8b8b; }
-    .status::before { content: "Status: "; font-weight: 700; }
-    .black-box-overview { border-color: #65c18c; }
-    .preview-controls { border-color: #72a7ff; }
-    .decision-direction { font-size: clamp(2.8rem, 9vw, 5rem); font-weight: 750; letter-spacing: -.04em; color: #a1e9ba; margin: .4rem 0; }
-    .decision-context { color: #afbdc9; }
-    #preview-black-box .black-box-overview { margin: 1rem 0; padding: 1.5rem; }
-    #preview-status { border: 0; padding: 0; font-size: .85rem; color: #afbdc9; }
-    #preview-status::before { content: ""; }
-    #preview-status[data-state="error"] { color: #ffb4b4; }
-    .preview-controls label { display: grid; gap: .25rem; color: #c7d4df; font-size: .82rem; }
-    .preview-controls select { font: inherit; color: #e8edf2; background: #171d24; border: 1px solid #66788a; border-radius: .3rem; padding: .45rem .6rem; }
-    .preview-controls select:disabled { cursor: not-allowed; opacity: .55; }
-    .preview-status { margin-top: .7rem; }
-    .preview-result { margin-top: .8rem; border-top: 1px solid #303a45; padding-top: .8rem; }
-    .section-intro { margin: -.2rem 0 .8rem; color: #afbdc9; }
-    .candidate-list { display: grid; gap: .75rem; }
-    .candidate-card { padding: .7rem; background: #171d24; border: 1px solid #303a45; border-radius: .35rem; }
-    .candidate-card .facts { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
-    .candidate-card details { margin-top: .7rem; }
-    .candidate-card details > summary { cursor: pointer; color: #c7d4df; }
-    .supporting-details { margin-bottom: 1rem; padding: .8rem .9rem; background: #141a20; border: 1px solid #303a45; border-radius: .45rem; }
-    .supporting-details > summary { cursor: pointer; color: #c7d4df; font-weight: 700; }
-    .supporting-details > summary::marker { color: #e7a83b; }
-    .supporting-details > section { margin: .8rem 0 0; padding: 0; background: transparent; border: 0; }
-    .supporting-details > section:last-child { margin-bottom: 0; }
-    .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: .55rem .9rem; }
-    .fact { min-width: 0; padding: .45rem; background: #171d24; border-radius: .3rem; }
-    .fact-label { display: block; color: #9fb2c4; font-size: .78rem; }
-    .fact-value { display: block; margin-top: .15rem; }
-    .warning { border-left: .3rem solid #e7a83b; padding-left: .7rem; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 1rem; }
-    .pane { min-width: 0; padding: .7rem; background: #171d24; border: 1px solid #303a45; border-radius: .35rem; }
-    .media-stage { position: relative; width: 100%; max-height: 70vh; overflow: hidden; background: #090b0d; border: 1px solid #45525f; border-radius: .25rem; }
-    .media-stage img { display: block; width: 100%; height: auto; max-height: 70vh; object-fit: contain; }
-    .media-stage svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-    .bbox { fill: none; stroke: #ffd166; stroke-width: 3; vector-effect: non-scaling-stroke; }
-    .polygon { fill: #ffd16633; stroke: #65c18c; stroke-width: 3; vector-effect: non-scaling-stroke; }
-    .unavailable { color: #ffb4b4; }
-    .subtle { color: #afbdc9; }
-    .empty { padding: .6rem; border: 1px dashed #66788a; border-radius: .3rem; }
-    @media (max-width: 560px) { main { padding: .65rem; } header, section { padding: .7rem; } }
+    h1 { margin: 0; font-size: 1.8rem; }
+    h2 { font-size: 1rem; margin: 0 0 .7rem; }
+    p { margin: .35rem 0; }
+    .eyebrow { color: #9fb2c4; font-size: .78rem; letter-spacing: .08em; text-transform: uppercase; }
+    .subtle, .decision-context { color: #afbdc9; }
+    label { display: grid; gap: .3rem; font-size: .9rem; }
+    select { font: inherit; color: inherit; background: #171d24; border: 1px solid #66788a; border-radius: .3rem; padding: .5rem; }
+    #decision-overview { border-color: #65c18c; margin-top: 1rem; padding: 1.5rem; }
+    .decision-direction { font-size: clamp(2.8rem, 9vw, 5rem); font-weight: 750; letter-spacing: -.04em; color: #a1e9ba; }
+    details { border: 1px solid #303a45; border-radius: .35rem; padding: .8rem; margin-top: .8rem; }
+    summary { cursor: pointer; font-weight: 600; }
+    pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .8rem; }
+    #preview-status { color: #ffb4b4; }
+    [hidden] { display: none !important; }
+    @media (max-width: 560px) { main { padding: .65rem; } }
   </style>
 </head>
 <body>
   <main>
     <header>
-      <p class="eyebrow">Automa · observe-only</p>
+      <p class="eyebrow">Automa · Decision inspector</p>
       <h1 id="decision-combined-v0">Obstruction decision</h1>
-      <p class="subtle">Shadow decision · no vehicle commands sent.</p>
+      <p class="subtle">Saved input · shadow scenarios · no vehicle commands sent.</p>
+      <p id="input-label" class="subtle"></p>
     </header>
-    <section id="shadow-preview" class="preview-controls">
+    <section>
       <h2>Choose an obstruction side</h2>
-      <div>
-        <label for="preview-memory">Obstruction position
-          <select id="preview-memory" name="memory_mode" disabled>
-            <option value="left">Left obstruction</option>
-            <option value="right">Right obstruction</option>
-          </select>
-        </label>
+      <label for="preview-memory">Obstruction position
+        <select id="preview-memory" disabled>
+          <option value="left">Left obstruction</option>
+          <option value="right">Right obstruction</option>
+        </select>
+      </label>
+      <p id="preview-status" role="status">Loading decisions…</p>
+      <section id="decision-overview" aria-live="polite" hidden>
+        <h2>Black-box decision</h2>
+        <p class="decision-direction"></p>
+        <p class="decision-context"></p>
+      </section>
+      <div id="preview-output" hidden>
+        <details data-disclosure-key="selected-shadow-artifact">
+          <summary>Decision details</summary>
+          <p id="decision-reason"></p>
+          <details data-disclosure-key="input">
+            <summary>Decision input</summary>
+            <pre id="decision-input"></pre>
+          </details>
+          <details data-disclosure-key="preview-canonical-plan-authority">
+            <summary>Plan and authority</summary>
+            <pre id="decision-output"></pre>
+          </details>
+          <details data-disclosure-key="source">
+            <summary>Selected scenario and configuration</summary>
+            <p class="subtle">The saved file and engine settings are shared by both sides.</p>
+            <pre id="inspection-source"></pre>
+          </details>
+        </details>
       </div>
-      <p id="preview-status" class="status preview-status" role="status" aria-live="polite" data-state="error">Loading decisions…</p>
-      <div id="preview-black-box" aria-live="polite"></div>
-      <div id="preview-output" aria-live="polite"></div>
     </section>
-    <p id="status" hidden role="status" aria-live="polite" data-state="error">Connecting…</p>
-    <div id="live-content" hidden aria-live="off">
-      <p class="subtle">Waiting for live data…</p>
-    </div>
   </main>
   <script>
     (() => {
       "use strict";
+      const select = document.querySelector("#preview-memory");
+      const status = document.querySelector("#preview-status");
+      let inspection;
 
-      const statusNode = document.getElementById("status");
-      const liveRoot = document.getElementById("live-content");
-      const previewMemory = document.getElementById("preview-memory");
-      const previewStatus = document.getElementById("preview-status");
-      const previewBlackBox = document.getElementById("preview-black-box");
-      const previewOutput = document.getElementById("preview-output");
-      const generationPattern = /^[0-9a-f]{64}$/;
-      const pollDelayMs = 500;
-      const transactionLimitMs = 2000;
-      let generation = null;
-      let transactionSerial = 0;
-      let activeController = null;
-      let pollTimer = null;
-      let displayExpiryTimer = null;
-      let displayedTransactionSerial = null;
-      let currentObjectUrls = [];
-      let wasHidden = document.visibilityState === "hidden";
-      let currentDecisionSha256 = null;
-      let previewSerial = 0;
-      let activePreviewController = null;
-      let previewBaseSha256 = null;
-      let currentPreviewSourceFrameId = null;
-      let previewBaseSourceFrameId = null;
-      let previewArtifacts = new Map();
-      const previewModes = ["left", "right"];
-
-      function element(tag, text, className) {
-        const node = document.createElement(tag);
-        if (className) node.className = className;
-        if (text !== undefined && text !== null) node.textContent = String(text);
-        return node;
+      function showSelected() {
+        const scenario = inspection.scenarios[select.value];
+        const cycle = scenario.cycle;
+        document.querySelector(".decision-direction").textContent = scenario.steering_direction;
+        document.querySelector(".decision-context").textContent = "Obstruction on the " + scenario.obstruction_side;
+        const selected = cycle.plan?.candidates?.find(candidate => candidate.proposal_id === cycle.plan.selected_proposal_id);
+        document.querySelector("#decision-reason").textContent = selected?.reason || cycle.reason || cycle.plan?.status || "";
+        document.querySelector("#decision-input").textContent = JSON.stringify(cycle.source, null, 2);
+        document.querySelector("#decision-output").textContent = JSON.stringify({plan: cycle.plan, authority: cycle.authority}, null, 2);
+        document.querySelector("#inspection-source").textContent = JSON.stringify({
+          selected_scenario: {
+            obstruction_side: scenario.obstruction_side,
+            steering_direction: scenario.steering_direction,
+            changed_record_ids: scenario.changed_record_ids
+          },
+          saved_input: inspection.input,
+          engine_id: inspection.engine_id, engine_config: inspection.engine_config,
+          config_source: inspection.config_source
+        }, null, 2);
+        document.querySelector("#decision-overview").hidden = false;
+        document.querySelector("#preview-output").hidden = false;
       }
 
-      function setStatus(message, state) {
-        statusNode.textContent = message;
-        statusNode.dataset.state = state || "error";
-      }
-
-      function setPreviewStatus(message, state) {
-        previewStatus.textContent = message;
-        previewStatus.dataset.state = state || "error";
-      }
-
-      function revokeObjectUrls(urls) {
-        for (const url of urls || []) URL.revokeObjectURL(url);
-      }
-
-      function clearDisplayExpiry() {
-        if (displayExpiryTimer) clearTimeout(displayExpiryTimer);
-        displayExpiryTimer = null;
-        displayedTransactionSerial = null;
-      }
-
-      function clearLive(message) {
-        clearDisplayExpiry();
-        revokeObjectUrls(currentObjectUrls);
-        currentObjectUrls = [];
-        resetPreview("Unavailable: waiting for a new accepted decision to compute both previews.");
-        const empty = element("section", null, "empty");
-        empty.appendChild(element("p", message, "unavailable"));
-        liveRoot.replaceChildren(empty);
-        setStatus(message, "error");
-      }
-
-      function resetPreview(message) {
-        previewSerial += 1;
-        if (activePreviewController) activePreviewController.abort();
-        activePreviewController = null;
-        previewArtifacts = new Map();
-        previewBaseSha256 = null;
-        currentPreviewSourceFrameId = null;
-        previewBaseSourceFrameId = null;
-        currentDecisionSha256 = null;
-        previewMemory.disabled = true;
-        previewBlackBox.replaceChildren();
-        setPreviewStatus(message, "error");
-      }
-
-      function updatePreviewBase(decisionSha256, sourceFrameId) {
-        const next = typeof decisionSha256 === "string" && generationPattern.test(decisionSha256)
-          ? decisionSha256 : null;
-        if (!next) {
-          resetPreview("Unavailable: no accepted decision is available for preview.");
-          return;
-        }
-        const sourceChanged = Boolean(
-          previewBaseSourceFrameId && sourceFrameId &&
-          previewBaseSourceFrameId !== sourceFrameId
-        );
-        if (sourceChanged) {
-          previewArtifacts = new Map();
-          previewBaseSha256 = null;
-          previewBaseSourceFrameId = null;
-          previewOutput.replaceChildren();
-        }
-        currentDecisionSha256 = next;
-        currentPreviewSourceFrameId = typeof sourceFrameId === "string" ? sourceFrameId : null;
-        previewMemory.disabled = false;
-        if (!activePreviewController && previewArtifacts.size !== previewModes.length) {
-          setPreviewStatus("Computing both side previews…", "live");
-          computePreviewPair();
-        } else if (!activePreviewController && previewBaseSourceFrameId === currentPreviewSourceFrameId) {
-          setPreviewStatus("Ready · change the side to compare.", "live");
-        }
-      }
-
-      function invalidate(message) {
-        transactionSerial += 1;
-        if (activeController) activeController.abort();
-        clearLive(message);
-      }
-
-      function jsonText(value) {
-        if (value === undefined) return "unavailable";
-        try { return JSON.stringify(value, null, 2); }
-        catch (_) { return "[unserializable value]"; }
-      }
-
-      function jsonSection(title, value) {
-        const section = element("section");
-        section.appendChild(element("h2", title));
-        const pre = element("pre");
-        pre.textContent = jsonText(value);
-        section.appendChild(pre);
-        return section;
-      }
-
-      function factsGrid(facts) {
-        const grid = element("div", null, "facts");
-        for (const [label, value] of facts) {
-          const fact = element("div", null, "fact");
-          fact.appendChild(element("span", label, "fact-label"));
-          fact.appendChild(element("span", displayValue(value), "fact-value"));
-          grid.appendChild(fact);
-        }
-        return grid;
-      }
-
-      function factsSection(title, facts) {
-        const section = element("section");
-        section.appendChild(element("h2", title));
-        section.appendChild(factsGrid(facts));
-        return section;
-      }
-
-      function detailsSection(title, children, open, disclosureKey) {
-        const details = element("details", null, "supporting-details");
-        details.dataset.disclosureKey = disclosureKey || title;
-        if (open) details.open = true;
-        details.appendChild(element("summary", title));
-        for (const child of (Array.isArray(children) ? children : [children])) {
-          if (child) details.appendChild(child);
-        }
-        return details;
-      }
-
-      function captureDisclosureState(root) {
-        const state = new Map();
-        root.querySelectorAll("details[data-disclosure-key]").forEach(details => {
-          state.set(details.dataset.disclosureKey, details.open);
-        });
-        return state;
-      }
-
-      function restoreDisclosureState(root, state) {
-        root.querySelectorAll("details[data-disclosure-key]").forEach(details => {
-          const key = details.dataset.disclosureKey;
-          if (state.has(key)) details.open = state.get(key);
-        });
-      }
-
-      function pathValue(root, path) {
-        let value = root;
-        for (const key of path) {
-          if (!value || typeof value !== "object") return undefined;
-          value = value[key];
-        }
-        return value;
-      }
-
-      function displayValue(value) {
-        if (value === undefined) return "unavailable";
-        if (value === null) return "null";
-        if (typeof value === "object") return jsonText(value);
-        return String(value);
-      }
-
-      function commandSummary(command) {
-        if (command === undefined) return "unavailable";
-        if (command === null) return "null · no emitted command";
-        return displayValue(command);
-      }
-
-      function steeringDirection(command) {
-        const steering = Number(pathValue(command, ["steering"]));
-        if (!Number.isFinite(steering) || Math.abs(steering) < 1e-9) return "hold";
-        return steering < 0 ? "steer left" : "steer right";
-      }
-
-      function envelopeSummary(envelope) {
-        if (envelope === undefined) return "unavailable";
-        if (envelope === null) return "null";
-        if (typeof envelope !== "object") return displayValue(envelope);
-        const status = envelope.status;
-        const reason = envelope.reason;
-        if (reason !== undefined && reason !== null && reason !== "") {
-          return displayValue(status) + " · " + displayValue(reason);
-        }
-        return displayValue(status);
-      }
-
-      function blackBoxOverview(payload, decision, cycle) {
-        const command = pathValue(cycle, ["authority", "proposed"]);
-        const side = pathValue(payload, ["preview", "memory_mode"]);
-        const section = element("section", null, "black-box-overview");
-        section.id = "decision-overview";
-        section.appendChild(element("h2", "Black-box decision"));
-        section.appendChild(element("p", steeringDirection(command), "decision-direction"));
-        section.appendChild(element("p", "Obstruction on the " + displayValue(side), "decision-context"));
-        return section;
-      }
-
-      function renderSelectedBlackBox(payload) {
-        const decision = payload && payload.decision;
-        const cycle = pathValue(decision, ["cycle"]);
-        if (!decision || !cycle) return;
-        const replacement = blackBoxOverview(payload, decision, cycle);
-        previewBlackBox.replaceChildren(replacement);
-      }
-
-      function candidatesSection(plan) {
-        const content = element("section");
-        content.appendChild(element("h2", "Candidates · canonical cycle.plan.candidates"));
-        const candidates = pathValue(plan, ["candidates"]);
-        if (!Array.isArray(candidates)) {
-          content.appendChild(element("p", "Candidates unavailable; the canonical plan is unavailable.", "unavailable"));
-          return detailsSection("Supporting detail · candidates", content, false, "supporting-candidates");
-        }
-        if (!candidates.length) {
-          content.appendChild(element("p", "No candidates were emitted by the canonical plan.", "empty"));
-          return detailsSection("Supporting detail · candidates", content, false, "supporting-candidates");
-        }
-        const list = element("div", null, "candidate-list");
-        candidates.forEach((candidate, index) => {
-          const card = element("article", null, "candidate-card");
-          card.appendChild(element("p", "Candidate " + String(index + 1), "eyebrow"));
-          card.appendChild(factsGrid([
-            ["plugin_id", pathValue(candidate, ["plugin_id"])],
-            ["proposal_id", pathValue(candidate, ["proposal_id"])],
-            ["lifecycle", pathValue(candidate, ["lifecycle"])],
-            ["freshness", pathValue(candidate, ["freshness"])],
-            ["confidence", pathValue(candidate, ["confidence"])],
-            ["available", pathValue(candidate, ["available"])],
-            ["reason", pathValue(candidate, ["reason"])],
-            ["complete command (including gear)", commandSummary(pathValue(candidate, ["command"]))]
-          ]));
-          const candidateId = pathValue(candidate, ["proposal_id"]);
-          const candidateKey = candidateId === undefined || candidateId === null
-            ? "candidate:index:" + String(index)
-            : "candidate:" + String(candidateId);
-          card.appendChild(detailsSection("Candidate detail · complete producer record", jsonSection("Canonical candidate", candidate), false, candidateKey));
-          list.appendChild(card);
-        });
-        content.appendChild(list);
-        return detailsSection("Supporting detail · candidates", content, false, "supporting-candidates");
-      }
-
-      function finiteNormalized(value) {
-        return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1;
-      }
-
-      function validGeometry(geometry) {
-        if (!geometry || geometry.status !== "available" || geometry.coordinate_frame !== "image" || geometry.transform !== "normalized_source_image_to_display") return null;
-        const bbox = geometry.bbox_xyxy_norm;
-        const polygon = geometry.polygon_xy_norm;
-        const validBbox = Array.isArray(bbox) && bbox.length === 4 && bbox.every(finiteNormalized) && bbox[0] < bbox[2] && bbox[1] < bbox[3];
-        let validPolygon = Array.isArray(polygon) && polygon.length >= 3 && polygon.length <= 256 && polygon.every(point => Array.isArray(point) && point.length === 2 && point.every(finiteNormalized));
-        if (validPolygon) {
-          let area = 0;
-          for (let i = 0; i < polygon.length; i += 1) {
-            const a = polygon[i];
-            const b = polygon[(i + 1) % polygon.length];
-            area += a[0] * b[1] - b[0] * a[1];
-          }
-          validPolygon = Math.abs(area) > 0;
-        }
-        if (!validBbox && !validPolygon) return null;
-        return { bbox: validBbox ? bbox : null, polygon: validPolygon ? polygon : null };
-      }
-
-      function geometryNote(geometry) {
-        if (!geometry || geometry.status !== "available") return "Geometry unavailable: " + displayValue(pathValue(geometry, ["reason"]));
-        if (!validGeometry(geometry)) return "Geometry unavailable: unsupported or invalid supplied geometry";
-        return "Geometry: normalized source-image geometry; no cross-frame projection";
-      }
-
-      function appendGeometryFacts(pane, geometry) {
-        pane.appendChild(element("p", geometryNote(geometry), geometry && geometry.status === "available" ? "subtle" : "unavailable"));
-        if (geometry && geometry.coordinate_frame) pane.appendChild(element("p", "coordinate_frame=" + geometry.coordinate_frame));
-      }
-
-      function mediaPane(title, descriptor, geometry, assets, associationText, extraFacts) {
-        const pane = element("article", null, "pane");
-        pane.appendChild(element("h3", title));
-        pane.appendChild(element("p", associationText === undefined ? "Association: unavailable" : displayValue(associationText), "subtle"));
-        const sourceFacts = [
-          ["status", pathValue(descriptor, ["status"])], ["reason", pathValue(descriptor, ["reason"])], ["image_id", pathValue(descriptor, ["image_id"])],
-          ["sha256", pathValue(descriptor, ["sha256"])], ["frame_id", pathValue(descriptor, ["frame_id"])], ["frame_index", pathValue(descriptor, ["frame_index"])],
-          ["observation_id", pathValue(descriptor, ["observation_id"])], ["captured_at_ms", pathValue(descriptor, ["captured_at_ms"])],
-          ["dimensions", pathValue(descriptor, ["width_px"]) !== undefined && pathValue(descriptor, ["width_px"]) !== null && pathValue(descriptor, ["height_px"]) !== undefined && pathValue(descriptor, ["height_px"]) !== null ? pathValue(descriptor, ["width_px"]) + " × " + pathValue(descriptor, ["height_px"]) : undefined]
-        ];
-        for (const fact of (extraFacts || [])) sourceFacts.push(fact);
-        pane.appendChild(factsSection("Source facts", sourceFacts));
-        if (!descriptor || descriptor.status !== "available") {
-          pane.appendChild(element("p", "Image unavailable: " + displayValue(pathValue(descriptor, ["reason"])), "unavailable"));
-          appendGeometryFacts(pane, geometry);
-          return pane;
-        }
-        const asset = assets.get(descriptor.url);
-        if (!asset) {
-          pane.appendChild(element("p", "Image unavailable: transaction asset missing", "unavailable"));
-          appendGeometryFacts(pane, geometry);
-          return pane;
-        }
-        const stage = element("div", null, "media-stage");
-        stage.style.aspectRatio = String(descriptor.width_px) + " / " + String(descriptor.height_px);
-        const image = asset.image.cloneNode(false);
-        image.alt = title + "; exact returned source image";
-        stage.appendChild(image);
-        const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-        svg.setAttribute("viewBox", "0 0 " + String(descriptor.width_px) + " " + String(descriptor.height_px));
-        svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
-        svg.setAttribute("aria-label", "Validated source-image geometry overlay");
-        const shape = validGeometry(geometry);
-        if (shape) {
-          if (shape.bbox) {
-            const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-            rect.setAttribute("class", "bbox");
-            rect.setAttribute("x", String(shape.bbox[0] * descriptor.width_px));
-            rect.setAttribute("y", String(shape.bbox[1] * descriptor.height_px));
-            rect.setAttribute("width", String((shape.bbox[2] - shape.bbox[0]) * descriptor.width_px));
-            rect.setAttribute("height", String((shape.bbox[3] - shape.bbox[1]) * descriptor.height_px));
-            svg.appendChild(rect);
-          }
-          if (shape.polygon) {
-            const polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
-            polygon.setAttribute("class", "polygon");
-            polygon.setAttribute("points", shape.polygon.map(point => (point[0] * descriptor.width_px) + "," + (point[1] * descriptor.height_px)).join(" "));
-            svg.appendChild(polygon);
-          }
-        }
-        stage.appendChild(svg);
-        pane.appendChild(stage);
-        appendGeometryFacts(pane, geometry);
-        return pane;
-      }
-
-      function imageDescriptors(payload) {
-        const descriptors = [];
-        if (payload.current_image) descriptors.push(payload.current_image);
-        for (const entry of Array.isArray(payload.evidence) ? payload.evidence : []) if (entry && entry.source_image) descriptors.push(entry.source_image);
-        return descriptors.filter((descriptor, index, all) => descriptor && descriptor.status === "available" && typeof descriptor.url === "string" && all.findIndex(item => item && item.url === descriptor.url) === index);
-      }
-
-      function loadImage(descriptor, signal, objectUrls) {
-        return fetch(descriptor.url, { cache: "no-store", signal }).then(response => {
-          if (!response.ok) throw new Error("image_http_" + response.status);
-          return response.blob();
-        }).then(blob => new Promise((resolve, reject) => {
-          const objectUrl = URL.createObjectURL(blob);
-          objectUrls.push(objectUrl);
-          const image = new Image();
-          let settled = false;
-          const finish = (error) => {
-            if (settled) return;
-            settled = true;
-            if (error) reject(error); else resolve({ image, objectUrl });
-          };
-          image.onload = () => {
-            const decoded = typeof image.decode === "function" ? image.decode() : Promise.resolve();
-            decoded.then(() => finish()).catch(finish);
-          };
-          image.onerror = () => finish(new Error("image_decode_failed"));
-          signal.addEventListener("abort", () => finish(new Error("transaction_aborted")), { once: true });
-          image.src = objectUrl;
-        }));
-      }
-
-      async function fetchTransaction(serial) {
-        const controller = new AbortController();
-        activeController = controller;
-        const startedAt = performance.now();
-        const objectUrls = [];
-        let deadlineExpired = false;
-        const expireTransaction = () => { deadlineExpired = true; controller.abort(); };
-        let deadlineTimer = setTimeout(expireTransaction, transactionLimitMs);
+      select.addEventListener("change", showSelected);
+      async function load() {
         try {
-          const url = "/api/decision/latest?generation=" + encodeURIComponent(generation);
-          const response = await fetch(url, { cache: "no-store", signal: controller.signal });
-          let payload = null;
-          try { payload = await response.json(); } catch (_) { payload = null; }
-          if (!response.ok) throw new Error(payload && payload.reason ? payload.reason : "http_" + response.status);
-          if (!payload || (payload.status !== "current" && payload.status !== "partial")) throw new Error((payload && payload.reason) || "decision_unavailable");
-          if (payload.generation_id !== generation) throw new Error("generation_mismatch");
-          if (typeof payload.max_age_ms !== "number" || !Number.isFinite(payload.max_age_ms) || payload.max_age_ms <= 0 || typeof payload.served_at_ms !== "number" || !Number.isFinite(payload.served_at_ms) || typeof payload.expires_at_ms !== "number" || !Number.isFinite(payload.expires_at_ms)) throw new Error("freshness_invalid");
-          const freshnessBudgetMs = payload.expires_at_ms - payload.served_at_ms;
-          const freshnessRemainingMs = freshnessBudgetMs - (performance.now() - startedAt);
-          if (freshnessBudgetMs <= 0) throw new Error("freshness_invalid");
-          const transactionMs = transactionLimitMs - (performance.now() - startedAt);
-          if (freshnessRemainingMs <= 0) throw new Error("decision_expired");
-          if (transactionMs <= 0) throw new Error("timeout");
-          clearTimeout(deadlineTimer);
-          deadlineTimer = setTimeout(expireTransaction, Math.min(transactionMs, freshnessRemainingMs));
-          const assets = new Map();
-          await Promise.all(imageDescriptors(payload).map(async descriptor => assets.set(descriptor.url, await loadImage(descriptor, controller.signal, objectUrls))));
-          if (serial !== transactionSerial || controller.signal.aborted) throw new Error("superseded");
-          if (performance.now() - startedAt >= transactionLimitMs || freshnessBudgetMs - (performance.now() - startedAt) <= 0) throw new Error("decision_expired");
-          return { payload, assets, objectUrls, freshnessBudgetMs, startedAt };
+          const response = await fetch("/api/inspection", {cache: "no-store", signal: AbortSignal.timeout(10000)});
+          if (!response.ok) throw new Error("Could not load inspection (" + response.status + ").");
+          inspection = await response.json();
+          if (inspection.schema !== "automa_decision_inspection_v1" || !inspection.scenarios?.left || !inspection.scenarios?.right) {
+            throw new Error("Invalid inspection artifact.");
+          }
+          document.querySelector("#input-label").textContent = inspection.input.name + " · frame " + (inspection.input.frame_position + 1) + " of " + inspection.input.frame_count;
+          showSelected();
+          select.disabled = false;
+          status.hidden = true;
         } catch (error) {
-          revokeObjectUrls(objectUrls);
-          if (deadlineExpired || (error && error.name === "AbortError")) throw new Error("timeout");
-          throw error;
-        } finally {
-          clearTimeout(deadlineTimer);
-          if (activeController === controller) activeController = null;
+          status.textContent = error.message;
         }
       }
-
-      function renderPayload(result) {
-        const payload = result.payload;
-        const decision = payload.decision;
-        const cycle = pathValue(decision, ["cycle"]);
-        const plan = pathValue(cycle, ["plan"]);
-        const authority = pathValue(cycle, ["authority"]);
-        const source = pathValue(cycle, ["source"]);
-        const fragment = document.createDocumentFragment();
-        fragment.appendChild(candidatesSection(plan));
-        fragment.appendChild(detailsSection("Supporting data · decision input envelope status", factsSection("Decision inputs · envelope status", [
-          ["observation", envelopeSummary(pathValue(source, ["observation"]))],
-          ["memory", envelopeSummary(pathValue(source, ["memory"]))],
-          ["patterns", envelopeSummary(pathValue(source, ["patterns"]))],
-          ["projections", envelopeSummary(pathValue(source, ["projections"]))],
-          ["capabilities", envelopeSummary(pathValue(source, ["capabilities"]))],
-          ["prior applied command", envelopeSummary(pathValue(source, ["prior_host_applied_command"]))]
-        ])));
-        fragment.appendChild(detailsSection("Supporting data · raw decision input envelopes", jsonSection("Decision inputs · raw envelopes", source)));
-        fragment.appendChild(detailsSection("Supporting data · detailed decision result", factsSection("Decision result · detailed", [
-          ["engine", pathValue(decision, ["engine_id"])], ["cycle status", pathValue(cycle, ["status"])], ["cycle reason", pathValue(cycle, ["reason"])],
-          ["selector", pathValue(plan, ["selector_id"])], ["plan status", pathValue(plan, ["status"])], ["selected proposal", pathValue(plan, ["selected_proposal_id"])],
-          ["selected candidate", pathValue(payload, ["presentation", "selected_candidate", "proposal_id"])],
-          ["proposed command", commandSummary(pathValue(authority, ["proposed"]))]
-        ])));
-        fragment.appendChild(detailsSection("Supporting data · canonical plan and authority", [
-          jsonSection("Canonical cycle.plan", plan),
-          jsonSection("Canonical cycle.authority", authority)
-        ]));
-        const imageSection = element("section");
-        imageSection.appendChild(element("h2", "Source evidence · current image and retained memory refs"));
-        const imageGrid = element("div", null, "grid");
-        imageGrid.appendChild(mediaPane("Current cycle image", payload.current_image, null, result.assets, "Association: current decision-cycle frame; this is not the fastest camera frame."));
-        const evidence = Array.isArray(payload.evidence) ? payload.evidence : [];
-        if (!evidence.length) imageGrid.appendChild(element("p", "No source refs were accepted for this cycle.", "empty"));
-        evidence.forEach((entry, index) => {
-          const label = "Retained source " + String(index + 1) + " · " + displayValue(pathValue(entry, ["association"])) + " · proposal=" + displayValue(pathValue(entry, ["proposal_id"]));
-          const pane = mediaPane(label, pathValue(entry, ["source_image"]), pathValue(entry, ["geometry"]), result.assets, "Association: " + displayValue(pathValue(entry, ["association"])) + "; record_id=" + displayValue(pathValue(entry, ["record_id"])), [
-            ["proposal_id", pathValue(entry, ["proposal_id"])], ["selected", pathValue(entry, ["selected"])],
-            ["record_id", pathValue(entry, ["record_id"])], ["retained_age_ms", pathValue(entry, ["retained_age_ms"])],
-            ["provenance", pathValue(entry, ["provenance"])]
-          ]);
-          pane.appendChild(detailsSection("Evidence record · source ref, provenance, and geometry", jsonSection("Canonical evidence entry", entry)));
-          imageGrid.appendChild(pane);
-        });
-        imageSection.appendChild(imageGrid);
-        fragment.appendChild(detailsSection("Supporting evidence · source images, retained refs, and geometry", imageSection));
-        const hostFacts = factsSection("Host observation · separate from the decision", [
-          ["status", pathValue(payload, ["host_observation", "status"])], ["reason", pathValue(payload, ["host_observation", "reason"])],
-          ["observer", pathValue(payload, ["host_observation", "value", "observer"])],
-          ["mode", pathValue(payload, ["host_observation", "value", "mode"])],
-          ["user input", commandSummary(pathValue(payload, ["host_observation", "value", "user_input"]))],
-          ["pilot output", commandSummary(pathValue(payload, ["host_observation", "value", "pilot_output"]))],
-          ["host output", commandSummary(pathValue(payload, ["host_observation", "value", "host_output"]))],
-          ["observed_at_ms", pathValue(payload, ["host_observation", "value", "observed_at_ms"])]
-        ]);
-        const hostRaw = jsonSection("Host observation · separate fact, not physical telemetry", payload.host_observation);
-        fragment.appendChild(detailsSection("Supporting data · independent host observation", [hostFacts, hostRaw]));
-        const publicationFacts = factsSection("Publication, identity, and freshness", [
-          ["schema", payload.schema], ["view_id", payload.view_id], ["status", payload.status], ["reason", payload.reason], ["generation_id", payload.generation_id],
-          ["cycle frame_id", pathValue(decision, ["frame_id"])], ["cycle frame_index", pathValue(decision, ["frame_index"])], ["cycle timestamp_ms", pathValue(decision, ["timestamp_ms"])],
-          ["source timestamp_ms", pathValue(cycle, ["source", "timestamp_ms"])], ["published_at_ms", pathValue(decision, ["published_at_ms"])],
-          ["served_at_ms", payload.served_at_ms], ["max_age_ms", payload.max_age_ms], ["expires_at_ms", payload.expires_at_ms], ["decision_sha256", payload.decision_sha256],
-          ["vehicle_id", pathValue(payload, ["identity", "vehicle_id"])], ["run_id", pathValue(payload, ["identity", "run_id"])], ["worker_pid", pathValue(payload, ["identity", "worker_pid"])],
-          ["activation_engine_id", pathValue(payload, ["identity", "activation_engine_id"])], ["activation_activated_at_ms", pathValue(payload, ["identity", "activation_activated_at_ms"])], ["activation_sha256", pathValue(payload, ["identity", "activation_sha256"])]
-        ]);
-        const rawDecision = jsonSection("Raw accepted decision (lossless display)", decision);
-        const limits = jsonSection("View limits and refusal counters", payload.limits);
-        fragment.appendChild(detailsSection("Supporting record · publication, identity, freshness, and raw decision", [publicationFacts, limits, rawDecision]));
-        return fragment;
-      }
-
-      function renderPreviewResult(payload) {
-        const disclosureState = captureDisclosureState(previewOutput);
-        const decision = payload && payload.decision;
-        const cycle = pathValue(decision, ["cycle"]);
-        const plan = pathValue(cycle, ["plan"]);
-        const authority = pathValue(cycle, ["authority"]);
-        const preview = payload && payload.preview;
-        const selected = pathValue(payload, ["presentation", "selected_candidate"]);
-        const content = element("section", null, "preview-result");
-        content.appendChild(element("h2", "Selected preview"));
-        content.appendChild(factsGrid([
-          ["hypothetical position", pathValue(preview, ["memory_mode"])],
-          ["decision after · steering direction", steeringDirection(pathValue(authority, ["proposed"]))],
-          ["decision after · reason", pathValue(selected, ["reason"])],
-          ["after · proposed command", commandSummary(pathValue(authority, ["proposed"]))],
-          ["after · plan", pathValue(plan, ["status"])],
-          ["before · plan", pathValue(preview, ["before_plan", "status"])],
-          ["before · reason", pathValue(preview, ["before", "reason"])],
-          ["before · proposed command", commandSummary(pathValue(preview, ["before_proposed"]))],
-          ["cycle status", pathValue(cycle, ["status"])],
-          ["selected proposal", pathValue(plan, ["selected_proposal_id"])],
-          ["authorized output", commandSummary(pathValue(authority, ["authorized_output"]))],
-          ["live source frame", pathValue(preview, ["source_frame_id"])],
-          ["preview decision sha256", pathValue(payload, ["decision_sha256"])],
-          ["live decision unchanged", pathValue(preview, ["live_decision_unchanged"])]
-        ]));
-        content.appendChild(detailsSection("Canonical plan and authority", [
-          jsonSection("Preview cycle.plan", plan),
-          jsonSection("Preview cycle.authority", authority)
-        ], false, "preview-canonical-plan-authority"));
-        previewOutput.replaceChildren(detailsSection("Decision details", content, false, "selected-shadow-artifact"));
-        restoreDisclosureState(previewOutput, disclosureState);
-      }
-
-      function selectedPreviewLabel() {
-        return previewMemory.value === "right" ? "right obstruction" : "left obstruction";
-      }
-
-      async function computePreviewPair() {
-        if (!generation || !currentDecisionSha256 || activePreviewController) return;
-        const serial = ++previewSerial;
-        const controller = new AbortController();
-        activePreviewController = controller;
-        const deadlineTimer = setTimeout(() => controller.abort(), transactionLimitMs);
-        setPreviewStatus("Computing both side previews…", "live");
-        try {
-          let payload = null;
-          let requestedBase = currentDecisionSha256;
-          let requestedSourceFrameId = currentPreviewSourceFrameId;
-          let lastError = null;
-          for (let attempt = 0; attempt < 3; attempt += 1) {
-            try {
-              requestedBase = currentDecisionSha256;
-              requestedSourceFrameId = currentPreviewSourceFrameId;
-              const response = await fetch(
-                "/api/decision/preview?generation=" + encodeURIComponent(generation),
-                {
-                  method: "POST",
-                  cache: "no-store",
-                  signal: controller.signal,
-                  headers: { "Content-Type": "application/json", "Accept": "application/json" },
-                  body: JSON.stringify({
-                    schema: "automa_decision_preview_request_v0",
-                    base_decision_sha256: requestedBase,
-                    memory_mode: "both"
-                  })
-                }
-              );
-              try { payload = await response.json(); } catch (_) { payload = null; }
-              if (!response.ok) throw new Error((payload && payload.reason) || "http_" + response.status);
-              if (!payload || payload.schema !== "automa_decision_preview_pair_v0" || payload.status !== "preview_pair") {
-                throw new Error("preview_pair_invalid");
-              }
-              if (payload.base_decision_sha256 !== requestedBase) throw new Error("preview_stale");
-              if (requestedSourceFrameId && currentPreviewSourceFrameId && requestedSourceFrameId !== currentPreviewSourceFrameId) {
-                throw new Error("preview_stale");
-              }
-              const pair = payload.previews;
-              if (!pair || typeof pair !== "object") throw new Error("preview_pair_invalid");
-              for (const mode of previewModes) {
-                const artifact = pair[mode];
-                if (!artifact || artifact.schema !== "automa_decision_preview_v0" || artifact.status !== "preview" ||
-                    artifact.base_decision_sha256 !== requestedBase || artifact.preview?.memory_mode !== mode) {
-                  throw new Error("preview_pair_invalid");
-                }
-              }
-              break;
-            } catch (error) {
-              lastError = error;
-              const reason = error && error.name === "AbortError" ? "request_timeout" : ((error && error.message) || "preview_unavailable");
-              if (reason === "preview_stale" && attempt < 2) {
-                setPreviewStatus("Live input advanced while building both previews; retrying…", "live");
-                await new Promise(resolve => setTimeout(resolve, 150));
-                continue;
-              }
-              throw error;
-            }
-          }
-          if (!payload) throw lastError || new Error("preview_unavailable");
-          if (serial !== previewSerial || controller.signal.aborted) return;
-          previewArtifacts = new Map(previewModes.map(mode => [mode, payload.previews[mode]]));
-          previewBaseSha256 = requestedBase;
-          previewBaseSourceFrameId = requestedSourceFrameId;
-          renderPreviewResult(previewArtifacts.get(previewMemory.value) || previewArtifacts.get(previewModes[0]));
-          renderSelectedBlackBox(previewArtifacts.get(previewMemory.value) || previewArtifacts.get(previewModes[0]));
-          setPreviewStatus("Ready · change the side to compare.", "live");
-        } catch (error) {
-          if (serial !== previewSerial) return;
-          const reason = error && error.name === "AbortError" ? "request_timeout" : ((error && error.message) || "preview_unavailable");
-          const stale = reason === "preview_stale";
-          setPreviewStatus(stale
-            ? "Live input changed while the pair was being built; waiting for a stable accepted input."
-            : "Could not compute both side previews: " + reason, "error");
-        } finally {
-          clearTimeout(deadlineTimer);
-          if (activePreviewController === controller) activePreviewController = null;
-          if (serial === previewSerial && !previewArtifacts.size && currentDecisionSha256) {
-            setTimeout(() => computePreviewPair(), 250);
-          }
-        }
-      }
-
-      function showSelectedPreview() {
-        const payload = previewArtifacts.get(previewMemory.value);
-        if (!payload) {
-          setPreviewStatus("Waiting for both side previews…", "live");
-          return;
-        }
-        renderPreviewResult(payload);
-        renderSelectedBlackBox(payload);
-        setPreviewStatus("Ready · change the side to compare.", "live");
-      }
-
-      async function poll() {
-        if (!generation) return;
-        const serial = ++transactionSerial;
-        try {
-          const result = await fetchTransaction(serial);
-          if (serial !== transactionSerial) { revokeObjectUrls(result.objectUrls); return; }
-          const fragment = renderPayload(result);
-          const remainingFreshnessMs = result.freshnessBudgetMs - (performance.now() - result.startedAt);
-          if (serial !== transactionSerial || remainingFreshnessMs <= 0) {
-            revokeObjectUrls(result.objectUrls);
-            if (serial === transactionSerial) clearLive("Unavailable: decision_expired");
-            return;
-          }
-          clearDisplayExpiry();
-          const disclosureState = captureDisclosureState(liveRoot);
-          revokeObjectUrls(currentObjectUrls);
-          currentObjectUrls = result.objectUrls;
-          displayedTransactionSerial = serial;
-          liveRoot.replaceChildren(fragment);
-          restoreDisclosureState(liveRoot, disclosureState);
-          updatePreviewBase(
-            result.payload.decision_sha256,
-            pathValue(result.payload, ["decision", "frame_id"])
-          );
-          if (previewArtifacts.size === previewModes.length) {
-            renderSelectedBlackBox(previewArtifacts.get(previewMemory.value) || previewArtifacts.get(previewModes[0]));
-          }
-          setStatus(result.payload.status === "partial" ? "Live partial: " + (result.payload.reason || "component_unavailable") : "Live accepted: shadow / observe-only", "live");
-          displayExpiryTimer = setTimeout(() => {
-            if (displayedTransactionSerial === serial) clearLive("Unavailable: decision_expired");
-          }, Math.max(0, Math.floor(remainingFreshnessMs)));
-        } catch (error) {
-          if (serial !== transactionSerial) return;
-          const reason = error && error.message === "timeout" ? "request_timeout" : ((error && error.message) || "decision_unavailable");
-          clearLive("Unavailable: " + reason);
-        } finally {
-          if (serial === transactionSerial) pollTimer = setTimeout(poll, pollDelayMs);
-        }
-      }
-
-      function schedulePoll() {
-        if (pollTimer) clearTimeout(pollTimer);
-        pollTimer = setTimeout(poll, pollDelayMs);
-      }
-
-      function readGeneration() {
-        const params = new URLSearchParams(window.location.search);
-        const values = params.getAll("generation");
-        if (values.length === 0) return undefined;
-        return values.length === 1 && generationPattern.test(values[0]) ? values[0] : null;
-      }
-
-      async function discoverGeneration() {
-        const controller = new AbortController();
-        const deadlineTimer = setTimeout(() => controller.abort(), transactionLimitMs);
-        try {
-          const response = await fetch("/api/health", { cache: "no-store", signal: controller.signal });
-          let health = null;
-          try { health = await response.json(); } catch (_) { health = null; }
-          const discovered = pathValue(health, ["decision_view", "generation_id"]);
-          if (!response.ok || !health || !health.decision_view || health.decision_view.available !== true || !generationPattern.test(discovered)) {
-            throw new Error("decision_generation_unavailable");
-          }
-          const canonicalUrl = window.location.pathname + "?generation=" + encodeURIComponent(discovered) + window.location.hash;
-          window.history.replaceState(null, "", canonicalUrl);
-          return discovered;
-        } catch (error) {
-          if (error && error.name === "AbortError") throw new Error("request_timeout");
-          throw error;
-        } finally {
-          clearTimeout(deadlineTimer);
-        }
-      }
-
-      previewMemory.addEventListener("change", showSelectedPreview);
-
-      async function start() {
-        const requestedGeneration = readGeneration();
-        if (requestedGeneration === null) {
-          clearLive("Unavailable: exactly one lower-case generation query parameter is required.");
-          return;
-        }
-        if (requestedGeneration === undefined) {
-          setStatus("Discovering the current decision generation…", "error");
-          setPreviewStatus("Waiting for the current decision generation…", "error");
-          try {
-            generation = await discoverGeneration();
-          } catch (error) {
-            clearLive("Unavailable: " + ((error && error.message) || "decision_generation_unavailable"));
-            return;
-          }
-        } else {
-          generation = requestedGeneration;
-        }
-        setStatus("Waiting for generation-bound shadow decision…", "error");
-        window.addEventListener("offline", () => invalidate("Unavailable: network_disconnected"));
-        window.addEventListener("online", schedulePoll);
-        document.addEventListener("visibilitychange", () => {
-          if (document.visibilityState === "hidden") { wasHidden = true; return; }
-          if (wasHidden) { wasHidden = false; invalidate("Unavailable: tab_resumed; awaiting a fresh accepted response"); schedulePoll(); }
-        });
-        poll();
-      }
-      start();
+      load();
     })();
   </script>
 </body>

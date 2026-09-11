@@ -424,7 +424,11 @@ def _parse_frontier_fields(lines: Iterable[str]) -> dict[str, str]:
         if field_match is None:
             field_match = re.match(r"-\s+([^:]+):\s*(.*)", stripped)
         if field_match:
-            fields[_normalize_field(field_match.group(1))] = field_match.group(2).strip()
+            field = _normalize_field(field_match.group(1))
+            value = field_match.group(2).strip()
+            if field == "workflow state":
+                value = value.strip("`")
+            fields[field] = value
     return fields
 
 

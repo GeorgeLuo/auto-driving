@@ -1,0 +1,26 @@
+{
+  "frames": [
+    {
+      "frame_id": "frame_001",
+      "frame_index": 1,
+      "memory": null,
+      "observation": {
+        "artifacts": {},
+        "created_at_ms": 1000,
+        "metadata": {},
+        "observation_id": "obs_001",
+        "perception_plugin_id": "lightweight_observer",
+        "perception_schema": "perception_text_v0",
+        "schema": "decision_observation_v1",
+        "sensor_snapshot": {},
+        "signals": [],
+        "summary": [
+          "line"
+        ],
+        "things": []
+      },
+      "timestamp_ms": 1000
+    }
+  ],
+  "schema": "automa_decision_apply_sequence_v0"
+}

@@ -87,6 +87,34 @@ engine are intentional interface dependencies. The D1 owner should avoid
 editing #203's inspector page unless a later, separately reviewed integration
 is requested.
 
+## Approximate implementation impact
+
+These are rough added/changed-line estimates for sizing discussion, not a
+commitment. They exclude proof-of-work reports, generated HTML, and the
+existing contents of the files. The current Donkey part already runs the
+shared cycle, so the likely work is publication and acceptance plumbing.
+
+| Candidate file | Likely work | Estimate |
+| --- | --- | ---: |
+| `implementations/runtime/donkeycar/donkey_part.py` | Add or expose run/activation/generation identity and the decision-cycle fields alongside the existing onboard snapshot | 40–90 |
+| `cli/automa_cli/physical_observation.py` | Fetch, decode, correlate, and report a physical decision publication with explicit stale/unavailable results | 60–120 |
+| `cli/automa_cli/decision.py` | Reuse or factor the existing stream-frame validation for a remote physical producer and host-observation checks | 50–110 |
+| `cli/automa_cli/app.py` | Wire the existing decision-stream command to the PiRacer path if the current command cannot do so | 10–40 |
+| `cli/automa_cli/automation.py` | Only if Automa must start and own the PiRacer producer; otherwise no change | 0–120 |
+| `tests/cli/` and `tests/integration/` | Contract fixtures for live identity, stop/stale/mismatch, source correlation, and user-mode zero output | 120–220 |
+| Donkey host `manage.py` (possibly a separately owned repository) | Add the actual HTTP route if the current host exposes observation but not decision publication | 30–80 external |
+
+Likely in-repository base case: **160–360 production LOC plus 120–220 test
+LOC**, or roughly **280–580 LOC total**. If a new host endpoint and Automa
+producer launcher are both required, the upper bound is approximately
+**400–700 in-repository LOC**, plus the external host change. No new decision
+engine, decision policy, page, or #203 code should be needed.
+
+The first implementation pass should confirm whether the existing physical
+observation endpoint already carries enough of the cycle. That one check may
+move the work from the lower to the upper estimate and may identify an
+external owner before any product code is written.
+
 ## What needs feedback
 
 - Is the smallest D1 deliverable a publisher/liveness capability, or only a

@@ -23,6 +23,7 @@ from .decision import (
     stream_vehicle_decision,
     update_vehicle_decision,
 )
+from .decision_inspector import run_decision_inspector
 from .lab_plugins import list_perception_candidates, setup_perception_candidate
 from .memory import (
     get_vehicle_memory_info,
@@ -549,7 +550,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     decision_control = vehicle_commands.add_parser(
         "decision",
-        help="Operate vehicle decision (offline apply/replay; stage via update decision).",
+        help="Operate vehicle decision (offline inspect/replay; stage via update decision).",
     )
     decision_control.set_defaults(handler=_handle_vehicles_decision_help)
     decision_control_commands = decision_control.add_subparsers(dest="decision_command")
@@ -558,6 +559,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Show decision-level commands.",
     )
     decision_help.set_defaults(handler=_handle_vehicles_decision_help)
+    decision_inspect = decision_control_commands.add_parser(
+        "inspect", help="Open an offline decision inspector for a saved input sequence.",
+        description="Compute left/right shadow scenarios from one saved frame. No live worker or capture is needed.",
+    )
+    decision_inspect.add_argument("--from-run", required=True, help="Sequence JSON file or directory containing sequence.json.")
+    decision_inspect.add_argument("--frame", type=int, default=0, help="Zero-based frame position (default: 0).")
+    decision_inspect.add_argument("--id", dest="vehicle_id", help="Use this vehicle's staged shadow configuration; otherwise use packaged defaults.")
+    decision_inspect.add_argument("--port", type=int, default=0, help="Local port (default: automatically selected).")
+    decision_inspect.add_argument("--open", dest="open_browser", action="store_true", help="Open the inspector in your browser.")
+    decision_inspect.add_argument("--json", action="store_true", help="Print both artifacts and exit without starting a server.")
+    decision_inspect.set_defaults(handler=_handle_vehicles_decision_inspect)
     decision_apply = decision_control_commands.add_parser(
         "apply",
         help="Replay a recorded decision sequence through staged shadow-proposals offline.",
@@ -2063,6 +2075,7 @@ def _handle_vehicles_decision_help(args: argparse.Namespace) -> int:
                 "",
                 "Stage an engine with:  ./cli/automa vehicles update decision --id <vehicle> --engine shadow-proposals",
                 "Inspect contract with: ./cli/automa vehicles info decision --id <vehicle>",
+                "Open saved input:      ./cli/automa vehicles decision inspect --from-run <sequence.json> --open",
                 "Stream latest frame:   ./cli/automa vehicles stream decision --id <vehicle>",
                 "",
                 "Detailed help:",
@@ -2071,6 +2084,16 @@ def _handle_vehicles_decision_help(args: argparse.Namespace) -> int:
         )
     )
     return 0
+
+
+def _handle_vehicles_decision_inspect(args: argparse.Namespace) -> int:
+    result = run_decision_inspector(
+        args.from_run, frame_index=args.frame, vehicle_id=args.vehicle_id,
+        port=args.port, open_browser=args.open_browser, json_output=args.json, output=sys.stdout,
+    )
+    if result.message:
+        print(result.message)
+    return result.exit_code
 
 
 def _handle_vehicles_decision_apply(args: argparse.Namespace) -> int:

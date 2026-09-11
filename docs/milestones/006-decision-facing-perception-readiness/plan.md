@@ -144,6 +144,7 @@ for simulator and physical vehicles.
 | 2026-07-28 | Carry prediction access but defer prediction algorithms | The architecture should not block prediction-backed proposals, while current memory does not yet justify trajectory claims |
 | 2026-07-28 | Keep proposal generation modular and mixing simple | Independent plugins preserve experimentation; one deterministic selector avoids importing unvalidated Chase consensus mechanics |
 | 2026-07-28 | Permit nonzero shadow intent but forbid application | Proposed and applied controls must be distinguishable before any movement milestone begins |
+| 2026-09-09 | Authorize D2 proposal and implementation together on `m006/live-decision-view` while #202 remains the active evidence implementation | Operator override for this combined job; A1 constrains design, Luna implements, and A2 independently reviews. No separate D2 acceptance or criterion promotion is asserted; current tooling cannot represent the combined unit without a workflow transition |
 
 ## Closeout
 

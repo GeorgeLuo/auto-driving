@@ -7,6 +7,7 @@ import html
 import json
 import os
 import secrets
+import shlex
 import shutil
 import stat as stat_mod
 import time
@@ -667,6 +668,10 @@ def get_vehicle_decision_info(*, vehicle_id: str, json_output: bool = False) -> 
         "view_id": COMBINED_VIEW_ID,
         "url": None,
         "path_template": f"cli/automa_cli/decision_view.html#{COMBINED_VIEW_ID}",
+        "launch_command": (
+            "./cli/automa vehicles decision inspect --id "
+            + shlex.quote(vehicle_id) + " --from-run <sequence.json> --open"
+        ),
     }
 
     payload = {
@@ -3218,6 +3223,7 @@ def _format_decision_info(payload: dict[str, Any]) -> str:
             "",
             f"Combined view: id={combined.get('view_id')} "
             f"url={combined.get('url')} path_template={combined.get('path_template')}",
+            f"Open saved input: {combined.get('launch_command')}",
         ]
     )
     return "\n".join(lines)

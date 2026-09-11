@@ -1,0 +1,60 @@
+{
+  "captured_on": "2026-09-08",
+  "files": [
+    {
+      "path": "issue-187/HANDOFF.md",
+      "source": "~/Projects/agent-handoffs/issue-187/HANDOFF.md",
+      "sha256": "5cc7a1a12c3f0a1e088f0b127e49581df36215ecee11a0b0e04b4c8c9f79c390",
+      "kind": "last_available_local_snapshot"
+    },
+    {
+      "path": "issue-187/PROMPT.md",
+      "source": "~/Projects/agent-handoffs/issue-187/PROMPT.md",
+      "sha256": "b1a97164774e7eb802129983e8eadaada610a62340bd72b66b9394c271e0624f",
+      "kind": "last_available_local_snapshot"
+    },
+    {
+      "path": "issue-187/STATE.json",
+      "source": "~/Projects/agent-handoffs/issue-187/STATE.json",
+      "sha256": "f2af3329c3101ed546b177dec1dc8bd5ace74306c6cbf80960befb3b4321eb64",
+      "kind": "last_available_local_snapshot"
+    },
+    {
+      "path": "issue-187-prose-rewrite/HANDOFF.md",
+      "source": "~/Projects/agent-handoffs/issue-187-prose-rewrite/HANDOFF.md",
+      "sha256": "68fdb2358ac3734ca0bcb0df5f226910addc01631c3cb6e1b5446d6e4a767b5f",
+      "kind": "last_available_local_snapshot"
+    },
+    {
+      "path": "issue-187-prose-rewrite/PROMPT.md",
+      "source": "~/Projects/agent-handoffs/issue-187-prose-rewrite/PROMPT.md",
+      "sha256": "85877817697639d20b92d7f25acbe58014dceea68b43a29bb59c86d660b0be9b",
+      "kind": "last_available_local_snapshot"
+    },
+    {
+      "path": "issue-187-prose-rewrite/STATE.json",
+      "source": "~/Projects/agent-handoffs/issue-187-prose-rewrite/STATE.json",
+      "sha256": "7070bc6cc4b9da3937d4e7e73c5048e8f732260d1853a891f13885125ce7af29",
+      "kind": "last_available_local_snapshot"
+    },
+    {
+      "path": "issue-187-final-review/HANDOFF.md",
+      "source": "~/Projects/agent-handoffs/issue-187-final-review/HANDOFF.md",
+      "sha256": "f9f57fdbc2c2ade5232482b2df313fc9bd014e19331a5c7554a9e6f09a682e87",
+      "kind": "last_available_local_snapshot"
+    },
+    {
+      "path": "issue-187-final-review/PROMPT.md",
+      "source": "~/Projects/agent-handoffs/issue-187-final-review/PROMPT.md",
+      "sha256": "94f616f0ed05752afc1aa658d613dc260b39f5a44bb6a280c4bacec91d1aef11",
+      "kind": "last_available_local_snapshot"
+    },
+    {
+      "path": "issue-187-final-review/STATE.json",
+      "source": "~/Projects/agent-handoffs/issue-187-final-review/STATE.json",
+      "sha256": "6c9999a976eedaf9b4c0356ad1e711aeb8934255364cb9dcd53c68b181e2d2be",
+      "kind": "last_available_local_snapshot"
+    }
+  ],
+  "execution_logs": "Not included: these files are setup/final-state snapshots, not complete event logs or authenticated runtime telemetry."
+}

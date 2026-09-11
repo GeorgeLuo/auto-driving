@@ -1,0 +1,177 @@
+{
+  "phase": "ready_for_fresh_review",
+  "policy": "ad-hoc-implementation/v3",
+  "manifest_revision": 2,
+  "policy_source": "b88861baf0740247ba8e6a76b968478c82a8f02a",
+  "pr": 196,
+  "issue": 187,
+  "initial_head": "761310438afbef47b1f4937fb6867ec4174fc61d",
+  "observed_head": "328f4fdc38ccfc8ecc9ad6b345bd245bdc635ea2",
+  "requested_runtimes": {
+    "root": [
+      "gpt-5.6-luna",
+      "low"
+    ],
+    "A1": [
+      "gpt-6-astra",
+      "high"
+    ],
+    "A2": [
+      "gpt-5.6-luna",
+      "low"
+    ]
+  },
+  "units": {
+    "A1": "complete",
+    "A2": "complete",
+    "Z1": "complete"
+  },
+  "manifest": {
+    "policy": "ad-hoc-implementation/v3",
+    "manifest_revision": 2,
+    "objective": "Concise semantics-preserving testing-purpose guidance for issue 187, with advisory integration of existing QCA evidence.",
+    "constraints": [
+      "source allowlist: only the testing-purpose sections in docs/milestones/README.md, docs/guidance/validation.md, and tests/README.md",
+      "regenerate docs/milestones/planning-contract.html with the existing renderer",
+      "preserve all seven substantive testing-purpose cases and merged #199 orchestration wording",
+      "no new QCA tooling, mandatory records, gates, suite migration, or product behavior"
+    ],
+    "authority": [
+      "operator request",
+      "issue #187",
+      "canonical docs/milestones/README.md",
+      "actual qca/README.md at current PR/governing revision"
+    ],
+    "units": {
+      "A1": {
+        "role": "first_of_kind",
+        "objective": "Rewrite the canonical and two derived testing-purpose source sections to the compact specification and add one concise existing-QCA signal-to-decision advisory.",
+        "runtime": {"model": "gpt-6-astra", "effort": "high"},
+        "owner": "child",
+        "validation": ["semantic case mapping", "existing QCA signal-to-decision mapping", "before/after affected-section word comparison", "allowlist and link scope"],
+        "escalate_if": ["semantic change", "broadened file scope", "authority change", "QCA capability not supported in actual revision"]
+      },
+      "A2": {
+        "role": "pattern_following",
+        "objective": "Regenerate the contract HTML and validate links, formatting, workflow state, and affected rendered sections; no code unless root approves the bounded conditional packet.",
+        "runtime": {"model": "gpt-5.6-luna", "effort": "low"},
+        "owner": "child",
+        "validation": ["render", "render check", "workflow validate", "diff check", "affected links and rendered-section readability"],
+        "conditional_code": "only a reproducible existing documentation-mechanics failure caused by the approved Markdown revision, after root approval"
+      },
+      "Z1": {
+        "role": "closure",
+        "objective": "Reconcile receipts, publish the existing PR branch, observe required event-backed CI, and hand off ready for fresh review.",
+        "owner": "root"
+      }
+    },
+    "final_validation": ["current-head remote CI"]
+  },
+  "conditional_code_packet": null,
+  "validation": {
+    "pr_state": "open",
+    "pr_head": "328f4fdc38ccfc8ecc9ad6b345bd245bdc635ea2",
+    "base": "b88861baf0740247ba8e6a76b968478c82a8f02a",
+    "prior_acceptance": "https://github.com/GeorgeLuo/auto-driving/pull/196#pullrequestreview-5146057563",
+    "prior_ci": [
+      "https://github.com/GeorgeLuo/auto-driving/actions/runs/34267960610",
+      "https://github.com/GeorgeLuo/auto-driving/actions/runs/34268528767"
+    ],
+    "qca_capabilities_verified": [
+      "python3 -m qca diff --base <base-ref> --head <head-ref>",
+      "assignment-readback candidates are inspection prompts, not automatic deletion or quality gates",
+      "contracts observations do not prove runtime compatibility",
+      "coverage/runtime evidence is separate and unmeasured evidence is not failure"
+    ],
+    "published_head": "328f4fdc38ccfc8ecc9ad6b345bd245bdc635ea2",
+    "body_reconciled": true,
+    "local_body_file": "/Users/gluo/Projects/agent-handoffs/issue-187-prose-rewrite/pr-196-body.md",
+    "final_local_body_validation": "pass",
+    "final_remote_ci": {
+      "run_id": 34281203803,
+      "status": "success",
+      "url": "https://github.com/GeorgeLuo/auto-driving/actions/runs/34281203803"
+    },
+    "superseded_ci": {
+      "run_id": 34281189838,
+      "status": "cancelled_by_concurrency",
+      "url": "https://github.com/GeorgeLuo/auto-driving/actions/runs/34281189838"
+    },
+    "pr_url": "https://github.com/GeorgeLuo/auto-driving/pull/196",
+    "fresh_review_required": true
+  },
+  "active_worker": null,
+  "completed_units": {
+    "A1": {
+      "agent_id": "01a082e9-a3b7-7cb0-9371-69fbb45106bd",
+      "model": "gpt-6-astra",
+      "effort": "high",
+      "input_head": "761310438afbef47b1f4937fb6867ec4174fc61d",
+      "head": "5cb00c9a54f61f7094bae744b74a44910336adfb",
+      "changed_files": [
+        "docs/milestones/README.md",
+        "docs/guidance/validation.md",
+        "tests/README.md"
+      ],
+      "status": "complete",
+      "plan_fit": "matched",
+      "anomalies": [],
+      "word_counts": {
+        "canonical_testing_section": {"before": 379, "after": 358},
+        "validation_test_design": {"before": 83, "after": 41},
+        "test_author_guidance": {"before": 34, "after": 29}
+      }
+    },
+    "A2": {
+      "agent_id": "01a082ed-b5de-79e3-a855-d6068cef3b85",
+      "model": "gpt-5.6-luna",
+      "effort": "low",
+      "input_head": "5cb00c9a54f61f7094bae744b74a44910336adfb",
+      "head": "328f4fdc38ccfc8ecc9ad6b345bd245bdc635ea2",
+      "changed_files": ["docs/milestones/planning-contract.html"],
+      "status": "complete",
+      "plan_fit": "matched",
+      "validation": [
+        "render: pass",
+        "render-check: pass",
+        "workflow validate: pass",
+        "git diff --check: pass",
+        "qca diff help: pass",
+        "links/anchors and rendered section: pass",
+        "final diff scope: pass"
+      ],
+      "anomalies": []
+    }
+  },
+  "next_action": "Operator may request a fresh independent review of head 328f4fdc38ccfc8ecc9ad6b345bd245bdc635ea2; do not self-accept or merge.",
+  "outstanding_ci_run_ids": [],
+  "root_runtime_actual": {
+    "model": "GPT-5; exact variant not exposed by runtime",
+    "effort": "not exposed"
+  },
+  "runtime_deviations": [
+    "Root runtime identity/effort is not exposed, so requested gpt-5.6-luna/low cannot be independently verified; child allocations remain explicit.",
+    "A1 first launch errored before a terminal receipt because the gpt-6-astra runtime hit the platform usage limit; its uncommitted allowlisted diff was preserved."
+  ],
+  "operator_scope_addition": "Advisory guide connecting existing QCA evidence to testing decisions; no new tooling or enforcement."
+  ,"metrics": {
+    "model_calls": {
+      "root": "token/call telemetry unavailable",
+      "children": 3
+    },
+    "child_launches": 3,
+    "root_child_turns": 3,
+    "poll_wait_turns": 0,
+    "max_live_subordinates": 1,
+    "lowest_tier_child_units": 1,
+    "collapsed_to_root_because_no_terminal_receipt": 0,
+    "skipped_delegation_for_small_work": 0,
+    "duplicated_validation": 0,
+    "manifest_revisions": 0,
+    "wait_status_activations": 13,
+    "terminal_watch_sessions": 1,
+    "cached_input": "unavailable",
+    "output_and_reasoning_tokens": "unavailable",
+    "outcome": "pass_ready_for_fresh_review"
+  }
+}

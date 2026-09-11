@@ -1,0 +1,136 @@
+{
+  "phase": "complete_current_head_accepted",
+  "pr": 196,
+  "issue": 187,
+  "observed_head": "ed18dfc1eb5b878a3edd2d93d27c138de400acf2",
+  "observed_base": "b88861baf0740247ba8e6a76b968478c82a8f02a",
+  "policy": "review-repair/v1",
+  "policy_source": "b88861baf0740247ba8e6a76b968478c82a8f02a",
+  "cycle": 1,
+  "last_revalidated_at": "2026-09-08T22:49:00Z",
+  "live_pr": {
+    "state": "OPEN",
+    "merged": false,
+    "draft": false,
+    "mergeable": true,
+    "head_ref": "docs/187-testing-purpose",
+    "base_ref": "main",
+    "head_sha": "ed18dfc1eb5b878a3edd2d93d27c138de400acf2",
+    "base_sha": "b88861baf0740247ba8e6a76b968478c82a8f02a"
+  },
+  "live_reviews": [
+    {
+      "url": "https://github.com/GeorgeLuo/auto-driving/pull/196#pullrequestreview-5146057563",
+      "outcome": "accepted",
+      "head_sha": "761310438afbef47b1f4937fb6867ec4174fc61d",
+      "current_head": false
+    },
+    {
+      "url": "https://github.com/GeorgeLuo/auto-driving/pull/196#pullrequestreview-5147728729",
+      "outcome": "accepted",
+      "head_sha": "ed18dfc1eb5b878a3edd2d93d27c138de400acf2",
+      "current_head": true
+    }
+  ],
+  "requested_runtimes": {
+    "root": [
+      "gpt-5.6-luna",
+      "low"
+    ],
+    "reviewer_and_prose_repair": [
+      "gpt-6-astra",
+      "high"
+    ],
+    "conditional_code": [
+      "gpt-5.6-luna",
+      "low"
+    ]
+  },
+  "active_worker": null,
+  "findings": [
+    {
+      "id": "RR0-001",
+      "severity": "P2",
+      "summary": "Generated testing-guidance link has no destination anchor.",
+      "status": "addressed_and_re_reviewed",
+      "review_head": "328f4fdc38ccfc8ecc9ad6b345bd245bdc635ea2",
+      "minimum_repair": "Add the matching anchor in docs/milestones/README.md and regenerate docs/milestones/planning-contract.html; do not change the renderer or workflow.",
+      "classification": "substantial",
+      "repair_commit": "ed18dfc1eb5b878a3edd2d93d27c138de400acf2",
+      "repair_status": "completed",
+      "unresolved": []
+    }
+  ],
+  "receipts": [
+    {
+      "kind": "documentary_findings",
+      "url": "https://github.com/GeorgeLuo/auto-driving/pull/196#pullrequestreview-5147604366",
+      "head_sha": "328f4fdc38ccfc8ecc9ad6b345bd245bdc635ea2",
+      "classification": "substantial",
+      "highest_severity": "P2"
+    },
+    {
+      "kind": "contract_review",
+      "url": "https://github.com/GeorgeLuo/auto-driving/pull/196#pullrequestreview-5147604511",
+      "outcome": "changes_requested",
+      "head_sha": "328f4fdc38ccfc8ecc9ad6b345bd245bdc635ea2"
+    },
+    {
+      "kind": "repair_receipt",
+      "head_reviewed": "328f4fdc38ccfc8ecc9ad6b345bd245bdc635ea2",
+      "head_after": "ed18dfc1eb5b878a3edd2d93d27c138de400acf2",
+      "finding_ids": ["RR0-001"],
+      "unresolved": [],
+      "validation": "repair worker reported PASS for renderer check, fragment target, and diff check"
+    },
+    {
+      "kind": "independent_re_review",
+      "cycle": 1,
+      "head_reviewed": "ed18dfc1eb5b878a3edd2d93d27c138de400acf2",
+      "outcome": "no_blockers",
+      "findings": [],
+      "escalation_required": false,
+      "reviewer": "Confucius / gpt-6-astra high",
+      "evidence": "terminal receipt from fresh reviewer"
+    },
+    {
+      "kind": "contract_review",
+      "url": "https://github.com/GeorgeLuo/auto-driving/pull/196#pullrequestreview-5147728729",
+      "outcome": "accepted",
+      "head_sha": "ed18dfc1eb5b878a3edd2d93d27c138de400acf2",
+      "exact_head": true
+    }
+  ],
+  "validation": {
+    "observed_ci": "https://github.com/GeorgeLuo/auto-driving/actions/runs/34287242734",
+    "observed_ci_status": "success",
+    "current_head_required_check": "success",
+    "superseded_check": "https://github.com/GeorgeLuo/auto-driving/actions/runs/34281189838",
+    "post_repair_ci": "success",
+    "post_repair_ci_runs": [
+      "https://github.com/GeorgeLuo/auto-driving/actions/runs/34285856543",
+      "https://github.com/GeorgeLuo/auto-driving/actions/runs/34286299813",
+      "https://github.com/GeorgeLuo/auto-driving/actions/runs/34286798322",
+      "https://github.com/GeorgeLuo/auto-driving/actions/runs/34287242734"
+    ]
+  },
+  "runtime_deviations": [],
+  "metrics": {
+    "review_cycles": 1,
+    "reviewer_launches": 2,
+    "same_reviewer_repair_interaction": true,
+    "max_live_subordinates": 1,
+    "coordinator_used": false,
+    "telemetry": "unavailable",
+    "root_model_effort": "unavailable",
+    "reviewer_model_effort": "gpt-6-astra/high requested and used; token/call telemetry unavailable",
+    "cached_input": "unavailable",
+    "reasoning_output": "unavailable",
+    "wait_status_activations": "unavailable; terminal waits used without manual progress polling",
+    "duplicates": 0,
+    "exact_head_receipts": true,
+    "final_acceptance_done": true,
+    "outcome": "converged"
+  },
+  "next_action": "No further review-repair action. PR #196 is merge-ready; do not merge or close it in this run."
+}

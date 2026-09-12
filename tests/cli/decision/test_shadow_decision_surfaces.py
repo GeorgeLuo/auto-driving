@@ -10,8 +10,11 @@ import shutil
 import tempfile
 import unittest
 from copy import deepcopy
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import patch
+
+import numpy as np
 
 from autonomy.decision.memory import (
     MemoryBounds,
@@ -24,12 +27,14 @@ from autonomy.decision.memory import (
 from autonomy.decision.observation import Observation
 from autonomy.decision.shadow_authority import AUTHORIZED_IDLE_REASON
 from autonomy.perception import ViewLocation
+from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.runtime.manager import AutonomyManager
 from cli.automa_cli.automation import _record_decision_publish_skip
 from cli.automa_cli.decision import (
     ADAPTER_ENGINE_SPEC,
     DECISION_ENGINES,
     ENGINE_ID,
+    accept_physical_decision_publication,
     accept_decision_stream_frame,
     apply_vehicle_decision,
     build_decision_stream_frame,
@@ -46,6 +51,7 @@ from cli.automa_cli.decision import (
 import threading
 from implementations.decision.catalog import create_shadow_proposals_engine
 from implementations.decision.shadow_adapter import ShadowProposalsAutonomyEngine
+from implementations.runtime.donkeycar import AutonomyPilotPart
 from tests.support.cli_runner import run_automa
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
@@ -221,6 +227,206 @@ class ShadowDecisionSurfaceTests(unittest.TestCase):
         )
         self.assertEqual(control.reason, AUTHORIZED_IDLE_REASON)
         return cycle
+
+    def _physical_publication(self, *, published_at_ms: int = 2_000) -> dict:
+        cycle = self._sample_cycle().to_dict()
+        return {
+            "schema": "automa_physical_decision_publication_v0",
+            "ok": True,
+            "status": "ready",
+            "reason": "",
+            "read_at_ms": published_at_ms,
+            "result_age_ms": 0,
+            "stale_after_ms": 1_000,
+            "decision": {
+                "vehicle_id": "piracer",
+                "source_id": "donkeycar:piracer",
+                "run_id": "donkey-run-fixture",
+                "activation_engine_id": ENGINE_ID,
+                "activation_activated_at_ms": 1_000,
+                "generation_id": f"{ENGINE_ID}:1000",
+                "frame_id": "frame_001",
+                "frame_index": 1,
+                "timestamp_ms": 1_000,
+                "published_at_ms": published_at_ms,
+                "activation": {
+                    "engine_id": ENGINE_ID,
+                    "activated_at_ms": 1_000,
+                    "generation_id": f"{ENGINE_ID}:1000",
+                    "engine_config": deepcopy(DECISION_ENGINES[ENGINE_ID]["engine_config"]),
+                },
+                "cycle": cycle,
+            },
+        }
+
+    def test_physical_decision_acceptance_rejects_bounded_unavailable_cases(self) -> None:
+        now_ms = 2_000
+        publication = self._physical_publication(published_at_ms=now_ms)
+        accepted = accept_physical_decision_publication(
+            publication,
+            vehicle_id="piracer",
+            now_ms=now_ms,
+        )
+        self.assertEqual(accepted["source_id"], "donkeycar:piracer")
+        self.assertEqual(accepted["generation_id"], f"{ENGINE_ID}:1000")
+        self.assertNotIn("producer_pid", accepted["decision"])
+
+        unavailable_cases: list[tuple[str, object]] = [
+            ("missing", None),
+            ("incomplete", {"schema": "automa_physical_decision_publication_v0"}),
+            (
+                "mismatched",
+                {
+                    **deepcopy(publication),
+                    "decision": {
+                        **deepcopy(publication["decision"]),
+                        "vehicle_id": "other-vehicle",
+                    },
+                },
+            ),
+            ("future_dated", self._physical_publication(published_at_ms=now_ms + 1)),
+            ("expired", self._physical_publication(published_at_ms=now_ms - 1_001)),
+            (
+                "reset",
+                {
+                    **deepcopy(publication),
+                    "ok": False,
+                    "status": "unavailable",
+                    "reason": "reset",
+                    "decision": None,
+                },
+            ),
+            (
+                "failed_step",
+                {
+                    **deepcopy(publication),
+                    "ok": False,
+                    "status": "unavailable",
+                    "reason": "failed_step",
+                    "decision": None,
+                },
+            ),
+        ]
+        for expected_reason, candidate in unavailable_cases:
+            with self.subTest(reason=expected_reason), self.assertRaises(Exception) as raised:
+                accept_physical_decision_publication(
+                    candidate,
+                    vehicle_id="piracer",
+                    now_ms=now_ms,
+                )
+            self.assertEqual(raised.exception.error, "physical_decision_unavailable")
+            self.assertEqual(raised.exception.details.get("reason"), expected_reason)
+
+    def test_physical_source_to_public_cli_http_fixture_and_expiry(self) -> None:
+        vehicle_id = "piracer-fixture"
+        manager = AutonomyManager(
+            default_engine_spec=ADAPTER_ENGINE_SPEC,
+            default_engine_config=DECISION_ENGINES[ENGINE_ID]["engine_config"],
+        )
+        part = AutonomyPilotPart(
+            host=AutonomyCycleHost(manager=manager),
+            min_interval_s=5.0,
+            vehicle_id=vehicle_id,
+            source_id=f"donkeycar:{vehicle_id}",
+            activation_engine_id=ENGINE_ID,
+            activation_activated_at_ms=1_000,
+            activation_engine_config=DECISION_ENGINES[ENGINE_ID]["engine_config"],
+            generation_id=f"{ENGINE_ID}:1000",
+            run_id="donkey-run-http-fixture",
+        )
+        part.run(image_array=np.zeros((4, 4, 3), dtype=np.uint8), mode="user")
+        assert part.latest_snapshot is not None
+        fixture_state = {"read_at_ms": part.latest_snapshot.completed_at_ms}
+
+        class FixtureHandler(BaseHTTPRequestHandler):
+            def log_message(self, format, *args):  # noqa: A003, ANN001
+                del format, args
+
+            def _write_json(self, payload: dict, *, status: int = 200) -> None:
+                body = json.dumps(payload, sort_keys=True).encode("utf-8")
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def do_GET(self) -> None:  # noqa: N802
+                if self.path == "/autonomy/status":
+                    self._write_json({"ok": True, "drive_mode": "user"})
+                    return
+                if self.path == "/autonomy/decision/latest":
+                    payload = part.publish_decision_latest(
+                        now_ms=fixture_state["read_at_ms"]
+                    )
+                    self._write_json(
+                        payload,
+                        status=200 if payload["ok"] else 503,
+                    )
+                    return
+                self._write_json({"ok": False, "error": "not found"}, status=404)
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), FixtureHandler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        base_url = f"http://127.0.0.1:{server.server_port}"
+        try:
+            env = {"PIRACER_BASE_URL": base_url, "PIRACER_ID": vehicle_id}
+            json_result = run_automa(
+                "vehicles",
+                "stream",
+                "decision",
+                "--id",
+                vehicle_id,
+                "--once",
+                "--json",
+                runtime_root=self.runtime_root,
+                extra_env=env,
+            )
+            payload = json.loads(json_result.stdout)
+            self.assertEqual(payload["schema"], "automa_physical_decision_publication_v0")
+            self.assertTrue(payload["accepted"])
+            self.assertEqual(payload["provider"], "picar")
+            self.assertEqual(payload["decision"]["source_id"], f"donkeycar:{vehicle_id}")
+            self.assertEqual(payload["decision"]["run_id"], "donkey-run-http-fixture")
+            authority = payload["decision"]["cycle"]["authority"]
+            self.assertFalse(authority["proposed_applied"])
+            self.assertEqual(authority["authorized_output"]["steering"], 0.0)
+            self.assertEqual(authority["authorized_output"]["throttle"], 0.0)
+
+            text_result = run_automa(
+                "vehicles",
+                "stream",
+                "decision",
+                "--id",
+                vehicle_id,
+                "--once",
+                runtime_root=self.runtime_root,
+                extra_env=env,
+            )
+            self.assertIn(f"Source: donkeycar:{vehicle_id}", text_result.stdout)
+            self.assertIn("proposed_applied=false", text_result.stdout)
+
+            fixture_state["read_at_ms"] += 10_001
+            expired = run_automa(
+                "vehicles",
+                "stream",
+                "decision",
+                "--id",
+                vehicle_id,
+                "--once",
+                "--json",
+                runtime_root=self.runtime_root,
+                extra_env=env,
+                check=False,
+            )
+            self.assertEqual(expired.returncode, 2, expired.stderr + expired.stdout)
+            unavailable = json.loads(expired.stdout)
+            self.assertEqual(unavailable["error"], "physical_decision_unavailable")
+            self.assertEqual(unavailable["details"]["reason"], "expired")
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2.0)
 
     def test_build_stream_frame_no_applied_control(self) -> None:
         cycle = self._sample_cycle()

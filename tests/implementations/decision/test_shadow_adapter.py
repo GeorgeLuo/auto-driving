@@ -121,6 +121,7 @@ class ShadowAdapterTests(unittest.TestCase):
         self.assertEqual(control.reason, AUTHORIZED_IDLE_REASON)
         self.assertIsNotNone(engine.last_cycle_result)
         assert engine.last_cycle_result is not None
+        self.assertIs(engine.get_current_cycle_result(), engine.last_cycle_result)
         self.assertEqual(engine.last_cycle_result.frame_id, "frame_001")
         self.assertEqual(engine.last_cycle_result.status, "ok")
         self.assertFalse(engine.last_cycle_result.authority.proposed_applied)
@@ -142,6 +143,8 @@ class ShadowAdapterTests(unittest.TestCase):
         )
         self.assertEqual(control.reason, ENTRY_ERROR_REASON)
         self.assertIsNone(engine.last_cycle_result)
+        self.assertIsNone(engine.get_current_cycle_result())
+        self.assertEqual(engine.last_cycle_error_reason, "failed_step")
 
     def test_step_missing_frame_id_is_entry_error(self) -> None:
         engine = ShadowProposalsAutonomyEngine()
@@ -162,6 +165,8 @@ class ShadowAdapterTests(unittest.TestCase):
         self.assertIsNotNone(engine.last_cycle_result)
         engine.reset()
         self.assertIsNone(engine.last_cycle_result)
+        self.assertIsNone(engine.get_current_cycle_result())
+        self.assertEqual(engine.last_cycle_error_reason, "reset")
 
     def test_invalid_config_fails_closed(self) -> None:
         with self.assertRaises(ValueError):
@@ -214,6 +219,23 @@ class ShadowAdapterTests(unittest.TestCase):
         self.assertEqual(control.throttle, 0.0)
         self.assertEqual(control.reason, AUTHORIZED_IDLE_REASON)
         self.assertIs(engine.last_cycle_result.frame_id, "frame_001")  # type: ignore[union-attr]
+
+    def test_engine_error_result_is_not_retained_for_publication(self) -> None:
+        class _EngineErrorCycle:
+            frame_id = "frame_001"
+            status = "engine_error"
+
+        class _FakeEngine:
+            def run_cycle(self, **kwargs):  # noqa: ANN003
+                del kwargs
+                return _EngineErrorCycle(), AutonomyControl(reason="inner-error")
+
+        engine = ShadowProposalsAutonomyEngine()
+        engine._engine = _FakeEngine()  # type: ignore[assignment]
+        control = engine.step(_snapshot())
+        self.assertEqual(control.reason, AUTHORIZED_IDLE_REASON)
+        self.assertIsNone(engine.get_current_cycle_result())
+        self.assertEqual(engine.last_cycle_error_reason, "failed_step")
 
 
 if __name__ == "__main__":

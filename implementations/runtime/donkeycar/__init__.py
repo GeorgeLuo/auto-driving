@@ -2,6 +2,8 @@
 
 from .donkey_part import (
     DEFAULT_OBSERVATION_INTERVAL_S,
+    DECISION_LATEST_PATH,
+    DECISION_PUBLICATION_SCHEMA,
     LATEST_FRAME_PATH,
     LATEST_JSON_PATH,
     OBSERVATION_PUBLICATION_SCHEMA,
@@ -13,6 +15,8 @@ from .donkey_part import (
 __all__ = [
     "AutonomyPilotPart",
     "DEFAULT_OBSERVATION_INTERVAL_S",
+    "DECISION_LATEST_PATH",
+    "DECISION_PUBLICATION_SCHEMA",
     "LATEST_FRAME_PATH",
     "LATEST_JSON_PATH",
     "LatestObservationSnapshot",

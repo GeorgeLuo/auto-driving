@@ -254,7 +254,7 @@ index 8af4669..232d5df 100644
          """
          Create and publish variables needed on many of
          the web handlers.
-@@ -123,15 +137,28 @@ class LocalWebController(tornado.web.Application):
+@@ -123,15 +137,29 @@ class LocalWebController(tornado.web.Application):
          self.num_records = 0
          self.wsclients = []
          self.loop = None
@@ -273,6 +273,7 @@ index 8af4669..232d5df 100644
 +            (r"/autonomy/reload", AutonomyReloadAPI),
 +            (r"/autonomy/observation/latest", AutonomyObservationLatestAPI),
 +            (r"/autonomy/observation/latest/frame.jpg", AutonomyObservationLatestFrameAPI),
++            (r"/autonomy/decision/latest", AutonomyDecisionLatestAPI),
 +            (r"/autonomy/memory/reset", AutonomyMemoryResetAPI),
              (r"/wsDrive", WebSocketDriveAPI),
              (r"/wsCalibrate", WebSocketCalibrateAPI),
@@ -283,7 +284,7 @@ index 8af4669..232d5df 100644
              (r"/wsTest", WsTest),
  
              (r"/static/(.*)", StaticFileHandler,
-@@ -245,6 +272,259 @@ class DriveAPI(RequestHandler):
+@@ -245,6 +272,284 @@ class DriveAPI(RequestHandler):
              latch_buttons(self.application.buttons, data['buttons'])
  
  
@@ -415,6 +416,31 @@ index 8af4669..232d5df 100644
 +            if completed is not None:
 +                self.set_header("X-Completed-At-Ms", str(completed))
 +        self.write(jpeg)
++
++
++class AutonomyDecisionLatestAPI(AutonomyAPIBase):
++    """Publish the current shadow decision from the same onboard owner."""
++
++    def get(self):
++        publisher = getattr(self.application, "observation_publisher", None)
++        if publisher is None or not hasattr(publisher, "publish_decision_latest"):
++            self.write_json(
++                {
++                    "schema": "automa_physical_decision_publication_v0",
++                    "ok": False,
++                    "status": "unavailable",
++                    "reason": "publisher_missing",
++                    "read_at_ms": None,
++                    "result_age_ms": None,
++                    "stale_after_ms": None,
++                    "decision": None,
++                },
++                status=503,
++            )
++            return
++
++        payload = publisher.publish_decision_latest()
++        self.write_json(payload, status=200 if payload.get("status") == "ready" else 503)
 +
 +
 +class AutonomyModeAPI(AutonomyAPIBase):

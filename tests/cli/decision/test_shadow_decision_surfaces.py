@@ -8,6 +8,7 @@ import io
 import re
 import shutil
 import tempfile
+import time
 import unittest
 from copy import deepcopy
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -336,7 +337,10 @@ class ShadowDecisionSurfaceTests(unittest.TestCase):
         )
         part.run(image_array=np.zeros((4, 4, 3), dtype=np.uint8), mode="user")
         assert part.latest_snapshot is not None
-        fixture_state = {"read_at_ms": part.latest_snapshot.completed_at_ms}
+        # CLI subprocess wall-clock now_ms is independent of this fixture. Stamp
+        # published_at_ms at request time so current acceptance does not depend
+        # on cold-start beating stale_after_ms, while expiry remains explicit.
+        fixture_state = {"force_expired": False}
 
         class FixtureHandler(BaseHTTPRequestHandler):
             def log_message(self, format, *args):  # noqa: A003, ANN001
@@ -355,13 +359,28 @@ class ShadowDecisionSurfaceTests(unittest.TestCase):
                     self._write_json({"ok": True, "drive_mode": "user"})
                     return
                 if self.path == "/autonomy/decision/latest":
-                    payload = part.publish_decision_latest(
-                        now_ms=fixture_state["read_at_ms"]
+                    template = part.publish_decision_latest(
+                        now_ms=part.latest_snapshot.completed_at_ms
                     )
-                    self._write_json(
-                        payload,
-                        status=200 if payload["ok"] else 503,
-                    )
+                    if not template.get("ok") or not isinstance(template.get("decision"), dict):
+                        self._write_json(template, status=503)
+                        return
+                    now_ms = int(time.time() * 1000)
+                    stale_after = int(template["stale_after_ms"])
+                    age_ms = stale_after + 1 if fixture_state["force_expired"] else 0
+                    decision = deepcopy(template["decision"])
+                    decision["published_at_ms"] = now_ms - age_ms
+                    payload = {
+                        "schema": template["schema"],
+                        "ok": True,
+                        "status": "ready",
+                        "reason": "",
+                        "read_at_ms": now_ms,
+                        "result_age_ms": age_ms,
+                        "stale_after_ms": stale_after,
+                        "decision": decision,
+                    }
+                    self._write_json(payload, status=200)
                     return
                 self._write_json({"ok": False, "error": "not found"}, status=404)
 
@@ -406,7 +425,7 @@ class ShadowDecisionSurfaceTests(unittest.TestCase):
             self.assertIn(f"Source: donkeycar:{vehicle_id}", text_result.stdout)
             self.assertIn("proposed_applied=false", text_result.stdout)
 
-            fixture_state["read_at_ms"] += 10_001
+            fixture_state["force_expired"] = True
             expired = run_automa(
                 "vehicles",
                 "stream",

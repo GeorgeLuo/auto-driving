@@ -23,6 +23,7 @@ from .decision import (
     stream_vehicle_decision,
     update_vehicle_decision,
 )
+from .decision_live import run_live_decision_monitor
 from .lab_plugins import list_perception_candidates, setup_perception_candidate
 from .memory import (
     get_vehicle_memory_info,
@@ -549,7 +550,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     decision_control = vehicle_commands.add_parser(
         "decision",
-        help="Operate vehicle decision (offline apply/replay; stage via update decision).",
+        help="Inspect or operate vehicle decision (offline replay or read-only live monitor).",
     )
     decision_control.set_defaults(handler=_handle_vehicles_decision_help)
     decision_control_commands = decision_control.add_subparsers(dest="decision_command")
@@ -594,6 +595,41 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     decision_apply.set_defaults(handler=_handle_vehicles_decision_apply)
+
+    decision_live = decision_control_commands.add_parser(
+        "live",
+        help="Open a read-only live PiCar decision monitor.",
+        description=(
+            "Serve a small local page that polls the PiCar decision publication, "
+            "draws matched image-relative evidence, and shows proposed versus "
+            "authorized shadow output. It sends no vehicle commands."
+        ),
+    )
+    decision_live.add_argument(
+        "--id",
+        required=True,
+        dest="vehicle_id",
+        help="PiCar vehicle id from `automa vehicles active`.",
+    )
+    decision_live.add_argument(
+        "--port",
+        type=int,
+        default=0,
+        help="Preferred local loopback port (0 chooses an available port).",
+    )
+    decision_live.add_argument(
+        "--open",
+        action="store_true",
+        dest="open_browser",
+        help="Open the monitor in the default browser.",
+    )
+    decision_live.add_argument(
+        "--timeout-s",
+        type=float,
+        default=2.0,
+        help="Per-request Pi timeout.",
+    )
+    decision_live.set_defaults(handler=_handle_vehicles_decision_live)
 
     memory_control = vehicle_commands.add_parser(
         "memory",
@@ -2059,6 +2095,7 @@ def _handle_vehicles_decision_help(args: argparse.Namespace) -> int:
                 "automa vehicles decision commands",
                 "",
                 "- apply   offline replay of a recorded sequence; digest; optional --record",
+                "- live    read-only local browser monitor for a live PiCar publication",
                 "- help    show this summary",
                 "",
                 "Stage an engine with:  ./cli/automa vehicles update decision --id <vehicle> --engine shadow-proposals",
@@ -2079,6 +2116,19 @@ def _handle_vehicles_decision_apply(args: argparse.Namespace) -> int:
         from_run=args.from_run,
         json_output=args.json,
         record=args.record,
+    )
+    if result.message:
+        print(result.message)
+    return result.exit_code
+
+
+def _handle_vehicles_decision_live(args: argparse.Namespace) -> int:
+    result = run_live_decision_monitor(
+        vehicle_id=args.vehicle_id,
+        port=args.port,
+        open_browser=args.open_browser,
+        timeout_s=args.timeout_s,
+        output=sys.stdout,
     )
     if result.message:
         print(result.message)

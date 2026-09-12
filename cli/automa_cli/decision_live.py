@@ -261,6 +261,10 @@ class _LiveDecisionHTTPServer(LoopbackHTTPServer):
 
 class _LiveDecisionHandler(LoopbackHTTPRequestHandler):
     server: _LiveDecisionHTTPServer
+    content_security_policy = (
+        "default-src 'self'; connect-src 'self'; img-src 'self' data:; "
+        "style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'"
+    )
 
     def do_GET(self) -> None:
         self._handle(include_body=True)

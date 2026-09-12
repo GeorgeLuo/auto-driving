@@ -257,9 +257,8 @@ before requesting review, the implementer may treat those tests as the black
 box and collapse two shapes in the same owner against them. Do this once, not
 during fill and not after each repair.
 
-Drive the tests through the public door: committed artifacts or the documented
-command in, pass or fail on the named mutation out. Do not pin helper names or
-error substrings as the contract.
+Use the [testing purpose and regression value](#testing-purpose-and-regression-value)
+contract below to keep this pass independent of implementation details.
 
 The pass is implementer-owned and documentary. It has no receipt, ledger row,
 or CI gate. Leftover two-shapes are `## Concerns`, not a completion lock.
@@ -988,6 +987,57 @@ file impact. The implementation PR links that proposal, reports exact
 validation, and notes a drift only when the diff departed from it. Do not
 restate the contract in the PR body.
 
+<a id="testing-purpose-and-regression-value"></a>
+
+### Testing Purpose And Regression Value
+
+For every new or materially changed test, name a concrete, plausible regression
+and the observable behavior or justified mechanism that exposes it.
+
+| Purpose | When to use | What failure it detects |
+| --- | --- | --- |
+| `consumer` | Public CLI/API/UI journeys | Observable incompatibility despite passing internal tests. |
+| `boundary` | Invalid, missing, malformed, unsupported, raced, degraded, or relevant edge cases | Lost contracted rejection, fail-closed result, or explicit degraded outcome. |
+| `mechanism` | Narrow internal invariant lacking a useful public-door check; justify why | Violation of that invariant. |
+
+Identify purpose and regression in a name or short docstring/note.
+Purpose is independent of [ownership/layer](../../tests/README.md#ownership):
+CLI tests can be consumer or boundary; unit tests can be boundary. Purposes may
+overlap.
+
+Prefer the owner's public entry point; cover normal usage first. Add
+off-path cases reachable normally, contracted, or required by safety, integrity,
+or ownership. Domain owners reject unsupported inputs/states; outer boundaries
+translate into CLI/API structured error contracts. Repairs stay within accepted
+matrices.
+
+Assert refactoring-stable behavior: named mutations cause contracted failures
+without pinning helpers or incidental error substrings. Universal claims check
+final externally visible values after storage, serialization, or transport.
+
+Replace bare assignment/readback tautologies such as `value = 3; assert value == 3`.
+Keep field checks exercising meaningful setters/getters, normalization,
+wire/schema, serialization, transport, or consumer-output contracts—for example,
+a setter normalizing input or a normalized value surviving serialization.
+
+Optional [QCA observations](../../qca/README.md), available via
+`python3 -m qca diff --base <base-ref> --head <head-ref>`, can focus inspection:
+
+- `test_effectiveness` assignment-readback, literal/same-operand, and other static
+  candidates: would a plausible behavior change fail this assertion?
+  Inspect meaningful boundaries before replacing it.
+- Private imports/calls: can a public-door test protect the regression, or is
+  mechanism coverage justified?
+- `contracts` changes: which consumer compatibility needs checking? Static
+  observations do not prove runtime compatibility.
+- Supplied coverage/runtime evidence: identify unexercised behavior to consider
+  within scope. Absent evidence is unmeasured.
+
+QCA candidates/counts do not classify, score, or justify automatic test deletion.
+No QCA run, decision record, metadata schema, gate, suite retrofit/rewrite/deletion,
+coverage target, or new framework is required. Preserve placement/execution;
+add tagging/filtering only for reporting/execution needs.
+
 ### Invariant Closure (When Claiming Universals)
 
 Words such as `bounded`, `detached`, `deterministic`, `exact`, `fail-closed`,
@@ -1347,11 +1397,19 @@ a guidance file directs it, when workflow meaning is ambiguous, or when
 changing the workflow itself.
 
 Guidance files may summarize or route to this contract. They must not introduce
-new process rules, carry current milestone state, or override this contract. If
-the two conflict, this contract wins. Operation classification does not
-authorize a workflow phase transition. Long-running conversations should
-retain current work state and findings, not act as the durable store for
-process rules.
+new canonical workflow or milestone process rules, carry current milestone
+state, or override this contract. An explicitly operator-selected and named,
+immutable, versioned
+orchestration policy under `docs/guidance/orchestration/` is a bounded exception:
+it may define execution organization for that named run, including delegation,
+synchronization, reasoning allocation, escalation, and receipt topology. The
+policy must preserve the existing role and task guidance and may not change
+canonical milestone state, workflow phase transitions, accepted proposal or
+review contracts, safety or authority boundaries, ownership, external schemas,
+completion or merge predicates, or any other canonical rule. If the two
+conflict, this contract wins. Operation classification does not authorize a
+workflow phase transition. Long-running conversations should retain current
+work state and findings, not act as the durable store for process rules.
 
 ## Non-Goals Of This Contract
 

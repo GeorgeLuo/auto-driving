@@ -94,6 +94,12 @@ canonical directory contract is
 
 The command groups intentionally distinguish different kinds of state:
 
+The live worker's local browser entrypoint is **Automa**, with links to
+**Perception** at `/perception` and **Memory** at `/memory`. The automation
+command's `--open-view` option opens this shared entrypoint. Both pages use the
+same worker lifetime and publication APIs; perception owns its image buffer,
+while `RuntimeViewServer` owns the listener, routes, and shutdown.
+
 | Command | Reads or changes |
 |---|---|
 | `vehicles active` | Probes discoverable PiCar and Chase endpoints; does not imply deployment, worker, or view state. |

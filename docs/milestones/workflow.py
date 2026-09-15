@@ -770,6 +770,65 @@ def _frontier_proposal_path(frontier: Frontier, *, heading: str) -> str:
     )
 
 
+_FRONTIER_IDENTITY_MARKER = re.compile(
+    r"\[frontier identity:"
+    r" proposal_branch=(?P<proposal>[A-Za-z0-9._/-]+);"
+    r" implementation_branch=(?P<implementation>[A-Za-z0-9._/-]+);"
+    r" proposal_path=(?P<path>"
+    r"docs/milestones/\d{3}-[A-Za-z0-9._-]+/proposals/[A-Za-z0-9._-]+\.md"
+    r")\]"
+)
+
+
+def _frontier_identity_marker(frontier: Frontier, *, heading: str) -> str:
+    proposal_branch = _frontier_branch(
+        frontier,
+        heading=heading,
+        field="proposal branch",
+    )
+    implementation_branch = _frontier_branch(
+        frontier,
+        heading=heading,
+        field="implementation branch",
+    )
+    proposal_path = _frontier_proposal_path(frontier, heading=heading)
+    return (
+        "[frontier identity: "
+        f"proposal_branch={proposal_branch}; "
+        f"implementation_branch={implementation_branch}; "
+        f"proposal_path={proposal_path}]"
+    )
+
+
+def _accepted_frontier_identities(
+    workflow_history: MarkdownTable,
+) -> tuple[set[str], tuple[tuple[str, str, str, str], ...]]:
+    """Return completed names and the identities retained by new handoffs.
+
+    Older plans predate the marker and still contribute their accepted names.
+    New handoffs retain the branch and proposal-path tuple in the accepted
+    history evidence so later frontier records cannot silently reuse it.
+    """
+
+    accepted_names: set[str] = set()
+    identities: list[tuple[str, str, str, str]] = []
+    for frontier_name, state, evidence in workflow_history.rows:
+        if state != "accepted" or frontier_name == "Idle":
+            continue
+        accepted_names.add(frontier_name)
+        marker = _FRONTIER_IDENTITY_MARKER.search(evidence)
+        if marker is not None:
+            identities.append(
+                (
+                    frontier_name,
+                    marker.group("proposal"),
+                    marker.group("implementation"),
+                    marker.group("path"),
+                )
+            )
+    return accepted_names, tuple(identities)
+
+
 def _proposal_document_path(raw_value: str, *, heading: str, field: str) -> str:
     quoted = re.search(r"`([^`]+)`", raw_value)
     path = quoted.group(1) if quoted else raw_value.split(maxsplit=1)[0]
@@ -1292,6 +1351,50 @@ def validate_plan_text(text: str) -> PlanState:
                     f"{frontier.name!r}"
                 )
 
+    accepted_names, accepted_identities = _accepted_frontier_identities(
+        workflow_history
+    )
+    for frontier in identity_records:
+        if frontier.is_empty or not frontier.name:
+            continue
+        if frontier.name in accepted_names:
+            raise PlanContractError(
+                "frontier identity reuses completed frontier name "
+                f"{frontier.name!r}"
+            )
+        current_identity = (
+            _frontier_branch(
+                frontier,
+                heading=frontier.name,
+                field="proposal branch",
+            ),
+            _frontier_branch(
+                frontier,
+                heading=frontier.name,
+                field="implementation branch",
+            ),
+            _frontier_proposal_path(frontier, heading=frontier.name),
+        )
+        for completed_name, proposal_branch, implementation_branch, proposal_path in (
+            accepted_identities
+        ):
+            completed_identity = (
+                proposal_branch,
+                implementation_branch,
+                proposal_path,
+            )
+            for field, value, completed_value in zip(
+                ("proposal branch", "implementation branch", "proposal path"),
+                current_identity,
+                completed_identity,
+            ):
+                if value == completed_value:
+                    raise PlanContractError(
+                        "frontier identity reuses "
+                        f"{field} {value!r} after accepted frontier "
+                        f"{completed_name!r}"
+                    )
+
     if baseline_value is not None:
         baseline_match = re.search(r"`([0-9a-f]{7,40})`", baseline_value)
         if baseline_match is None:
@@ -1791,7 +1894,8 @@ def apply_handoff(
         state="accepted",
         evidence=(
             f"Implementation PR #{accepted_pr} merged at "
-            f"{receipt['accepted_merge_commit']}."
+            f"{receipt['accepted_merge_commit']}. "
+            f"{_frontier_identity_marker(frontier, heading=heading)}"
         ),
     )
 

@@ -701,6 +701,10 @@ machine-readable workflow state. Current being set does not require the global
 latest row to name Current. Idle Current (milestone start or after `advance`)
 need not match a live pointer; the latest row may be `accepted`.
 
+An accepted handoff retains the completed frontier's branch and proposal-path
+identity in its history evidence. Later frontiers may not reuse that name,
+branch, or proposal path within the same milestone.
+
 A new frontier may start at `proposal_in_review` only when the milestone
 already has an active `implementation_in_review` or
 `proposal_amendment_in_review` frontier recorded canonically. It cannot open

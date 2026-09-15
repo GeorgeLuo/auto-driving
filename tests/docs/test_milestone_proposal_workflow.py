@@ -2511,6 +2511,10 @@ class ParallelFrontierGitTopologyTests(unittest.TestCase):
         )
         return result.stdout.strip()
 
+    def _configure_git(self, root: Path) -> None:
+        self._git(root, "config", "user.name", "Milestone Test")
+        self._git(root, "config", "user.email", "milestone@example.invalid")
+
     def _commit(self, root: Path, message: str) -> str:
         self._git(root, "add", ".")
         self._git(
@@ -2602,6 +2606,7 @@ Exercise the normal inspection path against published evidence.
         plan.parent.mkdir(parents=True)
         plan.write_text(implementation_review_plan_text(), encoding="utf-8")
         self._git(root, "init", "-b", MILESTONE_BRANCH)
+        self._configure_git(root)
         self._commit(root, "canonical A implementation review")
         before_publication = self._git(root, "rev-parse", "HEAD")
 
@@ -2675,6 +2680,7 @@ Exercise the normal inspection path against published evidence.
                 encoding="utf-8",
             )
             self._git(root, "init", "-b", MILESTONE_BRANCH)
+            self._configure_git(root)
             self._commit(root, "canonical A implementation review with empty path")
             base_sha = self._git(root, "rev-parse", "HEAD")
 

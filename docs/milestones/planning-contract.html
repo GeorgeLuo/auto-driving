@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="9d3140dc97d9ae32b903da201c368bc387dd65efe501672d4651d278b3d71a55">
+  <meta name="source-sha256" content="1e9a9b107775845fd725cc2f2246c8b827d2b884338e3dfccc936c0aad4ecb8e">
   <base target="_blank">
   <title>Milestone Planning And Delivery Contract</title>
   <style>
@@ -793,6 +793,9 @@ name: the latest valid row for each active name must match that record's
 machine-readable workflow state. Current being set does not require the global
 latest row to name Current. Idle Current (milestone start or after <code>advance</code>)
 need not match a live pointer; the latest row may be <code>accepted</code>.</p>
+<p>An accepted handoff retains the completed frontier's branch and proposal-path
+identity in its history evidence. Later frontiers may not reuse that name,
+branch, or proposal path within the same milestone.</p>
 <p>A new frontier may start at <code>proposal_in_review</code> only when the milestone
 already has an active <code>implementation_in_review</code> or
 <code>proposal_amendment_in_review</code> frontier recorded canonically. It cannot open

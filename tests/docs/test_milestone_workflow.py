@@ -20,6 +20,7 @@ from docs.milestones.workflow import (
     _replace_frontier,
     _replace_frontier_map,
     _replace_header_value,
+    _replace_parallel_frontiers,
     _workflow_status_payload,
     render_plan_text,
 )
@@ -666,6 +667,43 @@ class ParallelFrontierTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(PlanContractError, "identity reuses proposal branch"):
             validate_plan_text(reused_branch)
+
+    def test_parallel_frontiers_reject_identity_reuse_after_completion(self) -> None:
+        completed = apply_handoff(
+            parallel_implementation_review_plan_text(),
+            self._parallel_receipt(),
+            frontier_name=PARALLEL_FRONTIER,
+        )
+        replacement = Frontier(
+            name="Replacement inspection",
+            fields={
+                "workflow state": "proposal_in_review",
+                "proposal branch": "`m900/parallel-evidence-inspection-proposal`",
+                "implementation branch": "`m900/parallel-evidence-inspection`",
+                "proposal path": (
+                    "`docs/milestones/900-workflow-fixture/proposals/"
+                    "parallel-evidence-inspection.md`"
+                ),
+                "review kind": "Behavioral feature slice",
+                "review question": "Does the replacement inspection preserve evidence?",
+                "acceptance owner": "Synthetic evidence inspection",
+                "exit criteria affected": PARALLEL_CRITERION,
+                "prerequisite": "Evidence policy implementation is in review",
+                "non-goals": "Change the evidence policy or its implementation review",
+            },
+        )
+        reused = _replace_parallel_frontiers(completed, (replacement,))
+        reused = _append_workflow_history(
+            reused,
+            frontier="Replacement inspection",
+            state="proposal_in_review",
+            evidence="Replacement proposal opened beside the primary implementation.",
+        )
+        with self.assertRaisesRegex(
+            PlanContractError,
+            "identity reuses proposal branch .* after accepted frontier",
+        ):
+            validate_plan_text(reused)
 
 
 class MilestoneHandoffGitOrderingTests(unittest.TestCase):

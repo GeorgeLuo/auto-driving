@@ -23,7 +23,9 @@ NEXT_PROPOSAL_BRANCH = "m900/closeout-proposal"
 NEXT_IMPLEMENTATION_BRANCH = "m900/closeout"
 CURRENT_FRONTIER = "Evidence policy"
 NEXT_FRONTIER = "Milestone closeout"
+PARALLEL_FRONTIER = "Parallel evidence inspection"
 CURRENT_CRITERION = "M900-01"
+PARALLEL_CRITERION = "M900-02"
 CLOSEOUT_CRITERION = "M900-03"
 RESOLVED_RISK = "Evidence recurrence has no explicit compatibility contract"
 BASELINE_SHA = "abc1234"
@@ -164,6 +166,56 @@ def implementation_review_plan_text() -> str:
         f"\n| {CURRENT_FRONTIER} | proposal_in_review | Proposal branch started. |"
         f"\n| {CURRENT_FRONTIER} | ready_for_implementation | Proposal PR #58 accepted. |"
         f"\n| {CURRENT_FRONTIER} | implementation_in_review | Implementation branch started. |"
+        "\n\n## Accepted Review Units",
+        1,
+    )
+
+
+def parallel_proposal_review_plan_text() -> str:
+    text = implementation_review_plan_text()
+    parallel = f"""### Parallel Frontiers
+
+#### Frontier: {PARALLEL_FRONTIER}
+
+- Workflow state: proposal_in_review
+- Proposal branch: `m900/parallel-evidence-inspection-proposal`
+- Implementation branch: `m900/parallel-evidence-inspection`
+- Proposal path: `docs/milestones/900-workflow-fixture/proposals/parallel-evidence-inspection.md`
+- Review kind: Behavioral feature slice
+- Review question: Does the independent inspection path preserve the published evidence state?
+- Acceptance owner: Synthetic evidence inspection
+- Exit criteria affected: {PARALLEL_CRITERION}
+- Prerequisite: Evidence policy implementation is in review
+- Non-goals: Change the evidence policy or its implementation review
+
+"""
+    text = text.replace("### Next-Frontier Candidate\n", parallel + "### Next-Frontier Candidate\n", 1)
+    return text.replace(
+        "\n\n## Accepted Review Units",
+        f"\n| {PARALLEL_FRONTIER} | proposal_in_review | Parallel proposal published on the milestone. |"
+        "\n\n## Accepted Review Units",
+        1,
+    )
+
+
+def parallel_implementation_review_plan_text() -> str:
+    text = parallel_proposal_review_plan_text().replace(
+        "- Workflow state: proposal_in_review\n- Proposal branch: `m900/parallel-evidence-inspection-proposal`\n",
+        "- Workflow state: implementation_in_review\n- Proposal branch: `m900/parallel-evidence-inspection-proposal`\n",
+        1,
+    )
+    text = text.replace(
+        "- Proposal path: `docs/milestones/900-workflow-fixture/proposals/parallel-evidence-inspection.md`\n",
+        "- Proposal path: `docs/milestones/900-workflow-fixture/proposals/parallel-evidence-inspection.md`\n"
+        "- Accepted proposal: [#60](https://example.invalid/60) at `cafe123` "
+        "(reviewed head `eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee` by "
+        "`workflow-reviewer` as `COLLABORATOR` at `2026-08-12T18:00:00Z`)\n",
+        1,
+    )
+    return text.replace(
+        "\n\n## Accepted Review Units",
+        f"\n| {PARALLEL_FRONTIER} | ready_for_implementation | Proposal PR #60 accepted. |"
+        f"\n| {PARALLEL_FRONTIER} | implementation_in_review | Implementation branch started. |"
         "\n\n## Accepted Review Units",
         1,
     )

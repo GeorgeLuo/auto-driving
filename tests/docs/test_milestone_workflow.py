@@ -20,6 +20,7 @@ from docs.milestones.workflow import (
     _replace_frontier,
     _replace_frontier_map,
     _replace_header_value,
+    _workflow_status_payload,
     render_plan_text,
 )
 from tests.docs.milestone_workflow_fixtures import (
@@ -33,9 +34,13 @@ from tests.docs.milestone_workflow_fixtures import (
     NEXT_IMPLEMENTATION_BRANCH,
     PLAN_RELATIVE,
     PROPOSAL_BRANCH,
+    PARALLEL_CRITERION,
+    PARALLEL_FRONTIER,
     RESOLVED_RISK,
     handoff_receipt,
     implementation_review_plan_text,
+    parallel_implementation_review_plan_text,
+    parallel_proposal_review_plan_text,
     ready_plan_text,
 )
 
@@ -551,6 +556,118 @@ class MilestonePlanContractTests(unittest.TestCase):
         )
 
 
+class ParallelFrontierTests(unittest.TestCase):
+    def _parallel_receipt(self) -> dict[str, object]:
+        receipt = _receipt()
+        receipt["criterion_updates"] = {
+            PARALLEL_CRITERION: {
+                "status": "Met",
+                "evidence": "Parallel inspection accepted.",
+            }
+        }
+        return receipt
+
+    def test_per_name_history_keeps_current_and_parallel_effective_states(self) -> None:
+        state = validate_plan_text(parallel_proposal_review_plan_text())
+
+        self.assertEqual(
+            state.current.fields["workflow state"], "implementation_in_review"
+        )
+        self.assertEqual(
+            [(frontier.name, frontier.fields["workflow state"])
+            for frontier in state.parallel_frontiers],
+            [(PARALLEL_FRONTIER, "proposal_in_review")],
+        )
+        self.assertEqual(
+            state.workflow_history.rows[-1][:2],
+            (PARALLEL_FRONTIER, "proposal_in_review"),
+        )
+
+    def test_parallel_completion_preserves_current_frontier(self) -> None:
+        updated = apply_handoff(
+            parallel_implementation_review_plan_text(),
+            self._parallel_receipt(),
+            frontier_name=PARALLEL_FRONTIER,
+        )
+        state = validate_plan_text(updated)
+
+        self.assertEqual(state.current.name, CURRENT_FRONTIER)
+        self.assertEqual(
+            state.current.fields["workflow state"], "implementation_in_review"
+        )
+        self.assertFalse(state.parallel_frontiers)
+
+    def test_primary_completion_leaves_current_idle_and_parallel_visible(self) -> None:
+        updated = apply_handoff(
+            parallel_implementation_review_plan_text(),
+            _receipt(),
+            frontier_name=CURRENT_FRONTIER,
+        )
+        state = validate_plan_text(updated)
+        payload = _workflow_status_payload(Path(PLAN_RELATIVE), state)
+
+        self.assertTrue(state.current.is_empty)
+        self.assertEqual(
+            [(frontier.name, frontier.fields["workflow state"])
+            for frontier in state.parallel_frontiers],
+            [(PARALLEL_FRONTIER, "implementation_in_review")],
+        )
+        self.assertEqual(
+            payload["active_frontiers"],
+            [
+                {
+                    "frontier": PARALLEL_FRONTIER,
+                    "workflow_state": "implementation_in_review",
+                    "proposal_branch": "m900/parallel-evidence-inspection-proposal",
+                    "implementation_branch": "m900/parallel-evidence-inspection",
+                }
+            ],
+        )
+
+    def test_parallel_handoff_requires_an_explicit_target_and_global_block_fails(self) -> None:
+        with self.assertRaisesRegex(PlanContractError, "explicit frontier name"):
+            apply_handoff(
+                parallel_implementation_review_plan_text(), self._parallel_receipt()
+            )
+
+        blocked = self._parallel_receipt()
+        blocked["outcome"] = "block"
+        blocked["blocked_reason"] = "Synthetic global stop."
+        blocked["revisit_when"] = "The other frontier completes."
+        with self.assertRaisesRegex(PlanContractError, "cannot block milestone"):
+            apply_handoff(
+                parallel_implementation_review_plan_text(),
+                blocked,
+                frontier_name=PARALLEL_FRONTIER,
+            )
+
+        closed = self._parallel_receipt()
+        closed["outcome"] = "close"
+        with self.assertRaisesRegex(PlanContractError, "cannot close milestone"):
+            apply_handoff(
+                parallel_implementation_review_plan_text(),
+                closed,
+                frontier_name=PARALLEL_FRONTIER,
+            )
+
+    def test_parallel_frontiers_reject_shared_criterion_and_reused_identity(self) -> None:
+        overlapping = parallel_proposal_review_plan_text().replace(
+            f"- Exit criteria affected: {PARALLEL_CRITERION}\n",
+            f"- Exit criteria affected: {CURRENT_CRITERION}\n",
+            1,
+        )
+        with self.assertRaisesRegex(PlanContractError, "cannot share exit-criterion"):
+            validate_plan_text(overlapping)
+
+        reused_branch = parallel_proposal_review_plan_text().replace(
+            "`m900/parallel-evidence-inspection-proposal`",
+            f"`{PROPOSAL_BRANCH}`",
+            1,
+        )
+        with self.assertRaisesRegex(PlanContractError, "identity reuses proposal branch"):
+            validate_plan_text(reused_branch)
+
+
 class MilestoneHandoffGitOrderingTests(unittest.TestCase):
     def _git(self, root: Path, *args: str) -> str:
         result = subprocess.run(
@@ -625,7 +742,7 @@ class MilestoneHandoffGitOrderingTests(unittest.TestCase):
                     repo_root=root,
                 )
 
-    def test_start_creates_only_the_current_proposal_branch(self) -> None:
+    def test_start_publishes_current_proposal_state_on_milestone_branch(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             plan = root / PLAN_RELATIVE
@@ -659,7 +776,7 @@ class MilestoneHandoffGitOrderingTests(unittest.TestCase):
 
             self.assertEqual(
                 self._git(root, "branch", "--show-current"),
-                PROPOSAL_BRANCH,
+                MILESTONE_BRANCH,
             )
             transitioned = validate_plan_text(plan.read_text(encoding="utf-8"))
             self.assertEqual(
@@ -684,7 +801,7 @@ class MilestoneHandoffGitOrderingTests(unittest.TestCase):
                 repo_root=ROOT,
             )
 
-    def test_start_reuses_an_existing_local_branch(self) -> None:
+    def test_start_rejects_a_review_branch_as_the_state_publication_writer(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             plan = root / PLAN_RELATIVE
@@ -705,20 +822,20 @@ class MilestoneHandoffGitOrderingTests(unittest.TestCase):
             )
             self._git(root, "switch", "-c", PROPOSAL_BRANCH)
             state = validate_plan_text(current)
-            start_proposal_branch(
-                plan,
-                state,
-                PROPOSAL_BRANCH,
-                repo_root=root,
-            )
+            with self.assertRaisesRegex(PlanContractError, "must run on"):
+                start_proposal_branch(
+                    plan,
+                    state,
+                    PROPOSAL_BRANCH,
+                    repo_root=root,
+                )
             self.assertEqual(
                 self._git(root, "branch", "--show-current"),
                 PROPOSAL_BRANCH,
             )
             transitioned = validate_plan_text(plan.read_text(encoding="utf-8"))
             self.assertEqual(
-                transitioned.current.fields["workflow state"],
-                "proposal_in_review",
+                transitioned.current.fields["workflow state"], "ready_for_proposal"
             )
 
 

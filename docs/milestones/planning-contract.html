@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="860eba9618927a39fe2e424e9e85c33f8fc5c88a00d31d912dd5f563816f80c0">
+  <meta name="source-sha256" content="9d3140dc97d9ae32b903da201c368bc387dd65efe501672d4651d278b3d71a55">
   <base target="_blank">
   <title>Milestone Planning And Delivery Contract</title>
   <style>
@@ -473,9 +473,11 @@ implementation branch, merge it back into that parent, then re-review the
 parent PR in totality. The parent implementation remains the frontier’s sole
 acceptance and ledger unit.</p>
 <p>Do not create an implementation branch until its proposal PR has merged and the
-workflow records <code>ready_for_implementation</code>. Do not begin the next frontier
-before the current implementation PR merges unless the milestone decision log
-records a narrow parallel exception.</p>
+workflow records <code>ready_for_implementation</code>. A parallel proposal may begin only
+after an existing frontier is canonically recorded on the milestone branch as
+<code>implementation_in_review</code> or <code>proposal_amendment_in_review</code>; publish that
+state before creating the sibling branch. Do not begin a parallel proposal
+while active work is only <code>ready_for_implementation</code> or <code>proposal_in_review</code>.</p>
 <p>If approved maintenance reaches <code>main</code> during an active milestone, merge updated
 <code>main</code> into the milestone branch before starting another review unit. Do not
 rebase or force-push a published milestone branch.</p>
@@ -596,8 +598,9 @@ creating another feature-goal section.</p>
 progress, or completion-percentage sections. Those must be derivable from this
 table.</p>
 <h3>6. Current Delivery</h3>
-<p>A frontier map (the work-order artifact), a current pointer that may be idle,
-and a successor slot derived from the remaining path.</p>
+<p>A frontier map (the work-order artifact), a <code>Current Frontier</code> attention pointer
+that may be idle, an optional active <code>Parallel Frontiers</code> registry, and a
+successor slot derived from the remaining path.</p>
 <p><strong>Frontier map</strong> records remaining unstarted work:</p>
 <ul>
 <li><strong>Path:</strong> ordered remaining nodes, using <code>→</code>. Cadence is <code>linked-list</code>.
@@ -634,6 +637,15 @@ concise milestone-level non-goal. Record the accepted proposal PR and merge
 commit before implementation starts. Record each accepted additive proposal
 amendment with its artifact path, PR, and merge commit. Add the active PR only
 for the phase currently under review.</p>
+<p>The active registry is the nonempty Current record plus the records under the
+optional <code>### Parallel Frontiers</code> section. Each parallel record uses the same
+fields and is written as <code>#### Frontier: &lt;name&gt;</code>. Current is only the attention
+pointer; it is not a second source of workflow truth. It may be empty while one
+or more parallel frontiers remain active. Each active frontier has a unique
+name, proposal branch, implementation branch, and proposal path within the
+milestone. Do not reuse that identity after its accepted ledger entry exists.
+Lifecycle commands target a named frontier; branch inference is permitted only
+when it resolves exactly one active frontier.</p>
 <p>The current frontier and every remaining-path or off-path node must use one of
 the supported values in <a href="#review-kinds">Review Kinds</a>. The value is the stable
 review focus for that frontier across its proposal, any proposal amendments,
@@ -672,9 +684,18 @@ the proposal may retarget current from the work order. After a receipt, later
 commits cannot change current identity, question, owner, or kind. Remaining-path
 edits may continue. CI compares that freeze to the plan at the first receipt
 commit, not only to the milestone base.</p>
+<p>A parallel proposal PR is the review surface for adding one new active name. It
+may introduce that node, including when <code>Path: none</code>, or lift it from the
+remaining path. It writes the record under <code>### Parallel Frontiers</code> at
+<code>proposal_in_review</code>, appends that frontier's history row, and leaves Current
+and other actives unchanged. The remaining map stays unchanged, or loses only
+the lifted name; it is not a second work-order rewrite window. <code>start-proposal</code>
+remains optional sugar for an already-queued node; it does not invent an
+unqueued name.</p>
 <p>The proposal cannot delete a contracted node. Implementation, amendment, and
-repair PRs may not edit the map or current identity. The mechanical handoff
-may not invent a node or start the next unit.</p>
+repair PRs may not edit the map, any active frontier, or frontier identity. The
+mechanical handoff may not invent a node, start the next unit, or implicitly
+promote another active frontier.</p>
 <p>A name plus a vague “likely question” alone is not a candidate. Use an explicit
 empty successor instead:</p>
 <pre><code class="language-markdown">### Next-Frontier Candidate
@@ -688,12 +709,15 @@ empty successor instead:</p>
 at milestone start, after the last remaining node is selected as current, and
 when no further unit is contracted yet. It is required after closeout is
 current. It does not block <code>advance</code>.</p>
-<p><strong>Frontier handoff:</strong> accepting the current review unit records the ledger,
-criteria, and risks, then sets current to idle. Remaining work-order nodes
-stay. Do not promote a successor, wipe later contracted nodes, or invent one.
-The receipt's <code>next_frontier.state</code> remains <code>none</code> because the map, not the
-receipt, owns remaining work. The next proposal selects current from that
-artifact (or introduces the first/next node, including closeout).</p>
+<p><strong>Frontier handoff:</strong> accepting a named review unit records the ledger,
+criteria, and risks, then removes only that active frontier. If the completed
+frontier was Current, Current becomes idle; other active frontiers remain
+unchanged and visible. Do not promote a successor, wipe later contracted
+nodes, or invent one. The receipt's <code>next_frontier.state</code> remains <code>none</code>
+because the map, not the receipt, owns remaining work. The next proposal
+selects Current from that artifact (or introduces the first/next node, including
+closeout). Global <code>block</code> and closeout are rejected while any other active
+frontier remains.</p>
 <p>Windows:</p>
 <table>
 <thead>
@@ -715,6 +739,11 @@ artifact (or introduces the first/next node, including closeout).</p>
 <td>Becomes path[0] or a new node</td>
 </tr>
 <tr>
+<td>Parallel proposal or implementation</td>
+<td>Current stays unchanged</td>
+<td>Named parallel record is active</td>
+</tr>
+<tr>
 <td>Implementation</td>
 <td>Frozen</td>
 <td>Frozen</td>
@@ -722,7 +751,7 @@ artifact (or introduces the first/next node, including closeout).</p>
 <tr>
 <td>After <code>advance</code></td>
 <td>Unchanged remaining path</td>
-<td>Idle</td>
+<td>Target removed; Current idle if it was the target</td>
 </tr>
 <tr>
 <td><code>block</code></td>
@@ -759,12 +788,18 @@ artifact (or introduces the first/next node, including closeout).</p>
 </tr>
 </tbody>
 </table>
-<p>While current is set, the latest row must match that frontier and its
-machine-readable workflow state. Idle current (milestone start or after
-<code>advance</code>) need not match a live pointer; the latest row may be <code>accepted</code>.
-A new frontier may start at <code>proposal_in_review</code> when selected from the work
-order after <code>accepted</code> or idle. Preserve proposal acceptance and implementation
-acceptance as separate events.</p>
+<p>The table is global audit order, but effective state is evaluated per frontier
+name: the latest valid row for each active name must match that record's
+machine-readable workflow state. Current being set does not require the global
+latest row to name Current. Idle Current (milestone start or after <code>advance</code>)
+need not match a live pointer; the latest row may be <code>accepted</code>.</p>
+<p>A new frontier may start at <code>proposal_in_review</code> only when the milestone
+already has an active <code>implementation_in_review</code> or
+<code>proposal_amendment_in_review</code> frontier recorded canonically. It cannot open
+beside only <code>ready_for_proposal</code>, <code>proposal_in_review</code>, or
+<code>ready_for_implementation</code> work. Preserve proposal acceptance and
+implementation acceptance as separate events, and do not let one frontier's
+completion mutate another frontier's history.</p>
 <h3>8. Accepted Review Units</h3>
 <p>Append-only one-row-per-merged-PR ledger:</p>
 <table>
@@ -1385,7 +1420,9 @@ totality re-review.</p>
 <ol>
 <li>squash-merge it into the milestone branch;</li>
 <li>from a clean local milestone branch, run the completion command below;</li>
-<li>confirm current is idle and the work order still holds remaining nodes;</li>
+<li>confirm the completed frontier left the active registry; if it was Current,
+   Current is idle, remaining parallel frontiers stay visible, and the work
+   order still holds remaining nodes;</li>
 <li>open the next proposal PR from git when ready; do not wait on <code>start-proposal</code>.</li>
 </ol>
 <pre><code class="language-sh">python3 docs/milestones/workflow.py complete-implementation \
@@ -1397,7 +1434,10 @@ confirms the implementation PR is merged and its body still matches the
 canonical review kind, fills the reviewed template with the PR number and merge
 SHA, applies the existing handoff owner, verifies that only canonical <code>plan.md</code>
 and generated <code>plan.html</code> changed, commits them, and pushes the milestone
-branch. It returns current to idle. It does not start the next proposal.</p>
+branch. If the completed frontier was Current, it sets current to idle;
+remaining parallel frontiers stay active. It does not start the next proposal
+or promote another frontier. When more than one frontier is active, pass
+<code>--frontier &lt;name&gt;</code>.</p>
 <p>The lower-level <code>handoff --receipt &lt;path&gt;</code> command remains available for a
 reviewed exceptional receipt or recovery, but normal successful completion
 must not reconstruct acceptance judgment after merge.</p>

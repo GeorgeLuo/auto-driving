@@ -1223,16 +1223,20 @@ def validate_plan_text(text: str) -> PlanState:
             continue
         prior_state = effective_states.get(history_frontier)
         if prior_state is None:
+            live_names = {
+                frontier.name for frontier in active_frontiers if frontier.name
+            }
+            started_review_states = {
+                "proposal_in_review",
+                "ready_for_implementation",
+                "proposal_amendment_in_review",
+                "implementation_in_review",
+            }
             active_before_opening = {
                 name: state
                 for name, state in effective_states.items()
-                if state
-                in {
-                    "proposal_in_review",
-                    "ready_for_implementation",
-                    "proposal_amendment_in_review",
-                    "implementation_in_review",
-                }
+                if state in started_review_states
+                or (name in live_names and state == "ready_for_proposal")
             }
             if active_before_opening:
                 if history_state != "proposal_in_review":
@@ -4490,6 +4494,10 @@ def _validate_plan_revision_transition(
         )
     if base.current != head.current:
         raise PlanContractError("plan revision cannot change the current frontier")
+    if base.parallel_frontiers != head.parallel_frontiers:
+        raise PlanContractError(
+            "plan revision cannot change the parallel frontier registry"
+        )
     if base.next_frontier != head.next_frontier:
         raise PlanContractError("plan revision cannot change the queued frontier")
     if base.frontier_map != head.frontier_map:
@@ -4579,6 +4587,171 @@ def _validate_proposal_map_edits(base: PlanState, head: PlanState) -> None:
             "proposal PR cannot delete contracted frontier nodes: "
             + ", ".join(sorted(name for name in missing if name))
         )
+
+
+def _added_parallel_frontiers(
+    base: PlanState, head: PlanState
+) -> tuple[Frontier, ...]:
+    base_names = {frontier.name for frontier in base.parallel_frontiers}
+    return tuple(
+        frontier
+        for frontier in head.parallel_frontiers
+        if frontier.name not in base_names
+    )
+
+
+def _validate_opening_parallel_proposal_transition(
+    base: PlanState,
+    head: PlanState,
+    *,
+    head_text: str,
+    plan_path: str,
+    changed_paths: set[str],
+    head_branch: str,
+    proposal_text: str | None,
+    pr_body: str | None,
+    repair_review_metadata: RepairReviewMetadata | None,
+    frontier_name: str | None,
+) -> str:
+    """Validate a proposal PR that introduces one parallel frontier."""
+
+    if base.current != head.current:
+        raise PlanContractError(
+            "parallel proposal cannot change the current frontier"
+        )
+    removed = [
+        frontier
+        for frontier in base.parallel_frontiers
+        if frontier.name not in {item.name for item in head.parallel_frontiers}
+    ]
+    if removed:
+        raise PlanContractError(
+            "review-unit PR cannot change the parallel frontier registry"
+        )
+    for existing in base.parallel_frontiers:
+        match = next(
+            (
+                frontier
+                for frontier in head.parallel_frontiers
+                if frontier.name == existing.name
+            ),
+            None,
+        )
+        if match != existing:
+            raise PlanContractError(
+                "review-unit PR cannot change the parallel frontier registry"
+            )
+    added = _added_parallel_frontiers(base, head)
+    if len(added) != 1:
+        raise PlanContractError(
+            "parallel proposal must introduce exactly one new frontier"
+        )
+    opened = added[0]
+    if frontier_name and frontier_name != opened.name:
+        raise PlanContractError(
+            f"proposal PR must target {opened.name!r}, not {frontier_name!r}"
+        )
+    if _workflow_state(opened) != "proposal_in_review":
+        raise PlanContractError(
+            "a parallel frontier must open at proposal_in_review"
+        )
+    if not any(
+        _workflow_state(frontier)
+        in {"implementation_in_review", "proposal_amendment_in_review"}
+        for frontier in base.active_frontiers
+    ):
+        raise PlanContractError(
+            "a parallel frontier may open only beside an "
+            "implementation_in_review or proposal_amendment_in_review frontier"
+        )
+    if opened.name in head.frontier_map.record_names():
+        raise PlanContractError(
+            "proposal PR cannot place the parallel frontier on the remaining map"
+        )
+    missing = _contracted_names(base) - _contracted_names(head)
+    if missing:
+        raise PlanContractError(
+            "proposal PR cannot delete contracted frontier nodes: "
+            + ", ".join(sorted(name for name in missing if name))
+        )
+    lifted_map = FrontierMap(
+        path=tuple(
+            name for name in base.frontier_map.path if name != opened.name
+        ),
+        cadence=base.frontier_map.cadence,
+        nodes=tuple(
+            node for node in base.frontier_map.nodes if node.name != opened.name
+        ),
+        off_path=base.frontier_map.off_path,
+    )
+    if head.frontier_map != lifted_map:
+        raise PlanContractError(
+            "parallel proposal cannot change the frontier map except by "
+            "lifting the opened frontier"
+        )
+    if parse_frontier_map(head_text) is None:
+        raise PlanContractError("proposal PR must write ### Frontier Map")
+    if base.criteria != head.criteria:
+        raise PlanContractError(
+            "review-unit PR cannot pre-claim exit-criterion changes"
+        )
+    if base.ledger != head.ledger:
+        raise PlanContractError(
+            "review-unit PR cannot pre-claim an accepted ledger entry"
+        )
+    if base.risks != head.risks:
+        raise PlanContractError(
+            "review-unit PR cannot pre-claim risk resolution"
+        )
+    base_history = base.workflow_history.rows
+    head_history = head.workflow_history.rows
+    if (
+        len(head_history) != len(base_history) + 1
+        or head_history[: len(base_history)] != base_history
+    ):
+        raise PlanContractError(
+            "review-unit PR must append exactly one workflow-history transition"
+        )
+    last_frontier, last_state, _last_evidence = head_history[-1]
+    if last_frontier != opened.name or last_state != "proposal_in_review":
+        raise PlanContractError(
+            "parallel proposal must append proposal_in_review for the new frontier"
+        )
+    heading = f"Parallel Frontier: {opened.name}"
+    expected_branch = _frontier_branch(
+        opened, heading=heading, field="proposal branch"
+    )
+    if head_branch != expected_branch:
+        raise PlanContractError(
+            f"proposal PR must use {expected_branch}, not {head_branch}"
+        )
+    proposal_path = _frontier_proposal_path(opened, heading=heading)
+    plan_html = str(Path(plan_path).with_suffix(".html"))
+    allowed_paths = {plan_path, plan_html, proposal_path}
+    unexpected = changed_paths - allowed_paths
+    if unexpected:
+        raise PlanContractError(
+            "proposal PR contains implementation changes: "
+            + ", ".join(sorted(unexpected))
+        )
+    if proposal_path not in changed_paths or proposal_text is None:
+        raise PlanContractError(f"proposal PR must provide {proposal_path}")
+    _validate_pr_review_kind(pr_body, expected=opened.fields["review kind"])
+    validate_proposal_text(
+        proposal_text,
+        review_kind=opened.fields["review kind"],
+    )
+    validate_handoff_template_against_plan(
+        proposal_text,
+        head_text,
+        frontier_name=opened.name,
+    )
+    if pr_body is not None:
+        validate_repair_cycle_governance_body(
+            pr_body,
+            review_metadata=repair_review_metadata,
+        )
+    return "proposal"
 
 
 def _validate_canonical_continuation_transition(
@@ -4755,6 +4928,19 @@ def validate_review_unit_transition(
             plan_path=plan_path,
             changed_paths=changed_paths,
             head_branch=head_branch,
+        )
+    if base.parallel_frontiers != head.parallel_frontiers:
+        return _validate_opening_parallel_proposal_transition(
+            base,
+            head,
+            head_text=head_text,
+            plan_path=plan_path,
+            changed_paths=changed_paths,
+            head_branch=head_branch,
+            proposal_text=proposal_text,
+            pr_body=pr_body,
+            repair_review_metadata=repair_review_metadata,
+            frontier_name=frontier_name,
         )
     base_state = _workflow_state(base.current) if not base.current.is_empty else ""
     head_state = _workflow_state(head.current) if not head.current.is_empty else ""
@@ -5271,12 +5457,32 @@ def validate_review_unit_git_diff(
             proposal_path,
             repo_root=repo_root,
         )
-    elif base_target is not None and _workflow_state(base_target) == "proposal_in_review":
-        proposal_path = _frontier_proposal_path(
-            base_target,
-            heading=_frontier_heading(base, base_target),
-        )
-        proposal_text = _git_text_at(head_sha, proposal_path, repo_root=repo_root)
+    else:
+        added_parallels = _added_parallel_frontiers(base, head)
+        if (
+            not _is_plan_revision_branch(base.milestone_number, head_ref)
+            and len(added_parallels) == 1
+            and _workflow_state(added_parallels[0]) == "proposal_in_review"
+        ):
+            opened = added_parallels[0]
+            proposal_path = _frontier_proposal_path(
+                opened,
+                heading=f"Parallel Frontier: {opened.name}",
+            )
+            proposal_text = _git_text_at(
+                head_sha, proposal_path, repo_root=repo_root
+            )
+        elif (
+            base_target is not None
+            and _workflow_state(base_target) == "proposal_in_review"
+        ):
+            proposal_path = _frontier_proposal_path(
+                base_target,
+                heading=_frontier_heading(base, base_target),
+            )
+            proposal_text = _git_text_at(
+                head_sha, proposal_path, repo_root=repo_root
+            )
     if (
         _workflow_state(base.current) == "ready_for_implementation"
         and _workflow_state(head.current) == "proposal_amendment_in_review"

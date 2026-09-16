@@ -1125,6 +1125,13 @@ def validate_plan_text(text: str) -> PlanState:
             milestone_number=milestone_number,
             known_ids=seen_ids,
         )
+        if (
+            _normalize_review_kind(frontier.fields.get("review kind", ""))
+            == "milestone closeout"
+        ):
+            raise PlanContractError(
+                "milestone closeout must remain the Current frontier"
+            )
     if legacy_successor is not None:
         _require_frontier_fields(
             legacy_successor,

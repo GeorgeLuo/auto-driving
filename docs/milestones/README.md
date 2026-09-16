@@ -643,6 +643,10 @@ the lifted name; it is not a second work-order rewrite window. `start-proposal`
 remains optional sugar for an already-queued node; it does not invent an
 unqueued name.
 
+The `Milestone closeout` review kind is Current-only. A closeout cannot open
+as a parallel frontier while another active frontier could still block or
+change the milestone.
+
 The proposal cannot delete a contracted node. Implementation, amendment, and
 repair PRs may not edit the map, any active frontier, or frontier identity. The
 mechanical handoff may not invent a node, start the next unit, or implicitly

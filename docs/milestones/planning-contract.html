@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="source-sha256" content="1e9a9b107775845fd725cc2f2246c8b827d2b884338e3dfccc936c0aad4ecb8e">
+  <meta name="source-sha256" content="263cba257fc8e0f075921da21d36e4306db3ebe0e77c4964e3caed1a75ddc169">
   <base target="_blank">
   <title>Milestone Planning And Delivery Contract</title>
   <style>
@@ -692,6 +692,9 @@ and other actives unchanged. The remaining map stays unchanged, or loses only
 the lifted name; it is not a second work-order rewrite window. <code>start-proposal</code>
 remains optional sugar for an already-queued node; it does not invent an
 unqueued name.</p>
+<p>The <code>Milestone closeout</code> review kind is Current-only. A closeout cannot open
+as a parallel frontier while another active frontier could still block or
+change the milestone.</p>
 <p>The proposal cannot delete a contracted node. Implementation, amendment, and
 repair PRs may not edit the map, any active frontier, or frontier identity. The
 mechanical handoff may not invent a node, start the next unit, or implicitly

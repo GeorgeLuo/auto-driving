@@ -705,6 +705,18 @@ class ParallelFrontierTests(unittest.TestCase):
         ):
             validate_plan_text(reused)
 
+    def test_parallel_frontiers_reject_closeout(self) -> None:
+        parallel_closeout = parallel_proposal_review_plan_text().replace(
+            "- Review kind: Behavioral feature slice",
+            "- Review kind: Milestone closeout",
+            1,
+        )
+        with self.assertRaisesRegex(
+            PlanContractError,
+            "milestone closeout must remain the Current frontier",
+        ):
+            validate_plan_text(parallel_closeout)
+
 
 class MilestoneHandoffGitOrderingTests(unittest.TestCase):
     def _git(self, root: Path, *args: str) -> str:

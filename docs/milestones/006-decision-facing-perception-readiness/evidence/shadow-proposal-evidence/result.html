@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>M006 shadow-proposal evidence</title>
+  <style>
+    :root { font-family: ui-sans-serif, system-ui, sans-serif; color: #17191c; }
+    body { margin: 24px; max-width: 1080px; line-height: 1.4; }
+    h1 { font-size: 1.35rem; }
+    h2 { margin-top: 28px; font-size: 1.05rem; }
+    .meta { color: #62676f; }
+    .badge { display: inline-block; border: 1px solid #d9dde2; border-radius: 999px; padding: 2px 8px; font-size: 12px; background: #fff4d6; }
+    .blocked { border-left: 3px solid #a33; padding: 10px 12px; background: #fff1f1; }
+    .note { border-left: 3px solid #176b87; padding: 10px 12px; background: #e7f3f8; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #d9dde2; padding: 6px 8px; text-align: left; vertical-align: top; }
+    th { background: #f6f7f8; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; overflow-wrap: anywhere; }
+  </style>
+</head>
+<body>
+  <h1>M006 cross-environment shadow-proposal evidence</h1>
+  <p class="meta">status=<span class="badge">incomplete</span>
+    · canonical_capture_ready=<code>false</code>
+    · result.json sha256=<code>421fa05af4b52737d7b21ee139f1d91d4286100195ad96b3cf230fd9b01a1588</code></p>
+  <div class="blocked">
+    This page is derived from adjacent committed <code>result.json</code>.
+    The record is incomplete and fail-closed: no canonical Chase or PiRacer
+    success claim is present, and M006-06/M006-07 remain unmet.
+  </div>
+  <h2>Identity</h2>
+  <table>
+    <tr><th>Branch</th><td><code>m006/shadow-proposal-evidence</code></td></tr>
+    <tr><th>Base</th><td><code>a8c4483dea577afdb78094caa36d650f47882a27</code></td></tr>
+    <tr><th>Head</th><td><code>a0e11c6d5c29fc3f1f75c2b22588696600fc9a9c</code></td></tr>
+    <tr><th>Proposal</th><td>PR 201, merge <code>9e2a353c736a04fed22c1ce5d456c6115fbfbddc</code></td></tr>
+    <tr><th>Policy</th><td><code>c8ee3515719ebbde4540d9d1ee04f9d04385ddc</code></td></tr>
+  </table>
+  <h2>Criteria</h2>
+  <table><tr><th>Criterion</th><th>Status</th><th>Reason</th></tr><tr><td><code>M006-06</code></td><td>Unmet</td><td>No canonical Chase/PiRacer live package is accepted.</td></tr>
+<tr><td><code>M006-07</code></td><td>Unmet</td><td>No authoritative Chase privilege-exclusion or Pi user-mode interval is captured.</td></tr></table>
+  <h2>Readiness receipts</h2>
+  <table><tr><th>Receipt</th><th>Status</th><th>Observation / impact</th></tr><tr><td><code>proposal_acceptance</code></td><td>verified</td><td>Initial workflow status reported ready_for_implementation with the accepted proposal merge/reviewed-head pair; the preserved remote implementation start now records implementation_in_review.</td></tr>
+<tr><td><code>procedure_and_checks</code></td><td>frozen_for_operator_review</td><td>C1-C7 mapping, lossless replay projection, bounds, rendering checks, and fail-closed gate are recorded.</td></tr>
+<tr><td><code>D1</code></td><td>blocked</td><td>cli/automa_cli/automation.py:111-135 discovers with include_picar=False and accepts only provider chase-sim; no supported PiRacer shadow-cycle publication route is exposed by the documented worker.</td></tr>
+<tr><td><code>D2</code></td><td>blocked</td><td>staged info returns combined_view.url=null and path_template=cli/automa_cli/decision_view.html#decision-combined-v0; app.py exposes offline decision apply and terminal stream, not a live decision-view command.</td></tr>
+<tr><td><code>operator_capture_authorization</code></td><td>pending</td><td>Not requested as a valid authorization while D1 and D2 are blocked.</td></tr></table>
+  <h2>Case outcomes</h2>
+  <table><tr><th>Case</th><th>Status</th><th>Reason</th></tr><tr><td><code>C1</code></td><td>not_run</td><td>canonical live capture gate blocked</td></tr>
+<tr><td><code>C2</code></td><td>not_run</td><td>preparatory fixture is not environment evidence</td></tr>
+<tr><td><code>C3</code></td><td>not_run</td><td>no live no-reset lifecycle interval</td></tr>
+<tr><td><code>C4</code></td><td>not_run</td><td>no canonical environment package</td></tr>
+<tr><td><code>C5</code></td><td>not_run</td><td>no live stop/publication interval</td></tr>
+<tr><td><code>C6</code></td><td>not_run</td><td>offline fixture digest is preparatory and has no source image</td></tr>
+<tr><td><code>C7</code></td><td>not_run</td><td>no Chase privilege receipt or Pi authority interval</td></tr></table>
+  <h2>Preparatory checks</h2>
+  <table><tr><th>Check</th><th>Status</th><th>Observation</th></tr><tr><td><code>chase_passive_status</code></td><td>blocked</td><td>Metrics UI frontend_disconnected; simulator server reachable; no mutation attempted.</td></tr>
+<tr><td><code>decision_info</code></td><td>passed_contract_probe</td><td>Engine config, plugin, selector, shadow authority, and schema were available; combined_view.url was null.</td></tr>
+<tr><td><code>offline_public_door</code></td><td>passed_preparatory_only</td><td>null</td></tr></table>
+  <h2>Review boundary</h2>
+  <div class="note">
+    D1 physical shadow-cycle publication/liveness and D2 live decision URL /
+    retained-evidence overlay are provisional candidate conditions. Their
+    current blocked receipts prevent canonical capture. Offline replay is
+    retained as preparation only and cannot substitute for live evidence.
+  </div>
+  <p>See <a href="README.md">README.md</a> for the frozen procedure, C1-C7
+    map, bounds, and non-claims. The authoritative preparatory record is
+    <a href="preparatory/public-door-result.json"><code>preparatory/public-door-result.json</code></a>.</p>
+</body>
+</html>

@@ -6,8 +6,12 @@ from pathlib import Path
 
 import numpy as np
 
+from autonomy.runtime.manager import AutonomyManager
+from cli.automa_cli.decision import DECISION_ENGINES, ENGINE_ID
 from autonomy.runtime.cycle_host import AutonomyCycleHost
+from implementations.decision.shadow_adapter import ADAPTER_ENGINE_SPEC
 from implementations.runtime.donkeycar import (
+    DECISION_PUBLICATION_SCHEMA,
     LATEST_FRAME_PATH,
     LATEST_JSON_PATH,
     OBSERVATION_PUBLICATION_SCHEMA,
@@ -16,6 +20,23 @@ from implementations.runtime.donkeycar import (
 
 
 class ObservationPublicationTests(unittest.TestCase):
+    def _shadow_part(self) -> AutonomyPilotPart:
+        manager = AutonomyManager(
+            default_engine_spec=ADAPTER_ENGINE_SPEC,
+            default_engine_config=DECISION_ENGINES[ENGINE_ID]["engine_config"],
+        )
+        return AutonomyPilotPart(
+            host=AutonomyCycleHost(manager=manager),
+            min_interval_s=0.0,
+            vehicle_id="piracer",
+            source_id="donkeycar:piracer",
+            activation_engine_id=ENGINE_ID,
+            activation_activated_at_ms=1_000,
+            activation_engine_config=DECISION_ENGINES[ENGINE_ID]["engine_config"],
+            generation_id=f"{ENGINE_ID}:1000",
+            run_id="donkey-run-fixture",
+        )
+
     def test_warming_publication_before_first_result(self) -> None:
         part = AutonomyPilotPart(
             host=AutonomyCycleHost(),
@@ -150,6 +171,52 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertIsNone(jpeg)
         self.assertEqual(meta["health"], "unavailable")
 
+    def test_decision_publication_keeps_source_identity_and_cycle_atomic(self) -> None:
+        part = self._shadow_part()
+        part.run(image_array=np.zeros((4, 4, 3), dtype=np.uint8), mode="user")
+        assert part.latest_snapshot is not None
+        completed_at_ms = part.latest_snapshot.completed_at_ms
+
+        decision = part.publish_decision_latest(now_ms=completed_at_ms)
+        self.assertEqual(decision["schema"], DECISION_PUBLICATION_SCHEMA)
+        self.assertTrue(decision["ok"])
+        self.assertEqual(decision["status"], "ready")
+        self.assertEqual(decision["reason"], "")
+        published = decision["decision"]
+        assert isinstance(published, dict)
+        self.assertEqual(published["vehicle_id"], "piracer")
+        self.assertEqual(published["source_id"], "donkeycar:piracer")
+        self.assertEqual(published["run_id"], "donkey-run-fixture")
+        self.assertEqual(published["generation_id"], f"{ENGINE_ID}:1000")
+        self.assertNotIn("producer_pid", published)
+        self.assertEqual(published["frame_id"], part.latest_snapshot.frame_id)
+        self.assertEqual(published["frame_index"], part.latest_snapshot.frame_index)
+        self.assertEqual(published["timestamp_ms"], part.latest_snapshot.captured_at_ms)
+        self.assertEqual(published["cycle"]["frame_id"], published["frame_id"])
+        self.assertEqual(
+            published["cycle"]["source"]["frame_index"],
+            published["frame_index"],
+        )
+        self.assertNotIn(
+            "runtime_identity",
+            published["cycle"]["source"]["metadata"],
+        )
+        # The dedicated route owns decision publication. Existing observation
+        # consumers retain their established payload shape.
+        self.assertNotIn("decision", part.publish_latest(now_ms=completed_at_ms))
+
+        expired = part.publish_decision_latest(
+            now_ms=completed_at_ms + decision["stale_after_ms"] + 1
+        )
+        self.assertFalse(expired["ok"])
+        self.assertEqual(expired["reason"], "expired")
+
+        manager = part.host.manager
+        manager.engine.reset()
+        reset = part.publish_decision_latest(now_ms=completed_at_ms)
+        self.assertFalse(reset["ok"])
+        self.assertEqual(reset["reason"], "reset")
+
     def test_concurrent_reads_keep_frame_identity_paired(self) -> None:
         part = AutonomyPilotPart(host=AutonomyCycleHost(), min_interval_s=0.0)
         stop = threading.Event()
@@ -225,6 +292,18 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertIn("class AutonomyObservationLatestAPI", patch)
         self.assertIn("class AutonomyObservationLatestFrameAPI", patch)
         self.assertIn("class AutonomyMemoryResetAPI", patch)
+        self.assertIn('/autonomy/decision/latest', patch)
+        self.assertIn("class AutonomyDecisionLatestAPI", patch)
+        route_source = patch.split("class AutonomyDecisionLatestAPI", 1)[1].split(
+            "+class AutonomyModeAPI", 1
+        )[0]
+        compile(
+            "class AutonomyDecisionLatestAPI(AutonomyAPIBase):\n" + "\n".join(
+                line[1:] for line in route_source.splitlines() if line.startswith("+")
+            ),
+            "AutonomyDecisionLatestAPI",
+            "exec",
+        )
 
 
 if __name__ == "__main__":

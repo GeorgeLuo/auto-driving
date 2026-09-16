@@ -37,9 +37,24 @@ class ShadowProposalsAutonomyEngine:
             self._config = ShadowProposalsConfig()
         self._engine = create_shadow_proposals_engine(self._config)
         self.last_cycle_result = None
+        self.last_cycle_error_reason: str | None = None
 
     def reset(self) -> None:
         self.last_cycle_result = None
+        self.last_cycle_error_reason = "reset"
+
+    def get_current_cycle_result(self) -> Any | None:
+        """Return the most recent successful typed shadow result, if any.
+
+        This is an optional read-only capability for a runtime publisher.  The
+        adapter deliberately keeps the capability narrower than the generic
+        ``AutonomyEngine`` protocol: callers may inspect the result produced by
+        the latest step, but they cannot use it to authorize the inner control.
+        ``step`` clears the value before every entry and failed/reset paths leave
+        it empty, so a publisher cannot accidentally replay an older result.
+        """
+
+        return self.last_cycle_result
 
     def describe_schema(self) -> dict[str, Any]:
         return {
@@ -75,9 +90,11 @@ class ShadowProposalsAutonomyEngine:
     def step(self, snapshot: AutonomySnapshot) -> AutonomyControl:
         # Always clear before entry so a failed step never republishes a prior cycle.
         self.last_cycle_result = None
+        self.last_cycle_error_reason = None
         try:
             kwargs = self._map_snapshot(snapshot)
         except (TypeError, ValueError, ShadowCycleInputError) as exc:
+            self.last_cycle_error_reason = "failed_step"
             return AutonomyControl(
                 steering=0.0,
                 throttle=0.0,
@@ -89,6 +106,7 @@ class ShadowProposalsAutonomyEngine:
                 },
             )
         except Exception as exc:  # noqa: BLE001 - fail closed at adapter boundary
+            self.last_cycle_error_reason = "failed_step"
             return AutonomyControl(
                 steering=0.0,
                 throttle=0.0,
@@ -103,6 +121,7 @@ class ShadowProposalsAutonomyEngine:
         try:
             cycle_result, control = self._engine.run_cycle(**kwargs)
         except ShadowCycleInputError as exc:
+            self.last_cycle_error_reason = "failed_step"
             return AutonomyControl(
                 steering=0.0,
                 throttle=0.0,
@@ -114,6 +133,7 @@ class ShadowProposalsAutonomyEngine:
                 },
             )
         except Exception as exc:  # noqa: BLE001 - unexpected after entry
+            self.last_cycle_error_reason = "failed_step"
             return AutonomyControl(
                 steering=0.0,
                 throttle=0.0,
@@ -124,6 +144,15 @@ class ShadowProposalsAutonomyEngine:
                     "engine_id": ENGINE_ID,
                 },
             )
+
+        # An engine-error result is diagnostic state, not a current decision
+        # publication.  Keep the optional capability fail closed while still
+        # returning the shadow-only idle control to the host.
+        if getattr(cycle_result, "status", "ok") != "ok":
+            self.last_cycle_result = None
+            self.last_cycle_error_reason = "failed_step"
+            del control
+            return authorized_idle_control()
 
         self.last_cycle_result = cycle_result
         # Always authorized idle at the adapter boundary. Discard any inner control

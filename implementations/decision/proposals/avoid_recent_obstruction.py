@@ -42,20 +42,42 @@ def _bbox_mid_x(record: RetainedEvidence) -> float | None:
     return mid_x
 
 
-def _has_lateral_cue(record: RetainedEvidence) -> bool:
-    """True for exact left/right, or any finite image bbox mid_x.
+# Zones that mean "no explicit left/right" so bbox mid_x may supply the cue.
+# "unknown" is ViewLocation.from_dict's canonical missing-zone value.
+_BBOX_FALLBACK_ZONES = frozenset({None, "", "center", "unknown"})
+_IMAGE_LATERAL_ZONES = {
+    "left": "left",
+    "right": "right",
+    "near_left": "left",
+    "mid_left": "left",
+    "far_left": "left",
+    "near_right": "right",
+    "mid_right": "right",
+    "far_right": "right",
+}
 
-    Chase perception emits compound zones such as ``mid_left`` / ``near_right``.
-    Those are not the exact ``{left, right}`` tokens; the accepted plugin
-    contract still admits a 4-tuple ``bbox_xyxy_norm``.
-    """
+
+def _explicit_lateral_side(record: RetainedEvidence) -> str | None:
+    """Resolve the horizontal side from an image-relative zone, if present."""
+
+    location = record.location
+    if location is None:
+        return None
+    return _IMAGE_LATERAL_ZONES.get(location.zone)
+
+
+def _has_lateral_cue(record: RetainedEvidence) -> bool:
+    """True when a lateral zone or a finite bbox supplies the cue."""
 
     location = record.location
     if location is None:
         return False
-    zone = location.zone
-    if zone == "left" or zone == "right":
+    if _explicit_lateral_side(record) is not None:
         return True
+    # Bbox mid_x is a cue only for missing / unknown / exact "center".
+    zone = location.zone
+    if zone not in _BBOX_FALLBACK_ZONES:
+        return False
     return _bbox_mid_x(record) is not None
 
 
@@ -65,11 +87,12 @@ def _lateral_side(record: RetainedEvidence) -> str | None:
     location = record.location
     if location is None:
         return None
+    explicit_side = _explicit_lateral_side(record)
+    if explicit_side is not None:
+        return explicit_side
     zone = location.zone
-    if zone == "left":
-        return "left"
-    if zone == "right":
-        return "right"
+    if zone not in _BBOX_FALLBACK_ZONES:
+        return None
     mid_x = _bbox_mid_x(record)
     if mid_x is None:
         return None
@@ -78,6 +101,19 @@ def _lateral_side(record: RetainedEvidence) -> str | None:
     if mid_x > 0.55:
         return "right"
     return None
+
+
+def _bbox_bottom(record: RetainedEvidence) -> float:
+    """Return the lower image edge for a deterministic foreground tie-break."""
+
+    location = record.location
+    if location is None or location.bbox_xyxy_norm is None:
+        return -1.0
+    try:
+        bottom = float(location.bbox_xyxy_norm[3])
+    except (IndexError, TypeError, ValueError):
+        return -1.0
+    return bottom if math.isfinite(bottom) else -1.0
 
 
 def _is_image_located_accepted_kind(
@@ -275,7 +311,12 @@ def propose(
         pool_lifecycle = None
 
     if active_pool is not None:
-        ordered = sorted(active_pool, key=lambda r: (-r.confidence, r.record_id))
+        # Confidence remains primary. For equal-confidence physical boundaries,
+        # prefer the foreground cue before the stable record-id tie-break.
+        ordered = sorted(
+            active_pool,
+            key=lambda r: (-r.confidence, -_bbox_bottom(r), r.record_id),
+        )
         primary = None
         side = None
         for record in ordered:

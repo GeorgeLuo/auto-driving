@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import secrets
 import threading
 import time
 from copy import deepcopy
@@ -8,15 +9,18 @@ from dataclasses import dataclass, replace
 from typing import Any, Callable
 
 from autonomy.decision import DecisionFrameContext
+from autonomy.decision.shadow_ids import require_ascii_id, require_safe_int
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.runtime.engine import AutonomyControl
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReading, SensorSnapshot
 
 ONBOARD_OBSERVATION_SNAPSHOT_SCHEMA = "automa_onboard_observation_snapshot_v0"
 OBSERVATION_PUBLICATION_SCHEMA = "automa_physical_observation_publication_v0"
+DECISION_PUBLICATION_SCHEMA = "automa_physical_decision_publication_v0"
 DEFAULT_OBSERVATION_INTERVAL_S = 0.5
 LATEST_FRAME_PATH = "/autonomy/observation/latest/frame.jpg"
 LATEST_JSON_PATH = "/autonomy/observation/latest"
+DECISION_LATEST_PATH = "/autonomy/decision/latest"
 
 PUBLICATION_HEALTH_ABSENT = "absent"
 PUBLICATION_HEALTH_WARMING = "warming"
@@ -101,6 +105,8 @@ class LatestObservationSnapshot:
     duration_ms: int = 0
     skipped_since_previous: int = 0
     algorithm: str | None = None
+    decision_publication: dict[str, Any] | None = None
+    decision_error: str | None = None
 
     def to_status_dict(self) -> dict[str, Any]:
         """Bounded status view without the raw image or full perception payload."""
@@ -140,6 +146,13 @@ class AutonomyPilotPart:
         min_interval_s: float = DEFAULT_OBSERVATION_INTERVAL_S,
         monotonic: Callable[[], float] | None = None,
         algorithm: str | None = None,
+        vehicle_id: str | None = None,
+        source_id: str | None = None,
+        activation_engine_id: str | None = None,
+        activation_activated_at_ms: int | None = None,
+        activation_engine_config: dict[str, Any] | None = None,
+        generation_id: str | None = None,
+        run_id: str | None = None,
     ) -> None:
         if min_interval_s < 0:
             raise ValueError("min_interval_s must be >= 0")
@@ -160,6 +173,31 @@ class AutonomyPilotPart:
         manager = getattr(self.host, "manager", None)
         self._last_engine = getattr(manager, "engine_spec", None)
         self._last_cycle: dict[str, Any] | None = None
+        manager_config = getattr(manager, "engine_config", {})
+        if activation_engine_config is None and isinstance(manager_config, dict):
+            activation_engine_config = manager_config
+        self.vehicle_id = vehicle_id
+        self.source_id = source_id or (
+            f"donkeycar:{vehicle_id}"
+            if isinstance(vehicle_id, str) and vehicle_id
+            else None
+        )
+        self.activation_engine_id = activation_engine_id
+        self.activation_activated_at_ms = activation_activated_at_ms
+        self.activation_engine_config = (
+            deepcopy(activation_engine_config)
+            if isinstance(activation_engine_config, dict)
+            else None
+        )
+        self.generation_id = generation_id or (
+            f"{activation_engine_id}:{activation_activated_at_ms}"
+            if isinstance(activation_engine_id, str)
+            and activation_engine_id
+            and type(activation_activated_at_ms) is int
+            else None
+        )
+        self.run_id = run_id or f"donkey-run-{secrets.token_hex(12)}"
+        self._decision_identity_error = self._validate_decision_identity()
         self.last_status: dict[str, Any] = self.status()
 
     def observation_status(self) -> dict[str, Any]:
@@ -202,6 +240,19 @@ class AutonomyPilotPart:
         read_at_ms = timestamp_ms() if now_ms is None else int(now_ms)
         with self._lock:
             return self._publication_from_locked_state(read_at_ms=read_at_ms)
+
+    def publish_decision_latest(self, *, now_ms: int | None = None) -> dict[str, Any]:
+        """Return the publisher-owned current shadow result at read time.
+
+        The decision record is retained inside the same locked snapshot as the
+        camera frame. Read-time freshness is calculated from the producer's
+        completion timestamp, so polling a stopped runtime cannot refresh an
+        old result merely by reading it.
+        """
+
+        read_at_ms = timestamp_ms() if now_ms is None else int(now_ms)
+        with self._lock:
+            return self._decision_publication_from_locked_state(read_at_ms=read_at_ms)
 
     def reset_memory(self) -> dict[str, Any]:
         """Reset the live memory stage under the same lock as observation cycles.
@@ -351,6 +402,197 @@ class AutonomyPilotPart:
             "latest_frame_path": LATEST_FRAME_PATH,
         }
 
+    def _validate_decision_identity(self) -> str | None:
+        """Validate runtime-owned identity supplied to the publication owner."""
+
+        try:
+            if self.vehicle_id is None:
+                return "vehicle_id_missing"
+            require_ascii_id(self.vehicle_id, field_name="vehicle_id")
+            if self.source_id is None:
+                return "source_id_missing"
+            require_ascii_id(self.source_id, field_name="source_id")
+            if self.activation_engine_id is None:
+                return "activation_engine_id_missing"
+            require_ascii_id(
+                self.activation_engine_id,
+                field_name="activation_engine_id",
+            )
+            if self.activation_activated_at_ms is None:
+                return "activation_activated_at_ms_missing"
+            require_safe_int(
+                self.activation_activated_at_ms,
+                field_name="activation_activated_at_ms",
+            )
+            if self.activation_engine_config is None:
+                return "activation_engine_config_missing"
+            if not isinstance(self.activation_engine_config, dict):
+                return "activation_engine_config_invalid"
+            if self.generation_id is None:
+                return "generation_id_missing"
+            require_ascii_id(self.generation_id, field_name="generation_id")
+            require_ascii_id(self.run_id, field_name="run_id")
+        except (TypeError, ValueError):
+            return "decision_identity_invalid"
+        return None
+
+    def _current_decision_result(self) -> Any | None:
+        """Read the current result from the active engine without inventing one."""
+
+        manager = getattr(self.host, "manager", None)
+        engine = getattr(manager, "engine", None)
+        getter = getattr(engine, "get_current_cycle_result", None)
+        if callable(getter):
+            try:
+                return getter()
+            except Exception:
+                return None
+        # Keep compatibility with same-owner test/fallback engines that expose
+        # only the adapter's legacy diagnostic attribute.
+        return getattr(engine, "last_cycle_result", None)
+
+    def _capture_decision_publication(
+        self,
+        *,
+        frame_id: str,
+        frame_index: int,
+        timestamp_ms_value: int,
+        published_at_ms: int,
+        status: str,
+    ) -> tuple[dict[str, Any] | None, str | None]:
+        """Capture a detached, identity-decorated typed shadow cycle."""
+
+        if status != "ok":
+            return None, "failed_step"
+        if self._decision_identity_error is not None:
+            return None, self._decision_identity_error
+        result = self._current_decision_result()
+        if result is None:
+            manager = getattr(self.host, "manager", None)
+            engine = getattr(manager, "engine", None)
+            if getattr(engine, "last_cycle_error_reason", None):
+                return None, "failed_step"
+            return None, "missing_result"
+        if getattr(result, "status", "ok") != "ok":
+            return None, "failed_step"
+        result_frame_id = getattr(result, "frame_id", None)
+        if result_frame_id != frame_id:
+            return None, "mismatched_frame"
+        try:
+            cycle = result.to_dict()
+        except Exception:
+            return None, "incomplete_result"
+        if not isinstance(cycle, dict) or cycle.get("status") != "ok":
+            return None, "incomplete_result"
+        source = cycle.get("source")
+        if not isinstance(source, dict):
+            return None, "incomplete_result"
+        if (
+            source.get("frame_id") != frame_id
+            or source.get("frame_index") != frame_index
+            or source.get("timestamp_ms") != timestamp_ms_value
+        ):
+            return None, "mismatched_frame"
+        return {
+            "vehicle_id": self.vehicle_id,
+            "source_id": self.source_id,
+            "run_id": self.run_id,
+            "activation_engine_id": self.activation_engine_id,
+            "activation_activated_at_ms": self.activation_activated_at_ms,
+            "generation_id": self.generation_id,
+            "frame_id": frame_id,
+            "frame_index": frame_index,
+            "timestamp_ms": timestamp_ms_value,
+            "published_at_ms": published_at_ms,
+            "activation": {
+                "engine_id": self.activation_engine_id,
+                "activated_at_ms": self.activation_activated_at_ms,
+                "generation_id": self.generation_id,
+                "engine_config": deepcopy(self.activation_engine_config),
+            },
+            "cycle": cycle,
+        }, None
+
+    def _decision_unavailable(
+        self,
+        *,
+        reason: str,
+        read_at_ms: int,
+        result_age_ms: int | None = None,
+    ) -> dict[str, Any]:
+        threshold_ms = stale_after_ms(self.min_interval_s)
+        return {
+            "schema": DECISION_PUBLICATION_SCHEMA,
+            "ok": False,
+            "status": "unavailable",
+            "reason": reason,
+            "read_at_ms": read_at_ms,
+            "result_age_ms": result_age_ms,
+            "stale_after_ms": threshold_ms,
+            "decision": None,
+        }
+
+    def _decision_publication_from_locked_state(self, *, read_at_ms: int) -> dict[str, Any]:
+        """Build the physical decision wire payload, fail-closed at read time."""
+
+        snap = self.latest_snapshot
+        threshold_ms = stale_after_ms(self.min_interval_s)
+        if snap is None:
+            return self._decision_unavailable(reason="missing", read_at_ms=read_at_ms)
+        decision = snap.decision_publication
+        if decision is None:
+            return self._decision_unavailable(
+                reason=snap.decision_error or "unavailable",
+                read_at_ms=read_at_ms,
+            )
+        # A reset/reload clears the adapter's current result. Never replay the
+        # detached result retained by a prior camera snapshot.
+        current = self._current_decision_result()
+        if current is None or getattr(current, "status", "ok") != "ok":
+            manager = getattr(self.host, "manager", None)
+            engine = getattr(manager, "engine", None)
+            reason = (
+                "failed_step"
+                if getattr(engine, "last_cycle_error_reason", None) == "failed_step"
+                or current is not None
+                else "reset"
+            )
+            return self._decision_unavailable(reason=reason, read_at_ms=read_at_ms)
+        if getattr(current, "frame_id", None) != decision.get("frame_id"):
+            return self._decision_unavailable(
+                reason="mismatched_frame",
+                read_at_ms=read_at_ms,
+            )
+        published_at_ms = decision.get("published_at_ms")
+        if type(published_at_ms) is not int:
+            return self._decision_unavailable(
+                reason="incomplete",
+                read_at_ms=read_at_ms,
+            )
+        age_ms = read_at_ms - published_at_ms
+        if age_ms < 0:
+            reason = "future_dated"
+        elif age_ms > threshold_ms:
+            reason = "expired"
+        else:
+            reason = None
+        if reason is not None:
+            return self._decision_unavailable(
+                reason=reason,
+                read_at_ms=read_at_ms,
+                result_age_ms=age_ms,
+            )
+        return {
+            "schema": DECISION_PUBLICATION_SCHEMA,
+            "ok": True,
+            "status": "ready",
+            "reason": "",
+            "read_at_ms": read_at_ms,
+            "result_age_ms": age_ms,
+            "stale_after_ms": threshold_ms,
+            "decision": deepcopy(decision),
+        }
+
     def run(
         self,
         image_array=None,
@@ -421,6 +663,14 @@ class AutonomyPilotPart:
             status = "error"
             error = f"{type(exc).__name__}: {exc}"
 
+        decision_publication, decision_error = self._capture_decision_publication(
+            frame_id=frame_id,
+            frame_index=self.frame_index,
+            timestamp_ms_value=captured_at_ms,
+            published_at_ms=completed_at_ms,
+            status=status,
+        )
+
         pilot_steering, pilot_throttle = self._pilot_outputs(mode_name, control)
         self._last_pilot_steering = pilot_steering
         self._last_pilot_throttle = pilot_throttle
@@ -450,6 +700,8 @@ class AutonomyPilotPart:
             duration_ms=duration_ms,
             skipped_since_previous=self._skips_since_previous,
             algorithm=self.algorithm,
+            decision_publication=decision_publication,
+            decision_error=decision_error,
         )
         with self._lock:
             self.latest_snapshot = snapshot

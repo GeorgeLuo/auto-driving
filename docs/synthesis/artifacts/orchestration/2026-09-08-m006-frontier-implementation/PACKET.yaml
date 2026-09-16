@@ -1,0 +1,89 @@
+policy: product-implementation/v1
+policy_commit: c8ee3515719ebbde4540d9d1ee04f9d04385ddc
+shared: shared/v1
+shared_commit: c8ee3515719ebbde4540d9d1ee04f9d04385ddc
+packet_revision: 1
+identity:
+  plan: docs/milestones/006-decision-facing-perception-readiness/plan.md
+  frontier: Cross-environment shadow proposal evidence
+  proposal:
+    path: docs/milestones/006-decision-facing-perception-readiness/proposals/shadow-proposal-evidence.md
+    pr: 201
+    reviewed_head: f9705785e62ba6c7d193cee8dcd86d0052ed6508
+    merge: 9e2a353c736a04fed22c1ce5d456c6115fbfbddc
+    acceptance: https://github.com/GeorgeLuo/auto-driving/pull/201#pullrequestreview-5149775116
+  amendments: []
+  implementation:
+    branch: m006/shadow-proposal-evidence
+    pr: 202
+    url: https://github.com/GeorgeLuo/auto-driving/pull/202
+    base: a8c4483dea577afdb78094caa36d650f47882a27
+    head: a0e11c6d5c29fc3f1f75c2b22588696600fc9a9c
+    preserved_remote_start: af02f318010947612bf8ec9f25e42e01581288e1
+contract:
+  question: >-
+    Does the staged avoid_recent_obstruction path produce provenance-complete
+    shadow action plans and the same correlated visual explanation on Chase and
+    stationary PiRacer inputs while applied control remains zero and privileged
+    simulator state stays outside controller inputs?
+  cases: C1-C7 in the accepted proposal
+  owner: tracked exact-frame Chase and stationary PiRacer shadow evidence packages
+  constraints:
+    - consume the accepted PR #74 decision contract and PR #80 Automa surfaces
+    - keep proposed intent separate from authorized idle and host-observed output
+    - never use evaluator truth as controller input
+    - do not implement D1/D2, retune policy, apply movement, or edit accepted artifacts
+  evidence: >-
+    use the stable evidence/shadow-proposal-evidence directory, preserve raw
+    records and failed intervals, render derived HTML from adjacent authoritative
+    records, and require explicit readiness receipts before canonical capture
+discretion:
+  open_choices:
+    - evidence-local record verification and result rendering mechanics
+    - preparatory fixture selection and case-map presentation
+  fixed_choices:
+    - existing CLI stage/info/automation/stream/apply surfaces
+    - bounds of 256 frames, 32 MiB sequence, and 8 MiB record
+    - D1/D2 are provisional candidate conditions with fail-closed treatment
+runtime:
+  root:
+    requested: gpt-5.6-luna/max
+    observed: API runtime identity not exposed
+  worker:
+    requested: A1 gpt-6-astra/low; A2 gpt-5.6-luna/max
+    observed: not dispatched; no child terminal-receipt interface is exposed in this session
+  synchronization: >-
+    direct root execution with durable packet/state receipts; no model polling,
+    transcript peeks, or CI watcher is used
+units:
+  - id: A1
+    objective: settle the bounded procedure, readiness interpretation, and concrete gaps
+    owner: root
+    paths: [docs/synthesis/artifacts/orchestration/2026-09-08-m006-frontier-implementation]
+    validation:
+      - check: recorded proposal acceptance and workflow status
+        owner: root
+        rerun_when: base, proposal, or plan identity changes
+      - check: safe read-only availability probes for Chase, PiRacer, and decision info
+        owner: root
+        rerun_when: environment or accepted runtime surfaces change
+    stop_if: an accepted question, owner, schema, or authority boundary must change
+  - id: A2
+    objective: create the smallest evidence-local preparation, verifier, and derived result view
+    owner: root
+    paths:
+      - docs/milestones/006-decision-facing-perception-readiness/evidence/shadow-proposal-evidence
+    validation:
+      - check: representative offline apply through the public CLI and deterministic digest
+        owner: root
+      - check: evidence result verifier plus derived HTML regeneration
+        owner: root
+      - check: named rejection cases for missing readiness and fabricated success
+        owner: root
+    rerun_when: relevant helper, record schema, or final head changes
+    stop_if: preparation would imply canonical live success or require a product-path change
+closure:
+  owner: root
+  checks: integrated final-head validation, truthful draft PR, and handoff receipt
+  delivery: implementation_pr
+next: root_integration_and_capture_gate_handoff

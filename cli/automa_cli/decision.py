@@ -2219,18 +2219,36 @@ def _physical_decision_output(
     return publication
 
 
-def _format_physical_decision(normalized: dict[str, Any]) -> str:
+def physical_decision_view_frame(normalized: dict[str, Any]) -> dict[str, Any]:
+    """Adapt one accepted physical cycle to the provider-neutral decision view."""
+
     decision = normalized["decision"]
-    cycle = decision.get("cycle") if isinstance(decision.get("cycle"), dict) else {}
-    source = cycle.get("source") if isinstance(cycle.get("source"), dict) else None
-    frame = {
-        "vehicle_id": decision.get("vehicle_id"),
-        "frame_id": decision.get("frame_id"),
+    cycle = decision["cycle"]
+    source = cycle.get("source") if isinstance(cycle, dict) else None
+    return {
+        "schema": "provider_decision_stream_frame_v0",
+        "vehicle_id": decision["vehicle_id"],
+        "source_id": decision["source_id"],
+        "run_id": decision["run_id"],
+        "activation_engine_id": decision["activation_engine_id"],
+        "activation_activated_at_ms": decision["activation_activated_at_ms"],
+        "producer_generation_id": decision["generation_id"],
+        "frame_id": decision["frame_id"],
+        "frame_index": decision["frame_index"],
+        "timestamp_ms": decision["timestamp_ms"],
+        "published_at_ms": decision["published_at_ms"],
+        "cycle": deepcopy(cycle),
         "observation_summary": _observation_summary(source),
         "memory_summary": _memory_summary(source),
         "plan_summary": _plan_summary(cycle.get("plan")),
         "authority_summary": _authority_summary(cycle.get("authority", {}), cycle),
     }
+
+
+def _format_physical_decision(normalized: dict[str, Any]) -> str:
+    decision = normalized["decision"]
+    cycle = decision.get("cycle") if isinstance(decision.get("cycle"), dict) else {}
+    frame = physical_decision_view_frame(normalized)
     lines = [
         f"Decision stream: {decision.get('vehicle_id')} frame={decision.get('frame_id')} provider=picar",
         f"Source: {decision.get('source_id')}  run={decision.get('run_id')} "

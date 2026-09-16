@@ -254,8 +254,40 @@ def decision_view_identity(
     }
 
 
+def provider_decision_view_identity(
+    *,
+    vehicle_id: str,
+    source_id: str,
+    run_id: str,
+    activation_engine_id: str,
+    activation_activated_at_ms: int,
+    producer_generation_id: str,
+) -> dict[str, Any]:
+    """Identify a non-local producer without inventing local process state."""
+
+    for field, value in (
+        ("vehicle_id", vehicle_id),
+        ("source_id", source_id),
+        ("run_id", run_id),
+        ("activation_engine_id", activation_engine_id),
+        ("producer_generation_id", producer_generation_id),
+    ):
+        if type(value) is not str or not value:
+            raise ValueError(f"decision view {field} is invalid")
+    if type(activation_activated_at_ms) is not int:
+        raise ValueError("decision view activation_activated_at_ms is invalid")
+    return {
+        "vehicle_id": vehicle_id,
+        "source_id": source_id,
+        "run_id": run_id,
+        "activation_engine_id": activation_engine_id,
+        "activation_activated_at_ms": activation_activated_at_ms,
+        "producer_generation_id": producer_generation_id,
+    }
+
+
 def generation_id(identity: dict[str, Any]) -> str:
-    expected = {
+    local_expected = {
         "vehicle_id",
         "run_id",
         "worker_pid",
@@ -263,7 +295,15 @@ def generation_id(identity: dict[str, Any]) -> str:
         "activation_activated_at_ms",
         "activation_sha256",
     }
-    if set(identity) != expected:
+    provider_expected = {
+        "vehicle_id",
+        "source_id",
+        "run_id",
+        "activation_engine_id",
+        "activation_activated_at_ms",
+        "producer_generation_id",
+    }
+    if frozenset(identity) not in {frozenset(local_expected), frozenset(provider_expected)}:
         raise ValueError("decision view identity has an unexpected key set")
     return _sha256_json(identity)
 
@@ -314,12 +354,19 @@ class DecisionView:
         worker_pid: int | None,
         activation: dict[str, Any] | None,
         activation_path: Path,
+        provider_identity: dict[str, Any] | None = None,
     ) -> None:
         self._activation_path = Path(activation_path)
         self._startup_activation = _json_copy(activation) if isinstance(activation, dict) else None
         self.identity: dict[str, Any] | None = None
         self.generation_id: str | None = None
-        if self._startup_activation is not None and run_id is not None and worker_pid is not None:
+        self._provider_identity = (
+            _json_copy(provider_identity) if isinstance(provider_identity, dict) else None
+        )
+        if self._provider_identity is not None:
+            self.identity = provider_decision_view_identity(**self._provider_identity)
+            self.generation_id = generation_id(self.identity)
+        elif self._startup_activation is not None and run_id is not None and worker_pid is not None:
             self.identity = decision_view_identity(
                 vehicle_id=vehicle_id,
                 run_id=run_id,
@@ -432,18 +479,97 @@ class DecisionView:
             self.invalidate_latest()
             return False
 
+        return self._store_transaction(
+            stream_frame=copied_stream,
+            frame_record=copied_record,
+            image_bytes=image_bytes,
+            content_type=content_type,
+        )
+
+    def publish_provider_transaction(
+        self,
+        *,
+        stream_frame: dict[str, Any],
+        frame_record: dict[str, Any],
+        image: tuple[bytes, str] | None,
+    ) -> bool:
+        """Store one already-accepted provider transaction without local PID state."""
+
+        if self.identity is None or self._provider_identity is None or image is None:
+            self.invalidate_latest()
+            return False
+        try:
+            if (
+                not isinstance(stream_frame, dict)
+                or not isinstance(frame_record, dict)
+                or not isinstance(image, tuple)
+                or len(image) != 2
+            ):
+                raise ValueError("provider transaction shape is invalid")
+            expected = {
+                "vehicle_id": stream_frame.get("vehicle_id"),
+                "source_id": stream_frame.get("source_id"),
+                "run_id": stream_frame.get("run_id"),
+                "activation_engine_id": stream_frame.get("activation_engine_id"),
+                "activation_activated_at_ms": stream_frame.get("activation_activated_at_ms"),
+                "producer_generation_id": stream_frame.get("producer_generation_id"),
+            }
+            cycle = stream_frame.get("cycle")
+            frame_id = stream_frame.get("frame_id")
+            image_bytes, content_type = image
+            if expected != self.identity:
+                raise ValueError("provider identity changed")
+            if (
+                type(frame_id) is not str
+                or not frame_id
+                or type(stream_frame.get("published_at_ms")) is not int
+            ):
+                raise ValueError("provider frame identity is invalid")
+            if not isinstance(cycle, dict) or cycle.get("frame_id") != frame_id:
+                raise ValueError("provider cycle frame does not match")
+            if frame_record.get("frame_id") != frame_id:
+                raise ValueError("provider image frame does not match")
+            if frame_record.get("run_id") != self.identity["run_id"]:
+                raise ValueError("provider image run does not match")
+            if (
+                type(image_bytes) is not bytes
+                or not image_bytes
+                or content_type not in {"image/png", "image/jpeg"}
+            ):
+                raise ValueError("provider image is invalid")
+            copied_stream = _json_copy(stream_frame)
+            copied_record = _json_copy(frame_record)
+        except Exception:  # noqa: BLE001 - publication must fail closed
+            self.invalidate_latest()
+            return False
+
+        return self._store_transaction(
+            stream_frame=copied_stream,
+            frame_record=copied_record,
+            image_bytes=image_bytes,
+            content_type=content_type,
+        )
+
+    def _store_transaction(
+        self,
+        *,
+        stream_frame: dict[str, Any],
+        frame_record: dict[str, Any],
+        image_bytes: bytes,
+        content_type: str,
+    ) -> bool:
         transaction_id = _sha256_json(
             {
                 "generation": self.generation_id,
-                "frame_id": copied_stream["frame_id"],
-                "published_at_ms": copied_stream["published_at_ms"],
+                "frame_id": stream_frame["frame_id"],
+                "published_at_ms": stream_frame["published_at_ms"],
                 "image_sha256": hashlib.sha256(image_bytes).hexdigest(),
             }
         )
         transaction = _Transaction(
             transaction_id=transaction_id,
-            stream_frame=copied_stream,
-            frame_record=copied_record,
+            stream_frame=stream_frame,
+            frame_record=frame_record,
             image_bytes=bytes(image_bytes),
             content_type=content_type,
         )
@@ -551,6 +677,8 @@ class DecisionView:
             self._transactions.clear()
 
     def _activation_matches(self) -> bool:
+        if self._provider_identity is not None:
+            return True
         if self._startup_activation is None:
             return False
         try:

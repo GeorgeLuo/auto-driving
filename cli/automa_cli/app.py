@@ -613,11 +613,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     decision_live = decision_control_commands.add_parser(
         "live",
-        help="Open a read-only live PiCar decision monitor.",
+        help="Open the shared read-only decision view for a live PiCar.",
         description=(
-            "Serve a small local page that polls the PiCar decision publication, "
-            "draws matched image-relative evidence, and shows proposed versus "
-            "authorized shadow output. It sends no vehicle commands."
+            "Adapt the PiCar decision publication into the same RuntimeViewServer "
+            "decision page used by Chase, with matched image-relative evidence and "
+            "proposed versus authorized shadow output. It sends no vehicle commands."
         ),
     )
     decision_live.add_argument(
@@ -636,7 +636,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--open",
         action="store_true",
         dest="open_browser",
-        help="Open the monitor in the default browser.",
+        help="Open the shared decision view in the default browser.",
     )
     decision_live.add_argument(
         "--timeout-s",

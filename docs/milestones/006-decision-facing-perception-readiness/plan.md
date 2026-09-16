@@ -69,7 +69,7 @@ for simulator and physical vehicles.
 
 **Cross-environment shadow proposal evidence**
 
-- Workflow state: ready_for_implementation
+- Workflow state: implementation_in_review
 - Proposal branch: `m006/shadow-proposal-evidence-proposal`
 - Implementation branch: `m006/shadow-proposal-evidence`
 - Proposal path: `docs/milestones/006-decision-facing-perception-readiness/proposals/shadow-proposal-evidence.md`
@@ -113,6 +113,7 @@ for simulator and physical vehicles.
 | Cross-environment shadow proposal evidence | ready_for_proposal | Promoted after implementation PR #80. |
 | Cross-environment shadow proposal evidence | proposal_in_review | Started m006/shadow-proposal-evidence-proposal. |
 | Cross-environment shadow proposal evidence | ready_for_implementation | Proposal PR #201 accepted at 9e2a353c736a04fed22c1ce5d456c6115fbfbddc (reviewed head `f9705785e62ba6c7d193cee8dcd86d0052ed6508` by `GeorgeLuo` as `OWNER` at `2026-09-09T04:31:46Z`). |
+| Cross-environment shadow proposal evidence | implementation_in_review | Started m006/shadow-proposal-evidence. |
 
 ## Accepted Review Units
 

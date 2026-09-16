@@ -61,6 +61,36 @@ The exact machine-readable disposition is in [result.json](result.json), with
 the derived review page in [result.html](result.html). The JSON record is
 authoritative; regenerate the page with `python3 render_result.py`.
 
+## Post-capture verification
+
+`verify_packet.py` has a separate success mode for records whose top-level
+status is `captured` or `accepted`. It checks only required shape, declared
+Chase/PiRacer package directories and artifact files, safe relative paths, and
+the derivation of `result.html` from `result.json`. It does not inspect image
+meaning, replay a vehicle, establish hardware authenticity, or make operator
+judgments.
+
+Each success record contains C1-C7 `case_outcomes`, `chase` and `piracer`
+entries in both `environment_packages` and `interval_coverage`, and `visual`
+and `operator` entries in `reviews`. Those entries use one of `passed`,
+`failed`, `blocked`, or `review`. Package `path` values are relative to the
+evidence root; each package's non-empty `artifacts` array contains paths
+relative to that package directory. Case and review `evidence` fields retain
+the corresponding receipt or manual-review note.
+
+After capture, render and report the record with:
+
+```sh
+python3 render_result.py --record result.json --output result.html
+python3 verify_packet.py --record result.json --html result.html --check-html
+python3 report_packet.py --record result.json --html result.html
+```
+
+The report prints `PASS`, `FAIL`, `BLOCKED`, and `REVIEW` rows. `FAIL` and
+`BLOCKED` produce a nonzero exit status; `REVIEW` remains a manual action and
+does not become a machine-certified pass. The committed record remains the
+incomplete preparation packet until real evidence is captured.
+
 ## Frozen capture procedure (when the gate is satisfied)
 
 The operator must retain the command output and raw records beside each

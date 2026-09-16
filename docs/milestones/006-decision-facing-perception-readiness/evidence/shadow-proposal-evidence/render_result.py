@@ -40,7 +40,58 @@ def _rows(items: dict[str, Any], *, reason_key: str = "reason") -> str:
     return "\n".join(rows)
 
 
+def _render_success(payload: dict[str, Any], *, record_sha256: str) -> str:
+    criteria = payload.get("criteria") if isinstance(payload.get("criteria"), dict) else {}
+    cases = payload.get("case_outcomes") if isinstance(payload.get("case_outcomes"), dict) else {}
+    packages = payload.get("environment_packages") if isinstance(payload.get("environment_packages"), dict) else {}
+    coverage = payload.get("interval_coverage") if isinstance(payload.get("interval_coverage"), dict) else {}
+    reviews = payload.get("reviews") if isinstance(payload.get("reviews"), dict) else {}
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>M006 shadow-proposal evidence</title>
+  <style>
+    :root {{ font-family: ui-sans-serif, system-ui, sans-serif; color: #17191c; }}
+    body {{ margin: 24px; max-width: 1080px; line-height: 1.4; }}
+    h1 {{ font-size: 1.35rem; }}
+    h2 {{ margin-top: 28px; font-size: 1.05rem; }}
+    .meta {{ color: #62676f; }}
+    .badge {{ display: inline-block; border: 1px solid #d9dde2; border-radius: 999px; padding: 2px 8px; font-size: 12px; background: #e8f6ec; }}
+    .note {{ border-left: 3px solid #176b87; padding: 10px 12px; background: #e7f3f8; }}
+    table {{ border-collapse: collapse; width: 100%; }}
+    th, td {{ border: 1px solid #d9dde2; padding: 6px 8px; text-align: left; vertical-align: top; }}
+    th {{ background: #f6f7f8; }}
+    code {{ font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; overflow-wrap: anywhere; }}
+  </style>
+</head>
+<body>
+  <h1>M006 cross-environment shadow-proposal evidence</h1>
+  <p class="meta">status=<span class="badge">{_cell(payload.get('status'))}</span>
+    · result.json sha256=<code>{html.escape(record_sha256)}</code></p>
+  <div class="note">
+    This page is derived from adjacent committed <code>result.json</code>.
+    Machine verification covers required shape and declared artifact existence
+    only. Visual and operator conclusions remain recorded human review.
+  </div>
+  <h2>Criteria</h2>
+  <table><tr><th>Criterion</th><th>Status</th><th>Evidence</th></tr>{_rows(criteria, reason_key='evidence')}</table>
+  <h2>Case outcomes</h2>
+  <table><tr><th>Case</th><th>Status</th><th>Evidence</th></tr>{_rows(cases, reason_key='evidence')}</table>
+  <h2>Environment packages</h2>
+  <table><tr><th>Environment</th><th>Status</th><th>Path</th></tr>{_rows(packages, reason_key='path')}</table>
+  <h2>Interval coverage</h2>
+  <table><tr><th>Environment</th><th>Status</th><th>Evidence</th></tr>{_rows(coverage, reason_key='evidence')}</table>
+  <h2>Manual review</h2>
+  <table><tr><th>Review</th><th>Status</th><th>Evidence</th></tr>{_rows(reviews, reason_key='evidence')}</table>
+</body>
+</html>
+"""
+
+
 def render(payload: dict[str, Any], *, record_sha256: str) -> str:
+    if payload.get("status") in {"captured", "accepted"}:
+        return _render_success(payload, record_sha256=record_sha256)
     criteria = payload.get("criteria") if isinstance(payload.get("criteria"), dict) else {}
     receipts = payload.get("readiness_receipts") if isinstance(payload.get("readiness_receipts"), dict) else {}
     cases = payload.get("case_outcomes") if isinstance(payload.get("case_outcomes"), dict) else {}
